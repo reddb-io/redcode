@@ -41,7 +41,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--v2-text-text-base);
-    font-weight: 530;
+    font-weight: var(--reddb-font-weight-medium);
   }
 
   [data-slot="upload-row-percent"] {
@@ -60,7 +60,7 @@
     flex: 1;
     height: 4px;
     overflow: hidden;
-    border-radius: 999px;
+    border-radius: var(--reddb-radius-lg);
     background: var(--v2-background-bg-layer-02);
   }
 
@@ -79,13 +79,13 @@
     height: 16px;
     padding: 0;
     border: 0;
-    border-radius: 4px;
+    border-radius: var(--reddb-radius-sm);
     background: transparent;
     color: var(--v2-icon-icon-muted);
     cursor: pointer;
 
     &:hover {
-      background: var(--v2-overlay-simple-overlay-hover);
+      background: color-mix(in srgb, var(--reddb-color-foreground) 8%, transparent);
       color: var(--v2-icon-icon-base);
     }
 

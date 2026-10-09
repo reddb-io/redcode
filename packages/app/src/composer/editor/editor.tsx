@@ -156,10 +156,10 @@ export function ComposerEditor(props: ComposerEditorProps) {
       <form
         data-component="composer"
         data-dock-border-underlay={props.borderUnderlay ? "true" : undefined}
-        class="group/composer relative min-h-[96px] w-full overflow-clip rounded-xl bg-v2-background-bg-base"
-        classList={{
-          "shadow-[var(--v2-elevation-raised)]": !props.borderUnderlay,
-        }}
+        class={`
+          group/composer relative min-h-[96px] w-full overflow-clip rounded-lg border border-control-edge
+          bg-v2-background-bg-base focus-within:border-focus
+        `}
         onSubmit={(event) => {
           event.preventDefault()
           if (!props.disabled) props.controller.submit()
@@ -208,7 +208,7 @@ export function ComposerEditor(props: ComposerEditorProps) {
             spellcheck={state.mode === "normal"}
             // @ts-expect-error
             autocomplete="off"
-            class="relative z-10 block min-h-[60px] w-full whitespace-pre-wrap bg-transparent px-4 pt-4 pb-2 text-[13px] font-[440] leading-5 text-v2-text-text-base focus:outline-none [&_[data-mention=file]]:text-syntax-property [&_[data-mention=agent]]:text-syntax-type [&_[data-mention=reference]]:text-syntax-keyword"
+            class="relative z-10 block min-h-[60px] w-full whitespace-pre-wrap bg-transparent ps-9 pe-4 pt-3.5 pb-2 text-body leading-5 text-foreground focus:outline-none [&_[data-mention=file]]:text-syntax-property [&_[data-mention=agent]]:text-syntax-type [&_[data-mention=reference]]:text-syntax-keyword"
             classList={{ "font-mono!": state.mode === "shell", "opacity-50": props.disabled }}
             style={{
               "unicode-bidi": state.mode === "normal" ? "plaintext" : undefined,
@@ -254,10 +254,17 @@ export function ComposerEditor(props: ComposerEditorProps) {
             }}
             onFocus={() => props.controller.dispatch({ type: "focus.editor" })}
           />
+          <span
+            data-slot="composer-caret"
+            aria-hidden="true"
+            class="pointer-events-none absolute start-4 top-3.5 z-20 font-mono text-body font-bold leading-5 text-primary"
+          >
+            {state.mode === "shell" ? "$" : "›"}
+          </span>
           <Show when={!props.controller.value()}>
             <div
               dir={state.mode === "normal" ? "auto" : "ltr"}
-              class="pointer-events-none absolute inset-x-0 top-0 px-4 pt-4 text-[13px] font-[440] leading-5 text-v2-text-text-faint"
+              class="pointer-events-none absolute inset-x-0 top-0 ps-9 pe-4 pt-3.5 text-body leading-5 text-ink-muted"
               classList={{ "font-mono!": state.mode === "shell" }}
               style={{ "unicode-bidi": state.mode === "normal" ? "plaintext" : undefined, "text-align": "start" }}
             >
@@ -330,6 +337,15 @@ export function ComposerEditor(props: ComposerEditorProps) {
             </div>
           </div>
           <div data-slot="composer-actions" class="flex shrink-0 items-center">
+            <Show when={state.mode === "normal" && !view.submit.stopping()}>
+              <span
+                data-slot="composer-hint"
+                aria-hidden="true"
+                class="me-3 hidden whitespace-nowrap text-caption text-ink-muted sm:inline"
+              >
+                ⏎ {i18n.t("ui.promptInput.send")}
+              </span>
+            </Show>
             <Show when={state.mode === "normal"}>
               <ComposerEditorAlternateDelivery
                 controller={props.controller}
@@ -516,9 +532,7 @@ export function ComposerAttachments(props: {
   const i18n = useI18n()
   const percent = (upload: Upload) => (upload.size === 0 ? 100 : Math.floor((upload.loaded / upload.size) * 100))
   return (
-    <Show
-      when={props.attachments.length > 0 || (props.uploads?.length ?? 0) > 0 || (props.comments?.length ?? 0) > 0}
-    >
+    <Show when={props.attachments.length > 0 || (props.uploads?.length ?? 0) > 0 || (props.comments?.length ?? 0) > 0}>
       <div data-component="composer-attachments" data-slot="composer-attachments" class="relative">
         <div
           data-slot="composer-attachments-scroll"
@@ -578,11 +592,11 @@ export function ComposerAttachments(props: {
                             <img
                               src={url() ?? ""}
                               alt={attachment.filename}
-                              class="w-[58px] h-[46px] rounded-[6px] object-cover"
+                              class="w-[58px] h-[46px] rounded-md object-cover"
                               onClick={() => props.onAttachmentClick?.(attachment)}
                             />
                           </Suspense>
-                          <div class="absolute inset-0 rounded-[6px] shadow-[inset_0_0_0_0.5px_var(--v2-border-border-base)] pointer-events-none" />
+                          <div class="pointer-events-none absolute inset-0 rounded-md shadow-[inset_0_0_0_1px_var(--reddb-color-muted)]" />
                         </>
                       )
                     }}
@@ -746,7 +760,7 @@ export function ComposerEditorSelect(props: {
           as={Button}
           variant="ghost-muted"
           size="normal"
-          class={`max-w-[220px] justify-start ![font-weight:440] ${props.class ?? ""}`}
+          class={`max-w-[220px] justify-start ${props.class ?? ""}`}
           aria-label={props.title}
         >
           {props.currentIcon}
@@ -804,7 +818,7 @@ export function ComposerEditorPopover(props: {
   return (
     <div
       data-component="composer-suggestions"
-      class="absolute inset-x-0 -top-2 z-40 flex -translate-y-full scroll-pb-[18px] flex-col overflow-auto rounded-xl bg-v2-background-bg-base p-2 shadow-[var(--v2-elevation-raised)] no-scrollbar"
+      class="absolute inset-x-0 -top-2 z-40 flex -translate-y-full scroll-pb-[18px] flex-col overflow-auto rounded-lg border border-elevation-overlay-border bg-elevation-overlay-surface p-1.5 shadow-elevation-overlay no-scrollbar"
       style={{ "max-height": `${store.maxHeight}px` }}
       onMouseDown={(event) => event.preventDefault()}
     >
@@ -816,7 +830,7 @@ export function ComposerEditorPopover(props: {
               value={search().value}
               aria-label={search().label}
               placeholder={search().placeholder}
-              class="w-full bg-transparent text-[13px] leading-5 text-v2-text-text-base outline-none placeholder:text-v2-text-text-faint"
+              class="w-full bg-transparent text-body leading-5 text-foreground outline-none placeholder:text-ink-muted"
               onInput={(event) => search().onValueChange(event.currentTarget.value)}
               onKeyDown={(event) => search().onKeyDown(event)}
               onMouseDown={(event) => event.stopPropagation()}
@@ -824,32 +838,29 @@ export function ComposerEditorPopover(props: {
           </div>
         )}
       </Show>
-      <Show
-        when={props.items.length > 0}
-        fallback={<div class="px-2 py-1 text-v2-text-text-muted">{props.emptyLabel}</div>}
-      >
+      <Show when={props.items.length > 0} fallback={<div class="px-2 py-1 text-ink-muted">{props.emptyLabel}</div>}>
         <For each={props.items}>
           {(item) => (
             <button
               type="button"
               data-suggestion-id={item.id}
               data-active={props.activeID === item.id ? "" : undefined}
-              class="flex h-7 w-full shrink-0 items-center gap-2 rounded-md px-2 py-1 text-start hover:bg-v2-overlay-simple-overlay-hover"
-              classList={{ "bg-v2-overlay-simple-overlay-hover": props.activeID === item.id }}
+              class="flex h-7 w-full shrink-0 items-center gap-2 rounded-md px-2 py-1 text-start text-body"
+              classList={{ "bg-foreground/10": props.activeID === item.id }}
               onPointerMove={() => props.onActiveChange(item)}
               onClick={() => props.onSelect(item)}
             >
               <div class="flex min-w-0 flex-1 items-center gap-2">
                 <ComposerSuggestionIcon item={item} />
-                <bdi dir="auto" class="shrink-0 text-v2-text-text-base">
+                <bdi dir="auto" class="shrink-0 text-foreground">
                   {item.label}
                 </bdi>
                 <Show when={item.description}>
-                  <span class="min-w-0 truncate text-v2-text-text-muted">{item.description}</span>
+                  <span class="min-w-0 truncate text-ink-muted">{item.description}</span>
                 </Show>
               </div>
               <Show when={item.keybind?.length}>
-                <span class="shrink-0 text-v2-text-text-muted">{item.keybind?.join("+")}</span>
+                <span class="shrink-0 text-caption text-ink-muted">{item.keybind?.join("+")}</span>
               </Show>
             </button>
           )}
@@ -897,7 +908,7 @@ function ComposerEditorAlternateDelivery(props: { controller: ComposerEditorMode
             type="button"
             variant="ghost-faint"
             size="small"
-            class="me-3 gap-1.5 px-1.5 ![font-weight:530] duration-150 motion-reduce:animate-none"
+            class="me-3 gap-1.5 px-1.5 font-medium duration-150 motion-reduce:animate-none"
             classList={{
               "animate-in fade-in": presence.animate() && presence.show(),
               "animate-out fade-out fill-mode-forwards": presence.animate() && !presence.show(),
@@ -937,7 +948,7 @@ export function ComposerEditorSubmitButton(props: {
         tabIndex={props.mode === "normal" ? undefined : -1}
         icon={<Icon name={props.stopping ? "stop" : props.mode === "shell" ? "arrow-undo-down" : "arrow-up"} />}
         variant="submit"
-        class="size-7 rounded-md p-[6px]"
+        class="size-8 rounded-md"
         aria-label={props.stopping ? props.stopLabel : props.sendLabel}
         onClick={(event) => {
           event.preventDefault()
@@ -954,7 +965,8 @@ export function ComposerEditorSubmitButton(props: {
 }
 
 function ComposerSuggestionIcon(props: { item: ComposerSuggestion }) {
-  if (props.item.kind === "agent") return <Icon name="brain" size="small" class="shrink-0 text-icon-info-active" />
+  if (props.item.kind === "agent")
+    return <Icon name="brain" size="small" class="shrink-0 text-feedback-info-foreground" />
   if (props.item.kind === "skill") return <Icon name="post-skill" size="small" class="shrink-0" />
   if (props.item.kind === "command") return null
   return (

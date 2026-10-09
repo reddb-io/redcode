@@ -65,7 +65,7 @@ export const SettingsExtensions: Component<{
         <div class="settings-tab-header-row">
           <div class="flex flex-col gap-1">
             <h2 class="settings-tab-title">{language.t("settings.tab.extensions")}</h2>
-            <span class="text-11-regular text-v2-text-text-muted">{language.t("settings.extensions.description")}</span>
+            <span class="text-11-regular text-ink-muted">{language.t("settings.extensions.description")}</span>
           </div>
         </div>
       </div>
@@ -91,7 +91,7 @@ export const SettingsExtensions: Component<{
                 <span class="settings-extension-heading text-13-medium">
                   {language.t("settings.extensions.availableAll")}
                 </span>
-                <span class="text-13-regular text-v2-text-text-muted">
+                <span class="text-13-regular text-ink-muted">
                   {language.t("settings.extensions.manageConfig")}
                 </span>
               </div>
@@ -100,7 +100,7 @@ export const SettingsExtensions: Component<{
                   {(item) => (
                     <div class="settings-extension-row">
                       <div class="settings-extension-lead">
-                        <Icon name="mcp" class="text-v2-icon-icon-muted shrink-0" />
+                        <Icon name="mcp" class="text-ink-muted shrink-0" />
                         <span class="settings-extension-name truncate">{item.name}</span>
                       </div>
                       <Switch checked={item.enabled} onChange={(checked) => handleMcpToggle(item, checked)} hideLabel>
@@ -119,7 +119,7 @@ export const SettingsExtensions: Component<{
                 <span class="settings-extension-heading text-13-medium">
                   {language.t("settings.extensions.availableAll")}
                 </span>
-                <span class="text-13-regular text-v2-text-text-muted">
+                <span class="text-13-regular text-ink-muted">
                   {language.t("settings.extensions.manageConfig")}
                 </span>
               </div>
@@ -128,7 +128,7 @@ export const SettingsExtensions: Component<{
                   {(plugin) => (
                     <div class="settings-extension-row">
                       <div class="settings-extension-lead">
-                        <Icon name="cube" class="text-v2-icon-icon-muted shrink-0" />
+                        <Icon name="cube" class="text-ink-muted shrink-0" />
                         <span class="settings-extension-name truncate">{plugin.name}</span>
                       </div>
                     </div>
@@ -153,7 +153,7 @@ export const SettingsExtensions: Component<{
                   {(skill) => (
                     <div class="settings-extension-row">
                       <div class="settings-extension-lead">
-                        <Icon name="post-skill" class="text-v2-icon-icon-muted shrink-0" />
+                        <Icon name="post-skill" class="text-ink-muted shrink-0" />
                         <span class="settings-extension-name truncate">{skill.name}</span>
                       </div>
                     </div>

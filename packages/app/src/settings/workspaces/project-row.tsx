@@ -87,7 +87,7 @@ export function SettingsProjectRow(props: {
                 dir="auto"
                 value={store.editor?.draft ?? ""}
                 disabled={store.editor?.saving}
-                class="w-full text-[13px] font-[530] leading-5 tracking-[-0.04px] text-v2-text-text-base outline-none"
+                class="w-full text-[13px] font-medium leading-5 text-foreground outline-none"
                 style={{ "--inline-input-shadow": "none", "border-radius": "0", "text-align": "start" }}
                 onInput={(event) => setStore("editor", "draft", event.currentTarget.value)}
                 onKeyDown={(event) => {
@@ -113,11 +113,11 @@ export function SettingsProjectRow(props: {
             type="button"
             aria-label={displayName(props.project)}
             title={props.project.worktree}
-            class="flex h-full min-w-0 flex-1 items-center gap-2 rounded-[4px] bg-transparent text-start focus-visible:outline-none focus-visible:[box-shadow:inset_0_0_0_1px_var(--v2-border-border-focus)]"
+            class="flex h-full min-w-0 flex-1 items-center gap-2 rounded-sm bg-transparent text-start focus-visible:outline-none focus-visible:[box-shadow:inset_0_0_0_1px_var(--v2-border-border-focus)]"
             onClick={() => props.onOpen(props.project)}
           >
             <ProjectIcon project={props.project} class="shrink-0" />
-            <bdi class="truncate text-[13px] font-[530] leading-5 tracking-[-0.04px] text-v2-text-text-base">
+            <bdi class="truncate text-[13px] font-medium leading-5 text-foreground">
               {displayName(props.project)}
             </bdi>
           </button>

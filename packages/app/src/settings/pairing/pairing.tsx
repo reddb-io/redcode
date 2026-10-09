@@ -54,7 +54,7 @@ export function SettingsPairing() {
         <div class="settings-tab-header-row">
           <div class="flex flex-col gap-1">
             <h2 class="settings-tab-title">{language.t("settings.pairing.title")}</h2>
-            <span class="text-11-regular text-v2-text-text-muted">{language.t("pair.description")}</span>
+            <span class="text-11-regular text-ink-muted">{language.t("pair.description")}</span>
           </div>
         </div>
       </div>
@@ -156,7 +156,7 @@ function DialogPairing(props: { title: string; host: string; code: () => Promise
       <DialogBody class="flex flex-col gap-4 px-4 pb-4">
         <Show when={url()}>
           <div
-            class="aspect-square w-full shrink-0 rounded-[6px] bg-v2-background-bg-base p-6 text-v2-text-text-base [&>svg]:size-full"
+            class="aspect-square w-full shrink-0 rounded-md bg-v2-background-bg-base p-6 text-foreground [&>svg]:size-full"
             role="img"
             aria-label={language.t("pair.qr")}
             innerHTML={qr()}
@@ -170,7 +170,7 @@ function DialogPairing(props: { title: string; host: string; code: () => Promise
             >
               <button
                 type="button"
-                class="inline-flex min-h-8 max-w-full select-none items-center justify-center gap-2 rounded-[6px] px-2 py-1 text-[13px] font-[440] leading-text-compact tracking-[-0.04px] text-v2-text-text-muted transition-colors hover:bg-v2-background-bg-layer-02 hover:text-v2-text-text-base focus-visible:bg-v2-background-bg-layer-02 focus-visible:outline-none disabled:opacity-50"
+                class="inline-flex min-h-8 max-w-full select-none items-center justify-center gap-2 rounded-md px-2 py-1 text-[13px] font-normal leading-text-compact text-ink-muted transition-colors hover:bg-v2-background-bg-layer-02 hover:text-foreground focus-visible:bg-v2-background-bg-layer-02 focus-visible:outline-none disabled:opacity-50"
                 disabled={copy.isPending}
                 aria-label={language.t("pair.copy")}
                 onClick={() => copy.mutate()}

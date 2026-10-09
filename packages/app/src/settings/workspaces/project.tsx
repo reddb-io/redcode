@@ -1,5 +1,5 @@
 import { Icon } from "@opencode/ui/icon"
-import { ProjectAvatar, PROJECT_AVATAR_VARIANTS } from "@opencode/ui/project-avatar"
+import { PROJECT_AVATAR_VARIANTS } from "@opencode/ui/project-avatar"
 import { Textarea } from "@opencode/ui/textarea"
 import { TextInput } from "@opencode/ui/text-input"
 import { For, Show, type Component } from "solid-js"
@@ -9,6 +9,7 @@ import { ServerConnection, serverName } from "@/runtime/server/registry"
 import { useSettingsServers } from "@/settings/servers/inventory"
 import { displayName } from "@/shell/layout/helpers"
 import { ProjectIcon } from "@/shell/layout/project-icon"
+import { ProjectTile } from "@/shell/layout/project-tile"
 import { ProjectOptions } from "./project-options"
 import { SettingsList } from "@/settings/list"
 import { SettingsRow } from "@/settings/row"
@@ -38,7 +39,7 @@ export const SettingsProjectGeneral: Component<{
                 url: props.project.icon?.url,
                 override: model.store.iconOverride,
               }}
-              class="!size-8 shrink-0 [&_[data-slot=project-avatar-surface]]:!rounded-[6px] [&_[data-slot=project-avatar-surface]]:!text-[16px]"
+              size="xl"
             />
             <div class="flex min-w-0 flex-col gap-1">
               <h2 class="settings-tab-title truncate">
@@ -100,7 +101,7 @@ export const SettingsProjectGeneral: Component<{
                   url: props.project.icon?.url,
                   override: model.store.iconOverride,
                 }}
-                class="!size-8 [&_[data-slot=project-avatar-surface]]:!rounded-[6px] [&_[data-slot=project-avatar-surface]]:!text-[16px]"
+                size="xl"
               />
               <span classList={{ "project-settings-icon-overlay": true, visible: model.store.iconHover }}>
                 <Icon name={model.store.iconOverride ? "close" : "share"} />
@@ -121,9 +122,11 @@ export const SettingsProjectGeneral: Component<{
               description={language.t("project.settings.color.description")}
             >
               <div class="project-settings-colors" data-action="settings-project-color">
-                <For each={PROJECT_AVATAR_VARIANTS}>
+                {/* Green and red would repeat the teal and magenta series tiles. */}
+                <For each={PROJECT_AVATAR_VARIANTS.filter((color) => color !== "green" && color !== "red")}>
                   {(color) => {
-                    const selected = () => getProjectAvatarVariant(model.store.color) === color
+                    // No stored color means the automatic series tile, so no swatch is selected.
+                    const selected = () => !!model.store.color && getProjectAvatarVariant(model.store.color) === color
                     return (
                       <button
                         type="button"
@@ -135,11 +138,7 @@ export const SettingsProjectGeneral: Component<{
                         classList={{ "project-settings-color--selected": selected() }}
                         onClick={() => model.setColor(selected() ? undefined : color)}
                       >
-                        <ProjectAvatar
-                          fallback=""
-                          variant={color}
-                          class="!size-5 [&_[data-slot=project-avatar-surface]]:!rounded-[6px]"
-                        />
+                        <ProjectTile project={{ worktree: "", icon: { color } }} size="md" />
                         <Show when={selected()}>
                           <Icon name="check" size="small" class="project-settings-color-check" />
                         </Show>

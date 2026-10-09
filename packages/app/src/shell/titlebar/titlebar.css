@@ -18,15 +18,7 @@
 }
 
 [data-slot="mobile-tabs-trigger"][aria-expanded="true"] {
-  background:
-    linear-gradient(var(--v2-overlay-simple-overlay-hover), var(--v2-overlay-simple-overlay-hover)),
-    var(--v2-background-bg-layer-02);
-}
-
-[data-action="mobile-tabs-home"][data-state="pressed"] {
-  background:
-    linear-gradient(var(--v2-overlay-simple-overlay-pressed), var(--v2-overlay-simple-overlay-pressed)),
-    var(--v2-background-bg-layer-02);
+  background: color-mix(in srgb, var(--reddb-color-foreground) 10%, transparent);
 }
 
 /* Keep the strip mounted for tab shortcuts and session metadata while collapsed. */
@@ -77,25 +69,17 @@
 }
 
 [data-slot="mobile-tabs-drawer"] [data-titlebar-tab] [data-slot="tab-title"] {
-  color: var(--v2-text-text-base);
-  font-weight: 530;
+  color: var(--reddb-color-foreground);
+  font-weight: var(--reddb-font-weight-medium);
 }
 
 [data-slot="mobile-tabs-drawer"] [data-titlebar-tab] [data-slot="tab-project"] {
-  color: var(--v2-text-text-faint);
-  font-weight: 440;
+  color: var(--reddb-color-ink-muted);
+  font-weight: var(--reddb-font-weight-regular);
 }
 
 [data-slot="titlebar-tab-item"] a {
   outline: none;
-}
-
-[data-slot="titlebar-v2"]
-  [data-component="icon-button-v2"][data-variant="ghost-muted"]:is(:focus-visible, [data-state="focus"]):not(
-    :disabled
-  ) {
-  outline: none;
-  background-color: var(--v2-overlay-simple-overlay-hover);
 }
 
 [data-slot="titlebar-tab-item"]

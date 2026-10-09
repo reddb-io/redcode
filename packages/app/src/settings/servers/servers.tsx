@@ -36,7 +36,7 @@ export const SettingsServerGeneral: Component<{
             <h2 class="settings-tab-title">
               {props.nested ? props.entry.name : language.t("settings.section.server")}
             </h2>
-            <span class="text-11-regular text-v2-text-text-muted">
+            <span class="text-11-regular text-ink-muted">
               {language.t(props.nested ? "settings.server.description" : "settings.servers.description")}
             </span>
           </div>

@@ -29,16 +29,17 @@
   }
 
   h1 {
-    font-size: 20px;
-    line-height: 28px;
-    font-weight: 530;
+    font-size: var(--reddb-type-title-font-size);
+    line-height: var(--reddb-type-title-line-height);
+    font-weight: var(--reddb-type-title-font-weight);
+    letter-spacing: var(--reddb-type-title-letter-spacing);
     margin-block-end: 8px;
   }
 
   p {
-    font-size: 13px;
-    line-height: var(--line-height-base);
-    color: var(--v2-text-text-muted);
+    font-size: var(--reddb-type-body-font-size);
+    line-height: var(--reddb-type-body-line-height);
+    color: var(--reddb-color-ink-muted);
   }
 
   form {
@@ -54,9 +55,10 @@
   }
 
   label {
-    font-size: 13px;
+    font-size: var(--reddb-type-body-font-size);
     line-height: var(--line-height-compact);
-    font-weight: 530;
+    font-weight: var(--reddb-font-weight-medium);
+    color: var(--reddb-color-foreground);
   }
 
   [data-component="text-input-v2"] {
@@ -75,7 +77,7 @@
   }
 
   .server-connect-error {
-    color: var(--v2-state-fg-danger);
+    color: var(--reddb-color-feedback-danger-foreground);
   }
 
   footer {
@@ -86,12 +88,13 @@
   code {
     display: inline-block;
     margin-block-start: 12px;
-    border: 1px solid var(--v2-border-border-base);
-    border-radius: 6px;
+    border: 1px solid var(--reddb-color-elevation-base-border);
+    border-radius: var(--reddb-radius-md);
     padding: 8px 16px;
+    font-family: var(--reddb-font-family-mono);
     font-size: 13px;
     line-height: var(--line-height-base);
-    background: var(--v2-background-bg-layer-01);
+    background: var(--reddb-color-elevation-sunken-surface);
     user-select: all;
   }
 }

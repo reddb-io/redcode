@@ -15,14 +15,14 @@
   }
 
   .server-connect-error {
-    color: var(--v2-state-fg-danger);
+    color: var(--reddb-color-feedback-danger-foreground);
   }
 
   .server-connect-video {
     position: relative;
     aspect-ratio: 1;
     overflow: hidden;
-    border-radius: 12px;
+    border-radius: var(--reddb-radius-lg);
     background: var(--v2-background-bg-deep);
   }
 

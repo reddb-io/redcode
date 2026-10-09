@@ -191,7 +191,7 @@ export function TabNavItem(props: {
       data-orientation={props.orientation ?? "horizontal"}
       data-title-overflow={titleOverflowing()}
       data-editing={editing()}
-      class="group relative flex h-7 w-full min-w-0 select-none flex-row items-center gap-1.5 overflow-hidden whitespace-nowrap rounded-[6px] px-1.5 [container-type:inline-size]"
+      class="group relative flex h-7 w-full min-w-0 select-none flex-row items-center gap-1.5 overflow-hidden whitespace-nowrap rounded-md px-1.5 [container-type:inline-size]"
       classList={{ invisible: props.hidden }}
       data-active={props.active}
       data-dragging={props.dragging}
@@ -234,7 +234,7 @@ export function TabNavItem(props: {
           if (props.suppressNavigation) return
           props.onNavigate()
         }}
-        class="flex h-full min-w-0 flex-1 flex-row items-center gap-1.5 text-[13px] font-medium text-v2-text-text-faint group-data-[active='true']:text-v2-text-text-base group-data-[editing='true']:text-v2-text-text-base [-webkit-user-drag:none]"
+        class="flex h-full min-w-0 flex-1 flex-row items-center gap-1.5 text-[13px] text-ink-muted group-hover:text-foreground group-data-[active='true']:font-medium group-data-[active='true']:text-foreground group-data-[editing='true']:text-foreground [-webkit-user-drag:none]"
       >
         <span data-slot="project-avatar-slot" class="flex size-4 shrink-0 items-center justify-center">
           <Show
@@ -243,9 +243,7 @@ export function TabNavItem(props: {
             fallback={
               <Show
                 when={props.preparing}
-                fallback={
-                  <span class="block size-4 rounded-[3px] border border-v2-border-border-muted" aria-hidden="true" />
-                }
+                fallback={<span class="block size-4 rounded-sm border border-control-edge" aria-hidden="true" />}
               >
                 <SessionProgressIndicatorV2 />
               </Show>
@@ -387,7 +385,7 @@ export function DraftTabItem(props: {
       data-active={props.active}
       data-dragging={props.dragging}
       data-state={props.active || props.pressed ? "pressed" : undefined}
-      class="group relative flex h-7 w-full min-w-0 flex-row items-center gap-1.5 overflow-hidden rounded-[6px] px-1.5 [container-type:inline-size] whitespace-nowrap"
+      class="group relative flex h-7 w-full min-w-0 flex-row items-center gap-1.5 overflow-hidden rounded-md px-1.5 [container-type:inline-size] whitespace-nowrap"
       classList={{ invisible: props.hidden }}
       onMouseDown={(event) => {
         if (event.button !== MIDDLE_MOUSE_BUTTON) return
@@ -421,11 +419,11 @@ export function DraftTabItem(props: {
           if (props.suppressNavigation) return
           props.onNavigate()
         }}
-        class="flex h-full min-w-0 flex-1 flex-row items-center gap-1.5 text-[13px] font-medium text-v2-text-text-faint group-data-[active='true']:text-v2-text-text-base [-webkit-user-drag:none]"
+        class="flex h-full min-w-0 flex-1 flex-row items-center gap-1.5 text-[13px] text-ink-muted group-hover:text-foreground group-data-[active='true']:font-medium group-data-[active='true']:text-foreground [-webkit-user-drag:none]"
       >
         <span class="flex size-4 shrink-0 items-center justify-center">
           <svg
-            class="text-v2-icon-icon-muted group-data-[active='true']:text-v2-icon-icon-base"
+            class="text-ink-muted group-data-[active='true']:text-foreground"
             width="16"
             height="16"
             viewBox="0 0 16 16"

@@ -289,10 +289,10 @@ export const ErrorPage: Component<ErrorPageProps> = (props) => {
       <div class="w-full max-w-3xl flex flex-col items-center justify-center gap-6 sm:gap-8 my-auto">
         <Logo class="w-48 sm:w-58.5 opacity-12 shrink-0" />
         <div class="flex flex-col items-center gap-2 text-center">
-          <h1 class="text-lg font-medium text-text-strong">
+          <h1 class="text-heading text-foreground">
             {language.t(status() ? "error.page.title.status" : "error.page.title")}
           </h1>
-          <p class="text-sm text-text-weak">
+          <p class="text-body text-ink-muted">
             {status()
               ? language.t("error.page.description.status", { status: status()! })
               : language.t(errorDescriptionKey(props.error))}
@@ -358,23 +358,25 @@ export const ErrorPage: Component<ErrorPageProps> = (props) => {
           </Show>
         </div>
         <Show when={store.actionError}>
-          {(message) => <p class="text-xs text-text-danger-base text-center max-w-2xl">{message()}</p>}
+          {(message) => <p class="text-caption text-feedback-danger-foreground text-center max-w-2xl">{message()}</p>}
         </Show>
-        <div class="flex flex-col items-center gap-2 text-xs text-center">
+        <div class="flex flex-col items-center gap-2 text-caption text-ink-muted text-center">
           <div class="flex flex-wrap items-center justify-center gap-1">
             {language.t("error.page.report.prefix")}
             <button
               type="button"
-              class="flex items-center text-text-interactive-base gap-1"
-              onClick={() => platform.openExternal("https://opencode.ai/desktop-feedback")}
+              class="flex items-center gap-1 rounded-sm text-foreground underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+              onClick={() => platform.openExternal("https://github.com/reddb-io/redcode/issues/new")}
             >
               <div>{language.t("error.page.report.discord")}</div>
-              <Icon name="discord" class="text-text-interactive-base" />
+              <Icon name="discord" class="text-foreground" />
             </button>
           </div>
           <Show when={platform.version}>
             {(version) => (
-              <p class="text-xs text-text-weak">{language.t("error.page.version", { version: version() })}</p>
+              <p class="text-caption text-ink-muted tabular-nums">
+                {language.t("error.page.version", { version: version() })}
+              </p>
             )}
           </Show>
         </div>

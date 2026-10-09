@@ -71,7 +71,7 @@ export const SettingsAppearance: Component = () => {
         <div class="settings-tab-header-row">
           <div class="flex flex-col gap-1">
             <h2 class="settings-tab-title">{language.t("settings.general.section.appearance")}</h2>
-            <span class="text-11-regular text-v2-text-text-muted">{language.t("settings.appearance.description")}</span>
+            <span class="text-11-regular text-ink-muted">{language.t("settings.appearance.description")}</span>
           </div>
         </div>
       </div>
@@ -103,7 +103,7 @@ export const SettingsAppearance: Component = () => {
               description={
                 <>
                   {language.t("settings.general.row.theme.description")}{" "}
-                  <ExternalLink class="settings-link" href="https://opencode.ai/docs/themes/">
+                  <ExternalLink class="settings-link" href="https://github.com/reddb-io/redcode">
                     {language.t("common.learnMore")}
                   </ExternalLink>
                 </>

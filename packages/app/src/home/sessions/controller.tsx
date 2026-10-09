@@ -33,7 +33,7 @@ export type { HomeSessionRecord } from "./records"
 // Keep the immutable result opaque so Solid Query does not recursively unwrap every session on mount.
 const selectSessions = (sessions: SessionInfo[]) => () => sessions
 export type HomeSessionGroup = {
-  id: "today" | "yesterday" | "older"
+  id: "today" | "yesterday" | "week" | "older"
   title: string
   sessions: HomeSessionRecord[]
 }
@@ -363,17 +363,21 @@ function groupSessions(records: HomeSessionRecord[], language: ReturnType<typeof
   const now = new Date()
   const today = localDay(now)
   const yesterday = localDay(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1))
-  const day = (record: HomeSessionRecord) => localDay(new Date(record.session.time.updated ?? record.session.time.created))
+  const week = localDay(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7))
+  const day = (record: HomeSessionRecord) =>
+    localDay(new Date(record.session.time.updated ?? record.session.time.created))
   const todaySessions = records.filter((record) => day(record) === today)
   const yesterdaySessions = records.filter((record) => day(record) === yesterday)
-  const olderSessions = records.filter((record) => day(record) !== today && day(record) !== yesterday)
+  const weekSessions = records.filter((record) => day(record) < yesterday && day(record) >= week)
+  const olderSessions = records.filter((record) => day(record) < week)
   const olderTitle =
-    todaySessions.length === 0 && yesterdaySessions.length === 0
+    todaySessions.length === 0 && yesterdaySessions.length === 0 && weekSessions.length === 0
       ? language.t("sidebar.project.recentSessions")
       : language.t("home.sessions.group.older")
   return [
     { id: "today" as const, title: language.t("home.sessions.group.today"), sessions: todaySessions },
     { id: "yesterday" as const, title: language.t("home.sessions.group.yesterday"), sessions: yesterdaySessions },
+    { id: "week" as const, title: language.t("home.sessions.group.week"), sessions: weekSessions },
     { id: "older" as const, title: olderTitle, sessions: olderSessions },
   ].filter((group) => group.sessions.length > 0)
 }

@@ -88,7 +88,7 @@ function Cell(props: {
         "flex min-w-0 items-center": true,
         "min-h-[20px] w-fit justify-start px-1.5 py-0.5 text-left": !!props.inline,
         "justify-center text-center": !props.inline,
-        "min-h-[42px] w-full flex-col rounded-[8px] px-0.5 py-1": !props.inline,
+        "min-h-[42px] w-full flex-col rounded-lg px-0.5 py-1": !props.inline,
         "col-span-2": props.span === 2 && !props.inline,
         "col-span-3": props.span === 3 && !props.inline,
       }}
@@ -147,7 +147,7 @@ function ToggleCell(props: {
       classList={{
         "flex min-w-0 items-center font-mono uppercase hover:bg-surface-raised-base focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-border-focus": true,
         "min-h-[20px] w-fit justify-start rounded px-1.5 py-0.5 text-left": !!props.inline,
-        "min-h-[42px] w-full flex-col justify-center rounded-[8px] px-0.5 py-1 text-center": !props.inline,
+        "min-h-[42px] w-full flex-col justify-center rounded-lg px-0.5 py-1 text-center": !props.inline,
         "bg-surface-raised-base text-text-strong": props.active,
       }}
       onClick={props.onClick}

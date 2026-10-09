@@ -127,8 +127,8 @@ const ModelList: Component<{
                 type="button"
                 data-component="settings-row"
                 data-option-key={modelKey(item)}
-                class="-mx-4 w-[calc(100%+32px)] px-4 text-start first:rounded-t-lg last:rounded-b-lg hover:bg-v2-overlay-simple-overlay-hover focus-visible:bg-v2-overlay-simple-overlay-hover focus-visible:outline-none"
-                classList={{ "bg-v2-overlay-simple-overlay-hover": store.active === modelKey(item) }}
+                class="-mx-4 w-[calc(100%+32px)] px-4 text-start first:rounded-t-lg last:rounded-b-lg hover:bg-foreground/8 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                classList={{ "bg-foreground/10": store.active === modelKey(item) }}
                 onMouseEnter={() => setStore("active", modelKey(item))}
                 onMouseLeave={() => setStore("active", "")}
                 onClick={() => controller.select(item)}
@@ -155,7 +155,7 @@ const ModelList: Component<{
                 </div>
                 <div data-slot="settings-row-control" class="size-4">
                   <Show when={controller.current() === modelKey(item)}>
-                    <Icon name="check" size="small" class="shrink-0 text-v2-icon-icon-base" />
+                    <Icon name="check" size="small" class="shrink-0 text-foreground" />
                   </Show>
                 </div>
               </button>
@@ -163,12 +163,12 @@ const ModelList: Component<{
                 <button
                   type="button"
                   data-component="settings-row"
-                  class="-mx-4 w-[calc(100%+32px)] px-4 ps-8 text-start hover:bg-v2-overlay-simple-overlay-hover focus-visible:bg-v2-overlay-simple-overlay-hover focus-visible:outline-none"
+                  class="-mx-4 w-[calc(100%+32px)] px-4 ps-8 text-start hover:bg-foreground/8 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
                   aria-expanded={Boolean(store.offers[modelKey(item)])}
                   onClick={() => setStore("offers", modelKey(item), (value) => !value)}
                 >
                   <div data-slot="settings-row-copy">
-                    <div data-slot="settings-row-title" class="flex items-center gap-2 text-v2-text-text-muted">
+                    <div data-slot="settings-row-title" class="flex items-center gap-2 text-ink-muted">
                       <Icon name={store.offers[modelKey(item)] ? "chevron-down" : "chevron-right"} size="small" />
                       <span class="min-w-0 truncate">
                         {language.plural("model.offers.count", controller.offers(item).length)}
@@ -182,7 +182,7 @@ const ModelList: Component<{
                       <button
                         type="button"
                         data-component="settings-row"
-                        class="-mx-4 w-[calc(100%+32px)] px-4 ps-12 text-start hover:bg-v2-overlay-simple-overlay-hover focus-visible:bg-v2-overlay-simple-overlay-hover focus-visible:outline-none disabled:opacity-50"
+                        class="-mx-4 w-[calc(100%+32px)] px-4 ps-12 text-start hover:bg-foreground/8 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:opacity-50"
                         disabled={!entry.model}
                         onClick={() => {
                           if (entry.model) controller.select(entry.model)
@@ -196,7 +196,7 @@ const ModelList: Component<{
                         </div>
                         <div data-slot="settings-row-control" class="size-4">
                           <Show when={entry.model && controller.current() === modelKey(entry.model)}>
-                            <Icon name="check" size="small" class="shrink-0 text-v2-icon-icon-base" />
+                            <Icon name="check" size="small" class="shrink-0 text-foreground" />
                           </Show>
                         </div>
                       </button>
@@ -252,7 +252,7 @@ const ModelList: Component<{
               variant="ghost-muted"
               size="small"
               class="settings-tab-search-clear"
-              icon={<Icon name="close" size="large" class="text-v2-icon-icon-muted" />}
+              icon={<Icon name="close" size="large" class="text-ink-muted" />}
               onClick={() => setSearch("")}
               aria-label={language.t("common.clear")}
             />
@@ -450,13 +450,13 @@ function ModelSelectorPopoverView(props: {
           onCloseAutoFocus={dismiss.onCloseAutoFocus}
         >
           <div class="flex flex-col p-0.5">
-            <div class="flex h-7 items-center gap-2 rounded-sm pl-3 pr-2.5 text-v2-icon-icon-muted">
+            <div class="flex h-7 items-center gap-2 rounded-sm pl-3 pr-2.5 text-ink-muted">
               <Icon name="magnifying-glass" size="small" class="shrink-0" />
               <input
                 ref={(el) => (searchRef = el)}
                 value={store.search}
                 placeholder={language.t("dialog.model.search.placeholder")}
-                class="h-7 min-w-0 flex-1 border-0 bg-transparent text-[13px] font-[440] leading-5 tracking-[-0.04px] text-v2-text-text-base outline-none placeholder:text-v2-text-text-faint"
+                class="h-7 min-w-0 flex-1 border-0 bg-transparent text-[13px] font-normal leading-5 text-foreground outline-none placeholder:text-ink-muted"
                 spellcheck={false}
                 autocorrect="off"
                 autocomplete="off"
@@ -492,7 +492,7 @@ function ModelSelectorPopoverView(props: {
               <Show when={store.search.trim()}>
                 <button
                   type="button"
-                  class="flex size-5 items-center justify-center rounded-sm text-v2-icon-icon-muted hover:bg-v2-overlay-simple-overlay-hover"
+                  class="flex size-5 items-center justify-center rounded-sm text-ink-muted hover:bg-foreground/8"
                   onPointerDown={(event) => event.preventDefault()}
                   onClick={() => setSearch("")}
                   aria-label={language.t("common.clear")}
@@ -502,13 +502,13 @@ function ModelSelectorPopoverView(props: {
               </Show>
             </div>
           </div>
-          <div class="h-px bg-v2-border-border-muted" />
+          <div class="h-px bg-muted" />
           <ScrollView data-slot="model-selector-scroll" class="max-h-[220px] min-h-0">
             <div class="flex flex-col p-0.5 pt-0">
               <Show
                 when={models().length > 0}
                 fallback={
-                  <div class="flex h-12 items-center px-3 text-[13px] font-[440] leading-5 tracking-[-0.04px] text-v2-text-text-faint">
+                  <div class="flex h-12 items-center px-3 text-[13px] font-normal leading-5 text-ink-muted">
                     {language.t("dialog.model.empty")}
                   </div>
                 }
@@ -542,7 +542,7 @@ function ModelSelectorPopoverView(props: {
                                   data-option-key={modelKey(item)}
                                   data-selected-model={props.current === modelKey(item) ? true : undefined}
                                   class="scroll-my-6 w-full"
-                                  classList={{ "!bg-v2-overlay-simple-overlay-hover": store.active === modelKey(item) }}
+                                  classList={{ "!bg-foreground/10": store.active === modelKey(item) }}
                                   onMouseEnter={() => {
                                     setStore("active", modelKey(item))
                                     setTimeout(() => searchRef?.focus())
@@ -587,7 +587,7 @@ function ModelSelectorPopoverView(props: {
                                         <span class="min-w-0 flex-1 truncate leading-5">
                                           {Router.offerRoute(entry.offer)}
                                         </span>
-                                        <span class="shrink-0 truncate leading-5 text-v2-text-text-faint">
+                                        <span class="shrink-0 truncate leading-5 text-ink-muted">
                                           {offerDetails(language, entry)}
                                         </span>
                                       </Menu.Item>
@@ -605,11 +605,11 @@ function ModelSelectorPopoverView(props: {
               </Show>
             </div>
           </ScrollView>
-          <div class="h-px bg-v2-border-border-muted" />
+          <div class="h-px bg-muted" />
           <div class="flex flex-col p-0.5">
             <Menu.Item
               data-option-key={manageKey}
-              classList={{ "!bg-v2-overlay-simple-overlay-hover": store.active === manageKey }}
+              classList={{ "!bg-foreground/10": store.active === manageKey }}
               onMouseEnter={() => {
                 setStore("active", manageKey)
                 setTimeout(() => searchRef?.focus())
@@ -654,10 +654,10 @@ export const DialogSelectModel: Component<{ provider?: string; model?: ModelStat
       </DialogHeader>
       <DialogBody class="flex min-h-0 flex-1 flex-col">
         <ModelList provider={props.provider} model={props.model} onSelect={() => dialog.close()} />
-        <div class="shrink-0 border-t border-v2-border-border-muted px-4 py-3">
+        <div class="shrink-0 border-t border-muted px-4 py-3">
           <button
             type="button"
-            class="flex h-9 w-full items-center gap-2 rounded-md px-3 text-left text-[13px] font-[530] leading-text-compact tracking-[-0.04px] text-v2-text-text-base hover:bg-v2-overlay-simple-overlay-hover focus-visible:bg-v2-overlay-simple-overlay-hover focus-visible:outline-none"
+            class="flex h-9 w-full items-center gap-2 rounded-md px-3 text-left text-[13px] font-medium leading-text-compact text-foreground hover:bg-foreground/8 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
             onClick={manage}
           >
             <Icon name="outline-sliders" size="small" />

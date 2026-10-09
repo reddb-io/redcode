@@ -7,25 +7,26 @@ import { AutoScroller, Feedback, PointerActivationConstraints } from "@dnd-kit/d
 import { RestrictToVerticalAxis } from "@dnd-kit/abstract/modifiers"
 import { RestrictToElement } from "@dnd-kit/dom/modifiers"
 import { ScrollView } from "@opencode/ui/scroll-view"
-import { ProjectAvatar } from "@opencode/ui/project-avatar"
 import { Icon } from "@opencode/ui/icon"
 import { IconButton } from "@opencode/ui/icon-button"
 import { Button } from "@opencode/ui/button"
 import { Spinner } from "@opencode/ui/spinner"
 import { Menu } from "@opencode/ui/menu"
 import { Tooltip } from "@opencode/ui/tooltip"
-import { getProjectAvatarVariant, type HomeProjectSelection, type LocalProject } from "@/shell/state/layout"
+import type { HomeProjectSelection, LocalProject } from "@/shell/state/layout"
 import { ServerConnection } from "@/runtime/server/registry"
 import { useLanguage } from "@/runtime/i18n/language"
 import { usePlatform } from "@/runtime/platform/platform"
-import { displayName, getProjectAvatarSource } from "@/shell/layout/helpers"
+import { displayName } from "@/shell/layout/helpers"
+import { ProjectTile } from "@/shell/layout/project-tile"
 import { ServerRowMenuView, serverMenuLabels } from "@/servers/registry/row-menu"
 import { ServerHealthIndicator } from "@/servers/registry/row"
 import { type ServerHealth } from "@/runtime/server/health"
 import { fileManagerApp } from "@/home/projects/file-manager"
 import "./view.css"
 
-const HOME_PROJECT_NAV_LABEL = "min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap"
+const HOME_PROJECT_NAV_LABEL = "min-w-0 flex-1 truncate"
+const HOME_EYEBROW = "text-eyebrow uppercase text-ink-muted"
 
 const serverContextMenuID = (server: ServerConnection.Any) => `server:${ServerConnection.key(server)}`
 const projectContextMenuID = (server: ServerConnection.Any, directory: string) =>
@@ -89,12 +90,16 @@ export function HomeProjectsView(props: HomeProjectsViewProps) {
         <Popover.Trigger
           data-component="home-projects-dropdown"
           aria-label={props.language.t("home.projects")}
-          class="flex h-10 w-full min-w-0 items-center gap-2 rounded-[6px] bg-v2-background-bg-base px-1.5 text-start text-v2-text-text-base outline-none hover:bg-v2-background-bg-layer-01"
+          class={`
+            flex h-10 w-full min-w-0 items-center gap-2 rounded-md border border-control-edge bg-v2-background-bg-base
+            px-2 text-start text-body text-foreground hover:bg-foreground/8 aria-expanded:bg-foreground/10
+            focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus
+          `}
         >
-          <Show when={selected()} fallback={<Icon name="folder" size="small" />}>
-            {(project) => <HomeProjectAvatar project={project()} />}
+          <Show when={selected()} fallback={<Icon name="folder" size="small" class="text-ink-muted" />}>
+            {(project) => <ProjectTile project={project()} size="md" />}
           </Show>
-          <span class="flex min-w-0 flex-1 flex-col leading-[var(--line-height-compact)]">
+          <span class="flex min-w-0 flex-1 flex-col leading-tight">
             <bdi class="truncate">
               <Show when={selected()} fallback={props.language.t("home.projects.all")}>
                 {(project) => displayName(project())}
@@ -102,19 +107,19 @@ export function HomeProjectsView(props: HomeProjectsViewProps) {
             </bdi>
             <Show when={props.servers.length > 1 && server()}>
               {(server) => (
-                <bdi class="truncate text-v2-text-text-muted opacity-70">
+                <bdi class="truncate text-caption text-ink-muted">
                   {server().displayName ?? new URL(server().http.url).host}
                 </bdi>
               )}
             </Show>
           </span>
-          <Icon name="chevron-down" size="small" class="shrink-0 text-v2-icon-icon-muted" />
+          <Icon name="chevron-down" size="small" class="shrink-0 text-ink-muted" />
         </Popover.Trigger>
         <Popover.Portal>
           <Popover.Content
             aria-label={props.language.t("home.projects")}
             dir={props.language.direction()}
-            class="z-50 max-h-[min(70dvh,var(--kb-popper-content-available-height))] overflow-hidden rounded-[10px] bg-v2-background-bg-base p-1.5 shadow-[var(--v2-elevation-floating)] outline-none data-[expanded]:animate-in data-[expanded]:fade-in data-[expanded]:slide-in-from-top-2 duration-150 ease-out motion-reduce:animate-none"
+            class="z-50 max-h-[min(70dvh,var(--kb-popper-content-available-height))] overflow-hidden rounded-lg border border-elevation-overlay-border bg-elevation-overlay-surface p-1 shadow-elevation-overlay outline-none data-[expanded]:animate-in data-[expanded]:fade-in duration-150 ease-out motion-reduce:animate-none"
           >
             <HomeProjectsPanel
               {...props}
@@ -161,10 +166,7 @@ function HomeProjectsPanel(props: HomeProjectsViewProps) {
       class={
         props.dropdown
           ? "flex max-h-[min(60dvh,calc(var(--kb-popper-content-available-height)-12px))] min-h-0 min-w-0 flex-col overflow-hidden"
-          : `
-        mt-6 flex min-h-0 min-w-0 flex-col gap-4 overflow-hidden
-        lg:sticky lg:top-14 lg:mt-14 lg:h-[calc(100cqh-56px)] lg:self-start lg:pt-[52px]
-      `
+          : "flex h-full min-h-0 min-w-0 flex-col overflow-hidden"
       }
       aria-label={props.language.t("home.projects")}
       onWheel={(event) => {
@@ -173,15 +175,15 @@ function HomeProjectsPanel(props: HomeProjectsViewProps) {
       }}
     >
       <Show when={!props.dropdown}>
-        <div class="flex h-7 min-w-0 shrink-0 items-center justify-between pl-1.5 pr-3">
-          <div class="text-v2-text-text-muted [font-weight:530]">{props.language.t("home.projects")}</div>
+        {/* Aligned with the session search: 24px above, a 40px row. */}
+        <div class="mt-3 flex h-10 min-w-0 shrink-0 items-center justify-between gap-2 pe-2 ps-4 md:mt-6">
+          <h2 class={`${HOME_EYEBROW} m-0`}>{props.language.t("home.projects")}</h2>
           <Show when={props.servers.length === 1 && !(props.projects.length === 0 && props.recentlyClosed.length > 0)}>
             <Tooltip placement="bottom" value={props.language.t("home.project.add")}>
               <IconButton
                 data-action="home-add-project"
                 variant="ghost-muted"
-                size="large"
-                class="titlebar-icon [&_[data-slot=icon-svg]]:text-v2-icon-icon-muted"
+                size="small"
                 icon={<Icon name="folder-add-left" />}
                 disabled={props.serverHealth(props.servers[0])?.healthy === false}
                 onClick={() => props.onChooseProject(props.servers[0])}
@@ -192,16 +194,21 @@ function HomeProjectsPanel(props: HomeProjectsViewProps) {
         </div>
       </Show>
       <ScrollView data-slot="home-projects-scroll" class="min-h-0 min-w-0 shrink">
-        <Show when={props.dropdown && props.servers.length === 1}>
-          <HomeProjectNavButton
-            type="button"
-            class="mb-1"
-            data-selected={!props.selection.directory ? "" : undefined}
-            onClick={() => props.onFocusServer(props.servers[0])}
-          >
-            <Icon name="folder" size="small" />
-            <span class={HOME_PROJECT_NAV_LABEL}>{props.language.t("home.projects.all")}</span>
-          </HomeProjectNavButton>
+        <Show when={props.servers.length === 1 && (props.dropdown || props.projects.length > 1)}>
+          <div class={props.dropdown ? "mb-1" : "mb-1 pe-2"}>
+            <HomeProjectNavButton
+              type="button"
+              data-action="home-all-projects"
+              data-selected={!props.selection.directory ? "" : undefined}
+              aria-current={!props.selection.directory ? "page" : undefined}
+              onClick={() => props.onFocusServer(props.servers[0])}
+            >
+              <span class="flex size-5 shrink-0 items-center justify-center">
+                <Icon name="grid-plus" size="small" />
+              </span>
+              <span class={HOME_PROJECT_NAV_LABEL}>{props.language.t("home.projects.all")}</span>
+            </HomeProjectNavButton>
+          </div>
         </Show>
         <Show
           when={
@@ -213,7 +220,7 @@ function HomeProjectsPanel(props: HomeProjectsViewProps) {
           fallback={
             <Show when={props.servers[0]}>
               {(server) => (
-                <div class={props.dropdown ? "" : "pr-3"}>
+                <div class={props.dropdown ? "" : "pe-2"}>
                   <Show
                     when={props.projects.length > 0}
                     fallback={<HomeProjectEmpty {...props} server={server()} items={props.recentlyClosed} />}
@@ -223,7 +230,7 @@ function HomeProjectsPanel(props: HomeProjectsViewProps) {
                       <HomeProjectNavButton
                         type="button"
                         data-action="home-add-project-row"
-                        class="mt-1 disabled:opacity-60"
+                        class="mt-1"
                         disabled={props.serverHealth(server())?.healthy === false}
                         onClick={() => props.onChooseProject(server())}
                       >
@@ -237,7 +244,7 @@ function HomeProjectsPanel(props: HomeProjectsViewProps) {
             </Show>
           }
         >
-          <div class={`flex min-w-0 flex-col ${props.dropdown ? "gap-1" : "gap-4 pr-3"}`}>
+          <div class={`flex min-w-0 flex-col ${props.dropdown ? "gap-1" : "gap-4 pe-2"}`}>
             <For each={props.servers}>
               {(item) => {
                 const projects = () => props.projectsForServer(item)
@@ -247,7 +254,7 @@ function HomeProjectsPanel(props: HomeProjectsViewProps) {
                 const authentication = () => item.type === "ssh" && item.authenticationRequired
                 const connecting = () => item.type === "ssh" && item.connecting
                 return (
-                  <div class="flex min-w-0 flex-col gap-1">
+                  <div class="flex min-w-0 flex-col gap-px">
                     <HomeServerRow
                       server={item}
                       {...props}
@@ -257,8 +264,7 @@ function HomeProjectsPanel(props: HomeProjectsViewProps) {
                       health={props.serverHealth(item)}
                     />
                     <Show when={authentication() || connecting()}>
-                      <div class="mx-3 h-px bg-v2-border-border-base" />
-                      <div class="px-1.5 py-1">
+                      <div class="ps-2 py-1">
                         <Button
                           data-action="home-server-authenticate"
                           class="w-full"
@@ -276,7 +282,6 @@ function HomeProjectsPanel(props: HomeProjectsViewProps) {
                       </div>
                     </Show>
                     <Show when={healthy() && !authentication() && !connecting() && hasProjects() && !collapsed()}>
-                      <div class="mx-3 h-px bg-v2-border-border-base" />
                       <HomeProjectList {...props} {...contextMenuProps} server={item} items={projects()} />
                     </Show>
                   </div>
@@ -286,12 +291,14 @@ function HomeProjectsPanel(props: HomeProjectsViewProps) {
           </div>
         </Show>
       </ScrollView>
-      <HomeUtilityNav
-        class="mb-8 mt-4 hidden shrink-0 lg:flex"
-        onOpenSettings={props.onOpenSettings}
-        onOpenHelp={props.onOpenHelp}
-        language={props.language}
-      />
+      <Show when={!props.dropdown}>
+        <HomeUtilityNav
+          class="mt-auto flex shrink-0 border-t border-muted py-2 pe-2"
+          onOpenSettings={props.onOpenSettings}
+          onOpenHelp={props.onOpenHelp}
+          language={props.language}
+        />
+      </Show>
     </aside>
   )
 }
@@ -303,23 +310,17 @@ export function HomeUtilityNav(props: {
   language: ReturnType<typeof useLanguage>
 }) {
   return (
-    <div
-      class={`${props.class ?? ""} min-w-0 flex-row justify-between gap-1 lg:flex-col lg:justify-start lg:pr-3 [&>button]:w-auto lg:[&>button]:w-full`}
-    >
-      <HomeProjectNavButton
-        type="button"
-        class="text-v2-text-text-faint [&>[data-slot=icon-svg]]:text-v2-icon-icon-muted"
-        onClick={props.onOpenSettings}
-      >
-        <Icon name="settings-gear" size="small" />
+    <div class={`${props.class ?? ""} min-w-0 flex-col gap-px`}>
+      <HomeProjectNavButton type="button" data-action="home-settings" onClick={props.onOpenSettings}>
+        <span class="flex size-5 shrink-0 items-center justify-center">
+          <Icon name="settings-gear" size="small" />
+        </span>
         <span class={HOME_PROJECT_NAV_LABEL}>{props.language.t("sidebar.settings")}</span>
       </HomeProjectNavButton>
-      <HomeProjectNavButton
-        type="button"
-        class="text-v2-text-text-faint [&>[data-slot=icon-svg]]:text-v2-icon-icon-muted"
-        onClick={props.onOpenHelp}
-      >
-        <Icon name="help" size="small" />
+      <HomeProjectNavButton type="button" data-action="home-help" onClick={props.onOpenHelp}>
+        <span class="flex size-5 shrink-0 items-center justify-center">
+          <Icon name="help" size="small" />
+        </span>
         <span class={HOME_PROJECT_NAV_LABEL}>{props.language.t("sidebar.help")}</span>
       </HomeProjectNavButton>
     </div>
@@ -360,7 +361,7 @@ function HomeServerRow(props: {
     <Tooltip
       appearance="standard"
       placement="top"
-      class="flex h-7 w-full min-w-0"
+      class="flex h-[var(--reddb-spatial-control-height-md)] w-full min-w-0"
       inactive={!incompatible() && !authentication()}
       value={
         authentication()
@@ -369,7 +370,7 @@ function HomeServerRow(props: {
       }
     >
       <div
-        class="group/server relative flex h-7 w-full min-w-0 items-center rounded-[6px]"
+        class="group/server relative flex h-[var(--reddb-spatial-control-height-md)] w-full min-w-0 items-center rounded-e-md"
         data-home-row
         data-dimmed={!healthy() && !incompatible()}
         data-selected={props.selected ? "" : undefined}
@@ -382,13 +383,10 @@ function HomeServerRow(props: {
         >
           <span
             data-action="home-server-collapse"
-            class={`
-            -ml-0.5 -mr-1.5 inline-flex size-5 shrink-0 items-center justify-center
-            rounded-[4px] text-v2-icon-icon-muted
-          `}
+            class="-me-1 inline-flex size-5 shrink-0 items-center justify-center rounded-sm text-ink-muted"
             classList={{
-              "hover:bg-v2-overlay-simple-overlay-hover": canToggle(),
-              "cursor-default opacity-40": !canToggle(),
+              "hover:bg-foreground/8 hover:text-foreground": canToggle(),
+              "cursor-default opacity-50": !canToggle(),
             }}
             aria-label={
               props.collapsed ? props.language.t("home.server.expand") : props.language.t("home.server.collapse")
@@ -410,7 +408,7 @@ function HomeServerRow(props: {
               style={{ transform: `rotate(${props.collapsed || !canToggle() ? -90 : 0}deg)` }}
             />
           </span>
-          <div class="flex size-4 shrink-0 items-center justify-center -mr-0.5">
+          <div class="flex size-4 shrink-0 items-center justify-center">
             <ServerHealthIndicator
               health={props.health}
               connecting={props.server.type === "ssh" && props.server.connecting}
@@ -420,19 +418,14 @@ function HomeServerRow(props: {
           <span
             data-slot="home-row-label"
             class="flex min-w-0 flex-1 items-center gap-1"
-            classList={{ "opacity-60": !healthy() && !incompatible() }}
+            classList={{ "opacity-50": !healthy() && !incompatible() }}
           >
             <span class="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
               {props.server.displayName ?? new URL(props.server.http.url).host}
             </span>
             <Show when={props.server.label}>
               {(label) => (
-                <span
-                  class={`
-                  shrink-0 rounded-[3px] border border-v2-border-border-base px-1 py-0.5
-                  text-[9px] leading-none text-v2-text-text-muted
-                `}
-                >
+                <span class="shrink-0 rounded-sm border border-control-edge px-1 text-eyebrow uppercase text-ink-muted">
                   {label()}
                 </span>
               )}
@@ -442,7 +435,7 @@ function HomeServerRow(props: {
         <div
           data-slot="home-row-actions"
           class={`
-          hover-reveal absolute bottom-0 right-1 top-0 flex items-center gap-1 rounded-r-[6px] pl-2
+          hover-reveal absolute bottom-0 end-1 top-0 flex items-center gap-0.5 rounded-e-md ps-2
           group-hover/server:opacity-100 focus-within:opacity-100 data-[menu=true]:opacity-100
         `}
           data-menu={props.contextMenuOpen(contextMenuID())}
@@ -569,21 +562,22 @@ function HomeProjectEmpty(
 ) {
   const unreachable = () => props.serverHealth(props.server)?.healthy === false
   return (
-    <div class="flex min-w-0 flex-col gap-1">
+    <div class="flex min-w-0 flex-col gap-px">
       <HomeProjectNavButton
         type="button"
         data-action="home-add-project-row"
-        class="disabled:opacity-60 [&>[data-slot=icon-svg]]:text-v2-icon-icon-muted"
         disabled={unreachable()}
         onClick={() => props.onChooseProject(props.server)}
       >
-        <Icon name="folder-add-left" size="small" />
+        <span class="flex size-5 shrink-0 items-center justify-center rounded-sm border border-dashed border-control-edge">
+          <Icon name="plus" size="small" />
+        </span>
         <span class={HOME_PROJECT_NAV_LABEL}>{props.language.t("home.project.add")}</span>
       </HomeProjectNavButton>
       <Show when={props.items.length > 0}>
-        <div class="mt-3 flex h-7 min-w-0 shrink-0 items-center pl-1.5 pr-3">
-          <div class="text-v2-text-text-faint [font-weight:530]">{props.language.t("home.recentlyClosed")}</div>
-        </div>
+        <h3 class={`${HOME_EYEBROW} m-0 mt-5 flex h-7 min-w-0 shrink-0 items-center ps-2.5`}>
+          {props.language.t("home.recentlyClosed")}
+        </h3>
         <For each={props.items}>
           {(project) => <HomeRecentlyClosedRow {...props} project={project} server={props.server} />}
         </For>
@@ -610,11 +604,10 @@ function HomeRecentlyClosedRow(
       <HomeProjectNavButton
         type="button"
         data-component="home-recently-closed-row"
-        class="disabled:opacity-60"
         disabled={unreachable()}
         onClick={() => props.onAddProjects(props.server, [props.project.worktree])}
       >
-        <HomeProjectAvatar project={props.project} outline />
+        <ProjectTile project={props.project} size="md" outline />
         <span class={HOME_PROJECT_NAV_LABEL}>{displayName(props.project)}</span>
       </HomeProjectNavButton>
     </Tooltip>
@@ -651,7 +644,7 @@ function HomeProjectRow(
   return (
     <div
       ref={sortable.ref}
-      class="group/project relative flex h-7 min-w-0 items-center rounded-[6px]"
+      class="group/project relative flex h-[var(--reddb-spatial-control-height-md)] min-w-0 items-center rounded-e-md"
       classList={{ "z-10": sortable.isDragSource() }}
       data-home-row
       data-dimmed={serverUnreachable()}
@@ -665,10 +658,7 @@ function HomeProjectRow(
       <HomeProjectNavButton
         type="button"
         data-component="home-project-row"
-        class="disabled:opacity-60"
-        classList={{
-          "bg-v2-background-bg-layer-01 text-v2-text-text-base": sortable.isDragSource(),
-        }}
+        classList={{ "text-foreground": sortable.isDragSource() }}
         data-selected={props.selected ? "" : undefined}
         aria-current={props.selected ? "page" : undefined}
         disabled={serverUnreachable()}
@@ -701,7 +691,7 @@ function HomeProjectRow(
           pointerDownSelected = undefined
         }}
       >
-        <HomeProjectAvatar project={props.project} />
+        <ProjectTile project={props.project} size="md" unread={props.unseen > 0} />
         <span data-slot="home-row-label" class={HOME_PROJECT_NAV_LABEL}>
           {displayName(props.project)}
         </span>
@@ -709,7 +699,7 @@ function HomeProjectRow(
       <div
         data-slot="home-row-actions"
         class={`
-          hover-reveal absolute bottom-0 right-1 top-0 flex items-center gap-1 rounded-r-[6px] pl-2
+          hover-reveal absolute bottom-0 end-1 top-0 flex items-center gap-0.5 rounded-e-md ps-2
           group-hover/project:opacity-100 focus-within:opacity-100 data-[menu=true]:opacity-100
         `}
         data-menu={props.contextMenuOpen(contextMenuID())}
@@ -782,29 +772,18 @@ function HomeProjectNavButton(props: JSX.ButtonHTMLAttributes<HTMLButtonElement>
     <button
       {...rest}
       class={`
-        flex h-7 min-w-0 w-full shrink-0 cursor-default items-center gap-2 rounded-[6px] bg-transparent px-1.5 text-left
-        text-v2-text-text-muted [font-weight:440] transition-[background-color,color,box-shadow] duration-[120ms] ease-in-out
-        hover:bg-v2-background-bg-layer-01 hover:text-v2-text-text-base
-        data-[selected]:bg-v2-background-bg-layer-03 data-[selected]:text-v2-text-text-base
-        data-[selected]:hover:bg-v2-background-bg-layer-03
-        focus-visible:bg-v2-background-bg-layer-01 focus-visible:text-v2-text-text-base focus-visible:outline-none
-        focus-visible:[box-shadow:inset_0_0_0_0.5px_var(--v2-border-border-muted)]
+        flex h-[var(--reddb-spatial-control-height-md)] min-w-0 w-full shrink-0 cursor-default items-center gap-2
+        rounded-e-md border-s-2 border-transparent bg-transparent ps-2 pe-2 text-start text-body text-ink-muted
+        hover:bg-foreground/8 hover:text-foreground active:bg-foreground/12
+        data-[selected]:border-foreground data-[selected]:bg-foreground/10 data-[selected]:font-medium
+        data-[selected]:text-foreground data-[selected]:hover:bg-foreground/10
+        disabled:pointer-events-none disabled:opacity-50
+        focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus
         ${local.class ?? ""}
       `}
       classList={local.classList}
     >
       {local.children}
     </button>
-  )
-}
-
-function HomeProjectAvatar(props: { project: LocalProject; outline?: boolean }) {
-  const name = createMemo(() => displayName(props.project))
-  return (
-    <ProjectAvatar
-      fallback={name()}
-      src={props.outline ? undefined : getProjectAvatarSource(props.project.id, props.project.icon)}
-      variant={props.outline ? "outline" : getProjectAvatarVariant(props.project.icon?.color)}
-    />
   )
 }

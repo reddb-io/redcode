@@ -14,9 +14,10 @@
   min-height: 280px;
   max-height: min(calc(100vh - 96px), 480px);
   margin-top: max(48px, calc((100vh - 480px) / 2));
-  border-radius: 12px;
-  background: var(--v2-background-bg-base);
-  box-shadow: var(--v2-elevation-floating);
+  border: 1px solid var(--reddb-color-elevation-overlay-border);
+  border-radius: var(--reddb-radius-lg);
+  background: var(--reddb-color-elevation-overlay-surface);
+  box-shadow: var(--reddb-shadow-elevation-overlay);
 }
 
 .command-palette-body {
@@ -28,31 +29,31 @@
   padding: 0;
 }
 
+/* The search sits flush on the palette's top edge with a rule under it, like the DS CommandPalette. */
 .command-palette-search {
   flex-shrink: 0;
-  padding: 6px;
+  padding: 0;
+  border-bottom: 1px solid var(--reddb-color-muted);
 }
 
 .command-palette-search [data-component="text-input-v2"] {
   width: 100%;
-  height: 36px;
-  border-radius: 6px;
+  height: var(--reddb-spatial-control-height-lg);
+  border: 0;
+  border-radius: 0;
   outline: 0;
-  background: color-mix(in srgb, var(--v2-background-bg-layer-02) 60%, transparent);
+  background: transparent;
   box-shadow: none;
-  transition:
-    background-color 120ms ease-in-out,
-    box-shadow 120ms ease-in-out;
 }
 
-.command-palette-search [data-component="text-input-v2"]:where(:hover):not([data-disabled], [data-invalid]),
-.command-palette-search [data-component="text-input-v2"]:where(:focus-within):not([data-disabled], [data-invalid]) {
-  background: var(--v2-background-bg-layer-02);
+.command-palette-search
+  [data-component="text-input-v2"]:where(:hover, :focus-within):not([data-disabled], [data-invalid]) {
+  background: transparent;
   box-shadow: none;
 }
 
 .command-palette-search [data-component="text-input-v2"] [data-slot="text-input-v2-value"] {
-  border-radius: 6px;
+  border-radius: var(--reddb-radius-md);
   background: transparent;
   gap: 8px;
 }
@@ -62,7 +63,7 @@
 }
 
 .command-palette-search [data-component="text-input-v2"] [data-slot="text-input-v2-input"] {
-  border-radius: 6px;
+  border-radius: var(--reddb-radius-md);
   background: transparent;
 }
 
@@ -85,45 +86,43 @@
 }
 
 .command-palette-group-title {
-  margin: 6px 0;
+  margin: 6px 0 4px;
   padding: 0 12px;
-  color: var(--v2-text-text-muted);
-  font-size: 13px;
-  font-weight: 440;
+  color: var(--reddb-color-ink-muted);
+  font-size: var(--reddb-type-eyebrow-font-size);
+  font-weight: var(--reddb-type-eyebrow-font-weight);
   line-height: 16px;
-  letter-spacing: -0.04px;
+  letter-spacing: var(--reddb-type-eyebrow-letter-spacing);
+  text-transform: uppercase;
   user-select: none;
 }
 
 .command-palette-row {
   display: flex;
   width: 100%;
-  height: 36px;
+  height: var(--reddb-spatial-control-height-md);
   flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
   padding: 0 12px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--reddb-radius-md);
   background: transparent;
-  color: var(--v2-text-text-base);
-  text-align: left;
+  color: var(--reddb-color-foreground);
+  text-align: start;
   cursor: default;
   scroll-margin: 6px 0;
 }
 
+/* Listbox options: the highlighted option takes the 10% selected surface. */
 .command-palette-row[data-active] {
-  background: var(--v2-overlay-simple-overlay-hover);
+  background: color-mix(in srgb, var(--reddb-color-foreground) 10%, transparent);
 }
 
 .command-palette-row:focus-visible {
-  background: var(--v2-overlay-simple-overlay-hover);
-  outline: none;
-}
-
-[data-color-scheme="dark"] .command-palette-row:is([data-active], :focus-visible) {
-  background: var(--v2-alpha-light-10);
+  outline: 2px solid var(--reddb-color-focus);
+  outline-offset: -2px;
 }
 
 .command-palette-row-main {
@@ -136,7 +135,7 @@
 
 .command-palette-row-icon {
   flex-shrink: 0;
-  color: var(--v2-icon-icon-muted);
+  color: var(--reddb-color-ink-muted);
 }
 
 .command-palette-row-text {
@@ -149,11 +148,10 @@
 .command-palette-title {
   min-width: 0;
   overflow: hidden;
-  color: var(--v2-text-text-base);
-  font-size: 13px;
-  font-weight: 530;
-  line-height: 16px;
-  letter-spacing: -0.04px;
+  color: var(--reddb-color-foreground);
+  font-size: var(--reddb-type-body-font-size);
+  font-weight: var(--reddb-font-weight-regular);
+  line-height: 20px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -162,11 +160,10 @@
 .command-palette-meta {
   min-width: 0;
   overflow: hidden;
-  color: var(--v2-text-text-muted);
+  color: var(--reddb-color-ink-muted);
   font-size: 13px;
-  font-weight: 440;
+  font-weight: var(--reddb-font-weight-regular);
   line-height: 16px;
-  letter-spacing: -0.04px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -181,22 +178,21 @@
   align-items: baseline;
   font-size: 13px;
   line-height: 16px;
-  letter-spacing: -0.04px;
 }
 
 .command-palette-file-dir {
   min-width: 0;
   overflow: hidden;
-  color: var(--v2-text-text-muted);
-  font-weight: 440;
+  color: var(--reddb-color-ink-muted);
+  font-weight: var(--reddb-font-weight-regular);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .command-palette-file-name {
   flex-shrink: 0;
-  color: var(--v2-text-text-base);
-  font-weight: 530;
+  color: var(--reddb-color-foreground);
+  font-weight: var(--reddb-font-weight-medium);
   white-space: nowrap;
 }
 
@@ -204,11 +200,10 @@
   display: grid;
   min-height: 120px;
   place-items: center;
-  color: var(--v2-text-text-muted);
+  color: var(--reddb-color-ink-muted);
   font-size: 13px;
-  font-weight: 440;
+  font-weight: var(--reddb-font-weight-regular);
   line-height: 16px;
-  letter-spacing: -0.04px;
 }
 
 @media (max-width: 640px) {

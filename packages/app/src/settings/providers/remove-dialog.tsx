@@ -51,7 +51,7 @@ export function DialogRemoveProvider(props: {
           <For each={items().filter((item) => item.kind !== "referencingFile")}>{(item) => <li>{line(item)}</li>}</For>
         </ul>
         <Show when={items().some((item) => item.kind === "referencingFile")}>
-          <ul class="flex flex-col gap-1 text-12-regular text-v2-text-text-muted">
+          <ul class="flex flex-col gap-1 text-12-regular text-ink-muted">
             <For each={items().filter((item) => item.kind === "referencingFile")}>
               {(item) => <li>{line(item)}</li>}
             </For>

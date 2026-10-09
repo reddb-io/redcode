@@ -214,7 +214,7 @@ const AppearanceSection: Component<{ controller: AppearanceSettingsController }>
           description={
             <>
               {language.t("settings.general.row.theme.description")}{" "}
-              <ExternalLink class="settings-link" href="https://opencode.ai/docs/themes/">
+              <ExternalLink class="settings-link" href="https://github.com/reddb-io/redcode">
                 {language.t("common.learnMore")}
               </ExternalLink>
             </>
@@ -496,7 +496,7 @@ export const SettingsGeneral: Component = () => {
         <div class="settings-tab-header-row">
           <div class="flex flex-col gap-1">
             <h2 class="settings-tab-title">{language.t("settings.tab.preferences")}</h2>
-            <span class="text-11-regular text-v2-text-text-muted">
+            <span class="text-11-regular text-ink-muted">
               {language.t("settings.preferences.description")}
             </span>
           </div>

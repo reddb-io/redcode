@@ -350,7 +350,7 @@ export function SettingsReasoningRoles() {
         )}
       </Show>
       <Show when={current() && current()?.settings.onboarding !== "completed"}>
-        <div class="text-12-regular text-v2-text-text-muted">{language.t("settings.models.reasoning.pending")}</div>
+        <div class="text-12-regular text-ink-muted">{language.t("settings.models.reasoning.pending")}</div>
       </Show>
     </section>
   )

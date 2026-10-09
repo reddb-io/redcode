@@ -1,26 +1,24 @@
 /* Home server/project rows keep the label underneath the hover actions.
-   The actions carry a tab-style background with a fade on the left, and the
-   label fades out where it slides underneath. Mirrors tab-nav.css. */
+   The actions carry the row's opaque state surface with a fade on the start
+   side, and the label fades out where it slides underneath. The surfaces are
+   the quiet-control states (8% hover, 10% selected) mixed onto the card. */
 [data-home-row] {
-  --home-row-surface: var(--v2-background-bg-base);
+  --home-row-ground: var(--v2-background-bg-base);
+  --home-row-state: 0%;
   --home-row-background: color-mix(
     in srgb,
-    var(--home-row-surface) var(--home-row-opacity, 100%),
-    var(--v2-background-bg-base)
+    var(--reddb-color-foreground) var(--home-row-state),
+    var(--home-row-ground)
   );
   background: var(--home-row-background);
 }
 
 [data-home-row]:is(:hover, :focus-within, [data-dragging="true"], :has([data-menu="true"])) {
-  --home-row-surface: var(--v2-background-bg-layer-01);
+  --home-row-state: 8%;
 }
 
 [data-home-row][data-selected] {
-  --home-row-surface: var(--v2-background-bg-layer-03);
-}
-
-[data-home-row][data-dimmed="true"] {
-  --home-row-opacity: 60%;
+  --home-row-state: 10%;
 }
 
 /* Keep the background outside the button's disabled-content opacity. */

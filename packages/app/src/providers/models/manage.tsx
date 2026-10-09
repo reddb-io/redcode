@@ -118,7 +118,7 @@ export const DialogManageModels: Component = () => {
                 variant="ghost-muted"
                 size="small"
                 class="settings-tab-search-clear"
-                icon={<Icon name="close" size="large" class="text-v2-icon-icon-muted" />}
+                icon={<Icon name="close" size="large" class="text-ink-muted" />}
                 onClick={() => list.clear()}
                 aria-label={language.t("common.clear")}
               />

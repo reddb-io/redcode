@@ -384,7 +384,7 @@ function SettingsKeybindsView(props: {
         <div class="settings-tab-header-row">
           <div class="flex flex-col gap-1">
             <h2 class="settings-tab-title">{language.t("settings.shortcuts.title")}</h2>
-            <span class="text-11-regular text-v2-text-text-muted">{language.t("settings.shortcuts.description")}</span>
+            <span class="text-11-regular text-ink-muted">{language.t("settings.shortcuts.description")}</span>
           </div>
           <Button variant="ghost" onClick={props.onReset} disabled={!props.hasOverrides}>
             {language.t("settings.shortcuts.reset.button")}

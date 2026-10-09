@@ -355,17 +355,23 @@ export function Titlebar(props: {
                     }
                     class="shrink-0"
                   >
-                    <IconButton
+                    <button
                       type="button"
-                      variant="ghost-muted"
-                      size="large"
-                      class="!w-9 shrink-0"
-                      icon={<Icon name="grid-plus" />}
-                      state={layout.route().type === "home" ? "pressed" : undefined}
+                      data-action="titlebar-home"
+                      class={`
+                        flex h-7 w-9 shrink-0 items-center justify-center rounded-md text-ink-muted
+                        hover:bg-foreground/8 hover:text-foreground active:bg-foreground/12
+                        aria-pressed:rounded-b-none aria-pressed:bg-foreground/10 aria-pressed:text-foreground
+                        aria-pressed:shadow-[inset_0_-2px_0_0_var(--reddb-color-foreground)]
+                        focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus
+                        [app-region:no-drag]
+                      `}
                       onClick={toggleHome}
                       aria-label={language.t("home.title")}
                       aria-pressed={layout.route().type === "home"}
-                    />
+                    >
+                      <Icon name="grid-plus" />
+                    </button>
                   </Tooltip>
                 }
               >
@@ -374,7 +380,7 @@ export function Titlebar(props: {
                   data-titlebar-tab-action
                   data-action="vertical-tabs-home"
                   data-state={layout.route().type === "home" ? "pressed" : undefined}
-                  class="group mb-1 flex h-7 w-full shrink-0 items-center gap-1.5 rounded-[6px] ps-1.5 pe-2 text-[13px] leading-4 text-v2-text-text-faint hover:text-v2-text-text-base data-[state=pressed]:text-v2-text-text-base"
+                  class="group mb-1 flex h-7 w-full shrink-0 items-center gap-1.5 rounded-md ps-1.5 pe-2 text-[13px] leading-4 text-ink-muted hover:text-foreground data-[state=pressed]:font-medium data-[state=pressed]:text-foreground"
                   onClick={toggleHome}
                   aria-label={language.t("home.title")}
                   aria-pressed={layout.route().type === "home"}
@@ -382,7 +388,7 @@ export function Titlebar(props: {
                   <Icon name="grid-plus" class="shrink-0" />
                   <span class="min-w-0 truncate">{language.t("home.title")}</span>
                   <span
-                    class="ms-auto hidden min-w-0 truncate text-v2-text-text-faint group-hover:block group-focus-visible:block"
+                    class="ms-auto hidden min-w-0 truncate text-caption tabular-nums text-ink-muted group-hover:block group-focus-visible:block"
                     aria-hidden="true"
                   >
                     <bdi dir="ltr">{command.keybind("home.toggle")}</bdi>
@@ -491,7 +497,7 @@ export function Titlebar(props: {
                     >
                       <MobileDrawerTrigger
                         data-slot="mobile-tabs-trigger"
-                        class="flex h-7 min-w-0 flex-1 items-center gap-2 rounded-[6px] px-2 text-[13px] leading-4 text-v2-text-text-base focus-visible:outline-none [app-region:no-drag]"
+                        class="flex h-7 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-[13px] leading-4 text-foreground hover:bg-foreground/8 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus [app-region:no-drag]"
                         aria-label={language.t("titlebar.tabs")}
                       >
                         <Show when={currentTab()} fallback={<Icon name="grid-plus" class="shrink-0" />}>
@@ -510,7 +516,7 @@ export function Titlebar(props: {
                                       when={preparing()}
                                       fallback={
                                         <span
-                                          class="block size-4 rounded-[3px] border border-v2-border-border-muted"
+                                          class="block size-4 rounded-sm border border-control-edge"
                                           aria-hidden="true"
                                         />
                                       }
@@ -535,7 +541,7 @@ export function Titlebar(props: {
                         <span data-slot="mobile-tab-title" dir="auto" class="min-w-0 flex-1 truncate text-start">
                           {currentTitle()}
                         </span>
-                        <span class="shrink-0 text-v2-text-text-muted">{tabsStore.length}</span>
+                        <span class="shrink-0 tabular-nums text-ink-muted">{tabsStore.length}</span>
                       </MobileDrawerTrigger>
                       <MobileDrawerContent>
                         <MobileDrawerLabel class="sr-only">{language.t("titlebar.tabs")}</MobileDrawerLabel>
@@ -559,7 +565,7 @@ export function Titlebar(props: {
                           <button
                             type="button"
                             data-action="mobile-tabs-new-session"
-                            class="flex h-7 w-full shrink-0 items-center gap-2 rounded-[6px] px-2 text-[13px] leading-4 text-v2-text-text-base hover:bg-v2-background-bg-layer-02 focus-visible:outline-none focus-visible:bg-v2-background-bg-layer-02"
+                            class="flex h-11 w-full shrink-0 items-center gap-2 rounded-md px-2 text-body text-foreground hover:bg-foreground/8 active:bg-foreground/12 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
                             onClick={() => {
                               openNewTab()
                               setMobileTabs("open", false)
@@ -568,13 +574,13 @@ export function Titlebar(props: {
                             <Icon name="plus" />
                             {language.t("command.session.new")}
                           </button>
-                          <div class="flex shrink-0 flex-col gap-1 border-t border-v2-border-border-muted pt-2">
+                          <div class="flex shrink-0 flex-col gap-1 border-t border-muted pt-2">
                             <button
                               type="button"
                               data-action="mobile-tabs-home"
                               data-state={layout.route().type === "home" ? "pressed" : undefined}
                               aria-current={layout.route().type === "home" ? "page" : undefined}
-                              class="flex h-7 w-full items-center gap-2 rounded-[6px] px-2 text-[13px] leading-4 text-v2-text-text-faint data-[state=pressed]:text-v2-text-text-base focus-visible:outline-none"
+                              class="flex h-11 w-full items-center gap-2 rounded-md px-2 text-body text-ink-muted hover:bg-foreground/8 active:bg-foreground/12 data-[state=pressed]:bg-foreground/10 data-[state=pressed]:font-medium data-[state=pressed]:text-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
                               onClick={() => {
                                 if (layout.route().type !== "home") toggleHome()
                                 setMobileTabs("open", false)
@@ -587,7 +593,7 @@ export function Titlebar(props: {
                               <button
                                 type="button"
                                 data-action="mobile-tabs-settings"
-                                class="flex h-7 min-w-0 flex-1 items-center gap-2 rounded-[6px] px-2 text-[13px] leading-4 text-v2-text-text-faint hover:bg-v2-background-bg-layer-02 focus-visible:outline-none focus-visible:bg-v2-background-bg-layer-02"
+                                class="flex h-11 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-body text-ink-muted hover:bg-foreground/8 hover:text-foreground active:bg-foreground/12 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
                                 onClick={() => setMobileTabs({ open: false, settings: true })}
                               >
                                 <Icon name="settings-gear" size="small" />
@@ -596,10 +602,10 @@ export function Titlebar(props: {
                               <button
                                 type="button"
                                 data-action="mobile-tabs-help"
-                                class="flex h-7 shrink-0 items-center gap-2 rounded-[6px] px-2 text-[13px] leading-4 text-v2-text-text-faint hover:bg-v2-background-bg-layer-02 focus-visible:outline-none focus-visible:bg-v2-background-bg-layer-02"
+                                class="flex h-11 shrink-0 items-center gap-2 rounded-md px-2 text-body text-ink-muted hover:bg-foreground/8 hover:text-foreground active:bg-foreground/12 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
                                 onClick={() => {
                                   setMobileTabs("open", false)
-                                  platform.openExternal("https://opencode.ai/desktop-feedback")
+                                  platform.openExternal("https://github.com/reddb-io/redcode/issues/new")
                                 }}
                               >
                                 <Icon name="help" size="small" />
@@ -673,20 +679,22 @@ export function Titlebar(props: {
                               type="button"
                               data-titlebar-tab-action
                               data-action="vertical-tabs-new-session"
-                              class="group flex h-7 w-full shrink-0 items-center gap-1.5 rounded-[6px] ps-1.5 pe-2 text-[13px] leading-4 text-v2-text-text-faint hover:text-v2-text-text-base"
+                              class="group flex h-7 w-full shrink-0 items-center gap-1.5 rounded-md ps-1.5 pe-2 text-[13px] leading-4 text-ink-muted hover:text-foreground"
                               onClick={openNewTab}
                               aria-label={language.t("command.session.new")}
                             >
                               <Icon name="edit" class="shrink-0" />
                               <span class="min-w-0 truncate">{language.t("command.session.new")}</span>
                               <span
-                                class="ms-auto hidden min-w-0 truncate text-v2-text-text-faint group-hover:block group-focus-visible:block"
+                                class="ms-auto hidden min-w-0 truncate text-caption tabular-nums text-ink-muted group-hover:block group-focus-visible:block"
                                 aria-hidden="true"
                               >
                                 <bdi dir="ltr">{command.keybind("tab.new")}</bdi>
                               </span>
                             </button>
-                            <div class="h-4 w-full shrink-0" aria-hidden="true" />
+                            <div class="mt-4 flex h-7 w-full shrink-0 items-center ps-2 text-eyebrow uppercase text-ink-muted">
+                              {language.t("titlebar.tabs")}
+                            </div>
                             <div class="flex min-h-0 flex-1 flex-col gap-1">
                               <TitlebarTabStrip
                                 orientation="vertical"
@@ -756,7 +764,7 @@ function TitlebarRight(props: { state: TitlebarRightState }) {
 function TitlebarUpdateIconButton(props: { state: TitlebarUpdatePillState; vertical?: boolean }) {
   const label = () => (
     <span
-      class="shrink-0 text-[11px] leading-4 text-v2-text-text-accent [font-weight:530] opacity-0 motion-safe:transition-all duration-150 ease-out group-hover:opacity-100 group-hover:translate-x-0 group-focus-within:opacity-100 group-focus-within:translate-x-0 motion-reduce:translate-x-0"
+      class="shrink-0 text-[11px] leading-4 font-medium text-foreground opacity-0 motion-safe:transition-all duration-150 ease-out group-hover:opacity-100 group-hover:translate-x-0 group-focus-within:opacity-100 group-focus-within:translate-x-0 motion-reduce:translate-x-0"
       classList={{
         "ms-px me-4 -translate-x-2 rtl:translate-x-2": props.vertical,
         "ms-2 me-px translate-x-2 rtl:-translate-x-2": !props.vertical,
@@ -776,7 +784,7 @@ function TitlebarUpdateIconButton(props: { state: TitlebarUpdatePillState; verti
     >
       <button
         type="button"
-        class="absolute top-0 z-10 flex h-full w-full items-center overflow-hidden rounded-full bg-v2-icon-icon-accent/20 text-v2-icon-icon-accent transition-[background-color] duration-150 ease-out group-hover:bg-[color-mix(in_srgb,var(--v2-icon-icon-accent)_20%,var(--v2-background-bg-deep))] group-focus-within:bg-[color-mix(in_srgb,var(--v2-icon-icon-accent)_20%,var(--v2-background-bg-deep))] focus-visible:outline-none disabled:opacity-60 motion-reduce:transition-none [app-region:no-drag]"
+        class="absolute top-0 z-10 flex h-full w-full items-center overflow-hidden rounded-full border border-feedback-info-border bg-feedback-info-surface text-feedback-info-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:opacity-50 [app-region:no-drag]"
         classList={{ "start-0 justify-start": props.vertical, "end-0 justify-end": !props.vertical }}
         onClick={props.state.onInstall}
         disabled={props.state.installing}
@@ -811,7 +819,17 @@ function ChannelIndicator(props: {
   const language = useLanguage()
   const platform = usePlatform()
   const channel = import.meta.env.VITE_OPENCODE_CHANNEL
-  if (!channel || channel === "prod") return null
+  // The production build shows the Brand mark in the same 20px slot the channel badges use.
+  if (!channel || channel === "prod")
+    return (
+      <span
+        data-slot="titlebar-mark"
+        aria-hidden="true"
+        class={`flex h-7 w-5 shrink-0 select-none items-center justify-center font-mono text-[13px] font-bold leading-none text-primary ${props.sidebar ? "mb-4 ms-0.5 self-start" : ""} ${props.horizontal ? "me-1.5" : ""}`}
+      >
+        ›_
+      </span>
+    )
 
   const label = () => language.t(`titlebar.channel.${channel}`)
   const debug = () => (channel === "dev" || channel === "local" ? props.debugTools : undefined)
@@ -825,11 +843,11 @@ function ChannelIndicator(props: {
         component={debug() ? "button" : "div"}
         type={debug() ? "button" : undefined}
         data-slot="channel-indicator"
-        class="flex h-7 shrink-0 items-center rounded-[6px] [app-region:no-drag]"
+        class="flex h-7 shrink-0 items-center justify-center rounded-md [app-region:no-drag]"
         classList={{
           "w-6": props.sidebar,
           "w-5": !props.sidebar,
-          "cursor-pointer hover:bg-v2-background-bg-layer-02 focus-visible:outline-none focus-visible:bg-v2-background-bg-layer-02":
+          "cursor-pointer hover:bg-foreground/8 active:bg-foreground/12 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus":
             !!debug(),
         }}
         onClick={() => debug()?.toggle()}
@@ -839,7 +857,7 @@ function ChannelIndicator(props: {
         <img
           src={channel === "beta" ? betaIcon : devIcon}
           alt={debug() ? "" : label()}
-          class="shrink-0 rounded-[4px] shadow-[var(--v2-elevation-raised)]"
+          class="shrink-0 rounded-sm"
           classList={{ "size-6": props.sidebar, "size-5": !props.sidebar }}
           draggable={false}
         />

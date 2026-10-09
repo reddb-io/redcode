@@ -296,7 +296,7 @@ export const ProjectSettingsExtensions: Component<{
         <div class="settings-tab-header-row">
           <div class="flex flex-col gap-1">
             <h2 class="settings-tab-title">{language.t("settings.tab.extensions")}</h2>
-            <span class="text-11-regular text-v2-text-text-muted">
+            <span class="text-11-regular text-ink-muted">
               {language.t("project.settings.extensions.description")}
             </span>
           </div>

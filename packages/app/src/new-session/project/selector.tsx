@@ -11,10 +11,9 @@ import {
 import { createStore } from "solid-js/store"
 import { Menu } from "@opencode/ui/menu"
 import { Icon } from "@opencode/ui/icon"
-import { ProjectAvatar } from "@opencode/ui/project-avatar"
-import { getProjectAvatarVariant } from "@/shell/state/layout"
 import { useLanguage } from "@/runtime/i18n/language"
-import { displayName, getProjectAvatarSource } from "@/shell/layout/helpers"
+import { displayName } from "@/shell/layout/helpers"
+import { ProjectTile } from "@/shell/layout/project-tile"
 import { pathKey } from "@/workspaces/path-key"
 import { handleDocumentSearchKeydown } from "@/shell/commands/search-keydown"
 import { createMenuDismissController } from "@/shell/commands/menu-dismiss"
@@ -291,14 +290,14 @@ export function PromptProjectSelector(props: {
         <Menu.Content
           ref={contentRef}
           id="prompt-project-menu"
-          class="w-[243px] overflow-hidden rounded-md border-0 bg-v2-background-bg-layer-01 shadow-[var(--v2-elevation-floating)] focus:outline-none [&[data-closed]]:!animate-none"
+          class="w-[243px] overflow-hidden rounded-lg border border-elevation-overlay-border bg-elevation-overlay-surface shadow-elevation-overlay focus:outline-none [&[data-closed]]:!animate-none"
           onOpenAutoFocus={(event) => event.preventDefault()}
           onPointerDownOutside={dismiss.preventTriggerRestore}
           onFocusOutside={dismiss.preventTriggerRestore}
           onCloseAutoFocus={dismiss.onCloseAutoFocus}
         >
           <div class="flex flex-col">
-            <div class="flex h-7 items-center gap-2 rounded-sm pl-3 pr-2.5 text-v2-icon-icon-muted">
+            <div class="flex h-7 items-center gap-2 rounded-sm pl-3 pr-2.5 text-ink-muted">
               <Icon name="magnifying-glass" size="small" class="shrink-0" />
               <input
                 ref={(el) => props.controller.setSearchRef(el)}
@@ -307,7 +306,7 @@ export function PromptProjectSelector(props: {
                 aria-autocomplete="list"
                 aria-controls="prompt-project-menu"
                 aria-activedescendant={props.controller.active() || undefined}
-                class="h-7 min-w-0 flex-1 border-0 bg-transparent text-[13px] font-[440] leading-5 tracking-[-0.04px] text-v2-text-text-base outline-none placeholder:text-v2-text-text-faint"
+                class="h-7 min-w-0 flex-1 border-0 bg-transparent text-[13px] font-normal leading-5 text-foreground outline-none placeholder:text-ink-muted"
                 onInput={(event) => props.controller.setSearch(event.currentTarget.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Tab") {
@@ -346,7 +345,7 @@ export function PromptProjectSelector(props: {
               <Show when={props.controller.search().trim()}>
                 <button
                   type="button"
-                  class="flex size-5 items-center justify-center rounded-sm text-v2-icon-icon-muted hover:bg-v2-overlay-simple-overlay-hover"
+                  class="flex size-5 items-center justify-center rounded-sm text-ink-muted hover:bg-foreground/8"
                   onPointerDown={(event) => event.preventDefault()}
                   onClick={() => props.controller.clearSearch()}
                   aria-label={props.controller.labels.clear()}
@@ -377,7 +376,7 @@ export function PromptProjectSelector(props: {
                 >
                   {(server) => (
                     <div>
-                      <div class="flex h-7 select-none items-center pl-1.5 pr-3 text-[11px] font-[530] leading-none tracking-[0.05px] text-v2-text-text-faint">
+                      <div class="flex h-7 select-none items-center ps-2 pe-3 text-eyebrow uppercase text-ink-muted">
                         {server!.name}
                       </div>
                       <Menu.RadioGroup value={selectedValue()}>
@@ -395,7 +394,7 @@ export function PromptProjectSelector(props: {
               </Show>
             </div>
           </div>
-          <div class="h-px bg-v2-border-border-muted" />
+          <div class="h-px bg-muted" />
           <div class="flex flex-col">
             <Show
               when={props.controller.servers().length > 1}
@@ -413,7 +412,7 @@ export function PromptProjectSelector(props: {
                   data-option-key={props.controller.actionKey()}
                   class={projectActionClass}
                   classList={{
-                    "!bg-v2-overlay-simple-overlay-hover": props.controller.active() === props.controller.actionKey(),
+                    "!bg-foreground/10": props.controller.active() === props.controller.actionKey(),
                   }}
                   onMouseEnter={() => props.controller.setActive(props.controller.actionKey())}
                 >
@@ -421,7 +420,7 @@ export function PromptProjectSelector(props: {
                   <span class="min-w-0 flex-1 truncate leading-5">{props.controller.labels.add()}</span>
                 </Menu.SubTrigger>
                 <Menu.Portal>
-                  <Menu.SubContent class="max-h-[224px] min-w-[180px] overflow-y-auto rounded-md border-0 bg-v2-background-bg-layer-01 shadow-[var(--v2-elevation-floating)] focus:outline-none">
+                  <Menu.SubContent class="max-h-[224px] min-w-[180px] overflow-y-auto rounded-lg border border-elevation-overlay-border bg-elevation-overlay-surface shadow-elevation-overlay focus:outline-none">
                     <For each={props.controller.servers()}>
                       {(server) => <ServerAction server={server!} onSelect={selectAction} />}
                     </For>
@@ -441,12 +440,12 @@ export function PromptProjectAddButton(props: { controller: PromptProjectControl
     <button
       data-action="prompt-project"
       type="button"
-      class="flex h-7 min-w-0 max-w-[160px] items-center gap-1.5 rounded-sm px-2 text-[13px] font-[440] leading-5 tracking-[-0.04px] text-v2-text-text-faint transition-colors hover:bg-v2-overlay-simple-overlay-hover focus-visible:bg-v2-overlay-simple-overlay-hover focus-visible:outline-none"
+      class="flex h-7 min-w-0 max-w-[160px] items-center gap-1.5 rounded-md px-2 text-[13px] leading-5 text-ink-muted hover:bg-foreground/8 hover:text-foreground active:bg-foreground/12 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
       onClick={() => props.controller.add()}
     >
-      <Icon name="folder-add-left" size="small" class="shrink-0 text-v2-icon-icon-muted" />
+      <Icon name="folder-add-left" size="small" class="shrink-0 text-ink-muted" />
       <span class="min-w-0 truncate leading-5">{props.controller.labels.new()}</span>
-      <Icon name="chevron-down" size="small" class="shrink-0 text-v2-icon-icon-muted" />
+      <Icon name="chevron-down" size="small" class="shrink-0 text-ink-muted" />
     </button>
   )
 }
@@ -459,12 +458,11 @@ function ProjectTrigger(props: ComponentProps<"button"> & { controller: PromptPr
       {...rest}
       data-action="prompt-project"
       type="button"
-      class="flex h-7 min-w-0 max-w-[203px] items-center gap-1.5 rounded-sm px-1.5 transition-colors focus-visible:bg-v2-overlay-simple-overlay-hover focus-visible:outline-none"
+      class="flex h-7 min-w-0 max-w-[203px] items-center gap-1.5 rounded-md px-2 text-ink-muted hover:text-foreground active:bg-foreground/12 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
       classList={{
         ...local.classList,
-        "hover:bg-v2-overlay-simple-overlay-hover": !local.controller.open(),
-        "bg-v2-overlay-simple-overlay-pressed": local.controller.open(),
-        "text-v2-text-text-muted": local.controller.open(),
+        "hover:bg-foreground/8": !local.controller.open(),
+        "bg-foreground/10 text-foreground": local.controller.open(),
       }}
       onClick={local.onClick ?? (() => local.controller.setOpen(true))}
       onKeyDown={(event) => {
@@ -476,22 +474,13 @@ function ProjectTrigger(props: ComponentProps<"button"> & { controller: PromptPr
         if (typeof local.onKeyDown === "function") local.onKeyDown(event)
       }}
     >
-      <Show
-        when={project()}
-        fallback={<Icon name="folder-add-left" size="small" class="shrink-0 text-v2-icon-icon-muted" />}
-      >
-        {(item) => (
-          <ProjectAvatar
-            fallback={displayName(item())}
-            src={getProjectAvatarSource(item().id, item().icon)}
-            variant={getProjectAvatarVariant(item().icon?.color)}
-          />
-        )}
+      <Show when={project()} fallback={<Icon name="folder-add-left" size="small" class="shrink-0 text-ink-muted" />}>
+        {(item) => <ProjectTile project={item()} />}
       </Show>
       <span class="min-w-0 truncate leading-5">
         {project() ? displayName(project()!) : local.controller.labels.new()}
       </span>
-      <Icon name="chevron-down" size="small" class="shrink-0 text-v2-icon-icon-muted" />
+      <Icon name="chevron-down" size="small" class="shrink-0 text-ink-muted" />
     </button>
   )
 }
@@ -507,8 +496,8 @@ function ProjectItem(props: {
       id={key()}
       value={key()}
       data-option-key={key()}
-      class="h-7 gap-2 rounded-sm px-3 text-[13px] font-[440] leading-5 tracking-[-0.04px] text-v2-text-text-base [font-family:var(--v2-font-family-sans)] data-[highlighted]:!bg-v2-overlay-simple-overlay-hover"
-      classList={{ "!bg-v2-overlay-simple-overlay-hover": props.controller.active() === key() }}
+      class="h-7 gap-2 rounded-md px-3 text-[13px] leading-5 text-foreground data-[highlighted]:!bg-foreground/10"
+      classList={{ "!bg-foreground/10": props.controller.active() === key() }}
       closeOnSelect
       onMouseEnter={() => {
         props.controller.setActive(key())
@@ -516,18 +505,14 @@ function ProjectItem(props: {
       }}
       onSelect={() => props.onSelect(props.project)}
     >
-      <ProjectAvatar
-        fallback={displayName(props.project)}
-        src={getProjectAvatarSource(props.project.id, props.project.icon)}
-        variant={getProjectAvatarVariant(props.project.icon?.color)}
-      />
+      <ProjectTile project={props.project} />
       <span class="min-w-0 truncate leading-5">{displayName(props.project)}</span>
     </Menu.RadioItem>
   )
 }
 
 const projectActionClass =
-  "h-7 gap-2 rounded-sm px-3 text-[13px] font-[440] leading-5 tracking-[-0.04px] text-v2-text-text-base [font-family:var(--v2-font-family-sans)] data-[highlighted]:!bg-v2-overlay-simple-overlay-hover"
+  "h-7 gap-2 rounded-md px-3 text-[13px] leading-5 text-foreground data-[highlighted]:!bg-foreground/10"
 
 function ProjectAction(props: {
   server?: string
@@ -539,8 +524,8 @@ function ProjectAction(props: {
     <Menu.Item
       id={key()}
       data-option-key={key()}
-      class="h-7 gap-2 rounded-sm px-3 text-[13px] font-[440] leading-5 tracking-[-0.04px] text-v2-text-text-base [font-family:var(--v2-font-family-sans)] data-[highlighted]:!bg-v2-overlay-simple-overlay-hover"
-      classList={{ "!bg-v2-overlay-simple-overlay-hover": props.controller.active() === key() }}
+      class="h-7 gap-2 rounded-md px-3 text-[13px] leading-5 text-foreground data-[highlighted]:!bg-foreground/10"
+      classList={{ "!bg-foreground/10": props.controller.active() === key() }}
       onMouseEnter={() => {
         props.controller.setActive(key())
         props.controller.focusSearch()

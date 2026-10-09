@@ -25,7 +25,7 @@
   justify-content: space-between;
   gap: 16px;
   font-size: 13px;
-  font-weight: 530;
+  font-weight: var(--reddb-font-weight-medium);
   line-height: var(--line-height-compact);
 }
 
@@ -40,13 +40,13 @@
 .project-settings-extension-section-header > :last-child {
   color: var(--v2-text-text-muted);
   font-size: 13px;
-  font-weight: 440;
+  font-weight: var(--reddb-font-weight-regular);
 }
 
 .project-settings-extension-empty-description {
   color: var(--v2-text-text-muted);
   font-size: 13px;
-  font-weight: 440;
+  font-weight: var(--reddb-font-weight-regular);
   line-height: var(--line-height-base);
 }
 
@@ -72,7 +72,7 @@
 .project-settings-extension-row-description {
   color: var(--v2-text-text-muted);
   font-size: 13px;
-  font-weight: 440;
+  font-weight: var(--reddb-font-weight-regular);
   line-height: var(--line-height-base);
   overflow-wrap: anywhere;
 }
@@ -137,11 +137,11 @@
   align-items: center;
   justify-content: center;
   padding-inline: 4px;
-  border-radius: 3px;
+  border-radius: var(--reddb-radius-sm);
   background: var(--v2-background-bg-layer-02);
   color: var(--v2-text-text-muted);
   font-size: 11px;
-  font-weight: 530;
+  font-weight: var(--reddb-font-weight-medium);
   line-height: var(--line-height-compact);
 }
 
@@ -156,7 +156,7 @@
   background: transparent;
   color: var(--v2-text-text-muted);
   font-size: 13px;
-  font-weight: 440;
+  font-weight: var(--reddb-font-weight-regular);
   line-height: var(--line-height-compact);
   text-align: start;
   cursor: pointer;
@@ -169,7 +169,7 @@
 }
 
 .project-settings-server-link:focus-visible {
-  outline: 2px solid var(--v2-border-border-focus);
+  outline: 2px solid var(--reddb-color-focus);
   outline-offset: 2px;
 }
 
@@ -181,7 +181,7 @@
   flex-shrink: 0;
   overflow: hidden;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--reddb-radius-md);
   outline: 1px solid transparent;
   background: transparent;
   cursor: pointer;
@@ -189,7 +189,7 @@
 
 .project-settings-icon--active,
 .project-settings-icon:focus-visible {
-  outline-color: var(--v2-border-border-focus);
+  outline-color: var(--reddb-color-focus);
 }
 
 .project-settings-icon-overlay {
@@ -198,7 +198,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
+  border-radius: var(--reddb-radius-md);
   background: color-mix(in srgb, var(--v2-background-bg-contrast) 80%, transparent);
   color: var(--v2-icon-icon-contrast);
   opacity: 0;
@@ -226,7 +226,7 @@
   justify-content: center;
   padding: 0;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--reddb-radius-md);
   outline: none;
   background: transparent;
   transition: box-shadow 120ms ease;
@@ -235,15 +235,15 @@
 .project-settings-color:focus-visible,
 .project-settings-color--selected {
   box-shadow:
-    0 0 0 2px var(--v2-background-bg-layer-01),
-    0 0 0 4px var(--v2-border-border-focus);
+    0 0 0 2px var(--v2-background-bg-base),
+    0 0 0 4px var(--reddb-color-focus);
 }
 
 @media (hover: hover) {
   .project-settings-color:not(.project-settings-color--selected):hover {
     box-shadow:
-      0 0 0 2px var(--v2-background-bg-layer-01),
-      0 0 0 4px var(--v2-border-border-strong);
+      0 0 0 2px var(--v2-background-bg-base),
+      0 0 0 4px var(--reddb-color-control-edge);
   }
 }
 
@@ -268,7 +268,7 @@
 .project-settings-startup-title {
   color: var(--v2-text-text-base);
   font-size: 13px;
-  font-weight: 530;
+  font-weight: var(--reddb-font-weight-medium);
   line-height: var(--line-height-compact);
 }
 
@@ -276,13 +276,13 @@
 .project-settings-startup-hint {
   color: var(--v2-text-text-muted);
   font-size: 13px;
-  font-weight: 440;
+  font-weight: var(--reddb-font-weight-regular);
   line-height: var(--line-height-base);
 }
 
 .project-settings-startup-hint code {
   padding-inline: 4px;
-  border-radius: 4px;
+  border-radius: var(--reddb-radius-sm);
   background: var(--v2-background-bg-layer-02);
   color: var(--v2-text-text-base);
   font-family: var(--font-family-mono);

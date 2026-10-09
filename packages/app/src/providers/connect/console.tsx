@@ -16,7 +16,7 @@ export function ConsoleAuthorization(props: {
   return (
     <div
       data-component="console-authorization"
-      class="flex flex-col gap-5 text-[13px] leading-5 text-v2-text-text-muted"
+      class="flex flex-col gap-5 text-[13px] leading-5 text-ink-muted"
     >
       <p>
         {language.t(
@@ -24,7 +24,7 @@ export function ConsoleAuthorization(props: {
         )}
       </p>
       <div class="flex flex-col gap-2">
-        <div class="font-medium text-v2-text-text-base">{language.t("provider.connect.console.deviceCode")}</div>
+        <div class="font-medium text-foreground">{language.t("provider.connect.console.deviceCode")}</div>
         <Show
           when={props.code}
           fallback={
@@ -39,7 +39,7 @@ export function ConsoleAuthorization(props: {
                 dir="ltr"
                 role="group"
                 aria-label={language.t("provider.connect.console.deviceCode.label", { code: code() })}
-                class="flex max-w-full gap-1 self-start font-mono text-xl font-[530] text-v2-text-text-base tabular-nums"
+                class="flex max-w-full gap-1 self-start font-mono text-xl font-medium text-foreground tabular-nums"
               >
                 <For each={code().split("")}>
                   {(character) => (
@@ -47,8 +47,8 @@ export function ConsoleAuthorization(props: {
                       aria-hidden="true"
                       class={
                         character === "-"
-                          ? "mx-1 flex h-12 items-center text-v2-text-text-muted"
-                          : "flex h-12 w-8 items-center justify-center rounded-md border border-v2-border-border-base bg-v2-background-bg-layer-02"
+                          ? "mx-1 flex h-12 items-center text-ink-muted"
+                          : "flex h-12 w-8 items-center justify-center rounded-md border border-muted bg-v2-background-bg-layer-02"
                       }
                     >
                       {character}
@@ -64,7 +64,7 @@ export function ConsoleAuthorization(props: {
         </Show>
       </div>
       <div data-component="console-browser-fallback" class="flex min-h-7 flex-wrap items-center gap-x-3 gap-y-1">
-        <span class="text-v2-text-text-faint">{language.t("provider.connect.console.browserHint")}</span>
+        <span class="text-ink-muted">{language.t("provider.connect.console.browserHint")}</span>
         <Button variant="ghost-muted" disabled={!props.code} onClick={props.onCopy}>
           {language.t(props.copied ? "provider.connect.console.linkCopied" : "provider.connect.console.copyLink")}
         </Button>

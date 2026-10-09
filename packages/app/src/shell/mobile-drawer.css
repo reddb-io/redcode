@@ -22,7 +22,7 @@
   padding: 0 12px max(12px, var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
   padding-left: max(12px, env(safe-area-inset-left, 0px));
   padding-right: max(12px, env(safe-area-inset-right, 0px));
-  border-radius: 16px 16px 0 0;
+  border-radius: var(--reddb-radius-lg) 16px 0 0;
   background: var(--v2-background-bg-deep);
   color: var(--v2-text-text-base);
   box-shadow: var(--v2-elevation-overlay);
@@ -55,7 +55,7 @@
 [data-slot="mobile-drawer-handle"] span {
   width: 32px;
   height: 4px;
-  border-radius: 999px;
+  border-radius: var(--reddb-radius-lg);
   background: var(--v2-border-border-strong);
 }
 

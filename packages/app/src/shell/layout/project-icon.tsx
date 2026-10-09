@@ -1,24 +1,25 @@
-import { ProjectAvatar, type ProjectAvatarProps } from "@opencode/ui/project-avatar"
-import { splitProps } from "solid-js"
-import { displayName, getProjectAvatarSource } from "@/shell/layout/helpers"
-import { getProjectAvatarVariant, type LocalProject } from "@/shell/state/layout"
+import type { LocalProject } from "@/shell/state/layout"
+import { ProjectTile } from "@/shell/layout/project-tile"
 
-type ProjectIconProps = Omit<ProjectAvatarProps, "fallback" | "src" | "variant"> & {
+export function ProjectIcon(props: {
   project: Pick<LocalProject, "id" | "name" | "worktree" | "icon">
+  /** The name the initial comes from while it is being edited. */
   fallback?: string
   icon?: LocalProject["icon"]
-}
-
-export function ProjectIcon(props: ProjectIconProps) {
-  const [local, rest] = splitProps(props, ["project", "fallback", "icon"])
-  const icon = () => local.icon ?? local.project.icon
-
+  size?: "sm" | "md" | "lg" | "xl"
+  unread?: boolean
+  class?: string
+}) {
   return (
-    <ProjectAvatar
-      {...rest}
-      fallback={local.fallback ?? displayName(local.project)}
-      src={getProjectAvatarSource(local.project.id, icon())}
-      variant={getProjectAvatarVariant(icon()?.color)}
+    <ProjectTile
+      project={{
+        ...props.project,
+        name: props.fallback ?? props.project.name,
+        icon: props.icon ?? props.project.icon,
+      }}
+      size={props.size}
+      unread={props.unread}
+      class={props.class}
     />
   )
 }

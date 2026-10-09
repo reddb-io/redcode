@@ -45,7 +45,7 @@ export function SshServerSettings(props: { filter: string; id?: string; domain: 
                   <bdi class="settings-servers-name truncate" dir={item.config.name ? "auto" : "ltr"}>
                     {sshName(item.config)}
                   </bdi>
-                  <span class="shrink-0 rounded-[3px] border border-v2-border-border-base px-1 py-0.5 text-[9px] leading-none text-v2-text-text-muted">
+                  <span class="shrink-0 rounded-sm border border-muted px-1 py-0.5 text-[9px] leading-none text-ink-muted">
                     {language.t("ssh.label")}
                   </span>
                 </span>

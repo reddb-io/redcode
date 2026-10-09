@@ -73,12 +73,12 @@ export function ComposerDropzone(props: {
           >
             <div
               data-slot="session-dropzone-upload"
-              class="flex size-10 items-center justify-center rounded-full bg-[var(--session-dropzone-card)] text-v2-icon-icon-muted shadow-[var(--v2-elevation-floating)]"
+              class="flex size-10 items-center justify-center rounded-full bg-[var(--session-dropzone-card)] text-ink-muted shadow-[var(--v2-elevation-floating)]"
               aria-hidden="true"
             >
-              <Icon name="arrow-up" size="normal" class="text-v2-icon-icon-muted" />
+              <Icon name="arrow-up" size="normal" class="text-ink-muted" />
             </div>
-            <div class="text-[15px] font-[530] leading-6 text-v2-text-text-base">{presence.value()}</div>
+            <div class="text-[15px] font-medium leading-6 text-foreground">{presence.value()}</div>
           </div>
         </div>
       </Show>

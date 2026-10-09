@@ -137,7 +137,7 @@ export function ServerHealthIndicator(props: {
           <span
             role="status"
             aria-label={language.t("ssh.stage.connecting")}
-            class="inline-flex h-3.5 w-1.5 shrink-0 items-center justify-center text-v2-icon-icon-muted"
+            class="inline-flex h-3.5 w-1.5 shrink-0 items-center justify-center text-ink-muted"
           >
             <Spinner class="size-3 shrink-0" />
           </span>
@@ -147,7 +147,7 @@ export function ServerHealthIndicator(props: {
       <span
         role="status"
         aria-label={language.t("ssh.stage.authentication")}
-        class="inline-flex h-3.5 w-1.5 shrink-0 items-center justify-center text-v2-icon-icon-muted"
+        class="inline-flex h-3.5 w-1.5 shrink-0 items-center justify-center text-ink-muted"
       >
         <Icon name="lock" size="small" class="shrink-0" />
       </span>

@@ -60,7 +60,7 @@ export const SettingsProjects: Component<{
         <div class="settings-tab-header-row">
           <div class="flex flex-col gap-1">
             <h2 class="settings-tab-title">{language.t("settings.projects.title")}</h2>
-            <span class="text-11-regular text-v2-text-text-muted">{language.t("settings.projects.description")}</span>
+            <span class="text-11-regular text-ink-muted">{language.t("settings.projects.description")}</span>
           </div>
           <Show when={projects().length > 0}>
             <Button variant="ghost-muted" icon="plus" onClick={addProject}>
@@ -88,7 +88,7 @@ export const SettingsProjects: Component<{
                 <Show
                   when={store.filter.trim()}
                   fallback={
-                    <div class="py-12 text-center text-v2-text-text-muted text-13-regular">
+                    <div class="py-12 text-center text-ink-muted text-13-regular">
                       {language.t("settings.projects.empty")}
                     </div>
                   }
@@ -103,11 +103,11 @@ export const SettingsProjects: Component<{
                 data-component="settings-project-empty-card"
                 class="settings-project-empty-card flex flex-col items-center gap-2 py-24 text-center"
               >
-                <Icon name="folder" size="large" class="mb-2 text-v2-icon-icon-muted" />
-                <div class="text-13-medium text-v2-text-text-base">
+                <Icon name="folder" size="large" class="mb-2 text-ink-muted" />
+                <div class="text-13-medium text-foreground">
                   {language.t("settings.projects.empty.title")}
                 </div>
-                <div class="text-13-regular text-v2-text-text-muted">
+                <div class="text-13-regular text-ink-muted">
                   {language.t("settings.projects.empty.description")}
                 </div>
                 <Button variant="neutral" icon="plus" class="mt-6" onClick={addProject}>

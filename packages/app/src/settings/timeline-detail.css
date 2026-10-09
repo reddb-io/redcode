@@ -33,7 +33,7 @@
     inset-inline: 0;
     top: 12px;
     height: 4px;
-    border-radius: 2px;
+    border-radius: var(--reddb-radius-sm);
     background: var(--timeline-detail-track-background);
     pointer-events: none;
 
@@ -78,10 +78,10 @@
     margin: 0;
     margin-inline: -8px;
     background: transparent;
-    border-radius: 4px;
+    border-radius: var(--reddb-radius-sm);
 
     &:focus-visible {
-      outline: 2px solid var(--v2-border-border-focus);
+      outline: 2px solid var(--reddb-color-focus);
       outline-offset: 2px;
     }
 
@@ -140,7 +140,7 @@
     align-self: flex-start;
     gap: 6px;
     font-size: inherit;
-    font-weight: 530;
+    font-weight: var(--reddb-font-weight-medium);
     line-height: var(--line-height-compact);
     letter-spacing: inherit;
     color: var(--v2-text-text-base);
@@ -177,7 +177,7 @@
 
   [data-slot="timeline-detail-list"] {
     border: 0.5px solid var(--v2-border-border-base);
-    border-radius: 8px;
+    border-radius: var(--reddb-radius-lg);
     background-color: var(--v2-background-bg-layer-02);
   }
 

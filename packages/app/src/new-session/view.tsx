@@ -53,7 +53,7 @@ export function NewSessionView(props: {
     <div class="@container relative flex flex-col min-h-0 h-full flex-1">
       <div
         data-component="new-session"
-        class="relative flex-1 min-h-0 overflow-hidden rounded-[10px] bg-v2-background-bg-base shadow-[var(--v2-elevation-raised)]"
+        class="relative flex-1 min-h-0 overflow-hidden rounded-lg bg-v2-background-bg-base shadow-[var(--v2-elevation-raised)]"
       >
         <ComposerDropzone
           active={props.composer.state.drag === "active"}
@@ -68,7 +68,7 @@ export function NewSessionView(props: {
                 <PromptProjectAddButton controller={props.project} />
               </Show>
               <Show when={props.project.selected()}>
-                <div class="flex min-h-7 min-w-0 flex-col items-center justify-center gap-0 text-v2-text-text-faint sm:flex-row">
+                <div class="flex min-h-7 min-w-0 flex-col items-center justify-center gap-0 text-ink-muted sm:flex-row">
                   <PromptProjectSelector controller={props.project} placement="bottom" />
                   <Show
                     when={props.workspace.bar.visible()}
@@ -193,7 +193,7 @@ function NewSessionTips(props: {
         >
           <button
             type="button"
-            class="flex h-6 min-w-0 items-center rounded-[4px] pl-1.5 text-[13px] leading-text-compact tracking-[-0.04px] text-v2-text-text-faint transition-[background-color,color] duration-150 ease-in-out hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-text-text-muted focus-visible:bg-v2-overlay-simple-overlay-hover focus-visible:text-v2-text-text-muted focus-visible:outline-none"
+            class="flex h-6 min-w-0 items-center rounded-sm pl-1.5 text-[13px] leading-text-compact text-ink-muted transition-[background-color,color] duration-150 ease-in-out hover:bg-foreground/8 hover:text-ink-muted focus-visible:bg-foreground/10 focus-visible:text-ink-muted focus-visible:outline-none"
             onClick={open}
           >
             <span class="truncate">
@@ -211,7 +211,7 @@ function NewSessionTips(props: {
           >
             <button
               type="button"
-              class="flex size-6 items-center justify-center rounded-[4px] text-v2-icon-icon-muted transition-[background-color,color] duration-150 ease-in-out hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-icon-icon-base focus-visible:bg-v2-overlay-simple-overlay-hover focus-visible:text-v2-icon-icon-base focus-visible:outline-none"
+              class="flex size-6 items-center justify-center rounded-sm text-ink-muted transition-[background-color,color] duration-150 ease-in-out hover:bg-foreground/8 hover:text-foreground focus-visible:bg-foreground/10 focus-visible:text-foreground focus-visible:outline-none"
               aria-label={language.t("common.dismiss")}
               onClick={dismiss}
             >

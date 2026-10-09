@@ -82,7 +82,7 @@ export function WindowsAppMenu(props: {
     <Menu appearance="standard" gutter={4} modal={false} placement="bottom-start">
       <div
         data-component="desktop-icon-button"
-        class="flex h-7 w-9 shrink-0 items-center justify-center rounded-[6px] px-1"
+        class="flex h-7 w-9 shrink-0 items-center justify-center rounded-md px-1"
       >
         <Menu.Trigger
           as={IconButton}
@@ -97,7 +97,7 @@ export function WindowsAppMenu(props: {
       <Menu.Portal>
         <Menu.Content class="desktop-app-menu">
           <Menu.Group>
-            <Menu.GroupLabel class="desktop-app-menu-heading">OpenCode</Menu.GroupLabel>
+            <Menu.GroupLabel class="desktop-app-menu-heading">Redcode</Menu.GroupLabel>
             <For each={DESKTOP_MENU.filter((menu) => desktopMenuVisible(menu, "windows"))}>
               {(menu) => (
                 <DesktopMenuSubmenu label={language.t(menu.labelKey)}>

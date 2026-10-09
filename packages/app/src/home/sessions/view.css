@@ -1,26 +1,50 @@
-@media (max-width: 767px) {
-  [data-component="home-session-row-container"][data-project-name="true"],
-  [data-component="home-session-row-container"][data-project-name="true"] [data-component="home-session-row"],
-  [data-component="home-session-row-container"][data-project-name="true"] [data-slot="home-session-editor"],
-  [data-component="home-session-search-row"][data-project-name="true"] {
-    height: 48px;
-    padding-block: 0;
+/* Recent session rows: status, title, project, branch and time sit in aligned columns.
+   The columns respond to the session list's own width (the Home scroll container). */
+.home-session-grid {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) minmax(0, 8rem) 4.5rem;
+  align-items: center;
+  column-gap: var(--reddb-spatial-gap-lg);
+}
+
+[data-project-name="true"] > .home-session-grid {
+  grid-template-columns: 16px minmax(0, 1fr) minmax(0, 9rem) minmax(0, 8rem) 4.5rem;
+}
+
+.home-session-grid
+  :is([data-slot="home-session-project"], [data-slot="home-session-branch"], [data-slot="home-session-time"]) {
+  color: var(--reddb-color-ink-muted);
+  font-size: var(--reddb-type-caption-font-size);
+  line-height: var(--reddb-type-caption-line-height);
+  white-space: nowrap;
+}
+
+.home-session-grid [data-slot="home-session-project"] {
+  color: var(--reddb-color-foreground);
+}
+
+@container (width < 44rem) {
+  .home-session-grid,
+  [data-project-name="true"] > .home-session-grid {
+    grid-template-columns: 16px minmax(0, 1fr) minmax(0, 8rem) 4.5rem;
   }
 
-  [data-project-name="true"] [data-slot="home-session-labels"] {
-    display: flex;
-    min-width: 0;
-    flex: 1;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0;
-    text-align: start;
+  .home-session-grid [data-slot="home-session-branch"] {
+    display: none;
   }
 
-  [data-project-name="true"] [data-slot="home-session-labels"] > * {
-    max-width: 100%;
-    flex: none;
-    font-size: 13px;
-    line-height: var(--line-height-compact);
+  [data-project-name="false"] > .home-session-grid {
+    grid-template-columns: 16px minmax(0, 1fr) 4.5rem;
+  }
+}
+
+@container (width < 28rem) {
+  .home-session-grid,
+  [data-project-name="true"] > .home-session-grid {
+    grid-template-columns: 16px minmax(0, 1fr) auto;
+  }
+
+  .home-session-grid [data-slot="home-session-project"] {
+    display: none;
   }
 }

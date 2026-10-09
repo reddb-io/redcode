@@ -168,8 +168,8 @@ export function DialogSsh(props: {
           </Show>
           <Show when={item()?.stage === "incompatible"}>
             <div class="flex w-full min-w-0 flex-col gap-2" role="status" aria-live="polite">
-              <span class="text-14-medium text-v2-text-text-base">{language.t("ssh.stage.incompatible")}</span>
-              <span class="text-13-regular text-v2-text-text-muted">{language.t("ssh.error.version")}</span>
+              <span class="text-14-medium text-foreground">{language.t("ssh.stage.incompatible")}</span>
+              <span class="text-13-regular text-ink-muted">{language.t("ssh.error.version")}</span>
             </div>
           </Show>
           <Show when={prompt()} keyed>

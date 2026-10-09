@@ -50,7 +50,7 @@ function BodyTypography() {
   createRenderEffect(() => {
     if (typeof document === "undefined") return
     document.body.classList.remove("text-12-regular")
-    document.body.classList.add("font-(family-name:--font-family-text)", "text-[13px]", "font-[440]")
+    document.body.classList.add("font-(family-name:--font-family-text)", "text-[13px]", "font-normal")
   })
 
   return null

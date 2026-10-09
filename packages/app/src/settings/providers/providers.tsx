@@ -426,7 +426,7 @@ export const SettingsProviders: Component<{
         <div class="settings-tab-header-row">
           <div class="flex flex-col gap-1">
             <h2 class="settings-tab-title">{language.t("settings.providers.title")}</h2>
-            <span class="text-11-regular text-v2-text-text-muted">{language.t("settings.providers.description")}</span>
+            <span class="text-11-regular text-ink-muted">{language.t("settings.providers.description")}</span>
           </div>
         </div>
       </div>

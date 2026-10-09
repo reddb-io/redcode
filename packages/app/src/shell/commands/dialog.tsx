@@ -238,7 +238,7 @@ function PaletteRow(props: {
               <Show when={props.sessionOpen}>
                 <span
                   aria-hidden="true"
-                  class="pointer-events-none absolute top-1/2 h-3 w-0.5 -translate-y-1/2 rounded-[2px] bg-v2-background-bg-layer-04"
+                  class="pointer-events-none absolute top-1/2 h-3 w-0.5 -translate-y-1/2 rounded-sm bg-v2-background-bg-layer-04"
                   style={{ right: "calc(100% + 4px)" }}
                 />
               </Show>

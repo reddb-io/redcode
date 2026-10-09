@@ -1,0 +1,113 @@
+/* A project's identity tile: its image, or its initial on a tint of one DS series role.
+   The ink stays `foreground` on a tint, so the letter holds AA in both Color Schemes. */
+[data-component="project-tile"] {
+  --project-tile-hue: var(--reddb-color-ink-muted);
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  width: var(--project-tile-size, 16px);
+  height: var(--project-tile-size, 16px);
+}
+
+[data-component="project-tile"][data-size="md"] {
+  --project-tile-size: 20px;
+}
+
+[data-component="project-tile"][data-size="lg"] {
+  --project-tile-size: 24px;
+}
+
+[data-component="project-tile"][data-size="xl"] {
+  --project-tile-size: 32px;
+}
+
+[data-slot="project-tile-surface"] {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: var(--reddb-radius-sm);
+  background: color-mix(in oklab, var(--project-tile-hue) 26%, var(--reddb-color-background));
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--project-tile-hue) 55%, transparent);
+  color: var(--reddb-color-foreground);
+  font-family: var(--reddb-font-family-sans);
+  font-size: 10px;
+  font-weight: var(--reddb-font-weight-bold);
+  line-height: 1;
+  text-transform: uppercase;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+[data-component="project-tile"][data-size="md"] [data-slot="project-tile-surface"] {
+  font-size: 11px;
+}
+
+[data-component="project-tile"][data-size="lg"] [data-slot="project-tile-surface"] {
+  border-radius: var(--reddb-radius-md);
+  font-size: 12px;
+}
+
+[data-component="project-tile"][data-size="xl"] [data-slot="project-tile-surface"] {
+  border-radius: var(--reddb-radius-md);
+  font-size: var(--reddb-type-body-font-size);
+}
+
+[data-component="project-tile"][data-tone="1"] {
+  --project-tile-hue: var(--reddb-color-series-1);
+}
+[data-component="project-tile"][data-tone="2"] {
+  --project-tile-hue: var(--reddb-color-series-2);
+}
+[data-component="project-tile"][data-tone="3"] {
+  --project-tile-hue: var(--reddb-color-series-3);
+}
+[data-component="project-tile"][data-tone="4"] {
+  --project-tile-hue: var(--reddb-color-series-4);
+}
+[data-component="project-tile"][data-tone="5"] {
+  --project-tile-hue: var(--reddb-color-series-5);
+}
+[data-component="project-tile"][data-tone="6"] {
+  --project-tile-hue: var(--reddb-color-series-6);
+}
+
+/* Ink tile: a project that chose gray. */
+[data-component="project-tile"][data-tone="ink"] [data-slot="project-tile-surface"] {
+  background: var(--reddb-color-muted);
+  box-shadow: inset 0 0 0 1px var(--reddb-color-control-edge);
+}
+
+/* Outline tile: a project that is not open (recently closed). */
+[data-component="project-tile"][data-tone="outline"] [data-slot="project-tile-surface"] {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--reddb-color-control-edge);
+  color: var(--reddb-color-ink-muted);
+}
+
+[data-slot="project-tile-surface"] img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  -webkit-user-drag: none;
+}
+
+[data-component="project-tile"][data-has-image] [data-slot="project-tile-surface"] {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--reddb-color-muted);
+}
+
+[data-slot="project-tile-unread"] {
+  position: absolute;
+  top: -3px;
+  inset-inline-end: -3px;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--reddb-radius-full);
+  background: var(--reddb-color-foreground);
+  box-shadow: 0 0 0 2px var(--reddb-color-background);
+  pointer-events: none;
+}

@@ -301,7 +301,7 @@ export function SettingsSearch() {
                           }
                         >
                           {(project) => (
-                            <ProjectIcon project={project()} class="settings-search-project-icon" aria-hidden="true" />
+                            <ProjectIcon project={project()} class="settings-search-project-icon" />
                           )}
                         </Show>
                         <bdi dir="auto" class="settings-search-title">
