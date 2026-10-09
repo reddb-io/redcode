@@ -73,7 +73,8 @@ const bundleNestedWorkerDeps = {
 }
 
 export const channel = (() => {
-  const raw = process.env.OPENCODE_CHANNEL
+  // The desktop renderer builds through this plugin too, and names its channel with REDCODE_DESKTOP_CHANNEL.
+  const raw = process.env.OPENCODE_CHANNEL ?? process.env.REDCODE_DESKTOP_CHANNEL
 
   if (raw === "local" || raw === "dev" || raw === "beta" || raw === "prod") return raw
 
