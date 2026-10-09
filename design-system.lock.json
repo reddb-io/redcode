@@ -82,6 +82,7 @@
     "select.variants.ts": "2de3c0e4fc061d206e58c93f3af37db1db8cc058698c7540a4a2bba5aa2ce382",
     "sidebar-layout.variants.ts": "9ada31ac1d93df816ff397412c315f6c83db4fd0e1e306310d6ac32380be44c1",
     "sidebar-navigation.variants.ts": "8f6147d7558f34f37f2473bc0a89804cee6e5162f2741a844825ee633c3ac4e0",
+    "sidebar-rail.variants.ts": "b5db84142c30e7814f072ea421a2e43cc35004354c3a4d10f420e1fef2cb4dae",
     "skeleton.variants.ts": "49c1f19799ba7ea5a18f483bce661ec0cd2946d384f91089c4d1a737417d03c0",
     "split-view.variants.ts": "b2ff91b2a24e3176782b9b98882111287eb3e38359b882c5fda52022a05f49b3",
     "status-indicator.variants.ts": "619a10d82bb823372900bb4c4fa6755e87a8d43ad3b6140f6493704c227c60a5",
