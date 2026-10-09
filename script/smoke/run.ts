@@ -457,9 +457,21 @@ async function checkDesign() {
   expectFinalText(events, "SMOKE-FINAL design")
 }
 
-// The review link carries a ticket, so only the browser loads it.
+// The agent prints the stable review link, which needs no ticket in a browser the server trusts. Open it the way a
+// paired browser or the desktop does: with the service's own credential.
 async function renderReview(browser: Browser, review: string) {
-  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
+  const service = await registration()
+  const context = await browser.newContext({
+    viewport: { width: 1280, height: 900 },
+    httpCredentials: {
+      username: "opencode",
+      password: service.password,
+      origin: new URL(review).origin,
+      // The review page answers 401 without a Basic challenge, so the credential goes with the first request.
+      send: "always",
+    },
+  })
+  const page = await context.newPage()
   const errors: Array<string> = []
   page.on("pageerror", (error) => errors.push(`page error: ${error.message}`))
   page.on("console", (message) => {
