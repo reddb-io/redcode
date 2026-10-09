@@ -174,7 +174,7 @@ test("assemble writes each target's design package, names it from the CLI packag
     ).toEqual({ [`@reddb-io/redcode-design-${item.target}`]: version })
   }
   // npm rejects the desktop app as too large: it ships only in the release archives.
-  expect(await readdir(input.dist)).toEqual(
+  expect((await readdir(input.dist)).toSorted()).toEqual(
     [
       "redcode-package",
       ...targets.flatMap((item) => [`redcode-${item.target}`, `redcode-design-${item.target}`]),
