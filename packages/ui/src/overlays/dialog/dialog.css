@@ -1,5 +1,5 @@
 /*
-  Dialog, drawn to the design system's Dialog (design-system/contracts/dialog.variants.ts): the overlay surface inside
+  Dialog, drawn to the design system's Dialog (@opencode/ui/contracts/dialog): the overlay surface inside
   a 1px overlay border on the overlay shadow, rounded-lg, over the `scrim` at 60%. Title is the heading role,
   description body in secondary ink; the close control is a quiet icon button in the top trailing corner.
 */

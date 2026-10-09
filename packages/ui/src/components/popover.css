@@ -3,7 +3,7 @@
 }
 
 /*
-  Popover, drawn to the design system's Popover (design-system/contracts/popover.variants.ts): the overlay surface
+  Popover, drawn to the design system's Popover (@opencode/ui/contracts/popover): the overlay surface
   inside a 1px overlay border on the overlay shadow, rounded-lg.
 */
 [data-component="popover-content"] {

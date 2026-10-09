@@ -28,7 +28,7 @@ export function createWebPlatform(version: string) {
 
       const notification = new Notification(title, {
         body: description ?? "",
-        icon: "/favicon-96x96-v3.png",
+        icon: "/icon-192.png",
       })
 
       notification.onclick = () => {

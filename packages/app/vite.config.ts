@@ -1,7 +1,7 @@
 import { sentryVitePlugin } from "@sentry/vite-plugin"
 import { fileURLToPath } from "node:url"
 import { defineConfig } from "vite"
-import desktopPlugin, { channel } from "./vite.js"
+import desktopPlugin from "./vite.js"
 import { icons } from "./vite.icons"
 import { serviceWorker } from "./vite.pwa"
 
@@ -25,7 +25,7 @@ const sentry =
 export default defineConfig({
   plugins: [
     desktopPlugin,
-    icons(channel),
+    icons(),
     serviceWorker(fileURLToPath(new URL("./dist", import.meta.url))),
     sentry,
   ] as any,

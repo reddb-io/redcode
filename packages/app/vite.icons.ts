@@ -1,28 +1,20 @@
 import { readFileSync } from "node:fs"
 import type { Plugin } from "vite"
 import manifest from "./manifest.json" with { type: "json" }
+import platform from "../ui/vendor/design-system/platform/platform-manifest.json" with { type: "json" }
 
-export function icons(channel: string): Plugin {
-  const selected = channel === "beta" || channel === "prod" ? channel : "dev"
-  const prefix = `icons/${selected}`
-
+// Every channel serves the RedDB platform icons the design system publishes, byte-for-byte, at the paths its
+// platform manifest links (scripts/sync-design-system.ts vendors them).
+export function icons(): Plugin {
   const files = [
-    ...Object.entries({
-      "favicon.ico": "icon.ico",
-      "apple-touch-icon.png": "ios/AppIcon-60x60@3x.png",
-      "web-app-manifest-192x192.png": "android/mipmap-xxxhdpi/ic_launcher.png",
-      "web-app-manifest-512x512.png": "icon.png",
-    }).map(([name, source]) => ({
-      fileName: `${prefix}/${name}`,
-      source: readFileSync(new URL(`./icons/${selected}/${source}`, import.meta.url)),
-      type: name.endsWith(".ico") ? "image/x-icon" : "image/png",
+    ...platform.icons.map((icon) => ({
+      fileName: icon.file,
+      source: readFileSync(new URL(`../ui/vendor/design-system/platform/${icon.file}`, import.meta.url)),
+      type: icon.file.endsWith(".svg") ? "image/svg+xml" : icon.file.endsWith(".ico") ? "image/x-icon" : "image/png",
     })),
     {
       fileName: "site.webmanifest",
-      source: JSON.stringify({
-        ...manifest,
-        icons: manifest.icons.map((icon) => ({ ...icon, src: `/${prefix}${icon.src}` })),
-      }),
+      source: JSON.stringify({ ...manifest, icons: platform.manifestIcons }),
       type: "application/manifest+json",
     },
   ]
@@ -40,14 +32,6 @@ export function icons(channel: string): Plugin {
         response.setHeader("Content-Type", file.type)
         response.end(file.source)
       })
-    },
-    transformIndexHtml: {
-      order: "pre",
-      handler(html) {
-        return html
-          .replace("%OPENCODE_FAVICON%", `/${prefix}/favicon.ico`)
-          .replace("%OPENCODE_APPLE_TOUCH_ICON%", `/${prefix}/apple-touch-icon.png`)
-      },
     },
   }
 }

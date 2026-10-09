@@ -1,0 +1,64 @@
+{
+  "icons": [
+    {
+      "file": "favicon.svg",
+      "role": "every modern browser's page icon"
+    },
+    {
+      "file": "favicon.ico",
+      "role": "the raster fallback, 48/32/16"
+    },
+    {
+      "file": "apple-touch-icon-180.png",
+      "role": "Safari's home-screen icon"
+    },
+    {
+      "file": "icon-192.png",
+      "role": "PWA install, small"
+    },
+    {
+      "file": "icon-512.png",
+      "role": "PWA install, large"
+    },
+    {
+      "file": "maskable-192.png",
+      "role": "Android adaptive, small — cropped to the OS shape"
+    },
+    {
+      "file": "maskable-512.png",
+      "role": "Android adaptive, large — cropped to the OS shape"
+    }
+  ],
+  "links": [
+    "<link rel=\"icon\" href=\"/favicon.svg\" type=\"image/svg+xml\" />",
+    "<link rel=\"alternate icon\" href=\"/favicon.ico\" sizes=\"48x48 32x32 16x16\" />",
+    "<link rel=\"apple-touch-icon\" href=\"/apple-touch-icon-180.png\" />",
+    "<link rel=\"manifest\" href=\"/site.webmanifest\" />"
+  ],
+  "manifestIcons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

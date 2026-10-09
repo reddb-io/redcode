@@ -1,6 +1,6 @@
 /*
-  Menu, drawn to the design system's DropdownMenu on the overlay elevation (design-system/contracts/
-  dropdown-menu.variants.ts, popover.variants.ts): the overlay surface inside a 1px overlay border with the overlay
+  Menu, drawn to the design system's DropdownMenu on the overlay elevation (@opencode/ui/contracts/
+  dropdown-menu, popover): the overlay surface inside a 1px overlay border with the overlay
   shadow; items are listbox options, highlighted `bg-foreground/10`, checked adds `font-medium` and the check glyph,
   never a red fill. Select (select.css) renders its listbox with these same parts.
 */

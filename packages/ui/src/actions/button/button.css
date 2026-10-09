@@ -1,7 +1,7 @@
 @import "../submit.css";
 
 /*
-  Button, drawn to the design system's Button contract (design-system/contracts/button.variants.ts):
+  Button, drawn to the design system's Button contract (@opencode/ui/contracts/button):
   - primary (`contrast`, `submit`): the Brand red under `on-primary`, hovering to the opaque `primary-active`;
   - secondary (`neutral`, `outline`): a 1px `control-edge` outline that turns to ink on hover;
   - ghost (`ghost`, `ghost-muted`, `ghost-faint`): the quiet-control states (hover 8%, pressed 12%, open 10%);

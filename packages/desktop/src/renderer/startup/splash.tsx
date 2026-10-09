@@ -1,5 +1,4 @@
 import { Logo } from "@opencode/ui/logo"
-import { Wordmark } from "@opencode/ui/wordmark"
 import type { Platform } from "@opencode/app/desktop"
 import { onCleanup, onMount, Show } from "solid-js"
 import { createStore } from "solid-js/store"
@@ -58,7 +57,7 @@ export function LoadingSplash(props: {
             "bg-v2-background-bg-base": !props.deep,
           }}
         >
-          <Logo class="w-40 opacity-50 animate-pulse" />
+          <Logo />
         </div>
       }
     >
@@ -68,24 +67,21 @@ export function LoadingSplash(props: {
         aria-hidden="true"
         class="h-dvh w-screen bg-v2-background-bg-base"
         style={{
-          // Match the default session's titlebar, panel insets, and wordmark position.
+          // Match the default session's titlebar, panel insets, and Logo position.
           "padding-block-start": `calc(${titlebarHeight()} + ${props.platform.os === "windows" ? 1 : 8}px)`,
           "padding-block-end": "8px",
           "padding-inline": "32px",
         }}
         onAnimationEnd={(event) => {
-          if (event.animationName === "first-launch-wordmark-draw") props.onDrawEnd()
+          if (event.animationName === "first-launch-logo-reveal") props.onDrawEnd()
         }}
       >
         <div class="relative size-full">
           <div class="absolute inset-x-0 top-[25.375%]">
             <div class="mx-auto w-full max-w-[720px]">
-              <Wordmark
-                outline
-                fade={false}
-                muted={false}
-                class="mx-auto block h-auto w-4/5 text-v2-icon-icon-faint opacity-50"
-              />
+              <div data-slot="first-launch-logo" class="flex justify-center">
+                <Logo size={40} />
+              </div>
             </div>
           </div>
         </div>

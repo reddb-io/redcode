@@ -18,8 +18,8 @@
   }
 
   .server-connect-brand {
-    width: 160px;
-    margin-inline: auto;
+    display: flex;
+    justify-content: center;
     margin-block-end: 16px;
   }
 

@@ -3,9 +3,9 @@ import { useLanguage } from "@/runtime/i18n/language"
 import { usePlatform } from "@/runtime/platform/platform"
 import { ExternalLink } from "@/runtime/platform/external-link"
 import { showToast } from "@/shell/notifications/toast"
-import { AnimatedWordmark } from "./animated-wordmark"
+import { Logo } from "@opencode/ui/logo"
 
-export function SettingsAbout(props: { active: boolean }) {
+export function SettingsAbout() {
   const language = useLanguage()
   const platform = usePlatform()
   const dialog = useDialog()
@@ -45,7 +45,7 @@ export function SettingsAbout(props: { active: boolean }) {
         <p>{language.t("settings.about.license")}</p>
       </div>
 
-      <AnimatedWordmark active={props.active} />
+      <Logo />
 
       <p class="settings-about-faint">
         <ExternalLink href="https://github.com/reddb-io/redcode">

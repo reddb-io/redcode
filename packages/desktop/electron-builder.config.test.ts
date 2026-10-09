@@ -68,7 +68,7 @@ test("shared packaging defaults", async () => {
   expect(await Bun.file(include).exists()).toBe(true)
   expect(config.files).toContain("!resources/redcode*")
   expect(config.extraResources).toEqual([
-    { from: "resources/icons", to: "icons" },
+    { from: "../ui/vendor/design-system/platform", to: "icons", filter: ["icon-512.png"] },
     { from: "resources/", to: "", filter: ["redcode", "redcode.exe", "redcode.version"] },
   ])
 })
