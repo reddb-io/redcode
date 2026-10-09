@@ -1,4 +1,5 @@
 import {
+  batch,
   createEffect,
   createMemo,
   For,
@@ -7,6 +8,7 @@ import {
   onCleanup,
   onMount,
   Show,
+  untrack,
   type Accessor,
   type JSX,
 } from "solid-js"
@@ -14,6 +16,7 @@ import { createStore } from "solid-js/store"
 import { Schema } from "effect"
 import { makeEventListener } from "@solid-primitives/event-listener"
 import { createMediaQuery } from "@solid-primitives/media"
+import { Icon } from "@opencode/ui/icon"
 import { ResizeHandle } from "@opencode/ui/resize-handle"
 import {
   SESSION_REVIEW_V2_SIDEBAR_WIDTH_DEFAULT,
@@ -38,6 +41,18 @@ import { useExtensionHost } from "./host"
 import { Contribution } from "./render"
 import { useExtensionAttachment } from "./attachment"
 import { legacyKeys, panelKey } from "./panel-keys"
+import {
+  adopt,
+  arrange,
+  companions,
+  groupOf,
+  move,
+  pick,
+  select,
+  WORKBENCH_INITIAL,
+  type WorkbenchGroup,
+  type WorkbenchState,
+} from "./workbench-model"
 
 type Tabs = Accessor<{
   all(): string[]
@@ -91,15 +106,27 @@ export function createPanelSidebar(): PanelSidebar {
   return sidebar
 }
 
+/** The workbench state the side region splits into groups with, for the routed shell tab. */
+export type Workbench = {
+  state: Accessor<WorkbenchState>
+  update(change: (state: WorkbenchState) => WorkbenchState): void
+}
+
 /**
  * Every panel extensions offer in one region of the routed session, merged with the stored strip. `view` returns the
- * routed session's object, a new one per routed session.
+ * routed session's object, a new one per routed session. On wide screens the open tabs, and the dock while
+ * `dock.entry` returns it, split into the workbench's top and bottom groups.
  */
 export function createRegion(input: {
   region: Panel["region"]
   view: Accessor<MountedSession>
   screen: SessionScreen
   tabs: Tabs
+  workbench?: Workbench
+  /** The side tabs show; while they do not, the column holds the dock alone. Defaults to shown. */
+  sideOpen?: Accessor<boolean>
+  /** The dock while it is open in the workbench, and how its tab closes it. */
+  dock?: { entry: Accessor<RegionEntry | undefined>; close(): void }
 }) {
   const host = useExtensionHost()
   const stored = () => input.tabs().all()
@@ -183,90 +210,219 @@ export function createRegion(input: {
   // Narrow screens never select a transient tab: a stored one falls back like a missing tab.
   const desktop = createMediaQuery("(min-width: 768px)")
 
-  const active = createMemo(() => {
-    const value = input.tabs().active()
-
-    if (value && strip().some((entry) => entry.key === value && (desktop() || !entry.tab.transient))) return value
-
-    const eligible = strip().filter((entry) => entry.tab.fallback && (desktop() || !entry.tab.transient))
+  // Fallback selection order: regular tabs, then `first` tabs, then pinned tabs, each only with `fallback` set.
+  const fallbackKeys = (list: readonly RegionEntry[]) => {
+    const eligible = list.filter((entry) => entry.tab.fallback && (desktop() || !entry.tab.transient))
 
     return [
       ...eligible.filter((entry) => !entry.tab.pinned && !entry.tab.first),
       ...eligible.filter((entry) => !entry.tab.pinned && entry.tab.first),
       ...eligible.filter((entry) => entry.tab.pinned),
-    ][0]?.key
+    ].map((entry) => entry.key)
+  }
+
+  // The narrow-screen selection: one strip, no groups.
+  const stripActive = createMemo(() => {
+    const value = input.tabs().active()
+
+    if (value && strip().some((entry) => entry.key === value && (desktop() || !entry.tab.transient))) return value
+
+    return fallbackKeys(strip())[0]
   })
 
-  // The effect's own value marks its first run: the selection the region mounts with, stored or fallback.
+  const workbench = () => input.workbench?.state() ?? WORKBENCH_INITIAL
+  const dock = () => input.dock?.entry()
+  const home = (key: string): WorkbenchGroup => (key === dock()?.key ? "bottom" : "top")
+
+  // What the column holds: the side tabs while they show, then the dock.
+  const column = createMemo(() => {
+    const value = dock()
+
+    return [...((input.sideOpen?.() ?? true) ? strip() : []), ...(value ? [value] : [])]
+  })
+
+  const columnByKey = createMemo(() => new Map(column().map((entry) => [entry.key, entry])))
+
+  const arranged = createMemo(() => arrange(column().map((entry) => entry.key), workbench(), home), undefined, {
+    equals: (a, b) => same(a.top, b.top) && same(a.bottom, b.bottom),
+  })
+
+  const groupEntries = (group: WorkbenchGroup) =>
+    createMemo(() => arranged()[group].flatMap((key) => columnByKey().get(key) ?? []), [], { equals: same })
+
+  const members = { top: groupEntries("top"), bottom: groupEntries("bottom") }
+
+  // A group's selection: its stored tab, then the last focused tab, then its fallback, then its first drawn tab.
+  const groupActive = (group: WorkbenchGroup) =>
+    createMemo(() => {
+      const list = members[group]()
+      const keys = list.map((entry) => entry.key)
+      const focused = input.tabs().active()
+
+      return pick(keys, workbench()[group], [
+        ...(focused === undefined ? [] : [focused]),
+        ...fallbackKeys(list),
+        ...list.filter((entry) => !entry.tab.hidden).map((entry) => entry.key),
+      ])
+    })
+
+  const groupSelection = { top: groupActive("top"), bottom: groupActive("bottom") }
+
+  // The last focused tab while a group shows it, otherwise the top group's selection.
+  const focused = createMemo(() => {
+    const key = input.tabs().active()
+
+    if (key !== undefined && (key === groupSelection.top() || key === groupSelection.bottom())) return key
+
+    return groupSelection.top() ?? groupSelection.bottom()
+  })
+
+  const active = createMemo(() => (desktop() ? focused() : stripActive()))
+
+  // A tab focused through the stored strip (an extension opening it, or a click) becomes its group's selection.
   createEffect(
-    on(active, (key, _, restored: boolean = true) => {
-      const entry = key ? byKey().get(key) : undefined
-
-      if (entry)
-        entry.provider.focus?.(
-          panelInput(input.view, input.screen, {
-            tab: entry.tab,
-            restored,
-          }),
-        )
-
-      return false
-    }),
+    on(
+      () => input.tabs().active(),
+      (key) => {
+        if (key === undefined || !input.workbench) return
+        const group = groupOf(untrack(workbench), key, home(key))
+        input.workbench.update((state) => select(state, group, key))
+      },
+      { defer: true },
+    ),
   )
+
+  // The effect's own value marks its first run: the selection the region mounts with, stored or fallback.
+  const focusOn = (selection: Accessor<string | undefined>, enabled: Accessor<boolean>) =>
+    createEffect(
+      on(selection, (key, _, restored: boolean = true) => {
+        const entry = key && enabled() ? byKey().get(key) : undefined
+
+        if (entry)
+          entry.provider.focus?.(
+            panelInput(input.view, input.screen, {
+              tab: entry.tab,
+              restored,
+            }),
+          )
+
+        return false
+      }),
+    )
+
+  focusOn(stripActive, () => !desktop())
+  focusOn(groupSelection.top, desktop)
+  focusOn(groupSelection.bottom, desktop)
 
   // Hidden tabs keep their place in the strip for selection, focus, and close, but draw no trigger.
   const drawn = createMemo(() => strip().filter((entry) => !entry.tab.hidden))
 
+  const entry = (key: string) => byKey().get(key) ?? (key === dock()?.key ? dock() : undefined)
+
+  const focusTab = (key: string) => input.tabs().setActive(key)
+
+  const close = (key: string) => {
+    if (key === dock()?.key) return input.dock?.close()
+
+    const value = byKey().get(key)
+    input.tabs().close(key)
+
+    if (value)
+      value.provider.close?.(
+        panelInput(input.view, input.screen, {
+          tab: value.tab,
+        }),
+      )
+  }
+
+  const group = (name: WorkbenchGroup) => ({
+    name,
+    /** Every member, hidden ones included, in strip order. */
+    entries: members[name],
+    /** Drawn trigger order by key. Renders iterate keys so a provider's fresh tab objects never remount a trigger. */
+    keys: createMemo(() => members[name]().flatMap((item) => (item.tab.hidden ? [] : [item.key])), [], {
+      equals: same,
+    }),
+    active: groupSelection[name],
+    selected: createMemo(() => {
+      const key = groupSelection[name]()
+
+      return key ? columnByKey().get(key) : undefined
+    }),
+    lead: () => !!members[name]().find((item) => !item.tab.hidden && !item.tab.pinned)?.tab.first,
+  })
+
   return {
     entries,
     /** Drawn strip order by key. Renders iterate keys so a provider's fresh tab objects never remount a trigger. */
-    keys: createMemo(() => drawn().map((entry) => entry.key), [], { equals: same }),
-    entry: (key: string) => byKey().get(key),
+    keys: createMemo(() => drawn().map((item) => item.key), [], { equals: same }),
+    entry,
     active,
     selected: createMemo(() => {
       const key = active()
 
-      return key ? byKey().get(key) : undefined
+      return key ? entry(key) : undefined
     }),
+    /** The workbench groups on wide screens. */
+    groups: { top: group("top"), bottom: group("bottom") },
+    /** Whether a group shows the tab, so the tab is on screen while its group is. */
+    showing: (key: string) => groupSelection.top() === key || groupSelection.bottom() === key,
+    /** The group a key is in, or would land in. */
+    groupOf: (key: string) => groupOf(workbench(), key, home(key)),
     wide: createMemo(() => providers().some((item) => item.value.wide)),
     /** An extension's tab ids in the stored strip. */
     openFor: (extension: string) =>
       stored().flatMap((key) => (key.startsWith(`${extension}:`) ? [key.slice(extension.length + 1)] : [])),
-    lead: () => !!drawn().find((entry) => !entry.tab.pinned)?.tab.first,
-    select(key: string) {
-      input.tabs().setActive(key)
+    lead: () => !!drawn().find((item) => !item.tab.pinned)?.tab.first,
+    select: focusTab,
+    close,
+    /** Moves a tab, and every tab that renders with it, to a group, and selects it there. */
+    move(key: string, to: WorkbenchGroup) {
+      const keys = companions(
+        column().map((item) => ({
+          key: item.key,
+          group: item.tab.group === undefined ? undefined : `${item.extension}/${item.tab.group}`,
+        })),
+        key,
+      )
+      batch(() => {
+        input.workbench?.update((state) => move(state, keys, to, home))
+        focusTab(key)
+      })
     },
-    close(key: string) {
-      const entry = byKey().get(key)
-      input.tabs().close(key)
-
-      if (entry)
-        entry.provider.close?.(
-          panelInput(input.view, input.screen, {
-            tab: entry.tab,
-          }),
-        )
+    /** Places tabs that appear after `before` in `target`: a launcher opened in a group opens its tab there. */
+    adopt(before: readonly string[], target: WorkbenchGroup) {
+      const after = column().map((item) => item.key)
+      input.workbench?.update((state) => adopt(state, { before, after, target, home }))
     },
+    /** The column's keys right now, for `adopt`. */
+    snapshot: () => column().map((item) => item.key),
   }
 }
 
 export type Region = ReturnType<typeof createRegion>
 
+export type RegionGroup = Region["groups"]["top"]
+
 /** Grouped content stays mounted while any member is listed; other tabs mount only while selected. */
 export function RegionContent(props: {
-  region: Region
+  group: Pick<RegionGroup, "entries" | "selected">
+  openFor: (extension: string) => readonly string[]
   view: MountedSession
   screen: SessionScreen
   frame: Omit<PanelFrame, "visible" | "open"> & { shown: Accessor<boolean> }
 }) {
+  // The dock renders once for the whole column; see `DockHost`.
+  const listed = createMemo(() => props.group.entries().filter((entry) => entry.provider.region !== "dock"))
+
   const groups = createMemo(() =>
-    Array.from(new Set(props.region.entries().flatMap((entry) => (entry.tab.group ? [groupKey(entry)] : [])))),
+    Array.from(new Set(listed().flatMap((entry) => (entry.tab.group ? [groupKey(entry)] : [])))),
   )
 
   const single = createMemo(() => {
-    const entry = props.region.selected()
+    const entry = props.group.selected()
 
-    return entry && !entry.tab.group ? entry.key : undefined
+    return entry && !entry.tab.group && entry.provider.region !== "dock" ? entry.key : undefined
   })
 
   return (
@@ -274,15 +430,15 @@ export function RegionContent(props: {
       <For each={groups()}>
         {(group) => {
           const active = () => {
-            const entry = props.region.selected()
+            const entry = props.group.selected()
 
             return !!entry && groupKey(entry) === group
           }
 
           // The last selected member keeps rendering while the group is hidden.
           const member = createMemo<RegionEntry | undefined>((previous) => {
-            const members = props.region.entries().filter((entry) => groupKey(entry) === group)
-            const selected = props.region.selected()
+            const members = listed().filter((entry) => groupKey(entry) === group)
+            const selected = props.group.selected()
 
             if (selected && groupKey(selected) === group) return selected
 
@@ -305,7 +461,7 @@ export function RegionContent(props: {
                     value={{
                       ...props.frame,
                       visible: () => props.frame.shown() && active(),
-                      open: () => props.region.openFor(extension),
+                      open: () => props.openFor(extension),
                     }}
                   >
                     <Contribution extension={extension}>
@@ -328,7 +484,7 @@ export function RegionContent(props: {
       </For>
       <Show when={single()} keyed>
         {(key) => {
-          const entry = createMemo(() => props.region.entries().find((item) => item.key === key))
+          const entry = createMemo(() => listed().find((item) => item.key === key))
 
           return (
             <Show when={entry()?.extension} keyed>
@@ -342,7 +498,7 @@ export function RegionContent(props: {
                   class="flex flex-col h-full overflow-hidden contain-strict"
                 >
                   <PanelContext.Provider
-                    value={{ ...props.frame, visible: props.frame.shown, open: () => props.region.openFor(extension) }}
+                    value={{ ...props.frame, visible: props.frame.shown, open: () => props.openFor(extension) }}
                   >
                     <Contribution extension={extension}>
                       {() =>
@@ -381,6 +537,48 @@ function panelInput<T extends object>(view: Accessor<MountedSession>, screen: Se
     },
     fields,
   )
+}
+
+/**
+ * The dock as a workbench tab: the first tab the first dock panel lists. The strip tab wraps the panel's tab, kept per
+ * panel tab object so its trigger never remounts, and never drags: the dock is not in the stored strip.
+ */
+export function createDockEntry(view: Accessor<MountedSession>, screen: SessionScreen) {
+  const host = useExtensionHost()
+  const wrapped = new WeakMap<PanelTab, PanelTab>()
+
+  return createMemo(
+    (): RegionEntry | undefined => {
+      const item = host.items(Panel).find((candidate) => candidate.value.region === "dock")
+      const tab = item?.value.list(panelInput(view, screen, { open: [] }))[0]
+
+      if (!item || !tab) return
+      const strip = wrapped.get(tab) ?? dockTab(tab)
+      wrapped.set(tab, strip)
+
+      return { key: panelKey(item.extension, tab.id), extension: item.extension, tab: strip, provider: item.value }
+    },
+    undefined,
+    { equals: (a, b) => a?.key === b?.key && a?.tab === b?.tab && a?.provider === b?.provider },
+  )
+}
+
+function dockTab(tab: PanelTab): PanelTab {
+  return {
+    id: tab.id,
+    get title() {
+      return tab.title
+    },
+    label: () => (
+      <span class="flex items-center gap-1.5">
+        <Icon name="terminal" size="small" />
+        <span>{tab.title}</span>
+      </span>
+    ),
+    draggable: false,
+    closable: "hover",
+    dom: { tab: "workbench-dock-tab", panel: "terminal-panel" },
+  }
 }
 
 /** The dock region: host frame, sizing, and resize around the dock panel an extension renders. */
@@ -539,6 +737,70 @@ export function DockRegion(props: {
       </div>
     </aside>
   )
+}
+
+/**
+ * The dock inside the workbench. It renders once and moves between the groups' slots, so moving the terminal to the
+ * other group or selecting another tab never remounts its sessions. With no slot (the dock closed, or its group not
+ * drawn) it waits in a hidden parking element, cached like the side dock was.
+ */
+export function DockHost(props: {
+  entry: RegionEntry
+  view: MountedSession
+  screen: SessionScreen
+  sidebar: PanelSidebar
+  target: HTMLElement | undefined
+  visible: boolean
+  animate: boolean
+}) {
+  let park: HTMLDivElement | undefined
+
+  const node = (
+    <div
+      id="terminal-panel"
+      data-component="terminal-panel"
+      role="region"
+      aria-label={props.entry.tab.title}
+      class="size-full flex flex-col overflow-hidden bg-elevation-base-surface"
+    >
+      <Show when={props.entry.extension} keyed>
+        {(extension) => (
+          <PanelContext.Provider
+            value={{
+              visible: () => props.visible,
+              present: () => true,
+              placement: () => "side",
+              reserve: () => false,
+              animate: () => props.animate,
+              sidebar: props.sidebar,
+              open: () => [],
+            }}
+          >
+            <Contribution extension={extension}>
+              {() =>
+                props.entry.provider.render(
+                  panelInput(() => props.view, props.screen, {
+                    get tab() {
+                      return props.entry.tab
+                    },
+                  }),
+                )
+              }
+            </Contribution>
+          </PanelContext.Provider>
+        )}
+      </Show>
+    </div>
+  ) as HTMLDivElement
+
+  createEffect(() => {
+    const target = props.target ?? park
+
+    if (target && node.parentElement !== target) target.appendChild(node)
+  })
+  onCleanup(() => node.remove())
+
+  return <div ref={park} class="hidden" aria-hidden="true" />
 }
 
 /** Renders one panel as a narrow-screen view. */

@@ -1,4 +1,4 @@
-import { createEffect, createMemo, type Accessor } from "solid-js"
+import { createMemo, type Accessor } from "solid-js"
 import { createStore } from "solid-js/store"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { useLayout } from "@/shell/state/layout"
@@ -7,10 +7,13 @@ import { createSizing } from "./helpers"
 import type { SessionModel } from "./model"
 import { clampSessionPanelWidth, sessionPanelWidthMax } from "./session-panel-width"
 
-/** wide asks for the wider session minimum; sidebar is whether any extension fills the side panel sidebar. */
+/**
+ * wide asks for the wider session minimum; sidebar is whether any extension fills the side panel sidebar; expanded is
+ * the workbench's full-width mode, where the side column takes the whole session area.
+ */
 export function createSessionScreenLayout(
   session: SessionModel,
-  input: { wide: Accessor<boolean>; sidebar: Accessor<boolean> },
+  input: { wide: Accessor<boolean>; sidebar: Accessor<boolean>; expanded: Accessor<boolean> },
 ) {
   const layout = useLayout()
   const settings = useSettings()
@@ -27,6 +30,8 @@ export function createSessionScreenLayout(
   )
 
   const resizable = createMemo(() => tabsOpen() || dockSideOpen())
+  // Full width needs a column to fill the area; with nothing open the conversation stays.
+  const expanded = createMemo(() => input.expanded() && resizable())
   const besideOpen = createMemo(() => resizable() || fileTreeOpen())
   const [rowSize, setRowSize] = createStore<{ width?: number; height?: number }>({})
   let row: HTMLDivElement | undefined
@@ -56,6 +61,8 @@ export function createSessionScreenLayout(
   const panelWidth = createMemo(() => {
     if (!besideOpen()) return "100%"
 
+    if (expanded()) return "0px"
+
     if (resizable()) return `${resizedWidth()}px`
 
     return `calc(100% - ${layout.fileTree.width()}px)`
@@ -71,37 +78,13 @@ export function createSessionScreenLayout(
 
   const panelLayout = createMemo(() => ({
     visible: tabsOpen() || dockSideOpen() || fileTreeOpen(),
-    stacked: tabsOpen() && dockSideOpen(),
   }))
-
-  const [motion, setMotion] = createStore({ gap: panelLayout().stacked, closing: false })
-  createEffect((previous) => {
-    const stacked = panelLayout().stacked
-
-    if (previous !== stacked) setMotion({ gap: stacked, closing: !stacked })
-
-    return stacked
-  }, panelLayout().stacked)
-  const sideRegionOpen = createMemo(() => tabsOpen() || fileTreeOpen())
-
-  const dockRegion = createMemo(() =>
-    Math.min(view().dock.height(), typeof window === "undefined" ? 600 : window.innerHeight * 0.6),
-  )
-
-  const dockRegionHeight = createMemo(() => `${dockRegion()}px`)
-  const sideHeight = createMemo(() => rowSize.height)
-  const fullSideHeight = createMemo(() => (sideHeight() === undefined ? "100%" : `${sideHeight()}px`))
-
-  const stackedRegionHeight = createMemo(() => {
-    const height = sideHeight()
-
-    if (height === undefined) return `calc(100% - ${dockRegionHeight()} - 8px)`
-
-    return `${Math.max(0, height - dockRegion() - 8)}px`
-  })
 
   const sideContentWidth = createMemo<string>((previous) => {
     const width = available()
+
+    // The conversation gives up its width and the gap beside it.
+    if (expanded() && width !== undefined) return `${width + 8}px`
 
     if (resizable() && width !== undefined) return `${Math.max(0, width - resizedWidth())}px`
 
@@ -112,44 +95,23 @@ export function createSessionScreenLayout(
 
   return {
     centered: createMemo(() => session.isDesktop()),
+    expanded,
     files: { open: fileTreeOpen },
     panel: {
       max: panelMax,
       ref: (element: HTMLDivElement) => {
         row = element
       },
-      resizable,
+      resizable: createMemo(() => resizable() && !expanded()),
       resizedWidth,
       width: panelWidth,
     },
     side: {
       contentWidth: sideContentWidth,
-      gap: {
-        closing: () => motion.closing,
-        height: createMemo(() => (motion.gap ? "8px" : "0px")),
-      },
       layout: panelLayout,
-      region: {
-        height: createMemo(() => {
-          if (!sideRegionOpen()) return "0px"
-
-          if (dockSideOpen()) return stackedRegionHeight()
-
-          return fullSideHeight()
-        }),
-        open: sideRegionOpen,
-      },
+      /** The workbench column: side tabs, or the dock while it sits beside the timeline. */
+      column: { open: createMemo(() => tabsOpen() || dockSideOpen()) },
       tabs: { open: tabsOpen },
-      dock: {
-        contentHeight: createMemo(() => (sideRegionOpen() ? dockRegionHeight() : fullSideHeight())),
-        height: createMemo(() => {
-          if (!dockSideOpen()) return "0px"
-
-          if (sideRegionOpen()) return dockRegionHeight()
-
-          return fullSideHeight()
-        }),
-      },
     },
     size,
     dock: {

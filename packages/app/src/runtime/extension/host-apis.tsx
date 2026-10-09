@@ -714,9 +714,11 @@ export function createExtensionAttachment(apis: HostApis) {
 
     if (!value) return "closed"
     const panel = layout.panel.state(value)
-    const active = mountedSession(session) ? (region()?.active() ?? panel.active) : panel.active
+    const shown = region()
+    // A mounted session's workbench shows one tab per group.
+    const active = mountedSession(session) && shown ? shown.showing(key) || shown.active() === key : panel.active === key
 
-    if (active !== key) return panel.all.includes(key) ? "open" : "closed"
+    if (!active) return panel.all.includes(key) ? "open" : "closed"
 
     return sideOpened(session) ? "visible" : "active"
   }
@@ -862,6 +864,24 @@ export function createExtensionAttachment(apis: HostApis) {
       return () => {
         if (sidebar() === value) setSidebar(undefined)
       }
+    },
+    /** Opens, toggles, and reads the routed session's panels by key, as extensions do through `Layout`. */
+    panels: {
+      open(key: string) {
+        const session = current()
+
+        if (session) open(key, session)
+      },
+      toggle(key: string) {
+        const session = current()
+
+        if (session) toggle(key, session)
+      },
+      state: (key: string): PanelState => {
+        const session = current()
+
+        return session ? state(key, session) : "closed"
+      },
     },
     /** Workspace files the routed session's side tabs show, in strip order, and the selected one. */
     files: {
