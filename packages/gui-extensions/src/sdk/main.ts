@@ -154,6 +154,11 @@ export interface Cli {
   readonly binary?: string
   /** An unpackaged app running the CLI from source. */
   readonly development: boolean
+  /**
+   * The CLI belongs to the Redcode installation this app ships in, so `redcode upgrade` updates both. False for a
+   * development CLI (`REDCODE_BIN`, PATH or source) and for a copy bundled in the app.
+   */
+  readonly installed: boolean
 }
 
 /** The server endpoints the app's windows use. */
@@ -171,7 +176,7 @@ export interface ServerEndpoints {
 export interface Lifecycle {
   /**
    * Marks the app as quitting and disposes every extension but the one whose `keep` scope is passed (the caller's
-   * `ctx.scope` by default), then runs handoff (e.g. quitAndInstall) or relaunches. The kept scope outlives shutdown
+   * `ctx.scope` by default), then runs handoff (e.g. an installer) or relaunches. The kept scope outlives shutdown
    * until the handoff settles, and keeps running when it fails (the promise rejects). Only an extension's `ctx.scope`
    * can be kept.
    *
@@ -180,7 +185,7 @@ export interface Lifecycle {
    *
    * @example
    * ```ts
-   * await ctx.lifecycle.restart(() => updater.quitAndInstall(), { keep: ctx.scope })
+   * await ctx.lifecycle.restart(() => startInstaller(), { keep: ctx.scope })
    * ```
    */
   restart(
@@ -347,7 +352,7 @@ export interface MainContext<D = never> extends BaseContext {
    *
    * @example
    * ```ts
-   * const provider = ctx.provide(Updater, { state: () => updater.state(), check, install })
+   * const provider = ctx.provide(Updater, { state: () => ({ upgradable }), upgrade })
    * ```
    */
   provide<S extends Extract<ProvidedSpec<D>, IpcSpec>>(token: Ipc<S>, impl: IpcImpl<S>): IpcProvider<S>

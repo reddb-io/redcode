@@ -1,15 +1,17 @@
-import { createMemo, type JSX } from "solid-js"
+import type { JSX } from "solid-js"
 import { Button } from "@opencode/ui/button"
 import { Switch } from "@opencode/ui/switch"
 import { useExtension } from "../sdk"
-import { updaterAction } from "./action"
-import type { UpdaterState } from "./contract"
 import type definition from "./index"
 
-export default function UpdatesSection(props: { state: () => UpdaterState | undefined; run: () => void }) {
+export default function UpdatesSection(props: {
+  /** Undefined while main is not active. */
+  upgradable: () => boolean | undefined
+  checking: () => boolean
+  run: () => void
+}) {
   const ctx = useExtension<typeof definition>()
   const releaseNotes = ctx.stores.releaseNotes
-  const action = createMemo(() => updaterAction(props.state()))
 
   return (
     <div class="settings-section">
@@ -29,15 +31,18 @@ export default function UpdatesSection(props: { state: () => UpdaterState | unde
           </div>
         </Row>
 
-        <Row title={ctx.t("check.title")} description={ctx.t("check.description")}>
+        <Row
+          title={ctx.t("check.title")}
+          description={ctx.t(props.upgradable() === false ? "check.development" : "check.description")}
+        >
           <Button
             data-action="settings-check-updates"
             size="normal"
             variant="neutral"
-            disabled={!action().run}
+            disabled={!props.upgradable() || props.checking()}
             onClick={() => props.run()}
           >
-            {ctx.t(action().label)}
+            {ctx.t(props.checking() ? "action.checking" : "action.checkNow")}
           </Button>
         </Row>
       </div>

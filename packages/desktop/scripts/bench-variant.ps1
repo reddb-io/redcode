@@ -1,7 +1,7 @@
 param([Parameter(Mandatory)][string]$Name, [int]$Runs = 5)
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot\..
-# electron-vite directly: the package's prebuild hook re-downloads the CLI, which the bench keeps fixed.
+# The steps of `bun run package`, run directly to filter their output and keep one unpacked app per variant.
 bunx electron-vite build 2>&1 | Select-String -Pattern "built in|error" | Select-Object -Last 3
 if (-not (Test-Path out\main\index.js)) { throw "build failed" }
 bunx electron-builder --win --dir --config electron-builder.config.ts 2>&1 | Select-String -Pattern "error|signing with signtool.*OpenCode Dev" | Select-Object -Last 2

@@ -10,7 +10,8 @@ const channel = (() => {
   return "dev"
 })()
 
-const nodePtyPkg = `@lydell/node-pty-${process.platform}-${process.arch}`
+// REDCODE_DESKTOP_ARCH names the architecture of a cross-architecture build (electron-builder --arm64 on an x64 host).
+const nodePtyPkg = `@lydell/node-pty-${process.platform}-${process.env.REDCODE_DESKTOP_ARCH ?? process.arch}`
 
 const appPlugin = (await import("@opencode/app/vite")).default
 const { icons } = await import("@opencode/app/vite.icons")

@@ -2,12 +2,9 @@ export * as DesignBrowser from "./design-browser"
 
 import { Design } from "@opencode/schema/design"
 import { Agent } from "@opencode/schema/agent"
-import type { Location } from "@opencode/schema/location"
-import { TuiEvent } from "@opencode/schema/tui-event"
 import { App } from "@opencode/core/app"
 import { Bus } from "@opencode/core/bus"
 import { DesignFeed } from "@opencode/core/design/feed"
-import { DesignAppBinary } from "@opencode/core/design/app-binary"
 import { DesignAppConnection } from "@opencode/core/design/app-connection"
 import { DesignAppMode } from "@opencode/core/design/app-mode"
 import { DesignFeedback } from "@opencode/core/design/feedback"
@@ -63,8 +60,6 @@ export const routes = (hosts: () => ReadonlyArray<string>, network: () => string
       const secret = Option.getOrElse(auth.password, () => DesignAccess.embeddedSecret())
       const previews = new Map<string, "building" | "ready" | "failed">()
       const bus = yield* Bus.Service
-      const fork = Effect.runForkWith(yield* Effect.context<never>())
-      const downloads = new Set<string>()
       const cors = yield* CorsConfig
       const locations = yield* LocationServiceMap.Service
 
@@ -83,37 +78,12 @@ export const routes = (hosts: () => ReadonlyArray<string>, network: () => string
         return reviewLink(new URL(origin).host, sessionID)
       }
 
-      /** Starts or joins the design app; a first-use download shows its progress in the Session's TUIs. */
-      const connectApp = (version: string | undefined, location: Location.Ref) => {
-        const connecting = appConnection.connect(version)
-        const key = `${location.workspaceID ?? ""}:${location.directory}`
-        // A waiting page reloads every second; one watcher per location keeps the toasts from multiplying.
-        if (downloads.has(key)) return connecting
-        downloads.add(key)
-        const stop = DesignAppBinary.watch((progress) => {
-          if (progress?.phase !== "download") return
-          fork(
-            bus.publish(
-              TuiEvent.ToastShow,
-              { message: DesignAppBinary.describe(progress), variant: "info", duration: 8_000 },
-              { location },
-            ),
-          )
-        })
-        const done = () => {
-          stop()
-          downloads.delete(key)
-        }
-        connecting.then(done, done)
-        return connecting
-      }
-
-      /** The design app's URL for a review route; none yet while the app still downloads or starts. */
-      const appLink = (sessionID: SessionSchema.ID, route: string, location: Location.Ref, version?: string) =>
+      /** The design app's URL for a review route; none yet while the app still starts. */
+      const appLink = (sessionID: SessionSchema.ID, route: string) =>
         Effect.tryPromise({
           try: async () => {
             const { DesignApp } = await import("@opencode/core/design/app")
-            return DesignApp.link(await connectApp(version, location), sessionID, route)
+            return DesignApp.link(await appConnection.connect(), sessionID, route)
           },
           catch: (error) =>
             new Design.Error({
@@ -155,9 +125,8 @@ export const routes = (hosts: () => ReadonlyArray<string>, network: () => string
         if (parts[0] === "link" && parts.length === 1 && request.method === "GET") {
           if (!trusted) return failure(401, "Server authorization is required to create a review link")
           const design = yield* configured
-          // A first download must not block the caller: the link to this server waits for the app on its own page.
-          if (DesignAppMode.process(design))
-            yield* appLink(sessionID, "/review", session.location, design?.app?.version)
+          // Starting the app must not block the caller: the link to this server waits for the app on its own page.
+          if (DesignAppMode.process(design)) yield* appLink(sessionID, "/review")
           return HttpServerResponse.jsonUnsafe({
             url: reviewLink(request.headers.host, sessionID),
             network: networkLink(request.headers.host, sessionID),
@@ -219,8 +188,7 @@ export const routes = (hosts: () => ReadonlyArray<string>, network: () => string
           DesignAccess.verify(secret, sessionID, request.cookies[DesignAccess.COOKIE])
         const design = page && signed && app.name !== DESIGN_APP ? yield* configured : undefined
         // Keep the browser on the owning server; another device cannot reach the app's loopback port.
-        if (design && DesignAppMode.process(design))
-          yield* appLink(sessionID, `/${parts.join("/")}`, session.location, design.app?.version)
+        if (design && DesignAppMode.process(design)) yield* appLink(sessionID, `/${parts.join("/")}`)
         if (parts[0] === "share" && parts.length === 1 && request.method === "GET")
           return HttpServerResponse.jsonUnsafe({
             url:

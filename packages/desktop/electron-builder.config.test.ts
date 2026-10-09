@@ -43,37 +43,25 @@ test.each(channels)("channel identity for $channel", async ({ channel, appId }) 
   expect(config.appId).toBe(appId)
   expect(config.extraMetadata?.desktopName).toBe(`${appId}.desktop`)
   expect(config.linux?.executableName).toBe(appId)
-  expect(config.linux?.desktop?.entry?.StartupWMClass).toBe(appId)
 
   expect(config.protocols).toMatchObject({ schemes: ["redcode"] })
   // The desktop ships in the Redcode release, so it carries the Redcode version.
   expect(config.extraMetadata?.version).toBe(
     process.env.REDCODE_VERSION ?? (await Bun.file(path.join(import.meta.dirname, "../redcode/package.json")).json()).version,
   )
-  // Only production reads the rolling desktop-latest feed; GitHub's "latest" release belongs to the CLI.
-  expect(config.publish).toEqual(
-    channel === "prod"
-      ? [{ provider: "generic", url: "https://github.com/reddb-io/redcode/releases/download/desktop-latest" }]
-      : undefined,
-  )
-
-  for (const fpm of [config.deb?.fpm, config.rpm?.fpm])
-    expect(fpm).toContainEqual(expect.stringContaining(`/usr/share/metainfo/${appId}.metainfo.xml`))
 })
 
 test("shared packaging defaults", async () => {
   const config = await load("dev")
   // Releases are unsigned until signing is set up, so nothing may try to notarize.
   expect(config.mac?.notarize).toBe(false)
-  expect(config.artifactName).toBe("redcode-desktop-${os}-${arch}.${ext}")
   expect(config.mac?.extendInfo?.NSAutoFillRequiresTextContentTypeForOneTimeCodeOnMac).toBe(true)
-  const include = path.join(import.meta.dirname, "resources/windows/installer.nsh")
-  expect(config.nsis?.include).toBe(include)
-  expect(await Bun.file(include).exists()).toBe(true)
-  expect(config.files).toContain("!resources/redcode*")
+  // The Redcode release ships the unpacked app beside the redcode it runs: no installers and no bundled CLI.
+  expect([config.mac?.target, config.win?.target, config.linux?.target]).toEqual(["dir", "dir", "dir"])
+  expect(config.afterPack).toBeUndefined()
+  // The Linux launcher the app writes on first launch takes this icon.
   expect(config.extraResources).toEqual([
     { from: "../design-system/platform", to: "icons", filter: ["icon-512.png"] },
-    { from: "resources/", to: "", filter: ["redcode", "redcode.exe", "redcode.version"] },
   ])
 })
 
@@ -106,10 +94,6 @@ test("trims external dependencies without excluding runtime files", async () => 
     for (const file of [
       "@zip.js/zip.js/index.js",
       "@zip.js/zip.js/lib/z-worker-inline.js",
-      "electron-updater/out/main.js",
-      "electron-updater/out/MacUpdater.js",
-      "electron-updater/out/NsisUpdater.js",
-      "electron-updater/out/providers/GitHubProvider.js",
       "builder-util-runtime/out/httpExecutor.js",
       "ajv/dist/ajv.js",
       "ajv/dist/refs/json-schema-draft-07.json",
@@ -120,9 +104,10 @@ test("trims external dependencies without excluding runtime files", async () => 
       "unrelated/dist/index.cjs",
       "unrelated/dist/data.json",
       "unrelated/src/index.ts",
-      ...["@zip.js/zip.js", "electron-updater", "builder-util-runtime", "ajv", "ajv-formats", "js-yaml"].flatMap(
-        (name) => [`${name}/package.json`, `${name}/LICENSE`],
-      ),
+      ...["@zip.js/zip.js", "builder-util-runtime", "ajv", "ajv-formats", "js-yaml"].flatMap((name) => [
+        `${name}/package.json`,
+        `${name}/LICENSE`,
+      ]),
     ]) {
       expect(included(file)).toBe(true)
     }

@@ -26,10 +26,6 @@ Development runs against the `redcode` on `PATH`. Overrides:
 REDCODE_DESKTOP_CHANNEL=prod bun run package
 ```
 
-`scripts/prebuild.ts` bundles the Redcode binary for this platform from the latest `redcode-<os>-<arch>` release
-archive (`REDCODE_DESKTOP_RELEASE` picks a release, `REDCODE_DESKTOP_BINARY` a local binary or directory) as
-`resources/redcode`, with its version in `resources/redcode.version`. Packaged apps stage that binary under the
-profile directory before starting the service, so an app update never replaces a running executable.
-
-Releases are built by `.github/workflows/desktop.yml` from `desktop-v*` tags and published beside the CLI releases;
-the rolling `desktop-latest` release carries the update feed.
+This builds the unpacked app (`electron-builder --dir`) in `dist/`. It carries no CLI: it runs the `redcode` of the
+installation it ships in. Releases build it in `.github/workflows/redcode.yml`, which ships it in the `vX.Y.Z` Redcode
+release beside `redcode`; `redcode desktop` opens it.

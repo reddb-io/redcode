@@ -350,32 +350,102 @@ jobs:
         with:
           ref: ${{ needs.plan.outputs.sha }}
       - uses: ./.github/actions/setup-bun
-      - name: Build Design app and release archives
+      - name: Build Design app binaries and whiteboard bundle
         working-directory: packages/design-app
         run: bun run build --release
       - name: Exercise compiled Design app
         working-directory: packages/design-app
         run: bun script/smoke.ts dist/redcode-design-linux-x64/redcode-design
-      - name: Verify Design archive checksums
+      # upload-artifact drops file modes, so the per-target binaries travel in one tarball that keeps
+      # their executable bit; the build job places them beside redcode in its archives and npm packages.
+      - name: Pack Design app binaries for the Redcode build
         working-directory: packages/design-app/dist
-        run: sha256sum --check SHA256SUMS
+        run: tar -cf "$RUNNER_TEMP/redcode-design-dist.tar" redcode-design-* "redcode-whiteboard-$REDCODE_DESIGN_APP_VERSION.tar.gz"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: redcode-design-release
-          path: |
-            packages/design-app/dist/*.tar.gz
-            packages/design-app/dist/*.zip
-            packages/design-app/dist/manifest.json
-            packages/design-app/dist/SHA256SUMS
+          name: redcode-design-dist
+          path: ${{ runner.temp }}/redcode-design-dist.tar
           if-no-files-found: error
           retention-days: 7
           compression-level: 0
 
+  desktop:
+    if: github.event_name == 'workflow_dispatch'
+    needs: plan
+    name: desktop (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      # Each app is built on its own OS and architecture, so node-pty and Electron match without cross-compiling.
+      matrix:
+        include:
+          - { name: linux-x64, host: ubuntu-latest, os: linux, arch: x64 }
+          - { name: linux-arm64, host: ubuntu-24.04-arm, os: linux, arch: arm64 }
+          - { name: darwin-x64, host: macos-15-intel, os: mac, arch: x64 }
+          - { name: darwin-arm64, host: macos-15, os: mac, arch: arm64 }
+          - { name: windows-x64, host: windows-2025, os: win, arch: x64 }
+          - { name: windows-arm64, host: windows-11-arm, os: win, arch: arm64 }
+    runs-on: ${{ matrix.host }}
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+        working-directory: packages/desktop
+    env:
+      REDCODE_DESKTOP_CHANNEL: prod
+      REDCODE_DESKTOP_ARCH: ${{ matrix.arch }}
+      REDCODE_VERSION: ${{ needs.plan.outputs.version }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+      - uses: ./.github/actions/setup-bun
+      # The shell is the same everywhere; one platform keeps the matrix fast.
+      - name: Typecheck and test the desktop shell
+        if: matrix.name == 'linux-x64'
+        run: |
+          bun run typecheck
+          bun run test
+      # Releases are not signed yet; electron-builder must not look for certificates or try to publish.
+      - name: Build the unpacked app
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: |
+          bun run build
+          bunx electron-builder --${{ matrix.os }} --${{ matrix.arch }} --dir --publish never --config electron-builder.config.ts
+      # REDCODE_DESKTOP_DIST/<os>-<arch>/ holds exactly what goes under desktop/ beside redcode: the contents of
+      # electron-builder's *-unpacked folder, or Redcode.app on macOS. upload-artifact drops file modes and
+      # symlinks, so the folder travels as a tar. tar only sees relative names: GNU tar on Windows reads `D:` as a host.
+      - name: Normalize and pack the unpacked app
+        env:
+          NAME: ${{ matrix.name }}
+          OS: ${{ matrix.os }}
+        run: |
+          set -euo pipefail
+          cd dist
+          if [ "$OS" = mac ]; then set -- mac*/Redcode.app; else set -- *-unpacked; fi
+          test "$#" -eq 1
+          test -e "$1"
+          mkdir -p "normalized/$NAME"
+          if [ "$OS" = mac ]; then
+            tar -cf - -C "$(dirname "$1")" Redcode.app | tar -xf - -C "normalized/$NAME"
+            test -x "normalized/$NAME/Redcode.app/Contents/MacOS/Redcode"
+          else
+            tar -cf - -C "$1" . | tar -xf - -C "normalized/$NAME"
+            if [ "$OS" = win ]; then test -f "normalized/$NAME/Redcode.exe"; else test -x "normalized/$NAME/io.reddb.redcode"; fi
+          fi
+          tar -cf "desktop-$NAME.tar" -C normalized "$NAME"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: desktop-${{ matrix.name }}
+          path: packages/desktop/dist/desktop-${{ matrix.name }}.tar
+          if-no-files-found: error
+          retention-days: 7
+
   build:
     if: github.event_name == 'workflow_dispatch'
-    needs: [plan, sidecar]
+    needs: [plan, sidecar, design, desktop]
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     env:
       REDCODE_VERSION: ${{ needs.plan.outputs.version }}
       REDCODE_DESIGN_APP_VERSION: ${{ needs.plan.outputs.version }}
@@ -391,6 +461,34 @@ jobs:
           pattern: rpc-sidecar-*
           path: packages/rpc-sidecar/dist/release
           merge-multiple: true
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: redcode-design-dist
+          path: ${{ runner.temp }}/design-artifact
+      - name: Extract Design app binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/design-dist"
+          tar -xf "$RUNNER_TEMP/design-artifact/redcode-design-dist.tar" -C "$RUNNER_TEMP/design-dist"
+          echo "REDCODE_DESIGN_DIST=$RUNNER_TEMP/design-dist" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: desktop-*
+          path: ${{ runner.temp }}/desktop-artifact
+          merge-multiple: true
+      - name: Extract the unpacked desktop apps
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/desktop-dist"
+          for file in "$RUNNER_TEMP"/desktop-artifact/desktop-*.tar; do
+            tar -xf "$file" -C "$RUNNER_TEMP/desktop-dist"
+          done
+          for target in linux-x64 linux-arm64 darwin-x64 darwin-arm64 windows-x64 windows-arm64; do
+            test -d "$RUNNER_TEMP/desktop-dist/$target"
+          done
+          echo "REDCODE_DESKTOP_DIST=$RUNNER_TEMP/desktop-dist" >> "$GITHUB_ENV"
       - name: Build Redcode native packages
         working-directory: packages/redcode
         env:
@@ -398,6 +496,9 @@ jobs:
           BUN_COMPILE_RELEASE: bun-v1.4.2
           REDCODE_RPC_SIDECAR_DIR: ${{ github.workspace }}/packages/rpc-sidecar/dist/release
         run: bun run build
+      - name: Place the Design and desktop apps beside each Redcode target
+        working-directory: packages/redcode
+        run: bun run assemble
       - name: Exercise compiled Redcode CLI and agents
         shell: bash
         run: |
@@ -408,6 +509,7 @@ jobs:
           "$binary" --help > /tmp/redcode-help.txt
           grep -F 'Redcode command line interface' /tmp/redcode-help.txt
           grep -F 'design' /tmp/redcode-help.txt
+          grep -F 'desktop' /tmp/redcode-help.txt
           grep -F 'setup' /tmp/redcode-help.txt
           if grep -F 'OpenCode command line interface' /tmp/redcode-help.txt; then
             echo 'Redcode binary exposes the upstream product name' >&2
@@ -417,9 +519,30 @@ jobs:
           for agent in build plan design question; do
             grep -E "^$agent \\(" /tmp/redcode-agents.txt
           done
-      - name: Archive binaries and sidecars
+          design=packages/redcode/dist/redcode-design-linux-x64/bin/redcode-design
+          test -x "$design"
+          test "$("$design" --version)" = "$REDCODE_VERSION"
+      - name: Archive binaries, sidecars and the Design and desktop apps
         working-directory: packages/redcode
         run: bun run archive
+      - name: Verify the desktop app in the archives and npm packages
+        working-directory: packages/redcode
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -tzvf release/redcode-linux-x64.tar.gz > /tmp/redcode-linux-x64.txt
+          grep -E '^-rwx.* desktop/io\.reddb\.redcode$' /tmp/redcode-linux-x64.txt
+          grep -E ' desktop/resources/app\.asar$' /tmp/redcode-linux-x64.txt
+          tar -tzf release/redcode-darwin-arm64.tar.gz | grep -Fx 'desktop/Redcode.app/Contents/MacOS/Redcode'
+          unzip -Z1 release/redcode-windows-x64.zip | grep -Fx 'desktop/Redcode.exe'
+          # musl has no desktop app.
+          if tar -tzf release/redcode-linux-x64-musl.tar.gz | grep '^desktop/' > /dev/null; then
+            echo 'The musl archive must not carry the desktop app' >&2
+            exit 1
+          fi
+          for target in linux-x64 linux-arm64 darwin-x64 darwin-arm64 windows-x64 windows-arm64; do
+            tar -tf "dist/redcode-desktop-$target/desktop/desktop.tar" > /dev/null
+          done
       - name: Pack npm packages
         working-directory: packages/redcode
         run: bun run publish --pack-only
@@ -453,7 +576,7 @@ jobs:
     # Exercise the exact shipped archive in a fresh home before publication, without model credentials.
     name: smoke (built binary)
     if: github.event_name == 'workflow_dispatch'
-    needs: [plan, build, design]
+    needs: [plan, build]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -467,22 +590,26 @@ jobs:
         with:
           name: redcode-smoke-linux-x64
           path: ${{ runner.temp }}/redcode-archive
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: redcode-design-release
-          path: ${{ runner.temp }}/design-archive
-      - name: Extract the shipped Linux archives
+      - name: Extract the shipped Linux archive
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/redcode" "$RUNNER_TEMP/design"
+          mkdir -p "$RUNNER_TEMP/redcode"
           tar -xzf "$RUNNER_TEMP/redcode-archive/redcode-linux-x64.tar.gz" -C "$RUNNER_TEMP/redcode"
-          tar -xzf "$RUNNER_TEMP/design-archive/redcode-design-linux-x64.tar.gz" -C "$RUNNER_TEMP/design"
           test -x "$RUNNER_TEMP/redcode/redcode"
           test -x "$RUNNER_TEMP/redcode/redcode-rpc-sidecar"
-          test -x "$RUNNER_TEMP/design/redcode-design"
+          test -x "$RUNNER_TEMP/redcode/redcode-design"
+      # No display here: `redcode desktop --path` resolves the app beside redcode without opening it.
+      - name: Resolve the desktop app beside the built binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          app=$(REDCODE_TEST_HOME="$(mktemp -d)" "$RUNNER_TEMP/redcode/redcode" desktop --path | tail -n 1)
+          test "$app" = "$RUNNER_TEMP/redcode/desktop/io.reddb.redcode"
+          test -x "$app"
       - name: Install headless Chromium for the Design review
         run: node packages/core/node_modules/playwright-core/cli.js install --with-deps --only-shell chromium
+      # Without --design-bin, redcode runs the redcode-design that sits beside it in the archive.
       - name: Smoke-test the built binary
         timeout-minutes: 8
         env:
@@ -493,7 +620,6 @@ jobs:
             --binary "$RUNNER_TEMP/redcode/redcode" \
             --version "$REDCODE_VERSION" \
             --design \
-            --design-bin "$RUNNER_TEMP/design/redcode-design" \
             --artifacts "$RUNNER_TEMP/smoke-artifacts"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
@@ -508,11 +634,11 @@ jobs:
     if: inputs.publish && github.repository == 'reddb-io/redcode' && github.ref == 'refs/heads/main'
     needs: [plan, verify, tests, vault-coverage, build, design, smoke]
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # Each release carries the desktop app per platform, about 1.5 GB of uploads and downloads.
+    timeout-minutes: 90
     environment: red-release
     env:
       REDCODE_VERSION: ${{ needs.plan.outputs.version }}
-      REDCODE_DESIGN_APP_VERSION: ${{ needs.plan.outputs.version }}
       REDCODE_RELEASE_SHA: ${{ needs.plan.outputs.sha }}
       REDCODE_CHANNEL: latest
       REDCODE_RELEASE: "1"
@@ -531,10 +657,6 @@ jobs:
         with:
           name: redcode-release-archives
           path: packages/redcode/release
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: redcode-design-release
-          path: packages/design-app/dist
       - name: Extract reviewed release notes
         run: |
           bun -e '
@@ -544,24 +666,6 @@ jobs:
             if (!section) throw new Error(`Missing Changesets release notes for ${version}`)
             await Bun.write("release-notes.md", `## ${section.trim()}\n`)
           '
-      - name: Prepare Design release
-        env:
-          GH_TOKEN: ${{ secrets.RELEASE_PAT || github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          tag="design-v$REDCODE_VERSION"
-          (cd packages/design-app/dist && sha256sum --check SHA256SUMS)
-          test "$(bun -e 'console.log((await Bun.file("packages/design-app/dist/manifest.json").json()).version)')" = "$REDCODE_VERSION"
-          if git rev-parse "$tag^{commit}" >/dev/null 2>&1; then
-            test "$(git rev-parse "$tag^{commit}")" = "$REDCODE_RELEASE_SHA"
-          fi
-          if ! gh release view "$tag" >/dev/null 2>&1; then
-            gh release create "$tag" --draft --target "$REDCODE_RELEASE_SHA" --title "Redcode Design $tag" --notes-file release-notes.md
-          fi
-          if [ "$(gh release view "$tag" --json isDraft --jq .isDraft)" = "true" ]; then
-            gh release upload "$tag" packages/design-app/dist/*.tar.gz packages/design-app/dist/*.zip packages/design-app/dist/manifest.json packages/design-app/dist/SHA256SUMS --clobber
-          fi
       - name: Prepare draft release
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PAT || github.token }}
@@ -588,25 +692,25 @@ jobs:
           root=$(mktemp -d)
           gh release download "v$REDCODE_VERSION" --dir "$root/assets"
           (cd "$root/assets" && sha256sum --check SHA256SUMS)
-          gh release download "design-v$REDCODE_VERSION" --dir "$root/design"
-          (cd "$root/design" && sha256sum --check SHA256SUMS)
-          test "$(bun -e 'console.log((await Bun.file(process.argv[1]).json()).version)' "$root/design/manifest.json")" = "$REDCODE_VERSION"
-          mkdir "$root/design-native"
-          tar -xzf "$root/design/redcode-design-linux-x64.tar.gz" -C "$root/design-native"
-          test "$("$root/design-native/redcode-design" --version)" = "$REDCODE_VERSION"
-          test "$("$root/design-native/redcode-design" --protocol)" = "$(bun -e 'console.log((await Bun.file(process.argv[1]).json()).protocol)' "$root/design/manifest.json")"
+          test -f "$root/assets/redcode-whiteboard-$REDCODE_VERSION.tar.gz"
           mkdir "$root/cli-native"
           tar -xzf "$root/assets/redcode-linux-x64.tar.gz" -C "$root/cli-native"
           test "$("$root/cli-native/redcode" --version)" = "redcode v$REDCODE_VERSION"
           test -x "$root/cli-native/redcode-rpc-sidecar"
+          # The design app must speak the protocol of the redcode source this release was built from.
+          protocol=$(sed -n 's/^export const PROTOCOL = \([0-9][0-9]*\)$/\1/p' packages/core/src/design/app.ts)
+          test -n "$protocol"
+          test "$("$root/cli-native/redcode-design" --version)" = "$REDCODE_VERSION"
+          test "$("$root/cli-native/redcode-design" --protocol)" = "$protocol"
+          test -x "$root/cli-native/desktop/io.reddb.redcode"
+          app=$(REDCODE_TEST_HOME="$root/home" "$root/cli-native/redcode" desktop --path | tail -n 1)
+          test "$app" = "$root/cli-native/desktop/io.reddb.redcode"
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PAT || github.token }}
         shell: bash
         run: |
-          gh release edit "design-v$REDCODE_VERSION" --draft=false
           gh release edit "v$REDCODE_VERSION" --draft=false
-          test "$(gh release view "design-v$REDCODE_VERSION" --json isDraft --jq .isDraft)" = 'false'
           test "$(gh release view "v$REDCODE_VERSION" --json isDraft --jq .isDraft)" = 'false'
 
   publish_npm:
@@ -614,11 +718,11 @@ jobs:
     if: inputs.publish && github.repository == 'reddb-io/redcode' && github.ref == 'refs/heads/main'
     needs: [plan, verify, tests, vault-coverage, build, design, smoke]
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # Each release carries the desktop app per platform, about 1.5 GB of uploads and downloads.
+    timeout-minutes: 90
     environment: red-release
     env:
       REDCODE_VERSION: ${{ needs.plan.outputs.version }}
-      REDCODE_DESIGN_APP_VERSION: ${{ needs.plan.outputs.version }}
       REDCODE_CHANNEL: latest
       REDCODE_RELEASE: "1"
       NPM_PUBLISH_MODE: ${{ vars.NPM_PUBLISH_MODE || 'token' }}
@@ -695,6 +799,12 @@ jobs:
           npm install --prefer-online --prefix "$root/install" --ignore-scripts --no-audit --no-fund "@reddb-io/redcode@$REDCODE_VERSION"
           test "$("$root/install/node_modules/.bin/redcode" --version)" = "redcode v$REDCODE_VERSION"
           test -x "$root/install/node_modules/@reddb-io/redcode-linux-x64/bin/redcode-rpc-sidecar"
+          test -x "$root/install/node_modules/@reddb-io/redcode-design-linux-x64/bin/redcode-design"
+          test -f "$root/install/node_modules/@reddb-io/redcode-desktop-linux-x64/desktop/desktop.tar"
+          # The first resolution extracts the npm package's app into the cache.
+          app=$(REDCODE_TEST_HOME="$root/home" "$root/install/node_modules/.bin/redcode" desktop --path | tail -n 1)
+          test "$app" = "$root/home/.red/code/cache/desktop/$REDCODE_VERSION/io.reddb.redcode"
+          test -x "$app"
           test "$(npm view "@reddb-io/redcode@$REDCODE_VERSION" version --prefer-online)" = "$REDCODE_VERSION"
 
   release_status:
@@ -717,8 +827,8 @@ jobs:
           fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,
             '## Redcode ' + process.env.REDCODE_VERSION + '\n\n' +
             '| Destination | Result |\n| --- | --- |\n' +
-            '| GitHub CLI and Design | ' + github + ' |\n' +
-            '| npm main and native packages | ' + npm + ' |\n')
+            '| GitHub release (CLI, design and desktop apps) | ' + github + ' |\n' +
+            '| npm main, native, design and desktop app packages | ' + npm + ' |\n')
           if (github !== 'success' || npm !== 'success') {
             console.error('Release incomplete: GitHub=' + github + ', npm=' + npm)
             process.exitCode = 1

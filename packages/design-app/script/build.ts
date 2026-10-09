@@ -1,11 +1,12 @@
 #!/usr/bin/env bun
 
-// Builds redcode-design, the design app, as one compiled binary for every platform redcode ships,
-// named the way redcode's own build names its target (REDCODE_TARGET) so a redcode downloads the
-// matching one. With --release it packs them with the whiteboard bundle, a manifest carrying the
-// protocol, and SHA256SUMS; --upload adds them to the design-v<version> GitHub release.
+// Builds redcode-design, the design app, as one compiled binary for every platform redcode ships, into
+// dist/redcode-design-<target>/, named the way redcode's own build names its target (REDCODE_TARGET).
+// packages/redcode's assemble step places each one beside the redcode of the same target, so the app
+// ships in redcode's own vX.Y.Z release and npm packages. With --release it also builds the whiteboard
+// bundle that release carries, dist/redcode-whiteboard-<version>.tar.gz.
 //
-// Usage: build.ts [--single] [--skip-install] [--release] [--upload]
+// Usage: build.ts [--single] [--skip-install] [--release]
 
 import { $ } from "bun"
 import path from "path"
@@ -16,7 +17,6 @@ process.chdir(dir)
 
 const single = process.argv.includes("--single")
 const release = process.argv.includes("--release")
-const upload = process.argv.includes("--upload")
 const skipInstall = process.argv.includes("--skip-install")
 const version = process.env.REDCODE_DESIGN_APP_VERSION ?? process.env.REDCODE_VERSION ?? redcode.version
 if (!/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(version)) throw new Error(`Invalid design app version: ${version}`)
@@ -56,7 +56,6 @@ const workerPath = "design-raster-worker.js"
 await $`rm -rf dist`
 // Resolve native packages for all release targets from the workspace lockfile.
 if (!skipInstall) await $`bun install --frozen-lockfile --os="*" --cpu="*"`.cwd("../..")
-const built: string[] = []
 for (const item of targets) {
   const platform = [
     item.os === "win32" ? "windows" : item.os,
@@ -109,34 +108,11 @@ for (const item of targets) {
       throw new Error(`smoke test: ${binary} --protocol printed ${protocol}, not ${DesignApp.PROTOCOL}`)
     console.log(`smoke test passed: ${name} ${reported}, protocol ${protocol}`)
   }
-  built.push(name)
 }
 
+// The whiteboard bundle rides on the release: only the design app serves whiteboards, and it downloads
+// the bundle of its own version the first time a diagram is opened as one.
 if (release) {
-  const archives = await Promise.all(
-    built.map(async (name) => {
-      if (name.includes("-linux-")) {
-        await $`tar -czf ../${name}.tar.gz *`.cwd(`dist/${name}`)
-        return `dist/${name}.tar.gz`
-      }
-      await $`zip -r ../${name}.zip *`.cwd(`dist/${name}`)
-      return `dist/${name}.zip`
-    }),
-  )
-  // The whiteboard bundle rides on this release: only the design app serves whiteboards, and it
-  // downloads the bundle of its own version the first time a diagram is opened as one.
   await $`bun ../cli/script/whiteboard-bundle.ts --archive`.env({ ...process.env, REDCODE_VERSION: version })
   await $`cp ../cli/dist/redcode-whiteboard-${version}.tar.gz dist/`
-  // What redcode reads before it downloads anything: a release of another protocol is refused.
-  await Bun.write("dist/manifest.json", `${JSON.stringify({ version, protocol: DesignApp.PROTOCOL })}\n`)
-  const files = [...archives, `dist/redcode-whiteboard-${version}.tar.gz`, "dist/manifest.json"].sort()
-  const sums = await Promise.all(
-    files.map(
-      async (file) =>
-        `${new Bun.CryptoHasher("sha256").update(await Bun.file(file).bytes()).digest("hex")}  ${path.basename(file)}`,
-    ),
-  )
-  await Bun.write("dist/SHA256SUMS", `${sums.join("\n")}\n`)
-  if (upload)
-    await $`gh release upload design-v${version} ${files} dist/SHA256SUMS --clobber --repo ${process.env.GH_REPO}`
 }

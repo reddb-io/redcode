@@ -16,14 +16,9 @@
     "predev": "bun ./scripts/predev.ts",
     "dev": "bun ./scripts/dev.ts",
     "migration": "bun ./scripts/migration.ts",
-    "prebuild": "bun ./scripts/prebuild.ts",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
-    "package": "bun run build && bun ./scripts/prebuild.ts && electron-builder --config electron-builder.config.ts",
-    "package:mac": "bun run build && bun ./scripts/prebuild.ts && electron-builder --mac --config electron-builder.config.ts",
-    "package:win": "bun run build && bun ./scripts/prebuild.ts && electron-builder --win --config electron-builder.config.ts",
-    "package:linux": "bun run build && bun ./scripts/prebuild.ts && electron-builder --linux --config electron-builder.config.ts",
-    "package:dir": "bun run build && bun ./scripts/prebuild.ts && electron-builder --dir --config electron-builder.config.ts",
+    "package": "bun run build && electron-builder --dir --config electron-builder.config.ts",
     "bench:startup": "bun ./scripts/bench-startup.ts"
   },
   "main": "./out/main/index.js",
@@ -31,7 +26,6 @@
     "@zip.js/zip.js": "2.7.62",
     "electron-context-menu": "5.0.0",
     "electron-log": "5.4.4",
-    "electron-updater": "6.8.9",
     "lighthouse": "13.4.1"
   },
   "devDependencies": {

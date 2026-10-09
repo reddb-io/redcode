@@ -37,6 +37,9 @@ export const defaultVisibility: VisibilityOptions = {
 
 export type PublishOutcome = "published" | "skipped" | "conflict" | "staged"
 
+/** How many platform packages publish at once: a release carries one CLI and one design app per target. */
+export const PUBLISH_BATCH = 6
+
 /** Only a registry miss permits publication; authentication and network failures must stop it. */
 export function registryLookup(spec: string, result: { exitCode: number; stderr: string }) {
   if (result.exitCode === 0) return true
@@ -178,7 +181,12 @@ export async function publishRelease(
   options: VisibilityOptions = defaultVisibility,
 ) {
   const { platforms, main } = input
-  const outcomes = await Promise.all(platforms.map((item) => publishOnce(item, deps)))
+  // Batches keep a release's dozens of publishes from reaching npm, and its rate limits, all at once.
+  const outcomes: PublishOutcome[] = []
+  for (let index = 0; index < platforms.length; index += PUBLISH_BATCH)
+    outcomes.push(
+      ...(await Promise.all(platforms.slice(index, index + PUBLISH_BATCH).map((item) => publishOnce(item, deps)))),
+    )
   // An E409 "previously staged" is authoritative: waiting cannot make a staged version visible.
   const stagedNow = platforms.filter((_, index) => outcomes[index] === "staged")
   if (stagedNow.length > 0) throw new StagedPublishError(stagedNow, main)

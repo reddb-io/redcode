@@ -4,9 +4,7 @@ import { Button } from "@opencode/ui/button"
 import { Dialog } from "@opencode/ui/dialog"
 import { useExtension, type DialogHandle, type SetupContext } from "../sdk"
 import type definition from "./index"
-
-// GitHub releases carry no desktop highlights, so this only records the version as seen until Redcode publishes its own.
-const CHANGELOG_URL = "https://api.github.com/repos/reddb-io/redcode/releases"
+import { RELEASES_URL } from "./release"
 
 type Highlight = {
   title: string
@@ -62,7 +60,9 @@ export function showWhatsNew(
 
   ctx.signal.addEventListener("abort", () => timers.forEach(clearTimeout))
 
-  fetch(CHANGELOG_URL, { signal: ctx.signal, headers: { Accept: "application/json" } })
+  // GitHub releases carry no desktop highlights, so this only records the version as seen until Redcode publishes its
+  // own.
+  fetch(RELEASES_URL, { signal: ctx.signal, headers: { Accept: "application/json" } })
     .then((response) => (response.ok ? response.json() : undefined))
     .then((json) => {
       if (!json) return

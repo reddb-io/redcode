@@ -435,7 +435,7 @@ export type IpcImpl<S extends IpcSpec> = {
  *
  * @example
  * ```ts
- * const provider = ctx.provide(Updater, { state: () => updater.state(), check, install })
+ * const provider = ctx.provide(Updater, { state: () => ({ upgradable }), upgrade })
  * provider.changed()
  * ```
  */

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import {
+  PUBLISH_BATCH,
   isPublishConflict,
   isStagedConflict,
   registryLookup,
@@ -217,6 +218,27 @@ describe("publishRelease", () => {
     for (const name of platforms) expect(npm.events.indexOf(`publish:${name}`)).toBeLessThan(mainPublish)
     expect(npm.now()).toBeGreaterThanOrEqual(30_000)
     expect(npm.events.lastIndexOf(`view:${platforms[1]}`)).toBeLessThan(mainPublish)
+  })
+
+  test("publishes the platform packages a batch at a time", async () => {
+    const npm = fakeNpm()
+    const running = { now: 0, most: 0 }
+    const names = Array.from({ length: PUBLISH_BATCH * 2 + 1 }, (_, index) => `@reddb-io/redcode-target-${index}`)
+    const packages = names.map((name) => {
+      const inner = npm.pkg(name)
+      return npm.pkg(name, async () => {
+        running.now++
+        running.most = Math.max(running.most, running.now)
+        await Bun.sleep(1)
+        await inner.publish()
+        running.now--
+      })
+    })
+    expect(await publishRelease({ platforms: packages, main: npm.pkg(main) }, npm.deps, options)).toBe("published")
+    expect(running.most).toBe(PUBLISH_BATCH)
+    expect(npm.events.filter((event) => event.startsWith("publish:@reddb-io/redcode-target-"))).toHaveLength(
+      names.length,
+    )
   })
 
   test("continues past a platform conflict on rerun", async () => {

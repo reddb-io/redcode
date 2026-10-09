@@ -111,7 +111,11 @@ test("Don't show these in the future turns release notes off and closes What's N
   await expect.poll(() => stored(page, RELEASE_NOTES)).toEqual({ enabled: false })
 })
 
-test("a rejected update check shows one failure title without repeating it as a description", async ({ page }) => {
+test("a rejected upgrade shows one failure title without repeating it as a description", async ({ page }) => {
+  // An unreadable release list still offers the upgrade, without a version.
+  await page.route("https://api.github.com/repos/reddb-io/redcode/releases", (route) =>
+    route.fulfill({ status: 503, headers: cors }),
+  )
   await mockWorkspace(page, { name: "UpdateCheck", sessions: [] })
   await page.goto(
     `/e2e/utils/settings-wsl.html?${new URLSearchParams({ server: SERVER, mode: "stopped", updater: "" })}`,
@@ -120,9 +124,9 @@ test("a rejected update check shows one failure title without repeating it as a 
   const check = settings.getByRole("button", { name: "Check now", exact: true })
   await expect(check).toBeEnabled()
   await check.click()
+  await page.getByRole("dialog").getByRole("button", { name: "Update and quit", exact: true }).click()
   await expect(page.getByText("Request failed", { exact: true })).toBeVisible()
   await expect(page.getByText("Request failed", { exact: true })).toHaveCount(1)
-  await expect(page.getByText("You're up to date", { exact: true })).toHaveCount(0)
 })
 
 test("What's New opened after the attachment mounts waits for the routes, then keeps focus over restored Settings", async ({

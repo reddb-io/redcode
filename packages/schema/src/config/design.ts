@@ -65,7 +65,7 @@ export class Info extends Schema.Class<Info>("ConfigV2.Design")({
       .pipe(Schema.optional)
       .annotate({
         description:
-          'Design app release to run: an exact version such as "0.1.0", or "latest" for the newest release that speaks this redcode\'s protocol. Default: the release this redcode was built with. Releases are downloaded from GitHub on first use into the cache directory and verified against their SHA256SUMS; REDCODE_DESIGN_BIN overrides the binary.',
+          "Deprecated and ignored: the design app now ships with redcode in the same release, so redcode always runs the one installed beside it. Kept so existing configurations still validate; REDCODE_DESIGN_BIN overrides the binary.",
       }),
   })
     .pipe(Schema.optional)

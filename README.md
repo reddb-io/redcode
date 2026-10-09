@@ -42,9 +42,11 @@ mise use -g github:reddb-io/redcode@latest
 ```
 
 Native archives for Linux, macOS and Windows are also on the
-[Redcode releases](https://github.com/reddb-io/redcode/releases) page. Each includes
-`redcode` and `redcode-rpc-sidecar`; checksums are in `SHA256SUMS`. Keep one installation
-method per machine.
+[Redcode releases](https://github.com/reddb-io/redcode/releases) page (`tar.gz`, `zip` on
+Windows). Each includes `redcode`, `redcode-rpc-sidecar` and `redcode-design`, the design app
+that serves Design mode's browser review; checksums are in `SHA256SUMS`. Every installation
+method ships the design app with redcode, so Design never downloads it separately. Keep one
+installation method per machine.
 
 ## Use
 
