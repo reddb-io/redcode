@@ -49,10 +49,13 @@ import {
   currentToolInput,
   currentToolMetadata,
   currentToolOutput,
+  currentToolFailed,
   executeToolFailed,
 } from "../message/current-tool-state"
 import { AssistantReasoningContent, writeClipboard } from "../message/message-content"
 import { followShellOutput } from "./shell-output"
+import { countSteps, stepSummary } from "../timeline/turn"
+import { formatElapsed, now } from "../components/clock"
 
 function ShellSubmessage(props: { text: string; animate?: boolean }) {
   let widthRef: HTMLSpanElement | undefined
@@ -542,54 +545,14 @@ export function CurrentContextToolGroup(props: {
   const pending = createMemo(
     () => props.busy || tools().some((tool) => tool.state.status === "streaming" || tool.state.status === "running"),
   )
-  const names = createMemo(() =>
-    i18n.list(
-      [
-        ...new Set(
-          props.parts.flatMap((part) => {
-            if (part.type !== "tool" && part.type !== "shell") return []
-            return [
-              part.type !== "tool"
-                ? i18n.t("ui.tool.shell")
-                : part.name === "skill"
-                  ? i18n.t("ui.tool.skill")
-                  : part.name === "subagent"
-                    ? i18n.t("ui.tool.agent.default")
-                    : getToolInfo(
-                        part.name,
-                        undefined,
-                        part.name === "websearch" ? currentToolMetadata(part) : undefined,
-                      ).title,
-            ]
-          }),
-        ),
-      ].filter(Boolean),
-    ),
-  )
   const label = createMemo(() => {
+    const counts = countSteps(tools(), props.parts.filter((part) => part.type === "shell").length)
+    if (counts.length > 0) return stepSummary(counts, i18n)
     const thoughts = props.parts.filter((part) => part.type === "reasoning").length
-    if (!names() && !thoughts) {
-      const text = i18n.t("ui.messagePart.context.updates")
-      return { text, title: "", before: text, count: "", between: "", after: "" }
-    }
-    const title = names() || i18n.plural("ui.messagePart.context.thought", thoughts)
-    const count = props.parts.filter((part) => part.type === "tool" || part.type === "shell").length || thoughts
-    const text = i18n.plural("ui.messagePart.tools.used", count, { tools: title })
-    const index = text.indexOf(title)
-    const before = text.slice(0, index).trim()
-    const countText = String(count)
-    const countIndex = before.indexOf(countText)
-    const after = text.slice(index + title.length).trim()
-    if (countIndex === -1) return { text, title, before, count: "", between: "", after }
-    return {
-      text,
-      title,
-      before: before.slice(0, countIndex).trim(),
-      count: countText,
-      between: before.slice(countIndex + countText.length).trim(),
-      after,
-    }
+    if (thoughts > 0) return i18n.plural("ui.messagePart.context.thought", thoughts)
+    return i18n.t("ui.messagePart.context.updates")
   })
+  const failed = createMemo(() => tools().some(currentToolFailed))
   const items = createMemo(() =>
     (props.open ? props.parts : []).reduce<
       (SessionMessageAssistantTool[] | Exclude<ContextGroupPart, SessionMessageAssistantTool>)[]
@@ -645,25 +608,9 @@ export function CurrentContextToolGroup(props: {
         open={props.open}
         onOpenChange={change}
         trigger={
-          <div data-component="context-tool-group-trigger" aria-label={label().text}>
+          <div data-component="context-tool-group-trigger" data-failed={failed() ? "" : undefined}>
             <span data-slot="context-tool-group-title">
-              <Show when={label().before || label().count || label().between}>
-                <span data-slot="context-tool-group-usage">
-                  <Show when={label().before}>
-                    {(before) => <span data-slot="context-tool-group-prefix">{before()}</span>}
-                  </Show>
-                  <Show when={label().count}>
-                    {(count) => <span data-slot="context-tool-group-count">{count()}</span>}
-                  </Show>
-                  <Show when={label().between}>
-                    {(between) => <span data-slot="context-tool-group-prefix">{between()}</span>}
-                  </Show>
-                </span>
-              </Show>
-              <Show when={label().title}>{(title) => <span data-slot="basic-tool-tool-title">{title()}</span>}</Show>
-              <Show when={label().after}>
-                {(after) => <span data-slot="context-tool-group-prefix">{after()}</span>}
-              </Show>
+              <span data-slot="basic-tool-tool-title">{label()}</span>
             </span>
           </div>
         }
@@ -1028,10 +975,16 @@ export interface ToolProps {
   meta?: string
 }
 
-/** How long a finished tool ran, formatted for the right edge of its row. */
+/**
+ * How long a tool ran, formatted for the right edge of its row. A running tool ticks on the
+ * shared clock; a finished one keeps its sub-10s precision.
+ */
 export function toolDuration(tool: SessionMessageAssistantTool, i18n: UiI18n) {
   const completed = tool.time.completed
-  if (completed === undefined) return undefined
+  if (completed === undefined)
+    return tool.state.status === "running"
+      ? formatElapsed(now() - (tool.time.ran ?? tool.time.created), i18n)
+      : undefined
   const ms = Math.max(0, completed - (tool.time.ran ?? tool.time.created))
   const numfmt = new Intl.NumberFormat(i18n.locale(), { maximumFractionDigits: ms < 10_000 ? 1 : 0 })
   if (ms < 60_000) return i18n.t("ui.message.duration.seconds", { count: numfmt.format(ms / 1000) })

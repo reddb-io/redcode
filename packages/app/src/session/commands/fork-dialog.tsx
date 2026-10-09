@@ -24,16 +24,59 @@ function formatTime(date: Date): string {
   return date.toLocaleTimeString(undefined, { timeStyle: "short" })
 }
 
-export const DialogFork: Component = () => {
-  const params = useParams()
+/**
+ * Forks a session before one of its prompts and opens the fork with that prompt restored in
+ * its composer. `onForked` runs once the fork exists, before navigating to it.
+ */
+export function useForkFromMessage() {
   const navigate = useNavigate()
   const data = useData()
   const serverSDK = useServerSDK()
   const location = useWorkspaceLocation()
   const prompt = useComposerState()
-  const dialog = useDialog()
   const language = useLanguage()
   const server = useServer()
+
+  return async (sessionID: string, messageID: string, onForked?: () => void) => {
+    const message = data.session.message.get(sessionID, messageID)
+    if (message?.type !== "user") return
+    const restored = extractPromptFromMessage(message, {
+      directory: location().directory,
+      attachmentName: language.t("common.attachment"),
+    })
+    const dir = base64Encode(location().directory)
+
+    await serverSDK.api.session
+      .fork({ sessionID, before: messageID })
+      .then((forked) => {
+        data.session.remember(forked)
+        onForked?.()
+        const target = prompt.capture({ dir, id: forked.id })
+        target.set(restored)
+        target.context.replaceComments(
+          extractPromptComments(message).map((comment) => ({
+            type: "file",
+            path: comment.path,
+            selection: comment.selection,
+            comment: comment.comment,
+            preview: comment.preview,
+            commentOrigin: comment.origin,
+          })),
+        )
+        navigate(sessionHref(server.key, forked.id))
+      })
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err)
+        showToast({ title: language.t("common.requestFailed"), description: message })
+      })
+  }
+}
+
+export const DialogFork: Component = () => {
+  const params = useParams()
+  const data = useData()
+  const dialog = useDialog()
+  const language = useLanguage()
 
   const messages = createMemo((): ForkableMessage[] => {
     const sessionID = params.id
@@ -55,42 +98,12 @@ export const DialogFork: Component = () => {
     return result.reverse()
   })
 
+  const fork = useForkFromMessage()
   const handleSelect = (item: ForkableMessage | undefined) => {
     if (!item) return
-
     const sessionID = params.id
     if (!sessionID) return
-    const message = data.session.message.get(sessionID, item.id)
-    if (message?.type !== "user") return
-    const restored = extractPromptFromMessage(message, {
-      directory: location().directory,
-      attachmentName: language.t("common.attachment"),
-    })
-    const dir = base64Encode(location().directory)
-
-    serverSDK.api.session
-      .fork({ sessionID, before: item.id })
-      .then((forked) => {
-        data.session.remember(forked)
-        dialog.close()
-        const target = prompt.capture({ dir, id: forked.id })
-        target.set(restored)
-        target.context.replaceComments(
-          extractPromptComments(message).map((comment) => ({
-            type: "file",
-            path: comment.path,
-            selection: comment.selection,
-            comment: comment.comment,
-            preview: comment.preview,
-            commentOrigin: comment.origin,
-          })),
-        )
-        navigate(sessionHref(server.key, forked.id))
-      })
-      .catch((err: unknown) => {
-        const message = err instanceof Error ? err.message : String(err)
-        showToast({ title: language.t("common.requestFailed"), description: message })
-      })
+    void fork(sessionID, item.id, () => dialog.close())
   }
 
   return (

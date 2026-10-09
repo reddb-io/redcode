@@ -25,6 +25,9 @@ import { getSessionMessageHandoff } from "@/session/handoff"
 import type { ReasoningMode } from "@opencode/session-ui/timeline/projection"
 
 const emptyMessages: SessionMessageInfo[] = []
+// Turn disclosure choices, keyed by the globally unique prompt ID so they survive switching
+// sessions. A turn nobody toggled is absent and follows its running state.
+const [turnOpen, setTurnOpen] = createStore<Record<string, boolean | undefined>>({})
 const taskDescription = (message: SessionMessageInfo, sessionID: string): string | undefined => {
   if (message.type !== "assistant") return
   const tool = message.content.findLast((item) => {
@@ -131,6 +134,7 @@ export function createTimelineController(input: { session: TimelineSessionSource
     editToolDefaultOpen: editToolPartsExpanded,
     timelineDetail,
     pendingUserMessageIDs,
+    turns: { open: (id) => turnOpen[id] },
   })
   const [pending, setPending] = createStore({ rename: false })
 
@@ -258,6 +262,10 @@ export function createTimelineController(input: { session: TimelineSessionSource
       childTitle,
       showHeader,
       projection,
+      turns: {
+        open: (id: string) => turnOpen[id],
+        set: (id: string, open: boolean) => setTurnOpen(id, open),
+      },
       timelineDetail,
       reasoningMode,
       shellToolPartsExpanded,

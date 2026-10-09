@@ -19,7 +19,6 @@ import { IconButton } from "@opencode/ui/icon-button"
 import { InlineInput } from "@opencode/ui/inline-input"
 import { Keybind } from "@opencode/ui/keybind"
 import { Menu } from "@opencode/ui/menu"
-import { TextShimmer } from "@opencode/ui/text-shimmer"
 import { SummaryPopover } from "../summary/popover"
 import { SessionContextUsage } from "@/session/timeline/session-context-usage"
 import { useLanguage } from "@/runtime/i18n/language"
@@ -27,6 +26,9 @@ import { useServer } from "@/runtime/server/current"
 import { useWorkspaceLocation } from "@/workspaces/location"
 import { Timeline } from "@opencode/session-ui/timeline/projection"
 import { createSessionTimelineRowRenderer } from "@opencode/session-ui/timeline/row"
+import { liveActivity } from "@opencode/session-ui/timeline/turn"
+import { LiveTurnStatus } from "@opencode/session-ui/timeline/turn-parts"
+import { useForkFromMessage } from "../commands/fork-dialog"
 import { getReadyMarkdown, preloadMarkdown } from "@opencode/session-ui/markdown-cache"
 import { createTimelineController, type TimelineController, type TimelineSessionSource } from "./controller"
 import { createTimelineVirtualizer } from "./virtualizer"
@@ -95,6 +97,8 @@ type MessageTimelineProps = {
   setContentRef: (el: HTMLDivElement) => void
   diffs: Accessor<{ additions: number; deletions: number }[] | undefined>
   onReview: () => void
+  /** Opens the changes a turn made; without it the review panel opens unfiltered. */
+  onViewChanges?: (files: string[]) => void
   workspaceMoveEligible: boolean
   onSummaryOpenChange: (open: boolean) => void
   anchor: (id: string) => string
@@ -196,7 +200,13 @@ function MessageTimelineView(
     onUserScroll: props.onUserScroll,
     onHistoryScroll: props.onHistoryScroll,
     canRenderImmediately: (row, disclosure) => {
-      if (row._tag === "TurnGap" || row._tag === "TurnDivider") return true
+      if (
+        row._tag === "TurnGap" ||
+        row._tag === "TurnDivider" ||
+        row._tag === "TurnSummary" ||
+        row._tag === "TurnChanges"
+      )
+        return true
       if (row._tag === "Notice") {
         const message = messageByID().get(row.messageID)
         return (
@@ -228,7 +238,22 @@ function MessageTimelineView(
         !!getReadyMarkdown({ raw: content.text, src: content.text }, `${row.group.ref.partID}:0:full`)
       )
     },
-    setRevealMessage: props.setRevealMessage,
+    // A search hit inside a folded turn opens that turn before scrolling to it.
+    setRevealMessage:
+      props.setRevealMessage &&
+      ((reveal) =>
+        props.setRevealMessage?.((id, partID) => {
+          const rows = projection.rows()
+          const hidden =
+            !!partID &&
+            !rows.some(
+              (row) => row._tag === "AssistantPart" && row.group.type === "part" && row.group.ref.partID === partID,
+            ) &&
+            rows.some((row) => row._tag === "TurnSummary" && row.userMessageID === id)
+          if (!hidden) return reveal(id, partID)
+          props.data.turns.set(id, true)
+          requestAnimationFrame(() => reveal(id, partID))
+        })),
     setScrollToEnd: props.setScrollToEnd,
   })
   const VirtualizedTimeline = virtualized.View
@@ -281,6 +306,7 @@ function MessageTimelineView(
   })
 
   announceRestricted(props.session.data.info)
+  const fork = useForkFromMessage()
   // Design cards name a revision by its number (R7) when the agent's publish announced it in this session.
   const designRevisions = createMemo(() => designOrdinals(props.session.history.messages()))
   const rowRenderer = createSessionTimelineRowRenderer({
@@ -323,7 +349,12 @@ function MessageTimelineView(
         />
       ) : undefined
     },
-    actions: props.actions,
+    actions: {
+      ...props.actions,
+      fork: ({ sessionID, messageID }) => fork(sessionID, messageID),
+      viewChanges: ({ files }) => (props.onViewChanges ? props.onViewChanges(files) : props.onReview()),
+    },
+    turns: props.data.turns,
     reasoningMode: props.data.reasoningMode,
     shellToolDefaultOpen: props.data.shellToolPartsExpanded,
     editToolDefaultOpen: props.data.editToolPartsExpanded,
@@ -365,32 +396,16 @@ function MessageTimelineView(
       !data.session.pending.list(id).some((item) => item.type === "user" && item.delivery === "steer")
     )
       return false
-    const content = assistant?.content.at(-1)
-    if (
-      assistant?.time.completed === undefined &&
-      assistant?.time.streamed === undefined &&
-      content?.type === "text" &&
-      content.text.trim()
+    return true
+  })
+  const activity = createMemo(() => {
+    const active = projection.activeMessageID()
+    if (!showWorking() || !active) return undefined
+    const user = messageByID().get(active)
+    return liveActivity(
+      projection.assistantMessagesByParent().get(active) ?? [],
+      user?.type === "user" ? user.time.created : Date.now(),
     )
-      return false
-    const background = new Set(props.background.tasks().map((task) => task.id))
-    return !projection.rows().some((row) => {
-      if (row.userMessageID !== active) return false
-      if (row._tag === "Thinking") return true
-      if (row._tag === "Notice") {
-        const message = messageByID().get(row.messageID)
-        return message?.type === "compaction" && message.status === "running"
-      }
-      // Used groups keep the fallback regardless of disclosure state.
-      if (row._tag !== "AssistantPart" || row.group.type === "context") return false
-      return (row.group.type === "part" ? [row.group.ref] : row.group.refs).some((ref) => {
-        const content = Timeline.resolveContent(messageByID().get(ref.messageID), ref.partID)
-        if (content?.type !== "tool") return false
-        if (content.state.status === "streaming" || content.state.status === "running") return true
-        const taskID = content.state.metadata?.[content.name === "subagent" ? "sessionID" : "shellID"]
-        return background.has(content.id) || (typeof taskID === "string" && background.has(taskID))
-      })
-    })
   })
   return (
     <VirtualizedTimeline
@@ -406,10 +421,8 @@ function MessageTimelineView(
             <div
               class={`flex h-9 items-center gap-2 pt-3 font-mono text-[13px] font-medium leading-text-compact text-ink-muted ${turnPadding()}`}
             >
-              <Show when={showWorking()}>
-                <div data-component="session-working" role="status">
-                  <TextShimmer text={language.t("session.timeline.working")} active />
-                </div>
+              <Show when={activity()}>
+                {(activity) => <LiveTurnStatus kind={activity().kind} since={activity().since} />}
               </Show>
               <Show when={backgroundHintPresence.present()}>
                 <div

@@ -268,3 +268,22 @@
 [data-slot="session-turn-list"] {
   gap: 24px;
 }
+
+/*
+  An open turn's steps hang off its "Worked for" header on a 1px rule, the transcript's
+  tool-result language. The row gap moves inside the container so the rule runs unbroken
+  from step to step.
+*/
+[data-turn-step] [data-slot="session-turn-message-container"] {
+  padding-top: var(--turn-step-gap, 0px);
+  background-image: linear-gradient(var(--reddb-color-elevation-base-border), var(--reddb-color-elevation-base-border));
+  background-size: 1px 100%;
+  background-repeat: repeat-y;
+  background-origin: content-box;
+  background-clip: border-box;
+  background-position: 4px 0;
+
+  & > * {
+    padding-inline-start: 18px;
+  }
+}

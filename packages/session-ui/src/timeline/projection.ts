@@ -11,6 +11,7 @@ import { createMemo, mapArray, type Accessor } from "solid-js"
 import { currentContentDefaultOpen, currentToolFailed, currentToolHasLoadedFiles } from "../message/current-tool-state"
 import { TimelineRow, type PartGroup, type PartRef, type TimelineRowMap } from "./timeline-row"
 import { timelineCategory, timelineNoticeRequired, type TimelineDetail } from "./detail"
+import { projectTurnRows, turnEdited } from "./turn"
 
 export { TimelineRow, type PartGroup, type PartRef, type TimelineRowMap }
 
@@ -81,6 +82,12 @@ export function createReactiveTimelineProjection(input: {
   editToolDefaultOpen?: Accessor<boolean>
   timelineDetail?: Accessor<TimelineDetail>
   pendingUserMessageIDs?: Accessor<ReadonlySet<string>>
+  /**
+   * Gives each prompted turn a "Worked for" summary row and an edited-files card, and hides the
+   * steps of a closed turn. `open` answers undefined until a person toggles the turn: running
+   * turns then show their steps and finished ones fold them away.
+   */
+  turns?: { open: (userMessageID: string) => boolean | undefined }
 }) {
   const sessionMessageByID = createMemo(
     () => new Map(input.sessionMessages().map((message) => [message.id, message] as const)),
@@ -116,9 +123,26 @@ export function createReactiveTimelineProjection(input: {
     ),
   )
   const activeMessageID = createMemo(() => projection().activeMessageID)
+  const turnRows = createMemo(() => {
+    const turns = input.turns
+    if (!turns) return { rows: projection().rows, steps: new Set<string>() }
+    const working = (id: string) => input.status().type !== "idle" && activeMessageID() === id
+    return projectTurnRows(projection().rows, {
+      open: (id) => turns.open(id) ?? working(id),
+      working,
+      edited: (id) => turnEdited(assistantMessagesByParent().get(id) ?? []),
+      answer: (row) =>
+        row.group.type === "part" &&
+        Timeline.resolveContent(sessionMessageByID().get(row.group.ref.messageID), row.group.ref.partID)?.type ===
+          "text",
+    })
+  })
   const rows = createMemo((previous: TimelineRow.TimelineRow[] | undefined) =>
-    reuseTimelineRows(previous, projection().rows),
+    reuseTimelineRows(previous, turnRows().rows),
   )
+  const turnSteps = createMemo(() => turnRows().steps, undefined, {
+    equals: (previous, next) => previous.size === next.size && [...next].every((key) => previous.has(key)),
+  })
   const rowByKey = createMemo(() => new Map(rows().map((row) => [TimelineRow.key(row), row] as const)))
   const messageRowIndex = createMemo(() => {
     const result = new Map<string, number>()
@@ -151,6 +175,7 @@ export function createReactiveTimelineProjection(input: {
     rowByKey,
     rows,
     sessionMessageByID,
+    turnSteps,
     userContextByID,
   }
 }

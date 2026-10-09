@@ -25,6 +25,8 @@ import { SessionRetry } from "../components/session-retry"
 import { SessionError } from "../components/session-error"
 import { timelineCategory, type TimelineDetail } from "./detail"
 import { currentToolFailed } from "../message/current-tool-state"
+import { countSteps, editedFiles, turnTools } from "./turn"
+import { TurnChangesCard, TurnHeader } from "./turn-parts"
 import {
   createReactiveTimelineProjection,
   Timeline,
@@ -68,6 +70,11 @@ export function createSessionTimelineRowRenderer(input: {
   centered?: Accessor<boolean>
   padding?: Accessor<string>
   anchor?: (messageID: string) => string | undefined
+  /** Each turn's steps disclosure; pairs with the projection's `turns` input. */
+  turns?: {
+    open: (userMessageID: string) => boolean | undefined
+    set: (userMessageID: string, open: boolean) => void
+  }
 }) {
   const i18n = useI18n()
   const data = useData()
@@ -110,6 +117,13 @@ export function createSessionTimelineRowRenderer(input: {
     if (completed === undefined || completed < user.time.created) return undefined
     return completed - user.time.created
   }
+  // The turn's assistant messages, kept stable while their membership is unchanged so
+  // finished turns do not recount on every streamed delta elsewhere in the session.
+  const turnMessages = (messageID: string) =>
+    createMemo(() => input.projection.assistantMessagesByParent().get(messageID) ?? emptyAssistantMessages, undefined, {
+      equals: (previous, next) =>
+        previous.length === next.length && previous.every((message, index) => message === next[index]),
+    })
   const copyContentID = (messageID: string) => {
     if (workingTurn(messageID)) return null
     const message = input.projection
@@ -380,18 +394,25 @@ export function createSessionTimelineRowRenderer(input: {
     return { label: message.description ?? message.text }
   }
 
+  const step = (row: FramedTimelineRow) => input.projection.turnSteps().has(TimelineRow.key(row))
   const Frame = (props: { row: FramedTimelineRow; children: JSX.Element }) => (
     <div
       id={props.row._tag === "UserMessage" ? input.anchor?.(props.row.userMessageID) : undefined}
       data-message-id={props.row.userMessageID}
       data-timeline-row={props.row._tag}
       data-timeline-spacing={props.row._tag === "AssistantPart" ? props.row.spacing : undefined}
+      data-turn-step={step(props.row) ? "" : undefined}
       classList={{
         "min-w-0 w-full max-w-full": true,
         "md:max-w-[1000px] md:mx-auto": input.centered?.(),
-        "pt-2": props.row._tag === "AssistantPart" && props.row.spacing === "tool",
-        "pt-4": props.row._tag === "AssistantPart" && props.row.spacing === "content",
+        "pt-2": !step(props.row) && props.row._tag === "AssistantPart" && props.row.spacing === "tool",
+        "pt-4": !step(props.row) && props.row._tag === "AssistantPart" && props.row.spacing === "content",
       }}
+      style={
+        step(props.row) && props.row._tag === "AssistantPart" && props.row.spacing
+          ? { "--turn-step-gap": props.row.spacing === "tool" ? "8px" : "16px" }
+          : undefined
+      }
     >
       <div data-component="session-turn" class="min-w-0 w-full relative" style={{ height: "auto" }}>
         {props.children}
@@ -741,6 +762,56 @@ export function createSessionTimelineRowRenderer(input: {
               </Show>
             </div>
           </div>
+        </Frame>
+      )
+    }
+    const turnRow = row()
+    if (turnRow._tag === "TurnSummary") {
+      const id = turnRow.userMessageID
+      const messages = turnMessages(id)
+      const counts = createMemo(() => countSteps(turnTools(messages())))
+      const start = () => {
+        const user = input.projection.messageByID().get(id)
+        return user?.type === "user" ? user.time.created : Date.now()
+      }
+      const open = () => input.turns?.open(id) ?? workingTurn(id)
+      return (
+        <Frame row={turnRow}>
+          <div data-slot="session-turn-message-container" class={`w-full pt-2 ${padding()}`}>
+            <TurnHeader
+              open={open()}
+              working={workingTurn(id)}
+              start={start()}
+              durationMs={duration(id)}
+              counts={counts()}
+              onToggle={() => {
+                input.turns?.set(id, !open())
+                onSizeChange?.()
+              }}
+            />
+          </div>
+        </Frame>
+      )
+    }
+    if (turnRow._tag === "TurnChanges") {
+      const id = turnRow.userMessageID
+      const messages = turnMessages(id)
+      const files = createMemo(() => editedFiles(turnTools(messages())))
+      const actions = input.actions
+      return (
+        <Frame row={turnRow}>
+          <Show when={files().length > 0}>
+            <div data-slot="session-turn-message-container" class={`w-full ${padding()}`}>
+              <TurnChangesCard
+                files={files()}
+                onView={
+                  actions?.viewChanges &&
+                  ((paths) => actions.viewChanges?.({ sessionID: input.sessionID(), messageID: id, files: paths }))
+                }
+                onUndo={actions?.revert && (() => actions.revert?.({ sessionID: input.sessionID(), messageID: id }))}
+              />
+            </div>
+          </Show>
         </Frame>
       )
     }

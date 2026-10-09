@@ -19,6 +19,7 @@ import { TextShimmer } from "@opencode/ui/text-shimmer"
 import { BasicTool } from "../components/basic-tool"
 import { reasoningHeading } from "../timeline/projection"
 import { Card } from "@opencode/ui/card"
+import { quietControl } from "@opencode/ui/contracts/quiet-control"
 import type {
   PromptAgentAttachment,
   PromptFileAttachment,
@@ -56,7 +57,7 @@ export async function writeClipboard(text: string): Promise<boolean> {
 
 function MessageActionButton(
   props: Pick<ComponentProps<"button">, "disabled" | "onMouseDown" | "onClick" | "aria-label"> & {
-    icon: "check" | "copy" | "reset"
+    icon: "check" | "copy" | "reset" | "fork"
     label: JSX.Element
   },
 ) {
@@ -214,7 +215,13 @@ export function CurrentUserMessageDisplay(props: {
   const data = useData()
   const dialog = useDialog()
   const i18n = useI18n()
-  const [state, setState] = createStore({ copied: false, reverting: false })
+  const [state, setState] = createStore({
+    copied: false,
+    reverting: false,
+    forking: false,
+    clamped: false,
+    expanded: false,
+  })
   const attachments = createMemo(() => (props.message.files ?? []).filter(attached))
   const references = createMemo(() => props.references ?? [])
   const inlineFiles = createMemo(() => (props.message.files ?? []).filter((file) => !!file.mention))
@@ -234,6 +241,24 @@ export function CurrentUserMessageDisplay(props: {
     if (!props.text || !(await writeClipboard(props.text))) return
     setState("copied", true)
     setTimeout(() => setState("copied", false), 2000)
+  }
+  const fork = async () => {
+    if (!props.actions?.fork || state.forking) return
+    setState("forking", true)
+    try {
+      await props.actions.fork({ sessionID: props.sessionID, messageID: props.message.id })
+    } finally {
+      setState("forking", false)
+    }
+  }
+  // Long prompts fold to about eight lines; the toggle appears only when the text overflows.
+  const observeClamp = (element: HTMLDivElement) => {
+    const observer = new ResizeObserver(() => {
+      if (state.expanded) return
+      setState("clamped", element.scrollHeight > element.clientHeight + 1)
+    })
+    observer.observe(element)
+    onCleanup(() => observer.disconnect())
   }
   const revert = async () => {
     if (!props.actions?.revert || state.reverting) return
@@ -304,7 +329,30 @@ export function CurrentUserMessageDisplay(props: {
             ›
           </span>
           <div data-slot="user-message-text" dir="auto" data-comments={comments().length > 0 ? "true" : undefined}>
-            <CurrentHighlightedText text={props.text} files={inlineFiles()} agents={agents()} />
+            <div
+              ref={observeClamp}
+              data-slot="user-message-clamp"
+              data-clamped={!state.expanded ? "" : undefined}
+              data-overflow={state.clamped && !state.expanded ? "" : undefined}
+            >
+              <CurrentHighlightedText text={props.text} files={inlineFiles()} agents={agents()} />
+            </div>
+            <Show when={state.clamped}>
+              <button
+                type="button"
+                data-slot="user-message-expand"
+                aria-expanded={state.expanded}
+                aria-label={i18n.t(state.expanded ? "ui.message.collapse" : "ui.message.expand")}
+                class={quietControl({ ink: "muted" })}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  setState("expanded", (value) => !value)
+                }}
+              >
+                {i18n.t(state.expanded ? "ui.common.showLess" : "ui.common.showMore")}
+                <Icon name="chevron-down" size="small" data-expanded={state.expanded ? "" : undefined} />
+              </button>
+            </Show>
             <Show when={comments().length > 0}>
               <UserMessageComments comments={comments()} bounded />
             </Show>
@@ -340,6 +388,19 @@ export function CurrentUserMessageDisplay(props: {
                 void revert()
               }}
               aria-label={i18n.t("ui.message.revertMessage")}
+            />
+          </Show>
+          <Show when={props.actions?.fork}>
+            <MessageActionButton
+              icon="fork"
+              label={i18n.t("ui.message.forkFromHere")}
+              disabled={state.forking}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={(event) => {
+                event.stopPropagation()
+                void fork()
+              }}
+              aria-label={i18n.t("ui.message.forkMessage")}
             />
           </Show>
           <Show when={props.text}>

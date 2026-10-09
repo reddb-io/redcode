@@ -66,6 +66,16 @@ export namespace TimelineRow {
     userMessageID: string
   }> {}
 
+  /** The "Worked for 12m 44s" disclosure that opens and closes a turn's steps. */
+  export class TurnSummary extends Data.TaggedClass("TurnSummary")<{
+    userMessageID: string
+  }> {}
+
+  /** The end-of-turn card listing the files the turn edited. */
+  export class TurnChanges extends Data.TaggedClass("TurnChanges")<{
+    userMessageID: string
+  }> {}
+
   export type TimelineRow =
     | TurnGap
     | UserMessage
@@ -76,6 +86,8 @@ export namespace TimelineRow {
     | Thinking
     | Error
     | Retry
+    | TurnSummary
+    | TurnChanges
 
   export const key = (row: TimelineRow): string => {
     switch (row._tag) {
@@ -100,6 +112,10 @@ export namespace TimelineRow {
         return `error:${row.userMessageID}`
       case "Retry":
         return `retry:${row.userMessageID}`
+      case "TurnSummary":
+        return `turn-summary:${row.userMessageID}`
+      case "TurnChanges":
+        return `turn-changes:${row.userMessageID}`
     }
     return row
   }
@@ -124,4 +140,6 @@ export type TimelineRowMap = {
   Thinking: { userMessageID: string; ref: PartRef }
   Retry: { userMessageID: string }
   Error: { userMessageID: string; text: string }
+  TurnSummary: { userMessageID: string }
+  TurnChanges: { userMessageID: string }
 }

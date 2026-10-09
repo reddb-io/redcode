@@ -171,6 +171,47 @@
     }
   }
 
+  /* About eight lines of the 1.6 line-height prompt text; overflow fades into the toggle. */
+  [data-slot="user-message-clamp"][data-clamped] {
+    max-height: calc(1.6em * 8);
+    overflow: hidden;
+  }
+
+  [data-slot="user-message-clamp"][data-overflow] {
+    mask-image: linear-gradient(to bottom, black calc(100% - 2.4em), transparent);
+  }
+
+  [data-slot="user-message-expand"] {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--reddb-spatial-gap-sm);
+    height: 24px;
+    margin-top: 2px;
+    margin-inline-start: calc(var(--reddb-spatial-inset-sm) * -1);
+    padding-inline: var(--reddb-spatial-inset-sm);
+    border: 0;
+    border-radius: var(--reddb-radius-md);
+    font-family: var(--reddb-font-family-sans);
+    font-size: var(--reddb-type-caption-font-size);
+    font-weight: var(--reddb-font-weight-medium);
+    line-height: var(--line-height-compact);
+    cursor: pointer;
+
+    [data-slot="icon-svg"] {
+      transition: transform 150ms ease;
+    }
+
+    [data-expanded] {
+      transform: rotate(180deg);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      [data-slot="icon-svg"] {
+        transition: none;
+      }
+    }
+  }
+
   [data-slot="user-message-copy-wrapper"] {
     min-height: 24px;
     margin-top: 2px;
