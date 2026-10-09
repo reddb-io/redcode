@@ -1,14 +1,14 @@
 export * as DesignWaiting from "./design-waiting"
 
-import { DesignAppBinary } from "@opencode/core/design/app-binary"
+import type { DesignAppBinary } from "@opencode/core/design/app-binary"
 import { reviewCopy } from "@opencode/core/design/ui/copy"
 
 export const CSP = "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"
 
 /**
- * The page a review link answers with while this server downloads or starts the design app, instead of
- * a connection error: the stage, the download's progress and the elapsed time. It reloads itself until
- * the app runs and the link redirects there; a failure stays with a Retry link.
+ * The page a review link answers with while this server starts the design app, instead of a connection
+ * error: the stage and the elapsed time. It reloads itself until the app runs and the link redirects
+ * there; a failure stays with a Retry link.
  */
 export function page(input: {
   readonly progress?: DesignAppBinary.Progress
@@ -18,20 +18,8 @@ export function page(input: {
   const escape = (value: string) =>
     value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;")
   const progress = input.progress
-  const line =
-    input.error !== undefined
-      ? reviewCopy.appFailed
-      : progress?.phase === "download"
-        ? reviewCopy.appDownloading
-            .replace("{{version}}", progress.version ?? "")
-            .replace("{{progress}}", DesignAppBinary.amount(progress))
-        : reviewCopy.appStarting
-  const bar =
-    input.error !== undefined
-      ? ""
-      : progress?.phase === "download" && progress.total
-        ? `<progress max="100" value="${Math.min(100, Math.round((progress.received / progress.total) * 100))}" aria-label="${escape(line)}"></progress>`
-        : `<progress aria-label="${escape(line)}"></progress>`
+  const line = input.error !== undefined ? reviewCopy.appFailed : reviewCopy.appStarting
+  const bar = input.error !== undefined ? "" : `<progress aria-label="${escape(line)}"></progress>`
   const elapsed = progress ? Math.max(0, Math.floor((input.now - progress.started) / 1000)) : undefined
   const detail =
     input.error !== undefined

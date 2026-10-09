@@ -132,13 +132,10 @@ describe("DesignPresence", () => {
 })
 
 describe("DesignWaiting", () => {
-  test("shows the download's progress and reloads until the app runs", () => {
-    const page = DesignWaiting.page({
-      progress: { phase: "download", version: "0.2.0", received: 450, total: 1_000, started: 1_000 },
-      now: 4_500,
-    })
-    expect(page).toContain("Downloading redcode-design 0.2.0… 45%")
-    expect(page).toContain('<progress max="100" value="45"')
+  test("shows the start's elapsed time and reloads until the app runs", () => {
+    const page = DesignWaiting.page({ progress: { phase: "start", started: 1_000 }, now: 4_500 })
+    expect(page).toContain("Starting the design app…")
+    expect(page).toContain("<progress aria-label=")
     expect(page).toContain("3 s")
     expect(page).toContain('http-equiv="refresh"')
   })

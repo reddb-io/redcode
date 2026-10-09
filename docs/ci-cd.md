@@ -1,7 +1,8 @@
 # Redcode CI/CD
 
 Redcode uses **one workflow**, `.github/workflows/redcode.yml`, owned by
-`reddb-io/redcode`. It publishes `@reddb-io/redcode` and its native packages.
+`reddb-io/redcode`. It publishes `@reddb-io/redcode`, its native packages and the
+design app packages that ship with them.
 It does not call workflows or consume release versions from another repository.
 
 ## Push to main
@@ -33,15 +34,16 @@ product source remains available. Inherited automation archived under
 3. Changesets consumes the entries, updates the product manifest and changelog,
    and commits the version directly to `main`. No release branch or Version PR.
 4. Checks and tests validate that exact versioned commit. In parallel, build
-   Redcode native packages, the RPC sidecars and the Design app.
-5. Run the smoke against the exact Linux archives, including the Design companion,
-   in a fresh home with a scripted provider. It checks the service, tools and token
+   the RPC sidecars and the Design app, then Redcode's native packages, which
+   `bun run assemble` pairs with the Design app of each target.
+5. Run the smoke against the exact Linux archive, which carries the Design app
+   beside `redcode`, in a fresh home with a scripted provider. It checks the service, tools and token
    accounting, temporary worktrees, vault isolation from model requests and outputs,
    and the browser review. Its failure blocks publication.
 6. After lint/types, product contracts, vault coverage, builds and the smoke pass,
    publish to GitHub and npm in independent jobs of this same workflow. GitHub
    verifies downloaded assets, checksums, CLI/Design versions and protocol before
-   making releases public. npm publishes every platform package before the main
+   making the release public. npm publishes every platform package before the main
    package and verifies anonymous registry availability and an isolated install.
 7. The final release status reports each destination. Both jobs must succeed for
    the complete release to pass; a blocked npm publication does not hold back
@@ -87,7 +89,8 @@ lookups use `--prefer-online`; only `E404` or `ETARGET` means a version is absen
 Authentication, rate-limit and network errors stop publication with their cause.
 
 Before setting `NPM_PUBLISH_MODE=oidc`, configure a trusted publisher for the main
-package and all 12 native packages on npm, with organization `reddb-io`, repository
+package and all 24 platform packages on npm (12 `@reddb-io/redcode-<target>` and
+12 `@reddb-io/redcode-design-<target>`), with organization `reddb-io`, repository
 `redcode`, workflow filename `redcode.yml` and environment `red-release`. Enable
 the allowed action for direct `npm publish`; a publisher limited to staging still
 requires manual approval. See https://docs.npmjs.com/trusted-publishers.
@@ -97,9 +100,13 @@ with maintainer 2FA in npm's Staged Packages tab, then rerun the failed npm job.
 The publication script skips versions that are already live and identifies a
 staged `E409` separately from ordinary registry propagation delays.
 
-The native packages retain all supported targets and RPC sidecars. The Design
-companion retains its existing `design-vX.Y.Z` release assets, which the client
-uses to install it. Both releases are produced by this single workflow.
+The native packages retain all supported targets and RPC sidecars. The Design app
+ships in the same `vX.Y.Z` release: every archive carries `redcode-design` beside
+`redcode`, each `@reddb-io/redcode-<target>` package has its
+`@reddb-io/redcode-design-<target>` package as an optional dependency (so pnpm's
+isolated layout links it next to redcode), and the release carries the whiteboard
+bundle the design app downloads. Linux and macOS archives are `tar.gz`; Windows
+archives are `zip`. Separate `design-vX.Y.Z` releases are no longer published.
 
 Builds, checksum verification, CLI identity/agent checks, service lifecycle and
 published installation checks remain required. Artifact compression is disabled

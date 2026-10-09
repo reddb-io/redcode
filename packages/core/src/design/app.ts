@@ -155,8 +155,6 @@ export async function health(url: string, secret: string) {
 export interface EnsureInput {
   /** redcode's server: where the app reaches `design.host` for the sessions it serves. */
   readonly host: string
-  /** An exact requested app version, or "latest" when any compatible running app may be reused. */
-  readonly version?: string
   /** How to start the app; resolved only when none runs. Default: see DesignAppBinary.command. */
   readonly command?: readonly string[] | (() => Promise<readonly string[]>)
   readonly state?: string
@@ -173,7 +171,7 @@ const launches = new Map<string, Promise<{ url: string; token: string }>>()
  * The running design app, started when none answers. A registration counts only while its process
  * lives, it answers its health check with this token, and it speaks this protocol; an app of another
  * protocol is asked to stop and a new one takes over the registration. Callers in this process share
- * one launch, so a review link opened during a first-use download waits on that download.
+ * one launch, so a review link opened while the app starts waits on that start.
  */
 export function ensure(input: EnsureInput) {
   const key = `${paths(input.state).registration}:${input.database ?? ""}`
@@ -192,19 +190,17 @@ export function ensure(input: EnsureInput) {
 async function start(input: EnsureInput) {
   const files = paths(input.state)
   const secret = await token(files.token)
-  const current = await reusable(files.registration, secret, input.version, input.database)
+  const current = await reusable(files.registration, secret, input.database)
   if (current) return { url: current.url, token: secret }
   return Flock.withLock(
     `design-app:${files.registration}`,
     async () => {
       // Another redcode may have started one while this one waited for the lock.
-      const started = await reusable(files.registration, secret, input.version, input.database)
+      const started = await reusable(files.registration, secret, input.database)
       if (started) return { url: started.url, token: secret }
-      DesignAppBinary.report({ phase: "start", received: 0, started: Date.now() })
+      DesignAppBinary.report({ phase: "start", started: Date.now() })
       const launch =
-        typeof input.command === "function"
-          ? await input.command()
-          : (input.command ?? (await DesignAppBinary.command({ protocol: PROTOCOL })))
+        typeof input.command === "function" ? await input.command() : (input.command ?? DesignAppBinary.command())
       if (!launch.length) throw new Error("The design app is not available in this installation")
       const log = openSync(files.log, "a", 0o600)
       const child = spawn(
@@ -248,12 +244,11 @@ async function start(input: EnsureInput) {
   ).finally(() => DesignAppBinary.report())
 }
 
-async function reusable(file: string, secret: string, version?: string, database?: string) {
+async function reusable(file: string, secret: string, database?: string) {
   const info = await registration(file)
   if (!info || !alive(info.pid)) return undefined
   const answer = await health(info.url, secret)
   if (!answer || answer.pid !== info.pid) return undefined
-  const exact = version && version !== "latest" ? version : undefined
   const minimum = DesignAppBinary.MINIMUM
   if (
     answer.protocol === PROTOCOL &&
@@ -261,7 +256,6 @@ async function reusable(file: string, secret: string, version?: string, database
     answer.version === info.version &&
     answer.database === info.database &&
     (database === undefined || info.database === database) &&
-    (!exact || answer.version === exact) &&
     (!minimum || Bun.semver.order(answer.version, minimum) >= 0)
   )
     return info
@@ -310,7 +304,6 @@ export function serve(host: Host) {
 /** Start or reconnect to the app that serves Design for this redcode process. */
 export async function connect(input: {
   readonly host?: Host
-  readonly version?: string
   readonly state?: string
   readonly database?: Database.Options
 }) {
@@ -319,9 +312,7 @@ export async function connect(input: {
   const started = await ensure({
     host: host.url,
     database: input.database ? databaseFingerprint(input.database) : undefined,
-    version: input.version,
     state: input.state,
-    command: () => DesignAppBinary.command({ protocol: PROTOCOL, version: input.version }),
     ...(input.database
       ? {
           env: {

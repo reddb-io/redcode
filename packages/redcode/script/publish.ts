@@ -5,6 +5,7 @@ import path from "path"
 import { rm } from "node:fs/promises"
 import { Script } from "@opencode/script"
 import { publishRelease, registryLookup } from "./publish-registry"
+import { RedcodePackages } from "./packages"
 
 const product = "redcode"
 const packageName = "@reddb-io/redcode"
@@ -36,22 +37,13 @@ async function packAndPublish(target: string, name: string) {
   await $`npm publish ${tarball} --access public --provenance --tag ${Script.channel}`.cwd(target)
 }
 
-const binaries = Array.from(new Bun.Glob("redcode-*/package.json").scanSync({ cwd: "./dist" }))
-  .filter((file) => !file.startsWith("redcode-package/"))
-  .map((file) => ({
-    dir: path.join("./dist", path.dirname(file)),
-    package: Bun.file(path.join("./dist", file)).json() as Promise<{ name: string; version: string }>,
-  }))
-const manifests = await Promise.all(binaries.map(async (item) => ({ ...item, package: await item.package })))
-if (manifests.length === 0) throw new Error("no Redcode binary packages were built")
-if (manifests.some((item) => !item.package.name.startsWith(`${packageName}-`)))
-  throw new Error("dist contains a binary package outside the @reddb-io/redcode namespace")
-if (manifests.some((item) => item.package.version !== Script.version))
-  throw new Error(`binary package version does not match ${Script.version}`)
+const manifests = await RedcodePackages.list("./dist", Script.version)
+if (!manifests.some((item) => item.kind === "cli")) throw new Error("no Redcode binary packages were built")
 for (const item of manifests) {
-  const extension = item.package.name.includes("-windows-") ? ".exe" : ""
-  for (const command of ["redcode", "redcode-rpc-sidecar"]) {
-    const binary = path.join(item.dir, "bin", `${command}${extension}`)
+  // Every CLI package names its target's design app as an optional dependency; both must ship.
+  if (item.kind === "cli") RedcodePackages.design(manifests, item)
+  for (const name of RedcodePackages.binaries(item)) {
+    const binary = path.join(item.dir, "bin", name)
     if (!(await Bun.file(binary).exists())) throw new Error(`missing release binary: ${binary}`)
   }
 }
@@ -77,7 +69,9 @@ redcode
 \`\`\`
 
 One native package for Linux (glibc and musl), macOS, and Windows on x64 and arm64. It includes the
-\`redcode-rpc-sidecar\` companion for framed JSON/TOON RPC integrations.
+\`redcode-rpc-sidecar\` companion for framed JSON/TOON RPC integrations, and the design app
+(\`redcode-design\`) that serves Design mode's browser review ships alongside it, so nothing is
+downloaded on first use.
 
 ## Use
 
@@ -108,7 +102,10 @@ await Bun.file(path.join(meta, "package.json")).write(
       os: ["darwin", "linux", "win32"],
       cpu: ["arm64", "x64"],
       optionalDependencies: Object.fromEntries(
-        manifests.map((item) => item.package).toSorted((a, b) => a.name.localeCompare(b.name)).map((item) => [item.name, item.version]),
+        manifests
+          .map((item) => item.manifest)
+          .toSorted((a, b) => a.name.localeCompare(b.name))
+          .map((item) => [item.name, item.version]),
       ),
     },
     null,
@@ -117,9 +114,9 @@ await Bun.file(path.join(meta, "package.json")).write(
 )
 
 const platforms = manifests.map((item) => ({
-  name: item.package.name,
-  version: item.package.version,
-  publish: () => packAndPublish(item.dir, item.package.name),
+  name: item.manifest.name,
+  version: item.manifest.version,
+  publish: () => packAndPublish(item.dir, item.manifest.name),
 }))
 const main = { name: packageName, version: Script.version, publish: () => packAndPublish(meta, packageName) }
 

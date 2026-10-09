@@ -24,7 +24,7 @@ const make = Effect.gen(function* () {
       const configured = yield* store.configured(sessionID)
       if (!DesignAppMode.process(configured)) return
       return yield* Effect.tryPromise({
-        try: () => apps.connect(configured?.app?.version),
+        try: () => apps.connect(),
         catch: (error) =>
           new Design.Error({
             code: "unavailable",
