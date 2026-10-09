@@ -1,4 +1,5 @@
-import { ServerConnection, useCurrentRoute, useGlobal, useServers, useTabs } from "@opencode/app/desktop"
+import { ServerConnection, useCurrentRoute, useGlobal, useLanguage, useServers, useTabs } from "@opencode/app/desktop"
+import { showToast } from "@opencode/ui/toast"
 import { createResource } from "solid-js"
 import type { ElectronAPI } from "../api-types"
 
@@ -12,6 +13,7 @@ export function DesktopFirstLaunchOnboarding(props: {
   const global = useGlobal()
   const tabs = useTabs()
   const route = useCurrentRoute()
+  const language = useLanguage()
 
   const [completed] = createResource(async () => {
     await runFirstLaunchOnboarding()
@@ -25,7 +27,7 @@ export function DesktopFirstLaunchOnboarding(props: {
 
       await Promise.all([tabs.ready.promise, tabs.recentReady.promise].map((p) => p ?? Promise.resolve()))
 
-      const shouldTrigger =
+      const shouldOffer =
         props.initialUrl === "/" &&
         route().type === "home" &&
         tabs.store.length === 0 &&
@@ -33,33 +35,66 @@ export function DesktopFirstLaunchOnboarding(props: {
 
       console.info("[desktop-onboarding] first launch onboarding evaluated", {
         pending: props.pending,
-        shouldTrigger,
+        shouldOffer,
         initialUrl: props.initialUrl,
         tabs: tabs.store.length,
         servers: server.list.map(ServerConnection.key),
       })
 
-      const directory = await props.api.finishFirstLaunchOnboarding(shouldTrigger)
+      if (!shouldOffer) {
+        await props.api.finishFirstLaunchOnboarding(false)
 
-      if (!shouldTrigger || !directory) return
-
-      console.info("[desktop-onboarding] starting first launch draft", { directory })
-      const sidecar = ServerConnection.Key.make("sidecar")
-      const projects = server.projects.forServer(sidecar)
-      projects.open(directory)
-      projects.touch(directory)
-      const connection = server.list.find((connection) => ServerConnection.key(connection) === sidecar)
-
-      if (connection) {
-        const data = global.ensureServerCtx(connection).data
-        // Load the initial provider/model state before the draft transition exposes the composer.
-        await Promise.all([data.location.provider.sync({ directory }), data.location.model.sync({ directory })])
+        return
       }
 
-      tabs.select(await tabs.newDraft({ server: sidecar, directory }))
+      // The default project is opt-in: nothing touches the user's Documents until they accept. Closing the toast
+      // without an answer leaves onboarding pending, so the next fresh start offers it again.
+      showToast({
+        title: language.t("home.defaultProject.title"),
+        description: language.t("home.defaultProject.description", {
+          name: language.t("desktop.onboarding.defaultProject"),
+        }),
+        persistent: true,
+        actions: [
+          {
+            label: language.t("home.defaultProject.create"),
+            onClick: () =>
+              void createDefaultProject().catch((error) => {
+                console.error("[desktop-onboarding] default project failed", error)
+                showToast({ variant: "error", title: language.t("common.requestFailed"), description: String(error) })
+              }),
+          },
+          {
+            label: language.t("home.defaultProject.decline"),
+            variant: "secondary",
+            onClick: () => void props.api.finishFirstLaunchOnboarding(false),
+          },
+        ],
+      })
     } finally {
       props.onReady()
     }
+  }
+
+  async function createDefaultProject() {
+    const directory = await props.api.finishFirstLaunchOnboarding(true)
+
+    if (!directory) return
+
+    console.info("[desktop-onboarding] starting first launch draft", { directory })
+    const sidecar = ServerConnection.Key.make("sidecar")
+    const projects = server.projects.forServer(sidecar)
+    projects.open(directory)
+    projects.touch(directory)
+    const connection = server.list.find((connection) => ServerConnection.key(connection) === sidecar)
+
+    if (connection) {
+      const data = global.ensureServerCtx(connection).data
+      // Load the initial provider/model state before the draft transition exposes the composer.
+      await Promise.all([data.location.provider.sync({ directory }), data.location.model.sync({ directory })])
+    }
+
+    tabs.select(await tabs.newDraft({ server: sidecar, directory }))
   }
 
   // Let startup failures reach the app's recovery screen, including its splash boundary.

@@ -82,10 +82,10 @@ jobs:
         with:
           name: desktop-${{ matrix.name }}
           if-no-files-found: error
+          # Blockmaps ride along so electron-updater can download NSIS and macOS zip updates differentially.
           path: |
             packages/desktop/dist/redcode-desktop-*
             packages/desktop/dist/latest*.yml
-            !packages/desktop/dist/*.blockmap
 
   publish:
     needs: build

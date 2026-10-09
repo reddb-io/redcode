@@ -5,7 +5,8 @@ import { Dialog } from "@opencode/ui/dialog"
 import { useExtension, type DialogHandle, type SetupContext } from "../sdk"
 import type definition from "./index"
 
-const CHANGELOG_URL = "https://opencode.ai/changelog.json"
+// GitHub releases carry no desktop highlights, so this only records the version as seen until Redcode publishes its own.
+const CHANGELOG_URL = "https://api.github.com/repos/reddb-io/redcode/releases"
 
 type Highlight = {
   title: string

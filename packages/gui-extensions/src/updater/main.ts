@@ -9,7 +9,9 @@ import { make } from "./machine"
 const setup: MainSetup<typeof definition> = async (ctx) => {
   const build = ctx.build
   const lifecycle = ctx.lifecycle
-  const enabled = build.packaged && build.channel !== "dev"
+  // Only packaged production builds carry an update feed (electron-builder `publish` writes app-update.yml for prod);
+  // dev and beta have none, so they report "disabled" instead of failing every check.
+  const enabled = build.packaged && build.channel === "prod"
   // Holds no resources, so it needs no cleanup.
   const context = logContext(ctx.log.write)
   const runPromise = Effect.runPromiseWith(context)

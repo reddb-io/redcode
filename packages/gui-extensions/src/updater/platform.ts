@@ -1,18 +1,14 @@
-import { app, autoUpdater, shell } from "electron"
+import { app, autoUpdater } from "electron"
 import pkg from "electron-updater"
 import { Effect } from "effect"
 import type { Platform } from "./machine"
-import { requiresStableMacInstaller, stableMacDownload } from "./migration"
 
 const updateClient = pkg.autoUpdater
 
 const restartTimeout = 10_000
 
-const stableArtifact = "https://opencode.ai/update/api/latest/desktop/opencode"
-
 export const make = Effect.fn("Updater.platform")(function* (channel: string) {
-  const external = requiresStableMacInstaller(process.platform, channel)
-  const userAgent = `opencode/${channel === "prod" ? "latest" : channel}/${app.getVersion()}/desktop`
+  const userAgent = `redcode/${channel === "prod" ? "latest" : channel}/${app.getVersion()}/desktop`
   const runFork = Effect.runForkWith(yield* Effect.context())
   updateClient.logger = {
     info: (...args) => runFork(Effect.logInfo(...args)),
@@ -34,19 +30,10 @@ export const make = Effect.fn("Updater.platform")(function* (channel: string) {
   })
 
   return {
+    // Redcode reads the generic feed electron-builder writes into app-update.yml (production builds only); it has
+    // no beta-to-stable migration, so every update restarts into a staged download.
     checkForUpdate: Effect.tryPromise({
       try: async () => {
-        if (external) {
-          const response = await fetch(stableArtifact, { headers: { "User-Agent": userAgent } })
-
-          if (!response.ok) throw new Error(`Stable OpenCode update check failed: ${response.status}`)
-          const download = stableMacDownload(await response.json(), process.arch)
-
-          if (!download) throw new Error("Stable OpenCode download is unavailable")
-
-          return { mode: "external", ...download } as const
-        }
-
         const result = await updateClient.checkForUpdates()
 
         if (!result?.isUpdateAvailable) return undefined
@@ -57,7 +44,6 @@ export const make = Effect.fn("Updater.platform")(function* (channel: string) {
     }),
     stageUpdate,
     installAndRestart,
-    externalInstall: external ? openExternal : undefined,
   } satisfies Platform
 })
 
@@ -133,13 +119,3 @@ const installAndRestart = Effect.callback<void, Error>((resume) => {
       ),
   }),
 )
-
-// Only web links leave the app; a failure to open one is not an install error.
-function openExternal(url: string) {
-  if (!URL.canParse(url) || !["http:", "https:"].includes(new URL(url).protocol))
-    return Effect.logWarning("blocked external target", { url })
-
-  return Effect.tryPromise(() => shell.openExternal(url)).pipe(
-    Effect.catch((error) => Effect.logError("failed to open external target", { url, error })),
-  )
-}

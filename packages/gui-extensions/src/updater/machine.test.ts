@@ -310,4 +310,30 @@ describe("updater", () => {
     expect(attempts.count).toBe(2)
     expect(app.state()).toEqual({ status: "installing", version: "2.0.0" })
   })
+
+  // Dev, beta and unpackaged builds have no update feed, so main passes no platform.
+  test("stays disabled without a platform and refuses to install", async () => {
+    const seen: UpdaterState[] = []
+    const scope = Scope.makeUnsafe()
+    scopes.push(scope)
+    const updater = await Effect.runPromise(
+      make({
+        currentVersion: "1.0.0",
+        restart: () => Effect.die("restart without a platform"),
+        persistence: {
+          get: Effect.succeed(undefined),
+          set: () => Effect.die("persisted without a platform"),
+          clear: Effect.void,
+        },
+        changed: (state) => seen.push(state),
+      }).pipe(Scope.provide(scope)),
+    )
+
+    await Effect.runPromise(updater.started)
+
+    expect(await Effect.runPromise(updater.check)).toEqual({ status: "disabled" })
+    await expect(Effect.runPromise(updater.install)).rejects.toThrow("Update is not ready to install")
+    expect(updater.state()).toEqual({ status: "disabled" })
+    expect(seen).toEqual([])
+  })
 })
