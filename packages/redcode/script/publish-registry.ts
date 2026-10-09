@@ -37,6 +37,13 @@ export const defaultVisibility: VisibilityOptions = {
 
 export type PublishOutcome = "published" | "skipped" | "conflict" | "staged"
 
+/** Only a registry miss permits publication; authentication and network failures must stop it. */
+export function registryLookup(spec: string, result: { exitCode: number; stderr: string }) {
+  if (result.exitCode === 0) return true
+  if (/npm (?:error|ERR!) code E(?:404|TARGET)\b/.test(result.stderr)) return false
+  throw new Error(`Could not check ${spec} in the npm registry (exit ${result.exitCode}):\n${result.stderr}`)
+}
+
 const conflictPatterns = [
   /\bE409\b/,
   /\b409 Conflict\b/i,

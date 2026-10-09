@@ -205,9 +205,19 @@ jobs:
       - name: Verify compiled service lifecycle
         working-directory: packages/cli
         timeout-minutes: 10
+        env:
+          SERVICE_SMOKE_ARTIFACTS: ${{ runner.temp }}/service-smoke
         run: |
           bun run script/build.ts --single --skip-install --skip-web-ui
           bun run script/service-smoke.ts
+      - name: Preserve service lifecycle failure logs
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: service-smoke-${{ matrix.name }}
+          path: ${{ runner.temp }}/service-smoke
+          if-no-files-found: ignore
+          retention-days: 7
 
   vault-coverage:
     # Secret-handling tests and their coverage must pass before publication.
@@ -493,7 +503,8 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-  publish:
+  publish_github:
+    name: publish (GitHub)
     if: inputs.publish && github.repository == 'reddb-io/redcode' && github.ref == 'refs/heads/main'
     needs: [plan, verify, tests, vault-coverage, build, design, smoke]
     runs-on: ubuntu-latest
@@ -507,7 +518,6 @@ jobs:
       REDCODE_RELEASE: "1"
     permissions:
       contents: write
-      id-token: write
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -515,14 +525,8 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
       - uses: ./.github/actions/setup-bun
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: "24"
-          registry-url: https://registry.npmjs.org
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: redcode-native-packages
-          path: packages/redcode/dist
+          install-flags: --filter=@reddb-io/redcode
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: redcode-release-archives
@@ -565,6 +569,7 @@ jobs:
         run: |
           set -euo pipefail
           tag="v$REDCODE_VERSION"
+          (cd packages/redcode/release && sha256sum --check SHA256SUMS)
           if git rev-parse "$tag^{commit}" >/dev/null 2>&1; then
             test "$(git rev-parse "$tag^{commit}")" = "$REDCODE_RELEASE_SHA"
           fi
@@ -574,15 +579,9 @@ jobs:
           if [ "$(gh release view "$tag" --json isDraft --jq .isDraft)" = "true" ]; then
             gh release upload "$tag" packages/redcode/release/* --clobber
           fi
-      - name: Publish npm packages
-        working-directory: packages/redcode
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: bun run publish
-      - name: Verify published installation and release assets
+      - name: Verify GitHub release assets
         env:
           GH_TOKEN: ${{ github.token }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
@@ -596,6 +595,92 @@ jobs:
           tar -xzf "$root/design/redcode-design-linux-x64.tar.gz" -C "$root/design-native"
           test "$("$root/design-native/redcode-design" --version)" = "$REDCODE_VERSION"
           test "$("$root/design-native/redcode-design" --protocol)" = "$(bun -e 'console.log((await Bun.file(process.argv[1]).json()).protocol)' "$root/design/manifest.json")"
+          mkdir "$root/cli-native"
+          tar -xzf "$root/assets/redcode-linux-x64.tar.gz" -C "$root/cli-native"
+          test "$("$root/cli-native/redcode" --version)" = "redcode v$REDCODE_VERSION"
+          test -x "$root/cli-native/redcode-rpc-sidecar"
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT || github.token }}
+        shell: bash
+        run: |
+          gh release edit "design-v$REDCODE_VERSION" --draft=false
+          gh release edit "v$REDCODE_VERSION" --draft=false
+          test "$(gh release view "design-v$REDCODE_VERSION" --json isDraft --jq .isDraft)" = 'false'
+          test "$(gh release view "v$REDCODE_VERSION" --json isDraft --jq .isDraft)" = 'false'
+
+  publish_npm:
+    name: publish (npm)
+    if: inputs.publish && github.repository == 'reddb-io/redcode' && github.ref == 'refs/heads/main'
+    needs: [plan, verify, tests, vault-coverage, build, design, smoke]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: red-release
+    env:
+      REDCODE_VERSION: ${{ needs.plan.outputs.version }}
+      REDCODE_DESIGN_APP_VERSION: ${{ needs.plan.outputs.version }}
+      REDCODE_CHANNEL: latest
+      REDCODE_RELEASE: "1"
+      NPM_PUBLISH_MODE: ${{ vars.NPM_PUBLISH_MODE || 'token' }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+      - uses: ./.github/actions/setup-bun
+        with:
+          install-flags: --filter=@reddb-io/redcode
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+      - name: Install pinned npm with trusted publishing support
+        env:
+          NODE_AUTH_TOKEN: ""
+        run: npm install --global npm@11.20.0
+      - name: Validate npm authentication before downloading native packages
+        env:
+          NODE_AUTH_TOKEN: ${{ vars.NPM_PUBLISH_MODE != 'oidc' && secrets.NPM_TOKEN || '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --version
+          case "$NPM_PUBLISH_MODE" in
+            token)
+              if [ -z "$NODE_AUTH_TOKEN" ]; then
+                echo '::error::NPM_PUBLISH_MODE=token requires NPM_TOKEN in the red-release environment or repository/organization.'
+                exit 1
+              fi
+              npm whoami --registry https://registry.npmjs.org
+              ;;
+            oidc)
+              test -n "$ACTIONS_ID_TOKEN_REQUEST_URL"
+              test -n "$ACTIONS_ID_TOKEN_REQUEST_TOKEN"
+              echo 'Using OIDC without a token fallback; each npm package must allow direct publishing from redcode.yml.'
+              ;;
+            *)
+              echo '::error::NPM_PUBLISH_MODE must be token or oidc.'
+              exit 1
+              ;;
+          esac
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: redcode-native-packages
+          path: packages/redcode/dist
+      - name: Publish npm packages
+        working-directory: packages/redcode
+        env:
+          NODE_AUTH_TOKEN: ${{ vars.NPM_PUBLISH_MODE != 'oidc' && secrets.NPM_TOKEN || '' }}
+        run: bun run publish
+      - name: Verify anonymous registry access and installed native package
+        env:
+          NODE_AUTH_TOKEN: ""
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=$(mktemp -d)
           for attempt in {1..20}; do
             if tarball=$(npm view "@reddb-io/redcode@$REDCODE_VERSION" dist.tarball --prefer-online 2>/dev/null) &&
               [ -n "$tarball" ] && curl --fail --silent --show-error --head --location --max-time 30 "$tarball" >/dev/null; then
@@ -611,10 +696,31 @@ jobs:
           test "$("$root/install/node_modules/.bin/redcode" --version)" = "redcode v$REDCODE_VERSION"
           test -x "$root/install/node_modules/@reddb-io/redcode-linux-x64/bin/redcode-rpc-sidecar"
           test "$(npm view "@reddb-io/redcode@$REDCODE_VERSION" version --prefer-online)" = "$REDCODE_VERSION"
-      - name: Publish GitHub Release
+
+  release_status:
+    name: release status
+    if: always() && inputs.publish && github.repository == 'reddb-io/redcode' && github.ref == 'refs/heads/main'
+    needs: [plan, publish_github, publish_npm]
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Report each destination and require both publications to succeed
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_PAT || github.token }}
-        shell: bash
+          REDCODE_VERSION: ${{ needs.plan.outputs.version }}
+          GITHUB_RESULT: ${{ needs.publish_github.result }}
+          NPM_RESULT: ${{ needs.publish_npm.result }}
         run: |
-          gh release edit "design-v$REDCODE_VERSION" --draft=false
-          gh release edit "v$REDCODE_VERSION" --draft=false
+          node <<'NODE'
+          const fs = require('node:fs')
+          const github = process.env.GITHUB_RESULT
+          const npm = process.env.NPM_RESULT
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,
+            '## Redcode ' + process.env.REDCODE_VERSION + '\n\n' +
+            '| Destination | Result |\n| --- | --- |\n' +
+            '| GitHub CLI and Design | ' + github + ' |\n' +
+            '| npm main and native packages | ' + npm + ' |\n')
+          if (github !== 'success' || npm !== 'success') {
+            console.error('Release incomplete: GitHub=' + github + ', npm=' + npm)
+            process.exitCode = 1
+          }
+          NODE

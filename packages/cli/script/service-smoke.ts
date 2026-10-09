@@ -7,6 +7,7 @@ import { Effect, Schema } from "effect"
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
+import { inspect } from "node:util"
 
 const nodeBuild = process.argv.includes("--node")
 const target = `cli${nodeBuild ? "-node" : ""}-${process.platform === "win32" ? "windows" : process.platform}-${process.arch}`
@@ -100,10 +101,23 @@ await fs.rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 10
   console.error("Failed to remove service smoke-test directory", cause)
   failure ??= cause
 })
-if (failure)
-  throw new Error(output.filter(Boolean).join("\n") || "Compiled service lifecycle smoke test failed", {
+if (failure) {
+  console.error("Compiled service lifecycle smoke test failed", failure)
+  const artifacts = process.env.SERVICE_SMOKE_ARTIFACTS
+  if (artifacts) {
+    await fs.mkdir(artifacts, { recursive: true })
+    await Promise.all([
+      Bun.write(path.join(artifacts, "failure.txt"), inspect(failure, { depth: 8 })),
+      ...output.map((text, index) =>
+        Bun.write(path.join(artifacts, index < processes.length ? `contender-${index + 1}.stderr.log` : "service.log"), text),
+      ),
+    ])
+  }
+  if (!artifacts) console.error(output.filter(Boolean).join("\n"))
+  throw new Error("Compiled service lifecycle smoke test failed; see the original error above and the smoke logs", {
     cause: failure,
   })
+}
 
 function spawnService() {
   const process = Bun.spawn([binary, "serve", "--service"], { env, stdout: "ignore", stderr: "pipe" })

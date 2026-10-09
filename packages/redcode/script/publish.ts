@@ -4,7 +4,7 @@ import { $ } from "bun"
 import path from "path"
 import { rm } from "node:fs/promises"
 import { Script } from "@opencode/script"
-import { publishRelease } from "./publish-registry"
+import { publishRelease, registryLookup } from "./publish-registry"
 
 const product = "redcode"
 const packageName = "@reddb-io/redcode"
@@ -16,7 +16,9 @@ if (Script.release && !process.env.REDCODE_VERSION)
 process.chdir(dir)
 
 async function published(name: string, version: string) {
-  return (await $`npm view ${`${name}@${version}`} version`.quiet().nothrow()).exitCode === 0
+  const spec = `${name}@${version}`
+  const result = await $`npm view ${spec} version --prefer-online --json`.quiet().nothrow()
+  return registryLookup(spec, { exitCode: result.exitCode, stderr: result.stderr.toString() })
 }
 
 async function pack(target: string) {

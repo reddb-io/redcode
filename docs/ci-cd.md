@@ -38,10 +38,14 @@ product source remains available. Inherited automation archived under
    in a fresh home with a scripted provider. It checks the service, tools and token
    accounting, temporary worktrees, vault isolation from model requests and outputs,
    and the browser review. Its failure blocks publication.
-6. Only after lint/types, product contracts, vault coverage, builds and the smoke
-   pass, publish npm platform packages and the main
-   package, verify registry availability and an isolated install, then publish
-   the GitHub releases with checksums and Changesets notes.
+6. After lint/types, product contracts, vault coverage, builds and the smoke pass,
+   publish to GitHub and npm in independent jobs of this same workflow. GitHub
+   verifies downloaded assets, checksums, CLI/Design versions and protocol before
+   making releases public. npm publishes every platform package before the main
+   package and verifies anonymous registry availability and an isolated install.
+7. The final release status reports each destination. Both jobs must succeed for
+   the complete release to pass; a blocked npm publication does not hold back
+   verified GitHub binaries.
 
 ```sh
 # Validate and build the candidate without publishing or changing main:
@@ -66,12 +70,32 @@ SHA, including when `GITHUB_TOKEN` prevents a second push-triggered run.
 
 ## Credentials and release artifacts
 
-- `NPM_TOKEN`: existing organization/repository npm publication credential.
+- `NPM_PUBLISH_MODE`: repository/environment variable, `token` (default) or `oidc`.
+- `NPM_TOKEN`: publication credential for `token` mode. Its identity is checked
+  before native artifacts are downloaded. npm may prefer a configured trusted
+  publisher; this mode permits the existing token fallback.
 - `RELEASE_PAT`: optional existing GitHub write identity, with `github.token`
   fallback. No duplicate or upstream credentials are needed.
 - `red-release`: existing publication environment.
-- Only version preparation and publication have contents write permission;
-  publication also has `id-token: write` for npm provenance.
+- Only version preparation and GitHub publication have contents write permission;
+  npm publication has `id-token: write` for trusted publishing and provenance.
+
+The npm job pins npm 11.20.0. In `oidc` mode it supplies no `NODE_AUTH_TOKEN`, so a
+misconfigured trusted publisher cannot silently fall back to a long-lived token.
+Public registry/install checks also run without the publication token. Registry
+lookups use `--prefer-online`; only `E404` or `ETARGET` means a version is absent.
+Authentication, rate-limit and network errors stop publication with their cause.
+
+Before setting `NPM_PUBLISH_MODE=oidc`, configure a trusted publisher for the main
+package and all 12 native packages on npm, with organization `reddb-io`, repository
+`redcode`, workflow filename `redcode.yml` and environment `red-release`. Enable
+the allowed action for direct `npm publish`; a publisher limited to staging still
+requires manual approval. See https://docs.npmjs.com/trusted-publishers.
+
+Updating a token does not release an already staged version. Approve that version
+with maintainer 2FA in npm's Staged Packages tab, then rerun the failed npm job.
+The publication script skips versions that are already live and identifies a
+staged `E409` separately from ordinary registry propagation delays.
 
 The native packages retain all supported targets and RPC sidecars. The Design
 companion retains its existing `design-vX.Y.Z` release assets, which the client
@@ -80,6 +104,11 @@ uses to install it. Both releases are produced by this single workflow.
 Builds, checksum verification, CLI identity/agent checks, service lifecycle and
 published installation checks remain required. Artifact compression is disabled
 for already compressed archives and native binaries.
+
+Failed compiled-service lifecycle checks print the original error before the
+diagnostic output and upload `service-smoke-linux` or `service-smoke-windows`.
+These artifacts contain the failure and each contender's stderr plus the service
+log when available; no service registration or credential files are uploaded.
 
 ## Optional inherited tests
 

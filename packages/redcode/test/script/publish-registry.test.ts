@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import {
   isPublishConflict,
   isStagedConflict,
+  registryLookup,
   publishOnce,
   StagedPublishError,
   publishRelease,
@@ -12,6 +13,34 @@ import {
 
 const version = "0.31.1"
 const options = { timeoutMs: 10 * 60_000, initialDelayMs: 5_000, maxDelayMs: 60_000 }
+
+describe("registryLookup", () => {
+  test("accepts a successful registry lookup", () => {
+    expect(registryLookup("@reddb-io/redcode@0.72.12", { exitCode: 0, stderr: "npm warn deprecated" })).toBe(true)
+  })
+
+  test.each(["npm error code E404", "npm error code ETARGET", "npm ERR! code E404"])(
+    "treats %s as an absent version",
+    (stderr) => {
+      expect(registryLookup("@reddb-io/redcode@0.72.12", { exitCode: 1, stderr })).toBe(false)
+    },
+  )
+
+  test.each(["E401", "E403", "E429", "ENOTFOUND", "ETIMEDOUT", "ECONNRESET"])(
+    "stops publication on %s instead of treating it as a missing version",
+    (code) => {
+      expect(() =>
+        registryLookup("@reddb-io/redcode@0.72.12", { exitCode: 1, stderr: `npm error code ${code}` }),
+      ).toThrow(`npm error code ${code}`)
+    },
+  )
+
+  test("retains context for failures without an npm error code", () => {
+    expect(() => registryLookup("@reddb-io/redcode@0.72.12", { exitCode: 137, stderr: "" })).toThrow(
+      "Could not check @reddb-io/redcode@0.72.12 in the npm registry (exit 137)",
+    )
+  })
+})
 
 // A mocked npm registry with a fake clock. `visibleAfter` is the fake time at which `npm view`
 // starts resolving a package once it has been published; Infinity models a stuck read replica.
