@@ -1,7 +1,7 @@
 /*
   The primary action, shared by Button (`contrast`, `submit`) and IconButton (`contrast`, `submit`): the Brand red
   under `on-primary` ink. Hovered, pressed or holding a popup open it fills with the opaque `primary-active` role,
-  never an opacity, so the ground never shows through (@opencode/ui/contracts/button).
+  never an opacity, so the ground never shows through (@reddb-io/design-system/contracts/button).
 */
 :is(
   [data-component="button-v2"]:is([data-variant="submit"], [data-variant="contrast"]),

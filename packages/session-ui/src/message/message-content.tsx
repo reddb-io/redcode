@@ -19,7 +19,7 @@ import { TextShimmer } from "@opencode/ui/text-shimmer"
 import { BasicTool } from "../components/basic-tool"
 import { reasoningHeading } from "../timeline/projection"
 import { Card } from "@opencode/ui/card"
-import { quietControl } from "@opencode/ui/contracts/quiet-control"
+import { quietControl } from "@reddb-io/design-system/contracts/quiet-control"
 import type {
   PromptAgentAttachment,
   PromptFileAttachment,

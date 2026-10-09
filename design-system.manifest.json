@@ -5,5 +5,5 @@
   "kits": ["app"],
   "layers": ["color"],
   "styles": ["application"],
-  "dest": "packages/ui/vendor/design-system"
+  "dest": "packages/design-system"
 }

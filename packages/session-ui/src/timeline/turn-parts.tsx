@@ -1,6 +1,6 @@
 import { Button } from "@opencode/ui/button"
-import { disclosure } from "@opencode/ui/contracts/disclosure"
-import { quietControl } from "@opencode/ui/contracts/quiet-control"
+import { disclosure } from "@reddb-io/design-system/contracts/disclosure"
+import { quietControl } from "@reddb-io/design-system/contracts/quiet-control"
 import { useDialog } from "@opencode/ui/context/dialog"
 import { useI18n } from "@opencode/ui/context/i18n"
 import { Dialog, DialogFooter, DialogHeader, DialogTitleGroup } from "@opencode/ui/dialog"

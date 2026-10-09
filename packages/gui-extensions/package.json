@@ -34,6 +34,7 @@
     "@opencode/ui": "workspace:*",
     "@opencode/util": "workspace:*",
     "@pierre/trees": "1.0.0-beta.4",
+    "@reddb-io/design-system": "workspace:*",
     "@solid-primitives/event-listener": "catalog:",
     "@solid-primitives/keyed": "1.5.3",
     "@solid-primitives/media": "catalog:",
