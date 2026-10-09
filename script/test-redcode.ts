@@ -12,6 +12,7 @@ const suites = {
     "test/config/reload.test.ts",
     "test/database-migration.test.ts",
     "test/database-stream.test.ts",
+    "test/design-app-binary.test.ts",
     "test/design-app-host.test.ts",
     "test/design-context.test.ts",
     "test/design-document-input.test.ts",

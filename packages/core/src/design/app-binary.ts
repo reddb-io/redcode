@@ -1,7 +1,7 @@
 export * as DesignAppBinary from "./app-binary.js"
 
 import path from "node:path"
-import { existsSync } from "node:fs"
+import { existsSync, realpathSync } from "node:fs"
 import { chmod, mkdir, readdir, rename, rm } from "node:fs/promises"
 import { Option, Schema } from "effect"
 import { Global } from "@opencode/util/global"
@@ -81,6 +81,8 @@ export interface Options {
   /** The design app's entry in a source checkout, run with Bun; false when there is none. */
   readonly source?: string | false
   readonly bin?: string
+  /** The running redcode binary, whose installation may carry the design app. Default: this process. */
+  readonly executable?: string
   /** Release platform, as the archives name it: linux-x64, darwin-arm64, windows-x64-baseline… */
   readonly target?: string
   readonly download?: string
@@ -91,14 +93,31 @@ export interface Options {
 
 /**
  * How to start the design app, first match wins: `REDCODE_DESIGN_BIN`, the source of this checkout
- * run with Bun, the installed release, or that release downloaded and verified now.
+ * run with Bun, the app shipped in this redcode's own installation, the installed release, or that
+ * release downloaded and verified now.
  */
 export async function command(options: Options): Promise<string[]> {
   const bin = (options.env ?? process.env).REDCODE_DESIGN_BIN?.trim()
   if (bin) return [bin]
   const source = options.source ?? checkout()
   if (source) return [process.execPath, source]
+  const bundled = sibling(options.executable ?? process.execPath, options.target ?? target())
+  if (bundled) return [bundled]
   return [await install(options)]
+}
+
+/**
+ * The design app installed beside a compiled redcode: next to it in a release archive (and mise), or
+ * in the sibling `@reddb-io/redcode-design-<target>` package of an npm install, where redcode lives
+ * at `@reddb-io/redcode-<target>/bin/redcode`.
+ */
+export function sibling(executable: string, platform: string) {
+  const name = platform.startsWith("windows") ? "redcode-design.exe" : "redcode-design"
+  const real = existsSync(executable) ? realpathSync(executable) : executable
+  return [
+    path.join(path.dirname(real), name),
+    path.join(path.dirname(path.dirname(path.dirname(real))), `redcode-design-${platform}`, "bin", name),
+  ].find((candidate) => existsSync(candidate))
 }
 
 /** The app's source when redcode itself runs from a checkout with Bun; never in a compiled redcode. */

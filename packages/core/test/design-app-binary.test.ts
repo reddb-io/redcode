@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, expect, test } from "bun:test"
 import path from "node:path"
-import { readdir, stat } from "node:fs/promises"
+import { readdir, realpath, stat } from "node:fs/promises"
 import { DesignAppBinary } from "../src/design/app-binary"
 import { tmpdir } from "./fixture/tmpdir"
 
@@ -66,6 +66,7 @@ const options = (bin: string, extra: Partial<DesignAppBinary.Options> = {}): Des
   target: "linux-x64",
   source: false,
   env: {},
+  executable: path.join(import.meta.dir, "no-installation", "redcode"),
   ...extra,
 })
 
@@ -128,6 +129,47 @@ test("REDCODE_DESIGN_BIN wins over the checkout source, which wins over a releas
     path.resolve(import.meta.dir, "../../design-app/src/index.ts"),
   ])
   expect(requests).toEqual([])
+})
+
+test.each([
+  { layout: "a release archive", target: "linux-x64", cli: "redcode", design: "redcode-design" },
+  { layout: "a Windows release archive", target: "windows-x64", cli: "redcode.exe", design: "redcode-design.exe" },
+  {
+    layout: "an npm install",
+    target: "linux-x64-baseline-musl",
+    cli: "node_modules/@reddb-io/redcode-linux-x64-baseline-musl/bin/redcode",
+    design: "node_modules/@reddb-io/redcode-design-linux-x64-baseline-musl/bin/redcode-design",
+  },
+  {
+    layout: "a Windows npm install",
+    target: "windows-arm64",
+    cli: "node_modules/@reddb-io/redcode-windows-arm64/bin/redcode.exe",
+    design: "node_modules/@reddb-io/redcode-design-windows-arm64/bin/redcode-design.exe",
+  },
+])("runs the design app shipped beside redcode in $layout, without downloading", async (input) => {
+  await using install = await tmpdir()
+  await using bin = await tmpdir()
+  const cli = path.join(install.path, input.cli)
+  const design = path.join(install.path, input.design)
+  await Bun.write(cli, "")
+  await Bun.write(design, "")
+  expect(await DesignAppBinary.command(options(bin.path, { executable: cli, target: input.target }))).toEqual([
+    await realpath(design),
+  ])
+  expect(requests).toEqual([])
+})
+
+test("an installation without the design app falls back to the release", async () => {
+  await using install = await tmpdir()
+  await using bin = await tmpdir()
+  const cli = path.join(install.path, "@reddb-io/redcode-linux-x64/bin/redcode")
+  await Bun.write(cli, "")
+  // Another target's app is not this redcode's.
+  await Bun.write(path.join(install.path, "@reddb-io/redcode-design-linux-arm64/bin/redcode-design"), "")
+  await publish({ version: "0.2.0" })
+  expect(await DesignAppBinary.command(options(bin.path, { executable: cli, version: "0.2.0" }))).toEqual([
+    path.join(bin.path, "redcode-design-0.2.0"),
+  ])
 })
 
 test("latest runs the newest published release that speaks the protocol", async () => {
