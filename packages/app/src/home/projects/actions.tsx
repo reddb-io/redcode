@@ -6,7 +6,6 @@ import { useLanguage } from "@/runtime/i18n/language"
 import { usePlatform } from "@/runtime/platform/platform"
 import { ServerConnection } from "@/runtime/server/registry"
 import { useGlobal } from "@/runtime/server/runtime"
-import { useSshAuthenticate } from "@/servers/ssh/authenticate"
 import { useSettingsSurface } from "@/settings/surface"
 import { closeHomeProject, errorMessage } from "@/shell/layout/helpers"
 import { showToast } from "@/shell/notifications/toast"
@@ -22,7 +21,6 @@ export function useProjectActions() {
   const tabs = useTabs()
   const layout = useLayout()
   const settings = useSettingsSurface()
-  const authenticate = useSshAuthenticate()
   const revealProject = useRevealProject()
   const directories = (project: LocalProject) => [project.worktree, ...(project.sandboxes ?? [])]
 
@@ -33,7 +31,8 @@ export function useProjectActions() {
       ctx.projects.touch(directory)
       void tabs.newDraft({ server: ServerConnection.key(conn), directory })
     }
-    if (authenticate(conn, run)) return
+    // Extension servers (SSH, WSL) connect first and continue once they are ready.
+    if (ServerConnection.authenticate(conn, run)) return
     run()
   }
 

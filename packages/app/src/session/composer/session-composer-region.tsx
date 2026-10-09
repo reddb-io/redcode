@@ -28,6 +28,7 @@ export function SessionComposerRegion(props: {
 }) {
   const language = useLanguage()
   const controller = props.controller
+
   return (
     <div
       ref={controller.setDockRef}
@@ -37,7 +38,7 @@ export function SessionComposerRegion(props: {
       <div
         classList={{
           "w-full px-3 pointer-events-auto": true,
-          "md:max-w-[1000px] md:mx-auto": controller.centered(),
+          "md:max-w-session md:mx-auto": controller.centered(),
         }}
       >
         <Show when={controller.state.websearch.request()}>

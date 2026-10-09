@@ -9,7 +9,7 @@ import { showToast } from "@/shell/notifications/toast"
 import { useLanguage } from "@/runtime/i18n/language"
 import { useServerSDK } from "@/runtime/server/client"
 import { base64Encode } from "@opencode/util/encode"
-import { extractPromptComments, extractPromptFromMessage } from "@/composer/prompt"
+import { extractPromptContext, extractPromptFromMessage } from "@/composer/prompt"
 import { useWorkspaceLocation } from "@/workspaces/location"
 import { useServer } from "@/runtime/server/current"
 import { sessionHref } from "@/shell/routes/session"
@@ -44,6 +44,7 @@ export function useForkFromMessage() {
       directory: location().directory,
       attachmentName: language.t("common.attachment"),
     })
+    const context = extractPromptContext(message, { directory: location().directory })
     const dir = base64Encode(location().directory)
 
     await serverSDK.api.session
@@ -53,20 +54,11 @@ export function useForkFromMessage() {
         onForked?.()
         const target = prompt.capture({ dir, id: forked.id })
         target.set(restored)
-        target.context.replaceComments(
-          extractPromptComments(message).map((comment) => ({
-            type: "file",
-            path: comment.path,
-            selection: comment.selection,
-            comment: comment.comment,
-            preview: comment.preview,
-            commentOrigin: comment.origin,
-          })),
-        )
+        target.context.replace([...context.comments, ...context.files])
         navigate(sessionHref(server.key, forked.id))
       })
-      .catch((err: unknown) => {
-        const message = err instanceof Error ? err.message : String(err)
+      .catch((cause: unknown) => {
+        const message = cause instanceof Error ? cause.message : String(cause)
         showToast({ title: language.t("common.requestFailed"), description: message })
       })
   }

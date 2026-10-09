@@ -13,11 +13,13 @@ export function Home() {
   const sessions = createHomeSessionsController(home)
   const search = createHomeSessionSearchController(home, sessions)
   const scroll = createHomeScrollController(sessions.data.groups)
+
   return (
     <div
       data-component="home"
+      data-slot="home-panel"
       class={`
-        mx-2 mb-[var(--shell-bottom-inset,8px)] mt-[var(--shell-top-inset,8px)] flex min-h-0 flex-1 self-stretch
+        mx-[var(--shell-inline-inset,8px)] mb-[var(--shell-bottom-inset,8px)] mt-[var(--shell-top-inset,8px)] flex min-h-0 flex-1 self-stretch
         overflow-hidden rounded-lg bg-v2-background-bg-base shadow-[var(--v2-elevation-raised)]
       `}
     >

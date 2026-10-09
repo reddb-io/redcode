@@ -8,6 +8,8 @@
 }
 
 [data-slot="segmented-control-v2"] {
+  position: relative;
+  isolation: isolate;
   box-sizing: border-box;
   display: flex;
   flex-direction: row;
@@ -22,11 +24,32 @@
   box-shadow: none;
   overflow: hidden;
   flex: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* The sliding selection: the selected surface with the 2px ink bottom indicator, moved under the pressed segment. */
+[data-slot="segmented-control-v2-indicator"] {
+  box-sizing: border-box;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  border-radius: 0;
+  background: var(--ui-state-selected);
+  border-bottom: 2px solid var(--v2-text-text-base);
+  box-shadow: none;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  z-index: 0;
+  will-change: transform, width;
 }
 
 [data-slot="segmented-control-v2-item"] {
-  box-sizing: border-box;
   position: relative;
+  z-index: 1;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -44,6 +67,8 @@
   background: transparent;
   box-shadow: none;
   cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
   font-style: normal;
   font-weight: var(--reddb-font-weight-regular);
   font-size: var(--reddb-type-body-font-size);
@@ -51,6 +76,10 @@
   letter-spacing: 0;
   font-variant-numeric: tabular-nums;
   color: var(--v2-text-text-muted);
+  transition:
+    color 0.15s ease,
+    background-color 0.12s ease,
+    box-shadow 0.12s ease;
 }
 
 [data-slot="segmented-control-v2-item"]:last-child {
@@ -78,11 +107,14 @@
 }
 
 [data-slot="segmented-control-v2-item"]:where([data-pressed]) {
-  background: var(--ui-state-selected);
   color: var(--v2-text-text-base);
   font-weight: var(--reddb-font-weight-medium);
-  border-bottom-color: var(--v2-text-text-base);
   z-index: 1;
+}
+
+[data-slot="segmented-control-v2"]:not([data-ready]) [data-slot="segmented-control-v2-item"]:where([data-pressed]) {
+  background: var(--ui-state-selected);
+  border-bottom-color: var(--v2-text-text-base);
 }
 
 [data-slot="segmented-control-v2-item-label"] {
@@ -96,4 +128,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
 }

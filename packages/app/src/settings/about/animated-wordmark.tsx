@@ -14,8 +14,10 @@ export function AnimatedWordmark(props: { active: boolean }) {
       (active) => {
         timers.forEach(clearTimeout)
         timers.clear()
+
         if (!active || matchMedia("(prefers-reduced-motion: reduce)").matches) {
           setState("letters", [...target])
+
           return
         }
 
@@ -34,6 +36,7 @@ export function AnimatedWordmark(props: { active: boolean }) {
             )
             timers.delete(timer)
           }, tick * 75)
+
           timers.add(timer)
         })
       },

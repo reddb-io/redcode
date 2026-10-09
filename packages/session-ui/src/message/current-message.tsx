@@ -2,12 +2,20 @@ import type { SessionMessageAssistant, SessionMessageAssistantTool, SessionMessa
 import { Match, Switch, type ComponentProps } from "solid-js"
 import type { SessionUserActions, SessionUserAttachmentReference, SessionUserComment } from "../actions"
 import { AssistantReasoningContent, AssistantTextContent, CurrentUserMessageDisplay } from "./message-content"
-import { CurrentContextToolGroup, CurrentFileToolGroup, ToolDisplay, toolDuration } from "../tools/tool-renderer"
+import {
+  CurrentContextToolGroup,
+  CurrentFileToolGroup,
+  CurrentReadToolGroup,
+  ToolDisplay,
+  toolDuration,
+} from "../tools/tool-renderer"
 import { useI18n } from "@opencode/ui/context/i18n"
 import { currentToolError, currentToolInput, currentToolMetadata, currentToolOutput } from "./current-tool-state"
 
 export type { SessionUserActions, SessionUserAttachmentReference, SessionUserComment } from "../actions"
+
 export { SessionShellMessage } from "../tools/tool-renderer"
+
 export { currentContentDefaultOpen } from "./current-tool-state"
 
 export function SessionUserMessage(props: {
@@ -99,6 +107,10 @@ export function SessionAssistantContent(props: {
 
 export function SessionContextToolGroup(props: ComponentProps<typeof CurrentContextToolGroup>) {
   return <CurrentContextToolGroup {...props} />
+}
+
+export function SessionReadToolGroup(props: ComponentProps<typeof CurrentReadToolGroup>) {
+  return <CurrentReadToolGroup {...props} />
 }
 
 export function SessionFileToolGroup(props: {

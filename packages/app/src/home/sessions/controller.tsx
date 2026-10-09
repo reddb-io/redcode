@@ -19,7 +19,7 @@ import type { ServerCtx } from "@/runtime/server/runtime"
 import { sessionHasOpenTab, useTabs } from "@/shell/tabs/tabs"
 import { errorMessage } from "@/shell/layout/helpers"
 import { useSessionTabAvatarState } from "@/shell/layout/project-avatar-state"
-import { removedSessionIDs } from "@/session/session-domain"
+import { sessionTreeIDs } from "@/session/requests/session-request-tree"
 import { pathKey } from "@/workspaces/path-key"
 import { fetchSessionExport, saveSessionExport, sessionExportFilename } from "@/session/commands/export"
 import { usePlatform } from "@/runtime/platform/platform"
@@ -34,6 +34,7 @@ export type { HomeSessionRecord } from "./records"
 
 // Keep the immutable result opaque so Solid Query does not recursively unwrap every session on mount.
 const selectSessions = (sessions: SessionInfo[]) => () => sessions
+
 export type HomeSessionGroup = {
   id: "today" | "yesterday" | "week" | "older"
   title: string
@@ -103,37 +104,46 @@ export function createHomeSessionsController(home: HomeController) {
       resolveProject: (session) => home.server.focusedContext()?.projects.forSession(session),
     }),
   )
+
   const records = createMemo(() => allRecords().slice(0, HOME_SESSION_LIMIT))
   const groups = createMemo(() => groupSessions(records(), language))
   const prefetched = new Set<string>()
 
   const location = (record: HomeSessionRecord) => {
     const branch = home.server.focusedContext()?.data.location.vcs.info(record.session.location)?.branch.current
+
     return homeSessionLocation(record.session.location.directory, branch)
   }
 
   const syncLocations = (record?: HomeSessionRecord) => {
     if (platform.platform !== "desktop") return
     const ctx = home.server.focusedContext()
+
     if (!ctx) return
+
     if (record) {
       void ctx.data.location.vcs.sync(record.session.location).catch(() => undefined)
+
       return
     }
+
     const locations = new Map(
       records().map((record) => [pathKey(record.session.location.directory), record.session.location] as const),
     )
+
     void Promise.allSettled(Array.from(locations.values(), (location) => ctx.data.location.vcs.sync(location)))
   }
 
   createEffect(() => {
     const ctx = home.server.focusedContext()
     const conn = home.server.focused()
+
     if (!ctx || !conn) return
     records()
       .slice(0, 2)
       .forEach((record) => {
         const key = `${ServerConnection.key(conn)}\0${record.session.id}`
+
         if (prefetched.has(key)) return
         prefetched.add(key)
         void untrack(() => ctx.data.session.sync(record.session.id)).catch(() => {})
@@ -147,8 +157,10 @@ export function createHomeSessionsController(home: HomeController) {
       hidden: true,
       onSelect: async () => {
         const conn = home.server.focused()
+
         if (!conn) return
         const ctx = home.server.focusedContext()
+
         if (!ctx) return
         const { HomeCommandPalette } = await import("./command-palette")
         void dialog.show(() => (
@@ -175,9 +187,12 @@ export function createHomeSessionsController(home: HomeController) {
   const rename = async (server: ServerConnection.Key, session: SessionInfo, title: string) => {
     const conn = home.server.list().find((item) => ServerConnection.key(item) === server)
     const ctx = conn ? home.server.context(conn) : undefined
+
     if (!conn || !ctx) return false
     const next = title.trim()
+
     if (!next || next === sessionLabel(session)) return true
+
     return ctx.sdk.api.session
       .update({ sessionID: session.id, title: next })
       .then(() => {
@@ -189,6 +204,7 @@ export function createHomeSessionsController(home: HomeController) {
         queryClient.setQueryData<SessionInfo[]>(["home-sessions", conn], (current) =>
           current?.map((item) => (item.id === session.id ? { ...item, title: next } : item)),
         )
+
         return true
       })
       .catch((cause) => {
@@ -196,6 +212,7 @@ export function createHomeSessionsController(home: HomeController) {
           title: language.t("common.requestFailed"),
           description: errorMessage(cause, language.t("common.requestFailed")),
         })
+
         return false
       })
   }
@@ -203,10 +220,13 @@ export function createHomeSessionsController(home: HomeController) {
   const exportSession = async (server: ServerConnection.Key, session: SessionInfo) => {
     const conn = home.server.list().find((item) => ServerConnection.key(item) === server)
     const ctx = conn ? home.server.context(conn) : undefined
+
     if (!ctx) return
+
     try {
       const data = await fetchSessionExport({ sessionID: session.id, api: ctx.sdk.api })
       const filename = sessionExportFilename(data.info)
+
       if (!(await saveSessionExport(filename, data, platform))) return
       showToast({
         variant: "success",
@@ -226,8 +246,10 @@ export function createHomeSessionsController(home: HomeController) {
   const remove = async (server: ServerConnection.Key, session: SessionInfo) => {
     const conn = home.server.list().find((item) => ServerConnection.key(item) === server)
     const ctx = conn ? home.server.context(conn) : undefined
+
     if (!conn || !ctx) return false
-    const ids = [...removedSessionIDs(ctx.data.session.list(), session.id)]
+    const ids = sessionTreeIDs(ctx.data.session.list(), session.id)
+
     return ctx.data.session
       .remove(session.id)
       .then(() => {
@@ -236,6 +258,7 @@ export function createHomeSessionsController(home: HomeController) {
           directory: session.location.directory,
           sessionIDs: ids,
         })
+
         return true
       })
       .catch((cause) => {
@@ -243,6 +266,7 @@ export function createHomeSessionsController(home: HomeController) {
           title: language.t("session.delete.failed.title"),
           description: errorMessage(cause, language.t("session.delete.failed.title")),
         })
+
         return false
       })
       .finally(() => {
@@ -252,10 +276,12 @@ export function createHomeSessionsController(home: HomeController) {
 
   function DeleteDialog(props: { server: ServerConnection.Key; session: SessionInfo }) {
     const name = () => sessionTitle(props.session.title) ?? language.t("command.session.new")
+
     const confirm = async () => {
       await remove(props.server, props.session)
       dialog.close()
     }
+
     return (
       <Dialog fit>
         <DialogHeader hideClose>
@@ -299,9 +325,12 @@ export function createHomeSessionsController(home: HomeController) {
       canCreate: () => !!home.project.newSession(),
       lookup: async (sessionID: string) => {
         const ctx = home.server.focusedContext()
+
         if (!ctx) return
         const result = await ctx.sdk.api.session.get({ sessionID })
+
         if (result.time.archived) return
+
         return buildHomeSessionRecords({
           sessions: () => [result],
           projectDirectories,
@@ -313,25 +342,31 @@ export function createHomeSessionsController(home: HomeController) {
       open: (session: SessionInfo, options?: OpenSessionOptions) => {
         const project = homeProjectForSession(session, home.project.list())
         const conn = home.server.focused()
+
         if (!conn) return
         const connKey = ServerConnection.key(conn)
         const directory = project?.worktree ?? session.location.directory
         const ctx = home.server.focusedContext()
+
         if (!ctx) return
+
         if (!options?.background) void ctx.data.session.message.sync(session.id).catch(() => undefined)
         // Commit cache/project changes with navigation instead of rebuilding
         // the outgoing Home list before leaving it.
         void startTransition(() => {
           const tab = tabs.addSessionTab({ server: connKey, sessionId: session.id })
+
           if (!options?.background) tabs.select(tab)
           ctx.data.session.remember(session)
           ctx.projects.open(directory)
+
           if (!options?.background) ctx.projects.touch(directory)
         })
       },
       archive: async (session: SessionInfo) => {
         const conn = home.server.focused()
         const ctx = home.server.focusedContext()
+
         if (!conn || !ctx) return
         await archiveHomeSession({
           server: ServerConnection.key(conn),
@@ -362,6 +397,7 @@ export function createHomeSessionsController(home: HomeController) {
     tab: {
       isOpen: (record: HomeSessionRecord) => {
         const server = home.selection.value().server
+
         return !!server && sessionHasOpenTab(tabs.store, server, record.session)
       },
     },
@@ -401,6 +437,7 @@ export function HomeSessionStatusController(props: {
     () => props.record.session.id,
     () => true,
   )
+
   return props.render({
     unread: avatar.unread,
     loading: avatar.loading,

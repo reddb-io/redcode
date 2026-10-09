@@ -30,7 +30,9 @@ export type TriggerTitle = {
 
 const isTriggerTitle = (val: unknown): val is TriggerTitle => {
   if (typeof val !== "object" || val === null) return false
+
   if (typeof Node !== "undefined" && val instanceof Node) return false
+
   return "title" in val && typeof val.title === "string"
 }
 
@@ -80,7 +82,9 @@ export function ToolStatusGlyph(props: { status?: string }) {
 }
 
 const SPRING = { type: "spring" as const, visualDuration: 0.35, bounce: 0 }
+
 const deferredMounts: Array<{ active: boolean; fn: () => void }> = []
+
 let deferredFrame: number | undefined
 
 function flushDeferredMounts() {
@@ -88,12 +92,15 @@ function flushDeferredMounts() {
     // Timeline tools are mounted top-to-bottom, but the viewport starts at the latest turn.
     // Pop from the end so heavy default-open bodies near the bottom become interactive first.
     const item = deferredMounts.pop()!
+
     if (item.active) {
       deferredFrame = deferredMounts.length > 0 ? requestAnimationFrame(flushDeferredMounts) : undefined
       item.fn()
+
       return
     }
   }
+
   deferredFrame = undefined
 }
 
@@ -108,6 +115,7 @@ function scheduleDeferredMount(fn: () => void) {
   const item = { active: true, fn }
   deferredMounts.push(item)
   scheduleDeferredFlush()
+
   return () => {
     item.active = false
   }
@@ -115,6 +123,7 @@ function scheduleDeferredMount(fn: () => void) {
 
 function scheduleFrameMount(fn: () => void) {
   const frame = requestAnimationFrame(fn)
+
   return () => cancelAnimationFrame(frame)
 }
 
@@ -123,16 +132,21 @@ export function BasicTool(props: BasicToolProps) {
     open: props.defaultOpen ?? false,
     ready: !props.defer && (props.defaultOpen ?? false),
   })
+
   const open = () => props.open ?? state.open
   const ready = () => state.ready
   const pending = () => props.status === "streaming" || props.status === "running"
   const hasChildren = () => props.hasContent ?? (props.defer ? "children" in props : props.children)
+
   const triggerContent = createMemo(() => {
     const value = props.trigger
+
     return typeof value === "function" ? value(open) : value
   })
+
   const triggerTitle = createMemo(() => {
     const value = triggerContent()
+
     return isTriggerTitle(value) ? value : undefined
   })
 
@@ -147,6 +161,7 @@ export function BasicTool(props: BasicToolProps) {
     cancel()
     cancelReady = (initial ? scheduleDeferredMount : scheduleFrameMount)(() => {
       cancelReady = undefined
+
       if (!open()) return
       setState("ready", true)
     })
@@ -165,6 +180,7 @@ export function BasicTool(props: BasicToolProps) {
 
   createEffect(() => {
     if (!props.forceOpen) return
+
     if (open()) return
     setOpen(true)
   })
@@ -174,9 +190,11 @@ export function BasicTool(props: BasicToolProps) {
       open,
       (value) => {
         if (!props.defer) return
+
         if (!value) {
           cancel()
           setState("ready", false)
+
           return
         }
 
@@ -197,6 +215,7 @@ export function BasicTool(props: BasicToolProps) {
       (isOpen) => {
         if (!props.animated || !contentRef) return
         heightAnim?.stop()
+
         if (isOpen) {
           contentRef.style.overflow = "hidden"
           heightAnim = animate(contentRef, { height: "auto" }, SPRING)
@@ -220,6 +239,7 @@ export function BasicTool(props: BasicToolProps) {
 
   const handleOpenChange = (value: boolean) => {
     if (pending() && !props.allowOpenWhilePending) return
+
     if (props.locked && !value) return
     setOpen(value)
   }
@@ -378,18 +398,23 @@ export function BasicTool(props: BasicToolProps) {
 
 function label(input: Record<string, unknown> | undefined) {
   const keys = ["description", "query", "url", "path", "pattern", "name"]
+
   return keys.map((key) => input?.[key]).find((value): value is string => typeof value === "string" && value.length > 0)
 }
 
 function args(input: Record<string, unknown> | undefined) {
   if (!input) return []
   const skip = new Set(["description", "query", "url", "path", "pattern", "name"])
+
   return Object.entries(input)
     .filter(([key]) => !skip.has(key))
     .flatMap(([key, value]) => {
       if (typeof value === "string") return [`${key}=${value}`]
+
       if (typeof value === "number") return [`${key}=${value}`]
+
       if (typeof value === "boolean") return [`${key}=${value}`]
+
       return []
     })
     .slice(0, 3)

@@ -1,4 +1,4 @@
-import { Data, Equal } from "effect"
+import { Data, Equal, Match } from "effect"
 
 export type PartRef = {
   messageID: string
@@ -18,7 +18,7 @@ export type PartGroup =
     }
   | {
       key: string
-      type: "file"
+      type: "file" | "read"
       refs: PartRef[]
     }
 
@@ -76,6 +76,12 @@ export namespace TimelineRow {
     userMessageID: string
   }> {}
 
+  /** A compaction the server has admitted but not started. */
+  export class CompactionQueued extends Data.TaggedClass("CompactionQueued")<{
+    userMessageID: string
+    inboxID: string
+  }> {}
+
   export type TimelineRow =
     | TurnGap
     | UserMessage
@@ -88,37 +94,25 @@ export namespace TimelineRow {
     | Retry
     | TurnSummary
     | TurnChanges
+    | CompactionQueued
 
-  export const key = (row: TimelineRow): string => {
-    switch (row._tag) {
-      case "TurnGap":
-        return `turn-gap:${row.userMessageID}`
-      case "UserMessage":
-        return `user-message:${row.userMessageID}`
-      case "Shell":
-        return `shell:${row.messageID}`
-      case "Notice":
-        return `notice:${row.messageID}`
-      case "TurnDivider":
-        return `turn-divider:${row.userMessageID}`
-      // Keyed by part identity alone: a page boundary can truncate the leading turn,
-      // and its rows regroup under the real user message once older history loads.
-      // The group key already carries the owning message and part IDs.
-      case "AssistantPart":
-        return `assistant-part:${row.group.type}:${row.group.key}`
-      case "Thinking":
-        return `thinking:${row.userMessageID}`
-      case "Error":
-        return `error:${row.userMessageID}`
-      case "Retry":
-        return `retry:${row.userMessageID}`
-      case "TurnSummary":
-        return `turn-summary:${row.userMessageID}`
-      case "TurnChanges":
-        return `turn-changes:${row.userMessageID}`
-    }
-    return row
-  }
+  export const key: (row: TimelineRow) => string = Match.typeTags<TimelineRow>()({
+    TurnGap: (row) => `turn-gap:${row.userMessageID}`,
+    UserMessage: (row) => `user-message:${row.userMessageID}`,
+    Shell: (row) => `shell:${row.messageID}`,
+    Notice: (row) => `notice:${row.messageID}`,
+    TurnDivider: (row) => `turn-divider:${row.userMessageID}`,
+    // Keyed by part identity alone: a page boundary can truncate the leading turn,
+    // and its rows regroup under the real user message once older history loads.
+    // The group key already carries the owning message and part IDs.
+    AssistantPart: (row) => `assistant-part:${row.group.type}:${row.group.key}`,
+    Thinking: (row) => `thinking:${row.userMessageID}`,
+    Error: (row) => `error:${row.userMessageID}`,
+    Retry: (row) => `retry:${row.userMessageID}`,
+    TurnSummary: (row) => `turn-summary:${row.userMessageID}`,
+    TurnChanges: (row) => `turn-changes:${row.userMessageID}`,
+    CompactionQueued: (row) => `compaction-queued:${row.inboxID}`,
+  })
 
   export function equals(a: TimelineRow, b: TimelineRow) {
     return Equal.equals(a, b)
@@ -142,4 +136,5 @@ export type TimelineRowMap = {
   Error: { userMessageID: string; text: string }
   TurnSummary: { userMessageID: string }
   TurnChanges: { userMessageID: string }
+  CompactionQueued: { userMessageID: string; inboxID: string }
 }

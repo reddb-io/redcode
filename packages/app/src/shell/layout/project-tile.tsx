@@ -1,5 +1,5 @@
 import { createMemo, Show } from "solid-js"
-import { displayName, getProjectAvatarSource } from "@/shell/layout/helpers"
+import { displayName, getProjectAvatarSource } from "@opencode/ui/project-avatar"
 import type { LocalProject } from "@/shell/state/layout"
 import "./project-tile.css"
 

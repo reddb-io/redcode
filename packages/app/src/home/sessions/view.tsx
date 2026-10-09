@@ -26,6 +26,7 @@ import {
 
 const SHOW_HOME_SESSION_ARCHIVE = false
 const HOME_SESSION_SEARCH_RESULTS_ID = "home-session-search-results"
+
 const HOME_SESSION_LONG_PRESS_MS = 500
 const HOME_EYEBROW = "text-eyebrow uppercase text-ink-muted"
 
@@ -477,8 +478,10 @@ function HomeSessionRow(
   // row components, so instance refs can point at detached nodes by the time
   // deferred focus runs.
   const rowSelector = () => `[data-component="home-session-row-container"][data-session-id="${sessionID()}"]`
+
   const rowButton = () =>
     document.querySelector<HTMLButtonElement>(`${rowSelector()} [data-component="home-session-row"]`)
+
   const renameInput = () =>
     document.querySelector<HTMLInputElement>(`${rowSelector()} [data-component="home-session-rename"]`)
 
@@ -487,6 +490,7 @@ function HomeSessionRow(
     longPressTimer = undefined
     longPressStart = undefined
   }
+
   onCleanup(clearLongPress)
 
   const openMenu = (element: HTMLElement, clientX: number, clientY: number) => {
@@ -502,12 +506,15 @@ function HomeSessionRow(
       input?.select()
     })
   }
+
   const closeEditor = () => {
     if (editor()?.renaming) return
     props.setRowUI("editor", (value) => (value?.id === sessionID() ? undefined : value))
   }
+
   const saveEditor = async () => {
     const current = editor()
+
     if (!current || current.renaming) return
     props.setRowUI("editor", { ...current, renaming: true })
     const saved = await props.onRenameSession(props.server, props.record.session, current.draft)
@@ -516,14 +523,18 @@ function HomeSessionRow(
     const restore = document.activeElement === document.body || document.activeElement === renameInput()
     props.setRowUI("editor", (value) => {
       if (value?.id !== sessionID()) return value
+
       return saved ? undefined : { ...value, renaming: false }
     })
+
     if (!restore) return
     requestAnimationFrame(() => {
       if (saved) {
         rowButton()?.focus()
+
         return
       }
+
       renameInput()?.focus()
     })
   }
@@ -632,6 +643,7 @@ function HomeSessionRow(
           onMouseEnter={() => props.onRevealLocations(props.record)}
           onPointerDown={(event) => {
             suppressClick = false
+
             if (event.pointerType !== "touch") return
             clearLongPress()
             const element = event.currentTarget
@@ -646,6 +658,7 @@ function HomeSessionRow(
           }}
           onPointerMove={(event) => {
             if (!longPressStart) return
+
             if (Math.abs(event.clientX - longPressStart.x) <= 8 && Math.abs(event.clientY - longPressStart.y) <= 8)
               return
             clearLongPress()
@@ -667,11 +680,14 @@ function HomeSessionRow(
             // never that click and passes through.
             if (suppressClick) {
               suppressClick = false
+
               if (event.detail !== 0) {
                 event.preventDefault()
+
                 return
               }
             }
+
             props.onOpenSession(props.record.session, { background: isBackgroundOpen(event) })
           }}
           onAuxClick={(event) => {
@@ -722,6 +738,7 @@ function HomeSessionRow(
               event.preventDefault()
               const outside = menuInteractedOutside
               menuInteractedOutside = false
+
               if (outside || editor()) return
               requestAnimationFrame(() => rowButton()?.focus())
             }}

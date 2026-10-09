@@ -10,6 +10,8 @@
   at full contrast at once.
 */
 [data-component="button-v2"] {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   --button-bg: transparent;
   --button-fg: var(--v2-text-text-base);
   --button-border: transparent;
@@ -43,6 +45,10 @@
   user-select: none;
   cursor: pointer;
   outline: none;
+}
+
+[data-component="button-v2"] > * {
+  pointer-events: none;
 }
 
 [data-component="button-v2"]:is(:focus-visible, [data-state="focus"]) {

@@ -87,14 +87,26 @@
     user-select: text;
   }
 
+  [data-slot="tool-error-card-subtitle"],
   [data-slot="tool-error-card-content"] [data-slot="card-description"] {
+    margin: 0;
     font-family: var(--reddb-font-family-mono);
     font-size: 12px;
     font-weight: var(--reddb-font-weight-regular);
     line-height: 1.55;
-    color: var(--reddb-color-ink-muted);
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+  }
+
+  [data-slot="tool-error-card-subtitle"] {
+    max-height: 240px;
+    overflow-y: auto;
+    margin-bottom: 4px;
+    color: var(--reddb-color-ink-muted);
+  }
+
+  [data-slot="tool-error-card-content"] [data-slot="card-description"] {
+    color: var(--reddb-color-feedback-danger-foreground);
   }
 
   > [data-component="collapsible"].tool-collapsible[data-open="true"] [data-slot="tool-error-card-content"] {

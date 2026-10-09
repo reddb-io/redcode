@@ -16,6 +16,7 @@ export function SessionTabAvatar(props: {
     () => props.sessionId,
     () => true,
   )
+
   return (
     <SessionTabAvatarView
       project={props.project}
