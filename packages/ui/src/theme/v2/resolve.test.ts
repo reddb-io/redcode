@@ -1,38 +1,44 @@
 import { describe, expect, test } from "bun:test"
 import { contrastRatio } from "../color"
+import { applicationTheme } from "../themes/application"
 import type { DesktopTheme, HexColor, ResolvedV2Theme } from "../types"
 import { resolveThemeV2, resolveThemeVariantV2, themeV2ToCss } from "./resolve"
 
-const theme: DesktopTheme = await Bun.file(new URL("../themes/oc-2.json", import.meta.url)).json()
+// A bundled community theme exercises the engine's own fallbacks, which the built-in theme overrides.
+const theme: DesktopTheme = await Bun.file(new URL("../themes/nord.json", import.meta.url)).json()
 
-describe("icon emphasis", () => {
-  test.each(["light", "dark"] as const)("OC-2 %s icons increase in contrast from faint to base", (mode) => {
-    expectIconEmphasis(resolveThemeV2(theme)[mode])
+describe("application theme", () => {
+  test.each(["light", "dark"] as const)("%s semantics resolve from design system roles, not literals", (mode) => {
+    const tokens = resolveThemeV2(applicationTheme)[mode]
+    const semantic = Object.entries(tokens).filter(
+      ([name]) => /^v2-(background|text|icon|border|overlay|state|agent)-/.test(name),
+    )
+    expect(semantic.length).toBeGreaterThan(50)
+    for (const [name, value] of semantic) {
+      expect([name, /#[0-9a-f]{3,8}\b|rgba?\(/i.test(value)]).toEqual([name, false])
+    }
   })
 
+  test("layers read as ink over the surface they sit on", () => {
+    const tokens = resolveThemeV2(applicationTheme).dark
+    expect(tokens["v2-background-bg-base"]).toBe("var(--reddb-color-elevation-base-surface)")
+    expect(tokens["v2-background-bg-layer-01"]).toContain("var(--reddb-color-foreground)")
+  })
+
+  test("hover and pressed are the design system's quiet-control fills", () => {
+    const tokens = resolveThemeV2(applicationTheme).light
+    expect(tokens["v2-overlay-simple-overlay-hover"]).toContain("8%")
+    expect(tokens["v2-overlay-simple-overlay-pressed"]).toContain("12%")
+  })
+})
+
+describe("icon emphasis", () => {
   test.each([false, true])("custom theme fallbacks preserve icon emphasis (dark: %s)", (dark) => {
     expectIconEmphasis(resolveThemeVariantV2({ ...theme[dark ? "dark" : "light"], v2Overrides: undefined }, dark))
   })
 })
 
 describe("contrast icon-button tokens", () => {
-  test("OC-2 dark mode uses a light background and an inverse icon matching the base surface", () => {
-    const tokens = resolveThemeV2(theme).dark
-    expect(tokens["v2-background-bg-icon-button-contrast"]).toBe("var(--v2-grey-400)")
-    expect(tokens["v2-grey-400"]).toBe("#dbdbdbff")
-    expect(tokens["v2-icon-icon-inverse"]).toBe(tokens["v2-background-bg-base"])
-    expect(tokens["v2-grey-1100"]).toBe("#161616ff")
-    expect(tokens["v2-background-bg-contrast"]).toBe("var(--v2-grey-700)")
-    expect(tokens["v2-text-text-contrast"]).toBe("var(--v2-grey-50)")
-  })
-
-  test("OC-2 light mode retains the existing contrast background and foreground", () => {
-    const tokens = resolveThemeV2(theme).light
-    expect(tokens["v2-background-bg-icon-button-contrast"]).toBe("var(--v2-background-bg-contrast)")
-    expect(tokens["v2-background-bg-contrast"]).toBe("var(--v2-grey-1000)")
-    expect(tokens["v2-text-text-contrast"]).toBe("var(--v2-grey-50)")
-  })
-
   test.each([false, true])("custom themes without the new token receive a fallback (dark: %s)", (dark) => {
     const tokens = resolveThemeVariantV2({ ...theme.dark, v2Overrides: undefined }, dark)
     expect(tokens["v2-background-bg-icon-button-contrast"]).toBe(

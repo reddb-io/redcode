@@ -177,26 +177,26 @@ describe("settings schema", () => {
 })
 
 describe("settings font families", () => {
-  test("defaults normal text to Inter", () => {
-    expect(sansDefault).toBe("Inter")
-    expect(sansFontFamily(undefined)).toStartWith('"Inter", ')
-    expect(sansFontFamily("")).toStartWith('"Inter", ')
-    expect(sansFontFamily("   ")).toStartWith('"Inter", ')
+  test("defaults normal text to Space Grotesk", () => {
+    expect(sansDefault).toBe("Space Grotesk")
+    expect(sansFontFamily(undefined)).toStartWith("var(--reddb-font-family-sans)")
+    expect(sansFontFamily("")).toStartWith("var(--reddb-font-family-sans)")
+    expect(sansFontFamily("   ")).toStartWith("var(--reddb-font-family-sans)")
   })
 
   test("keeps custom normal fonts ahead of the default", () => {
-    expect(sansFontFamily("Custom Sans")).toStartWith('"Custom Sans", "Inter", ')
+    expect(sansFontFamily("Custom Sans")).toStartWith('"Custom Sans", var(--reddb-font-family-sans)')
   })
 
-  test("defaults monospace text to IBM Plex Mono", () => {
-    expect(monoDefault).toBe("IBM Plex Mono")
-    expect(monoFontFamily(undefined)).toStartWith('"IBM Plex Mono", ')
-    expect(monoFontFamily("")).toStartWith('"IBM Plex Mono", ')
-    expect(monoFontFamily("   ")).toStartWith('"IBM Plex Mono", ')
+  test("defaults monospace text to JetBrains Mono", () => {
+    expect(monoDefault).toBe("JetBrains Mono")
+    expect(monoFontFamily(undefined)).toStartWith("var(--reddb-font-family-mono)")
+    expect(monoFontFamily("")).toStartWith("var(--reddb-font-family-mono)")
+    expect(monoFontFamily("   ")).toStartWith("var(--reddb-font-family-mono)")
   })
 
   test("keeps custom monospace fonts ahead of the default", () => {
-    expect(monoFontFamily("Custom Mono")).toStartWith('"Custom Mono", "IBM Plex Mono", ')
+    expect(monoFontFamily("Custom Mono")).toStartWith('"Custom Mono", var(--reddb-font-family-mono)')
   })
 
   test("preserves the separate terminal font default", () => {

@@ -26,7 +26,7 @@ export function applyTheme(theme: DesktopTheme, themeId?: string): void {
   const css = buildThemeCss(lightTokens, darkTokens, lightV2Tokens, darkV2Tokens, targetThemeId)
   const themeStyleElement = ensureLoaderStyleElement()
   themeStyleElement.textContent = css
-  document.documentElement.setAttribute("data-theme", targetThemeId)
+  document.documentElement.setAttribute("data-color-theme", targetThemeId)
 }
 
 function buildThemeCss(
@@ -36,7 +36,7 @@ function buildThemeCss(
   darkV2: ResolvedV2Theme,
   themeId: string,
 ): string {
-  const isDefaultTheme = themeId === "oc-2"
+  const isDefaultTheme = themeId === "application"
   const lightCss = `${themeToCss(light)}\n  ${themeV2ToCss(lightV2)}`
   const darkCss = `${themeToCss(dark)}\n  ${themeV2ToCss(darkV2)}`
 
@@ -59,7 +59,7 @@ function buildThemeCss(
   }
 
   return `
-html[data-theme="${themeId}"] {
+html[data-color-theme="${themeId}"] {
   color-scheme: light;
   --text-mix-blend-mode: multiply;
 
@@ -84,7 +84,7 @@ export async function loadThemeFromUrl(url: string): Promise<DesktopTheme> {
 }
 
 export function getActiveTheme(): DesktopTheme | null {
-  const activeId = document.documentElement.getAttribute("data-theme")
+  const activeId = document.documentElement.getAttribute("data-color-theme")
   if (!activeId) {
     return null
   }
@@ -100,7 +100,7 @@ export function removeTheme(): void {
   if (existingElement) {
     existingElement.remove()
   }
-  document.documentElement.removeAttribute("data-theme")
+  document.documentElement.removeAttribute("data-color-theme")
 }
 
 export function setColorScheme(scheme: "light" | "dark" | "auto"): void {

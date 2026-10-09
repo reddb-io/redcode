@@ -12,6 +12,7 @@ const setSystemDark = (matches: boolean) =>
 beforeEach(() => {
   document.head.innerHTML = ""
   document.documentElement.removeAttribute("data-theme")
+  document.documentElement.removeAttribute("data-color-theme")
   document.documentElement.removeAttribute("data-color-scheme")
   document.documentElement.style.removeProperty("background-color")
   localStorage.clear()
@@ -22,9 +23,10 @@ describe("theme preload", () => {
   test("uses default theme and system light mode when settings are absent", () => {
     run()
 
-    expect(document.documentElement.dataset.theme).toBe("oc-2")
+    expect(document.documentElement.dataset.theme).toBe("application")
+    expect(document.documentElement.dataset.colorTheme).toBe("application")
     expect(document.documentElement.dataset.colorScheme).toBe("light")
-    expect(document.documentElement.style.backgroundColor).toBe("#fafafa")
+    expect(document.documentElement.style.backgroundColor).toBe("#f4f5f7")
   })
 
   test("restores explicit dark mode on a light system", () => {
@@ -32,7 +34,7 @@ describe("theme preload", () => {
     run()
 
     expect(document.documentElement.dataset.colorScheme).toBe("dark")
-    expect(document.documentElement.style.backgroundColor).toBe("#080808")
+    expect(document.documentElement.style.backgroundColor).toBe("#07080a")
   })
 
   test("restores explicit light mode on a dark system", () => {
@@ -41,7 +43,7 @@ describe("theme preload", () => {
     run()
 
     expect(document.documentElement.dataset.colorScheme).toBe("light")
-    expect(document.documentElement.style.backgroundColor).toBe("#fafafa")
+    expect(document.documentElement.style.backgroundColor).toBe("#f4f5f7")
   })
 
   test("resolves persisted system mode before paint", () => {
@@ -50,7 +52,7 @@ describe("theme preload", () => {
     run()
 
     expect(document.documentElement.dataset.colorScheme).toBe("dark")
-    expect(document.documentElement.style.backgroundColor).toBe("#080808")
+    expect(document.documentElement.style.backgroundColor).toBe("#07080a")
   })
 
   test("keeps cached css for non-default themes", () => {
@@ -59,7 +61,7 @@ describe("theme preload", () => {
 
     run()
 
-    expect(document.documentElement.dataset.theme).toBe("nightowl")
+    expect(document.documentElement.dataset.colorTheme).toBe("nightowl")
     expect(document.getElementById("oc-theme-preload")?.textContent).toContain("--background-base:#fff;")
   })
 
@@ -69,7 +71,7 @@ describe("theme preload", () => {
     localStorage.setItem("opencode-theme-css-dark", "--background-base:#010203;")
     run()
 
-    expect(document.documentElement.dataset.theme).toBe("nightowl")
+    expect(document.documentElement.dataset.colorTheme).toBe("nightowl")
     expect(document.documentElement.dataset.colorScheme).toBe("dark")
     expect(document.getElementById("oc-theme-preload")?.textContent).toContain("--background-base:#010203;")
   })

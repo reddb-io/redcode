@@ -16,12 +16,12 @@ export type TabLayout = Settings["appearance"]["tabLayout"]
 export type NotificationSettings = Settings["notifications"]
 export type SoundSettings = Settings["sounds"]
 
-export const monoDefault = "IBM Plex Mono"
-export const sansDefault = "Inter"
+export const monoDefault = "JetBrains Mono"
+export const sansDefault = "Space Grotesk"
 export const terminalDefault = "JetBrainsMono Nerd Font Mono"
-const monoFallback =
-  '"IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
-const sansFallback = '"Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+// The design system's own stacks, which already end in a metric-matched fallback for the Brand face.
+const monoFallback = "var(--reddb-font-family-mono)"
+const sansFallback = "var(--reddb-font-family-sans)"
 const terminalFallback =
   '"JetBrainsMono Nerd Font Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
 
