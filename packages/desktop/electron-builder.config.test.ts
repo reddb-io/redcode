@@ -50,12 +50,6 @@ test.each(channels)("channel identity for $channel", async ({ channel, appId }) 
   expect(config.extraMetadata?.version).toBe(
     process.env.REDCODE_VERSION ?? (await Bun.file(path.join(import.meta.dirname, "../redcode/package.json")).json()).version,
   )
-  // Only production reads the rolling desktop-latest feed; GitHub's "latest" release belongs to the CLI.
-  expect(config.publish).toEqual(
-    channel === "prod"
-      ? [{ provider: "generic", url: "https://github.com/reddb-io/redcode/releases/download/desktop-latest" }]
-      : undefined,
-  )
 
   for (const fpm of [config.deb?.fpm, config.rpm?.fpm])
     expect(fpm).toContainEqual(expect.stringContaining(`/usr/share/metainfo/${appId}.metainfo.xml`))
@@ -106,10 +100,6 @@ test("trims external dependencies without excluding runtime files", async () => 
     for (const file of [
       "@zip.js/zip.js/index.js",
       "@zip.js/zip.js/lib/z-worker-inline.js",
-      "electron-updater/out/main.js",
-      "electron-updater/out/MacUpdater.js",
-      "electron-updater/out/NsisUpdater.js",
-      "electron-updater/out/providers/GitHubProvider.js",
       "builder-util-runtime/out/httpExecutor.js",
       "ajv/dist/ajv.js",
       "ajv/dist/refs/json-schema-draft-07.json",
@@ -120,9 +110,10 @@ test("trims external dependencies without excluding runtime files", async () => 
       "unrelated/dist/index.cjs",
       "unrelated/dist/data.json",
       "unrelated/src/index.ts",
-      ...["@zip.js/zip.js", "electron-updater", "builder-util-runtime", "ajv", "ajv-formats", "js-yaml"].flatMap(
-        (name) => [`${name}/package.json`, `${name}/LICENSE`],
-      ),
+      ...["@zip.js/zip.js", "builder-util-runtime", "ajv", "ajv-formats", "js-yaml"].flatMap((name) => [
+        `${name}/package.json`,
+        `${name}/LICENSE`,
+      ]),
     ]) {
       expect(included(file)).toBe(true)
     }

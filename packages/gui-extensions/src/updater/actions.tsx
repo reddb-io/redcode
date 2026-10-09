@@ -5,54 +5,46 @@ import { showToast } from "@opencode/ui/toast"
 import type { DialogHandle, IpcClient, SetupContext } from "../sdk"
 import type { Updater } from "./contract"
 import type definition from "./index"
+import { newerRelease, RELEASES_URL } from "./release"
 
 type Client = IpcClient<typeof Updater.spec>
 
 type Context = SetupContext<typeof definition>
 
-/** Restarts into the staged update. A beta build moving to stable confirms the installer download first. */
-export function install(ctx: Context, client: Client) {
-  const download = () => client.install().catch((cause: unknown) => requestFailed(ctx, cause))
-
-  const state = client.state()
-
-  if (state?.status !== "download-required") {
-    void download()
-
-    return
-  }
-
-  ctx.dialogs.open(
-    (dialog) => <DialogStableDownload ctx={ctx} dialog={dialog} version={state.version} download={download} />,
-    { replace: true },
-  )
-}
-
+/**
+ * Reads the newest Redcode release from the list What's New reads, and offers `redcode upgrade` unless this version is
+ * already the newest. A failed read still offers it, without a version.
+ */
 export async function check(ctx: Context, client: Client) {
-  const state = await client
-    .check({ signal: ctx.signal })
-    .catch((cause: unknown) => requestFailed(ctx, cause))
+  const release = await fetch(RELEASES_URL, { signal: ctx.signal, headers: { Accept: "application/json" } })
+    .then((response) => (response.ok ? response.json() : undefined))
+    .then((json) => newerRelease(json, ctx.build.version))
+    .catch(() => ({ status: "unknown" as const }))
 
-  if (!state || ctx.signal.aborted) return
+  if (ctx.signal.aborted) return
 
-  if (state.status === "download-required") {
-    install(ctx, client)
-
-    return
-  }
-
-  if (state.status === "up-to-date") {
+  if (release.status === "current") {
     showToast({
       variant: "success",
       icon: () => <Icon name="circle-check" />,
       title: ctx.t("toast.latest.title"),
       description: ctx.t("toast.latest.description", { version: ctx.build.version }),
     })
+
+    return
   }
 
-  if (state.status === "error") {
-    showToast({ title: ctx.t("common.requestFailed"), description: state.message })
-  }
+  ctx.dialogs.open(
+    (dialog) => (
+      <DialogUpgrade
+        ctx={ctx}
+        dialog={dialog}
+        version={release.status === "newer" ? release.version : undefined}
+        upgrade={() => client.upgrade().catch((cause: unknown) => requestFailed(ctx, cause))}
+      />
+    ),
+    { replace: true },
+  )
 }
 
 function requestFailed(ctx: Context, cause: unknown) {
@@ -64,33 +56,37 @@ function requestFailed(ctx: Context, cause: unknown) {
   })
 }
 
-function DialogStableDownload(props: {
+function DialogUpgrade(props: {
   ctx: Context
   dialog: DialogHandle
-  version: string
-  download: () => Promise<void>
+  version: string | undefined
+  upgrade: () => Promise<void>
 }) {
   const ctx = props.ctx
 
-  const download = () => {
+  const upgrade = () => {
     props.dialog.close()
-    void props.download()
+    void props.upgrade()
   }
 
   return (
     <Dialog fit>
       <DialogHeader>
         <DialogTitleGroup
-          title={ctx.t("migration.title")}
-          description={ctx.t("migration.description", { version: props.version })}
+          title={ctx.t("upgrade.title")}
+          description={
+            props.version
+              ? ctx.t("upgrade.description.version", { version: props.version })
+              : ctx.t("upgrade.description")
+          }
         />
       </DialogHeader>
       <DialogFooter>
         <Button type="button" variant="neutral" onClick={() => props.dialog.close()}>
           {ctx.t("common.cancel")}
         </Button>
-        <Button type="button" variant="contrast" autofocus onClick={download}>
-          {ctx.t("action.download")}
+        <Button type="button" variant="contrast" autofocus onClick={upgrade}>
+          {ctx.t("action.upgrade")}
         </Button>
       </DialogFooter>
     </Dialog>
