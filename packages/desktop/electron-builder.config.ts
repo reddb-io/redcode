@@ -35,10 +35,6 @@ const PACKAGE_NAMES = {
   prod: "redcode-desktop",
 } as const
 
-// Desktop releases live beside the CLI releases in the same repository, so updates are read from a rolling
-// release instead of GitHub's "latest", which always points at the CLI.
-const updateFeed = "https://github.com/reddb-io/redcode/releases/download/desktop-latest"
-
 function getConfig(): Configuration {
   const appId = APP_IDS[channel]
   const productName = PRODUCT_NAMES[channel]
@@ -96,7 +92,6 @@ function getConfig(): Configuration {
 
       if ((await stat(version)).size === 0) throw new Error(`Bundled CLI version must be a non-empty file: ${version}`)
     },
-    publish: channel === "prod" ? [{ provider: "generic", url: updateFeed }] : undefined,
     mac: {
       category: "public.app-category.developer-tools",
       icon: "../ui/vendor/design-system/platform/icon-512.png",

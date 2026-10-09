@@ -1,101 +1,26 @@
-import { dialog } from "electron"
-import { Effect, Exit, Scope } from "effect"
-import { MenubarItem, type MainSetup } from "../sdk/main"
+import { spawn } from "node:child_process"
+import { closeSync, mkdirSync, openSync } from "node:fs"
+import { homedir } from "node:os"
+import path from "node:path"
+import { app } from "electron"
+import { MenubarItem, type Log, type MainSetup } from "../sdk/main"
 import { Updater } from "./contract"
 import type definition from "./index"
-import { logContext } from "./log"
-import { make } from "./machine"
 
-const setup: MainSetup<typeof definition> = async (ctx) => {
-  const build = ctx.build
-  const lifecycle = ctx.lifecycle
-  // Only packaged production builds carry an update feed (electron-builder `publish` writes app-update.yml for prod);
-  // dev and beta have none, so they report "disabled" instead of failing every check.
-  const enabled = build.packaged && build.channel === "prod"
-  // Holds no resources, so it needs no cleanup.
-  const context = logContext(ctx.log.write)
-  const runPromise = Effect.runPromiseWith(context)
-  const runFork = Effect.runForkWith(context)
-  const ready = ctx.stores.ready
-
-  // electron-updater loads only in packaged builds that update, after the first window is up.
-  const platform = enabled
-    ? await import("./platform").then((module) => runPromise(module.make(build.channel)))
-    : undefined
-
-  if (ctx.scope.signal.aborted) return
-  const scope = Scope.makeUnsafe()
-  ctx.scope.addFinalizer(() => runPromise(Scope.close(scope, Exit.void)))
-  const publish = { changed: () => {} }
-
-  const updater = await runPromise(
-    make({
-      currentVersion: build.version,
-      platform,
-      // The updater stays active through the handoff, so a failed install returns to a state the user can retry.
-      restart: (handoff) =>
-        Effect.tryPromise({
-          try: () => lifecycle.restart(() => runPromise(handoff), { keep: ctx.scope }),
-          catch: (error) => error,
-        }),
-      persistence: {
-        get: Effect.sync(() => ready.value ?? undefined),
-        set: (value) => Effect.sync(() => ready.set(value)),
-        clear: Effect.sync(() => ready.set(null)),
-      },
-      changed: () => publish.changed(),
-    }).pipe(Scope.provide(scope)),
-  )
+const setup: MainSetup<typeof definition> = (ctx) => {
+  const binary = ctx.cli.installed ? ctx.cli.binary : undefined
 
   const provider = ctx.provide(Updater, {
-    state: () => updater.state(),
-    check: () => runPromise(updater.check),
-    install: () => runPromise(updater.install),
-  })
+    state: () => ({ upgradable: binary !== undefined }),
+    upgrade: async () => {
+      if (!binary) throw new Error("This app does not run the CLI of a Redcode installation")
 
-  publish.changed = () => provider.changed()
-
-  const show = Effect.gen(function* () {
-    const state = yield* updater.check
-
-    if (state.status === "error") {
-      yield* promise(() =>
-        dialog.showMessageBox({
-          type: "error",
-          message: ctx.t("dialog.checkFailed.message"),
-          title: ctx.t("dialog.checkFailed.title"),
-        }),
-      )
-
-      return
-    }
-
-    if (state.status === "up-to-date") {
-      yield* promise(() =>
-        dialog.showMessageBox({
-          type: "info",
-          message: ctx.t("dialog.upToDate.message"),
-          title: ctx.t("dialog.upToDate.title"),
-        }),
-      )
-
-      return
-    }
-
-    if (state.status !== "ready") return
-
-    const response = yield* promise(() =>
-      dialog.showMessageBox({
-        type: "info",
-        message: ctx.t("dialog.ready.message", { version: state.version }),
-        title: ctx.t("dialog.ready.title"),
-        buttons: [ctx.t("dialog.restart"), ctx.t("dialog.later")],
-        defaultId: 0,
-        cancelId: 1,
-      }),
-    )
-
-    if (response.response === 0) yield* updater.install
+      // The other extensions are disposed first; the upgrade starts only once the app is quitting.
+      await ctx.lifecycle.restart(async () => {
+        await upgrade(binary, ctx.log)
+        app.quit()
+      })
+    },
   })
 
   ctx.add(
@@ -105,19 +30,37 @@ const setup: MainSetup<typeof definition> = async (ctx) => {
       id: "check",
       label: ctx.t("menu.check"),
       after: "about",
-      enabled: () => enabled,
+      // The focused window checks, so the answer shows where the user asked.
       run(window) {
-        // Beta builds check in the focused window, which can offer the stable installer.
-        if (build.channel !== "beta") return void runFork(show)
-
         if (window) provider.emit("check", null, window.id)
       },
     }),
   )
 }
 
-function promise<A>(evaluate: () => Promise<A>) {
-  return Effect.tryPromise(evaluate).pipe(Effect.orDie)
+/**
+ * Starts `redcode upgrade` detached, so it outlives the app it replaces. Its output goes to the desktop log directory,
+ * since no window is left to show it. Resolves once the process started.
+ */
+async function upgrade(binary: string, log: Log) {
+  const directory = path.join(app.getPath("userData"), "logs")
+  const file = path.join(directory, "redcode-upgrade.log")
+  mkdirSync(directory, { recursive: true })
+  const output = openSync(file, "w")
+  // The home directory, not the app's: Windows cannot replace a folder that is a process's working directory.
+  const child = spawn(binary, ["upgrade"], {
+    cwd: homedir(),
+    detached: true,
+    stdio: ["ignore", output, output],
+    windowsHide: true,
+  })
+
+  await new Promise<void>((resolve, reject) => {
+    child.once("spawn", resolve)
+    child.once("error", reject)
+  }).finally(() => closeSync(output))
+  child.unref()
+  log.write("info", "redcode upgrade started", { binary, log: file, pid: child.pid })
 }
 
 export default setup

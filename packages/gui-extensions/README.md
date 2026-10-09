@@ -112,9 +112,9 @@ The updater listens to its main side's `check` event once per generation of that
 <!-- source: src/updater/renderer.tsx#createKeyed -->
 
 ```tsx
-// Beta builds answer the app menu's Check for Updates in the focused window instead of a native dialog. The
-// listener ends with the generation of the main side that sends it.
-createKeyed(updater, (client) => void client.on("check", () => act("check")))
+// The app menu's Check for Updates answers in the focused window. The listener ends with the generation of the main
+// side that sends it.
+createKeyed(updater, (client) => void client.on("check", check))
 ```
 
 ### The routed session
@@ -268,12 +268,12 @@ sequenceDiagram
   W->>B: subscribe
   B->>M: state(window)
   M-->>W: available + state snapshot
-  W->>B: check(), input encoded
-  B->>M: decoded input, Caller { window, signal }
-  M->>M: the state moves to "checking", provider.changed()
-  M-->>W: state push (an event always wins over an older snapshot)
-  M-->>W: reply, output encoded
   M-->>W: emit("check", null, window): the app menu asks this window to check
+  W->>B: upgrade(), input encoded
+  B->>M: decoded input, Caller { window, signal }
+  M-->>W: reply, output encoded
+  M->>M: provider.changed() after a state change
+  M-->>W: state push (an event always wins over an older snapshot)
 ```
 
 - Define it in `contract.ts`. Its id is your extension id, or `<id>.<name>`. A method without an input schema takes only optional call options: `pairing.screenActive({ signal })`, never an `undefined` placeholder.
@@ -315,16 +315,20 @@ A reference cannot go in `requires`: setup would wait for a `load` that only set
 
 The updater's actions branch on the `Live` value and still answer while its main side is missing:
 
-<!-- source: src/updater/renderer.tsx#act -->
+<!-- source: src/updater/renderer.tsx#check -->
 
 ```tsx
-const act = (name: "check" | "install") => {
+const check = () => {
   const live = updater()
 
-  if (live.status === "active") return void import("./actions").then((module) => module[name](ctx, live.value))
+  // Not loaded yet, or gone (disabled, failed, blocked, restarting): nothing can check or upgrade.
+  if (live.status !== "active") return void showToast({ title: ctx.t("common.requestFailed") })
 
-  // Not loaded yet, or gone (disabled, failed, blocked, restarting): nothing can check or install.
-  showToast({ title: ctx.t("common.requestFailed") })
+  if (!upgradable()) return void showToast({ title: ctx.t("check.title"), description: ctx.t("check.development") })
+
+  if (checking()) return
+  setChecking(true)
+  void import("./actions").then((module) => module.check(ctx, live.value)).finally(() => setChecking(false))
 }
 ```
 

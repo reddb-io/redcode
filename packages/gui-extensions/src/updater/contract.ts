@@ -1,31 +1,17 @@
 import { Schema } from "effect"
 import { Ipc } from "../sdk"
 
-export const UpdaterState = Schema.Union([
-  Schema.Struct({ status: Schema.Literal("disabled") }),
-  Schema.Struct({ status: Schema.Literal("idle") }),
-  Schema.Struct({ status: Schema.Literal("checking") }),
-  Schema.Struct({ status: Schema.Literal("downloading"), version: Schema.String }),
-  Schema.Struct({ status: Schema.Literal("ready"), version: Schema.String }),
-  Schema.Struct({ status: Schema.Literal("download-required"), version: Schema.String }),
-  Schema.Struct({ status: Schema.Literal("up-to-date") }),
-  Schema.Struct({ status: Schema.Literal("installing"), version: Schema.String }),
-  Schema.Struct({ status: Schema.Literal("error"), message: Schema.String }),
-])
-
-export type UpdaterState = typeof UpdaterState.Type
-
-/** The desktop app updater. Its state is app-wide; every window receives the same value. */
+/** Updates run the installation's `redcode upgrade`, which updates the CLI, the design app and the desktop together. */
 export const Updater = Ipc.define({
   id: "updater",
-  state: UpdaterState,
+  /** Whether the app runs the CLI of a Redcode installation, the only CLI `redcode upgrade` can update. */
+  state: Schema.Struct({ upgradable: Schema.Boolean }),
   methods: {
-    check: { output: UpdaterState },
-    /** Restarts into a staged update, or opens the installer download. */
-    install: {},
+    /** Quits the app and runs the installation's `redcode upgrade` in a detached process. */
+    upgrade: {},
   },
   events: {
-    /** The app menu asks the focused window to check with in-app feedback (beta builds). */
+    /** The app menu asks the focused window to check for updates. */
     check: Schema.Null,
   },
 })

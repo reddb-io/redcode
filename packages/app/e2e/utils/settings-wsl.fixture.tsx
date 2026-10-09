@@ -29,7 +29,7 @@ export function mount(input: {
   ssh?: string | null
   storage?: string | null
   hold?: string | null
-  /** Enables the updater Ipc; check and install reject with this message, which may be empty. */
+  /** Enables the updater Ipc for an installation that can upgrade; upgrade rejects with this message, which may be empty. */
   updater?: string | null
 }) {
   const root = document.getElementById("root")
@@ -187,7 +187,7 @@ export function mount(input: {
         return result ?? null
       },
       async subscribe(ipc) {
-        if (ipc === "updater" && input.updater != null) return { available: true, state: { status: "idle" } }
+        if (ipc === "updater" && input.updater != null) return { available: true, state: { upgradable: true } }
 
         if (ipc === "wsl" || ipc === "ssh") return { available: true, state: snapshot(ipc) }
 

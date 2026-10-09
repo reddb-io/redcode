@@ -295,24 +295,14 @@ export const ErrorPage: Component<ErrorPageProps> = (props) => {
   onCleanup(ipcs.dispose)
   const updater = () => ipcs.typed(Updater)
 
-  async function checkForUpdates() {
-    const state = await updater()?.check()
-    setStore("actionError", state?.status === "error" ? state.message : undefined)
-  }
-
-  async function installUpdate() {
+  // Quits the app and runs the installation's `redcode upgrade`, which also updates the design app and desktop.
+  async function upgrade() {
     await updater()
-      ?.install()
+      ?.upgrade()
       .then(() => setStore("actionError", undefined))
       .catch((err) => {
         setStore("actionError", formatError(err, language.t))
       })
-  }
-
-  const updateVersion = () => {
-    const state = updater()?.state()
-
-    return state?.status === "ready" || state?.status === "download-required" ? state.version : undefined
   }
 
   async function exportDebugLogs() {
@@ -380,28 +370,10 @@ export const ErrorPage: Component<ErrorPageProps> = (props) => {
               )
             }}
           </Show>
-          <Show when={updater()}>
-            <Show
-              when={updateVersion()}
-              fallback={
-                <Button
-                  size="large"
-                  variant="ghost"
-                  onClick={checkForUpdates}
-                  disabled={["checking", "downloading", "installing"].includes(updater()?.state()?.status ?? "")}
-                >
-                  {updater()?.state()?.status === "checking"
-                    ? language.t("error.page.action.checking")
-                    : language.t("error.page.action.checkUpdates")}
-                </Button>
-              }
-            >
-              {(version) => (
-                <Button size="large" onClick={installUpdate}>
-                  {language.t("error.page.action.updateTo", { version: version() })}
-                </Button>
-              )}
-            </Show>
+          <Show when={updater()?.state()?.upgradable}>
+            <Button size="large" variant="ghost" onClick={upgrade}>
+              {language.t("error.page.action.upgrade")}
+            </Button>
           </Show>
         </div>
         <Show when={store.actionError}>

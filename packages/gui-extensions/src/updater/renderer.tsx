@@ -1,7 +1,6 @@
 import { showToast } from "@opencode/ui/toast"
-import { lazy, onCleanup, Suspense } from "solid-js"
-import { createKeyed, onIdle, Command, SettingsPage, TitlebarItem, type Setup, type SetupContext } from "../sdk"
-import { updaterAction } from "./action"
+import { createSignal, lazy, onCleanup, Suspense } from "solid-js"
+import { createKeyed, onIdle, Command, SettingsPage, type Setup, type SetupContext } from "../sdk"
 import type definition from "./index"
 
 const setup: Setup<typeof definition> = (ctx) => {
@@ -9,41 +8,31 @@ const setup: Setup<typeof definition> = (ctx) => {
 
   if (!ctx.desktop) return
   const updater = ctx.uses.updater
+  const [checking, setChecking] = createSignal(false)
 
-  const state = () => {
+  // Undefined while main is not active.
+  const upgradable = () => {
     const live = updater()
 
-    return live.status === "active" ? live.value.state() : undefined
+    return live.status === "active" ? live.value.state()?.upgradable : undefined
   }
 
-  const act = (name: "check" | "install") => {
+  const check = () => {
     const live = updater()
 
-    if (live.status === "active") return void import("./actions").then((module) => module[name](ctx, live.value))
+    // Not loaded yet, or gone (disabled, failed, blocked, restarting): nothing can check or upgrade.
+    if (live.status !== "active") return void showToast({ title: ctx.t("common.requestFailed") })
 
-    // Not loaded yet, or gone (disabled, failed, blocked, restarting): nothing can check or install.
-    showToast({ title: ctx.t("common.requestFailed") })
+    if (!upgradable()) return void showToast({ title: ctx.t("check.title"), description: ctx.t("check.development") })
+
+    if (checking()) return
+    setChecking(true)
+    void import("./actions").then((module) => module.check(ctx, live.value)).finally(() => setChecking(false))
   }
 
   const Section = lazy(() => import("./section"))
   // Settings rows are small; load them while idle so settings opens without a blank row.
   onCleanup(onIdle(() => void Section.preload()))
-
-  ctx.add(TitlebarItem, () => {
-    const current = state()
-    const installing = current?.status === "installing"
-    const ready = current?.status === "ready" || current?.status === "download-required"
-
-    if (!ready && !installing) return
-
-    return {
-      id: "update",
-      label: ctx.t("status.label"),
-      title: ctx.t(updaterAction(current).label),
-      busy: installing,
-      run: () => act("install"),
-    }
-  })
 
   ctx.add(SettingsPage, {
     id: "updates",
@@ -60,14 +49,7 @@ const setup: Setup<typeof definition> = (ctx) => {
     },
     render: () => (
       <Suspense>
-        <Section
-          state={state}
-          run={() => {
-            const run = updaterAction(state()).run
-
-            if (run) act(run)
-          }}
-        />
+        <Section upgradable={upgradable} checking={checking} run={check} />
       </Suspense>
     ),
   })
@@ -78,12 +60,12 @@ const setup: Setup<typeof definition> = (ctx) => {
       return ctx.t("menu.check")
     },
     hidden: true,
-    run: () => act("check"),
+    run: check,
   })
 
-  // Beta builds answer the app menu's Check for Updates in the focused window instead of a native dialog. The
-  // listener ends with the generation of the main side that sends it.
-  createKeyed(updater, (client) => void client.on("check", () => act("check")))
+  // The app menu's Check for Updates answers in the focused window. The listener ends with the generation of the main
+  // side that sends it.
+  createKeyed(updater, (client) => void client.on("check", check))
 }
 
 /**

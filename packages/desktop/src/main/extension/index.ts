@@ -49,7 +49,7 @@ export const layer = Layer.effect(
 
     setExtensionAssets((request, url) => extensionAsset(storage.db, request, url))
 
-    // Disposes every extension but the caller (the host keeps it), then hands off (e.g. quitAndInstall) or relaunches.
+    // Disposes every extension but the caller (the host keeps it), then hands off (e.g. an upgrade) or relaunches.
     const restart = async (handoff?: () => void | Promise<void>) => {
       setAppQuitting()
       await runPromise(lifecycle.prepareToRestart)
@@ -79,6 +79,7 @@ export const layer = Layer.effect(
             command: cli.command,
             binary: cli.binary,
             development: !app.isPackaged && !cli.binary,
+            installed: cli.source !== "development" && cli.source !== "bundled",
           },
           subscriptions,
           servers,
