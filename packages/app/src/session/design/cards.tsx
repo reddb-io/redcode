@@ -36,7 +36,7 @@ export function DesignFeedbackCard(props: {
   return (
     <div
       data-component="design-feedback-card"
-      class="flex min-w-0 flex-col gap-2 rounded-[10px] bg-v2-background-bg-layer-01 px-4 py-3 shadow-[inset_0_0_0_0.5px_var(--v2-border-border-base)]"
+      class="flex min-w-0 flex-col gap-2 rounded-lg border border-elevation-base-border bg-elevation-sunken-surface px-4 py-3"
     >
       <div class="flex min-w-0 items-center gap-2 text-12-medium">
         <span class="shrink-0 text-v2-text-text-base">{language.t("session.design.feedback.title")}</span>
@@ -62,7 +62,7 @@ export function DesignFeedbackCard(props: {
             {(note, index) => (
               <li class="min-w-0 break-words">
                 <span class="text-v2-text-text-muted">{index() + 1}. </span>
-                <bdi dir="auto" class="font-[530]">
+                <bdi dir="auto" class="font-medium">
                   {note.label}
                 </bdi>
                 <span class="text-v2-text-text-muted"> — </span>
@@ -108,7 +108,7 @@ export function DesignApprovalCard(props: {
   return (
     <div
       data-component="design-approval-card"
-      class="flex min-w-0 flex-col items-start gap-1 rounded-[10px] bg-v2-background-bg-layer-01 px-4 py-3 shadow-[inset_0_0_0_0.5px_var(--v2-border-border-base)]"
+      class="flex min-w-0 flex-col items-start gap-1 rounded-lg border border-elevation-base-border bg-elevation-sunken-surface px-4 py-3"
     >
       <div class="flex min-w-0 max-w-full items-center gap-2 text-13-medium">
         <span class="shrink-0 text-v2-text-text-accent">{language.t("session.design.approval.title")}</span>
@@ -129,7 +129,7 @@ export function DesignApprovalCard(props: {
       <div class="text-12-regular text-v2-text-text-muted">{language.t("session.design.approval.saved")}</div>
       <button
         type="button"
-        class="mt-1 text-12-medium text-v2-text-text-accent hover:underline"
+        class="mt-1 rounded-sm text-12-medium text-foreground underline underline-offset-4 hover:decoration-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
         onClick={() => props.onOpen()}
       >
         {language.t("session.design.approval.open")}

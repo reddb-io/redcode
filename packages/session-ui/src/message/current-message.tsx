@@ -1,12 +1,9 @@
-import type {
-  SessionMessageAssistant,
-  SessionMessageAssistantTool,
-  SessionMessageUser,
-} from "@opencode/client/promise"
+import type { SessionMessageAssistant, SessionMessageAssistantTool, SessionMessageUser } from "@opencode/client/promise"
 import { Match, Switch, type ComponentProps } from "solid-js"
 import type { SessionUserActions, SessionUserAttachmentReference, SessionUserComment } from "../actions"
 import { AssistantReasoningContent, AssistantTextContent, CurrentUserMessageDisplay } from "./message-content"
-import { CurrentContextToolGroup, CurrentFileToolGroup, ToolDisplay } from "../tools/tool-renderer"
+import { CurrentContextToolGroup, CurrentFileToolGroup, ToolDisplay, toolDuration } from "../tools/tool-renderer"
+import { useI18n } from "@opencode/ui/context/i18n"
 import { currentToolError, currentToolInput, currentToolMetadata, currentToolOutput } from "./current-tool-state"
 
 export type { SessionUserActions, SessionUserAttachmentReference, SessionUserComment } from "../actions"
@@ -49,6 +46,7 @@ export function SessionAssistantContent(props: {
   onToolOpenChange?: (open: boolean) => void
   onContentRendered?: () => void
 }) {
+  const i18n = useI18n()
   return (
     <Switch>
       <Match when={props.content.type === "text" ? props.content : undefined}>
@@ -91,6 +89,7 @@ export function SessionAssistantContent(props: {
             deferContent
             virtualizeDiff={false}
             onContentRendered={props.onContentRendered}
+            meta={toolDuration(tool(), i18n)}
           />
         )}
       </Match>

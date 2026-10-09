@@ -21,7 +21,7 @@ import { Dynamic } from "solid-js/web"
 import { type SessionSummary, useData } from "../context"
 import { useFileComponent } from "@opencode/ui/context/file"
 import { type UiI18n, useI18n } from "@opencode/ui/context/i18n"
-import { BasicTool, GenericTool } from "../components/basic-tool"
+import { BasicTool, GenericTool, ToolStatusGlyph } from "../components/basic-tool"
 import { FileIcon } from "@opencode/ui/file-icon"
 import { Icon, type IconProps } from "@opencode/ui/icon"
 import { ToolErrorCard } from "../components/tool-error-card"
@@ -543,23 +543,28 @@ export function CurrentContextToolGroup(props: {
     () => props.busy || tools().some((tool) => tool.state.status === "streaming" || tool.state.status === "running"),
   )
   const names = createMemo(() =>
-    i18n.list([
-      ...new Set(
-        props.parts.flatMap((part) => {
-          if (part.type !== "tool" && part.type !== "shell") return []
-          return [
-            part.type !== "tool"
-              ? i18n.t("ui.tool.shell")
-              : part.name === "skill"
-                ? i18n.t("ui.tool.skill")
-                : part.name === "subagent"
-                  ? i18n.t("ui.tool.agent.default")
-                  : getToolInfo(part.name, undefined, part.name === "websearch" ? currentToolMetadata(part) : undefined)
-                      .title,
-          ]
-        }),
-      ),
-    ]),
+    i18n.list(
+      [
+        ...new Set(
+          props.parts.flatMap((part) => {
+            if (part.type !== "tool" && part.type !== "shell") return []
+            return [
+              part.type !== "tool"
+                ? i18n.t("ui.tool.shell")
+                : part.name === "skill"
+                  ? i18n.t("ui.tool.skill")
+                  : part.name === "subagent"
+                    ? i18n.t("ui.tool.agent.default")
+                    : getToolInfo(
+                        part.name,
+                        undefined,
+                        part.name === "websearch" ? currentToolMetadata(part) : undefined,
+                      ).title,
+            ]
+          }),
+        ),
+      ].filter(Boolean),
+    ),
   )
   const label = createMemo(() => {
     const thoughts = props.parts.filter((part) => part.type === "reasoning").length
@@ -633,6 +638,7 @@ export function CurrentContextToolGroup(props: {
       <BasicTool
         icon="glasses"
         status={pending() ? "running" : "completed"}
+        glyph={false}
         compact
         hasContent
         allowOpenWhilePending
@@ -748,6 +754,7 @@ export function CurrentContextToolGroup(props: {
                                       deferContent
                                       virtualizeDiff={false}
                                       onContentRendered={props.onSizeChange}
+                                      meta={toolDuration(tool(), i18n)}
                                     />
                                   }
                                 >
@@ -806,6 +813,7 @@ export function CurrentContextToolGroup(props: {
                         >
                           <div data-component="tool-trigger">
                             <div data-slot="basic-tool-tool-trigger-content">
+                              <ToolStatusGlyph status={tool().state.status} />
                               <div data-slot="basic-tool-tool-info">
                                 <div data-slot="basic-tool-tool-info-structured">
                                   <div data-slot="basic-tool-tool-info-main">
@@ -824,17 +832,12 @@ export function CurrentContextToolGroup(props: {
                                       {(arg) => <span data-slot="basic-tool-tool-arg">{arg}</span>}
                                     </For>
                                   </div>
-                                  <Show when={trigger().matches}>
-                                    {(matches) => (
-                                      <>
-                                        <span data-slot="context-tool-group-dot" />
-                                        <span data-slot="context-tool-group-matches">{matches()}</span>
-                                      </>
-                                    )}
-                                  </Show>
                                 </div>
                               </div>
                             </div>
+                            <Show when={[trigger().matches, toolDuration(tool(), i18n)].filter(Boolean).join(" · ")}>
+                              {(meta) => <span data-slot="basic-tool-meta">{meta()}</span>}
+                            </Show>
                           </div>
                         </Show>
                       </div>
@@ -1021,6 +1024,22 @@ export interface ToolProps {
   onContentRendered?: () => void
   forceOpen?: boolean
   locked?: boolean
+  /** Right-aligned row detail, usually the run time from `toolDuration`. */
+  meta?: string
+}
+
+/** How long a finished tool ran, formatted for the right edge of its row. */
+export function toolDuration(tool: SessionMessageAssistantTool, i18n: UiI18n) {
+  const completed = tool.time.completed
+  if (completed === undefined) return undefined
+  const ms = Math.max(0, completed - (tool.time.ran ?? tool.time.created))
+  const numfmt = new Intl.NumberFormat(i18n.locale(), { maximumFractionDigits: ms < 10_000 ? 1 : 0 })
+  if (ms < 60_000) return i18n.t("ui.message.duration.seconds", { count: numfmt.format(ms / 1000) })
+  const total = Math.round(ms / 1000)
+  return i18n.t("ui.message.duration.minutesSeconds", {
+    minutes: numfmt.format(Math.floor(total / 60)),
+    seconds: numfmt.format(total % 60),
+  })
 }
 
 export type ToolComponent = Component<ToolProps>
@@ -1247,7 +1266,7 @@ export function ToolDisplay(
               if (props.tool === "question" && cleaned.includes("dismissed this question")) {
                 return (
                   <div style="width: 100%; display: flex; justify-content: flex-end;">
-                    <span class="text-13-regular text-text-weak cursor-default">
+                    <span class="text-[13px] text-ink-muted cursor-default">
                       {i18n.t("ui.messagePart.questions.dismissed")}
                     </span>
                   </div>
@@ -1657,9 +1676,7 @@ ToolRegistry.register({
                 }
               >
                 <span data-component="task-tool-spinner" style={{ color: tone() ?? "var(--icon-interactive-base)" }}>
-                  <SessionProgressIndicatorV2
-                    style={{ color: v2Tone() ?? "light-dark(var(--v2-text-text-base), #ffffff)" }}
-                  />
+                  <SessionProgressIndicatorV2 style={{ color: v2Tone() ?? "var(--reddb-color-foreground)" }} />
                 </span>
               </Show>
               <span data-component="task-tool-title">{title()}</span>
@@ -1691,6 +1708,7 @@ ToolRegistry.register({
           <BasicTool
             icon="task"
             status={props.status}
+            glyph={false}
             trigger={trigger()}
             hideDetails
             triggerAsLink
@@ -1703,7 +1721,7 @@ ToolRegistry.register({
       >
         <div
           data-component="task-tool-delegating"
-          class="flex h-9 w-fit max-w-full items-center gap-2 rounded-[8px] bg-v2-background-bg-layer-02 p-2.5 text-[13px] font-[530] leading-text-compact tracking-[-0.04px]"
+          class="flex h-7 w-fit max-w-full items-center gap-2 font-mono text-[13px] font-medium leading-text-compact text-ink-muted"
         >
           <Icon name="subagent" size="small" class="shrink-0 text-v2-icon-icon-faint" />
           <TextShimmer text={i18n.t("ui.tool.agent.delegating")} class="min-w-0 truncate" />

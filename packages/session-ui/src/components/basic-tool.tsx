@@ -58,6 +58,25 @@ export interface BasicToolProps {
   triggerAsLink?: boolean
   clickable?: boolean
   compact?: boolean
+  /** Shows the tool's status glyph before its title; quiet rows such as thoughts and groups omit it. */
+  glyph?: boolean
+  /** Right-aligned tabular detail such as the tool's duration. */
+  meta?: string
+}
+
+/** The terminal status mark of a tool row: ✓ done, ● running, ✕ failed. */
+export function ToolStatusGlyph(props: { status?: string }) {
+  const kind = () => {
+    if (props.status === "completed") return "completed"
+    if (props.status === "error") return "error"
+    if (props.status === "pending") return "pending"
+    return "running"
+  }
+  return (
+    <span data-slot="basic-tool-status" data-status={kind()} aria-hidden="true">
+      {kind() === "completed" ? "✓" : kind() === "error" ? "✕" : "●"}
+    </span>
+  )
 }
 
 const SPRING = { type: "spring" as const, visualDuration: 0.35, bounce: 0 }
@@ -212,6 +231,9 @@ export function BasicTool(props: BasicToolProps) {
       data-hide-details={props.hideDetails ? "true" : undefined}
     >
       <div data-slot="basic-tool-tool-trigger-content">
+        <Show when={props.glyph !== false && props.status}>
+          <ToolStatusGlyph status={props.status} />
+        </Show>
         <div data-slot="basic-tool-tool-info">
           <Switch>
             <Match when={triggerTitle()}>
@@ -270,6 +292,9 @@ export function BasicTool(props: BasicToolProps) {
           </Switch>
         </div>
       </div>
+      <Show when={props.meta}>
+        <span data-slot="basic-tool-meta">{props.meta}</span>
+      </Show>
       <Show when={hasChildren() && !props.hideDetails && !props.locked && (!pending() || props.allowOpenWhilePending)}>
         <Collapsible.Arrow />
       </Show>

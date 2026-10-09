@@ -1,10 +1,24 @@
 [data-component="session-websearch-dock"] {
   width: 100%;
-  border: 0.5px solid var(--v2-border-border-base);
-  border-radius: 12px;
+  border: 1px solid var(--reddb-color-elevation-raised-border);
+  border-radius: var(--reddb-radius-lg);
+  background: var(--reddb-color-elevation-raised-surface);
+  overflow: hidden;
+
+  /* One card: the body and its footer share the card's surface and border, split by a hairline. */
+  > [data-dock-surface] {
+    border: 0;
+    border-radius: 0;
+    margin-top: 0;
+    background: transparent;
+  }
+
+  > [data-dock-surface="tray"] {
+    border-top: 1px solid var(--reddb-color-elevation-base-border);
+  }
 
   .websearch-body {
-    box-shadow: var(--v2-elevation-raised);
+    box-shadow: none;
   }
 
   .websearch-setting {
@@ -21,9 +35,8 @@
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    gap: 16px;
-    padding: 24px 16px 12px;
-    border: 0;
+    gap: var(--reddb-spatial-gap-md);
+    padding: var(--reddb-spatial-gap-md) var(--reddb-spatial-inset-sm);
   }
 
   .websearch-status {
@@ -31,7 +44,7 @@
     align-items: center;
     gap: 8px;
     margin-inline-end: auto;
-    color: var(--v2-text-text-base);
+    color: var(--reddb-color-foreground);
     font-size: 13px;
     line-height: var(--line-height-compact);
   }

@@ -251,23 +251,23 @@ export function TerminalPanel(
         fallback={
           <div class="flex flex-col h-full pointer-events-none">
             <div
-              class="h-10 flex items-center gap-2 px-2 border-b border-border-weaker-base bg-v2-background-bg-base overflow-hidden"
+              class="h-10 flex items-center gap-2 px-2 border-b border-elevation-base-border bg-elevation-base-surface overflow-hidden"
               classList={{ "pe-12": props.reserveReviewToggle }}
             >
               <For each={handoff()}>
                 {(title) => (
-                  <div class="px-2 py-1 rounded-md bg-surface-base text-14-regular text-text-weak truncate max-w-40">
-                    {title}
-                  </div>
+                  <div class="px-2 py-1 rounded-md bg-muted text-body text-ink-muted truncate max-w-40">{title}</div>
                 )}
               </For>
               <div class="flex-1" />
-              <div class="text-text-weak pr-2">
+              <div class="text-caption text-ink-muted pr-2">
                 {language.t("common.loading")}
                 {language.t("common.loading.ellipsis")}
               </div>
             </div>
-            <div class="flex-1 flex items-center justify-center text-text-weak">{language.t("terminal.loading")}</div>
+            <div class="flex-1 flex items-center justify-center text-caption text-ink-muted bg-elevation-sunken-surface">
+              {language.t("terminal.loading")}
+            </div>
           </div>
         }
       >
@@ -295,7 +295,7 @@ export function TerminalPanel(
           }}
         >
           <div class="flex flex-col h-full">
-            <div class="h-[52px] shrink-0 flex border-b border-border-weaker-base">
+            <div class="h-10 shrink-0 flex border-b border-elevation-base-border">
               <Tabs
                 variant="panel"
                 value={terminal.active()}
@@ -342,7 +342,7 @@ export function TerminalPanel(
                 <div class="w-12 shrink-0" aria-hidden />
               </Show>
             </div>
-            <div class="flex-1 min-h-0 relative">
+            <div class="flex-1 min-h-0 relative bg-elevation-sunken-surface">
               <For each={store.surfaces}>
                 {(surface) => (
                   <div
@@ -360,7 +360,7 @@ export function TerminalPanel(
                         focusTerminalById(surface.pty.id)
                         terminal.consumeFocus(surface.pty.id)
                       }}
-                      class="!px-[14px]"
+                      class="!px-3 !pt-2"
                       onConnect={() =>
                         markTerminalConnected(surface.key, surface.pty.id, (terminalID) => surface.ops.trim(terminalID))
                       }

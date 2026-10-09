@@ -16,29 +16,42 @@ export type DiffProps<T = {}> = FileDiffOptions<T> & {
 
 const unsafeCSS = `
 :host {
-  --diffs-bg: var(--opencode-diffs-bg, var(--color-background-stronger));
+  --diffs-bg: var(--opencode-diffs-bg, var(--reddb-color-elevation-sunken-surface, var(--color-background-stronger)));
 }
 
+/*
+ * Diff rows use the design system's diff roles (surfaced through the theme's diff tokens so custom themes still
+ * apply): addition, deletion and modification surfaces with their own ink, line numbers in muted ink, and a
+ * neutral ink selection, never the accent.
+ */
 [data-diff],
 [data-file] {
-  /* Pierre 1.2 mixes these override targets at 12% in light mode and 20% in dark mode. */
-  --diffs-bg-deletion-override: light-dark(
-    color-mix(in lab, var(--diffs-bg) 33.333%, var(--diffs-deletion-base)),
-    color-mix(in lab, var(--diffs-bg) 60%, var(--diffs-deletion-base))
-  );
-  --diffs-bg-deletion-number-override: var(--diffs-bg-deletion-override);
-  --diffs-bg-addition-override: light-dark(
-    color-mix(in lab, var(--diffs-bg) 33.333%, var(--diffs-addition-base)),
-    color-mix(in lab, var(--diffs-bg) 60%, var(--diffs-addition-base))
-  );
-  --diffs-bg-addition-number-override: var(--diffs-bg-addition-override);
-  --diffs-selection-base: var(--v2-background-bg-accent);
-  --diffs-selection-number-fg: var(--v2-text-text-accent);
-  --diffs-comment-bg: rgb(from var(--v2-background-bg-accent) r g b / 0.06);
+  --diffs-addition-color-override: var(--icon-diff-add-base);
+  --diffs-deletion-color-override: var(--icon-diff-delete-base);
+  --diffs-modified-color-override: var(--icon-diff-modified-base);
+  --diffs-bg-addition-override: var(--surface-diff-add-base);
+  --diffs-bg-addition-number-override: var(--surface-diff-add-base);
+  --diffs-bg-addition-emphasis-override: var(--surface-diff-add-stronger);
+  --diffs-bg-deletion-override: var(--surface-diff-delete-base);
+  --diffs-bg-deletion-number-override: var(--surface-diff-delete-base);
+  --diffs-bg-deletion-emphasis-override: var(--surface-diff-delete-stronger);
+  --diffs-fg-number-override: var(--reddb-color-ink-muted, var(--text-weak));
+  --diffs-selection-base: var(--reddb-color-foreground, var(--text-strong));
+  --diffs-selection-number-fg: var(--reddb-color-foreground, var(--text-strong));
+  --diffs-comment-bg: rgb(from var(--diffs-selection-base) r g b / 0.06);
   /* Use explicit alpha instead of color-mix(..., transparent) to avoid Safari's non-premultiplied interpolation bugs. */
-  --diffs-bg-selection: var(--diffs-bg-selection-override, rgb(from var(--diffs-selection-base) r g b / 0.2));
+  --diffs-bg-selection: var(--diffs-bg-selection-override, rgb(from var(--diffs-selection-base) r g b / 0.12));
   --diffs-bg-selection-number: var(--diffs-bg-selection-number-override, var(--diffs-bg-selection));
   --diffs-bg-selection-text: rgb(from var(--diffs-selection-base) r g b / 0.2);
+}
+
+/* Changed rows sit on the diff role's own surface rather than a faint mix of it into the code ground. */
+[data-diff] [data-line-type='change-addition'],
+[data-diff] [data-line-type='change-deletion'],
+[data-diff] [data-line-type='change-addition'][data-hovered],
+[data-diff] [data-line-type='change-deletion'][data-hovered] {
+  --mix-light: 0%;
+  --mix-dark: 0%;
 }
 
 [data-diff] ::selection,
@@ -219,12 +232,12 @@ export function createDefaultOptions<T>(style: FileDiffOptions<T>["diffStyle"]) 
 }
 
 export const styleVariables = {
-  "--diffs-font-family": "var(--font-family-mono)",
-  "--diffs-font-size": "var(--font-size-small)",
-  "--diffs-line-height": "24px",
+  "--diffs-font-family": "var(--reddb-font-family-mono, var(--font-family-mono))",
+  "--diffs-font-size": "13px",
+  "--diffs-line-height": "20px",
   "--diffs-tab-size": 2,
   "--diffs-font-features": "var(--font-family-mono--font-feature-settings)",
-  "--diffs-header-font-family": "var(--font-family-sans)",
+  "--diffs-header-font-family": "var(--reddb-font-family-sans, var(--font-family-sans))",
   "--diffs-gap-block": 0,
   "--diffs-gap-style": 0,
   "--diffs-min-number-column-width": "3ch",

@@ -75,7 +75,7 @@
   }
 
   .error-card {
-    color: var(--v2-text-text-base);
+    color: var(--reddb-color-foreground);
     max-height: 240px;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
@@ -83,20 +83,18 @@
     overflow-y: auto;
   }
 
+  /* Turn errors and retries are the design system's tone Card: its 2px danger rule, then the message. */
   [data-component="card"]:is([data-kind="session-retry-card"], [data-kind="session-error-card"]) {
+    margin-top: var(--reddb-spatial-gap-md);
     font-size: 13px;
-    line-height: var(--line-height-compact);
-    letter-spacing: -0.04px;
+    line-height: var(--line-height-large);
+
+    strong {
+      color: var(--reddb-color-feedback-danger-foreground);
+    }
   }
 
   [data-component="card"][data-kind="session-retry-card"] {
-    --card-pad-l: 0px;
-    --card-pad-r: 0px;
-
-    &::before {
-      display: none;
-    }
-
     [data-slot="session-turn-retry-message"] {
       min-width: 0;
       overflow: hidden;
@@ -105,23 +103,13 @@
     }
 
     [data-slot="session-turn-retry-info"] {
-      margin-top: 4px;
-      color: var(--v2-text-text-faint);
-      font-family: var(--v2-font-family-sans);
-      font-size: 13px;
-      font-weight: 440;
+      margin-top: 2px;
+      color: var(--reddb-color-ink-muted);
+      font-family: var(--reddb-font-family-mono);
+      font-size: 12px;
+      font-weight: var(--reddb-font-weight-regular);
       line-height: var(--line-height-compact);
-      letter-spacing: -0.04px;
-    }
-  }
-
-  [data-component="card"][data-kind="session-error-card"] {
-    --card-pad-y: 0px;
-    --card-pad-l: 0px;
-    --card-pad-r: 0px;
-
-    &::before {
-      display: none;
+      font-variant-numeric: tabular-nums;
     }
   }
 

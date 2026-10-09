@@ -8,18 +8,20 @@
 }
 
 [data-component="user-message"] {
-  --user-message-mention-prefix-color: var(--v2-blue-500);
+  --user-message-mention-prefix-color: var(--reddb-color-feedback-info-foreground);
+  /* The caret column; meta, attachments and comments hang off the prompt text, not the caret. */
+  --user-message-indent: 2ch;
 
-  font-family: var(--font-family-sans);
-  font-size: var(--font-size-base);
+  font-family: var(--reddb-font-family-mono);
+  font-size: 13px;
   font-style: normal;
-  font-weight: var(--font-weight-regular);
-  line-height: var(--line-height-large);
-  letter-spacing: var(--letter-spacing-normal);
-  color: var(--v2-text-text-base);
+  font-weight: var(--reddb-font-weight-medium);
+  line-height: 1.6;
+  letter-spacing: 0;
+  color: var(--reddb-color-foreground);
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
+  align-items: flex-start;
   align-self: stretch;
   width: 100%;
   max-width: 100%;
@@ -28,11 +30,11 @@
   [data-slot="user-message-attachments"] {
     display: flex;
     flex-wrap: wrap;
-    justify-content: flex-end;
-    gap: 8px;
+    justify-content: flex-start;
+    gap: var(--reddb-spatial-gap-md);
     width: fit-content;
-    max-width: min(82%, 64ch);
-    margin-inline-start: auto;
+    max-width: calc(100% - var(--user-message-indent));
+    margin-inline-start: var(--user-message-indent);
   }
 
   [data-slot="user-message-attachment"] {
@@ -41,17 +43,17 @@
     align-items: center;
     justify-content: center;
     min-width: 0;
-    border-radius: 6px;
+    border-radius: var(--reddb-radius-md);
     overflow: hidden;
-    background: var(--v2-background-bg-layer-02);
-    border: 0.5px solid var(--v2-border-border-base);
+    background: var(--reddb-color-elevation-sunken-surface);
+    border: 1px solid var(--reddb-color-elevation-base-border);
     cursor: default;
     transition:
       border-color 0.15s ease,
       opacity 0.3s ease;
 
     &:hover {
-      border-color: var(--v2-border-border-strong);
+      border-color: var(--reddb-color-control-edge);
     }
 
     &[data-clickable] {
@@ -70,7 +72,7 @@
         position: absolute;
         inset: 0;
         border-radius: inherit;
-        box-shadow: inset 0 0 0 0.5px var(--v2-border-border-base);
+        box-shadow: inset 0 0 0 1px var(--reddb-color-elevation-base-border);
         pointer-events: none;
       }
     }
@@ -94,7 +96,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--icon-weak);
+    color: var(--reddb-color-ink-muted);
 
     [data-slot="icon-svg"] {
       width: 20px;
@@ -121,35 +123,45 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    color: var(--v2-text-text-muted);
+    color: var(--reddb-color-ink-muted);
     font-size: var(--font-size-small);
     line-height: var(--line-height-large);
   }
 
   [data-slot="user-message-body"] {
-    width: fit-content;
-    max-width: min(82%, 64ch);
-    margin-inline-start: auto;
     display: flex;
-    flex-direction: column;
-    align-items: flex-end;
+    align-items: baseline;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  [data-slot="user-message-caret"] {
+    flex: none;
+    width: var(--user-message-indent);
+    color: var(--reddb-color-primary);
+    font-weight: var(--reddb-font-weight-bold);
+    user-select: none;
   }
 
   [data-slot="user-message-text"] {
-    display: inline-block;
+    display: block;
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 96ch;
     white-space: pre-wrap;
     word-break: break-word;
     overflow: hidden;
     unicode-bidi: plaintext;
-    background: var(--v2-background-bg-layer-02);
+    background: none;
     border: none;
-    padding: 8px 12px;
-    border-radius: 10px;
+    padding: 0;
+    border-radius: 0;
 
     [data-highlight="file"],
     [data-highlight="agent"] {
       color: inherit;
-      font-weight: 600;
+      font-weight: var(--reddb-font-weight-bold);
       direction: ltr;
       unicode-bidi: isolate;
     }
@@ -157,18 +169,19 @@
     [data-slot="user-message-mention-prefix"] {
       color: var(--user-message-mention-prefix-color);
     }
-
-    max-width: 100%;
   }
 
   [data-slot="user-message-copy-wrapper"] {
     min-height: 24px;
-    margin-top: 4px;
+    margin-top: 2px;
+    padding-inline-start: var(--user-message-indent);
     display: flex;
     align-items: center;
-    justify-content: flex-end;
-    gap: 10px;
+    justify-content: flex-start;
+    gap: var(--reddb-spatial-gap-sm);
     width: 100%;
+    font-family: var(--reddb-font-family-sans);
+    font-weight: var(--reddb-font-weight-regular);
     transition: opacity 0.15s ease;
     will-change: opacity;
 
@@ -185,8 +198,8 @@
 
   [data-slot="user-message-meta"] {
     user-select: none;
-    text-align: end;
-    flex: 1 1 auto;
+    text-align: start;
+    flex: 0 1 auto;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -194,20 +207,21 @@
   }
 
   [data-slot="user-message-meta-wrap"] {
-    flex: 1 1 auto;
+    flex: 0 1 auto;
     min-width: 0;
     display: flex;
     align-items: center;
-    justify-content: flex-end;
+    justify-content: flex-start;
     overflow: hidden;
     gap: 0;
+    font-variant-numeric: tabular-nums;
   }
 
   [data-slot="user-message-meta-tail"] {
     user-select: none;
     flex: 0 0 auto;
     white-space: nowrap;
-    text-align: end;
+    text-align: start;
   }
 
   &:hover [data-slot="user-message-copy-wrapper"],
@@ -217,29 +231,34 @@
   }
 
   .text-text-strong {
-    color: var(--v2-text-text-base);
+    color: var(--reddb-color-foreground);
   }
 
   .font-medium {
-    font-weight: var(--font-weight-medium);
+    font-weight: var(--reddb-font-weight-medium);
   }
 }
 
 [data-component="text-part"] {
   width: 100%;
-  margin-top: 24px;
+  margin-top: var(--reddb-spatial-layout-gap-sm);
 
   [data-slot="text-part-body"] {
     margin-top: 0;
   }
 
+  /* Prose keeps a comfortable measure; code, tables and diagrams may use the full column. */
+  [data-slot="text-part-body"] [data-component="markdown"] :is(p, ul, ol, blockquote, h1, h2, h3, h4, h5, h6) {
+    max-width: 72ch;
+  }
+
   [data-slot="text-part-copy-wrapper"] {
     min-height: 24px;
-    margin-top: 4px;
+    margin-top: var(--reddb-spatial-gap-sm);
     display: flex;
     align-items: center;
     justify-content: flex-start;
-    gap: 10px;
+    gap: var(--reddb-spatial-gap-sm);
     transition: opacity 0.15s ease;
     will-change: opacity;
 
@@ -256,12 +275,13 @@
 
   [data-slot="text-part-meta"] {
     user-select: none;
+    font-variant-numeric: tabular-nums;
   }
 
   [data-slot="text-part-copy-wrapper"][data-interrupted] {
     width: 100%;
     justify-content: flex-end;
-    gap: 12px;
+    gap: var(--reddb-spatial-gap-md);
   }
 
   &:hover [data-slot="text-part-copy-wrapper"],
@@ -275,17 +295,29 @@
   margin-top: 0;
 }
 
+/* Thinking is quiet: a muted row, collapsed by default, its text on the transcript's 1px rule. */
 [data-component="reasoning-part"] {
   width: 100%;
-  color: var(--v2-text-text-muted);
+  color: var(--reddb-color-ink-muted);
   line-height: var(--line-height-normal);
+
+  [data-component="tool-trigger"] [data-slot="basic-tool-tool-title"] {
+    font-weight: var(--reddb-font-weight-regular);
+    color: var(--reddb-color-ink-muted);
+  }
+
+  [data-component="tool-trigger"] [data-slot="basic-tool-tool-subtitle"] {
+    color: var(--reddb-color-ink-muted);
+    font-variant-numeric: tabular-nums;
+  }
 
   [data-component="markdown"] {
     margin-top: 0;
+    max-width: 72ch;
     font-style: normal;
     font-size: 13px;
     line-height: var(--line-height-base);
-    color: var(--v2-text-text-muted);
+    color: var(--reddb-color-ink-muted);
 
     h1,
     h2,
@@ -294,29 +326,27 @@
     h5,
     h6 {
       font-size: inherit;
-      font-weight: inherit;
+      font-weight: var(--reddb-font-weight-medium);
       color: inherit;
     }
 
     strong,
     b {
-      color: var(--v2-text-text-muted);
+      color: var(--reddb-color-ink-muted);
+    }
+
+    :not(pre) > code {
+      color: inherit;
     }
 
     p:has(strong) {
-      margin-top: 24px;
+      margin-top: var(--reddb-spatial-layout-gap-sm);
       margin-bottom: 0;
 
       &:first-child {
         margin-top: 0;
       }
     }
-  }
-}
-
-@media (prefers-color-scheme: dark) {
-  [data-component="reasoning-part"] [data-component="markdown"] :not(pre) > code {
-    opacity: 0.6;
   }
 }
 
@@ -373,17 +403,19 @@
     display: block;
     max-width: 100%;
     height: auto;
-    border-radius: 4px;
+    border-radius: var(--reddb-radius-md);
+    border: 1px solid var(--reddb-color-elevation-base-border);
   }
 }
 
+/* Console output is a bordered, sunken block in the code face: the command, then its result. */
 [data-component="bash-output"] {
   direction: ltr;
   unicode-bidi: isolate;
   width: 100%;
-  border: 0.5px solid var(--v2-border-border-base);
-  border-radius: 6px;
-  background: transparent;
+  border: 1px solid var(--reddb-color-elevation-base-border);
+  border-radius: var(--reddb-radius-md);
+  background: var(--reddb-color-elevation-sunken-surface);
   position: relative;
   overflow: hidden;
 
@@ -391,6 +423,7 @@
     position: absolute;
     top: 4px;
     right: 4px;
+    z-index: 1;
     transition: opacity 0.15s ease;
 
     @media (hover: hover) {
@@ -408,57 +441,63 @@
   [data-slot="bash-scroll"] {
     width: 100%;
     overflow-y: auto;
-    overflow-x: hidden;
-    max-height: 240px;
+    overflow-x: auto;
+    max-height: 320px;
+    scrollbar-width: thin;
 
-    scrollbar-width: none;
-    &::-webkit-scrollbar {
-      display: none;
+    &:focus-visible {
+      outline: 2px solid var(--reddb-color-focus);
+      outline-offset: -2px;
     }
   }
 
   [data-slot="bash-pre"] {
     margin: 0;
-    padding: 12px;
+    padding: var(--reddb-spatial-inset-sm) var(--reddb-spatial-inset-md);
   }
 
   [data-slot="bash-pre"] code {
-    font-family: var(--font-family-mono);
+    font-family: var(--reddb-font-family-mono);
     font-feature-settings: var(--font-family-mono--font-feature-settings);
     font-size: 13px;
-    line-height: var(--line-height-large);
+    font-weight: var(--reddb-font-weight-regular);
+    line-height: 1.55;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+    color: var(--reddb-color-foreground);
   }
 
   &[data-variant="shell"] {
-    background: var(--v2-background-bg-base);
-
     [data-slot="bash-pre"] {
       padding: 0;
-    }
-
-    [data-slot="bash-pre"] code {
-      font-family: var(--v2-font-family-code);
-      font-weight: 440;
-      line-height: var(--line-height-base);
-      letter-spacing: -0.04px;
     }
 
     [data-slot="bash-command"],
     [data-slot="bash-result"] {
       display: block;
-      padding: 12px;
-    }
-
-    [data-slot="bash-result"] {
-      border-block-start: 0.5px solid var(--v2-border-border-base);
-      background: var(--v2-background-bg-layer-01);
-      color: var(--v2-text-text-muted);
+      padding: var(--reddb-spatial-inset-sm) var(--reddb-spatial-inset-md);
     }
 
     [data-slot="bash-command"] {
-      color: var(--v2-text-text-base);
+      color: var(--reddb-color-foreground);
+      padding-inline-end: 40px;
+
+      &::before {
+        content: "$ ";
+        color: var(--reddb-color-ink-muted);
+        user-select: none;
+      }
+    }
+
+    /* Command output keeps its columns: it scrolls sideways instead of wrapping. */
+    [data-slot="bash-result"] {
+      width: max-content;
+      min-width: 100%;
+      white-space: pre;
+      overflow-wrap: normal;
+      border-block-start: 1px solid var(--reddb-color-elevation-base-border);
+      background: var(--reddb-color-elevation-base-surface);
+      color: var(--reddb-color-ink-muted);
     }
   }
 }
@@ -469,43 +508,26 @@
   --tool-content-gap: 8px;
 }
 
-[data-component="edit-content"] {
+[data-component="edit-content"],
+[data-component="write-content"] {
+  --opencode-diffs-bg: var(--reddb-color-elevation-sunken-surface);
   border-radius: inherit;
-  border-top: 0.5px solid var(--v2-border-border-muted);
   overflow-x: hidden;
   overflow-y: visible;
-
   scrollbar-width: none;
-  -ms-overflow-style: none;
 
   &::-webkit-scrollbar {
     display: none;
   }
 
-  [data-component="diff"] {
+  [data-component="diff"],
+  [data-component="code"] {
     border-radius: inherit;
     overflow: hidden;
   }
-}
-
-[data-component="write-content"] {
-  border-radius: inherit;
-  border-top: 0.5px solid var(--v2-border-border-muted);
-  overflow-x: hidden;
-  overflow-y: visible;
 
   [data-component="code"] {
     padding-bottom: 0 !important;
-    border-radius: inherit;
-    overflow: hidden;
-  }
-
-  /* Hide scrollbar */
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-
-  &::-webkit-scrollbar {
-    display: none;
   }
 }
 
@@ -522,10 +544,10 @@
   flex-direction: column;
   min-width: 0;
   width: 100%;
-  font-family: var(--font-family-sans);
+  font-family: var(--reddb-font-family-mono);
   font-size: 13px;
-  line-height: 16px;
-  color: var(--v2-text-text-muted);
+  line-height: var(--line-height-compact);
+  color: var(--reddb-color-ink-muted);
 }
 
 [data-slot="basic-tool-tool-subtitle"].exa-tool-query {
@@ -540,7 +562,7 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 8px;
+  gap: var(--reddb-spatial-gap-sm);
   min-width: 0;
   flex: 1 0 0;
 }
@@ -555,31 +577,31 @@
   all: unset;
   cursor: pointer;
   width: fit-content;
-  font-family: var(--font-family-sans);
+  font-family: var(--reddb-font-family-mono);
   font-size: 13px;
-  font-weight: var(--font-weight-regular, 440);
+  font-weight: var(--reddb-font-weight-regular);
   line-height: var(--line-height-compact);
-  letter-spacing: -0.04px;
-  color: var(--v2-text-text-faint, #808080);
+  color: var(--reddb-color-ink-muted);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
   user-select: none;
+  border-radius: var(--reddb-radius-sm);
 
   &:hover {
-    color: var(--v2-text-text-muted);
-    text-decoration: underline;
-    text-underline-offset: 2px;
+    color: var(--reddb-color-foreground);
   }
 
   &:focus-visible {
-    outline: 1px solid var(--v2-text-text-accent);
+    outline: 2px solid var(--reddb-color-focus);
     outline-offset: 2px;
   }
 }
 
 [data-component="todos"] {
-  padding: 10px 0 24px 0;
+  padding: var(--reddb-spatial-gap-md) 0 var(--reddb-spatial-layout-gap-sm);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--reddb-spatial-gap-md);
 
   [data-component="checkbox"] {
     --checkbox-align: flex-start;
@@ -591,24 +613,25 @@
 
     &[data-completed="completed"] {
       text-decoration: line-through;
-      color: var(--v2-text-text-faint);
+      color: var(--reddb-color-ink-muted);
     }
   }
 }
 
+/* A group of quiet context reads: "Used 3 Read, Grep" with its rows on a 1px rule when open. */
 [data-component="context-tool-group-trigger"] {
   width: 100%;
   min-height: 24px;
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 0px;
-  cursor: default;
+  gap: 0;
+  cursor: pointer;
 
   [data-slot="context-tool-group-title"] {
     display: flex;
-    align-items: center;
-    gap: 4px;
+    align-items: baseline;
+    gap: 1ch;
     flex-shrink: 1;
     min-width: 0;
   }
@@ -616,14 +639,13 @@
   [data-slot="context-tool-group-usage"] {
     flex-shrink: 0;
     display: flex;
-    align-items: center;
-    gap: 4px;
-    color: var(--v2-text-text-muted);
-    font-family: var(--v2-font-family-sans);
+    align-items: baseline;
+    gap: 1ch;
+    color: var(--reddb-color-ink-muted);
+    font-family: var(--reddb-font-family-mono);
     font-size: 13px;
-    font-weight: 440;
+    font-weight: var(--reddb-font-weight-regular);
     line-height: var(--line-height-compact);
-    letter-spacing: -0.04px;
 
     & > [data-slot="context-tool-group-prefix"],
     & > [data-slot="context-tool-group-count"] {
@@ -632,7 +654,7 @@
   }
 
   [data-slot="context-tool-group-count"] {
-    color: var(--v2-text-text-base);
+    color: var(--reddb-color-foreground);
     font-variant-numeric: tabular-nums;
   }
 
@@ -647,28 +669,43 @@
   }
 
   [data-slot="collapsible-arrow"] {
-    color: var(--icon-weaker);
+    color: var(--reddb-color-ink-muted);
     cursor: pointer;
   }
 }
 
 [data-component="collapsed-tool-group"] > [data-component="collapsible"].tool-collapsible {
-  --tool-content-gap: 8px;
+  --tool-content-gap: 2px;
+
+  /* A collapsed group always shows its disclosure mark so the hidden rows are discoverable. */
+  > [data-slot="collapsible-trigger"] [data-slot="collapsible-arrow"] {
+    opacity: 1;
+  }
+
+  > [data-slot="collapsible-content"] {
+    margin-inline-start: 0.5ch;
+    padding-inline-start: 1.5ch;
+    border-inline-start: 1px solid var(--reddb-color-elevation-base-border);
+  }
 }
 
 [data-component="context-tool-group-list"] {
-  padding: 0;
+  padding: 2px 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 2px;
 
   [data-slot="context-tool-group-item"] {
     min-width: 0;
-    min-height: 28px;
+    min-height: 24px;
     display: flex;
     flex-direction: column;
     justify-content: center;
     padding: 0;
+
+    &:empty {
+      display: none;
+    }
 
     > [data-component="tool-part-wrapper"] {
       width: 100%;
@@ -677,49 +714,7 @@
     > [data-component="tool-part-wrapper"]
       > [data-component="collapsible"]
       > [data-slot="collapsible-trigger"]:not([data-hide-details="true"]) {
-      height: 28px;
-    }
-
-    [data-slot="basic-tool-tool-info-structured"] {
-      gap: 6px;
-    }
-
-    [data-slot="basic-tool-tool-title"],
-    [data-slot="basic-tool-tool-subtitle"],
-    [data-slot="basic-tool-tool-arg"],
-    [data-slot="context-tool-group-matches"] {
-      font-family: var(--v2-font-family-sans);
-      font-size: 13px;
-      font-weight: 440;
-      line-height: var(--line-height-compact);
-      letter-spacing: -0.04px;
-    }
-
-    [data-slot="basic-tool-tool-subtitle"] {
-      color: var(--v2-text-text-faint);
-    }
-
-    [data-slot="context-tool-group-dot"] {
-      flex-shrink: 0;
-      width: 6px;
-      height: 6px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-
-      &::before {
-        content: "";
-        width: 2.25px;
-        height: 2.25px;
-        border-radius: 50%;
-        background-color: var(--v2-icon-icon-muted);
-      }
-    }
-
-    [data-slot="context-tool-group-matches"] {
-      flex-shrink: 0;
-      white-space: nowrap;
-      color: var(--v2-text-text-faint);
+      height: 24px;
     }
   }
 }
@@ -727,35 +722,38 @@
 [data-component="diagnostics"] {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 8px 12px;
-  background-color: var(--v2-state-bg-danger);
-  border-top: 0.5px solid var(--v2-state-border-danger);
+  gap: var(--reddb-spatial-gap-sm);
+  margin-top: var(--reddb-spatial-gap-sm);
+  padding: var(--reddb-spatial-inset-sm) var(--reddb-spatial-inset-md);
+  border: 1px solid var(--reddb-color-feedback-danger-border);
+  border-radius: var(--reddb-radius-md);
+  background-color: var(--reddb-color-feedback-danger-surface);
 
   [data-slot="diagnostic"] {
     display: flex;
     align-items: baseline;
-    gap: 6px;
-    font-family: var(--font-family-mono);
-    font-size: var(--font-size-small);
+    gap: 1ch;
+    font-family: var(--reddb-font-family-mono);
+    font-size: 12px;
     line-height: var(--line-height-large);
   }
 
   [data-slot="diagnostic-label"] {
-    color: var(--v2-state-fg-danger);
-    font-weight: var(--font-weight-medium);
+    color: var(--reddb-color-feedback-danger-foreground);
+    font-weight: var(--reddb-font-weight-medium);
     text-transform: uppercase;
-    letter-spacing: -0.5px;
+    letter-spacing: 0.04em;
     flex-shrink: 0;
   }
 
   [data-slot="diagnostic-location"] {
-    color: var(--v2-state-fg-danger);
+    color: var(--reddb-color-feedback-danger-foreground);
+    font-variant-numeric: tabular-nums;
     flex-shrink: 0;
   }
 
   [data-slot="diagnostic-message"] {
-    color: var(--v2-state-fg-danger);
+    color: var(--reddb-color-foreground);
     word-break: break-word;
     display: -webkit-box;
     -webkit-box-orient: vertical;
@@ -783,6 +781,29 @@
   width: 100%;
 }
 
+/*
+ * Prompts that wait on the user (permission, question) are one bordered card: a raised body, a footer on the
+ * same card holding ONE primary action, and secondary or ghost alternatives beside it.
+ */
+[data-component="dock-prompt"] {
+  > [data-dock-surface="shell"] {
+    background-color: var(--reddb-color-elevation-raised-surface);
+    border: 1px solid var(--reddb-color-elevation-raised-border);
+    border-bottom: 0;
+    border-radius: var(--reddb-radius-lg) var(--reddb-radius-lg) 0 0;
+    box-shadow: none;
+  }
+
+  > [data-dock-surface="tray"] {
+    margin-top: 0;
+    background-color: var(--reddb-color-elevation-raised-surface);
+    border: 1px solid var(--reddb-color-elevation-raised-border);
+    border-top: 1px solid var(--reddb-color-elevation-base-border);
+    border-radius: 0 0 var(--reddb-radius-lg) var(--reddb-radius-lg);
+    box-shadow: var(--reddb-shadow-elevation-raised, none);
+  }
+}
+
 [data-component="dock-prompt"][data-kind="permission"] {
   position: relative;
   display: flex;
@@ -794,10 +815,10 @@
   [data-slot="permission-body"] {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: var(--reddb-spatial-gap-md);
     flex: 1;
     min-height: 0;
-    padding: 12px 12px 0;
+    padding: var(--reddb-spatial-inset-sm) var(--reddb-spatial-inset-md) 0;
   }
 
   [data-slot="permission-header"] {
@@ -806,8 +827,8 @@
 
   [data-slot="permission-row"] {
     display: grid;
-    grid-template-columns: 20px 1fr;
-    column-gap: 8px;
+    grid-template-columns: 16px 1fr;
+    column-gap: var(--reddb-spatial-gap-md);
     align-items: start;
   }
 
@@ -822,55 +843,57 @@
   }
 
   [data-slot="permission-icon"] [data-slot="icon-svg"] {
-    color: var(--icon-warning-base);
+    width: 16px;
+    height: 16px;
+    color: var(--reddb-color-feedback-warning-foreground);
   }
 
   [data-slot="permission-header-title"] {
-    font-family: var(--font-family-sans);
+    font-family: var(--reddb-font-family-sans);
     font-size: 14px;
-    font-weight: var(--font-weight-medium);
+    font-weight: var(--reddb-font-weight-medium);
     line-height: var(--line-height-large);
-    color: var(--v2-text-text-base);
+    color: var(--reddb-color-foreground);
     min-width: 0;
   }
 
   [data-slot="permission-content"] {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--reddb-spatial-gap-sm);
     flex: 1;
     min-height: 0;
   }
 
   [data-slot="permission-hint"] {
-    font-family: var(--font-family-sans);
-    font-size: 14px;
-    font-weight: var(--font-weight-regular);
+    font-family: var(--reddb-font-family-sans);
+    font-size: 13px;
+    font-weight: var(--reddb-font-weight-regular);
     line-height: var(--line-height-large);
-    color: var(--v2-text-text-muted);
+    color: var(--reddb-color-ink-muted);
     padding: 0;
   }
 
   [data-slot="permission-patterns"] {
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    margin-top: 8px;
-    margin-bottom: 16px;
-    padding: 1px 0 8px;
+    gap: 2px;
+    margin-top: var(--reddb-spatial-gap-sm);
+    margin-bottom: var(--reddb-spatial-inset-sm);
+    padding: var(--reddb-spatial-gap-md) var(--reddb-spatial-inset-sm);
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-
-    &::-webkit-scrollbar {
-      display: none;
-    }
+    border: 1px solid var(--reddb-color-elevation-base-border);
+    border-radius: var(--reddb-radius-md);
+    background: var(--reddb-color-elevation-sunken-surface);
+    scrollbar-width: thin;
 
     code {
-      font-size: 14px;
-      line-height: var(--line-height-large);
+      font-family: var(--reddb-font-family-mono);
+      font-size: 13px;
+      line-height: 1.55;
+      color: var(--reddb-color-foreground);
     }
   }
 
@@ -879,19 +902,15 @@
     align-items: center;
     justify-content: space-between;
     flex-shrink: 0;
-    padding: 32px 8px 8px;
-    margin-top: -24px;
+    padding: var(--reddb-spatial-gap-md) var(--reddb-spatial-inset-sm);
   }
 
   [data-slot="permission-footer-actions"] {
     display: flex;
     align-items: center;
-    gap: 8px;
-
-    [data-component="button-v2"] {
-      padding-left: 12px;
-      padding-right: 12px;
-    }
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--reddb-spatial-gap-md);
   }
 }
 
@@ -906,50 +925,52 @@
   [data-slot="question-body"] {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: var(--reddb-spatial-gap-md);
     flex: 1;
     min-height: 0;
-    padding: 8px 8px 0;
+    padding: var(--reddb-spatial-inset-sm) var(--reddb-spatial-inset-sm) 0;
   }
 
   [data-slot="question-header"] {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
-    padding: 0 10px;
+    gap: var(--reddb-spatial-gap-lg);
+    padding: 0 var(--reddb-spatial-gap-md);
   }
 
   [data-slot="question-header-title"] {
-    font-family: var(--font-family-sans);
-    font-size: 14px;
-    font-weight: var(--font-weight-medium);
+    font-family: var(--reddb-font-family-sans);
+    font-size: 11px;
+    font-weight: var(--reddb-font-weight-medium);
     line-height: var(--line-height-large);
-    color: var(--v2-text-text-base);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--reddb-color-ink-muted);
     min-width: 0;
   }
 
   [data-slot="question-header-actions"] {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--reddb-spatial-gap-md);
     flex-shrink: 0;
   }
 
   [data-slot="question-progress"] {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 4px;
     flex-shrink: 0;
   }
 
   [data-slot="question-progress-segment"] {
-    width: 16px;
-    height: 16px;
+    width: 24px;
+    height: 24px;
     padding: 0;
     border: 0;
     background: transparent;
-    border-radius: 999px;
+    border-radius: var(--reddb-radius-sm);
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -960,116 +981,130 @@
       content: "";
       width: 16px;
       height: 2px;
-      border-radius: 999px;
-      background-color: var(--v2-icon-icon-muted);
+      border-radius: 1px;
+      background-color: var(--reddb-color-control-edge);
       transition: background-color 0.2s ease;
     }
 
-    &[data-active="true"]::after {
-      background-color: var(--icon-strong-base);
+    &[data-answered="true"]::after {
+      background-color: var(--reddb-color-feedback-success-foreground);
     }
 
-    &[data-answered="true"]::after {
-      background-color: var(--icon-interactive-base);
+    &[data-active="true"]::after {
+      background-color: var(--reddb-color-foreground);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--reddb-color-focus);
+      outline-offset: 0;
     }
 
     &:disabled {
       cursor: not-allowed;
-      opacity: 0.6;
+      opacity: 0.5;
     }
   }
 
   [data-slot="question-content"] {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--reddb-spatial-gap-sm);
     flex: 1;
     min-height: 0;
   }
 
   [data-slot="question-text"] {
-    font-family: var(--font-family-sans);
+    font-family: var(--reddb-font-family-sans);
     font-size: 14px;
-    font-weight: var(--font-weight-medium);
+    font-weight: var(--reddb-font-weight-medium);
     line-height: var(--line-height-large);
-    color: var(--v2-text-text-base);
-    padding: 0 10px;
+    color: var(--reddb-color-foreground);
+    padding: 0 var(--reddb-spatial-gap-md);
     flex-shrink: 0;
     -webkit-user-select: text;
     user-select: text;
   }
 
   [data-slot="question-hint"] {
-    font-family: var(--font-family-sans);
-    font-size: 13px;
-    font-weight: var(--font-weight-regular);
+    font-family: var(--reddb-font-family-sans);
+    font-size: 12px;
+    font-weight: var(--reddb-font-weight-regular);
     line-height: var(--line-height-large);
-    color: var(--v2-text-text-muted);
-    padding: 0 10px;
+    color: var(--reddb-color-ink-muted);
+    padding: 0 var(--reddb-spatial-gap-md);
     flex-shrink: 0;
   }
 
   [data-slot="question-options"] {
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    margin-top: 12px;
-    padding: 1px 1px 16px;
+    gap: 4px;
+    margin-top: var(--reddb-spatial-gap-md);
+    padding: 2px 2px var(--reddb-spatial-inset-sm);
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-
-    &::-webkit-scrollbar {
-      display: none;
-    }
+    scrollbar-width: thin;
   }
 
+  /* Options are list rows: quiet at rest, ink fills on hover, the selection language once picked. */
   [data-slot="question-option"] {
     display: flex;
     align-items: flex-start;
-    gap: 12px;
-    padding: 8px 8px 8px 10px;
-    background-color: var(--v2-background-bg-layer-01);
-    border: 0.5px solid var(--v2-border-border-base);
-    border-radius: 6px;
+    gap: var(--reddb-spatial-gap-lg);
+    padding: var(--reddb-spatial-gap-md) var(--reddb-spatial-gap-md);
+    background-color: transparent;
+    border: 1px solid var(--reddb-color-elevation-base-border);
+    border-radius: var(--reddb-radius-md);
     box-shadow: none;
-    text-align: left;
+    text-align: start;
     width: 100%;
     cursor: pointer;
     transition:
       background-color 0.15s ease,
-      border-color 0.15s ease,
-      box-shadow 0.15s ease;
+      border-color 0.15s ease;
 
-    &:hover:not([data-picked="true"]) {
-      background-color: var(--v2-background-bg-base);
+    @media (hover: hover) {
+      &:hover:not([data-picked="true"]):not(:disabled) {
+        background-color: color-mix(in oklab, var(--reddb-color-foreground) 8%, transparent);
+      }
+    }
+
+    &:active:not(:disabled) {
+      background-color: color-mix(in oklab, var(--reddb-color-foreground) 12%, transparent);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--reddb-color-focus);
+      outline-offset: 2px;
     }
 
     &[data-picked="true"] {
-      background-color: var(--v2-state-bg-info);
-      border-color: transparent;
-      box-shadow: var(--shadow-xs-border-hover);
+      background-color: color-mix(in oklab, var(--reddb-color-foreground) 10%, transparent);
+      border-color: var(--reddb-color-control-edge);
+
+      [data-slot="option-label"] {
+        font-weight: var(--reddb-font-weight-medium);
+      }
     }
 
     &:disabled {
       cursor: not-allowed;
-      opacity: 0.6;
+      opacity: 0.5;
     }
   }
 
   [data-slot="question-option-check"] {
     display: inline-flex;
-    transform: translateY(2px);
+    padding-top: 2px;
   }
 
   [data-slot="question-option-box"] {
     width: 16px;
     height: 16px;
     padding: 2px;
-    border-radius: var(--radius-sm);
-    border: 0.5px solid var(--v2-border-border-base);
+    border-radius: var(--reddb-radius-sm);
+    border: 1px solid var(--reddb-color-control-edge);
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1081,7 +1116,7 @@
 
     [data-slot="icon-svg"] {
       opacity: 0;
-      color: var(--icon-base);
+      color: var(--reddb-color-on-primary);
     }
 
     &[data-type="radio"] {
@@ -1092,27 +1127,18 @@
       width: 6px;
       height: 6px;
       border-radius: 999px;
-      background-color: var(--v2-background-bg-layer-01);
+      background-color: var(--reddb-color-on-primary);
       opacity: 0;
     }
 
+    /* A checked mark is the one place the accent fills a control. */
     &[data-picked="true"] {
-      border-color: var(--icon-interactive-base);
+      border-color: var(--reddb-color-primary);
+      background-color: var(--reddb-color-primary);
 
-      [data-slot="icon-svg"] {
+      [data-slot="icon-svg"],
+      [data-slot="question-option-radio-dot"] {
         opacity: 1;
-        color: var(--icon-invert-base);
-      }
-
-      &[data-type="checkbox"] {
-        background-color: var(--icon-interactive-base);
-      }
-
-      &[data-type="radio"] {
-        background-color: var(--icon-interactive-base);
-        [data-slot="question-option-radio-dot"] {
-          opacity: 1;
-        }
       }
     }
   }
@@ -1126,19 +1152,19 @@
   }
 
   [data-slot="option-label"] {
-    font-family: var(--font-family-sans);
+    font-family: var(--reddb-font-family-sans);
     font-size: 14px;
-    font-weight: var(--font-weight-medium);
+    font-weight: var(--reddb-font-weight-regular);
     line-height: var(--line-height-large);
-    color: var(--v2-text-text-base);
+    color: var(--reddb-color-foreground);
   }
 
   [data-slot="option-description"] {
-    font-family: var(--font-family-sans);
-    font-size: 14px;
-    font-weight: var(--font-weight-regular);
+    font-family: var(--reddb-font-family-sans);
+    font-size: 13px;
+    font-weight: var(--reddb-font-weight-regular);
     line-height: var(--line-height-large);
-    color: var(--v2-text-text-muted);
+    color: var(--reddb-color-ink-muted);
     min-width: 0;
     overflow-wrap: anywhere;
     white-space: normal;
@@ -1147,11 +1173,11 @@
   [data-slot="question-custom"] {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--reddb-spatial-gap-md);
   }
 
   [data-slot="question-custom-input-wrap"] {
-    padding-left: 36px;
+    padding-inline-start: 36px;
   }
 
   [data-slot="question-custom-input"] {
@@ -1162,11 +1188,11 @@
     background: transparent;
     box-shadow: none;
     outline: none;
-    font-family: var(--font-family-sans);
-    font-size: 14px;
-    font-weight: var(--font-weight-regular);
+    font-family: var(--reddb-font-family-sans);
+    font-size: 13px;
+    font-weight: var(--reddb-font-weight-regular);
     line-height: var(--line-height-large);
-    color: var(--v2-text-text-muted);
+    color: var(--reddb-color-foreground);
     min-width: 0;
     cursor: text;
     resize: none;
@@ -1174,17 +1200,17 @@
     overflow-wrap: anywhere;
 
     &::placeholder {
-      color: var(--v2-text-text-muted);
+      color: var(--reddb-color-ink-muted);
     }
 
     &:focus-visible {
-      outline: 0.5px solid var(--v2-border-border-focus);
+      outline: 2px solid var(--reddb-color-focus);
       outline-offset: 2px;
-      border-radius: var(--radius-xs);
+      border-radius: var(--reddb-radius-sm);
     }
 
     &:disabled {
-      opacity: 0.6;
+      opacity: 0.5;
     }
   }
 
@@ -1193,36 +1219,47 @@
     align-items: center;
     justify-content: space-between;
     flex-shrink: 0;
-    padding: 32px 8px 8px;
-    margin-top: -24px;
+    padding: var(--reddb-spatial-gap-md) var(--reddb-spatial-inset-sm);
   }
 
   [data-slot="question-footer-actions"] {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--reddb-spatial-gap-md);
   }
 }
 
 [data-component="question-minimized-dock"] {
-  margin-bottom: 8px;
+  margin-bottom: var(--reddb-spatial-gap-md);
 
   [data-slot="question-minimized-trigger"] {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: var(--reddb-spatial-gap-md);
     width: 100%;
-    padding: 10px 12px;
+    padding: var(--reddb-spatial-gap-md) var(--reddb-spatial-inset-sm);
     border: 0;
+    border-radius: var(--reddb-radius-md);
     background: transparent;
-    color: var(--v2-text-text-base);
-    text-align: left;
+    color: var(--reddb-color-foreground);
+    text-align: start;
     cursor: pointer;
     touch-action: manipulation;
 
+    @media (hover: hover) {
+      &:hover:not(:disabled) {
+        background-color: color-mix(in oklab, var(--reddb-color-foreground) 8%, transparent);
+      }
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--reddb-color-focus);
+      outline-offset: 2px;
+    }
+
     &:disabled {
       cursor: not-allowed;
-      opacity: 0.6;
+      opacity: 0.5;
     }
 
     [data-slot="icon-svg"] {
@@ -1232,19 +1269,19 @@
 
   [data-slot="question-minimized-summary"] {
     flex: 1;
-    font-family: var(--font-family-sans);
+    font-family: var(--reddb-font-family-sans);
     font-size: 14px;
-    font-weight: var(--font-weight-medium);
+    font-weight: var(--reddb-font-weight-medium);
     line-height: var(--line-height-large);
-    color: var(--v2-text-text-base);
+    color: var(--reddb-color-foreground);
   }
 }
 
 [data-component="question-answers"] {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 8px 0;
+  gap: var(--reddb-spatial-gap-lg);
+  padding: var(--reddb-spatial-gap-md) 0;
 
   [data-slot="question-answer-item"] {
     display: flex;
@@ -1253,11 +1290,11 @@
     font-size: 13px;
 
     [data-slot="question-text"] {
-      color: var(--v2-text-text-muted);
+      color: var(--reddb-color-ink-muted);
     }
 
     [data-slot="answer-text"] {
-      color: var(--v2-text-text-base);
+      color: var(--reddb-color-foreground);
     }
   }
 }
@@ -1267,7 +1304,7 @@
 [data-component="apply-patch-tool"] {
   > [data-component="collapsible"].tool-collapsible {
     /* Only file lists with a tool title reserve space for its sticky row. */
-    --sticky-accordion-offset: calc(32px + var(--tool-content-gap));
+    --sticky-accordion-offset: calc(24px + var(--tool-content-gap));
     gap: 0px;
   }
 
@@ -1295,9 +1332,51 @@
   }
 }
 
+/* Changed files: a bordered list of mono paths with diff stats; an open file shows its diff on the sunken ground. */
 [data-component="accordion"][data-scope="apply-patch"] {
-  [data-slot="accordion-trigger"] {
-    background-color: var(--v2-background-bg-base) !important;
+  --opencode-diffs-bg: var(--reddb-color-elevation-sunken-surface);
+
+  [data-slot="accordion-item"] [data-slot="accordion-header"] [data-slot="accordion-trigger"] {
+    height: var(--reddb-spatial-control-height-md);
+    padding: 0 var(--reddb-spatial-inset-sm);
+    background-color: var(--reddb-color-elevation-base-surface) !important;
+    border-color: var(--reddb-color-elevation-base-border);
+    font-family: var(--reddb-font-family-mono);
+    font-size: 12px;
+    cursor: pointer;
+
+    @media (hover: hover) {
+      &:hover:not([data-disabled]) {
+        background-color: color-mix(
+          in oklab,
+          var(--reddb-color-foreground) 8%,
+          var(--reddb-color-elevation-base-surface)
+        ) !important;
+      }
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--reddb-color-focus);
+      outline-offset: -2px;
+    }
+  }
+
+  [data-slot="accordion-item"]:first-child [data-slot="accordion-header"] [data-slot="accordion-trigger"] {
+    border-top-left-radius: var(--reddb-radius-md);
+    border-top-right-radius: var(--reddb-radius-md);
+  }
+
+  [data-slot="accordion-item"]:last-child:not([data-expanded])
+    [data-slot="accordion-header"]
+    [data-slot="accordion-trigger"],
+  [data-slot="accordion-item"]:last-child[data-expanded] [data-slot="accordion-content"] {
+    border-bottom-left-radius: var(--reddb-radius-md);
+    border-bottom-right-radius: var(--reddb-radius-md);
+  }
+
+  [data-slot="accordion-item"][data-expanded] [data-slot="accordion-content"] {
+    border-color: var(--reddb-color-elevation-base-border);
+    background-color: var(--reddb-color-elevation-sunken-surface);
   }
 
   [data-slot="apply-patch-trigger-content"] {
@@ -1305,15 +1384,21 @@
     align-items: center;
     justify-content: space-between;
     width: 100%;
-    gap: 20px;
+    gap: 2ch;
   }
 
   [data-slot="apply-patch-file-info"] {
     flex-grow: 1;
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 1ch;
     min-width: 0;
+
+    [data-component="file-icon"] {
+      width: 16px;
+      height: 16px;
+      flex: none;
+    }
   }
 
   [data-slot="apply-patch-file-name-container"] {
@@ -1326,7 +1411,7 @@
   }
 
   [data-slot="apply-patch-directory"] {
-    color: var(--v2-text-text-muted);
+    color: var(--reddb-color-ink-muted);
     text-overflow: ellipsis;
     overflow: hidden;
     white-space: nowrap;
@@ -1335,7 +1420,8 @@
   }
 
   [data-slot="apply-patch-filename"] {
-    color: var(--v2-text-text-base);
+    color: var(--reddb-color-foreground);
+    font-weight: var(--reddb-font-weight-medium);
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1345,15 +1431,17 @@
   [data-slot="apply-patch-trigger-actions"] {
     flex-shrink: 0;
     display: flex;
-    gap: 16px;
+    gap: 1.5ch;
     align-items: center;
     justify-content: flex-end;
+    color: var(--reddb-color-ink-muted);
+    font-variant-numeric: tabular-nums;
   }
 
   [data-slot="apply-patch-change"] {
-    font-family: var(--font-family-sans);
-    font-size: var(--font-size-small);
-    font-weight: var(--font-weight-medium);
+    font-family: var(--reddb-font-family-mono);
+    font-size: 12px;
+    font-weight: var(--reddb-font-weight-medium);
   }
 
   [data-slot="apply-patch-change"][data-type="added"] {
@@ -1374,7 +1462,6 @@
   overflow-x: hidden;
   overflow-y: visible;
   scrollbar-width: none;
-  -ms-overflow-style: none;
 
   &::-webkit-scrollbar {
     display: none;
@@ -1388,20 +1475,29 @@
 
 [data-component="tool-loaded-item"] {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  align-items: baseline;
+  gap: 1ch;
   min-width: 0;
   max-width: 100%;
-  font-family: var(--font-family-sans);
+  min-height: 24px;
+  font-family: var(--reddb-font-family-mono);
   font-size: 13px;
   /* Loaded values truncate, so they require the full compact line box for descenders. */
   line-height: var(--line-height-compact);
-  letter-spacing: -0.04px;
-  color: var(--v2-text-text-base);
+  color: var(--reddb-color-foreground);
+
+  &::before {
+    content: "✓";
+    flex: none;
+    width: 1ch;
+    text-align: center;
+    font-weight: var(--reddb-font-weight-bold);
+    color: var(--reddb-color-feedback-success-foreground);
+  }
 
   [data-slot="tool-loaded-label"] {
     flex-shrink: 0;
-    font-weight: 530;
+    font-weight: var(--reddb-font-weight-medium);
   }
 
   [data-slot="tool-loaded-value"] {
@@ -1409,36 +1505,32 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-weight: 440;
+    font-weight: var(--reddb-font-weight-regular);
+    color: var(--reddb-color-feedback-info-foreground);
   }
 
   [data-slot="tool-loaded-kind"] {
     flex-shrink: 0;
-    margin-inline-start: -2px;
-    font-weight: 440;
-    color: var(--v2-text-text-muted);
+    font-weight: var(--reddb-font-weight-regular);
+    color: var(--reddb-color-ink-muted);
   }
 }
 
 :root body [data-component="user-message"] {
-  font-weight: 440;
-
-  [data-slot="user-message-text"] {
-    background: var(--v2-background-bg-layer-01);
-  }
-
   [data-slot="user-message-comments"] {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 8px;
-    width: min(320px, 82%);
-    margin-left: auto;
+    gap: var(--reddb-spatial-gap-md);
+    width: min(320px, 100%);
+    margin-inline-start: 0;
+    font-family: var(--reddb-font-family-sans);
+    font-weight: var(--reddb-font-weight-regular);
 
     &[data-bounded] {
       width: 318px;
       max-width: 100%;
-      margin-top: 8px;
+      margin-top: var(--reddb-spatial-gap-md);
     }
 
     [data-component="tooltip-v2-trigger"] {
@@ -1446,52 +1538,21 @@
     }
 
     [data-component="button-v2"] {
-      font-family: var(--v2-font-family-sans, "Inter", sans-serif);
-      font-weight: 530;
-      font-variation-settings:
-        "wght" 530,
-        "slnt" 0;
+      font-family: var(--reddb-font-family-sans);
+      font-weight: var(--reddb-font-weight-medium);
     }
+  }
+
+  > [data-slot="user-message-comments"] {
+    margin-inline-start: var(--user-message-indent);
   }
 
   [data-slot="user-message-body"] + [data-slot="user-message-attachments"],
   [data-slot="user-message-comments"] + [data-slot="user-message-attachments"] {
-    margin-top: 8px;
+    margin-top: var(--reddb-spatial-gap-md);
   }
 
   [data-slot="user-message-text"][data-comments] {
-    width: 342px;
-    padding-bottom: 12px;
+    padding-bottom: var(--reddb-spatial-gap-md);
   }
-}
-
-:root[data-color-scheme="light"] body [data-component="user-message"] [data-slot="user-message-text"] {
-  background: var(--v2-background-bg-layer-02);
-}
-
-:root body [data-workspace-session] [data-component="user-message"] [data-slot="user-message-text"] {
-  --user-message-mention-prefix-color: var(--v2-blue-300);
-
-  background: var(--v2-background-bg-accent);
-  color: var(--v2-text-text-contrast);
-}
-
-:root[data-color-scheme="light"]
-  body
-  [data-local-session]
-  [data-component="user-message"]
-  [data-slot="user-message-text"] {
-  background: var(--v2-blue-100);
-  color: var(--v2-blue-700);
-  border-radius: 8px;
-}
-
-:root[data-color-scheme="dark"]
-  body
-  [data-local-session]
-  [data-component="user-message"]
-  [data-slot="user-message-text"] {
-  background: var(--v2-blue-1200);
-  color: var(--v2-blue-300);
-  border-radius: 8px;
 }

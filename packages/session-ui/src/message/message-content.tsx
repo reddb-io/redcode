@@ -300,6 +300,9 @@ export function CurrentUserMessageDisplay(props: {
         }
       >
         <div data-slot="user-message-body">
+          <span data-slot="user-message-caret" aria-hidden="true">
+            ›
+          </span>
           <div data-slot="user-message-text" dir="auto" data-comments={comments().length > 0 ? "true" : undefined}>
             <CurrentHighlightedText text={props.text} files={inlineFiles()} agents={agents()} />
             <Show when={comments().length > 0}>
@@ -313,16 +316,16 @@ export function CurrentUserMessageDisplay(props: {
         <div data-slot="user-message-copy-wrapper">
           <span data-slot="user-message-meta-wrap">
             <Show when={metaHead()}>
-              <span data-slot="user-message-meta" class="text-12-regular text-text-weak cursor-default">
+              <span data-slot="user-message-meta" class="text-caption text-ink-muted cursor-default">
                 {metaHead()}
               </span>
             </Show>
             <Show when={metaHead() && stamp()}>
-              <span data-slot="user-message-meta-sep" class="text-12-regular text-text-weak cursor-default">
+              <span data-slot="user-message-meta-sep" class="text-caption text-ink-muted cursor-default">
                 {"\u00A0\u00B7\u00A0"}
               </span>
             </Show>
-            <span data-slot="user-message-meta-tail" class="text-12-regular text-text-weak cursor-default">
+            <span data-slot="user-message-meta-tail" class="text-caption text-ink-muted cursor-default">
               {stamp()}
             </span>
           </span>
@@ -548,7 +551,7 @@ export function AssistantTextContent(props: {
               aria-label={copied() ? i18n.t("ui.message.copied") : i18n.t("ui.message.copyResponse")}
             />
             <Show when={meta()}>
-              <span data-slot="text-part-meta" class="text-12-regular text-text-weak cursor-default">
+              <span data-slot="text-part-meta" class="text-caption text-ink-muted cursor-default">
                 {meta()}
               </span>
             </Show>
@@ -588,6 +591,7 @@ export function AssistantReasoningContent(props: {
       <BasicTool
         icon="mcp"
         status={props.streaming ? "running" : "completed"}
+        glyph={false}
         compact
         hasContent
         allowOpenWhilePending

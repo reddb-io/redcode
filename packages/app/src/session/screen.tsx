@@ -483,9 +483,9 @@ function SessionScreenContent(props: { session: SessionModel; browser: ReturnTyp
                       <div
                         data-slot="side-terminal-panel-presence"
                         data-opened={sideMotion().animateTerminal ? sideMotion().terminal : undefined}
-                        class="absolute inset-0 rounded-[10px] bg-v2-background-bg-base shadow-[var(--v2-elevation-raised)]"
+                        class="absolute inset-0 rounded-lg bg-elevation-base-surface shadow-elevation-raised"
                       >
-                        <div data-slot="side-terminal-panel-clip" class="size-full overflow-clip rounded-[10px]">
+                        <div data-slot="side-terminal-panel-clip" class="size-full overflow-clip rounded-lg">
                           <TerminalPanel
                             fill
                             framed={false}

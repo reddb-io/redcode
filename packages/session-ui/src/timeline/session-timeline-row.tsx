@@ -483,7 +483,7 @@ export function createSessionTimelineRowRenderer(input: {
                         <Dynamic
                           component={href() ? "a" : "div"}
                           data-slot="session-timeline-notice"
-                          class={`block w-full truncate ${props.grouped ? "py-1" : "pt-3 pb-1"} text-13-regular leading-text-compact text-text-weak ${inset()}`}
+                          class={`block w-full truncate ${props.grouped ? "py-1" : "pt-3 pb-1"} text-[13px] leading-text-compact text-ink-muted ${inset()}`}
                           classList={{ "cursor-pointer": clickable() }}
                           href={href()}
                           role={clickable() && !href() ? "link" : undefined}
@@ -491,11 +491,7 @@ export function createSessionTimelineRowRenderer(input: {
                           onClick={navigate}
                           onKeyDown={navigateKey}
                         >
-                          <bdi
-                            dir="auto"
-                            class="font-[530]"
-                            classList={{ "text-v2-text-text-faint": message()?.type === "agent-switched" }}
-                          >
+                          <bdi dir="auto" class="font-medium">
                             {content().label}
                           </bdi>
                           <Show when={content().data}>
@@ -511,18 +507,12 @@ export function createSessionTimelineRowRenderer(input: {
                     >
                       <div data-slot="session-timeline-notice" class={`w-full py-1 ${inset()}`}>
                         <div class="flex min-h-5 min-w-0 items-center gap-2 overflow-hidden">
-                          <bdi
-                            dir="auto"
-                            class="shrink-0 text-[13px] font-[530] leading-text-compact tracking-[-0.04px] text-v2-text-text-faint"
-                          >
+                          <bdi dir="auto" class="shrink-0 text-[13px] font-medium leading-text-compact text-ink-muted">
                             {content().label}
                           </bdi>
                           <For each={content().items}>
                             {(item) => (
-                              <bdi
-                                dir="auto"
-                                class="min-w-0 truncate text-[13px] font-[440] leading-text-compact tracking-[-0.04px] text-v2-text-text-faint"
-                              >
+                              <bdi dir="auto" class="min-w-0 truncate text-[13px] leading-text-compact text-ink-muted">
                                 {item}
                               </bdi>
                             )}
@@ -546,7 +536,7 @@ export function createSessionTimelineRowRenderer(input: {
             <div
               data-slot="session-timeline-notice"
               data-type="location-switched"
-              class={`flex h-7 w-full min-w-0 items-center gap-2 py-1 text-[13px] leading-text-compact tracking-[-0.04px] text-v2-text-text-faint ${inset()}`}
+              class={`flex h-7 w-full min-w-0 items-center gap-2 py-1 text-[13px] leading-text-compact text-ink-muted ${inset()}`}
             >
               <Tooltip
                 appearance="compact"
@@ -555,11 +545,11 @@ export function createSessionTimelineRowRenderer(input: {
                 class="shrink-0"
                 triggerTabIndex={0}
               >
-                <bdi data-slot="session-timeline-notice-label" dir="auto" class="font-[530]">
+                <bdi data-slot="session-timeline-notice-label" dir="auto" class="font-medium">
                   {i18n.t("ui.sessionTimeline.notice.movedTo")}
                 </bdi>
               </Tooltip>{" "}
-              <bdi data-slot="session-timeline-notice-value" dir="ltr" class="min-w-0 truncate font-[440]">
+              <bdi data-slot="session-timeline-notice-value" dir="ltr" class="min-w-0 truncate font-normal">
                 {message().location.directory}
               </bdi>
             </div>

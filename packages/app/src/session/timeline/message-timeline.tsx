@@ -308,7 +308,9 @@ function MessageTimelineView(
     userCard: (message) => {
       if (message.metadata?.source !== "design.feedback") return undefined
       const notice = DesignNotice.feedback(message.text)
-      return notice ? <DesignFeedbackCard notice={notice} ordinal={designRevisions().get(notice.revision)} /> : undefined
+      return notice ? (
+        <DesignFeedbackCard notice={notice} ordinal={designRevisions().get(notice.revision)} />
+      ) : undefined
     },
     noticeCard: (message) => {
       if (message.type !== "synthetic") return undefined
@@ -402,7 +404,7 @@ function MessageTimelineView(
             }}
           >
             <div
-              class={`flex h-9 items-center gap-2 pt-3 text-[13px] font-[530] leading-text-compact ${turnPadding()}`}
+              class={`flex h-9 items-center gap-2 pt-3 font-mono text-[13px] font-medium leading-text-compact text-ink-muted ${turnPadding()}`}
             >
               <Show when={showWorking()}>
                 <div data-component="session-working" role="status">
@@ -460,7 +462,7 @@ function MessageTimelineView(
                       fallback={
                         <h1
                           data-slot="session-title-child"
-                          class="truncate text-[13px] font-[530] leading-4 tracking-[-0.04px] text-v2-text-text-base w-fit rounded-[6px] px-1 py-1 hover:bg-v2-overlay-simple-overlay-hover"
+                          class="truncate text-[13px] font-medium leading-text-compact text-foreground w-fit rounded-md px-1 py-1 hover:bg-foreground/8"
                           classList={{ "max-w-[45%] shrink-0": !!parentID() }}
                           onClick={openTitleEditor}
                         >
@@ -476,7 +478,7 @@ function MessageTimelineView(
                         dir="auto"
                         value={title.draft}
                         disabled={props.pending.rename()}
-                        class="block text-[13px] font-[530] leading-4 tracking-[-0.04px] text-v2-text-text-base field-sizing-content rounded-[6px] px-1 py-1"
+                        class="block text-[13px] font-medium leading-text-compact text-foreground field-sizing-content rounded-md px-1 py-1"
                         classList={{ "max-w-[45%] shrink-0": !!parentID() }}
                         style={{
                           "--inline-input-shadow": "none",

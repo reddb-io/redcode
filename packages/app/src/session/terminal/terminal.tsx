@@ -1,11 +1,12 @@
 import { withAlpha } from "@opencode/ui/theme/color"
 import { useTheme } from "@opencode/ui/theme/context"
+import { APPLICATION_THEME_ID } from "@opencode/ui/theme/themes/application"
 import { resolveThemeVariant } from "@opencode/ui/theme/resolve"
 import { resolveThemeVariantV2 } from "@opencode/ui/theme/v2/resolve"
 import type { HexColor, ResolvedV2Theme } from "@opencode/ui/theme/types"
 import { showToast } from "@/shell/notifications/toast"
 import type { FitAddon, Ghostty, Terminal as Term } from "ghostty-web"
-import { type ComponentProps, createEffect, createMemo, onCleanup, onMount, splitProps } from "solid-js"
+import { type ComponentProps, createEffect, createMemo, createSignal, onCleanup, onMount, splitProps } from "solid-js"
 import { SerializeAddon } from "@/session/terminal/serialize"
 import { matchKeybind, parseKeybind } from "@/shell/commands/command"
 import { useLanguage } from "@/runtime/i18n/language"
@@ -54,6 +55,76 @@ type TerminalColors = {
   foreground: string
   cursor: string
   selectionBackground: string
+}
+
+const role = (name: string) => `var(--reddb-color-${name})`
+
+/**
+ * The terminal paints on a canvas, which cannot read CSS custom properties, so its palette is the design system's
+ * Color Layer roles resolved to literals for the active Color Scheme. Hues are feedback and series roles; the
+ * greyscale end of the ANSI range follows the scheme so `black` stays dark ink on light and a raised fill on dark.
+ */
+const DESIGN_SYSTEM_TERMINAL: Record<"light" | "dark", Record<string, string>> = {
+  light: {
+    background: role("elevation-sunken-surface"),
+    foreground: role("foreground"),
+    cursor: role("foreground"),
+    selectionBackground: `color-mix(in srgb, ${role("foreground")} 18%, ${role("elevation-sunken-surface")})`,
+    black: role("foreground"),
+    red: role("feedback-danger-foreground"),
+    green: role("feedback-success-foreground"),
+    yellow: role("feedback-warning-foreground"),
+    blue: role("feedback-info-foreground"),
+    magenta: role("series-4"),
+    cyan: role("series-3"),
+    white: role("control-edge"),
+    brightBlack: role("ink-muted"),
+    brightRed: role("feedback-danger-foreground"),
+    brightGreen: role("feedback-success-foreground"),
+    brightYellow: role("feedback-warning-foreground"),
+    brightBlue: role("feedback-info-foreground"),
+    brightMagenta: role("series-4"),
+    brightCyan: role("series-3"),
+    brightWhite: role("muted"),
+  },
+  dark: {
+    background: role("elevation-sunken-surface"),
+    foreground: role("foreground"),
+    cursor: role("foreground"),
+    selectionBackground: `color-mix(in srgb, ${role("foreground")} 24%, ${role("elevation-sunken-surface")})`,
+    black: role("elevation-raised-surface"),
+    red: role("feedback-danger-foreground"),
+    green: role("feedback-success-foreground"),
+    yellow: role("feedback-warning-foreground"),
+    blue: role("feedback-info-foreground"),
+    magenta: role("series-4"),
+    cyan: role("series-3"),
+    white: role("ink-muted"),
+    brightBlack: role("control-edge"),
+    brightRed: role("feedback-danger-foreground"),
+    brightGreen: role("feedback-success-foreground"),
+    brightYellow: role("feedback-warning-foreground"),
+    brightBlue: role("feedback-info-foreground"),
+    brightMagenta: role("series-4"),
+    brightCyan: role("series-3"),
+    brightWhite: role("foreground"),
+  },
+}
+
+/** Resolves a CSS color expression (a role, var() or color-mix()) to the hex literal the terminal canvas paints. */
+function literalColor(value: string) {
+  if (typeof document === "undefined" || !document.body) return undefined
+  const probe = document.createElement("span")
+  probe.style.display = "none"
+  probe.style.color = value
+  if (!probe.style.color) return undefined
+  document.body.appendChild(probe)
+  const computed = getComputedStyle(probe).color
+  probe.remove()
+  const context = document.createElement("canvas").getContext("2d")
+  if (!context) return undefined
+  context.fillStyle = computed
+  return context.fillStyle.startsWith("#") ? context.fillStyle : undefined
 }
 
 const DEFAULT_TERMINAL_COLORS: Record<"light" | "dark", TerminalColors> = {
@@ -263,6 +334,15 @@ export const Terminal = (props: TerminalProps) => {
   const getTerminalColors = (): TerminalColors => {
     const mode = theme.mode() === "dark" ? "dark" : "light"
     const fallback = DEFAULT_TERMINAL_COLORS[mode]
+    if (theme.themeId() === APPLICATION_THEME_ID) {
+      const palette = Object.fromEntries(
+        Object.entries(DESIGN_SYSTEM_TERMINAL[mode]).flatMap(([name, value]) => {
+          const color = literalColor(value)
+          return color ? [[name, color]] : []
+        }),
+      )
+      return { ...fallback, ...palette }
+    }
     const currentTheme = theme.themes()[theme.themeId()]
     if (!currentTheme) return fallback
     const variant = mode === "dark" ? currentTheme.dark : currentTheme.light
@@ -282,7 +362,19 @@ export const Terminal = (props: TerminalProps) => {
     }
   }
 
-  const terminalColors = createMemo(getTerminalColors)
+  // Design system roles flip with the root's Color Scheme attribute, which the theme applies in its own effect;
+  // resolve the palette again a frame after a scheme or theme change so the literals match what CSS paints.
+  const [painted, setPainted] = createSignal(0)
+  createEffect(() => {
+    theme.mode()
+    theme.themeId()
+    const frame = requestAnimationFrame(() => setPainted((value) => value + 1))
+    onCleanup(() => cancelAnimationFrame(frame))
+  })
+  const terminalColors = createMemo(() => {
+    painted()
+    return getTerminalColors()
+  })
 
   const scheduleFit = () => {
     if (disposed) return

@@ -228,7 +228,7 @@ export function SessionBrowserPane(props: { browser: ReturnType<typeof createSes
   portals.observe(document.body, { childList: true })
   onCleanup(() => portals.disconnect())
   const appearance = new MutationObserver(() => schedule(300))
-  appearance.observe(document.documentElement, { attributes: true, attributeFilter: ["style", "data-theme"] })
+  appearance.observe(document.documentElement, { attributes: true, attributeFilter: ["style", "data-theme", "data-color-theme"] })
   onCleanup(() => appearance.disconnect())
   createEventListener(window.matchMedia("(prefers-color-scheme: dark)"), "change", () => schedule(300))
   createEventListener(document, "visibilitychange", () => setStore("visible", document.visibilityState === "visible"))

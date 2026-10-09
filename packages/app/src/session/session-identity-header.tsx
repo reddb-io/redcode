@@ -27,7 +27,7 @@ export function SessionTitleHeader(props: ParentProps) {
   return (
     <div
       data-session-title
-      class="sticky top-0 z-30 w-full bg-[linear-gradient(to_bottom,var(--v2-background-bg-base)_48px,transparent)] pb-4 pe-3 ps-2.5"
+      class="sticky top-0 z-30 mb-3 w-full border-b border-elevation-base-border bg-elevation-base-surface pe-3 ps-2.5"
     >
       {props.children}
     </div>
@@ -88,7 +88,7 @@ export function SessionProjectMenu(props: {
           aria-label={projectName()}
           data-slot="session-project-trigger"
           icon={
-            <span class="text-v2-icon-icon-muted">
+            <span class="text-ink-muted">
               <Icon name={props.workspace ? "outline-worktree" : "monitor"} />
             </span>
           }
@@ -162,7 +162,7 @@ export function SessionProjectMenu(props: {
               }}
             >
               <span class="session-project-link-content">
-                <Icon name="folder" class="shrink-0 text-v2-icon-icon-muted" />
+                <Icon name="folder" class="shrink-0 text-ink-muted" />
                 <bdi
                   ref={(element) =>
                     createResizeObserver(element, () =>
@@ -170,7 +170,7 @@ export function SessionProjectMenu(props: {
                     )
                   }
                   dir="ltr"
-                  class="min-w-0 truncate text-v2-text-text-muted"
+                  class="min-w-0 truncate text-ink-muted"
                 >
                   {props.directory}
                 </bdi>
@@ -182,7 +182,7 @@ export function SessionProjectMenu(props: {
           </Tooltip>
           <Menu.Separator />
           <Menu.Item disabled={!props.project} onSelect={openProjectSettings}>
-            <Icon name="settings-gear" class="text-v2-icon-icon-muted" />
+            <Icon name="settings-gear" class="text-ink-muted" />
             {language.t("project.settings.title")}
           </Menu.Item>
         </Menu.Content>
@@ -245,7 +245,7 @@ export function SessionAncestorTrail(props: {
                 data-session-id={ancestor.id}
                 title={ancestor.title}
                 dir="auto"
-                class="max-w-[min(200px,40vw)] shrink-0 truncate pl-2 text-[13px] font-[530] leading-4 tracking-[-0.04px] text-v2-text-text-faint transition-colors hover:text-v2-text-text-muted"
+                class="max-w-[min(200px,40vw)] shrink-0 truncate pl-2 text-[13px] font-medium leading-text-compact text-ink-muted underline-offset-4 transition-colors hover:text-foreground hover:underline"
                 onClick={() => open(ancestor.id)}
               >
                 {ancestor.title}
@@ -253,7 +253,7 @@ export function SessionAncestorTrail(props: {
               <Show when={index() < ancestors().length - 1}>
                 <span
                   data-slot="session-title-separator"
-                  class="-translate-y-[0.5px] shrink-0 pl-2 pr-1 text-[11px] font-medium text-v2-text-text-faint"
+                  class="-translate-y-[0.5px] shrink-0 pl-2 pr-1 text-[11px] font-medium text-ink-muted"
                   aria-hidden="true"
                 >
                   /
@@ -266,7 +266,7 @@ export function SessionAncestorTrail(props: {
       <Show when={props.trailing}>
         <span
           data-slot="session-title-separator"
-          class="-translate-y-[0.5px] shrink-0 pl-2 pr-1 text-[11px] font-medium text-v2-text-text-faint"
+          class="-translate-y-[0.5px] shrink-0 pl-2 pr-1 text-[11px] font-medium text-ink-muted"
           aria-hidden="true"
         >
           /
@@ -353,7 +353,7 @@ export function SessionIdentityHeader(props: { sessionID: string; session?: Sess
                   <h1
                     data-slot={parentID() ? "session-title-child" : undefined}
                     dir="auto"
-                    class="w-fit truncate rounded-[6px] px-1 py-1 text-[13px] font-[530] leading-4 tracking-[-0.04px] text-v2-text-text-base"
+                    class="w-fit truncate rounded-md px-1 py-1 text-[13px] font-medium leading-text-compact text-foreground"
                     classList={{ "max-w-[45%] shrink-0": !!parentID() }}
                   >
                     {value()}

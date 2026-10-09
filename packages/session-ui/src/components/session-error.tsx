@@ -13,7 +13,7 @@ export function SessionErrorMessage(props: { message: string }) {
   })
   return (
     <>
-      <Show when={content().title}>{(title) => <strong class="font-[530]">{title()}</strong>}</Show>
+      <Show when={content().title}>{(title) => <strong class="font-medium">{title()}</strong>}</Show>
       {content().detail}
     </>
   )
@@ -23,7 +23,7 @@ export function SessionError(props: { message: string }) {
   return (
     <Card variant="error" class="error-card" data-kind="session-error-card">
       <div class="flex w-full min-w-0 items-center gap-2">
-        <Icon name="outline-hexagonal-warning" class="shrink-0 text-v2-state-fg-danger" />
+        <Icon name="outline-hexagonal-warning" class="shrink-0 text-feedback-danger-foreground" />
         <div class="min-w-0">
           <SessionErrorMessage message={props.message} />
         </div>

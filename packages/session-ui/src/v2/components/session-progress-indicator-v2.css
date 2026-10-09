@@ -1,7 +1,7 @@
 [data-component="session-progress-indicator-v2"] {
   display: block;
   flex-shrink: 0;
-  color: var(--v2-icon-icon-muted, #808080);
+  color: var(--reddb-color-ink-muted);
 }
 
 [data-component="session-progress-indicator-v2"] [data-frame-content] {

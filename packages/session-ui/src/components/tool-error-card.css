@@ -1,119 +1,110 @@
+/* A failed tool is a tool row with a ✕ glyph and the failure summary in the danger stop; details hang on the rule. */
 [data-component="card"][data-kind="tool-error-card"] {
   --card-pad-y: 0px;
   --card-line-pad: 0px;
   --card-pad-r: 0px;
   --card-pad-l: 0px;
 
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+
   &::before {
     display: none;
   }
 
-  /* Figma's leading-none would clip Inter descenders at 13px; keep the compact metric. */
   [data-slot="basic-tool-tool-title"] {
-    font-family: var(--v2-font-family-sans);
+    font-family: var(--reddb-font-family-mono);
     font-size: 13px;
-    font-weight: 530;
+    font-weight: var(--reddb-font-weight-medium);
     line-height: var(--line-height-compact);
-    letter-spacing: -0.04px;
-    color: var(--v2-text-text-base);
+    color: var(--reddb-color-foreground);
   }
 
   [data-slot="basic-tool-tool-subtitle"] {
-    font-family: var(--v2-font-family-sans);
+    font-family: var(--reddb-font-family-mono);
     font-size: 13px;
-    font-weight: 440;
+    font-weight: var(--reddb-font-weight-regular);
     line-height: var(--line-height-compact);
-    letter-spacing: -0.04px;
-    color: var(--v2-text-text-muted);
-  }
-
-  [data-slot="tool-error-card-summary"] {
-    font-family: var(--v2-font-family-sans);
-    font-size: 13px;
-    font-weight: 440;
-    line-height: var(--line-height-compact);
-    letter-spacing: -0.04px;
-    color: var(--v2-state-fg-danger);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    color: var(--reddb-color-feedback-info-foreground);
   }
 
   [data-slot="tool-error-card-summary"] {
     flex-shrink: 1;
     min-width: 0;
+    font-family: var(--reddb-font-family-sans);
+    font-size: 13px;
+    font-weight: var(--reddb-font-weight-regular);
+    line-height: var(--line-height-compact);
+    color: var(--reddb-color-feedback-danger-foreground);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   [data-slot="basic-tool-tool-info-main"] {
-    align-items: center;
-    gap: 6px;
+    align-items: baseline;
+    gap: 1ch;
   }
 
   [data-slot="basic-tool-tool-trigger-content"] {
-    /* Reserve the 14px arrow + 6px gap. */
-    max-width: calc(100% - 20px);
+    /* Reserve the 16px arrow and its gap. */
+    max-width: calc(100% - 24px);
   }
 
   [data-slot="collapsible-arrow"] {
-    width: 14px;
-    height: 14px;
-    margin-inline-start: 6px;
+    width: 16px;
+    height: 16px;
+    margin-inline-start: 0.5ch;
     /* Always visible; the base collapsible reveals arrows only on hover. */
     opacity: 1;
   }
 
   [data-slot="collapsible-arrow"],
   [data-slot="collapsible-arrow-icon"] {
-    color: var(--v2-text-text-faint);
+    color: var(--reddb-color-ink-muted);
   }
 
   > [data-component="collapsible"].tool-collapsible {
-    gap: 0px;
+    gap: 2px;
 
     > [data-slot="collapsible-trigger"] {
       height: 24px;
     }
 
     > [data-slot="collapsible-content"] {
-      border-inline-start: none;
-      margin-inline-start: 0;
-      padding-inline-start: 0;
+      margin-inline-start: 0.5ch;
+      padding-inline-start: 1.5ch;
       padding-bottom: 0;
-
-      &::before {
-        display: none;
-      }
+      border-inline-start: 1px solid var(--reddb-color-feedback-danger-border);
     }
-  }
-
-  [data-component="tool-error-card-icon"] [data-slot="icon-svg"] {
-    color: var(--card-accent);
   }
 
   [data-slot="tool-error-card-content"] {
     position: relative;
-    padding-left: 24px;
+    padding-block: 2px;
     -webkit-user-select: text;
     user-select: text;
   }
 
   [data-slot="tool-error-card-content"] [data-slot="card-description"] {
-    font-family: var(--v2-font-family-sans);
-    font-size: 13px;
-    font-weight: 440;
-    line-height: var(--line-height-compact);
-    letter-spacing: -0.04px;
-    color: var(--v2-text-text-faint);
+    font-family: var(--reddb-font-family-mono);
+    font-size: 12px;
+    font-weight: var(--reddb-font-weight-regular);
+    line-height: 1.55;
+    color: var(--reddb-color-ink-muted);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
 
   > [data-component="collapsible"].tool-collapsible[data-open="true"] [data-slot="tool-error-card-content"] {
-    padding-right: 40px;
+    padding-inline-end: 40px;
   }
 
   [data-slot="tool-error-card-copy"] {
     position: absolute;
     top: 0;
-    right: 0;
+    inset-inline-end: 0;
     transition: opacity 0.15s ease;
     will-change: opacity;
 
@@ -130,12 +121,7 @@
   }
 
   [data-slot="tool-error-card-content"] :where(*)::selection {
-    background: var(--v2-state-bg-danger);
-    color: var(--v2-text-text-base);
-  }
-
-  [data-slot="tool-error-card-content"] :where(*)::-moz-selection {
-    background: var(--v2-state-bg-danger);
-    color: var(--v2-text-text-base);
+    background: var(--reddb-color-feedback-danger-surface);
+    color: var(--reddb-color-foreground);
   }
 }

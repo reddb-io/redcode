@@ -23,9 +23,9 @@ import { createSessionContextFormatter } from "./session-context-format"
 
 function Stat(props: { label: string; value: JSX.Element }) {
   return (
-    <div class="flex flex-col gap-1">
-      <div class="text-12-regular text-text-weak">{props.label}</div>
-      <div class="text-12-medium text-text-strong">{props.value}</div>
+    <div class="flex min-w-0 flex-col gap-1 border-t border-elevation-base-border pt-2">
+      <div class="text-[11px] font-medium uppercase tracking-[0.08em] text-ink-muted">{props.label}</div>
+      <div class="truncate font-mono text-[13px] tabular-nums text-foreground">{props.value}</div>
     </div>
   )
 }
@@ -61,17 +61,19 @@ function RawMessage(props: {
       <StickyAccordionHeader>
         <Accordion.Trigger>
           <div class="flex items-center justify-between gap-2 w-full">
-            <div class="min-w-0 truncate">
-              {props.message.type} <span class="text-text-base">• {props.message.id}</span>
+            <div class="min-w-0 truncate font-mono text-[12px]">
+              {props.message.type} <span class="text-ink-muted">• {props.message.id}</span>
             </div>
             <div class="flex items-center gap-3">
-              <div class="shrink-0 text-12-regular text-text-weak">{props.time(props.message.time.created)}</div>
-              <Icon name="chevron-grabber-vertical" size="small" class="shrink-0 text-text-weak" />
+              <div class="shrink-0 text-caption tabular-nums text-ink-muted">
+                {props.time(props.message.time.created)}
+              </div>
+              <Icon name="chevron-grabber-vertical" size="small" class="shrink-0 text-ink-muted" />
             </div>
           </div>
         </Accordion.Trigger>
       </StickyAccordionHeader>
-      <Accordion.Content class="bg-background-base">
+      <Accordion.Content class="bg-elevation-sunken-surface">
         <div class="p-3">
           <RawMessageContent message={props.message} onRendered={props.onRendered} />
         </div>
@@ -274,7 +276,7 @@ export function SessionContextTab() {
       onScroll={handleScroll}
     >
       <div data-slot="session-usage-content" class="px-4 pt-4 pb-6 flex flex-col gap-6 md:px-6 md:pb-10 md:gap-10">
-        <div class="grid grid-cols-1 @[32rem]:grid-cols-2 gap-4">
+        <div class="grid grid-cols-1 @[32rem]:grid-cols-2 @[48rem]:grid-cols-3 gap-x-6 gap-y-4">
           <For each={stats}>
             {(stat) => <Stat label={language.t(stat.label as Parameters<typeof language.t>[0])} value={stat.value()} />}
           </For>
@@ -283,8 +285,10 @@ export function SessionContextTab() {
         <Show when={systemPrompt()}>
           {(prompt) => (
             <div class="flex flex-col gap-2">
-              <div class="text-12-regular text-text-weak">{language.t("context.systemPrompt.title")}</div>
-              <div class="border border-border-base rounded-md bg-surface-base px-3 py-2">
+              <div class="text-[11px] font-medium uppercase tracking-[0.08em] text-ink-muted">
+                {language.t("context.systemPrompt.title")}
+              </div>
+              <div class="border border-elevation-base-border rounded-md bg-elevation-sunken-surface px-3 py-2">
                 <Markdown text={prompt()} class="text-12-regular" />
               </div>
             </div>
@@ -293,11 +297,13 @@ export function SessionContextTab() {
 
         <div class="flex flex-col gap-2">
           <div class="flex items-center justify-between">
-            <div class="text-12-regular text-text-weak">{language.t("context.rawMessages.title")}</div>
+            <div class="text-[11px] font-medium uppercase tracking-[0.08em] text-ink-muted">
+              {language.t("context.rawMessages.title")}
+            </div>
             <Button
               size="small"
               variant="ghost"
-              class="gap-1.5 px-2 text-text-weak hover:text-text-base"
+              class="gap-1.5 px-2 text-ink-muted hover:text-foreground"
               onClick={exportSession}
             >
               <Icon name="download" size="small" />

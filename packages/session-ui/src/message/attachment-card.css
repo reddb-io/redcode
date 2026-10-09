@@ -7,9 +7,9 @@
   min-width: 160px;
   max-width: 160px;
   padding: 8px;
-  border-radius: 6px;
-  background: var(--v2-overlay-simple-overlay-hover);
-  box-shadow: inset 0 0 0 0.5px var(--v2-border-border-base);
+  border-radius: var(--reddb-radius-md);
+  background: var(--reddb-color-elevation-sunken-surface);
+  box-shadow: inset 0 0 0 1px var(--reddb-color-elevation-base-border);
   cursor: default;
 
   &[data-wide] {
@@ -19,11 +19,11 @@
   }
 
   &[data-surface="base"] {
-    background: var(--v2-background-bg-base);
+    background: var(--reddb-color-elevation-base-surface);
   }
 
   &[data-active] {
-    box-shadow: inset 0 0 0 0.5px var(--v2-border-border-strong);
+    box-shadow: inset 0 0 0 1px var(--reddb-color-control-edge);
   }
 
   &[data-clickable] {
@@ -33,12 +33,10 @@
   [data-slot="attachment-card-title"],
   [data-slot="attachment-card-subtitle"] {
     max-width: 100%;
-    font-family: var(--v2-font-family-sans, "Inter", sans-serif);
+    font-family: var(--reddb-font-family-sans);
     font-style: normal;
-    font-size: 11px;
-    line-height: 12px;
-    letter-spacing: 0.05px;
-    font-variation-settings: "slnt" 0;
+    font-size: 12px;
+    line-height: var(--line-height-compact);
   }
 
   [data-slot="attachment-card-title"] {
@@ -47,8 +45,8 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-weight: 530;
-    color: var(--v2-text-text-base);
+    font-weight: var(--reddb-font-weight-medium);
+    color: var(--reddb-color-foreground);
   }
 
   [data-slot="attachment-card-subtitle"] {
@@ -58,8 +56,8 @@
     min-width: 0;
     overflow: hidden;
     white-space: nowrap;
-    font-weight: 440;
-    color: var(--v2-text-text-muted);
+    font-weight: var(--reddb-font-weight-regular);
+    color: var(--reddb-color-ink-muted);
 
     [data-component="file-icon"] {
       width: 12px;
@@ -67,8 +65,4 @@
       flex: none;
     }
   }
-}
-
-[data-color-scheme="dark"] [data-component="attachment-card"][data-surface="base"] {
-  background: var(--v2-overlay-simple-overlay-hover);
 }

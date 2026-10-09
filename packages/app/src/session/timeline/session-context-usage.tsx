@@ -1,6 +1,5 @@
 import { Show, createMemo, type ComponentProps, type JSX } from "solid-js"
 import { ProgressCircle } from "@opencode/ui/progress-circle"
-import { IconButton } from "@opencode/ui/icon-button"
 import { Tooltip } from "@opencode/ui/tooltip"
 import { createMediaQuery } from "@solid-primitives/media"
 import type { SessionMessageAssistant } from "@opencode/client/promise"
@@ -23,8 +22,8 @@ interface SessionContextUsageProps {
 function ContextTooltipRow(props: { name: JSX.Element; value: JSX.Element }) {
   return (
     <div class="flex min-w-0 items-center gap-4">
-      <span class="shrink-0 text-v2-text-text-muted">{props.name}</span>
-      <span class="ml-auto min-w-0 truncate text-right text-v2-text-text-base">{props.value}</span>
+      <span class="shrink-0 text-ink-muted">{props.name}</span>
+      <span class="ml-auto min-w-0 truncate text-right tabular-nums text-foreground">{props.value}</span>
     </div>
   )
 }
@@ -89,8 +88,22 @@ export function SessionContextUsage(props: SessionContextUsageProps) {
     )
     return message ? GenerationTiming.step(message) : undefined
   })
+  const compact = createMemo(
+    () => new Intl.NumberFormat(language.intl(), { notation: "compact", maximumFractionDigits: 1 }),
+  )
   const cost = createMemo(() => {
     return usd().format(info()?.cost ?? 0)
+  })
+  // The header's status line: context use (or tokens when the model's window is unknown) and the session cost.
+  const status = createMemo(() => {
+    const value = context()
+    const usage =
+      value?.usage !== null && value?.usage !== undefined
+        ? `${value.usage}%`
+        : value?.total
+          ? compact().format(value.total)
+          : undefined
+    return [usage, cost()].filter(Boolean).join(" · ")
   })
   const contextVisible = createMemo(() => view().reviewPanel.opened() && tabState.activeTab() === "context")
   const hasOtherTabs = createMemo(() =>
@@ -124,9 +137,9 @@ export function SessionContextUsage(props: SessionContextUsageProps) {
         strokeWidth={2}
         percentage={context()?.usage ?? 0}
         style={{
-          "--progress-circle-background": "var(--v2-background-bg-layer-04, var(--border-weak-base))",
-          "--progress-circle-background-overlay": "var(--v2-overlay-simple-overlay-pressed, transparent)",
-          "--progress-circle-progress": "var(--v2-icon-icon-base, var(--icon-base))",
+          "--progress-circle-background": "var(--reddb-color-muted)",
+          "--progress-circle-background-overlay": "transparent",
+          "--progress-circle-progress": "var(--reddb-color-foreground)",
         }}
       />
     </div>
@@ -172,14 +185,20 @@ export function SessionContextUsage(props: SessionContextUsageProps) {
         <Show
           when={variant() === "indicator"}
           fallback={
-            <IconButton
+            <button
               type="button"
-              variant="ghost-muted"
-              size="large"
-              icon={compactCircle()}
+              data-component="session-context-usage"
+              class="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 font-mono text-[12px] leading-text-compact tabular-nums text-ink-muted transition-colors hover:bg-foreground/8 hover:text-foreground active:bg-foreground/12 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+              classList={{ "bg-foreground/10 text-foreground": contextVisible() }}
               onClick={openContext}
               aria-label={language.t("context.usage.view")}
-            />
+              aria-pressed={contextVisible()}
+            >
+              {compactCircle()}
+              <span aria-hidden="true" class="hidden sm:inline">
+                {status()}
+              </span>
+            </button>
           }
         >
           {circle()}

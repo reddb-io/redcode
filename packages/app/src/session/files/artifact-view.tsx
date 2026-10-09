@@ -293,7 +293,7 @@ function ArtifactAudio(props: MediaProps) {
   return (
     <div data-slot="artifact-stage" class="relative min-h-0 flex-1 overflow-auto">
       <div class="absolute inset-0 flex items-center justify-center p-6">
-        <div class="flex w-full max-w-lg flex-col items-center gap-5 rounded-xl border border-v2-border-border-muted bg-v2-background-bg-base px-8 py-8 shadow-[var(--v2-elevation-raised)]">
+        <div class="flex w-full max-w-lg flex-col items-center gap-5 rounded-lg border border-elevation-base-border bg-elevation-base-surface px-8 py-8">
           <div class="flex size-14 items-center justify-center rounded-full bg-v2-background-bg-layer-02">
             <FileIcon node={{ path: props.path, type: "file" }} class="size-7" />
           </div>

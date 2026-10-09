@@ -115,19 +115,13 @@
   padding: 4px 4px 6px 4px;
   justify-content: center;
   align-items: start;
-  border-radius: var(--radius-md);
-  background: var(--surface-raised-stronger-non-alpha);
+  border-radius: var(--reddb-radius-lg);
+  border: 1px solid var(--reddb-color-elevation-overlay-border);
+  background: var(--reddb-color-elevation-overlay-surface);
   max-height: min(480px, calc(100vh - 6rem));
   overflow-y: auto;
   overflow-x: hidden;
-
-  /* border/shadow-xs/base */
-  box-shadow:
-    0 0 0 1px var(--border-weak-base, rgba(17, 0, 0, 0.12)),
-    0 1px 2px -1px rgba(19, 16, 16, 0.04),
-    0 1px 2px 0 rgba(19, 16, 16, 0.06),
-    0 1px 3px 0 rgba(19, 16, 16, 0.08);
-
+  box-shadow: var(--reddb-shadow-elevation-overlay);
   * {
     margin: 0 !important;
   }

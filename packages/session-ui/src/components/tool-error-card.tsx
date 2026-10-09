@@ -3,6 +3,7 @@ import { createStore } from "solid-js/store"
 import { Card, CardDescription } from "@opencode/ui/card"
 import { Collapsible } from "@opencode/ui/collapsible"
 import { Icon } from "@opencode/ui/icon"
+import { ToolStatusGlyph } from "./basic-tool"
 import { IconButton } from "@opencode/ui/icon-button"
 import { Tooltip } from "@opencode/ui/tooltip"
 import { useI18n } from "@opencode/ui/context/i18n"
@@ -96,9 +97,7 @@ export function ToolErrorCard(props: ToolErrorCardProps) {
         <Collapsible.Trigger>
           <div data-component="tool-trigger">
             <div data-slot="basic-tool-tool-trigger-content">
-              <span data-slot="basic-tool-tool-indicator" data-component="tool-error-card-icon">
-                <Icon name="outline-hexagonal-warning" />
-              </span>
+              <ToolStatusGlyph status="error" />
               <div data-slot="basic-tool-tool-info">
                 <div data-slot="basic-tool-tool-info-structured">
                   <div data-slot="basic-tool-tool-info-main">

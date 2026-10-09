@@ -30,7 +30,7 @@
   flex-shrink: 0;
   min-height: 0;
   overflow: hidden;
-  border-inline-end: 1px solid var(--border-weaker-base, var(--v2-border-border-weak));
+  border-inline-end: 1px solid var(--reddb-color-elevation-base-border);
   background: var(--v2-background-bg-base);
 }
 
@@ -238,7 +238,7 @@
   padding: 10px 12px;
   padding-inline-start: 8px;
   flex-shrink: 0;
-  border-bottom: 1px solid var(--border-weaker-base, var(--v2-border-border-weak));
+  border-bottom: 1px solid var(--reddb-color-elevation-base-border);
 }
 
 [data-component="session-review-v2"] [data-slot="session-review-v2-toolbar-group"] {
@@ -277,19 +277,14 @@
 [data-component="session-review-v2"] [data-slot="session-review-v2-file-position"] {
   flex: none;
   flex-grow: 0;
-  font-family: var(--v2-font-family-sans);
+  font-family: var(--reddb-font-family-mono);
   font-style: normal;
-  font-weight: 440;
+  font-weight: var(--reddb-font-weight-regular);
   font-size: 11px;
   line-height: var(--line-height-tight);
-  letter-spacing: 0.05px;
   text-transform: uppercase;
   font-variant-numeric: tabular-nums lining-nums;
-  font-feature-settings:
-    "tnum" on,
-    "lnum" on;
-  font-variation-settings: "slnt" 0;
-  color: var(--v2-grey-600);
+  color: var(--reddb-color-ink-muted);
   white-space: nowrap;
 }
 
@@ -325,8 +320,8 @@
   height: 28px;
   min-width: 36px;
   min-height: 28px;
-  border-radius: 6px;
-  color: var(--v2-icon-icon-base);
+  border-radius: var(--reddb-radius-md);
+  color: var(--reddb-color-foreground);
 }
 
 [data-component="icon-button-v2"][data-variant="ghost"].session-review-v2-sidebar-toggle[aria-expanded="true"] {
@@ -339,7 +334,7 @@
   gap: 8px;
   padding: 8px 16px;
   flex-shrink: 0;
-  border-bottom: 1px solid var(--border-weaker-base, var(--v2-border-border-weak));
+  border-bottom: 1px solid var(--reddb-color-elevation-base-border);
 }
 
 [data-component="session-review-v2"] [data-slot="session-review-v2-file-title"] {
@@ -398,10 +393,10 @@
   width: 16px;
   height: 16px;
   flex-shrink: 0;
-  font-size: 11px;
-  font-weight: 530;
+  font-family: var(--reddb-font-family-mono);
+  font-size: 12px;
+  font-weight: var(--reddb-font-weight-bold);
   line-height: 1;
-  letter-spacing: -0.04px;
   text-transform: uppercase;
   font-variant-numeric: tabular-nums lining-nums;
 }
@@ -415,28 +410,28 @@
 }
 
 [data-component="session-review-v2"] [data-slot="session-review-v2-file-status"][data-type="modified"] {
-  color: var(--v2-state-fg-info);
+  color: var(--icon-diff-modified-base, var(--reddb-color-feedback-warning-foreground));
 }
 
 [data-component="session-review-v2"] [data-slot="session-review-v2-file-name"] {
   flex: none;
+  font-family: var(--reddb-font-family-mono);
   font-size: 13px;
-  font-weight: 530;
+  font-weight: var(--reddb-font-weight-medium);
   line-height: var(--line-height-compact);
-  letter-spacing: -0.04px;
   font-variant-numeric: tabular-nums lining-nums;
-  color: var(--v2-text-text-base);
+  color: var(--reddb-color-foreground);
   white-space: nowrap;
 }
 
 [data-component="session-review-v2"] [data-slot="session-review-v2-file-path"] {
   flex: none;
-  font-size: 13px;
-  font-weight: 440;
+  font-family: var(--reddb-font-family-mono);
+  font-size: 12px;
+  font-weight: var(--reddb-font-weight-regular);
   line-height: var(--line-height-compact);
-  letter-spacing: -0.04px;
   font-variant-numeric: tabular-nums lining-nums;
-  color: var(--v2-text-text-muted);
+  color: var(--reddb-color-ink-muted);
   white-space: nowrap;
 }
 
@@ -488,16 +483,15 @@
 [data-slot="session-review-v2-empty-no-git"] [data-component="file-icon"] {
   width: 20px;
   height: 20px;
-  color: var(--v2-icon-icon-muted);
+  color: var(--reddb-color-ink-muted);
 }
 
 [data-slot="session-review-v2-empty-no-git-title"] {
   flex: none;
   font-size: 13px;
-  font-weight: 530;
+  font-weight: var(--reddb-font-weight-medium);
   line-height: var(--line-height-compact);
-  letter-spacing: -0.04px;
-  color: var(--v2-text-text-base);
+  color: var(--reddb-color-foreground);
 }
 
 [data-slot="session-review-v2-empty-no-git-description"] {
@@ -505,11 +499,10 @@
   margin: 0 0 4px;
   max-width: 360px;
   font-size: 13px;
-  font-weight: 440;
+  font-weight: var(--reddb-font-weight-regular);
   line-height: 20px;
   text-align: center;
-  letter-spacing: -0.04px;
-  color: var(--v2-text-text-muted);
+  color: var(--reddb-color-ink-muted);
 }
 
 [data-slot="session-review-v2-empty-changes"] {
@@ -527,16 +520,15 @@
 [data-slot="session-review-v2-empty-changes"] [data-slot="icon-svg"] {
   flex: none;
   margin-bottom: 8px;
-  color: var(--v2-icon-icon-muted);
+  color: var(--reddb-color-ink-muted);
 }
 
 [data-slot="session-review-v2-empty-changes-title"] {
   flex: none;
   font-size: 13px;
-  font-weight: 530;
-  line-height: 13px;
-  letter-spacing: -0.04px;
-  color: var(--v2-text-text-base);
+  font-weight: var(--reddb-font-weight-medium);
+  line-height: var(--line-height-compact);
+  color: var(--reddb-color-foreground);
 }
 
 [data-slot="session-review-v2-empty-changes-description"] {
@@ -544,9 +536,8 @@
   height: 20px;
   max-width: 282px;
   font-size: 13px;
-  font-weight: 440;
+  font-weight: var(--reddb-font-weight-regular);
   line-height: var(--line-height-base);
   text-align: center;
-  letter-spacing: -0.04px;
-  color: var(--v2-text-text-muted);
+  color: var(--reddb-color-ink-muted);
 }

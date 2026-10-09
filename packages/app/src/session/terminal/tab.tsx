@@ -144,7 +144,7 @@ export function SortableTerminalTab(props: { terminal: LocalPTY; index: number; 
             </span>
           </Tabs.Trigger>
           <Show when={store.editing}>
-            <div class="absolute inset-0 flex items-center bg-v2-background-bg-layer-01 z-10 pointer-events-auto rounded-[6px] shadow-[inset_0_0_0_0.5px_var(--v2-border-border-muted)] px-2">
+            <div class="absolute inset-0 flex items-center bg-elevation-sunken-surface z-10 pointer-events-auto rounded-md border border-control-edge px-2">
               <input
                 ref={input}
                 type="text"

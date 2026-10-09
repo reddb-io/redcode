@@ -35,12 +35,12 @@ export function TerminalSurface(
       aria-label={props.label}
       aria-hidden={!props.opened}
       inert={!props.opened}
-      class="relative shrink-0 overflow-hidden bg-v2-background-bg-base"
+      class="relative shrink-0 overflow-hidden bg-elevation-base-surface"
       classList={{
         "w-full": !props.desktop || props.stacked,
         "min-w-0 h-full flex-1": props.desktop && (props.present ?? props.opened) && !props.stacked,
         "w-0 h-full pointer-events-none": props.desktop && !(props.present ?? props.opened),
-        "rounded-[10px] shadow-[var(--v2-elevation-raised)]": props.desktop && (props.framed ?? true),
+        "rounded-lg border border-elevation-base-border": props.desktop && (props.framed ?? true),
         "will-change-[height]": !props.embedded && !props.resizing && (!props.desktop || props.stacked),
       }}
       style={{ height: props.height, "--terminal-panel-height": props.contentHeight }}
@@ -64,7 +64,7 @@ export function TerminalSurface(
         data-slot="terminal-panel-content"
         class="absolute inset-x-0 top-0 flex flex-col overflow-hidden"
         classList={{
-          "border-t border-border-weak-base": props.opened && !props.desktop && !props.embedded,
+          "border-t border-elevation-base-border": props.opened && !props.desktop && !props.embedded,
           "pointer-events-none": !props.opened,
         }}
         style={{ height: props.contentHeight }}

@@ -63,9 +63,7 @@ export function SessionPermissionDock(props: {
         <div data-slot="permission-row">
           <span data-slot="permission-spacer" aria-hidden="true" />
           <div data-slot="permission-patterns">
-            <For each={props.request.resources}>
-              {(pattern) => <code class="text-12-regular text-text-base break-all">{pattern}</code>}
-            </For>
+            <For each={props.request.resources}>{(pattern) => <code class="break-all">{pattern}</code>}</For>
           </div>
         </div>
       </Show>
