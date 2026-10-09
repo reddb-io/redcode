@@ -82,6 +82,8 @@ export type SessionStatsActivity = { date: string; steps: number }
 
 export type UsageMirrorBackfill = { sidecar: string; mirrored: number; skipped: number }
 
+export type SessionImportSource = "opencode"
+
 export type SessionMessageAgentSelected = {
   id: string
   metadata?: { [x: string]: JsonValue }
@@ -991,6 +993,26 @@ export type SessionStatsTools =
   | { mode: "none" }
   | { mode: "summary"; totals: SessionStatsToolTotals }
   | { mode: "detail"; totals: SessionStatsToolTotals; usage: Array<SessionStatsToolUsage> }
+
+export type SessionImportSourceInfo = {
+  source: SessionImportSource
+  name: string
+  available: boolean
+  path?: string
+  sessions: number
+  warning?: string
+}
+
+export type SessionImportSummary = {
+  source: SessionImportSource
+  ref: string
+  title: string
+  directory: string
+  messages: number
+  subagents: number
+  model?: string
+  time: { created: number; updated: number }
+}
 
 export type PromptFileAttachment = {
   data: PromptBase64
@@ -3296,6 +3318,8 @@ export type SessionStatsInfo = {
 
 export type SessionsResponse = { data: Array<SessionInfo>; cursor: { previous?: string | null; next?: string | null } }
 
+export type SessionImportResult = { session: SessionInfo; sessions: Array<string>; warnings: Array<string> }
+
 export type SessionInboxInfo = SessionInboxUser | SessionInboxSynthetic | SessionInboxCompaction | SessionInboxMove
 
 export type SessionInboxEnqueued = {
@@ -5421,6 +5445,48 @@ export type SessionImportInput = {
 }
 
 export type SessionImportOutput = { data: SessionInfo }["data"]
+
+export type SessionForeignSourcesOutput = { data: Array<SessionImportSourceInfo> }["data"]
+
+export type SessionForeignListInput = {
+  readonly source: {
+    readonly source: "opencode"
+    readonly directory?: string | undefined
+    readonly limit?: number | undefined
+  }["source"]
+  readonly directory?: {
+    readonly source: "opencode"
+    readonly directory?: string | undefined
+    readonly limit?: number | undefined
+  }["directory"]
+  readonly limit?: {
+    readonly source: "opencode"
+    readonly directory?: string | undefined
+    readonly limit?: number | undefined
+  }["limit"]
+}
+
+export type SessionForeignListOutput = { data: Array<SessionImportSummary> }["data"]
+
+export type SessionForeignImportInput = {
+  readonly source: {
+    readonly source: "opencode"
+    readonly ref: string
+    readonly location?: { readonly directory: string } | undefined
+  }["source"]
+  readonly ref: {
+    readonly source: "opencode"
+    readonly ref: string
+    readonly location?: { readonly directory: string } | undefined
+  }["ref"]
+  readonly location?: {
+    readonly source: "opencode"
+    readonly ref: string
+    readonly location?: { readonly directory: string } | undefined
+  }["location"]
+}
+
+export type SessionForeignImportOutput = { data: SessionImportResult }["data"]
 
 export type SessionExportInput = {
   readonly sessionID: { readonly sessionID: string }["sessionID"]

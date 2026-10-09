@@ -28,6 +28,11 @@ import type {
   SessionCreateOutput,
   SessionImportInput,
   SessionImportOutput,
+  SessionForeignSourcesOutput,
+  SessionForeignListInput,
+  SessionForeignListOutput,
+  SessionForeignImportInput,
+  SessionForeignImportOutput,
   SessionExportInput,
   SessionExportOutput,
   SessionActiveOutput,
@@ -944,6 +949,43 @@ export function make(options: ClientOptions) {
           },
           requestOptions,
         ).then((value) => value.data),
+      foreign: {
+        sources: (requestOptions?: RequestOptions) =>
+          request<{ readonly data: SessionForeignSourcesOutput }>(
+            {
+              method: "GET",
+              path: `/api/experimental/session/import/sources`,
+              successStatus: 200,
+              declaredStatuses: [400, 401],
+              empty: false,
+            },
+            requestOptions,
+          ).then((value) => value.data),
+        list: (input: SessionForeignListInput, requestOptions?: RequestOptions) =>
+          request<{ readonly data: SessionForeignListOutput }>(
+            {
+              method: "GET",
+              path: `/api/experimental/session/import/sessions`,
+              query: { source: input["source"], directory: input["directory"], limit: input["limit"] },
+              successStatus: 200,
+              declaredStatuses: [400, 401],
+              empty: false,
+            },
+            requestOptions,
+          ).then((value) => value.data),
+        import: (input: SessionForeignImportInput, requestOptions?: RequestOptions) =>
+          request<{ readonly data: SessionForeignImportOutput }>(
+            {
+              method: "POST",
+              path: `/api/experimental/session/import/foreign`,
+              body: { source: input["source"], ref: input["ref"], location: input["location"] },
+              successStatus: 200,
+              declaredStatuses: [400, 401, 404, 409],
+              empty: false,
+            },
+            requestOptions,
+          ).then((value) => value.data),
+      },
       export: (input: SessionExportInput, requestOptions?: RequestOptions) =>
         request<{ readonly data: SessionExportOutput }>(
           {

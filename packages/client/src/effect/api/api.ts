@@ -268,6 +268,49 @@ export type SessionImportInput = {
 export type SessionImportOutput = Session.Info
 export type SessionImportOperation<E = never> = (input: SessionImportInput) => Effect.Effect<SessionImportOutput, E>
 
+export type SessionForeignSourcesOutput = ReadonlyArray<{
+  readonly source: "opencode"
+  readonly name: string
+  readonly available: boolean
+  readonly path?: string | undefined
+  readonly sessions: number
+  readonly warning?: string | undefined
+}>
+export type SessionForeignSourcesOperation<E = never> = () => Effect.Effect<SessionForeignSourcesOutput, E>
+
+export type SessionForeignListInput = {
+  readonly source: "opencode"
+  readonly directory?: string | undefined
+  readonly limit?: number | undefined
+}
+export type SessionForeignListOutput = ReadonlyArray<{
+  readonly source: "opencode"
+  readonly ref: string
+  readonly title: string
+  readonly directory: string
+  readonly messages: number
+  readonly subagents: number
+  readonly model?: string | undefined
+  readonly time: { readonly created: DateTime.Utc; readonly updated: DateTime.Utc }
+}>
+export type SessionForeignListOperation<E = never> = (
+  input: SessionForeignListInput,
+) => Effect.Effect<SessionForeignListOutput, E>
+
+export type SessionForeignImportInput = {
+  readonly source: "opencode"
+  readonly ref: string
+  readonly location?: Location.PublicRef | undefined
+}
+export type SessionForeignImportOutput = {
+  readonly session: Session.Info
+  readonly sessions: ReadonlyArray<Session.ID>
+  readonly warnings: ReadonlyArray<string>
+}
+export type SessionForeignImportOperation<E = never> = (
+  input: SessionForeignImportInput,
+) => Effect.Effect<SessionForeignImportOutput, E>
+
 export type SessionExportInput = { readonly sessionID: Session.ID; readonly sanitize?: boolean | undefined }
 export type SessionExportOutput = { readonly info: Session.Info; readonly messages: ReadonlyArray<SessionMessage.Info> }
 export type SessionExportOperation<E = never> = (input: SessionExportInput) => Effect.Effect<SessionExportOutput, E>
@@ -3761,6 +3804,11 @@ export interface SessionApi<E = never> {
   readonly usage: { readonly backfill: SessionUsageBackfillOperation<E> }
   readonly create: SessionCreateOperation<E>
   readonly import: SessionImportOperation<E>
+  readonly foreign: {
+    readonly sources: SessionForeignSourcesOperation<E>
+    readonly list: SessionForeignListOperation<E>
+    readonly import: SessionForeignImportOperation<E>
+  }
   readonly export: SessionExportOperation<E>
   readonly active: SessionActiveOperation<E>
   readonly get: SessionGetOperation<E>

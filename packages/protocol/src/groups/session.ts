@@ -12,6 +12,7 @@ import { SessionBudget } from "@opencode/schema/session-budget"
 import { Design } from "@opencode/schema/design"
 import { InstructionEntry } from "@opencode/schema/instruction-entry"
 import { Project } from "@opencode/schema/project"
+import { SessionImport } from "@opencode/schema/session-import"
 import {
   AbsolutePath,
   DateTimeUtcFromMillis,
@@ -158,6 +159,12 @@ const PublicSessionTransfer = Schema.Struct({
   info: PublicSessionInfo,
   messages: Schema.Array(PublicSessionMessage),
 }).annotate({ identifier: "SessionTransfer.Data" })
+
+const PublicImportResult = Schema.Struct({
+  session: PublicSessionInfo,
+  sessions: Schema.Array(Session.ID),
+  warnings: Schema.Array(Schema.String),
+}).annotate({ identifier: "SessionImport.Result" })
 
 const PublicMovePayload = Schema.Struct({
   ...Struct.omit(SessionInbox.MovePayload.fields, ["location"]),
@@ -322,6 +329,56 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI ext
           summary: "Import session",
           description:
             "Import a projected session transcript at the requested location. If parentID is supplied, the parent session must already exist; import parents before children.",
+        }),
+      ),
+    )
+    .add(
+      HttpApiEndpoint.get("session.foreign.sources", "/api/experimental/session/import/sources", {
+        success: Schema.Struct({ data: Schema.Array(SessionImport.SourceInfo) }),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "experimental.session.foreign.sources",
+          summary: "List session import sources",
+          description: "Detect the local session stores of other coding agents whose sessions can be imported.",
+        }),
+      ),
+    )
+    .add(
+      HttpApiEndpoint.get("session.foreign.list", "/api/experimental/session/import/sessions", {
+        query: Schema.Struct({
+          source: SessionImport.Source,
+          directory: Schema.String.pipe(Schema.optional).annotate({
+            description: "Only return sessions recorded in this directory.",
+          }),
+          limit: Schema.NumberFromString.pipe(Schema.decodeTo(PositiveInt), Schema.optional).annotate({
+            description: "Maximum number of sessions to return. Defaults to the newest 50 sessions.",
+          }),
+        }),
+        success: Schema.Struct({ data: Schema.Array(SessionImport.Summary) }),
+        error: InvalidRequestError,
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "experimental.session.foreign.list",
+          summary: "List importable sessions",
+          description: "List the most recently updated top-level sessions in another coding agent's session store.",
+        }),
+      ),
+    )
+    .add(
+      HttpApiEndpoint.post("session.foreign.import", "/api/experimental/session/import/foreign", {
+        payload: Schema.Struct({
+          source: SessionImport.Source,
+          ref: Schema.String.annotate({ description: "The session identifier in the source store." }),
+          location: Location.PublicRef.pipe(Schema.optional),
+        }),
+        success: Schema.Struct({ data: PublicImportResult }),
+        error: [ConflictError, InvalidRequestError, LocationNotFoundError, SessionNotFoundError],
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "experimental.session.foreign.import",
+          summary: "Import a foreign session",
+          description:
+            "Import a session and its subagent sessions from another coding agent under their original IDs. The session binds to its recorded directory unless location is supplied. A session that was already imported fails with a conflict naming the existing session.",
         }),
       ),
     )
