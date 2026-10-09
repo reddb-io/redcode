@@ -48,6 +48,10 @@ that serves Design mode's browser review; checksums are in `SHA256SUMS`. Every i
 method ships the design app with redcode, so Design never downloads it separately. Keep one
 installation method per machine.
 
+Redcode Desktop, opened with `redcode desktop`, comes only with mise and the release archives
+(every platform except Linux musl), unpacked in `desktop/` beside `redcode`. The npm package ships
+the CLI and the design app only: the desktop app is too large for the npm registry.
+
 ## Use
 
 | Command                     | Purpose                                         |
@@ -393,8 +397,9 @@ Publish through the [redcode workflow](https://github.com/reddb-io/redcode/actio
 gh workflow run redcode.yml --repo reddb-io/redcode --ref main -f publish=true
 ```
 
-The workflow runs checks and tests, builds native CLI/sidecar and Design archives, publishes npm
-packages, verifies installation and checksums, then publishes the GitHub releases. Changesets record
+The workflow runs checks and tests, builds native archives with the CLI, sidecar, Design and
+desktop apps, publishes npm packages (CLI and Design app only), verifies installation and
+checksums, then publishes the GitHub releases. Changesets record
 release intent for `@reddb-io/redcode`; the workflow versions and publishes directly from `main`.
 See [CI/CD](docs/ci-cd.md).
 

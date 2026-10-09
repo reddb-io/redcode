@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test"
-import { mkdir, readdir } from "node:fs/promises"
 import path from "node:path"
 import { DesktopApp } from "../src/services/desktop-app"
 // The app reads the pointer this command writes; both sides of that file are checked together.
@@ -10,8 +9,6 @@ const options = (root: string, extra: Partial<DesktopApp.Options> = {}): Desktop
   env: {},
   target: "linux-x64",
   executable: path.join(root, "redcode"),
-  cache: path.join(root, "cache"),
-  version: "1.2.3",
   source: false,
   ...extra,
 })
@@ -19,20 +16,6 @@ const options = (root: string, extra: Partial<DesktopApp.Options> = {}): Desktop
 /** Writes empty files at the given paths under root. */
 async function files(root: string, ...names: string[]) {
   await Promise.all(names.map((name) => Bun.write(path.join(root, name), "")))
-}
-
-/** An npm install: redcode's platform package beside the desktop package, whose tar holds the given app files. */
-async function npm(root: string, target: string, desktop: string, app: readonly string[]) {
-  const scope = path.join(root, "node_modules", "@reddb-io")
-  const tree = path.join(root, "tree")
-  const extension = target.startsWith("windows-") ? ".exe" : ""
-  await files(scope, `redcode-${target}/bin/redcode${extension}`)
-  await files(tree, ...app)
-  const folder = path.join(scope, `redcode-desktop-${desktop}`, "desktop")
-  await mkdir(folder, { recursive: true })
-  const child = Bun.spawn(["tar", "-cf", "desktop.tar", "-C", tree, ...(await readdir(tree))], { cwd: folder })
-  expect(await child.exited).toBe(0)
-  return path.join(scope, `redcode-${target}`, "bin", `redcode${extension}`)
 }
 
 describe("redcode desktop", () => {
@@ -53,7 +36,7 @@ describe("redcode desktop", () => {
   ])("opens the app unpacked beside redcode in $layout", async (input) => {
     await using root = await tmpdir()
     await files(root.path, "redcode", input.executable)
-    expect(await DesktopApp.locate(options(root.path, { target: input.target }))).toEqual({
+    expect(DesktopApp.locate(options(root.path, { target: input.target }))).toEqual({
       source: "archive",
       app: path.join(root.path, input.app),
       executable: path.join(root.path, input.executable),
@@ -62,55 +45,23 @@ describe("redcode desktop", () => {
   })
 
   test.each([
-    {
-      layout: "Linux",
-      target: "linux-arm64",
-      desktop: "linux-arm64",
-      files: ["io.reddb.redcode", "resources/app.asar"],
-      app: "io.reddb.redcode",
-      executable: "io.reddb.redcode",
-    },
-    {
-      layout: "Windows, from a baseline CLI",
-      target: "windows-x64-baseline",
-      desktop: "windows-x64",
-      files: ["Redcode.exe", "resources/app.asar"],
-      app: "Redcode.exe",
-      executable: "Redcode.exe",
-    },
-    {
-      layout: "macOS",
-      target: "darwin-x64",
-      desktop: "darwin-x64",
-      files: ["Redcode.app/Contents/MacOS/Redcode", "Redcode.app/Contents/Resources/app.asar"],
-      app: "Redcode.app",
-      executable: "Redcode.app/Contents/MacOS/Redcode",
-    },
-  ])("extracts the npm package's app once per version on $layout", async (input) => {
+    { target: "linux-arm64", binary: "redcode" },
+    { target: "windows-x64-baseline", binary: "redcode.exe" },
+    { target: "darwin-x64", binary: "redcode" },
+  ])("points an npm install on $target to mise or the release archive", async (input) => {
     await using root = await tmpdir()
-    const executable = await npm(root.path, input.target, input.desktop, input.files)
-    const extracted = path.join(root.path, "cache", "desktop", "1.2.3")
-    const expected: DesktopApp.Located = {
-      source: "npm",
-      app: path.join(extracted, input.app),
-      executable: path.join(extracted, input.executable),
-      root: extracted,
-    }
-    const located = await DesktopApp.locate(options(root.path, { target: input.target, executable }))
-    expect(located).toEqual(expected)
-    for (const file of input.files) expect(await Bun.file(path.join(extracted, file)).exists()).toBe(true)
-    // Nothing is left beside the extracted app, and a second run reuses it.
-    expect(await readdir(path.dirname(extracted))).toEqual(["1.2.3"])
-    await Bun.write(path.join(extracted, "marker"), "")
-    expect(await DesktopApp.locate(options(root.path, { target: input.target, executable }))).toEqual(expected)
-    expect(await Bun.file(path.join(extracted, "marker")).exists()).toBe(true)
+    const executable = path.join(root.path, "node_modules", "@reddb-io", `redcode-${input.target}`, "bin", input.binary)
+    const located = () => DesktopApp.locate(options(root.path, { target: input.target, executable }))
+    expect(located).toThrow("Redcode Desktop is not included in the npm package")
+    expect(located).toThrow("mise use -g github:reddb-io/redcode@latest")
+    expect(located).toThrow("https://github.com/reddb-io/redcode/releases")
   })
 
   test("REDCODE_DESKTOP_APP wins over the installation's app and is never prepared", async () => {
     await using root = await tmpdir()
     await files(root.path, "redcode", "desktop/io.reddb.redcode")
     const env = { REDCODE_DESKTOP_APP: "/src/Redcode Dev.app" }
-    const located = await DesktopApp.locate(options(root.path, { env, target: "darwin-arm64" }))
+    const located = DesktopApp.locate(options(root.path, { env, target: "darwin-arm64" }))
     expect(located).toEqual({
       source: "environment",
       app: "/src/Redcode Dev.app",
@@ -127,15 +78,15 @@ describe("redcode desktop", () => {
   ])("refuses $target", async (input) => {
     await using root = await tmpdir()
     await files(root.path, "redcode", "desktop/io.reddb.redcode")
-    await expect(DesktopApp.locate(options(root.path, { target: input.target }))).rejects.toThrow(input.message)
+    expect(() => DesktopApp.locate(options(root.path, { target: input.target }))).toThrow(input.message)
   })
 
   test("names what it looked for, or how to run the app from a checkout", async () => {
     await using root = await tmpdir()
-    await expect(DesktopApp.locate(options(root.path))).rejects.toThrow(
-      `looked for ${path.join(root.path, "desktop", "io.reddb.redcode")} and `,
+    expect(() => DesktopApp.locate(options(root.path))).toThrow(
+      `looked for ${path.join(root.path, "desktop", "io.reddb.redcode")}. Reinstall redcode from the release archive`,
     )
-    await expect(DesktopApp.locate(options(root.path, { source: "/src/packages/desktop" }))).rejects.toThrow(
+    expect(() => DesktopApp.locate(options(root.path, { source: "/src/packages/desktop" }))).toThrow(
       "Run it from source: cd /src/packages/desktop && bun run dev",
     )
   })
@@ -159,7 +110,7 @@ describe("redcode desktop", () => {
     {
       name: "quotes a Windows folder for PowerShell",
       target: "windows-x64",
-      located: { source: "npm", app: "C:\\Users\\o'neil\\Redcode.exe", root: "C:\\Users\\o'neil" },
+      located: { source: "archive", app: "C:\\Users\\o'neil\\Redcode.exe", root: "C:\\Users\\o'neil" },
       expected: [
         ["C:\\Win\\System32\\icacls.exe", "C:\\Users\\o'neil", "/grant", "*S-1-15-2-2:(OI)(CI)(RX)", "/Q"],
         [
@@ -219,18 +170,18 @@ describe("redcode desktop", () => {
   test.each([
     {
       platform: "linux",
-      app: "/home/me/.red/code/cache/desktop/1.2.3/io.reddb.redcode",
-      resourcesPath: "/home/me/.red/code/cache/desktop/1.2.3/resources",
-      execPath: "/home/me/.red/code/cache/desktop/1.2.3/io.reddb.redcode",
+      app: "/home/me/apps/redcode-dev/io.reddb.redcode",
+      resourcesPath: "/home/me/apps/redcode-dev/resources",
+      execPath: "/home/me/apps/redcode-dev/io.reddb.redcode",
     },
     {
       platform: "darwin",
-      app: "/Users/me/.red/code/cache/desktop/1.2.3/Redcode.app",
-      resourcesPath: "/Users/me/.red/code/cache/desktop/1.2.3/Redcode.app/Contents/Resources",
-      execPath: "/Users/me/.red/code/cache/desktop/1.2.3/Redcode.app/Contents/MacOS/Redcode",
+      app: "/Users/me/Applications/Redcode.app",
+      resourcesPath: "/Users/me/Applications/Redcode.app/Contents/Resources",
+      execPath: "/Users/me/Applications/Redcode.app/Contents/MacOS/Redcode",
     },
-  ] as const)("the $platform app it extracted finds this CLI through the pointer", (input) => {
-    const cli = "/home/me/node_modules/@reddb-io/redcode-linux-x64/bin/redcode"
+  ] as const)("the $platform app REDCODE_DESKTOP_APP names finds this CLI through the pointer", (input) => {
+    const cli = "/home/me/.local/share/mise/installs/redcode/1.2.3/redcode"
     const pointer = DesktopApp.pointer("/home/me/.red/code/state")
     expect(pointer).toBe(path.join("/home/me/.red/code/state", "desktop.json"))
     const record = DesktopApp.record({ version: "1.2.3", cli, app: input.app })

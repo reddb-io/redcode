@@ -3,26 +3,19 @@ export * as RedcodePackages from "./packages"
 import path from "node:path"
 
 // The per-platform npm packages a Redcode release is made of, as folders of dist/: the CLI
-// (`redcode-<target>`, @reddb-io/redcode-<target>), the design app that ships beside it
-// (`redcode-design-<target>`, @reddb-io/redcode-design-<target>) and the Electron desktop app
-// (`redcode-desktop-<os>-<arch>`, @reddb-io/redcode-desktop-<os>-<arch>), which only exists for glibc, macOS and
-// Windows and serves the baseline CLI targets too. `redcode-package/` is the meta package publish.ts writes, never a
-// platform package. A new kind is one more row in `kinds`.
+// (`redcode-<target>`, @reddb-io/redcode-<target>) and the design app that ships beside it
+// (`redcode-design-<target>`, @reddb-io/redcode-design-<target>). The Electron desktop app is no npm package: at about
+// 0.2 GB per platform the registry rejects it, so only the release archives carry it (see desktopDist).
+// `redcode-package/` is the meta package publish.ts writes, never a platform package. A new kind is one more row in
+// `kinds`.
 
-export type Kind = "cli" | "design" | "desktop"
+export type Kind = "cli" | "design"
 
 // The first prefix a folder starts with decides its kind, so the longer prefixes come first.
 const kinds: { kind: Kind; prefix: string; binaries: string[] }[] = [
   { kind: "design", prefix: "redcode-design-", binaries: ["redcode-design"] },
-  { kind: "desktop", prefix: "redcode-desktop-", binaries: [] },
   { kind: "cli", prefix: "redcode-", binaries: ["redcode", "redcode-rpc-sidecar"] },
 ]
-
-/**
- * The desktop app inside its npm package: one tar of the unpacked app, because npm packers drop symlinks (the macOS
- * app bundle has them) and node_modules folders (the app's own `resources/app.asar.unpacked/node_modules`).
- */
-export const DESKTOP_TAR = "desktop/desktop.tar"
 
 export type Manifest = {
   name: string
@@ -43,9 +36,9 @@ export function designDist(directory: string) {
 }
 
 /**
- * The unpacked desktop apps: `REDCODE_DESKTOP_DIST`, by default packages/desktop/dist. It holds one `<os>-<arch>`
- * folder per desktop target with exactly what goes under `desktop/` beside redcode: the contents of electron-builder's
- * `linux-unpacked` or `win-unpacked` folder, or the `Redcode.app` bundle on macOS.
+ * The unpacked desktop apps the release archives carry: `REDCODE_DESKTOP_DIST`, by default packages/desktop/dist. It
+ * holds one `<os>-<arch>` folder per desktop target with exactly what goes under `desktop/` beside redcode: the
+ * contents of electron-builder's `linux-unpacked` or `win-unpacked` folder, or the `Redcode.app` bundle on macOS.
  */
 export function desktopDist(directory: string) {
   return path.resolve(directory, process.env.REDCODE_DESKTOP_DIST ?? "../desktop/dist")
@@ -83,7 +76,6 @@ export function binaries(item: Pick<Package, "kind" | "target">) {
 
 /** The files a package must carry, relative to its folder. */
 export function files(item: Pick<Package, "kind" | "target">) {
-  if (item.kind === "desktop") return [DESKTOP_TAR]
   return binaries(item).map((name) => `bin/${name}`)
 }
 
@@ -95,18 +87,8 @@ export function design(packages: Package[], cli: Package) {
   return found
 }
 
-/** The `<os>-<arch>` desktop app of a CLI target: baseline targets share it, and musl targets have none. */
+/** The `<os>-<arch>` folder of desktopDist a CLI target's archive carries: baseline targets share it, musl has none. */
 export function desktopTarget(target: string) {
   if (target.endsWith("-musl")) return undefined
   return target.replace(/-baseline$/, "")
-}
-
-/** The desktop app package of a CLI package's target, which `bun run assemble` writes; none on musl. */
-export function desktop(packages: Package[], cli: Package) {
-  const target = desktopTarget(cli.target)
-  if (!target) return undefined
-  const found = packages.find((item) => item.kind === "desktop" && item.target === target)
-  if (!found)
-    throw new Error(`Missing @reddb-io/redcode-desktop-${target} beside ${cli.manifest.name}; run bun run assemble`)
-  return found
 }

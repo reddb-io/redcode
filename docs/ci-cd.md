@@ -2,7 +2,8 @@
 
 Redcode uses **one workflow**, `.github/workflows/redcode.yml`, owned by
 `reddb-io/redcode`. It publishes `@reddb-io/redcode`, its native packages and the
-design app packages that ship with them.
+design app packages that ship with them to npm, and the release archives, which
+also carry the desktop app, to GitHub.
 It does not call workflows or consume release versions from another repository.
 
 ## Push to main
@@ -107,6 +108,13 @@ ships in the same `vX.Y.Z` release: every archive carries `redcode-design` besid
 isolated layout links it next to redcode), and the release carries the whiteboard
 bundle the design app downloads. Linux and macOS archives are `tar.gz`; Windows
 archives are `zip`. Separate `design-vX.Y.Z` releases are no longer published.
+
+The desktop app ships only in the release archives, and so with mise: every
+archive except Linux musl carries the unpacked app under `desktop/` beside
+`redcode`, taken by `bun run archive` from `REDCODE_DESKTOP_DIST`. npm carries
+the CLI and the design app only. At about 0.2 GB per platform the registry
+rejects a desktop package (`E413 Payload Too Large`), so there is none, and
+`redcode desktop` in an npm install points to mise or the release archives.
 
 Builds, checksum verification, CLI identity/agent checks, service lifecycle and
 published installation checks remain required. Artifact compression is disabled

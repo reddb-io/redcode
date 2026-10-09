@@ -496,7 +496,7 @@ jobs:
           BUN_COMPILE_RELEASE: bun-v1.4.2
           REDCODE_RPC_SIDECAR_DIR: ${{ github.workspace }}/packages/rpc-sidecar/dist/release
         run: bun run build
-      - name: Place the Design and desktop apps beside each Redcode target
+      - name: Place the Design app beside each Redcode target
         working-directory: packages/redcode
         run: bun run assemble
       - name: Exercise compiled Redcode CLI and agents
@@ -525,7 +525,7 @@ jobs:
       - name: Archive binaries, sidecars and the Design and desktop apps
         working-directory: packages/redcode
         run: bun run archive
-      - name: Verify the desktop app in the archives and npm packages
+      - name: Verify the desktop app in the archives and not in the npm packages
         working-directory: packages/redcode
         shell: bash
         run: |
@@ -540,9 +540,11 @@ jobs:
             echo 'The musl archive must not carry the desktop app' >&2
             exit 1
           fi
-          for target in linux-x64 linux-arm64 darwin-x64 darwin-arm64 windows-x64 windows-arm64; do
-            tar -tf "dist/redcode-desktop-$target/desktop/desktop.tar" > /dev/null
-          done
+          # npm rejects the desktop app as too large; it ships only in the archives.
+          if compgen -G 'dist/redcode-desktop-*' > /dev/null; then
+            echo 'The npm packages must not carry the desktop app' >&2
+            exit 1
+          fi
       - name: Pack npm packages
         working-directory: packages/redcode
         run: bun run publish --pack-only
@@ -718,8 +720,7 @@ jobs:
     if: inputs.publish && github.repository == 'reddb-io/redcode' && github.ref == 'refs/heads/main'
     needs: [plan, verify, tests, vault-coverage, build, design, smoke]
     runs-on: ubuntu-latest
-    # Each release carries the desktop app per platform, about 1.5 GB of uploads and downloads.
-    timeout-minutes: 90
+    timeout-minutes: 45
     environment: red-release
     env:
       REDCODE_VERSION: ${{ needs.plan.outputs.version }}
@@ -800,11 +801,12 @@ jobs:
           test "$("$root/install/node_modules/.bin/redcode" --version)" = "redcode v$REDCODE_VERSION"
           test -x "$root/install/node_modules/@reddb-io/redcode-linux-x64/bin/redcode-rpc-sidecar"
           test -x "$root/install/node_modules/@reddb-io/redcode-design-linux-x64/bin/redcode-design"
-          test -f "$root/install/node_modules/@reddb-io/redcode-desktop-linux-x64/desktop/desktop.tar"
-          # The first resolution extracts the npm package's app into the cache.
-          app=$(REDCODE_TEST_HOME="$root/home" "$root/install/node_modules/.bin/redcode" desktop --path | tail -n 1)
-          test "$app" = "$root/home/.red/code/cache/desktop/$REDCODE_VERSION/io.reddb.redcode"
-          test -x "$app"
+          # The desktop app ships only in the release archives; npm points to them.
+          if REDCODE_TEST_HOME="$root/home" "$root/install/node_modules/.bin/redcode" desktop --path > "$root/desktop.txt" 2>&1; then
+            echo 'redcode desktop must fail in an npm install' >&2
+            exit 1
+          fi
+          grep -F 'not included in the npm package' "$root/desktop.txt"
           test "$(npm view "@reddb-io/redcode@$REDCODE_VERSION" version --prefer-online)" = "$REDCODE_VERSION"
 
   release_status:
@@ -828,7 +830,7 @@ jobs:
             '## Redcode ' + process.env.REDCODE_VERSION + '\n\n' +
             '| Destination | Result |\n| --- | --- |\n' +
             '| GitHub release (CLI, design and desktop apps) | ' + github + ' |\n' +
-            '| npm main, native, design and desktop app packages | ' + npm + ' |\n')
+            '| npm main, native and design app packages | ' + npm + ' |\n')
           if (github !== 'success' || npm !== 'success') {
             console.error('Release incomplete: GitHub=' + github + ', npm=' + npm)
             process.exitCode = 1

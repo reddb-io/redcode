@@ -28,4 +28,6 @@ REDCODE_DESKTOP_CHANNEL=prod bun run package
 
 This builds the unpacked app (`electron-builder --dir`) in `dist/`. It carries no CLI: it runs the `redcode` of the
 installation it ships in. Releases build it in `.github/workflows/redcode.yml`, which ships it in the `vX.Y.Z` Redcode
-release beside `redcode`; `redcode desktop` opens it.
+release archives (and so in mise installs) under `desktop/` beside `redcode`; `redcode desktop` opens it. The npm
+package carries only the CLI and the design app, because npm rejects the desktop app as too large: `redcode desktop`
+in an npm install points to mise or the release archives instead.
