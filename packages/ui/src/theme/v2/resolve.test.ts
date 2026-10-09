@@ -10,8 +10,8 @@ const theme: DesktopTheme = await Bun.file(new URL("../themes/nord.json", import
 describe("application theme", () => {
   test.each(["light", "dark"] as const)("%s semantics resolve from design system roles, not literals", (mode) => {
     const tokens = resolveThemeV2(applicationTheme)[mode]
-    const semantic = Object.entries(tokens).filter(
-      ([name]) => /^v2-(background|text|icon|border|overlay|state|agent)-/.test(name),
+    const semantic = Object.entries(tokens).filter(([name]) =>
+      /^v2-(background|text|icon|border|overlay|state|status|agent)-/.test(name),
     )
     expect(semantic.length).toBeGreaterThan(50)
     for (const [name, value] of semantic) {
@@ -35,6 +35,19 @@ describe("application theme", () => {
 describe("icon emphasis", () => {
   test.each([false, true])("custom theme fallbacks preserve icon emphasis (dark: %s)", (dark) => {
     expectIconEmphasis(resolveThemeVariantV2({ ...theme[dark ? "dark" : "light"], v2Overrides: undefined }, dark))
+  })
+})
+
+describe("session status tokens", () => {
+  const roles = ["attention", "working", "queued", "failed", "done"].map((role) => `v2-status-${role}`)
+
+  test.each([false, true])("built-in and custom themes define every status role (dark: %s)", (dark) => {
+    const builtIn = resolveThemeV2(applicationTheme)[dark ? "dark" : "light"]
+    const custom = resolveThemeVariantV2({ ...theme[dark ? "dark" : "light"], v2Overrides: undefined }, dark)
+    for (const tokens of [builtIn, custom]) expect(roles.filter((role) => !tokens[role])).toEqual([])
+    // Waiting on the user is never the error color.
+    expect(builtIn["v2-status-attention"]).not.toBe(builtIn["v2-status-failed"])
+    expect(custom["v2-status-attention"]).not.toBe(custom["v2-status-failed"])
   })
 })
 

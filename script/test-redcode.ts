@@ -78,6 +78,7 @@ const suites = {
     "test/plugin/provider-openai-compatible.test.ts",
     "test/session-compaction.test.ts",
     "test/session-create.test.ts",
+    "test/session-import.test.ts",
     "test/session-diff.test.ts",
     "test/session-error.test.ts",
     "test/session-goal-judge.test.ts",
@@ -112,6 +113,7 @@ const suites = {
     "test/debug-guards-report.test.ts",
     "test/desktop.test.ts",
     "test/import-boundaries.test.ts",
+    "test/import-foreign.test.ts",
     "test/server-connection.test.ts",
   ],
   server: [
@@ -127,6 +129,7 @@ const suites = {
     "test/design-ticket.test.ts",
     "test/design-browser-auth.test.ts",
     "test/session-diff.test.ts",
+    "test/session-import-foreign.test.ts",
     "test/system-info.test.ts",
   ],
   client: ["test/service.test.ts", "test/promise-service.test.ts"],

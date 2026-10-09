@@ -831,10 +831,29 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
           },
         }),
         Spec.make("import", {
-          description: "Import session data from a JSON file or URL",
+          description: "Import session data from a JSON file or URL, or from another coding agent with --from",
           params: {
             ...ServerParams,
-            file: Argument.string("file").pipe(Argument.withDescription("JSON file or URL to import")),
+            file: Argument.string("file").pipe(
+              Argument.withDescription("JSON file or URL to import, or the source session ID with --from"),
+              Argument.optional,
+            ),
+            from: Flag.choice("from", ["opencode"]).pipe(
+              Flag.withDescription("Import a session from another coding agent's local history"),
+              Flag.optional,
+            ),
+            latest: Flag.boolean("latest").pipe(
+              Flag.withDescription("With --from, import the most recently updated session"),
+              Flag.withDefault(false),
+            ),
+            pick: Flag.boolean("pick").pipe(
+              Flag.withDescription("With --from, choose the session to import interactively"),
+              Flag.withDefault(false),
+            ),
+            all: Flag.boolean("all").pipe(
+              Flag.withDescription("With --from, consider sessions from every directory, not only the current one"),
+              Flag.withDefault(false),
+            ),
             directory: Flag.string("directory").pipe(
               Flag.withDescription("Directory in which to import the session"),
               Flag.optional,

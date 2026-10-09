@@ -1,0 +1,5 @@
+---
+"@reddb-io/redcode": minor
+---
+
+Bring your OpenCode sessions into Redcode. `redcode session import --from opencode` reads OpenCode's local history (`~/.local/share/opencode/opencode.db`, or `$XDG_DATA_HOME/opencode`) without changing it and imports a session with its subagent sessions, compactions, tool calls and token usage. Pass the OpenCode session ID, `--latest` for the most recent session, or `--pick` to choose from a list; both look at sessions recorded in the current directory unless you add `--all`, and `--directory` places the import elsewhere when the original folder is gone. Imported sessions keep their OpenCode IDs, so importing one again reports it as already imported and names the existing session. Each import records where it came from in the session metadata and ends with a note, visible in the transcript, that the history came from OpenCode. Older OpenCode releases that kept sessions as JSON files are reported as unsupported. Clients can use the same import through the new `/api/experimental/session/import/sources`, `/api/experimental/session/import/sessions` and `/api/experimental/session/import/foreign` routes.

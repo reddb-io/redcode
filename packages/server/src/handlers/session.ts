@@ -16,6 +16,7 @@ import { SessionStats } from "@opencode/core/session/stats"
 import { SessionUsageMirror } from "@opencode/core/usage/mirror"
 import { SessionTitle } from "@opencode/core/session/title"
 import { SessionTransfer } from "@opencode/core/session/transfer"
+import { SessionImport } from "@opencode/core/session/import/service"
 import { SessionShare } from "@opencode/core/session/share"
 import { InstructionEntry } from "@opencode/core/session/instruction-entry"
 import { Form } from "@opencode/core/form"
@@ -31,6 +32,7 @@ import {
   FormInvalidAnswerError,
   FormNotFoundError,
   InvalidRequestError,
+  LocationNotFoundError,
   MessageNotFoundError,
   MonitorNotFoundError,
   ServiceUnavailableError,
@@ -44,6 +46,10 @@ import { failedMessageDecode, failedSnapshot, missingMessage, missingSession } f
 
 import { activeSessions, listSessions } from "../session-read"
 
+function unavailableImport(error: SessionImport.UnavailableError) {
+  return new InvalidRequestError({ message: error.message, kind: "import-source-unavailable", field: "source" })
+}
+
 function missingForm(id: Form.ID) {
   return new FormNotFoundError({ id, message: `Form not found: ${id}` })
 }
@@ -56,6 +62,7 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
     const budgets = yield* SessionBudget.Service
     const intelligence = yield* Intelligence.Service
     const transfer = yield* SessionTransfer.Service
+    const imports = yield* SessionImport.Service
     const sharing = yield* SessionShare.Service
     const requireOwnedForm = Effect.fnUntraced(function* (sessionID: Form.Info["sessionID"], formID: Form.ID) {
       const form = yield* Form.Service
@@ -185,6 +192,56 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
                     }),
                 ),
               ),
+          }
+        }),
+      )
+      .handle(
+        "session.foreign.sources",
+        Effect.fn(function* () {
+          return { data: yield* imports.sources() }
+        }),
+      )
+      .handle(
+        "session.foreign.list",
+        Effect.fn(function* (ctx) {
+          return {
+            data: yield* imports
+              .list(ctx.query.source, { directory: ctx.query.directory, limit: ctx.query.limit })
+              .pipe(Effect.catchTag("SessionImport.UnavailableError", unavailableImport)),
+          }
+        }),
+      )
+      .handle(
+        "session.foreign.import",
+        Effect.fn(function* (ctx) {
+          return {
+            data: yield* imports.import(ctx.payload.source, ctx.payload.ref, { location: ctx.payload.location }).pipe(
+              Effect.catchTag("SessionImport.UnavailableError", unavailableImport),
+              Effect.catchTag(
+                "SessionImport.NotFoundError",
+                (error) =>
+                  new SessionNotFoundError({
+                    sessionID: error.ref,
+                    message: `Session not found in ${error.source}: ${error.ref}`,
+                  }),
+              ),
+              Effect.catchTag(
+                "SessionImport.AlreadyImportedError",
+                (error) =>
+                  new ConflictError({
+                    message: `Session already imported: ${error.sessionID}`,
+                    resource: error.sessionID,
+                  }),
+              ),
+              Effect.catchTag(
+                "SessionImport.DirectoryNotFoundError",
+                (error) =>
+                  new LocationNotFoundError({
+                    location: { directory: AbsolutePath.make(error.directory) },
+                    message: `The session's directory no longer exists: ${error.directory || "(none recorded)"}. Pass a location to import it elsewhere.`,
+                  }),
+              ),
+            ),
           }
         }),
       )

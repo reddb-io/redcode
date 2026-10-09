@@ -34,6 +34,11 @@ import type {
   SessionCreateOutput,
   SessionImportInput,
   SessionImportOutput,
+  SessionForeignSourcesOutput,
+  SessionForeignListInput,
+  SessionForeignListOutput,
+  SessionForeignImportInput,
+  SessionForeignImportOutput,
   SessionExportInput,
   SessionExportOutput,
   SessionActiveOutput,
@@ -564,6 +569,34 @@ const EndpointSessionImport = (raw: RawClient["server.session"]) => (input: Sess
   preserveEffect<SessionImportOutput>()(
     raw["session.import"]({
       payload: { info: input["info"], messages: input["messages"], location: input["location"] },
+    }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
+const EndpointSessionForeignSources = (raw: RawClient["server.session"]) => () =>
+  preserveEffect<SessionForeignSourcesOutput>()(
+    raw["session.foreign.sources"]({}).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
+const EndpointSessionForeignList = (raw: RawClient["server.session"]) => (input: SessionForeignListInput) =>
+  preserveEffect<SessionForeignListOutput>()(
+    raw["session.foreign.list"]({
+      query: { source: input["source"], directory: input["directory"], limit: input["limit"] },
+    }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
+const EndpointSessionForeignImport = (raw: RawClient["server.session"]) => (input: SessionForeignImportInput) =>
+  preserveEffect<SessionForeignImportOutput>()(
+    raw["session.foreign.import"]({
+      payload: { source: input["source"], ref: input["ref"], location: input["location"] },
     }).pipe(
       Effect.mapError(mapClientError),
       Effect.map((value) => value.data),
@@ -1205,6 +1238,11 @@ const adaptGroupSession = (raw: RawClient["server.session"]) => ({
   usage: { backfill: EndpointSessionUsageBackfill(raw) },
   create: EndpointSessionCreate(raw),
   import: EndpointSessionImport(raw),
+  foreign: {
+    sources: EndpointSessionForeignSources(raw),
+    list: EndpointSessionForeignList(raw),
+    import: EndpointSessionForeignImport(raw),
+  },
   export: EndpointSessionExport(raw),
   active: EndpointSessionActive(raw),
   get: EndpointSessionGet(raw),
