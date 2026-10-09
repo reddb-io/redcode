@@ -214,7 +214,8 @@ function completedAt(tool: SessionMessageAssistantTool) {
   return tool.time.completed ?? tool.time.ran ?? tool.time.created
 }
 
-function toolPaths(tool: SessionMessageAssistantTool) {
+/** The paths a tool names: its recorded file metadata, else its `path` or `filePath` input. */
+export function toolPaths(tool: SessionMessageAssistantTool) {
   const files = currentToolMetadata(tool).files
   const fromMetadata = Array.isArray(files)
     ? files.flatMap((file) => (record(file) && typeof file.file === "string" ? [file.file] : []))
@@ -225,9 +226,21 @@ function toolPaths(tool: SessionMessageAssistantTool) {
   return typeof path === "string" && path ? [path] : []
 }
 
+// A completed tool never changes, and session-wide summaries fold every tool again on each streamed update, so its
+// changes (which may diff the edit's strings) are computed once.
+const completedChanges = new WeakMap<SessionMessageAssistantTool, FileChange[]>()
+
+function toolChanges(tool: SessionMessageAssistantTool): FileChange[] {
+  const cached = completedChanges.get(tool)
+  if (cached) return cached
+  const changes = computeToolChanges(tool)
+  if (tool.state.status === "completed") completedChanges.set(tool, changes)
+  return changes
+}
+
 // The same per-tool math the file-change group renders: recorded diff metadata first, then
 // the edit's own strings, then a written file's line count.
-function toolChanges(tool: SessionMessageAssistantTool): FileChange[] {
+function computeToolChanges(tool: SessionMessageAssistantTool): FileChange[] {
   const files = currentToolMetadata(tool).files
   if (Array.isArray(files) && files.length > 0)
     return files.flatMap((file) => {

@@ -20,8 +20,13 @@ export interface Changes {
   details(session: SessionRef): readonly FileDiffInfo[] | undefined
   /** Opens the side region and shows `path` in the review panel. */
   focus(session: SessionRef, path: string): void
-  /** Shows the changes: opens the side region, or on narrow screens switches to the Changes view. */
-  open(session: SessionRef): void
+  /**
+   * Shows the changes: opens the side region, or on narrow screens switches to the Changes view.
+   *
+   * @param options - `files` scopes the review panel to those paths (absolute, or relative to the session's worktree)
+   * and opens the first one that has changes; the panel offers "Show all" to leave the scope.
+   */
+  open(session: SessionRef, options?: { readonly files?: readonly string[] }): void
   /**
    * Keeps the changes of the view the caller renders loaded while it shows them, across the view's session
    * switches. A `tree` is a persistent change list: opening the side region refreshes the changes it shows.

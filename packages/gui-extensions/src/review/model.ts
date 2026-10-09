@@ -5,7 +5,7 @@ import { checksum } from "@opencode/util/encode"
 import { showToast } from "@opencode/ui/toast"
 import { createQuery, useQueryClient } from "@tanstack/solid-query"
 import { debounce } from "@solid-primitives/scheduled"
-import { createMemo, on, onCleanup, type Accessor } from "solid-js"
+import { createMemo, createSignal, on, onCleanup, type Accessor } from "solid-js"
 import { createStore } from "solid-js/store"
 import {
   createKeyed,
@@ -22,6 +22,7 @@ import {
   reviewDiffKinds,
   reviewDiffNeedsLoad,
   reviewRootDirectory,
+  scopeReviewFiles,
 } from "./kinds"
 
 export type ChangeMode = "git" | "branch" | "turn"
@@ -232,6 +233,29 @@ export function createReviewModel(input: {
   const diffs = (): FileDiffInfo[] => (diffQuery.isFetched ? (diffQuery.data ?? []) : [])
   const renderable = createMemo(() => diffs().filter(filterRenderableDiff))
   const kinds = createMemo(() => reviewDiffKinds(renderable()))
+
+  // Files a caller asked the panel to show, such as one turn's edits. Transient like the text filter, and only for
+  // the session it was asked for; `focus` waits for the diffs so the first matching file opens once they load.
+  const [scope, setScope] = createSignal<{ key: string; files: readonly string[]; focus: boolean }>()
+  const scoped = createMemo(() => {
+    const current = scope()
+
+    if (!current || current.key !== view().key) return
+
+    return scopeReviewFiles(
+      renderable().map((diff) => diff.file),
+      current.files,
+    )
+  })
+  const shown = createMemo(() => {
+    const files = scoped()
+
+    if (!files) return renderable()
+
+    const set = new Set(files)
+
+    return renderable().filter((diff) => set.has(diff.file))
+  })
 
   const activeFile = () => {
     const list = diffs()
@@ -531,6 +555,28 @@ export function createReviewModel(input: {
     },
   )
 
+  // A scope opens its first file once the diffs it filters have loaded.
+  createKeyed(
+    () => {
+      const current = scope()
+      const file = scoped()?.[0]
+
+      if (!current?.focus || !ready() || !file) return
+
+      return { current, file }
+    },
+    (target) => {
+      setScope({ ...target.current, focus: false })
+      focusFile(target.file)
+    },
+  )
+
+  const showFiles = (files: readonly string[]) => {
+    setScope(files.length > 0 ? { key: view().key, files, focus: true } : undefined)
+    setState("filter", "")
+    open()
+  }
+
   const idled = createMemo(
     on(
       () => view().server.data.session.status(view().id),
@@ -579,6 +625,17 @@ export function createReviewModel(input: {
     diffVersion: () => diffQuery.dataUpdatedAt,
     diffs,
     renderable,
+    /** The renderable diffs the panel shows: the scope's files while a scope is set, otherwise all of them. */
+    shown,
+    /** The scope the panel shows, with how many of its files have changes; undefined while it shows every change. */
+    scope: () => {
+      const files = scoped()
+      const current = scope()
+
+      return files && current ? { matched: files.length, requested: current.files.length } : undefined
+    },
+    showFiles,
+    clearScope: () => setScope(undefined),
     kinds,
     focusFile,
     hasChanges,

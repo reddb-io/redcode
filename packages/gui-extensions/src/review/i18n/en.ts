@@ -10,6 +10,11 @@ export default {
   "git.description": "Track, review, and undo changes in this project",
   loadingChanges: "Loading changes…",
   noChanges: "No changes",
+  "scope.showing.one": "{{count}} file from this turn",
+  "scope.showing.other": "{{count}} files from this turn",
+  "scope.none.one": "No changes left from this turn",
+  "scope.none.other": "No changes left from this turn",
+  "scope.showAll": "Show all",
   "settings.wrapLines.title": "Wrap lines",
   "settings.wrapLines.description": "Wrap long lines in mobile diffs instead of scrolling horizontally",
 }

@@ -6,7 +6,9 @@ import { Icon } from "@opencode/ui/icon"
 import { Keybind } from "@opencode/ui/keybind"
 import { ProviderModelIcon } from "@/providers/models/provider-group"
 import { Tooltip } from "@opencode/ui/tooltip"
-import { ComposerEditor } from "./editor/editor"
+import { useI18n } from "@opencode/ui/context/i18n"
+import { ComposerEditor, ComposerEditorSelect } from "./editor/editor"
+import { useSettings } from "@/settings/model"
 import { ModelSelectorPopover } from "@/providers/models/select-dialog"
 import { DialogSelectModelUnpaid } from "@/providers/models/unpaid"
 import { formatKeybind, useCommand } from "@/shell/commands/command"
@@ -50,6 +52,7 @@ export function Composer(props: {
             onUnpaidClick={() => dialog.show(() => <DialogSelectModelUnpaid model={props.model.model.selection} />)}
           />
         }
+        permissionControl={<ComposerPermissionControl />}
       />
     </div>
   )
@@ -138,5 +141,44 @@ function ComposerModelControl(props: {
         </Show>
       </Tooltip>
     </Show>
+  )
+}
+
+/**
+ * The permission mode, Codex's footer chip: ask before each permission request, or approve the ones no rule denies.
+ * The mode is the app's auto-approve setting, so it holds for every session and server; the server has no
+ * per-session mode, and `--yolo` stays a CLI flag.
+ */
+function ComposerPermissionControl() {
+  const i18n = useI18n()
+  const settings = useSettings()
+  const command = useCommand()
+  const current = () => (settings.permissions.autoApprove() ? "auto" : "ask")
+
+  return (
+    <ComposerEditorSelect
+      mobileDrawer
+      capitalize={false}
+      title={i18n.t("ui.promptInput.permission.title")}
+      keybind={command.keybindParts("permissions.autoaccept")}
+      options={[
+        { id: "ask", label: i18n.t("ui.promptInput.permission.ask") },
+        { id: "auto", label: i18n.t("ui.promptInput.permission.auto") },
+      ]}
+      current={current()}
+      currentIcon={<Icon name="shield" size="small" class="shrink-0 text-ink-muted" />}
+      // The session's toggle command also confirms the change in a toast; other screens set it directly.
+      onSelect={(id) => {
+        if (id === current()) return
+
+        if (command.options.some((option) => option.id === "permissions.autoaccept")) {
+          void command.trigger("permissions.autoaccept")
+
+          return
+        }
+
+        settings.permissions.setAutoApprove(id === "auto")
+      }}
+    />
   )
 }

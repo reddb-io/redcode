@@ -31,7 +31,7 @@ import {
   type RenderDiff,
 } from "./kinds"
 import type { ReviewModel } from "./model"
-import { ReviewPanelEmpty, ReviewTitle } from "./parts"
+import { ReviewPanelEmpty, ReviewScopeNotice, ReviewTitle } from "./parts"
 
 type ReviewPanelState = {
   sidebar: PanelSidebar
@@ -47,6 +47,8 @@ type ReviewPanelProps = {
   screen: SessionScreen
   title?: JSX.Element
   empty?: JSX.Element
+  /** A note about what the panel shows, such as a scope to one turn's files. */
+  notice?: JSX.Element
   /** Renderable diffs and their change kinds, computed once by the review model. */
   diffs: FileDiffInfo[]
   kinds: ReturnType<typeof reviewDiffKinds>
@@ -84,7 +86,8 @@ export default function ReviewPanelContent(props: {
       screen={props.review.screen}
       title={<ReviewTitle review={props.review} />}
       empty={<ReviewPanelEmpty review={props.review} />}
-      diffs={props.review.renderable()}
+      notice={<ReviewScopeNotice review={props.review} />}
+      diffs={props.review.shown()}
       kinds={props.review.kinds()}
       diffsReady={props.review.ready()}
       diffVersion={props.review.diffVersion()}
@@ -196,6 +199,7 @@ function ReviewPanel(props: ReviewPanelProps) {
       title={props.title}
       stats={<DiffChanges changes={diffs()} />}
       empty={props.empty}
+      notice={props.notice}
       sidebarOpen={props.state.sidebar.opened()}
       sidebarToggle={
         <SessionReviewV2SidebarToggle opened={props.state.sidebar.opened()} onToggle={props.state.sidebar.toggle} />
@@ -212,6 +216,7 @@ function ReviewPanel(props: ReviewPanelProps) {
           screen={props.screen}
           session={props.session}
           title={props.title}
+          notice={props.notice}
           state={props.state}
           diffsReady={props.diffsReady}
           onSelectFile={props.onSelectFile}
@@ -264,6 +269,7 @@ function ReviewPanelSidebar(props: {
   screen: SessionScreen
   session: MountedSession
   title?: JSX.Element
+  notice?: JSX.Element
   state: ReviewPanelState
   diffsReady: boolean
   onSelectFile: (path: string) => void
@@ -310,6 +316,7 @@ function ReviewPanelSidebar(props: {
       transition={props.state.sidebar.transition()}
       title={props.title}
       stats={<DiffChanges changes={props.diffs} />}
+      notice={props.notice}
       filter={props.state.filter()}
       onFilterChange={props.state.setFilter}
       onFilterKeyDown={onFilterKeyDown}

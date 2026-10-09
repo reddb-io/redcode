@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { reviewDiffDirectory, reviewDiffNeedsLoad, sortReviewPaths } from "./kinds"
+import { reviewDiffDirectory, reviewDiffNeedsLoad, scopeReviewFiles, sortReviewPaths } from "./kinds"
 
 describe("reviewDiffNeedsLoad", () => {
   test("loads changed files whose aggregate patch has no hunks", () => {
@@ -59,5 +59,23 @@ describe("sortReviewPaths", () => {
       "src\\lib\\a.ts",
       "README.md",
     ])
+  })
+})
+
+describe("scopeReviewFiles", () => {
+  const files = ["src/a.ts", "src/b.ts", "lib/a.ts", "README.md"]
+
+  test("keeps the diff files a scope names, in diff order", () => {
+    expect(scopeReviewFiles(files, ["README.md", "src/a.ts"])).toEqual(["src/a.ts", "README.md"])
+  })
+
+  test("matches absolute and backslash paths at a path boundary", () => {
+    expect(scopeReviewFiles(files, ["/home/me/repo/src/b.ts", "C:\\repo\\lib\\a.ts"])).toEqual(["src/b.ts", "lib/a.ts"])
+    expect(scopeReviewFiles(files, ["/home/me/repo/xsrc/a.ts"])).toEqual([])
+  })
+
+  test("is empty when no diff file is in scope", () => {
+    expect(scopeReviewFiles(files, [])).toEqual([])
+    expect(scopeReviewFiles(files, ["other.ts"])).toEqual([])
   })
 })

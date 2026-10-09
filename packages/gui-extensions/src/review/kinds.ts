@@ -151,3 +151,18 @@ export function applyFileListKeyDown(
   options.onSelect(target)
   event.preventDefault()
 }
+
+/**
+ * The changed files a scope names, in diff order. A turn's edited-files card can name files by absolute path or
+ * relative to another directory, so a scope path matches a diff file when they are equal or the scope path ends with
+ * the diff file at a path boundary.
+ */
+export function scopeReviewFiles(files: readonly string[], scope: readonly string[]) {
+  const wanted = scope.map(normalizePath)
+
+  return files.filter((file) => {
+    const path = normalizePath(file)
+
+    return wanted.some((item) => item === path || item.endsWith(`/${path}`))
+  })
+}

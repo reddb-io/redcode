@@ -118,6 +118,16 @@
   box-sizing: border-box;
 }
 
+[data-component="session-review-v2-sidebar-root"] [data-slot="session-review-v2-sidebar-notice"] {
+  padding: 0 8px 4px;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+[data-component="session-review-v2-sidebar-root"] [data-slot="session-review-v2-sidebar-notice"]:empty {
+  display: none;
+}
+
 [data-component="session-review-v2-sidebar-root"]
   [data-slot="session-review-v2-sidebar-filter"]
   [data-component="text-input-v2"] {

@@ -13,6 +13,7 @@ import {
 import { createStore } from "solid-js/store"
 import type { FileDiffInfo } from "@opencode/client/promise"
 import {
+  Command,
   createKeyed,
   LinkHandler,
   Panel,
@@ -227,6 +228,21 @@ const setup: Setup<typeof Review> = (ctx) => {
     },
   })
 
+  // The app's edited-files card ("View changes" on a turn) reaches the scoped review through this command, its input
+  // the turn's paths one per line; it never shows in the palette.
+  ctx.add(Command, {
+    id: "showFiles",
+    title: ctx.t("tab.title"),
+    hidden: true,
+    run(input) {
+      const session = sessions.current()
+
+      if (!session) return
+
+      changes.open(session, { files: (input ?? "").split("\n").filter((path) => path.length > 0) })
+    },
+  })
+
   const WrapLinesRow = lazy(() => import("./settings"))
   // Settings rows are small; load them while idle so settings opens without a blank row.
   onCleanup(onIdle(() => void WrapLinesRow.preload()))
@@ -254,16 +270,27 @@ const setup: Setup<typeof Review> = (ctx) => {
   const none: readonly FileDiffInfo[] = []
   const noKinds: ReadonlyMap<string, ChangeKind> = new Map()
 
-  ctx.provide(Changes, {
+  const changes: Changes = {
     diffs: (session) => modelFor(session)?.diffs() ?? none,
     ready: (session) => modelFor(session)?.ready() ?? false,
     kinds: (session) => modelFor(session)?.kinds() ?? noKinds,
     active: (session) => modelFor(session)?.activeFile(),
     details: (session) => modelFor(session)?.details(),
     focus: (session, path) => modelFor(session)?.focusFile(path),
-    open(session) {
+    open(session, options) {
       // The session details' changes row: narrow screens switch to the Changes view; wide ones open the side region.
       if (layout.narrow()) return layout.open(KEY, session)
+
+      const files = options?.files
+      const model = modelFor(session)
+
+      if (files && model) {
+        // A scope shows in the review tab, so select it as well as opening the region.
+        if (model.view().project) layout.open(KEY, session)
+        model.showFiles(files)
+
+        return
+      }
 
       if (!layout.side.opened(session)) layout.side.toggle(session)
     },
@@ -275,7 +302,9 @@ const setup: Setup<typeof Review> = (ctx) => {
         reveals.delete(listener)
       }
     },
-  })
+  }
+
+  ctx.provide(Changes, changes)
 }
 
 export default setup

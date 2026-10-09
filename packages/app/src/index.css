@@ -43,29 +43,6 @@
     container-type: inline-size;
   }
 
-  /* Like the composer toolbar, fade only clipped content without reserving layout space.
-     The fade contracts as overflow clears; the second mask preserves the header divider. */
-  #review-panel .session-review-v2-tabs-bar {
-    --session-review-header-fade: clamp(0px, calc(100% - 100cqi), 24px);
-    mask-image:
-      linear-gradient(
-        to right,
-        #000 calc(100cqi - 40px - var(--session-review-header-fade)),
-        transparent calc(100cqi - 40px)
-      ),
-      linear-gradient(to top, #000 1px, transparent 1px);
-
-    &:dir(rtl) {
-      mask-image:
-        linear-gradient(
-          to left,
-          #000 calc(100cqi - 40px - var(--session-review-header-fade)),
-          transparent calc(100cqi - 40px)
-        ),
-        linear-gradient(to top, #000 1px, transparent 1px);
-    }
-  }
-
   /* The panel's width animation supplies the slide; only fade its fixed-width contents. */
   [data-slot="session-side-region-presence"][data-opened] [data-slot="session-review-content"] {
     transition: opacity 200ms ease-out 40ms;

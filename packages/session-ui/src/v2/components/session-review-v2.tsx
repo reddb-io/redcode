@@ -39,6 +39,8 @@ export type SessionReviewV2Props = {
   onExpandModeChange: (mode: SessionReviewExpandMode) => void
   preview?: JSX.Element
   hasDiffs: boolean
+  /** A note about what the review shows, such as a scope to one turn's files; shown in the toolbar while the sidebar is closed. */
+  notice?: JSX.Element
 }
 
 export type SessionReviewV2SidebarProps = {
@@ -59,6 +61,8 @@ export type SessionReviewV2SidebarProps = {
   minWidth?: number
   maxWidth?: number
   viewportRef?: (element: HTMLDivElement) => void
+  /** A note about what the tree shows, such as a scope to one turn's files, between the filter and the tree. */
+  notice?: JSX.Element
   children?: JSX.Element
 }
 
@@ -125,6 +129,7 @@ export function SessionReviewV2Sidebar(props: SessionReviewV2SidebarProps) {
               }
             />
           </div>
+          <div data-slot="session-review-v2-sidebar-notice">{props.notice}</div>
           <ScrollView
             data-slot="session-review-v2-sidebar-tree"
             class="group/file-tree-v2"
@@ -229,6 +234,7 @@ export function SessionReviewV2(props: SessionReviewV2Props) {
               {fileIndex() + 1}/{props.files.length}
             </span>
           </Show>
+          {props.notice}
         </div>
       </Show>
       <div class="flex items-center">

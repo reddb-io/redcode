@@ -34,6 +34,7 @@ import { DesignNotice } from "@opencode/schema/design-notice"
 import { DesignApprovalCard, DesignFeedbackCard } from "../design/cards"
 import { designOrdinals } from "../design/state"
 import { announceRestricted, RestrictedNotice } from "./restricted-notice"
+import { SessionOutputsOverlay } from "../summary/outputs"
 
 type BlockingTask = { type: "shell" | "subagent"; partID: string; id?: string; label?: string }
 
@@ -359,8 +360,15 @@ function MessageTimelineView(
     actions: {
       ...props.actions,
       fork: ({ sessionID, messageID }) => fork(sessionID, messageID),
-      // The review lives in the side region; open it when it is closed. It shows every change, not only these files.
-      viewChanges: () => {
+      // The review extension scopes its panel to the turn's files ("Show all" leaves the scope). Without it, the side
+      // region still opens.
+      viewChanges: ({ files }) => {
+        if (command.options.some((option) => option.id === "review.showFiles")) {
+          void command.trigger("review.showFiles", undefined, files.join("\n"))
+
+          return
+        }
+
         if (!sessionLayout.view().side.opened()) sessionLayout.view().side.toggle()
       },
     },
@@ -482,6 +490,17 @@ function MessageTimelineView(
         return content?.type === "tool" && ["edit", "write"].includes(content.name)
       }}
       renderRow={(row, onSizeChange) => <rowRenderer.Row row={row} onSizeChange={onSizeChange} />}
+      overlay={
+        <Show when={sessionID()} keyed>
+          {(_id) => (
+            <SessionOutputsOverlay
+              messages={props.session.history.messages}
+              view={props.view}
+              header={showHeader()}
+            />
+          )}
+        </Show>
+      }
       header={
         <Show when={!props.hideHeader}>
           <SessionTitleHeader>

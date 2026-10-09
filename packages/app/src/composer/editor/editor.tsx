@@ -84,6 +84,8 @@ export type ComposerEditorProps = {
   class?: string
   modelControl?: JSX.Element
   modelControlsVisible?: boolean
+  /** The permission mode chip, at the start of the actions beside send. */
+  permissionControl?: JSX.Element
   attachKeybind?: string[]
   attachShortcut?: string
   alternateKeybind?: string[]
@@ -380,6 +382,9 @@ export function ComposerEditor(props: ComposerEditorProps) {
             </div>
           </div>
           <div data-slot="composer-actions" class="flex shrink-0 items-center">
+            <Show when={state.mode === "normal"}>
+              <div class="me-2 flex items-center">{props.permissionControl}</div>
+            </Show>
             <Show when={state.mode === "normal" && !view.submit.stopping()}>
               <span
                 data-slot="composer-hint"
@@ -861,6 +866,8 @@ function ComposerEditorConfiguredSelect(props: {
 
 export function ComposerEditorSelect(props: {
   mobileDrawer?: boolean
+  /** Labels are lowercase ids, such as agent names, shown capitalized; false keeps written labels as they are. */
+  capitalize?: boolean
   title: string
   keybind?: string[]
   options: ComposerOption[]
@@ -888,7 +895,7 @@ export function ComposerEditorSelect(props: {
   const content = () => (
     <>
       {props.currentIcon}
-      <span class="truncate capitalize leading-5">
+      <span class="truncate leading-5" classList={{ capitalize: props.capitalize !== false }}>
         {props.options.find((option) => option.id === props.current)?.label ?? props.current}
       </span>
       <span class="-ms-0.5 -me-1 flex shrink-0">
@@ -926,7 +933,11 @@ export function ComposerEditorSelect(props: {
                 <Menu.RadioGroup value={props.current} onChange={props.onSelect}>
                   <For each={props.options}>
                     {(option) => (
-                      <Menu.RadioItem value={option.id} class="capitalize" closeOnSelect>
+                      <Menu.RadioItem
+                        value={option.id}
+                        class={props.capitalize === false ? undefined : "capitalize"}
+                        closeOnSelect
+                      >
                         {option.label}
                       </Menu.RadioItem>
                     )}
@@ -965,7 +976,8 @@ export function ComposerEditorSelect(props: {
                   {(option) => (
                     <Button
                       variant="ghost"
-                      class="w-full !h-10 !justify-start !rounded-none !px-3 !font-[440] capitalize focus-visible:!outline-offset-[-2px]"
+                      class="w-full !h-10 !justify-start !rounded-none !px-3 !font-[440] focus-visible:!outline-offset-[-2px]"
+                      classList={{ capitalize: props.capitalize !== false }}
                       aria-pressed={props.current === option.id}
                       data-state={props.current === option.id ? "pressed" : undefined}
                       onClick={() => {
