@@ -1,0 +1,118 @@
+name: desktop
+
+on:
+  push:
+    tags: ["desktop-v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing desktop-v* tag to build and publish"
+        required: true
+        type: string
+      redcode_release:
+        description: "Redcode CLI release tag to bundle (default: latest)"
+        required: false
+        type: string
+
+concurrency:
+  group: desktop-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  GH_REPO: reddb-io/redcode
+  REDCODE_DESKTOP_CHANNEL: prod
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build:
+    if: github.repository == 'reddb-io/redcode'
+    name: build (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux-x64, host: ubuntu-latest, flag: --linux }
+          - { name: macos-arm64, host: macos-15, flag: --mac }
+          - { name: macos-x64, host: macos-15-intel, flag: --mac }
+          - { name: windows-x64, host: windows-2025, flag: --win }
+    runs-on: ${{ matrix.host }}
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+        working-directory: packages/desktop
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REDCODE_DESKTOP_RELEASE: ${{ github.event.inputs.redcode_release }}
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+      - uses: ./.github/actions/setup-bun
+      - name: Verify the tag matches the desktop version
+        run: |
+          version="$(bun -p 'require("./package.json").version')"
+          if [ "$TAG" != "desktop-v$version" ]; then
+            echo "Tag $TAG does not match packages/desktop version $version" >&2
+            exit 1
+          fi
+      - name: Install RPM tooling
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install --yes rpm
+      - name: Typecheck and test the desktop shell
+        run: |
+          bun run typecheck
+          bun run test
+      - name: Package
+        # Releases are not signed yet; electron-builder must not look for certificates or try to publish.
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: |
+          bun run build
+          bun ./scripts/prebuild.ts
+          bunx electron-builder ${{ matrix.flag }} --publish never --config electron-builder.config.ts
+      - name: List artifacts
+        run: ls -la dist
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: desktop-${{ matrix.name }}
+          if-no-files-found: error
+          path: |
+            packages/desktop/dist/redcode-desktop-*
+            packages/desktop/dist/latest*.yml
+            !packages/desktop/dist/*.blockmap
+
+  publish:
+    needs: build
+    name: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: artifacts
+          pattern: desktop-*
+          merge-multiple: true
+      - name: Publish the versioned release
+        # Never "latest": GitHub's latest release must keep pointing at the Redcode CLI.
+        run: |
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --verify-tag --latest=false --title "Redcode Desktop ${TAG#desktop-v}" --notes "Redcode Desktop ${TAG#desktop-v}"
+          fi
+          gh release upload "$TAG" artifacts/* --clobber
+      - name: Refresh the update feed
+        # electron-updater reads latest*.yml from this rolling release.
+        run: |
+          if ! gh release view desktop-latest >/dev/null 2>&1; then
+            gh release create desktop-latest --target main --latest=false --title "Redcode Desktop (update feed)" --notes "Rolling update feed for Redcode Desktop. Install from a desktop-v* release."
+          fi
+          gh release upload desktop-latest artifacts/* --clobber

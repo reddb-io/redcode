@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "@tsconfig/bun/tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "jsx": "preserve",
+    "jsxImportSource": "solid-js",
+    "types": ["vite/client", "node", "bun"],
+    "paths": {
+      "@/*": ["../app/src/*"]
+    },
+    "noUncheckedIndexedAccess": false,
+    "verbatimModuleSyntax": false,
+    "noImplicitOverride": false
+  },
+  "include": ["src", "electron.vite.config.ts", "electron-builder.config.ts", "scripts"]
+}

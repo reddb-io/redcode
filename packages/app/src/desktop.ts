@@ -1,7 +1,7 @@
 export { AppBaseProviders, AppInterface, preloadRoute } from "./app"
 export { useCommand } from "./shell/commands/command"
 export { currentRoute, type LayoutRoute, useCurrentRoute } from "./shell/state/layout"
-export { loadLocaleDict, normalizeLocale, type Locale, useLanguage } from "./runtime/i18n/language"
+export { loadInitialLocale, loadLocaleDict, normalizeLocale, type Locale, useLanguage } from "./runtime/i18n/language"
 export { type FatalRendererErrorLog, type Platform, PlatformProvider } from "./runtime/platform/platform"
 export type {
   BrowserPaneCommand,
@@ -22,3 +22,4 @@ export { flushPersisted } from "./runtime/persistence/persist"
 export { useWslServers } from "./servers/wsl/context"
 export { useSsh } from "./servers/ssh/context"
 export { type UpdaterPlatform, type UpdaterState } from "./shell/updates/types"
+export { ACCEPTED_FILE_EXTENSIONS } from "./runtime/platform/file-picker"

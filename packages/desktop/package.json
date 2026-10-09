@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "@reddb-io/redcode-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "homepage": "https://github.com/reddb-io/redcode",
+  "author": {
+    "name": "Redcode",
+    "email": "filipeforattini@gmail.com"
+  },
+  "main": "./out/main/index.js",
+  "scripts": {
+    "typecheck": "tsgo --noEmit",
+    "predev": "bun ./scripts/predev.ts",
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "package": "bun run build && bun ./scripts/prebuild.ts && electron-builder --config electron-builder.config.ts",
+    "package:mac": "bun run build && bun ./scripts/prebuild.ts && electron-builder --mac --config electron-builder.config.ts",
+    "package:win": "bun run build && bun ./scripts/prebuild.ts && electron-builder --win --config electron-builder.config.ts",
+    "package:linux": "bun run build && bun ./scripts/prebuild.ts && electron-builder --linux --config electron-builder.config.ts",
+    "test": "bun test src",
+    "package:dir": "bun run build && bun ./scripts/prebuild.ts && electron-builder --dir --config electron-builder.config.ts"
+  },
+  "dependencies": {
+    "electron-log": "5.4.4",
+    "electron-updater": "6.8.9",
+    "electron-window-state": "5.0.3"
+  },
+  "devDependencies": {
+    "@opencode/app": "workspace:*",
+    "@opencode/ui": "workspace:*",
+    "@solidjs/router": "catalog:",
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "electron": "44.4.5",
+    "electron-builder": "26.15.2",
+    "electron-vite": "5.0.0",
+    "solid-js": "catalog:",
+    "vite": "catalog:"
+  }
+}
