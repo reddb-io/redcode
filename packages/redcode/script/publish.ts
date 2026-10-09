@@ -40,12 +40,9 @@ async function packAndPublish(target: string, name: string) {
 const manifests = await RedcodePackages.list("./dist", Script.version)
 if (!manifests.some((item) => item.kind === "cli")) throw new Error("no Redcode binary packages were built")
 for (const item of manifests) {
-  // Every CLI package names its target's design app, and outside musl its desktop app, as optional dependencies;
-  // all of them must ship.
-  if (item.kind === "cli") {
-    RedcodePackages.design(manifests, item)
-    RedcodePackages.desktop(manifests, item)
-  }
+  // Every CLI package names its target's design app as an optional dependency, so both must ship. The desktop app is
+  // too large for the registry and only ships in the release archives.
+  if (item.kind === "cli") RedcodePackages.design(manifests, item)
   for (const name of RedcodePackages.files(item)) {
     const file = path.join(item.dir, name)
     if (!(await Bun.file(file).exists())) throw new Error(`missing release file: ${file}`)
@@ -76,6 +73,11 @@ One native package for Linux (glibc and musl), macOS, and Windows on x64 and arm
 \`redcode-rpc-sidecar\` companion for framed JSON/TOON RPC integrations, and the design app
 (\`redcode-design\`) that serves Design mode's browser review ships alongside it, so nothing is
 downloaded on first use.
+
+Redcode Desktop is not included in the npm package. Install Redcode with mise
+(\`mise use -g github:reddb-io/redcode@latest\`) or from a
+[release archive](https://github.com/reddb-io/redcode/releases) to get the desktop app with
+\`redcode desktop\`.
 
 ## Use
 

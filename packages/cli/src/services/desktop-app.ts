@@ -2,14 +2,12 @@ export * as DesktopApp from "./desktop-app"
 
 import { spawn } from "node:child_process"
 import { existsSync, realpathSync } from "node:fs"
-import { mkdir, rename, rm } from "node:fs/promises"
 import path from "node:path"
 
 /**
- * Where Redcode Desktop comes from. It ships in the same `vX.Y.Z` release as redcode: unpacked in a `desktop/` folder
- * next to the binary in a release archive (and mise), and as the `@reddb-io/redcode-desktop-<os>-<arch>` package that
- * npm installs beside redcode's own platform package, holding one `desktop/desktop.tar` that the first
- * `redcode desktop` extracts into the cache. There is none for musl.
+ * Where Redcode Desktop comes from. It ships in the same `vX.Y.Z` release archive as redcode (which mise installs),
+ * unpacked in a `desktop/` folder next to the binary. npm installs only the CLI and the design app: the desktop is too
+ * large for the registry. There is none for musl.
  */
 
 declare const REDCODE_TARGET: string | undefined
@@ -20,15 +18,12 @@ export interface Options {
   readonly target: string
   /** The real path of the running redcode binary, whose installation carries the app. */
   readonly executable: string
-  /** Redcode's cache directory, where an npm install's app is extracted per version. */
-  readonly cache: string
-  readonly version: string
   /** packages/desktop of the checkout redcode runs from with Bun; false in a compiled redcode. */
   readonly source: string | false
 }
 
 export interface Located {
-  readonly source: "environment" | "archive" | "npm"
+  readonly source: "environment" | "archive"
   /** The app the desktop knows itself as: the bundle on macOS, the executable elsewhere. */
   readonly app: string
   /** What starts it. */
@@ -37,11 +32,8 @@ export interface Located {
   readonly root?: string
 }
 
-/**
- * The desktop app of this redcode, first match wins: `REDCODE_DESKTOP_APP`, the `desktop/` folder beside redcode in an
- * archive, or the npm package beside redcode's own, extracted once per version.
- */
-export async function locate(options: Options): Promise<Located> {
+/** The desktop app of this redcode, first match wins: `REDCODE_DESKTOP_APP`, or the `desktop/` folder beside redcode. */
+export function locate(options: Options): Located {
   const platform = parse(options.target)
   const override = options.env.REDCODE_DESKTOP_APP?.trim()
   if (override) return { source: "environment", app: override, executable: executable(platform.os, override) }
@@ -51,22 +43,14 @@ export async function locate(options: Options): Promise<Located> {
   const archived = path.join(folder, name)
   if (existsSync(archived))
     return { source: "archive", app: archived, executable: executable(platform.os, archived), root: folder }
-  const tar = path.join(
-    path.dirname(path.dirname(path.dirname(options.executable))),
-    `redcode-desktop-${platform.desktop}`,
-    "desktop",
-    "desktop.tar",
-  )
-  if (existsSync(tar)) {
-    const root = path.join(options.cache, "desktop", options.version)
-    const app = path.join(root, name)
-    if (!existsSync(app)) await extract(tar, root)
-    return { source: "npm", app, executable: executable(platform.os, app), root }
-  }
   if (options.source)
     throw new Error(`Redcode Desktop is not built in this checkout. Run it from source: cd ${options.source} && bun run dev`)
+  if (npm(options.executable))
+    throw new Error(
+      "Redcode Desktop is not included in the npm package. Install Redcode with mise (mise use -g github:reddb-io/redcode@latest) or from the release archive at https://github.com/reddb-io/redcode/releases, or set REDCODE_DESKTOP_APP to the app.",
+    )
   throw new Error(
-    `Redcode Desktop is missing from this redcode installation; looked for ${archived} and ${tar}. Reinstall redcode, or set REDCODE_DESKTOP_APP to the app.`,
+    `Redcode Desktop is missing from this redcode installation; looked for ${archived}. Reinstall redcode from the release archive, or set REDCODE_DESKTOP_APP to the app.`,
   )
 }
 
@@ -160,11 +144,11 @@ export function cli() {
   return realpathSync(process.execPath)
 }
 
-// The desktop target a CLI target runs: baseline builds share their os/arch app, and musl has none.
+// Whether a CLI target has a desktop app: baseline builds share their os/arch app, and musl has none.
 function parse(target: string) {
   const [os = "", arch = ""] = target.split("-")
   const supported = ["linux", "darwin", "windows"].includes(os) && ["x64", "arm64"].includes(arch)
-  return { os, desktop: supported && !target.endsWith("-musl") ? `${os}-${arch}` : undefined }
+  return { os, desktop: supported && !target.endsWith("-musl") }
 }
 
 // The production app's names, as electron-builder lays it out: linux.executableName is the app id.
@@ -180,25 +164,8 @@ function executable(os: string, app: string) {
   return path.join(app, "Contents", "MacOS", path.basename(app, ".app"))
 }
 
-// Extracts beside the destination and renames it into place, so a concurrent or interrupted extraction never leaves
-// a partial app where the next run would start it.
-async function extract(tar: string, destination: string) {
-  const temp = `${destination}.${process.pid}.tmp`
-  await rm(temp, { recursive: true, force: true })
-  await rm(destination, { recursive: true, force: true })
-  await mkdir(temp, { recursive: true })
-  // Windows' own tar is bsdtar, which reads drive letters; a GNU tar earlier on PATH reads `C:` as a remote host.
-  const command =
-    process.platform === "win32" ? path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe") : "tar"
-  const child = Bun.spawn([command, "-xf", tar], { cwd: temp, stdout: "ignore", stderr: "pipe" })
-  const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()])
-  if (code !== 0) {
-    await rm(temp, { recursive: true, force: true })
-    throw new Error(`Failed to extract Redcode Desktop from ${tar}: ${stderr.trim()}`)
-  }
-  await rename(temp, destination).catch(async (error) => {
-    await rm(temp, { recursive: true, force: true })
-    // Another redcode desktop extracted the same version first.
-    if (!existsSync(destination)) throw error
-  })
+// npm, pnpm and bun install the CLI as its platform package: `node_modules/@reddb-io/redcode-<target>/bin/redcode`.
+function npm(executable: string) {
+  const [modules, scope, name, bin] = path.dirname(executable).split(/[\\/]/).slice(-4)
+  return modules === "node_modules" && scope === "@reddb-io" && name?.startsWith("redcode-") && bin === "bin"
 }

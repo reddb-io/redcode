@@ -17,16 +17,9 @@ export default Runtime.handler(
     const global = yield* Global.Service
     const target = DesktopApp.target()
     const cli = DesktopApp.cli()
-    const located = yield* Effect.tryPromise({
+    const located = yield* Effect.try({
       try: () =>
-        DesktopApp.locate({
-          env: process.env,
-          target,
-          executable: cli ?? process.execPath,
-          cache: global.cache,
-          version: OPENCODE_VERSION,
-          source: DesktopApp.checkout(),
-        }),
+        DesktopApp.locate({ env: process.env, target, executable: cli ?? process.execPath, source: DesktopApp.checkout() }),
       catch: (cause) => cause,
     })
     if (input.path) {

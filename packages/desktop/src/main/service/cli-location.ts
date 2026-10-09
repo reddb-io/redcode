@@ -37,8 +37,8 @@ export function locateCli(input: {
   if (paths.basename(folder) === "desktop" && input.exists(sibling))
     return { source: "archive", binary: sibling, version: input.version }
 
-  // npm extracts the app into a cache directory, away from the CLI in node_modules. A pointer left by another
-  // installation names a different app and is ignored.
+  // An app away from its CLI, such as one REDCODE_DESKTOP_APP names, finds it through the pointer `redcode desktop`
+  // left. A pointer left by another installation names a different app and is ignored.
   const pointer = Option.getOrUndefined(decodePointer(input.read(input.pointer)))
   const self = input.platform === "darwin" ? paths.resolve(input.resourcesPath, "../..") : input.execPath
   const key = (file: string) => (input.platform === "win32" ? paths.resolve(file).toLowerCase() : paths.resolve(file))
