@@ -218,7 +218,7 @@ async function start(input: EnsureInput) {
           "--idle-minutes",
           String(input.idleMinutes ?? IDLE_MINUTES),
         ],
-        { detached: true, stdio: ["ignore", log, log], env: { ...process.env, ...input.env } },
+        { detached: true, stdio: ["ignore", log, log], env: { ...process.env, ...input.env }, windowsHide: true },
       )
       child.unref()
       closeSync(log)

@@ -101,6 +101,7 @@ async function install(version: string, release: string) {
       cwd: path.dirname(temporary),
       stdout: "ignore",
       stderr: "pipe",
+      windowsHide: true,
     })
     const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()])
     if (code !== 0)

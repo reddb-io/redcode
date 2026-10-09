@@ -61,6 +61,7 @@ const repository = async (directory: string) => {
       stdin: "ignore",
       stdout: "pipe",
       stderr: "ignore",
+      windowsHide: true,
     },
   )
   const [output, exit] = await Promise.all([new Response(process.stdout).text(), process.exited])
