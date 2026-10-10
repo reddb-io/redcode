@@ -1,9 +1,11 @@
 import type {
   FormAnswer,
+  IntegrationCommandConnectOutput,
   IntegrationInfo,
   IntegrationMethod,
   IntegrationOauthConnectOutput,
 } from "@opencode/client/promise"
+import { IntegrationConnections } from "@opencode/util/integration-connections"
 import { useLanguage } from "@/runtime/i18n/language"
 import { usePlatform } from "@/runtime/platform/platform"
 import { useServerSDK } from "@/runtime/server/client"
@@ -12,9 +14,11 @@ import { useData } from "@/runtime/server/current"
 import { createEffect, createMemo, on, onCleanup } from "solid-js"
 import { createStore, produce } from "solid-js/store"
 
-export type ProviderConnectMethod = Extract<IntegrationMethod, { type: "key" | "oauth" | "external" }>
+export type ProviderConnectMethod = Exclude<IntegrationMethod, { type: "env" }>
 
 type Authorization = IntegrationOauthConnectOutput["data"]
+
+type CommandAttempt = IntegrationCommandConnectOutput["data"]
 
 type Polling = {
   generation: number
@@ -22,6 +26,13 @@ type Polling = {
   disposed: boolean
   // An attempt the server still considers open; cancelled when the dialog goes away.
   attempt?: Authorization
+  // A login command the server is still running; cancelled when the dialog goes away.
+  command?: CommandAttempt
+}
+
+/** A method's form; a command method runs a login CLI and asks nothing first. */
+export function methodForm(method: ProviderConnectMethod | undefined) {
+  return method && "form" in method ? method.form : undefined
 }
 
 // OpenCode Go and OpenCode Zen both bill through the OpenCode Console, so the
@@ -34,7 +45,7 @@ export function consoleIntegration(provider: string) {
   return CONSOLE_PROVIDERS.has(provider) ? CONSOLE_INTEGRATION : provider
 }
 
-export function providerFormDefaults(fields: ProviderConnectMethod["form"]) {
+export function providerFormDefaults(fields: ReturnType<typeof methodForm>) {
   return (fields ?? []).reduce<FormAnswer>((answer, field) => {
     if (field.type === "external" || !field.hidden || field.default === undefined) return answer
 
@@ -43,9 +54,7 @@ export function providerFormDefaults(fields: ProviderConnectMethod["form"]) {
 
       if (actual === undefined) return false
 
-      const equal = Array.isArray(actual)
-        ? actual.some((item) => item === condition.value)
-        : actual === condition.value
+      const equal = Array.isArray(actual) ? actual.some((item) => item === condition.value) : actual === condition.value
 
       return condition.op === "eq" ? equal : !equal
     })
@@ -106,13 +115,11 @@ export function createProviderConnectionController(options: {
     ),
   )
 
+  // Sign-ins and login commands first and keys last, the order the TUI offers them in.
   const methods = createMemo<ProviderConnectMethod[]>(() => {
-    const values = integration.latest?.methods.filter(
-      (method): method is ProviderConnectMethod =>
-        method.type === "key" || method.type === "oauth" || method.type === "external",
-    )
+    const values = integration.latest ? IntegrationConnections.connectMethods(integration.latest) : []
 
-    if (values?.length) return [...values]
+    if (values.length) return values
 
     return [{ type: "key", label: language.t("provider.connect.method.apiKey") }]
   })
@@ -125,6 +132,8 @@ export function createProviderConnectionController(options: {
     // value would keep multi-method providers on the spinner instead of the method list.
     state?: "pending" | "waiting" | "refreshing" | "ready" | "error" | "form"
     error?: string
+    // What a running login command has printed so far.
+    output?: string
     auto: boolean
     connected: boolean
     browserFailed: boolean
@@ -163,6 +172,7 @@ export function createProviderConnectionController(options: {
     | { type: "auth.answer"; answer: FormAnswer | undefined }
     | { type: "auth.pending" }
     | { type: "auth.waiting"; authorization: Authorization }
+    | { type: "auth.command"; output: string }
     | { type: "auth.error"; error: string }
 
   const dispatch = (action: Action) => {
@@ -174,6 +184,7 @@ export function createProviderConnectionController(options: {
           draft.formAnswer = undefined
           draft.state = undefined
           draft.error = undefined
+          draft.output = undefined
           draft.connected = false
           draft.browserFailed = false
           draft.statusFailed = false
@@ -211,6 +222,14 @@ export function createProviderConnectionController(options: {
           return
         }
 
+        if (action.type === "auth.command") {
+          draft.state = "waiting"
+          draft.output = action.output
+          draft.error = undefined
+
+          return
+        }
+
         draft.state = "error"
         draft.error = action.error
       }),
@@ -219,7 +238,14 @@ export function createProviderConnectionController(options: {
 
   const cancelAttempt = () => {
     const attempt = polling.attempt
+    const command = polling.command
     polling.attempt = undefined
+    polling.command = undefined
+
+    if (command)
+      void serverSDK.api.integration.command
+        .cancel({ integrationID: options.provider(), attemptID: command.attemptID, location: location() })
+        .catch(() => undefined)
 
     if (!attempt) return
     void serverSDK.api.integration.oauth
@@ -238,6 +264,7 @@ export function createProviderConnectionController(options: {
   const finish = async () => {
     cancelPolling()
     polling.attempt = undefined
+    polling.command = undefined
     const generation = polling.generation
     const active = () => !polling.disposed && generation === polling.generation
     setStore({ connected: true, state: "refreshing", error: undefined })
@@ -328,6 +355,43 @@ export function createProviderConnectionController(options: {
     polling.timer = setTimeout(() => void poll(authorization, generation), options.pollInterval ?? 1_000)
   }
 
+  // Streams a login command's output until it saves a credential, fails or expires.
+  const pollCommand = async (attempt: CommandAttempt, generation: number) => {
+    const result = await serverSDK.api.integration.command
+      .status({ integrationID: options.provider(), attemptID: attempt.attemptID, location: location() })
+      .then((response) => ({ ok: true as const, status: response.data }))
+      .catch((error) => ({ ok: false as const, error }))
+
+    if (polling.disposed || generation !== polling.generation) return
+
+    if (!result.ok) {
+      polling.command = undefined
+      dispatch({ type: "auth.error", error: formatServerError(result.error, language.t) })
+
+      return
+    }
+
+    if (result.status.status === "complete") {
+      await finish()
+
+      return
+    }
+
+    if (result.status.status !== "pending") {
+      polling.command = undefined
+      dispatch({
+        type: "auth.error",
+        error:
+          result.status.status === "failed" ? result.status.message : language.t("provider.connect.command.expired"),
+      })
+
+      return
+    }
+
+    dispatch({ type: "auth.command", output: result.status.message ?? "" })
+    polling.timer = setTimeout(() => void pollCommand(attempt, generation), options.pollInterval ?? 500)
+  }
+
   const open = async () => {
     const url = store.authorization?.url
 
@@ -353,6 +417,36 @@ export function createProviderConnectionController(options: {
     const generation = polling.generation
     const selected = methods()[index]
     dispatch({ type: "method.select", index })
+
+    if (selected.type === "command") {
+      dispatch({ type: "auth.pending" })
+      const started = await serverSDK.api.integration.command
+        .connect({ integrationID: options.provider(), methodID: selected.id, location: location() })
+        .then((response) => ({ ok: true as const, attempt: response.data }))
+        .catch((error) => ({ ok: false as const, error }))
+
+      if (polling.disposed || generation !== polling.generation) {
+        if (started.ok)
+          void serverSDK.api.integration.command
+            .cancel({ integrationID: options.provider(), attemptID: started.attempt.attemptID, location: location() })
+            .catch(() => undefined)
+
+        return
+      }
+
+      if (!started.ok) {
+        dispatch({ type: "auth.error", error: formatServerError(started.error, language.t) })
+
+        return
+      }
+
+      polling.command = started.attempt
+      dispatch({ type: "auth.command", output: "" })
+      void pollCommand(started.attempt, generation)
+
+      return
+    }
+
     const visible = (selected.form ?? []).some((field) => field.type === "external" || !field.hidden)
 
     if (visible && !answer) {
@@ -369,7 +463,7 @@ export function createProviderConnectionController(options: {
       return
     }
 
-    if (selected.form?.some((field) => field.type !== "string")) {
+    if (selected.form?.some((field) => field.type === "multiselect")) {
       dispatch({ type: "auth.error", error: language.t("provider.connect.error.unsupportedFields") })
 
       return
@@ -530,6 +624,7 @@ export function createProviderConnectionController(options: {
     currentMethod,
     methodIndex: () => store.methodIndex,
     authorization: () => store.authorization,
+    output: () => store.output,
     browserFailed: () => store.browserFailed,
     // True while nothing useful can be shown yet: the integration is loading, a method is
     // about to be picked automatically, the authorization request is in flight, or an external

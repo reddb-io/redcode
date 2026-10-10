@@ -23,17 +23,22 @@ import {
 } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useParams } from "@solidjs/router"
+import type { FormValue, IntegrationInfo } from "@opencode/client/promise"
+import { ModelPresentation } from "@opencode/schema/model-presentation"
+import { IntegrationConnections } from "@opencode/util/integration-connections"
+import { IntegrationOrder } from "@opencode/util/integration-order"
 import { ExternalLink } from "@/runtime/platform/external-link"
 import { useLanguage } from "@/runtime/i18n/language"
 import { usePlatform } from "@/runtime/platform/platform"
 import { useServerSDK } from "@/runtime/server/client"
+import { formatServerError } from "@/runtime/server/errors"
 import { useData } from "@/runtime/server/current"
 import { useGlobal } from "@/runtime/server/runtime"
 import { ServerConnection } from "@/runtime/server/registry"
 import { useProviders } from "@/providers/catalog/providers"
 import { consoleProviderGroup, consoleProviderName } from "@/providers/catalog/console"
 import { useIntegrations } from "@/providers/catalog/integrations"
-import { CustomProviderForm } from "@/providers/credentials/dialog"
+import { connectedProviderID, connectOptions } from "@/providers/catalog/connect-order"
 import { ProviderModelGroup, ProviderModelIcon } from "@/providers/models/provider-group"
 import type { ModelSelection } from "@/providers/models/selection"
 import { decode64 } from "@/runtime/persistence/base64"
@@ -43,31 +48,33 @@ import { Persist, persisted } from "@/runtime/persistence/storage"
 import { Persistence } from "@/runtime/persistence/schema"
 import { Schema } from "effect"
 import {
-  CONSOLE_INTEGRATION,
   CONSOLE_PROVIDERS,
   consoleIntegration,
   createProviderConnectionController,
+  methodForm,
   providerFormDefaults,
-  type ProviderConnectMethod,
 } from "./controller"
 import { ConsoleAuthorization } from "./console"
 import { DialogChatGPTPlanWelcome } from "./chatgpt-welcome"
+import { IntegrationConnectionsPane } from "./manage"
 import { authServerName, RemoteAuthNotice } from "./remote"
 import "./models.css"
 
-const CUSTOM_ID = "_custom"
+/** The integration that turns any OpenAI-compatible endpoint, local servers included, into a provider. */
+export const OPENAI_COMPATIBLE = "openai-compatible"
 
-type IntegrationForm = NonNullable<ProviderConnectMethod["form"]>[number]
-
-type StringForm = Extract<IntegrationForm, { type: "string" }>
+type AnswerField = Exclude<NonNullable<ReturnType<typeof methodForm>>[number], { type: "external" | "multiselect" }>
 
 export function useProviderConnectController() {
-  const [store, setStore] = createStore<{ selected?: string }>({})
-  const reset = () => setStore("selected", undefined)
+  const [store, setStore] = createStore<{ selected?: string; adding: boolean }>({ adding: false })
+  const reset = () => setStore({ selected: undefined, adding: false })
 
   return {
     selected: () => store.selected,
-    select: (provider?: string) => setStore("selected", provider),
+    /** True when the selected integration should start a new connection instead of listing its saved ones. */
+    adding: () => store.adding,
+    select: (provider?: string, options?: { add?: boolean }) =>
+      setStore({ selected: provider, adding: options?.add ?? false }),
     reset,
   }
 }
@@ -80,6 +87,8 @@ export const DialogConnectProvider: Component<{
   selection?: ModelSelection
   onDone?: () => void
   onConnected?: (provider: string) => void
+  /** Closes the dialog after a connection and hands over the provider whose models to pick from. */
+  onPickModel?: (provider: string) => void
 }> = (props) => {
   const fallback = useProviderConnectController()
   const controller = props.controller ?? fallback
@@ -97,6 +106,7 @@ export const DialogConnectProvider: Component<{
 
   const language = useLanguage()
   const dialog = useDialog()
+  const integrations = useIntegrations(() => props.directory)
 
   const [welcome, setWelcome, , welcomeReady] = persisted(
     Persist.global("chatgpt-plan-welcome.v1"),
@@ -115,16 +125,37 @@ export const DialogConnectProvider: Component<{
     controller.select(provider)
   }
 
+  // A connected integration opens its saved connections first; "Add connection…" starts a new one.
+  const managing = () => {
+    const selected = controller.selected()
+
+    if (!selected || controller.adding() || CONSOLE_PROVIDERS.has(selected)) return undefined
+    const integration = integrations.list().find((item) => item.id === selected)
+
+    return integration && IntegrationConnections.credentialConnections(integration).length ? integration : undefined
+  }
+
   function Content() {
     return (
       <Switch>
-        <Match when={controller.selected() === CUSTOM_ID}>
-          <CustomProviderForm autofocus={false} />
+        <Match when={managing()} keyed>
+          {(integration) => (
+            <IntegrationConnectionsPane
+              integrationID={integration.id}
+              directory={props.defaultLocation ? undefined : props.directory}
+              onAdd={() => controller.select(integration.id, { add: true })}
+              onPickModel={
+                props.onPickModel
+                  ? (provider) => {
+                      dialog.close()
+                      props.onPickModel?.(provider)
+                    }
+                  : undefined
+              }
+            />
+          )}
         </Match>
-        <Match
-          keyed
-          when={controller.selected() && controller.selected() !== CUSTOM_ID ? controller.selected() : undefined}
-        >
+        <Match keyed when={controller.selected()}>
           {(provider) => (
             <ProviderConnection
               provider={provider}
@@ -137,9 +168,9 @@ export const DialogConnectProvider: Component<{
               onConnected={(methodID) => {
                 props.onConnected?.(provider)
 
-                if (provider === "openai" && methodID === "chatgpt-token-sharing")
-                  setState("chatgptWelcome", true)
+                if (provider === "openai" && methodID === "chatgpt-token-sharing") setState("chatgptWelcome", true)
               }}
+              onPickModel={props.onPickModel}
               onFirstConnection={(provider) => setState("modelProvider", provider)}
               onAuthorization={(authorization) => setState("authorization", authorization)}
             />
@@ -158,8 +189,7 @@ export const DialogConnectProvider: Component<{
       containerClass={
         state.modelProvider
           ? "!h-[min(calc(100vh_-_16px),560px)] !w-[min(calc(100vw_-_16px),640px)]"
-          : (consoleSelected() && state.authorization) ||
-              (!!controller.selected() && controller.selected() !== CUSTOM_ID && !consoleSelected())
+          : (consoleSelected() && state.authorization) || (!!controller.selected() && !consoleSelected())
             ? "!h-auto !max-h-[min(calc(100vh_-_16px),560px)] !w-[min(calc(100vw_-_16px),640px)]"
             : "!h-[min(calc(100vh_-_16px),512px)] !w-[min(calc(100vw_-_16px),640px)]"
       }
@@ -221,67 +251,62 @@ export const DialogConnectProvider: Component<{
 
 function ProviderPicker(props: { directory?: string; onSelect: (provider: string) => void; onPrepare?: () => void }) {
   const integrations = useIntegrations(() => props.directory)
+  const data = useData()
   const language = useLanguage()
 
   const [store, setStore] = createStore<{
     filter: string
     active?: string
-    connecting?: string
   }>({
     filter: "",
   })
 
-  const featured = ["opencode-go", "opencode", "anthropic", "openai", "google", "openrouter", "vercel"]
-  const custom = () => ({ id: CUSTOM_ID, name: language.t("dialog.provider.custom.label") })
+  const location = () => (props.directory ? { directory: props.directory } : undefined)
+  const rows = createMemo(() => connectOptions(integrations.list(), store.filter))
 
-  // Only a stored credential hides a provider: environment and config connections can still be
-  // replaced by a sign-in. OpenCode Zen stays until a Console account (not a key) is connected.
-  const consoleAccount = createMemo(() =>
-    integrations
-      .list()
-      .find((integration) => integration.id === CONSOLE_INTEGRATION)
-      ?.connections.some((connection) => connection.type === "credential" && connection.method === "oauth"),
+  const sections = createMemo(() =>
+    rows().reduce(
+      (groups, integration) => {
+        const category = IntegrationOrder.category(integration)
+        const last = groups.at(-1)
+
+        if (last?.category === category) last.items.push(integration)
+        else groups.push({ category, items: [integration] })
+
+        return groups
+      },
+      [] as { category: ReturnType<typeof IntegrationOrder.category>; items: IntegrationInfo[] }[],
+    ),
   )
 
-  const all = createMemo(() => {
-    language.locale()
-    const query = store.filter.trim().toLowerCase()
+  const sectionTitle = (category: ReturnType<typeof IntegrationOrder.category>) => {
+    if (category === "Connected") return language.t("dialog.provider.group.connected")
 
-    const values = [
-      custom(),
-      ...integrations
-        .list()
-        .filter((integration) =>
-          integration.id === CONSOLE_INTEGRATION
-            ? !consoleAccount()
-            : !integration.connections.some((connection) => connection.type === "credential"),
-        ),
-    ]
+    if (category === "Popular") return language.t("dialog.provider.group.popular")
 
-    if (!query) return values
+    return language.t("dialog.provider.group.services")
+  }
 
-    return values.filter((provider) => `${provider.id} ${provider.name}`.toLowerCase().includes(query))
-  })
+  // A RedRouter connection says what its key may do: an admin key also manages keys over MCP.
+  const keyRole = (integration: IntegrationInfo) => {
+    const role = ModelPresentation.integrationRouterProvider(
+      data.location.provider.list(location()) ?? [],
+      integration.id,
+    )?.router?.role
 
-  const popular = createMemo(() =>
-    all()
-      .filter((provider) => featured.includes(provider.id))
-      .sort((a, b) => featured.indexOf(a.id) - featured.indexOf(b.id)),
-  )
+    if (role === "admin") return language.t("settings.providers.tag.adminKey")
 
-  const other = createMemo(() =>
-    all()
-      .filter((provider) => !featured.includes(provider.id))
-      .sort((a, b) => {
-        if (a.id === CUSTOM_ID) return -1
+    if (role === "standard") return language.t("settings.providers.tag.standardKey")
 
-        if (b.id === CUSTOM_ID) return 1
+    return undefined
+  }
 
-        return a.name.localeCompare(b.name)
-      }),
-  )
+  const environmentOnly = (integration: IntegrationInfo) =>
+    IntegrationConnections.connectMethods(integration).length === 0
 
-  const rows = createMemo(() => [...popular(), ...other()])
+  const selectable = (integration: IntegrationInfo) =>
+    !environmentOnly(integration) || IntegrationConnections.credentialConnections(integration).length > 0
+
   let picker: HTMLDivElement | undefined
   let search: HTMLInputElement | undefined
 
@@ -293,7 +318,7 @@ function ProviderPicker(props: { directory?: string; onSelect: (provider: string
   }
 
   const move = (event: KeyboardEvent, direction: number) => {
-    const items = rows()
+    const items = rows().filter(selectable)
 
     if (items.length === 0) return
     const index = items.findIndex((provider) => provider.id === store.active)
@@ -332,55 +357,73 @@ function ProviderPicker(props: { directory?: string; onSelect: (provider: string
       </div>
       <div class="relative min-h-0 flex-1">
         <div class="flex size-full min-h-0 flex-col gap-4 overflow-y-auto pb-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <For
-            each={[
-              { title: language.t("dialog.provider.group.popular"), items: popular },
-              { title: language.t("dialog.provider.group.other"), items: other },
-            ]}
-          >
-            {(group) => (
-              <Show when={group.items().length > 0}>
-                <section class="flex flex-col">
-                  <h3 class="m-0 px-3 pb-2 text-eyebrow uppercase text-ink-muted">{group.title}</h3>
-                  <For each={group.items()}>
-                    {(provider) => (
+          <For each={sections()}>
+            {(section) => (
+              <section class="flex flex-col" data-section={section.category}>
+                <h3 class="m-0 px-3 pb-2 text-eyebrow uppercase text-ink-muted">{sectionTitle(section.category)}</h3>
+                <For each={section.items}>
+                  {(integration) => {
+                    const summary = () => IntegrationConnections.connectionSummary(integration)
+
+                    return (
                       <button
                         type="button"
-                        data-provider-id={provider.id}
+                        data-provider-id={integration.id}
                         class="flex min-h-9 w-full items-center gap-2 rounded-md px-3 py-2 text-start text-body focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus disabled:opacity-50"
-                        classList={{ "bg-foreground/10": store.active === provider.id }}
-                        onMouseEnter={() => setStore("active", provider.id)}
-                        disabled={store.connecting !== undefined}
-                        aria-busy={store.connecting === provider.id}
-                        onClick={() => connect(provider.id)}
+                        classList={{ "bg-foreground/10": store.active === integration.id }}
+                        onMouseEnter={() => setStore("active", integration.id)}
+                        disabled={!selectable(integration)}
+                        onClick={() => connect(integration.id)}
                       >
-                        <ProviderModelIcon provider={provider} class="shrink-0 text-foreground" />
-                        <span class="min-w-0 truncate font-medium text-foreground">{provider.name}</span>
-                        <Show when={CONSOLE_PROVIDERS.has(provider.id)}>
-                          <span class="min-w-0 truncate font-normal text-ink-muted">
-                            {language.t(
-                              provider.id === "opencode"
-                                ? "dialog.provider.opencode.tagline"
-                                : "dialog.provider.opencodeGo.tagline",
-                            )}
+                        <ProviderModelIcon provider={integration} class="shrink-0 text-foreground" />
+                        <span class="flex min-w-0 flex-1 flex-col">
+                          <span class="flex min-w-0 items-center gap-2">
+                            <span class="min-w-0 truncate font-medium text-foreground">{integration.name}</span>
+                            <Show when={CONSOLE_PROVIDERS.has(integration.id) && integration.connections.length === 0}>
+                              <span class="min-w-0 truncate font-normal text-ink-muted">
+                                {language.t(
+                                  integration.id === "opencode"
+                                    ? "dialog.provider.opencode.tagline"
+                                    : "dialog.provider.opencodeGo.tagline",
+                                )}
+                              </span>
+                            </Show>
+                            <Show when={integration.id === OPENAI_COMPATIBLE}>
+                              <Badge class="shrink-0">{language.t("settings.providers.tag.custom")}</Badge>
+                            </Show>
+                            <Show when={keyRole(integration)}>
+                              {(role) => <Badge class="shrink-0">{role()}</Badge>}
+                            </Show>
                           </span>
-                          <span class="flex h-5 shrink-0 items-center rounded-sm border border-control-edge px-1.5 text-eyebrow uppercase text-ink-muted">
-                            {language.t("dialog.provider.tag.recommended")}
+                          <Show when={integration.id === OPENAI_COMPATIBLE}>
+                            <span class="min-w-0 truncate text-[12px] leading-4 text-ink-muted">
+                              {language.t("dialog.provider.custom.description")}
+                            </span>
+                          </Show>
+                          <Show when={environmentOnly(integration)}>
+                            <span class="min-w-0 truncate text-[12px] leading-4 text-ink-muted">
+                              {language.t("dialog.provider.environmentOnly")}
+                            </span>
+                          </Show>
+                        </span>
+                        <Show when={summary()}>
+                          <span class="max-w-[40%] shrink-0 truncate text-[12px] leading-4 text-ink-muted">
+                            {summary()}
                           </span>
                         </Show>
-                        <Show when={provider.id === CUSTOM_ID}>
-                          <span class="flex h-5 shrink-0 items-center rounded-sm border border-control-edge px-1.5 text-eyebrow uppercase text-ink-muted">
-                            {language.t("settings.providers.tag.custom")}
-                          </span>
-                        </Show>
-                        <Show when={store.connecting === provider.id}>
-                          <Spinner class="ml-auto size-4 shrink-0 text-ink-muted" />
+                        <Show when={integration.connections.length > 0}>
+                          <Icon
+                            name="check"
+                            size="small"
+                            class="shrink-0 text-feedback-success-foreground"
+                            aria-label={language.t("dialog.provider.connected")}
+                          />
                         </Show>
                       </button>
-                    )}
-                  </For>
-                </section>
-              </Show>
+                    )
+                  }}
+                </For>
+              </section>
             )}
           </For>
           <Show when={rows().length === 0}>
@@ -407,6 +450,7 @@ function ProviderConnection(props: {
   selection?: ModelSelection
   onDone?: () => void
   onConnected?: (methodID?: string) => void
+  onPickModel?: (provider: string) => void
   onFirstConnection: (provider: { id: string; name: string }) => void
   onAuthorization: (authorization: boolean) => void
 }) {
@@ -465,11 +509,20 @@ function ProviderConnection(props: {
     onComplete: () => {
       const method = controller.currentMethod()
       props.onConnected?.(method?.type === "oauth" ? method.id : undefined)
-      // The picker only lists the newest model per family by default, which hides most of
-      // what a new connection just unlocked. Show everything the connected integration offers.
+      // Reconnecting brings back models that were hidden in Settings › Models.
       global.models.show(connectionModels().map((model) => ({ providerID: model.providerID, modelID: model.id })))
       if (state.catalogPending) {
         setState("noModels", true)
+
+        return
+      }
+
+      // Like the TUI, a connection opened from a model picker returns to it, filtered to the new provider.
+      const picked = connectedProviderID(connectionProviders(), data.location.model.list(location()) ?? [], target())
+
+      if (props.onPickModel && picked && connectionModels().length > 0) {
+        dialog.close()
+        props.onPickModel(picked)
 
         return
       }
@@ -511,9 +564,35 @@ function ProviderConnection(props: {
     setState("firstConnection", !existing)
   })
 
+  // Credentials saved before this connection; a wizard such as the OpenAI-compatible endpoint files
+  // its key under the provider it defines, so the new credential tells which integration it made.
+  const saved = { ids: undefined as Set<string> | undefined }
+  createEffect(() => {
+    if (saved.ids || !integrations.ready()) return
+    saved.ids = new Set(
+      integrations
+        .list()
+        .flatMap((item) => IntegrationConnections.credentialConnections(item).map((connection) => connection.id)),
+    )
+  })
+
+  const target = createMemo(() => {
+    const before = saved.ids
+
+    if (!before) return integrationID
+
+    return (
+      integrations
+        .list()
+        .find((item) =>
+          IntegrationConnections.credentialConnections(item).some((connection) => !before.has(connection.id)),
+        )?.id ?? integrationID
+    )
+  })
+
   const connectionProviders = createMemo(() =>
     (data.location.provider.list(location()) ?? []).filter(
-      (provider) => provider.id === props.provider || provider.integrationID === integrationID,
+      (provider) => provider.id === props.provider || provider.integrationID === target() || provider.id === target(),
     ),
   )
 
@@ -653,18 +732,21 @@ function ProviderConnection(props: {
     controller.auth.state() !== "error" &&
     (controller.busy() || controller.authorization()?.mode === "auto")
 
+  // Asks a method's form one field at a time, like the TUI: text, choices, yes/no and numbers.
   function AuthFormView() {
-    const defaults = providerFormDefaults(controller.currentMethod()?.form)
+    const form = () => methodForm(controller.currentMethod()) ?? []
+    const defaults = providerFormDefaults(methodForm(controller.currentMethod()))
 
     const [formStore, setFormStore] = createStore<{
-      value: Record<string, string>
+      value: Record<string, FormValue>
       index: number
       customOn: boolean
       customText: string
+      error?: string
     }>({
       value: Object.fromEntries(
-        (controller.currentMethod()?.form ?? []).flatMap((field) =>
-          field.type === "string" && field.key in defaults && field.default !== undefined
+        form().flatMap((field) =>
+          field.type !== "external" && field.key in defaults && field.default !== undefined
             ? [[field.key, field.default]]
             : [],
         ),
@@ -674,13 +756,13 @@ function ProviderConnection(props: {
       customText: "",
     })
 
-    const fields = createMemo<StringForm[]>(() => {
-      const value = controller.currentMethod()
+    const fields = createMemo<AnswerField[]>(() =>
+      form().flatMap((field) =>
+        field.type !== "external" && field.type !== "multiselect" && !field.hidden ? [field] : [],
+      ),
+    )
 
-      return (value?.form ?? []).flatMap((field) => (field.type === "string" && !field.hidden ? [field] : []))
-    })
-
-    const matches = (field: StringForm, value: Record<string, string>) => {
+    const matches = (field: AnswerField, value: Record<string, FormValue>) => {
       return (field.when ?? []).every((condition) => {
         const actual = value[condition.key]
 
@@ -704,26 +786,49 @@ function ProviderConnection(props: {
 
     // Visible defaults prefill the field but enter the answer only once that field is answered,
     // because the server rejects values for fields whose conditions are not met.
-    const answer = (field: StringForm) => formStore.value[field.key] ?? field.default
+    const answer = (field: AnswerField) => formStore.value[field.key] ?? field.default
+    const textOf = (field: AnswerField) => {
+      const value = answer(field)
 
-    const valid = createMemo(() => {
-      const item = current()
+      return value === undefined ? "" : String(value)
+    }
 
-      if (!item || (item.field.options && !item.field.custom)) return false
+    // A number field takes what was typed as a number; an empty optional field stays unanswered.
+    const parsed = (field: AnswerField): FormValue | undefined => {
+      const value = answer(field)
 
-      if (!item.field.required) return true
+      if (field.type !== "number" && field.type !== "integer") return value
+      const text = String(value ?? "").trim()
 
-      return (answer(item.field) ?? "").trim().length > 0
-    })
+      return text === "" ? undefined : Number(text)
+    }
 
-    async function next(index: number, value: Record<string, string>) {
+    const invalid = (field: AnswerField) => {
+      const value = parsed(field)
+
+      if (value === undefined || value === "")
+        return field.required ? language.t("provider.connect.form.required") : undefined
+
+      if (field.type === "number" || field.type === "integer") {
+        if (
+          typeof value !== "number" ||
+          !Number.isFinite(value) ||
+          (field.type === "integer" && !Number.isInteger(value))
+        )
+          return language.t(field.type === "integer" ? "provider.connect.form.integer" : "provider.connect.form.number")
+      }
+
+      return undefined
+    }
+
+    async function next(index: number, value: Record<string, FormValue>) {
       const selected = controller.methodIndex()
 
       if (selected === undefined) return
       const next = fields().findIndex((field, i) => i > index && matches(field, value))
 
       if (next !== -1) {
-        setFormStore({ index: next, customOn: false, customText: "" })
+        setFormStore({ index: next, customOn: false, customText: "", error: undefined })
 
         return
       }
@@ -735,29 +840,54 @@ function ProviderConnection(props: {
       e.preventDefault()
       const item = current()
 
-      if (!item || !valid()) return
-      const value = answer(item.field)
+      if (!item) return
+      const error = invalid(item.field)
 
-      if (value !== undefined) setFormStore("value", item.field.key, value)
-      await next(item.index, formStore.value)
+      if (error) {
+        setFormStore("error", error)
+
+        return
+      }
+
+      const value = parsed(item.field)
+      const answered = { ...formStore.value }
+
+      if (value === undefined) delete answered[item.field.key]
+      else answered[item.field.key] = value
+
+      setFormStore("value", answered)
+      await next(item.index, answered)
     }
 
-    const item = () => current()
+    const choose = (field: AnswerField, value: FormValue) => {
+      const item = current()
+
+      if (!item) return
+      const answered = { ...formStore.value, [field.key]: value }
+      setFormStore("value", field.key, value)
+      void next(item.index, answered)
+    }
 
     const text = createMemo(() => {
-      const field = item()?.field
+      const field = current()?.field
 
-      if (!field || field.options) return undefined
+      if (!field || field.type === "boolean" || (field.type === "string" && field.options)) return undefined
 
       return field
     })
 
     const select = createMemo(() => {
-      const field = item()?.field
+      const field = current()?.field
 
-      if (!field?.options) return undefined
+      if (field?.type !== "string" || !field.options) return undefined
 
       return field
+    })
+
+    const toggle = createMemo(() => {
+      const field = current()?.field
+
+      return field?.type === "boolean" ? field : undefined
     })
 
     const custom = () => {
@@ -769,25 +899,64 @@ function ProviderConnection(props: {
       return formStore.customOn || (value !== undefined && !field.options?.some((option) => option.value === value))
     }
 
+    const errorID = createUniqueId()
+
     return (
       <form onSubmit={handleSubmit} class="flex flex-col items-start gap-4 px-3">
         <Switch>
-          <Match when={item()?.field.options === undefined}>
-            <TextField
-              type="text"
-              label={text()?.title ?? ""}
-              placeholder={text()?.placeholder}
-              value={text() ? (answer(text()!) ?? "") : ""}
-              onChange={(value) => {
-                const field = text()
-
-                if (!field) return
-                setFormStore("value", field.key, value)
-              }}
-            />
-            <Button class="w-auto" type="submit" size="large" variant="contrast" disabled={!valid()}>
-              {language.t("common.continue")}
-            </Button>
+          <Match when={text()} keyed>
+            {(field) => (
+              <>
+                <TextField
+                  type="text"
+                  label={field.title ?? field.key}
+                  description={field.description}
+                  placeholder={field.type === "string" ? field.placeholder : undefined}
+                  inputMode={field.type === "string" ? undefined : "decimal"}
+                  value={textOf(field)}
+                  invalid={formStore.error !== undefined}
+                  aria-describedby={formStore.error ? errorID : undefined}
+                  onChange={(value) => {
+                    setFormStore("value", field.key, value)
+                    setFormStore("error", undefined)
+                  }}
+                />
+                <Show when={formStore.error}>
+                  {(error) => (
+                    <div id={errorID} role="alert" class="-mt-2 text-xs text-feedback-danger-foreground">
+                      {error()}
+                    </div>
+                  )}
+                </Show>
+                <Button class="w-auto" type="submit" size="large" variant="contrast">
+                  {language.t("common.continue")}
+                </Button>
+              </>
+            )}
+          </Match>
+          <Match when={toggle()}>
+            {(field) => (
+              <div class="w-full flex flex-col gap-1.5">
+                <div class="text-14-regular text-text-base">{field().title ?? field().key}</div>
+                <Show when={field().description}>
+                  {(description) => <div class="text-12-regular text-text-weak">{description()}</div>}
+                </Show>
+                <List
+                  class="px-3"
+                  items={field().default === false ? [false, true] : [true, false]}
+                  key={(value) => String(value)}
+                  current={answer(field())}
+                  onSelect={(value) => {
+                    if (value === undefined) return
+                    choose(field(), value)
+                  }}
+                >
+                  {(value) => (
+                    <span>{language.t(value ? "provider.connect.form.yes" : "provider.connect.form.no")}</span>
+                  )}
+                </List>
+              </div>
+            )}
           </Match>
           <Match when={select()?.custom && select()}>
             {(field) => (
@@ -795,7 +964,7 @@ function ProviderConnection(props: {
                 <div class="w-full flex flex-col gap-3">
                   <div class="text-14-regular text-text-base">{field().title}</div>
                   <RadioGroup
-                    label={field().title}
+                    label={field().title ?? field().key}
                     hideLabel
                     description={field().description}
                     value={
@@ -807,7 +976,7 @@ function ProviderConnection(props: {
                       const option = field().options?.[Number(value)]
 
                       if (option) {
-                        if (custom()) setFormStore("customText", answer(field()) ?? "")
+                        if (custom()) setFormStore("customText", textOf(field()))
                         setFormStore("customOn", false)
                         setFormStore("value", field().key, option.value)
 
@@ -832,58 +1001,80 @@ function ProviderConnection(props: {
                           label={language.t("ui.messagePart.option.typeOwnAnswer")}
                           hideLabel
                           placeholder={field().placeholder ?? language.t("ui.question.custom.placeholder")}
-                          value={answer(field()) ?? ""}
+                          value={textOf(field())}
                           onChange={(value) => setFormStore("value", field().key, value)}
                         />
                       </div>
                     </Show>
                   </RadioGroup>
                 </div>
-                <Button class="w-auto" type="submit" size="large" variant="contrast" disabled={!valid()}>
+                <Button class="w-auto" type="submit" size="large" variant="contrast">
                   {language.t("common.continue")}
                 </Button>
               </>
             )}
           </Match>
-          <Match when={item()?.field.options !== undefined}>
-            <div class="w-full flex flex-col gap-1.5">
-              <div class="text-14-regular text-text-base">{select()?.title}</div>
-              <div>
-                <List
-                  class="px-3"
-                  items={select()?.options ?? []}
-                  key={(x) => x.value}
-                  current={select()?.options?.find((x) => x.value === answer(select()!))}
-                  onSelect={(value) => {
-                    if (!value) return
-                    const field = select()
-
-                    if (!field) return
-
-                    const nextValue = {
-                      ...formStore.value,
-                      [field.key]: value.value,
-                    }
-
-                    setFormStore("value", field.key, value.value)
-                    void next(item()!.index, nextValue)
-                  }}
-                >
-                  {(option) => (
-                    <div class="w-full flex items-center gap-x-2">
-                      <div class="w-4 h-2 rounded-[1px] bg-input-base shadow-xs-border-base flex items-center justify-center">
-                        <div class="w-2.5 h-0.5 ml-0 bg-icon-strong-base hidden" data-slot="list-item-extra-icon" />
+          <Match when={select()}>
+            {(field) => (
+              <div class="w-full flex flex-col gap-1.5">
+                <div class="text-14-regular text-text-base">{field().title}</div>
+                <div>
+                  <List
+                    class="px-3"
+                    items={field().options ?? []}
+                    key={(x) => x.value}
+                    current={field().options?.find((x) => x.value === answer(field()))}
+                    onSelect={(value) => {
+                      if (!value) return
+                      choose(field(), value.value)
+                    }}
+                  >
+                    {(option) => (
+                      <div class="w-full flex items-center gap-x-2">
+                        <div class="w-4 h-2 rounded-[1px] bg-input-base shadow-xs-border-base flex items-center justify-center">
+                          <div class="w-2.5 h-0.5 ml-0 bg-icon-strong-base hidden" data-slot="list-item-extra-icon" />
+                        </div>
+                        <span>{option.label}</span>
+                        <span class="text-14-regular text-text-weak">{option.description}</span>
                       </div>
-                      <span>{option.label}</span>
-                      <span class="text-14-regular text-text-weak">{option.description}</span>
-                    </div>
-                  )}
-                </List>
+                    )}
+                  </List>
+                </div>
               </div>
-            </div>
+            )}
           </Match>
         </Switch>
       </form>
+    )
+  }
+
+  // A login command streams what it prints until it saves a credential.
+  function CommandView() {
+    const commandMethod = () => {
+      const method = controller.currentMethod()
+
+      return method?.type === "command" ? method : undefined
+    }
+
+    return (
+      <div class="flex flex-col gap-4 px-3 text-[13px] font-normal leading-5 text-ink-muted">
+        <div>{language.t("provider.connect.command.description", { provider: provider().name })}</div>
+        <Show when={commandMethod()}>
+          {(method) => (
+            <code class="block rounded-sm bg-foreground/5 px-2 py-1 font-mono text-[12px] text-foreground">
+              {method().command.join(" ")}
+            </code>
+          )}
+        </Show>
+        <pre
+          data-component="provider-command-output"
+          aria-live="polite"
+          class="max-h-60 min-h-16 overflow-auto whitespace-pre-wrap rounded-md bg-foreground/5 p-3 font-mono text-[12px] leading-4 text-foreground"
+        >
+          {controller.output()?.trim() || language.t("provider.connect.command.starting")}
+        </pre>
+        <StatusRow>{language.t("provider.connect.command.waiting")}</StatusRow>
+      </div>
     )
   }
 
@@ -996,7 +1187,9 @@ function ProviderConnection(props: {
       }
 
       setFormStore("error", undefined)
-      await controller.auth.connectKey(key)
+      await controller.auth
+        .connectKey(key)
+        .catch((error: unknown) => setFormStore("error", formatServerError(error, language.t)))
     }
 
     return (
@@ -1404,6 +1597,9 @@ function ProviderConnection(props: {
               <div class="px-3">
                 <ErrorRow />
               </div>
+            </Match>
+            <Match when={controller.currentMethod()?.type === "command"}>
+              <CommandView />
             </Match>
             <Match when={controller.currentMethod()?.type === "key"}>
               <ApiAuthView />
