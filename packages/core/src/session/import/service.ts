@@ -8,6 +8,7 @@ import { Location } from "../../location.js"
 import { Session } from "../../session.js"
 import { SessionMessage } from "../message.js"
 import { SessionTransfer } from "../transfer.js"
+import { ClaudeCodeImport } from "./claude-code.js"
 import { OpenCodeImport } from "./opencode.js"
 import { ImportSource } from "./source.js"
 
@@ -62,7 +63,9 @@ export interface Interface {
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/SessionImport") {}
 
-export function configured(options: { readonly opencode?: ReadonlyArray<string> } = {}) {
+export function configured(
+  options: { readonly opencode?: ReadonlyArray<string>; readonly claudeCode?: ReadonlyArray<string> } = {},
+) {
   return makeGlobalNode({
     service: Service,
     deps: [Session.node, SessionTransfer.node],
@@ -73,6 +76,9 @@ export function configured(options: { readonly opencode?: ReadonlyArray<string> 
         const sessions = yield* Session.Service
         const adapters: Record<Source, ImportSource.Adapter> = {
           opencode: OpenCodeImport.adapter({ directories: options.opencode ?? OpenCodeImport.directories() }),
+          "claude-code": ClaudeCodeImport.adapter({
+            directories: options.claudeCode ?? ClaudeCodeImport.directories(),
+          }),
         }
         const load = (source: Source, ref: string) => adapters[source].load(ref)
 
@@ -122,7 +128,9 @@ export function configured(options: { readonly opencode?: ReadonlyArray<string> 
             const notice: SessionMessage.System = {
               id: SessionMessage.ID.create(),
               type: "system",
-              text: `The conversation above was imported from ${loaded.name}. Its tool calls ran with ${loaded.name}'s tools, whose names and arguments may differ from yours; call only the tools available now.`,
+              text:
+                `The conversation above was imported from ${loaded.name}. Its tool calls ran with ${loaded.name}'s tools, whose names and arguments may differ from yours; call only the tools available now.` +
+                (loaded.note ? ` ${loaded.note}` : ""),
               description: `Imported from ${loaded.name} · ${count(root.data.messages.length, "message")} · ${count(children.length, "subagent")} · ${count(compactions, "compaction")}`,
               time: { created: DateTime.makeUnsafe(importedAt) },
             }
