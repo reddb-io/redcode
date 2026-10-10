@@ -117,7 +117,9 @@ const it = testEffect(
       Project.node.replace(globalProjectNode),
       LocationServiceMap.node.replace(promptLocationNode),
       SessionExecution.node.replace(SessionExecution.noopLayer),
-      SessionImport.node.replace(SessionImport.configured({ opencode: [empty, legacy, store], claudeCode: [empty] })),
+      SessionImport.node.replace(
+        SessionImport.configured({ opencode: [empty, legacy, store], claudeCode: [empty], pi: [empty], omp: [empty] }),
+      ),
     ],
   ),
 )
@@ -186,6 +188,8 @@ describe("SessionImport", () => {
           sessions: 0,
           warning: "No Claude Code session store found",
         },
+        { source: "pi", name: "Pi", available: false, sessions: 0, warning: "No Pi session store found" },
+        { source: "omp", name: "oh-my-pi", available: false, sessions: 0, warning: "No oh-my-pi session store found" },
       ])
     }),
   )

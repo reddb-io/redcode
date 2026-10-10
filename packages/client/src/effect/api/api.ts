@@ -269,7 +269,7 @@ export type SessionImportOutput = Session.Info
 export type SessionImportOperation<E = never> = (input: SessionImportInput) => Effect.Effect<SessionImportOutput, E>
 
 export type SessionForeignSourcesOutput = ReadonlyArray<{
-  readonly source: "opencode" | "claude-code"
+  readonly source: "opencode" | "claude-code" | "pi" | "omp"
   readonly name: string
   readonly available: boolean
   readonly path?: string | undefined
@@ -279,12 +279,12 @@ export type SessionForeignSourcesOutput = ReadonlyArray<{
 export type SessionForeignSourcesOperation<E = never> = () => Effect.Effect<SessionForeignSourcesOutput, E>
 
 export type SessionForeignListInput = {
-  readonly source: "opencode" | "claude-code"
+  readonly source: "opencode" | "claude-code" | "pi" | "omp"
   readonly directory?: string | undefined
   readonly limit?: number | undefined
 }
 export type SessionForeignListOutput = ReadonlyArray<{
-  readonly source: "opencode" | "claude-code"
+  readonly source: "opencode" | "claude-code" | "pi" | "omp"
   readonly ref: string
   readonly title: string
   readonly directory: string
@@ -298,7 +298,7 @@ export type SessionForeignListOperation<E = never> = (
 ) => Effect.Effect<SessionForeignListOutput, E>
 
 export type SessionForeignImportInput = {
-  readonly source: "opencode" | "claude-code"
+  readonly source: "opencode" | "claude-code" | "pi" | "omp"
   readonly ref: string
   readonly location?: Location.PublicRef | undefined
 }

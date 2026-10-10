@@ -10,6 +10,7 @@ import { SessionMessage } from "../message.js"
 import { SessionTransfer } from "../transfer.js"
 import { ClaudeCodeImport } from "./claude-code.js"
 import { OpenCodeImport } from "./opencode.js"
+import { PiImport } from "./pi.js"
 import { ImportSource } from "./source.js"
 
 export const Source = SessionImport.Source
@@ -64,7 +65,12 @@ export interface Interface {
 export class Service extends Context.Service<Service, Interface>()("@opencode/SessionImport") {}
 
 export function configured(
-  options: { readonly opencode?: ReadonlyArray<string>; readonly claudeCode?: ReadonlyArray<string> } = {},
+  options: {
+    readonly opencode?: ReadonlyArray<string>
+    readonly claudeCode?: ReadonlyArray<string>
+    readonly pi?: ReadonlyArray<string>
+    readonly omp?: ReadonlyArray<string>
+  } = {},
 ) {
   return makeGlobalNode({
     service: Service,
@@ -79,6 +85,8 @@ export function configured(
           "claude-code": ClaudeCodeImport.adapter({
             directories: options.claudeCode ?? ClaudeCodeImport.directories(),
           }),
+          pi: PiImport.adapter({ source: "pi", directories: options.pi ?? PiImport.directories("pi") }),
+          omp: PiImport.adapter({ source: "omp", directories: options.omp ?? PiImport.directories("omp") }),
         }
         const load = (source: Source, ref: string) => adapters[source].load(ref)
 
