@@ -1,5 +1,0 @@
----
-"@reddb-io/redcode": minor
----
-
-Bring your Pi and oh-my-pi sessions into Redcode. `redcode session import --from pi` reads Pi's local sessions (`~/.pi/agent/sessions`, or `$PI_CODING_AGENT_SESSION_DIR` / `$PI_CODING_AGENT_DIR`), and `--from omp` reads oh-my-pi's (`~/.omp/agent/sessions`), without changing them. Pass the session ID, `--latest` or `--pick`, as with the other sources. Both keep a conversation as a tree; the import follows the branch the session was last on, pairs every tool call with its result, marks calls that never finished as interrupted, and brings in compactions, branch summaries, images, token usage and cost. oh-my-pi subagent runs come in as subagent sessions, images it moved to its blob store are restored, and a session cleared with `/clear` starts after the last clear. Tool output is redacted for secrets and capped at 64 KB per call. Importing the same conversation again reports it as already imported. System prompts, extension state and messages, thinking signatures, context edits and mode changes are not imported, and each import lists what it left out.
