@@ -8,6 +8,8 @@ import type {
   ServerInfoOutput,
   ServerSystemOutput,
   ServerPairOutput,
+  ServerCancelPairInput,
+  ServerCancelPairOutput,
   ServerConnectInput,
   ServerConnectOutput,
   LocationGetInput,
@@ -148,6 +150,8 @@ import type {
   SessionGenerateOutput,
   SessionLogInput,
   SessionLogOutput,
+  SessionWakeInput,
+  SessionWakeOutput,
   SessionInterruptInput,
   SessionInterruptOutput,
   SessionBackgroundInput,
@@ -404,6 +408,19 @@ import type {
   ServerIntelligenceDiscoverOutput,
   ServerIntelligenceProbeInput,
   ServerIntelligenceProbeOutput,
+  WorkersListOutput,
+  WorkersAddInput,
+  WorkersAddOutput,
+  WorkersRemoveInput,
+  WorkersRemoveOutput,
+  WorkersProbeInput,
+  WorkersProbeOutput,
+  WorkersSubmitInput,
+  WorkersSubmitOutput,
+  WorkersRecoverInput,
+  WorkersRecoverOutput,
+  WorkersCollectInput,
+  WorkersCollectOutput,
 } from "../api/api.js"
 import { ClientError } from "./client-error.js"
 
@@ -432,6 +449,11 @@ const EndpointServerSystem = (raw: RawClient["server.server"]) => () =>
 const EndpointServerPair = (raw: RawClient["server.server"]) => () =>
   preserveEffect<ServerPairOutput>()(raw["server.pair"]({}).pipe(Effect.mapError(mapClientError)))
 
+const EndpointServerCancelPair = (raw: RawClient["server.server"]) => (input: ServerCancelPairInput) =>
+  preserveEffect<ServerCancelPairOutput>()(
+    raw["server.cancelPair"]({ params: { code: input["code"] } }).pipe(Effect.mapError(mapClientError)),
+  )
+
 const EndpointServerConnect = (raw: RawClient["server.server"]) => (input: ServerConnectInput) =>
   preserveEffect<ServerConnectOutput>()(
     raw["server.connect"]({ params: { code: input["code"] } }).pipe(Effect.mapError(mapClientError)),
@@ -441,6 +463,7 @@ const adaptGroupServer = (raw: RawClient["server.server"]) => ({
   info: EndpointServerInfo(raw),
   system: EndpointServerSystem(raw),
   pair: EndpointServerPair(raw),
+  cancelPair: EndpointServerCancelPair(raw),
   connect: EndpointServerConnect(raw),
 })
 
@@ -1139,6 +1162,11 @@ const EndpointSessionLog = (raw: RawClient["server.session"]) => (input: Session
     ),
   )
 
+const EndpointSessionWake = (raw: RawClient["server.session"]) => (input: SessionWakeInput) =>
+  preserveEffect<SessionWakeOutput>()(
+    raw["session.wake"]({ params: { sessionID: input["sessionID"] } }).pipe(Effect.mapError(mapClientError)),
+  )
+
 const EndpointSessionInterrupt = (raw: RawClient["server.session"]) => (input: SessionInterruptInput) =>
   preserveEffect<SessionInterruptOutput>()(
     raw["session.interrupt"]({ params: { sessionID: input["sessionID"] }, query: { resume: input["resume"] } }).pipe(
@@ -1196,9 +1224,10 @@ const EndpointSessionFormReply = (raw: RawClient["server.session"]) => (input: S
 
 const EndpointSessionFormCancel = (raw: RawClient["server.session"]) => (input: SessionFormCancelInput) =>
   preserveEffect<SessionFormCancelOutput>()(
-    raw["session.form.cancel"]({ params: { sessionID: input["sessionID"], formID: input["formID"] } }).pipe(
-      Effect.mapError(mapClientError),
-    ),
+    raw["session.form.cancel"]({
+      params: { sessionID: input["sessionID"], formID: input["formID"] },
+      query: { message: input["message"] },
+    }).pipe(Effect.mapError(mapClientError)),
   )
 
 const EndpointSessionEnvironment = (raw: RawClient["server.session"]) => (input: SessionEnvironmentInput) =>
@@ -1296,6 +1325,7 @@ const adaptGroupSession = (raw: RawClient["server.session"]) => ({
   },
   generate: EndpointSessionGenerate(raw),
   log: EndpointSessionLog(raw),
+  wake: EndpointSessionWake(raw),
   interrupt: EndpointSessionInterrupt(raw),
   background: EndpointSessionBackground(raw),
   message: { get: EndpointSessionMessageGet(raw) },
@@ -2401,6 +2431,62 @@ const adaptGroupServerIntelligence = (raw: RawClient["server.intelligence"]) => 
   probe: EndpointServerIntelligenceProbe(raw),
 })
 
+const EndpointWorkersList = (raw: RawClient["server.workers"]) => () =>
+  preserveEffect<WorkersListOutput>()(raw["workers.list"]({}).pipe(Effect.mapError(mapClientError)))
+
+const EndpointWorkersAdd = (raw: RawClient["server.workers"]) => (input: WorkersAddInput) =>
+  preserveEffect<WorkersAddOutput>()(
+    raw["workers.add"]({
+      payload: {
+        id: input["id"],
+        url: input["url"],
+        directories: input["directories"],
+        tags: input["tags"],
+        password: input["password"],
+        resourceID: input["resourceID"],
+      },
+    }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const EndpointWorkersRemove = (raw: RawClient["server.workers"]) => (input: WorkersRemoveInput) =>
+  preserveEffect<WorkersRemoveOutput>()(
+    raw["workers.remove"]({ params: { id: input["id"] } }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const EndpointWorkersProbe = (raw: RawClient["server.workers"]) => (input: WorkersProbeInput) =>
+  preserveEffect<WorkersProbeOutput>()(
+    raw["workers.probe"]({ params: { id: input["id"] } }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const EndpointWorkersSubmit = (raw: RawClient["server.workers"]) => (input: WorkersSubmitInput) =>
+  preserveEffect<WorkersSubmitOutput>()(
+    raw["workers.submit"]({ payload: { tasks: input["tasks"] } }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const EndpointWorkersRecover = (raw: RawClient["server.workers"]) => (input: WorkersRecoverInput) =>
+  preserveEffect<WorkersRecoverOutput>()(
+    raw["workers.recover"]({ params: { id: input["id"] }, payload: { task: input["task"] } }).pipe(
+      Effect.mapError(mapClientError),
+    ),
+  )
+
+const EndpointWorkersCollect = (raw: RawClient["server.workers"]) => (input: WorkersCollectInput) =>
+  preserveEffect<WorkersCollectOutput>()(
+    raw["workers.collect"]({ params: { id: input["id"] }, payload: { task: input["task"] } }).pipe(
+      Effect.mapError(mapClientError),
+    ),
+  )
+
+const adaptGroupWorkers = (raw: RawClient["server.workers"]) => ({
+  list: EndpointWorkersList(raw),
+  add: EndpointWorkersAdd(raw),
+  remove: EndpointWorkersRemove(raw),
+  probe: EndpointWorkersProbe(raw),
+  submit: EndpointWorkersSubmit(raw),
+  recover: EndpointWorkersRecover(raw),
+  collect: EndpointWorkersCollect(raw),
+})
+
 const adaptClient = (raw: RawClient) => ({
   server: adaptGroupServer(raw["server.server"]),
   location: adaptGroupLocation(raw["server.location"]),
@@ -2437,6 +2523,7 @@ const adaptClient = (raw: RawClient) => ({
   formatter: adaptGroupFormatter(raw["server.formatter"]),
   redskilled: adaptGroupRedskilled(raw["server.redskilled"]),
   "server.intelligence": adaptGroupServerIntelligence(raw["server.intelligence"]),
+  workers: adaptGroupWorkers(raw["server.workers"]),
 })
 
 export const make = (options?: { readonly baseUrl?: URL | string }) =>

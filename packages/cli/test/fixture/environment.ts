@@ -4,6 +4,8 @@ export function isolatedEnv(root: string, overrides: Record<string, string | und
   return {
     ...process.env,
     HOME: root,
+    USERPROFILE: root,
+    REDCODE_TEST_HOME: root,
     OPENCODE_CLI_CONFIG_CONTENT: undefined,
     OPENCODE_CONFIG_CONTENT: "{}",
     OPENCODE_CONFIG_DIR: path.join(root, "config"),

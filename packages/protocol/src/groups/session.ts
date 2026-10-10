@@ -1035,7 +1035,8 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI ext
           id: SessionMessage.ID.pipe(Schema.optional),
           delivery: SessionInbox.Delivery.pipe(Schema.optional),
           focus: Schema.String.pipe(Schema.optional).annotate({
-            description: "What the summary should cover in the most detail. Ignored when a pending compaction absorbs this request.",
+            description:
+              "What the summary should cover in the most detail. Ignored when a pending compaction absorbs this request.",
           }),
         }),
         success: Schema.Struct({ data: SessionInbox.Compaction }),
@@ -1282,6 +1283,21 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI ext
       ),
     )
     .add(
+      HttpApiEndpoint.post("session.wake", "/api/session/:sessionID/wake", {
+        params: { sessionID: Session.ID },
+        success: HttpApiSchema.NoContent,
+        error: SessionNotFoundError,
+      })
+        .middleware(sessionLocationMiddleware)
+        .annotateMerge(
+          OpenApi.annotations({
+            identifier: "session.wake",
+            summary: "Resume admitted session work",
+            description: "Schedule the process-local drain of an existing Session without admitting input or interrupting active execution. Wakeups coalesce; acceptance does not confirm completion or clustered ownership.",
+          }),
+        ),
+    )
+    .add(
       HttpApiEndpoint.post("session.interrupt", "/api/session/:sessionID/interrupt", {
         params: { sessionID: Session.ID },
         query: { resume: BooleanFromString.pipe(Schema.optional) },
@@ -1396,6 +1412,7 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI ext
     .add(
       HttpApiEndpoint.delete("session.form.cancel", "/api/session/:sessionID/form/:formID", {
         params: { sessionID: Schema.String, formID: Form.ID },
+        query: Schema.Struct({ message: Schema.optional(Schema.String) }),
         success: HttpApiSchema.NoContent,
         error: [SessionNotFoundError, FormAlreadySettledError, FormNotFoundError],
       })

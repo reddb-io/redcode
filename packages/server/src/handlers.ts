@@ -35,6 +35,7 @@ import { HookHandler } from "./handlers/hook"
 import { LSPHandler } from "./handlers/lsp"
 import { FormatterHandler } from "./handlers/formatter"
 import { RedskilledHandler } from "./handlers/redskilled"
+import { WorkersHandler } from "./handlers/workers"
 
 export const handlers = Layer.mergeAll(
   ServerHandler,
@@ -72,4 +73,5 @@ export const handlers = Layer.mergeAll(
   LSPHandler,
   FormatterHandler,
   RedskilledHandler,
+  WorkersHandler,
 )

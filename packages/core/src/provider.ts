@@ -35,6 +35,22 @@ export type ProviderPackage = ProviderPackageDefinition
 
 const packages = new Map<string, Promise<unknown>>()
 const builtins = new Map<string, () => Promise<unknown>>([
+  [
+    "@opencode/ai/providers/amazon-bedrock/mantle/messages",
+    () => import("@opencode/ai/providers/amazon-bedrock/mantle/messages"),
+  ],
+  ["@opencode/ai/providers/cohere", () => import("@opencode/ai/providers/cohere")],
+  ["@opencode/ai/providers/cohere/chat", () => import("@opencode/ai/providers/cohere/chat")],
+  ["@opencode/ai/providers/digitalocean", () => import("@opencode/ai/providers/digitalocean")],
+  ["@opencode/ai/providers/google/interactions", () => import("@opencode/ai/providers/google/interactions")],
+  [
+    "@opencode/ai/providers/google-vertex/interactions",
+    () => import("@opencode/ai/providers/google-vertex/interactions"),
+  ],
+  ["@opencode/ai/providers/google-vertex/mistral", () => import("@opencode/ai/providers/google-vertex/mistral")],
+  ["@opencode/ai/providers/venice", () => import("@opencode/ai/providers/venice")],
+  ["@opencode/ai/providers/vercel-ai-gateway", () => import("@opencode/ai/providers/vercel-ai-gateway")],
+
   ["@opencode/ai/providers/amazon-bedrock", () => import("@opencode/ai/providers/amazon-bedrock")],
   ["@opencode/ai/providers/amazon-bedrock/mantle", () => import("@opencode/ai/providers/amazon-bedrock/mantle")],
   [

@@ -35,7 +35,10 @@ export function reconcile(
   const authored = new Set(overrides.filter((item) => !item.disabled).map((item) => item.id))
   if (!reasoning) {
     const variants = model.variants.filter((variant) => !tracked.has(variant.id) || authored.has(variant.id))
-    return { variants, ids: [...tracked].filter((id) => authored.has(id) && variants.some((variant) => variant.id === id)) }
+    return {
+      variants,
+      ids: [...tracked].filter((id) => authored.has(id) && variants.some((variant) => variant.id === id)),
+    }
   }
   const existing = new Set(model.variants.map((variant) => variant.id))
   const disabled = new Set(overrides.filter((item) => item.disabled).map((item) => item.id))
@@ -555,7 +558,56 @@ const sapAICore: Protocol = (model, support) => {
   }
 }
 
+// Vertex MaaS models switch thinking through the chat template. DeepSeek names the flag `thinking`; the
+// others (GLM, Gemma) use `enable_thinking`.
+const vertexChat: Protocol = (model, support) => {
+  if (support.type !== "toggle") return openaiChat(model, support)
+  const key = modelID(model).toLowerCase().includes("deepseek") ? "thinking" : "enable_thinking"
+  return toggle(
+    { body: { chat_template_kwargs: { [key]: false } } },
+    { body: { chat_template_kwargs: { [key]: true } } },
+  )
+}
+
+const veniceChat: Protocol = (_, support) => {
+  if (support.type === "effort")
+    return efforts(support.values ?? EFFORTS, (effort) => ({ settings: { reasoningEffort: effort } }))
+  if (support.type === "toggle")
+    return toggle({ settings: { reasoning: { enabled: false } } }, { settings: { reasoning: { enabled: true } } })
+  return []
+}
+
+const vercelNativeGateway: Protocol = (model, support) => {
+  const id = modelID(model)
+  if (id.startsWith("openai/gpt-")) return openaiResponses(model, support)
+  if (id.startsWith("spacexai/grok-")) return openaiResponses(model, support)
+  if (id.startsWith("anthropic/")) return anthropicMessages(model, support)
+  switch (support.type) {
+    case "effort":
+      return openaiChat(model, support)
+    case "toggle":
+      return toggle({ settings: { thinking: { type: "disabled" } } }, { settings: { thinking: { type: "adaptive" } } })
+    case "budget_tokens":
+      return budgets(
+        model,
+        support,
+        (tokens) => ({ settings: { thinking: { type: "enabled", budgetTokens: tokens } } }),
+        id.startsWith("alibaba/") ? ALIBABA_THINKING_BUDGET_MAX : model.limit.output,
+      )
+  }
+}
+
 const PROTOCOLS: Readonly<Record<string, Protocol>> = {
+  "@opencode/ai/providers/azure/chat": openaiChat,
+  "@opencode/ai/providers/cohere": cohere,
+  "@opencode/ai/providers/cohere/chat": openaiChat,
+  "@opencode/ai/providers/digitalocean": openaiChat,
+  "@opencode/ai/providers/venice": veniceChat,
+  "@opencode/ai/providers/vercel-ai-gateway": vercelNativeGateway,
+  "@opencode/ai/providers/google/interactions": gemini,
+  "@opencode/ai/providers/google-vertex/interactions": gemini,
+  "@opencode/ai/providers/google-vertex/mistral": openaiChat,
+  "@opencode/ai/providers/amazon-bedrock/mantle/messages": anthropicMessages,
   "@opencode/ai/providers/openai": openaiResponses,
   "@opencode/ai/providers/azure/responses": openaiResponses,
   "@opencode/ai/providers/amazon-bedrock/mantle/chat": openaiResponses,
@@ -567,7 +619,7 @@ const PROTOCOLS: Readonly<Record<string, Protocol>> = {
   "@opencode/ai/providers/zai-coding-plan/responses": openaiResponses,
 
   "@opencode/ai/providers/openai-compatible": openaiCompatible,
-  "@opencode/ai/providers/google-vertex/chat": openaiChat,
+  "@opencode/ai/providers/google-vertex/chat": vertexChat,
   "@opencode/ai/providers/alibaba/chat": alibabaChat,
   "@opencode/ai/providers/baseten": basetenChat,
   "@opencode/ai/providers/cerebras": openaiChat,

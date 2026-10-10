@@ -135,7 +135,15 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
         ),
       },
     }),
-    Spec.make("acp", { description: "Start an Agent Client Protocol server" }),
+    Spec.make("acp", {
+      description: "Start an Agent Client Protocol server",
+      params: {
+        login: Flag.boolean("login").pipe(
+          Flag.withDescription("Run auth login instead of starting the server"),
+          Flag.withDefault(false),
+        ),
+      },
+    }),
     Spec.make("api", {
       description: "Make a request to the running server",
       params: {
@@ -305,6 +313,27 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
       description: "manage integrations and credentials",
       aliases: ["providers"],
       commands: [
+        Spec.make("export", {
+          description: "print stored credentials, including secrets, as JSON",
+          params: {
+            ...ServerParams,
+            target: Argument.string("target").pipe(
+              Argument.withDescription("Integration ID or name (exports every integration when omitted)"),
+              Argument.optional,
+            ),
+          },
+        }),
+        Spec.make("import", {
+          description: "import credentials exported by auth export",
+          params: {
+            ...ServerParams,
+            file: Argument.string("file").pipe(
+              Argument.withDescription("JSON file to import (reads stdin when omitted)"),
+              Argument.optional,
+            ),
+          },
+        }),
+
         Spec.make("list", {
           description: "list integrations and credentials",
           params: {
@@ -378,9 +407,76 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
         }),
       ],
     }),
+    Spec.make("workers", {
+      description: "Distribute tasks across independent Redcode servers",
+      params: {},
+      commands: [
+        Spec.make("add", {
+          description: "Register a worker checkout; credentials stay in an environment variable",
+          params: {
+            config: Flag.string("config").pipe(Flag.withDescription("Worker registry JSON file")),
+            id: Argument.string("id"),
+            url: Flag.string("url"),
+            directory: Flag.string("directory").pipe(Flag.withDescription("Absolute checkout path on the worker")),
+            passwordEnv: Flag.string("password-env"),
+            tag: Flag.string("tag").pipe(Flag.atMost(32)),
+          },
+        }),
+        Spec.make("list", {
+          description: "List workers and probe their system information",
+          params: { config: Flag.string("config") },
+        }),
+        Spec.make("remove", {
+          description: "Remove a worker registration without stopping its server",
+          params: { config: Flag.string("config"), id: Argument.string("id") },
+        }),
+        Spec.make("run", {
+          description: "Dispatch a task manifest, or observe its previously assigned Sessions",
+          params: {
+            config: Flag.string("config"),
+            manifest: Argument.string("manifest"),
+            report: Flag.string("report").pipe(Flag.withDescription("Persistent batch journal JSON file")),
+            timeout: Flag.integer("timeout").pipe(Flag.withSchema(Schema.Int.check(Schema.isGreaterThanOrEqualTo(1))), Flag.withDefault(300), Flag.withDescription("Seconds to observe each Session; unfinished work keeps its checkout reserved")),
+          },
+        }),
+        Spec.make("recover", {
+          description: "Recover ambiguous admission on its original worker using the saved IDs",
+          params: {
+            task: Argument.string("task"),
+            config: Flag.string("config"),
+            manifest: Flag.string("manifest"),
+            report: Flag.string("report"),
+            timeout: Flag.integer("timeout").pipe(Flag.withSchema(Schema.Int.check(Schema.isGreaterThanOrEqualTo(1))), Flag.withDefault(300)),
+          },
+        }),
+        Spec.make("collect", {
+          description: "Export a finished worker task's text patches and response for review",
+          params: {
+            task: Argument.string("task"),
+            config: Flag.string("config"),
+            manifest: Flag.string("manifest"),
+            report: Flag.string("report"),
+            output: Flag.string("output").pipe(Flag.withDescription("New output directory; existing directories are never overwritten")),
+          },
+        }),
+      ],
+    }),
     Spec.make("console", {
       description: `manage ${name} Console organizations`,
       commands: [
+        Spec.make("serve", {
+          description: "Run the local Redcode Console on a separate loopback listener",
+          params: {
+            port: Flag.integer("port").pipe(
+              Flag.withSchema(Schema.Int.check(Schema.isGreaterThanOrEqualTo(1), Schema.isLessThanOrEqualTo(65535))),
+              Flag.withDefault(35556),
+            ),
+            database: Flag.string("database").pipe(
+              Flag.withDescription("Console database file; defaults to console.db in the Redcode data directory"),
+              Flag.optional,
+            ),
+          },
+        }),
         Spec.make("orgs", { description: "list organizations for the active Console account", params: ServerParams }),
         Spec.make("switch", {
           description: "switch the active Console organization",
@@ -915,6 +1011,10 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
     Spec.make("pair", {
       description: "Print one-time links to connect a browser or app",
       params: {
+        remote: Flag.boolean("remote").pipe(
+          Flag.withDescription("Connect from other devices through an HTTPS tunnel"),
+          Flag.withDefault(false),
+        ),
         url: Flag.string("url").pipe(
           Flag.withDescription("Use an external HTTP(S) server URL in pairing links"),
           Flag.mapTryCatch(
@@ -970,6 +1070,7 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
       description: "Start the v2 API and web server",
       params: {
         hostname: Flag.string("hostname").pipe(Flag.optional),
+        accessConfig: Flag.string("access-config").pipe(Flag.withDescription("Console infrastructure authorization configuration file"), Flag.optional),
         port: Flag.integer("port").pipe(Flag.optional),
         cors: Flag.string("cors").pipe(
           Flag.withSchema(Schema.NonEmptyString),

@@ -5,6 +5,15 @@ import { Provider } from "@opencode/core/provider"
 describe("Provider", () => {
   test("loads bundled native provider entrypoints", async () => {
     const packages = [
+      "@opencode/ai/providers/amazon-bedrock/mantle/messages",
+      "@opencode/ai/providers/cohere",
+      "@opencode/ai/providers/cohere/chat",
+      "@opencode/ai/providers/digitalocean",
+      "@opencode/ai/providers/google/interactions",
+      "@opencode/ai/providers/google-vertex/interactions",
+      "@opencode/ai/providers/google-vertex/mistral",
+      "@opencode/ai/providers/venice",
+      "@opencode/ai/providers/vercel-ai-gateway",
       "@opencode/ai/providers/baseten",
       "@opencode/ai/providers/cerebras",
       "@opencode/ai/providers/cloudflare-ai-gateway",

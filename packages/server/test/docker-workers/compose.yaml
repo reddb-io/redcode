@@ -1,0 +1,54 @@
+x-worker: &worker
+  image: redcode-worker-lab:local
+  build:
+    context: ../../../..
+    dockerfile: packages/server/test/docker-workers/Dockerfile
+  init: true
+  cpus: 1.0
+  mem_limit: 1g
+  environment:
+    WORKER_PASSWORD: redcode-docker-fixture-only
+  healthcheck:
+    test:
+      [
+        "CMD",
+        "bun",
+        "-e",
+        "const r=await fetch('http://127.0.0.1:4096/api/info',{headers:{authorization:'Basic '+btoa('opencode:'+process.env.WORKER_PASSWORD)}});process.exit(r.ok?0:1)",
+      ]
+    interval: 2s
+    timeout: 5s
+    retries: 30
+    start_period: 10s
+  networks: [workers]
+
+services:
+  coordinator:
+    <<: *worker
+    ports: ["127.0.0.1:${COORDINATOR_PORT:-35572}:4096"]
+    environment:
+      WORKER_ID: coordinator
+      WORKER_PASSWORD: redcode-docker-fixture-only
+    volumes: [coordinator:/lab]
+  worker-a:
+    <<: *worker
+    ports: ["127.0.0.1:${WORKER_A_PORT:-35570}:4096"]
+    environment:
+      WORKER_ID: worker-a
+      WORKER_PASSWORD: redcode-docker-fixture-only
+    volumes: [worker-a:/lab]
+  worker-b:
+    <<: *worker
+    ports: ["127.0.0.1:${WORKER_B_PORT:-35571}:4096"]
+    environment:
+      WORKER_ID: worker-b
+      WORKER_PASSWORD: redcode-docker-fixture-only
+    volumes: [worker-b:/lab]
+
+volumes:
+  coordinator:
+  worker-a:
+  worker-b:
+networks:
+  workers:
+    driver: bridge

@@ -22,6 +22,9 @@ import { Project } from "@opencode/core/project"
 import { ProjectTable } from "@opencode/core/project/sql"
 import { Provider } from "@opencode/core/provider"
 import { Credential } from "@opencode/core/credential"
+import { Config } from "@opencode/core/config"
+import { InstructionDiscovery } from "@opencode/core/instruction-discovery"
+import { Watcher } from "@opencode/core/filesystem/watcher"
 import { AbsolutePath, RelativePath } from "@opencode/core/schema"
 import { Session } from "@opencode/core/session"
 import { SessionMessage } from "@opencode/core/session/message"
@@ -68,6 +71,9 @@ const liveIt = testEffect(
       Bus.node.replace(Bus.configured({ persist: true })),
       SessionExecution.node.replace(SessionExecution.noopLayer),
       offlineModels,
+      Config.node.replace(Config.configured({ global: false, project: false })),
+      InstructionDiscovery.node.replace(InstructionDiscovery.configured({ global: false, project: false })),
+      Watcher.node.replace(Watcher.configured({ enabled: false })),
     ],
   ),
 )

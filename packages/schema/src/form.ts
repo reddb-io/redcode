@@ -149,7 +149,7 @@ export type Answer = typeof Answer.Type
 export const State = Schema.Union([
   Schema.Struct({ status: Schema.Literal("pending") }),
   Schema.Struct({ status: Schema.Literal("answered"), answer: Answer }),
-  Schema.Struct({ status: Schema.Literal("cancelled") }),
+  Schema.Struct({ status: Schema.Literal("cancelled"), message: Schema.String.pipe(optional) }),
 ])
   .pipe(Schema.toTaggedUnion("status"))
   .annotate({ identifier: "Form.State" })

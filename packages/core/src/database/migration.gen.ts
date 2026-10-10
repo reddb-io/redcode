@@ -56,6 +56,11 @@ import m53 from "./migration/20260927095828_cache-root-lineage.js"
 import m54 from "./migration/20260927170000_redcode-worktrees.js"
 import m55 from "./migration/20261001144515_intelligence-cost.js"
 import m56 from "./migration/20261001170713_intelligence-observation.js"
+import m57 from "./migration/20261010093529_console_tenancy.js"
+import m58 from "./migration/20261010150140_console_federation.js"
+import m59 from "./migration/20261010172141_console_infrastructure.js"
+import m60 from "./migration/20261010173240_infrastructure_resource_origins.js"
+import m61 from "./migration/20261010181731_console_auth_settings.js"
 
 export const migrations = [
   m00,
@@ -115,4 +120,9 @@ export const migrations = [
   m54,
   m55,
   m56,
+  m57,
+  m58,
+  m59,
+  m60,
+  m61,
 ] satisfies DatabaseMigration.Migration[]

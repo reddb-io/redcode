@@ -588,7 +588,8 @@ function assertPromiseEndpoint(endpoint: Endpoint) {
   const payloadEncoding =
     payload === undefined
       ? undefined
-      : (resolveHttpApiEncoding(payload.ast)?._tag ?? (HttpMethod.hasBody(endpoint.endpoint.method) ? "Json" : "FormUrlEncoded"))
+      : (resolveHttpApiEncoding(payload.ast)?._tag ??
+        (HttpMethod.hasBody(endpoint.endpoint.method) ? "Json" : "FormUrlEncoded"))
   if (payloadEncoding !== undefined && payloadEncoding !== "Json" && payloadEncoding !== "Uint8Array") {
     throw new GenerationError({ reason: `Unsupported Promise payload encoding: ${name}` })
   }
@@ -1253,7 +1254,7 @@ function normalizePromiseClientContent(content: string, groups: ReadonlyArray<Gr
           'if (descriptor.body !== undefined && !headers.has("content-type"))\n      headers.set("content-type", descriptor.binaryBody ? "application/octet-stream" : "application/json")',
         ),
         "body: descriptor.body === undefined ? undefined : JSON.stringify(descriptor.body),",
-        "body:\n          descriptor.body === undefined\n            ? undefined\n            : descriptor.binaryBody\n              ? (descriptor.body as RequestInit[\"body\"])\n              : JSON.stringify(descriptor.body),",
+        'body:\n          descriptor.body === undefined\n            ? undefined\n            : descriptor.binaryBody\n              ? (descriptor.body as RequestInit["body"])\n              : JSON.stringify(descriptor.body),',
       )
     : binaryReady
   return usesWildcard
@@ -1919,7 +1920,6 @@ function renderSchemas(slots: ReadonlyArray<Slot>) {
       tagged.fields.map(([name, schema]) => ({ name: `Class${classIndex}${name}`, schema })),
     ),
   ]
-  const [first, ...rest] = expanded
   const document = SchemaRepresentation.toCodeDocument(
     SchemaRepresentation.toRepresentations(
       codegenAsts(expanded.map((slot) => slot.schema.ast)) as [SchemaAST.AST, ...Array<SchemaAST.AST>],

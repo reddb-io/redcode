@@ -19,6 +19,18 @@ const input = {
 } satisfies Form.CreateInput
 
 describe("Form", () => {
+  it.effect("preserves cancellation feedback for an ACP client", () =>
+    Effect.gen(function* () {
+      const service = yield* Form.Service
+      const form = yield* service.create({ ...input, id: Form.ID.create("frm_feedback") })
+      yield* service.cancel(form.id, { message: "The editor cannot display this question; continue with defaults." })
+      expect(yield* service.state(form.id)).toEqual({
+        status: "cancelled",
+        message: "The editor cannot display this question; continue with defaults.",
+      })
+    }),
+  )
+
   it.effect("validates absolute URI formats without restricting schemes", () =>
     Effect.sync(() => {
       const fields = [{ key: "uri", type: "string", format: "uri" }] satisfies ReadonlyArray<Form.Field>

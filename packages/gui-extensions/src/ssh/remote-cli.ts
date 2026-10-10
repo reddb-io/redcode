@@ -24,12 +24,12 @@ export function requireVersion(version: string) {
 }
 
 export function discoverScript(options: { fromPath?: boolean; cache?: { directory: string; prefix: string } } = {}) {
-  return `cli=${options.fromPath ? "$(command -v opencode || true)" : '""'}
-if [ -z "$cli" ] && [ -x "$HOME/.opencode/bin/opencode" ]; then cli="$HOME/.opencode/bin/opencode"; fi
+  return `cli=${options.fromPath ? "$(command -v redcode || true)" : '""'}
+if [ -z "$cli" ] && [ -x "$HOME/.red/code/bin/redcode" ]; then cli="$HOME/.red/code/bin/redcode"; fi
 ${
   options.cache
     ? `if [ -z "$cli" ]; then
-  for binary in "$HOME"/${quote(options.cache.directory)}/${quote(options.cache.prefix)}*/opencode; do
+  for binary in "$HOME"/${quote(options.cache.directory)}/${quote(options.cache.prefix)}*/redcode; do
     if [ -x "$binary" ]; then cli="$binary"; fi
   done
 fi
@@ -72,65 +72,65 @@ fi
 printf 'OPENCODE_REMOTE_TARGET=%s\\n' "$target"
 `
 
-export function archiveUrl(target: string, version: string) {
+export function archiveUrl(target: string, version: string, companion = false) {
   if (!/^(linux|darwin)-(x64-baseline|arm64)(-musl)?$/.test(target))
     throw new Failure({ code: "platform", detail: target })
 
-  return `https://registry.npmjs.org/@opencode/cli-${target}/-/cli-${target}-${requireVersion(version)}.tgz`
+  const name = `redcode-${companion ? "design-" : ""}${target}`
+  return `https://registry.npmjs.org/@reddb-io/${name}/-/${name}-${requireVersion(version)}.tgz`
 }
 
-type Source = { type: "download"; url: string } | { type: "archive" } | { type: "installer"; binary?: string }
+type Source = { type: "download"; url: string; designURL: string } | { type: "archive"; companion?: boolean }
 
 export function installScript(input: { version: string; directory?: string; source: Source }) {
   const version = requireVersion(input.version)
 
-  // The managed CLI installer also configures the user's shell PATH. Private
-  // installations use archives so their destination and shell setup stay isolated.
-  if (input.source.type === "installer")
-    return `set -eu
-curl -fsSL https://raw.githubusercontent.com/anomalyco/opencode/v2/install | bash -s -- ${input.source.binary ? `--binary ${input.source.binary}` : `--version ${quote(version)}`}
-${verifyScript('"$HOME/.opencode/bin/opencode"', version)}
-`
-
   return `set -eu
 umask 077
-destination="$HOME"/${quote(`${input.directory ?? ".opencode/bin"}/opencode`)}
-mkdir -p "$(dirname "$destination")"
-stage=$(mktemp -d "$(dirname "$destination")/.install-XXXXXX")
+destination="$HOME"/${quote(input.directory ?? ".red/code/bin")}
+mkdir -p "$destination"
+stage=$(mktemp -d "$destination/.install-XXXXXX")
 trap 'rm -rf "$stage"' EXIT
 ${stageBinary(input.source)}
-chmod 755 "$stage/package/bin/opencode"
-${verifyScript('"$stage/package/bin/opencode"', version)}
-mv "$stage/package/bin/opencode" "$destination"
+chmod 755 "$stage/package/bin/"*
+${input.source.type === "archive" && input.source.companion ? 'test -f "$stage/package/bin/redcode-design"' : `test -f "$stage/package/bin/redcode-rpc-sidecar"\n${verifyScript('"$stage/package/bin/redcode"', version)}`}
+${input.source.type === "download" ? 'test -f "$stage/package/bin/redcode-design"' : ""}
+mv "$stage/package/bin/"* "$destination/"
 `
 }
 
-function stageBinary(source: Exclude<Source, { type: "installer" }>) {
+function stageBinary(source: Source) {
   if (source.type === "archive") return 'cat > "$stage/archive.tgz"\ntar -xzf "$stage/archive.tgz" -C "$stage"'
 
-  return `url=${quote(source.url)}
+  return [source.url, source.designURL]
+    .map(
+      (url) => `url=${quote(url)}
 if command -v curl >/dev/null 2>&1; then
   curl -fsSL --connect-timeout 15 --max-time 180 "$url" -o "$stage/archive.tgz"
 else
   wget -T 180 -O "$stage/archive.tgz" "$url"
 fi
-tar -xzf "$stage/archive.tgz" -C "$stage"`
+tar -xzf "$stage/archive.tgz" -C "$stage"`,
+    )
+    .join("\n")
 }
 
 function verifyScript(command: string, version: string) {
   return `test "$(${command} --version | awk '{print $NF}' | sed 's/^v//')" = ${quote(version)}`
 }
 
-const Beta = Schema.Struct({ version: Schema.String.check(Schema.isPattern(/^0\.0\.0-beta-\d+(?:\.\d+)?$/)) })
+const Release = Schema.Struct({ version: Schema.String.check(Schema.isPattern(/^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$/)) })
 
-export const latestBeta = Effect.fn("RemoteCli.latestBeta")(function* () {
+export const latestRelease = Effect.fn("RemoteCli.latestRelease")(function* () {
   const http = yield* HttpClient.HttpClient
 
-  const metadata = yield* http.get("https://registry.npmjs.org/@opencode%2fcli/beta").pipe(
+  const metadata = yield* http.get("https://registry.npmjs.org/@reddb-io%2fredcode/latest").pipe(
     Effect.flatMap(HttpClientResponse.filterStatusOk),
-    Effect.flatMap(HttpClientResponse.schemaBodyJson(Beta)),
+    Effect.flatMap(HttpClientResponse.schemaBodyJson(Release)),
     Effect.timeout("30 seconds"),
-    Effect.mapError(() => new Failure({ code: "install", detail: "https://registry.npmjs.org/@opencode%2fcli/beta" })),
+    Effect.mapError(
+      () => new Failure({ code: "install", detail: "https://registry.npmjs.org/@reddb-io%2fredcode/latest" }),
+    ),
   )
 
   return metadata.version

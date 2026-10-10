@@ -931,6 +931,18 @@ export type ConnectionCheckRequest1 = {
   failure?: "timeout" | "network" | "body" | null
 }
 
+export type WorkerName = string
+
+export type WorkerState =
+  | "queued"
+  | "dispatching"
+  | "running"
+  | "waiting"
+  | "unknown"
+  | "succeeded"
+  | "failed"
+  | "interrupted"
+
 export type SessionMessageLocationSwitched = {
   id: string
   metadata?: { [x: string]: JsonValue }
@@ -2484,6 +2496,36 @@ export type IntelligenceCheck = {
   requests?: Array<ConnectionCheckRequest1> | null
 }
 
+export type WorkerRegistration = {
+  id: WorkerName
+  url: string
+  passwordEnv: WorkerName
+  directories: Array<string>
+  tags: Array<string>
+  resourceID?: string
+}
+
+export type WorkerTask = {
+  id: WorkerName
+  prompt: string
+  tags?: Array<string>
+  worker?: WorkerName
+  agent?: string
+  model?: { providerID: string; id: string }
+}
+
+export type WorkerEntry = {
+  id: WorkerName
+  state: WorkerState
+  worker?: WorkerName
+  url?: string
+  directory?: string
+  sessionID?: string
+  messageID?: string
+  detail?: string
+  text?: string
+}
+
 export type SessionInboxMove = {
   id: string
   sessionID: string
@@ -2718,7 +2760,10 @@ export type FormField =
   | FormMultiselectField
   | FormExternalField
 
-export type FormState = { status: "pending" } | { status: "answered"; answer: FormAnswer } | { status: "cancelled" }
+export type FormState =
+  | { status: "pending" }
+  | { status: "answered"; answer: FormAnswer }
+  | { status: "cancelled"; message?: string }
 
 export type CredentialKey = {
   type: "key"
@@ -2773,6 +2818,24 @@ export type IntelligenceDetectedRouter = {
   detection: RouterDetection
   evaluator?: IntelligenceEvaluator
   recommended?: RouterRecommendations
+}
+
+export type WorkerStatus = {
+  worker: WorkerRegistration
+  connection: "unchecked" | "online" | "offline"
+  platform?: string
+}
+
+export type WorkerManifest = { tasks: Array<WorkerTask> }
+
+export type WorkerReport = { fingerprint: string; tasks: Array<WorkerEntry> }
+
+export type WorkerArtifact = {
+  task: WorkerEntry
+  files: Array<FileDiffInfo>
+  patch: string
+  patchSha256: string
+  collectedAt: string
 }
 
 export type SessionMessageCompactionCompleted = {
@@ -3288,6 +3351,17 @@ export type CredentialValue = CredentialOAuth | CredentialKey | CredentialExtern
 
 export type FormFields2 = [FormField1, ...Array<FormField1>]
 
+export type WorkerBatch = {
+  id: WorkerName
+  createdAt: string
+  manifest: WorkerManifest
+  report?: WorkerReport
+  observing: boolean
+  error?: string
+  accountID?: string
+  workspaceID?: string
+}
+
 export type SessionMessageCompaction =
   | SessionMessageCompactionRunning
   | SessionMessageCompactionCompleted
@@ -3422,6 +3496,13 @@ export type CredentialEntry = {
 }
 
 export type FormInfo1 = { id: string; sessionID: string; title: string; metadata?: FormMetadata1; fields: FormFields2 }
+
+export type WorkerSnapshot = {
+  available: boolean
+  reason?: string
+  workers: Array<WorkerStatus>
+  batches: Array<WorkerBatch>
+}
 
 export type SessionMessageInfo =
   | SessionMessageAgentSelected
@@ -3650,6 +3731,10 @@ export const isInvalidRequestError = (value: unknown): value is InvalidRequestEr
 export type UnauthorizedError = { readonly _tag: "UnauthorizedError"; readonly message: string }
 export const isUnauthorizedError = (value: unknown): value is UnauthorizedError =>
   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "UnauthorizedError"
+
+export type ConsoleForbiddenError = { readonly _tag: "ConsoleForbiddenError"; readonly message: string }
+export const isConsoleForbiddenError = (value: unknown): value is ConsoleForbiddenError =>
+  typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "ConsoleForbiddenError"
 
 export type LocationNotFoundError = {
   readonly _tag: "LocationNotFoundError"
@@ -3915,6 +4000,10 @@ export type ServerInfoOutput = ServerInfo
 export type ServerSystemOutput = SystemInfo
 
 export type ServerPairOutput = PairingCode
+
+export type ServerCancelPairInput = { readonly code: { readonly code: string }["code"] }
+
+export type ServerCancelPairOutput = void
 
 export type ServerConnectInput = { readonly code: { readonly code: string }["code"] }
 
@@ -7763,6 +7852,10 @@ export type SessionLogInput = {
 
 export type SessionLogOutput = SessionLogItem
 
+export type SessionWakeInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
+
+export type SessionWakeOutput = void
+
 export type SessionInterruptInput = {
   readonly sessionID: { readonly sessionID: string }["sessionID"]
   readonly resume?: { readonly resume?: boolean | undefined }["resume"]
@@ -8655,6 +8748,7 @@ export type SessionFormReplyOutput = void
 export type SessionFormCancelInput = {
   readonly sessionID: { readonly sessionID: string; readonly formID: string }["sessionID"]
   readonly formID: { readonly sessionID: string; readonly formID: string }["formID"]
+  readonly message?: { readonly message?: string | undefined }["message"]
 }
 
 export type SessionFormCancelOutput = void
@@ -11108,3 +11202,95 @@ export type ServerIntelligenceProbeInput = {
 }
 
 export type ServerIntelligenceProbeOutput = IntelligenceCheck
+
+export type WorkersListOutput = WorkerSnapshot
+
+export type WorkersAddInput = {
+  readonly id: {
+    readonly id: string
+    readonly url: string
+    readonly directories: ReadonlyArray<string>
+    readonly tags: ReadonlyArray<string>
+    readonly password: string
+    readonly resourceID?: string
+  }["id"]
+  readonly url: {
+    readonly id: string
+    readonly url: string
+    readonly directories: ReadonlyArray<string>
+    readonly tags: ReadonlyArray<string>
+    readonly password: string
+    readonly resourceID?: string
+  }["url"]
+  readonly directories: {
+    readonly id: string
+    readonly url: string
+    readonly directories: ReadonlyArray<string>
+    readonly tags: ReadonlyArray<string>
+    readonly password: string
+    readonly resourceID?: string
+  }["directories"]
+  readonly tags: {
+    readonly id: string
+    readonly url: string
+    readonly directories: ReadonlyArray<string>
+    readonly tags: ReadonlyArray<string>
+    readonly password: string
+    readonly resourceID?: string
+  }["tags"]
+  readonly password: {
+    readonly id: string
+    readonly url: string
+    readonly directories: ReadonlyArray<string>
+    readonly tags: ReadonlyArray<string>
+    readonly password: string
+    readonly resourceID?: string
+  }["password"]
+  readonly resourceID?: {
+    readonly id: string
+    readonly url: string
+    readonly directories: ReadonlyArray<string>
+    readonly tags: ReadonlyArray<string>
+    readonly password: string
+    readonly resourceID?: string
+  }["resourceID"]
+}
+
+export type WorkersAddOutput = WorkerStatus
+
+export type WorkersRemoveInput = { readonly id: { readonly id: string }["id"] }
+
+export type WorkersRemoveOutput = void
+
+export type WorkersProbeInput = { readonly id: { readonly id: string }["id"] }
+
+export type WorkersProbeOutput = WorkerStatus
+
+export type WorkersSubmitInput = {
+  readonly tasks: {
+    readonly tasks: ReadonlyArray<{
+      readonly id: string
+      readonly prompt: string
+      readonly tags?: ReadonlyArray<string>
+      readonly worker?: string
+      readonly agent?: string
+      readonly model?: { readonly providerID: string; readonly id: string }
+    }>
+  }["tasks"]
+}
+
+export type WorkersSubmitOutput = WorkerBatch
+
+export type WorkersRecoverInput = {
+  readonly id: { readonly id: string }["id"]
+  readonly task: { readonly task: string }["task"]
+}
+
+export type WorkersRecoverOutput = WorkerBatch
+
+export type WorkersCollectInput = {
+  readonly id: { readonly id: string }["id"]
+  readonly task: { readonly task: string }["task"]
+}
+
+export type WorkersCollectOutput = WorkerArtifact

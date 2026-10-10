@@ -1,4 +1,5 @@
 export const dict = {
+  "remoteWorkers.resourceID": "ID do recurso no Console (opcional; necessário para acesso da organização)",
   "common.color.orange": "laranja",
   "common.color.yellow": "amarelo",
   "common.color.cyan": "ciano",

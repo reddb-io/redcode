@@ -1,4 +1,5 @@
 import { Session } from "@opencode/core/session"
+import { SessionExecution } from "@opencode/core/session/execution"
 import { Bus } from "@opencode/core/bus"
 import { MonitorRuntime } from "@opencode/core/monitor"
 import { Monitor } from "@opencode/schema/monitor"
@@ -57,6 +58,7 @@ function missingForm(id: Form.ID) {
 export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handlers) =>
   Effect.gen(function* () {
     const session = yield* Session.Service
+    const execution = yield* SessionExecution.Service
     const bus = yield* Bus.Service
     const goals = yield* SessionGoal.Service
     const budgets = yield* SessionBudget.Service
@@ -368,14 +370,12 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
             .start(ctx.params.sessionID, ctx.payload)
             .pipe(Effect.mapError((error) => new InvalidRequestError({ message: error.message })))
           if (ctx.payload.agent)
-            yield* session
-              .switchAgent({ sessionID: ctx.params.sessionID, agent: ctx.payload.agent })
-              .pipe(
-                Effect.catchTag("Session.NotFoundError", missingSession),
-                Effect.catchTag("Tool.Error", (error) =>
-                  Effect.fail(new InvalidRequestError({ message: `Could not prepare Build worktree: ${error.message}` })),
-                ),
-              )
+            yield* session.switchAgent({ sessionID: ctx.params.sessionID, agent: ctx.payload.agent }).pipe(
+              Effect.catchTag("Session.NotFoundError", missingSession),
+              Effect.catchTag("Tool.Error", (error) =>
+                Effect.fail(new InvalidRequestError({ message: `Could not prepare Build worktree: ${error.message}` })),
+              ),
+            )
           if (ctx.payload.model)
             yield* session
               .switchModel({ sessionID: ctx.params.sessionID, model: ctx.payload.model })
@@ -652,14 +652,12 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
       .handle(
         "session.switchAgent",
         Effect.fn(function* (ctx) {
-          yield* session
-            .switchAgent({ sessionID: ctx.params.sessionID, agent: ctx.payload.agent })
-            .pipe(
-              Effect.catchTag("Session.NotFoundError", missingSession),
-              Effect.catchTag("Tool.Error", (error) =>
-                Effect.fail(new InvalidRequestError({ message: `Could not prepare Build worktree: ${error.message}` })),
-              ),
-            )
+          yield* session.switchAgent({ sessionID: ctx.params.sessionID, agent: ctx.payload.agent }).pipe(
+            Effect.catchTag("Session.NotFoundError", missingSession),
+            Effect.catchTag("Tool.Error", (error) =>
+              Effect.fail(new InvalidRequestError({ message: `Could not prepare Build worktree: ${error.message}` })),
+            ),
+          )
           return HttpApiSchema.NoContent.make()
         }),
       )
@@ -758,7 +756,9 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
                   Effect.fail(new InvalidRequestError({ message: `Skill not found: ${error.skill}`, field: "skills" })),
                 ),
                 Effect.catchTag("Tool.Error", (error) =>
-                  Effect.fail(new InvalidRequestError({ message: `Could not prepare Build worktree: ${error.message}` })),
+                  Effect.fail(
+                    new InvalidRequestError({ message: `Could not prepare Build worktree: ${error.message}` }),
+                  ),
                 ),
                 locationErrors,
               ),
@@ -1047,6 +1047,14 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
         }),
       )
       .handle(
+        "session.wake",
+        Effect.fn(function* (ctx) {
+          yield* session.get(ctx.params.sessionID).pipe(Effect.catchTag("Session.NotFoundError", missingSession))
+          yield* execution.wake(ctx.params.sessionID)
+          return HttpApiSchema.NoContent.make()
+        }),
+      )
+      .handle(
         "session.interrupt",
         Effect.fn(function* (ctx) {
           return { interrupted: yield* session.interrupt(ctx.params.sessionID, { resume: ctx.query.resume }) }
@@ -1131,7 +1139,7 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
         "session.form.cancel",
         Effect.fn(function* (ctx) {
           const owned = yield* requireOwnedForm(ctx.params.sessionID, ctx.params.formID)
-          yield* owned.form.cancel(ctx.params.formID).pipe(
+          yield* owned.form.cancel(ctx.params.formID, { message: ctx.query.message }).pipe(
             Effect.catchTags({
               "Form.AlreadySettledError": (error) =>
                 new FormAlreadySettledError({ id: error.id, message: error.message }),

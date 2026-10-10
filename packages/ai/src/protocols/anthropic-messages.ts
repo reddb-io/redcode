@@ -457,21 +457,29 @@ const AnthropicStreamDelta = Schema.Struct({
 type AnthropicStreamDelta = Schema.Schema.Type<typeof AnthropicStreamDelta>
 const decodeAnthropicStreamDelta = Schema.decodeUnknownOption(AnthropicStreamDelta)
 
-const AnthropicEvent = Schema.Struct({
-  type: Schema.String,
-  index: Schema.optional(Schema.Number),
-  message: Schema.optional(Schema.Struct({ usage: Schema.optional(AnthropicUsage) })),
-  content_block: Schema.optional(Schema.Unknown),
-  delta: Schema.optional(Schema.Unknown),
-  usage: Schema.optional(AnthropicUsage),
-  // `type` and `message` are both required per Anthropic's spec, but
-  // OpenAI-compatible proxies and gateway translations occasionally drop one
-  // or the other; mark them optional so a partial payload still parses and
-  // the parser can fall back to whichever field is populated.
-  error: Schema.optional(
-    Schema.Struct({ type: Schema.optional(Schema.String), message: Schema.optional(Schema.String) }),
-  ),
-})
+const AnthropicEvent = Schema.StructWithRest(
+  Schema.Struct({
+    type: Schema.String,
+    index: Schema.optional(Schema.Number),
+    message: Schema.optional(
+      Schema.StructWithRest(Schema.Struct({ usage: Schema.optional(AnthropicUsage) }), [JsonObject]),
+    ),
+    content_block: Schema.optional(Schema.Unknown),
+    delta: Schema.optional(Schema.Unknown),
+    usage: Schema.optional(AnthropicUsage),
+    // `type` and `message` are both required per Anthropic's spec, but
+    // OpenAI-compatible proxies and gateway translations occasionally drop one
+    // or the other; mark them optional so a partial payload still parses and
+    // the parser can fall back to whichever field is populated.
+    error: Schema.optional(
+      Schema.StructWithRest(
+        Schema.Struct({ type: Schema.optional(Schema.String), message: Schema.optional(Schema.String) }),
+        [JsonObject],
+      ),
+    ),
+  }),
+  [JsonObject],
+)
 type AnthropicEvent = Schema.Schema.Type<typeof AnthropicEvent>
 
 interface ParserState {
@@ -515,13 +523,15 @@ const cacheControl = (breakpoints: Cache.Breakpoints, cache: CacheHint | undefin
 const providerMetadata = (key: string, metadata: Record<string, unknown>): ProviderMetadata => ({ [key]: metadata })
 
 const signatureFromMetadata = (metadata: ProviderMetadata | undefined, key: string): string | undefined => {
-  const provider = metadata?.[key]
+  // Older Vertex sessions persisted Anthropic thinking metadata under the anthropic key.
+  const provider = metadata?.[key] ?? (key === "vertex" ? metadata?.anthropic : undefined)
   if (!ProviderShared.isRecord(provider)) return undefined
   return typeof provider.signature === "string" ? provider.signature : undefined
 }
 
 const redactedDataFromMetadata = (metadata: ProviderMetadata | undefined, key: string): string | undefined => {
-  const provider = metadata?.[key]
+  // Older Vertex sessions persisted Anthropic thinking metadata under the anthropic key.
+  const provider = metadata?.[key] ?? (key === "vertex" ? metadata?.anthropic : undefined)
   if (!ProviderShared.isRecord(provider)) return undefined
   return typeof provider.redactedData === "string" ? provider.redactedData : undefined
 }
@@ -592,7 +602,10 @@ const lowerServerToolResult = Effect.fn("AnthropicMessages.lowerServerToolResult
     return yield* invalid(`Anthropic Messages does not know how to round-trip server tool result for ${part.name}`)
   // Prefer the provider-owned replay payload; fall back to the result value for
   // histories constructed directly from provider events.
-  const payload = part.providerMetadata?.[providerMetadataKey]?.["result"] ?? part.result.value
+  const payload =
+    part.providerMetadata?.[providerMetadataKey]?.["result"] ??
+    (providerMetadataKey === "vertex" ? part.providerMetadata?.anthropic?.["result"] : undefined) ??
+    part.result.value
   return {
     type: wireType,
     tool_use_id: scrubToolCallID(part.id),

@@ -14,7 +14,14 @@ const Body = Schema.Struct({
   ...AnthropicMessages.AnthropicMessagesBody.fields,
   tools: optionalArray(
     Schema.Union([
-      Schema.Struct({ name: Schema.String, description: Schema.String, input_schema: JsonObject }),
+      Schema.Struct({
+        name: Schema.String,
+        description: Schema.String,
+        input_schema: JsonObject,
+        cache_control: Schema.optional(
+          Schema.Struct({ type: Schema.tag("ephemeral"), ttl: Schema.optional(Schema.Literals(["5m", "1h"])) }),
+        ),
+      }),
       WebSearch,
     ]),
   ),

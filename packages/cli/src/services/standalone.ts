@@ -53,7 +53,8 @@ const makeEndpoint = Effect.fn("cli.standalone.endpoint")(
       url: ready.url,
       auth: { type: "basic" as const, username: "opencode", password },
       pid: proc.pid,
-    } satisfies Endpoint & { readonly pid: number }
+      exited: proc.exitCode,
+    } satisfies Endpoint & { readonly pid: number; readonly exited: typeof proc.exitCode }
   },
   Effect.provide(LayerNode.compile(CrossSpawnSpawner.node)),
 )

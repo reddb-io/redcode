@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en" data-theme="application" data-color-scheme="dark" data-density="compact">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Redcode Console</title>
+  </head>
+  <body class="console-signed-out">
+    <div class="console-shell">
+      <header class="console-topbar">
+        <a id="brand" href="#overview" aria-label="Redcode Console home"
+          ><strong>Redcode</strong><span>Console</span></a
+        >
+        <div id="account"></div>
+      </header>
+      <div class="console-frame">
+        <div id="rail-region" hidden>
+          <nav id="scope-rail" aria-label="Console scopes"></nav>
+        </div>
+        <button id="drawer-backdrop" type="button" aria-label="Close sidebar panel" hidden></button>
+        <aside id="sidebar" hidden aria-label="Console navigation">
+          <div class="console-sidebar-heading">
+            <strong id="scope-title"></strong>
+            <button id="close-sidebar" type="button" aria-label="Close sidebar panel"></button>
+          </div>
+          <div id="context"></div>
+          <nav id="navigation" aria-label="Scope navigation"></nav>
+          <footer class="console-sidebar-footer">
+            <span id="local-status">Local Console</span>
+            <p>Running on this computer</p>
+          </footer>
+        </aside>
+        <div class="console-content">
+          <button id="open-sidebar" type="button" aria-label="Open sidebar panel" aria-controls="sidebar"></button>
+          <header class="console-header">
+            <div class="console-identity">
+              <p id="page-context" class="console-eyebrow"></p>
+              <h1 id="page-title"></h1>
+              <p id="page-description" class="console-description"></p>
+            </div>
+            <div id="page-actions"></div>
+          </header>
+          <div id="notice" role="alert"></div>
+          <section id="secret" hidden aria-labelledby="secret-title">
+            <h2 id="secret-title">Copy this code now</h2>
+            <p id="secret-hint"></p>
+            <pre id="secret-value"></pre>
+            <div class="console-secret-actions">
+              <button id="copy-secret">Copy code</button><button id="dismiss-secret">Dismiss</button>
+            </div>
+          </section>
+          <main id="main" aria-label="Console administration"></main>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

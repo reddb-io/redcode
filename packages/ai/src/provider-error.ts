@@ -1,4 +1,4 @@
-import { Option, Schema } from "effect"
+import { Option, Schema, SchemaGetter } from "effect"
 import {
   AuthenticationError,
   ContentPolicyError,
@@ -51,7 +51,12 @@ const patterns = [
 
 const payloadPatterns = [/request entity too large/i, /payload too large/i, /request too large/i]
 
-const exclusions = [/^(throttling error|service unavailable):/i, /rate limit/i, /too many requests/i]
+const exclusions = [
+  /^(throttling error|service unavailable):/i,
+  /rate limit/i,
+  /too many requests/i,
+  /max[_ ]tokens must be less than/i,
+]
 
 export const isContextOverflow = (message: string) =>
   !exclusions.some((pattern) => pattern.test(message)) &&
@@ -173,6 +178,41 @@ const CONTENT_POLICY_TEXT =
 const SERVER_ERROR_TEXT =
   /\b(?:try again|(?:please |you can )?retry (?:the |this |your )?request|try (?:the |this |your )?request again|(?:currently |temporarily )?at capacity|overloaded|temporarily unavailable|service[-_\s]?unavailable|(?:server|internal)[-_\s]?error|server (?:is )?busy|provider returned (?:an )?error|resource[-_\s]?exhausted|upstream (?:connect|connection|request)|request buffer limit while retrying upstream)\b/i
 
+const Message = Schema.String.check(Schema.isPattern(/\S/))
+
+const messageAt = <Fields extends Schema.Struct.Fields>(
+  fields: Fields,
+  message: (body: Schema.Struct<Fields>["Type"]) => string,
+) =>
+  Schema.Struct(fields).pipe(
+    Schema.decodeTo(Schema.String, {
+      decode: SchemaGetter.transform(message),
+      encode: SchemaGetter.forbidden(() => "Provider error messages are decode-only"),
+    }),
+  )
+
+// Common error body layouts that carry a human-readable message, in priority order.
+// Provider-specific layouts belong in their protocol.
+const decodeMessage = Schema.decodeUnknownOption(
+  Schema.fromJsonString(
+    Schema.Union([
+      messageAt({ error: Schema.Struct({ message: Message }) }, (body) => body.error.message),
+      messageAt({ error: Message }, (body) => body.error),
+      messageAt({ message: Message }, (body) => body.message),
+      // AWS services
+      messageAt({ Message: Message }, (body) => body.Message),
+      // RFC 9457 problem details
+      messageAt({ detail: Message }, (body) => body.detail),
+      messageAt(
+        { errors: Schema.NonEmptyArray(Schema.Struct({ message: Message })) },
+        (body) => body.errors[0].message,
+      ),
+    ]),
+  ),
+)
+
+export const providerErrorMessage = (body: string) => Option.getOrUndefined(decodeMessage(body))
+
 export interface ProviderFailure {
   readonly message: string
   readonly status?: number | undefined
@@ -207,7 +247,11 @@ export function classifyProviderFailure(input: ProviderFailure): AIError["reason
   const text = [input.message, body].filter((value) => value.length > 0).join("\n")
   const clientScoped = input.status === undefined || (input.status >= 400 && input.status < 500)
 
-  if (clientScoped && (codes.some((code) => CONTEXT_OVERFLOW_CODES.has(code)) || isContextOverflow(text)))
+  if (
+    clientScoped &&
+    !/max[_ ]tokens must be less than/i.test(text) &&
+    (codes.some((code) => CONTEXT_OVERFLOW_CODES.has(code)) || isContextOverflow(text))
+  )
     return new InvalidRequestError({ ...details, classification: "context-overflow" })
   if (input.status === 413 || isPayloadTooLarge(text))
     return new InvalidRequestError({ ...details, classification: "payload-too-large" })

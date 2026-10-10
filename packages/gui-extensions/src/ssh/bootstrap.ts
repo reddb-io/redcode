@@ -8,7 +8,7 @@ import { RemoteCli } from "./remote-cli"
 const registrationScript = `status=$("$cli" service status) || exit 0
 if [ "$status" = stopped ]; then exit 0; fi
 printf 'OPENCODE_SSH_STATUS=%s\\n' "$status"
-for file in "\${XDG_STATE_HOME:-$HOME/.local/state}"/opencode/service*.json; do
+for file in "$HOME"/.red/code/state/service*.json; do
   if [ ! -f "$file" ]; then continue; fi
   printf 'OPENCODE_SSH_REGISTRATION_BEGIN\\n'
   cat "$file"
@@ -17,7 +17,7 @@ done
 `
 
 export const discoverScript = `set -eu
-${RemoteCli.discoverScript({ fromPath: true, cache: { directory: ".opencode/desktop-ssh", prefix: "0.0.0-beta-" } })}
+${RemoteCli.discoverScript({ fromPath: true, cache: { directory: ".red/code/desktop-ssh", prefix: "" } })}
 if [ -z "$cli" ]; then exit 0; fi
 ${registrationScript}`
 
@@ -57,7 +57,7 @@ export function parseRegistration(output: string) {
 }
 
 export function binaryPath(version: string) {
-  return `$HOME/.opencode/desktop-ssh/${RemoteCli.requireVersion(version)}/opencode`
+  return `$HOME/.red/code/desktop-ssh/${RemoteCli.requireVersion(version)}/redcode`
 }
 
 function connectionAddress(address: string, password: string) {
@@ -102,15 +102,19 @@ export const bootstrap = Effect.fn("Ssh.bootstrap")(function* (input: {
 
   if (registered && !input.replace) return yield* Effect.fail(new SshFailure("version", registered.version))
   const destination = yield* Effect.try({ try: () => binaryPath(input.version), catch: SshFailure.from })
-  const existing = yield* run(RemoteCli.versionScript(`"${destination}"`))
+  const existing = yield* run(
+    `if [ -x "${destination}-rpc-sidecar" ] && [ -x "${destination}-design" ]; then\n${RemoteCli.versionScript(`"${destination}"`)}fi\n`,
+  )
   const staged = RemoteCli.parseVersion(existing) === input.version
 
-  // Source worktree versions are unpublished. Use the installer's beta channel
+  // Source worktree versions are unpublished. Use the published Redcode channel
   // while retaining support for explicitly staged, matching development builds.
   const version =
-    input.development && !staged ? yield* RemoteCli.latestBeta().pipe(Effect.mapError(SshFailure.from)) : input.version
+    input.development && !staged
+      ? yield* RemoteCli.latestRelease().pipe(Effect.mapError(SshFailure.from))
+      : input.version
 
-  const setup = { version, directory: `.opencode/desktop-ssh/${version}` }
+  const setup = { version, directory: `.red/code/desktop-ssh/${version}` }
 
   if (!staged) {
     const output = yield* run(RemoteCli.probeScript).pipe(Effect.mapError(() => new SshFailure("platform")))
@@ -121,33 +125,39 @@ export const bootstrap = Effect.fn("Ssh.bootstrap")(function* (input: {
       ?.split("=")[1]
 
     const url = yield* Effect.try({ try: () => RemoteCli.archiveUrl(target ?? "", version), catch: SshFailure.from })
+    const designURL = RemoteCli.archiveUrl(target ?? "", version, true)
     yield* input.stage("downloading")
-    yield* run(RemoteCli.installScript({ ...setup, source: { type: "download", url } })).pipe(
+    yield* run(RemoteCli.installScript({ ...setup, source: { type: "download", url, designURL } })).pipe(
       Effect.catch(
         Effect.fnUntraced(function* (error) {
           yield* input.stage("uploading")
           const http = yield* HttpClient.HttpClient
-          const response = yield* http.get(url).pipe(Effect.mapError(SshFailure.from))
+          for (const download of [
+            { url, companion: false },
+            { url: designURL, companion: true },
+          ]) {
+            const response = yield* http.get(download.url).pipe(Effect.mapError(SshFailure.from))
 
-          if (response.status < 200 || response.status >= 300)
-            return yield* Effect.fail(
-              new SshFailure(
-                response.status === 404 ? "unpublished" : "install",
-                JSON.stringify({ version, target, url, status: response.status }),
-              ),
-            )
-          const archive = new Uint8Array(yield* response.arrayBuffer.pipe(Effect.mapError(SshFailure.from)))
+            if (response.status < 200 || response.status >= 300)
+              return yield* Effect.fail(
+                new SshFailure(
+                  response.status === 404 ? "unpublished" : "install",
+                  JSON.stringify({ version, target, url: download.url, status: response.status }),
+                ),
+              )
+            const archive = new Uint8Array(yield* response.arrayBuffer.pipe(Effect.mapError(SshFailure.from)))
 
-          // The upload uses stdin; the script itself must be the remote command.
-          return yield* runSsh({
-            args: [
-              ...sshArgs(input.target),
-              input.target.host,
-              `sh -c ${quote(RemoteCli.installScript({ ...setup, source: { type: "archive" } }))}`,
-            ],
-            env: input.env,
-            stdin: archive,
-          }).pipe(Effect.mapError(() => new SshFailure("install", error.message)))
+            // The upload uses stdin; the script itself must be the remote command.
+            yield* runSsh({
+              args: [
+                ...sshArgs(input.target),
+                input.target.host,
+                `sh -c ${quote(RemoteCli.installScript({ ...setup, source: { type: "archive", companion: download.companion } }))}`,
+              ],
+              env: input.env,
+              stdin: archive,
+            }).pipe(Effect.mapError(() => new SshFailure("install", error.message)))
+          }
         }),
       ),
     )

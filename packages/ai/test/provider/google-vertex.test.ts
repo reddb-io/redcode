@@ -302,6 +302,7 @@ describe("Google Vertex providers", () => {
 
       expect(model.provider).toBe("google-vertex")
       expect(response.text).toBe("Hello.")
+      expect(response.usage?.providerMetadata).toHaveProperty("vertex")
     }),
   )
 
@@ -494,3 +495,38 @@ describe("Google Vertex providers", () => {
     )
   })
 })
+
+for (const key of ["anthropic", "vertex"] as const) {
+  it.effect(`preserves saved Vertex thinking metadata under ${key}`, () =>
+    Effect.gen(function* () {
+      const prepared = yield* compileRequest(
+        LLM.request({
+          model: GoogleVertexMessages.configure({ project: "fixture", accessToken: "fixture" }).model(
+            "claude-sonnet-4-5",
+          ),
+          messages: [
+            Message.assistant([
+              {
+                type: "reasoning",
+                text: "Saved reasoning",
+                providerMetadata: { [key]: { signature: "saved-signature" } },
+              },
+              { type: "reasoning", text: "", providerMetadata: { [key]: { redactedData: "saved-redacted" } } },
+            ]),
+          ],
+        }),
+      )
+      expect(prepared.body).toMatchObject({
+        messages: [
+          {
+            role: "assistant",
+            content: [
+              { type: "thinking", thinking: "Saved reasoning", signature: "saved-signature" },
+              { type: "redacted_thinking", data: "saved-redacted" },
+            ],
+          },
+        ],
+      })
+    }),
+  )
+}

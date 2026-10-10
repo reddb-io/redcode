@@ -8,8 +8,10 @@ import { Session } from "@opencode/core/session"
 import { Tool } from "@opencode/core/tool"
 import { QuestionTool } from "@opencode/core/tool/plugin/question"
 import { Image } from "@opencode/core/image"
+import { Location } from "@opencode/core/location"
 import { testEffect } from "./lib/effect"
 import { imagePassthrough } from "./lib/image"
+import { tempLocationLayer } from "./fixture/location"
 import { permissionLayer } from "./lib/permission"
 import { makeLocationNode } from "@opencode/util/effect/app-node"
 import { toolIdentity, executeTool, registerToolPlugin, toolDefinitions } from "./lib/tool"
@@ -18,6 +20,7 @@ const sessionID = Session.ID.make("ses_question_tool_test")
 const assertions: Permission.AssertInput[] = []
 let captured: Form.CreateInput | undefined
 let reject = false
+let cancelMessage: string | undefined
 let deny = false
 const capturedInput = () => captured
 const questionInput = {
@@ -53,7 +56,9 @@ const form = Layer.mock(Form.Service, {
       Effect.andThen(
         Effect.sync(
           (): Form.TerminalState =>
-            reject ? { status: "cancelled" } : { status: "answered", answer: { q0: "Build", q1: ["Dev"] } },
+            reject
+              ? { status: "cancelled", ...(cancelMessage === undefined ? {} : { message: cancelMessage }) }
+              : { status: "answered", answer: { q0: "Build", q1: ["Dev"] } },
         ),
       ),
     ),
@@ -69,6 +74,7 @@ const it = testEffect(
     Permission.node.replace(permission),
     Form.node.replace(form),
     Image.node.replace(imagePassthrough),
+    Location.node.replace(tempLocationLayer),
   ]),
 )
 
@@ -258,6 +264,22 @@ describe("QuestionTool", () => {
         expect(error).toBeInstanceOf(QuestionTool.CancelledError)
         expect(error).toHaveProperty("message", "The user dismissed this question")
       }
+    }),
+  )
+
+  it.effect("returns editor cancellation feedback as recoverable tool output", () =>
+    Effect.gen(function* () {
+      reject = true
+      deny = false
+      cancelMessage = "The client cannot show an elicitation; continue with the available information."
+      const registry = yield* Tool.Service
+      const result = yield* executeTool(registry, {
+        sessionID,
+        ...toolIdentity,
+        call: { type: "tool-call", id: "call-feedback", name: "question", input: questionInput },
+      })
+      expect(result).toMatchObject({ status: "error", error: { message: cancelMessage } })
+      cancelMessage = undefined
     }),
   )
 })

@@ -558,6 +558,12 @@ function usesAPIKeyAuth(packageName: string | undefined) {
     name === "@opencode/ai/providers/anthropic-compatible" ||
     name === "@opencode/ai/providers/baseten" ||
     name === "@opencode/ai/providers/cerebras" ||
+    name === "@opencode/ai/providers/cohere" ||
+    name === "@opencode/ai/providers/cohere/chat" ||
+    name === "@opencode/ai/providers/digitalocean" ||
+    name === "@opencode/ai/providers/google/interactions" ||
+    name === "@opencode/ai/providers/venice" ||
+    name === "@opencode/ai/providers/vercel-ai-gateway" ||
     name === "@opencode/ai/providers/cloudflare-ai-gateway" ||
     name === "@opencode/ai/providers/cloudflare-workers-ai" ||
     name === "@opencode/ai/providers/deepinfra" ||

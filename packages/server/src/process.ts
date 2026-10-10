@@ -51,6 +51,7 @@ export const start = Effect.fn("ServerProcess.start")(function* <E, R>(
   options: ServerOptions,
   lifecycle?: Lifecycle<E, R>,
   transform?: Transform,
+  additionalURLs?: () => ReadonlyArray<string>,
 ) {
   const password = options.password
   if (!password) return yield* Effect.fail(new Error("Missing server password"))
@@ -66,11 +67,11 @@ export const start = Effect.fn("ServerProcess.start")(function* <E, R>(
     const address = bound.server.address()
     if (address === null || typeof address === "string") return []
     const host = address.family === "IPv6" ? `[${address.address}]` : address.address
-    return ServerInfo.connectionURLs(`http://${host}:${address.port}`, hostname)
+    return [...ServerInfo.connectionURLs(`http://${host}:${address.port}`, hostname), ...(additionalURLs?.() ?? [])]
   }
   const application = yield* Ref.make(Option.none<App>())
   const ptySockets = yield* PtySockets.make
-  const app = dispatch(password, status, application, options.app?.version ?? "unknown", urls, Global.Path.tmp)
+  const app = dispatch(password, status, application, options.app?.version ?? "unknown", urls, Global.Path.tmp, !!options.access)
   // Request fibers may continue inbound trace context, but must not inherit the server startup parent.
   yield* bound.http
     .serve(
@@ -197,6 +198,7 @@ function dispatch(
   version: string,
   urls: () => ReadonlyArray<string>,
   tmp: string,
+  consoleAccess = false,
 ): App {
   const auth = ServerAuth.Config.of({ password: Option.some(password), username: "opencode" })
   return Effect.gen(function* () {
@@ -218,6 +220,7 @@ function dispatch(
           !hasPersistentPtyConnectTicketURL(url) &&
           !["/design", "/design/", "/design/new"].includes(url.pathname) &&
           !url.pathname.startsWith("/design/session/"))) &&
+      !(consoleAccess && ready && url.pathname.startsWith("/api/") && request.headers.authorization?.startsWith("Bearer ")) &&
       !(yield* authorizedRequest(request, auth))
     )
       return unauthorizedResponse(request)

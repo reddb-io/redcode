@@ -10,6 +10,7 @@
 
 import { $ } from "bun"
 import path from "path"
+import { rm } from "node:fs/promises"
 import redcode from "../../redcode/package.json"
 
 const dir = path.resolve(import.meta.dir, "..")
@@ -18,6 +19,12 @@ process.chdir(dir)
 const single = process.argv.includes("--single")
 const release = process.argv.includes("--release")
 const skipInstall = process.argv.includes("--skip-install")
+const requestedTarget = process.argv.find((arg) => arg.startsWith("--target="))?.slice("--target=".length)
+const outdir = path.resolve(
+  dir,
+  process.argv.find((arg) => arg.startsWith("--outdir="))?.slice("--outdir=".length) ?? "dist",
+)
+if (outdir === dir || outdir === path.parse(outdir).root) throw new Error("Invalid Design build output directory")
 const version = process.env.REDCODE_DESIGN_APP_VERSION ?? process.env.REDCODE_VERSION ?? redcode.version
 if (!/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(version)) throw new Error(`Invalid design app version: ${version}`)
 const { DesignApp } = await import("@opencode/core/design/app")
@@ -39,7 +46,15 @@ const all: { os: "linux" | "darwin" | "win32"; arch: "arm64" | "x64"; abi?: "mus
 ]
 const native = (item: (typeof all)[number]) =>
   item.os === process.platform && item.arch === process.arch && !item.abi && item.avx2 === undefined
-const targets = single ? all.filter(native) : all
+const targetName = (item: (typeof all)[number]) =>
+  [item.os === "win32" ? "windows" : item.os, item.arch, item.avx2 === false ? "baseline" : undefined, item.abi]
+    .filter(Boolean)
+    .join("-")
+const targets = requestedTarget
+  ? all.filter((item) => `${product}-${targetName(item)}` === requestedTarget)
+  : single
+    ? all.filter(native)
+    : all
 if (!targets.length) throw new Error("No native Design app target for this platform")
 
 // The raster worker runs in its own thread, so it is bundled apart and embedded beside the app.
@@ -53,20 +68,13 @@ if (!worker.success) throw new AggregateError(worker.logs, "Unable to bundle the
 const workerSource = await worker.outputs[0].text()
 const workerPath = "design-raster-worker.js"
 
-await $`rm -rf dist`
+await rm(outdir, { recursive: true, force: true })
 // Resolve native packages for all release targets from the workspace lockfile.
 if (!skipInstall) await $`bun install --frozen-lockfile --os="*" --cpu="*"`.cwd("../..")
 for (const item of targets) {
-  const platform = [
-    item.os === "win32" ? "windows" : item.os,
-    item.arch,
-    item.avx2 === false ? "baseline" : undefined,
-    item.abi,
-  ]
-    .filter(Boolean)
-    .join("-")
+  const platform = targetName(item)
   const name = `${product}-${platform}`
-  const binary = `dist/${name}/${product}${item.os === "win32" ? ".exe" : ""}`
+  const binary = path.join(outdir, name, `${product}${item.os === "win32" ? ".exe" : ""}`)
   const bunfsRoot = item.os === "win32" ? "B:/~BUN/root/" : "/$bunfs/root/"
   console.log(`building ${name}`)
   const result = await Bun.build({
@@ -114,5 +122,5 @@ for (const item of targets) {
 // the bundle of its own version the first time a diagram is opened as one.
 if (release) {
   await $`bun ../cli/script/whiteboard-bundle.ts --archive`.env({ ...process.env, REDCODE_VERSION: version })
-  await $`cp ../cli/dist/redcode-whiteboard-${version}.tar.gz dist/`
+  await $`cp ../cli/dist/redcode-whiteboard-${version}.tar.gz ${outdir}/`
 }

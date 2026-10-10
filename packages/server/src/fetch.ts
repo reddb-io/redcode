@@ -40,8 +40,10 @@ export interface BootOptions {
  * next boot, and the sweep is a no-op when nothing is suspended.
  */
 export const make = Effect.fn("ServerFetch.make")(function* (options: ServerOptions = {}, boot: BootOptions = {}) {
+  const routes = createRoutes(options, () => [], boot.overrides ?? []).pipe(Layer.provide(HttpServer.layerServices))
+  // The dynamic route layer supplies its request services, as in ServerProcess.start.
   const context = yield* Layer.build(
-    createRoutes(options, () => [], boot.overrides ?? []).pipe(Layer.provide(HttpServer.layerServices)),
+    routes as unknown as Layer.Layer<Layer.Success<typeof routes>, Layer.Error<typeof routes>>,
   )
   // Forked so the returned handler is never delayed; resumed drains are already
   // logged and durably recorded by the execution layer.

@@ -1437,8 +1437,8 @@ describe("ModelResolver", () => {
   it.effect("rejects AISDK packages without an available loader", () =>
     Effect.gen(function* () {
       const failure = yield* ModelResolver.fromCatalogModel(
-        model(Provider.aisdk("@ai-sdk/cohere"), {
-          settings: { baseURL: "https://cohere.example/v1" },
+        model(Provider.aisdk("@ai-sdk/fixture-provider"), {
+          settings: { baseURL: "https://fixture.example/v1" },
         }),
       ).pipe(Effect.flip)
 
@@ -1446,9 +1446,9 @@ describe("ModelResolver", () => {
         _tag: "SessionRunnerModel.UnsupportedPackageError",
         providerID: "test-provider",
         modelID: "test-model",
-        package: "aisdk:@ai-sdk/cohere",
+        package: "aisdk:@ai-sdk/fixture-provider",
       })
-      expect(failure.message).toBe("Unsupported package for test-provider/test-model: aisdk:@ai-sdk/cohere")
+      expect(failure.message).toBe("Unsupported package for test-provider/test-model: aisdk:@ai-sdk/fixture-provider")
     }),
   )
 
@@ -1512,18 +1512,18 @@ describe("ModelResolver", () => {
         detail: "Provider package @opencode/ai/providers/custom is broken",
       })
 
-      const init = yield* ModelResolver.fromCatalogModel(model(Provider.aisdk("@ai-sdk/cohere")), undefined, {
+      const init = yield* ModelResolver.fromCatalogModel(model(Provider.aisdk("@ai-sdk/fixture-provider")), undefined, {
         loadAISDK: (runtime) =>
           Effect.fail(
-            new AISDK.InitError({ providerID: runtime.providerID, cause: new Error("Cohere plugin failed") }),
+            new AISDK.InitError({ providerID: runtime.providerID, cause: new Error("Fixture plugin failed") }),
           ),
       }).pipe(Effect.flip)
       expect(init).toMatchObject({
         _tag: "SessionRunnerModel.ModelInitializationError",
         phase: "init",
-        detail: "Cohere plugin failed",
+        detail: "Fixture plugin failed",
       })
-      expect(init.message).toBe("Cannot initialize test-provider/test-model: Cohere plugin failed")
+      expect(init.message).toBe("Cannot initialize test-provider/test-model: Fixture plugin failed")
     }),
   )
 

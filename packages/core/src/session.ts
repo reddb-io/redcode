@@ -356,7 +356,10 @@ const layer = Layer.effect(
         if (!created.parentID && (yield* fs.isDir(created.location.directory)))
           yield* HookRuntime.Service.use((hooks) =>
             hooks.run({ event: "SessionStart", session_id: sessionID, matcher: "startup" }),
-          ).pipe(instances.provide(created), Effect.catchTag("FileSystem.DirectoryNotFoundError", Effect.die))
+          ).pipe(
+            Effect.provide(locations.get(created.location)),
+            Effect.catchTag("FileSystem.DirectoryNotFoundError", Effect.die),
+          )
         return created
       }),
       fork: Effect.fn("Session.fork")(function* (input) {
@@ -479,7 +482,10 @@ const layer = Layer.effect(
       switchAgent: (input) => sessions.forSession(input.sessionID).switchAgent(input),
       switchModel: Effect.fn("Session.switchModel")(function* (input) {
         const session = yield* result.get(input.sessionID)
-        const model = yield* ModelResolver.bind(input.model).pipe(instances.provide(session), Effect.catchTag("FileSystem.DirectoryNotFoundError", Effect.die))
+        const model = yield* ModelResolver.bind(input.model).pipe(
+          instances.provide(session),
+          Effect.catchTag("FileSystem.DirectoryNotFoundError", Effect.die),
+        )
         yield* sessions.forSession(input.sessionID).switchModel({ ...input, model })
       }),
       rename: (input) => sessions.forSession(input.sessionID).rename(input),

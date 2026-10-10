@@ -48,7 +48,7 @@ describe("native OpenAI-compatible providers", () => {
       [GoogleVertex.configure(vertex).model("model"), "vertex"],
       [GoogleVertexChat.configure(vertex).model("model"), "vertex"],
       [GoogleVertexResponses.configure(vertex).model("model"), "vertex"],
-      [GoogleVertexMessages.configure(vertex).model("model"), "anthropic"],
+      [GoogleVertexMessages.configure(vertex).model("model"), "vertex"],
       [Anthropic.configure({ apiKey: "test" }).model("model"), "anthropic"],
       [
         AnthropicCompatible.configure({ baseURL: "https://example.test/v1", provider: "minimax" }).model("model"),
@@ -132,8 +132,8 @@ describe("native OpenAI-compatible providers", () => {
         ?.body,
     ).toEqual({ chat_template_args: { enable_thinking: false } })
     expect(
-      Baseten.model("model", { apiKey: "fixture", body: { chat_template_args: { enable_thinking: false } } }).route.defaults
-        .http?.body,
+      Baseten.model("model", { apiKey: "fixture", body: { chat_template_args: { enable_thinking: false } } }).route
+        .defaults.http?.body,
     ).toEqual({ chat_template_args: { enable_thinking: false } })
   })
 

@@ -2,8 +2,54 @@ import { expect, test } from "@playwright/test"
 import { fixture, installStressSessionTabs, mockStressTimeline } from "../utils/session-fixture"
 import { sessionHref } from "../utils/app"
 import { status } from "../utils/timeline"
+import { mockRemoteWorkers } from "../utils/worker-fixture"
 
 test.use({ viewport: { width: 1440, height: 900 } })
+
+test("registers remote workers, sends an independent task batch and downloads reviewed changes", async ({ page }) => {
+  await mockStressTimeline(page)
+  await installStressSessionTabs(page, { sessionIDs: [] })
+  const workers = await mockRemoteWorkers(page)
+  await page.goto("/")
+  await page.getByRole("button", { name: "Agents", exact: true }).click()
+  const dialog = page.getByRole("dialog")
+  await dialog.getByRole("button", { name: "Remote workers", exact: true }).click()
+  await expect(dialog.getByText("Connect a machine to start sending tasks.")).toBeVisible()
+  await dialog.getByRole("button", { name: "Add worker", exact: true }).click()
+  await dialog.getByLabel("Worker name", { exact: true }).fill("pi-a")
+  await dialog.getByLabel("Server address", { exact: true }).fill("http://192.168.1.50:4096")
+  await dialog.getByLabel("Project directory on the worker", { exact: true }).fill("/home/pi/project")
+  await dialog.getByLabel("Server password or pairing token", { exact: true }).fill("fixture-secret")
+  await dialog.getByLabel("Capabilities, separated by commas", { exact: true }).fill("linux, arm64")
+  await dialog.getByRole("button", { name: "Connect worker", exact: true }).click()
+  await expect(dialog.getByRole("heading", { name: "pi-a · Connected", exact: true })).toBeVisible()
+  await expect(dialog.getByLabel("Server password or pairing token", { exact: true })).toHaveCount(0)
+  await dialog.getByLabel("What should the worker do?", { exact: true }).fill("Review Linux compatibility")
+  await dialog.getByLabel("Run on", { exact: true }).selectOption("pi-a")
+  await dialog.getByRole("button", { name: "Add to batch", exact: true }).click()
+  await dialog.getByLabel("What should the worker do?", { exact: true }).fill("Run the test suite")
+  await dialog.getByRole("button", { name: "Send batch", exact: true }).click()
+  await expect(dialog.getByText("Completed · pi-a", { exact: true })).toHaveCount(2)
+  expect(
+    workers.requests.filter((request) => request.path === "/api/workers/batches").map((request) => request.body),
+  ).toEqual([
+    {
+      tasks: [
+        { id: expect.any(String), prompt: "Review Linux compatibility", worker: "pi-a" },
+        { id: expect.any(String), prompt: "Run the test suite", worker: "pi-a" },
+      ],
+    },
+  ])
+  const task = dialog.getByRole("article").filter({ has: page.getByText("Run the test suite", { exact: true }) })
+  await task.getByRole("button", { name: "Review changes", exact: true }).click()
+  await expect(dialog.getByRole("heading", { name: "Collected changes", exact: true })).toBeVisible()
+  await dialog.getByText("result.txt (+1 / −0)", { exact: true }).click()
+  await expect(dialog.getByText(workers.patch, { exact: true })).toBeVisible()
+  const download = page.waitForEvent("download")
+  await dialog.getByRole("button", { name: "Download patch", exact: true }).click()
+  expect((await download).suggestedFilename()).toMatch(/^task-[a-z0-9-]+\.patch$/)
+  await page.screenshot({ path: test.info().outputPath("remote-workers.png"), animations: "disabled" })
+})
 
 // The fleet must expose the child that needs the user without loading either transcript.
 test("manages a parallel session tree without opening its conversation", async ({ page }) => {
