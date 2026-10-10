@@ -3,9 +3,10 @@ import { ProgressCircle } from "@opencode/ui/progress-circle"
 import { Tooltip } from "@opencode/ui/tooltip"
 import { useI18n } from "@opencode/ui/context/i18n"
 import type { SessionMessageAssistant } from "@opencode/client/promise"
+import { ContextUsage } from "@opencode/util/context-usage"
 import { GenerationTiming } from "@opencode/util/generation-timing"
 import { useExtension, type MountedSession } from "../sdk"
-import { catalogModel, syncCatalog } from "./catalog"
+import { readContext, syncCatalog } from "./catalog"
 
 function ContextTooltipRow(props: { name: JSX.Element; value: JSX.Element }) {
   return (
@@ -32,10 +33,6 @@ export function SessionContextUsage(props: {
     props.session.id ? props.session.server.data.session.message.list(props.session.id) : [],
   )
 
-  const info = createMemo(() =>
-    props.session.id ? props.session.server.data.session.get(props.session.id) : undefined,
-  )
-
   const usd = createMemo(
     () =>
       new Intl.NumberFormat(i18n.locale(), {
@@ -44,23 +41,11 @@ export function SessionContextUsage(props: {
       }),
   )
 
-  const context = createMemo(() => {
-    const message = messages().findLast((item) => item.type === "assistant" && !!item.tokens)
+  const context = createMemo(() => readContext(props.session, messages()))
+  const over = createMemo(() => {
+    const value = context()
 
-    if (message?.type !== "assistant" || !message.tokens) return
-    const model = catalogModel(props.session, message.model)?.model
-
-    const total =
-      message.tokens.input +
-      message.tokens.output +
-      message.tokens.reasoning +
-      message.tokens.cache.read +
-      message.tokens.cache.write
-
-    return {
-      total,
-      usage: model?.limit.context ? Math.round((total / model.limit.context) * 100) : null,
-    }
+    return !!value && ContextUsage.over(value)
   })
 
   // The latest step that streamed anything, read with the same rules as the TUI sidebar.
@@ -73,18 +58,15 @@ export function SessionContextUsage(props: {
   const compact = createMemo(
     () => new Intl.NumberFormat(i18n.locale(), { notation: "compact", maximumFractionDigits: 1 }),
   )
-  const cost = createMemo(() => {
-    return usd().format(info()?.cost ?? 0)
-  })
+  // The whole session family's spend, subagents included, as the TUI footer shows it.
+  const cost = createMemo(() =>
+    usd().format(props.session.id ? props.session.server.data.session.cost(props.session.id) : 0),
+  )
   // The header's status line: context use (or tokens when the model's window is unknown) and the session cost.
   const status = createMemo(() => {
     const value = context()
     const usage =
-      value?.usage !== null && value?.usage !== undefined
-        ? `${value.usage}%`
-        : value?.total
-          ? compact().format(value.total)
-          : undefined
+      value?.percent !== undefined ? `${value.percent}%` : value ? compact().format(value.tokens) : undefined
     return [usage, cost()].filter(Boolean).join(" · ")
   })
   const contextVisible = createMemo(() => layout.state(`${ctx.id}:main`, props.session) === "visible")
@@ -100,11 +82,13 @@ export function SessionContextUsage(props: {
         appearance="indicator"
         size={16}
         strokeWidth={2}
-        percentage={context()?.usage ?? 0}
+        percentage={context()?.percent ?? 0}
         style={{
           "--progress-circle-background": "var(--reddb-color-muted)",
           "--progress-circle-background-overlay": "transparent",
-          "--progress-circle-progress": "var(--reddb-color-foreground)",
+          "--progress-circle-progress": over()
+            ? "var(--reddb-color-feedback-warning-foreground)"
+            : "var(--reddb-color-foreground)",
         }}
       />
     </div>
@@ -112,15 +96,31 @@ export function SessionContextUsage(props: {
 
   const compactCircle = () => (
     <div class="flex items-center justify-center">
-      <ProgressCircle appearance="compact" percentage={context()?.usage ?? 0} />
+      <ProgressCircle
+        appearance="compact"
+        percentage={context()?.percent ?? 0}
+        style={over() ? { "--progress-circle-progress": "var(--reddb-color-feedback-warning-foreground)" } : undefined}
+      />
     </div>
   )
 
   const tooltipValue = () => (
-    <div class="flex w-[120px] flex-col gap-2">
+    <div class="flex w-[200px] flex-col gap-2">
       <ContextTooltipRow name={ctx.t("usage.cost")} value={cost()} />
-      <ContextTooltipRow name={ctx.t("usage.usage")} value={`${context()?.usage ?? 0}%`} />
-      <ContextTooltipRow name={ctx.t("usage.tokens")} value={context()?.total.toLocaleString(i18n.locale()) ?? "0"} />
+      <ContextTooltipRow
+        name={ctx.t("usage.usage")}
+        value={
+          <span classList={{ "text-feedback-warning-foreground": over() }}>
+            <Show when={context()} fallback="0%">
+              {(value) => ContextUsage.format(value(), compact().format)}
+            </Show>
+          </span>
+        }
+      />
+      <Show when={over()}>
+        <div class="text-feedback-warning-foreground">{ctx.t("usage.over")}</div>
+      </Show>
+      <ContextTooltipRow name={ctx.t("usage.tokens")} value={(context()?.tokens ?? 0).toLocaleString(i18n.locale())} />
       <Show when={timing()}>
         {(step) => (
           <>
@@ -158,7 +158,11 @@ export function SessionContextUsage(props: {
               aria-pressed={contextVisible()}
             >
               {compactCircle()}
-              <span aria-hidden="true" class="hidden sm:inline">
+              <span
+                aria-hidden="true"
+                class="hidden sm:inline"
+                classList={{ "text-feedback-warning-foreground": over() }}
+              >
                 {status()}
               </span>
             </button>

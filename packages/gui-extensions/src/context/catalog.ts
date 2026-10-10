@@ -1,4 +1,6 @@
 import { createMemo, type Accessor } from "solid-js"
+import type { SessionMessageInfo } from "@opencode/client/promise"
+import { ContextUsage } from "@opencode/util/context-usage"
 import { createKeyed, type MountedSession } from "../sdk"
 
 const location = (session: MountedSession) => (session.directory ? { directory: session.directory } : undefined)
@@ -45,4 +47,18 @@ export function catalogModel(session: MountedSession, model: { readonly provider
       (item) => item.providerID === model.providerID && item.id === model.id && item.status !== "deprecated",
     ),
   }
+}
+
+/**
+ * The session's context reading, read like the TUI (`ContextUsage.read`): the last step with usage after the latest
+ * completed compaction and before the revert boundary, against the window its catalog model reports.
+ */
+export function readContext(session: MountedSession, messages: ReadonlyArray<SessionMessageInfo>) {
+  const info = session.id ? session.server.data.session.get(session.id) : undefined
+
+  return ContextUsage.read(
+    messages,
+    (model) => catalogModel(session, model)?.model?.limit.context,
+    info?.revert?.messageID,
+  )
 }

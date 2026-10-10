@@ -30,4 +30,11 @@ export default {
   "export.failed.description": "An error occurred while exporting the session",
   "usage.latency": "Latency",
   "usage.speed": "Speed",
+  "usage.over": "Over the model's context window",
+  "stats.budget": "Budget (with subagents)",
+  "stats.goalBudget": "Goal budget (with subagents)",
+  "budget.cost": "{{spent}} of {{limit}}",
+  "budget.costUnknown": "{{spent}} of {{limit}} (cost partly unknown)",
+  "budget.tokens": "{{spent}} of {{limit}} tokens",
+  "budget.reached": "Reached",
 }

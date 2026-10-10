@@ -1200,6 +1200,19 @@ function mockHandlers(
               (item) => Predicate.isObject(item) && item.sessionID === ctx.params.sessionID,
             ),
           })),
+        // No session has a budget or a goal.
+        sessionBudget: () =>
+          Effect.succeed({
+            data: {
+              limits: {},
+              override: {},
+              spent: { cost: 0, tokens: 0, unpriced: 0 },
+              exceeded: false,
+              unknown: false,
+              reason: "",
+            },
+          }),
+        sessionGoal: () => Effect.succeed({ data: null }),
         sessionPrompt: (ctx) =>
           Effect.sync(() => {
             const body = Option.getOrElse(decodeJsonObject(ctx.payload), () => ({}))

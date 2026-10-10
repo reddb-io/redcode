@@ -10,9 +10,10 @@ import { showToast } from "@opencode/ui/toast"
 import { useI18n } from "@opencode/ui/context/i18n"
 import { File } from "@opencode/session-ui/file"
 import { Markdown } from "@opencode/session-ui/markdown"
-import type { SessionMessageInfo } from "@opencode/client/promise"
-import { createKeyed, useExtension, type MountedSession } from "../sdk"
-import { catalogModel, syncCatalog } from "./catalog"
+import type { SessionBudgetLimits, SessionBudgetTotals, SessionMessageInfo } from "@opencode/client/promise"
+import { ContextUsage } from "@opencode/util/context-usage"
+import { createKeyed, createLatest, useExtension, type MountedSession } from "../sdk"
+import { catalogModel, readContext, syncCatalog } from "./catalog"
 import { fetchSessionExport, sessionExportFilename } from "./export"
 import { createSessionContextFormatter } from "./format"
 
@@ -111,35 +112,87 @@ export default function SessionContextTab(props: { session: MountedSession }) {
   )
 
   const context = createMemo(() => {
-    const message = messages().findLast((item) => item.type === "assistant" && !!item.tokens)
+    const usage = readContext(props.session, messages())
 
-    if (message?.type !== "assistant" || !message.tokens) return
+    if (!usage) return
+    const message = usage.message
     const entry = catalogModel(props.session, message.model)
 
-    const total =
-      message.tokens.input +
-      message.tokens.output +
-      message.tokens.reasoning +
-      message.tokens.cache.read +
-      message.tokens.cache.write
-
     return {
-      message,
-      tokens: message.tokens,
+      ...usage,
       providerLabel: entry?.provider.name ?? message.model.providerID,
       modelLabel: entry?.model?.name ?? message.model.id,
-      limit: entry?.model?.limit.context,
-      input: message.tokens.input,
-      total,
-      usage: entry?.model?.limit.context ? Math.round((total / entry.model.limit.context) * 100) : null,
     }
   })
 
   const formatter = createMemo(() => createSessionContextFormatter(i18n.locale()))
+  const compact = createMemo(
+    () => new Intl.NumberFormat(i18n.locale(), { notation: "compact", maximumFractionDigits: 1 }),
+  )
 
-  const cost = createMemo(() => {
-    return usd().format(info()?.cost ?? 0)
+  // The whole session family's spend, subagents included, as the TUI sidebar shows it.
+  const spent = createMemo(() => (props.session.id ? data().session.cost(props.session.id) : 0))
+  const cost = createMemo(() => usd().format(spent()))
+
+  // The budgets count subagents too; asked again when the family's spend moves.
+  const target = createMemo(
+    () => (props.session.id ? { sessionID: props.session.id, spent: spent() } : undefined),
+    undefined,
+    { equals: (a, b) => a?.sessionID === b?.sessionID && a?.spent === b?.spent },
+  )
+  const budgets = createLatest(target, (input, signal) =>
+    Promise.all([
+      props.session.server.client.session.budget.get({ sessionID: input.sessionID }, { signal }),
+      props.session.server.client.session.goal.get({ sessionID: input.sessionID }, { signal }),
+    ]).then(([view, goal]) => ({ view, goal })),
+  )
+  const budgetLines = createMemo(() => {
+    const current = budgets.latest
+
+    if (!current) return []
+    const goal = current.goal
+    const active = goal?.budget && ["active", "waiting", "paused"].includes(goal.status)
+
+    return [
+      ...(hasLimits(current.view.limits)
+        ? [{ label: "stats.budget", lines: describeBudget(current.view.limits, current.view.spent) }]
+        : []),
+      ...(active && goal.budget
+        ? [
+            {
+              label: "stats.goalBudget",
+              lines: describeBudget(goal.budget, spentSince(current.view.spent, goal.spendStart)),
+            },
+          ]
+        : []),
+    ]
   })
+
+  const describeBudget = (limits: SessionBudgetLimits, totals: SessionBudgetTotals) => {
+    const reached =
+      (limits.maxCostUsd !== undefined && totals.cost >= limits.maxCostUsd) ||
+      (limits.maxTokens !== undefined && totals.tokens >= limits.maxTokens)
+    const lines = [
+      ...(limits.maxCostUsd === undefined
+        ? []
+        : [
+            ctx.t(totals.unpriced > 0 ? "budget.costUnknown" : "budget.cost", {
+              spent: usd().format(totals.cost),
+              limit: usd().format(limits.maxCostUsd),
+            }),
+          ]),
+      ...(limits.maxTokens === undefined
+        ? []
+        : [
+            ctx.t("budget.tokens", {
+              spent: totals.tokens.toLocaleString(i18n.locale()),
+              limit: limits.maxTokens.toLocaleString(i18n.locale()),
+            }),
+          ]),
+    ]
+
+    return reached ? [...lines, ctx.t("budget.reached")] : lines
+  }
 
   const counts = createMemo(() => {
     const all = messages()
@@ -186,15 +239,26 @@ export default function SessionContextTab(props: { session: MountedSession }) {
     { label: "stats.provider", value: providerLabel },
     { label: "stats.model", value: modelLabel },
     { label: "stats.limit", value: () => formatter().number(context()?.limit) },
-    { label: "stats.totalTokens", value: () => formatter().number(context()?.total) },
-    { label: "stats.usage", value: () => formatter().percent(context()?.usage) },
-    { label: "stats.inputTokens", value: () => formatter().number(context()?.input) },
-    { label: "stats.outputTokens", value: () => formatter().number(context()?.tokens.output) },
-    { label: "stats.reasoningTokens", value: () => formatter().number(context()?.tokens.reasoning) },
+    { label: "stats.totalTokens", value: () => formatter().number(context()?.tokens) },
+    {
+      label: "stats.usage",
+      value: () => (
+        <Show when={context()} fallback="—">
+          {(value) => (
+            <span classList={{ "text-feedback-warning-foreground": ContextUsage.over(value()) }}>
+              {ContextUsage.format(value(), compact().format)}
+            </span>
+          )}
+        </Show>
+      ),
+    },
+    { label: "stats.inputTokens", value: () => formatter().number(context()?.message.tokens.input) },
+    { label: "stats.outputTokens", value: () => formatter().number(context()?.message.tokens.output) },
+    { label: "stats.reasoningTokens", value: () => formatter().number(context()?.message.tokens.reasoning) },
     {
       label: "stats.cacheTokens",
       value: () =>
-        `${formatter().number(context()?.tokens.cache.read)} / ${formatter().number(context()?.tokens.cache.write)}`,
+        `${formatter().number(context()?.message.tokens.cache.read)} / ${formatter().number(context()?.message.tokens.cache.write)}`,
     },
     { label: "stats.userMessages", value: () => counts().user.toLocaleString(i18n.locale()) },
     { label: "stats.assistantMessages", value: () => counts().assistant.toLocaleString(i18n.locale()) },
@@ -294,6 +358,18 @@ export default function SessionContextTab(props: { session: MountedSession }) {
       <div data-slot="session-usage-content" class="px-4 pt-4 pb-6 flex flex-col gap-6 md:px-6 md:pb-10 md:gap-10">
         <div class="grid grid-cols-1 @[32rem]:grid-cols-2 @[48rem]:grid-cols-3 gap-x-6 gap-y-4">
           <For each={stats}>{(stat) => <Stat label={ctx.t(stat.label)} value={stat.value()} />}</For>
+          <For each={budgetLines()}>
+            {(budget) => (
+              <Stat
+                label={ctx.t(budget.label)}
+                value={
+                  <span class="flex flex-col whitespace-normal">
+                    <For each={budget.lines}>{(line) => <span>{line}</span>}</For>
+                  </span>
+                }
+              />
+            )}
+          </For>
         </div>
 
         <Show when={systemPrompt()}>
@@ -333,6 +409,21 @@ export default function SessionContextTab(props: { session: MountedSession }) {
       </div>
     </ScrollView>
   )
+}
+
+function hasLimits(limits: SessionBudgetLimits) {
+  return limits.maxCostUsd !== undefined || limits.maxTokens !== undefined
+}
+
+// A goal's budget counts only what the family spent since the goal started.
+function spentSince(total: SessionBudgetTotals, start: SessionBudgetTotals | undefined) {
+  if (!start) return total
+
+  return {
+    cost: Math.max(0, total.cost - start.cost),
+    tokens: Math.max(0, total.tokens - start.tokens),
+    unpriced: Math.max(0, total.unpriced - start.unpriced),
+  }
 }
 
 function same<T>(a: readonly T[] | undefined, b: readonly T[] | undefined) {

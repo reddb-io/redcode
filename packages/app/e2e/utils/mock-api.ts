@@ -335,6 +335,18 @@ const Group = HttpApiGroup.make("mock")
     }),
   )
   .add(
+    HttpApiEndpoint.get("sessionBudget", "/api/session/:sessionID/budget", {
+      params: SessionParams,
+      success: Json,
+    }),
+  )
+  .add(
+    HttpApiEndpoint.get("sessionGoal", "/api/experimental/session/:sessionID/goal", {
+      params: SessionParams,
+      success: Json,
+    }),
+  )
+  .add(
     HttpApiEndpoint.post("sessionPrompt", "/api/session/:sessionID/prompt", {
       params: SessionParams,
       payload: JsonPayload,
