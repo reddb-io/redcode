@@ -446,9 +446,12 @@ async function checkDesign() {
       await Bun.write(path.join(artifacts, "design-messages.json"), masked(JSON.stringify(messages, null, 2)))
       for (const page of browser.contexts().flatMap((context) => context.pages())) {
         await page.screenshot({ path: path.join(artifacts, "design-feedback-failure.png"), fullPage: true })
+        // Without the review element (e.g. the access page), keep the page itself so the original error still surfaces.
         await Bun.write(
           path.join(artifacts, "design-feedback-failure.html"),
-          await page.locator("#review").evaluate((node) => node.shadowRoot?.innerHTML ?? node.innerHTML),
+          (await page.locator("#review").count())
+            ? await page.locator("#review").evaluate((node) => node.shadowRoot?.innerHTML ?? node.innerHTML)
+            : await page.content(),
         )
       }
       throw error
@@ -463,13 +466,9 @@ async function renderReview(browser: Browser, review: string) {
   const service = await registration()
   const context = await browser.newContext({
     viewport: { width: 1280, height: 900 },
-    httpCredentials: {
-      username: "opencode",
-      password: service.password,
-      origin: new URL(review).origin,
-      // The review page answers 401 without a Basic challenge, so the credential goes with the first request.
-      send: "always",
-    },
+    // Browsers send Basic credentials only after a challenge, and the review page deliberately sends none (it would
+    // open the native password prompt), so the header goes with every request. Every request here is to the server.
+    extraHTTPHeaders: { authorization: `Basic ${btoa(`opencode:${service.password}`)}` },
   })
   const page = await context.newPage()
   const errors: Array<string> = []
