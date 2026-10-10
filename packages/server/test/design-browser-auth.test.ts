@@ -38,7 +38,10 @@ it.live("Design entry creates a new session in a loaded project and keeps sessio
     yield* Effect.promise(() => source.arrayBuffer())
     const entry = yield* request("/design")
     expect(entry.status).toBe(200)
-    expect(yield* Effect.promise(() => entry.text())).toContain("Profile project")
+    const launcher = yield* Effect.promise(() => entry.text())
+    expect(launcher).toContain("Profile project")
+    // The Brand's faces ship inside the binary; the page must not depend on fonts installed on the machine.
+    expect(launcher).toMatch(/font-family: "Space Grotesk";\s+src: url\("data:font\/woff2;base64,/)
     const launched = yield* request("/design/new", { source: "ses_entry_source" })
     expect(launched.status).toBe(200)
     const result = yield* Effect.promise(() => launched.json()).pipe(
@@ -251,7 +254,10 @@ it.live("signed Design pages exchange tickets for scoped cookies without a Basic
     const cookie = (page.headers.get("set-cookie") ?? "").split(";")[0]
     expect(cookie).toStartWith(`${DesignAccess.COOKIE}=`)
     expect(page.headers.get("set-cookie")).toContain(`Path=/design/session/${sessionID}`)
-    expect(yield* Effect.promise(() => page.text())).toContain("<!doctype html>")
+    const html = yield* Effect.promise(() => page.text())
+    expect(html).toContain("<!doctype html>")
+    expect(html).toMatch(/font-family: "Space Grotesk";\s+src: url\("data:font\/woff2;base64,/)
+    expect(html).toMatch(/font-family: "JetBrains Mono";\s+src: url\("data:font\/woff2;base64,/)
     const reopened = yield* request(`/design/session/${sessionID}/review`, { headers: { cookie } })
     expect(reopened.status).toBe(200)
     yield* Effect.promise(() => reopened.arrayBuffer())

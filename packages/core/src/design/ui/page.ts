@@ -2,7 +2,7 @@ export * as DesignPage from "./page.js"
 
 import type { Design } from "@opencode/schema/design"
 import { DesignExport } from "../export.js"
-import { appearance } from "./brand.gen.js"
+import { appearance, fonts } from "./brand.gen.js"
 import { annotations } from "./annotations.js"
 import { capture } from "./capture.js"
 import captureRuntime from "./vendor/capture/runtime.txt" with { type: "text" }
@@ -42,7 +42,7 @@ export function review(sessionID: string, endpoint: string, breakpoints?: readon
     breakpoints,
     embedded,
   }).replaceAll("<", "\\u003c")
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Design · Redcode</title><link rel="icon" type="image/svg+xml" href="${appearance.favicon}"><style>html,body,#review{height:100%;margin:0}</style></head><body><div id="review"></div><script>${UNTICKET}(${mountReview.toString()})(document.getElementById("review"), Object.assign(${options}, { feed: ${designFeed.toString()}, viewports: ${viewports.toString()}, device: ${device.toString()}, stage: ${stage.toString()}, deck: ${deck.toString()}, loading: ${previewLoading.toString()} }))</script></body></html>`
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Design · Redcode</title><link rel="icon" type="image/svg+xml" href="${appearance.favicon}"><style>${fonts}</style><style>html,body,#review{height:100%;margin:0}</style></head><body><div id="review"></div><script>${UNTICKET}(${mountReview.toString()})(document.getElementById("review"), Object.assign(${options}, { feed: ${designFeed.toString()}, viewports: ${viewports.toString()}, device: ${device.toString()}, stage: ${stage.toString()}, deck: ${deck.toString()}, loading: ${previewLoading.toString()} }))</script></body></html>`
 }
 
 export function present(endpoint: string, designID: string, view: "audience" | "presenter", revision?: string) {
