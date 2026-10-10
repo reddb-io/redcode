@@ -155,7 +155,13 @@ const it = testEffect(
       LocationServiceMap.node.replace(promptLocationNode),
       SessionExecution.node.replace(SessionExecution.noopLayer),
       SessionImport.node.replace(
-        SessionImport.configured({ opencode: [opencode], claudeCode: [claude], pi: [opencode], omp: [opencode] }),
+        SessionImport.configured({
+          opencode: [opencode],
+          claudeCode: [claude],
+          pi: [opencode],
+          omp: [opencode],
+          codex: [opencode],
+        }),
       ),
     ],
   ),

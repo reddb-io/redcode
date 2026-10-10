@@ -118,7 +118,13 @@ const it = testEffect(
       LocationServiceMap.node.replace(promptLocationNode),
       SessionExecution.node.replace(SessionExecution.noopLayer),
       SessionImport.node.replace(
-        SessionImport.configured({ opencode: [empty, legacy, store], claudeCode: [empty], pi: [empty], omp: [empty] }),
+        SessionImport.configured({
+          opencode: [empty, legacy, store],
+          claudeCode: [empty],
+          pi: [empty],
+          omp: [empty],
+          codex: [empty],
+        }),
       ),
     ],
   ),
@@ -190,6 +196,7 @@ describe("SessionImport", () => {
         },
         { source: "pi", name: "Pi", available: false, sessions: 0, warning: "No Pi session store found" },
         { source: "omp", name: "oh-my-pi", available: false, sessions: 0, warning: "No oh-my-pi session store found" },
+        { source: "codex", name: "Codex", available: false, sessions: 0, warning: "No Codex session store found" },
       ])
     }),
   )

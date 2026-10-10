@@ -442,7 +442,7 @@ function convert(
       const id = node.message?.toolCallId ?? ""
       if (node.message && !results.has(id)) results.set(id, { message: node.message, entry: node })
     })
-  const ids = sequence(input.seed)
+  const ids = ImportSource.messageIDs(input.seed)
   return input.path.flatMap((node, index): ReadonlyArray<Encoded> => {
     const at = millis(node.timestamp)
     if (node.type === "compaction")
@@ -737,16 +737,6 @@ function imageData(block: Extract<Block, { type: "image" }>, input: Context & { 
   if (data) return data
   input.tally.images++
   return undefined
-}
-
-/** Message IDs in branch order: each takes its record's time, kept strictly ascending. */
-function sequence(seed: string) {
-  const state = { last: -1n }
-  return (key: string, at: number) => {
-    const time = BigInt(Math.max(0, Math.trunc(at))) * 0x1000n
-    state.last = time > state.last ? time : state.last + 1n
-    return ImportSource.stableID("msg", `${seed}:${key}`, state.last)
-  }
 }
 
 function firstPrompt(messages: ReadonlyArray<SessionMessage.Info>) {

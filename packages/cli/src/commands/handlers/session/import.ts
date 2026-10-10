@@ -66,7 +66,7 @@ export default Runtime.handler(
   }),
 )
 
-const names = { opencode: "OpenCode", "claude-code": "Claude Code", pi: "Pi", omp: "oh-my-pi" } as const
+const names = { opencode: "OpenCode", "claude-code": "Claude Code", pi: "Pi", omp: "oh-my-pi", codex: "Codex" } as const
 
 /** Import a session from another coding agent's local history through the server, which reads that store read-only. */
 const importForeign = Effect.fn("cli.session.import.foreign")(

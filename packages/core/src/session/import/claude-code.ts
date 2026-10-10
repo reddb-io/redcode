@@ -450,7 +450,7 @@ function convert(input: {
           results.set(block.tool_use_id, { block, record })
       }),
     )
-  const ids = sequence(input.seed)
+  const ids = ImportSource.messageIDs(input.seed)
   const emitted = new Set<string>()
   const pending: { boundary?: Entry } = {}
   return input.path.flatMap((record): ReadonlyArray<Encoded> => {
@@ -748,16 +748,6 @@ function queuedPrompt(record: Entry) {
 function dedupe(records: ReadonlyArray<Entry>) {
   const newest = new Map(records.map((record, index) => [record.uuid ?? `#${index}`, record]))
   return records.filter((record, index) => newest.get(record.uuid ?? `#${index}`) === record)
-}
-
-/** Message IDs in branch order: each takes its record's time, kept strictly ascending. */
-function sequence(seed: string) {
-  const state = { last: -1n }
-  return (key: string, at: number) => {
-    const time = BigInt(at) * 0x1000n
-    state.last = time > state.last ? time : state.last + 1n
-    return ImportSource.stableID("msg", `${seed}:${key}`, state.last)
-  }
 }
 
 function firstPrompt(messages: ReadonlyArray<SessionMessage.Info>) {
