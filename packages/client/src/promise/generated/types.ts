@@ -1009,6 +1009,7 @@ export type SessionImportSummary = {
   title: string
   directory: string
   messages: number
+  estimated?: boolean
   subagents: number
   model?: string
   time: { created: number; updated: number }

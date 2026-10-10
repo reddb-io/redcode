@@ -16,6 +16,7 @@ export const menus: Setup<typeof Fixture> = (ctx) => {
     enabled: () => true,
     run: (server) => void server.length,
   })
+  ctx.add(MenuItem, { menu: "project", id: "import", title: "Import", run: (server, directory) => void [server, directory] })
   ctx.add(MenuItem, (): MenuItem | undefined =>
     Math.random() > 0.5 ? { menu: "server.add", id: "add", title: "Add", run() {} } : undefined,
   )
@@ -26,6 +27,8 @@ export const menus: Setup<typeof Fixture> = (ctx) => {
   ctx.add(MenuItem, { menu: "session.panel", id: "open", title: "Open", when: () => true, run() {} })
   // @ts-expect-error a server row shows no keybind
   ctx.add(MenuItem, { menu: "server.row", id: "connect", title: "Connect", keybind: "file.open", run() {} })
+  // @ts-expect-error a project row shows no icon
+  ctx.add(MenuItem, { menu: "project", id: "import", title: "Import", icon: "plus", run() {} })
   // @ts-expect-error only a server row's `run` receives a server key
   ctx.add(MenuItem, { menu: "server.add", id: "add", title: "Add", run: (server: string) => void server })
 

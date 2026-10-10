@@ -23,6 +23,7 @@ import { ServerRowMenuView, serverMenuLabels } from "@/servers/registry/row-menu
 import { ServerHealthIndicator } from "@/servers/registry/row"
 import { type ServerHealth } from "@/runtime/server/health"
 import { fileManagerApp } from "@/home/projects/file-manager"
+import { ProjectMenuItems } from "./menu-items"
 import "./view.css"
 
 const HOME_PROJECT_NAV_LABEL = "min-w-0 flex-1 truncate"
@@ -751,6 +752,7 @@ function HomeProjectRow(
                   {props.language.t("command.session.import")}
                 </Menu.Item>
               </Show>
+              <ProjectMenuItems server={ServerConnection.key(props.server)} directory={props.project.worktree} />
               <Menu.Item onSelect={() => props.onEditProject(props.server, props.project)}>
                 {props.language.t("dialog.project.edit.title")}
               </Menu.Item>

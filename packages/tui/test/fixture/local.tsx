@@ -41,6 +41,7 @@ export async function renderLocal(
     const session = input.sessions?.find((session) => url.pathname === `/api/session/${session.id}`)
     if (session) return json({ data: session })
   }, events)
+  const client = createApi(calls.fetch)
   let local!: ReturnType<typeof useLocal>
   let route!: ReturnType<typeof useRoute>
   let data!: ReturnType<typeof useData>
@@ -65,7 +66,7 @@ export async function renderLocal(
               <ThemeProvider mode="dark" source={{ discover: async () => ({}) }}>
                 <ToastProvider>
                   <RouteProvider initialRoute={{ type: "home" }}>
-                    <ClientProvider api={createApi(calls.fetch)}>
+                    <ClientProvider api={client}>
                       <DataProvider directory={directory}>
                         <LocationProvider>
                           <PermissionProvider>
@@ -97,6 +98,7 @@ export async function renderLocal(
     data,
     location,
     dialog,
+    client,
     events,
     state: temporary.path,
     async [Symbol.asyncDispose]() {

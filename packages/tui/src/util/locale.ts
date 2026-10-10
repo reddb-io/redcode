@@ -16,6 +16,19 @@ export function datetime(input: number): string {
   return `${localTime} · ${localDate}`
 }
 
+/** How long ago a timestamp was, such as "5m ago", falling back to the date and time after a week. */
+export function relative(timestamp: number) {
+  const seconds = Math.floor((Date.now() - timestamp) / 1000)
+  const minutes = Math.floor(seconds / 60)
+  const hours = Math.floor(minutes / 60)
+  const days = Math.floor(hours / 24)
+  if (seconds < 60) return "just now"
+  if (minutes < 60) return `${minutes}m ago`
+  if (hours < 24) return `${hours}h ago`
+  if (days < 7) return `${days}d ago`
+  return datetime(timestamp)
+}
+
 export function number(num: number): string {
   if (num >= 1000000) {
     return (num / 1000000).toFixed(1) + "M"

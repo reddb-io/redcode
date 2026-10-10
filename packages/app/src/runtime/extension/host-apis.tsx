@@ -7,11 +7,13 @@ import {
   getOwner,
   on,
   runWithOwner,
+  startTransition,
   untrack,
   type Accessor,
 } from "solid-js"
 import { createStore, produce, type Store } from "solid-js/store"
 import type { Schema } from "effect"
+import type { SessionInfo } from "@opencode/client/promise"
 import { useDialog } from "@opencode/ui/context/dialog"
 import { base64Encode } from "@opencode/util/encode"
 import {
@@ -54,6 +56,7 @@ import { deferredHandle, globalStoreTarget, persistedHandle, storeImports, store
 type Attached = {
   sessions: Accessor<readonly SessionRef[]>
   current: Accessor<MountedSession | undefined>
+  open: (server: string, session: SessionInfo) => void
   screen: Accessor<SessionScreen | undefined>
   scope: (server: string) => ServerScope
   /** Records a session-scoped store so layout pruning drops it with the session. */
@@ -286,6 +289,7 @@ export function createHostApis() {
     sessions: () => ({
       list: () => current()?.sessions() ?? [],
       current: () => current()?.current(),
+      open: (server, session) => write((value) => value.open(server, session)),
     }),
     screen: () => ({
       current: () => {
@@ -792,6 +796,19 @@ export function createExtensionAttachment(apis: HostApis) {
   const mounted: Attached = {
     sessions,
     current,
+    // As the session list opens a pick: a shell tab, the route, and the session's project in the sidebar.
+    open: (server, session) => {
+      const conn = connection(server)
+
+      if (!conn) throw new Error(`Server not listed: ${server}`)
+      const ctx = global.ensureServerCtx(conn)
+      void startTransition(() => {
+        tabs.select(tabs.addSessionTab({ server: ServerConnection.key(conn), sessionId: session.id }))
+        ctx.data.session.remember(session)
+        ctx.projects.open(session.location.directory)
+        ctx.projects.touch(session.location.directory)
+      })
+    },
     screen,
     scope,
     scoped: layout.sessionState.track,

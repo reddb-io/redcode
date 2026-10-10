@@ -1,5 +1,11 @@
 import type { Data } from "@opencode/client/solid"
-import type { LocationRef, OpenCodeClient, ProjectListOutput, WorktreeDirectory } from "@opencode/client/promise"
+import type {
+  LocationRef,
+  OpenCodeClient,
+  ProjectListOutput,
+  SessionInfo,
+  WorktreeDirectory,
+} from "@opencode/client/promise"
 import type { Schema } from "effect"
 import type { JSX } from "solid-js"
 import type { Store } from "solid-js/store"
@@ -613,6 +619,21 @@ export interface Sessions {
    * Reactive.
    */
   current(): MountedSession | undefined
+  /**
+   * Opens a session in a shell tab and routes to it, as picking it in the session list does, and adds its directory to
+   * the server's projects. Waits for the app interface to mount, then applies in call order with the other host
+   * writes. A server the app does not list opens nothing and records the error.
+   *
+   * @param server - The session's server key, as `ServerRef.id`.
+   * @param session - The session as its server returned it, for example from `client.session.get`.
+   *
+   * @example
+   * ```ts
+   * const session = await server.client.session.get({ sessionID })
+   * ctx.sessions.open(server.id, session)
+   * ```
+   */
+  open(server: string, session: SessionInfo): void
 }
 
 /**

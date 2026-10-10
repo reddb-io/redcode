@@ -289,6 +289,7 @@ export type SessionForeignListOutput = ReadonlyArray<{
   readonly title: string
   readonly directory: string
   readonly messages: number
+  readonly estimated?: boolean | undefined
   readonly subagents: number
   readonly model?: string | undefined
   readonly time: { readonly created: DateTime.Utc; readonly updated: DateTime.Utc }

@@ -14,6 +14,8 @@ import { createEffect, createMemo, createSignal, For, type JSX, onCleanup, Show 
 import { createStore } from "solid-js/store"
 import { shouldOpenSessionInBackground } from "@/home/sessions/open"
 import { fileManagerApp } from "@/home/projects/file-manager"
+import { ProjectMenuItems } from "@/home/projects/menu-items"
+import { ServerConnection } from "@/runtime/server/registry"
 import { usePlatform } from "@/runtime/platform/platform"
 import { sessionLabel } from "@/session/title"
 import { ProjectTile } from "@/shell/layout/project-tile"
@@ -353,6 +355,14 @@ function ProjectNode(props: {
                   <Menu.Item onSelect={() => run((conn) => actions.importSession(conn, props.project.project))}>
                     {language.t("command.session.import")}
                   </Menu.Item>
+                </Show>
+                <Show when={props.navigation.server()}>
+                  {(conn) => (
+                    <ProjectMenuItems
+                      server={ServerConnection.key(conn())}
+                      directory={props.project.project.worktree}
+                    />
+                  )}
                 </Show>
                 <Menu.Item onSelect={() => run((conn) => actions.edit(conn, props.project.project))}>
                   {language.t("dialog.project.edit.title")}

@@ -27,6 +27,8 @@ import microsoftOffice from "./microsoft-office"
 import microsoftOfficeRenderer from "./microsoft-office/renderer"
 import design from "./design"
 import designRenderer from "./design/renderer"
+import sessionImport from "./import"
+import sessionImportRenderer from "./import/renderer"
 
 // The window renders once every built-in is active, so the small renderer entries load with the app, like the
 // features they replaced. Heavy UI stays behind `lazy()` inside them.
@@ -52,4 +54,5 @@ export const builtins = Extension.compose(
   { ...wsl, renderer: eager(wslRenderer) },
   { ...microsoftOffice, renderer: eager(microsoftOfficeRenderer) },
   { ...design, renderer: eager(designRenderer) },
+  { ...sessionImport, renderer: eager(sessionImportRenderer) },
 )

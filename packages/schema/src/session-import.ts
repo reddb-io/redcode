@@ -30,6 +30,8 @@ export const Summary = Schema.Struct({
   directory: Schema.String,
   /** Messages in the session; an estimate for sources whose stores are too large to count when listing. */
   messages: NonNegativeInt,
+  /** Whether `messages` is an estimate rather than a count. */
+  estimated: Schema.Boolean.pipe(optional),
   /** Direct subagent sessions imported with this session. */
   subagents: NonNegativeInt,
   /** The last model the session used, as `provider/model`. */

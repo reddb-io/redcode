@@ -72,6 +72,7 @@ import { DialogThemeList } from "./component/dialog-theme-list"
 import { DialogHelp } from "./ui/dialog-help"
 import { DialogAgent } from "./component/dialog-agent"
 import { DialogSessionList } from "./component/dialog-session-list"
+import { DialogSessionImport } from "./component/dialog-session-import"
 import { DialogOpen, DialogOpenKey, moveOpenSession } from "./component/dialog-open"
 import { SessionTabs } from "./component/session-tabs"
 import { clampSessionTabsWidth, sessionTabsFitVertically, SESSION_SIDEBAR_WIDTH } from "./ui/layout"
@@ -762,6 +763,25 @@ function App() {
         slash: { name: "sessions", aliases: ["resume", "continue"] },
         run: () => {
           dialog.replace(() => <DialogSessionList />)
+        },
+      },
+      {
+        name: "session.import",
+        title: "Import session…",
+        category: "Session",
+        slash: { name: "import" },
+        run: () => {
+          const current =
+            (route.data.type === "session" ? data.session.get(route.data.sessionID)?.location : undefined) ??
+            location.ref ??
+            data.location.default()
+          dialog.replace(() => (
+            <DialogSessionImport
+              api={client.api.session.foreign}
+              directory={current.directory}
+              onOpen={(sessionID) => route.navigate({ type: "session", sessionID })}
+            />
+          ))
         },
       },
       {

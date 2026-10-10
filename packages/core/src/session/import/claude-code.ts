@@ -944,6 +944,7 @@ function summary(file: { readonly ref: string; readonly path: string; readonly s
       title,
       directory: ImportSource.directory(cwd),
       messages: whole ? sampled : Math.round((sampled * file.size) / (2 * SAMPLE)),
+      ...(whole ? {} : { estimated: true }),
       subagents,
       ...(model ? { model: `anthropic/${model}` } : {}),
       time: { created, updated: Math.max(created, updated) },

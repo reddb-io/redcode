@@ -117,14 +117,29 @@ export interface ServerRowMenuItem extends MenuItemBase {
   run(server: string): void
 }
 
+/** An item of the menu of each project row, on Home and in the sidemenu, after the host's session items. */
+export interface ProjectMenuItem extends MenuItemBase {
+  /** The host menu: `project`. */
+  readonly menu: "project"
+  /**
+   * Runs the item.
+   *
+   * @param server - The project's server key.
+   * @param directory - The project's directory, its worktree.
+   */
+  run(server: string, directory: string): void
+}
+
 /**
  * An item of a host menu, by `menu`. Each menu takes only its own fields, so a field the menu ignores fails to compile.
  * - `session.panel`: the + menu before the side panel tabs; shows `icon` and `keybind`.
  * - `server.add`: the Add server menu.
  * - `server.row`: the menu of each server row in Settings; `when` and `enabled` filter it per row, and `run` receives
  *   the row's server key.
+ * - `project`: the menu of each project row on Home and in the sidemenu; `run` receives the project's server key and
+ *   directory.
  */
-export type MenuItem = SessionPanelMenuItem | ServerAddMenuItem | ServerRowMenuItem
+export type MenuItem = SessionPanelMenuItem | ServerAddMenuItem | ServerRowMenuItem | ProjectMenuItem
 
 /**
  * A tab a side `Panel` lists in the session's strip. Return the same object while it is unchanged, also across a
