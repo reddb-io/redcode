@@ -10,6 +10,8 @@ export type ComposerControls = {
   agents: {
     available: { name: string; hidden?: boolean; mode: string }[]
     options: string[]
+    /** The agent's identity colour, a CSS colour for marks (see `agentColor`). */
+    color: (name: string) => string
     current: string
     visible: boolean
     select: (name: string | undefined) => void

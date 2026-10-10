@@ -127,6 +127,15 @@ export function ComposerEditor(props: ComposerEditorProps) {
 
   const mode = createMemo(() => state.mode)
 
+  // The selected agent's identity tints the composer's resting border, like the TUI's prompt border.
+  const agentTint = createMemo(() => {
+    const agent = view.agent
+
+    if (!agent || state.mode !== "normal") return
+
+    return agent.options().find((option) => option.id === agent.current())?.color
+  })
+
   const buttons = createMemo(() => ({
     opacity: mode() === "normal" ? 1 : 0,
     "pointer-events": mode() === "normal" ? ("auto" as const) : ("none" as const),
@@ -188,6 +197,8 @@ export function ComposerEditor(props: ComposerEditorProps) {
       <form
         data-component="composer"
         data-dock-border-underlay={props.borderUnderlay ? "true" : undefined}
+        data-agent-tint={agentTint() ? "true" : undefined}
+        style={agentTint() ? { "--composer-agent": agentTint() } : undefined}
         class={`
           group/composer relative min-h-[96px] w-full overflow-clip rounded-lg border border-control-edge
           bg-v2-background-bg-base focus-within:border-focus
@@ -835,6 +846,15 @@ export function ComposerEditorAddMenu(props: {
   )
 }
 
+/** An option's identity colour as a dot, a non-text mark; nothing for options without one. */
+function ComposerOptionMark(props: { color?: string }) {
+  return (
+    <Show when={props.color}>
+      {(color) => <span aria-hidden="true" class="size-2 shrink-0 rounded-full" style={{ background: color() }} />}
+    </Show>
+  )
+}
+
 function ComposerEditorConfiguredSelect(props: {
   mobileDrawer?: boolean
   title: string
@@ -892,11 +912,14 @@ export function ComposerEditorSelect(props: {
     if (!mobile() && store.open) setOpen(false)
   })
 
+  const selected = () => props.options.find((option) => option.id === props.current)
+
   const content = () => (
     <>
       {props.currentIcon}
+      <ComposerOptionMark color={selected()?.color} />
       <span class="truncate leading-5" classList={{ capitalize: props.capitalize !== false }}>
-        {props.options.find((option) => option.id === props.current)?.label ?? props.current}
+        {selected()?.label ?? props.current}
       </span>
       <span class="-ms-0.5 -me-1 flex shrink-0">
         <Icon name="chevron-down" />
@@ -938,7 +961,10 @@ export function ComposerEditorSelect(props: {
                         class={props.capitalize === false ? undefined : "capitalize"}
                         closeOnSelect
                       >
-                        {option.label}
+                        <span class="flex min-w-0 items-center gap-2">
+                          <ComposerOptionMark color={option.color} />
+                          {option.label}
+                        </span>
                       </Menu.RadioItem>
                     )}
                   </For>
@@ -985,6 +1011,7 @@ export function ComposerEditorSelect(props: {
                         setOpen(false)
                       }}
                     >
+                      <ComposerOptionMark color={option.color} />
                       {option.label}
                       <Show when={props.current === option.id}>
                         <Icon name="check" class="ms-auto" />

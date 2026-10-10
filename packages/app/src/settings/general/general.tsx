@@ -18,7 +18,6 @@ import { SettingsRow } from "@/settings/row"
 import { createShellOptions, type ShellSettingsController } from "./controllers"
 import "@/settings/settings.css"
 
-
 const AutoApprovePermissionsSetting: Component = () => {
   const language = useLanguage()
   const settings = useSettings()
@@ -245,8 +244,8 @@ export const SettingsGeneral: Component = () => {
         >
           <div data-action="settings-show-custom-agents">
             <Switch
-              checked={settings.general.showCustomAgents()}
-              onChange={(checked) => settings.general.setShowCustomAgents(checked)}
+              checked={settings.general.showAgent()}
+              onChange={(checked) => settings.general.setShowAgent(checked)}
             />
           </div>
         </SettingsRow>

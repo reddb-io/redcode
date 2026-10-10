@@ -31,3 +31,11 @@
     pointer-events: none;
   }
 }
+
+/*
+  The selected agent's identity colour (a DS series role, or the agent's configured colour) tints the resting border.
+  Focus keeps the focus colour, so the focused composer reads the same for every agent.
+*/
+[data-component="composer"][data-agent-tint]:not(:focus-within) {
+  border-color: color-mix(in srgb, var(--composer-agent) 45%, var(--reddb-color-control-edge));
+}

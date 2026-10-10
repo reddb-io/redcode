@@ -391,12 +391,22 @@ export function createComposerModel(adapter: ComposerAdapter, options?: { queue?
       get agent() {
         const agents = adapter.controls().agents
 
-        return agents.visible && agents.options.length > 0
+        // A lone agent leaves nothing to pick.
+        return agents.visible && agents.options.length > 1
           ? {
-              options: () => adapter.controls().agents.options.map((name) => ({ id: name, label: name })),
+              options: () =>
+                adapter
+                  .controls()
+                  .agents.options.map((name) => ({
+                    id: name,
+                    label: name,
+                    color: adapter.controls().agents.color(name),
+                  })),
               current: () => adapter.controls().agents.current,
               onSelect: (value: string) => adapter.controls().agents.select(value),
               keybind: () => command.keybindParts("agent.cycle"),
+              cycles: (event: KeyboardEvent) => command.matches("agent.cycle", event),
+              cycle: () => void command.trigger("agent.cycle", "keybind"),
             }
           : undefined
       },

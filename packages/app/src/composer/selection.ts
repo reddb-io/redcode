@@ -8,6 +8,7 @@ import { useData } from "@/runtime/server/current"
 import { normalizeAgentList } from "@/runtime/server/global-sync/utils"
 import { useModels } from "@/providers/models/models"
 import { cycleModelVariant, getConfiguredAgentVariant, resolveModelVariant } from "@/providers/models/variant"
+import { agentColor } from "@/providers/models/agent"
 import { useComposerState } from "./persistence"
 import { useConfiguredModel } from "@/providers/models/configured"
 
@@ -18,10 +19,17 @@ export function createComposerControls(input: { model?: ModelSelection } = {}) {
   const providers = useProviders(() => sdk().directory)
 
   return createMemo<ComposerControls>(() => {
+    const available = normalizeAgentList(data.location.agent.list({ directory: sdk().directory }) ?? [])
+
     return {
       agents: {
-        available: normalizeAgentList(data.location.agent.list({ directory: sdk().directory }) ?? []),
+        available,
         options: local.agent.list().map((agent) => agent.name),
+        color: (name) =>
+          agentColor(
+            available.filter((agent) => !agent.hidden),
+            name,
+          ),
         current: local.agent.current()?.name ?? "",
         visible: local.agent.visible(),
         select: local.agent.set,

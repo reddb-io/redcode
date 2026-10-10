@@ -62,7 +62,7 @@ mock.module("@/runtime/server/runtime", () => ({ useGlobal: () => ({ models: act
 mock.module("@/workspaces/location", () => ({ useWorkspaceLocation: () => () => ({ directory: active.directory }) }))
 
 mock.module("@/settings/model", () => ({
-  useSettings: () => ({ visibility: { customAgents: () => active.state.visible } }),
+  useSettings: () => ({ visibility: { agent: () => active.state.visible } }),
 }))
 
 mock.module("@/composer/persistence", () => ({ useComposerState: () => active.prompt }))

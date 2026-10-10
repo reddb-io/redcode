@@ -156,7 +156,10 @@ export const useComposerCommands = (input: { model?: ModelSelection } = {}) => {
       id: "agent.cycle",
       title: language.t("command.agent.cycle"),
       description: language.t("command.agent.cycle.description"),
-      keybind: "mod+.",
+      // Shift+Tab is the TUI's binding. Tab bindings belong to the composer editor, which runs them only while it
+      // has focus and no suggestion list is open; everywhere else Tab keeps moving focus.
+      keybind: "mod+.,shift+tab",
+      when: (event) => event.key !== "Tab",
       slash: "agent",
       disabled: !local.agent.visible(),
       onSelect: () => local.agent.move(1),

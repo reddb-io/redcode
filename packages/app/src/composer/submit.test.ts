@@ -38,6 +38,7 @@ function controls(): ComposerControls {
     agents: {
       available: [{ name: "build", mode: "primary" }],
       options: ["build"],
+      color: () => "var(--reddb-color-series-1)",
       current: "build",
       visible: true,
       select() {},

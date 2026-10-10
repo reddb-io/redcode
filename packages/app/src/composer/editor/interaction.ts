@@ -36,7 +36,11 @@ export type ComposerEditorView = {
   add?: {
     onAttach: () => void
   }
-  agent?: ComposerSelectControl
+  agent?: ComposerSelectControl & {
+    /** Whether the key event is one of the agent cycle's bindings. */
+    cycles: (event: KeyboardEvent) => boolean
+    cycle: () => void
+  }
   variant?: ComposerSelectControl
   submit: {
     available?: Accessor<boolean>
@@ -264,6 +268,13 @@ export function createComposerEditor(input: {
     }
 
     if (handled) return true
+
+    if (cyclesAgent(event, state, input.view.agent?.cycles)) {
+      event.preventDefault()
+      input.view.agent?.cycle()
+
+      return true
+    }
 
     if (event.key === "Escape" && input.view.submit.queue?.editing()) {
       event.preventDefault()
@@ -557,6 +568,21 @@ export function shouldHandlePasteAsAttachment(clipboard: DataTransfer | null, re
   if (Array.from(clipboard?.types ?? []).some((type) => type.startsWith("text/"))) return false
 
   return readClipboardImage
+}
+
+/**
+ * The agent cycle's Tab bindings (Shift+Tab by default) act only in the editor, in normal mode, and only while no
+ * suggestion list takes Tab, so everywhere else Tab and Shift+Tab keep moving focus.
+ */
+export function cyclesAgent(
+  event: KeyboardEvent,
+  state: { mode: "normal" | "shell"; popover: { type: string } },
+  cycles: ((event: KeyboardEvent) => boolean) | undefined,
+) {
+  if (event.key !== "Tab" || event.isComposing || state.mode !== "normal" || state.popover.type !== "closed")
+    return false
+
+  return !!cycles?.(event)
 }
 
 function canNavigateHistory(direction: "up" | "down", text: string, cursor: number, inHistory: boolean) {

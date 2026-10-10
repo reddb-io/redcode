@@ -46,6 +46,7 @@ describe("settings schema", () => {
         showProjectIcon: true,
         releaseNotes: false,
         mobileDiffWrap: false,
+        showCustomAgents: false,
       },
       appearance: { showProjectName: true },
       sessionSummary: { projectExpanded: false, serverExpanded: true },
@@ -55,6 +56,9 @@ describe("settings schema", () => {
     expect(settings.general).not.toHaveProperty("showStatus")
     expect(settings.general).not.toHaveProperty("experimentalBrowser")
     expect(settings.general).not.toHaveProperty("showProjectIcon")
+    // Every settings write stored the old hidden-by-default switch, so it says nothing about the agent picker.
+    expect(settings.general).not.toHaveProperty("showCustomAgents")
+    expect(settings.general.showAgent).toBe(true)
     expect(settings.appearance).not.toHaveProperty("showProjectName")
 
     const copied = (value: typeof settings) => ({
@@ -93,7 +97,7 @@ describe("settings schema", () => {
         showFileTree: false,
         showNavigation: true,
         timelineDetail: timelinePresets[2].value,
-        showCustomAgents: false,
+        showAgent: true,
         mobileTitlebarPosition: "top",
         terminalPlacement: "side",
         followUpBehavior: "steer",

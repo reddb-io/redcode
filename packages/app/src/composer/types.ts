@@ -38,6 +38,8 @@ export type ComposerOption = {
   id: string
   label: string
   providerID?: string
+  /** An identity colour shown as a dot beside the label, such as an agent's; a CSS colour, never used for text. */
+  color?: string
 }
 
 export type ComposerSuggestion = {

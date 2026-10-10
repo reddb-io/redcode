@@ -102,7 +102,9 @@ const generalSchema = Persistence.struct({
     notices: placementOnlySchema,
     tools: placementOnlySchema,
   }),
-  showCustomAgents: Schema.Boolean,
+  // Replaces `showCustomAgents`, which hid the agent picker by default and was written back as `false` with every
+  // other setting. Its stored value records no choice, so it is dropped rather than migrated.
+  showAgent: Schema.Boolean,
   mobileTitlebarPosition: Schema.Literals(["top", "bottom"]),
   // Owned by the review extension, which copies it out once; kept so settings rewrites cannot drop it first.
   mobileDiffWrap: Persistence.optional(Schema.Boolean),
@@ -259,7 +261,7 @@ export const defaultSettings: Settings = {
     showFileTree: false,
     showNavigation: true,
     timelineDetail: { ...timelinePresets[2].value },
-    showCustomAgents: false,
+    showAgent: true,
     mobileTitlebarPosition: "top",
     terminalPlacement: "side",
     followUpBehavior: "steer",
@@ -291,10 +293,7 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
     const [store, setStore, , ready] = persisted({ key: "settings.v3" }, settingsPersistence, defaultSettings)
     const showFileTree = withFallback(() => store.general?.showFileTree, defaultSettings.general.showFileTree)
 
-    const showCustomAgents = withFallback(
-      () => store.general?.showCustomAgents,
-      defaultSettings.general.showCustomAgents,
-    )
+    const showAgent = withFallback(() => store.general?.showAgent, defaultSettings.general.showAgent)
 
     createEffect(() => {
       if (typeof document === "undefined") return
@@ -318,7 +317,10 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
           setStore("general", "showFileTree", value)
         },
         // The rail's back and forward buttons in the titlebar.
-        showNavigation: withFallback(() => store.general?.showNavigation, defaultSettings.general.showNavigation ?? true),
+        showNavigation: withFallback(
+          () => store.general?.showNavigation,
+          defaultSettings.general.showNavigation ?? true,
+        ),
         setShowNavigation(value: boolean) {
           setStore("general", "showNavigation", value)
         },
@@ -326,9 +328,9 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
         setTimelineDetail(value: TimelineDetail) {
           setStore("general", "timelineDetail", structuredClone(unwrap(value)))
         },
-        showCustomAgents,
-        setShowCustomAgents(value: boolean) {
-          setStore("general", "showCustomAgents", value)
+        showAgent,
+        setShowAgent(value: boolean) {
+          setStore("general", "showAgent", value)
         },
         mobileTitlebarPosition: withFallback(
           () => store.general?.mobileTitlebarPosition,
@@ -351,7 +353,7 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
       },
       visibility: {
         fileTree: showFileTree,
-        customAgents: showCustomAgents,
+        agent: showAgent,
       },
       appearance: {
         fontSize: withFallback(() => store.appearance?.fontSize, defaultSettings.appearance.fontSize),
