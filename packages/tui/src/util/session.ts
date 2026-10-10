@@ -1,4 +1,5 @@
 import type { ModelInfo, SessionMessageAssistant, SessionMessageInfo } from "@opencode/client"
+import { ContextUsage } from "@opencode/util/context-usage"
 import { Locale } from "./locale"
 
 type SessionNode = {
@@ -42,39 +43,17 @@ export function sessionFamily<T extends SessionNode>(sessions: readonly T[], ses
   return walk(root(current).id, [])
 }
 
-export function lastAssistantWithUsage(messages: ReadonlyArray<SessionMessageInfo>, boundary?: string) {
-  const boundaryIndex = boundary ? messages.findIndex((message) => message.id === boundary) : -1
-  if (boundary && boundaryIndex === -1) return undefined
-  const end = boundaryIndex === -1 ? messages.length : boundaryIndex
-  const compactionIndex = messages.findLastIndex(
-    (message, index) => message.type === "compaction" && message.status === "completed" && index < end,
-  )
-  return messages.findLast(
-    (message, index): message is SessionMessageAssistant & { tokens: NonNullable<SessionMessageAssistant["tokens"]> } =>
-      message.type === "assistant" && message.tokens !== undefined && index > compactionIndex && index < end,
-  )
-}
-
+/** The context window's usage, read like every other surface (`ContextUsage.read`) against the location's models. */
 export function contextUsage(
   messages: ReadonlyArray<SessionMessageInfo>,
   models: ReadonlyArray<ModelInfo> | undefined,
   boundary?: string,
 ) {
-  const last = lastAssistantWithUsage(messages, boundary)
-  if (!last) return
-  const tokens =
-    last.tokens.input + last.tokens.output + last.tokens.reasoning + last.tokens.cache.read + last.tokens.cache.write
-  if (tokens <= 0) return
-  const model = models?.find((model) => model.providerID === last.model.providerID && model.id === last.model.id)
-  // The window the percentage is of, so a reading over 100% can be told from the window the model is believed
-  // to have. The model entry carries no provenance, so whether that window was reported, cataloged or guessed is
-  // not known here.
-  const limit = model?.limit.context ? model.limit.context : undefined
-  return {
-    tokens,
-    limit,
-    percent: limit === undefined ? undefined : Math.round((tokens / limit) * 100),
-  }
+  return ContextUsage.read(
+    messages,
+    (ref) => models?.find((model) => model.providerID === ref.providerID && model.id === ref.id)?.limit.context,
+    boundary,
+  )
 }
 
 // The runner's own wording for a quota or usage limit (`SessionRunnerRetry`), applied to what the event carries.
@@ -104,6 +83,5 @@ export function retryStatus(input: {
 
 /** `14.1K / 200.0K (7%)` once the window is known, `14.1K` until then. */
 export function formatContextUsage(tokens: number, percent?: number, limit?: number) {
-  const value = limit === undefined ? Locale.number(tokens) : `${Locale.number(tokens)} / ${Locale.number(limit)}`
-  return percent === undefined ? value : `${value} (${percent}%)`
+  return ContextUsage.format({ tokens, percent, limit }, Locale.number)
 }
