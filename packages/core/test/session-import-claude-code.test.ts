@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test"
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs"
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, utimesSync } from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { Effect } from "effect"
@@ -376,6 +376,22 @@ describe("SessionImport with Claude Code", () => {
       expect(missing).toEqual(new SessionImport.NotFoundError({ source: "claude-code", ref: "../escape" }))
     }),
   )
+
+  test("orders listed sessions by their recorded time when file modification times tie", async () => {
+    const store = path.join(root, "tied")
+    const older = ClaudeCodeStore.transcript(SESSION, project)
+    const newer = ClaudeCodeStore.transcript(OTHER, project)
+    ClaudeCodeStore.write(store, { cwd: project, session: SESSION, records: [older.user("t1", null, 40, "Older")] })
+    ClaudeCodeStore.write(store, { cwd: project, session: OTHER, records: [newer.user("t2", null, 50, "Newer")] })
+    const files = path.join(store, "projects", project.replace(/[^A-Za-z0-9]/g, "-"))
+    const tick = new Date(Date.UTC(2026, 0, 2))
+    ;[SESSION, OTHER].forEach((session) => utimesSync(path.join(files, `${session}.jsonl`), tick, tick))
+    const listed = await Effect.runPromise(ClaudeCodeImport.adapter({ directories: [store] }).list({ limit: 10 }))
+    expect(listed.map((item) => [item.ref, item.title])).toEqual([
+      [OTHER, "Newer"],
+      [SESSION, "Older"],
+    ])
+  })
 
   test("reports a missing store", async () => {
     const detected = await Effect.runPromise(

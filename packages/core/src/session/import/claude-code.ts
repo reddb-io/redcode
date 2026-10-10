@@ -7,7 +7,7 @@ import { SessionMessage } from "@opencode/schema/session-message"
 import { SessionTransfer } from "@opencode/schema/session-transfer"
 import { sameDirectory } from "@opencode/util/path"
 import { Redact } from "@opencode/util/redact"
-import { Effect, Option, Schema } from "effect"
+import { DateTime, Effect, Option, Schema } from "effect"
 import { existsSync } from "node:fs"
 import { readdir, stat } from "node:fs/promises"
 import os from "node:os"
@@ -823,15 +823,20 @@ export function adapter(input: { readonly directories: ReadonlyArray<string> }):
       const timed = yield* Effect.forEach(candidates, (file) =>
         attempt(() => stat(file.path)).pipe(Effect.map((info) => ({ ...file, size: info.size, mtime: info.mtimeMs }))),
       )
+      // The modification time only decides which headers to read first, newest first, and only until enough
+      // sessions in the directory are found. Files written within one timestamp tick tie, so the result is
+      // ordered by the time each transcript records.
       const sorted = timed.toSorted((a, b) => b.mtime - a.mtime || a.ref.localeCompare(b.ref))
-      // Read headers newest first, and only until enough sessions in the directory are found.
       const found: Array<SessionImport.Summary> = []
       for (const file of sorted) {
         if (found.length >= options.limit) break
         const item = yield* summary(file)
         if (item && (!options.directory || sameDirectory(item.directory, options.directory))) found.push(item)
       }
-      return found
+      return found.toSorted(
+        (a, b) =>
+          DateTime.toEpochMillis(b.time.updated) - DateTime.toEpochMillis(a.time.updated) || a.ref.localeCompare(b.ref),
+      )
     }),
     load: Effect.fnUntraced(function* (ref) {
       const dir = yield* store()
@@ -936,7 +941,9 @@ function summary(file: { readonly ref: string; readonly path: string; readonly s
       records.findLast((record) => record.customTitle)?.customTitle ??
       records.findLast((record) => record.aiTitle)?.aiTitle ??
       (prompt ? truncate(promptText(prompt)) : `${NAME} session ${file.ref.slice(0, 8)}`)
-    const created = millis(first.find((record) => record.timestamp)?.timestamp) || file.mtime
+    const created = Math.round(millis(first.find((record) => record.timestamp)?.timestamp) || file.mtime)
+    // The newest recorded record time, which survives copies and restores that reset the file's mtime.
+    const updated = Math.round(millis(records.findLast((record) => record.timestamp)?.timestamp) || file.mtime)
     const subagents = yield* attempt(() => readdir(path.join(path.dirname(file.path), file.ref, "subagents"))).pipe(
       Effect.map((names) => names.filter((name) => name.endsWith(".jsonl")).length),
       Effect.orElseSucceed(() => 0),
@@ -949,7 +956,7 @@ function summary(file: { readonly ref: string; readonly path: string; readonly s
       messages: whole ? sampled : Math.round((sampled * file.size) / (2 * SAMPLE)),
       subagents,
       ...(model ? { model: `anthropic/${model}` } : {}),
-      time: { created, updated: Math.max(created, Math.round(file.mtime)) },
+      time: { created, updated: Math.max(created, updated) },
     }).pipe(Effect.mapError(unreadable))
   })
 }

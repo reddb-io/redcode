@@ -1,6 +1,6 @@
 export * as ClaudeCodeStore from "./claude-code-store"
 
-import { mkdirSync, writeFileSync } from "node:fs"
+import { mkdirSync, utimesSync, writeFileSync } from "node:fs"
 import path from "node:path"
 
 // Synthetic records shaped like a Claude Code transcript, limited to the fields the importer reads.
@@ -108,7 +108,14 @@ export function write(
 ) {
   const project = path.join(root, "projects", input.cwd.replace(/[^A-Za-z0-9]/g, "-"))
   mkdirSync(project, { recursive: true })
-  writeFileSync(path.join(project, `${input.session}.jsonl`), jsonl(input.records))
+  const file = path.join(project, `${input.session}.jsonl`)
+  writeFileSync(file, jsonl(input.records))
+  // Claude Code appends as it goes, so the file was last modified at its newest record. Pin that explicitly:
+  // fixtures written back to back otherwise share an mtime on file systems with coarse timestamps.
+  const newest = Math.max(
+    ...input.records.map((record) => (typeof record.timestamp === "string" ? Date.parse(record.timestamp) : 0)),
+  )
+  if (newest > 0) utimesSync(file, new Date(newest), new Date(newest))
   if (!input.agents?.length) return
   const agents = path.join(project, input.session, "subagents")
   mkdirSync(agents, { recursive: true })
