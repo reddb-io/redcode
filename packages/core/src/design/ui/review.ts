@@ -1825,6 +1825,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
   const conversationView = { reply: "", message: "", alert: "" }
   /** Offers "Show more" only when the clamped reply hides something. */
   const fitReply = () => {
+    if (options.embedded) return
     const expanded = element("reply").dataset.expanded === "true"
     const more = element("reply-more")
     more.hidden = !expanded && element("reply-text").scrollHeight <= element("reply-text").clientHeight + 1
@@ -1849,21 +1850,23 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     const keys = state.feed.map(entryKey)
     const start = round ? keys.indexOf(`user:${round.feedback[0]}`) : -1
     const earlier = new Set(keys.slice(0, Math.max(start, 0)))
-    element("feed")
-      .querySelectorAll<HTMLElement>(".entry")
-      .forEach((row) => {
-        const hide = earlier.has(row.dataset.key ?? "")
-        if (row.hidden !== hide) row.hidden = hide
-      })
+    if (!options.embedded)
+      element("feed")
+        .querySelectorAll<HTMLElement>(".entry")
+        .forEach((row) => {
+          const hide = earlier.has(row.dataset.key ?? "")
+          if (row.hidden !== hide) row.hidden = hide
+        })
     const scoped = state.feed.slice(Math.max(start, 0))
     const failed = scoped.filter((event) => event.type === "tool" && event.status === "failed").length
-    write(
-      element("activity-count"),
-      [
-        scoped.length === 1 ? copy.activityCountOne : copy.activityCount.replace("{{count}}", String(scoped.length)),
-        ...(failed ? [copy.activityFailed.replace("{{count}}", String(failed))] : []),
-      ].join(" · "),
-    )
+    if (!options.embedded)
+      write(
+        element("activity-count"),
+        [
+          scoped.length === 1 ? copy.activityCountOne : copy.activityCount.replace("{{count}}", String(scoped.length)),
+          ...(failed ? [copy.activityFailed.replace("{{count}}", String(failed))] : []),
+        ].join(" · "),
+      )
     drawHead()
     const recording =
       start >= 0
@@ -1881,6 +1884,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       head.textContent = `${copy.statusRefused}:`
       element("round-alert").replaceChildren(...(refused ? [head, ` ${refused}`] : []))
     }
+    if (options.embedded) return
     // The text typed beside the notes is the round's message, not a note.
     const message = (round?.feedback ?? [])
       .flatMap((id) =>
@@ -2906,6 +2910,16 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
   // The same entry can arrive twice (a reconnect replays history): the newest copy replaces its row
   // in place. The list follows new rows only while the reader is already at the bottom.
   const upsert = (event: Design.FeedEvent) => {
+    if (options.embedded) {
+      if (event.type === "reply") return
+      const index = state.feed.findIndex((item) => entryKey(item) === entryKey(event))
+      const facts = event.type === "user" ? { ...event, text: "" } : event
+      if (index >= 0) state.feed[index] = facts
+      if (index < 0) state.feed.push(facts)
+      if (state.feed.length > 200) state.feed.shift()
+      drawConversation()
+      return
+    }
     const list = element("feed")
     const key = entryKey(event)
     const index = state.feed.findIndex((item) => entryKey(item) === key)
@@ -3249,7 +3263,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     if (changed) {
       disclose(element<HTMLDetailsElement>("design-tasks-section"), "tasks", false)
       // Without a terminal beside the page (a shared link, a session started in the browser) Activity is the transcript.
-      disclose(element<HTMLDetailsElement>("activity"), "activity", !local)
+      if (!options.embedded) disclose(element<HTMLDetailsElement>("activity"), "activity", !local)
     }
     if (current.ended && current.approvedRevision && state.mode && state.mode !== "design") {
       closeReview()
@@ -5021,7 +5035,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
   element("access-reload").onclick = () => location.reload()
   if (options.feed)
     options.feed(
-      `${endpoint}/feed`,
+      `${endpoint}/feed${options.embedded ? "?embed=1" : ""}`,
       transport,
       controller.signal,
       onFeed,
@@ -5043,6 +5057,10 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     if (loading.view.phase === "loading" || (loading.view.phase === "empty" && loading.view.until)) drawLoading()
     drawLiveness()
   }, 1000)
+  if (options.embedded) {
+    replyFit.disconnect()
+    for (const id of ["reply", "round-message", "activity"]) element(id).remove()
+  }
   void run(refresh)
   const dispose = () => {
     if (state.stopped) return

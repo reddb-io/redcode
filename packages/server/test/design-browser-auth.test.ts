@@ -331,34 +331,45 @@ it.live("signed Design pages exchange tickets for scoped cookies without a Basic
     yield* Effect.promise(() => conflictingFeedback.arrayBuffer())
 
     // The default server does not retain event payloads. Its projected conversation still reaches the browser.
-    const entry = yield* Effect.promise(async () => {
-      const response = await fetch(new URL(`/design/session/${sessionID}/feed`, server.base), {
-        headers: { cookie },
-        signal: AbortSignal.timeout(5_000),
-      })
-      expect(response.status).toBe(200)
-      const reader = response.body!.getReader()
-      const decoder = new TextDecoder()
-      const state = { buffer: "" }
-      try {
-        while (true) {
-          const chunk = await reader.read()
-          if (chunk.done) throw new Error("Design feed ended before replaying the saved feedback")
-          state.buffer += decoder.decode(chunk.value, { stream: true })
-          const blocks = state.buffer.split("\n\n")
-          state.buffer = blocks.pop() ?? ""
-          const found = blocks
-            .flatMap((block) => block.split("\n"))
-            .filter((line) => line.startsWith("data: "))
-            .map((line) => Schema.decodeUnknownSync(Design.FeedEvent)(JSON.parse(line.slice(6))))
-            .find((entry) => entry.type === "user" && entry.id === feedback.id)
-          if (found) return found
-        }
-      } finally {
-        await reader.cancel()
-      }
-    })
-    expect(entry).toMatchObject({ type: "user", id: feedback.id, text: "Variant operation: delete Compact" })
+    yield* Effect.forEach([false, true], (embedded) =>
+      Effect.gen(function* () {
+        const entry = yield* Effect.promise(async () => {
+          const response = await fetch(
+            new URL(`/design/session/${sessionID}/feed${embedded ? "?embed=1" : ""}`, server.base),
+            {
+              headers: { cookie },
+              signal: AbortSignal.timeout(5_000),
+            },
+          )
+          expect(response.status).toBe(200)
+          const reader = response.body!.getReader()
+          const decoder = new TextDecoder()
+          const state = { buffer: "" }
+          try {
+            while (true) {
+              const chunk = await reader.read()
+              if (chunk.done) throw new Error("Design feed ended before replaying the saved feedback")
+              state.buffer += decoder.decode(chunk.value, { stream: true })
+              const blocks = state.buffer.split("\n\n")
+              state.buffer = blocks.pop() ?? ""
+              const found = blocks
+                .flatMap((block) => block.split("\n"))
+                .filter((line) => line.startsWith("data: "))
+                .map((line) => Schema.decodeUnknownSync(Design.FeedEvent)(JSON.parse(line.slice(6))))
+                .find((entry) => entry.type === "user" && entry.id === feedback.id)
+              if (found) return found
+            }
+          } finally {
+            await reader.cancel()
+          }
+        })
+        expect(entry).toMatchObject({
+          type: "user",
+          id: feedback.id,
+          text: embedded ? "" : "Variant operation: delete Compact",
+        })
+      }),
+    )
 
     yield* Effect.forEach(
       [

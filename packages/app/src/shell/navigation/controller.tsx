@@ -1,6 +1,7 @@
 import type { SessionInfo } from "@opencode/client/promise"
 import { createMediaQuery } from "@solid-primitives/media"
-import { createEffect, createMemo, startTransition, untrack } from "solid-js"
+import { createEffect, createMemo, lazy, startTransition, Suspense, untrack } from "solid-js"
+import { useDialog } from "@opencode/ui/context/dialog"
 import { createStore, reconcile } from "solid-js/store"
 import { useNavigate } from "@solidjs/router"
 import { addProjects } from "@/home/projects/add"
@@ -33,6 +34,14 @@ import {
  * previous/next commands work while the sidemenu is collapsed to the rail.
  */
 export function createNavigationController() {
+  const dialog = useDialog()
+  const Agents = lazy(() => import("./agents"))
+  const showAgents = () =>
+    dialog.show(() => (
+      <Suspense>
+        <Agents navigation={navigation} />
+      </Suspense>
+    ))
   const layout = useLayout()
   const servers = useServers()
   const global = useGlobal()
@@ -252,7 +261,7 @@ export function createNavigationController() {
     },
   ])
 
-  return {
+  const navigation = {
     language,
     mobile,
     server: conn,
@@ -326,6 +335,7 @@ export function createNavigationController() {
       settings: () => layout.route().type === "settings",
     },
     go: {
+      agents: showAgents,
       home: () => {
         closeDrawer()
         if (layout.route().type === "home") return
@@ -345,6 +355,16 @@ export function createNavigationController() {
     },
     key: navigationProjectKey,
   }
+  command.register(() => [
+    {
+      id: "agents.open",
+      title: language.t("agents.title"),
+      category: language.t("command.category.view"),
+      keybind: "mod+shift+a",
+      onSelect: showAgents,
+    },
+  ])
+  return navigation
 }
 
 export type NavigationController = ReturnType<typeof createNavigationController>

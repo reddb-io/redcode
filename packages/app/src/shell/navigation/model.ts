@@ -144,6 +144,23 @@ export function stepNavigation<T>(items: readonly T[], current: T | undefined, d
  * viewed. A session with none of these shows nothing.
  */
 export const SESSION_STATUSES = ["approval", "input", "working", "queued", "failed", "done"] as const
+
+/** Session families with explicit depth; each session appears once, even with an unavailable parent. */
+export function agentSessionTrees(sessions: readonly SessionInfo[]) {
+  const byID = new Map(sessions.map((session) => [session.id, session]))
+  const children = Map.groupBy(
+    sessions.filter((session) => session.parentID),
+    (session) => session.parentID,
+  )
+  const seen = new Set<string>()
+  const visit = (session: SessionInfo, depth: number): { session: SessionInfo; depth: number }[] => {
+    if (seen.has(session.id)) return []
+    seen.add(session.id)
+    return [{ session, depth }, ...(children.get(session.id) ?? []).flatMap((child) => visit(child, depth + 1))]
+  }
+  const roots = sessions.filter((session) => !session.parentID || !byID.has(session.parentID))
+  return [...roots, ...sessions].flatMap((root) => (seen.has(root.id) ? [] : [{ root, rows: visit(root, 0) }]))
+}
 export type SessionStatus = (typeof SESSION_STATUSES)[number]
 
 export function sessionStatus(signals: Record<SessionStatus, boolean>) {

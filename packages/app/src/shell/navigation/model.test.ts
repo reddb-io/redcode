@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import type { SessionInfo } from "@opencode/client/promise"
 import {
+  agentSessionTrees,
   buildNavigationTree,
   clampNavigationWidth,
   groupByDay,
@@ -29,6 +30,28 @@ const session = (id: string, directory: string, updated: number, extra: Partial<
 const alpha = { id: "project:/repo/alpha", worktree: "/repo/alpha" }
 const beta = { id: "project:/repo/beta", worktree: "/repo/beta", name: "Beta app" }
 const ids = (items: { session: SessionInfo }[]) => items.map((item) => item.session.id)
+
+test("agent families retain nested depth and sessions whose parent is unavailable", () => {
+  const trees = agentSessionTrees([
+    session("grandchild", "/repo/alpha/tree", 3, { parentID: "child" }),
+    session("parent", "/repo/alpha", 1),
+    session("child", "/repo/alpha/tree", 2, { parentID: "parent" }),
+    session("orphan", "/repo/beta", 4, { parentID: "missing" }),
+  ])
+  expect(
+    trees.map((tree) => ({ root: tree.root.id, rows: tree.rows.map((row) => [row.session.id, row.depth]) })),
+  ).toEqual([
+    {
+      root: "parent",
+      rows: [
+        ["parent", 0],
+        ["child", 1],
+        ["grandchild", 2],
+      ],
+    },
+    { root: "orphan", rows: [["orphan", 0]] },
+  ])
+})
 
 describe("buildNavigationTree", () => {
   test("nests root sessions under their project, newest first, in project order", () => {

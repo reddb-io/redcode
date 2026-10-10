@@ -41,6 +41,7 @@ export function review(sessionID: string, endpoint: string, breakpoints?: readon
     appearance,
     breakpoints,
     embedded,
+    shortcuts: embedded ? "scoped" : "global",
   }).replaceAll("<", "\\u003c")
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Design · Redcode</title><link rel="icon" type="image/svg+xml" href="${appearance.favicon}"><style>${fonts}</style><style>html,body,#review{height:100%;margin:0}</style></head><body><div id="review"></div><script>${UNTICKET}(${mountReview.toString()})(document.getElementById("review"), Object.assign(${options}, { feed: ${designFeed.toString()}, viewports: ${viewports.toString()}, device: ${device.toString()}, stage: ${stage.toString()}, deck: ${deck.toString()}, loading: ${previewLoading.toString()} }))</script></body></html>`
 }

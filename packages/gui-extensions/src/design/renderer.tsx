@@ -3,7 +3,7 @@ import { Icon } from "@opencode/ui/icon"
 import { Command, createKeyed, onIdle, Panel, type PanelTab, type Setup } from "../sdk"
 import type definition from "./index"
 import { createDesignReview } from "./model"
-import { latestDesignPreview } from "./state"
+import { latestDesignPreview, openDesignReviewPane } from "./state"
 
 const setup: Setup<typeof definition> = (ctx) => {
   const SessionDesignPanel = lazy(() => import("./panel"))
@@ -18,7 +18,9 @@ const setup: Setup<typeof definition> = (ctx) => {
 
   const open = () => {
     const session = sessions.current()
-    if (session) layout.open(key, session)
+    if (!session) return
+    if (ctx.desktop && openDesignReviewPane(ctx.uses.browser(), session)) return
+    layout.open(key, session)
   }
 
   // A preview published while the agent works brings the tab forward once, the way a browser opens a tab; loading an
@@ -39,6 +41,8 @@ const setup: Setup<typeof definition> = (ctx) => {
           if (previous === undefined || previous === preview || preview === "none") return
           const session = sessions.current()
           if (!session || session.server.data.session.status(session.id) === "idle") return
+          // Open a newly published preview directly beside its chat; restored history stays quiet.
+          if (ctx.desktop && openDesignReviewPane(ctx.uses.browser(), session)) return
           layout.open(key, session, { background: true })
         },
       )

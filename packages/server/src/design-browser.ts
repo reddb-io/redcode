@@ -380,6 +380,7 @@ function read(
       )
     }
     if (parts[0] === "feed" && parts.length === 1) {
+      const embedded = url.searchParams.get("embed") === "1"
       const cursor = Number(url.searchParams.get("after") ?? "0")
       if (!Number.isSafeInteger(cursor) || cursor < 0) return failure(400, "Invalid feed cursor")
       const active = yield* sessions.active
@@ -391,6 +392,9 @@ function read(
       ]
       const events = Stream.make(...initial).pipe(
         Stream.concat(DesignFeed.stream(sessions, bus, sessionID).pipe(Stream.orDie)),
+        // The adjacent chat owns conversation text; the review still needs delivery IDs and preview progress.
+        Stream.filter((event) => !embedded || event.type !== "reply"),
+        Stream.map((event) => embedded && event.type === "user" ? { ...event, text: "" } : event),
         Stream.map((event) => `data: ${JSON.stringify(event)}\n\n`),
       )
       const heartbeat = Stream.tick("15 seconds").pipe(Stream.map(() => ": heartbeat\n\n"))

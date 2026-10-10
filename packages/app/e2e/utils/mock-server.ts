@@ -2,6 +2,7 @@ import type { Page } from "@playwright/test"
 import type { OpenCodeEvent, SessionMessageInfo } from "@opencode/client/promise"
 import { Permission } from "@opencode/schema/permission"
 import { Worktree } from "@opencode/schema/worktree"
+import type { Redskilled } from "@opencode/schema/redskilled"
 import { Duration, Effect, Layer, Option, Predicate, Schema } from "effect"
 import { HttpRouter, HttpServer, HttpServerResponse } from "effect/unstable/http"
 import { HttpApiBuilder, HttpApiSchema } from "effect/unstable/httpapi"
@@ -127,6 +128,12 @@ export interface MockServerConfig {
   sessionStatus?: Resolvable<Record<string, { type: string }>>
   inbox?: unknown[] | (() => unknown[])
   onPrompt?: (input: { sessionID: string; body: Schema.JsonObject }) => void
+  redskilled?: Resolvable<Redskilled.Status>
+  onWorkerControl?: (input: {
+    action: "consent" | "resize" | "stopProject" | "stopWorker" | "recycle" | "steer"
+    body?: unknown
+    directory?: string
+  }) => void
   // A session's reasoning override must settle before a draft sends its first prompt.
   onReasoningMode?: (input: { sessionID: string; body: Schema.JsonObject }) => void | Promise<void>
   onLocationReload?: () => void
@@ -753,6 +760,21 @@ function mockHandlers(
       new MockUnsupported({ message: `The mock server does not ${operation}; configure ${handler} for this scenario` }),
     )
 
+  const workerControl = (
+    action: Parameters<NonNullable<MockServerConfig["onWorkerControl"]>>[0]["action"],
+    body: unknown,
+    directory?: string,
+  ) =>
+    Effect.sync(() => {
+      config.onWorkerControl?.({ action, body, directory })
+      return {
+        location: { directory },
+        data: resolve(
+          config.redskilled ?? { lifecycle: "unavailable", consent: "unknown", scope: "project", native: true },
+        ),
+      }
+    })
+
   return HttpApiBuilder.group(MockApi, "mock", (handlers) =>
     handlers
       .handleRaw("event", () => {
@@ -1351,6 +1373,19 @@ function mockHandlers(
         },
         // Like the server for an idle session: nothing was running to interrupt.
         sessionInterrupt: () => Effect.succeed({ interrupted: false }),
+        redskilledStatus: (ctx) =>
+          Effect.succeed({
+            location: { directory: ctx.query["location[directory]"] },
+            data: resolve(
+              config.redskilled ?? { lifecycle: "unavailable", consent: "unknown", scope: "project", native: true },
+            ),
+          }),
+        redskilledConsent: (ctx) => workerControl("consent", ctx.payload, ctx.query["location[directory]"]),
+        redskilledResize: (ctx) => workerControl("resize", ctx.payload, ctx.query["location[directory]"]),
+        redskilledStopProject: (ctx) => workerControl("stopProject", undefined, ctx.query["location[directory]"]),
+        redskilledStopWorker: (ctx) => workerControl("stopWorker", ctx.payload, ctx.query["location[directory]"]),
+        redskilledRecycle: (ctx) => workerControl("recycle", ctx.payload, ctx.query["location[directory]"]),
+        redskilledSteer: (ctx) => workerControl("steer", ctx.payload, ctx.query["location[directory]"]),
         // The mock runs no agent loop, so every session is already idle.
         sessionWait: () => noContent,
         sessionRevertStage: (ctx) => {

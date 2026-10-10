@@ -497,4 +497,51 @@ const Group = HttpApiGroup.make("mock")
     }),
   )
 
-export const MockApi = HttpApi.make("mock").add(Group)
+const WorkerQuery = Schema.Struct({ "location[directory]": Schema.optional(Schema.String) })
+
+const Workers = Group.add(
+  HttpApiEndpoint.get("redskilledStatus", "/api/redskilled", { query: WorkerQuery, success: Json }),
+)
+  .add(
+    HttpApiEndpoint.post("redskilledConsent", "/api/redskilled/consent", {
+      query: WorkerQuery,
+      payload: JsonPayload,
+      success: Json,
+    }),
+  )
+  .add(
+    HttpApiEndpoint.post("redskilledResize", "/api/redskilled/project/resize", {
+      query: WorkerQuery,
+      payload: JsonPayload,
+      success: Json,
+    }),
+  )
+  .add(
+    HttpApiEndpoint.post("redskilledStopProject", "/api/redskilled/project/stop", {
+      query: WorkerQuery,
+      success: Json,
+    }),
+  )
+  .add(
+    HttpApiEndpoint.post("redskilledStopWorker", "/api/redskilled/worker/stop", {
+      query: WorkerQuery,
+      payload: JsonPayload,
+      success: Json,
+    }),
+  )
+  .add(
+    HttpApiEndpoint.post("redskilledRecycle", "/api/redskilled/worker/recycle", {
+      query: WorkerQuery,
+      payload: JsonPayload,
+      success: Json,
+    }),
+  )
+  .add(
+    HttpApiEndpoint.post("redskilledSteer", "/api/redskilled/worker/steer", {
+      query: WorkerQuery,
+      payload: JsonPayload,
+      success: Json,
+    }),
+  )
+
+export const MockApi = HttpApi.make("mock").add(Workers)
