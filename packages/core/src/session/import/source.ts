@@ -76,3 +76,16 @@ export function stableID(prefix: "ses" | "msg", seed: string, time: bigint, desc
   const suffix = Array.from({ length: 14 }, (_, index) => BASE62[Number((hash / 62n ** BigInt(13 - index)) % 62n)])
   return `${prefix}_${stamp}${suffix.join("")}`
 }
+
+/**
+ * Message IDs in history order for the session `seed` names: each takes its record's time, kept
+ * strictly ascending, and a hash of the record's `key`.
+ */
+export function messageIDs(seed: string) {
+  const state = { last: -1n }
+  return (key: string, at: number) => {
+    const time = BigInt(Math.max(0, Math.trunc(at))) * 0x1000n
+    state.last = time > state.last ? time : state.last + 1n
+    return stableID("msg", `${seed}:${key}`, state.last)
+  }
+}

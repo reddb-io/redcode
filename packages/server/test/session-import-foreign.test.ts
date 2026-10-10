@@ -5,6 +5,7 @@ import os from "node:os"
 import path from "node:path"
 import { Effect } from "effect"
 import { ClaudeCodeStore } from "../../core/test/fixture/claude-code-store"
+import { CodexStore } from "../../core/test/fixture/codex-store"
 import { OpenCodeStore } from "../../core/test/fixture/opencode-store"
 import { PiStore } from "../../core/test/fixture/pi-store"
 import { it } from "../../core/test/lib/effect"
@@ -16,6 +17,7 @@ const store = path.join(root, "opencode")
 const claude = path.join(root, "claude")
 const pi = path.join(root, "pi", "sessions")
 const omp = path.join(root, "omp", "sessions")
+const codex = path.join(root, "codex")
 mkdirSync(project, { recursive: true })
 mkdirSync(store, { recursive: true })
 afterAll(() => rmSync(root, { recursive: true, force: true }))
@@ -28,6 +30,18 @@ ClaudeCodeStore.write(claude, {
   records: [
     cc.user("u1", null, 1, "Hello from Claude Code"),
     cc.assistant("a1", "u1", 2, { id: "msg_1", block: { type: "text", text: "Hi" }, stop: "end_turn" }),
+  ],
+})
+
+const CODEX_THREAD = "019a0000-0000-7000-8000-0000000000c1"
+CodexStore.write(codex, {
+  thread: CODEX_THREAD,
+  records: [
+    CodexStore.meta(CODEX_THREAD, project, 0),
+    CodexStore.context(0, "gpt-test-1"),
+    CodexStore.user(1, "Hello from Codex"),
+    CodexStore.assistant(2, "Hi"),
+    CodexStore.usage(2),
   ],
 })
 
@@ -77,7 +91,7 @@ const setup = Effect.gen(function* () {
     {
       overrides: [
         SessionImport.node.replace(
-          SessionImport.configured({ opencode: [store], claudeCode: [claude], pi: [pi], omp: [omp] }),
+          SessionImport.configured({ opencode: [store], claudeCode: [claude], pi: [pi], omp: [omp], codex: [codex] }),
         ),
       ],
     },
@@ -112,6 +126,7 @@ it.live("lists import sources and the sessions recorded in a directory", () =>
         },
         { source: "pi", name: "Pi", available: false, sessions: 0, warning: "No Pi session store found" },
         { source: "omp", name: "oh-my-pi", available: true, path: omp, sessions: 1 },
+        { source: "codex", name: "Codex", available: true, path: codex, sessions: 1 },
       ],
     })
     expect(
@@ -239,6 +254,36 @@ it.live("lists and imports an oh-my-pi session under a stable Redcode ID", () =>
     expect(id).toStartWith("ses_")
     expect(
       yield* request("/api/experimental/session/import/foreign", { source: "omp", ref: OMP_SESSION }, 409),
+    ).toMatchObject({ _tag: "ConflictError", resource: id })
+  }).pipe(Effect.scoped),
+)
+
+it.live("lists and imports a Codex thread under a stable Redcode ID", () =>
+  Effect.gen(function* () {
+    const request = yield* setup
+    expect(
+      yield* request(`/api/experimental/session/import/sessions?source=codex&directory=${encodeURIComponent(project)}`),
+    ).toMatchObject({
+      data: [
+        {
+          source: "codex",
+          ref: CODEX_THREAD,
+          title: "Hello from Codex",
+          directory: project,
+          messages: 2,
+          subagents: 0,
+          model: "openai/gpt-test-1",
+        },
+      ],
+    })
+    const imported = yield* request("/api/experimental/session/import/foreign", { source: "codex", ref: CODEX_THREAD })
+    expect(imported).toMatchObject({
+      data: { session: { title: "Hello from Codex", location: { directory: project } }, warnings: [] },
+    })
+    const id = (imported as { data: { session: { id: string } } }).data.session.id
+    expect(id).toStartWith("ses_")
+    expect(
+      yield* request("/api/experimental/session/import/foreign", { source: "codex", ref: CODEX_THREAD }, 409),
     ).toMatchObject({ _tag: "ConflictError", resource: id })
   }).pipe(Effect.scoped),
 )

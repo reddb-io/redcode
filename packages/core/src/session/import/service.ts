@@ -9,6 +9,7 @@ import { Session } from "../../session.js"
 import { SessionMessage } from "../message.js"
 import { SessionTransfer } from "../transfer.js"
 import { ClaudeCodeImport } from "./claude-code.js"
+import { CodexImport } from "./codex.js"
 import { OpenCodeImport } from "./opencode.js"
 import { PiImport } from "./pi.js"
 import { ImportSource } from "./source.js"
@@ -70,6 +71,7 @@ export function configured(
     readonly claudeCode?: ReadonlyArray<string>
     readonly pi?: ReadonlyArray<string>
     readonly omp?: ReadonlyArray<string>
+    readonly codex?: ReadonlyArray<string>
   } = {},
 ) {
   return makeGlobalNode({
@@ -87,6 +89,7 @@ export function configured(
           }),
           pi: PiImport.adapter({ source: "pi", directories: options.pi ?? PiImport.directories("pi") }),
           omp: PiImport.adapter({ source: "omp", directories: options.omp ?? PiImport.directories("omp") }),
+          codex: CodexImport.adapter({ directories: options.codex ?? CodexImport.directories() }),
         }
         const load = (source: Source, ref: string) => adapters[source].load(ref)
 

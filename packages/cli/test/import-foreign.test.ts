@@ -194,6 +194,40 @@ test("imports Pi and oh-my-pi sessions", async () => {
   }
 }, 30_000)
 
+test("imports a Codex session by thread ID", async () => {
+  const requests: unknown[] = []
+  const server = serve(async (request, url) => {
+    if (url.pathname !== "/api/experimental/session/import/foreign") return undefined
+    requests.push(await request.json())
+    return Response.json({
+      data: {
+        session: { ...info, id: "ses_codex" },
+        sessions: ["ses_codex"],
+        warnings: ["Dropped 1 developer message (permission, sandbox and collaboration instructions)"],
+      },
+    })
+  })
+  try {
+    const [stdout, stderr, exitCode] = await run([
+      "session",
+      "import",
+      "019a0000-0000-7000-8000-000000000001",
+      "--from",
+      "codex",
+      "--server",
+      server.url.toString(),
+    ])
+    expect(exitCode).toBe(0)
+    expect(requests).toEqual([{ source: "codex", ref: "019a0000-0000-7000-8000-000000000001" }])
+    expect(stdout).toStartWith(`Imported session: ses_codex from Codex${os.EOL}`)
+    expect(stderr).toBe(
+      `Warning: Dropped 1 developer message (permission, sandbox and collaboration instructions)${os.EOL}`,
+    )
+  } finally {
+    await server.stop(true)
+  }
+}, 15_000)
+
 test("reports an already imported session with its existing ID", async () => {
   const server = serve((_request, url) =>
     url.pathname === "/api/experimental/session/import/foreign"
