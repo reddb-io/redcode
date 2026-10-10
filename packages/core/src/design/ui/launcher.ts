@@ -1,6 +1,6 @@
 export * as DesignLauncher from "./launcher.js"
 
-import { appearance } from "./brand.gen.js"
+import { appearance, fonts } from "./brand.gen.js"
 
 export function page(input: {
   authenticated: boolean
@@ -67,7 +67,7 @@ function shell(body: string, script = "") {
   </style><main><header><img src="${appearance.favicon}" alt="RedDB"><h1>Design · Redcode</h1></header>
   ${body}
   </main>`
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Design · Redcode</title><link rel="icon" href="${appearance.favicon}"><style>body{margin:0}</style></head><body><div id="launcher"></div><script>
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Design · Redcode</title><link rel="icon" href="${appearance.favicon}"><style>${fonts}</style><style>body{margin:0}</style></head><body><div id="launcher"></div><script>
   const host = document.getElementById('launcher');
   host.dataset.theme = 'application';
   host.dataset.density = 'compact';
