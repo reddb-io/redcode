@@ -41,6 +41,7 @@ import type { Config } from "@opencode/schema/config"
 import type { Hook } from "@opencode/schema/hook"
 import type { LSP } from "@opencode/schema/lsp"
 import type { Formatter } from "@opencode/schema/formatter"
+import type { Worker } from "@opencode/schema/worker"
 
 export type ServerInfoOutput = {
   readonly version: string
@@ -77,6 +78,12 @@ export type ServerSystemOperation<E = never> = () => Effect.Effect<ServerSystemO
 export type ServerPairOutput = { readonly code: string; readonly expires_in: number }
 export type ServerPairOperation<E = never> = () => Effect.Effect<ServerPairOutput, E>
 
+export type ServerCancelPairInput = { readonly code: string }
+export type ServerCancelPairOutput = void
+export type ServerCancelPairOperation<E = never> = (
+  input: ServerCancelPairInput,
+) => Effect.Effect<ServerCancelPairOutput, E>
+
 export type ServerConnectInput = { readonly code: string }
 export type ServerConnectOutput = { readonly token: string }
 export type ServerConnectOperation<E = never> = (input: ServerConnectInput) => Effect.Effect<ServerConnectOutput, E>
@@ -85,6 +92,7 @@ export interface ServerApi<E = never> {
   readonly info: ServerInfoOperation<E>
   readonly system: ServerSystemOperation<E>
   readonly pair: ServerPairOperation<E>
+  readonly cancelPair: ServerCancelPairOperation<E>
   readonly connect: ServerConnectOperation<E>
 }
 
@@ -3714,6 +3722,10 @@ export type SessionLogOutput =
   | EventLog.Synced
 export type SessionLogOperation<E = never> = (input: SessionLogInput) => Stream.Stream<SessionLogOutput, E>
 
+export type SessionWakeInput = { readonly sessionID: Session.ID }
+export type SessionWakeOutput = void
+export type SessionWakeOperation<E = never> = (input: SessionWakeInput) => Effect.Effect<SessionWakeOutput, E>
+
 export type SessionInterruptInput = { readonly sessionID: Session.ID; readonly resume?: boolean | undefined }
 export type SessionInterruptOutput = { readonly interrupted: boolean }
 export type SessionInterruptOperation<E = never> = (
@@ -3764,7 +3776,11 @@ export type SessionFormReplyOperation<E = never> = (
   input: SessionFormReplyInput,
 ) => Effect.Effect<SessionFormReplyOutput, E>
 
-export type SessionFormCancelInput = { readonly sessionID: string; readonly formID: Form.ID }
+export type SessionFormCancelInput = {
+  readonly sessionID: string
+  readonly formID: Form.ID
+  readonly message?: string | undefined
+}
 export type SessionFormCancelOutput = void
 export type SessionFormCancelOperation<E = never> = (
   input: SessionFormCancelInput,
@@ -3863,6 +3879,7 @@ export interface SessionApi<E = never> {
   }
   readonly generate: SessionGenerateOperation<E>
   readonly log: SessionLogOperation<E>
+  readonly wake: SessionWakeOperation<E>
   readonly interrupt: SessionInterruptOperation<E>
   readonly background: SessionBackgroundOperation<E>
   readonly message: { readonly get: SessionMessageGetOperation<E> }
@@ -6439,6 +6456,50 @@ export interface ServerIntelligenceApi<E = never> {
   readonly probe: ServerIntelligenceProbeOperation<E>
 }
 
+export type WorkersListOutput = Worker.Snapshot
+export type WorkersListOperation<E = never> = () => Effect.Effect<WorkersListOutput, E>
+
+export type WorkersAddInput = {
+  readonly id: Worker.Name
+  readonly url: string
+  readonly directories: ReadonlyArray<string>
+  readonly tags: ReadonlyArray<string>
+  readonly password: string
+  readonly resourceID?: string | undefined
+}
+export type WorkersAddOutput = Worker.Status
+export type WorkersAddOperation<E = never> = (input: WorkersAddInput) => Effect.Effect<WorkersAddOutput, E>
+
+export type WorkersRemoveInput = { readonly id: Worker.Name }
+export type WorkersRemoveOutput = void
+export type WorkersRemoveOperation<E = never> = (input: WorkersRemoveInput) => Effect.Effect<WorkersRemoveOutput, E>
+
+export type WorkersProbeInput = { readonly id: Worker.Name }
+export type WorkersProbeOutput = Worker.Status
+export type WorkersProbeOperation<E = never> = (input: WorkersProbeInput) => Effect.Effect<WorkersProbeOutput, E>
+
+export type WorkersSubmitInput = { readonly tasks: ReadonlyArray<Worker.Task> }
+export type WorkersSubmitOutput = Worker.Batch
+export type WorkersSubmitOperation<E = never> = (input: WorkersSubmitInput) => Effect.Effect<WorkersSubmitOutput, E>
+
+export type WorkersRecoverInput = { readonly id: Worker.Name; readonly task: Worker.Name }
+export type WorkersRecoverOutput = Worker.Batch
+export type WorkersRecoverOperation<E = never> = (input: WorkersRecoverInput) => Effect.Effect<WorkersRecoverOutput, E>
+
+export type WorkersCollectInput = { readonly id: Worker.Name; readonly task: Worker.Name }
+export type WorkersCollectOutput = Worker.Artifact
+export type WorkersCollectOperation<E = never> = (input: WorkersCollectInput) => Effect.Effect<WorkersCollectOutput, E>
+
+export interface WorkersApi<E = never> {
+  readonly list: WorkersListOperation<E>
+  readonly add: WorkersAddOperation<E>
+  readonly remove: WorkersRemoveOperation<E>
+  readonly probe: WorkersProbeOperation<E>
+  readonly submit: WorkersSubmitOperation<E>
+  readonly recover: WorkersRecoverOperation<E>
+  readonly collect: WorkersCollectOperation<E>
+}
+
 export interface AppApi<E = never> {
   readonly server: ServerApi<E>
   readonly location: LocationApi<E>
@@ -6475,4 +6536,5 @@ export interface AppApi<E = never> {
   readonly formatter: FormatterApi<E>
   readonly redskilled: RedskilledApi<E>
   readonly "server.intelligence": ServerIntelligenceApi<E>
+  readonly workers: WorkersApi<E>
 }

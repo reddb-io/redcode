@@ -1,5 +1,5 @@
 import { Schema } from "effect"
-import { HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/unstable/httpapi"
+import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema, OpenApi } from "effect/unstable/httpapi"
 import { UnauthorizedError } from "../errors.js"
 
 export const ServerInfo = Schema.Struct({
@@ -104,6 +104,18 @@ export const ServerGroup = HttpApiGroup.make("server.server")
         identifier: "server.pair",
         summary: "Create pairing code",
         description: "Create a short-lived, single-use code for a /auth/connect/:code pairing link.",
+      }),
+    ),
+  )
+  .add(
+    HttpApiEndpoint.delete("server.cancelPair", "/api/pair/:code", {
+      params: { code: Schema.String },
+      success: HttpApiSchema.NoContent,
+    }).annotateMerge(
+      OpenApi.annotations({
+        identifier: "server.cancelPair",
+        summary: "Cancel pairing code",
+        description: "Invalidate an unused pairing link. Already paired sessions remain connected.",
       }),
     ),
   )

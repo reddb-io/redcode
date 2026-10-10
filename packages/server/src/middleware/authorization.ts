@@ -1,6 +1,9 @@
 import { ServerAuth } from "../auth"
 import { UnauthorizedError } from "@opencode/protocol/errors"
 import { Authorization } from "@opencode/protocol/middleware/authorization"
+import { ServerAccess } from "@opencode/protocol/server-access"
+import { ConsoleForbiddenError } from "@opencode/protocol/console"
+import { InfrastructureAccess } from "../infrastructure-access"
 export { Authorization } from "@opencode/protocol/middleware/authorization"
 import { hasPtyConnectTicketURL } from "@opencode/protocol/groups/pty"
 import { hasPersistentPtyConnectTicketURL } from "@opencode/protocol/groups/persistent-pty"
@@ -73,16 +76,36 @@ export const authorizationLayer = Layer.effect(
   Authorization,
   Effect.gen(function* () {
     const config = yield* ServerAuth.Config
-    if (!ServerAuth.required(config)) return Authorization.of((effect) => effect)
+    const infrastructure = yield* InfrastructureAccess.Service
     return Authorization.of((effect) =>
       Effect.gen(function* () {
         const request = yield* HttpServerRequest.HttpServerRequest
+        const bearer = request.headers.authorization?.startsWith("Bearer ")
+          ? request.headers.authorization.slice(7)
+          : undefined
+        if (bearer) {
+          const access = yield* infrastructure.verify(bearer, undefined, request.headers["x-redcode-workspace"])
+          const url = new URL(request.url, "http://localhost")
+          // Delegated users use scoped jobs. Broad host APIs expose shared state and remain owner-administrator only.
+          if (
+            access.ownerRole !== "admin" &&
+            url.pathname !== "/api/workers" &&
+            !url.pathname.startsWith("/api/workers/")
+          )
+            return yield* new ConsoleForbiddenError({
+              message: "This host API requires infrastructure administrator access; use authorized worker tasks",
+            })
+          return yield* effect.pipe(Effect.provideService(ServerAccess.Current, { token: bearer, access }))
+        }
+        if (!ServerAuth.required(config))
+          return yield* effect.pipe(Effect.provideService(ServerAccess.Current, undefined))
         // Ticketed PTY connects (browsers cannot set headers on WebSocket upgrades) and pairing links
         // skip credential checks here; their handlers consume and validate the ticket or code.
         const url = new URL(request.url, "http://localhost")
         if (hasPtyConnectTicketURL(url) || hasPersistentPtyConnectTicketURL(url) || isPairingConnectURL(url))
-          return yield* effect
-        if (yield* authorizedRequest(request, config)) return yield* effect
+          return yield* effect.pipe(Effect.provideService(ServerAccess.Current, undefined))
+        if (yield* authorizedRequest(request, config))
+          return yield* effect.pipe(Effect.provideService(ServerAccess.Current, undefined))
         if (challengeRequest(request))
           yield* HttpEffect.appendPreResponseHandler((_request, response) =>
             Effect.succeed(HttpServerResponse.setHeader(response, "www-authenticate", WWW_AUTHENTICATE)),

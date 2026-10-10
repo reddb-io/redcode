@@ -8,6 +8,63 @@ const consoleForm = [
 ] satisfies FormFields
 
 describe("auth command", () => {
+  test("exports credentials and imports them idempotently while retaining destination account selections", async () => {
+    const source = [
+      {
+        id: "cred_existing",
+        integrationID: "openai",
+        label: "Existing",
+        active: false,
+        value: { type: "key", key: "fixture-existing" },
+      },
+      {
+        id: "cred_openai",
+        integrationID: "openai",
+        label: "Source active",
+        active: true,
+        value: { type: "key", key: "fixture-openai" },
+      },
+      {
+        id: "cred_anthropic",
+        integrationID: "anthropic",
+        label: "New integration",
+        active: true,
+        value: { type: "key", key: "fixture-anthropic" },
+      },
+    ]
+    using origin = authServer((_request, url) =>
+      url.pathname === "/api/credential" ? Response.json({ data: source }) : new Response("Not found", { status: 404 }),
+    )
+    const exported = await cli(["auth", "export", "--server", origin.url.toString()])
+    expect({ exitCode: exported.exitCode, stderr: exported.stderr }).toEqual({ exitCode: 0, stderr: "" })
+    expect(JSON.parse(exported.stdout)).toEqual(source)
+    const stored = [source[0]]
+    const created: Array<Record<string, unknown>> = []
+    using destination = authServer(async (request, url) => {
+      if (url.pathname !== "/api/credential") return new Response("Not found", { status: 404 })
+      if (request.method === "GET") return Response.json({ data: stored })
+      const input = await request.json()
+      created.push(input)
+      const entry = { ...input, active: input.activate }
+      stored.push(entry)
+      return Response.json({ data: entry })
+    })
+    const imported = await cli(["auth", "import", "--server", destination.url.toString()], exported.stdout)
+    expect(imported.exitCode).toBe(0)
+    expect(imported.stderr).toContain("Imported 2 credentials, skipped 1 already present")
+    expect(created).toMatchObject([
+      { id: "cred_openai", activate: false },
+      { id: "cred_anthropic", activate: true },
+    ])
+    const repeated = await cli(["auth", "import", "--server", destination.url.toString()], exported.stdout)
+    expect(repeated.exitCode).toBe(0)
+    expect(repeated.stderr).toContain("Imported 0 credentials, skipped 3 already present")
+    expect(created).toHaveLength(2)
+    const invalid = await cli(["auth", "import", "--server", destination.url.toString()], "[] invalid")
+    expect(invalid.exitCode).toBe(1)
+    expect(created).toHaveLength(2)
+  }, 60_000)
+
   test("registers authentication commands", async () => {
     const [auth, list, login, logout] = await Promise.all([
       cli(["auth", "--help"]),
@@ -135,7 +192,7 @@ describe("auth command", () => {
 
     const result = await cli(["auth", "login", "company", "--server", server.url.toString()])
     expect({ exitCode: result.exitCode, stderr: result.stderr }).toEqual({ exitCode: 0, stderr: "" })
-    expect(result.stdout).toContain("Connected to Company")
+    expect(result.stdout).toContain("Authenticated Company")
     expect(requests).toContainEqual({ method: "POST", path: "/api/integration/company/connect/command" })
     expect(requests).toContainEqual({ method: "GET", path: "/api/integration/company/connect/command/con_test" })
     expect(requests).toContainEqual({ method: "DELETE", path: "/api/integration/company/connect/command/con_test" })
@@ -209,7 +266,7 @@ describe("auth command", () => {
     const result = await cli(["auth", "login", input.id, "--server", server.url.toString(), ...input.args])
     expect({ exitCode: result.exitCode, stderr: result.stderr }).toEqual({ exitCode: 0, stderr: "" })
     expect(result.stdout).toContain("https://example.com/authorize")
-    expect(result.stdout).toContain(`Connected to ${input.id}`)
+    expect(result.stdout).toContain(`Authenticated ${input.id}`)
     expect(bodies).toEqual([{ methodID: input.method, ...(input.answer ? { answer: input.answer } : {}) }])
     expect(requests).toContainEqual({ method: "POST", path: endpoint })
     expect(requests).toContainEqual({ method: "GET", path: `${endpoint}/con_oauth` })
@@ -314,6 +371,8 @@ function authServer(fetch: (request: Request, url: URL) => Response | Promise<Re
       requests?.push(url.pathname)
       if (url.pathname === "/api/info") return status()
       if (url.pathname === "/api/model/default") return Response.json(located(null))
+      if (/^\/api\/integration\/[^/]+\/check$/.test(url.pathname))
+        return Response.json({ ok: true, message: "Fixture API connection works", requests: [] })
       return fetch(request, url)
     },
   })
@@ -333,12 +392,17 @@ function located<T>(data: T) {
   }
 }
 
-async function cli(args: string[]) {
+async function cli(args: string[], input?: string) {
   const child = Bun.spawn([process.execPath, "run", "src/index.ts", ...args], {
     cwd: path.join(import.meta.dir, ".."),
     stdout: "pipe",
     stderr: "pipe",
+    ...(input === undefined ? {} : { stdin: "pipe" as const }),
   })
+  if (input !== undefined && child.stdin) {
+    child.stdin.write(input)
+    child.stdin.end()
+  }
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(child.stdout).text(),
     new Response(child.stderr).text(),

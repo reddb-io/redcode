@@ -4,16 +4,32 @@ import { afterAll, describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import { HttpServer, HttpServerError, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { createServer } from "node:http"
-import { mkdtemp, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { WebUi } from "../src/services/web-ui"
+import { load } from "../src/app-assets"
 import { it } from "../../core/test/lib/effect"
 
 const root = await mkdtemp(path.join(tmpdir(), "opencode-web-ui-"))
 afterAll(() => rm(root, { recursive: true, force: true }))
 
 describe("web UI", () => {
+  it.live("loads nested source assets with URL separators on Windows", () =>
+    Effect.gen(function* () {
+      const dist = path.resolve(import.meta.dirname, "../../app/dist")
+      yield* Effect.promise(() => mkdir(dist, { recursive: true }))
+      // Use our own directory; never replace built assets or the user's frontend output.
+      const fixture = yield* Effect.acquireRelease(
+        Effect.promise(() => mkdtemp(path.join(dist, "asset-loader-test-"))),
+        (directory) => Effect.promise(() => rm(directory, { recursive: true, force: true })),
+      )
+      yield* Effect.promise(() => writeFile(path.join(fixture, "test.js"), "console.log('source asset')"))
+      const assets = yield* load().pipe(Effect.provide(NodeFileSystem.layer))
+      expect(assets[`${path.basename(fixture)}/test.js`]).toBe("console.log('source asset')")
+    }),
+  )
+
   it.live("serves the web shell and assets before server authentication", () =>
     Effect.gen(function* () {
       const transform = yield* WebUi.handler({
@@ -56,7 +72,8 @@ describe("web UI", () => {
           }),
       )
       yield* Effect.forEach(
-        ["/api", "/api/info", "/api/event", "/api/missing", "/openapi.json", "/rpc", "/design/session/ses_1/review"],
+        // Design authenticates its own session-scoped grants; design-browser-auth.test.ts owns that contract.
+        ["/api", "/api/info", "/api/event", "/api/missing", "/openapi.json", "/rpc"],
         (pathname) =>
           Effect.gen(function* () {
             const response = yield* Effect.promise(() => fetch(new URL(pathname, origin)))

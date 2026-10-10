@@ -62,6 +62,7 @@ export const ServerHandler = HttpApiBuilder.group(Api, "server.server", (handler
         }),
       )
       .handle("server.pair", () => pairing.issue())
+      .handle("server.cancelPair", (ctx) => pairing.consume(ctx.params.code).pipe(Effect.asVoid))
       .handle(
         "server.connect",
         Effect.fn(function* (ctx) {
@@ -72,7 +73,7 @@ export const ServerHandler = HttpApiBuilder.group(Api, "server.server", (handler
           if (token === undefined) {
             if (!browser) return yield* new UnauthorizedError({ message: "Pairing link expired or already used" })
             return HttpServerResponse.text(
-              "This pairing link expired or was already used. Run `opencode pair` to get a new one.",
+              "This pairing link expired or was already used. Run `redcode pair` to get a new one.",
               { status: 401 },
             )
           }

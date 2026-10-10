@@ -3,7 +3,7 @@ import { Service, type Info } from "@opencode/client/effect/service"
 import { Global } from "@opencode/util/global"
 import { OPENCODE_VERSION } from "../src/version"
 import { expect, test } from "bun:test"
-import { Effect, Schema } from "effect"
+import { Effect, FileSystem, Schema } from "effect"
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
@@ -19,6 +19,34 @@ test("managed service ports are stable per installation channel", () => {
   expect(ServiceConfig.defaultPort("local")).toBe(0xc0df)
   expect(ServiceConfig.defaultPort("preview-a")).toBe(ServiceConfig.defaultPort("preview-a"))
   expect(ServiceConfig.defaultPort("preview-a")).not.toBe(ServiceConfig.defaultPort("preview-b"))
+})
+
+test("remote routes persist, migrate legacy booleans, and stay hidden in service summaries", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "redcode-service-remote-"))
+  const config = path.join(root, "config")
+  const layer = Global.layerWith({ config, state: path.join(root, "state") })
+  const run = <A, E>(effect: Effect.Effect<A, E, Global.Service | FileSystem.FileSystem>) =>
+    Effect.runPromise(effect.pipe(Effect.provide(layer), Effect.provide(NodeFileSystem.layer)))
+  try {
+    await fs.mkdir(config)
+    await Bun.write(
+      path.join(config, ServiceConfig.filename()),
+      JSON.stringify({ remote: true, password: "test-private" }),
+    )
+    const route = await run(ServiceConfig.remote())
+    expect(route).toMatch(/^[a-f0-9]{16}$/)
+    expect(await run(ServiceConfig.remote())).toBe(route)
+    expect(await run(ServiceConfig.get("remote"))).toBe("true")
+    const summary = await run(ServiceConfig.get())
+    expect(summary).not.toContain(route)
+    expect(summary).not.toContain("test-private")
+    expect(JSON.parse(summary)).toEqual({ remote: {} })
+    await run(ServiceConfig.unset("remote"))
+    expect(await run(ServiceConfig.get("remote"))).toBe("false")
+    expect(await run(ServiceConfig.remote())).not.toBe(route)
+  } finally {
+    await fs.rm(root, { recursive: true, force: true })
+  }
 })
 
 test("local channel stores service config with the local service filename", async () => {
@@ -218,6 +246,12 @@ test("concurrent service processes elect one server", async () => {
   const env = {
     ...process.env,
     HOME: root,
+    USERPROFILE: root,
+    REDCODE_TEST_HOME: root,
+    OPENCODE_CLI_CONFIG_CONTENT: undefined,
+    OPENCODE_CONFIG_CONTENT: "{}",
+    OPENCODE_DISABLE_MODELS_FETCH: "true",
+    OPENCODE_DISABLE_FILEWATCHER: "true",
     OPENCODE_DB: database,
     OPENCODE_TEST_HOME: root,
     XDG_CACHE_HOME: path.join(root, "cache"),
@@ -532,6 +566,12 @@ test("a failed service stays registered and owns the selected port until stopped
   const env = {
     ...process.env,
     HOME: root,
+    USERPROFILE: root,
+    REDCODE_TEST_HOME: root,
+    OPENCODE_CLI_CONFIG_CONTENT: undefined,
+    OPENCODE_CONFIG_CONTENT: "{}",
+    OPENCODE_DISABLE_MODELS_FETCH: "true",
+    OPENCODE_DISABLE_FILEWATCHER: "true",
     OPENCODE_DB: database,
     OPENCODE_TEST_HOME: root,
     XDG_CACHE_HOME: path.join(root, "cache"),
@@ -603,6 +643,12 @@ function serviceEnv(root: string) {
   return {
     ...process.env,
     HOME: root,
+    USERPROFILE: root,
+    REDCODE_TEST_HOME: root,
+    OPENCODE_CLI_CONFIG_CONTENT: undefined,
+    OPENCODE_CONFIG_CONTENT: "{}",
+    OPENCODE_DISABLE_MODELS_FETCH: "true",
+    OPENCODE_DISABLE_FILEWATCHER: "true",
     OPENCODE_DB: path.join(root, "opencode.db"),
     OPENCODE_TEST_HOME: root,
     XDG_CACHE_HOME: path.join(root, "cache"),

@@ -155,6 +155,13 @@ export const clientSettings: Entry<SettingsRootTab>[] = [
 ]
 
 export const serverSettings: Entry<SettingsServerTab>[] = [
+  {
+    tab: "general",
+    label: "server.share.title",
+    description: "server.share.rowDescription",
+    target: "settings-server-pairing",
+    keywords: "remote pair pairing device qr tunnel link computer",
+  },
   { tab: "projects", label: "settings.tab.projects" },
   { tab: "workspaces", label: "settings.tab.workspaces", keywords: "workspaces disk usage cleanup delete" },
   { tab: "providers", label: "settings.providers.title", keywords: "connect api key credentials" },

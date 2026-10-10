@@ -21,6 +21,21 @@ function map(
 }
 
 describe("AISDKNative", () => {
+  test("routes new provider packages and Claude Mantle models through native protocols", () => {
+    expect(map("@ai-sdk/cohere", {})?.package).toBe("@opencode/ai/providers/cohere")
+    expect(map("@ai-sdk/gateway", {})?.package).toBe("@opencode/ai/providers/vercel-ai-gateway")
+    expect(map("venice-ai-sdk-provider", {})?.package).toBe("@opencode/ai/providers/venice")
+    expect(map("@ai-sdk/openai-compatible", {}, "model", "digitalocean")?.package).toBe(
+      "@opencode/ai/providers/digitalocean",
+    )
+    expect(map("@ai-sdk/mistral", {}, "model", "google-vertex")?.package).toBe(
+      "@opencode/ai/providers/google-vertex/mistral",
+    )
+    expect(map("@ai-sdk/amazon-bedrock/mantle", {}, "anthropic.claude-opus-5.1")?.package).toBe(
+      "@opencode/ai/providers/amazon-bedrock/mantle/messages",
+    )
+  })
+
   test("keeps Cloudflare AI Gateway models on its native gateway package", () => {
     for (const packageName of [
       "ai-gateway-provider",

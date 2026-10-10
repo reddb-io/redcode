@@ -34,6 +34,7 @@ target
 .direnv/
 
 # Local dev files
+/console-auth.local.json
 opencode-dev
 UPCOMING_CHANGELOG.md
 RELEASE_REVIEW.md

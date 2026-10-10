@@ -1,9 +1,37 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "65ec02f0-6dc2-44e9-b21b-f7c91c5105b3",
-  "prevIds": ["ab157a8b-9489-4ffa-b1ab-cbbf3d296efc"],
+  "id": "1694412a-a5dc-448d-8d8b-4d55626b15cf",
+  "prevIds": ["9aa8edb5-3f48-4093-92f1-30149ff23fdc"],
   "ddl": [
+    {
+      "name": "console_auth_provider",
+      "entityType": "tables"
+    },
+    {
+      "name": "console_auth_setting",
+      "entityType": "tables"
+    },
+    {
+      "name": "console_infrastructure_grant",
+      "entityType": "tables"
+    },
+    {
+      "name": "console_infrastructure_audit",
+      "entityType": "tables"
+    },
+    {
+      "name": "console_infrastructure_member",
+      "entityType": "tables"
+    },
+    {
+      "name": "console_infrastructure_owner",
+      "entityType": "tables"
+    },
+    {
+      "name": "console_infrastructure_resource",
+      "entityType": "tables"
+    },
     {
       "name": "redcode_session_context_epoch",
       "entityType": "tables"
@@ -50,6 +78,46 @@
     },
     {
       "name": "control_account",
+      "entityType": "tables"
+    },
+    {
+      "name": "console_account",
+      "entityType": "tables"
+    },
+    {
+      "name": "console_audit",
+      "entityType": "tables"
+    },
+    {
+      "name": "console_federation_attempt",
+      "entityType": "tables"
+    },
+    {
+      "name": "console_identity",
+      "entityType": "tables"
+    },
+    {
+      "name": "console_invite",
+      "entityType": "tables"
+    },
+    {
+      "name": "console_key",
+      "entityType": "tables"
+    },
+    {
+      "name": "console_member",
+      "entityType": "tables"
+    },
+    {
+      "name": "console_organization",
+      "entityType": "tables"
+    },
+    {
+      "name": "console_session",
+      "entityType": "tables"
+    },
+    {
+      "name": "console_workspace",
       "entityType": "tables"
     },
     {
@@ -147,6 +215,316 @@
     {
       "name": "worktree",
       "entityType": "tables"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "console_auth_provider"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "scope_kind",
+      "entityType": "columns",
+      "table": "console_auth_provider"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "scope_id",
+      "entityType": "columns",
+      "table": "console_auth_provider"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "name",
+      "entityType": "columns",
+      "table": "console_auth_provider"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "issuer",
+      "entityType": "columns",
+      "table": "console_auth_provider"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "client_id",
+      "entityType": "columns",
+      "table": "console_auth_provider"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "token_auth_method",
+      "entityType": "columns",
+      "table": "console_auth_provider"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "credential_id",
+      "entityType": "columns",
+      "table": "console_auth_provider"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "enabled",
+      "entityType": "columns",
+      "table": "console_auth_provider"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "console_auth_setting"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "public_url",
+      "entityType": "columns",
+      "table": "console_auth_setting"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "console_infrastructure_grant"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "resource_id",
+      "entityType": "columns",
+      "table": "console_infrastructure_grant"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "workspace_id",
+      "entityType": "columns",
+      "table": "console_infrastructure_grant"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "directory",
+      "entityType": "columns",
+      "table": "console_infrastructure_grant"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "console_infrastructure_audit"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "owner_id",
+      "entityType": "columns",
+      "table": "console_infrastructure_audit"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "actor_id",
+      "entityType": "columns",
+      "table": "console_infrastructure_audit"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "action",
+      "entityType": "columns",
+      "table": "console_infrastructure_audit"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "resource_id",
+      "entityType": "columns",
+      "table": "console_infrastructure_audit"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "table": "console_infrastructure_audit"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "owner_id",
+      "entityType": "columns",
+      "table": "console_infrastructure_member"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "account_id",
+      "entityType": "columns",
+      "table": "console_infrastructure_member"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "role",
+      "entityType": "columns",
+      "table": "console_infrastructure_member"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "console_infrastructure_owner"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "name",
+      "entityType": "columns",
+      "table": "console_infrastructure_owner"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "table": "console_infrastructure_owner"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "console_infrastructure_resource"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "owner_id",
+      "entityType": "columns",
+      "table": "console_infrastructure_resource"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "name",
+      "entityType": "columns",
+      "table": "console_infrastructure_resource"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "url",
+      "entityType": "columns",
+      "table": "console_infrastructure_resource"
     },
     {
       "type": "text",
@@ -947,6 +1325,546 @@
       "name": "time_updated",
       "entityType": "columns",
       "table": "control_account"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "console_account"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "email",
+      "entityType": "columns",
+      "table": "console_account"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "name",
+      "entityType": "columns",
+      "table": "console_account"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "password_hash",
+      "entityType": "columns",
+      "table": "console_account"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "table": "console_account"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "console_audit"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "organization_id",
+      "entityType": "columns",
+      "table": "console_audit"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "actor_id",
+      "entityType": "columns",
+      "table": "console_audit"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "action",
+      "entityType": "columns",
+      "table": "console_audit"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "resource_id",
+      "entityType": "columns",
+      "table": "console_audit"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "table": "console_audit"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "state_hash",
+      "entityType": "columns",
+      "table": "console_federation_attempt"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "browser_hash",
+      "entityType": "columns",
+      "table": "console_federation_attempt"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "provider_id",
+      "entityType": "columns",
+      "table": "console_federation_attempt"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "issuer",
+      "entityType": "columns",
+      "table": "console_federation_attempt"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "client_id",
+      "entityType": "columns",
+      "table": "console_federation_attempt"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "scope_kind",
+      "entityType": "columns",
+      "table": "console_federation_attempt"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "scope_id",
+      "entityType": "columns",
+      "table": "console_federation_attempt"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "verifier",
+      "entityType": "columns",
+      "table": "console_federation_attempt"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "nonce",
+      "entityType": "columns",
+      "table": "console_federation_attempt"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "invite_hash",
+      "entityType": "columns",
+      "table": "console_federation_attempt"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "session_hash",
+      "entityType": "columns",
+      "table": "console_federation_attempt"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "expires_at",
+      "entityType": "columns",
+      "table": "console_federation_attempt"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "issuer",
+      "entityType": "columns",
+      "table": "console_identity"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "subject",
+      "entityType": "columns",
+      "table": "console_identity"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "account_id",
+      "entityType": "columns",
+      "table": "console_identity"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "table": "console_identity"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "console_invite"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "organization_id",
+      "entityType": "columns",
+      "table": "console_invite"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "email",
+      "entityType": "columns",
+      "table": "console_invite"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "role",
+      "entityType": "columns",
+      "table": "console_invite"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "token_hash",
+      "entityType": "columns",
+      "table": "console_invite"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "expires_at",
+      "entityType": "columns",
+      "table": "console_invite"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "console_key"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "workspace_id",
+      "entityType": "columns",
+      "table": "console_key"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "account_id",
+      "entityType": "columns",
+      "table": "console_key"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "name",
+      "entityType": "columns",
+      "table": "console_key"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "prefix",
+      "entityType": "columns",
+      "table": "console_key"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "token_hash",
+      "entityType": "columns",
+      "table": "console_key"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "table": "console_key"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "expires_at",
+      "entityType": "columns",
+      "table": "console_key"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "organization_id",
+      "entityType": "columns",
+      "table": "console_member"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "account_id",
+      "entityType": "columns",
+      "table": "console_member"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "role",
+      "entityType": "columns",
+      "table": "console_member"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "console_organization"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "name",
+      "entityType": "columns",
+      "table": "console_organization"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "table": "console_organization"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "token_hash",
+      "entityType": "columns",
+      "table": "console_session"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "account_id",
+      "entityType": "columns",
+      "table": "console_session"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "expires_at",
+      "entityType": "columns",
+      "table": "console_session"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "console_workspace"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "organization_id",
+      "entityType": "columns",
+      "table": "console_workspace"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "name",
+      "entityType": "columns",
+      "table": "console_workspace"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "table": "console_workspace"
     },
     {
       "type": "text",
@@ -2769,6 +3687,72 @@
       "table": "worktree"
     },
     {
+      "columns": ["resource_id"],
+      "tableTo": "console_infrastructure_resource",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_console_infrastructure_grant_resource_id_console_infrastructure_resource_id_fk",
+      "entityType": "fks",
+      "table": "console_infrastructure_grant"
+    },
+    {
+      "columns": ["workspace_id"],
+      "tableTo": "console_workspace",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_console_infrastructure_grant_workspace_id_console_workspace_id_fk",
+      "entityType": "fks",
+      "table": "console_infrastructure_grant"
+    },
+    {
+      "columns": ["owner_id"],
+      "tableTo": "console_infrastructure_owner",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_console_infrastructure_audit_owner_id_console_infrastructure_owner_id_fk",
+      "entityType": "fks",
+      "table": "console_infrastructure_audit"
+    },
+    {
+      "columns": ["owner_id"],
+      "tableTo": "console_infrastructure_owner",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_console_infrastructure_member_owner_id_console_infrastructure_owner_id_fk",
+      "entityType": "fks",
+      "table": "console_infrastructure_member"
+    },
+    {
+      "columns": ["account_id"],
+      "tableTo": "console_account",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_console_infrastructure_member_account_id_console_account_id_fk",
+      "entityType": "fks",
+      "table": "console_infrastructure_member"
+    },
+    {
+      "columns": ["owner_id"],
+      "tableTo": "console_infrastructure_owner",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_console_infrastructure_resource_owner_id_console_infrastructure_owner_id_fk",
+      "entityType": "fks",
+      "table": "console_infrastructure_resource"
+    },
+    {
       "columns": ["session_id"],
       "tableTo": "session_v2",
       "columnsTo": ["id"],
@@ -2866,6 +3850,105 @@
       "name": "fk_account_state_active_account_id_account_id_fk",
       "entityType": "fks",
       "table": "account_state"
+    },
+    {
+      "columns": ["organization_id"],
+      "tableTo": "console_organization",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_console_audit_organization_id_console_organization_id_fk",
+      "entityType": "fks",
+      "table": "console_audit"
+    },
+    {
+      "columns": ["account_id"],
+      "tableTo": "console_account",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_console_identity_account_id_console_account_id_fk",
+      "entityType": "fks",
+      "table": "console_identity"
+    },
+    {
+      "columns": ["organization_id"],
+      "tableTo": "console_organization",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_console_invite_organization_id_console_organization_id_fk",
+      "entityType": "fks",
+      "table": "console_invite"
+    },
+    {
+      "columns": ["workspace_id"],
+      "tableTo": "console_workspace",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_console_key_workspace_id_console_workspace_id_fk",
+      "entityType": "fks",
+      "table": "console_key"
+    },
+    {
+      "columns": ["account_id"],
+      "tableTo": "console_account",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_console_key_account_id_console_account_id_fk",
+      "entityType": "fks",
+      "table": "console_key"
+    },
+    {
+      "columns": ["organization_id"],
+      "tableTo": "console_organization",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_console_member_organization_id_console_organization_id_fk",
+      "entityType": "fks",
+      "table": "console_member"
+    },
+    {
+      "columns": ["account_id"],
+      "tableTo": "console_account",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_console_member_account_id_console_account_id_fk",
+      "entityType": "fks",
+      "table": "console_member"
+    },
+    {
+      "columns": ["account_id"],
+      "tableTo": "console_account",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_console_session_account_id_console_account_id_fk",
+      "entityType": "fks",
+      "table": "console_session"
+    },
+    {
+      "columns": ["organization_id"],
+      "tableTo": "console_organization",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_console_workspace_organization_id_console_organization_id_fk",
+      "entityType": "fks",
+      "table": "console_workspace"
     },
     {
       "columns": ["design_id"],
@@ -3055,6 +4138,13 @@
       "table": "worktree"
     },
     {
+      "columns": ["owner_id", "account_id"],
+      "nameExplicit": false,
+      "name": "console_infrastructure_member_pk",
+      "entityType": "pks",
+      "table": "console_infrastructure_member"
+    },
+    {
       "columns": ["session_id", "revision"],
       "nameExplicit": false,
       "name": "session_plan_pk",
@@ -3083,6 +4173,20 @@
       "table": "control_account"
     },
     {
+      "columns": ["issuer", "subject"],
+      "nameExplicit": false,
+      "name": "console_identity_pk",
+      "entityType": "pks",
+      "table": "console_identity"
+    },
+    {
+      "columns": ["organization_id", "account_id"],
+      "nameExplicit": false,
+      "name": "console_member_pk",
+      "entityType": "pks",
+      "table": "console_member"
+    },
+    {
       "columns": ["evaluation_id", "question_id"],
       "nameExplicit": false,
       "name": "intelligence_answer_pk",
@@ -3109,6 +4213,48 @@
       "name": "worktree_pk",
       "entityType": "pks",
       "table": "worktree"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "console_auth_provider_pk",
+      "table": "console_auth_provider",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "console_auth_setting_pk",
+      "table": "console_auth_setting",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "console_infrastructure_grant_pk",
+      "table": "console_infrastructure_grant",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "console_infrastructure_audit_pk",
+      "table": "console_infrastructure_audit",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "console_infrastructure_owner_pk",
+      "table": "console_infrastructure_owner",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "console_infrastructure_resource_pk",
+      "table": "console_infrastructure_resource",
+      "entityType": "pks"
     },
     {
       "columns": ["session_id"],
@@ -3164,6 +4310,62 @@
       "nameExplicit": false,
       "name": "account_pk",
       "table": "account",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "console_account_pk",
+      "table": "console_account",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "console_audit_pk",
+      "table": "console_audit",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["state_hash"],
+      "nameExplicit": false,
+      "name": "console_federation_attempt_pk",
+      "table": "console_federation_attempt",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "console_invite_pk",
+      "table": "console_invite",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "console_key_pk",
+      "table": "console_key",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "console_organization_pk",
+      "table": "console_organization",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["token_hash"],
+      "nameExplicit": false,
+      "name": "console_session_pk",
+      "table": "console_session",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "console_workspace_pk",
+      "table": "console_workspace",
       "entityType": "pks"
     },
     {
@@ -3309,6 +4511,24 @@
     {
       "columns": [
         {
+          "value": "resource_id",
+          "isExpression": false
+        },
+        {
+          "value": "directory",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "console_infrastructure_directory",
+      "entityType": "indexes",
+      "table": "console_infrastructure_grant"
+    },
+    {
+      "columns": [
+        {
           "value": "session_id",
           "isExpression": false
         },
@@ -3365,6 +4585,24 @@
       "name": "todo_session_idx",
       "entityType": "indexes",
       "table": "todo"
+    },
+    {
+      "columns": [
+        {
+          "value": "organization_id",
+          "isExpression": false
+        },
+        {
+          "value": "email",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "console_invite_email",
+      "entityType": "indexes",
+      "table": "console_invite"
     },
     {
       "columns": [
@@ -3777,6 +5015,27 @@
       "name": "session_v2_time_suspended_idx",
       "entityType": "indexes",
       "table": "session_v2"
+    },
+    {
+      "columns": ["email"],
+      "nameExplicit": false,
+      "name": "console_account_email_unique",
+      "entityType": "uniques",
+      "table": "console_account"
+    },
+    {
+      "columns": ["token_hash"],
+      "nameExplicit": false,
+      "name": "console_invite_token_hash_unique",
+      "entityType": "uniques",
+      "table": "console_invite"
+    },
+    {
+      "columns": ["token_hash"],
+      "nameExplicit": false,
+      "name": "console_key_token_hash_unique",
+      "entityType": "uniques",
+      "table": "console_key"
     }
   ],
   "renames": []

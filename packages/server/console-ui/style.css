@@ -1,0 +1,441 @@
+@import "tailwindcss";
+@import "@reddb-io/design-system/styles/application.css";
+@source "../../design-system/kits/base/src/*.variants.ts";
+@source "../../design-system/kits/app/src/composites/page-heading.variants.ts";
+@source "../../design-system/kits/app/src/composites/sidebar-layout.variants.ts";
+@source "../../design-system/kits/app/src/composites/sidebar-navigation.variants.ts";
+@source "../../design-system/kits/app/src/composites/sidebar-rail.variants.ts";
+@source "../../design-system/kits/app/src/primitives/nav-item.variants.ts";
+
+/* Page arrangement only; the DS owns component appearance and the Brand mark. */
+:root {
+  color-scheme: dark;
+  font-family: var(--reddb-font-family-sans);
+  line-height: var(--reddb-type-body-line-height);
+  background: var(--reddb-color-background);
+  color: var(--reddb-color-foreground);
+}
+body {
+  margin: 0;
+  font-size: var(--reddb-type-body-font-size);
+}
+a {
+  text-decoration: none;
+}
+.console-shell {
+  min-height: 100dvh;
+}
+.console-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--reddb-spatial-gap-md);
+  padding: var(--reddb-spatial-inset-sm) var(--reddb-spatial-inset-lg);
+  border-bottom: 1px solid var(--reddb-color-elevation-sunken-border);
+  background: var(--reddb-color-elevation-sunken-surface);
+}
+#brand,
+#account,
+.console-account-link {
+  display: flex;
+  align-items: center;
+  gap: var(--reddb-spatial-gap-md);
+}
+#brand {
+  color: var(--reddb-color-foreground);
+}
+#brand > span:last-child {
+  color: var(--reddb-color-ink-muted);
+  border-left: 1px solid var(--reddb-color-border-subtle);
+  padding-left: var(--reddb-spatial-inset-md);
+}
+#account {
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.console-account-link {
+  color: var(--reddb-color-foreground);
+}
+.console-account-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--reddb-spatial-control-height-lg);
+  height: var(--reddb-spatial-control-height-lg);
+  border: 1px solid var(--reddb-color-control-edge);
+  border-radius: var(--reddb-radius-full);
+  background: var(--reddb-color-elevation-base-surface);
+  font-size: var(--reddb-font-size-xs);
+  font-weight: var(--reddb-font-weight-medium);
+  flex-shrink: 0;
+}
+.console-frame {
+  gap: 0;
+  align-items: stretch;
+  min-height: calc(100dvh - var(--console-topbar-height));
+  height: calc(100dvh - var(--console-topbar-height));
+  overflow: hidden;
+}
+.console-rail-region {
+  display: flex;
+  min-height: 0;
+}
+.console-rail {
+  height: auto;
+  padding-top: var(--reddb-spatial-inset-lg);
+}
+.console-rail-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.console-rail-control[data-rail-item="account"] {
+  margin-top: var(--reddb-spatial-gap-lg);
+}
+.console-sidebar-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--reddb-spatial-gap-sm);
+  margin-bottom: var(--reddb-spatial-gap-lg);
+}
+#close-sidebar,
+#open-sidebar {
+  display: none;
+}
+#drawer-backdrop {
+  position: fixed;
+  inset: var(--console-topbar-height) 0 0;
+  z-index: 20;
+  border: 0;
+  background: color-mix(in srgb, var(--reddb-color-foreground) 20%, transparent);
+}
+.console-sidebar {
+  display: flex;
+  flex-direction: column;
+  padding: var(--reddb-spatial-inset-lg) var(--reddb-spatial-inset-md);
+  overflow-y: auto;
+}
+#context {
+  display: grid;
+  gap: var(--reddb-spatial-gap-md);
+  margin-bottom: var(--reddb-spatial-gap-lg);
+}
+.console-context-field {
+  display: grid;
+  gap: var(--reddb-spatial-gap-sm);
+  min-width: 0;
+}
+.console-context-field > span {
+  color: var(--reddb-color-ink-muted);
+  font-size: var(--reddb-font-size-xs);
+}
+.console-navigation {
+  border: 0;
+  box-shadow: none;
+}
+.console-navigation a {
+  min-height: var(--reddb-spatial-control-height-lg);
+}
+.console-sidebar-footer {
+  margin-top: auto;
+  padding-top: var(--reddb-spatial-inset-lg);
+}
+.console-sidebar-footer p {
+  margin-top: var(--reddb-spatial-gap-sm);
+  color: var(--reddb-color-ink-muted);
+  font-size: var(--reddb-font-size-xs);
+}
+.console-content {
+  min-width: 0;
+  padding: var(--reddb-spatial-inset-lg);
+  overflow-y: auto;
+}
+.console-header {
+  margin-bottom: var(--reddb-spatial-gap-lg);
+}
+.console-eyebrow {
+  color: var(--reddb-color-ink-muted);
+  font-size: var(--reddb-font-size-xs);
+  margin-bottom: var(--reddb-spatial-gap-sm);
+}
+.console-description,
+.muted {
+  color: var(--reddb-color-ink-muted);
+}
+.console-description {
+  margin-top: var(--reddb-spatial-gap-sm);
+}
+#main {
+  display: grid;
+  gap: var(--reddb-spatial-gap-lg);
+}
+.console-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--reddb-spatial-gap-md);
+}
+.console-stat {
+  display: grid;
+  gap: var(--reddb-spatial-gap-md);
+  padding: var(--reddb-spatial-inset-lg);
+}
+.console-stat > span:first-child {
+  color: var(--reddb-color-ink-muted);
+  font-size: var(--reddb-font-size-sm);
+}
+.console-stat:hover {
+  border-color: var(--reddb-color-control-edge);
+}
+.console-overview-panels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--reddb-spatial-gap-md);
+}
+.console-card-body {
+  display: grid;
+  gap: var(--reddb-spatial-gap-md);
+  min-width: 0;
+}
+.console-card header {
+  display: block;
+}
+.console-card header p {
+  color: var(--reddb-color-ink-muted);
+  margin-top: var(--reddb-spatial-gap-sm);
+}
+.console-card-body > button {
+  justify-self: start;
+}
+.console-workspace-identity,
+.console-profile {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--reddb-spatial-gap-md);
+}
+.console-workspace-identity > span {
+  margin-left: auto;
+}
+.console-people {
+  display: grid;
+  gap: var(--reddb-spatial-gap-md);
+}
+.console-person {
+  display: flex;
+  align-items: center;
+  gap: var(--reddb-spatial-gap-md);
+  min-width: 0;
+}
+.console-person > div {
+  flex: 1;
+  min-width: 0;
+}
+.console-person > div strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.console-person p,
+.console-profile p {
+  color: var(--reddb-color-ink-muted);
+  font-size: var(--reddb-font-size-xs);
+  overflow-wrap: anywhere;
+}
+.console-profile > div {
+  flex: 1;
+}
+.console-icon {
+  width: var(--reddb-spatial-icon-size-md);
+  height: var(--reddb-spatial-icon-size-md);
+  flex-shrink: 0;
+}
+.console-empty-icon {
+  width: var(--reddb-spatial-icon-size-lg);
+  height: var(--reddb-spatial-icon-size-lg);
+  color: var(--reddb-color-ink-muted);
+}
+.console-cell-actions {
+  display: flex;
+  gap: var(--reddb-spatial-gap-sm);
+  flex-wrap: wrap;
+}
+button {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: wait;
+}
+td {
+  overflow-wrap: anywhere;
+}
+code,
+pre {
+  font-family: var(--reddb-font-family-mono);
+  font-size: var(--reddb-font-size-xs);
+}
+pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: var(--reddb-spatial-inset-md);
+  background: var(--reddb-color-elevation-sunken-surface);
+  border-radius: var(--reddb-radius-md);
+}
+#notice:empty,
+.console-dialog-error:empty {
+  display: none;
+}
+#notice,
+.console-secret {
+  margin-bottom: var(--reddb-spatial-gap-lg);
+}
+.console-secret {
+  padding: var(--reddb-spatial-inset-lg);
+}
+.console-secret h2 {
+  font-weight: var(--reddb-font-weight-medium);
+}
+.console-secret-actions {
+  display: flex;
+  gap: var(--reddb-spatial-gap-md);
+}
+.console-danger {
+  border-color: var(--reddb-color-feedback-danger-border);
+}
+.console-dialog {
+  position: fixed;
+}
+.console-dialog > h2 {
+  padding-right: var(--reddb-spatial-inset-lg);
+}
+.console-dialog > p {
+  color: var(--reddb-color-ink-muted);
+  margin-top: var(--reddb-spatial-gap-sm);
+  margin-bottom: var(--reddb-spatial-gap-lg);
+}
+.console-dialog form {
+  display: grid;
+  gap: var(--reddb-spatial-gap-md);
+  margin-top: var(--reddb-spatial-gap-lg);
+}
+.console-field {
+  display: grid;
+  gap: var(--reddb-spatial-gap-sm);
+  min-width: 0;
+}
+.console-auth-settings-form {
+  display: grid;
+  gap: var(--reddb-spatial-gap-md);
+}
+.console-auth-settings-form button {
+  justify-self: start;
+}
+.console-card-body > code {
+  overflow-wrap: anywhere;
+}
+.console-field input,
+.console-field select {
+  min-width: 0;
+}
+.console-dialog-close {
+  position: absolute;
+  top: var(--reddb-spatial-inset-md);
+  right: var(--reddb-spatial-inset-md);
+}
+.console-dialog-actions {
+  display: flex;
+  justify-content: end;
+  gap: var(--reddb-spatial-gap-md);
+  margin-top: var(--reddb-spatial-gap-lg);
+}
+.console-dialog-error {
+  margin-top: var(--reddb-spatial-gap-md);
+}
+.console-signed-out .console-frame {
+  display: block;
+  height: auto;
+  overflow: visible;
+}
+.console-signed-out #open-sidebar {
+  display: none;
+}
+.console-signed-out .console-content {
+  max-width: var(--reddb-container-sm);
+  margin-inline: auto;
+  padding-top: var(--reddb-spatial-inset-lg);
+}
+.console-signed-out .console-header {
+  text-align: center;
+  border: 0;
+}
+.console-signed-out .console-header .console-description {
+  margin-inline: auto;
+}
+.console-signed-out .console-identity {
+  flex-basis: auto;
+  width: 100%;
+}
+.console-auth {
+  margin-inline: auto;
+}
+.console-auth form {
+  display: grid;
+  gap: var(--reddb-spatial-gap-md);
+}
+.console-join {
+  justify-self: center;
+  white-space: normal;
+}
+[hidden] {
+  display: none !important;
+}
+@media (width < 64rem) {
+  .console-stat > span:last-child {
+    display: none;
+  }
+}
+@media (width < 48rem) {
+  .console-sidebar {
+    top: var(--console-topbar-height);
+    padding: var(--reddb-spatial-inset-lg) var(--reddb-spatial-inset-md);
+  }
+  .console-sidebar[data-state="closed"] {
+    visibility: hidden;
+  }
+  #close-sidebar,
+  #open-sidebar {
+    display: inline-flex;
+  }
+  #open-sidebar {
+    margin-bottom: var(--reddb-spatial-gap-md);
+  }
+  .console-stats {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .console-overview-panels {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  #account > .console-account-link > span:last-child {
+    display: none;
+  }
+  .console-content {
+    padding: var(--reddb-spatial-inset-md);
+  }
+}
+@media (width >= 48rem) {
+  .console-frame {
+    grid-template-columns:
+      calc(var(--reddb-spatial-control-height-md) + 2 * var(--reddb-spatial-inset-sm)) var(--reddb-container-3xs)
+      minmax(0, 1fr);
+  }
+  .console-frame:has(.console-sidebar[data-state="closed"]) {
+    grid-template-columns: calc(var(--reddb-spatial-control-height-md) + 2 * var(--reddb-spatial-inset-sm)) 0 minmax(
+        0,
+        1fr
+      );
+  }
+  .console-sidebar[data-state="closed"] {
+    padding: 0;
+  }
+}

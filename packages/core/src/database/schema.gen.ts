@@ -5,6 +5,72 @@ const schema: Omit<DatabaseMigration.Migration, "id"> = {
   up(tx) {
     return Effect.gen(function* () {
       yield* tx.run(`
+        CREATE TABLE \`console_auth_provider\` (
+          \`id\` text PRIMARY KEY,
+          \`scope_kind\` text NOT NULL,
+          \`scope_id\` text NOT NULL,
+          \`name\` text NOT NULL,
+          \`issuer\` text NOT NULL,
+          \`client_id\` text NOT NULL,
+          \`token_auth_method\` text NOT NULL,
+          \`credential_id\` text,
+          \`enabled\` integer NOT NULL
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`console_auth_setting\` (
+          \`id\` text PRIMARY KEY,
+          \`public_url\` text NOT NULL
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`console_infrastructure_grant\` (
+          \`id\` text PRIMARY KEY,
+          \`resource_id\` text NOT NULL,
+          \`workspace_id\` text NOT NULL,
+          \`directory\` text NOT NULL,
+          CONSTRAINT \`fk_console_infrastructure_grant_resource_id_console_infrastructure_resource_id_fk\` FOREIGN KEY (\`resource_id\`) REFERENCES \`console_infrastructure_resource\`(\`id\`) ON DELETE CASCADE,
+          CONSTRAINT \`fk_console_infrastructure_grant_workspace_id_console_workspace_id_fk\` FOREIGN KEY (\`workspace_id\`) REFERENCES \`console_workspace\`(\`id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`console_infrastructure_audit\` (
+          \`id\` text PRIMARY KEY,
+          \`owner_id\` text NOT NULL,
+          \`actor_id\` text NOT NULL,
+          \`action\` text NOT NULL,
+          \`resource_id\` text NOT NULL,
+          \`created_at\` integer NOT NULL,
+          CONSTRAINT \`fk_console_infrastructure_audit_owner_id_console_infrastructure_owner_id_fk\` FOREIGN KEY (\`owner_id\`) REFERENCES \`console_infrastructure_owner\`(\`id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`console_infrastructure_member\` (
+          \`owner_id\` text NOT NULL,
+          \`account_id\` text NOT NULL,
+          \`role\` text NOT NULL,
+          CONSTRAINT \`console_infrastructure_member_pk\` PRIMARY KEY(\`owner_id\`, \`account_id\`),
+          CONSTRAINT \`fk_console_infrastructure_member_owner_id_console_infrastructure_owner_id_fk\` FOREIGN KEY (\`owner_id\`) REFERENCES \`console_infrastructure_owner\`(\`id\`) ON DELETE CASCADE,
+          CONSTRAINT \`fk_console_infrastructure_member_account_id_console_account_id_fk\` FOREIGN KEY (\`account_id\`) REFERENCES \`console_account\`(\`id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`console_infrastructure_owner\` (
+          \`id\` text PRIMARY KEY,
+          \`name\` text NOT NULL,
+          \`created_at\` integer NOT NULL
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`console_infrastructure_resource\` (
+          \`id\` text PRIMARY KEY,
+          \`owner_id\` text NOT NULL,
+          \`name\` text NOT NULL,
+          \`url\` text,
+          CONSTRAINT \`fk_console_infrastructure_resource_owner_id_console_infrastructure_owner_id_fk\` FOREIGN KEY (\`owner_id\`) REFERENCES \`console_infrastructure_owner\`(\`id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
         CREATE TABLE \`redcode_session_context_epoch\` (
           \`session_id\` text PRIMARY KEY,
           \`baseline\` text NOT NULL,
@@ -143,6 +209,111 @@ const schema: Omit<DatabaseMigration.Migration, "id"> = {
           \`time_created\` integer NOT NULL,
           \`time_updated\` integer NOT NULL,
           CONSTRAINT \`control_account_pk\` PRIMARY KEY(\`email\`, \`url\`)
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`console_account\` (
+          \`id\` text PRIMARY KEY,
+          \`email\` text NOT NULL UNIQUE,
+          \`name\` text NOT NULL,
+          \`password_hash\` text NOT NULL,
+          \`created_at\` integer NOT NULL
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`console_audit\` (
+          \`id\` text PRIMARY KEY,
+          \`organization_id\` text NOT NULL,
+          \`actor_id\` text NOT NULL,
+          \`action\` text NOT NULL,
+          \`resource_id\` text NOT NULL,
+          \`created_at\` integer NOT NULL,
+          CONSTRAINT \`fk_console_audit_organization_id_console_organization_id_fk\` FOREIGN KEY (\`organization_id\`) REFERENCES \`console_organization\`(\`id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`console_federation_attempt\` (
+          \`state_hash\` text PRIMARY KEY,
+          \`browser_hash\` text NOT NULL,
+          \`provider_id\` text NOT NULL,
+          \`issuer\` text NOT NULL,
+          \`client_id\` text NOT NULL,
+          \`scope_kind\` text,
+          \`scope_id\` text,
+          \`verifier\` text NOT NULL,
+          \`nonce\` text NOT NULL,
+          \`invite_hash\` text,
+          \`session_hash\` text,
+          \`expires_at\` integer NOT NULL
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`console_identity\` (
+          \`issuer\` text NOT NULL,
+          \`subject\` text NOT NULL,
+          \`account_id\` text NOT NULL,
+          \`created_at\` integer NOT NULL,
+          CONSTRAINT \`console_identity_pk\` PRIMARY KEY(\`issuer\`, \`subject\`),
+          CONSTRAINT \`fk_console_identity_account_id_console_account_id_fk\` FOREIGN KEY (\`account_id\`) REFERENCES \`console_account\`(\`id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`console_invite\` (
+          \`id\` text PRIMARY KEY,
+          \`organization_id\` text NOT NULL,
+          \`email\` text NOT NULL,
+          \`role\` text NOT NULL,
+          \`token_hash\` text NOT NULL UNIQUE,
+          \`expires_at\` integer NOT NULL,
+          CONSTRAINT \`fk_console_invite_organization_id_console_organization_id_fk\` FOREIGN KEY (\`organization_id\`) REFERENCES \`console_organization\`(\`id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`console_key\` (
+          \`id\` text PRIMARY KEY,
+          \`workspace_id\` text NOT NULL,
+          \`account_id\` text NOT NULL,
+          \`name\` text NOT NULL,
+          \`prefix\` text NOT NULL,
+          \`token_hash\` text NOT NULL UNIQUE,
+          \`created_at\` integer NOT NULL,
+          \`expires_at\` integer,
+          CONSTRAINT \`fk_console_key_workspace_id_console_workspace_id_fk\` FOREIGN KEY (\`workspace_id\`) REFERENCES \`console_workspace\`(\`id\`) ON DELETE CASCADE,
+          CONSTRAINT \`fk_console_key_account_id_console_account_id_fk\` FOREIGN KEY (\`account_id\`) REFERENCES \`console_account\`(\`id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`console_member\` (
+          \`organization_id\` text NOT NULL,
+          \`account_id\` text NOT NULL,
+          \`role\` text NOT NULL,
+          CONSTRAINT \`console_member_pk\` PRIMARY KEY(\`organization_id\`, \`account_id\`),
+          CONSTRAINT \`fk_console_member_organization_id_console_organization_id_fk\` FOREIGN KEY (\`organization_id\`) REFERENCES \`console_organization\`(\`id\`) ON DELETE CASCADE,
+          CONSTRAINT \`fk_console_member_account_id_console_account_id_fk\` FOREIGN KEY (\`account_id\`) REFERENCES \`console_account\`(\`id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`console_organization\` (
+          \`id\` text PRIMARY KEY,
+          \`name\` text NOT NULL,
+          \`created_at\` integer NOT NULL
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`console_session\` (
+          \`token_hash\` text PRIMARY KEY,
+          \`account_id\` text NOT NULL,
+          \`expires_at\` integer NOT NULL,
+          CONSTRAINT \`fk_console_session_account_id_console_account_id_fk\` FOREIGN KEY (\`account_id\`) REFERENCES \`console_account\`(\`id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`console_workspace\` (
+          \`id\` text PRIMARY KEY,
+          \`organization_id\` text NOT NULL,
+          \`name\` text NOT NULL,
+          \`created_at\` integer NOT NULL,
+          CONSTRAINT \`fk_console_workspace_organization_id_console_organization_id_fk\` FOREIGN KEY (\`organization_id\`) REFERENCES \`console_organization\`(\`id\`) ON DELETE CASCADE
         );
       `)
       yield* tx.run(`
@@ -445,11 +616,17 @@ const schema: Omit<DatabaseMigration.Migration, "id"> = {
         );
       `)
       yield* tx.run(
+        `CREATE UNIQUE INDEX \`console_infrastructure_directory\` ON \`console_infrastructure_grant\` (\`resource_id\`,\`directory\`);`,
+      )
+      yield* tx.run(
         `CREATE INDEX \`session_goal_review_session_goal_idx\` ON \`session_goal_review\` (\`session_id\`,\`goal_id\`);`,
       )
       yield* tx.run(`CREATE INDEX \`session_guard_trip_session_idx\` ON \`session_guard_trip\` (\`session_id\`);`)
       yield* tx.run(`CREATE INDEX \`session_guard_trip_created_idx\` ON \`session_guard_trip\` (\`time_created\`);`)
       yield* tx.run(`CREATE INDEX \`todo_session_idx\` ON \`todo\` (\`session_id\`);`)
+      yield* tx.run(
+        `CREATE UNIQUE INDEX \`console_invite_email\` ON \`console_invite\` (\`organization_id\`,\`email\`);`,
+      )
       yield* tx.run(`CREATE INDEX \`design_document_session_idx\` ON \`design_document\` (\`session_id\`);`)
       yield* tx.run(`CREATE INDEX \`design_revision_document_idx\` ON \`design_revision\` (\`design_id\`);`)
       yield* tx.run(`CREATE UNIQUE INDEX \`event_aggregate_seq_idx\` ON \`event\` (\`aggregate_id\`,\`seq\`);`)

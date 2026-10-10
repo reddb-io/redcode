@@ -51,7 +51,7 @@ export const gptReasoningDefaultOptions = (modelID: string): ProviderOptions | u
 export const openAIDefaultOptions = (modelID: string): ProviderOptions | undefined =>
   mergeProviderOptions(openAIProviderOptions({ store: false }), gptReasoningDefaultOptions(modelID))
 
-export const withOpenAIOptions = <Options extends { readonly providerOptions?: OpenAIProviderOptionsInput }>(
+export const withOpenAIOptions = <Options extends { readonly providerOptions?: ProviderOptions }>(
   modelID: string,
   options: Options,
   settings?: { readonly reasoningDefaults?: boolean; readonly textVerbosityDefaults?: boolean },

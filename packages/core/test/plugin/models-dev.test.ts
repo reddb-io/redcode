@@ -14,6 +14,8 @@ import { ModelsDevPlugin } from "@opencode/core/plugin/models-dev"
 import { Plugin } from "@opencode/core/plugin"
 import { PluginHost } from "@opencode/core/plugin/host"
 import { ProviderPlugins } from "@opencode/core/plugin/provider"
+import { NeonPlugin } from "@opencode/core/plugin/provider/neon"
+import { DatabricksPlugin } from "@opencode/core/plugin/provider/databricks"
 import { Provider } from "@opencode/core/provider"
 import { AbsolutePath } from "@opencode/core/schema"
 import { withEnv } from "../fixture/env"
@@ -1126,14 +1128,14 @@ describe("ModelsDevPlugin", () => {
 
       const gateway = yield* modelState.get(Provider.ID.make("vercel"), Model.ID.make("alibaba/qwen-toggle"))
       expect(gateway?.variants).toEqual([
-        { id: Model.VariantID.make("none"), settings: { enableThinking: false } },
+        { id: Model.VariantID.make("none"), settings: { thinking: { type: "disabled" } } },
         {
           id: Model.VariantID.make("high"),
-          settings: { enableThinking: true, thinkingBudget: 8000 },
+          settings: { thinking: { type: "enabled", budgetTokens: 8000 } },
         },
         {
           id: Model.VariantID.make("max"),
-          settings: { enableThinking: true, thinkingBudget: 16000 },
+          settings: { thinking: { type: "enabled", budgetTokens: 16000 } },
         },
       ])
 
@@ -1141,15 +1143,15 @@ describe("ModelsDevPlugin", () => {
       expect(gatewayNova?.variants).toEqual([
         {
           id: Model.VariantID.make("none"),
-          settings: { additionalModelRequestFields: { reasoningConfig: { type: "disabled" } } },
+          settings: { thinking: { type: "disabled" } },
         },
         {
           id: Model.VariantID.make("low"),
-          settings: { reasoningConfig: { type: "enabled", maxReasoningEffort: "low" } },
+          settings: { reasoningEffort: "low" },
         },
         {
           id: Model.VariantID.make("high"),
-          settings: { reasoningConfig: { type: "enabled", maxReasoningEffort: "high" } },
+          settings: { reasoningEffort: "high" },
         },
       ])
 
@@ -1160,7 +1162,7 @@ describe("ModelsDevPlugin", () => {
       expect(gatewayFallback?.variants).toEqual([
         {
           id: Model.VariantID.make("none"),
-          settings: { reasoning: { enabled: false } },
+          settings: { thinking: { type: "disabled" } },
         },
         {
           id: Model.VariantID.make("low"),
@@ -1329,3 +1331,32 @@ describe("ModelsDevPlugin", () => {
     }).pipe(Effect.provide(models(path.join(import.meta.dir, "fixtures", "models-dev-reasoning.json")))),
   )
 })
+
+for (const [plugin, providerID, hostVariable, tokenVariable] of [
+  [NeonPlugin, "neon", "NEON_AI_GATEWAY_BASE_URL", "NEON_AI_GATEWAY_TOKEN"],
+  [DatabricksPlugin, "databricks", "DATABRICKS_HOST", "DATABRICKS_TOKEN"],
+] as const) {
+  it.effect(`${providerID} only activates with a credential token, not its host variable`, () =>
+    Effect.gen(function* () {
+      const integrations = yield* Integration.Service
+      yield* plugin.effect(host({ integration: integrationHost(integrations) }))
+      expect(yield* integrations.get(Integration.ID.make(providerID))).toMatchObject({
+        methods: [{ type: "env", names: [tokenVariable] }],
+      })
+      yield* withEnv({ [hostVariable]: "https://gateway.example", [tokenVariable]: undefined }, () =>
+        integrations.connection
+          .active(Integration.ID.make(providerID))
+          .pipe(Effect.tap((connection) => Effect.sync(() => expect(connection).toBeUndefined()))),
+      )
+      yield* withEnv({ [hostVariable]: "https://gateway.example", [tokenVariable]: "fixture-token" }, () =>
+        integrations.connection
+          .active(Integration.ID.make(providerID))
+          .pipe(
+            Effect.tap((connection) =>
+              Effect.sync(() => expect(connection).toEqual({ type: "env", name: tokenVariable })),
+            ),
+          ),
+      )
+    }),
+  )
+}

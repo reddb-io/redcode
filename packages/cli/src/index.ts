@@ -32,6 +32,8 @@ const Handlers = Runtime.handlers(Commands, {
   acp: () => import("./commands/handlers/acp"),
   api: () => import("./commands/handlers/api"),
   auth: {
+    export: () => import("./commands/handlers/auth/export"),
+    import: () => import("./commands/handlers/auth/import"),
     list: () => import("./commands/handlers/auth/list"),
     login: () => import("./commands/handlers/auth/login"),
     check: () => import("./commands/handlers/auth/check"),
@@ -39,7 +41,16 @@ const Handlers = Runtime.handlers(Commands, {
     switch: () => import("./commands/handlers/auth/switch"),
     remove: () => import("./commands/handlers/auth/remove"),
   },
+  workers: {
+    add: () => import("./commands/handlers/workers/add"),
+    list: () => import("./commands/handlers/workers/list"),
+    remove: () => import("./commands/handlers/workers/remove"),
+    run: () => import("./commands/handlers/workers/run"),
+    recover: () => import("./commands/handlers/workers/recover"),
+    collect: () => import("./commands/handlers/workers/collect"),
+  },
   console: {
+    serve: () => import("./commands/handlers/console/serve"),
     orgs: () => import("./commands/handlers/console/orgs"),
     switch: () => import("./commands/handlers/console/switch"),
     open: () => import("./commands/handlers/console/open"),

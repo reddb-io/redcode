@@ -1,0 +1,41 @@
+.server-share {
+  display: flex;
+  flex-direction: column;
+  gap: var(--reddb-spatial-gap-lg);
+  min-width: 0;
+  padding: var(--reddb-spatial-inset-lg);
+  font-size: 13px;
+  line-height: var(--line-height-base);
+
+  p {
+    color: var(--v2-text-text-muted);
+  }
+  .server-share-error {
+    color: var(--reddb-color-feedback-danger-foreground);
+  }
+  .server-share-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--reddb-spatial-gap-sm);
+    min-width: 0;
+  }
+  .server-share-setup {
+    display: flex;
+    flex-direction: column;
+    gap: var(--reddb-spatial-gap-sm);
+    code {
+      overflow-wrap: anywhere;
+      user-select: text;
+    }
+  }
+  .server-share-result {
+    display: flex;
+    flex-direction: column;
+    gap: var(--reddb-spatial-gap-md);
+    img {
+      align-self: center;
+      max-width: 100%;
+      height: auto;
+    }
+  }
+}

@@ -57,6 +57,7 @@ const PACKAGES: Readonly<Record<string, string>> = {
   "@ai-sdk/anthropic": "@opencode/ai/providers/anthropic",
   "@ai-sdk/azure": "@opencode/ai/providers/azure/responses",
   "@ai-sdk/cerebras": "@opencode/ai/providers/cerebras",
+  "@ai-sdk/cohere": "@opencode/ai/providers/cohere",
   "@ai-sdk/deepinfra": "@opencode/ai/providers/deepinfra",
   "@ai-sdk/google": "@opencode/ai/providers/google",
   "@ai-sdk/google-vertex": "@opencode/ai/providers/google-vertex",
@@ -67,6 +68,8 @@ const PACKAGES: Readonly<Record<string, string>> = {
   "@ai-sdk/openai-compatible": "@opencode/ai/providers/openai-compatible",
   "@ai-sdk/togetherai": "@opencode/ai/providers/togetherai",
   "@ai-sdk/xai": "@opencode/ai/providers/xai",
+  "@ai-sdk/gateway": "@opencode/ai/providers/vercel-ai-gateway",
+  "venice-ai-sdk-provider": "@opencode/ai/providers/venice",
   "@openrouter/ai-sdk-provider": "@opencode/ai/providers/openrouter",
   "ai-gateway-provider": "@opencode/ai/providers/cloudflare-ai-gateway",
 }
@@ -93,8 +96,13 @@ const HOSTS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
   },
   "cloudflare-workers-ai": { "@ai-sdk/openai-compatible": "@opencode/ai/providers/cloudflare-workers-ai" },
   deepseek: { "@ai-sdk/openai-compatible": "@opencode/ai/providers/deepseek" },
+  cohere: { "@ai-sdk/openai-compatible": "@opencode/ai/providers/cohere/chat" },
+  digitalocean: { "@ai-sdk/openai-compatible": "@opencode/ai/providers/digitalocean" },
   "fireworks-ai": { "@ai-sdk/openai-compatible": "@opencode/ai/providers/fireworks" },
-  "google-vertex": { "@ai-sdk/openai-compatible": "@opencode/ai/providers/google-vertex/chat" },
+  "google-vertex": {
+    "@ai-sdk/openai-compatible": "@opencode/ai/providers/google-vertex/chat",
+    "@ai-sdk/mistral": "@opencode/ai/providers/google-vertex/mistral",
+  },
   "kimi-for-coding": protocols("moonshot"),
   meta: protocols("meta"),
   minimax: protocols("minimax"),
@@ -117,6 +125,9 @@ const NATIVE = new Set([
   "@opencode/ai/providers/amazon-bedrock/mantle",
   "@opencode/ai/providers/amazon-bedrock/mantle/chat",
   "@opencode/ai/providers/amazon-bedrock/mantle/responses",
+  "@opencode/ai/providers/amazon-bedrock/mantle/messages",
+  "@opencode/ai/providers/google/interactions",
+  "@opencode/ai/providers/google-vertex/interactions",
 ])
 
 export function native(npm: string, context: Context & { readonly settings?: Provider.Settings }): string | undefined {
@@ -130,6 +141,7 @@ export function native(npm: string, context: Context & { readonly settings?: Pro
 
 const mantle = (modelID: string | undefined) => {
   if (modelID === undefined) return "@opencode/ai/providers/amazon-bedrock/mantle"
+  if (modelID.toLowerCase().includes("claude")) return "@opencode/ai/providers/amazon-bedrock/mantle/messages"
   return `@opencode/ai/providers/amazon-bedrock/mantle/${modelID.includes("gpt-oss") ? "chat" : "responses"}`
 }
 

@@ -209,7 +209,7 @@ it.live("pairing links sign in browsers with a cookie and API clients with a tok
 
     const reused = yield* request(`/auth/connect/${browser.code}`, { headers: { accept: "text/html" } })
     expect(reused.status).toBe(401)
-    expect(yield* Effect.promise(() => reused.text())).toContain("opencode pair")
+    expect(yield* Effect.promise(() => reused.text())).toContain("redcode pair")
 
     expect((yield* request("/api/info", { headers: { cookie } })).status).toBe(200)
     expect((yield* request("/api/info", { headers: { cookie, origin: base } })).status).toBe(200)
@@ -226,6 +226,29 @@ it.live("pairing links sign in browsers with a cookie and API clients with a tok
     ).toBe(200)
     expect((yield* request(`/auth/connect/${client.code}`)).status).toBe(401)
     expect((yield* request("/auth/connect/unknown")).status).toBe(401)
+
+    const cancelled = yield* pair
+    expect((yield* request(`/api/pair/${cancelled.code}`, { method: "DELETE" })).status).toBe(401)
+    const cancel = () =>
+      request(`/api/pair/${cancelled.code}`, {
+        method: "DELETE",
+        headers: { authorization: `Basic ${btoa("opencode:secret")}` },
+      })
+    expect((yield* cancel()).status).toBe(204)
+    expect((yield* cancel()).status).toBe(204)
+    expect((yield* request(`/auth/connect/${cancelled.code}`)).status).toBe(401)
+    // Cancelling a link only stops a new pairing; it does not disconnect a token already exchanged for it.
+    expect(
+      (yield* request(`/api/pair/${client.code}`, {
+        method: "DELETE",
+        headers: { authorization: `Basic ${btoa("opencode:secret")}` },
+      })).status,
+    ).toBe(204)
+    expect(
+      (yield* request("/api/info", {
+        headers: { authorization: `Basic ${btoa(`opencode:${session.token}`)}` },
+      })).status,
+    ).toBe(200)
   }),
 )
 

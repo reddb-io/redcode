@@ -28,6 +28,8 @@ const baselineFlag = process.argv.includes("--baseline")
 const requestedTarget = process.argv.find((arg) => arg.startsWith("--target="))?.slice("--target=".length)
 const skipInstall = process.argv.includes("--skip-install")
 const skipWebUi = process.argv.includes("--skip-web-ui")
+// Console is a separate portable UI; regenerate it from the shared DS for every binary.
+await $`bun run build:console`.cwd(path.resolve(dir, "../server"))
 const solidPlugin = createSolidTransformPlugin()
 const releaseAssets = new Map<string, Promise<Map<string, string>>>()
 const sidecarDir = process.env.REDCODE_RPC_SIDECAR_DIR

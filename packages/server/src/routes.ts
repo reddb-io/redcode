@@ -60,6 +60,8 @@ import { defectLayer } from "./middleware/defect"
 import { PtyEnvironment } from "./pty-environment"
 import { PtySockets } from "./pty-sockets"
 import { ServerPairing } from "./pairing"
+import { Workers } from "./workers"
+import { InfrastructureAccess } from "./infrastructure-access"
 import { layer } from "./location"
 import { formLocationLayer } from "./middleware/form-location"
 import { sessionLocationLayer } from "./middleware/session-location"
@@ -104,6 +106,7 @@ const applicationServiceNodes = [
   WellKnown.node,
   PtyEnvironment.node,
   ServerPairing.node,
+  Workers.node,
   LocationServiceMap.node,
   LocationActivity.node,
   SessionRestart.node,
@@ -171,6 +174,7 @@ function makeRoutes<AuthError, AuthServices>(
     Config.node.replace(
       Config.configured({
         project: options.config?.project,
+        global: options.config?.global,
         file: options.config?.file,
         content: options.config?.content,
       }),
@@ -193,7 +197,9 @@ function makeRoutes<AuthError, AuthServices>(
         database: options.database,
       }),
     ),
-    InstructionDiscovery.node.replace(InstructionDiscovery.configured({ project: options.config?.project })),
+    InstructionDiscovery.node.replace(
+      InstructionDiscovery.configured({ project: options.config?.project, global: options.config?.global }),
+    ),
     ShellSelect.node.replace(ShellSelect.configured({ gitbash: options.windows?.gitbash })),
     Mcp.node.replace(
       Mcp.configured({
@@ -207,6 +213,7 @@ function makeRoutes<AuthError, AuthServices>(
   const build = (overrides: LayerNode.Replacements) => {
     const replacements: LayerNode.Replacements = [
       ...standard,
+      Workers.node.replace(Workers.configured(options.workers?.directory, options.access)),
       // Private instances resolve this list lazily so they inherit the complete host graph, including the selector.
       ...(instances ? [Instance.node.replace(instances(() => replacements))] : []),
       ...overrides,
@@ -257,6 +264,7 @@ function makeRoutes<AuthError, AuthServices>(
         Layer.provide(sessionLocationLayer),
         Layer.provide(layer),
         Layer.provide(authorizationLayer),
+        Layer.provide(InfrastructureAccess.layer(options.access)),
         Layer.provide(schemaErrorLayer),
         Layer.provide(auth),
         HttpRouter.provideRequest(requestServices),

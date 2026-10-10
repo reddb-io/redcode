@@ -151,9 +151,25 @@ export namespace Flock {
     if (!parsed || typeof parsed !== "object") return
     const pid = "pid" in parsed ? parsed.pid : undefined
     const hostname = "hostname" in parsed ? parsed.hostname : undefined
+    const processStart =
+      "processStart" in parsed && typeof parsed.processStart === "string" ? parsed.processStart : undefined
     if (typeof pid !== "number" || !Number.isInteger(pid) || pid <= 0) return
     if (typeof hostname !== "string") return
-    return { pid, hostname }
+    return { pid, hostname, processStart }
+  }
+
+  // Container restarts can reuse the same PID and hostname. Linux's boot ID and
+  // /proc start time identify the process incarnation without shortening a live lease.
+  async function processStart(pid: number) {
+    if (process.platform !== "linux") return
+    const values = await Promise.all([
+      readFile(`/proc/${pid}/stat`, "utf8"),
+      readFile("/proc/sys/kernel/random/boot_id", "utf8"),
+    ]).catch(() => undefined)
+    if (!values) return
+    // comm is parenthesized and may itself contain spaces or parentheses; field 3 follows its last ')'.
+    const started = values[0].slice(values[0].lastIndexOf(")") + 2).split(" ")[19]
+    return started ? `${values[1].trim()}:${started}` : undefined
   }
 
   // Signal 0 tests for existence without delivering anything. EPERM means the process is
@@ -174,6 +190,10 @@ export namespace Flock {
     const meta = await readMeta(metaPath)
     if (!meta) return false
     if (meta.hostname !== os.hostname()) return false
+    if (meta.processStart) {
+      const current = await processStart(meta.pid)
+      if (current && current !== meta.processStart) return true
+    }
     if (meta.pid === process.pid) return false
     return !alive(meta.pid)
   }
@@ -262,6 +282,7 @@ export namespace Flock {
       token,
       pid: process.pid,
       hostname: os.hostname(),
+      processStart: await processStart(process.pid),
       createdAt: new Date().toISOString(),
     }
 

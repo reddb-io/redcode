@@ -16,6 +16,7 @@ import { showToast } from "@/shell/notifications/toast"
 import type { NavigationController } from "./controller"
 import { agentSessionTrees, SESSION_STATUSES, rollupSessionStatus, sessionAwaitsUser, sessionStatus } from "./model"
 import { AgentWorkers } from "./workers"
+import { RemoteWorkers } from "./remote-workers"
 
 type AgentInstruction = {
   sessionID: string
@@ -53,6 +54,9 @@ export default function Agents(props: { navigation: NavigationController }) {
         <Button variant={state.view === "workers" ? "neutral" : "ghost"} onClick={() => setState("view", "workers")}>
           {language.t("agents.workers")}
         </Button>
+        <Button variant={state.view === "remote" ? "neutral" : "ghost"} onClick={() => setState("view", "remote")}>
+          {language.t("remoteWorkers.title")}
+        </Button>
         <Show when={state.view === "sessions"}>
           <input
             class="min-w-48 flex-1 rounded-md border border-v2-border-border-base bg-transparent px-2 py-1 text-13-regular"
@@ -75,7 +79,14 @@ export default function Agents(props: { navigation: NavigationController }) {
           {(server) => (
             <section class="mb-5">
               <h2 class="mb-2 text-13-medium text-v2-text-text-muted">{serverName(server)}</h2>
-              <Show when={state.view === "sessions"} fallback={<AgentWorkers server={server} />}>
+              <Show
+                when={state.view === "sessions"}
+                fallback={
+                  <Show when={state.view === "remote"} fallback={<AgentWorkers server={server} />}>
+                    <RemoteWorkers server={server} />
+                  </Show>
+                }
+              >
                 <ServerAgents
                   server={server}
                   context={global.ensureServerCtx(server)}

@@ -1,3 +1,4 @@
+import { Plugin } from "@opencode/core/plugin"
 import { WebSearch } from "@opencode/core/websearch"
 import { InvalidRequestError, ServiceUnavailableError } from "@opencode/protocol/errors"
 import { Effect } from "effect"
@@ -11,6 +12,8 @@ export const WebSearchHandler = HttpApiBuilder.group(Api, "server.websearch", (h
       .handle(
         "websearch.providers",
         Effect.fn("server.websearch.providers")(function* () {
+          const plugins = yield* Plugin.Service
+          yield* plugins.awaitActivation
           const websearch = yield* WebSearch.Service
           return yield* response(websearch.providers())
         }),
@@ -18,6 +21,8 @@ export const WebSearchHandler = HttpApiBuilder.group(Api, "server.websearch", (h
       .handle(
         "websearch.query",
         Effect.fn("server.websearch.query")(function* (request) {
+          const plugins = yield* Plugin.Service
+          yield* plugins.awaitActivation
           const websearch = yield* WebSearch.Service
           return yield* response(
             websearch.query(request.payload).pipe(

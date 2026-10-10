@@ -92,6 +92,7 @@ describe("settings search ranking", () => {
     expect(rankSettings("work", index({ servers: [servers[0]] }), root).map((item) => item.title)).toEqual([
       "Worktrees",
       "Default environment",
+      "Connect another device",
     ])
     expect(rankSettings("mcps", index(), root).map((item) => item.view.type)).toEqual(["server", "server"])
     expect(rankSettings("project name", index(), root)).toEqual([])

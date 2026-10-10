@@ -9,7 +9,9 @@ import { useLanguage } from "@/runtime/i18n/language"
 import { ServerConnection, serverName } from "@/runtime/server/registry"
 import { useServerCollectionController } from "@/servers/registry/controller"
 import { DialogServer } from "@/servers/connect/dialog"
+import { DialogShareServer } from "@/servers/connect/share-dialog"
 import { SettingsList } from "@/settings/list"
+import { SettingsRow } from "@/settings/row"
 import { ShellSetting } from "@/settings/general/general"
 import { createServerShellController } from "@/settings/general/controllers"
 import type { SettingsServer } from "./inventory"
@@ -94,7 +96,30 @@ export const SettingsServerGeneral: Component<{
         </section>
 
         <Show when={props.entry.connection} keyed>
-          {(server) => <ServerShell server={server} />}
+          {(server) => (
+            <>
+              <section class="settings-section">
+                <h3 class="settings-section-title">{language.t("server.share.section")}</h3>
+                <SettingsList>
+                  <SettingsRow
+                    title={language.t("server.share.title")}
+                    description={language.t("server.share.rowDescription")}
+                  >
+                    <div data-action="settings-server-pairing">
+                      <Button
+                        variant="neutral"
+                        disabled={!!health()?.unauthorized}
+                        onClick={() => void dialog.push(() => <DialogShareServer server={server} />)}
+                      >
+                        {language.t("server.share.open")}
+                      </Button>
+                    </div>
+                  </SettingsRow>
+                </SettingsList>
+              </section>
+              <ServerShell server={server} />
+            </>
+          )}
         </Show>
       </div>
     </>
