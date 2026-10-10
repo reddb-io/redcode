@@ -11,13 +11,11 @@ import { readJson, writeJsonAtomic } from "../util/persistence"
 import {
   createModelPreferenceRepository,
   cycleModelVariant,
-  favoriteModels,
-  modelPreferenceKey,
   normalizeModelVariant,
-  recentModels,
   type ModelPreference,
   type ModelPreferenceModel,
 } from "../model-preference"
+import { ModelPresentation } from "@opencode/schema/model-presentation"
 import { useTheme } from "./theme"
 import { useToast } from "../ui/toast"
 import { useRoute } from "./route"
@@ -165,7 +163,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         { agentID: string; selection: string; connection?: ModelPreferenceModel["connection"] }
       >()
       const selectionKey = (value: ModelSelection) =>
-        `${modelPreferenceKey(value)}:${normalizeModelVariant(value.variant) ?? "default"}:${JSON.stringify(value.connection)}`
+        `${ModelPresentation.preferenceKey(value)}:${normalizeModelVariant(value.variant) ?? "default"}:${JSON.stringify(value.connection)}`
 
       function applyPreferences(value: ModelPreference) {
         batch(() => {
@@ -280,7 +278,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       function preferredSelection(model: ModelPreferenceModel): ModelSelection {
         const configured = agent.current()?.model
         const fallback = configuredModel()
-        const preferred = preferences.variant[modelPreferenceKey(model)]
+        const preferred = preferences.variant[ModelPresentation.preferenceKey(model)]
         const variant = normalizeModelVariant(
           preferred ??
             (configured?.providerID === model.providerID && configured.id === model.modelID
@@ -508,7 +506,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           const next = favorites[index]
           if (!next) return
           if (!selectModel({ ...next })) return
-          setPreferences("recent", recentModels(next, preferences.recent))
+          setPreferences("recent", ModelPresentation.recentModels(next, preferences.recent))
           void repository.addRecent(next).catch(() => undefined)
         },
         set(model: ModelPreferenceModel, options?: { recent?: boolean }) {
@@ -516,7 +514,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             if (!isModelValid(model)) return
             if (!selectModel(model)) return
             if (options?.recent) {
-              setPreferences("recent", recentModels(model, preferences.recent))
+              setPreferences("recent", ModelPresentation.recentModels(model, preferences.recent))
               void repository.addRecent(model).catch(() => undefined)
             }
           })
@@ -527,7 +525,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             const exists = preferences.favorite.some(
               (x) => x.providerID === model.providerID && x.modelID === model.modelID,
             )
-            setPreferences("favorite", favoriteModels(model, preferences.favorite, !exists))
+            setPreferences("favorite", ModelPresentation.favoriteModels(model, preferences.favorite, !exists))
             void repository.setFavorite(model, !exists).catch(() => undefined)
           })
         },
@@ -550,7 +548,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             if (route.data.type === "session") {
               setSessionDraft(route.data.sessionID, { ...m, variant: normalizeModelVariant(value) })
             }
-            setPreferences("variant", modelPreferenceKey(m), value ?? "default")
+            setPreferences("variant", ModelPresentation.preferenceKey(m), value ?? "default")
             void repository.saveVariant(m, value).catch(() => undefined)
           },
           cycle() {

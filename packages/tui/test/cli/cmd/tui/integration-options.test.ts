@@ -1,12 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import type { IntegrationInfo } from "@opencode/client"
 import { IntegrationOrder } from "@opencode/util/integration-order"
-import {
-  connectionSummary,
-  connectMethods,
-  credentialConnections,
-  integrationOptions,
-} from "../../../../src/component/dialog-integration"
+import { integrationOptions } from "../../../../src/component/dialog-integration"
 
 const integration = (value: Partial<IntegrationInfo> & Pick<IntegrationInfo, "id" | "name">): IntegrationInfo => ({
   methods: [],
@@ -105,56 +100,4 @@ test("S1 shows active connections before an inactive configured evaluator withou
     ]),
   ).toEqual([options[1], options[2], options[0]])
   expect(options[0].evaluator.credentialID).toBe("cred_personal")
-})
-
-describe("connectMethods", () => {
-  test("offers key and OAuth methods but not environment discovery", () => {
-    expect(
-      connectMethods(
-        integration({
-          id: "example",
-          name: "Example",
-          methods: [
-            { type: "env", names: ["EXAMPLE_KEY"] },
-            { type: "key", label: "API key" },
-            { type: "oauth", id: "account", label: "Account" },
-          ],
-        }),
-      ).map((method) => method.type),
-    ).toEqual(["oauth", "key"])
-  })
-})
-
-describe("credentialConnections", () => {
-  test("returns removable credential connections only", () => {
-    expect(
-      credentialConnections(
-        integration({
-          id: "example",
-          name: "Example",
-          connections: [
-            { type: "env", name: "EXAMPLE_KEY" },
-            { type: "credential", method: "key", id: "cred_1", label: "Work" },
-          ],
-        }),
-      ),
-    ).toEqual([{ type: "credential", method: "key", id: "cred_1", label: "Work" }])
-  })
-})
-
-describe("connectionSummary", () => {
-  test("shows credential labels and environment variables", () => {
-    expect(
-      connectionSummary(
-        integration({
-          id: "example",
-          name: "Example",
-          connections: [
-            { type: "credential", method: "key", id: "cred_1", label: "Work" },
-            { type: "env", name: "EXAMPLE_KEY" },
-          ],
-        }),
-      ),
-    ).toBe("Work, $EXAMPLE_KEY")
-  })
 })

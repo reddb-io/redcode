@@ -86,7 +86,7 @@ import { PromptStashProvider } from "./prompt/stash"
 import { Toast, ToastProvider, useToast } from "./ui/toast"
 import { isFallbackTitle } from "@opencode/util/session-title-fallback"
 import * as Model from "./util/model"
-import { catalogUpdateMessage } from "./util/model-presentation"
+import { ModelPresentation } from "@opencode/schema/model-presentation"
 import { ArgsProvider, useArgs, type Args } from "./context/args"
 import { openUrl } from "@opencode/util/open"
 import { PromptRefProvider, usePromptRef } from "./context/prompt"
@@ -1348,7 +1348,7 @@ function App() {
   // Every Location's router plugin refreshes its own catalog; announce the one this TUI shows.
   event.on("provider.catalog.updated", (evt, { directory }) => {
     if (directory && directory !== (location.current?.directory ?? data.location.default().directory)) return
-    const message = catalogUpdateMessage(evt.data)
+    const message = ModelPresentation.catalogUpdateMessage(evt.data)
     if (message) toast.show({ variant: "info", message, duration: 5_000 })
   })
 

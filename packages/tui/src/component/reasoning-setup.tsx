@@ -6,7 +6,7 @@ import { DialogIntegration } from "./dialog-integration"
 import { errorMessage } from "../util/error"
 import { Router } from "@opencode/schema/router"
 import { ConnectionCheck } from "@opencode/schema/connection-check"
-import { keyRoleLabel, modelDescription, modelLabel, modelRoute, offerDetails } from "../util/model-presentation"
+import { ModelPresentation } from "@opencode/schema/model-presentation"
 
 type SelectedModel = ModelInfo & { connection?: NonNullable<IntelligenceSettings["principal"]>["connection"] }
 
@@ -97,13 +97,17 @@ export async function configureReasoning(
     title: "S2 transformations · summaries and bounded text",
     current: currentFast ? "keep-fast" : "reuse-principal",
     options: [
-      { value: "reuse-principal", title: "Reuse S2 principal", description: modelLabel(selected, providers) },
+      {
+        value: "reuse-principal",
+        title: "Reuse S2 principal",
+        description: ModelPresentation.modelLabel(selected, providers),
+      },
       ...(currentFast
         ? [
             {
               value: "keep-fast",
               title: "Keep current transformations model",
-              description: modelLabel(currentFast, providers),
+              description: ModelPresentation.modelLabel(currentFast, providers),
             },
           ]
         : []),
@@ -130,12 +134,12 @@ export async function configureReasoning(
   const model = { providerID: selected.providerID, id: selected.id, connection: selected.connection }
   const confirmed = await context.ui.dialog.confirm({
     title: "Test and save reasoning roles",
-    message: `Mode: ${reasoning === "observe" ? "Observe" : reasoning === "dual" ? "Dual" : "Single"}\nS2 principal: ${modelLabel(selected, providers)}\nS2 transformations: ${transformation ? modelLabel(transformation, providers) : "reuse principal"}\nS1 evaluator: ${evaluator ? `${evaluator.evaluator.transport}/${evaluator.evaluator.model}` : "off"}${evaluator ? "\nSources and candidates will be sent to S1." : ""}\nThe selected connections will be checked before saving.${status.effective.source === "flag" ? `\nREDCODE_REASONING=${status.environment} overrides the saved mode.` : ""}`,
+    message: `Mode: ${reasoning === "observe" ? "Observe" : reasoning === "dual" ? "Dual" : "Single"}\nS2 principal: ${ModelPresentation.modelLabel(selected, providers)}\nS2 transformations: ${transformation ? ModelPresentation.modelLabel(transformation, providers) : "reuse principal"}\nS1 evaluator: ${evaluator ? `${evaluator.evaluator.transport}/${evaluator.evaluator.model}` : "off"}${evaluator ? "\nSources and candidates will be sent to S1." : ""}\nThe selected connections will be checked before saving.${status.effective.source === "flag" ? `\nREDCODE_REASONING=${status.environment} overrides the saved mode.` : ""}`,
   })
   if (!confirmed) return
   const checked = await checkConnections(context, [
     {
-      role: `S2 principal ${modelLabel(selected, providers)}`,
+      role: `S2 principal ${ModelPresentation.modelLabel(selected, providers)}`,
       run: () =>
         context.client.generate
           .text({ prompt: "Reply with OK.", model, location, check: true }, { signal: AbortSignal.timeout(30_000) })
@@ -145,7 +149,7 @@ export async function configureReasoning(
     JSON.stringify([transformation.providerID, transformation.id, transformation.connection]) !== principal
       ? [
           {
-            role: `S2 transformations ${modelLabel(transformation, providers)}`,
+            role: `S2 transformations ${ModelPresentation.modelLabel(transformation, providers)}`,
             run: () =>
               context.client.generate
                 .text(
@@ -278,7 +282,7 @@ async function chooseModel(
             {
               value: -2,
               title: "Use current connection and model",
-              description: `${modelLabel(reuse, input.providers)} · ${reuseConnection.connection.type === "credential" ? reuseConnection.connection.label : reuseConnection.connection.name}`,
+              description: `${ModelPresentation.modelLabel(reuse, input.providers)} · ${reuseConnection.connection.type === "credential" ? reuseConnection.connection.label : reuseConnection.connection.name}`,
             },
           ]
         : []),
@@ -288,7 +292,7 @@ async function chooseModel(
         description: [
           item.name,
           item.active ? "active" : "activates account",
-          item.active ? keyRoleLabel(item.provider) : undefined,
+          item.active ? ModelPresentation.keyRoleLabel(item.provider) : undefined,
         ]
           .filter(Boolean)
           .join(" · "),
@@ -381,7 +385,7 @@ async function chooseModel(
         const category =
           model.id === input.recommended && model.providerID === input.router
             ? "Recommended"
-            : modelRoute(
+            : ModelPresentation.modelRoute(
                 model,
                 input.providers.find((item) => item.id === model.providerID),
               )
@@ -390,7 +394,7 @@ async function chooseModel(
           title: model.name,
           // Names differ between routed providers ("GLM-5.3 Max" against "GLM 5.3 Flash"), so the id is searchable too.
           searchText: model.id,
-          description: modelDescription(
+          description: ModelPresentation.modelDescription(
             model,
             input.providers.find((item) => item.id === model.providerID),
           ),
@@ -426,7 +430,7 @@ async function chooseModel(
       ...pinned.map((entry) => ({
         value: entry.model.id,
         title: Router.offerRoute(entry.offer),
-        description: offerDetails(entry),
+        description: ModelPresentation.offerDetails(entry),
         category: "Offers",
       })),
     ],

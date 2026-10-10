@@ -1,6 +1,5 @@
 import { TextAttributes } from "@opentui/core"
 import type {
-  ConnectionInfo,
   IntegrationCommandConnectOutput,
   IntegrationInfo,
   IntegrationOauthConnectOutput,
@@ -15,6 +14,7 @@ import { ConnectionCheck } from "@opencode/schema/connection-check"
 import { ProviderRemoval } from "@opencode/schema/provider-removal"
 import { openUrl } from "@opencode/util/open"
 import { IntegrationOrder } from "@opencode/util/integration-order"
+import { IntegrationConnections } from "@opencode/util/integration-connections"
 import { createEffect, createMemo, createSignal, onCleanup, onMount, Show } from "solid-js"
 import { useClipboard } from "../context/clipboard"
 import { useData } from "../context/data"
@@ -29,7 +29,7 @@ import { DialogSelect } from "../ui/dialog-select"
 import { Link } from "../ui/link"
 import { useToast } from "../ui/toast"
 import { errorMessage } from "../util/error"
-import { integrationKeyRole } from "../util/model-presentation"
+import { ModelPresentation } from "@opencode/schema/model-presentation"
 import { formLabel, formToggleMultiselect, formValidateValue, type FormAnswerField } from "../util/form"
 
 type ConnectMethod = Exclude<IntegrationInfo["methods"][number], { type: "env" }>
@@ -43,24 +43,6 @@ const SUBMIT = Symbol("submit")
 
 export function integrationOptions(list: IntegrationInfo[]) {
   return list.toSorted(IntegrationOrder.compare)
-}
-
-export function connectMethods(integration: IntegrationInfo): ConnectMethod[] {
-  return integration.methods
-    .filter((method): method is ConnectMethod => method.type !== "env")
-    .toSorted((a, b) => Number(a.type === "key") - Number(b.type === "key"))
-}
-
-export function credentialConnections(integration: IntegrationInfo) {
-  return integration.connections.filter(
-    (connection): connection is Extract<ConnectionInfo, { type: "credential" }> => connection.type === "credential",
-  )
-}
-
-export function connectionSummary(integration: IntegrationInfo) {
-  return integration.connections
-    .map((connection) => (connection.type === "credential" ? connection.label : `$${connection.name}`))
-    .join(", ")
 }
 
 export function DialogIntegration(
@@ -83,8 +65,8 @@ export function DialogIntegration(
     if (!props.autoConnect) return
     const integration = integrations()[0]
     if (!integration) return
-    const methods = connectMethods(integration)
-    if (credentialConnections(integration).length) {
+    const methods = IntegrationConnections.connectMethods(integration)
+    if (IntegrationConnections.credentialConnections(integration).length) {
       manageConnections(integration, methods, location, dialog, props.onConnected)
       return
     }
@@ -93,16 +75,16 @@ export function DialogIntegration(
 
   const options = createMemo(() => {
     return integrations().map((integration) => {
-      const methods = connectMethods(integration)
-      const credentials = credentialConnections(integration)
+      const methods = IntegrationConnections.connectMethods(integration)
+      const credentials = IntegrationConnections.credentialConnections(integration)
       // A RedRouter connection says what its key may do: an admin key also manages keys over MCP.
-      const role = integrationKeyRole(data.location.provider.list(location) ?? [], integration.id)
+      const role = ModelPresentation.integrationKeyRole(data.location.provider.list(location) ?? [], integration.id)
       return {
         title: integration.name,
         value: integration.id,
         description:
           [methods.length === 0 ? "Environment only" : undefined, role].filter(Boolean).join(" · ") || undefined,
-        footer: connectionSummary(integration) || undefined,
+        footer: IntegrationConnections.connectionSummary(integration) || undefined,
         category: IntegrationOrder.category(integration),
         disabled: methods.length === 0 && credentials.length === 0,
         gutter:
@@ -158,11 +140,13 @@ function manageConnections(
     const shortcuts = Keymap.useShortcuts()
     const [deleting, setDeleting] = createSignal<string>()
     const [opening, setOpening] = createSignal<string>()
-    const [selected, setSelected] = createSignal(credentialConnections(integration)[0]?.id ?? "add")
+    const [selected, setSelected] = createSignal(
+      IntegrationConnections.credentialConnections(integration)[0]?.id ?? "add",
+    )
     const current = createMemo(() =>
       data.location.integration.list(location)?.find((item) => item.id === integration.id),
     )
-    const connections = createMemo(() => credentialConnections(current() ?? integration))
+    const connections = createMemo(() => IntegrationConnections.credentialConnections(current() ?? integration))
 
     return (
       <DialogSelect
@@ -194,7 +178,7 @@ function manageConnections(
                 // The saved router connection describes the active account's key.
                 description:
                   connections()[0]?.id === connection.id
-                    ? integrationKeyRole(data.location.provider.list(location) ?? [], integration.id)
+                    ? ModelPresentation.integrationKeyRole(data.location.provider.list(location) ?? [], integration.id)
                     : undefined,
                 category: "Saved connections",
                 bg: confirming ? theme.background.action.destructive.focused : undefined,
@@ -286,7 +270,7 @@ function manageConnections(
               !option || option.value === "add" || option.value === "remove" || option.value === "check",
             onTrigger: (option) => {
               if (deleting() !== option.value) return setDeleting(option.value)
-              const final = credentialConnections(current() ?? integration).length === 1
+              const final = IntegrationConnections.credentialConnections(current() ?? integration).length === 1
               void client.api.credential
                 .remove({ credentialID: option.value })
                 .then(() => {
@@ -624,7 +608,7 @@ function KeyMethod(props: {
         if (!key) return
         const saved = new Set(
           (data.location.integration.list(props.location) ?? []).flatMap((item) =>
-            credentialConnections(item).map((connection) => connection.id),
+            IntegrationConnections.credentialConnections(item).map((connection) => connection.id),
           ),
         )
         void client.api.integration.connect
@@ -1183,7 +1167,9 @@ async function connected(
   const resolved = saved
     ? data.location.integration
         .list(location)
-        ?.find((item) => credentialConnections(item).some((connection) => !saved.has(connection.id)))
+        ?.find((item) =>
+          IntegrationConnections.credentialConnections(item).some((connection) => !saved.has(connection.id)),
+        )
     : undefined
   const id = resolved?.id ?? target ?? integration.id
   await checkRemoteApi(client, dialog, id, location, {

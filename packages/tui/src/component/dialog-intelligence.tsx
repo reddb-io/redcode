@@ -6,7 +6,7 @@ import { errorMessage } from "../util/error"
 import { useClipboard } from "../context/clipboard"
 import { useLocal } from "../context/local"
 import { evaluatorModelName, evaluatorTransportName } from "../util/intelligence-label"
-import { modelLabel } from "../util/model-presentation"
+import { ModelPresentation } from "@opencode/schema/model-presentation"
 
 export function DialogIntelligence(props: { context: Plugin.Context; setup: () => void }) {
   const theme = useTheme().surface("dialog")
@@ -47,7 +47,9 @@ export function DialogIntelligence(props: { context: Plugin.Context; setup: () =
       if (!ref) return "not configured"
       const provider = providers.find((item) => item.id === ref.providerID)
       const info = models.find((item) => item.providerID === ref.providerID && item.id === ref.id)
-      return info ? modelLabel(info, providers) : `${provider?.name ?? ref.providerID} · ${ref.id} (unavailable)`
+      return info
+        ? ModelPresentation.modelLabel(info, providers)
+        : `${provider?.name ?? ref.providerID} · ${ref.id} (unavailable)`
     }
     const s1 =
       current.effective.reasoning !== "single"

@@ -3,6 +3,7 @@ import { isRecord } from "./util/record"
 import { Flock } from "@opencode/util/flock"
 import { watch } from "node:fs"
 import path from "node:path"
+import { ModelPresentation } from "@opencode/schema/model-presentation"
 import type { ConnectionRef } from "@opencode/client"
 
 export type ModelPreferenceModel = {
@@ -42,28 +43,6 @@ function variants(value: unknown) {
 
 export function normalizeModelVariant(value: string | undefined) {
   return value === "default" ? undefined : value
-}
-
-export function modelPreferenceKey(model: ModelPreferenceModel) {
-  return `${model.providerID}/${model.modelID}`
-}
-
-export function recentModels(model: ModelPreferenceModel, recent: ModelPreferenceModel[]) {
-  const seen = new Set<string>()
-  return [model, ...recent]
-    .filter((item) => {
-      const key = modelPreferenceKey(item)
-      if (seen.has(key)) return false
-      seen.add(key)
-      return true
-    })
-    .slice(0, 10)
-    .map((item) => ({ providerID: item.providerID, modelID: item.modelID }))
-}
-
-export function favoriteModels(model: ModelPreferenceModel, favorite: ModelPreferenceModel[], enabled: boolean) {
-  const current = favorite.filter((item) => modelPreferenceKey(item) !== modelPreferenceKey(model))
-  return enabled ? [model, ...current] : current
 }
 
 export function cycleModelVariant(current: string | undefined, variants: string[]) {
@@ -145,10 +124,10 @@ export function createModelPreferenceRepository(filePath: string) {
   return {
     load,
     addRecent(model: ModelPreferenceModel) {
-      return update((current) => ({ recent: recentModels(model, current.recent) }))
+      return update((current) => ({ recent: ModelPresentation.recentModels(model, current.recent) }))
     },
     setFavorite(model: ModelPreferenceModel, enabled: boolean) {
-      return update((current) => ({ favorite: favoriteModels(model, current.favorite, enabled) }))
+      return update((current) => ({ favorite: ModelPresentation.favoriteModels(model, current.favorite, enabled) }))
     },
     subscribe(listener: (value: ModelPreference) => void) {
       listeners.add(listener)
@@ -175,10 +154,10 @@ export function createModelPreferenceRepository(filePath: string) {
       }
     },
     async resolveVariant(model: ModelPreferenceModel) {
-      return normalizeModelVariant((await load()).variant[modelPreferenceKey(model)])
+      return normalizeModelVariant((await load()).variant[ModelPresentation.preferenceKey(model)])
     },
     saveVariant(model: ModelPreferenceModel, value: string | undefined) {
-      const key = modelPreferenceKey(model)
+      const key = ModelPresentation.preferenceKey(model)
       const next = normalizeModelVariant(value) ?? "default"
       return update((current) => ({ variant: { ...current.variant, [key]: next } }))
     },

@@ -82,7 +82,7 @@ import { useWorkingDirectoryActions } from "../../ui/working-directory-actions"
 import { truncateFilePath } from "../../ui/file-path"
 import { PromptMetadataRow } from "./metadata"
 import { evaluatorModelName, evaluatorTransportName } from "../../util/intelligence-label"
-import { modelRoute } from "../../util/model-presentation"
+import { ModelPresentation } from "@opencode/schema/model-presentation"
 
 export type PromptProps = {
   sessionID?: string
@@ -1654,7 +1654,9 @@ export function Prompt(props: PromptProps) {
         agentLabel: agent ? Locale.titlecase(agent.id) : undefined,
         agentColor: agent ? local.agent.color(agent.id) : undefined,
         modelLabel: model.model,
-        providerLabel: info ? modelRoute(info, provider, Router.HOP_SEPARATOR_COMPACT) : model.provider,
+        providerLabel: info
+          ? ModelPresentation.modelRoute(info, provider, Router.HOP_SEPARATOR_COMPACT)
+          : model.provider,
         variant: local.model.variant.current(),
       }
     },
