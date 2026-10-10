@@ -1,5 +1,48 @@
 # @reddb-io/redcode
 
+## 0.76.0
+
+### Minor Changes
+
+- The desktop and web app now have an Agents view across servers and projects, grouping sessions by urgency with their subagents underneath. Filter agents or worktrees, jump into a session, send a steer or queued instruction, and interrupt active work. The Workers tab manages the optional redskilled project fleet with target counts, steering, stop and recycle controls.
+
+  The desktop opens newly published Design previews directly beside their session. Embedded reviews omit the duplicate conversation and agent reply from both their interface and event transport, keep review feedback and approval, and scope shortcuts to the review so they do not intercept typing in the adjacent chat.
+
+- Configure OIDC providers from Console onboarding and scoped authentication settings, with global inheritance, separate organization and infrastructure permissions, saved credentials, and discovery testing. Apply changes immediately without a configuration file or server restart.
+- Add a first distributed worker CLI: register authenticated Redcode servers, dispatch task manifests by capability tags or worker affinity, and run tasks concurrently across independent checkouts. Persist placement and session IDs, collect remote assistant output, and retain checkout reservations when a task is waiting, running or disconnected. Reconnecting observes the original session without automatically replaying an ambiguous prompt.
+
+  Record upstream branch heads and review remote execution experiments separately from implemented OpenCode V2 features. Physical Raspberry Pi provisioning remains pending; the Console and desktop provide worker administration and task views.
+
+- Add configurable Console OIDC login with authorization code and PKCE, multiple identity providers, explicit account linking, invited account creation, durable one-use sign-in attempts and canonical Design System controls. Include provider-neutral configuration and client-registration instructions for self-hosted installations.
+- Separate infrastructure administrator/user membership from organization roles. Add explicit workspace checkout grants, opt-in Console-backed server authorization, scoped worker batches and result access, and Console Infrastructure/Tasks views using the shared design system. Recheck grants before queued admission and keep broad host APIs administrator-only.
+- Add `redcode console serve` with a separate local listener and persistent Console database. Set up the first account with a terminal-issued code, then manage organizations, workspaces, invitations, roles, workspace keys and audit history in the browser.
+
+  Protect the last organization owner, enforce tenant permissions, store only hashes of passwords and bearer secrets, and revoke sessions and personal keys when changing a password. Hosted deployment, billing, SSO/SCIM, service accounts and model gateway execution remain pending.
+
+- Add remote OpenTunnel pairing, persistent private tunnel routes and reconnect handling. Install matching Redcode CLI, RPC and Design binaries for SSH and WSL, including development bundles.
+
+  Update ACP session, child-agent, permission, form and compaction support, and add credential export/import with validation and deduplication. Expand native model protocols, provider routing and reasoning variants while preserving saved Vertex thinking metadata.
+
+  Add a private in-process Redcode SDK with Promise and Effect APIs, isolated configuration, keyed agent instances and restart recovery. Hosted Console services, independent database synchronization and acceptance on multiple real computers remain separate work.
+
+- Recover ambiguous worker admission on the original server with stable Session/message IDs and a non-interrupting Session wake API. Export completed task text patches and responses into a new review directory without applying changes to the coordinator checkout.
+
+### Patch Changes
+
+- Use the shared reddb.io Design System contracts, Application theme, Color Scheme, Density and Brand fonts in the local Console. Bundle its UI into the portable server page instead of maintaining custom component styles.
+- Reorganize the local Console with shared DS navigation, organization and workspace selectors, an overview, dedicated administration views, contextual dialogs and clear empty states. Preserve access permissions and one-time credential display.
+- Allow Console passwords with at least eight characters for initial setup, invited accounts and password changes. Match form validation to the server contract.
+- Use the shared design system siderail and sidemenus in Console to separate infrastructure, organization, workspace and account scopes. Split infrastructure resources, membership and grants into their own pages, restrict task resource selectors to the chosen scope, and provide a keyboard-accessible drawer on compact screens.
+- Add a repeatable Docker acceptance lab with two isolated Linux workers, production HTTP/auth/execution/tools, deterministic model fixtures, task patch export and persisted-session recovery after a container crash. The host coordinator cleans up only its own Compose project and keeps review artifacts.
+
+  Correct the embedded fetch handler's inferred service requirements to match the fully built route graph, and type-check the Docker worker fixture alongside the server.
+
+- Add server pairing controls in desktop and web settings: reachable server addresses, one-time links and QR codes, expiry, clipboard copying and cancellation of unused links. Explain local-only connectivity and preserve already paired sessions when cancelling a link.
+
+  Fix source web asset URLs on Windows so the app loads through the local server instead of showing a blank page.
+
+- Add a persistent server-owned worker coordinator and a desktop Remote workers panel using the Redcode design system. Register authenticated machines, dispatch independent task batches and collect recorded task changes for review. Recover Linux coordinator ownership after container restarts that reuse process IDs.
+
 ## 0.75.0
 
 ### Minor Changes
