@@ -6,7 +6,7 @@ import { useFilteredList } from "@opencode/ui/hooks"
 import { createMemo, For, Show, type Component } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useLocal } from "@/providers/models/selection"
-import { popularProviders } from "@/providers/catalog/providers"
+import { IntegrationOrder } from "@opencode/util/integration-order"
 import { useLanguage } from "@/runtime/i18n/language"
 import { useDialog } from "@opencode/ui/context/dialog"
 import { DialogConnectProvider } from "@/providers/connect/dialog"
@@ -50,20 +50,9 @@ export const DialogManageModels: Component = () => {
     filterKeys: ["provider.name", "name", "id"],
     sortBy: (a, b) => a.name.localeCompare(b.name),
     groupBy: (x) => x.provider.id,
-    sortGroupsBy: (a, b) => {
-      const aRank = popularProviders.indexOf(a.category)
-      const bRank = popularProviders.indexOf(b.category)
-      const aPopular = aRank >= 0
-      const bPopular = bRank >= 0
-
-      if (aPopular && !bPopular) return -1
-
-      if (!aPopular && bPopular) return 1
-
-      if (aPopular && bPopular) return aRank - bRank
-
-      return a.items[0].provider.name.localeCompare(b.items[0].provider.name)
-    },
+    sortGroupsBy: (a, b) =>
+      IntegrationOrder.providerRank(a.category) - IntegrationOrder.providerRank(b.category) ||
+      a.items[0].provider.name.localeCompare(b.items[0].provider.name),
   })
 
   const managed = createMemo(() => consoleModelGroup(local.model.list()))

@@ -5,17 +5,20 @@ import { Icon } from "@opencode/ui/icon"
 import { Menu } from "@opencode/ui/menu"
 import { OpenCodeLogo } from "@/providers/opencode-logo"
 import { showToast } from "@/shell/notifications/toast"
-import { popularProviders, useProviders } from "@/providers/catalog/providers"
+import { useProviders } from "@/providers/catalog/providers"
 import { consoleProviderGroup } from "@/providers/catalog/console"
 import { useIntegrations } from "@/providers/catalog/integrations"
 import { ProviderRemoval } from "@opencode/schema/provider-removal"
+import { IntegrationConnections } from "@opencode/util/integration-connections"
+import { IntegrationOrder } from "@opencode/util/integration-order"
 import { createEffect, createMemo, type Component, For, Show } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import { useLanguage } from "@/runtime/i18n/language"
 import { useServerSDK } from "@/runtime/server/client"
 import { useData } from "@/runtime/server/current"
 import { CONSOLE_INTEGRATION, CONSOLE_PROVIDERS } from "@/providers/connect/controller"
-import { DialogConnectProvider, useProviderConnectController } from "@/providers/connect/dialog"
+import { DialogConnectProvider, OPENAI_COMPATIBLE, useProviderConnectController } from "@/providers/connect/dialog"
+import { DialogManageIntegration } from "@/providers/connect/manage"
 import { ProviderModelIcon } from "@/providers/models/provider-group"
 import { SettingsList } from "@/settings/list"
 import { activeProviderAccount, providerAccounts, type ProviderAccount } from "./accounts"
@@ -35,6 +38,7 @@ const PROVIDER_NOTES = [
   { match: (id: string) => id === "google", key: "dialog.provider.google.note" },
   { match: (id: string) => id === "openrouter", key: "dialog.provider.openrouter.note" },
   { match: (id: string) => id === "vercel", key: "dialog.provider.vercel.note" },
+  { match: (id: string) => id === OPENAI_COMPATIBLE, key: "dialog.provider.custom.description" },
 ] as const
 
 export const SettingsProviders: Component<{
@@ -70,9 +74,10 @@ export const SettingsProviders: Component<{
     return integrations.list().find((entry) => entry.id === id)
   }
 
+  // A named provider always starts a new connection, a second account included.
   const connect = (provider?: string) => {
     setState("connecting", true)
-    providerConnect.select(provider)
+    providerConnect.select(provider, { add: provider !== undefined })
     void dialog.show(
       () => (
         <DialogConnectProvider
@@ -159,27 +164,37 @@ export const SettingsProviders: Component<{
     return connected().filter((item) => !grouped.has(item.id))
   })
 
+  // The popular providers of the connect list, in its order (RedRouter and 9router first).
   const popular = createMemo(() => {
     const connectedIDs = new Set(connected().map((p) => p.id))
-    // The Console account (integration `opencode`) shares its id with the Zen provider. A stored API
-    // key, including one imported from a v1 auth.json, makes Zen "connected" without any account, so
-    // the Popular list keeps the sign-in row until the active credential is an OAuth grant. Until the
-    // integration list arrives the row is still the models.dev Zen provider, so dedupe it as before.
-    const account = integrations.list().find((entry) => entry.id === CONSOLE_INTEGRATION)
 
-    const items = providers
-      .popular()
-      .filter((p) => {
-        if (p.id !== CONSOLE_INTEGRATION || !account) return !connectedIDs.has(p.id)
+    return integrations
+      .list()
+      .filter((integration) => IntegrationOrder.providerRank(integration.id) < 99)
+      .filter((integration) => {
+        // The Console account (integration `opencode`) shares its id with the Zen provider. A stored API
+        // key, including one imported from a v1 auth.json, makes Zen "connected" without any account, so
+        // the Popular list keeps the sign-in row until the active credential is an OAuth grant.
+        if (integration.id === CONSOLE_INTEGRATION)
+          return IntegrationConnections.credentialConnections(integration)[0]?.method !== "oauth"
 
-        return account.connections.find((connection) => connection.type === "credential")?.method !== "oauth"
+        return !connectedIDs.has(integration.id) && integration.connections.length === 0
       })
-      .slice()
-
-    items.sort((a, b) => popularProviders.indexOf(a.id) - popularProviders.indexOf(b.id))
-
-    return items
+      .toSorted(IntegrationOrder.compare)
   })
+
+  // Rename, delete, switch, add and test live in one place, the same pane the connect dialog shows.
+  const manage = (item: ProviderItem, name: string) => {
+    const integrationID = item.integrationID ?? item.id
+    void dialog.show(() => (
+      <DialogManageIntegration
+        integrationID={integrationID}
+        name={name}
+        directory={props.directory}
+        onAdd={() => connect(integrationID)}
+      />
+    ))
+  }
 
   // Connection state comes from the integration list like the TUI: credential
   // connections mean an API key or OAuth grant, env connections mean detected
@@ -423,6 +438,9 @@ export const SettingsProviders: Component<{
               </Menu.RadioGroup>
             </Menu.Group>
             <Menu.Separator />
+            <Menu.Item disabled={state.credentialID !== undefined} onSelect={() => manage(menuProps.provider, name())}>
+              {language.t("settings.providers.account.manageConnections")}
+            </Menu.Item>
             <Menu.Item disabled={state.credentialID !== undefined} onSelect={() => connect(menuProps.provider.id)}>
               {language.t("settings.providers.account.add")}
             </Menu.Item>
@@ -515,6 +533,16 @@ export const SettingsProviders: Component<{
                             }
                           >
                             <AccountMenu provider={item} />
+                          </Show>
+                          <Show when={!canManageAccounts(item) && integration(item)?.metadata?.source !== "mcp"}>
+                            <Button
+                              size="normal"
+                              variant="ghost-muted"
+                              aria-label={language.t("provider.manage.title", { provider: item.name })}
+                              onClick={() => manage(item, item.name)}
+                            >
+                              {language.t("provider.manage.check")}
+                            </Button>
                           </Show>
                           <Show when={!canManageAccounts(item)}>
                             <Button

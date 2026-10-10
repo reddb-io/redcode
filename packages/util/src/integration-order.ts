@@ -19,6 +19,11 @@ type Integration = {
   connections: readonly ({ type: "credential"; id: string } | { type: "env"; name: string })[]
 }
 
+/** Where a provider or integration id sits among the popular ones; anything else ranks after them. */
+export function providerRank(id: string) {
+  return priority.get(id) ?? 99
+}
+
 export function category(integration: Integration) {
   if (integration.connections.length) return "Connected"
   if (priority.has(integration.id)) return "Popular"
@@ -31,7 +36,7 @@ export function compare(a: Integration, b: Integration) {
   const rank = { Connected: 0, Popular: 1, MCP: 2, Services: 3 }
   return (
     rank[category(a)] - rank[category(b)] ||
-    (priority.get(a.id) ?? 99) - (priority.get(b.id) ?? 99) ||
+    providerRank(a.id) - providerRank(b.id) ||
     a.name.localeCompare(b.name) ||
     a.id.localeCompare(b.id)
   )

@@ -7,7 +7,7 @@ import { Persistence } from "@/runtime/persistence/schema"
 import { useLanguage } from "@/runtime/i18n/language"
 import { useModels } from "@/providers/models/models"
 import { useServerSDK } from "@/runtime/server/client"
-import { popularProviders } from "@/providers/catalog/providers"
+import { IntegrationOrder } from "@opencode/util/integration-order"
 import { Persist, persisted } from "@/runtime/persistence/storage"
 import { SettingsList } from "@/settings/list"
 import { SettingsRow } from "@/settings/row"
@@ -47,23 +47,10 @@ export const SettingsModels: Component<{
     filterKeys: ["provider.name", "name", "id"],
     sortBy: (a, b) => a.name.localeCompare(b.name),
     groupBy: (x) => x.provider.id,
-    sortGroupsBy: (a, b) => {
-      const aIndex = popularProviders.indexOf(a.category)
-      const bIndex = popularProviders.indexOf(b.category)
-      const aPopular = aIndex >= 0
-      const bPopular = bIndex >= 0
-
-      if (aPopular && !bPopular) return -1
-
-      if (!aPopular && bPopular) return 1
-
-      if (aPopular && bPopular) return aIndex - bIndex
-
-      const aName = a.items[0].provider.name
-      const bName = b.items[0].provider.name
-
-      return aName.localeCompare(bName)
-    },
+    // The connect list's order: RedRouter and 9router, the other popular providers, then by name.
+    sortGroupsBy: (a, b) =>
+      IntegrationOrder.providerRank(a.category) - IntegrationOrder.providerRank(b.category) ||
+      a.items[0].provider.name.localeCompare(b.items[0].provider.name),
   })
 
   const managed = createMemo(() => consoleModelGroup(models.list()))

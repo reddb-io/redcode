@@ -5,13 +5,8 @@ import { Iterable, pipe } from "effect"
 import { createEffect, createMemo, type Accessor } from "solid-js"
 import type { ProviderListResponse } from "@/runtime/server/types"
 import { useIntegrations } from "./integrations"
-import { popularProviders } from "./order"
-
-export { popularProviders } from "./order"
 
 const emptyProviderCatalog: ProviderListResponse = { all: new Map(), connected: [], default: {} }
-
-const popularProviderSet = new Set(popularProviders)
 
 export function useProviders(directory: Accessor<string | undefined>) {
   const data = useData()
@@ -54,24 +49,7 @@ export function useProviders(directory: Accessor<string | undefined>) {
     ready,
     all: () => providers().all,
     default: () => providers().default,
-    // V2 servers list only available providers, so the connectable catalog
-    // comes from the integration list, with the provider catalog as fallback.
-    popular: () => {
-      const catalog = integrations
-        .list()
-        .filter((integration) => popularProviderSet.has(integration.id))
-        .map((integration) => ({ id: integration.id, name: integration.name }))
 
-      const seen = new Set(catalog.map((integration) => integration.id))
-
-      return pipe(
-        providers().all,
-        Iterable.map(([, p]) => p),
-        Iterable.filter((p) => popularProviderSet.has(p.id) && !seen.has(p.id)),
-        Iterable.map((p) => ({ id: p.id, name: p.name })),
-        (v) => [...catalog, ...v],
-      )
-    },
     connected: () => {
       const connected = new Set(providers().connected)
 

@@ -1,5 +1,15 @@
 import { createSimpleContext } from "@opencode/ui/context"
-import { Accessor, batch, createEffect, createMemo, createResource, createRoot, getOwner, untrack } from "solid-js"
+import {
+  Accessor,
+  batch,
+  createEffect,
+  createMemo,
+  createResource,
+  createRoot,
+  getOwner,
+  onCleanup,
+  untrack,
+} from "solid-js"
 import { createServerProjects, RECENTLY_CLOSED_DISPLAY_LIMIT, ServerConnection, useServers } from "./registry"
 import { pathKey } from "@/workspaces/path-key"
 import { useServerHealth } from "@/runtime/server/health"
@@ -116,6 +126,7 @@ function createGlobalModels() {
   const [store, setStore, _, ready] = persisted(Persist.global("model"), ModelState, {
     user: [],
     recent: [],
+    favorite: [],
     variant: {},
   })
 
@@ -160,6 +171,36 @@ function createGlobalModels() {
   }
 }
 
+/**
+ * A router refreshes its catalog in the background; say what changed, like the TUI. Every loaded
+ * Location's router reports the same refresh, so one announcement per change is enough.
+ */
+function announceCatalogUpdates(
+  sdk: ReturnType<typeof createServerSdkContext>,
+  language: ReturnType<typeof useLanguage>,
+) {
+  const announced = new Map<string, number>()
+
+  onCleanup(
+    sdk.event.on("provider.catalog.updated", (event) => {
+      const update = event.data
+
+      if (!update.added && !update.removed && !update.renamed) return
+      const key = `${update.providerID}:${update.added}:${update.removed}:${update.renamed}`
+
+      if (Date.now() - (announced.get(key) ?? 0) < 60_000) return
+      announced.set(key, Date.now())
+      showToast({
+        title: language.t("provider.catalog.updated.title", { provider: update.name }),
+        description: language.t(
+          update.renamed ? "provider.catalog.updated.renamed" : "provider.catalog.updated.description",
+          { added: update.added, removed: update.removed, renamed: update.renamed },
+        ),
+      })
+    }),
+  )
+}
+
 function createServerController(
   conn: ServerConnection.Any,
   scope: ServerScope,
@@ -195,6 +236,7 @@ function createServerController(
   })
 
   const sync = createServerSyncContext(sdk, data)
+  announceCatalogUpdates(sdk, language)
   createPermissionAutoApprover({ sdk, data })
   const notification = createServerNotificationState({ sdk, data, key: connKey, coordinator: notificationCoordinator })
 
