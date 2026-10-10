@@ -838,7 +838,7 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
               Argument.withDescription("JSON file or URL to import, or the source session ID with --from"),
               Argument.optional,
             ),
-            from: Flag.choice("from", ["opencode", "claude-code", "claude"]).pipe(
+            from: Flag.choice("from", ["opencode", "claude-code", "claude", "pi", "omp"]).pipe(
               Flag.withDescription(
                 "Import a session from another coding agent's local history (claude is short for claude-code)",
               ),

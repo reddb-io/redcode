@@ -4,7 +4,7 @@ import { Schema } from "effect"
 import { DateTimeUtcFromMillis, NonNegativeInt, optional } from "./schema.js"
 
 /** Coding agents whose local session history can be imported. */
-export const Source = Schema.Literals(["opencode", "claude-code"]).annotate({ identifier: "SessionImport.Source" })
+export const Source = Schema.Literals(["opencode", "claude-code", "pi", "omp"]).annotate({ identifier: "SessionImport.Source" })
 export type Source = typeof Source.Type
 
 export interface SourceInfo extends Schema.Schema.Type<typeof SourceInfo> {}

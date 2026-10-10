@@ -149,6 +149,51 @@ test("imports a Claude Code session, accepting claude as the source name", async
   }
 }, 15_000)
 
+test("imports Pi and oh-my-pi sessions", async () => {
+  const lists: Record<string, string>[] = []
+  const requests: unknown[] = []
+  const server = serve(async (request, url) => {
+    if (url.pathname === "/api/experimental/session/import/sessions") {
+      lists.push(Object.fromEntries(url.searchParams))
+      return Response.json({ data: [{ ...summary, source: "pi", ref: "pi-latest" }] })
+    }
+    if (url.pathname !== "/api/experimental/session/import/foreign") return undefined
+    requests.push(await request.json())
+    return Response.json({ data: { session: { ...info, id: "ses_pi" }, sessions: ["ses_pi"], warnings: [] } })
+  })
+  try {
+    const [ompStdout, , ompExitCode] = await run([
+      "session",
+      "import",
+      "019c625b-b900-7000-8000-000000000001",
+      "--from",
+      "omp",
+      "--server",
+      server.url.toString(),
+    ])
+    expect(ompExitCode).toBe(0)
+    expect(ompStdout).toStartWith(`Imported session: ses_pi from oh-my-pi${os.EOL}`)
+    const [piStdout, , piExitCode] = await run([
+      "session",
+      "import",
+      "--from",
+      "pi",
+      "--latest",
+      "--server",
+      server.url.toString(),
+    ])
+    expect(piExitCode).toBe(0)
+    expect(piStdout).toStartWith(`Imported session: ses_pi from Pi${os.EOL}`)
+    expect(lists).toEqual([{ source: "pi", directory: cwd, limit: "1" }])
+    expect(requests).toEqual([
+      { source: "omp", ref: "019c625b-b900-7000-8000-000000000001" },
+      { source: "pi", ref: "pi-latest" },
+    ])
+  } finally {
+    await server.stop(true)
+  }
+}, 30_000)
+
 test("reports an already imported session with its existing ID", async () => {
   const server = serve((_request, url) =>
     url.pathname === "/api/experimental/session/import/foreign"

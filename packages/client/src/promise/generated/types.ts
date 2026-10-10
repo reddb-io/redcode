@@ -82,7 +82,7 @@ export type SessionStatsActivity = { date: string; steps: number }
 
 export type UsageMirrorBackfill = { sidecar: string; mirrored: number; skipped: number }
 
-export type SessionImportSource = "opencode" | "claude-code"
+export type SessionImportSource = "opencode" | "claude-code" | "pi" | "omp"
 
 export type SessionMessageAgentSelected = {
   id: string
@@ -5450,17 +5450,17 @@ export type SessionForeignSourcesOutput = { data: Array<SessionImportSourceInfo>
 
 export type SessionForeignListInput = {
   readonly source: {
-    readonly source: "opencode" | "claude-code"
+    readonly source: "opencode" | "claude-code" | "pi" | "omp"
     readonly directory?: string | undefined
     readonly limit?: number | undefined
   }["source"]
   readonly directory?: {
-    readonly source: "opencode" | "claude-code"
+    readonly source: "opencode" | "claude-code" | "pi" | "omp"
     readonly directory?: string | undefined
     readonly limit?: number | undefined
   }["directory"]
   readonly limit?: {
-    readonly source: "opencode" | "claude-code"
+    readonly source: "opencode" | "claude-code" | "pi" | "omp"
     readonly directory?: string | undefined
     readonly limit?: number | undefined
   }["limit"]
@@ -5470,17 +5470,17 @@ export type SessionForeignListOutput = { data: Array<SessionImportSummary> }["da
 
 export type SessionForeignImportInput = {
   readonly source: {
-    readonly source: "opencode" | "claude-code"
+    readonly source: "opencode" | "claude-code" | "pi" | "omp"
     readonly ref: string
     readonly location?: { readonly directory: string } | undefined
   }["source"]
   readonly ref: {
-    readonly source: "opencode" | "claude-code"
+    readonly source: "opencode" | "claude-code" | "pi" | "omp"
     readonly ref: string
     readonly location?: { readonly directory: string } | undefined
   }["ref"]
   readonly location?: {
-    readonly source: "opencode" | "claude-code"
+    readonly source: "opencode" | "claude-code" | "pi" | "omp"
     readonly ref: string
     readonly location?: { readonly directory: string } | undefined
   }["location"]

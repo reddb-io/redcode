@@ -6,6 +6,7 @@ import path from "node:path"
 import { Effect } from "effect"
 import { ClaudeCodeStore } from "../../core/test/fixture/claude-code-store"
 import { OpenCodeStore } from "../../core/test/fixture/opencode-store"
+import { PiStore } from "../../core/test/fixture/pi-store"
 import { it } from "../../core/test/lib/effect"
 import { ServerFetch } from "../src/fetch"
 
@@ -13,6 +14,8 @@ const root = realpathSync(mkdtempSync(path.join(os.tmpdir(), "redcode-server-imp
 const project = path.join(root, "project")
 const store = path.join(root, "opencode")
 const claude = path.join(root, "claude")
+const pi = path.join(root, "pi", "sessions")
+const omp = path.join(root, "omp", "sessions")
 mkdirSync(project, { recursive: true })
 mkdirSync(store, { recursive: true })
 afterAll(() => rmSync(root, { recursive: true, force: true }))
@@ -25,6 +28,17 @@ ClaudeCodeStore.write(claude, {
   records: [
     cc.user("u1", null, 1, "Hello from Claude Code"),
     cc.assistant("a1", "u1", 2, { id: "msg_1", block: { type: "text", text: "Hi" }, stop: "end_turn" }),
+  ],
+})
+
+const OMP_SESSION = "019c625b-b900-7000-8000-000000000001"
+PiStore.write(omp, {
+  bucket: PiStore.bucket(project),
+  file: `2026-01-01T00-00-00-000Z_${OMP_SESSION}`,
+  records: [
+    PiStore.header(OMP_SESSION, project, 0),
+    PiStore.user("u1", null, 1, "Hello from oh-my-pi"),
+    PiStore.assistant("a1", "u1", 2, [{ type: "text", text: "Hi" }]),
   ],
 })
 
@@ -60,7 +74,13 @@ OpenCodeStore.write(path.join(store, "opencode.db"), {
 const setup = Effect.gen(function* () {
   const handler = yield* ServerFetch.make(
     { app: { version: "test" }, database: { path: ":memory:" }, fs: { filewatcher: false } },
-    { overrides: [SessionImport.node.replace(SessionImport.configured({ opencode: [store], claudeCode: [claude] }))] },
+    {
+      overrides: [
+        SessionImport.node.replace(
+          SessionImport.configured({ opencode: [store], claudeCode: [claude], pi: [pi], omp: [omp] }),
+        ),
+      ],
+    },
   )
   return (url: string, body?: unknown, status = 200) =>
     Effect.promise(async () => {
@@ -90,6 +110,8 @@ it.live("lists import sources and the sessions recorded in a directory", () =>
           path: path.join(claude, "projects"),
           sessions: 1,
         },
+        { source: "pi", name: "Pi", available: false, sessions: 0, warning: "No Pi session store found" },
+        { source: "omp", name: "oh-my-pi", available: true, path: omp, sessions: 1 },
       ],
     })
     expect(
@@ -187,6 +209,36 @@ it.live("lists and imports a Claude Code session under a stable Redcode ID", () 
     expect(id).toStartWith("ses_")
     expect(
       yield* request("/api/experimental/session/import/foreign", { source: "claude-code", ref: CLAUDE_SESSION }, 409),
+    ).toMatchObject({ _tag: "ConflictError", resource: id })
+  }).pipe(Effect.scoped),
+)
+
+it.live("lists and imports an oh-my-pi session under a stable Redcode ID", () =>
+  Effect.gen(function* () {
+    const request = yield* setup
+    expect(
+      yield* request(`/api/experimental/session/import/sessions?source=omp&directory=${encodeURIComponent(project)}`),
+    ).toMatchObject({
+      data: [
+        {
+          source: "omp",
+          ref: OMP_SESSION,
+          title: "Hello from oh-my-pi",
+          directory: project,
+          messages: 2,
+          subagents: 0,
+          model: "anthropic/claude-test-1",
+        },
+      ],
+    })
+    const imported = yield* request("/api/experimental/session/import/foreign", { source: "omp", ref: OMP_SESSION })
+    expect(imported).toMatchObject({
+      data: { session: { title: "Hello from oh-my-pi", location: { directory: project } }, warnings: [] },
+    })
+    const id = (imported as { data: { session: { id: string } } }).data.session.id
+    expect(id).toStartWith("ses_")
+    expect(
+      yield* request("/api/experimental/session/import/foreign", { source: "omp", ref: OMP_SESSION }, 409),
     ).toMatchObject({ _tag: "ConflictError", resource: id })
   }).pipe(Effect.scoped),
 )
