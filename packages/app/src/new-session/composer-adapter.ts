@@ -5,6 +5,7 @@ import { Session } from "@opencode/schema/session"
 import { startTransition } from "solid-js"
 import type { NewSessionComposerAdapter } from "@/composer/adapter"
 import { useComposerState } from "@/composer/persistence"
+import { createComposerReasoning } from "@/composer/reasoning/state"
 import { createComposerControls, createComposerModelSelection } from "@/composer/selection"
 import { createComposerProjectControls } from "./project/controller"
 import { useLanguage } from "@/runtime/i18n/language"
@@ -37,12 +38,15 @@ export function createNewSessionComposerAdapter(props: {
   const language = useLanguage()
   const model = createComposerModelSelection({ agent: () => local.agent.current() })
   const controls = createComposerControls({ model })
+  // The server scopes a reasoning mode to an existing session, so a draft's choice waits for creation.
+  const reasoning = createComposerReasoning({ session: () => undefined })
 
   const adapter: NewSessionComposerAdapter = {
     kind: "new-session",
     state,
     ready: prompt.ready,
     controls,
+    reasoning,
     working: () => false,
     submitted: props.submitted,
     async start(selection, submission, message) {
@@ -123,10 +127,29 @@ export function createNewSessionComposerAdapter(props: {
         return
       }
 
+      // Apply the chosen mode before admitting the first prompt. Failure leaves the prompt unsent and recoverable.
+      const reasoningApplied = creation.then((result) => (result.ok ? reasoning.apply(created.id) : undefined))
+
+      if (reasoning.override() !== "default") {
+        try {
+          await reasoningApplied
+        } catch (error) {
+          showToast({
+            variant: "error",
+            title: language.t("composer.reasoning.failed"),
+            description: errorMessage(language, error),
+          })
+          await rollback()
+
+          return
+        }
+      }
+
       const afterCreation = async <T>(run: () => Promise<T>) => {
         const result = await creation
 
         if (!result.ok) throw result.error
+        await reasoningApplied
 
         return run()
       }

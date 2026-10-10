@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test"
 import { expectPath, holdRoute, NO_PROVIDER, project, REMOTE_SERVER, seed, sessionHref } from "../utils/app"
+import { mockForeignSessions } from "../utils/session-import"
 import { mockOpenCodeServer } from "../utils/mock-server"
 import { fixture, mockStressTimeline } from "../utils/session-fixture"
 import { mockRemoteServer } from "../utils/workspace"
@@ -341,4 +342,25 @@ test("the project menu path arrow has a glyph when the page has an older icon sp
     .poll(() => arrow.locator("svg").evaluate((element: SVGSVGElement) => element.getBBox().width))
     .toBeGreaterThan(0)
   await expect(page.locator("#opencode-v2-icon-sprite")).toHaveCount(1)
+})
+
+test("the project menu imports from another coding agent, starting in the project's folder", async ({ page }) => {
+  await openHome(page)
+  const { listed } = await mockForeignSessions(page, {
+    sources: [{ source: "pi", name: "Pi", available: true, sessions: 1 }],
+    sessions: [],
+  })
+  // The sidemenu's project menu; Home's project rows list the same extension items.
+  await page.locator('[data-action="navigation-project-menu"]').click()
+  await page.getByRole("menuitem", { name: "Import from another agent…", exact: true }).click()
+
+  const dialog = page.getByRole("dialog")
+  await dialog.getByRole("button", { name: /Pi/ }).click()
+  await expect(dialog.getByText("No Pi sessions in this folder", { exact: true })).toBeVisible()
+  expect(listed.at(-1)?.searchParams.get("source")).toBe("pi")
+  expect(listed.at(-1)?.searchParams.get("directory")).toBe(fixture.directory)
+
+  await dialog.getByRole("button", { name: "Show all folders", exact: true }).click()
+  await expect(dialog.getByText("No Pi sessions found", { exact: true })).toBeVisible()
+  expect(listed.at(-1)?.searchParams.has("directory")).toBe(false)
 })

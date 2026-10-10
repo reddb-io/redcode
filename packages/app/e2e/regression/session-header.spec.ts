@@ -4,6 +4,17 @@ import { seed, sessionHref } from "../utils/app"
 import { fixture, mockStressTimeline } from "../utils/session-fixture"
 import { expectSessionTitle } from "../utils/waits"
 import { mockWorkspace, openSession } from "../utils/workspace"
+import { contextMessages } from "../utils/context-usage"
+
+test("context usage includes reasoning and cache tokens in the model's window", async ({ page }) => {
+  await openSession(page, { name: "ContextReading", pageMessages: () => ({ items: contextMessages }) })
+  const context = page.getByRole("button", { name: "View context usage", exact: true })
+  await expect(context).toContainText("5%")
+  await context.hover()
+  const tooltip = page.getByRole("tooltip")
+  await expect(tooltip).toContainText("10K / 200K (5%)")
+  await expect(tooltip).toContainText("10,000")
+})
 
 const tabs = (page: Page) => page.locator('[data-slot="titlebar-tabs"] a')
 

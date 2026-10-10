@@ -84,6 +84,8 @@ export type ComposerEditorProps = {
   class?: string
   modelControl?: JSX.Element
   modelControlsVisible?: boolean
+  /** The reasoning mode control, after the model and its variant. */
+  reasoningControl?: JSX.Element
   /** The permission mode chip, at the start of the actions beside send. */
   permissionControl?: JSX.Element
   attachKeybind?: string[]
@@ -390,6 +392,7 @@ export function ComposerEditor(props: ComposerEditorProps) {
                   )}
                 </Show>
               </Show>
+              {props.reasoningControl}
             </div>
           </div>
           <div data-slot="composer-actions" class="flex shrink-0 items-center">

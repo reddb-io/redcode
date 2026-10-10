@@ -4,6 +4,77 @@ import { openDraft, openSession } from "../utils/workspace"
 
 test.use({ permissions: ["clipboard-read", "clipboard-write"] })
 
+test("Shift+Tab cycles primary agents while preserving the prompt", async ({ page }) => {
+  const { editor } = await openDraft(page, {
+    name: "AgentCycle",
+    agents: ["build", "plan"].map((id) => ({
+      id,
+      name: id === "build" ? "Build" : "Plan",
+      mode: "primary",
+      hidden: false,
+      request: { settings: {}, headers: {}, body: {} },
+      permissions: [],
+    })),
+  })
+  await expect(page.getByRole("button", { name: "Choose agent", exact: true })).toHaveText("build")
+  await editor.fill("Keep the draft while changing agents")
+  await editor.press("Shift+Tab")
+  await expect(page.getByRole("button", { name: "Choose agent", exact: true })).toHaveText("plan")
+  await expect(editor).toHaveText("Keep the draft while changing agents")
+  await expect(editor).toBeFocused()
+  await editor.press("Shift+Tab")
+  await expect(page.getByRole("button", { name: "Choose agent", exact: true })).toHaveText("build")
+})
+
+test("a draft applies dual reasoning before admitting its first prompt", async ({ page }) => {
+  const mode = Promise.withResolvers<void>()
+  const changed: { sessionID: string; body: unknown }[] = []
+  const prompts: string[] = []
+  const { editor } = await openDraft(page, {
+    name: "DualReasoning",
+    onReasoningMode: async (input) => {
+      changed.push(input)
+      await mode.promise
+    },
+    onPrompt: ({ sessionID }) => prompts.push(sessionID),
+  })
+  await page.getByRole("button", { name: "Reasoning mode", exact: true }).click()
+  await page.getByRole("menuitemradio", { name: "Dual · S1 evaluates S2", exact: true }).click()
+  await editor.fill("Evaluate this carefully")
+  await editor.press("Enter")
+  await expect.poll(() => changed.length).toBe(1)
+  expect(changed[0]?.body).toEqual({ reasoning: "dual" })
+  expect(prompts).toEqual([])
+  await expect(page).toHaveURL(/\/new-session\?/)
+  mode.resolve()
+  await expect.poll(() => prompts).toEqual([changed[0]!.sessionID])
+  await expect(page).toHaveURL(new RegExp(`/session/${changed[0]!.sessionID}$`))
+})
+
+test("a reasoning failure keeps the draft and its prompt recoverable", async ({ page }) => {
+  const requests: unknown[] = []
+  const prompts: string[] = []
+  const { editor } = await openDraft(page, {
+    name: "ReasoningRetry",
+    onReasoningMode: ({ body }) => {
+      requests.push(body)
+      if (requests.length === 1) throw new Error("Evaluator unavailable")
+    },
+    onPrompt: ({ sessionID }) => prompts.push(sessionID),
+  })
+  await page.getByRole("button", { name: "Reasoning mode", exact: true }).click()
+  await page.getByRole("menuitemradio", { name: "Dual · S1 evaluates S2", exact: true }).click()
+  await editor.fill("Keep this prompt")
+  await editor.press("Enter")
+  await expect(page.getByText("Could not change the reasoning mode", { exact: true })).toBeVisible()
+  await expect(page).toHaveURL(/\/new-session\?/)
+  await expect(editor).toHaveText("Keep this prompt")
+  expect(prompts).toEqual([])
+  await editor.press("Enter")
+  await expect.poll(() => prompts.length).toBe(1)
+  expect(requests).toEqual([{ reasoning: "dual" }, { reasoning: "dual" }])
+})
+
 async function draft(page: Page) {
   const { editor } = await openDraft(page, { name: "ComposerDraft", provider: NO_PROVIDER })
   await editor.click()

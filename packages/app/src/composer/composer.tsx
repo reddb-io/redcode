@@ -8,6 +8,7 @@ import { ProviderModelIcon } from "@/providers/models/provider-group"
 import { Tooltip } from "@opencode/ui/tooltip"
 import { useI18n } from "@opencode/ui/context/i18n"
 import { ComposerEditor, ComposerEditorSelect } from "./editor/editor"
+import { ComposerReasoningControl } from "./reasoning/control"
 import { useSettings } from "@/settings/model"
 import { ModelSelectorPopover } from "@/providers/models/select-dialog"
 import { DialogSelectModelUnpaid } from "@/providers/models/unpaid"
@@ -51,6 +52,17 @@ export function Composer(props: {
             onClose={props.model.restoreFocus}
             onUnpaidClick={() => dialog.show(() => <DialogSelectModelUnpaid model={props.model.model.selection} />)}
           />
+        }
+        reasoningControl={
+          <Show when={props.model.reasoning}>
+            {(reasoning) => (
+              <ComposerReasoningControl
+                reasoning={reasoning().state}
+                onStatus={() => void reasoning().status()}
+                onSetup={reasoning().setup}
+              />
+            )}
+          </Show>
         }
         permissionControl={<ComposerPermissionControl />}
       />

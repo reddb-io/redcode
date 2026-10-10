@@ -41,6 +41,11 @@ const Query = Schema.Struct({
 
 const SessionParams = { sessionID: Schema.String }
 
+const IntelligenceQuery = Schema.Struct({
+  sessionID: Schema.optional(Schema.String),
+  limit: Schema.optional(Schema.NumberFromString),
+})
+
 const PtyParams = { ptyID: Pty.ID }
 
 const NoContent = HttpApiSchema.NoContent
@@ -193,6 +198,7 @@ const Group = HttpApiGroup.make("mock")
     }),
   )
   .add(HttpApiEndpoint.get("location", "/api/location", { success: Json }))
+  .add(HttpApiEndpoint.post("locationReload", "/api/location/reload", { success: NoContent }))
   .add(
     HttpApiEndpoint.get("permissionRequests", "/api/permission/request", {
       success: Json,
@@ -344,6 +350,26 @@ const Group = HttpApiGroup.make("mock")
     HttpApiEndpoint.get("sessionGoal", "/api/experimental/session/:sessionID/goal", {
       params: SessionParams,
       success: Json,
+    }),
+  )
+  .add(
+    HttpApiEndpoint.get("intelligenceStatus", "/api/experimental/intelligence", {
+      query: IntelligenceQuery,
+      success: Json,
+    }),
+  )
+  .add(
+    HttpApiEndpoint.get("intelligenceHistory", "/api/experimental/intelligence/history", {
+      query: IntelligenceQuery,
+      success: Json,
+    }),
+  )
+  .add(
+    HttpApiEndpoint.put("intelligenceSessionMode", "/api/experimental/intelligence/session/:sessionID", {
+      params: SessionParams,
+      payload: JsonPayload,
+      success: Json,
+      error: MockBadRequest,
     }),
   )
   .add(

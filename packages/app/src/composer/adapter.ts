@@ -3,6 +3,7 @@ import type { SessionMessageUser } from "@opencode/client/promise"
 import type { Accessor } from "solid-js"
 import type { ModelSelection } from "@/providers/models/selection"
 import type { ServerSDK } from "@/runtime/server/client"
+import type { ComposerReasoning } from "./reasoning/state"
 import type { ComposerStateTarget } from "./submission-state"
 import type { createComposerSubmission } from "./submission-state"
 
@@ -98,6 +99,11 @@ type ComposerAdapterBase = {
   state: ComposerStateTarget
   ready: Accessor<boolean>
   controls: Accessor<ComposerControls>
+  /**
+   * The session's reasoning mode and S1 state; a new session's choice is set once it is created. Composers without
+   * a server session behind them, such as stories, have none and show no reasoning control.
+   */
+  reasoning?: ComposerReasoning
   working: Accessor<boolean>
   submitted: () => void
 }

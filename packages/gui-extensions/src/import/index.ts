@@ -6,6 +6,5 @@ export default Extension.define({
   id: "import",
   i18n: {
     en,
-    br: () => import("./i18n/br"),
   },
 })

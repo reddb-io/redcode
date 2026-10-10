@@ -14,6 +14,7 @@
 
   [data-component="settings-list"][data-variant="catalog"] {
     padding-inline: 12px;
+    border-inline-width: 0;
   }
 
   [data-component="settings-row"] {

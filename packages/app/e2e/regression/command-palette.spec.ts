@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test"
+import { mockForeignSessions } from "../utils/session-import"
 import { captureConsoleWarnings, openCommandPalette, paletteSession } from "../utils/command-palette"
 
 test.use({ serviceWorkers: "block", permissions: ["clipboard-read", "clipboard-write"] })
@@ -178,4 +179,54 @@ test("navigation replaces commands without retaining disposed owners", async ({ 
     "true",
   )
   expect(warnings).toEqual([])
+})
+
+test("imports a session from another coding agent and opens the one imported earlier", async ({ page }) => {
+  const { dialog, input } = await openCommandPalette(page, true)
+  const { listed } = await mockForeignSessions(page, {
+    sources: [
+      { source: "opencode", name: "OpenCode", available: false, sessions: 0, warning: "No OpenCode history" },
+      { source: "claude-code", name: "Claude Code", available: true, sessions: 2 },
+    ],
+    sessions: [
+      {
+        source: "claude-code",
+        ref: "claude-1",
+        title: "Fix the flaky build",
+        directory: "/home/kit/code/app",
+        messages: 340,
+        estimated: true,
+        subagents: 2,
+        model: "anthropic/claude-test",
+        time: { created: Date.now() - 7_200_000, updated: Date.now() - 3_600_000 },
+      },
+    ],
+    imported: {
+      status: 409,
+      body: {
+        _tag: "ConflictError",
+        message: `Session already imported: ${paletteSession.id}`,
+        resource: paletteSession.id,
+      },
+    },
+  })
+  await input.fill("import session from another agent")
+  await expect(dialog.getByRole("option", { name: /^Import session from another agent/ })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  )
+  await input.press("Enter")
+
+  const importer = page.getByRole("dialog")
+  await expect(importer.getByText("No OpenCode history")).toBeVisible()
+  await importer.getByRole("button", { name: /Claude Code/ }).click()
+  const row = importer.getByRole("button", { name: /Fix the flaky build/ })
+  await expect(row).toContainText("~340 messages · 2 subagents · anthropic/claude-test")
+  // On Home there is no project folder, so the list covers every folder.
+  expect(listed.at(-1)?.searchParams.get("source")).toBe("claude-code")
+  expect(listed.at(-1)?.searchParams.has("directory")).toBe(false)
+
+  await row.click()
+  await expect(page.getByText("Already imported", { exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: paletteSession.title, exact: true })).toBeVisible()
 })

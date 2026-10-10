@@ -45,6 +45,7 @@ export interface MockServerConfig {
   server?: string
   provider: Resolvable<MockProviderCatalog>
   integrations?: unknown[]
+  agents?: unknown[]
   onConnectKey?: (input: { integrationID: string; body: unknown }) => void
   // Terminal shells the settings offer (`/api/config/shell`).
   shells?: unknown[]
@@ -126,6 +127,9 @@ export interface MockServerConfig {
   sessionStatus?: Resolvable<Record<string, { type: string }>>
   inbox?: unknown[] | (() => unknown[])
   onPrompt?: (input: { sessionID: string; body: Schema.JsonObject }) => void
+  // A session's reasoning override must settle before a draft sends its first prompt.
+  onReasoningMode?: (input: { sessionID: string; body: Schema.JsonObject }) => void | Promise<void>
+  onLocationReload?: () => void
   onCompact?: (input: { sessionID: string; body: Schema.JsonObject }) => void
   generate?: (input: { sessionID: string; prompt: string }) => { text: string } | Promise<{ text: string }>
   onInboxChange?: (input: { sessionID: string; inboxID: string; action: "cancel" | "steer" | "queue" }) => void
@@ -558,6 +562,13 @@ function retryableDelivery(cause: unknown) {
 
 const PTY_TICKET = "e2e-ticket"
 
+const mockIntelligence = {
+  settings: { enabled: false, onboarding: "completed", reasoning: "single" },
+  environment: "",
+  evaluators: [],
+  effective: { reasoning: "single", source: "default" },
+}
+
 function createPty(config: MockServerConfig) {
   const info = (id: string, title: string, cwd = config.directory): MockPtyInfo => ({
     id,
@@ -827,7 +838,7 @@ function mockHandlers(
         agent: (ctx) =>
           Effect.succeed({
             location: location(config, requestDirectory(config, ctx.request)),
-            data: [
+            data: config.agents ?? [
               {
                 id: "build",
                 name: "Build",
@@ -932,6 +943,7 @@ function mockHandlers(
           }),
         configShells: () => Effect.succeed(config.shells ?? []),
         configUpdate: () => noContent,
+        locationReload: () => Effect.sync(() => config.onLocationReload?.()).pipe(Effect.andThen(noContent)),
         websearchProviders: () => Effect.succeed({ location: location(config), data: [] }),
         worktreeList: () =>
           Effect.sync(() => {
@@ -1213,6 +1225,19 @@ function mockHandlers(
             },
           }),
         sessionGoal: () => Effect.succeed({ data: null }),
+        // Reasoning roles are set up and every session runs single, so S1 has nothing to say.
+        intelligenceStatus: () => Effect.succeed(mockIntelligence),
+        intelligenceHistory: () => Effect.succeed([]),
+        intelligenceSessionMode: (ctx) =>
+          Effect.tryPromise({
+            try: async () => {
+              const body = Option.getOrElse(decodeJsonObject(ctx.payload), () => ({}))
+              await config.onReasoningMode?.({ sessionID: ctx.params.sessionID, body })
+
+              return mockIntelligence.settings
+            },
+            catch: (error) => new MockBadRequest({ message: String(error) }),
+          }),
         sessionPrompt: (ctx) =>
           Effect.sync(() => {
             const body = Option.getOrElse(decodeJsonObject(ctx.payload), () => ({}))

@@ -1,12 +1,13 @@
 import type { SessionImportSourceInfo, SessionImportSummary } from "@opencode/client/promise"
 import { Button } from "@opencode/ui/button"
 import { Dialog, DialogBody, DialogHeader, DialogTitleGroup } from "@opencode/ui/dialog"
+import { Icon } from "@opencode/ui/icon"
 import { IconButton } from "@opencode/ui/icon-button"
 import { List } from "@opencode/ui/list"
 import { Spinner } from "@opencode/ui/spinner"
 import { Switch } from "@opencode/ui/switch"
 import { showToast } from "@opencode/ui/toast"
-import { createMemo, createSignal, Show } from "solid-js"
+import { createMemo, createSignal, onCleanup, Show } from "solid-js"
 import { createLatest, type SetupContext } from "../sdk"
 import type definition from "./index"
 import { ago, existingSession, missingDirectory, shortFolder } from "./model"
@@ -47,11 +48,13 @@ export default function ImportDialog(props: {
               <List
                 class={LIST}
                 emptyMessage={
-                  sources.error
-                    ? errorText(sources.error)
-                    : sources.latest
-                      ? ctx.t("sources.empty")
-                      : ctx.t("sources.loading")
+                  !client()
+                    ? ctx.t("server.unavailable")
+                    : sources.error
+                      ? errorText(sources.error)
+                      : sources.latest
+                        ? ctx.t("sources.empty")
+                        : ctx.t("sources.loading")
                 }
                 key={(item) => item.source}
                 // Available sources first, so the first one is the default pick.
@@ -114,6 +117,9 @@ function Sessions(props: {
 }) {
   const ctx = props.ctx
   const client = () => ctx.servers.get(props.server)?.client
+  const lifetime = new AbortController()
+  const signal = AbortSignal.any([ctx.signal, lifetime.signal])
+  onCleanup(() => lifetime.abort())
   const [all, setAll] = createSignal(props.directory === undefined)
   const [importing, setImporting] = createSignal<SessionImportSummary>()
   const [failure, setFailure] = createSignal<{ ref: string; message: string; relocate: boolean }>()
@@ -138,8 +144,9 @@ function Sessions(props: {
   const open = (sessionID: string, summary: SessionImportSummary, existing: boolean) => {
     const api = client()
 
-    if (!api) return
-    return api.session.get({ sessionID }).then((session) => {
+    if (!api) return Promise.reject(new Error(ctx.t("server.unavailable")))
+    return api.session.get({ sessionID }, { signal }).then((session) => {
+      if (signal.aborted) return
       ctx.sessions.open(props.server, session)
       props.close()
       showToast({
@@ -156,19 +163,27 @@ function Sessions(props: {
   const run = (summary: SessionImportSummary) => {
     const api = client()
 
-    if (!api || importing()) return
+    if (importing()) return
+    if (!api) {
+      setFailure({ ref: summary.ref, message: ctx.t("server.unavailable"), relocate: false })
+      return
+    }
     const previous = failure()
     const relocate = previous?.ref === summary.ref && previous.relocate && props.directory !== undefined
     setFailure(undefined)
     setImporting(summary)
     void api.session.foreign
-      .import({
-        source: summary.source,
-        ref: summary.ref,
-        location: relocate && props.directory ? { directory: props.directory } : undefined,
-      })
+      .import(
+        {
+          source: summary.source,
+          ref: summary.ref,
+          location: relocate && props.directory ? { directory: props.directory } : undefined,
+        },
+        { signal },
+      )
       .then(
         (result) => {
+          if (signal.aborted) return
           ctx.sessions.open(props.server, result.session)
           props.close()
           showToast({
@@ -181,23 +196,32 @@ function Sessions(props: {
           })
         },
         (cause: unknown) => {
+          if (signal.aborted) return
           const existing = existingSession(cause)
 
           if (existing) return open(existing, summary, true)
           throw cause
         },
       )
-      .catch((cause: unknown) =>
-        setFailure({ ref: summary.ref, message: errorText(cause), relocate: missingDirectory(cause) }),
-      )
-      .finally(() => setImporting(undefined))
+      .catch((cause: unknown) => {
+        if (signal.aborted) return
+        setFailure({ ref: summary.ref, message: errorText(cause), relocate: missingDirectory(cause) })
+      })
+      .finally(() => {
+        if (!signal.aborted) setImporting(undefined)
+      })
   }
 
   return (
     <>
       <DialogHeader>
         <div class="flex min-w-0 items-center gap-2">
-          <IconButton icon="arrow-left" variant="ghost" aria-label={ctx.t("sessions.back")} onClick={props.back} />
+          <IconButton
+            icon={<Icon name="arrow-left" />}
+            variant="ghost"
+            aria-label={ctx.t("sessions.back")}
+            onClick={props.back}
+          />
           <DialogTitleGroup
             title={ctx.t("sessions.title", { name })}
             description={all() || !props.directory ? undefined : props.directory}
@@ -210,9 +234,11 @@ function Sessions(props: {
           fallback={
             <div class="flex flex-col items-start gap-3 px-6 py-8">
               <span class="text-14-regular text-v2-text-text-muted">
-                {sessions.error
-                  ? errorText(sessions.error)
-                  : ctx.t(all() ? "sessions.empty.all" : "sessions.empty.folder", { name })}
+                {!client()
+                  ? ctx.t("server.unavailable")
+                  : sessions.error
+                    ? errorText(sessions.error)
+                    : ctx.t(all() ? "sessions.empty.all" : "sessions.empty.folder", { name })}
               </span>
               <Show when={!all() && !sessions.error}>
                 <Button variant="outline" size="small" onClick={() => scope(true)}>

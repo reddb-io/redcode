@@ -34,6 +34,8 @@ const sources = (scenario: Scenario): SessionImportSourceInfo[] => [
     sessions: 0,
     warning: "OpenCode's database could not be opened: it is locked by another process",
   },
+  { source: "pi", name: "Pi", available: scenario !== "unavailable", sessions: 3 },
+  { source: "omp", name: "oh-my-pi", available: false, sessions: 0, warning: "No oh-my-pi history found" },
 ]
 
 const titles = [
@@ -49,11 +51,15 @@ const titles = [
 
 const folders = [directory, `${directory}/packages/tui`, "/Users/kit/code/reddb/design-system", "/tmp/scratch"]
 
-const fixtureSessions = (scenario: Scenario, all: boolean): SessionImportSummary[] => {
+const fixtureSessions = (
+  scenario: Scenario,
+  source: SessionImportSummary["source"],
+  all: boolean,
+): SessionImportSummary[] => {
   if (scenario === "empty" && !all) return []
   const now = Date.now()
   return Array.from({ length: 36 }, (_, index) => ({
-    source: "claude-code" as const,
+    source,
     ref: `fixture-${index}`,
     title:
       titles[index % titles.length] + (index >= titles.length ? ` (${Math.floor(index / titles.length) + 1})` : ""),
@@ -75,7 +81,7 @@ function SessionImportStory(props: { context: Plugin.Context }) {
   // Every call stays in the story: nothing reaches a server or a foreign session store.
   const api: SessionImportApi = {
     sources: () => delay(sources(scenario())),
-    list: (input) => delay(fixtureSessions(scenario(), input.directory === undefined)),
+    list: (input) => delay(fixtureSessions(scenario(), input.source, input.directory === undefined)),
     import: (input) => {
       if (scenario() === "conflict")
         return delay(undefined).then(() => {

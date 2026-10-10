@@ -1,4 +1,5 @@
 export default {
+  "server.unavailable": "The server is unavailable. Reconnect it to import sessions.",
   "command.title": "Import session from another agent…",
   "command.description": "Bring a session from another coding agent's history into this app",
   "menu.title": "Import from another agent…",

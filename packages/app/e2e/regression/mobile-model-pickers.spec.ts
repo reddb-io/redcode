@@ -1,9 +1,52 @@
 import { expect, test, type Page } from "@playwright/test"
 import { fixture, installStressSessionTabs } from "../utils/session-fixture"
-import { sessionHref } from "../utils/app"
+import { provider, sessionHref } from "../utils/app"
+import { openDraft } from "../utils/workspace"
 import { openWithDirection } from "../utils/direction"
 import { mockOpenCodeServer } from "../utils/mock-server"
 import { expectAppVisible } from "../utils/waits"
+
+test("desktop models retain favorites, find fuzzy matches and refresh the catalog", async ({ page }) => {
+  const catalog = {
+    current: provider(
+      { id: "alpha", name: "Alpha", cost: { input: 1, output: 1 } },
+      { id: "beta", name: "Beta", cost: { input: 1, output: 1 } },
+    ),
+  }
+  await openDraft(page, {
+    name: "ModelCatalog",
+    provider: () => catalog.current,
+    onLocationReload: () => {
+      catalog.current = provider(
+        { id: "alpha", name: "Alpha", cost: { input: 1, output: 1 } },
+        { id: "gamma", name: "Gamma", cost: { input: 1, output: 1 } },
+      )
+    },
+  })
+  const trigger = page.locator('[data-action="composer-model"]')
+  await expect(trigger).toHaveText("Alpha")
+  await trigger.click()
+  const search = page.getByPlaceholder("Search models", { exact: true })
+  await expect(search).toBeFocused()
+  await search.press("ControlOrMeta+f")
+  await expect(page.getByText("Favorites", { exact: true })).toBeVisible()
+  await expect(page.getByRole("button", { name: "Remove from favorites", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  )
+  await search.fill("Bta")
+  await expect(page.getByRole("menuitemradio", { name: /Beta/ })).toBeVisible()
+  await search.press("Enter")
+  await expect(trigger).toHaveText("Beta")
+  await trigger.click()
+  await expect(search).toBeFocused()
+  await expect(page.getByText("Favorites", { exact: true })).toBeVisible()
+  await page.getByRole("menuitem", { name: "Refresh models", exact: true }).click()
+  await expect(page.getByText("Models refreshed", { exact: true })).toBeVisible()
+  await expect(page.getByRole("menuitemradio", { name: /Gamma/ })).toBeVisible()
+  await expect(page.getByRole("menuitemradio", { name: /Beta/ })).toHaveCount(0)
+  await expect(page.getByRole("menuitemradio", { name: /Alpha/ })).toBeVisible()
+})
 
 for (const direction of ["ltr", "rtl"] as const) {
   for (const paid of [true, false]) {

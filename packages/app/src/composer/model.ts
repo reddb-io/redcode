@@ -20,6 +20,7 @@ import { showToast } from "@/shell/notifications/toast"
 import { formatServerError } from "@/runtime/server/errors"
 import { Skill } from "@opencode/schema/skill"
 import type { ComposerAdapter, ComposerControls, ComposerQueue } from "./adapter"
+import { createComposerReasoningActions, type ComposerReasoningActions } from "./reasoning/actions"
 import { isAttachment } from "./prompt-parts"
 import type { PromptHistoryComment } from "./history/entry"
 import { createComposerHistory } from "./history/store"
@@ -29,6 +30,8 @@ import { parseClientSlashCommand } from "./client-slash-command"
 
 export type ComposerModel = ComposerEditorModel & {
   readonly model: ComposerControls["model"]
+  /** The session's reasoning mode and its views; absent when the adapter has no reasoning. */
+  readonly reasoning?: ComposerReasoningActions
 }
 
 const sendFailedTitle = {
@@ -395,13 +398,11 @@ export function createComposerModel(adapter: ComposerAdapter, options?: { queue?
         return agents.visible && agents.options.length > 1
           ? {
               options: () =>
-                adapter
-                  .controls()
-                  .agents.options.map((name) => ({
-                    id: name,
-                    label: name,
-                    color: adapter.controls().agents.color(name),
-                  })),
+                adapter.controls().agents.options.map((name) => ({
+                  id: name,
+                  label: name,
+                  color: adapter.controls().agents.color(name),
+                })),
               current: () => adapter.controls().agents.current,
               onSelect: (value: string) => adapter.controls().agents.select(value),
               keybind: () => command.keybindParts("agent.cycle"),
@@ -445,6 +446,12 @@ export function createComposerModel(adapter: ComposerAdapter, options?: { queue?
 
   Object.defineProperty(controller, "model", { get: () => adapter.controls().model })
 
+  Object.defineProperty(controller, "reasoning", {
+    value: adapter.reasoning
+      ? createComposerReasoningActions(adapter.reasoning, () => adapter.controls().model.selection)
+      : undefined,
+  })
+
   command.register("composer-editor", () => [
     {
       id: "file.attach",
@@ -473,7 +480,7 @@ export function createComposerModel(adapter: ComposerAdapter, options?: { queue?
     },
   ])
 
-  // SAFETY: the `model` getter defined on the controller above completes `ComposerModel`.
+  // SAFETY: the `model` getter and `reasoning` value defined on the controller above complete `ComposerModel`.
   return controller as ComposerModel
 }
 

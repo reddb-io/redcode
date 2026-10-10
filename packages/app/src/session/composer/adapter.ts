@@ -1,6 +1,7 @@
 import type { Accessor } from "solid-js"
 import type { ActiveComposerAdapter, ComposerControls } from "@/composer/adapter"
 import { useComposerState } from "@/composer/persistence"
+import { createComposerReasoning } from "@/composer/reasoning/state"
 import { useData } from "@/runtime/server/current"
 import { useServerSDK } from "@/runtime/server/client"
 import { useWorkspaceLocation } from "@/workspaces/location"
@@ -25,6 +26,7 @@ export function createActiveComposerAdapter(input: {
     state,
     ready: prompt.ready,
     controls: input.controls,
+    reasoning: createComposerReasoning({ session: () => id }),
     working: () => data.session.status(id) === "running",
     submitted: input.submitted,
     setEditor: input.setEditor,

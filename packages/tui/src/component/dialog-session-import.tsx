@@ -1,4 +1,4 @@
-import { createSignal, Match, onMount, Switch } from "solid-js"
+import { createSignal, Match, onCleanup, onMount, Switch } from "solid-js"
 import { TextAttributes } from "@opentui/core"
 import type { OpenCodeClient, SessionImportSourceInfo, SessionImportSummary } from "@opencode/client"
 import { useDialog } from "../ui/dialog"
@@ -28,11 +28,13 @@ export function DialogSessionImport(props: {
   const dialog = useDialog()
   const theme = useTheme().surface("dialog")
   const toast = useToast()
+  const lifetime = new AbortController()
+  onCleanup(() => lifetime.abort())
   // Undefined while the server detects the sources.
   const [sources, setSources] = createSignal<{ data: SessionImportSourceInfo[]; error?: string }>()
-  props.api.sources().then(
-    (data) => setSources({ data: [...data] }),
-    (error: unknown) => setSources({ data: [], error: errorMessage(error) }),
+  props.api.sources({ signal: lifetime.signal }).then(
+    (data) => !lifetime.signal.aborted && setSources({ data: [...data] }),
+    (error: unknown) => !lifetime.signal.aborted && setSources({ data: [], error: errorMessage(error) }),
   )
   const [source, setSource] = createSignal<SessionImportSourceInfo>()
   onMount(() => dialog.setSize("large"))
@@ -107,6 +109,12 @@ function ImportSessions(props: {
 }) {
   const theme = useTheme().surface("dialog")
   const paths = useTuiPaths()
+  const lifetime = new AbortController()
+  const listing = { request: new AbortController() }
+  onCleanup(() => {
+    lifetime.abort()
+    listing.request.abort()
+  })
   const [importing, setImporting] = createSignal<SessionImportSummary>()
   const [failure, setFailure] = createSignal<{ ref: string; message: string; relocate: boolean }>()
   // `data` and `error` are undefined while the sessions of the current scope load.
@@ -116,13 +124,21 @@ function ImportSessions(props: {
   const all = () => sessions().all
   const list = () => sessions().data ?? []
   const load = (all: boolean) => {
+    listing.request.abort()
+    const request = new AbortController()
+    listing.request = request
     setFailure(undefined)
     setSessions({ all })
-    props.api.list({ source: props.source.source, directory: all ? undefined : props.directory, limit: 100 }).then(
-      // A reply for a scope the user already left is stale.
-      (data) => sessions().all === all && setSessions({ all, data: [...data] }),
-      (error: unknown) => sessions().all === all && setSessions({ all, data: [], error: errorMessage(error) }),
-    )
+    props.api
+      .list(
+        { source: props.source.source, directory: all ? undefined : props.directory, limit: 100 },
+        { signal: request.signal },
+      )
+      .then(
+        // A reply for a scope the user already left is stale.
+        (data) => !request.signal.aborted && setSessions({ all, data: [...data] }),
+        (error: unknown) => !request.signal.aborted && setSessions({ all, data: [], error: errorMessage(error) }),
+      )
   }
   load(false)
   const folder = () => truncateFilePath(abbreviateHome(props.directory, paths.home), 40)
@@ -134,13 +150,17 @@ function ImportSessions(props: {
     setFailure(undefined)
     setImporting(summary)
     props.api
-      .import({
-        source: summary.source,
-        ref: summary.ref,
-        ...(relocate ? { location: { directory: props.directory } } : {}),
-      })
+      .import(
+        {
+          source: summary.source,
+          ref: summary.ref,
+          ...(relocate ? { location: { directory: props.directory } } : {}),
+        },
+        { signal: lifetime.signal },
+      )
       .then(
         (result) => {
+          if (lifetime.signal.aborted) return
           const subagents = result.sessions.length - 1
           props.notify({
             variant: result.warnings.length > 0 ? "warning" : "success",
@@ -152,6 +172,7 @@ function ImportSessions(props: {
           props.onOpen(result.session.id)
         },
         (error: unknown) => {
+          if (lifetime.signal.aborted) return
           const existing = existingSession(error)
           if (existing) {
             props.notify({ variant: "info", message: `"${summary.title}" was already imported; opened it` })
@@ -165,7 +186,9 @@ function ImportSessions(props: {
           })
         },
       )
-      .finally(() => setImporting(undefined))
+      .finally(() => {
+        if (!lifetime.signal.aborted) setImporting(undefined)
+      })
   }
 
   return (

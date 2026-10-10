@@ -876,6 +876,7 @@ export function adapter(input: {
         title: title(records) ?? (promptText ? truncate(promptText) : `${name} session ${file.ref.slice(0, 8)}`),
         directory: ImportSource.directory(header.cwd ?? ""),
         messages: whole ? conversational.length : Math.round((conversational.length * file.size) / (2 * SAMPLE)),
+        ...(whole ? {} : { estimated: true }),
         subagents,
         ...(reply?.model ? { model: reply.provider ? `${reply.provider}/${reply.model}` : reply.model } : {}),
         time: { created, updated: Math.max(created, updated) },
