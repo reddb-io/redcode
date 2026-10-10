@@ -1,5 +1,5 @@
 import { type Accessor, createMemo } from "solid-js"
-import { filter, firstBy, flat, groupBy, mapValues, pipe, uniqueBy, values } from "remeda"
+import { ModelPresentation } from "@opencode/schema/model-presentation"
 import { createSimpleContext } from "@opencode/ui/context"
 import { useProviders } from "@/providers/catalog/providers"
 import { useGlobal } from "@/runtime/server/runtime"
@@ -7,11 +7,6 @@ import { useGlobal } from "@/runtime/server/runtime"
 export type ModelKey = { providerID: string; modelID: string }
 
 type Visibility = "show" | "hide"
-
-const RECENT_LIMIT = 5
-
-// luxon's diffNow().as("months") used an average month; keep the same window.
-const sixMonths = 6 * 30.436875 * 24 * 60 * 60 * 1000
 
 function modelKey(model: ModelKey) {
   return `${model.providerID}:${model.modelID}`
@@ -31,45 +26,6 @@ const createModelsController = (directory: Accessor<string | undefined>) => {
       })),
     ),
   )
-
-  // Release dates as epoch ms; an unparseable date is NaN and never counts as recent.
-  const release = createMemo(
-    () =>
-      new Map(
-        available().map(
-          (model) => [modelKey({ providerID: model.provider.id, modelID: model.id }), Date.parse(model.release_date)] as const,
-        ),
-      ),
-  )
-
-  const latest = createMemo(() =>
-    pipe(
-      available(),
-      filter((x) => {
-        const released = release().get(modelKey({ providerID: x.provider.id, modelID: x.id })) ?? NaN
-
-        return Math.abs(Date.now() - released) < sixMonths
-      }),
-      groupBy((x) => x.provider.id),
-      mapValues((models) =>
-        pipe(
-          models,
-          groupBy((x) => x.family),
-          values(),
-          (groups) =>
-            groups.flatMap((g) => {
-              const first = firstBy(g, [(x) => x.release_date, "desc"])
-
-              return first ? [{ modelID: first.id, providerID: first.provider.id }] : []
-            }),
-        ),
-      ),
-      values(),
-      flat(),
-    ),
-  )
-
-  const latestSet = createMemo(() => new Set(latest().map((x) => modelKey(x))))
 
   const visibility = createMemo(() => {
     const map = new Map<string, Visibility>()
@@ -101,30 +57,19 @@ const createModelsController = (directory: Accessor<string | undefined>) => {
     setStore("user", store.user.length, { ...model, visibility: state })
   }
 
-  const visible = (model: ModelKey) => {
-    const key = modelKey(model)
-    const state = visibility().get(key)
+  // Every connected model can be picked; the Models settings only hide the ones a person turned off.
+  const visible = (model: ModelKey) => visibility().get(modelKey(model)) !== "hide"
 
-    if (state === "hide") return false
+  const favorites = createMemo(() => new Set(store.favorite.map(ModelPresentation.preferenceKey)))
 
-    if (state === "show") return true
-
-    if (latestSet().has(key)) return true
-
-    // Models without a parseable release date stay visible.
-    return !Number.isFinite(release().get(key) ?? NaN)
-  }
+  const setFavorite = (model: ModelKey, enabled: boolean) =>
+    setStore("favorite", ModelPresentation.favoriteModels(model, store.favorite, enabled))
 
   const setVisibility = (model: ModelKey, state: boolean) => {
     update(model, state ? "show" : "hide")
   }
 
-  const push = (model: ModelKey) => {
-    const uniq = uniqueBy([model, ...store.recent], (x) => `${x.providerID}:${x.modelID}`)
-
-    if (uniq.length > RECENT_LIMIT) uniq.pop()
-    setStore("recent", uniq)
-  }
+  const push = (model: ModelKey) => setStore("recent", ModelPresentation.recentModels(model, store.recent))
 
   const variantKey = (model: ModelKey) => `${model.providerID}/${model.modelID}`
   const getVariant = (model: ModelKey) => store.variant?.[variantKey(model)]
@@ -150,6 +95,12 @@ const createModelsController = (directory: Accessor<string | undefined>) => {
     recent: {
       list: models.recent,
       push,
+    },
+    favorite: {
+      list: () => store.favorite,
+      has: (model: ModelKey) => favorites().has(ModelPresentation.preferenceKey(model)),
+      set: setFavorite,
+      toggle: (model: ModelKey) => setFavorite(model, !favorites().has(ModelPresentation.preferenceKey(model))),
     },
     variant: {
       get: getVariant,

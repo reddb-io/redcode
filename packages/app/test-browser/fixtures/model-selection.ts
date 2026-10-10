@@ -129,6 +129,7 @@ function fixture(input: { session?: Commit; agents?: Agent[]; config?: ConfigMod
   const [preferences, setPreferences] = createStore({
     user: [] as Array<ModelKey & { visibility: "show" | "hide" }>,
     recent: [] as ModelKey[],
+    favorite: [] as ModelKey[],
     variant: (input.preferred ? { "provider/a": input.preferred } : {}) as Record<string, string>,
   })
 

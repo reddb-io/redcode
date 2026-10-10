@@ -110,6 +110,8 @@ export const ModelState = Persistence.struct({
     }),
   ),
   recent: Persistence.array(Persistence.struct({ providerID: Schema.String, modelID: Schema.String })),
+  // Ordered like the TUI's model.json favorites: the newest favorite first.
+  favorite: Persistence.array(Persistence.struct({ providerID: Schema.String, modelID: Schema.String })),
   variant: Schema.Record(
     Schema.String,
     Schema.mutableKey(

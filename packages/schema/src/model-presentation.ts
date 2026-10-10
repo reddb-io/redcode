@@ -28,7 +28,7 @@ export const text = {
   automaticRoute: "automatic route",
   subscription: "subscription",
   free: "free",
-  price: (input: string, output: string) => `${input}/${output} per 1M`,
+  price: (price: { input?: number; output?: number }) => `${dollars(price.input)}/${dollars(price.output)} per 1M`,
   available: "available",
   unavailable: "unavailable",
   servingNow: "serving now",
@@ -101,8 +101,12 @@ export function offerDetails(
 export function offerPrice(offer: Pick<Router.Offer, "price" | "free">, words: Text = text) {
   if (offer.free) return words.free
   if (!offer.price) return undefined
-  const dollars = (value: number | undefined) => (value === undefined ? "?" : `$${Number(value.toFixed(4))}`)
-  return words.price(dollars(offer.price.input), dollars(offer.price.output))
+  return words.price(offer.price)
+}
+
+/** A price in dollars rounded to four decimals, or `?` when unknown. */
+export function dollars(value: number | undefined) {
+  return value === undefined ? "?" : `$${Number(value.toFixed(4))}`
 }
 
 export function modelLabel(model: Model, providers: ReadonlyArray<Provider>) {

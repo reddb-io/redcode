@@ -46,8 +46,12 @@ describe("offerDetails", () => {
   })
 
   test("uses the words a client passes", () => {
-    const words = { ...ModelPresentation.text, available: "disponível", price: (i: string, o: string) => `${i}|${o}` }
-    expect(ModelPresentation.offerDetails({ offer, lead: false, model: {} }, words)).toBe("$0.3|$1.25 · disponível")
+    const words = {
+      ...ModelPresentation.text,
+      available: "disponível",
+      price: (price: { input?: number; output?: number }) => `${price.input}|${price.output}`,
+    }
+    expect(ModelPresentation.offerDetails({ offer, lead: false, model: {} }, words)).toBe("0.3|1.25 · disponível")
   })
 })
 
