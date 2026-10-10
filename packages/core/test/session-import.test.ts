@@ -117,7 +117,7 @@ const it = testEffect(
       Project.node.replace(globalProjectNode),
       LocationServiceMap.node.replace(promptLocationNode),
       SessionExecution.node.replace(SessionExecution.noopLayer),
-      SessionImport.node.replace(SessionImport.configured({ opencode: [empty, legacy, store] })),
+      SessionImport.node.replace(SessionImport.configured({ opencode: [empty, legacy, store], claudeCode: [empty] })),
     ],
   ),
 )
@@ -178,6 +178,13 @@ describe("SessionImport", () => {
           available: true,
           path: path.join(store, "opencode.db"),
           sessions: 3,
+        },
+        {
+          source: "claude-code",
+          name: "Claude Code",
+          available: false,
+          sessions: 0,
+          warning: "No Claude Code session store found",
         },
       ])
     }),

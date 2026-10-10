@@ -4,7 +4,7 @@ import { Schema } from "effect"
 import { DateTimeUtcFromMillis, NonNegativeInt, optional } from "./schema.js"
 
 /** Coding agents whose local session history can be imported. */
-export const Source = Schema.Literals(["opencode"]).annotate({ identifier: "SessionImport.Source" })
+export const Source = Schema.Literals(["opencode", "claude-code"]).annotate({ identifier: "SessionImport.Source" })
 export type Source = typeof Source.Type
 
 export interface SourceInfo extends Schema.Schema.Type<typeof SourceInfo> {}
@@ -28,6 +28,7 @@ export const Summary = Schema.Struct({
   title: Schema.String,
   /** The source-recorded working directory, canonicalized for this host. Arbitrary when the source recorded none. */
   directory: Schema.String,
+  /** Messages in the session; an estimate for sources whose stores are too large to count when listing. */
   messages: NonNegativeInt,
   /** Direct subagent sessions imported with this session. */
   subagents: NonNegativeInt,

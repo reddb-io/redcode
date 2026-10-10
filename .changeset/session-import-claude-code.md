@@ -1,0 +1,5 @@
+---
+"@reddb-io/redcode": minor
+---
+
+Bring your Claude Code sessions into Redcode. `redcode session import --from claude-code` (or `--from claude`) reads Claude Code's local transcripts (`~/.claude/projects`, or `$CLAUDE_CONFIG_DIR/projects`) without changing them and imports a session with its subagent sessions, compactions, tool calls, images and token usage. Pass the Claude Code session ID, `--latest` or `--pick`, as with OpenCode. Claude Code keeps a conversation as a tree; the import follows the branch you were last on, merges each model response back into one step, pairs every tool call with its result and marks calls that never finished as interrupted. Tool output is redacted for secrets and capped at 64 KB per call. Importing the same conversation again reports it as already imported; a session that continued since its last import comes in as a new copy. Hook output, reminders, thinking signatures, permission modes and file history are not imported, and each import lists what it left out.

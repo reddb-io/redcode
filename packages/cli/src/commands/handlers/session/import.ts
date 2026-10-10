@@ -15,7 +15,7 @@ export default Runtime.handler(
   Commands.commands.session.commands.import,
   Effect.fn("cli.session.import")(function* (input) {
     const source = Option.getOrUndefined(input.from)
-    if (source) return yield* importForeign(input, source)
+    if (source) return yield* importForeign(input, source === "claude" ? "claude-code" : source)
     const file = Option.getOrUndefined(input.file)
     if (!file) return yield* Effect.fail(new Error("Pass a JSON file or URL to import, or --from <source>"))
     const text = yield* Effect.tryPromise({
@@ -66,7 +66,7 @@ export default Runtime.handler(
   }),
 )
 
-const names = { opencode: "OpenCode" } as const
+const names = { opencode: "OpenCode", "claude-code": "Claude Code" } as const
 
 /** Import a session from another coding agent's local history through the server, which reads that store read-only. */
 const importForeign = Effect.fn("cli.session.import.foreign")(

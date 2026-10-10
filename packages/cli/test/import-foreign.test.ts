@@ -117,6 +117,38 @@ test("imports the latest session recorded in the current directory", async () =>
   }
 }, 15_000)
 
+test("imports a Claude Code session, accepting claude as the source name", async () => {
+  const requests: unknown[] = []
+  const server = serve(async (request, url) => {
+    if (url.pathname !== "/api/experimental/session/import/foreign") return undefined
+    requests.push(await request.json())
+    return Response.json({
+      data: {
+        session: { ...info, id: "ses_claude" },
+        sessions: ["ses_claude"],
+        warnings: ["Dropped 2 hidden meta messages"],
+      },
+    })
+  })
+  try {
+    const [stdout, stderr, exitCode] = await run([
+      "session",
+      "import",
+      "11111111-1111-4111-8111-111111111111",
+      "--from",
+      "claude",
+      "--server",
+      server.url.toString(),
+    ])
+    expect(exitCode).toBe(0)
+    expect(requests).toEqual([{ source: "claude-code", ref: "11111111-1111-4111-8111-111111111111" }])
+    expect(stdout).toStartWith(`Imported session: ses_claude from Claude Code${os.EOL}`)
+    expect(stderr).toBe(`Warning: Dropped 2 hidden meta messages${os.EOL}`)
+  } finally {
+    await server.stop(true)
+  }
+}, 15_000)
+
 test("reports an already imported session with its existing ID", async () => {
   const server = serve((_request, url) =>
     url.pathname === "/api/experimental/session/import/foreign"

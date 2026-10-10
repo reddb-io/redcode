@@ -79,6 +79,7 @@ const suites = {
     "test/session-compaction.test.ts",
     "test/session-create.test.ts",
     "test/session-import.test.ts",
+    "test/session-import-claude-code.test.ts",
     "test/session-diff.test.ts",
     "test/session-error.test.ts",
     "test/session-goal-judge.test.ts",

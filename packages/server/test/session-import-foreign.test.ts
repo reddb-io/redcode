@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { Effect } from "effect"
+import { ClaudeCodeStore } from "../../core/test/fixture/claude-code-store"
 import { OpenCodeStore } from "../../core/test/fixture/opencode-store"
 import { it } from "../../core/test/lib/effect"
 import { ServerFetch } from "../src/fetch"
@@ -11,9 +12,21 @@ import { ServerFetch } from "../src/fetch"
 const root = realpathSync(mkdtempSync(path.join(os.tmpdir(), "redcode-server-import-")))
 const project = path.join(root, "project")
 const store = path.join(root, "opencode")
+const claude = path.join(root, "claude")
 mkdirSync(project, { recursive: true })
 mkdirSync(store, { recursive: true })
 afterAll(() => rmSync(root, { recursive: true, force: true }))
+
+const CLAUDE_SESSION = "33333333-3333-4333-8333-333333333333"
+const cc = ClaudeCodeStore.transcript(CLAUDE_SESSION, project)
+ClaudeCodeStore.write(claude, {
+  cwd: project,
+  session: CLAUDE_SESSION,
+  records: [
+    cc.user("u1", null, 1, "Hello from Claude Code"),
+    cc.assistant("a1", "u1", 2, { id: "msg_1", block: { type: "text", text: "Hi" }, stop: "end_turn" }),
+  ],
+})
 
 OpenCodeStore.write(path.join(store, "opencode.db"), {
   sessions: [
@@ -47,7 +60,7 @@ OpenCodeStore.write(path.join(store, "opencode.db"), {
 const setup = Effect.gen(function* () {
   const handler = yield* ServerFetch.make(
     { app: { version: "test" }, database: { path: ":memory:" }, fs: { filewatcher: false } },
-    { overrides: [SessionImport.node.replace(SessionImport.configured({ opencode: [store] }))] },
+    { overrides: [SessionImport.node.replace(SessionImport.configured({ opencode: [store], claudeCode: [claude] }))] },
   )
   return (url: string, body?: unknown, status = 200) =>
     Effect.promise(async () => {
@@ -70,6 +83,13 @@ it.live("lists import sources and the sessions recorded in a directory", () =>
     expect(yield* request("/api/experimental/session/import/sources")).toEqual({
       data: [
         { source: "opencode", name: "OpenCode", available: true, path: path.join(store, "opencode.db"), sessions: 2 },
+        {
+          source: "claude-code",
+          name: "Claude Code",
+          available: true,
+          path: path.join(claude, "projects"),
+          sessions: 1,
+        },
       ],
     })
     expect(
@@ -133,5 +153,40 @@ it.live("requires a location for a session whose directory no longer exists", ()
         location: { directory: project },
       }),
     ).toMatchObject({ data: { session: { id: "ses_moved", location: { directory: project } } } })
+  }).pipe(Effect.scoped),
+)
+
+it.live("lists and imports a Claude Code session under a stable Redcode ID", () =>
+  Effect.gen(function* () {
+    const request = yield* setup
+    expect(
+      yield* request(
+        `/api/experimental/session/import/sessions?source=claude-code&directory=${encodeURIComponent(project)}`,
+      ),
+    ).toMatchObject({
+      data: [
+        {
+          source: "claude-code",
+          ref: CLAUDE_SESSION,
+          title: "Hello from Claude Code",
+          directory: project,
+          messages: 2,
+          subagents: 0,
+          model: "anthropic/claude-test-1",
+        },
+      ],
+    })
+    const imported = yield* request("/api/experimental/session/import/foreign", {
+      source: "claude-code",
+      ref: CLAUDE_SESSION,
+    })
+    expect(imported).toMatchObject({
+      data: { session: { title: "Hello from Claude Code", location: { directory: project } }, warnings: [] },
+    })
+    const id = (imported as { data: { session: { id: string } } }).data.session.id
+    expect(id).toStartWith("ses_")
+    expect(
+      yield* request("/api/experimental/session/import/foreign", { source: "claude-code", ref: CLAUDE_SESSION }, 409),
+    ).toMatchObject({ _tag: "ConflictError", resource: id })
   }).pipe(Effect.scoped),
 )
