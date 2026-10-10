@@ -1,6 +1,7 @@
 import type { IntelligenceStatus } from "@opencode/client"
 import { Plugin } from "@opencode/plugin/tui"
 import { Satisfaction } from "@opencode/schema/satisfaction"
+import { IntelligenceLabel } from "@opencode/util/intelligence-label"
 import { createResource, createSignal, onCleanup, Show } from "solid-js"
 import { useLocal } from "../../context/local"
 import { DialogDesignList } from "../../component/dialog-design-list"
@@ -275,29 +276,25 @@ function IntelligenceIndicator(props: {
   )
   const mode = () => scoped()?.effective.reasoning ?? props.status?.effective.reasoning
   const pending = () => props.status?.settings.onboarding !== "completed"
-  // What the session's latest evaluation says, in words that do not read as an outage unless S1 truly was unreachable.
-  const outcome = () => {
-    if (mode() !== "dual") return undefined
-    if (history.error) return "unavailable" as const
-    const decision = history()?.[0]?.decision
-    if (decision === "unavailable" || decision === "inconclusive" || decision === "needs_revision") return decision
-    return undefined
-  }
+  const outcome = () =>
+    IntelligenceLabel.outcome({
+      mode: mode(),
+      historyFailed: Boolean(history.error),
+      decision: history.error ? undefined : history()?.[0]?.decision,
+    })
   const label = () => {
-    if (props.error) return "S1/S2 offline"
-    if (!props.status) return ""
-    if (pending()) return "S1/S2 setup"
-    if (mode() === "observe") return "S1 observing"
-    const value = outcome()
-    if (value === "unavailable") return "S1 unavailable"
-    if (value === "inconclusive") return "S1 unsure"
-    if (value === "needs_revision") return "S1 flagged answer"
-    return ""
+    const state = IntelligenceLabel.state({
+      failed: props.error,
+      onboarding: props.status?.settings.onboarding,
+      mode: mode(),
+      outcome: outcome(),
+    })
+    return state ? IntelligenceLabel.labels[state] : ""
   }
-  // Only a real outage takes the warning colour: a flagged or unsure answer is S1 working, not S1 broken.
   const tone = () => {
-    if (props.error || outcome() === "unavailable") return props.context.theme.text.feedback.warning.base
-    if (outcome()) return props.context.theme.text.feedback.info.base
+    const tone = IntelligenceLabel.tone({ failed: props.error, outcome: outcome() })
+    if (tone === "warning") return props.context.theme.text.feedback.warning.base
+    if (tone === "info") return props.context.theme.text.feedback.info.base
     return props.context.theme.text.muted
   }
   return (

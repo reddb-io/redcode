@@ -81,7 +81,7 @@ import { directoryRecentValue } from "../../prompt/directory-completion"
 import { useWorkingDirectoryActions } from "../../ui/working-directory-actions"
 import { truncateFilePath } from "../../ui/file-path"
 import { PromptMetadataRow } from "./metadata"
-import { evaluatorModelName, evaluatorTransportName } from "../../util/intelligence-label"
+import { IntelligenceLabel } from "@opencode/util/intelligence-label"
 import { ModelPresentation } from "@opencode/schema/model-presentation"
 
 export type PromptProps = {
@@ -1678,8 +1678,8 @@ export function Prompt(props: PromptProps) {
     if (status?.effective.reasoning !== "dual") return
     const evaluator = status.settings.evaluator
     return {
-      model: evaluator ? evaluatorModelName(evaluator.model) : "S1 setup",
-      provider: evaluator ? evaluatorTransportName(evaluator.transport) : "",
+      model: evaluator ? IntelligenceLabel.modelName(evaluator.model) : "S1 setup",
+      provider: evaluator ? IntelligenceLabel.transportName(evaluator.transport) : "",
     }
   })
   const agentLabel = createMemo(() => (store.mode === "shell" ? "Shell" : promptDisplay().agentLabel))

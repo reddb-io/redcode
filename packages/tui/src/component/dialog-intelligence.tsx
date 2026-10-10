@@ -5,7 +5,7 @@ import { useTheme } from "../context/theme"
 import { errorMessage } from "../util/error"
 import { useClipboard } from "../context/clipboard"
 import { useLocal } from "../context/local"
-import { evaluatorModelName, evaluatorTransportName } from "../util/intelligence-label"
+import { IntelligenceLabel } from "@opencode/util/intelligence-label"
 import { ModelPresentation } from "@opencode/schema/model-presentation"
 
 export function DialogIntelligence(props: { context: Plugin.Context; setup: () => void }) {
@@ -54,7 +54,7 @@ export function DialogIntelligence(props: { context: Plugin.Context; setup: () =
     const s1 =
       current.effective.reasoning !== "single"
         ? current.settings.evaluator
-          ? `${evaluatorTransportName(current.settings.evaluator.transport)} · ${evaluatorModelName(current.settings.evaluator.model)}`
+          ? `${IntelligenceLabel.transportName(current.settings.evaluator.transport)} · ${IntelligenceLabel.modelName(current.settings.evaluator.model)}`
           : "not configured"
         : "off"
     return `${current.effective.reasoning === "observe" ? "Observe" : current.effective.reasoning === "dual" ? "Dual" : "Single"} reasoning · ${current.effective.source}${current.effective.source === "flag" ? ` (${current.environment})` : ""}\nS2 current: ${describe(selected && { providerID: selected.providerID, id: selected.modelID })} (${local.model.source()})\nS2 default: ${describe(current.settings.principal)}\nS2 transformations: ${current.settings.fast ? describe(current.settings.fast) : "reuse default"}\nS1 evaluator: ${s1}`
