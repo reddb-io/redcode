@@ -76,7 +76,14 @@ async function fixture() {
     JSON.stringify({ name: "@reddb-io/redcode", version }),
   )
   await Bun.write(path.join(design, `redcode-whiteboard-${version}.tar.gz`), "whiteboard")
-  return { root, dist, design, desktop, [Symbol.asyncDispose]: () => rm(root, { recursive: true, force: true }) }
+  return {
+    root,
+    dist,
+    design,
+    desktop,
+    // Windows can briefly retain archive-process handles after a failed packaging command exits.
+    [Symbol.asyncDispose]: () => rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }),
+  }
 }
 
 async function run(script: string, input: { dist: string; design: string; desktop: string }, ...args: string[]) {
