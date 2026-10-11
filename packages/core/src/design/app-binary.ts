@@ -4,13 +4,15 @@ import path from "node:path"
 import { existsSync, realpathSync } from "node:fs"
 
 /**
- * Where the design app (`redcode-design`) comes from. It ships in the same `vX.Y.Z` release as redcode:
- * next to the binary in a release archive (and mise), and as the `@reddb-io/redcode-design-<target>`
- * package that npm installs beside redcode's own platform package.
+ * Design runs in a child process of the compiled Redcode executable. Source checkouts and
+ * explicit standalone app overrides remain supported.
  */
 
 declare const REDCODE_DESIGN_APP_VERSION: string | undefined
 declare const REDCODE_TARGET: string | undefined
+declare const REDCODE_DESIGN_EMBEDDED: boolean
+
+export const SUBCOMMAND = "__design-app"
 
 /** The app release this redcode build shipped with; a running app older than it is replaced. */
 export const MINIMUM = typeof REDCODE_DESIGN_APP_VERSION === "string" ? REDCODE_DESIGN_APP_VERSION : undefined
@@ -56,7 +58,7 @@ export interface Options {
 
 /**
  * How to start the design app, first match wins: `REDCODE_DESIGN_BIN`, the source of this checkout
- * run with Bun, or the app shipped in this redcode's own installation.
+ * run with Bun, the embedded child entry, or a legacy standalone app in the installation.
  */
 export function command(options: Options = {}) {
   const bin = (options.env ?? process.env).REDCODE_DESIGN_BIN?.trim()
@@ -64,6 +66,7 @@ export function command(options: Options = {}) {
   const source = options.source ?? checkout()
   if (source) return [process.execPath, source]
   const executable = options.executable ?? process.execPath
+  if (typeof REDCODE_DESIGN_EMBEDDED !== "undefined" && REDCODE_DESIGN_EMBEDDED) return [executable, SUBCOMMAND]
   const platform = options.target ?? target()
   const bundled = sibling(executable, platform)
   if (bundled) return [bundled]

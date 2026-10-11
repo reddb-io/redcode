@@ -54,6 +54,9 @@ const env = {
   HOME: home,
   USERPROFILE: home,
   TMPDIR: tmp,
+  // Windows runtimes use TMP/TEMP rather than the POSIX TMPDIR.
+  TMP: tmp,
+  TEMP: tmp,
   XDG_CONFIG_HOME: path.join(home, ".config"),
   XDG_DATA_HOME: path.join(home, ".local", "share"),
   XDG_STATE_HOME: path.join(home, ".local", "state"),
@@ -401,8 +404,11 @@ async function checkWorktree() {
     throw new Error(`worktree_prepare did not complete with a directory: ${JSON.stringify(state)}`)
   const expected = path.join(tmp, "redcode-worktrees") + path.sep
   if (!directory.startsWith(expected)) throw new Error(`The --tmp worktree ${directory} is not under ${expected}`)
-  const common = (await git(directory, ["rev-parse", "--path-format=absolute", "--git-common-dir"])).trim()
-  if (common !== path.join(repository, ".git")) throw new Error(`${directory} is not a worktree of ${repository}`)
+  const common = await realpath(
+    (await git(directory, ["rev-parse", "--path-format=absolute", "--git-common-dir"])).trim(),
+  )
+  if (common !== (await realpath(path.join(repository, ".git"))))
+    throw new Error(`${directory} is not a worktree of ${repository}`)
   if (await Bun.file(path.join(repository, ".red", "worktrees")).exists())
     throw new Error("--tmp still created .red/worktrees in the repository")
   expectFinalText(events, "SMOKE-FINAL worktree")
@@ -411,7 +417,7 @@ async function checkWorktree() {
 async function checkDesign() {
   const project = path.join(root, "design")
   await mkdir(project)
-  // Design runs the redcode-design installed beside the binary unless --design-bin points at another build.
+  // Design runs the embedded child entry unless --design-bin points at a standalone override.
   const events = await session(project, "smoke:design Design a smoke screen.", {
     flags: ["--agent", "design"],
     timeout: 240_000,

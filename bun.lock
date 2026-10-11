@@ -138,6 +138,7 @@
         "@opentui/solid": "catalog:",
         "@opentunnel/client": "0.3.0",
         "@parcel/watcher": "2.5.1",
+        "@reddb-io/redcode-design-app": "workspace:*",
         "@silvia-odwyer/photon-node": "0.3.4",
         "diff": "catalog:",
         "drizzle-orm": "catalog:",

@@ -137,7 +137,7 @@ export default { path: file, version: ${JSON.stringify(opencodePty.version)}, sh
   const executablePath = await compileExecutable(item)
   console.log(`building ${name}`)
   const result = await Bun.build({
-    entrypoints: ["./src/index.ts", rasterWorkerPath],
+    entrypoints: [redcode ? "./src/redcode.ts" : "./src/index.ts", rasterWorkerPath],
     files: { [rasterWorkerPath]: rasterWorkerSource },
     tsconfig: "./tsconfig.json",
     plugins: [appAssetsPlugin, solidPlugin, parcelWatcherPlugin, opencodePtyPlugin, simulationGraphPlugin],
@@ -167,10 +167,8 @@ export default { path: file, version: ${JSON.stringify(opencodePty.version)}, sh
     define: {
       REDCODE_DESIGN_RUNTIME: "true",
       REDCODE_DESIGN_PROCESS_HOST: redcode ? "true" : "false",
-      REDCODE_DESIGN_APP_VERSION:
-        redcode && process.env.REDCODE_DESIGN_APP_VERSION
-          ? JSON.stringify(process.env.REDCODE_DESIGN_APP_VERSION)
-          : "undefined",
+      REDCODE_DESIGN_EMBEDDED: redcode ? "true" : "false",
+      REDCODE_DESIGN_APP_VERSION: redcode ? JSON.stringify(Script.version) : "undefined",
       REDCODE_TARGET: redcode ? JSON.stringify(targetName(item).slice(`${binary}-`.length)) : "undefined",
       REDCODE_DESIGN_WORKER_PATH: JSON.stringify(
         `${item.os === "win32" ? "B:/~BUN/root/" : "/$bunfs/root/"}${rasterWorkerPath}`,
@@ -207,6 +205,7 @@ export default { path: file, version: ${JSON.stringify(opencodePty.version)}, sh
         },
         os: [item.os],
         cpu: [item.arch],
+        ...(redcode && item.os === "linux" ? { libc: [item.abi ?? "glibc"] } : {}),
       },
       null,
       2,
@@ -217,12 +216,10 @@ export default { path: file, version: ${JSON.stringify(opencodePty.version)}, sh
     await Bun.write(path.join(outdir, name, "NOTICE"), Bun.file(path.join(dir, "../../NOTICE")))
   }
   if (sidecarDir) {
-    const sidecarName = [
-      "redcode-rpc-sidecar",
-      item.os === "win32" ? "windows" : item.os,
-      item.arch,
-      item.abi,
-    ].filter(Boolean).join("-") + (item.os === "win32" ? ".exe" : "")
+    const sidecarName =
+      ["redcode-rpc-sidecar", item.os === "win32" ? "windows" : item.os, item.arch, item.abi]
+        .filter(Boolean)
+        .join("-") + (item.os === "win32" ? ".exe" : "")
     const source = path.join(sidecarDir, sidecarName)
     if (!(await Bun.file(source).exists())) throw new Error(`Missing staged RPC sidecar: ${source}`)
     const destination = path.join(outdir, name, "bin", `redcode-rpc-sidecar${item.os === "win32" ? ".exe" : ""}`)

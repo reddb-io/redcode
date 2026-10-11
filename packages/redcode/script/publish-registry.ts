@@ -37,7 +37,7 @@ export const defaultVisibility: VisibilityOptions = {
 
 export type PublishOutcome = "published" | "skipped" | "conflict" | "staged"
 
-/** How many platform packages publish at once: a release carries one CLI and one design app per target. */
+/** How many native platform packages publish at once. */
 export const PUBLISH_BATCH = 6
 
 /** Only a registry miss permits publication; authentication and network failures must stop it. */
@@ -210,7 +210,9 @@ export async function publishRelease(
     const failures = probes.flatMap((probe, index) => {
       const item = missing[index]
       if (!item || probe.status !== "rejected") return []
-      return [`${item.name}@${item.version}: ${probe.reason instanceof Error ? probe.reason.message : String(probe.reason)}`]
+      return [
+        `${item.name}@${item.version}: ${probe.reason instanceof Error ? probe.reason.message : String(probe.reason)}`,
+      ]
     })
     // "published" means the first publish never reached the registry and the probe did; "skipped"
     // means npm serves it now. Either way the registry deserves one more wait, but only one.

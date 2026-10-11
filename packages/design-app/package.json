@@ -4,6 +4,9 @@
   "version": "2.0.18",
   "private": true,
   "type": "module",
+  "exports": {
+    "./main": "./src/main.ts"
+  },
   "bin": {
     "redcode-design": "./src/index.ts"
   },

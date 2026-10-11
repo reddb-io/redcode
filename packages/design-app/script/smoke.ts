@@ -7,7 +7,8 @@ import { Option, Schema } from "effect"
 import { DesignApp } from "@opencode/core/design/app"
 
 const binary = process.argv[2]
-if (!binary) throw new Error("Usage: bun script/smoke.ts <compiled-design-app>")
+if (!binary) throw new Error("Usage: bun script/smoke.ts <compiled-binary> [--embedded]")
+const command = [path.resolve(binary), ...(process.argv.includes("--embedded") ? ["__design-app"] : [])]
 
 const directory = await mkdtemp(path.join(os.tmpdir(), "redcode-design-smoke-"))
 const state = path.join(directory, "state")
@@ -16,7 +17,7 @@ await mkdir(state)
 await Bun.write(path.join(state, "design.token"), token)
 const child = Bun.spawn(
   [
-    path.resolve(binary),
+    ...command,
     "serve",
     "--register",
     "--host-url",
@@ -40,7 +41,11 @@ try {
   while (Date.now() < deadline) {
     if (child.exitCode !== null) throw new Error(`Design app exited before registration: ${child.exitCode}`)
     const info = Option.getOrUndefined(
-      Schema.decodeUnknownOption(DesignApp.Registration)(await Bun.file(registration).json().catch(() => undefined)),
+      Schema.decodeUnknownOption(DesignApp.Registration)(
+        await Bun.file(registration)
+          .json()
+          .catch(() => undefined),
+      ),
     )
     if (info?.pid === child.pid) {
       url = info.url

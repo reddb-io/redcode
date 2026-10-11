@@ -47,7 +47,8 @@ test.each(channels)("channel identity for $channel", async ({ channel, appId }) 
   expect(config.protocols).toMatchObject({ schemes: ["redcode"] })
   // The desktop ships in the Redcode release, so it carries the Redcode version.
   expect(config.extraMetadata?.version).toBe(
-    process.env.REDCODE_VERSION ?? (await Bun.file(path.join(import.meta.dirname, "../redcode/package.json")).json()).version,
+    process.env.REDCODE_VERSION ??
+      (await Bun.file(path.join(import.meta.dirname, "../redcode/package.json")).json()).version,
   )
 })
 
@@ -60,9 +61,7 @@ test("shared packaging defaults", async () => {
   expect([config.mac?.target, config.win?.target, config.linux?.target]).toEqual(["dir", "dir", "dir"])
   expect(config.afterPack).toBeUndefined()
   // The Linux launcher the app writes on first launch takes this icon.
-  expect(config.extraResources).toEqual([
-    { from: "../design-system/platform", to: "icons", filter: ["icon-512.png"] },
-  ])
+  expect(config.extraResources).toEqual([{ from: "../design-system/platform", to: "icons", filter: ["icon-512.png"] }])
 })
 
 test("trims external dependencies without excluding runtime files", async () => {
@@ -87,6 +86,8 @@ test("trims external dependencies without excluding runtime files", async () => 
       "js-yaml/dist/js-yaml.min.js",
       "js-yaml/dist/js-yaml.mjs.map",
       "js-yaml/bin/js-yaml.js",
+      "third-party-web/dist/domain-map.csv",
+      "third-party-web/.yarn/install-state.gz",
     ]) {
       expect(included(file)).toBe(false)
     }
@@ -100,6 +101,9 @@ test("trims external dependencies without excluding runtime files", async () => 
       "ajv-formats/dist/formats.js",
       "js-yaml/index.js",
       "js-yaml/dist/js-yaml.mjs",
+      "third-party-web/lib/index.js",
+      "third-party-web/dist/entities.json",
+      "third-party-web/dist/subsets/nostats.json",
       "unrelated/dist/index.js",
       "unrelated/dist/index.cjs",
       "unrelated/dist/data.json",
@@ -139,6 +143,25 @@ test("the trimmed Zip.js package can still export compressed logs", async () => 
     expect(await entries[0].getData(new zip.TextWriter())).toBe("diagnostic log\n".repeat(100))
     await reader.close()
     await zip.terminateWorkers()
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test("trimmed Lighthouse third-party data still identifies entities", async () => {
+  const config = (await import("./electron-builder.config.ts")).default
+  const dir = await mkdtemp(path.join(os.tmpdir(), "redcode-third-party-package-"))
+  const source = path.dirname(createRequire(import.meta.resolve("lighthouse")).resolve("third-party-web/package.json"))
+  const filter = trimFilter(dir, config)
+  try {
+    await cp(source, dir, {
+      recursive: true,
+      filter: (file) =>
+        filter(path.join(dir, "node_modules/third-party-web", path.relative(source, file)), statSync(file)),
+    })
+    const api = createRequire(import.meta.url)(path.join(dir, "lib/index.js"))
+    expect(api.getEntity("https://www.youtube.com/watch?v=test")?.name).toBe("YouTube")
+    expect(api.entities.length).toBeGreaterThan(100)
   } finally {
     await rm(dir, { recursive: true, force: true })
   }

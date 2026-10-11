@@ -350,17 +350,17 @@ jobs:
         with:
           ref: ${{ needs.plan.outputs.sha }}
       - uses: ./.github/actions/setup-bun
-      - name: Build Design app binaries and whiteboard bundle
+      - name: Build the optional whiteboard bundle
         working-directory: packages/design-app
-        run: bun run build --release
-      - name: Exercise compiled Design app
-        working-directory: packages/design-app
-        run: bun script/smoke.ts dist/redcode-design-linux-x64/redcode-design
-      # upload-artifact drops file modes, so the per-target binaries travel in one tarball that keeps
-      # their executable bit; the build job places them beside redcode in its archives and npm packages.
-      - name: Pack Design app binaries for the Redcode build
+        env:
+          REDCODE_VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          bun ../cli/script/whiteboard-bundle.ts --archive
+          mkdir -p dist
+          cp "../cli/dist/redcode-whiteboard-$REDCODE_DESIGN_APP_VERSION.tar.gz" dist/
+      - name: Pack the whiteboard bundle for the Redcode build
         working-directory: packages/design-app/dist
-        run: tar -cf "$RUNNER_TEMP/redcode-design-dist.tar" redcode-design-* "redcode-whiteboard-$REDCODE_DESIGN_APP_VERSION.tar.gz"
+        run: tar -cf "$RUNNER_TEMP/redcode-design-dist.tar" "redcode-whiteboard-$REDCODE_DESIGN_APP_VERSION.tar.gz"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: redcode-design-dist
@@ -496,9 +496,6 @@ jobs:
           BUN_COMPILE_RELEASE: bun-v1.4.2
           REDCODE_RPC_SIDECAR_DIR: ${{ github.workspace }}/packages/rpc-sidecar/dist/release
         run: bun run build
-      - name: Place the Design app beside each Redcode target
-        working-directory: packages/redcode
-        run: bun run assemble
       - name: Exercise compiled Redcode CLI and agents
         shell: bash
         run: |
@@ -519,10 +516,11 @@ jobs:
           for agent in build plan design question; do
             grep -E "^$agent \\(" /tmp/redcode-agents.txt
           done
-          design=packages/redcode/dist/redcode-design-linux-x64/bin/redcode-design
-          test -x "$design"
-          test "$("$design" --version)" = "$REDCODE_VERSION"
-      - name: Archive binaries, sidecars and the Design and desktop apps
+          test "$("$binary" __design-app --version)" = "$REDCODE_VERSION"
+      - name: Exercise the embedded Design child process
+        working-directory: packages/design-app
+        run: bun script/smoke.ts ../redcode/dist/redcode-linux-x64/bin/redcode --embedded
+      - name: Archive full and server distributions
         working-directory: packages/redcode
         run: bun run archive
       - name: Verify the desktop app in the archives and not in the npm packages
@@ -535,6 +533,17 @@ jobs:
           grep -E ' desktop/resources/app\.asar$' /tmp/redcode-linux-x64.txt
           tar -tzf release/redcode-darwin-arm64.tar.gz | grep -Fx 'desktop/Redcode.app/Contents/MacOS/Redcode'
           unzip -Z1 release/redcode-windows-x64.zip | grep -Fx 'desktop/Redcode.exe'
+          # Server/worker archives carry the same engine without Electron.
+          for archive in release/redcode-server-*.tar.gz; do
+            if tar -tzf "$archive" | grep '^desktop/' > /dev/null; then
+              echo "Server archive carries a desktop app: $archive" >&2
+              exit 1
+            fi
+          done
+          unzip -Z1 release/redcode-server-windows-x64.zip > /tmp/redcode-server-windows.txt
+          grep -Fx 'redcode.exe' /tmp/redcode-server-windows.txt
+          grep -Fx 'redcode-rpc-sidecar.exe' /tmp/redcode-server-windows.txt
+          if grep '^desktop/' /tmp/redcode-server-windows.txt; then exit 1; fi
           # musl has no desktop app.
           if tar -tzf release/redcode-linux-x64-musl.tar.gz | grep '^desktop/' > /dev/null; then
             echo 'The musl archive must not carry the desktop app' >&2
@@ -600,7 +609,7 @@ jobs:
           tar -xzf "$RUNNER_TEMP/redcode-archive/redcode-linux-x64.tar.gz" -C "$RUNNER_TEMP/redcode"
           test -x "$RUNNER_TEMP/redcode/redcode"
           test -x "$RUNNER_TEMP/redcode/redcode-rpc-sidecar"
-          test -x "$RUNNER_TEMP/redcode/redcode-design"
+          test "$("$RUNNER_TEMP/redcode/redcode" __design-app --version)" = "$REDCODE_VERSION"
       # No display here: `redcode desktop --path` resolves the app beside redcode without opening it.
       - name: Resolve the desktop app beside the built binary
         shell: bash
@@ -611,7 +620,7 @@ jobs:
           test -x "$app"
       - name: Install headless Chromium for the Design review
         run: node packages/core/node_modules/playwright-core/cli.js install --with-deps --only-shell chromium
-      # Without --design-bin, redcode runs the redcode-design that sits beside it in the archive.
+      # Without --design-bin, Redcode starts its embedded Design entry in a separate process.
       - name: Smoke-test the built binary
         timeout-minutes: 8
         env:
@@ -702,8 +711,8 @@ jobs:
           # The design app must speak the protocol of the redcode source this release was built from.
           protocol=$(sed -n 's/^export const PROTOCOL = \([0-9][0-9]*\)$/\1/p' packages/core/src/design/app.ts)
           test -n "$protocol"
-          test "$("$root/cli-native/redcode-design" --version)" = "$REDCODE_VERSION"
-          test "$("$root/cli-native/redcode-design" --protocol)" = "$protocol"
+          test "$("$root/cli-native/redcode" __design-app --version)" = "$REDCODE_VERSION"
+          test "$("$root/cli-native/redcode" __design-app --protocol)" = "$protocol"
           test -x "$root/cli-native/desktop/io.reddb.redcode"
           app=$(REDCODE_TEST_HOME="$root/home" "$root/cli-native/redcode" desktop --path | tail -n 1)
           test "$app" = "$root/cli-native/desktop/io.reddb.redcode"
@@ -799,8 +808,9 @@ jobs:
           done
           npm install --prefer-online --prefix "$root/install" --ignore-scripts --no-audit --no-fund "@reddb-io/redcode@$REDCODE_VERSION"
           test "$("$root/install/node_modules/.bin/redcode" --version)" = "redcode v$REDCODE_VERSION"
-          test -x "$root/install/node_modules/@reddb-io/redcode-linux-x64/bin/redcode-rpc-sidecar"
-          test -x "$root/install/node_modules/@reddb-io/redcode-design-linux-x64/bin/redcode-design"
+          test -x "$root/install/node_modules/@reddb-io/redcode-linux-x64-baseline/bin/redcode-rpc-sidecar"
+          test "$(find "$root/install/node_modules/@reddb-io" -mindepth 1 -maxdepth 1 -type d -name 'redcode-linux-*' | wc -l)" -eq 1
+          test "$("$root/install/node_modules/.bin/redcode" __design-app --version)" = "$REDCODE_VERSION"
           # The desktop app ships only in the release archives; npm points to them.
           if REDCODE_TEST_HOME="$root/home" "$root/install/node_modules/.bin/redcode" desktop --path > "$root/desktop.txt" 2>&1; then
             echo 'redcode desktop must fail in an npm install' >&2
@@ -830,7 +840,7 @@ jobs:
             '## Redcode ' + process.env.REDCODE_VERSION + '\n\n' +
             '| Destination | Result |\n| --- | --- |\n' +
             '| GitHub release (CLI, design and desktop apps) | ' + github + ' |\n' +
-            '| npm main, native and design app packages | ' + npm + ' |\n')
+            '| npm main and native packages (Design embedded) | ' + npm + ' |\n')
           if (github !== 'success' || npm !== 'success') {
             console.error('Release incomplete: GitHub=' + github + ', npm=' + npm)
             process.exitCode = 1
