@@ -81,8 +81,7 @@ async function fixture() {
     dist,
     design,
     desktop,
-    // Windows can briefly retain archive-process handles after a failed packaging command exits.
-    [Symbol.asyncDispose]: () => rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }),
+    [Symbol.asyncDispose]: () => rm(root, { recursive: true, force: true }),
   }
 }
 
@@ -229,15 +228,17 @@ test("full archives include Desktop while server archives keep only Redcode and 
   expect(sums).toContain(`${digest}  ${whiteboard}`)
 })
 
-test("archive refuses a native package without its sidecar or required desktop app", async () => {
+test("archive rejects missing sidecars or Desktop before creating release files", async () => {
   await using incomplete = await fixture()
   await rm(path.join(incomplete.dist, `redcode-${targets[0]!.target}`, "bin", "redcode-rpc-sidecar"))
   await expect(run("archive.ts", incomplete, `--outdir=${path.join(incomplete.root, "release")}`)).rejects.toThrow(
     "Missing release binary:",
   )
+  expect(await readdir(incomplete.root)).not.toContain("release")
   await using desktop = await fixture()
   await rm(path.join(desktop.desktop, "linux-x64"), { recursive: true })
   await expect(run("archive.ts", desktop, `--outdir=${path.join(desktop.root, "release")}`)).rejects.toThrow(
     "Missing desktop app for linux-x64",
   )
+  expect(await readdir(desktop.root)).not.toContain("release")
 })

@@ -23,13 +23,27 @@ const cli = packages.filter((item) => item.kind === "cli")
 if (cli.length === 0) throw new Error(`No Redcode native packages in ${dist}`)
 const whiteboard = path.join(RedcodePackages.designDist(directory), `redcode-whiteboard-${Script.version}.tar.gz`)
 if (!(await Bun.file(whiteboard).exists())) throw new Error(`Missing whiteboard bundle: ${whiteboard}`)
+// Reject incomplete inputs before starting archive processes, whose working directories
+// otherwise remain locked on Windows when another concurrent target fails validation.
+const apps = new Map<string, string[]>()
+for (const item of cli) {
+  for (const name of RedcodePackages.binaries(item)) {
+    const file = path.join(item.dir, "bin", name)
+    if (!(await Bun.file(file).exists())) throw new Error(`Missing release binary: ${file}`)
+  }
+  const desktop = RedcodePackages.desktopTarget(item.target)
+  if (!desktop || apps.has(desktop)) continue
+  const built = path.join(desktops, desktop)
+  const entries = await readdir(built).catch(() => [])
+  if (entries.length === 0) throw new Error(`Missing desktop app for ${desktop}: ${built}`)
+  apps.set(desktop, entries)
+}
 await mkdir(output, { recursive: true })
 
 await Promise.all(
   cli.map(async (item) => {
     for (const name of RedcodePackages.binaries(item)) {
       const file = path.join(item.dir, "bin", name)
-      if (!(await Bun.file(file).exists())) throw new Error(`Missing release binary: ${file}`)
       if (!item.target.startsWith("windows-")) await chmod(file, 0o755)
       await utimes(file, new Date("1980-01-01T00:00:00Z"), new Date("1980-01-01T00:00:00Z"))
     }
@@ -51,8 +65,7 @@ const archives = await Promise.all(
       await rm(stage, { recursive: true, force: true })
       if (desktop) {
         const built = path.join(desktops, desktop)
-        const entries = await readdir(built).catch(() => [])
-        if (entries.length === 0) throw new Error(`Missing desktop app for ${desktop}: ${built}`)
+        const entries = apps.get(desktop)!
         await mkdir(path.join(stage, "desktop"), { recursive: true })
         await $`tar -cf - -C ${built} ${entries} | tar -xf -`.cwd(path.join(stage, "desktop"))
       }
