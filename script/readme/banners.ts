@@ -383,7 +383,7 @@ const hero = () => {
 
 const YELLOW = "#f4c95d"
 
-const frame = (id: string, title: string, description: string, height: number, body: string) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 ${height}" width="1200" height="${height}" role="img" aria-labelledby="t-${id} d-${id}">
+const frame = (id: string, title: string, description: string, height: number, body: string, accent = YELLOW) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 ${height}" width="1200" height="${height}" role="img" aria-labelledby="t-${id} d-${id}">
   <title id="t-${id}">${escape(title)}</title>
   <desc id="d-${id}">${escape(description)}</desc>
   <defs>
@@ -392,14 +392,14 @@ const frame = (id: string, title: string, description: string, height: number, b
       <stop offset="1" stop-color="#07090d"/>
     </linearGradient>
     <radialGradient id="glow-${id}" cx="0.5" cy="0.5" r="0.5">
-      <stop offset="0" stop-color="${YELLOW}" stop-opacity="0.26"/>
-      <stop offset="1" stop-color="${YELLOW}" stop-opacity="0"/>
+      <stop offset="0" stop-color="${accent}" stop-opacity="0.26"/>
+      <stop offset="1" stop-color="${accent}" stop-opacity="0"/>
     </radialGradient>
     <pattern id="grid-${id}" width="24" height="24" patternUnits="userSpaceOnUse">
       <path d="M24 0H0V24" fill="none" stroke="#ffffff" stroke-opacity="0.028" stroke-width="1"/>
     </pattern>
     <marker id="arrow-${id}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
-      <path d="M0 0 L10 5 L0 10 Z" fill="${YELLOW}"/>
+      <path d="M0 0 L10 5 L0 10 Z" fill="${accent}"/>
     </marker>
     <clipPath id="frame-${id}">
       <rect x="0" y="0" width="1200" height="${height}" rx="18"/>
@@ -410,11 +410,33 @@ const frame = (id: string, title: string, description: string, height: number, b
     <rect width="1200" height="${height}" fill="url(#grid-${id})"/>
     <ellipse cx="160" cy="80" rx="420" ry="260" fill="url(#glow-${id})"/>
     <ellipse cx="1120" cy="${height}" rx="380" ry="220" fill="url(#glow-${id})" opacity="0.4"/>
-    <rect x="0" y="0" width="6" height="${height}" fill="${YELLOW}"/>
+    <rect x="0" y="0" width="6" height="${height}" fill="${accent}"/>
     ${body}
   </g>
 </svg>
 `
+
+const chapters = [
+  { id: "components", label: "COMPONENTS", title: "clients & execution", description: "Clients, agent servers, worker coordination and Console administration.", accent: "#ff2056" },
+  { id: "get-started", label: "GET STARTED", title: "start your workspace", description: "Full desktop distribution, terminal installation or a headless server archive.", accent: "#7ee787" },
+  { id: "features", label: "CODING FEATURES", title: "inside a session", description: "Modes, project secrets, reasoning, goals, Design review and session controls.", accent: YELLOW },
+  { id: "remote-execution", label: "REMOTE EXECUTION", title: "remote hosts & workers", description: "Connect another device, add independent workers and review their results.", accent: "#39c5cf" },
+  { id: "console", label: "CONSOLE", title: "identity & ownership", description: "Separate infrastructure authority from organization roles and workspace grants.", accent: "#bc8cff" },
+  { id: "guides", label: "GUIDES", title: "guides & recipes", description: "Setup recipes, recovery, authentication, measured behavior and implementation status.", accent: "#a5b4fc" },
+  { id: "contributing", label: "CONTRIBUTING", title: "build & contribute", description: "Repository packages, development checks, generated artwork and releases.", accent: "#f78166" },
+]
+
+const chapter = (spec: typeof chapters[number], index: number) => frame(
+  `chapter-${spec.id}`,
+  spec.title,
+  spec.description,
+  200,
+  `<text x="40" y="37" font-size="11" fill="${spec.accent}" letter-spacing="2.5">${String(index + 1).padStart(2, "0")} / ${spec.label}</text>
+  <text x="40" y="113" font-size="64" font-weight="700" fill="#f0f6fc" letter-spacing="-0.6">${escape(spec.title)}</text>
+  <text x="40" y="169" font-size="15" fill="#8b949e">${escape(spec.description)}</text>
+  <text x="1080" y="155" font-size="144" font-weight="700" fill="${spec.accent}" fill-opacity="0.10" text-anchor="middle">${String(index + 1).padStart(2, "0")}</text>`,
+  spec.accent,
+)
 
 const architecture = () => {
   const box = (x: number, y: number, width: number, title: string, lines: string[], accent = YELLOW) => `<g>
@@ -570,11 +592,13 @@ const designReview = () => {
 
 const root = path.resolve(import.meta.dir, "../..")
 await fs.mkdir(path.join(root, "docs/features"), { recursive: true })
+await fs.mkdir(path.join(root, "docs/sections"), { recursive: true })
 await Promise.all([
   Bun.write(path.join(root, "docs/hero.svg"), hero()),
   Bun.write(path.join(root, "docs/architecture.svg"), architecture()),
   Bun.write(path.join(root, "docs/features/design-flow.svg"), designFlow()),
   Bun.write(path.join(root, "docs/features/design-review.svg"), designReview()),
   ...banners.map((banner) => Bun.write(path.join(root, "docs/features", `${banner.id}.svg`), render(banner))),
+  ...chapters.map((spec, index) => Bun.write(path.join(root, "docs/sections", `${spec.id}.svg`), chapter(spec, index))),
 ])
-console.log(`wrote docs/hero.svg, docs/architecture.svg and ${banners.length} feature banners`)
+console.log(`wrote hero, architecture, ${chapters.length} section headers and ${banners.length} feature banners`)
