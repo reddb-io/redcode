@@ -15,7 +15,7 @@ Use the terminal or Desktop, design alongside your conversation, and distribute 
 
 ---
 
-**Explore:** [Components](#components) · [Get started](#get-started) · [Features](#features)<br>
+**Explore:** [Components](#components) · [Get started](#get-started) · [Session modes](#session-modes) · [Features](#features)<br>
 **Operate:** [Remote execution](#remote-execution) · [Console](#console)<br>
 **Go deeper:** [Guides](#guides) · [Contributing](#contributing)
 
@@ -77,39 +77,43 @@ or CLI; import leaves the source history unchanged.
 See [installation and platform support](docs/installation.md) for archives, checksums and ARM64,
 and [clients and commands](docs/clients.md) for shell commands, TUI controls, imports and server ports.
 
-## Features
+## Session modes
 
-<img src="docs/sections/features.svg" alt="03: Coding features — tools inside a session" width="100%" />
-
-### Session modes
+<img src="docs/sections/session-modes.svg" alt="03: Session modes — choose how the agent works" width="100%" />
 
 Coding sessions use Build, Plan, Design or Question. In the TUI, `Tab` cycles agents and `Shift+Tab`
 goes back. These are session modes, separate from Console roles and worker placement.
 
-#### Build
+### Build
 
 <img src="docs/features/build.svg" alt="Build mode" width="100%" />
 
 Reads, edits, runs and delegates to subagents under the configured permissions.
 
-#### Plan
+### Plan
 
 <img src="docs/features/plan.svg" alt="Plan mode" width="100%" />
 
 Explores and writes the plan before implementation. `plan_exit` asks whether to switch to Build.
 
-#### Design
+### Design
 
 <img src="docs/features/design.svg" alt="Design mode" width="100%" />
 
 Works on an interactive prototype while keeping product code separate. The review and
 approved decisions feed the plan. See [Design mode](#design-mode).
 
-#### Question
+### Question
 
 <img src="docs/features/question.svg" alt="Question mode" width="100%" />
 
 Investigates the codebase with read-only tools. [Mode details](docs/agent-features.md#modes).
+
+---
+
+## Features
+
+<img src="docs/sections/features.svg" alt="04: Coding features — tools inside a session" width="100%" />
 
 ### Vault
 
@@ -215,7 +219,7 @@ The [feature guide](docs/agent-features.md) retains the detailed contracts and e
 
 ## Remote execution
 
-<img src="docs/sections/remote-execution.svg" alt="04: Remote execution — connect devices and add workers" width="100%" />
+<img src="docs/sections/remote-execution.svg" alt="05: Remote execution — connect devices and add workers" width="100%" />
 
 **Code on another machine.** On the host with your projects, run:
 
@@ -257,7 +261,7 @@ acceptance. The source's `workerd` profile targets Cloudflare Durable Objects an
 
 ## Console
 
-<img src="docs/sections/console.svg" alt="05: Console — identity, ownership and organization access" width="100%" />
+<img src="docs/sections/console.svg" alt="06: Console — identity, ownership and organization access" width="100%" />
 
 Run administration separately from the coding server:
 
@@ -300,7 +304,7 @@ in the [parity ledger](docs/opencode-parity-ledger.json).
 
 ## Guides
 
-<img src="docs/sections/guides.svg" alt="06: Guides — detailed setup, operation and behavior" width="100%" />
+<img src="docs/sections/guides.svg" alt="07: Guides — detailed setup, operation and behavior" width="100%" />
 
 | I want to… | Guide |
 | --- | --- |
@@ -318,7 +322,7 @@ in the [parity ledger](docs/opencode-parity-ledger.json).
 
 ## Contributing
 
-<img src="docs/sections/contributing.svg" alt="07: Contributing — build, verify and publish" width="100%" />
+<img src="docs/sections/contributing.svg" alt="08: Contributing — build, verify and publish" width="100%" />
 
 | Repository area | Packages |
 | --- | --- |

@@ -419,7 +419,8 @@ const frame = (id: string, title: string, description: string, height: number, b
 const chapters = [
   { id: "components", label: "COMPONENTS", title: "clients & execution", description: "Clients, agent servers, worker coordination and Console administration.", accent: "#ff2056" },
   { id: "get-started", label: "GET STARTED", title: "start your workspace", description: "Full desktop distribution, terminal installation or a headless server archive.", accent: "#7ee787" },
-  { id: "features", label: "CODING FEATURES", title: "inside a session", description: "Modes, project secrets, reasoning, goals, Design review and session controls.", accent: YELLOW },
+  { id: "session-modes", label: "SESSION MODES", title: "choose how to work", description: "Build, Plan, Design and Question define what the agent can do.", accent: "#58a6ff" },
+  { id: "features", label: "CODING FEATURES", title: "inside a session", description: "Project secrets, reasoning, goals, Design review and session controls.", accent: YELLOW },
   { id: "remote-execution", label: "REMOTE EXECUTION", title: "remote hosts & workers", description: "Connect another device, add independent workers and review their results.", accent: "#39c5cf" },
   { id: "console", label: "CONSOLE", title: "identity & ownership", description: "Separate infrastructure authority from organization roles and workspace grants.", accent: "#bc8cff" },
   { id: "guides", label: "GUIDES", title: "guides & recipes", description: "Setup recipes, recovery, authentication, measured behavior and implementation status.", accent: "#a5b4fc" },
