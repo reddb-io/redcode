@@ -1,401 +1,311 @@
 <div align="center">
 
-<img src="docs/hero.svg" alt="Redcode - RedDB's terminal coding agent, with a per-project secret vault, dual reasoning, goals, design mode, monitors and a live worker fleet console" width="100%" />
+<img src="docs/hero.svg" alt="Redcode coding agent with CLI, Desktop, Design and remote workers" width="100%" />
 
 <p>
   <a href="https://www.npmjs.com/package/@reddb-io/redcode"><img src="https://img.shields.io/npm/v/%40reddb-io%2Fredcode?style=for-the-badge&label=npm&color=ff2056&labelColor=0d1117" alt="npm version"></a>
   <a href="https://github.com/reddb-io/redcode/actions/workflows/redcode.yml"><img src="https://img.shields.io/github/actions/workflow/status/reddb-io/redcode/redcode.yml?branch=main&style=for-the-badge&label=CI&labelColor=0d1117" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge&labelColor=0d1117" alt="License"></a>
-  <a href="#use"><img src="https://img.shields.io/badge/TUI%20%7C%20server%20%7C%20ACP%20%7C%20MCP-ff2056?style=for-the-badge&label=runs%20as&labelColor=0d1117" alt="Surfaces"></a>
 </p>
 
-<strong>RedDB's terminal coding agent.</strong><br>
-Secrets the model uses but never sees, a second mind that checks the first,
-and an autonomous fleet on screen next to your session.
+<strong>An open-source coding agent for the terminal and desktop.</strong><br>
+Work locally, connect to another machine, or distribute tasks across your own workers.
 
 </div>
 
 ---
 
-[TL;DR](#tldr) · [Install](#install) · [Use](#use) · [Features](#features) · [Development](#development) · [Releases](#releases) · [License](#license)
+[Components](#components) · [Install](#install) · [CLI](#cli) · [Desktop](#desktop) · [Agent server](#agent-server) · [Remote access](#remote-access) · [Workers](#workers) · [Console](#console) · [Features](#features) · [Documentation](#documentation) · [Development](#development)
 
-## TL;DR
+Redcode is built on [OpenCode](https://github.com/anomalyco/opencode), with additions for project secrets,
+S1/S2 reasoning, autonomous goals, Design review, infrastructure administration and distributed tasks.
+Attribution is preserved in [NOTICE](NOTICE). The [parity ledger](docs/opencode-parity-ledger.json)
+records what has been reviewed and implemented; full OpenCode feature parity is still incomplete.
 
-Redcode is reddb.io's coding agent for our own engineering work. It is built on
-[OpenCode](https://github.com/anomalyco/opencode): its agent loop, providers, tools and terminal UI are the
-foundation this stands on. Attribution is preserved in [NOTICE](NOTICE).
+## Components
 
-Work in Build, Plan, Design or Question mode. Redcode adds project secrets, S1/S2 reasoning,
-autonomous goals, browser prototypes, monitors and RedSkills workers to the terminal workflow.
+“Server” and “worker” describe different responsibilities. Most of them use the same `redcode` executable.
+
+| Component | What it does | How you use it |
+| --- | --- | --- |
+| **CLI / TUI** | Terminal client, commands and interactive coding sessions. | `redcode`, `redcode run`, `redcode --help` |
+| **Desktop** | Electron application for projects, conversations, server connections and agent management. | `redcode desktop` from a full installation |
+| **Agent server** | Owns sessions, provider connections, tools, terminals and files on its host. Serves the V2 API and web client. The CLI's background service runs this server too. | `redcode serve` or `redcode service` |
+| **Worker coordinator** | An agent server that stores a remote-worker registry, dispatches batches and collects their results. Continues when its Desktop/browser client closes. | **Agents → Remote workers** on the selected server |
+| **Remote Redcode worker** | Another agent server with its own database, provider configuration and independent checkout. Executes assigned agent tasks. | `redcode serve` on each worker host |
+| **Console** | Separate administration web app for accounts, organizations, workspaces, keys, authentication, infrastructure ownership and workspace grants. | `redcode console serve` |
+| **Design review** | Prototype and annotation UI attached to a coding session. Its renderer runs as a child process of the same executable. | `redcode design`, `/design-review`, or the server's `/design` page |
+| **RedSkills fleet** | Optional integration with the separate `redskilled` daemon. Its local fleet controls are distinct from distributed Redcode tasks. | TUI `/workers`; [RedSkills](https://github.com/reddb-io/red-skills) |
+
+A typical distributed setup looks like this:
+
+```mermaid
+flowchart LR
+  Client[CLI / Desktop / browser] --> Master[Agent server / coordinator]
+  Master --> A[Worker agent server A]
+  Master --> B[Worker agent server B]
+  A --> RepoA[Independent checkout A]
+  B --> RepoB[Independent checkout B]
+  Console[Console: accounts and access] -. Optional delegated authorization .-> Master
+```
+
+Each worker executes its own sessions. The coordinator tracks assignments; it does not share a Session
+database with workers. Console authentication and agent-server credentials are separate.
+The source's `workerd` profile targets **Cloudflare Durable Objects**; it is not the daemon for Raspberry Pi workers.
 
 ## Install
 
+Choose the distribution for the machine's role:
+
+| Installation | Included | Best fit |
+| --- | --- | --- |
+| `npm install -g @reddb-io/redcode` | CLI/TUI, agent server, Console, embedded Design and RPC sidecar; no Desktop. | Terminal users and server hosts with npm |
+| `mise use -g github:reddb-io/redcode@latest` | Full native distribution, including Desktop where supported. | Workstation installation without Node |
+| Full native release archive | Same full distribution; Desktop under `desktop/` beside `redcode`. | Manual workstation installation |
+| `redcode-server-<target>` release archive | Same CLI/agent engine, Console, Design and sidecar, without Electron. | Coordinators, remote workers and headless hosts |
+
+Download archives from [Releases](https://github.com/reddb-io/redcode/releases). Windows uses ZIP;
+Linux and macOS use `tar.gz`. Verify them against the release's `SHA256SUMS` and keep one installation
+method per machine. Desktop is included on Windows, macOS and Linux glibc; Linux musl archives omit it.
+
+On x64, npm selects one compatible baseline binary. Linux packages declare glibc or musl;
+optimized x64 variants remain available in release archives. Linux ARM64 is a build target;
+32-bit ARM/Raspberry Pi OS is unsupported. Physical Pi execution still needs device acceptance.
+Design shares Redcode's native executable, so there is no separate native Design package to install.
+
+## CLI
+
+From your project directory:
+
 ```sh
-npm install -g @reddb-io/redcode
 redcode
 ```
 
-With [mise](https://mise.jdx.dev), which installs the release binary straight from GitHub and needs no Node:
+Connect a model provider using `/connect`; configure S2 and optional S1 with `/dual` or `redcode setup`.
+The normal CLI uses the local background agent server, which retains sessions when the terminal closes.
+Use `--standalone` for a private server instead.
+
+| Shell command | Purpose |
+| --- | --- |
+| `redcode --tmp` | Start in a temporary Git worktree. |
+| `redcode run "Explain the project structure"` | Send a prompt without the full TUI. |
+| `redcode setup` | Configure and check reasoning models. |
+| `redcode vault set NAME` / `redcode vault import other.env` | Store a project secret or import an environment file. |
+| `redcode service status` | Inspect the local background server. |
+| `redcode service start` / `stop` / `restart` | Manage that server. |
+| `redcode session list` | List sessions for the current project. |
+| `redcode --help` | Inspect the complete command tree. |
+
+**Slash commands belong in a TUI conversation**, not in your shell or Console:
+
+| TUI command | Purpose |
+| --- | --- |
+| `/design`, `/design-open`, `/design-review` | Enter Design, resume it, or open its review. |
+| `/goal` | Start, inspect or control a goal. |
+| `/vault`, `/monitors`, `/worktrees` | Inspect project secrets, observations and worktrees. |
+| `/intelligence`, `/reasoning` | Inspect evaluations or change the session's reasoning mode. |
+| `/budget`, `/compact` | Set an optional budget or compact context. |
+| `/workers` | Inspect the local **RedSkills** fleet. For remote Redcode tasks, use the Workers section below. |
+
+## Desktop
+
+With a full native installation:
 
 ```sh
-mise use -g github:reddb-io/redcode@latest
+redcode desktop
 ```
 
-Native archives for Linux, macOS and Windows are also on the
-[Redcode releases](https://github.com/reddb-io/redcode/releases) page (`tar.gz`, `zip` on
-Windows). Each includes `redcode` and `redcode-rpc-sidecar`; checksums are in `SHA256SUMS`.
-Design mode's browser review runs in a separate process of the same Redcode executable,
-so there is no second runtime or native Design package to install. Keep one
-installation method per machine.
+Desktop is a client of an agent server. A local connection works on this machine; a remote connection
+works on the remote server's projects and filesystem. The selected server determines where tools run.
+Use **Agents → Remote workers** to administer that server's permanent worker pool.
+Desktop does not come with the npm package; use mise or a full release archive.
 
-Redcode Desktop, opened with `redcode desktop`, comes only with mise and the release archives
-(every platform except Linux musl), unpacked in `desktop/` beside `redcode`. The npm package ships
-the CLI with embedded Design only: the desktop app is too large for the npm registry.
-On x64, npm installs the compatible baseline build once; Linux packages also specify
-their libc so supported package managers select glibc or musl. Optimized x64 builds
-remain available in the release archives.
+The **Agents** view groups sessions and subagents across servers/projects, with filters, steering,
+queued instructions and interruption controls. Its RedSkills Workers tab and Remote workers panel
+serve the two different fleet models described above.
 
-For a server or worker, download `redcode-server-<platform>-<architecture>` from the release.
-These archives include the same CLI, Design and RPC sidecar without Electron. Use `redcode serve`
-or the worker commands on that machine. The CLI still includes its terminal and web interfaces;
-the server archive is a distribution profile, not a separate reduced agent engine.
+Published Design previews open beside their conversation. The embedded review keeps annotations,
+feedback and approval while omitting the duplicate conversation panel. The standalone browser review
+retains that panel. Both use the same session and Design revisions.
 
-## Use
+You can import local histories from OpenCode, Claude Code, Codex, Pi and oh-my-pi through the project
+menu/command palette or CLI. For example:
 
-| Command                     | Purpose                                         |
-| --------------------------- | ----------------------------------------------- |
-| `redcode`                   | Open the terminal UI                            |
-| `redcode --yolo`            | Open with automatic permission approval         |
-| `redcode --tmp`             | Work in a throwaway worktree                    |
-| `redcode setup` or `/dual`  | Configure and check S2 and optional S1          |
-| `/intelligence`             | Inspect selected models and session evaluations |
-| `/design`                   | Switch to Design mode                           |
-| `/design-open`              | Resume a Design conversation                    |
-| `/design-review`            | Open the current conversation's browser review  |
-| `/goal`                     | Start, inspect or control a session goal        |
-| `/vault`                    | Manage this project's secrets                   |
-| `/monitors`                 | List the session's background monitors          |
-| `/workers`                  | Inspect the RedSkills worker fleet              |
-| `/worktrees`                | Manage the project's git worktrees              |
-| `/budget`                   | Set an optional spend or token budget           |
-| `redcode vault set\|import` | Store a secret, or import a `.env` file         |
-| `redcode service`           | Control the background server                   |
-| `redcode restart`           | Restart the server when it is unresponsive      |
-| `redcode run`               | Run a prompt without the full TUI               |
-| `redcode serve`             | Run the HTTP server                             |
-| `redcode acp`               | Run the Agent Client Protocol integration       |
-| `redcode --help`            | List CLI commands                               |
+```sh
+redcode session import --from claude-code --latest
+```
 
-`redcode restart` also works as `redcode service restart`. Both restart the local background
-server and keep saved sessions. Inside the TUI, `/restart` tries to preserve running terminals;
-if the server cannot hand them off, it proceeds with process recovery.
+Imports leave source histories unchanged and report unsupported content. Importing a history is
+different from synchronizing live sessions between servers.
+
+## Agent server
+
+For an explicit foreground server on a chosen port:
+
+```sh
+redcode serve --hostname 127.0.0.1 --port 4096
+```
+
+This process serves the coding API and web interface. Keep it running while clients use it.
+The managed background service normally uses port **35555**. Console normally uses **35556** on a
+separate process/listener. Port **4096** in the examples is an explicitly chosen foreground-server port.
+
+`redcode web` starts an agent server and opens its browser client. ACP uses `redcode acp`;
+MCP integrations are managed through `redcode mcp`. None of these commands starts Console.
+
+## Remote access
+
+To use your existing background agent server from another device, run on the host:
+
+```sh
+redcode pair --remote
+```
+
+This enables an HTTPS tunnel for the managed service and prints one-time pairing links. It can restart
+the service when enabling the tunnel. Open a link on the other device to connect its browser;
+links expire and work once. Pairing grants access to the agent host, so reserve it for trusted operators.
+For your own externally reachable server address, use `redcode pair --url https://agent.example.org`.
+
+An SSH tunnel is another option: forward the host's agent-server port, then open its pairing link
+through the forwarded address. See [remote access recipes](docs/remote-access.md).
+Coding remotely keeps execution and files on the host; connecting another PC does not copy its
+repositories, credentials or full session database between machines.
+
+## Workers
+
+### Add workers to the server
+
+The permanent pool belongs to the **coordinator agent server**, not to the Desktop client or Console.
+No extra “master” binary is required. Each worker runs the same Redcode agent server.
+
+1. Install Redcode on the coordinator and each worker, preferably with matching versions. Server archives avoid installing Electron on workers.
+2. Prepare an independent checkout on each worker and connect a model provider there. Use `redcode auth login` on that host or `/connect` through its connected client.
+3. On a Linux worker, start an authenticated server from its checkout:
+
+   ```sh
+   cd /home/worker/project
+   export REDCODE_PASSWORD='replace-with-a-private-worker-password'
+   redcode serve --hostname 0.0.0.0 --port 4096
+   ```
+
+   `0.0.0.0` allows network connections. Prefer an HTTPS endpoint or SSH forward for the connection; a private LAN address is useful for local testing.
+4. Connect Desktop to the coordinator. Open **Agents → Remote workers** and register the worker ID, reachable URL, absolute checkout path, password/pairing token and optional tags such as `linux, arm64`. Use **Check connection** to confirm the host and authentication.
+5. Add independent tasks, select their workers or let the coordinator choose available slots, and **Send batch**. For tasks waiting on a permission or input request, open that worker's Session in a normal client.
+6. Use **Review changes** to collect the completed task's patch. Review it before applying it to your project. Collect results before removing a worker.
+
+One checkout is one execution slot. Different slots run concurrently; tasks assigned to the same slot
+run sequentially. The permanent coordinator currently accepts one unfinished batch at a time.
+Restart recovery retains original Session/admission IDs; ambiguous tasks require explicit recovery
+on their original worker. Automatic failover, checkout synchronization and binary/commit transfer
+remain separate work. Do not share SQLite databases between worker hosts.
+
+For delegated organization users, an infrastructure administrator also registers resources and
+workspace grants in Console. See [infrastructure access](docs/console-infrastructure.md);
+registering a resource in Console alone does not add it to the coordinator's pool.
+
+### Coordinate from the CLI
+
+`redcode workers add` maintains a **CLI registry file**. It does not change the permanent server-owned
+pool above. Use this path for script-driven batches:
+
+```powershell
+$env:WORKER_A_PASSWORD = 'replace-with-a-private-worker-password'
+redcode workers add worker-a --config .\workers.json --url http://192.168.1.50:4096 --directory /home/worker/project --password-env WORKER_A_PASSWORD --tag linux
+redcode workers list --config .\workers.json
+redcode workers run .\tasks.json --config .\workers.json --report .\tasks.run.json --timeout 300
+```
+
+Create `tasks.json` first:
+
+```json
+{
+  "tasks": [
+    { "id": "linux-tests", "worker": "worker-a", "prompt": "Run the Linux tests and report failures." }
+  ]
+}
+```
+
+Keep the registry and report: they retain placement and admission IDs for observation/recovery.
+`--timeout` limits observation, not execution. Repeating `run` with the same inputs observes assigned
+sessions. `redcode workers collect` exports text patches and a result report without applying changes.
+The [distributed workers guide](docs/distributed-workers.md) covers multiple workers, tags, recovery,
+artifact collection, Raspberry Pi prerequisites and the Docker acceptance lab.
+
+## Console
+
+Start the administration app separately:
+
+```sh
+redcode console serve --port 35556
+```
+
+Open `http://127.0.0.1:35556`. On the first run, use the **setup code printed in the terminal** to create
+the first account. It receives separate organization-owner and infrastructure-admin memberships.
+Console binds to loopback; publish it remotely through an HTTPS reverse proxy or tunnel.
+You can run it locally without a domain.
+
+Its siderail separates **Infrastructure**, **Organization**, **Workspace** and **Account** scopes.
+Infrastructure administrators own the servers/workers and grant workspace access. Organization owners
+and admins manage their organization; those roles do not make them owners of the host infrastructure.
+Infrastructure users and organization members can submit/review tasks within their granted scope.
+See the [role and delegation rules](docs/console-infrastructure.md).
+
+Configure authentication in **onboarding or Console settings**, with any compatible OIDC provider:
+
+- **Infrastructure → Global authentication:** shared providers available across organizations.
+- **Infrastructure → Owner authentication:** providers for infrastructure access.
+- **Organization → Authentication settings:** that organization's own providers.
+
+Set the public Console URL, issuer, client ID and any required secret in those screens. Console discovers
+the OIDC endpoints and shows its callback URL. Sign-in redirects to the selected configured IdP and
+returns to Console. Global provider availability does not automatically create organization membership;
+invitation and identity-linking rules still apply. See [federation setup](docs/console-federation.md).
+
+Console can authorize delegated worker batches when an agent server is bound to its registered resource.
+These grants do not yet provide tenant-isolated interactive terminals or an OS sandbox. Hosted billing,
+gateway services, SCIM and full SaaS isolation remain incomplete; see the [parity ledger](docs/opencode-parity-ledger.json).
 
 ## Features
 
-### Modes
-
-A session runs one of four primary agents. `Tab` cycles through them (`Shift+Tab` goes back), and the
-switch is durable: the next prompt is admitted under the agent you picked. Each mode is a different
-answer to what the agent is allowed to touch.
-
-<img src="docs/features/build.svg" alt="Build mode" width="100%" />
-
-**Build** is the default. It reads, edits and runs under the permissions you configured, and it
-delegates to subagents when the work fans out. The other modes are defined by what they take away from it.
-
-<img src="docs/features/plan.svg" alt="Plan mode" width="100%" />
-
-**Plan** reads everything and changes nothing but the plan file. Use it when the shape of the work is the
-question: the agent explores, asks and writes the plan down, and `plan_exit` asks whether to switch to
-build and start on it.
-
-<img src="docs/features/design.svg" alt="Design mode" width="100%" />
-
-**Design** is for when the question is what something should be, not how to build it. See
-[Design mode](#design-mode).
-
-<img src="docs/features/question.svg" alt="Question mode" width="100%" />
-
-**Question** answers investigative questions about the codebase with read-only tool access. Nothing is edited.
-
-### Vault
-
-<img src="docs/features/vault.svg" alt="Vault" width="100%" />
-
-Agents need credentials to do real work: call an API, log in and fetch a token, push to a registry. They
-should not need to read them. The vault keeps secrets **per project** and lets the model work with a
-reference such as `{vault:github-token}` instead of the value.
-
-- **Pasting a secret is safe.** A high-confidence secret in your prompt is moved into the vault before
-  anything is stored, and the transcript, the event log and the model only ever see the reference.
-- **The model can use a secret.** References in shell commands and env-style file writes are resolved by
-  the harness at the last step, in a way that survives shell quoting. Tool output is scrubbed of every
-  known value on the way back.
-- **The model can obtain one.** A token that a tool prints, such as a login response, is captured
-  automatically, so the next call can use it without the value ever entering the context.
-- **The model can ask for one.** `vault_request` opens a masked input for you. The model gets a reference back.
-- **Hosts are bound.** The first time a secret is used against a host, you are asked once; after that
-  the secret only goes where you approved.
-- **The model is told how.** The harness explains the vault to the model in its instructions, and lists the
-  names it may use, never the values.
-- **Restricted content is flagged.** S1 marks messages that carry restricted content, protects them, and tells
-  you the secrets were removed from the context. `/compact` and session titles pass through the same redaction.
-
-A project's secrets live where your project already keeps them: the `.env` file at the root of the
-repository, which Redcode adds to `.gitignore`. `GITHUB_TOKEN` in the file is `{vault:github-token}` in a
-prompt, a pasted `GITHUB_TOKEN=ghp_…` is written back under that name, and edits you make to the file are
-picked up while a session runs. Worktrees share the main checkout's `.env`. Only variables named like
-credentials, or holding a recognized secret, are hidden from tool output, so `PORT` stays readable. A token the
-agent captured from a tool's output is short-lived and stays in memory only.
-
-Manage secrets with `/vault`, `redcode vault set NAME` (masked prompt, or a piped value), or
-`redcode vault import other.env`. Vault coverage is measured in CI against a 90% line target.
-
-### S1 · S2 dual reasoning
-
-<img src="docs/features/intelligence.svg" alt="S1 and S2 dual reasoning" width="100%" />
-
-**S2** generates responses and does the agent work. **S1** evaluates candidates with typed
-TypeSafe/JEV questions, so a claim is checked before you trust it. **Single** reasoning uses S2 alone;
-**dual** adds S1. Run `/dual` (or `redcode setup`) to pick and check the models, and `/intelligence`
-to inspect the current models, the effective mode and recent evaluations. An unavailable, inconclusive
-or rejected evaluation is shown as such, never as an approval. See [reasoning roles](docs/system-one.md).
-`/setup` remains an alias for `/dual`; `/reasoning` changes the mode for the current session.
-
-S1 prompt classification runs **in parallel with S2**, including gathering its sources.
-When it finishes, persisted advice steers subsequent Steps for the same user request.
-A newer user correction takes priority; an old assessment cannot steer that new request.
-Late feedback still contributes to the session's frustration thermometer without restarting completed work.
-Final response review and mandatory approval checks keep their existing policies.
-This removes the classifier's initial wait. The [published 0.71.3 study](docs/evaluations/reasoning-0.71.3-2026-10-02.md)
-has not demonstrated a coding accuracy or speed gain.
-
-In dual mode, the vertical thermometer beside Context and S2 prompts track accumulated
-friction with the agent's work: **0/5 means no accumulated friction; 5/5 means critical
-friction**. Its single-column bar fills upward (`▯ ▁ ▂ ▄ ▆ █`) as repeated corrections,
-rejected results and unresolved failures accumulate. Neutral messages such as "ok, continue" preserve the temperature; confirmed
-improvement cools it gradually. It tracks the history of unmet expectations rather than
-classifying the user's emotions. High or rising temperature asks S2 to revisit the failed
-attempts, change its approach, verify the correction and clarify an ambiguous outcome.
-Fewer than three reliable classifications means unknown. This reuses existing S1 results
-without another model call; its quality impact has not yet been measured.
-
-The latest **published 0.71.3** calibration used three new coding families, with two
-repetitions: **6/6 valid passes in both modes**, **29.5% more dual cost** and
-**59.6% more aggregate execution time**. All six matched baseline costs stayed
-below 2x. The separate S1 detector distinguished three defective candidates from
-three correct ones; this does not establish agent improvement. The repair
-experiment exceeded 2x cost, and one self-review comparison has an interrupted,
-unpriced response. Reserved cases were not dispatched. See the
-[measurements, HTTP receipts and limitations](docs/evaluations/reasoning-0.71.3-2026-10-02.md).
-
-An earlier [local coding calibration](docs/evaluations/reasoning-coding-2026-10-02.md), using an unpublished CI binary with
-Mimo V2.6 Pro and JEV-1.13 found **12/12 passes in both modes**, with **34.3% more
-dual cost** and median latency of **81.66s versus 49.52s**. Two matched costs
-exceeded 2x. The verification experiment stopped on a five-minute execution
-timeout and has incomplete cost evidence. Reserved-case collection stopped at
-11/24 executions on another five-minute timeout, with another matched cost
-above 2x. Collection is closed; neither a coding accuracy gain nor compliance
-with the per-case cost ceiling was demonstrated.
-
-In an earlier read-only diagnostic experiment, dual passed **39/40 cases (97.5%)** against
-single's **35/40 (87.5%)**, a gain of **10 percentage points**. Estimated total S1+S2 cost
-increased **13.8%**; median latency increased from **3.13s to 4.44s (42% slower)**.
-All matched pairs stayed below 2x estimated cost, with no observed paired regression.
-This small read-only sample used GPT-4.1 mini with JEV-1.13 and an experimental verification
-candidate. It does not establish general coding gains or validate every later change.
-See the [results and limitations](docs/evaluations/reasoning-accuracy-2026-10-01.md),
-the [earlier unfavorable baseline](docs/evaluations/reasoning-0.70.3.md), and the
-[current evaluation plan](docs/plans/dual-reasoning-evidence.md). The 2x criterion is an
-evaluation gate; runtime budgets cannot guarantee a ratio against an unobserved single run.
-
-The [coding evaluation harness](docs/reasoning-evaluation.md) adds twelve repair projects
-with actual source edits, test execution and independent behavioral checks. It compares
-pinned S1/S2 pairs on separate calibration and held-out families, rejecting incomplete
-evidence and unknown costs. Coding calibration and reserved-case results remain separate;
-the earlier diagnostic gain does not establish coding improvement.
-
-The opt-in **S1 code review and repair** experiment reviews actual candidate code
-and permits one scoped correction with bounded Steps and existing test commands.
-The harness also measures S1 defect detection separately and compares dual with
-**single code self-review** under the same repair limits. These mechanisms have
-not yet demonstrated an accuracy gain; see the [evaluation procedure](docs/reasoning-evaluation.md).
-A separate `challenge` corpus adds six new families for calibration and reserved
-validation, including concurrency, conflict resolution and parser state. Its
-cases have not yet been measured with models; historical results remain separate.
-
-### Goal
-
-<img src="docs/features/goal.svg" alt="Goal" width="100%" />
-
-Every mode is turn by turn: the agent answers, the harness waits for you. `/goal` changes that for one
-session. You give it a definition of done, and the harness keeps the agent on it across turns until it
-holds, until it is blocked, or until the budget runs out.
-
-```
-/goal make the design suite pass; verify: bun test test/design; gate: bun test test/design;
-constraints: do not touch the app package; stop when: a test needs a network
-```
-
-Free text is the objective. The optional fields, one per line or separated by `;`, are the contract the
-judge holds the agent to:
-
-| Field                     | What it fixes                                                                        |
-| ------------------------- | ------------------------------------------------------------------------------------ |
-| `outcome:` / `done when:` | What has to be true at the end                                                       |
-| `verify:`                 | How the agent should prove it                                                        |
-| `gate:`                   | A shell command that must exit 0 before the goal can be judged done; several allowed |
-| `constraints:` / `scope:` | What may not be touched or changed                                                   |
-| `stop when:`              | What should make the agent stop and ask instead of pushing on                        |
-
-At the end of every turn the gates run, and a failing gate feeds its output into the next turn. Then a
-small judge reads the objective and the last answer and says **DONE**, **CONTINUE**, **BLOCKED** or
-**WAIT**. The objective lives in session metadata, not the transcript, so compaction cannot paraphrase it
-away. The agent may claim completion with `goal_complete`, but the next judgement consumes that claim
-rather than trusting it. `Ctrl+C` pauses a goal, and so does a new process: a loop never restarts itself.
-`/goal-pause`, `/goal-resume` and `/goal-drop` do what they say.
-
-### Design mode
-
-<img src="docs/features/design-flow.svg" alt="How design mode works: describe, prototype, preview, review, send to the agent, revise until settled, design_exit writes the plan, build implements it" width="100%" />
-
-Design mode is for working out what something should be by building it. The agent writes an interactive
-prototype, you review it in your browser, and what you decide becomes a plan. The agent cannot edit the
-product in this mode, only the prototype, so nothing you say changes code until you leave.
-
-- **Targets.** Prototype for the `web`, for an `app`, or as `presentation` slides.
-- **Review in the browser.** Click an element, select text or a diagram node and leave a note. Nothing
-  reaches the agent until you press **Send to Agent**. New published revisions update the revision
-  picker and preview together, keeping your notes, selected screen and scroll position. Browsing an
-  older revision keeps that selection until you open the latest one.
-- **Layout audit.** After every load the browser looks for cut-off text, controls outside the viewport and
-  sideways scrolling. You choose which findings to queue as fixes.
-- **Whiteboard.** Mermaid diagrams open in an Excalidraw whiteboard; your edits go back as a note and a PNG.
-- **Your design system.** The agent reads `DESIGN.md` (or `.red/DESIGN.md`) and reuses the project's real
-  components. Set `design.system` in `redcode.json` to point at it.
-- **Run anti-slop.** The variant menu audits that direction, fixes the findings and publishes one new
-  revision, with an optional focus. One final audit verifies the corrections before the agent stops
-  for your review. Unsent notes and other variants are preserved; no changes means no new publication.
-- **End-of-round review.** “Applying anti-slop” identifies a review of the published revision using a
-  checklist for components, screens, flows or slides. It reuses the recorded brief, direction and
-  design system, checks rendered evidence, and reports checked, pending and unverified items.
-  Findings become pending Design tasks for the next requested round; review never starts an
-  automatic edit/publish loop or approves the prototype for you.
-- **Finish.** Approving in the browser captures the current preview as `$screenshot1` and attaches the
-  image to the same session for Plan, alongside the approved decisions. The reference records the
-  revision, variant, screen, viewport and scroll position, and retries reuse the original image.
-  You can uncheck the capture in the approval dialog; an unavailable capture does not block approval.
-  Ordinary feedback rounds do not capture screenshots. Browser capture renders the live DOM;
-  video, WebGL and some browser effects may not reproduce exactly.
-  `design_exit` writes the plan from the decisions and open questions recorded in `design.json`.
-
-<img src="docs/features/design-review.svg" alt="The review page: the prototype with numbered annotation pins, and the conversation panel with the queued notes and Send to Agent" width="100%" />
-
-Prototypes live in `.redcode/designs/<name>/`. `redcode serve --hostname 0.0.0.0` lets you review from a phone.
-
-Open `http://localhost:35555/design` to create a Design session from a project
-loaded in Redcode or resume an existing one. The browser connects once through
-`redcode pair`; shared review links are scoped to their Design session.
-The review shows the same persisted Design tasks as the CLI.
-
-To let colleagues on your local network annotate the same prototype:
-
-```sh
-redcode service set hostname 0.0.0.0
-redcode service restart
-```
-
-The port remains `35555`. In the review menu, select **Share on local network**
-and send the generated link to your colleague. It uses your machine's LAN
-address and stays on the owning server while the separate Design app renders
-jobs. To return to local access, set hostname to `127.0.0.1` and restart.
-The shared link grants review access for that session; it does not grant general
-server access.
-
-### RedRouter
-
-<img src="docs/features/router.svg" alt="RedRouter" width="100%" />
-
-RedRouter is a provider that fronts many models behind one key. Redcode understands it natively: an
-`auto` variant lets the router choose, pinned offers fix a model to a specific provider, model
-suggestions surface what your key can reach, and the router's MCP tools are registered for you.
-
-Redcode bundles a verified [models.dev](https://models.dev) provider catalog, including decision
-models for compatible S1 adapters. Canonical model identity stays separate from the executable
-provider ID, and specialized models stay out of S2. A RedRouter connection always uses its own
-key-scoped catalog; remote discovery caching belongs to the router.
-
-You can save multiple connections for RedRouter or any other provider. Run `/connect`, choose the
-provider, then **Add connection…** to add another key or account. RedRouter connections can point
-to different URLs. Connected providers appear first, followed by popular providers; each provider's
-active connection comes first in its saved connections. Rename connections to distinguish machines
-or accounts. `/dual` also lists active connections first and retains the connection selected for S2.
-
-### Monitors
-
-<img src="docs/features/monitors.svg" alt="Monitors" width="100%" />
-
-The agent uses monitors to wait for an HTTP endpoint, a file change or a process state.
-`/monitors` shows active observations and their latest check in the existing rows. Progress
-updates are bounded and coalesced; only completion can wake the session, respecting newer
-instructions and paused goals. Completed monitors leave the drawer. Long commands use the
-background shell, with their own output and completion notifications.
-
-### Workers
-
-<img src="docs/features/workers.svg" alt="Workers" width="100%" />
-
-Redcode integrates natively with [RedSkills](https://github.com/reddb-io/red-skills) and its host-scoped
-`redskilled` daemon. The **Workers** view is a live, project-scoped console: each worker's identity,
-process and time, an activity feed of arrivals and departures, and project controls such as drain, stop
-and status. Redcode keeps no separate control state; the daemon owns it.
-
-### Stop-loss and loop guard
-
-<img src="docs/features/stop-loss.svg" alt="Stop-loss" width="100%" />
-
-Two safety nets watch every session. The **loop guard** notices an agent repeating the same call with the
-same result. The **stop-loss** notices a session that keeps spending without making progress. Both were
-calibrated to ignore normal work: an edit acknowledgement is not a repeat, and cached context is not spend
-growth. There are no default cost limits. `/budget` sets a limit only when you ask for one, and a
-model can never set its own.
-
-### Compaction
-
-<img src="docs/features/compaction.svg" alt="Compaction" width="100%" />
-
-`/compact` can take a focus (`/compact keep the migration steps`), runs in the background, and keeps
-anchors: the user messages and decisions that must survive verbatim. Its output passes through the same
-redaction as the vault, so a secret pasted earlier in the chat does not come back in the summary.
-`/restricted` lists the messages marked as restricted content and lets you remove one from the context.
-
-### Worktrees and the background service
-
-<img src="docs/features/worktrees.svg" alt="Worktrees" width="100%" />
-
-`redcode --tmp` starts in a throwaway git worktree, and `/worktrees` (or `redcode worktrees`) lists,
-creates, refreshes and cleans the project's worktrees. The server that holds your sessions can run in the
-background, so closing the terminal does not stop them: `redcode service status|start|stop|restart`. If
-it fails to start, the message says why.
-
-### Dictation
-
-<img src="docs/features/voice.svg" alt="Dictation" width="100%" />
-
-The composer accepts structured dictation from [dit](https://github.com/reddb-io/dit) over a local,
-process-scoped socket. Partial text is replaceable, committed segments accumulate, and finishing leaves an
-editable draft. Voice input never submits the composer. See [voice input](docs/voice-input.md).
+| Coding feature | Where to learn more |
+| --- | --- |
+| Build, Plan, Design and Question modes | [Agent modes](docs/agent-features.md#modes) |
+| Per-project secret references and redaction | [Vault](docs/agent-features.md#vault) |
+| S2 execution with optional S1 evaluations | [Dual reasoning](docs/agent-features.md#s1--s2-dual-reasoning), [roles](docs/system-one.md), [measured results and limitations](docs/evaluations/reasoning-0.71.3-2026-10-02.md) |
+| Goals with completion criteria and verification gates | [Goals](docs/agent-features.md#goal) |
+| Browser prototypes, annotations, whiteboard and design-system reuse | [Design workflow](docs/agent-features.md#design-mode) |
+| Provider connections and RedRouter | [Providers](docs/agent-features.md#redrouter) |
+| Monitors, loop guard, budgets and compaction | [Session features](docs/agent-features.md#monitors) |
+| Temporary worktrees and background service | [Worktrees](docs/agent-features.md#worktrees-and-the-background-service) |
+| Structured dictation | [Voice input](docs/voice-input.md) |
+
+The [illustrated feature guide](docs/agent-features.md) retains the detailed behavior and evaluation
+evidence. Its TUI controls should not be confused with Console administration or remote-worker configuration.
+
+## Documentation
+
+| I want to… | Read |
+| --- | --- |
+| Code on another machine | [Remote access recipes](docs/remote-access.md) |
+| Add workers, dispatch batches, recover and review patches | [Distributed workers](docs/distributed-workers.md) |
+| Use Raspberry Pi workers or simulate workers with Docker | [Pi prerequisites](docs/distributed-workers.md#raspberry-pi-prerequisites), [Docker lab](docs/distributed-workers.md#docker-acceptance-lab) |
+| Separate infrastructure owners from organization users | [Infrastructure access](docs/console-infrastructure.md) |
+| Configure global, owner or organization OIDC | [Console federation](docs/console-federation.md) |
+| Understand coding and Design features | [Agent feature guide](docs/agent-features.md) |
+| Track OpenCode V2 adoption and remaining work | [Migration/parity notes](docs/migration-parity.md), [feature ledger](docs/opencode-parity-ledger.json) |
+| Build and publish Redcode | [CI/CD](docs/ci-cd.md) |
 
 ## Development
 
 Current implementation lives in `packages/core`, `packages/cli`, `packages/tui`, `packages/server`,
-`packages/protocol` and `packages/schema`. `packages/redcode` packages the CLI as Redcode. Internal
-`@opencode/*` package names preserve the upstream architecture and do not change the published product name.
+`packages/protocol` and `packages/schema`. The web application is in `packages/app`; Electron integration
+is in `packages/desktop`; Design is in `packages/design-app`; `packages/redcode` packages the product.
+Internal `@opencode/*` names preserve the upstream architecture and do not change the published product name.
 
-`main` is the development branch. Run `bun run check` for lint and type checking. Tests run from package
-directories, never the repository root. Regenerate the client with `bun run generate` in
-`packages/client` after changing the public API. The README artwork is generated:
-`bun script/readme/banners.ts` rewrites `docs/hero.svg` and `docs/features/*.svg`.
+`main` is the development branch. Use Bun's version from `package.json` and run `bun install`, then
+`bun run check` for lint and type checking. Tests run from package directories, never the repository root.
+Regenerate the client with `bun run generate` in `packages/client` after changing the public API.
+README artwork is generated: `bun script/readme/banners.ts` rewrites `docs/hero.svg` and `docs/features/*.svg`.
 
 ## Releases
 
@@ -405,10 +315,10 @@ Publish through the [redcode workflow](https://github.com/reddb-io/redcode/actio
 gh workflow run redcode.yml --repo reddb-io/redcode --ref main -f publish=true
 ```
 
-The workflow runs checks and tests, builds native archives with the CLI, sidecar, Design and
-desktop apps, publishes npm packages (CLI and Design app only), verifies installation and
-checksums, then publishes the GitHub releases. Changesets record
-release intent for `@reddb-io/redcode`; the workflow versions and publishes directly from `main`.
+The workflow runs checks and tests, builds full and server native archives, verifies embedded Design,
+archive contents, installation and checksums, and publishes npm packages and GitHub releases.
+The npm distribution contains CLI and embedded Design; Desktop is shipped through full native archives.
+Changesets record release intent for `@reddb-io/redcode`; versioning and publishing run directly from `main`.
 See [CI/CD](docs/ci-cd.md).
 
 ## License

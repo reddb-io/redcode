@@ -1,6 +1,6 @@
 # Distributed Redcode workers
 
-Implemented in source, unreleased. The installed desktop and physical Raspberry Pi hosts have not been validated with this feature.
+Available in Redcode 0.76.0 and later. CLI and server coordination have Docker acceptance coverage; physical Raspberry Pi ARM64/LAN/SSH execution still needs device validation.
 
 The desktop's **Agents → Remote workers** panel and `redcode workers` coordinate independent Redcode servers through the authenticated V2 API. Each server owns its own database, sessions, tools, provider configuration and checkout. A registered checkout is one execution slot. Tasks in different slots run concurrently; tasks in the same slot run sequentially.
 
@@ -31,7 +31,7 @@ Keep the updated agent server running on the machine that will coordinate the po
 
 The panel uses the canonical Redcode design-system button, card, input and textarea contracts. Add independent tasks to a batch, choose a worker or allow placement on any available worker, then **Send batch**. The server accepts one unfinished batch at a time, dispatches its tasks across independent checkout slots, and continues observing when the panel closes. Permissions and input requests must be answered in the worker Session using a normal connected client.
 
-The coordinator persists its registry and batch journals under `<Redcode state>/workers`. Each committed batch includes its original registry snapshot for historical patch collection. Worker secrets use the server's existing credential store; registry/API responses contain credential references, never the supplied password. Removing a worker removes its credential and is blocked as soon as a batch is accepted. Credentials follow the existing store's protection; this feature does not add credential encryption or Console organization authorization.
+The coordinator persists its registry and batch journals under `<Redcode state>/workers`. Each committed batch includes its original registry snapshot for historical patch collection. Worker secrets use the server's existing credential store; registry/API responses contain credential references, never the supplied password. Removing a worker removes its credential and is blocked as soon as a batch is accepted. Credentials follow the existing store's protection; this feature does not add credential encryption. Optional Console organization authorization is described in [infrastructure access](console-infrastructure.md).
 
 An ownership lease prevents two server processes from operating the same coordinator directory. On Linux, lock metadata also records the boot ID and process start time so a container restart that reuses its PID can recover immediately. After restart, the coordinator observes saved assignments rather than automatically replaying ambiguous prompts. **Recover on the original worker** explicitly retries with the original placement and admission IDs. The lease is local coordination, not clustered execution ownership or failover fencing.
 
@@ -39,7 +39,7 @@ For terminal tasks, **Review changes** collects the recorded turn's file diffs a
 
 ## Raspberry Pi prerequisites
 
-The Redcode build targets and SSH bootstrap support Linux ARM64. The supplied Pis have 8 GB RAM, but their OS architecture and addresses still need confirmation. On each Pi, run:
+The Redcode build targets and SSH bootstrap support Linux ARM64. Confirm the OS architecture and address on each Pi:
 
 ```sh
 uname -m
@@ -49,7 +49,7 @@ hostname -I
 
 Expected architecture: `aarch64`, `64`. `armv7l` or `32` needs a 64-bit OS before using this build. Native dependencies and real Pi execution still need device acceptance; cross-platform build declarations alone do not prove they work.
 
-Install the new Redcode version once its Linux ARM64 artifact is built. Give each Pi an independent clone/checkout and configure an LLM provider on that Pi. Models can run through external APIs; the Pi executes the tools and commands. Windows-specific tools/builds remain on a Windows worker.
+Install the Linux ARM64 server archive from the release. Give each Pi an independent clone/checkout and configure an LLM provider on that Pi. Models can run through external APIs; the Pi executes the tools and commands. Windows-specific tools/builds remain on a Windows worker.
 
 For an explicitly configured LAN worker, its foreground server command is:
 

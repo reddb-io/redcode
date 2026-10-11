@@ -309,8 +309,8 @@ const hero = () => {
     ["#bc8cff", "/goal, judged every turn"],
     ["#f78166", "vault: secrets unseen"],
     ["#39c5cf", "S1 · S2 dual reasoning"],
-    ["#f778ba", "RedRouter provider"],
-    ["#7ee787", "monitors tab"],
+    ["#f778ba", "Console · accounts · OIDC"],
+    ["#7ee787", "remote worker batches"],
     ["#ff2056", "RedSkills workers"],
     ["#f0883e", "loop guard, stop-loss"],
     ["#3fb950", "focused compaction"],
@@ -325,8 +325,8 @@ const hero = () => {
     })
     .join("\n        ")
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 420" width="1200" height="420" role="img" aria-labelledby="rc-hero-title rc-hero-desc">
-  <title id="rc-hero-title">Redcode — RedDB's terminal coding agent</title>
-  <desc id="rc-hero-desc">Redcode is a terminal coding agent built on OpenCode, with a per-project secret vault, dual reasoning, goals, design mode, monitors and a live console for the RedDB worker fleet.</desc>
+  <title id="rc-hero-title">Redcode — terminal and desktop coding agent</title>
+  <desc id="rc-hero-desc">An open-source coding agent built on OpenCode, with terminal and desktop clients, agent servers, remote worker batches, Console administration, Design review, project secrets and dual reasoning.</desc>
   <defs>
     <linearGradient id="rc-bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#0d1117"/>
@@ -354,10 +354,10 @@ const hero = () => {
     <ellipse cx="1120" cy="410" rx="360" ry="240" fill="url(#rc-glow)" opacity="0.5"/>
     <g font-family="${FONT}">
       <text x="72" y="150" font-size="88" font-weight="700" letter-spacing="-3"><tspan fill="#ff2056">red</tspan><tspan fill="#f0f6fc">code</tspan></text>
-      <text x="72" y="204" font-size="34" font-weight="600" fill="#ff2056" letter-spacing="-1">terminal coding agent</text>
+      <text x="72" y="204" font-size="34" font-weight="600" fill="#ff2056" letter-spacing="-1">terminal + desktop</text>
       <rect x="74" y="230" width="148" height="3" fill="url(#rc-rule)"/>
-      <text x="72" y="272" font-size="19" fill="#8b949e">Durable sessions, secrets the model never sees,</text>
-      <text x="72" y="298" font-size="19" fill="#8b949e">a second mind that checks the first.</text>
+      <text x="72" y="272" font-size="19" fill="#8b949e">Code locally or on your own remote hosts.</text>
+      <text x="72" y="298" font-size="19" fill="#8b949e">Distribute tasks across independent workers.</text>
       <text x="72" y="332" font-size="11" fill="#6e7681" letter-spacing="2.5">BUILT ON</text>
       <g font-size="14">
         <rect x="72" y="342" width="106" height="28" rx="14" fill="#ffffff" fill-opacity="0.04" stroke="#ff2056" stroke-opacity="0.35"/>
@@ -366,7 +366,7 @@ const hero = () => {
         <text x="208" y="361" fill="#c9d1d9">Effect</text>
       </g>
       <text x="72" y="398" font-size="11" fill="#6e7681" letter-spacing="2">RUNS AS</text>
-      <text x="150" y="398" font-size="14" fill="#8b949e">TUI · HTTP server · ACP agent · MCP client</text>
+      <text x="150" y="398" font-size="14" fill="#8b949e">CLI · Desktop · agent server · Console</text>
     </g>
     <g font-family="${FONT}">
       <rect x="720" y="40" width="424" height="340" rx="12" fill="#0b0f15" stroke="#ffffff" stroke-opacity="0.09"/>

@@ -1,6 +1,6 @@
 # Infrastructure ownership and organization access
 
-Implemented in source, unreleased. Existing running servers are unchanged until started with the updated build and access configuration.
+Available in Redcode 0.76.0 and later. Existing running servers are unchanged until started with the updated build and access configuration.
 
 Infrastructure membership and organization membership are separate. A person can have both; neither role automatically grants the other.
 
