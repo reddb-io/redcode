@@ -2,18 +2,15 @@ export * as RedcodePackages from "./packages"
 
 import path from "node:path"
 
-// The per-platform npm packages a Redcode release is made of, as folders of dist/: the CLI
-// (`redcode-<target>`, @reddb-io/redcode-<target>) and the design app that ships beside it
-// (`redcode-design-<target>`, @reddb-io/redcode-design-<target>). The Electron desktop app is no npm package: at about
-// 0.2 GB per platform the registry rejects it, so only the release archives carry it (see desktopDist).
+// Each native package carries Redcode (including the Design child entry) and its RPC sidecar.
+// Electron ships only in the full release archives; server archives and npm leave it out.
 // `redcode-package/` is the meta package publish.ts writes, never a platform package. A new kind is one more row in
 // `kinds`.
 
-export type Kind = "cli" | "design"
+export type Kind = "cli"
 
 // The first prefix a folder starts with decides its kind, so the longer prefixes come first.
 const kinds: { kind: Kind; prefix: string; binaries: string[] }[] = [
-  { kind: "design", prefix: "redcode-design-", binaries: ["redcode-design"] },
   { kind: "cli", prefix: "redcode-", binaries: ["redcode", "redcode-rpc-sidecar"] },
 ]
 
@@ -30,7 +27,7 @@ export type Manifest = {
 
 export type Package = Awaited<ReturnType<typeof list>>[number]
 
-/** The design app binaries packages/design-app built: `REDCODE_DESIGN_DIST`, by default its dist/. */
+/** The whiteboard archive built by the Design release job. */
 export function designDist(directory: string) {
   return path.resolve(directory, process.env.REDCODE_DESIGN_DIST ?? "../design-app/dist")
 }
@@ -79,12 +76,14 @@ export function files(item: Pick<Package, "kind" | "target">) {
   return binaries(item).map((name) => `bin/${name}`)
 }
 
-/** The design app package of a CLI package's target, which `bun run assemble` writes. */
-export function design(packages: Package[], cli: Package) {
-  const found = packages.find((item) => item.kind === "design" && item.target === cli.target)
-  if (!found)
-    throw new Error(`Missing @reddb-io/redcode-design-${cli.target} beside ${cli.manifest.name}; run bun run assemble`)
-  return found
+/** npm installs the compatible baseline once; optimized archives remain available separately. */
+export function installation(packages: Package[]) {
+  return packages.filter(
+    (item) =>
+      !packages.some(
+        (other) => other.target.includes("-baseline") && other.target.replace("-baseline", "") === item.target,
+      ),
+  )
 }
 
 /** The `<os>-<arch>` folder of desktopDist a CLI target's archive carries: baseline targets share it, musl has none. */

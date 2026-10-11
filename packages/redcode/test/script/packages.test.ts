@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import { $ } from "bun"
 import os from "node:os"
 import path from "node:path"
 import { chmod, mkdtemp, readdir, rm, symlink } from "node:fs/promises"
@@ -27,7 +28,7 @@ const desktopFiles: Record<string, string[]> = {
 }
 
 /**
- * A dist/ as `bun run build` leaves it, beside a design-app dist/ as its `build --release` leaves it and the unpacked
+ * A dist/ as `bun run build` leaves it, beside the whiteboard archive and the unpacked
  * desktop apps CI normalizes.
  */
 async function fixture() {
@@ -47,16 +48,13 @@ async function fixture() {
           repository: { type: "git", url: "git+https://github.com/reddb-io/redcode.git" },
           os: [item.os],
           cpu: [item.cpu],
+          ...(item.os === "linux" ? { libc: [item.target.endsWith("-musl") ? "musl" : "glibc"] } : {}),
         }),
       )
       await Bun.write(path.join(dist, `redcode-${item.target}`, "bin", `redcode${extension}`), `redcode ${item.target}`)
       await Bun.write(
         path.join(dist, `redcode-${item.target}`, "bin", `redcode-rpc-sidecar${extension}`),
         `sidecar ${item.target}`,
-      )
-      await Bun.write(
-        path.join(design, `redcode-design-${item.target}`, `redcode-design${extension}`),
-        `design ${item.target}`,
       )
     }),
   )
@@ -124,22 +122,52 @@ function desktopEntries(target: string, prefix: string) {
   ].map((file) => `${prefix}${file}`)
 }
 
-test("classifies CLI and design packages and leaves out the meta package", async () => {
+test("classifies native packages and leaves out the meta package", async () => {
   await using input = await fixture()
-  await run("assemble.ts", input)
   const packages = await RedcodePackages.list(input.dist, version)
   expect(packages.map((item) => `${item.kind} ${item.target}`).toSorted()).toEqual(
-    targets.flatMap((item) => [`cli ${item.target}`, `design ${item.target}`]).toSorted(),
+    targets.map((item) => `cli ${item.target}`).toSorted(),
   )
-  expect(packages.find((item) => item.kind === "design")?.manifest.name).toStartWith("@reddb-io/redcode-design-")
   expect(RedcodePackages.binaries({ kind: "cli", target: "windows-arm64" })).toEqual([
     "redcode.exe",
     "redcode-rpc-sidecar.exe",
   ])
-  expect(RedcodePackages.binaries({ kind: "design", target: "linux-arm64-musl" })).toEqual(["redcode-design"])
-  expect(RedcodePackages.files({ kind: "cli", target: "linux-x64" })).toEqual(["bin/redcode", "bin/redcode-rpc-sidecar"])
+  expect(RedcodePackages.files({ kind: "cli", target: "linux-x64" })).toEqual([
+    "bin/redcode",
+    "bin/redcode-rpc-sidecar",
+  ])
   await expect(RedcodePackages.list(input.dist, "0.0.1")).rejects.toThrow("Unexpected platform package")
 })
+
+test("npm installs one baseline native package for each Linux libc", async () => {
+  await using input = await fixture()
+  const packages = await RedcodePackages.list(input.dist, version)
+  const tarballs = await Promise.all(
+    RedcodePackages.installation(packages).map(async (item) => {
+      const result = await $`npm pack --json --ignore-scripts`.cwd(item.dir).quiet()
+      const filename = JSON.parse(result.stdout.toString())[0].filename as string
+      return [item.manifest.name, `file:${path.join(item.dir, filename).replaceAll("\\", "/")}`] as const
+    }),
+  )
+  for (const libc of ["glibc", "musl"]) {
+    const directory = path.join(input.root, `npm-${libc}`)
+    await Bun.write(
+      path.join(directory, "package.json"),
+      JSON.stringify({
+        name: "redcode-installation-fixture",
+        version: "1.0.0",
+        private: true,
+        optionalDependencies: Object.fromEntries(tarballs),
+      }),
+    )
+    await $`npm install --offline --ignore-scripts --no-audit --no-fund --os=linux --cpu=x64 --libc=${libc}`
+      .cwd(directory)
+      .quiet()
+    expect(await readdir(path.join(directory, "node_modules/@reddb-io"))).toEqual([
+      `redcode-linux-x64-baseline${libc === "musl" ? "-musl" : ""}`,
+    ])
+  }
+}, 45_000)
 
 test.each([
   { target: "linux-x64", desktop: "linux-x64" },
@@ -152,57 +180,22 @@ test.each([
   expect(RedcodePackages.desktopTarget(input.target)).toBe(input.desktop)
 })
 
-test("assemble writes each target's design package, names it from the CLI package and packs no desktop app", async () => {
-  await using input = await fixture()
-  await run("assemble.ts", input)
-  for (const item of targets) {
-    const extension = item.target.startsWith("windows-") ? ".exe" : ""
-    const design = path.join(input.dist, `redcode-design-${item.target}`)
-    expect(await Bun.file(path.join(design, "package.json")).json()).toEqual({
-      name: `@reddb-io/redcode-design-${item.target}`,
-      version,
-      license: "MIT",
-      repository: { type: "git", url: "git+https://github.com/reddb-io/redcode.git" },
-      os: [item.os],
-      cpu: [item.cpu],
-    })
-    expect(await Bun.file(path.join(design, "bin", `redcode-design${extension}`)).text()).toBe(`design ${item.target}`)
-    expect(await Bun.file(path.join(design, "LICENSE")).exists()).toBe(true)
-    expect(await Bun.file(path.join(design, "NOTICE")).exists()).toBe(true)
-    expect(
-      (await Bun.file(path.join(input.dist, `redcode-${item.target}`, "package.json")).json()).optionalDependencies,
-    ).toEqual({ [`@reddb-io/redcode-design-${item.target}`]: version })
-  }
-  // npm rejects the desktop app as too large: it ships only in the release archives.
-  expect((await readdir(input.dist)).toSorted()).toEqual(
-    [
-      "redcode-package",
-      ...targets.flatMap((item) => [`redcode-${item.target}`, `redcode-design-${item.target}`]),
-    ].toSorted(),
-  )
-})
-
-test("assemble refuses a CLI target the design app was not built for", async () => {
-  await using design = await fixture()
-  await rm(path.join(design.design, `redcode-design-${targets[0]!.target}`), { recursive: true })
-  await expect(run("assemble.ts", design)).rejects.toThrow(`Missing design app for ${targets[0]!.target}`)
-})
-
-test("archive packs redcode, its sidecar, the design app and the desktop app per target, with the whiteboard bundle", async () => {
+test("full archives include Desktop while server archives keep only Redcode and its sidecar", async () => {
   await using input = await fixture()
   const release = path.join(input.root, "release")
-  await run("assemble.ts", input)
   await run("archive.ts", input, `--outdir=${release}`)
   for (const item of targets) {
     const windows = item.target.startsWith("windows-")
     const archive = `redcode-${item.target}.${windows ? "zip" : "tar.gz"}`
     expect(await entries(release, archive)).toEqual(
       [
-        ...(windows
-          ? ["redcode-design.exe", "redcode-rpc-sidecar.exe", "redcode.exe"]
-          : ["redcode", "redcode-design", "redcode-rpc-sidecar"]),
+        ...(windows ? ["redcode-rpc-sidecar.exe", "redcode.exe"] : ["redcode", "redcode-rpc-sidecar"]),
         ...(item.desktop ? desktopEntries(item.desktop, "desktop/") : []),
       ].toSorted(),
+    )
+    const server = `redcode-server-${item.target}.${windows ? "zip" : "tar.gz"}`
+    expect(await entries(release, server)).toEqual(
+      (windows ? ["redcode-rpc-sidecar.exe", "redcode.exe"] : ["redcode", "redcode-rpc-sidecar"]).toSorted(),
     )
     if (!links || item.desktop !== "linux-x64") continue
     // Archives keep the app's executable modes and symlinks.
@@ -215,7 +208,11 @@ test("archive packs redcode, its sidecar, the design app and the desktop app per
   const sums = (await Bun.file(path.join(release, "SHA256SUMS")).text()).trim().split("\n")
   expect(sums.map((line) => line.split(/\s+/)[1]).toSorted()).toEqual(
     [
-      ...targets.map((item) => `redcode-${item.target}.${item.target.startsWith("windows-") ? "zip" : "tar.gz"}`),
+      ...targets.flatMap((item) =>
+        ["", "server-"].map(
+          (prefix) => `redcode-${prefix}${item.target}.${item.target.startsWith("windows-") ? "zip" : "tar.gz"}`,
+        ),
+      ),
       whiteboard,
     ].toSorted(),
   )
@@ -225,13 +222,13 @@ test("archive packs redcode, its sidecar, the design app and the desktop app per
   expect(sums).toContain(`${digest}  ${whiteboard}`)
 })
 
-test("archive refuses a CLI package without its design or desktop app", async () => {
-  await using design = await fixture()
-  await expect(run("archive.ts", design, `--outdir=${path.join(design.root, "release")}`)).rejects.toThrow(
-    "Missing @reddb-io/redcode-design-",
+test("archive refuses a native package without its sidecar or required desktop app", async () => {
+  await using incomplete = await fixture()
+  await rm(path.join(incomplete.dist, `redcode-${targets[0]!.target}`, "bin", "redcode-rpc-sidecar"))
+  await expect(run("archive.ts", incomplete, `--outdir=${path.join(incomplete.root, "release")}`)).rejects.toThrow(
+    "Missing release binary:",
   )
   await using desktop = await fixture()
-  await run("assemble.ts", desktop)
   await rm(path.join(desktop.desktop, "linux-x64"), { recursive: true })
   await expect(run("archive.ts", desktop, `--outdir=${path.join(desktop.root, "release")}`)).rejects.toThrow(
     "Missing desktop app for linux-x64",

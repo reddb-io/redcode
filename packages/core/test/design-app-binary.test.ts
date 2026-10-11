@@ -79,3 +79,42 @@ test("reports a start until it is cleared", () => {
   expect(seen).toEqual([{ phase: "start", started: 1 }, undefined])
   expect(DesignAppBinary.progress()).toBeUndefined()
 })
+
+test("compiled Redcode launches its own Design entry and the child selects local rendering", async () => {
+  await using install = await tmpdir()
+  const entry = path.join(install.path, "probe.ts")
+  const binary = path.join(install.path, process.platform === "win32" ? "redcode.exe" : "redcode")
+  await Bun.write(
+    entry,
+    `
+    import { DesignAppBinary } from ${JSON.stringify(path.resolve(import.meta.dir, "../src/design/app-binary.ts").replaceAll("\\", "/"))}
+    import { DesignAppMode } from ${JSON.stringify(path.resolve(import.meta.dir, "../src/design/app-mode.ts").replaceAll("\\", "/"))}
+    console.log(JSON.stringify({
+      command: DesignAppBinary.command({ source: false, env: {} }),
+      override: DesignAppBinary.command({ source: false, env: { REDCODE_DESIGN_BIN: "/custom/design" } }),
+      process: DesignAppMode.process(),
+    }))
+  `,
+  )
+  const built = await Bun.build({
+    entrypoints: [entry],
+    compile: { outfile: binary },
+    define: { REDCODE_DESIGN_EMBEDDED: "true", REDCODE_DESIGN_PROCESS_HOST: "true" },
+  })
+  expect(built.success).toBe(true)
+  for (const args of [[], [DesignAppBinary.SUBCOMMAND]]) {
+    const child = Bun.spawn([binary, ...args], { stdout: "pipe", stderr: "pipe" })
+    const [code, output, error] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ])
+    expect(error).toBe("")
+    expect(code).toBe(0)
+    expect(JSON.parse(output)).toEqual({
+      command: [binary, DesignAppBinary.SUBCOMMAND],
+      override: ["/custom/design"],
+      process: args.length === 0,
+    })
+  }
+}, 30_000)

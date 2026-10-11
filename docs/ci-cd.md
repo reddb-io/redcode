@@ -1,9 +1,8 @@
 # Redcode CI/CD
 
 Redcode uses **one workflow**, `.github/workflows/redcode.yml`, owned by
-`reddb-io/redcode`. It publishes `@reddb-io/redcode`, its native packages and the
-design app packages that ship with them to npm, and the release archives, which
-also carry the desktop app, to GitHub.
+`reddb-io/redcode`. It publishes `@reddb-io/redcode` and its native packages (with
+embedded Design) to npm, and full and server release archives to GitHub.
 It does not call workflows or consume release versions from another repository.
 
 ## Push to main
@@ -35,10 +34,10 @@ product source remains available. Inherited automation archived under
 3. Changesets consumes the entries, updates the product manifest and changelog,
    and commits the version directly to `main`. No release branch or Version PR.
 4. Checks and tests validate that exact versioned commit. In parallel, build
-   the RPC sidecars and the Design app, then Redcode's native packages, which
-   `bun run assemble` pairs with the Design app of each target.
-5. Run the smoke against the exact Linux archive, which carries the Design app
-   beside `redcode`, in a fresh home with a scripted provider. It checks the service, tools and token
+   the RPC sidecars, Desktop apps and optional whiteboard bundle, then Redcode's
+   native packages with embedded Design.
+5. Run the smoke against the exact Linux archive in a fresh home with a scripted
+   provider. It checks the service, tools and token
    accounting, temporary worktrees, vault isolation from model requests and outputs,
    and the browser review. Its failure blocks publication.
 6. After lint/types, product contracts, vault coverage, builds and the smoke pass,
@@ -90,8 +89,7 @@ lookups use `--prefer-online`; only `E404` or `ETARGET` means a version is absen
 Authentication, rate-limit and network errors stop publication with their cause.
 
 Before setting `NPM_PUBLISH_MODE=oidc`, configure a trusted publisher for the main
-package and all 24 platform packages on npm (12 `@reddb-io/redcode-<target>` and
-12 `@reddb-io/redcode-design-<target>`), with organization `reddb-io`, repository
+package and all 12 platform packages on npm (`@reddb-io/redcode-<target>`), with organization `reddb-io`, repository
 `redcode`, workflow filename `redcode.yml` and environment `red-release`. Enable
 the allowed action for direct `npm publish`; a publisher limited to staging still
 requires manual approval. See https://docs.npmjs.com/trusted-publishers.
@@ -101,20 +99,32 @@ with maintainer 2FA in npm's Staged Packages tab, then rerun the failed npm job.
 The publication script skips versions that are already live and identifies a
 staged `E409` separately from ordinary registry propagation delays.
 
-The native packages retain all supported targets and RPC sidecars. The Design app
-ships in the same `vX.Y.Z` release: every archive carries `redcode-design` beside
-`redcode`, each `@reddb-io/redcode-<target>` package has its
-`@reddb-io/redcode-design-<target>` package as an optional dependency (so pnpm's
-isolated layout links it next to redcode), and the release carries the whiteboard
-bundle the design app downloads. Linux and macOS archives are `tar.gz`; Windows
+The native packages retain all supported targets and RPC sidecars. Design runs
+in a separate process using `redcode __design-app`, sharing the CLI executable
+and runtime. There is no separate native Design package in new releases. Source
+checkouts and `REDCODE_DESIGN_BIN` overrides still support the standalone app.
+The release carries the optional whiteboard bundle Design downloads.
+Linux and macOS archives are `tar.gz`; Windows
 archives are `zip`. Separate `design-vX.Y.Z` releases are no longer published.
 
 The desktop app ships only in the release archives, and so with mise: every
-archive except Linux musl carries the unpacked app under `desktop/` beside
+full archive except Linux musl carries the unpacked app under `desktop/` beside
 `redcode`, taken by `bun run archive` from `REDCODE_DESKTOP_DIST`. npm carries
-the CLI and the design app only. At about 0.2 GB per platform the registry
+the CLI with embedded Design only. At about 0.2 GB per platform the registry
 rejects a desktop package (`E413 Payload Too Large`), so there is none, and
 `redcode desktop` in an npm install points to mise or the release archives.
+
+`redcode-server-<target>` archives contain Redcode and its RPC sidecar without
+Electron. They retain the CLI's terminal, web and Design capabilities and can run
+`redcode serve` and worker commands. The full archive names stay unchanged for
+existing installers. Both profiles and the whiteboard archive are checksummed.
+Release checks exercise the embedded Design child's database, health endpoint
+and authenticated assets as well as the installed CLI.
+
+The npm meta package selects the x64 baseline variant instead of installing both
+baseline and optimized binaries. Linux native manifests declare `libc` (`glibc`
+or `musl`), and the npm smoke requires exactly one installed Linux native package.
+All 12 targets still publish for explicit installation and release archives.
 
 Builds, checksum verification, CLI identity/agent checks, service lifecycle and
 published installation checks remain required. Artifact compression is disabled

@@ -43,14 +43,22 @@ mise use -g github:reddb-io/redcode@latest
 
 Native archives for Linux, macOS and Windows are also on the
 [Redcode releases](https://github.com/reddb-io/redcode/releases) page (`tar.gz`, `zip` on
-Windows). Each includes `redcode`, `redcode-rpc-sidecar` and `redcode-design`, the design app
-that serves Design mode's browser review; checksums are in `SHA256SUMS`. Every installation
-method ships the design app with redcode, so Design never downloads it separately. Keep one
+Windows). Each includes `redcode` and `redcode-rpc-sidecar`; checksums are in `SHA256SUMS`.
+Design mode's browser review runs in a separate process of the same Redcode executable,
+so there is no second runtime or native Design package to install. Keep one
 installation method per machine.
 
 Redcode Desktop, opened with `redcode desktop`, comes only with mise and the release archives
 (every platform except Linux musl), unpacked in `desktop/` beside `redcode`. The npm package ships
-the CLI and the design app only: the desktop app is too large for the npm registry.
+the CLI with embedded Design only: the desktop app is too large for the npm registry.
+On x64, npm installs the compatible baseline build once; Linux packages also specify
+their libc so supported package managers select glibc or musl. Optimized x64 builds
+remain available in the release archives.
+
+For a server or worker, download `redcode-server-<platform>-<architecture>` from the release.
+These archives include the same CLI, Design and RPC sidecar without Electron. Use `redcode serve`
+or the worker commands on that machine. The CLI still includes its terminal and web interfaces;
+the server archive is a distribution profile, not a separate reduced agent engine.
 
 ## Use
 

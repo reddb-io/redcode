@@ -61,6 +61,10 @@ function getConfig(): Configuration {
       // Keep js-yaml's CommonJS sources and dist/js-yaml.mjs ESM entry, not browser bundles or its CLI.
       "!**/node_modules/js-yaml/dist/{js-yaml.js,js-yaml.min.js,*.map}",
       "!**/node_modules/js-yaml/bin{,/**/*}",
+      // third-party-web executes lib/ against its JSON datasets. The generated CSV is a
+      // separate database export; Yarn's install state is development metadata.
+      "!**/node_modules/third-party-web/dist/domain-map.csv",
+      "!**/node_modules/**/.yarn{,/**/*}",
     ],
     // The app icon is the RedDB platform icon the design system publishes (scripts/sync-design-system.ts). The Linux
     // launcher the app writes on first launch takes its icon from here too.

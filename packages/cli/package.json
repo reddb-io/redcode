@@ -45,6 +45,7 @@
     "@opencode/util": "workspace:*",
     "@opentui/core": "catalog:",
     "@opentui/solid": "catalog:",
+    "@reddb-io/redcode-design-app": "workspace:*",
     "@opentunnel/client": "0.3.0",
     "@parcel/watcher": "2.5.1",
     "@silvia-odwyer/photon-node": "0.3.4",
