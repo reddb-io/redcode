@@ -1,4 +1,4 @@
-// Generates the README artwork: docs/hero.svg and one banner per feature under docs/features.
+// Generates README artwork: hero, architecture and the banners under docs/features.
 // Run `bun script/readme/banners.ts` after editing a spec; the SVGs are output, never edited by hand.
 import fs from "node:fs/promises"
 import path from "node:path"
@@ -416,6 +416,42 @@ const frame = (id: string, title: string, description: string, height: number, b
 </svg>
 `
 
+const architecture = () => {
+  const box = (x: number, y: number, width: number, title: string, lines: string[], accent = YELLOW) => `<g>
+    <rect x="${x}" y="${y}" width="${width}" height="116" rx="14" fill="${accent}" fill-opacity="0.06" stroke="${accent}" stroke-opacity="0.55"/>
+    <rect x="${x + 20}" y="${y + 22}" width="28" height="3" fill="${accent}"/>
+    <text x="${x + 20}" y="${y + 51}" font-size="18" font-weight="700" fill="#f0f6fc">${escape(title)}</text>
+    ${lines.map((line, index) => `<text x="${x + 20}" y="${y + 76 + index * 21}" font-size="13" fill="#8b949e">${escape(line)}</text>`).join("\n")}
+  </g>`
+  const arrow = (d: string, dashed = false) => `<path d="${d}" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-opacity="0.8"${dashed ? ' stroke-dasharray="6 5"' : ""} marker-end="url(#arrow-architecture)"/>`
+  return frame(
+    "architecture",
+    "Redcode components and remote execution",
+    "CLI, Desktop and browser clients connect to an agent server. Its coordinator dispatches tasks to independent worker servers and checkouts. A separate Console optionally authorizes delegated access.",
+    580,
+    `<text x="50" y="48" font-size="11" fill="#6e7681" letter-spacing="2.5">HOW REDCODE FITS TOGETHER</text>
+    <text x="50" y="83" font-size="28" font-weight="700" fill="#f0f6fc">One engine. Clear roles. Your machines.</text>
+    ${box(50, 154, 280, "CLI / Desktop / browser", ["Your coding interface", "Connect to the selected host"], "#ff2056")}
+    ${box(440, 154, 320, "Agent server / coordinator", ["Sessions, tools and host files", "Registry, batches and results"])}
+    ${box(870, 125, 280, "Worker agent server A", ["Own database and provider", "Independent checkout A"], "#7ee787")}
+    ${box(870, 313, 280, "Worker agent server B", ["Own database and provider", "Independent checkout B"], "#7ee787")}
+    ${box(440, 365, 320, "Console", ["Accounts, orgs and workspaces", "Owners, OIDC and grants"], "#bc8cff")}
+    ${arrow("M330 212 H436")}
+    ${arrow("M760 212 H815 V183 H866")}
+    ${arrow("M815 212 V371 H866")}
+    ${arrow("M600 365 V274", true)}
+    <text x="346" y="194" font-size="12" fill="#8b949e">connect</text>
+    <text x="777" y="288" font-size="12" fill="#8b949e">tasks</text>
+    <text x="617" y="317" font-size="12" fill="#bc8cff">optional</text>
+    <text x="617" y="337" font-size="12" fill="#bc8cff">authorization</text>
+    <text x="50" y="315" font-size="14" fill="#c9d1d9">Client ≠ execution host.</text>
+    <text x="50" y="341" font-size="13" fill="#8b949e">Files and tools stay on</text>
+    <text x="50" y="362" font-size="13" fill="#8b949e">the selected agent server.</text>
+    <rect x="50" y="509" width="1100" height="42" rx="12" fill="#ffffff" fill-opacity="0.04" stroke="#ffffff" stroke-opacity="0.08"/>
+    <text x="72" y="535" font-size="13" fill="#c9d1d9">Each worker owns its sessions and checkout. No shared SQLite database, automatic repository sync or extra master binary.</text>`,
+  )
+}
+
 type Step = { n: string; title: string; lines: string[]; x: number; y: number; hot?: boolean }
 
 const designFlow = () => {
@@ -536,8 +572,9 @@ const root = path.resolve(import.meta.dir, "../..")
 await fs.mkdir(path.join(root, "docs/features"), { recursive: true })
 await Promise.all([
   Bun.write(path.join(root, "docs/hero.svg"), hero()),
+  Bun.write(path.join(root, "docs/architecture.svg"), architecture()),
   Bun.write(path.join(root, "docs/features/design-flow.svg"), designFlow()),
   Bun.write(path.join(root, "docs/features/design-review.svg"), designReview()),
   ...banners.map((banner) => Bun.write(path.join(root, "docs/features", `${banner.id}.svg`), render(banner))),
 ])
-console.log(`wrote docs/hero.svg and ${banners.length} banners`)
+console.log(`wrote docs/hero.svg, docs/architecture.svg and ${banners.length} feature banners`)

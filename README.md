@@ -39,15 +39,7 @@ records what has been reviewed and implemented; full OpenCode feature parity is 
 
 A typical distributed setup looks like this:
 
-```mermaid
-flowchart LR
-  Client[CLI / Desktop / browser] --> Master[Agent server / coordinator]
-  Master --> A[Worker agent server A]
-  Master --> B[Worker agent server B]
-  A --> RepoA[Independent checkout A]
-  B --> RepoB[Independent checkout B]
-  Console[Console: accounts and access] -. Optional delegated authorization .-> Master
-```
+<img src="docs/architecture.svg" alt="CLI, Desktop and browser connect to the agent server; the coordinator distributes tasks to independent worker servers and checkouts; Console provides optional delegated authorization" width="100%" />
 
 Each worker executes its own sessions. The coordinator tracks assignments; it does not share a Session
 database with workers. Console authentication and agent-server credentials are separate.
@@ -267,20 +259,129 @@ gateway services, SCIM and full SaaS isolation remain incomplete; see the [parit
 
 ## Features
 
-| Coding feature | Where to learn more |
-| --- | --- |
-| Build, Plan, Design and Question modes | [Agent modes](docs/agent-features.md#modes) |
-| Per-project secret references and redaction | [Vault](docs/agent-features.md#vault) |
-| S2 execution with optional S1 evaluations | [Dual reasoning](docs/agent-features.md#s1--s2-dual-reasoning), [roles](docs/system-one.md), [measured results and limitations](docs/evaluations/reasoning-0.71.3-2026-10-02.md) |
-| Goals with completion criteria and verification gates | [Goals](docs/agent-features.md#goal) |
-| Browser prototypes, annotations, whiteboard and design-system reuse | [Design workflow](docs/agent-features.md#design-mode) |
-| Provider connections and RedRouter | [Providers](docs/agent-features.md#redrouter) |
-| Monitors, loop guard, budgets and compaction | [Session features](docs/agent-features.md#monitors) |
-| Temporary worktrees and background service | [Worktrees](docs/agent-features.md#worktrees-and-the-background-service) |
-| Structured dictation | [Voice input](docs/voice-input.md) |
+### Modes
 
-The [illustrated feature guide](docs/agent-features.md) retains the detailed behavior and evaluation
-evidence. Its TUI controls should not be confused with Console administration or remote-worker configuration.
+Coding sessions use Build, Plan, Design or Question. In the TUI, `Tab` cycles agents and `Shift+Tab`
+goes back. These are session modes, separate from Console roles and worker placement.
+
+<img src="docs/features/build.svg" alt="Build mode" width="100%" />
+
+**Build** reads, edits, runs and delegates to subagents under the configured permissions.
+
+<img src="docs/features/plan.svg" alt="Plan mode" width="100%" />
+
+**Plan** explores and writes the plan before implementation. `plan_exit` asks whether to switch to Build.
+
+<img src="docs/features/design.svg" alt="Design mode" width="100%" />
+
+**Design** works on an interactive prototype while keeping product code separate. The review and
+approved decisions feed the plan. See [Design mode](#design-mode).
+
+<img src="docs/features/question.svg" alt="Question mode" width="100%" />
+
+**Question** investigates the codebase with read-only tools. [Mode details](docs/agent-features.md#modes).
+
+### Vault
+
+<img src="docs/features/vault.svg" alt="Per-project secret vault" width="100%" />
+
+The model works with references such as `{vault:github-token}`. The harness resolves values when a
+tool needs them and redacts known secrets from output. Secrets stay scoped to the project; worktrees
+share its `.env`. Use `/vault`, `redcode vault set NAME` or `redcode vault import other.env`.
+[Vault behavior](docs/agent-features.md#vault).
+
+### S1 · S2 dual reasoning
+
+<img src="docs/features/intelligence.svg" alt="S1 and S2 dual reasoning" width="100%" />
+
+S2 does the agent work; optional S1 evaluations check candidates and provide feedback. `/dual` configures
+the models, `/intelligence` shows evaluations, and `/reasoning` changes the session mode. An unavailable
+or inconclusive evaluation is shown as such. Coding studies have not demonstrated an accuracy or speed
+gain; keep the [measurements and limitations](docs/evaluations/reasoning-0.71.3-2026-10-02.md) alongside
+the [reasoning roles](docs/system-one.md) and [full explanation](docs/agent-features.md#s1--s2-dual-reasoning).
+
+### Goal
+
+<img src="docs/features/goal.svg" alt="Autonomous goals with completion criteria" width="100%" />
+
+`/goal` keeps a session working across turns toward a defined outcome. Add verification gates,
+constraints and stopping conditions; use `/goal-pause`, `/goal-resume` and `/goal-drop` to control it.
+The harness checks completion instead of relying only on the agent's claim.
+[Goal contract and examples](docs/agent-features.md#goal).
+
+### Design mode
+
+<img src="docs/features/design-flow.svg" alt="Design workflow: describe, prototype, preview, annotate, send feedback, revise, plan and build" width="100%" />
+
+Prototype a web interface, an app or presentation slides. The agent reads `DESIGN.md` or `.red/DESIGN.md`
+and reuses the project's design system. Explore revisions, annotate elements, audit layout and edit
+Mermaid content through the optional whiteboard. Your queued notes reach the agent when you press
+**Send to Agent**; approval records decisions for Plan and Build.
+
+<img src="docs/features/design-review.svg" alt="Standalone Design browser review with annotation pins and queued feedback" width="100%" />
+
+Desktop embeds the review beside the chat and omits its duplicate conversation panel. The standalone
+browser review keeps that panel. Both use the same Design session, revisions and feedback. The renderer
+runs as a child process of the same executable. [Complete Design workflow](docs/agent-features.md#design-mode).
+
+### RedRouter
+
+<img src="docs/features/router.svg" alt="RedRouter provider connections" width="100%" />
+
+RedRouter exposes models through a key-scoped catalog, with automatic routing, pinned offers and MCP
+tools. `/connect` also manages multiple connections for other supported providers; select S2 and
+optional S1 through `/dual`. [Provider behavior](docs/agent-features.md#redrouter).
+
+### Monitors
+
+<img src="docs/features/monitors.svg" alt="Session background monitors" width="100%" />
+
+Monitors observe HTTP endpoints, files or processes while the session works. `/monitors` shows their
+state; completion can wake the session while respecting newer instructions and paused goals.
+[Monitor behavior](docs/agent-features.md#monitors).
+
+### Local RedSkills fleet
+
+<img src="docs/features/workers.svg" alt="Local RedSkills worker fleet" width="100%" />
+
+The optional `redskilled` integration shows project worker activity and controls such as drain, stop
+and status. Its daemon owns that fleet. TUI `/workers` and the Desktop Workers tab refer to this
+integration; **Agents → Remote workers** manages the separate [distributed Redcode pool](#workers).
+[RedSkills integration](docs/agent-features.md#local-redskills-fleet).
+
+### Stop-loss and loop guard
+
+<img src="docs/features/stop-loss.svg" alt="Stop-loss and loop guard" width="100%" />
+
+The loop guard detects repeated calls with the same result; stop-loss detects spending without
+progress. There are no default cost limits. `/budget` adds a spend/token limit when requested.
+[Session guards](docs/agent-features.md#stop-loss-and-loop-guard).
+
+### Compaction
+
+<img src="docs/features/compaction.svg" alt="Focused compaction with preserved anchors" width="100%" />
+
+`/compact` accepts a focus and retains important user messages and decisions. Summaries pass through
+the vault's redaction; `/restricted` manages content marked as restricted.
+[Compaction details](docs/agent-features.md#compaction).
+
+### Worktrees and the background service
+
+<img src="docs/features/worktrees.svg" alt="Git worktrees and the background agent service" width="100%" />
+
+`redcode --tmp` uses a temporary Git worktree. `/worktrees` or `redcode worktrees` manages project
+checkouts. The background agent server retains sessions when the terminal closes; inspect and control
+it with `redcode service`. [Worktree and service behavior](docs/agent-features.md#worktrees-and-the-background-service).
+
+### Dictation
+
+<img src="docs/features/voice.svg" alt="Structured voice dictation" width="100%" />
+
+The composer accepts structured dictation from [dit](https://github.com/reddb-io/dit). Partial text is
+replaceable and completed dictation stays as an editable draft; voice input never submits it.
+[Voice input](docs/voice-input.md).
+
+The [feature guide](docs/agent-features.md) retains the detailed contracts and evaluation evidence.
 
 ## Documentation
 
@@ -305,7 +406,8 @@ Internal `@opencode/*` names preserve the upstream architecture and do not chang
 `main` is the development branch. Use Bun's version from `package.json` and run `bun install`, then
 `bun run check` for lint and type checking. Tests run from package directories, never the repository root.
 Regenerate the client with `bun run generate` in `packages/client` after changing the public API.
-README artwork is generated: `bun script/readme/banners.ts` rewrites `docs/hero.svg` and `docs/features/*.svg`.
+README artwork is generated: `bun script/readme/banners.ts` rewrites `docs/hero.svg`, `docs/architecture.svg`
+and `docs/features/*.svg`.
 
 ## Releases
 
