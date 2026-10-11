@@ -1,4 +1,4 @@
-// Generates README artwork: hero, architecture and the banners under docs/features.
+// Generates README artwork: hero, architecture, chapter headers and feature banners.
 // Run `bun script/readme/banners.ts` after editing a spec; the SVGs are output, never edited by hand.
 import fs from "node:fs/promises"
 import path from "node:path"
@@ -417,13 +417,12 @@ const frame = (id: string, title: string, description: string, height: number, b
 `
 
 const chapters = [
-  { id: "components", label: "COMPONENTS", title: "clients & execution", description: "Clients, agent servers, worker coordination and Console administration.", accent: "#ff2056" },
-  { id: "get-started", label: "GET STARTED", title: "start your workspace", description: "Full desktop distribution, terminal installation or a headless server archive.", accent: "#7ee787" },
+  { id: "get-started", label: "GET STARTED", title: "open your workspace", description: "Choose Desktop or the terminal. Connect a model and start a conversation.", accent: "#7ee787" },
   { id: "session-modes", label: "SESSION MODES", title: "choose how to work", description: "Build, Plan, Design and Question define what the agent can do.", accent: "#58a6ff" },
-  { id: "features", label: "CODING FEATURES", title: "inside a session", description: "Project secrets, reasoning, goals, Design review and session controls.", accent: YELLOW },
+  { id: "features", label: "CODING FEATURES", title: "tools for your session", description: "Secrets, autonomy, context, prototyping and optional integrations.", accent: YELLOW },
   { id: "remote-execution", label: "REMOTE EXECUTION", title: "remote hosts & workers", description: "Connect another device, add independent workers and review their results.", accent: "#39c5cf" },
   { id: "console", label: "CONSOLE", title: "identity & ownership", description: "Separate infrastructure authority from organization roles and workspace grants.", accent: "#bc8cff" },
-  { id: "guides", label: "GUIDES", title: "guides & recipes", description: "Setup recipes, recovery, authentication, measured behavior and implementation status.", accent: "#a5b4fc" },
+  { id: "guides", label: "DOCUMENTATION", title: "find your next step", description: "Install, connect, distribute, administer or explore the implementation.", accent: "#a5b4fc" },
   { id: "contributing", label: "CONTRIBUTING", title: "build & contribute", description: "Repository packages, development checks, generated artwork and releases.", accent: "#f78166" },
 ]
 
@@ -431,11 +430,11 @@ const chapter = (spec: typeof chapters[number], index: number) => frame(
   `chapter-${spec.id}`,
   spec.title,
   spec.description,
-  200,
-  `<text x="40" y="37" font-size="11" fill="${spec.accent}" letter-spacing="2.5">${String(index + 1).padStart(2, "0")} / ${spec.label}</text>
-  <text x="40" y="113" font-size="64" font-weight="700" fill="#f0f6fc" letter-spacing="-0.6">${escape(spec.title)}</text>
-  <text x="40" y="169" font-size="15" fill="#8b949e">${escape(spec.description)}</text>
-  <text x="1080" y="155" font-size="144" font-weight="700" fill="${spec.accent}" fill-opacity="0.10" text-anchor="middle">${String(index + 1).padStart(2, "0")}</text>`,
+  150,
+  `<text x="40" y="30" font-size="11" fill="${spec.accent}" letter-spacing="2.5">${String(index + 1).padStart(2, "0")} / ${spec.label}</text>
+  <text x="40" y="94" font-size="64" font-weight="700" fill="#f0f6fc" letter-spacing="-0.6">${escape(spec.title)}</text>
+  <text x="40" y="129" font-size="15" fill="#8b949e">${escape(spec.description)}</text>
+  <text x="1080" y="122" font-size="112" font-weight="700" fill="${spec.accent}" fill-opacity="0.10" text-anchor="middle">${String(index + 1).padStart(2, "0")}</text>`,
   spec.accent,
 )
 

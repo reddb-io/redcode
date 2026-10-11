@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 200" width="1200" height="200" role="img" aria-labelledby="t-chapter-console d-chapter-console">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 150" width="1200" height="150" role="img" aria-labelledby="t-chapter-console d-chapter-console">
   <title id="t-chapter-console">identity &amp; ownership</title>
   <desc id="d-chapter-console">Separate infrastructure authority from organization roles and workspace grants.</desc>
   <defs>
@@ -17,18 +17,18 @@
       <path d="M0 0 L10 5 L0 10 Z" fill="#bc8cff"/>
     </marker>
     <clipPath id="frame-chapter-console">
-      <rect x="0" y="0" width="1200" height="200" rx="18"/>
+      <rect x="0" y="0" width="1200" height="150" rx="18"/>
     </clipPath>
   </defs>
   <g clip-path="url(#frame-chapter-console)" font-family="ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, Consolas, monospace">
-    <rect width="1200" height="200" fill="url(#bg-chapter-console)"/>
-    <rect width="1200" height="200" fill="url(#grid-chapter-console)"/>
+    <rect width="1200" height="150" fill="url(#bg-chapter-console)"/>
+    <rect width="1200" height="150" fill="url(#grid-chapter-console)"/>
     <ellipse cx="160" cy="80" rx="420" ry="260" fill="url(#glow-chapter-console)"/>
-    <ellipse cx="1120" cy="200" rx="380" ry="220" fill="url(#glow-chapter-console)" opacity="0.4"/>
-    <rect x="0" y="0" width="6" height="200" fill="#bc8cff"/>
-    <text x="40" y="37" font-size="11" fill="#bc8cff" letter-spacing="2.5">06 / CONSOLE</text>
-  <text x="40" y="113" font-size="64" font-weight="700" fill="#f0f6fc" letter-spacing="-0.6">identity &amp; ownership</text>
-  <text x="40" y="169" font-size="15" fill="#8b949e">Separate infrastructure authority from organization roles and workspace grants.</text>
-  <text x="1080" y="155" font-size="144" font-weight="700" fill="#bc8cff" fill-opacity="0.10" text-anchor="middle">06</text>
+    <ellipse cx="1120" cy="150" rx="380" ry="220" fill="url(#glow-chapter-console)" opacity="0.4"/>
+    <rect x="0" y="0" width="6" height="150" fill="#bc8cff"/>
+    <text x="40" y="30" font-size="11" fill="#bc8cff" letter-spacing="2.5">05 / CONSOLE</text>
+  <text x="40" y="94" font-size="64" font-weight="700" fill="#f0f6fc" letter-spacing="-0.6">identity &amp; ownership</text>
+  <text x="40" y="129" font-size="15" fill="#8b949e">Separate infrastructure authority from organization roles and workspace grants.</text>
+  <text x="1080" y="122" font-size="112" font-weight="700" fill="#bc8cff" fill-opacity="0.10" text-anchor="middle">05</text>
   </g>
 </svg>
