@@ -80,6 +80,7 @@ const suites = {
     "test/plugin/models-dev.test.ts",
     "test/plugin/provider-openai-compatible.test.ts",
     "test/session-compaction.test.ts",
+    "test/session-repository-status.test.ts",
     "test/session-create.test.ts",
     "test/session-import.test.ts",
     "test/session-import-claude-code.test.ts",

@@ -142,7 +142,10 @@ jobs:
           git branch main origin/main
           bun run release:status
       - name: Lint and typecheck
-        run: bun run check
+        run: |
+          bun run lint
+          # Keep the large core, SDK and GUI typechecks from competing for runner memory.
+          bun turbo typecheck --concurrency=1
       - name: Verify committed model catalog
         working-directory: packages/core
         run: bun run update-models-snapshot --check
