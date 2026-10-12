@@ -34,6 +34,10 @@ import { DateTime, Effect, Fiber, Layer, Schema, Stream } from "effect"
 import { asc, eq } from "drizzle-orm"
 import { testEffect } from "./lib/effect"
 import { offlineModels } from "./fixture/models"
+import { repositoryStatusFixture } from "./fixture/repository-status"
+import fs from "fs/promises"
+import path from "path"
+import { $ } from "bun"
 
 let requests: LLMRequest[] = []
 /** Appended to the mocked summary, to stand for a summarizer that repeats what it read. */
@@ -426,6 +430,70 @@ const compactManually = (
     })
     return yield* compaction.compact({ reason: "manual", context: loaded(session, messages), inputID })
   })
+
+for (const checkout of ["main", "linked"] as const) {
+  it.live(
+    `manual compaction preserves the ${checkout} Session checkout instead of the Location or canonical root`,
+    () =>
+      Effect.gen(function* () {
+        const fixture = yield* repositoryStatusFixture
+        yield* Effect.promise(async () => {
+          await fs.writeFile(path.join(fixture.main, "main-only.txt"), "main")
+          await fs.writeFile(path.join(fixture.linked, "tracked.txt"), "linked change\n")
+          await fs.writeFile(path.join(fixture.linked, "worker-only.txt"), "worker")
+        })
+        const session = yield* insertSession(Session.ID.create(), { directory: fixture[checkout] })
+        expect(
+          yield* compactManually(session, [
+            userRequest("Earlier task"),
+            measuredReply(100),
+            userRequest("Next task", 2),
+          ]),
+        ).toEqual({ status: "completed" })
+        const store = yield* SessionStore.Service
+        const checkpoint = (yield* store.context(session.id))[0]
+        if (checkpoint?.type !== "compaction" || checkpoint.status !== "completed")
+          throw new Error("Expected checkpoint")
+        expect(checkpoint.summary).toContain(`- Worktree: ${JSON.stringify(fixture[checkout])} (${checkout})`)
+        expect(checkpoint.summary).toContain(checkout === "main" ? '- Branch: "main"' : '- Branch: "worker-task"')
+        expect(checkpoint.summary).toContain(
+          checkout === "main"
+            ? "Changed files: 1 (0 tracked; 1 untracked)"
+            : "Changed files: 2 (1 tracked; 1 untracked)",
+        )
+        expect(JSON.stringify(toLLMMessages([checkpoint], resolved.ref))).toContain("## Repository Status")
+      }),
+  )
+}
+
+it.live("background compaction captures the branch and edits when the prepared summary is committed", () =>
+  Effect.gen(function* () {
+    const fixture = yield* repositoryStatusFixture
+    requests = []
+    const compaction = yield* SessionCompaction.Service
+    yield* compaction.transform((editor) => editor.configure({ background: true }))
+    const session = yield* insertSession(Session.ID.create(), { directory: fixture.linked })
+    const earlier = [userRequest("First request"), measuredReply(175_000)]
+    expect(yield* compaction.compact({ reason: "auto", context: loaded(session, earlier) })).toEqual({
+      status: "skipped",
+    })
+    yield* Effect.promise(async () => {
+      await $`git switch -c after-draft`.cwd(fixture.linked).quiet()
+      await fs.writeFile(path.join(fixture.linked, "after-draft.txt"), "new edit")
+    })
+    const later = [...earlier, userRequest("Next request", 2), measuredReply(181_000, "Working on it.")]
+    expect(yield* compaction.compact({ reason: "auto", context: loaded(session, later) })).toEqual({
+      status: "completed",
+    })
+    expect(requests).toHaveLength(1)
+    const store = yield* SessionStore.Service
+    const checkpoint = (yield* store.context(session.id))[0]
+    if (checkpoint?.type !== "compaction" || checkpoint.status !== "completed") throw new Error("Expected checkpoint")
+    expect(checkpoint.summary).toContain('- Branch: "after-draft"')
+    expect(checkpoint.summary).toContain("Changed files: 1 (0 tracked; 1 untracked)")
+    expect(checkpoint.summary).not.toContain('Branch: "worker-task"')
+  }),
+)
 
 /** The recent text a manual compaction keeps when the latest exchange is one tool call with this output. */
 const recentWithToolOutput = (id: Session.ID, content: SessionMessage.ToolStateCompleted["content"]) =>

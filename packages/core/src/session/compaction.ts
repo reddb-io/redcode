@@ -23,6 +23,7 @@ import { Context, Duration, Effect, Exit, Fiber, Layer, Result, Schema, Scope, S
 import { Bus } from "../bus.js"
 import { HookRuntime } from "../hook.js"
 import { Config } from "../config.js"
+import { Git } from "../git.js"
 import { Database } from "../database/database.js"
 import { llmClient } from "../effect/app-node-platform.js"
 import { ModelLimit } from "../model-limit.js"
@@ -44,6 +45,7 @@ import type { SessionMessage } from "./message.js"
 import { SessionModelRequest } from "./model-request.js"
 import { SessionRunnerModel } from "./runner/model.js"
 import { SessionProviderContext } from "./provider-context.js"
+import { SessionRepositoryStatus } from "./repository-status.js"
 import { SessionRunnerRetry } from "./runner/retry.js"
 import { SessionStore } from "./store.js"
 import { toLLMMessages } from "./runner/to-llm-message.js"
@@ -479,6 +481,7 @@ export const layer = Layer.effect(
     const modelsCatalog = yield* Model.Service
     const requests = yield* SessionModelRequest.Service
     const config = yield* Config.Service
+    const git = yield* Git.Service
     const hooks = yield* HookRuntime.Service
     const guards = yield* SessionGuardLog.Service
     const store = yield* SessionStore.Service
@@ -864,14 +867,15 @@ export const layer = Layer.effect(
           ),
         0,
       )
-      if (trigger.reason !== "manual" && !generated.hooked && source >= 256 && Token.estimate(text) >= source)
+      const checkpoint = yield* withRepositoryStatus(context, { ...screened, text })
+      if (trigger.reason !== "manual" && !generated.hooked && source >= 256 && Token.estimate(checkpoint.text) >= source)
         return yield* Effect.fail<Failure>({
           error: { type: "compaction.failed", message: "Compaction summary did not reduce the conversation" },
         })
       // The summary itself can push the checkpoint over the threshold; one that does would only trigger the next check.
-      const after = fit.overhead + Token.estimate(text) + Token.estimate(split.recent)
+      const after = fit.overhead + Token.estimate(checkpoint.text) + Token.estimate(split.recent)
       if (fit.window > 0 && !generated.hooked && after >= fit.cap) return yield* unfit(after)
-      return { ...screened, text }
+      return checkpoint
     })
 
     /**
@@ -983,7 +987,9 @@ export const layer = Layer.effect(
       turns?: number,
     ): Effect.fn.Return<Result, Failure> {
       const context = trigger.context
-      if (!context.messages.some(messageToText)) return yield* Effect.fail(NOTHING_TO_COMPACT)
+      // The readable repository snapshot on a native checkpoint is not new conversation to compact.
+      if (!context.messages.some((message) => !SessionProviderContext.isCheckpoint(message) && messageToText(message)))
+        return yield* Effect.fail(NOTHING_TO_COMPACT)
       const unsupported = (message: string) =>
         Effect.fail<Failure>({ error: { type: "provider.unsupported-operation", message } })
       const prepared = yield* prepare(context, context.messages, budget, "session")
@@ -1027,7 +1033,9 @@ export const layer = Layer.effect(
         return unsupported(`Native compaction is not supported for ${request.model.provider}/${request.model.route.id}`)
       }
 
-      return yield* deliver(trigger, prepared, "", budget, send)
+      return yield* deliver(trigger, prepared, "", budget, send).pipe(
+        Effect.flatMap((result) => withRepositoryStatus(context, result)),
+      )
     })
 
     /**
@@ -1318,6 +1326,23 @@ export const layer = Layer.effect(
         yield* bus.publish(SessionEvent.UsageRecorded, { sessionID, source: "compaction", ...usage })
       })
 
+    const withRepositoryStatus = Effect.fnUntraced(function* (context: SessionContext.Loaded, result: Result) {
+      const snapshot = yield* SessionRepositoryStatus.capture(git, context.session.location.directory)
+      if (!snapshot) return result
+      return {
+        ...result,
+        text: [result.text, snapshot].filter(Boolean).join("\n\n"),
+        ...(result.providerContext
+          ? {
+              providerContext: SessionProviderContext.encode(result.providerContext.provenance, [
+                ...SessionProviderContext.decode(result.providerContext),
+                Message.make({ role: "user", content: `<repository-status>\n${snapshot}\n</repository-status>` }),
+              ]),
+            }
+          : {}),
+      }
+    })
+
     const publish = Effect.fnUntraced(function* (
       trigger: Trigger,
       outcome: Result | Failure,
@@ -1427,6 +1452,7 @@ export const node = makeLocationNode({
     Intelligence.node,
     SessionRunnerModel.node,
     Model.node,
+    Git.node,
   ],
 })
 

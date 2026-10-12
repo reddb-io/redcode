@@ -28,6 +28,9 @@ import { LayerNode } from "@opencode/util/effect/layer-node"
 import { DateTime, Deferred, Effect, Fiber, Schema } from "effect"
 import { testEffect } from "./lib/effect"
 import { offlineModels } from "./fixture/models"
+import { repositoryStatusFixture } from "./fixture/repository-status"
+import fs from "fs/promises"
+import path from "path"
 
 const it = testEffect(
   AppNodeBuilder.build(
@@ -50,7 +53,7 @@ const it = testEffect(
   ),
 )
 
-const setup = Effect.fnUntraced(function* (options: { endpoint?: boolean } = {}) {
+const setup = Effect.fnUntraced(function* (options: { endpoint?: boolean; directory?: AbsolutePath } = {}) {
   const endpoint = options.endpoint ?? false
   const db = (yield* Database.Service).db
   const bus = yield* Bus.Service
@@ -161,7 +164,7 @@ const setup = Effect.fnUntraced(function* (options: { endpoint?: boolean } = {})
   yield* bus.publish(SessionEvent.Created, {
     sessionID,
     projectID: Project.ID.global,
-    location: { directory: AbsolutePath.make("/project") },
+    location: { directory: options.directory ?? AbsolutePath.make("/project") },
     slug: "native-compaction",
     version: "test",
   })
@@ -332,6 +335,48 @@ it.live(
     }),
   15000,
 )
+
+for (const endpoint of [false, true]) {
+  it.live(
+    `native ${endpoint ? "endpoint" : "trigger"} compaction retains the linked worktree snapshot in the replayed model request`,
+    () =>
+      Effect.gen(function* () {
+        const repository = yield* repositoryStatusFixture
+        yield* Effect.promise(async () => {
+          await fs.writeFile(path.join(repository.main, "main-only.txt"), "main")
+          await fs.writeFile(path.join(repository.linked, "tracked.txt"), "worker change\n")
+        })
+        const fixture = yield* setup({ endpoint, directory: repository.linked })
+        yield* fixture.prompt("Original task")
+        expect(yield* fixture.compact).toEqual({ status: "completed" })
+        expect(yield* fixture.compact).toMatchObject({ status: "failed", error: { type: "compaction.unavailable" } })
+        expect(fixture.state.calls).toBe(1)
+        yield* fixture.prompt("Continue the task")
+        const context = yield* fixture.load
+        const checkpoint = context.messages.find(
+          (message) => message.type === "compaction" && message.status === "completed",
+        )
+        if (checkpoint?.type !== "compaction" || checkpoint.status !== "completed")
+          throw new Error("Expected checkpoint")
+        expect(checkpoint.summary).toContain(`- Worktree: ${JSON.stringify(repository.linked)} (linked)`)
+        expect(checkpoint.summary).toContain('- Branch: "worker-task"')
+        expect(checkpoint.summary).toContain("Changed files: 1 (1 tracked; 0 untracked)")
+        const prepared = yield* fixture.requests.primary({
+          session: context.session,
+          agent: context.agent.id,
+          model: context.model,
+          tools: context.tools,
+          ...SessionModelRequest.baseTranscript({ ...context, agent: context.agent.info }),
+        })
+        const client = yield* LLMClient.Service
+        yield* client.generate(prepared.request, prepared.options)
+        expect(JSON.stringify(fixture.bodies[1])).toContain("encrypted_1")
+        expect(JSON.stringify(fixture.bodies[1])).toContain("<repository-status>")
+        expect(JSON.stringify(fixture.bodies[1])).toContain("worker-task")
+        expect(JSON.stringify(fixture.bodies[1])).not.toContain("main-only.txt")
+      }),
+  )
+}
 
 it.live("manual and automatic endpoint compaction keep the provider replacement unchanged", () =>
   Effect.gen(function* () {

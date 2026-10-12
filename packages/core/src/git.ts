@@ -63,6 +63,14 @@ export class Worktree extends Schema.Class<Worktree>("Git.Worktree")({
   kind: Schema.Literals(["main", "linked"]),
 }) {}
 
+export interface WorktreeStatus {
+  readonly changed: number
+  readonly staged: number
+  readonly unstaged: number
+  readonly untracked: number
+  readonly conflicted: number
+}
+
 export class WorktreeError extends Schema.TaggedError<WorktreeError>()("Git.WorktreeError", {
   operation: Schema.Literals(["create", "remove", "list"]),
   message: Schema.String,
@@ -108,6 +116,7 @@ export interface Interface {
     readonly resetHard: (repository: Repository, revision: string) => Effect.Effect<void, OperationError>
   }
   readonly worktree: {
+    readonly status: (repository: Repository) => Effect.Effect<WorktreeStatus | undefined>
     readonly create: (input: {
       repository: Repository
       directory: AbsolutePath
@@ -216,6 +225,42 @@ const layer = Layer.effect(
       const result = yield* run(repository.worktree, proc, ["symbolic-ref", "--quiet", "--short", "HEAD"])
       if (result.exitCode !== 0) return undefined
       return result.text.trim() || undefined
+    })
+
+    const worktreeStatus = Effect.fn("Git.worktree.status")(function* (repository: Repository) {
+      const result = yield* run(repository.worktree, proc, [
+        "--no-optional-locks",
+        "status",
+        "--porcelain=v1",
+        "--untracked-files=all",
+        "-z",
+      ])
+      if (result.exitCode !== 0) return undefined
+      const counts = nuls(result.text).reduce(
+        (current, record) => {
+          // A rename/copy has a second NUL record containing its original path, not another changed file.
+          if (current.source) return { ...current, source: false }
+          const code = record.slice(0, 2)
+          const untracked = code === "??"
+          const conflicted = code.includes("U") || code === "AA" || code === "DD"
+          return {
+            changed: current.changed + 1,
+            staged: current.staged + Number(!untracked && !conflicted && code[0] !== " "),
+            unstaged: current.unstaged + Number(!untracked && !conflicted && code[1] !== " "),
+            untracked: current.untracked + Number(untracked),
+            conflicted: current.conflicted + Number(conflicted),
+            source: code.includes("R") || code.includes("C"),
+          }
+        },
+        { changed: 0, staged: 0, unstaged: 0, untracked: 0, conflicted: 0, source: false },
+      )
+      return {
+        changed: counts.changed,
+        staged: counts.staged,
+        unstaged: counts.unstaged,
+        untracked: counts.untracked,
+        conflicted: counts.conflicted,
+      }
     })
 
     const remoteHead = Effect.fn("Git.history.defaultRemoteBranch")(function* (
@@ -698,7 +743,7 @@ const layer = Layer.effect(
       remote: { get: remote },
       history: { head, branch, defaultRemoteBranch: remoteHead, rootCommits: roots },
       sync: { fetchRemotes: fetch, fetchBranch, checkoutRemoteBranch: checkout, resetHard: reset },
-      worktree: { create: worktreeCreate, remove: worktreeRemove, list: worktreeList },
+      worktree: { status: worktreeStatus, create: worktreeCreate, remove: worktreeRemove, list: worktreeList },
       index: { refresh, ignored },
       tree: {
         capture: captureTree,

@@ -186,6 +186,7 @@ the observations. [Monitor behavior](docs/agent-features.md#monitors).
 
 **Session engine.** TUI `/compact` accepts a focus and retains important messages and decisions.
 Summaries use the vault's redaction; `/restricted` manages restricted content.
+Git sessions also retain the active worktree's branch and changed-file counts; outside Git, nothing is added.
 [Compaction details](docs/agent-features.md#compaction).
 
 </details>

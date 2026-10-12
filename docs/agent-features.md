@@ -285,6 +285,18 @@ anchors: the user messages and decisions that must survive verbatim. Its output 
 redaction as the vault, so a secret pasted earlier in the chat does not come back in the summary.
 `/restricted` lists the messages marked as restricted content and lets you remove one from the context.
 
+When the session directory is inside Git, the completed checkpoint also includes a fresh **Repository Status**:
+the active worktree's path and kind (main or linked), branch (or detached HEAD), and changed-file counts.
+Tracked, untracked, staged, unstaged and conflicted changes are distinguished; a file changed both in the index
+and working tree counts once in the total. Staged renames count as one file, and ignored files are excluded.
+Discovery starts at the session directory, including a subdirectory, so a linked worktree records its own branch
+and changes rather than those of the project's main checkout. Outside Git, no repository section is added.
+
+The snapshot is collected when the checkpoint completes, including summaries prepared in the background,
+plugin-supplied summaries and native provider compaction. It records state at that time; later Git changes
+are reflected by the next successful checkpoint. Native checkpoints keep the provider's replacement window
+and append the snapshot as readable context for the next request.
+
 ## Worktrees and the background service
 
 <img src="features/worktrees.svg" alt="Worktrees" width="100%" />
