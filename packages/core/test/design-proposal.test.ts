@@ -252,7 +252,7 @@ test("an application outside the project is never read, asked about or written",
   await using outside = await tmpdir()
   await shadcn(outside.path)
   await mkdir(path.join(tmp.path, ".git"), { recursive: true })
-  await symlink(outside.path, path.join(tmp.path, "linked"), "dir")
+  await symlink(outside.path, path.join(tmp.path, "linked"), process.platform === "win32" ? "junction" : "dir")
   // Sequential on purpose: concurrent decisions for one project share a single question.
   for (const application of ["../outside", outside.path, "linked"]) {
     const { outcome, asked } = await offer(tmp.path, "Yes", { application })

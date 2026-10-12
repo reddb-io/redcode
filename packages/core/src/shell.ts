@@ -278,7 +278,7 @@ const layer = () =>
           timeout: input.timeout ?? 0,
           shell: input.shell ?? (yield* shell.resolve({ priority: "config" })),
           env: {
-            ...(sessionEnvironment ?? process.env),
+            ...(location.workspaceID === undefined ? (sessionEnvironment ?? process.env) : undefined),
             TERM: "xterm-256color",
             OPENCODE_TERMINAL: "1",
           },

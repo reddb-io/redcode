@@ -8,9 +8,13 @@ import { Permission } from "@opencode/core/permission"
 import { AbsolutePath } from "@opencode/core/schema"
 import { Session } from "@opencode/core/session"
 import { Skill } from "@opencode/core/skill"
+import { Config } from "@opencode/core/config"
+import { Location } from "@opencode/core/location"
+import { ManagedPolicy } from "@opencode/core/managed-policy"
 import { SkillTool } from "@opencode/core/tool/plugin/skill"
 import { Tool } from "@opencode/core/tool"
 import { tmpdir } from "./fixture/tmpdir"
+import { tempLocationLayer } from "./fixture/location"
 import { Image } from "@opencode/core/image"
 import { it } from "./lib/effect"
 import { imagePassthrough } from "./lib/image"
@@ -18,6 +22,7 @@ import { permissionLayer } from "./lib/permission"
 import { makeLocationNode } from "@opencode/util/effect/app-node"
 import { FSUtil } from "@opencode/util/fs-util"
 import { toolIdentity, executeTool, registerToolPlugin, toolDefinitions } from "./lib/tool"
+import { registerIntegrationPolicy } from "./fixture/policy"
 
 const skillToolNode = makeLocationNode({
   name: "test/skill-tool-plugin",
@@ -28,6 +33,43 @@ const skillToolNode = makeLocationNode({
 const sessionID = Session.ID.make("ses_skill_tool_test")
 
 describe("SkillTool", () => {
+  it.effect("refuses a policy-blocked skill before authorization or content preparation", () =>
+    Effect.gen(function* () {
+      const skills = yield* Skill.Service
+      const managed = yield* ManagedPolicy.Service
+      const tools = yield* Tool.Service
+      // This path does not exist; an attempted content scan would fail the test.
+      yield* skills.transform((editor) =>
+        editor.add(
+          Skill.Info.make({
+            id: Skill.ID.make("private"),
+            name: Skill.Name.make("Private"),
+            path: AbsolutePath.make("/unavailable/private/SKILL.md"),
+            content: "Private instructions",
+          }),
+        ),
+      )
+      yield* managed.set({ statements: [{ action: "integration.use", resource: "skill:private", effect: "deny" }] })
+      yield* registerIntegrationPolicy({ skill: skills })
+      expect(
+        yield* executeTool(tools, {
+          sessionID,
+          ...toolIdentity,
+          call: { type: "tool-call", id: "call-policy-denied-skill", name: "skill", input: { id: "private" } },
+        }),
+      ).toEqual({ status: "error", error: { type: "tool.execution", message: "Unable to load skill private" } })
+    }).pipe(
+      Effect.provide(
+        AppNodeBuilder.build(LayerNode.group([Tool.node, skillToolNode, Skill.node, Config.node, ManagedPolicy.node]), [
+          Config.node.replace(Config.testLayer()),
+          Location.node.replace(tempLocationLayer),
+          Permission.node.replace(permissionLayer({ assert: () => Effect.die("Blocked skill reached authorization") })),
+          Image.node.replace(imagePassthrough),
+        ]),
+      ),
+    ),
+  )
+
   it.live("lists available skills, authorizes the selected ID, and loads model-facing content", () =>
     Effect.acquireRelease(
       Effect.promise(() => tmpdir()),
@@ -74,6 +116,8 @@ describe("SkillTool", () => {
             list: () => Effect.succeed(current),
           })
           const skillToolLayer = AppNodeBuilder.build(LayerNode.group([Tool.node, skillToolNode]), [
+            Location.node.replace(tempLocationLayer),
+            Config.node.replace(Config.testLayer()),
             Permission.node.replace(permission),
             Skill.node.replace(skills),
             Image.node.replace(imagePassthrough),

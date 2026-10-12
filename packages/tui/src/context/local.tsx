@@ -249,13 +249,8 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         if (route.data.type === "session") {
           const session = data.session.get(route.data.sessionID)
           const draft = current && selectionState.selectionBySessionAgent[route.data.sessionID]?.[current.id]
-          if (draft && isModelValid(draft)) return "TUI selection"
-          if (
-            session?.model &&
-            (!session.agent || session.agent === current?.id) &&
-            isModelValid({ providerID: session.model.providerID, modelID: session.model.id })
-          )
-            return "session model"
+          if (draft) return "TUI selection"
+          if (session?.model && (!session.agent || session.agent === current?.id)) return "session model"
         }
         const selected = current && selectionState.newSessionModelByLocationAgent[locationAgentKey(current.id)]
         if (selected && isModelValid(selected)) return "TUI selection"
@@ -307,10 +302,9 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         const current = agent.current()
         if (!current) return
         const session = data.session.get(sessionID)
-        const selected = [
-          selectionState.selectionBySessionAgent[sessionID]?.[current.id],
-          !session?.agent || session.agent === current.id ? durableSelection(sessionID) : undefined,
-        ].find((selection) => selection && isModelValid(selection))
+        const selected =
+          selectionState.selectionBySessionAgent[sessionID]?.[current.id] ??
+          (!session?.agent || session.agent === current.id ? durableSelection(sessionID) : undefined)
         if (selected) {
           const info = models()?.find((item) => item.providerID === selected.providerID && item.id === selected.modelID)
           return {

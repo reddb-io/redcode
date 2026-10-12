@@ -1,4 +1,6 @@
 import { Bus } from "@opencode/core/bus"
+import { Environment, makeFiles } from "@opencode/core/environment/index"
+import { EnvironmentUnavailable } from "@opencode/core/environment/unavailable"
 import { Config } from "@opencode/core/config"
 import { Integration } from "@opencode/core/integration"
 import { Model } from "@opencode/core/model"
@@ -38,6 +40,25 @@ function eventually<A>(
 }
 
 describe("OllamaPlugin", () => {
+  it.live("skips unconfigured localhost discovery without a local execution plane", () =>
+    Effect.gen(function* () {
+      const plugin = yield* Plugin.Service
+      const host = yield* PluginHost.make(plugin)
+      const providers = yield* Provider.Service
+      yield* OllamaPlugin.effect(host).pipe(
+        Effect.provideService(
+          Environment.Service,
+          Environment.Service.of({
+            files: makeFiles({ spawner: EnvironmentUnavailable.spawner }),
+            spawner: EnvironmentUnavailable.spawner,
+          }),
+        ),
+      )
+      yield* Effect.promise(() => Bun.sleep(20))
+      expect(yield* providers.get(Provider.ID.make("ollama"))).toBeUndefined()
+    }),
+  )
+
   it.live("discovers local completion models and native metadata", () =>
     Effect.acquireUseRelease(
       Effect.sync(() => {
@@ -70,7 +91,7 @@ describe("OllamaPlugin", () => {
                     }
                   : body.model === "unknown-context"
                     ? show({ family: "unknown", capabilities: ["completion"], context: 0 })
-                  : show({ family: "nomic-bert", capabilities: ["embedding"], context: 8192 }),
+                    : show({ family: "nomic-bert", capabilities: ["embedding"], context: 8192 }),
               )
             },
           }),

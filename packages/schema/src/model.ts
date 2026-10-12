@@ -88,6 +88,8 @@ export const Compatibility = Schema.Struct({
   requireFinishReason: Schema.Boolean.pipe(optional),
   requireAssistantAfterTool: Schema.Boolean.pipe(optional),
   supportsPromptCacheKey: Schema.Boolean.pipe(optional),
+  /** Whether native effort updates are accepted by this model's selected backend. */
+  supportsEffortUpdates: Schema.Boolean.pipe(optional),
   /** Whether the model accepts a forced tool choice (`required` or a named tool); overrides model-ID detection. */
   forcedToolChoice: Schema.Boolean.pipe(optional),
 }).annotate({ identifier: "Model.Compatibility" })

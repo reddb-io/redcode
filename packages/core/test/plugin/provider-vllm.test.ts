@@ -1,4 +1,6 @@
 import { Bus } from "@opencode/core/bus"
+import { Environment, makeFiles } from "@opencode/core/environment/index"
+import { EnvironmentUnavailable } from "@opencode/core/environment/unavailable"
 import { Config } from "@opencode/core/config"
 import { Integration } from "@opencode/core/integration"
 import { Model } from "@opencode/core/model"
@@ -48,6 +50,25 @@ const remoteModel = (id: string, max_model_len = 32_768, owned_by = "vllm") => (
 })
 
 describe("VLLMPlugin", () => {
+  it.live("skips unconfigured localhost discovery without a local execution plane", () =>
+    Effect.gen(function* () {
+      const plugin = yield* Plugin.Service
+      const host = yield* PluginHost.make(plugin)
+      const providers = yield* Provider.Service
+      yield* VLLMPlugin.effect(host).pipe(
+        Effect.provideService(
+          Environment.Service,
+          Environment.Service.of({
+            files: makeFiles({ spawner: EnvironmentUnavailable.spawner }),
+            spawner: EnvironmentUnavailable.spawner,
+          }),
+        ),
+      )
+      yield* Effect.promise(() => Bun.sleep(20))
+      expect(yield* providers.get(Provider.ID.make("vllm"))).toBeUndefined()
+    }),
+  )
+
   it.live("waits for readiness and discovers official vLLM model metadata", () =>
     Effect.acquireUseRelease(
       Effect.sync(() => {
@@ -142,10 +163,7 @@ describe("VLLMPlugin", () => {
           expect(yield* modelState.get(providerID, Model.ID.make("second-model"))).toBeUndefined()
 
           state.failing = false
-          yield* eventually(
-            modelState.get(providerID, Model.ID.make("second-model")),
-            (model) => model !== undefined,
-          )
+          yield* eventually(modelState.get(providerID, Model.ID.make("second-model")), (model) => model !== undefined)
           expect(yield* modelState.get(providerID, Model.ID.make("first-model"))).toBeUndefined()
         }),
       ({ server }) => Effect.promise(() => server.stop(true)),
@@ -278,10 +296,7 @@ describe("VLLMPlugin", () => {
             requests.splice(0)
             yield* config.setEntries([configuration({ baseURL }), configuration({ apiKey: "next-secret" })])
             yield* bus.publish(Event.Updated, {})
-            yield* eventually(
-              providers.get(providerID),
-              (provider) => provider?.settings?.apiKey === "next-secret",
-            )
+            yield* eventually(providers.get(providerID), (provider) => provider?.settings?.apiKey === "next-secret")
             expect(requests).toContainEqual({ authorization: "Bearer next-secret", path: "/proxy/health" })
             expect(requests).toContainEqual({ authorization: "Bearer next-secret", path: "/proxy/v1/models" })
           }),

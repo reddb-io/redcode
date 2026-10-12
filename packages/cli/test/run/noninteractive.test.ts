@@ -218,6 +218,14 @@ async function run(input: {
   messages?: (inboxID: string) => SessionMessageInfo[]
   wait?: () => Promise<void>
   terminalDelay?: number
+  parents?: Record<string, string>
+  permissionReply?: (input: {
+    sessionID: string
+    requestID: string
+    decision: string
+    message?: string
+  }) => Promise<void>
+  interrupt?: () => Promise<void>
 }) {
   const sdk = OpenCode.make({ baseUrl: "https://opencode.test" })
   const values: V2Event[] = [{ id: "evt_connected", type: "server.connected", data: {} }]
@@ -241,6 +249,13 @@ async function run(input: {
   })()
   spyOn(sdk.event, "subscribe").mockImplementation(() => stream)
   spyOn(sdk.permission, "list").mockImplementation(() => ok([]) as never)
+  spyOn(sdk.session, "get").mockImplementation(
+    (request) => ok({ id: request.sessionID, parentID: input.parents?.[request.sessionID] }) as never,
+  )
+  spyOn(sdk.permission, "reply").mockImplementation(
+    (request) => (input.permissionReply?.(request) ?? ok(undefined)) as never,
+  )
+  spyOn(sdk.session, "interrupt").mockImplementation(() => (input.interrupt?.() ?? ok(undefined)) as never)
   spyOn(sdk.session.form, "list").mockImplementation(
     (request) => ok(input.pendingForms?.filter((item) => item.sessionID === request.sessionID) ?? []) as never,
   )
@@ -312,6 +327,57 @@ afterEach(() => {
 })
 
 describe("runNonInteractivePrompt", () => {
+  test("declines descendant approvals with feedback without interrupting or answering unrelated sessions", async () => {
+    const replies: { sessionID: string; requestID: string; decision: string; message?: string }[] = []
+    let interrupted = false
+    await run({
+      parents: { ses_child: "ses_1", ses_grandchild: "ses_child" },
+      permissionReply: (input) => {
+        replies.push(input)
+        return ok(undefined)
+      },
+      interrupt: () => {
+        interrupted = true
+        return ok(undefined)
+      },
+      turn: (id) => [
+        prompted(id),
+        ...["ses_child", "ses_grandchild", "ses_other"].map(
+          (sessionID): V2Event => ({
+            id: `evt_permission_${sessionID}`,
+            created: 1,
+            type: "permission.asked",
+            data: { id: `per_${sessionID}`, sessionID, action: "shell", resources: ["git status"], save: ["*"] },
+          }),
+        ),
+        settled(),
+      ],
+    })
+    expect(replies.map((reply) => reply.sessionID)).toEqual(["ses_child", "ses_grandchild"])
+    expect(
+      replies.every((reply) => reply.decision === "reject" && reply.message?.includes("Continue without this action")),
+    ).toBe(true)
+    expect(interrupted).toBe(false)
+  })
+
+  test("cancels descendant forms without touching unrelated sessions", async () => {
+    const cancelled: string[] = []
+    await run({
+      parents: { ses_child: "ses_1" },
+      cancel: (input) => {
+        cancelled.push(input.sessionID)
+        return ok(undefined)
+      },
+      turn: (id) => [
+        prompted(id),
+        formCreated(form("frm_child", "ses_child")),
+        formCreated(form("frm_foreign", "ses_other")),
+        settled(),
+      ],
+    })
+    expect(cancelled).toEqual(["ses_child"])
+  })
+
   test("keeps formatted tool output and compact tool metadata in JSON", async () => {
     const output = await capture({ format: "json", turn: successfulGrep })
     const events = output.stdout
@@ -429,7 +495,10 @@ describe("runNonInteractivePrompt", () => {
     }
     expect(sdk.session.form.cancel).toHaveBeenCalledWith({ sessionID: "global", formID: "frm_live" }, globalOptions)
     expect(sdk.session.form.cancel).toHaveBeenCalledWith({ sessionID: "ses_1", formID: "frm_pending" })
-    expect(sdk.session.form.cancel).toHaveBeenCalledWith({ sessionID: "global", formID: "frm_pending_global" }, globalOptions)
+    expect(sdk.session.form.cancel).toHaveBeenCalledWith(
+      { sessionID: "global", formID: "frm_pending_global" },
+      globalOptions,
+    )
     expect(sdk.form.list).toHaveBeenCalledWith({
       location: { directory: "/work tree" },
     })
@@ -443,7 +512,10 @@ describe("runNonInteractivePrompt", () => {
     })
     expect(sdk.session.form.cancel).toHaveBeenCalledWith({ sessionID: "ses_1", formID: "frm_pending" })
     expect(sdk.form.list).not.toHaveBeenCalled()
-    expect(sdk.session.form.cancel).not.toHaveBeenCalledWith({ sessionID: "global", formID: "frm_live" }, expect.anything())
+    expect(sdk.session.form.cancel).not.toHaveBeenCalledWith(
+      { sessionID: "global", formID: "frm_live" },
+      expect.anything(),
+    )
     expect(sdk.session.form.cancel).not.toHaveBeenCalledWith(
       { sessionID: "global", formID: "frm_pending_global" },
       expect.anything(),

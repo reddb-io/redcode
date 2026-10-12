@@ -72,6 +72,10 @@ describe("toSessionError", () => {
   })
 
   test("preserves the permission rejection type without exposing internal fields", () => {
+    expect(toSessionError(new Permission.CorrectedError({ feedback: "Continue without this action." }))).toEqual({
+      type: "permission.rejected",
+      message: "Continue without this action.",
+    })
     const blocked = new Permission.BlockedError({ rules: [], permission: "external_directory", resources: [] })
     expect(toSessionError(blocked)).toEqual({
       type: "permission.rejected",

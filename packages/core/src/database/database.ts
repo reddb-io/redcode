@@ -5,6 +5,8 @@ import { sqliteLayer, supportsForeignKeyToggle, supportsTuningPragmas } from "#s
 import { Context, Effect, Layer, Schema, Semaphore } from "effect"
 import type { SqlClient } from "effect/unstable/sql"
 import { Global } from "@opencode/util/global"
+import { closeSync, existsSync, openSync } from "node:fs"
+import { chmod } from "node:fs/promises"
 import { isAbsolute, join } from "path"
 import { DatabaseMigration } from "./migration.js"
 import { makeGlobalNode } from "@opencode/util/effect/app-node"
@@ -112,10 +114,27 @@ export function layer(options: Options = { path: ":memory:" }) {
           Layer.provide(sqliteLayer({ filename, timeout: BUSY_TIMEOUT_MS })),
         )
       const filename = options.path ?? ":memory:"
-      if (filename === ":memory:" || isAbsolute(filename)) return provide(filename)
-      const global = yield* Global.Service
-      return provide(join(global.data, filename))
+      if (filename === ":memory:") return provide(filename)
+      const file = isAbsolute(filename) ? filename : join((yield* Global.Service).data, filename)
+      yield* Effect.promise(() => restrictToOwner(file))
+      return provide(file)
     }),
+  )
+}
+
+// SQLite inherits the database's mode for new sidecars; existing sidecars need tightening too.
+// Windows uses the containing user directory's ACLs instead of POSIX modes.
+async function restrictToOwner(filename: string) {
+  if (process.platform === "win32") return
+  // Opening and closing an existing DB can release another connection's POSIX locks.
+  if (!existsSync(filename)) closeSync(openSync(filename, "a", 0o600))
+  await chmod(filename, 0o600)
+  await Promise.all(
+    [`${filename}-wal`, `${filename}-shm`].map((file) =>
+      chmod(file, 0o600).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== "ENOENT") throw error
+      }),
+    ),
   )
 }
 

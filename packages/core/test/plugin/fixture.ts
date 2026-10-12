@@ -3,6 +3,7 @@ import { AISDK } from "@opencode/core/aisdk"
 import { Command } from "@opencode/core/command"
 import { Config } from "@opencode/core/config"
 import { Credential } from "@opencode/core/credential"
+import { Database } from "@opencode/core/database/database"
 import { LayerNodePlatform } from "@opencode/util/effect/app-node-platform"
 import { AppProcess } from "@opencode/util/process"
 import { LayerNode } from "@opencode/util/effect/layer-node"
@@ -25,6 +26,8 @@ import { PluginHooks } from "@opencode/core/plugin/hooks"
 import { Provider } from "@opencode/core/provider"
 import { ProviderRemove } from "@opencode/core/provider-removal"
 import { Session } from "@opencode/core/session"
+import { SubagentJob } from "@opencode/core/session/subagent-job"
+import { FileAccess } from "@opencode/core/file-access"
 import { SessionStore } from "@opencode/core/session/store"
 import { PersistentPty } from "@opencode/core/persistent-pty"
 import { LocationServiceMap } from "@opencode/core/location-service-map"
@@ -75,57 +78,63 @@ const permissionLayer = Layer.succeed(
   }),
 )
 
-export const PluginTestLayer = AppNodeBuilder.build(
-  LayerNode.group([
-    AppProcess.node,
-    FileSystem.node,
-    FSUtil.node,
-    Location.node,
-    Npm.node,
-    Credential.node,
-    Bus.node,
-    Form.node,
-    Generate.node,
-    LayerNodePlatform.httpClient,
-    Plugin.node,
-    Agent.node,
-    AISDK.node,
-    Provider.node,
-    ProviderRemove.node,
-    Model.node,
-    ModelsDev.node,
-    Command.node,
-    Config.node,
-    Integration.node,
-    KV.node,
-    ManagedPolicy.node,
-    Mcp.node,
-    Session.node,
-    SessionStore.node,
-    PersistentPty.node,
-    LocationServiceMap.node,
-    Permission.node,
-    PluginHooks.node,
-    HookRuntime.node,
-    Reference.node,
-    Rpc.node,
-    Skill.node,
-    SkillDiscovery.node,
-    Tool.node,
-    Vault.node,
-    Vcs.node,
-    Watcher.node,
-    WebSearch.node,
-    Worktree.node,
-    WorktreeStrategies.node,
-  ]),
-  [
-    Location.node.replace(tempLocationLayer),
-    Npm.node.replace(npmLayer),
-    Config.node.replace(Config.testLayer()),
-    Mcp.node.replace(emptyMcpLayer),
-    offlineModels,
-    Generate.node.replace(generateLayer),
-    Permission.node.replace(permissionLayer),
-  ],
-)
+export const makePluginTestLayer = (permission = permissionLayer) =>
+  AppNodeBuilder.build(
+    LayerNode.group([
+      AppProcess.node,
+      FileSystem.node,
+      FileAccess.node,
+      FSUtil.node,
+      Location.node,
+      Npm.node,
+      Credential.node,
+      Database.node,
+      Bus.node,
+      Form.node,
+      Generate.node,
+      LayerNodePlatform.httpClient,
+      Plugin.node,
+      Agent.node,
+      AISDK.node,
+      Provider.node,
+      ProviderRemove.node,
+      Model.node,
+      ModelsDev.node,
+      Command.node,
+      Config.node,
+      Integration.node,
+      KV.node,
+      ManagedPolicy.node,
+      Mcp.node,
+      Session.node,
+      SubagentJob.node,
+      SessionStore.node,
+      PersistentPty.node,
+      LocationServiceMap.node,
+      Permission.node,
+      PluginHooks.node,
+      HookRuntime.node,
+      Reference.node,
+      Rpc.node,
+      Skill.node,
+      SkillDiscovery.node,
+      Tool.node,
+      Vault.node,
+      Vcs.node,
+      Watcher.node,
+      WebSearch.node,
+      Worktree.node,
+      WorktreeStrategies.node,
+    ]),
+    [
+      Location.node.replace(tempLocationLayer),
+      Npm.node.replace(npmLayer),
+      Config.node.replace(Config.testLayer()),
+      Mcp.node.replace(emptyMcpLayer),
+      offlineModels,
+      Generate.node.replace(generateLayer),
+      Permission.node.replace(permission),
+    ],
+  )
+
+export const PluginTestLayer = makePluginTestLayer()

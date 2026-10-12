@@ -386,8 +386,12 @@ describe("DesignStore revisions", () => {
       const directory = yield* seed
       const store = yield* DesignStore.Service
       const created = yield* store.create(sessionID, checkout)
-      yield* write(path.join(directory, "secret.txt"), "outside the prototype")
-      yield* Effect.promise(() => symlink(path.join(directory, "secret.txt"), path.join(created.root, "leak.txt")))
+      const secret = path.join(directory, "secret")
+      yield* Effect.promise(() => mkdir(secret))
+      yield* write(path.join(secret, "secret.txt"), "outside the prototype")
+      yield* Effect.promise(() =>
+        symlink(secret, path.join(created.root, "leak"), process.platform === "win32" ? "junction" : "dir"),
+      )
 
       expect((yield* store.publish(sessionID, created.id, "Leak").pipe(Effect.flip)).message).toBe(
         "Design snapshots cannot contain symlinks",
@@ -1333,7 +1337,10 @@ describe("DesignStore note statuses", () => {
       expect(systemOne.asked).toHaveLength(1)
       expect(Object.keys(systemOne.asked[0].questions)).toEqual(["note_0"])
       const notes = (systemOne.asked[0].sources as { notes: ReadonlyArray<{ change?: { content: string } }> }).notes
-      expect(JSON.parse(notes[0].change!.content)).toMatchObject({ delta: unknown, unmeasured: DesignVerify.describe(unknown) })
+      expect(JSON.parse(notes[0].change!.content)).toMatchObject({
+        delta: unknown,
+        unmeasured: DesignVerify.describe(unknown),
+      })
     }),
   )
 

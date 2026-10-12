@@ -1,5 +1,5 @@
 {
-  "snapshotDate": "2026-10-10",
+  "snapshotDate": "2026-10-12",
   "upstream": {
     "repository": "anomalyco/opencode",
     "v2": "f714e5f68b0013f92ce5b8d587b0ae3dff0828d5",
@@ -7,23 +7,47 @@
     "compatibleEffectRC": "c50e39b72ba795f4a52d621ad0372cd35f0bbb2f",
     "license": "MIT",
     "attribution": "OpenCode documentation and source excerpts: Anomaly and contributors. References describe OpenCode; commercial pricing does not establish Redcode pricing.",
-    "latestObservedV2": "4b6fea2875e4f2e3e8a8fee181803e54f7056845",
+    "latestObservedV2": "4617210822bdbb31e5749751afbfb4584ccedac8",
     "branchInventory": "docs/opencode-upstream-branches.json",
-    "branchCount": 2032,
-    "allBranchesReviewed": false
+    "branchCount": 2063,
+    "allBranchesReviewed": false,
+    "activityWindow": {
+      "since": "2026-09-28T03:00:00Z",
+      "until": "2026-10-12T17:03:03Z"
+    },
+    "adoptionLedger": "docs/opencode-2026-10-12-adoption.json"
   },
   "redcode": {
-    "baseline": "46086ff0cdd9f406650a2c8e54a3919c0ace878a",
-    "installedVersion": "0.75.0",
+    "baseline": "3ee8bbd15747b326eec6251245a0fed71653221b",
     "newWork": "unreleased",
     "completeParity": false,
     "infrastructureAccess": {
       "implemented": true,
       "newWork": "unreleased",
       "roles": ["infrastructure admin", "infrastructure user", "organization owner/admin", "organization member"],
-      "features": ["separate owner memberships", "explicit workspace checkout grants", "opt-in Console-backed server authorization", "scoped worker registries and batches", "account/workspace result visibility", "revalidation before queued admission", "last infrastructure administrator protection", "local-code claim for existing installations", "Console Infrastructure and Tasks DS views"],
-      "verified": ["production HTTP coordinator authorization and revoked queued admission", "existing-database migration and concurrent ownership claim", "production Console browser role and grant workflows"],
-      "pending": ["installed desktop acceptance", "per-tenant interactive sessions and terminals", "OS/container execution isolation", "physical Raspberry Pi acceptance", "reassignment fencing and automatic termination after revocation"],
+      "features": [
+        "separate owner memberships",
+        "explicit workspace checkout grants",
+        "opt-in Console-backed server authorization",
+        "scoped worker registries and batches",
+        "account/workspace result visibility",
+        "revalidation before queued admission",
+        "last infrastructure administrator protection",
+        "local-code claim for existing installations",
+        "Console Infrastructure and Tasks DS views"
+      ],
+      "verified": [
+        "production HTTP coordinator authorization and revoked queued admission",
+        "existing-database migration and concurrent ownership claim",
+        "production Console browser role and grant workflows"
+      ],
+      "pending": [
+        "installed desktop acceptance",
+        "per-tenant interactive sessions and terminals",
+        "OS/container execution isolation",
+        "physical Raspberry Pi acceptance",
+        "reassignment fencing and automatic termination after revocation"
+      ],
       "trustedServerCredential": "legacy password/pairing credentials retain administrator access; ordinary users use Console sessions",
       "upstream": "Redcode-specific implementation, not an OpenCode feature import"
     },
@@ -130,6 +154,18 @@
         "v2Execution": "process-local",
         "remoteWorkspacesBranch": "implementation plan, excludes clustered Session execution"
       }
+    },
+    "lastReleasedVersion": "0.77.1",
+    "recentAdoption": {
+      "counts": {
+        "present-capability": 49,
+        "adapted": 39,
+        "open-candidate": 38,
+        "draft-candidate": 3,
+        "fork-decision": 15,
+        "hosted-service-specific": 18
+      },
+      "ledger": "docs/opencode-2026-10-12-adoption.json"
     }
   },
   "method": "Documentation sections are reference topics, not a count of independent functions. Existing source does not prove acceptance. This ledger records tests and known gaps without claiming exhaustive behavioral equivalence.",

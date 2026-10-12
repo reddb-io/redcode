@@ -1,4 +1,6 @@
 import { Bus } from "@opencode/core/bus"
+import { Environment, makeFiles } from "@opencode/core/environment/index"
+import { EnvironmentUnavailable } from "@opencode/core/environment/unavailable"
 import { Config } from "@opencode/core/config"
 import { Integration } from "@opencode/core/integration"
 import { Model } from "@opencode/core/model"
@@ -37,6 +39,25 @@ function eventually<A>(
 }
 
 describe("LMStudioPlugin", () => {
+  it.live("skips unconfigured localhost discovery without a local execution plane", () =>
+    Effect.gen(function* () {
+      const plugin = yield* Plugin.Service
+      const host = yield* PluginHost.make(plugin)
+      const providers = yield* Provider.Service
+      yield* LMStudioPlugin.effect(host).pipe(
+        Effect.provideService(
+          Environment.Service,
+          Environment.Service.of({
+            files: makeFiles({ spawner: EnvironmentUnavailable.spawner }),
+            spawner: EnvironmentUnavailable.spawner,
+          }),
+        ),
+      )
+      yield* Effect.promise(() => Bun.sleep(20))
+      expect(yield* providers.get(Provider.ID.make("lmstudio"))).toBeUndefined()
+    }),
+  )
+
   test("is registered as a built-in provider plugin", () => {
     expect(LMStudioPlugin.id).toBe("opencode.provider.lmstudio")
     expect(ProviderPlugins.map((item) => item.id)).toContain("opencode.provider.lmstudio")

@@ -54,12 +54,18 @@ export interface Interface {
   /** Updates supported global config fields while preserving unrelated JSONC content. */
   readonly update?: (patch: Patch) => Effect.Effect<void, FSUtil.Error>
   /** Removes authored global references to a provider and can hide ambient credentials. */
-  readonly removeProvider?: (providerID: string, options: { hide: boolean; dryRun?: boolean }) => Effect.Effect<{
-    path: string
-    configured: boolean
-    references: string[]
-    hidden: boolean
-  }, FSUtil.Error>
+  readonly removeProvider?: (
+    providerID: string,
+    options: { hide: boolean; dryRun?: boolean },
+  ) => Effect.Effect<
+    {
+      path: string
+      configured: boolean
+      references: string[]
+      hidden: boolean
+    },
+    FSUtil.Error
+  >
   /** Clears only a provider-removal policy after a new credential is connected. */
   readonly enableProvider?: (providerID: string) => Effect.Effect<void, FSUtil.Error>
   /**
@@ -171,19 +177,19 @@ export const layer = (options?: Options) =>
 
       const loadWellknownEntry = Effect.fnUntraced(function* (entry: WellKnown.Entry) {
         const auth = entry.manifest.auth
-        if (!auth) return []
         const credential = (yield* credentials.list(entry.integrationID)).at(-1)
-        if (!credential || credential.value.type !== "key") return []
-        const variables = { [auth.env]: credential.value.key }
-        const configs = yield* wellknown
-          .resolve(entry, variables)
-          .pipe(
-            Effect.catch(() =>
-              Effect.logWarning("failed to load wellknown config", { source: entry.origin }).pipe(
-                Effect.as([] as const),
-              ),
+        const variables = auth && credential?.value.type === "key" ? { [auth.env]: credential.value.key } : undefined
+        // A failed refresh, including a missing credential, keeps the last resolved config so remote providers
+        // and allowlists do not disappear; only removing the source clears it.
+        const configs = yield* (
+          variables ? wellknown.resolve(entry, variables) : Effect.fail(new Error("No usable wellknown credential"))
+        ).pipe(
+          Effect.catch((error) =>
+            Effect.logWarning("failed to load wellknown config", { source: entry.origin, error }).pipe(
+              Effect.andThen(wellknown.cached(entry.origin)),
             ),
-          )
+          ),
+        )
         return yield* Effect.forEach(configs, (config) =>
           ConfigVariable.substitute({
             type: "virtual",
@@ -361,7 +367,8 @@ export const layer = (options?: Options) =>
         function* (patch: Patch) {
           const directory = initial.global ?? AbsolutePath.make(globalService.config)
           const candidates = ConfigDiscovery.names.map((name) => path.join(directory, name))
-          const filepath = (yield* Effect.filter(candidates, fs.isFile)).at(-1) ?? path.join(directory, "opencode.jsonc")
+          const filepath =
+            (yield* Effect.filter(candidates, fs.isFile)).at(-1) ?? path.join(directory, "opencode.jsonc")
           const text = (yield* fs.readFileStringSafe(filepath)) ?? "{}\n"
           const updated = yield* Effect.try({
             try: () =>
@@ -383,24 +390,32 @@ export const layer = (options?: Options) =>
         function* (providerID: string, options: { hide: boolean; dryRun?: boolean }) {
           const directory = initial.global ?? AbsolutePath.make(globalService.config)
           const candidates = ConfigDiscovery.names.map((name) => path.join(directory, name))
-          const filepath = (yield* Effect.filter(candidates, fs.isFile)).at(-1) ?? path.join(directory, "opencode.jsonc")
+          const filepath =
+            (yield* Effect.filter(candidates, fs.isFile)).at(-1) ?? path.join(directory, "opencode.jsonc")
           const text = (yield* fs.readFileStringSafe(filepath)) ?? "{}\n"
           const errors: ParseError[] = []
           const data: unknown = parse(text, errors, { allowTrailingComma: true })
           if (errors.length || !data || typeof data !== "object" || Array.isArray(data))
-            return yield* Effect.fail(new FSUtil.FileSystemError({
-              method: "config.removeProvider",
-              cause: new Error(`Invalid JSONC configuration: ${filepath}`),
-            }))
+            return yield* Effect.fail(
+              new FSUtil.FileSystemError({
+                method: "config.removeProvider",
+                cause: new Error(`Invalid JSONC configuration: ${filepath}`),
+              }),
+            )
           const plan = ConfigProviderRemove.plan(data, providerID, options.hide)
           if (!options.dryRun && plan.edits.length) {
             const updated = yield* Effect.try({
-              try: () => plan.edits.reduce(
-                (current, edit) => applyEdits(current, modify(current, [...edit.path], edit.value, {
-                  formattingOptions: { tabSize: 2, insertSpaces: true },
-                })),
-                text,
-              ),
+              try: () =>
+                plan.edits.reduce(
+                  (current, edit) =>
+                    applyEdits(
+                      current,
+                      modify(current, [...edit.path], edit.value, {
+                        formattingOptions: { tabSize: 2, insertSpaces: true },
+                      }),
+                    ),
+                  text,
+                ),
               catch: (cause) => new FSUtil.FileSystemError({ method: "config.removeProvider", cause }),
             })
             yield* fs.writeWithDirs(filepath, updated.endsWith("\n") ? updated : `${updated}\n`)
@@ -430,12 +445,17 @@ export const layer = (options?: Options) =>
           const edits = ConfigProviderRemove.unhide(data, providerID)
           if (!edits.length) return
           const updated = yield* Effect.try({
-            try: () => edits.reduce(
-              (current, edit) => applyEdits(current, modify(current, [...edit.path], edit.value, {
-                formattingOptions: { tabSize: 2, insertSpaces: true },
-              })),
-              text,
-            ),
+            try: () =>
+              edits.reduce(
+                (current, edit) =>
+                  applyEdits(
+                    current,
+                    modify(current, [...edit.path], edit.value, {
+                      formattingOptions: { tabSize: 2, insertSpaces: true },
+                    }),
+                  ),
+                text,
+              ),
             catch: (cause) => new FSUtil.FileSystemError({ method: "config.enableProvider", cause }),
           })
           yield* fs.writeWithDirs(filepath, updated.endsWith("\n") ? updated : `${updated}\n`)
@@ -448,7 +468,8 @@ export const layer = (options?: Options) =>
         function* (providerID: string, provider: Record<string, unknown>) {
           const directory = initial.global ?? AbsolutePath.make(globalService.config)
           const candidates = ConfigDiscovery.names.map((name) => path.join(directory, name))
-          const filepath = (yield* Effect.filter(candidates, fs.isFile)).at(-1) ?? path.join(directory, "opencode.jsonc")
+          const filepath =
+            (yield* Effect.filter(candidates, fs.isFile)).at(-1) ?? path.join(directory, "opencode.jsonc")
           const text = (yield* fs.readFileStringSafe(filepath)) ?? "{}\n"
           const errors: ParseError[] = []
           const data: unknown = parse(text, errors, { allowTrailingComma: true })

@@ -123,6 +123,66 @@ const cost = (input: number, output = 0) => [
 ]
 
 describe("OpencodePlugin", () => {
+  it.effect("refreshes past future-only policies while retaining config on malformed supported statements", () =>
+    Effect.acquireUseRelease(
+      Effect.sync(() => {
+        const state: { policies: unknown[] } = {
+          policies: [{ action: "tool.use", resource: "shell:sudo *", effect: "deny" }],
+        }
+        const server = Bun.serve({
+          port: 0,
+          fetch: () => Response.json({ providers: { opencode: {} }, experimental: { policies: state.policies } }),
+        })
+        return { server, state }
+      }),
+      ({ server, state }) =>
+        Effect.gen(function* () {
+          const credentials = yield* Credential.Service
+          const managed = yield* ManagedPolicy.Service
+          const providers = yield* Provider.Service
+          const sudo: ConfigPolicy.Info = { action: "tool.use", resource: "shell:sudo *", effect: "deny" }
+          const env: ConfigPolicy.Info = { action: "tool.use", resource: "edit:*.env", effect: "deny" }
+          yield* credentials.create({
+            integrationID: Integration.ID.make("opencode"),
+            value: Credential.Key.make({
+              type: "key",
+              key: "secret",
+              metadata: { server: server.url.origin, orgID: "org_acme", orgName: "Acme" },
+            }),
+          })
+          yield* addPlugin()
+          yield* drain
+          expect(managed.current()).toEqual({ statements: [sudo], organization: "Acme" })
+
+          for (const malformed of [
+            { action: "tool.use", resource: "shell:*", effect: "future-effect" },
+            { action: "tool.use", resource: 42, effect: "deny" },
+            { action: "tool.use", effect: "deny" },
+            null,
+            {},
+          ]) {
+            state.policies = [env, malformed]
+            yield* TestClock.adjust("1 minute")
+            yield* drain
+            expect(managed.current()).toEqual({ statements: [sudo], organization: "Acme" })
+            expect(yield* providers.get(Provider.ID.opencode)).toBeDefined()
+          }
+
+          state.policies = [{ action: "future.use", future: { values: [true] } }]
+          yield* TestClock.adjust("1 minute")
+          yield* drain
+          expect(managed.current()).toEqual({ statements: [], organization: "Acme" })
+          expect(yield* providers.get(Provider.ID.opencode)).toBeDefined()
+
+          state.policies = [{ action: "future.use", effect: { next: true } }, env]
+          yield* TestClock.adjust("1 minute")
+          yield* drain
+          expect(managed.current()).toEqual({ statements: [env], organization: "Acme" })
+        }),
+      ({ server }) => Effect.promise(() => server.stop(true)),
+    ),
+  )
+
   it.effect("registers account and service account methods", () =>
     Effect.gen(function* () {
       yield* addPlugin()
@@ -768,6 +828,7 @@ describe("OpencodePlugin", () => {
               providers: { opencode: {} },
               experimental: {
                 policies: [
+                  { action: "future.use", resource: { names: ["anything"] }, effect: "future-effect" },
                   { action: "provider.use", resource: "*", effect: "deny" },
                   { action: "provider.use", resource: "opencode", effect: "allow" },
                   { action: "permission", resource: "shell:sudo *", effect: "deny", audience: "ignored" },

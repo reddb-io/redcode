@@ -98,6 +98,7 @@ it.live("loads a local plugin with its configured options", () =>
       options: { description: "Configured greeting" },
     })
     if ("pending" in definition) return yield* Effect.die("Local plugin was not loaded")
+    if ("blocked" in definition) return yield* Effect.die("Local plugin was unexpectedly blocked")
     yield* plugins.activate([definition])
 
     expect(yield* commands.get("greet")).toMatchObject({ description: "Configured greeting" })

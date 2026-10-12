@@ -172,7 +172,7 @@ const layer = Layer.effect(
         return { session, agent: { ...agent, info: agent.info }, instructions: legacy.instructions, tools }
       const loaded = yield* Effect.all(
         {
-          builtins: builtins.load(sessionID),
+          builtins: builtins.load(),
           discovery: discovery.load(),
           skills: skillInstructions.load(permissions),
           references: referenceInstructions.load(),
@@ -186,12 +186,13 @@ const layer = Layer.effect(
         agent: { ...agent, info: agent.info },
         instructions: Instructions.combine([
           legacy?.instructions ?? Instructions.empty,
-          loaded.builtins,
+          // Shared catalogs precede the day, directory and session-specific guidance to improve prompt caching.
           CodeModeInstructions.make(tools.codeModeCatalog, preferred ? { preferred: [preferred] } : undefined),
-          loaded.discovery,
-          loaded.skills,
-          loaded.references,
           loaded.mcp,
+          loaded.references,
+          loaded.skills,
+          loaded.discovery,
+          loaded.builtins,
           designs.load(sessionID),
           // Subagents share the Location's project, so they see the same names; only the guide needs a sink.
           vaultInstructions.load(session.projectID, {

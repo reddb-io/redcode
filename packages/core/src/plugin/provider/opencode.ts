@@ -1,4 +1,4 @@
-import { Duration, Effect, Equal, Schema, Semaphore, Stream } from "effect"
+import { Duration, Effect, Equal, Option, Schema, SchemaGetter, Semaphore, Stream } from "effect"
 import type { Scope } from "effect"
 import type { IntegrationOAuthMethodRegistration } from "@opencode/plugin/effect/integration"
 import { define } from "@opencode/plugin/effect/plugin"
@@ -37,7 +37,20 @@ const RemoteResponse = Schema.Struct({
   }).pipe(Schema.optional),
   // Organization policy compiled for the authenticated caller; omitted when there is none.
   experimental: Schema.Struct({
-    policies: Schema.Array(ConfigPolicy.Info).pipe(Schema.optional),
+    policies: Schema.Array(Schema.Unknown).pipe(
+      Schema.decodeTo(Schema.Unknown, {
+        // Unknown actions may belong to a newer server. Known malformed statements must still fail validation.
+        decode: SchemaGetter.transform((policies) =>
+          policies.filter((policy) => {
+            const action = Schema.decodeUnknownOption(Schema.Struct({ action: Schema.String }))(policy)
+            return Option.isNone(action) || Schema.is(ConfigPolicy.Info.fields.action)(action.value.action)
+          }),
+        ),
+        encode: SchemaGetter.passthrough({ strict: false }),
+      }),
+      Schema.decodeTo(Schema.Array(ConfigPolicy.Info)),
+      Schema.optional,
+    ),
   }).pipe(Schema.optional),
 })
 const Device = Schema.Struct({

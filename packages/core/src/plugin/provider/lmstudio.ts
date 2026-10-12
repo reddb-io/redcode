@@ -1,7 +1,11 @@
 import { define } from "@opencode/plugin/effect/plugin"
 import type { Entry } from "@opencode/schema/config"
-import { Duration, Effect, Schedule, Schema, Semaphore, Stream } from "effect"
+import { Duration, Effect, Option, Schedule, Schema, Semaphore, Stream } from "effect"
 import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http"
+import { shellParserWasm } from "#shell-parser-wasm"
+import { Environment } from "../../environment/index.js"
+import { EnvironmentUnavailable } from "../../environment/unavailable.js"
+import { Location } from "../../location.js"
 import { Config } from "../../config.js"
 import { Model } from "../../model.js"
 import type { PluginInternal } from "../internal.js"
@@ -30,13 +34,22 @@ const Response = Schema.Struct({ models: Schema.Array(RemoteModel) })
 const discovery = new Map<string, { checked: number; apiKey?: string; models?: (typeof RemoteModel.Type)[] }>()
 const discoveryLock = Semaphore.makeUnsafe(1)
 
-export function make(origin = "http://127.0.0.1:1234", interval: Duration.Input = "30 seconds") {
+export function make(origin?: string, interval: Duration.Input = "30 seconds") {
   return define({
     id: "opencode.provider.lmstudio",
     effect: Effect.fn(function* (ctx) {
       const http = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
       const config = yield* Config.Service
-      const source = { current: configured(yield* config.entries(), origin) }
+      const environment = yield* Effect.serviceOption(Environment.Service)
+      const location = yield* Effect.serviceOption(Location.Service)
+      const defaultOrigin =
+        origin ??
+        (shellParserWasm.bash === "" ||
+        (Option.isSome(location) && location.value.workspaceID !== undefined) ||
+        (Option.isSome(environment) && environment.value.spawner === EnvironmentUnavailable.spawner)
+          ? undefined
+          : "http://127.0.0.1:1234")
+      const source = { current: configured(yield* config.entries(), defaultOrigin) }
       const loaded = { models: [] as (typeof RemoteModel.Type)[], hash: "[]" }
 
       yield* ctx.integration.transform((integrations) => {
@@ -124,7 +137,7 @@ export function make(origin = "http://127.0.0.1:1234", interval: Duration.Input 
       // Keep the last successful inventory through transient outages instead of flickering model availability.
       yield* refresh().pipe(Effect.ignore, Effect.repeat(Schedule.spaced(interval)), Effect.forkScoped)
       const reload = Effect.fn("LMStudioPlugin.reload")(function* () {
-        const next = configured(yield* config.entries(), origin)
+        const next = configured(yield* config.entries(), defaultOrigin)
         if (
           next.baseURL === source.current.baseURL &&
           next.apiKey === source.current.apiKey &&
@@ -149,10 +162,10 @@ export function make(origin = "http://127.0.0.1:1234", interval: Duration.Input 
 
 export const LMStudioPlugin = make()
 
-function configured(entries: readonly Entry[], origin: string) {
+function configured(entries: readonly Entry[], origin?: string) {
   const settings = foldSettings(entries, providerID, undefined)
   const baseURL = (
-    typeof settings?.baseURL === "string" ? settings.baseURL : `${origin.replace(/\/+$/, "")}/v1`
+    typeof settings?.baseURL === "string" ? settings.baseURL : origin ? `${origin.replace(/\/+$/, "")}/v1` : ""
   ).replace(/\/+$/, "")
   const apiKey = typeof settings?.apiKey === "string" ? settings.apiKey : undefined
   if (!URL.canParse(baseURL)) return { baseURL, apiKey }

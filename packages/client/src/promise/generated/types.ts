@@ -615,7 +615,7 @@ export type ProjectIcon = { url?: string; override?: string; color?: string }
 
 export type ProjectCommands = { start?: string }
 
-export type ProjectTime = { created: number; updated: number; active: number }
+export type ProjectTime = { created: number; updated: number; active: number; archived?: number }
 
 export type PermissionSource = { type: "tool"; messageID: string; id: string }
 
@@ -2165,6 +2165,7 @@ export type ModelCompatibility = {
   requireFinishReason?: boolean
   requireAssistantAfterTool?: boolean
   supportsPromptCacheKey?: boolean
+  supportsEffortUpdates?: boolean
   forcedToolChoice?: boolean
 }
 
@@ -3245,7 +3246,7 @@ export type ConfigEntry =
             max_output_bytes?: number
           }
           policies?: Array<{
-            action: "provider.use" | "permission"
+            action: "provider.use" | "tool.use" | "integration.use" | "permission"
             resource: string
             effect: "allow" | "deny"
             source?: "provider-removal" | null
@@ -4189,6 +4190,7 @@ export type SessionUsageBackfillOutput = { data: UsageMirrorBackfill }["data"]
 export type SessionCreateInput = {
   readonly id?: {
     readonly id?: string | null
+    readonly parentID?: string | null
     readonly title?: string | null
     readonly agent?: string | null
     readonly model?: {
@@ -4207,8 +4209,30 @@ export type SessionCreateInput = {
       readonly effect: "allow" | "deny" | "ask"
     }> | null
   }["id"]
+  readonly parentID?: {
+    readonly id?: string | null
+    readonly parentID?: string | null
+    readonly title?: string | null
+    readonly agent?: string | null
+    readonly model?: {
+      readonly id: string
+      readonly providerID: string
+      readonly variant?: string
+      readonly connection?:
+        | { readonly type: "credential"; readonly id: string }
+        | { readonly type: "env"; readonly name: string }
+    } | null
+    readonly location?: { readonly directory: string } | null
+    readonly metadata?: { readonly [x: string]: JsonValue } | null
+    readonly permissions?: ReadonlyArray<{
+      readonly action: string
+      readonly resource: string
+      readonly effect: "allow" | "deny" | "ask"
+    }> | null
+  }["parentID"]
   readonly title?: {
     readonly id?: string | null
+    readonly parentID?: string | null
     readonly title?: string | null
     readonly agent?: string | null
     readonly model?: {
@@ -4229,6 +4253,7 @@ export type SessionCreateInput = {
   }["title"]
   readonly agent?: {
     readonly id?: string | null
+    readonly parentID?: string | null
     readonly title?: string | null
     readonly agent?: string | null
     readonly model?: {
@@ -4249,6 +4274,7 @@ export type SessionCreateInput = {
   }["agent"]
   readonly model?: {
     readonly id?: string | null
+    readonly parentID?: string | null
     readonly title?: string | null
     readonly agent?: string | null
     readonly model?: {
@@ -4269,6 +4295,7 @@ export type SessionCreateInput = {
   }["model"]
   readonly location?: {
     readonly id?: string | null
+    readonly parentID?: string | null
     readonly title?: string | null
     readonly agent?: string | null
     readonly model?: {
@@ -4289,6 +4316,7 @@ export type SessionCreateInput = {
   }["location"]
   readonly metadata?: {
     readonly id?: string | null
+    readonly parentID?: string | null
     readonly title?: string | null
     readonly agent?: string | null
     readonly model?: {
@@ -4309,6 +4337,7 @@ export type SessionCreateInput = {
   }["metadata"]
   readonly permissions?: {
     readonly id?: string | null
+    readonly parentID?: string | null
     readonly title?: string | null
     readonly agent?: string | null
     readonly model?: {
@@ -9348,6 +9377,8 @@ export type CredentialActivateOutput = void
 export type CredentialRemoveInput = { readonly credentialID: { readonly credentialID: string }["credentialID"] }
 
 export type CredentialRemoveOutput = void
+
+export type ProjectListInput = { readonly archived?: { readonly archived?: boolean | undefined }["archived"] }
 
 export type ProjectListOutput = Array<Project>
 

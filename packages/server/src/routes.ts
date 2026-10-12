@@ -80,6 +80,7 @@ const applicationServiceNodes = [
   Job.node,
   MonitorRuntime.node,
   Project.node,
+  Project.sweepNode,
   Worktree.node,
   Session.node,
   SessionExecution.node,

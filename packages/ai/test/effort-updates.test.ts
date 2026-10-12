@@ -375,10 +375,12 @@ describe("OpenAI Responses effort updates", () => {
     ["openai/gpt-6-sol", true],
     ["gpt-6-luna", true],
     ["openai/gpt-6-luna", true],
-    ["gpt-6-astra-2026-09-01", false],
+    ["gpt-6-astra-2026-09-01", true],
     ["gpt-6-sol-pro", false],
     ["gpt-6-luna-pro", false],
-    ["gpt-6-sol-fast", false],
+    ["gpt-6-sol-fast", true],
+    ["gpt-6.1-sol", true],
+    ["gpt-6.1-sol-fast", true],
     ["gpt-5.6-sol", false],
   ] as const) {
     it.effect(`${supported ? "lowers" : "strips"} markers for ${id}`, () =>

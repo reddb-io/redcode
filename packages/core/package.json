@@ -129,7 +129,6 @@
     "vite-plugin-solid": "catalog:"
   },
   "dependencies": {
-    "@reddb-io/client": "1.23.4",
     "@ai-sdk/cohere": "3.0.27",
     "@ai-sdk/gateway": "3.0.104",
     "@ai-sdk/perplexity": "3.0.26",
@@ -149,6 +148,7 @@
     "@opencode/schema": "workspace:*",
     "@opencode/util": "workspace:*",
     "@parcel/watcher": "2.5.1",
+    "@reddb-io/client": "1.23.4",
     "@silvia-odwyer/photon-node": "0.3.4",
     "@standard-schema/spec": "catalog:",
     "bun-pty": "0.4.8",
@@ -166,6 +166,7 @@
     "https-proxy-agent": "7.0.6",
     "ignore": "7.0.5",
     "immer": "11.1.4",
+    "jose": "6.2.9",
     "jsonc-parser": "3.3.1",
     "linkedom": "0.18.13",
     "mime-types": "3.0.2",

@@ -23,6 +23,7 @@ import { LayerNode } from "@opencode/util/effect/layer-node"
 import { DateTime, Effect, Fiber, Layer, Option, Schema, Stream } from "effect"
 import { testEffect } from "../lib/effect"
 import { host } from "../plugin/host"
+import { offlineModels } from "../fixture/models"
 
 const model = LanguageModel.make({
   id: "test-model",
@@ -42,10 +43,38 @@ const it = testEffect(
     AppNodeBuilder.build(LayerNode.group([SessionCompaction.node, SessionModelRequest.node, Config.node, Bus.node]), [
       llmClient.replace(
         Layer.mock(LLMClient.Service)({
-          stream: () => Stream.make(LLMEvent.textDelta({ id: "summary", text: "## Objective\n- summary" })),
+          stream: () =>
+            Stream.make(
+              LLMEvent.textDelta({
+                id: "summary",
+                text: [
+                  "## Objective",
+                  "- Continue the task.",
+                  "## Requirements",
+                  "- (none)",
+                  "## Decisions",
+                  "- (none)",
+                  "## Work State",
+                  "### Completed",
+                  "- (none)",
+                  "### Active",
+                  "- Continue.",
+                  "### Blocked",
+                  "- (none)",
+                  "## Next Move",
+                  "1. Continue.",
+                  "## Relevant Files",
+                  "- (none)",
+                  "## Important Context",
+                  "- (none)",
+                ].join("\n"),
+              }),
+            ),
         }),
       ),
       Config.node.replace(config),
+      offlineModels,
+      Location.node.replace(Location.boundNode({ directory: AbsolutePath.make(process.cwd()) })),
     ]),
   ),
 )

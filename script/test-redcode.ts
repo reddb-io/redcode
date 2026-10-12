@@ -14,6 +14,7 @@ const suites = {
     "test/config/provider.test.ts",
     "test/config/reload.test.ts",
     "test/database-migration.test.ts",
+    "test/database.test.ts",
     "test/database-stream.test.ts",
     "test/design-app-binary.test.ts",
     "test/design-app-host.test.ts",
@@ -110,10 +111,46 @@ const suites = {
     "test/v1-migration.test.ts",
     "test/tool-subagent.test.ts",
     "test/tool-edit.test.ts",
+    "test/git.test.ts",
+    "test/snapshot.test.ts",
+    "test/vcs.test.ts",
+    "test/location-filesystem.test.ts",
+    "test/subagent-lifetime.test.ts",
+    "test/config/compaction.test.ts",
+    "test/config/policy.test.ts",
+    "test/config/provider-options.test.ts",
+    "test/config/skill.test.ts",
+    "test/instructions/builtins.test.ts",
+    "test/project.test.ts",
+    "test/plugin.test.ts",
+    "test/plugin/module.test.ts",
+    "test/plugin/supervisor-reload.test.ts",
+    "test/plugin/provider-chatgpt.test.ts",
+    "test/plugin/provider-openai.test.ts",
+    "test/plugin/provider-opencode.test.ts",
+    "test/plugin/provider-ollama.test.ts",
+    "test/plugin/provider-lmstudio.test.ts",
+    "test/plugin/provider-vllm.test.ts",
+    "test/plugin/provider-github-copilot.test.ts",
+    "test/plugin/provider-google-vertex.test.ts",
+    "test/plugin/session-compact.test.ts",
+    "test/plugin/session-remove.test.ts",
+    "test/tool-opencode.test.ts",
+    "test/session-skill.test.ts",
+    "test/skill.test.ts",
+    "test/tool-skill.test.ts",
+    "test/shell-parse.test.ts",
+    "test/shell-retention.test.ts",
+    "test/session-runner-tool-events.test.ts",
+    "test/github-copilot/convert-to-copilot-messages.test.ts",
+    "test/github-copilot/copilot-chat-model.test.ts",
     "test/tool-shell.test.ts",
     "test/worktree.test.ts",
   ],
   cli: [
+    "test/pair-remote-consent.test.ts",
+    "test/run/noninteractive.test.ts",
+    "test/updater-install.test.ts",
     "test/auth-login-choices.test.ts",
     "test/config.test.ts",
     "test/reasoning-flag.test.ts",
@@ -133,6 +170,10 @@ const suites = {
     "test/acp/replay.test.ts",
   ],
   server: [
+    "test/fs.test.ts",
+    "test/fetch.test.ts",
+    "test/session-instances.test.ts",
+    "test/workerd.test.ts",
     "test/model.test.ts",
     "test/generate.test.ts",
     "test/intelligence-history.test.ts",
@@ -156,6 +197,9 @@ const suites = {
   ],
   client: ["test/service.test.ts", "test/promise-service.test.ts"],
   tui: [
+    "test/plugin-select.test.tsx",
+    "test/cli/tui/dialog-select.test.tsx",
+    "test/context/local-selection.test.tsx",
     "test/cli/cmd/tui/integration-options.test.ts",
     "test/cli/tui/dialog-integration.test.tsx",
     "test/config-v2.test.tsx",
@@ -229,13 +273,17 @@ for (const [name, files] of Object.entries(suites)) {
   }
   console.log(`${name}: ${files.length} Redcode contract files`)
   if (process.argv.includes("--list")) continue
-  const result = await Bun.spawn([process.execPath, "run", "test", ...files], {
-    cwd,
-    env: { ...process.env, GITHUB_ACTIONS: "false" },
-    stdin: "inherit",
-    stdout: "inherit",
-    stderr: "inherit",
-  }).exited
+  // Windows contracts include cold starts of child Bun processes; keep those bounded without the 5s unit default.
+  const result = await Bun.spawn(
+    [process.execPath, "run", "test", ...files, "--timeout", process.platform === "win32" ? "30000" : "5000"],
+    {
+      cwd,
+      env: { ...process.env, GITHUB_ACTIONS: "false" },
+      stdin: "inherit",
+      stdout: "inherit",
+      stderr: "inherit",
+    },
+  ).exited
   if (result !== 0) failures.push(`${name} (exit ${result})`)
 }
 

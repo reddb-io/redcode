@@ -1,8 +1,8 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "1694412a-a5dc-448d-8d8b-4d55626b15cf",
-  "prevIds": ["9aa8edb5-3f48-4093-92f1-30149ff23fdc"],
+  "id": "5fb96859-7597-48d9-812f-bfbdb67ed09e",
+  "prevIds": ["1694412a-a5dc-448d-8d8b-4d55626b15cf"],
   "ddl": [
     {
       "name": "console_auth_provider",
@@ -2863,6 +2863,16 @@
       "default": "0",
       "generated": null,
       "name": "time_active",
+      "entityType": "columns",
+      "table": "project"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "time_archived",
       "entityType": "columns",
       "table": "project"
     },

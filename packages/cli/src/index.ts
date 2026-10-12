@@ -12,6 +12,7 @@ import { Updater } from "./services/updater"
 import { OPENCODE_ARTIFACT, OPENCODE_CHANNEL, OPENCODE_LOCAL, OPENCODE_VERSION } from "./version"
 import { LayerNode } from "@opencode/util/effect/layer-node"
 import { Global } from "@opencode/util/global"
+import { EffectFlock } from "@opencode/util/effect-flock"
 import { AppProcess } from "@opencode/util/process"
 import { Config } from "./config"
 import { Npm } from "@opencode/util/npm"
@@ -198,7 +199,7 @@ Effect.gen(function* () {
   Effect.provide(Config.layer),
   Effect.provide(Updater.layer),
   Effect.provide(
-    LayerNode.compile(LayerNode.group([Global.node, AppProcess.node, Npm.node]), {
+    LayerNode.compile(LayerNode.group([Global.node, AppProcess.node, Npm.node, EffectFlock.node]), {
       replacements: [
         Global.node.replace(
           Global.layerWith(process.env.OPENCODE_CONFIG_DIR ? { config: process.env.OPENCODE_CONFIG_DIR } : {}),

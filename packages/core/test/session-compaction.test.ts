@@ -26,6 +26,7 @@ import { App } from "@opencode/core/app"
 import { Agent } from "@opencode/core/agent"
 import { Location } from "@opencode/core/location"
 import { Provider } from "@opencode/core/provider"
+import { Model } from "@opencode/core/model"
 import { AbsolutePath } from "@opencode/core/schema"
 import { Money } from "@opencode/schema/money"
 import { Skill } from "@opencode/schema/skill"
@@ -43,15 +44,25 @@ let requests: LLMRequest[] = []
 /** Appended to the mocked summary, to stand for a summarizer that repeats what it read. */
 let echo = ""
 const summary = [
-  "## Objective", "- Continue the user's work.",
-  "## Requirements", "- Preserve the user's constraints.",
-  "## Decisions", "- (none)",
-  "## Work State", "### Completed", "- (none)",
-  "### Active", "- Continue the task.",
-  "### Blocked", "- (none)",
-  "## Next Move", "1. Continue from the checkpoint.",
-  "## Relevant Files", "- (none)",
-  "## Important Context", "- (none)",
+  "## Objective",
+  "- Continue the user's work.",
+  "## Requirements",
+  "- Preserve the user's constraints.",
+  "## Decisions",
+  "- (none)",
+  "## Work State",
+  "### Completed",
+  "- (none)",
+  "### Active",
+  "- Continue the task.",
+  "### Blocked",
+  "- (none)",
+  "## Next Move",
+  "1. Continue from the checkpoint.",
+  "## Relevant Files",
+  "- (none)",
+  "## Important Context",
+  "- (none)",
 ].join("\n")
 const model = LanguageModel.make({
   id: "summary-model",
@@ -107,6 +118,8 @@ const it = testEffect(
       SessionCompaction.node,
       SessionModelRequest.node,
       PluginHooks.node,
+      Agent.node,
+      Provider.node,
     ]),
     [
       Bus.node.replace(Bus.configured({ persist: true })),
@@ -130,7 +143,9 @@ test("compaction prompt preserves detailed work state and relevant files", () =>
 test("a generated checkpoint needs complete, ordered, nonempty sections", () => {
   expect(SessionCompaction.validSummary(summary)).toBe(true)
   expect(SessionCompaction.validSummary("## Objective\n- only one section")).toBe(false)
-  expect(SessionCompaction.validSummary(summary.replace("## Important Context\n- (none)", "## Important Context"))).toBe(false)
+  expect(
+    SessionCompaction.validSummary(summary.replace("## Important Context\n- (none)", "## Important Context")),
+  ).toBe(false)
   expect(SessionCompaction.validSummary(summary.replace("## Requirements", "## Wrong Heading"))).toBe(false)
 })
 
@@ -139,18 +154,27 @@ test("ineffective automatic checkpoints pause durably for the same user request"
   const second = SessionCompaction.nextGuard(first, "user-1", 88_000, 100_000)
   expect(SessionCompaction.guardPaused(second, "user-1")).toBe(true)
   expect(SessionCompaction.guardPaused(second, "user-2")).toBe(false)
-  expect(SessionCompaction.guardFromMetadata({ compaction: {
-    request: second.request ?? "",
-    ineffective: second.ineffective,
-    paused: { after: second.paused ?? "", at: 1 },
-  } })).toEqual(second)
+  expect(
+    SessionCompaction.guardFromMetadata({
+      compaction: {
+        request: second.request ?? "",
+        ineffective: second.ineffective,
+        paused: { after: second.paused ?? "", at: 1 },
+      },
+    }),
+  ).toEqual(second)
   expect(SessionCompaction.nextGuard(second, "user-2", 87_000, 100_000).ineffective).toBe(1)
   expect(SessionCompaction.nextGuard(second, "user-1", 80_000, 100_000).ineffective).toBe(0)
 })
 
 test("deterministic anchors preserve user wording and file paths within a fixed budget", () => {
   const messages = [
-    SessionMessage.User.make({ id: SessionMessage.ID.create(), type: "user", text: "Fix ./src/main.ts for #42", time: { created: DateTime.makeUnsafe(0) } }),
+    SessionMessage.User.make({
+      id: SessionMessage.ID.create(),
+      type: "user",
+      text: "Fix ./src/main.ts for #42",
+      time: { created: DateTime.makeUnsafe(0) },
+    }),
   ]
   const anchors = SessionCompaction.buildAnchors(messages)
   expect(anchors).toContain("Fix ./src/main.ts for #42")
@@ -226,12 +250,15 @@ it.effect("automatic compaction preserves history when a checkpoint would not re
     const session = yield* insertSession(Session.ID.make("ses_non_reducing_compaction"))
     const messages = [
       SessionMessage.User.make({
-        id: SessionMessage.ID.create(), type: "user",
+        id: SessionMessage.ID.create(),
+        type: "user",
         text: Array.from({ length: 65 }, (_, index) => `Keep ./file-${index}.ts`).join(" "),
         time: { created: DateTime.makeUnsafe(0) },
       }),
       Schema.decodeUnknownSync(SessionMessage.Assistant)({
-        id: SessionMessage.ID.create(), type: "assistant", agent: Agent.defaultID,
+        id: SessionMessage.ID.create(),
+        type: "assistant",
+        agent: Agent.defaultID,
         model: { id: "summary-model", providerID: "test" },
         content: [{ type: "text", text: "Okay." }],
         tokens: { input: 180_000, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -412,6 +439,39 @@ const loaded = (session: Session.Info, messages: readonly SessionMessage.Info[])
   initial: "Session instructions",
   tools: { definitions: [], execute: () => Effect.die("Compaction must not execute tools") },
 })
+
+it.effect("uses the compaction agent's model when no S2 transformations model is configured", () =>
+  Effect.gen(function* () {
+    const providers = yield* Provider.Service
+    const agents = yield* Agent.Service
+    yield* providers.transform((editor) => {
+      editor.update(Provider.ID.make("test"), (provider) => {
+        provider.package = "@opencode/ai/providers/openai"
+        provider.activation = "enabled"
+        provider.settings = { apiKey: "fixture" }
+      })
+      editor.models.update(Provider.ID.make("test"), Model.ID.make("summary-alt"), (model) => {
+        model.limit = { context: 200_000, output: 32_000 }
+      })
+    })
+    yield* agents.transform((editor) =>
+      editor.update(Agent.ID.make("compaction"), (agent) => {
+        agent.model = { providerID: Provider.ID.make("test"), id: Model.ID.make("summary-alt") }
+      }),
+    )
+    const session = yield* insertSession(Session.ID.make("ses_compaction_agent_model"))
+    const messages = [
+      SessionMessage.User.make({
+        id: SessionMessage.ID.create(),
+        type: "user",
+        text: "Continue the task after compaction.",
+        time: { created: DateTime.makeUnsafe(0) },
+      }),
+    ]
+    expect(yield* compactManually(session, messages)).toEqual({ status: "completed" })
+    expect(String(requests.at(-1)?.model.id)).toBe("summary-alt")
+  }),
+)
 
 /** Opens the compaction's message as the runner does when it delivers `/compact`, then compacts. */
 const compactManually = (
@@ -831,12 +891,8 @@ test("background preparation starts only in the band just below the threshold", 
 })
 
 test("a /compact focus steers the summary prompt", () => {
-  expect(SessionCompaction.buildPrompt(false, false, "the failing migration")).toContain(
-    "Focus: the failing migration",
-  )
-  expect(SessionCompaction.buildPrompt(true, false, "the failing migration")).toContain(
-    "Focus: the failing migration",
-  )
+  expect(SessionCompaction.buildPrompt(false, false, "the failing migration")).toContain("Focus: the failing migration")
+  expect(SessionCompaction.buildPrompt(true, false, "the failing migration")).toContain("Focus: the failing migration")
   expect(SessionCompaction.buildPrompt(false)).not.toContain("Focus:")
 })
 
@@ -847,7 +903,12 @@ it.effect("a manual compaction's focus reaches the summary request", () =>
     const compaction = yield* SessionCompaction.Service
     const session = yield* insertSession(Session.ID.make("ses_compaction_focus"))
     const inputID = SessionMessage.ID.create()
-    yield* bus.publish(SessionEvent.Compaction.Started, { sessionID: session.id, reason: "manual", recent: "", inputID })
+    yield* bus.publish(SessionEvent.Compaction.Started, {
+      sessionID: session.id,
+      reason: "manual",
+      recent: "",
+      inputID,
+    })
     expect(
       yield* compaction.compact({
         reason: "manual",
@@ -1081,7 +1142,12 @@ it.effect("a long latest exchange is cut at the allowance when carrying it whole
       yield* compaction.compact({
         reason: "auto",
         context: {
-          ...loaded(session, [userRequest("Earlier request"), measuredReply(100, "Earlier answer"), userRequest("Build it", 1), ...steps]),
+          ...loaded(session, [
+            userRequest("Earlier request"),
+            measuredReply(100, "Earlier answer"),
+            userRequest("Build it", 1),
+            ...steps,
+          ]),
           model: narrow,
         },
       }),
@@ -1110,7 +1176,12 @@ it.effect("ends with one message naming the numbers when no checkpoint can fit t
     const outcome = yield* compaction.compact({
       reason: "auto",
       context: {
-        ...loaded(session, [userRequest("Earlier request"), measuredReply(100, "Earlier answer"), userRequest("Build it", 1), huge]),
+        ...loaded(session, [
+          userRequest("Earlier request"),
+          measuredReply(100, "Earlier answer"),
+          userRequest("Build it", 1),
+          huge,
+        ]),
         model: narrow,
       },
     })
@@ -1119,7 +1190,9 @@ it.effect("ends with one message naming the numbers when no checkpoint can fit t
     expect(requests).toHaveLength(0)
     expect(outcome).toMatchObject({ status: "failed", error: { type: "compaction.unavailable" } })
     const message = outcome.status === "failed" ? outcome.error.message : ""
-    expect(message).toStartWith("Compaction cannot bring this conversation under the context window: 30,000 tokens of history, at least ")
+    expect(message).toStartWith(
+      "Compaction cannot bring this conversation under the context window: 30,000 tokens of history, at least ",
+    )
     expect(message).toMatch(
       / after compaction \(the system prompt, instructions and tool definitions take \d+\), against a window of 20,000 tokens \(from the test model list or the models catalog\)\. /,
     )

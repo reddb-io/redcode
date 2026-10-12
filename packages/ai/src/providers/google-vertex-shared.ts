@@ -43,13 +43,14 @@ export const requireProject = (value: string | undefined) => {
   })
 }
 
-export const apiKey = (input: ApiKeyOptions) => {
+export const apiKey = (input: ApiKeyOptions & { readonly project?: string; readonly location?: string }) => {
   if (input.apiKey !== undefined && (input.accessToken !== undefined || input.auth !== undefined))
     throw new ProviderConfigurationError({
       provider: id,
       message: "Google Vertex apiKey cannot be combined with accessToken or auth",
     })
   if (input.accessToken !== undefined || input.auth !== undefined) return undefined
+  if (input.apiKey === undefined && (input.project !== undefined || input.location !== undefined)) return undefined
   return input.apiKey ?? process.env.GOOGLE_VERTEX_API_KEY
 }
 

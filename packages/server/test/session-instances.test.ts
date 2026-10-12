@@ -2,6 +2,7 @@ import { expect } from "bun:test"
 import { App } from "@opencode/core/app"
 import { Bus } from "@opencode/core/bus"
 import { Database } from "@opencode/core/database/database"
+import { Config } from "@opencode/core/config"
 import { llmClient } from "@opencode/core/effect/app-node-platform"
 import { Watcher } from "@opencode/core/filesystem/watcher"
 import { Form } from "@opencode/core/form"
@@ -20,7 +21,7 @@ import { AbsolutePath } from "@opencode/schema/schema"
 import { LayerNode } from "@opencode/util/effect/layer-node"
 import { makeGlobalNode } from "@opencode/util/effect/app-node"
 import { Global } from "@opencode/util/global"
-import { Context, Duration, Effect, Layer, LayerMap, RcMap, Schedule, Schema } from "effect"
+import { Context, Duration, Effect, Layer, LayerMap, RcMap, Schema } from "effect"
 import { HttpEffect, HttpRouter, HttpServer } from "effect/unstable/http"
 import { LanguageModel, LLMClient } from "../../ai/src"
 import { OpenAIChat } from "../../ai/src/protocols/openai-chat"
@@ -53,6 +54,7 @@ it.live(
       )
       // Host and private instances must reuse the same global layer identities.
       const replacements: LayerNode.Replacements = [
+        Config.node.replace(Config.testLayer()),
         Global.node.replace(tempGlobalLayer),
         Database.node.replace(Database.node),
         Bus.node.replace(Bus.node),
@@ -329,13 +331,8 @@ it.live(
         }).pipe(instances.provide(entry.session))
       }
       expect(boots).toEqual([first.id, second.id])
-      expect(
-        yield* RcMap.keys(locations.rcMap).pipe(
-          Effect.map(Array.from),
-          Effect.repeat({ while: (keys) => keys.length > 0, schedule: Schedule.spaced("10 millis") }),
-          Effect.timeout("2 seconds"),
-        ),
-      ).toEqual([])
+      // SessionStart hooks use the shared Location; session tools and requests above still use private instances.
+      expect(yield* RcMap.keys(locations.rcMap).pipe(Effect.map(Array.from))).toEqual([location])
     }),
   15_000,
 )

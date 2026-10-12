@@ -333,7 +333,7 @@ test("replaces an incompatible owner that appears during startup", async () => {
     ensure({
       file: registration,
       version: "test",
-      command: fixture.command("delayed", "500"),
+      command: fixture.command("wait-for-old"),
     }),
   )
   await fixture.waitForFile(registration + ".starts")

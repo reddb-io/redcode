@@ -259,7 +259,7 @@ function migrateStandardProvider(info: ConfigProviderV1.Info) {
     body: info.options && options.body,
     models:
       info.models &&
-      Object.fromEntries(Object.entries(info.models).map(([name, model]) => [name, migrateModel(model)])),
+      Object.fromEntries(Object.entries(info.models).map(([name, model]) => [name, migrateModel(model, info.npm)])),
   }
 }
 
@@ -305,10 +305,16 @@ export function providerID(input: string) {
   return input
 }
 
-function migrateModel(info: typeof ConfigProviderV1.Model.Type) {
+function migrateModel(info: typeof ConfigProviderV1.Model.Type, npm: string | undefined) {
   // V1 accepted the boolean `experimental` on configured models but never read it when resolving or calling one.
   // Catalog experimental modes are separate model entries and remain owned by the V2 catalog loader.
-  const settings = info.options && ConfigProviderOptionsV1.model(info.options)
+  const compatible = (info.provider?.npm ?? npm) === "@ai-sdk/openai-compatible"
+  const split = (options: Record<string, unknown>) =>
+    compatible
+      ? ConfigProviderOptionsV1.compatibleModel(options)
+      : { settings: ConfigProviderOptionsV1.model(options), body: undefined }
+  const migrated = info.options && split(info.options)
+  const settings = migrated?.settings
   const costs = info.cost && [
     {
       input: info.cost.input,
@@ -351,14 +357,13 @@ function migrateModel(info: typeof ConfigProviderV1.Model.Type) {
     settings: info.provider?.api ? { ...settings, baseURL: info.provider.api } : settings,
     capabilities,
     headers: info.headers,
+    body: migrated?.body,
     variants:
       info.variants &&
       Object.entries(info.variants).map(([id, options]) => ({
         id,
         disabled: options.disabled,
-        settings: ConfigProviderOptionsV1.model(
-          Object.fromEntries(Object.entries(options).filter(([key]) => key !== "disabled")),
-        ),
+        ...split(Object.fromEntries(Object.entries(options).filter(([key]) => key !== "disabled"))),
       })),
     cost: costs,
     time: info.release_date === undefined ? undefined : { released: Date.parse(info.release_date) || 0 },

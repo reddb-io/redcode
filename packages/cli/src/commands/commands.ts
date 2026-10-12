@@ -436,7 +436,11 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
             config: Flag.string("config"),
             manifest: Argument.string("manifest"),
             report: Flag.string("report").pipe(Flag.withDescription("Persistent batch journal JSON file")),
-            timeout: Flag.integer("timeout").pipe(Flag.withSchema(Schema.Int.check(Schema.isGreaterThanOrEqualTo(1))), Flag.withDefault(300), Flag.withDescription("Seconds to observe each Session; unfinished work keeps its checkout reserved")),
+            timeout: Flag.integer("timeout").pipe(
+              Flag.withSchema(Schema.Int.check(Schema.isGreaterThanOrEqualTo(1))),
+              Flag.withDefault(300),
+              Flag.withDescription("Seconds to observe each Session; unfinished work keeps its checkout reserved"),
+            ),
           },
         }),
         Spec.make("recover", {
@@ -446,7 +450,10 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
             config: Flag.string("config"),
             manifest: Flag.string("manifest"),
             report: Flag.string("report"),
-            timeout: Flag.integer("timeout").pipe(Flag.withSchema(Schema.Int.check(Schema.isGreaterThanOrEqualTo(1))), Flag.withDefault(300)),
+            timeout: Flag.integer("timeout").pipe(
+              Flag.withSchema(Schema.Int.check(Schema.isGreaterThanOrEqualTo(1))),
+              Flag.withDefault(300),
+            ),
           },
         }),
         Spec.make("collect", {
@@ -456,7 +463,9 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
             config: Flag.string("config"),
             manifest: Flag.string("manifest"),
             report: Flag.string("report"),
-            output: Flag.string("output").pipe(Flag.withDescription("New output directory; existing directories are never overwritten")),
+            output: Flag.string("output").pipe(
+              Flag.withDescription("New output directory; existing directories are never overwritten"),
+            ),
           },
         }),
       ],
@@ -1012,7 +1021,12 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
       description: "Print one-time links to connect a browser or app",
       params: {
         remote: Flag.boolean("remote").pipe(
-          Flag.withDescription("Connect from other devices through an HTTPS tunnel"),
+          Flag.withDescription("Connect through an HTTPS tunnel (exposes the server to the internet)"),
+          Flag.withDefault(false),
+        ),
+        yes: Flag.boolean("yes").pipe(
+          Flag.withAlias("y"),
+          Flag.withDescription("Accept exposing the server to the internet when remote access is first enabled"),
           Flag.withDefault(false),
         ),
         url: Flag.string("url").pipe(
@@ -1070,7 +1084,10 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
       description: "Start the v2 API and web server",
       params: {
         hostname: Flag.string("hostname").pipe(Flag.optional),
-        accessConfig: Flag.string("access-config").pipe(Flag.withDescription("Console infrastructure authorization configuration file"), Flag.optional),
+        accessConfig: Flag.string("access-config").pipe(
+          Flag.withDescription("Console infrastructure authorization configuration file"),
+          Flag.optional,
+        ),
         port: Flag.integer("port").pipe(Flag.optional),
         cors: Flag.string("cors").pipe(
           Flag.withSchema(Schema.NonEmptyString),

@@ -59,10 +59,7 @@ describe("ConfigProviderPlugin.Plugin", () => {
       const modelID = Model.ID.make("chat")
       yield* providers.transform((editor) =>
         editor.models.update(providerID, modelID, (model) => {
-          model.variants = [
-            { id: Model.VariantID.make("low") },
-            { id: Model.VariantID.make("high") },
-          ]
+          model.variants = [{ id: Model.VariantID.make("low") }, { id: Model.VariantID.make("high") }]
         }),
       )
       const migrated = ConfigNormalize.normalize({
@@ -71,7 +68,9 @@ describe("ConfigProviderPlugin.Plugin", () => {
       if (migrated.type !== "normalized") throw new Error("Expected normalized config")
       expect(migrated.diagnostics).toEqual([])
       yield* addPlugin([new Document({ type: "document", info: decode(migrated.encoded) })])
-      expect((yield* models.get(providerID, modelID))?.variants.map((variant) => variant.id)).toEqual([Model.VariantID.make("low")])
+      expect((yield* models.get(providerID, modelID))?.variants.map((variant) => variant.id)).toEqual([
+        Model.VariantID.make("low"),
+      ])
     }),
   )
 
@@ -123,7 +122,10 @@ describe("ConfigProviderPlugin.Plugin", () => {
       yield* addPlugin([new Document({ type: "document", info: decode(migrated.encoded) })])
       const model = required(yield* models.get(providerID, modelID))
       expect(model.capabilities.reasoning).toBe(false)
-      expect(model.variants.map((variant) => variant.id)).toEqual([Model.VariantID.make("high"), Model.VariantID.make("fast")])
+      expect(model.variants.map((variant) => variant.id)).toEqual([
+        Model.VariantID.make("high"),
+        Model.VariantID.make("fast"),
+      ])
       expect(model.reasoningVariantIDs).toEqual([Model.VariantID.make("high")])
     }),
   )
@@ -148,7 +150,9 @@ describe("ConfigProviderPlugin.Plugin", () => {
       yield* addPlugin([new Document({ type: "document", info: decode(migrated.encoded) })])
       const model = required(yield* models.get(providerID, modelID))
       expect(model.capabilities.reasoning).toBe(true)
-      expect(model.variants.map((variant) => variant.id)).toEqual(["fast", "low", "medium", "high"].map((id) => Model.VariantID.make(id)))
+      expect(model.variants.map((variant) => variant.id)).toEqual(
+        ["fast", "low", "medium", "high"].map((id) => Model.VariantID.make(id)),
+      )
       expect(model.reasoningVariantIDs).toEqual(["low", "medium", "high"].map((id) => Model.VariantID.make(id)))
     }),
   )
@@ -172,11 +176,15 @@ describe("ConfigProviderPlugin.Plugin", () => {
       })
       if (migrated.type !== "normalized") throw new Error("Expected normalized config")
       yield* addPlugin([new Document({ type: "document", info: decode(migrated.encoded) })])
-      expect((yield* models.get(Provider.ID.make("google"), Model.ID.make("gemini-3-pro")))?.settings?.thinkingConfig).toEqual({
+      expect(
+        (yield* models.get(Provider.ID.make("google"), Model.ID.make("gemini-3-pro")))?.settings?.thinkingConfig,
+      ).toEqual({
         includeThoughts: true,
         thinkingLevel: "high",
       })
-      expect((yield* models.get(Provider.ID.make("google"), Model.ID.make("gemini-3-flash")))?.settings?.thinkingConfig).toEqual({
+      expect(
+        (yield* models.get(Provider.ID.make("google"), Model.ID.make("gemini-3-flash")))?.settings?.thinkingConfig,
+      ).toEqual({
         includeThoughts: false,
         thinkingLevel: "low",
       })
@@ -248,9 +256,17 @@ describe("ConfigProviderPlugin.Plugin", () => {
       })
       if (migrated.type !== "normalized") throw new Error("Expected normalized config")
       yield* addPlugin([new Document({ type: "document", info: decode(migrated.encoded) })])
-      expect((yield* models.get(Provider.ID.make("alibaba-cn"), Model.ID.make("qwen-plus")))?.settings?.enableThinking).toBe(true)
-      expect((yield* models.get(Provider.ID.make("alibaba-cn"), Model.ID.make("kimi-k2-thinking")))?.settings?.enableThinking).toBeUndefined()
-      expect((yield* models.get(Provider.ID.make("alibaba-cn"), Model.ID.make("qwen-no-reasoning")))?.settings?.enableThinking).toBeUndefined()
+      expect(
+        (yield* models.get(Provider.ID.make("alibaba-cn"), Model.ID.make("qwen-plus")))?.settings?.enableThinking,
+      ).toBe(true)
+      expect(
+        (yield* models.get(Provider.ID.make("alibaba-cn"), Model.ID.make("kimi-k2-thinking")))?.settings
+          ?.enableThinking,
+      ).toBeUndefined()
+      expect(
+        (yield* models.get(Provider.ID.make("alibaba-cn"), Model.ID.make("qwen-no-reasoning")))?.settings
+          ?.enableThinking,
+      ).toBeUndefined()
     }),
   )
 
@@ -278,15 +294,23 @@ describe("ConfigProviderPlugin.Plugin", () => {
       })
       if (migrated.type !== "normalized") throw new Error("Expected normalized config")
       yield* addPlugin([new Document({ type: "document", info: decode(migrated.encoded) })])
-      expect((yield* models.get(Provider.ID.make("minimax"), Model.ID.make("minimax-m3")))?.settings?.thinking).toEqual({
-        type: "adaptive",
-      })
+      expect((yield* models.get(Provider.ID.make("minimax"), Model.ID.make("minimax-m3")))?.settings?.thinking).toEqual(
+        {
+          type: "adaptive",
+        },
+      )
       expect((yield* models.get(Provider.ID.make("zai"), Model.ID.make("glm-5")))?.settings?.thinking).toEqual({
         type: "enabled",
+        clear_thinking: false,
+      })
+      // The authored OpenAI-compatible option overrides defaults through the deep JSON body overlay.
+      expect((yield* models.get(Provider.ID.make("zai"), Model.ID.make("glm-5")))?.body?.thinking).toEqual({
         clear_thinking: true,
       })
       expect((yield* models.get(Provider.ID.make("zai"), Model.ID.make("glm-4")))?.settings?.thinking).toBeUndefined()
-      expect((yield* models.get(Provider.ID.make("openrouter"), Model.ID.make("google/gemini-3-pro")))?.settings?.reasoning).toEqual({
+      expect(
+        (yield* models.get(Provider.ID.make("openrouter"), Model.ID.make("google/gemini-3-pro")))?.settings?.reasoning,
+      ).toEqual({
         effort: "high",
       })
     }),
@@ -316,11 +340,13 @@ describe("ConfigProviderPlugin.Plugin", () => {
       if (migrated.type !== "normalized") throw new Error("Expected normalized config")
       yield* addPlugin([new Document({ type: "document", info: decode(migrated.encoded) })])
 
-      expect((yield* models.get(Provider.ID.make("legacyOpenAI"), Model.ID.make("gpt-6-sol")))?.settings).toMatchObject({
-        reasoningEffort: "high",
-        reasoningSummary: "auto",
-        include: ["reasoning.encrypted_content"],
-      })
+      expect((yield* models.get(Provider.ID.make("legacyOpenAI"), Model.ID.make("gpt-6-sol")))?.settings).toMatchObject(
+        {
+          reasoningEffort: "high",
+          reasoningSummary: "auto",
+          include: ["reasoning.encrypted_content"],
+        },
+      )
       expect(
         (yield* models.get(Provider.ID.make("legacyOpenAI"), Model.ID.make("gpt-5.2-chat-latest")))?.settings
           ?.reasoningEffort,
@@ -329,15 +355,21 @@ describe("ConfigProviderPlugin.Plugin", () => {
         reasoningEffort: "medium",
         reasoningSummary: "auto",
       })
-      expect((yield* models.get(Provider.ID.make("legacyAzure"), Model.ID.make("gpt-6-sol")))?.settings?.reasoningEffort).toBeUndefined()
-      expect((yield* models.get(Provider.ID.make("legacyCopilot"), Model.ID.make("gpt-6-sol")))?.settings).toMatchObject({
+      expect(
+        (yield* models.get(Provider.ID.make("legacyAzure"), Model.ID.make("gpt-6-sol")))?.settings?.reasoningEffort,
+      ).toBeUndefined()
+      expect(
+        (yield* models.get(Provider.ID.make("legacyCopilot"), Model.ID.make("gpt-6-sol")))?.settings,
+      ).toMatchObject({
         reasoningEffort: "medium",
         reasoningSummary: "auto",
       })
-      expect((yield* models.get(Provider.ID.make("legacyMantle"), Model.ID.make("gpt-6-sol")))?.settings).toMatchObject({
-        reasoningEffort: "medium",
-        include: ["reasoning.encrypted_content"],
-      })
+      expect((yield* models.get(Provider.ID.make("legacyMantle"), Model.ID.make("gpt-6-sol")))?.settings).toMatchObject(
+        {
+          reasoningEffort: "medium",
+          include: ["reasoning.encrypted_content"],
+        },
+      )
     }),
   )
 
@@ -406,7 +438,10 @@ describe("ConfigProviderPlugin.Plugin", () => {
                 settings: { compaction: { type: "native" } },
                 models: {
                   native: {},
-                  local: { settings: { compaction: { type: "summary" } }, package: "@opencode/ai/providers/openai/chat" },
+                  local: {
+                    settings: { compaction: { type: "summary" } },
+                    package: "@opencode/ai/providers/openai/chat",
+                  },
                   unsupported: { package: "@opencode/ai/providers/openai/chat" },
                 },
               },

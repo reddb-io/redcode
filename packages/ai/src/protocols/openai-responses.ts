@@ -150,7 +150,8 @@ const supportsEffortUpdates = (request: LLMRequest) => {
   if (Schema.is(Schema.Struct({ mode: Schema.Literal("pro") }))(request.http?.body?.reasoning)) return false
   const override = request.model.compatibility?.supportsEffortUpdates
   if (override !== undefined) return override
-  return /(?:^|\/)gpt-6-(?:astra|sol|luna)$/i.test(request.model.id)
+  const match = /(?:^|\/)gpt-(\d+)(?:\.\d+)?(?:-|$)/i.exec(request.model.id)
+  return match !== null && Number(match[1]) >= 6 && !/-pro(?:-|$)/i.test(request.model.id)
 }
 
 const nativeImageToolInput = (tool: ToolDefinition) => {

@@ -21,6 +21,7 @@ import { makeLocationNode } from "@opencode/util/effect/app-node"
 import { Redact } from "@opencode/util/redact"
 import { Context, Duration, Effect, Exit, Fiber, Layer, Result, Schema, Scope, Stream } from "effect"
 import { Bus } from "../bus.js"
+import { Agent } from "../agent.js"
 import { HookRuntime } from "../hook.js"
 import { Config } from "../config.js"
 import { Git } from "../git.js"
@@ -479,6 +480,7 @@ export const layer = Layer.effect(
     const evaluator = yield* Intelligence.Service
     const models = yield* SessionRunnerModel.Service
     const modelsCatalog = yield* Model.Service
+    const agents = yield* Agent.Service
     const requests = yield* SessionModelRequest.Service
     const config = yield* Config.Service
     const git = yield* Git.Service
@@ -548,8 +550,7 @@ export const layer = Layer.effect(
           configured: (yield* config.entries()).some(
             (entry) =>
               entry.type === "document" &&
-              entry.info.providers?.[context.model.ref.providerID]?.models?.[context.model.ref.id]?.limit !==
-                undefined,
+              entry.info.providers?.[context.model.ref.providerID]?.models?.[context.model.ref.id]?.limit !== undefined,
           ),
         }),
         cap,
@@ -654,9 +655,14 @@ export const layer = Layer.effect(
             message: `Unable to read S2 transformations settings: ${settings.failure.message}`,
           },
         })
-      const fast = settings.success.fast
-      if (!fast || context.model.compaction?.type === "native") return context
-      const resolved = yield* Effect.result(models.resolve({ ...context.session, model: fast }, modelsCatalog.available))
+      if (context.model.compaction?.type === "native") return context
+      // Redcode's explicit S2 transformations model keeps precedence over the optional compaction-agent model.
+      const fast = settings.success.fast ?? (yield* agents.get(Agent.ID.make("compaction")))?.model
+      if (!fast) return context
+      const resolved = yield* Effect.result(
+        models.resolve({ ...context.session, model: fast }, modelsCatalog.available),
+      )
+      if (Result.isFailure(resolved) && !settings.success.fast) return context
       if (Result.isFailure(resolved))
         return yield* Effect.fail<Failure>({
           error: {
@@ -760,7 +766,11 @@ export const layer = Layer.effect(
           : Effect.timeoutOrElse({ duration: Duration.millis(deadline), orElse: () => Effect.succeed(undefined) }),
         Effect.forkIn(scope),
       )
-      drafts.set(context.session.id, { key: fingerprint(context, split.older.length), count: split.older.length, fiber })
+      drafts.set(context.session.id, {
+        key: fingerprint(context, split.older.length),
+        count: split.older.length,
+        fiber,
+      })
     })
 
     // The interruption runs on its own, so dropping a draft never holds up the step boundary that drops it.
@@ -868,7 +878,12 @@ export const layer = Layer.effect(
         0,
       )
       const checkpoint = yield* withRepositoryStatus(context, { ...screened, text })
-      if (trigger.reason !== "manual" && !generated.hooked && source >= 256 && Token.estimate(checkpoint.text) >= source)
+      if (
+        trigger.reason !== "manual" &&
+        !generated.hooked &&
+        source >= 256 &&
+        Token.estimate(checkpoint.text) >= source
+      )
         return yield* Effect.fail<Failure>({
           error: { type: "compaction.failed", message: "Compaction summary did not reduce the conversation" },
         })
@@ -896,9 +911,12 @@ export const layer = Layer.effect(
       )
       if (!repaired) return result
       if ((yield* review(repaired.text, 1)) === "flagged")
-        yield* Effect.logWarning("Compaction checkpoint flagged again after its rewrite; keeping the redacted rewrite", {
-          sessionID,
-        })
+        yield* Effect.logWarning(
+          "Compaction checkpoint flagged again after its rewrite; keeping the redacted rewrite",
+          {
+            sessionID,
+          },
+        )
       return { ...result, text: repaired.text, providerState: repaired.providerState }
     })
 
@@ -1439,6 +1457,7 @@ export const node = makeLocationNode({
   service: Service,
   layer,
   deps: [
+    Agent.node,
     HookRuntime.node,
     Bus.node,
     Database.node,

@@ -137,7 +137,7 @@ it.live("rejects incompatible daemons without replacing or killing them", () =>
   Effect.gen(function* () {
     const directory = yield* temporaryDirectory()
     const existing = yield* Effect.acquireRelease(
-      Effect.sync(() => spawn("sleep", ["30"])),
+      Effect.sync(() => spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { windowsHide: true })),
       (child) =>
         Effect.promise(async () => {
           if (child.exitCode !== null || child.signalCode !== null) return

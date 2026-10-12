@@ -2,7 +2,7 @@ export * as FileSystem from "./filesystem.js"
 
 import { makeLocationNode } from "@opencode/util/effect/app-node"
 import path from "path"
-import { Context, Effect, Layer, Schema } from "effect"
+import { Context, Effect, Layer, type Option, type PlatformError, Schema, type Stream } from "effect"
 import { FSUtil } from "@opencode/util/fs-util"
 import { Location } from "./location.js"
 import { AbsolutePath, PositiveInt, RelativePath } from "./schema.js"
@@ -87,10 +87,18 @@ export class GrepInput extends Schema.Class<GrepInput>("FileSystem.GrepInput")({
 
 export const Event = FileSystem.Event
 
+export interface File {
+  readonly mime: string
+  readonly size: number
+  readonly mtime: Option.Option<Date>
+  readonly stream: (options?: {
+    readonly offset?: number
+    readonly bytesToRead?: number
+  }) => Stream.Stream<Uint8Array, PlatformError.PlatformError>
+}
+
 export interface Interface {
-  readonly read: (
-    input: ReadInput,
-  ) => Effect.Effect<{ readonly content: Uint8Array; readonly mime: string }, NotFoundError>
+  readonly read: (input: ReadInput) => Effect.Effect<File, NotFoundError>
   /** Fails with `NotFoundError` when the path is missing or is not a directory. */
   readonly list: (input?: ListInput) => Effect.Effect<Entry[], NotFoundError>
   readonly find: (input: FindInput) => Effect.Effect<Entry[]>
@@ -131,11 +139,12 @@ const baseLayer = Layer.effect(
           }),
         )
     const resolve = Effect.fnUntraced(function* (input?: RelativePath) {
+      if (input?.includes("\u0000")) return yield* new NotFoundError({ path: input })
       const absolute = path.resolve(location.directory, input ?? ".")
       if (!FSUtil.contains(location.directory, absolute))
-        return yield* Effect.die(new Error("Path escapes the location"))
+        return yield* new NotFoundError({ path: input ?? RelativePath.make(".") })
       const real = yield* fs.realPath(absolute)
-      if (!FSUtil.contains(root, real)) return yield* Effect.die(new Error("Path escapes the location"))
+      if (!FSUtil.contains(root, real)) return yield* new NotFoundError({ path: input ?? RelativePath.make(".") })
       return { absolute, real, directory: location.directory }
     })
     return Service.of({
@@ -157,17 +166,12 @@ const baseLayer = Layer.effect(
             (_, error) => Effect.die(error),
           ),
         )
-        if (info.type !== "File") return yield* Effect.die(new Error("Path is not a file"))
+        if (info.type !== "File") return yield* new NotFoundError({ path: input.path })
         return {
-          content: yield* fs.readFile(target.real).pipe(
-            Effect.catchReason(
-              "PlatformError",
-              "NotFound",
-              () => Effect.fail(new NotFoundError({ path: input.path })),
-              (_, error) => Effect.die(error),
-            ),
-          ),
           mime: FSUtil.mimeType(target.real),
+          size: Number(info.size),
+          mtime: info.mtime,
+          stream: (options) => fs.stream(target.real, options),
         }
       }),
       list: Effect.fn("FileSystem.list")(function* (input = {}) {

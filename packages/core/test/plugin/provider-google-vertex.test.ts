@@ -1,11 +1,13 @@
 import { AISDK } from "@opencode/core/aisdk"
 import { describe, expect } from "bun:test"
-import { Effect } from "effect"
+import { Effect, Schedule } from "effect"
 import { Model } from "@opencode/core/model"
 import { Plugin } from "@opencode/core/plugin"
 import { PluginHost } from "@opencode/core/plugin/host"
 import { GoogleVertexPlugin } from "@opencode/core/plugin/provider/google-vertex"
 import { Provider } from "@opencode/core/provider"
+import { Integration } from "@opencode/core/integration"
+import path from "node:path"
 import { fakeSelectorSdk } from "../fixture/selector"
 import { testEffect } from "../lib/effect"
 import { PluginTestLayer } from "./fixture"
@@ -46,6 +48,41 @@ function withEnv<A, E, R>(vars: Record<string, string | undefined>, effect: () =
 }
 
 describe("GoogleVertexPlugin", () => {
+  it.live("exposes a project/location form and reloads the provider when an ADC connection is selected", () =>
+    withEnv({ CLOUDSDK_CONFIG: path.join(import.meta.dir, "fixtures", "no-gcloud") }, () =>
+      Effect.gen(function* () {
+        const providers = yield* Provider.Service
+        const integrations = yield* Integration.Service
+        yield* providers.transform((editor) =>
+          editor.update(Provider.ID.googleVertex, (provider) => {
+            provider.package = "@opencode/ai/providers/google-vertex"
+          }),
+        )
+        yield* addPlugin()
+        expect((yield* integrations.get(Integration.ID.make(Provider.ID.googleVertex)))?.methods).toContainEqual(
+          expect.objectContaining({
+            id: "google-adc",
+            type: "external",
+            form: expect.arrayContaining([
+              expect.objectContaining({ key: "project", required: true, custom: true }),
+              expect.objectContaining({ key: "location", required: true, custom: true }),
+            ]),
+          }),
+        )
+        yield* integrations.connection.external({
+          integrationID: Integration.ID.make(Provider.ID.googleVertex),
+          methodID: Integration.MethodID.make("google-adc"),
+          answer: { project: "chosen-project", location: "eu" },
+        })
+        const selected = yield* providers.get(Provider.ID.googleVertex).pipe(
+          Effect.filterOrFail((provider) => provider?.settings?.project === "chosen-project"),
+          Effect.retry({ times: 200, schedule: Schedule.spaced("10 millis") }),
+        )
+        expect(selected?.settings).toMatchObject({ project: "chosen-project", location: "eu" })
+      }),
+    ),
+  )
+
   it.effect("ignores OpenAI-compatible providers that are not Google Vertex", () =>
     Effect.gen(function* () {
       const catalog = yield* Provider.Service

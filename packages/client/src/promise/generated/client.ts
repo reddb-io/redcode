@@ -237,6 +237,7 @@ import type {
   CredentialActivateOutput,
   CredentialRemoveInput,
   CredentialRemoveOutput,
+  ProjectListInput,
   ProjectListOutput,
   ProjectUpdateInput,
   ProjectUpdateOutput,
@@ -952,6 +953,7 @@ export function make(options: ClientOptions) {
             path: `/api/session`,
             body: {
               id: input?.["id"],
+              parentID: input?.["parentID"],
               title: input?.["title"],
               agent: input?.["agent"],
               model: input?.["model"],
@@ -960,7 +962,7 @@ export function make(options: ClientOptions) {
               permissions: input?.["permissions"],
             },
             successStatus: 200,
-            declaredStatuses: [400, 401, 403],
+            declaredStatuses: [400, 401, 403, 404],
             empty: false,
           },
           requestOptions,
@@ -2159,11 +2161,12 @@ export function make(options: ClientOptions) {
         ),
     },
     project: {
-      list: (requestOptions?: RequestOptions) =>
+      list: (input?: ProjectListInput, requestOptions?: RequestOptions) =>
         request<ProjectListOutput>(
           {
             method: "GET",
             path: `/api/project`,
+            query: { archived: input?.["archived"] },
             successStatus: 200,
             declaredStatuses: [400, 401, 403, 404],
             empty: false,

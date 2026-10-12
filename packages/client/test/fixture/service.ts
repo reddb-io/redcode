@@ -22,13 +22,23 @@ if (mode === "environment") {
 }
 if (mode === "signal") process.kill(process.pid, process.platform === "win32" ? "SIGTERM" : "SIGKILL")
 
-if (mode === "delayed" || mode === "delayed-failed" || mode === "coordinated" || mode === "coordinated-failed-loser") {
+if (
+  mode === "delayed" ||
+  mode === "delayed-failed" ||
+  mode === "wait-for-old" ||
+  mode === "coordinated" ||
+  mode === "coordinated-failed-loser"
+) {
   await appendFile(registration + ".starts", process.pid + "\n")
   const owner = await writeFile(registration + ".owner", String(process.pid), { flag: "wx" })
     .then(() => true)
     .catch(() => false)
   if (!owner) process.exit(mode === "coordinated-failed-loser" ? 1 : 0)
-  if (mode === "coordinated" || mode === "coordinated-failed-loser") {
+  if (mode === "wait-for-old") {
+    // Hold startup until ensure() has observed, stopped and removed the incompatible owner.
+    while (!(await Bun.file(registration + ".old-ready").exists()) || (await Bun.file(registration).exists()))
+      await Bun.sleep(5)
+  } else if (mode === "coordinated" || mode === "coordinated-failed-loser") {
     while ((await Bun.file(registration + ".starts").text()).trim().split("\n").length < 2) await Bun.sleep(10)
     if (mode === "coordinated-failed-loser") await Bun.sleep(Number(delay ?? 1_500))
   } else await Bun.sleep(Number(delay))
@@ -122,6 +132,7 @@ await writeFile(
   { mode: 0o600 },
 )
 await rename(registration + ".tmp", registration)
+if (mode === "old") await writeFile(registration + ".old-ready", "")
 
 async function shutdown(signal?: NodeJS.Signals) {
   if (signal !== undefined) await writeFile(registration + ".signal", signal)

@@ -108,7 +108,8 @@ export const make = Effect.gen(function* () {
         return observation ? Effect.logInfo("reasoning repetition observed", observation) : Effect.void
       }).pipe(Effect.catchCause(() => Effect.void)),
     )
-    const startSnapshot = yield* snapshots.capture()
+    // Capture overlaps the provider request, but must finish before any local tool executes.
+    const pendingStartSnapshot = yield* snapshots.capture().pipe(Effect.forkScoped)
     const publisher = createLLMEventPublisher(bus, {
       onText: (text) =>
         hooks.run({ event: "MessageDisplay", session_id: input.sessionID, message: text }).pipe(Effect.asVoid),
@@ -117,7 +118,7 @@ export const make = Effect.gen(function* () {
       agent: input.agent,
       model: input.model.ref,
       providerMetadataKey: input.model.model.route.providerMetadataKey ?? input.model.model.provider,
-      snapshot: startSnapshot,
+      pendingSnapshot: Fiber.join(pendingStartSnapshot),
       started: yield* Clock.currentTimeMillis,
     })
     const toolRuns: Array<{
@@ -194,6 +195,8 @@ export const make = Effect.gen(function* () {
           lastEventAt = yield* Clock.currentTimeMillis
           reasoning.observe(event)
           if (overflowFailure || publisher.hasProviderError()) return
+          // Wait outside uninterruptible publication so capture can still be cancelled.
+          if (!publisher.hasStarted()) yield* Fiber.join(pendingStartSnapshot)
           const malformed = outputGuard.observe(event)
           if (malformed)
             return yield* new AIError({
@@ -275,6 +278,8 @@ export const make = Effect.gen(function* () {
         const stream = yield* restore(Effect.raceFirst(providerStream, watchdog)).pipe(Effect.exit)
         const streamFailure = Option.getOrUndefined(Exit.findErrorOption(stream))
         const streamInterrupted = Exit.hasInterrupts(stream)
+        if (streamInterrupted && !publisher.hasStarted() && !pendingStartSnapshot.pollUnsafe())
+          return yield* Effect.failCause(stream.cause)
         if (!overflowFailure && publisher.hasStarted()) yield* publisher.streamed()
         if (streamInterrupted) yield* interruptTools
         const joined = yield* restore(Fiber.awaitAll(toolRuns.map((run) => run.fiber))).pipe(Effect.exit)
@@ -389,6 +394,7 @@ export const make = Effect.gen(function* () {
         if (input.goalID && recordedUsage)
           yield* goals.recordUsage(input.sessionID, input.goalID, TokenUsage.total(recordedUsage.tokens))
         if (record.finish || record.failure) {
+          const startSnapshot = yield* Fiber.join(pendingStartSnapshot)
           const snapshot = yield* snapshots.capture()
           const files =
             startSnapshot && snapshot

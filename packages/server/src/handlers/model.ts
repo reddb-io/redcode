@@ -11,6 +11,7 @@ export const ModelHandler = HttpApiBuilder.group(Api, "server.model", (handlers)
       .handle(
         "model.list",
         Effect.fn(function* () {
+          yield* Plugin.awaitActivation
           const models = yield* Model.Service
           return yield* response(models.available())
         }),

@@ -133,16 +133,33 @@ export async function runNonInteractivePrompt(input: Input) {
     }
   }
 
+  const owned = new Map<string, Promise<boolean>>([[input.sessionID, Promise.resolve(true)]])
+  const ownsSession = (sessionID: string): Promise<boolean> => {
+    const known = owned.get(sessionID)
+    if (known) return known
+    const result =
+      sessionID === GLOBAL_FORM_SESSION_ID
+        ? Promise.resolve(false)
+        : input.client.session
+            .get({ sessionID })
+            .then((session) => (session.parentID ? ownsSession(session.parentID) : false))
+            .catch(() => false)
+    owned.set(sessionID, result)
+    return result
+  }
+
   const replyPermission = async (request: {
     id: string
+    sessionID: string
     action: string
     resources: ReadonlyArray<string>
     metadata?: { readonly [key: string]: unknown }
   }) => {
     // A protected request (RedRouter key management) needs a person; --auto and --yolo never answer it.
     const auto = input.auto && request.metadata?.protected === undefined
+    const continuing = !input.auto && input.compatibility !== "v1"
     if (!auto) {
-      permissionRejected = true
+      if (!continuing) permissionRejected = true
       UI.println(
         UI.Style.TEXT_WARNING_BOLD + "!",
         UI.Style.TEXT_NORMAL +
@@ -151,12 +168,18 @@ export async function runNonInteractivePrompt(input: Input) {
     }
     await input.client.permission
       .reply({
-        sessionID: input.sessionID,
+        sessionID: request.sessionID,
         requestID: request.id,
         decision: auto ? "once" : "reject",
+        ...(continuing
+          ? {
+              message:
+                "This non-interactive run cannot ask the user for permission, so the request was rejected. Continue without this action.",
+            }
+          : {}),
       })
       .catch(() => {})
-    if (!auto) {
+    if (!auto && !continuing) {
       await input.client.session.interrupt({ sessionID: input.sessionID }).catch(() => {})
     }
   }
@@ -185,14 +208,14 @@ export async function runNonInteractivePrompt(input: Input) {
       }
       const event = next.value
 
-      if (event.type === "permission.asked" && submitted && event.data.sessionID === input.sessionID) {
+      if (event.type === "permission.asked" && submitted && (await ownsSession(event.data.sessionID))) {
         await replyPermission(event.data)
         continue
       }
       if (
         event.type === "form.created" &&
         submitted &&
-        (event.data.form.sessionID === input.sessionID ||
+        ((await ownsSession(event.data.form.sessionID)) ||
           (!input.attached &&
             event.data.form.sessionID === GLOBAL_FORM_SESSION_ID &&
             sameLocation(event.location, input.location)))
