@@ -8,100 +8,105 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge&labelColor=0d1117" alt="License"></a>
 </p>
 
-<strong>An open-source coding agent for your own machines.</strong><br>
-Work in the terminal or Desktop, review prototypes beside your conversation,<br>
-and send independent tasks to your own remote workers.
+<strong>An open-source AI coding assistant for your projects.</strong><br>
+Open a project, describe the work and review the changes.
 
-<p><a href="#get-started">Get started</a> · <a href="#session-modes">Modes</a> · <a href="#features">Features</a> · <a href="#remote-execution">Remote hosts & workers</a> · <a href="#console">Console</a> · <a href="#documentation">Documentation</a></p>
+<p><a href="#desktop">Desktop</a> · <a href="#cli--tui">CLI</a> · <a href="#session-modes">Modes</a> · <a href="#features">Features</a> · <a href="#infrastructure">Servers & workers</a> · <a href="#console">Console</a></p>
 
 </div>
 
-<img src="docs/screenshots/workspace.png" alt="Redcode web workspace showing a demo planning conversation, session tabs and the composer" width="100%" />
-
-*A demo planning conversation in the web workspace shared with Desktop.*
-
-Redcode builds on [OpenCode](https://github.com/anomalyco/opencode), adding project secrets,
-S1/S2 reasoning, goals, Design review and worker administration. Attribution is preserved in [NOTICE](NOTICE).
-
 ## Get started
 
-<img src="docs/sections/get-started.svg" alt="01: Get started — open your first workspace" width="100%" />
+<img src="docs/sections/get-started.svg" alt="01: Get started — choose Desktop or the terminal" width="100%" />
+
+Choose the interface you prefer. Both work with your project's files and the model provider you connect.
 
 ### Desktop
 
-Install the full distribution with [mise](docs/installation.md), or download a **full native archive**
-from [Releases](https://github.com/reddb-io/redcode/releases). From your project directory:
+**The visual app:** conversations, sessions, subagents and Design review in one workspace.
+
+With mise installed, run:
 
 ```sh
 mise use -g github:reddb-io/redcode@latest
 redcode desktop
 ```
 
-Desktop brings conversations, session/subagent management and Design review into one workspace.
-Choose a local or remote agent server, then use **Connect provider** to configure a model and start a conversation.
+Or download a **full native archive** from [Releases](https://github.com/reddb-io/redcode/releases).
+Open your project and use **Connect provider** to add a model.
+
+<details>
+<summary>See the Desktop / web workspace</summary>
+
+<img src="docs/screenshots/workspace.png" alt="Redcode web workspace showing a demo planning conversation, session tabs and the composer" width="100%" />
+
+*The web workspace shared with Desktop, with a demonstration conversation.*
+
+</details>
 
 ### CLI / TUI
 
-Install with npm, then run from your project directory:
+**The terminal app:** the interactive coding conversation runs inside your terminal.
 
 ```sh
 npm install -g @reddb-io/redcode
+cd your-project
 redcode
 ```
 
-Use `/connect` to add a model provider, then start a conversation. `/dual` or `redcode setup`
-configures S2 and optional S1. Slash commands run **inside the TUI**; `redcode ...` commands run in your shell.
+Inside the TUI, use `/connect` to add a model provider, then describe your task.
+The npm package includes the coding engine and Design; Desktop uses the full distribution above.
 
-The npm package includes the agent engine, Console and Design. **Desktop requires the full distribution.**
-See [installation and platforms](docs/installation.md) and [client commands](docs/clients.md).
-Installing a headless host? Go to [remote hosts and workers](#remote-execution).
+[Installation and platforms](docs/installation.md) · [Client commands and history imports](docs/clients.md)
 
 ## Session modes
 
-<img src="docs/sections/session-modes.svg" alt="02: Session modes — choose how the agent works" width="100%" />
+<img src="docs/sections/session-modes.svg" alt="02: Session modes — choose the agent's job" width="100%" />
 
-Choose the agent's job for the conversation. In the TUI, `Tab` cycles modes and `Shift+Tab` goes back.
+A mode defines what the agent does in your conversation.
 
-### Build
-
+<table>
+<tr>
+<td width="50%">
+<a id="build"></a>
 <img src="docs/features/build.svg" alt="Build mode" width="100%" />
-
-Reads, edits, runs and delegates to subagents under your configured permissions.
-
-### Plan
-
+<p><strong>Build</strong> edits files, runs commands and implements the task.</p>
+</td>
+<td width="50%">
+<a id="plan"></a>
 <img src="docs/features/plan.svg" alt="Plan mode" width="100%" />
-
-Explores the project and writes a plan before implementation. `plan_exit` asks whether to switch to Build.
-
-### Design
-
+<p><strong>Plan</strong> explores the project and writes a plan before implementation.</p>
+</td>
+</tr>
+<tr>
+<td width="50%">
+<a id="design"></a>
 <img src="docs/features/design.svg" alt="Design mode" width="100%" />
-
-Creates an interactive prototype while keeping product code separate. Review decisions feed the plan.
-See [prototyping and review](#prototyping-and-review).
-
-### Question
-
+<p><strong>Design</strong> creates a prototype for you to review before changing product code.</p>
+</td>
+<td width="50%">
+<a id="question"></a>
 <img src="docs/features/question.svg" alt="Question mode" width="100%" />
+<p><strong>Question</strong> investigates the codebase using read-only tools.</p>
+</td>
+</tr>
+</table>
 
-Investigates the codebase with read-only tools. [Mode details](docs/agent-features.md#modes).
+In the TUI, `Tab` cycles modes and `Shift+Tab` goes back. [Mode details](docs/agent-features.md#modes).
 
 ---
 
 ## Features
 
-<img src="docs/sections/features.svg" alt="03: Features — tools for your coding sessions" width="100%" />
+<img src="docs/sections/features.svg" alt="03: Features — explore individual capabilities" width="100%" />
 
-**Session engine** features run on the agent server behind your client. **CLI/TUI**, **Desktop** and
-**browser** labels identify controls or review interfaces; optional integrations are named explicitly.
+Open a feature to see its SVG, where it runs and how to use it.
 
-[Secrets & safeguards](#secrets-and-safeguards) · [Autonomy & monitoring](#autonomy-and-monitoring) ·
-[Context & sessions](#context-and-sessions) · [Prototyping & integrations](#prototyping-and-integrations)
+<a id="vault"></a>
+<a id="secrets-and-safeguards"></a>
 
-### Secrets and safeguards
-
-#### Vault
+<details open>
+<summary><strong>Vault</strong> — project secrets through references</summary>
 
 <img src="docs/features/vault.svg" alt="Per-project secret vault" width="100%" />
 
@@ -109,26 +114,13 @@ Investigates the codebase with read-only tools. [Mode details](docs/agent-featur
 tools resolve the value when needed and redact known secrets from output. Secrets belong to the project.
 Use `/vault` or `redcode vault`. [Behavior and storage](docs/agent-features.md#vault).
 
-#### Stop-loss and loop guard
+</details>
 
-<img src="docs/features/stop-loss.svg" alt="Stop-loss and loop guard" width="100%" />
+<a id="goal"></a>
+<a id="autonomy-and-monitoring"></a>
 
-**Session engine.** Detects repeated tool results and spending without progress. TUI `/budget` adds an
-optional spend/token limit; no cost limit is imposed by default. [Session guards](docs/agent-features.md#stop-loss-and-loop-guard).
-
----
-
-### Autonomy and monitoring
-
-#### S1 · S2 dual reasoning
-
-<img src="docs/features/intelligence.svg" alt="S1 and S2 dual reasoning" width="100%" />
-
-**Session engine · TUI controls.** S2 does the work; optional S1 evaluates candidates and provides feedback.
-Configure with `/dual` and inspect with `/intelligence`. Coding studies have not demonstrated an accuracy
-or speed gain. [Roles](docs/system-one.md) · [Measurements](docs/evaluations/reasoning-0.71.3-2026-10-02.md).
-
-#### Goal
+<details>
+<summary><strong>Goal</strong> — keep working toward a verified outcome</summary>
 
 <img src="docs/features/goal.svg" alt="Autonomous goals with completion criteria" width="100%" />
 
@@ -136,44 +128,14 @@ or speed gain. [Roles](docs/system-one.md) · [Measurements](docs/evaluations/re
 stopping conditions. Pause, resume or drop it with `/goal-pause`, `/goal-resume` and `/goal-drop`.
 [Goal contract](docs/agent-features.md#goal).
 
-#### Monitors
+</details>
 
-<img src="docs/features/monitors.svg" alt="Session background monitors" width="100%" />
-
-**Session engine · TUI controls.** Observes HTTP endpoints, files or processes while the session works.
-Completion can wake the agent while respecting newer instructions and paused goals. `/monitors` shows
-the observations. [Monitor behavior](docs/agent-features.md#monitors).
-
----
-
-### Context and sessions
-
-#### Compaction
-
-<img src="docs/features/compaction.svg" alt="Focused compaction with preserved anchors" width="100%" />
-
-**Session engine.** TUI `/compact` accepts a focus and retains important messages and decisions.
-Summaries use the vault's redaction; `/restricted` manages restricted content.
-[Compaction details](docs/agent-features.md#compaction).
-
-#### Worktrees and the background service
-
-<img src="docs/features/worktrees.svg" alt="Git worktrees and the background agent service" width="100%" />
-
-**CLI/TUI · agent server.** `redcode --tmp` starts in a temporary Git worktree; `/worktrees` or
-`redcode worktrees` manages checkouts. The background server retains sessions when the terminal closes.
-Inspect it with `redcode service`. [Worktrees and service](docs/agent-features.md#worktrees-and-the-background-service).
-
-Histories from OpenCode, Claude Code, Codex, Pi and oh-my-pi can be imported through Desktop or CLI.
-Import preserves the source history. [Import commands](docs/clients.md#desktop).
-
----
-
-### Prototyping and integrations
-
+<a id="prototyping-and-review"></a>
 <a id="design-mode"></a>
+<a id="prototyping-and-integrations"></a>
 
-#### Prototyping and review
+<details>
+<summary><strong>Prototyping and review</strong> — review a prototype beside your conversation</summary>
 
 <img src="docs/features/design-flow.svg" alt="Design workflow: describe, prototype, review, plan and build" width="100%" />
 
@@ -186,7 +148,80 @@ Approval records decisions for Plan and Build.
 Desktop embeds the review beside the chat. Standalone browser review includes its conversation panel.
 [Complete workflow](docs/agent-features.md#design-mode).
 
-#### RedRouter
+</details>
+
+<a id="s1--s2-dual-reasoning"></a>
+
+<details>
+<summary><strong>S1 · S2 dual reasoning</strong> — optional feedback from a second model</summary>
+
+<img src="docs/features/intelligence.svg" alt="S1 and S2 dual reasoning" width="100%" />
+
+**Session engine · TUI controls.** S2 does the work; optional S1 evaluates candidates and provides feedback.
+Configure with `/dual` and inspect with `/intelligence`. Coding studies have not demonstrated an accuracy
+or speed gain. [Roles](docs/system-one.md) · [Measurements](docs/evaluations/reasoning-0.71.3-2026-10-02.md).
+
+</details>
+
+<a id="monitors"></a>
+
+<details>
+<summary><strong>Monitors</strong> — watch files, processes and HTTP endpoints</summary>
+
+<img src="docs/features/monitors.svg" alt="Session background monitors" width="100%" />
+
+**Session engine · TUI controls.** Observes HTTP endpoints, files or processes while the session works.
+Completion can wake the agent while respecting newer instructions and paused goals. `/monitors` shows
+the observations. [Monitor behavior](docs/agent-features.md#monitors).
+
+</details>
+
+<a id="compaction"></a>
+<a id="context-and-sessions"></a>
+
+<details>
+<summary><strong>Compaction</strong> — retain key decisions as context grows</summary>
+
+<img src="docs/features/compaction.svg" alt="Focused compaction with preserved anchors" width="100%" />
+
+**Session engine.** TUI `/compact` accepts a focus and retains important messages and decisions.
+Summaries use the vault's redaction; `/restricted` manages restricted content.
+[Compaction details](docs/agent-features.md#compaction).
+
+</details>
+
+<a id="worktrees-and-the-background-service"></a>
+
+<details>
+<summary><strong>Worktrees and the background service</strong> — separate checkouts and retain sessions</summary>
+
+<img src="docs/features/worktrees.svg" alt="Git worktrees and the background agent service" width="100%" />
+
+**CLI/TUI · agent server.** `redcode --tmp` starts in a temporary Git worktree; `/worktrees` or
+`redcode worktrees` manages checkouts. The background server retains sessions when the terminal closes.
+Inspect it with `redcode service`. [Worktrees and service](docs/agent-features.md#worktrees-and-the-background-service).
+
+Histories from OpenCode, Claude Code, Codex, Pi and oh-my-pi can be imported through Desktop or CLI.
+Import preserves the source history. [Import commands](docs/clients.md#desktop).
+
+</details>
+
+<a id="stop-loss-and-loop-guard"></a>
+
+<details>
+<summary><strong>Stop-loss and loop guard</strong> — detect loops and spending without progress</summary>
+
+<img src="docs/features/stop-loss.svg" alt="Stop-loss and loop guard" width="100%" />
+
+**Session engine.** Detects repeated tool results and spending without progress. TUI `/budget` adds an
+optional spend/token limit; no cost limit is imposed by default. [Session guards](docs/agent-features.md#stop-loss-and-loop-guard).
+
+</details>
+
+<a id="redrouter"></a>
+
+<details>
+<summary><strong>RedRouter</strong> — connect an optional model gateway</summary>
 
 <img src="docs/features/router.svg" alt="RedRouter provider connections" width="100%" />
 
@@ -194,7 +229,12 @@ Desktop embeds the review beside the chat. Standalone browser review includes it
 pinned offers and MCP tools. TUI `/connect` manages provider connections; `/dual` selects S2 and optional S1.
 [Provider behavior](docs/agent-features.md#redrouter).
 
-#### Local RedSkills fleet
+</details>
+
+<a id="local-redskills-fleet"></a>
+
+<details>
+<summary><strong>Local RedSkills fleet</strong> — integrate the external redskilled daemon</summary>
 
 <img src="docs/features/workers.svg" alt="Local RedSkills worker fleet" width="100%" />
 
@@ -202,7 +242,12 @@ pinned offers and MCP tools. TUI `/connect` manages provider connections; `/dual
 TUI `/workers` and the Desktop Workers tab refer to RedSkills; **Agents → Remote workers** manages the
 separate [Redcode worker pool](#add-workers-to-the-coordinator). [Integration details](docs/agent-features.md#local-redskills-fleet).
 
-#### Dictation
+</details>
+
+<a id="dictation"></a>
+
+<details>
+<summary><strong>Dictation</strong> — voice input for the TUI composer</summary>
 
 <img src="docs/features/voice.svg" alt="Structured voice dictation" width="100%" />
 
@@ -210,135 +255,122 @@ separate [Redcode worker pool](#add-workers-to-the-coordinator). [Integration de
 the composer. Unix uses a local socket; Windows retains dit's existing input injection.
 [Voice input](docs/voice-input.md).
 
-## Remote execution
+</details>
 
-<img src="docs/sections/remote-execution.svg" alt="04: Remote execution — connect devices and add workers" width="100%" />
+<a id="remote-execution"></a>
 
-Connect another device to the machine holding your project, or give independent tasks to multiple hosts.
-For a headless coordinator or worker, install a `redcode-server-<target>` archive from
-[Releases](https://github.com/reddb-io/redcode/releases). It includes the CLI/agent engine without Electron.
+## Infrastructure
 
-### Components
+<img src="docs/sections/infrastructure.svg" alt="04: Infrastructure — servers execute, workers receive tasks, Console manages access" width="100%" />
 
-| Component | What it does |
+Use these options for remote coding, distributed tasks or shared access.
+For local terminal use, Redcode manages the agent server in the background automatically.
+
+<a id="components"></a>
+
+| Component | Purpose |
 | --- | --- |
-| **CLI/TUI, Desktop, browser** | Clients for conversations, review and controls. |
-| **Agent server** | Runs sessions, models, tools, terminals and file access on its host. |
-| **Coordinator** | An agent server with a worker registry; dispatches batches and collects results. |
-| **Remote worker** | An agent server with its own database, providers and checkout. |
-| **Console** | Separately manages identity, organizations and resource access. |
+| **Agent server** | Runs the agent, tools and files on its machine. Desktop and CLI connect to it. |
+| **Workers** | Additional agent servers that receive independent tasks from a coordinator. |
+| **Console** | Administers accounts, organizations, authentication and resource access. |
 
-<img src="docs/architecture.svg" alt="Clients connect to an agent server; its coordinator dispatches to independent workers; Console optionally authorizes delegated access" width="100%" />
+### Agent server
 
-Coordinators and workers both run `redcode serve`. The selected server determines where files and tools live.
-
-### Connect from another device
-
-On the host with your projects:
+Your conversation executes on the server you connect to. To run an explicit server:
 
 ```sh
-redcode pair --remote
+redcode serve --hostname 127.0.0.1 --port 4096
 ```
 
-This enables the background service's HTTPS tunnel and prints expiring one-time links. Open a link on
-the other device. Pairing grants trusted host access; enabling the tunnel can restart the service.
-[Pairing, SSH and foreground servers](docs/remote-access.md).
+For a headless host, choose a `redcode-server-<target>` archive from [Releases](https://github.com/reddb-io/redcode/releases).
+To access the CLI's managed background server from another device, run `redcode pair --remote`
+on its host and open the one-time link.
+[Remote access setup](docs/remote-access.md).
 
-### Add workers to the coordinator
+<a id="add-workers-to-the-coordinator"></a>
 
-Each worker needs a matching Redcode version, its own checkout and a configured model provider.
-On a Linux worker:
+### Workers
 
-```sh
-cd /home/worker/project
-export REDCODE_PASSWORD='replace-with-a-private-worker-password'
-redcode serve --hostname 0.0.0.0 --port 4096
-```
+A **coordinator** is an agent server with registered workers. Workers run the same `redcode serve`
+command, each with its own checkout and model configuration.
 
-In Desktop connected to the **coordinator**:
+In Desktop connected to the coordinator:
 
-1. Open **Agents → Remote workers**. Add the reachable address, checkout path and credential; use **Check connection**.
-2. Add independent tasks, select workers or allow placement on available slots, then **Send batch**.
-3. Use **Review changes** to collect finished patches before applying them.
+1. Open **Agents → Remote workers**, register a worker and check the connection.
+2. Add independent tasks and send a batch.
+3. Collect and review the resulting patches.
 
-Each checkout is one execution slot. Different slots run concurrently; tasks within a slot run sequentially.
+[Worker setup and commands](docs/distributed-workers.md) · [Raspberry Pi prerequisites](docs/distributed-workers.md#raspberry-pi-prerequisites) · [Docker lab](docs/distributed-workers.md#docker-acceptance-lab)
+
+<details>
+<summary>See the architecture and current worker boundaries</summary>
+
+<img src="docs/architecture.svg" alt="Desktop and CLI connect to an agent server; its coordinator dispatches to independent workers; Console optionally authorizes access" width="100%" />
+
+Each checkout is one execution slot. Different slots run concurrently; tasks within one slot run sequentially.
 The coordinator continues when Desktop closes and accepts one unfinished batch at a time.
+Checkouts are not synchronized automatically; ambiguous tasks recover on the original worker.
+Physical Raspberry Pi ARM64 execution still needs device acceptance.
 
-CLI `redcode workers add`, `run`, `recover` and `collect` uses a separate registry file.
-The [worker guide](docs/distributed-workers.md) covers that flow, permission requests, recovery and a
-[Docker lab](docs/distributed-workers.md#docker-acceptance-lab).
+The CLI worker registry, permanent coordinator pool and Console resource inventory are separate.
+The `redskilled` integration and Cloudflare `workerd` profile are also separate from Redcode's worker pool.
+See the [worker guide](docs/distributed-workers.md) for setup, credentials and recovery.
 
-Checkouts are not synchronized automatically, and ambiguous tasks recover on the original worker.
-Physical Raspberry Pi ARM64 execution still needs device acceptance. [Pi prerequisites](docs/distributed-workers.md#raspberry-pi-prerequisites).
-The repository's Cloudflare `workerd` profile is separate from this pool.
+Pairing grants trusted host access; enabling the HTTPS tunnel can restart the managed service.
+See [remote access](docs/remote-access.md) for pairing and SSH setup.
 
-## Console
+</details>
 
-<img src="docs/sections/console.svg" alt="05: Console — administer identity and resource access" width="100%" />
+### Console
 
-Console is the administration interface. Its siderail separates **Infrastructure**, **Organization**,
-**Workspace** and **Account**. Start it independently of the coding server:
+The administration UI is a separate process from the coding server:
 
 ```sh
 redcode console serve --port 35556
 ```
 
-Open `http://127.0.0.1:35556`. First-run onboarding uses the **setup code printed in the terminal**
-and creates the initial infrastructure administrator and organization owner. No domain is needed locally;
-remote administration uses an HTTPS reverse proxy or tunnel.
+Open `http://127.0.0.1:35556`. First-run onboarding asks for the setup code printed in your terminal.
+Use Console to manage infrastructure owners, organizations, workspace access and OIDC providers.
 
-### Ownership and organization access
+[Ownership and permissions](docs/console-infrastructure.md) · [Organization, owner and global authentication](docs/console-federation.md)
 
-| Scope | Authority |
-| --- | --- |
-| **Infrastructure admin** | Administers servers, workers, infrastructure membership and resource grants. |
-| **Infrastructure user** | Submits and reviews their tasks on allowed resources. |
-| **Organization owner / admin** | Manages organization membership and workspaces. |
-| **Organization member** | Submits and reviews their tasks within an authorized workspace. |
+<details>
+<summary>Console access scopes and implementation status</summary>
 
-Organization roles do not confer infrastructure authority. Register resources and grant worker checkouts
-to workspaces in Console; adding a resource here does not add it to the coordinator's pool.
-[Resource access and delegation](docs/console-infrastructure.md).
+Infrastructure administrators manage servers, workers and resource grants. Organization owners/admins
+manage their members and workspaces; organization roles do not grant infrastructure authority.
+Console resource registration does not add workers to the coordinator's pool.
 
-### Your own authentication provider
-
-Configure a compatible OIDC provider during onboarding or through settings:
-
-| Settings | Provider scope |
-| --- | --- |
-| **Infrastructure → Global authentication** | Shared across organizations. |
-| **Infrastructure → Owner authentication** | Infrastructure access. |
-| **Organization → Authentication settings** | That organization's authentication. |
-
-Console discovers issuer endpoints and displays the callback URL. Login redirects to the selected IdP;
-invitations and identity-linking rules determine membership. [Configuration and login flow](docs/console-federation.md).
+Configure a compatible OIDC provider in onboarding or settings: global, infrastructure-owner or
+organization-specific. Login redirects to the selected provider; membership still follows invitation
+and identity-linking rules. Local use requires no domain.
 
 Delegated batches are supported. Tenant-isolated interactive terminals, OS sandboxing and full hosted
 SaaS services remain incomplete. [Implementation status](docs/opencode-parity-ledger.json).
+
+</details>
 
 <a id="guides"></a>
 
 ## Documentation
 
-<img src="docs/sections/guides.svg" alt="06: Documentation — choose a guide for your task" width="100%" />
+<img src="docs/sections/guides.svg" alt="05: Documentation — choose your next task" width="100%" />
 
-| You want to… | Read |
+| Task | Guide |
 | --- | --- |
-| Install Desktop, CLI or a headless server | [Installation and platforms](docs/installation.md) |
-| Use client commands or import histories | [Clients and commands](docs/clients.md) |
-| Explore modes and session features | [Agent features](docs/agent-features.md) |
+| Install Desktop, CLI or a headless host | [Installation](docs/installation.md) |
+| Use commands or import conversation histories | [Clients](docs/clients.md) |
+| Learn modes, Design and session features | [Agent features](docs/agent-features.md) |
 | Connect from another computer | [Remote access](docs/remote-access.md) |
-| Register workers, dispatch tasks and collect patches | [Distributed workers](docs/distributed-workers.md) |
-| Prepare Raspberry Pis or simulate workers | [Pi prerequisites](docs/distributed-workers.md#raspberry-pi-prerequisites) · [Docker lab](docs/distributed-workers.md#docker-acceptance-lab) |
-| Delegate infrastructure or organization access | [Infrastructure access](docs/console-infrastructure.md) |
-| Configure global, owner or organization login | [Console federation](docs/console-federation.md) |
-| Understand reasoning and its measurements | [S1/S2 roles](docs/system-one.md) · [Evaluation evidence](docs/evaluations/reasoning-0.71.3-2026-10-02.md) |
-| Use dictation | [Voice input](docs/voice-input.md) |
+| Add workers and collect their changes | [Distributed workers](docs/distributed-workers.md) |
+| Manage resource ownership and access | [Console infrastructure](docs/console-infrastructure.md) |
+| Configure authentication | [Console federation](docs/console-federation.md) |
 | Follow OpenCode adoption and remaining work | [Migration notes](docs/migration-parity.md) · [Parity ledger](docs/opencode-parity-ledger.json) |
 
-## Contributing
+<a id="contributing"></a>
 
-<img src="docs/sections/contributing.svg" alt="07: Contributing — build, verify and publish" width="100%" />
+<details>
+<summary>Contributing, development and releases</summary>
 
 | Repository area | Packages |
 | --- | --- |
@@ -354,4 +386,7 @@ SVG artwork comes from `bun script/readme/banners.ts`; edit the generator. Relea
 and the [Redcode workflow](https://github.com/reddb-io/redcode/actions/workflows/redcode.yml).
 [Build and publishing guide](docs/ci-cd.md) · [Screenshot maintenance](docs/screenshots/README.md).
 
-Licensed under MIT. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+</details>
+
+Redcode builds on [OpenCode](https://github.com/anomalyco/opencode). Licensed under MIT.
+See [LICENSE](LICENSE) and [NOTICE](NOTICE).

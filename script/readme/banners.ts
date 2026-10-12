@@ -304,24 +304,18 @@ function render(banner: Banner) {
 
 const hero = () => {
   const items = [
-    ["#ff2056", "build · plan · question"],
-    ["#f4c95d", "design mode, in the browser"],
-    ["#bc8cff", "/goal, judged every turn"],
-    ["#f78166", "vault: secrets unseen"],
-    ["#39c5cf", "S1 · S2 dual reasoning"],
-    ["#f778ba", "Console · accounts · OIDC"],
-    ["#7ee787", "remote worker batches"],
-    ["#ff2056", "RedSkills workers"],
-    ["#f0883e", "loop guard, stop-loss"],
-    ["#3fb950", "focused compaction"],
-    ["#a5b4fc", "worktrees, service"],
-    ["#d2a8ff", "voice dictation"],
+    ["#ff2056", "Edit and run project code"],
+    ["#58a6ff", "Plan before implementation"],
+    ["#f4c95d", "Review interactive prototypes"],
+    ["#f78166", "Keep project secrets scoped"],
+    ["#bc8cff", "Continue toward a goal"],
+    ["#7ee787", "Delegate tasks to your workers"],
   ]
   const rows = items
     .map(([color, label], index) => {
-      const y = 132 + index * 21
+      const y = 132 + index * 42
       return `<circle cx="752" cy="${y - 4}" r="4" fill="${color}"/>
-        <text x="768" y="${y}" font-size="14" fill="#c9d1d9">${escape(label)}</text>`
+        <text x="768" y="${y}" font-size="18" fill="#c9d1d9">${escape(label)}</text>`
     })
     .join("\n        ")
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 420" width="1200" height="420" role="img" aria-labelledby="rc-hero-title rc-hero-desc">
@@ -356,8 +350,8 @@ const hero = () => {
       <text x="72" y="150" font-size="88" font-weight="700" letter-spacing="-3"><tspan fill="#ff2056">red</tspan><tspan fill="#f0f6fc">code</tspan></text>
       <text x="72" y="204" font-size="34" font-weight="600" fill="#ff2056" letter-spacing="-1">terminal + desktop</text>
       <rect x="74" y="230" width="148" height="3" fill="url(#rc-rule)"/>
-      <text x="72" y="272" font-size="19" fill="#8b949e">Code locally or on your own remote hosts.</text>
-      <text x="72" y="298" font-size="19" fill="#8b949e">Distribute tasks across independent workers.</text>
+      <text x="72" y="272" font-size="19" fill="#8b949e">Open a project. Describe the work.</text>
+      <text x="72" y="298" font-size="19" fill="#8b949e">Review the changes with your agent.</text>
       <text x="72" y="332" font-size="11" fill="#6e7681" letter-spacing="2.5">BUILT ON</text>
       <g font-size="14">
         <rect x="72" y="342" width="106" height="28" rx="14" fill="#ffffff" fill-opacity="0.04" stroke="#ff2056" stroke-opacity="0.35"/>
@@ -366,11 +360,11 @@ const hero = () => {
         <text x="208" y="361" fill="#c9d1d9">Effect</text>
       </g>
       <text x="72" y="398" font-size="11" fill="#6e7681" letter-spacing="2">RUNS AS</text>
-      <text x="150" y="398" font-size="14" fill="#8b949e">CLI · Desktop · agent server · Console</text>
+      <text x="150" y="398" font-size="14" fill="#8b949e">Desktop app · terminal app</text>
     </g>
     <g font-family="${FONT}">
       <rect x="720" y="40" width="424" height="340" rx="12" fill="#0b0f15" stroke="#ffffff" stroke-opacity="0.09"/>
-      <text x="744" y="76" font-size="12" fill="#6e7681" letter-spacing="1">WHAT REDCODE ADDS</text>
+      <text x="744" y="76" font-size="12" fill="#6e7681" letter-spacing="1">WHAT YOU CAN DO</text>
       <rect x="744" y="88" width="72" height="3" fill="url(#rc-rule)"/>
       <g>
         ${rows}
@@ -417,13 +411,11 @@ const frame = (id: string, title: string, description: string, height: number, b
 `
 
 const chapters = [
-  { id: "get-started", label: "GET STARTED", title: "open your workspace", description: "Choose Desktop or the terminal. Connect a model and start a conversation.", accent: "#7ee787" },
-  { id: "session-modes", label: "SESSION MODES", title: "choose how to work", description: "Build, Plan, Design and Question define what the agent can do.", accent: "#58a6ff" },
-  { id: "features", label: "CODING FEATURES", title: "tools for your session", description: "Secrets, autonomy, context, prototyping and optional integrations.", accent: YELLOW },
-  { id: "remote-execution", label: "REMOTE EXECUTION", title: "remote hosts & workers", description: "Connect another device, add independent workers and review their results.", accent: "#39c5cf" },
-  { id: "console", label: "CONSOLE", title: "identity & ownership", description: "Separate infrastructure authority from organization roles and workspace grants.", accent: "#bc8cff" },
+  { id: "get-started", label: "GET STARTED", title: "Desktop or terminal", description: "Choose your interface. Open a project. Connect a model provider.", accent: "#7ee787" },
+  { id: "session-modes", label: "SESSION MODES", title: "four ways to work", description: "Build implements. Plan explores. Design prototypes. Question investigates.", accent: "#58a6ff" },
+  { id: "features", label: "FEATURES", title: "one feature at a time", description: "Open the capability you want to learn about.", accent: YELLOW },
+  { id: "infrastructure", label: "OPTIONAL INFRASTRUCTURE", title: "servers & access", description: "Servers execute. Workers receive tasks. Console manages access.", accent: "#39c5cf" },
   { id: "guides", label: "DOCUMENTATION", title: "find your next step", description: "Install, connect, distribute, administer or explore the implementation.", accent: "#a5b4fc" },
-  { id: "contributing", label: "CONTRIBUTING", title: "build & contribute", description: "Repository packages, development checks, generated artwork and releases.", accent: "#f78166" },
 ]
 
 const chapter = (spec: typeof chapters[number], index: number) => frame(
