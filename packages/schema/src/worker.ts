@@ -3,6 +3,9 @@ export * as Worker from "./worker.js"
 import { Schema } from "effect"
 import { FileDiff } from "./file-diff.js"
 import { optional } from "./schema.js"
+import { Attention } from "./attention.js"
+import { Form } from "./form.js"
+import { Permission } from "./permission.js"
 
 export const Name = Schema.String.check(Schema.isMinLength(1), Schema.isPattern(/^[a-zA-Z0-9_-]+$/)).annotate({
   identifier: "Worker.Name",
@@ -101,3 +104,27 @@ export const Artifact = Schema.Struct({
   collectedAt: Text,
 }).annotate({ identifier: "Worker.Artifact" })
 export interface Artifact extends Schema.Schema.Type<typeof Artifact> {}
+
+export const Pending = Schema.Struct({ task: Entry, attention: Attention.Entry }).annotate({
+  identifier: "Worker.Pending",
+})
+export interface Pending extends Schema.Schema.Type<typeof Pending> {}
+export const Inbox = Schema.Struct({
+  data: Schema.Array(Pending),
+  /** Assignments whose live requests could not be inspected. */
+  unavailable: Schema.Array(Name),
+}).annotate({ identifier: "Worker.Inbox" })
+export interface Inbox extends Schema.Schema.Type<typeof Inbox> {}
+
+/** The coordinator resolves the Session from its journal; the caller cannot supply a different target. */
+export const Answer = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("permission"),
+    task: Name,
+    requestID: Permission.ID,
+    decision: Permission.Reply,
+  }),
+  Schema.Struct({ kind: Schema.Literal("question"), task: Name, formID: Form.ID, answer: Form.Answer }),
+  Schema.Struct({ kind: Schema.Literal("cancel"), task: Name, formID: Form.ID }),
+]).annotate({ identifier: "Worker.Answer" })
+export type Answer = typeof Answer.Type

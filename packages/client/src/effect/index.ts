@@ -23,6 +23,8 @@ export type {
   SkillApi,
 } from "./api.js"
 export { Agent } from "@opencode/schema/agent"
+export { Attention } from "@opencode/schema/attention"
+export { HostResources } from "@opencode/schema/host-resources"
 export { Command } from "@opencode/schema/command"
 export { Config } from "@opencode/schema/config"
 export { Credential } from "@opencode/schema/credential"

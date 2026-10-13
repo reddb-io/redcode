@@ -21,6 +21,7 @@ export function acceptedLastActiveUrl(value: string | null | undefined) {
   const path = value?.split(/[?#]/, 1)[0]
 
   if (path === "/settings") return value ?? "/"
+  if (path === "/agents") return value ?? "/"
 
   if (path === "/new-session") return value ?? "/"
 

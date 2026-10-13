@@ -2,6 +2,7 @@ export * as WorkerPool from "./worker-pool"
 
 import { Schema } from "effect"
 import { Worker } from "@opencode/schema/worker"
+import { Attention } from "@opencode/schema/attention"
 import {
   OpenCode,
   isInvalidRequestError,
@@ -220,7 +221,6 @@ export async function run(
     }
     return { ...entry, state: "unknown", detail: "Coordinator disconnected; remote work may still be running" }
   }
-  const terminal = (entry: Entry) => ["succeeded", "failed", "interrupted"].includes(entry.state)
   if (recovery) {
     await input.authorize?.(recoveryWorker!, recovery.directory!)
     const api = clients.get(recoveryWorker!.id)!
@@ -410,6 +410,98 @@ export async function collect(input: BatchInput & { task: string; output: string
   await Bun.write(path.join(output, "changes.patch"), patch, { mode: 0o600 })
   await Bun.write(path.join(output, "response.txt"), entry.text ?? "", { mode: 0o600 })
   return artifact
+}
+
+/** Inspect only assigned Sessions, not every Session hosted by the worker. */
+export async function attention(input: BatchInput): Promise<Worker.Inbox> {
+  const report = await read(input.report, Worker.Report)
+  const active = report.tasks.filter((entry) => entry.sessionID && !terminal(entry))
+  const data: Worker.Pending[] = []
+  const unavailable: string[] = []
+  for (let offset = 0; offset < active.length; offset += 4) {
+    const page = await Promise.all(
+      active.slice(offset, offset + 4).map(async (entry) => {
+        const result = await assignedSession(input, entry.id)
+          .then(async (assigned) => {
+            const [permissions, forms] = await Promise.all([
+              assigned.api.permission.list({ sessionID: assigned.session.id }, assigned.options),
+              assigned.api.session.form.list({ sessionID: assigned.session.id }, assigned.options),
+            ])
+            return {
+              task: assigned.entry,
+              attention: Schema.decodeUnknownSync(Attention.Entry)({
+                session: assigned.session,
+                permissions: permissions.filter((item) => item.sessionID === assigned.session.id),
+                forms: forms.filter((item) => item.sessionID === assigned.session.id),
+              }),
+            } satisfies Worker.Pending
+          })
+          .catch(() => undefined)
+        if (!result) unavailable.push(entry.id)
+        return result
+      }),
+    )
+    data.push(
+      ...page
+        .filter((entry) => entry !== undefined)
+        .filter((entry) => entry.attention.permissions.length > 0 || entry.attention.forms.length > 0),
+    )
+  }
+  return { data, unavailable }
+}
+
+/** Revalidate the assignment and the pending request immediately before answering it. */
+export async function answer(input: BatchInput, answer: Worker.Answer) {
+  const assigned = await assignedSession(input, answer.task)
+  if (answer.kind === "permission") {
+    const permissions = await assigned.api.permission.list({ sessionID: assigned.session.id }, assigned.options)
+    if (!permissions.some((request) => request.sessionID === assigned.session.id && request.id === answer.requestID))
+      throw new Error("The assigned Session is no longer waiting on this permission")
+    await assigned.api.permission.reply(
+      { sessionID: assigned.session.id, requestID: answer.requestID, decision: answer.decision },
+      assigned.options,
+    )
+    return
+  }
+  const forms = await assigned.api.session.form.list({ sessionID: assigned.session.id }, assigned.options)
+  const form = forms.find((form) => form.sessionID === assigned.session.id && form.id === answer.formID)
+  if (!form || form.metadata?.kind !== "question")
+    throw new Error("The assigned Session is no longer waiting on this question")
+  if (answer.kind === "cancel") {
+    await assigned.api.session.form.cancel({ sessionID: assigned.session.id, formID: form.id }, assigned.options)
+    return
+  }
+  await assigned.api.session.form.reply(
+    { sessionID: assigned.session.id, formID: form.id, answer: answer.answer },
+    assigned.options,
+  )
+}
+
+export async function resources(
+  worker: Worker.Registration,
+  environment: Readonly<Record<string, string | undefined>>,
+) {
+  return client(worker, environment).server.resources({ signal: AbortSignal.timeout(5_000) })
+}
+
+async function assignedSession(input: BatchInput, task: string) {
+  const [config, report] = await Promise.all([readConfig(input.config), read(input.report, Worker.Report)])
+  const entry = report.tasks.find((entry) => entry.id === task)
+  if (!entry?.sessionID || !entry.directory || terminal(entry))
+    throw new Error("This task has no live assigned Session")
+  const worker = config.workers.find((worker) => worker.id === entry.worker)
+  if (!worker || address(worker.url) !== entry.url || !worker.directories.includes(entry.directory))
+    throw new Error("Saved worker placement does not match the registry")
+  const api = client(worker, input.environment ?? process.env)
+  const options = { signal: AbortSignal.any([AbortSignal.timeout(5_000), ...(input.signal ? [input.signal] : [])]) }
+  const session = await api.session.get({ sessionID: entry.sessionID }, options)
+  if (session.location.directory !== entry.directory)
+    throw new Error("The assigned Session moved away from the authorized checkout")
+  return { entry, session, api, options }
+}
+
+function terminal(entry: Entry) {
+  return ["succeeded", "failed", "interrupted"].includes(entry.state)
 }
 
 async function loadBatch(input: BatchInput, initialize: boolean) {

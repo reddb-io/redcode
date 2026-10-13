@@ -71,11 +71,20 @@ function Option(props: {
   )
 }
 
-export const SessionQuestionDock: Component<{ request: FormInfo; onSubmit: () => void }> = (props) => {
+export const SessionQuestionDock: Component<{
+  request: FormInfo
+  onSubmit: () => void
+  onReply?: (answer: FormAnswer) => Promise<void>
+  onCancel?: () => Promise<void>
+  cacheScope?: string
+  disabled?: boolean
+}> = (props) => {
   const serverSDK = useServerSDK()
   const language = useLanguage()
   const command = useCommand()
-  const cacheKey = ScopedKey.from(serverSDK.scope, props.request.id)
+  const cacheKey = props.cacheScope
+    ? `${props.cacheScope}\0${props.request.id}`
+    : ScopedKey.from(serverSDK.scope, props.request.id)
 
   const questions = createMemo(() =>
     props.request.fields.filter(questionField).map((field) => ({
@@ -262,7 +271,9 @@ export const SessionQuestionDock: Component<{ request: FormInfo; onSubmit: () =>
 
   const replyMutation = useMutation(() => ({
     mutationFn: (answer: FormAnswer) =>
-      serverSDK.api.session.form.reply({ sessionID: props.request.sessionID, formID: props.request.id, answer }),
+      props.onReply
+        ? props.onReply(answer)
+        : serverSDK.api.session.form.reply({ sessionID: props.request.sessionID, formID: props.request.id, answer }),
     onMutate: () => {
       props.onSubmit()
     },
@@ -274,7 +285,10 @@ export const SessionQuestionDock: Component<{ request: FormInfo; onSubmit: () =>
   }))
 
   const rejectMutation = useMutation(() => ({
-    mutationFn: () => serverSDK.api.session.form.cancel({ sessionID: props.request.sessionID, formID: props.request.id }),
+    mutationFn: () =>
+      props.onCancel
+        ? props.onCancel()
+        : serverSDK.api.session.form.cancel({ sessionID: props.request.sessionID, formID: props.request.id }),
     onMutate: () => {
       props.onSubmit()
     },
@@ -285,7 +299,7 @@ export const SessionQuestionDock: Component<{ request: FormInfo; onSubmit: () =>
     onError: fail,
   }))
 
-  const sending = createMemo(() => replyMutation.isPending || rejectMutation.isPending)
+  const sending = createMemo(() => props.disabled || replyMutation.isPending || rejectMutation.isPending)
   const submitShortcut = () => (IS_MAC ? "⌘⏎" : `${language.t("common.key.ctrl")}+⏎`)
   const backShortcut = () => (IS_MAC ? "⌘[" : `${language.t("common.key.alt")}+←`)
 

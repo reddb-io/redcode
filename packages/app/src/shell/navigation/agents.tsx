@@ -1,22 +1,25 @@
 import type { SessionInfo } from "@opencode/client/promise"
 import { Button } from "@opencode/ui/button"
-import { Dialog, DialogHeader, DialogTitleGroup } from "@opencode/ui/dialog"
-import { useDialog } from "@opencode/ui/context/dialog"
+import { input } from "@reddb-io/design-system/contracts/input"
 import { useQuery } from "@tanstack/solid-query"
-import { createMemo, For, onCleanup, Show } from "solid-js"
+import { createMemo, For, lazy, onCleanup, Show, Switch, Match } from "solid-js"
 import { createStore, type SetStoreFunction } from "solid-js/store"
 import { useLanguage } from "@/runtime/i18n/language"
-import { ServerConnection, serverName, useServers } from "@/runtime/server/registry"
+import { ServerConnection, serverName } from "@/runtime/server/registry"
 import { useGlobal, type ServerCtx } from "@/runtime/server/runtime"
 import { useSettings } from "@/settings/model"
 import { isSessionForm } from "@/session/requests/session-request-tree"
 import { sessionLabel } from "@/session/title"
 import { errorMessage } from "@/shell/layout/helpers"
 import { showToast } from "@/shell/notifications/toast"
-import type { NavigationController } from "./controller"
+import { useNavigation } from "./controller"
+import { AGENT_LABELS, useAgentsScope } from "./agents-menu"
 import { agentSessionTrees, SESSION_STATUSES, rollupSessionStatus, sessionAwaitsUser, sessionStatus } from "./model"
 import { AgentWorkers } from "./workers"
 import { RemoteWorkers } from "./remote-workers"
+
+const AgentInbox = lazy(() => import("./agents-inbox"))
+const AgentHosts = lazy(() => import("./agents-hosts"))
 
 type AgentInstruction = {
   sessionID: string
@@ -27,82 +30,91 @@ type AgentInstruction = {
 }
 
 /** A metadata-only fleet view; transcripts load only when the user opens a session. */
-export default function Agents(props: { navigation: NavigationController }) {
+export default function Agents() {
   const language = useLanguage()
-  const servers = useServers()
   const global = useGlobal()
-  const dialog = useDialog()
-  const [state, setState] = createStore({ view: "sessions", query: "", attention: false })
+  const navigation = useNavigation()
+  const scope = useAgentsScope()
+  const [state, setState] = createStore({ query: "", attention: false, selected: "" })
+  const selection = { get: () => state.selected, set: (key: string) => setState("selected", key) }
   return (
-    <Dialog size="large">
-      <DialogHeader>
-        <DialogTitleGroup title={language.t("agents.title")} description={language.t("agents.description")} />
-      </DialogHeader>
-      <div class="flex w-full flex-wrap items-center gap-2 border-b border-v2-border-border-base px-5 pb-3">
-        <Button
-          variant="outline"
-          onClick={() => {
-            props.navigation.go.newSession()
-            dialog.close()
-          }}
-        >
-          {language.t("command.session.new")}
-        </Button>
-        <Button variant={state.view === "sessions" ? "neutral" : "ghost"} onClick={() => setState("view", "sessions")}>
-          {language.t("agents.sessions")}
-        </Button>
-        <Button variant={state.view === "workers" ? "neutral" : "ghost"} onClick={() => setState("view", "workers")}>
-          {language.t("agents.workers")}
-        </Button>
-        <Button variant={state.view === "remote" ? "neutral" : "ghost"} onClick={() => setState("view", "remote")}>
-          {language.t("remoteWorkers.title")}
-        </Button>
-        <Show when={state.view === "sessions"}>
-          <input
-            class="min-w-48 flex-1 rounded-md border border-v2-border-border-base bg-transparent px-2 py-1 text-13-regular"
-            aria-label={language.t("agents.filter")}
-            placeholder={language.t("agents.filter")}
-            value={state.query}
-            onInput={(event) => setState("query", event.currentTarget.value)}
-          />
-          <Button
-            variant="ghost"
-            aria-pressed={state.attention}
-            onClick={() => setState("attention", !state.attention)}
-          >
-            {language.t("agents.attention")}
+    <section
+      aria-label={language.t("agents.title")}
+      data-component="agents-workspace"
+      class="flex h-full min-h-0 w-full flex-col px-[var(--shell-inline-inset,8px)] pb-[var(--shell-bottom-inset,8px)] pt-[var(--shell-top-inset,8px)]"
+    >
+      <div class="flex min-h-0 flex-1 flex-col rounded-lg border border-v2-border-border-base bg-v2-background-bg-base">
+        <header class="flex flex-wrap items-center gap-2 border-b border-v2-border-border-base px-5 py-4">
+          <div class="min-w-0 flex-1">
+            <h1 class="text-16-medium">{language.t(AGENT_LABELS[scope.view()])}</h1>
+            <p class="text-13-regular leading-[var(--line-height-base)] text-v2-text-text-muted">
+              {language.t("agents.description")}
+            </p>
+          </div>
+          <Button variant="outline" onClick={navigation.go.newSession}>
+            {language.t("command.session.new")}
           </Button>
-        </Show>
+          <Show when={scope.view() === "sessions"}>
+            <input
+              class={input({ size: "sm", class: "w-full sm:w-48" })}
+              aria-label={language.t("agents.filter")}
+              placeholder={language.t("agents.filter")}
+              value={state.query}
+              onInput={(event) => setState("query", event.currentTarget.value)}
+            />
+            <Button
+              variant="ghost"
+              aria-pressed={state.attention}
+              onClick={() => setState("attention", !state.attention)}
+            >
+              {language.t("agents.attention")}
+            </Button>
+          </Show>
+        </header>
+        <div class="min-h-0 w-full flex-1 overflow-y-auto px-5 py-3">
+          <Show when={scope.servers().length === 0}>
+            <p role="status">{language.t("agents.scope.missing")}</p>
+          </Show>
+          <For each={scope.servers()}>
+            {(server) => (
+              <section class="mb-5">
+                <h2 class="mb-2 text-13-medium text-v2-text-text-muted">{serverName(server)}</h2>
+                <Show
+                  when={!global.servers.health[ServerConnection.key(server)]?.unauthorized}
+                  fallback={<p role="alert">{language.t("agents.unavailable")}</p>}
+                >
+                  <Switch>
+                    <Match when={scope.view() === "sessions"}>
+                      <ServerAgents
+                        server={server}
+                        context={global.ensureServerCtx(server)}
+                        query={state.query}
+                        attention={state.attention}
+                        open={(session) => {
+                          navigation.session.open(session, { server })
+                        }}
+                      />
+                    </Match>
+                    <Match when={scope.view() === "inbox"}>
+                      <AgentInbox server={server} selection={selection} />
+                    </Match>
+                    <Match when={scope.view() === "hosts"}>
+                      <AgentHosts server={server} />
+                    </Match>
+                    <Match when={scope.view() === "remote"}>
+                      <RemoteWorkers server={server} />
+                    </Match>
+                    <Match when={scope.view() === "workers"}>
+                      <AgentWorkers server={server} />
+                    </Match>
+                  </Switch>
+                </Show>
+              </section>
+            )}
+          </For>
+        </div>
       </div>
-      <div class="min-h-0 w-full flex-1 overflow-y-auto px-5 py-3">
-        <For each={servers.visible}>
-          {(server) => (
-            <section class="mb-5">
-              <h2 class="mb-2 text-13-medium text-v2-text-text-muted">{serverName(server)}</h2>
-              <Show
-                when={state.view === "sessions"}
-                fallback={
-                  <Show when={state.view === "remote"} fallback={<AgentWorkers server={server} />}>
-                    <RemoteWorkers server={server} />
-                  </Show>
-                }
-              >
-                <ServerAgents
-                  server={server}
-                  context={global.ensureServerCtx(server)}
-                  query={state.query}
-                  attention={state.attention}
-                  open={(session) => {
-                    props.navigation.session.open(session, { server })
-                    dialog.close()
-                  }}
-                />
-              </Show>
-            </section>
-          )}
-        </For>
-      </div>
-    </Dialog>
+    </section>
   )
 }
 
@@ -171,7 +183,11 @@ function ServerAgents(props: {
   )
   const status = (session: SessionInfo) =>
     sessionStatus({
-      approval: !settings.permissions.autoApprove() && !!props.context.data.session.permission.list(session.id)?.length,
+      approval:
+        props.context.data.session.permission
+          .list(session.id)
+          ?.some((request) => !settings.permissions.autoApprove() || request.metadata?.protected !== undefined) ??
+        false,
       input: props.context.data.session.form.list(session.id)?.some(isSessionForm) ?? false,
       working: props.context.data.session.status(session.id) === "running",
       queued: props.context.data.session.pending.list(session.id).some((item) => item.type !== "synthetic"),

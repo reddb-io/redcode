@@ -1,4 +1,6 @@
 import type {
+  ServerResourcesOutput,
+  ServerAttentionOutput,
   ServerInfoOutput,
   ServerSystemOutput,
   ServerPairOutput,
@@ -407,6 +409,12 @@ import type {
   ServerIntelligenceDiscoverOutput,
   ServerIntelligenceProbeInput,
   ServerIntelligenceProbeOutput,
+  WorkersResourcesInput,
+  WorkersResourcesOutput,
+  WorkersAttentionInput,
+  WorkersAttentionOutput,
+  WorkersAnswerInput,
+  WorkersAnswerOutput,
   WorkersListOutput,
   WorkersAddInput,
   WorkersAddOutput,
@@ -574,6 +582,28 @@ export function make(options: ClientOptions) {
 
   return {
     server: {
+      resources: (requestOptions?: RequestOptions) =>
+        request<ServerResourcesOutput>(
+          {
+            method: "GET",
+            path: `/api/resources`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      attention: (requestOptions?: RequestOptions) =>
+        request<ServerAttentionOutput>(
+          {
+            method: "GET",
+            path: `/api/attention`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403],
+            empty: false,
+          },
+          requestOptions,
+        ),
       info: (requestOptions?: RequestOptions) =>
         request<ServerInfoOutput>(
           { method: "GET", path: `/api/info`, successStatus: 200, declaredStatuses: [400, 401, 403], empty: false },
@@ -3326,6 +3356,40 @@ export function make(options: ClientOptions) {
         ),
     },
     workers: {
+      resources: (input: WorkersResourcesInput, requestOptions?: RequestOptions) =>
+        request<WorkersResourcesOutput>(
+          {
+            method: "GET",
+            path: `/api/workers/${encodeURIComponent(input.id)}/resources`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      attention: (input: WorkersAttentionInput, requestOptions?: RequestOptions) =>
+        request<WorkersAttentionOutput>(
+          {
+            method: "GET",
+            path: `/api/workers/batches/${encodeURIComponent(input.id)}/attention`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      answer: (input: WorkersAnswerInput, requestOptions?: RequestOptions) =>
+        request<WorkersAnswerOutput>(
+          {
+            method: "POST",
+            path: `/api/workers/batches/${encodeURIComponent(input.id)}/answer`,
+            body: input["payload"],
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403],
+            empty: true,
+          },
+          requestOptions,
+        ),
       list: (requestOptions?: RequestOptions) =>
         request<WorkersListOutput>(
           { method: "GET", path: `/api/workers`, successStatus: 200, declaredStatuses: [400, 401, 403], empty: false },

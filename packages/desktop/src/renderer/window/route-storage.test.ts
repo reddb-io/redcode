@@ -4,6 +4,8 @@ import { acceptedLastActiveUrl } from "./route-storage"
 describe("desktop last active route", () => {
   test("restores current desktop routes and falls back for invalid saved routes", () => {
     expect(acceptedLastActiveUrl("/")).toBe("/")
+    expect(acceptedLastActiveUrl("/agents?view=inbox&host=sidecar")).toBe("/agents?view=inbox&host=sidecar")
+    expect(acceptedLastActiveUrl("/agents/extra")).toBe("/")
     expect(acceptedLastActiveUrl("/settings?server=local&tab=models")).toBe("/settings?server=local&tab=models")
     expect(acceptedLastActiveUrl("/new-session?directory=C%3A%5Cwork#draft")).toBe(
       "/new-session?directory=C%3A%5Cwork#draft",

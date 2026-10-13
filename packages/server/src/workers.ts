@@ -15,6 +15,7 @@ import { InfrastructureAccess } from "./infrastructure-access"
 import { ServerAccess } from "@opencode/protocol/server-access"
 import { ConsoleForbiddenError } from "@opencode/protocol/console"
 import { optional } from "@opencode/schema/schema"
+import { HostResources } from "@opencode/schema/host-resources"
 
 export interface Interface {
   readonly list: (scope?: ServerAccess.Principal) => Promise<Worker.Snapshot>
@@ -24,6 +25,9 @@ export interface Interface {
   readonly submit: (manifest: Worker.Manifest, scope?: ServerAccess.Principal) => Promise<Worker.Batch>
   readonly recover: (id: string, task: string, scope?: ServerAccess.Principal) => Promise<Worker.Batch>
   readonly collect: (id: string, task: string, scope?: ServerAccess.Principal) => Promise<Worker.Artifact>
+  readonly attention: (id: string, scope?: ServerAccess.Principal) => Promise<Worker.Inbox>
+  readonly answer: (id: string, answer: Worker.Answer, scope?: ServerAccess.Principal) => Promise<void>
+  readonly resources: (id: string, scope?: ServerAccess.Principal) => Promise<HostResources.Snapshot>
 }
 export class Service extends Context.Service<Service, Interface>()("@opencode/Workers") {}
 
@@ -234,6 +238,23 @@ function layer(directory?: string, accessOptions?: InfrastructureAccess.Options)
         })
       }
       return Service.of({
+        attention: async (id, scope) => {
+          ready()
+          const current = await authorizedBatch(id, scope)
+          if (!current.report || terminal(current.report)) return { data: [], unavailable: [] }
+          return WorkerPool.attention(await input(id))
+        },
+        answer: async (id, answer, scope) => {
+          ready()
+          await authorizedBatch(id, scope)
+          await WorkerPool.answer(await input(id), answer)
+        },
+        resources: async (id, scope) => {
+          ready()
+          const worker = (await WorkerPool.readConfig(config)).workers.find((worker) => worker.id === id)
+          if (!worker || !(await permitted(worker, scope))) throw denied()
+          return WorkerPool.resources(worker, await environment())
+        },
         list: async (scope) => {
           if (state.error) return { available: false, reason: state.error, workers: [], batches: [] }
           const registry = await WorkerPool.readConfig(config)

@@ -3,8 +3,43 @@ import { Schema } from "effect"
 import { HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/unstable/httpapi"
 import { InvalidRequestError } from "../errors.js"
 import { ConsoleForbiddenError } from "../console.js"
+import { HostResources } from "@opencode/schema/host-resources"
 
 export const WorkersGroup = HttpApiGroup.make("server.workers")
+  .add(
+    HttpApiEndpoint.get("workers.resources", "/api/workers/:id/resources", {
+      params: { id: Worker.Name },
+      success: HostResources.Snapshot,
+      error: [InvalidRequestError, ConsoleForbiddenError],
+    }).annotateMerge(
+      OpenApi.annotations({ identifier: "workers.resources", summary: "Sample an authorized worker's host resources" }),
+    ),
+  )
+  .add(
+    HttpApiEndpoint.get("workers.attention", "/api/workers/batches/:id/attention", {
+      params: { id: Worker.Name },
+      success: Worker.Inbox,
+      error: [InvalidRequestError, ConsoleForbiddenError],
+    }).annotateMerge(
+      OpenApi.annotations({
+        identifier: "workers.attention",
+        summary: "Read pending requests owned by a batch's recorded assignments",
+      }),
+    ),
+  )
+  .add(
+    HttpApiEndpoint.post("workers.answer", "/api/workers/batches/:id/answer", {
+      params: { id: Worker.Name },
+      payload: Worker.Answer,
+      success: Schema.Void,
+      error: [InvalidRequestError, ConsoleForbiddenError],
+    }).annotateMerge(
+      OpenApi.annotations({
+        identifier: "workers.answer",
+        summary: "Answer the original assigned worker Session's permission or question",
+      }),
+    ),
+  )
   .add(
     HttpApiEndpoint.get("workers.list", "/api/workers", {
       success: Worker.Snapshot,

@@ -13,7 +13,8 @@ import { useSettings } from "@/settings/model"
 import { ExtensionServerCover } from "@/runtime/extension/server-shell"
 import { ExtensionSlot } from "@/runtime/extension/render"
 import { useLanguage } from "@/runtime/i18n/language"
-import { createNavigationController } from "@/shell/navigation/controller"
+import { useNavigation } from "@/shell/navigation/controller"
+import { AgentsMenu } from "@/shell/navigation/agents-menu"
 import { NavigationRail } from "@/shell/navigation/rail"
 import { NavigationSidemenu } from "@/shell/navigation/sidemenu"
 import { NAVIGATION_MAX_WIDTH, NAVIGATION_MIN_WIDTH } from "@/shell/navigation/model"
@@ -27,7 +28,7 @@ export default function Layout(props: ParentProps) {
   const settings = useSettingsSurface()
   const preferences = useSettings()
   const language = useLanguage()
-  const navigation = createNavigationController()
+  const navigation = useNavigation()
   const [state, setState] = createStore({ resizing: false })
   const mobile = navigation.mobile
   const bottomTitlebar = () => mobile() && preferences.general.mobileTitlebarPosition() === "bottom"
@@ -89,7 +90,7 @@ export default function Layout(props: ParentProps) {
           </Show>
           <aside
             id={NAVIGATION_PANEL_ID}
-            aria-label={language.t("sidebar.nav.projectsAndSessions")}
+            aria-label={language.t(navigation.route.agents() ? "agents.title" : "sidebar.nav.projectsAndSessions")}
             data-sidebar-layout-region="sidebar"
             data-mobile-presentation="drawer"
             data-state={opened() ? "open" : "closed"}
@@ -97,7 +98,9 @@ export default function Layout(props: ParentProps) {
             class={frame().panel({ class: "relative flex min-h-0 flex-col max-md:p-0" })}
             classList={{ "max-md:invisible md:border-e-0": !opened() }}
           >
-            <NavigationSidemenu navigation={navigation} />
+            <Show when={navigation.route.agents()} fallback={<NavigationSidemenu navigation={navigation} />}>
+              <AgentsMenu />
+            </Show>
             <Show when={!mobile() && opened()}>
               <div
                 class="contents"

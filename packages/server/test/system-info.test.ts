@@ -3,8 +3,34 @@ import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { database, runtime } from "../src/system-info"
+import { createHostResources, cpuUtilization } from "../src/host-resources"
 
 describe("system info", () => {
+  test("CPU measurements require fresh monotonic counters from the same host sample", () => {
+    const before = { count: 4, idle: 100, total: 200, sampledAt: 1000 }
+    const after = { count: 4, idle: 150, total: 400, sampledAt: 6000 }
+    expect(cpuUtilization(undefined, after)).toBeNull()
+    expect(cpuUtilization(before, after)).toBe(0.75)
+    for (const changed of [
+      { ...after, count: 0 },
+      { ...after, count: 8 },
+      { ...after, sampledAt: 1000 },
+      { ...after, sampledAt: 32000 },
+      { ...after, total: 199 },
+      { ...after, idle: 99 },
+      { ...after, idle: 400 },
+    ])
+      expect(cpuUtilization(before, changed)).toBeNull()
+  })
+
+  test("a new host sampler reports unknown CPU usage and OS memory separately from process RSS", () => {
+    const sample = createHostResources()()
+    expect(sample.cpu.utilization).toBeNull()
+    expect(sample.memory.totalBytes).toBeGreaterThan(0)
+    expect(sample.memory.freeBytes).toBeGreaterThanOrEqual(0)
+    expect(sample.process.residentBytes).toBeGreaterThan(0)
+    expect(sample.process.pid).toBe(process.pid)
+  })
   test("names a remote database by its protocol and host, never its path or token", async () => {
     expect(await database({ url: "reds://db.example.com:5050/private/path" })).toEqual({
       kind: "remote",

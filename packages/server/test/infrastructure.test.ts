@@ -262,7 +262,14 @@ it.live(
       expect((yield* Effect.promise(() => call("/api/workers", operator.token))).status).toBe(200)
       for (const token of [user.token, operator.token]) {
         const workspace = token === user.token ? f.workspace.id : undefined
-        for (const path of ["/api/info", "/api/session", "/api/config", "/api/event"])
+        for (const path of [
+          "/api/info",
+          "/api/session",
+          "/api/config",
+          "/api/event",
+          "/api/resources",
+          "/api/attention",
+        ])
           expect((yield* Effect.promise(() => call(path, token, workspace))).status).toBe(403)
         expect((yield* Effect.promise(() => call("/api/pair", token, workspace, "POST", {}))).status).toBe(403)
         expect(
@@ -305,6 +312,12 @@ it.live(
       expect(allowed.workers.map((item: { worker: { id: string } }) => item.worker.id)).toEqual(["allowed"])
       expect(allowed.workers[0].worker.directories).toEqual([f.directory.path])
       expect(
+        (yield* Effect.promise(() => call("/api/workers/allowed/resources", user.token, f.workspace.id))).status,
+      ).toBe(200)
+      expect(
+        (yield* Effect.promise(() => call("/api/workers/private/resources", user.token, f.workspace.id))).status,
+      ).toBe(403)
+      expect(
         (yield* Effect.promise(() =>
           call("/api/workers/batches", user.token, f.workspace.id, "POST", {
             tasks: [{ id: "forbidden", worker: "private", prompt: "Do not dispatch" }],
@@ -321,6 +334,11 @@ it.live(
       expect(submitted.accountID).toBe(user.account.id)
       expect(submitted.workspaceID).toBe(f.workspace.id)
       expect(submitted.credentialID).toBeUndefined()
+      expect(
+        (yield* Effect.promise(() =>
+          call(`/api/workers/batches/${submitted.id}/attention`, otherUser.token, f.workspace.id),
+        )).status,
+      ).toBe(403)
       expect(
         (yield* Effect.promise(async () => (await call("/api/workers", otherUser.token, f.workspace.id)).json()))
           .batches,
@@ -343,6 +361,24 @@ it.live(
       const revoked = yield* Effect.promise(async () => (await call("/api/workers", user.token, f.workspace.id)).json())
       expect(revoked.workers).toEqual([])
       expect(revoked.batches).toEqual([])
+      expect(
+        (yield* Effect.promise(() => call("/api/workers/allowed/resources", user.token, f.workspace.id))).status,
+      ).toBe(403)
+      expect(
+        (yield* Effect.promise(() =>
+          call(`/api/workers/batches/${submitted.id}/attention`, user.token, f.workspace.id),
+        )).status,
+      ).toBe(403)
+      expect(
+        (yield* Effect.promise(() =>
+          call(`/api/workers/batches/${submitted.id}/answer`, user.token, f.workspace.id, "POST", {
+            kind: "permission",
+            task: "one",
+            requestID: "per_unrelated",
+            decision: "once",
+          }),
+        )).status,
+      ).toBe(403)
       expect(
         (yield* Effect.promise(() =>
           call(`/api/workers/batches/${submitted.id}/collect`, user.token, f.workspace.id, "POST", { task: "one" }),

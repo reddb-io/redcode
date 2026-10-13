@@ -10,13 +10,18 @@ import { ServerAuth } from "../auth"
 import { ServerInfo } from "../server-info"
 import { ServerPairing } from "../pairing"
 import { database, runtime } from "../system-info"
+import { attention } from "../attention"
+import { createHostResources } from "../host-resources"
 
 export const ServerHandler = HttpApiBuilder.group(Api, "server.server", (handlers) =>
   Effect.gen(function* () {
     const pairing = yield* ServerPairing.Service
     const auth = yield* ServerAuth.Config
+    const resources = createHostResources()
 
     return handlers
+      .handle("server.resources", () => Effect.sync(resources))
+      .handle("server.attention", () => attention())
       .handle("server.info", () =>
         Effect.gen(function* () {
           const info = yield* ServerInfo.Service

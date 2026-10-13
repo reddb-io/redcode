@@ -87,6 +87,7 @@ export function NavigationRail(props: { navigation: NavigationController; panelI
           </RailItem>
           <RailItem
             label={language.t("agents.title")}
+            current={props.navigation.route.agents()}
             keybind={command.keybindParts("agents.open")}
             onClick={props.navigation.go.agents}
           >

@@ -5,6 +5,8 @@ import { HttpClientError } from "effect/unstable/http"
 import { HttpApiClient } from "effect/unstable/httpapi"
 import { ClientApi } from "../../contract"
 import type {
+  ServerResourcesOutput,
+  ServerAttentionOutput,
   ServerInfoOutput,
   ServerSystemOutput,
   ServerPairOutput,
@@ -409,6 +411,12 @@ import type {
   ServerIntelligenceDiscoverOutput,
   ServerIntelligenceProbeInput,
   ServerIntelligenceProbeOutput,
+  WorkersResourcesInput,
+  WorkersResourcesOutput,
+  WorkersAttentionInput,
+  WorkersAttentionOutput,
+  WorkersAnswerInput,
+  WorkersAnswerOutput,
   WorkersListOutput,
   WorkersAddInput,
   WorkersAddOutput,
@@ -441,6 +449,12 @@ const preserveStream =
   <E, R>(stream: Stream.Stream<A, E, R>) =>
     stream
 
+const EndpointServerResources = (raw: RawClient["server.server"]) => () =>
+  preserveEffect<ServerResourcesOutput>()(raw["server.resources"]({}).pipe(Effect.mapError(mapClientError)))
+
+const EndpointServerAttention = (raw: RawClient["server.server"]) => () =>
+  preserveEffect<ServerAttentionOutput>()(raw["server.attention"]({}).pipe(Effect.mapError(mapClientError)))
+
 const EndpointServerInfo = (raw: RawClient["server.server"]) => () =>
   preserveEffect<ServerInfoOutput>()(raw["server.info"]({}).pipe(Effect.mapError(mapClientError)))
 
@@ -461,6 +475,8 @@ const EndpointServerConnect = (raw: RawClient["server.server"]) => (input: Serve
   )
 
 const adaptGroupServer = (raw: RawClient["server.server"]) => ({
+  resources: EndpointServerResources(raw),
+  attention: EndpointServerAttention(raw),
   info: EndpointServerInfo(raw),
   system: EndpointServerSystem(raw),
   pair: EndpointServerPair(raw),
@@ -2435,6 +2451,24 @@ const adaptGroupServerIntelligence = (raw: RawClient["server.intelligence"]) => 
   probe: EndpointServerIntelligenceProbe(raw),
 })
 
+const EndpointWorkersResources = (raw: RawClient["server.workers"]) => (input: WorkersResourcesInput) =>
+  preserveEffect<WorkersResourcesOutput>()(
+    raw["workers.resources"]({ params: { id: input["id"] } }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const EndpointWorkersAttention = (raw: RawClient["server.workers"]) => (input: WorkersAttentionInput) =>
+  preserveEffect<WorkersAttentionOutput>()(
+    raw["workers.attention"]({ params: { id: input["id"] } }).pipe(Effect.mapError(mapClientError)),
+  )
+
+type WorkersAnswerRequest = Parameters<RawClient["server.workers"]["workers.answer"]>[0]
+const EndpointWorkersAnswer = (raw: RawClient["server.workers"]) => (input: WorkersAnswerInput) =>
+  preserveEffect<WorkersAnswerOutput>()(
+    raw["workers.answer"]({ params: { id: input["id"] }, payload: input["payload"] } as WorkersAnswerRequest).pipe(
+      Effect.mapError(mapClientError),
+    ),
+  )
+
 const EndpointWorkersList = (raw: RawClient["server.workers"]) => () =>
   preserveEffect<WorkersListOutput>()(raw["workers.list"]({}).pipe(Effect.mapError(mapClientError)))
 
@@ -2482,6 +2516,9 @@ const EndpointWorkersCollect = (raw: RawClient["server.workers"]) => (input: Wor
   )
 
 const adaptGroupWorkers = (raw: RawClient["server.workers"]) => ({
+  resources: EndpointWorkersResources(raw),
+  attention: EndpointWorkersAttention(raw),
+  answer: EndpointWorkersAnswer(raw),
   list: EndpointWorkersList(raw),
   add: EndpointWorkersAdd(raw),
   remove: EndpointWorkersRemove(raw),

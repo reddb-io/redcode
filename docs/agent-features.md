@@ -2,6 +2,33 @@
 
 This guide describes coding-session features. Slash commands are entered in the TUI, not in the Console. For component boundaries, installation and remote execution, start with the [README](../README.md). Distributed Redcode workers have a [separate guide](distributed-workers.md).
 
+## Agents workspace
+
+**Desktop / web app.** Open **Agents** in the siderail, or use `Ctrl+Shift+A` (`Cmd+Shift+A` on macOS).
+Its sidemenu separates **Sessions**, **Inbox**, **Hosts and resources**, **Remote workers** and the
+optional RedSkills **Workers** integration. Select one host or view all configured hosts. The selected
+section and host are stored in the URL and survive reload; the desktop can restore the Agents page.
+
+- **Sessions** groups root sessions and subagents by status. Filter by session/project/worktree,
+  send a steering or queued instruction, interrupt running work, or open its conversation.
+- **Inbox** lists permissions and forms from active runtimes without loading transcripts. Choose a
+  request to answer it. Worker permissions and questions are answered through their coordinator,
+  using its stored worker credential and recorded task assignment. Requests already answered or
+  belonging to another assignment are refused. Protected permissions remain visible with automatic
+  approval enabled. Other forms, including credentials, require the assigned session's normal client.
+- **Hosts and resources** shows logical CPUs, sampled CPU usage, OS free/total RAM and the Redcode
+  process's memory. The first CPU sample is unknown. Measurements refresh while this view is open;
+  failed/disconnected hosts do not display cached values as live. These figures do not reserve RAM or
+  automatically choose placement.
+
+Unavailable locations/tasks are reported explicitly, so incomplete inspection is not presented as an
+empty inbox. Servers without the new endpoints remain usable for sessions and show unavailable states
+for the new views. Organization users receive only their authorized worker assignments; broad host
+inbox/resources APIs require infrastructure administration or the existing trusted server connection.
+
+See [distributed workers](distributed-workers.md) for registration, credentials, independent checkouts,
+recovery and collecting changes.
+
 ## Modes
 
 A session runs one of four primary agents. `Tab` cycles through them (`Shift+Tab` goes back), and the

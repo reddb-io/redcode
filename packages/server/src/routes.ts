@@ -16,6 +16,7 @@ import { PersistentPty } from "@opencode/core/persistent-pty"
 import { Project } from "@opencode/core/project"
 import { Worktree } from "@opencode/core/worktree"
 import { Session } from "@opencode/core/session"
+import { SessionStore } from "@opencode/core/session/store"
 import { SessionExecution } from "@opencode/core/session/execution"
 import { SessionUsageMirror } from "@opencode/core/usage/mirror"
 import { SessionInbox } from "@opencode/core/session/inbox"
@@ -83,6 +84,7 @@ const applicationServiceNodes = [
   Project.sweepNode,
   Worktree.node,
   Session.node,
+  SessionStore.node,
   SessionExecution.node,
   SessionUsageMirror.node,
   SessionInbox.node,

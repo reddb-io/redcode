@@ -1,6 +1,8 @@
 import { Schema } from "effect"
 import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema, OpenApi } from "effect/unstable/httpapi"
 import { UnauthorizedError } from "../errors.js"
+import { Attention } from "@opencode/schema/attention"
+import { HostResources } from "@opencode/schema/host-resources"
 
 export const ServerInfo = Schema.Struct({
   version: Schema.String,
@@ -73,6 +75,30 @@ export function isPairingConnectURL(url: URL) {
 }
 
 export const ServerGroup = HttpApiGroup.make("server.server")
+  .add(
+    HttpApiEndpoint.get("server.resources", "/api/resources", {
+      success: HostResources.Snapshot,
+    }).annotateMerge(
+      OpenApi.annotations({
+        identifier: "server.resources",
+        summary: "Sample host resources",
+        description:
+          "Read CPU and memory on demand. The first CPU sample is unknown; no background collector is started.",
+      }),
+    ),
+  )
+  .add(
+    HttpApiEndpoint.get("server.attention", "/api/attention", {
+      success: Attention.Snapshot,
+    }).annotateMerge(
+      OpenApi.annotations({
+        identifier: "server.attention",
+        summary: "Read pending Session requests",
+        description:
+          "Inspect only cached Locations for pending permissions and forms. No transcript or new Location is loaded.",
+      }),
+    ),
+  )
   .add(
     HttpApiEndpoint.get("server.info", "/api/info", {
       success: ServerInfo,

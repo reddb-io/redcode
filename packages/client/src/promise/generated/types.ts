@@ -1,5 +1,54 @@
 export type JsonValue = null | boolean | number | string | Array<JsonValue> | { [key: string]: JsonValue }
 
+export type HostResourcesSnapshot = {
+  sampledAt: number
+  platform: string
+  cpu: { count: number | null; utilization: number | null }
+  memory: { totalBytes: number | null; freeBytes: number | null }
+  process: { pid: number; residentBytes: number }
+}
+
+export type SessionForkBoundary = { type: "before"; messageID: string } | { type: "through"; messageID: string }
+
+export type ConnectionEnvInfo = { type: "env"; name: string }
+
+export type MoneyUSD = number
+
+export type TokenUsageInfo = {
+  input: number
+  output: number
+  reasoning: number
+  cache: { read: number; write: number }
+}
+
+export type LocationRef = { directory: string; workspaceID?: string }
+
+export type SessionMetadata = { [x: string]: JsonValue }
+
+export type PermissionEffect = "allow" | "deny" | "ask"
+
+export type FileDiffInfo = {
+  file: string
+  patch: string
+  additions: number
+  deletions: number
+  status: "added" | "deleted" | "modified"
+}
+
+export type PermissionSource = { type: "tool"; messageID: string; id: string }
+
+export type FormMetadata = { [x: string]: JsonValue }
+
+export type FormWhen = {
+  key: string
+  op: "eq" | "neq"
+  value: string | number | "Infinity" | "-Infinity" | "NaN" | boolean
+}
+
+export type FormOption = { value: string; label: string; description?: string }
+
+export type FormExternalField = { key: string; type: "external"; url: string; title?: string; description?: string }
+
 export type ServerInfo = { version: string; pid: number; urls: Array<string>; paths: { tmp: string } }
 
 export type SystemInfo = {
@@ -26,15 +75,11 @@ export type LocationPublicInfo = { directory: string; project: { id: string; dir
 
 export type LocationPublicRef = { directory: string }
 
-export type ConnectionEnvInfo = { type: "env"; name: string }
-
 export type ProviderCompaction = { type: "summary" } | { type: "native" }
 
 export type ProviderTransport = "http" | "websocket"
 
 export type AgentColor = string
-
-export type PermissionEffect = "allow" | "deny" | "ask"
 
 export type PluginSource =
   | { type: "builtin" }
@@ -45,27 +90,6 @@ export type PluginSource =
 export type PluginFeatures = { server?: true; tui?: true; rpc?: true }
 
 export type PluginState = { status: "active" } | { status: "failed"; error: string; ref?: string }
-
-export type SessionForkBoundary = { type: "before"; messageID: string } | { type: "through"; messageID: string }
-
-export type MoneyUSD = number
-
-export type TokenUsageInfo = {
-  input: number
-  output: number
-  reasoning: number
-  cache: { read: number; write: number }
-}
-
-export type SessionMetadata = { [x: string]: JsonValue }
-
-export type FileDiffInfo = {
-  file: string
-  patch: string
-  additions: number
-  deletions: number
-  status: "added" | "deleted" | "modified"
-}
 
 export type SessionStatsToolTotals = { calls: number; succeeded: number; failed: number; unfinished: number }
 
@@ -442,8 +466,6 @@ export type InstructionEntryKey = string
 
 export type SessionGenerateResponse = { data: { text: string } }
 
-export type LocationRef = { directory: string; workspaceID?: string }
-
 export type SessionInboxSyntheticPayload1 = { text: string; description?: string; metadata?: { [x: string]: any } }
 
 export type ShellInfo = {
@@ -473,18 +495,6 @@ export type SessionMessageToolStateRunning1 = {
 export type EventLogSynced = { type: "log.synced"; aggregateID: string; seq?: number }
 
 export type SessionInterruptResponse = { interrupted: boolean }
-
-export type FormMetadata = { [x: string]: JsonValue }
-
-export type FormWhen = {
-  key: string
-  op: "eq" | "neq"
-  value: string | number | "Infinity" | "-Infinity" | "NaN" | boolean
-}
-
-export type FormOption = { value: string; label: string; description?: string }
-
-export type FormExternalField = { key: string; type: "external"; url: string; title?: string; description?: string }
 
 export type FormValue = string | number | "Infinity" | "-Infinity" | "NaN" | boolean | Array<string>
 
@@ -616,8 +626,6 @@ export type ProjectIcon = { url?: string; override?: string; color?: string }
 export type ProjectCommands = { start?: string }
 
 export type ProjectTime = { created: number; updated: number; active: number; archived?: number }
-
-export type PermissionSource = { type: "tool"; messageID: string; id: string }
 
 export type PermissionSavedInfo = {
   id: string
@@ -943,6 +951,95 @@ export type WorkerState =
   | "failed"
   | "interrupted"
 
+export type ConnectionRef = { type: "credential"; id: string } | ConnectionEnvInfo
+
+export type SessionInboxMovePayload1 = { location: LocationRef; projectID: string; subpath?: string }
+
+export type PermissionRule = { action: string; resource: string; effect: PermissionEffect }
+
+export type SessionRevert = { messageID: string; partID?: string; snapshot?: string; files?: Array<FileDiffInfo> }
+
+export type PermissionRequest = {
+  id: string
+  sessionID: string
+  action: string
+  resources: Array<string>
+  save?: Array<string>
+  metadata?: { [x: string]: JsonValue }
+  source?: PermissionSource
+  message?: string
+}
+
+export type FormNumberField = {
+  key: string
+  title?: string
+  description?: string
+  required?: boolean
+  hidden?: boolean
+  when?: Array<FormWhen>
+  type: "number"
+  minimum?: number | "Infinity" | "-Infinity" | "NaN"
+  maximum?: number | "Infinity" | "-Infinity" | "NaN"
+  default?: number | "Infinity" | "-Infinity" | "NaN"
+}
+
+export type FormIntegerField = {
+  key: string
+  title?: string
+  description?: string
+  required?: boolean
+  hidden?: boolean
+  when?: Array<FormWhen>
+  type: "integer"
+  minimum?: number | "Infinity" | "-Infinity" | "NaN"
+  maximum?: number | "Infinity" | "-Infinity" | "NaN"
+  default?: number | "Infinity" | "-Infinity" | "NaN"
+}
+
+export type FormBooleanField = {
+  key: string
+  title?: string
+  description?: string
+  required?: boolean
+  hidden?: boolean
+  when?: Array<FormWhen>
+  type: "boolean"
+  default?: boolean
+}
+
+export type FormStringField = {
+  key: string
+  title?: string
+  description?: string
+  required?: boolean
+  hidden?: boolean
+  when?: Array<FormWhen>
+  type: "string"
+  format?: "email" | "uri" | "date" | "date-time"
+  minLength?: number
+  maxLength?: number
+  pattern?: string
+  placeholder?: string
+  default?: string
+  options?: Array<FormOption>
+  custom?: boolean
+}
+
+export type FormMultiselectField = {
+  key: string
+  title?: string
+  description?: string
+  required?: boolean
+  hidden?: boolean
+  when?: Array<FormWhen>
+  type: "multiselect"
+  options: Array<FormOption>
+  minItems?: number
+  maxItems?: number
+  custom?: boolean
+  default?: Array<string>
+}
+
 export type SessionMessageLocationSwitched = {
   id: string
   metadata?: { [x: string]: JsonValue }
@@ -973,8 +1070,6 @@ export type V2EventServerConnected = {
   data: {}
 }
 
-export type ConnectionRef = { type: "credential"; id: string } | ConnectionEnvInfo
-
 export type ModelSettings = { compaction?: ProviderCompaction } & { [x: string]: any }
 
 export type ConfigModelSettings = { compaction?: ProviderCompaction } & { [x: string]: JsonValue | null }
@@ -995,11 +1090,7 @@ export type ConfigProviderSettings = {
   transport?: ProviderTransport
 } & { [x: string]: JsonValue | null }
 
-export type PermissionRule = { action: string; resource: string; effect: PermissionEffect }
-
 export type PluginInfo = { id?: string; source: PluginSource; features: PluginFeatures; state: PluginState }
-
-export type SessionRevert = { messageID: string; partID?: string; snapshot?: string; files?: Array<FileDiffInfo> }
 
 export type SessionStatsTools =
   | { mode: "none" }
@@ -1231,6 +1322,16 @@ export type SessionAgentSelected = {
   durable: { aggregateID: string; seq: number; version: 1 }
   location?: LocationRef
   data: { sessionID: string; agent: string; previous?: string }
+}
+
+export type SessionMoved = {
+  id: string
+  created: number
+  metadata?: { [x: string]: any }
+  type: "session.moved"
+  durable: { aggregateID: string; seq: number; version: 1 }
+  location?: LocationRef
+  data: { sessionID: string; location: LocationRef; projectID: string; subpath?: string }
 }
 
 export type SessionRenamed = {
@@ -1650,6 +1751,24 @@ export type ReferenceUpdated = {
   data: {}
 }
 
+export type PermissionAsked = {
+  id: string
+  created: number
+  metadata?: { [x: string]: any }
+  type: "permission.asked"
+  location?: LocationRef
+  data: {
+    id: string
+    sessionID: string
+    action: string
+    resources: Array<string>
+    save?: Array<string>
+    metadata?: { [x: string]: any }
+    source?: PermissionSource
+    message?: string
+  }
+}
+
 export type PluginUpdated = {
   id: string
   created: number
@@ -1910,18 +2029,6 @@ export type McpResourcesChanged = {
   data: { server: string }
 }
 
-export type SessionMoved = {
-  id: string
-  created: number
-  metadata?: { [x: string]: any }
-  type: "session.moved"
-  durable: { aggregateID: string; seq: number; version: 1 }
-  location?: LocationRef
-  data: { sessionID: string; location: LocationRef; projectID: string; subpath?: string }
-}
-
-export type SessionInboxMovePayload1 = { location: LocationRef; projectID: string; subpath?: string }
-
 export type SessionMetadataUpdated = {
   id: string
   created: number
@@ -2076,76 +2183,6 @@ export type SessionMessageAssistantReasoning1 = {
 
 export type ToolContent1 = ToolTextContent | ToolFileContent1
 
-export type FormNumberField = {
-  key: string
-  title?: string
-  description?: string
-  required?: boolean
-  hidden?: boolean
-  when?: Array<FormWhen>
-  type: "number"
-  minimum?: number | "Infinity" | "-Infinity" | "NaN"
-  maximum?: number | "Infinity" | "-Infinity" | "NaN"
-  default?: number | "Infinity" | "-Infinity" | "NaN"
-}
-
-export type FormIntegerField = {
-  key: string
-  title?: string
-  description?: string
-  required?: boolean
-  hidden?: boolean
-  when?: Array<FormWhen>
-  type: "integer"
-  minimum?: number | "Infinity" | "-Infinity" | "NaN"
-  maximum?: number | "Infinity" | "-Infinity" | "NaN"
-  default?: number | "Infinity" | "-Infinity" | "NaN"
-}
-
-export type FormBooleanField = {
-  key: string
-  title?: string
-  description?: string
-  required?: boolean
-  hidden?: boolean
-  when?: Array<FormWhen>
-  type: "boolean"
-  default?: boolean
-}
-
-export type FormStringField = {
-  key: string
-  title?: string
-  description?: string
-  required?: boolean
-  hidden?: boolean
-  when?: Array<FormWhen>
-  type: "string"
-  format?: "email" | "uri" | "date" | "date-time"
-  minLength?: number
-  maxLength?: number
-  pattern?: string
-  placeholder?: string
-  default?: string
-  options?: Array<FormOption>
-  custom?: boolean
-}
-
-export type FormMultiselectField = {
-  key: string
-  title?: string
-  description?: string
-  required?: boolean
-  hidden?: boolean
-  when?: Array<FormWhen>
-  type: "multiselect"
-  options: Array<FormOption>
-  minItems?: number
-  maxItems?: number
-  custom?: boolean
-  default?: Array<string>
-}
-
 export type FormAnswer = { [x: string]: FormValue }
 
 export type RouterOffer = {
@@ -2224,35 +2261,6 @@ export type ProjectUpdated = {
     commands?: ProjectCommands
     time: ProjectTime
     sandboxes: Array<string>
-  }
-}
-
-export type PermissionRequest = {
-  id: string
-  sessionID: string
-  action: string
-  resources: Array<string>
-  save?: Array<string>
-  metadata?: { [x: string]: JsonValue }
-  source?: PermissionSource
-  message?: string
-}
-
-export type PermissionAsked = {
-  id: string
-  created: number
-  metadata?: { [x: string]: any }
-  type: "permission.asked"
-  location?: LocationRef
-  data: {
-    id: string
-    sessionID: string
-    action: string
-    resources: Array<string>
-    save?: Array<string>
-    metadata?: { [x: string]: any }
-    source?: PermissionSource
-    message?: string
   }
 }
 
@@ -2506,15 +2514,6 @@ export type WorkerRegistration = {
   resourceID?: string
 }
 
-export type WorkerTask = {
-  id: WorkerName
-  prompt: string
-  tags?: Array<string>
-  worker?: WorkerName
-  agent?: string
-  model?: { providerID: string; id: string }
-}
-
 export type WorkerEntry = {
   id: WorkerName
   state: WorkerState
@@ -2527,6 +2526,37 @@ export type WorkerEntry = {
   text?: string
 }
 
+export type WorkerTask = {
+  id: WorkerName
+  prompt: string
+  tags?: Array<string>
+  worker?: WorkerName
+  agent?: string
+  model?: { providerID: string; id: string }
+}
+
+export type ModelRef = { id: string; providerID: string; variant?: string; connection?: ConnectionRef }
+
+export type PermissionRuleset = Array<PermissionRule>
+
+export type SessionRevertStaged = {
+  id: string
+  created: number
+  metadata?: { [x: string]: any }
+  type: "session.revert.staged"
+  durable: { aggregateID: string; seq: number; version: 1 }
+  location?: LocationRef
+  data: { sessionID: string; revert: SessionRevert }
+}
+
+export type FormField =
+  | FormStringField
+  | FormNumberField
+  | FormIntegerField
+  | FormBooleanField
+  | FormMultiselectField
+  | FormExternalField
+
 export type SessionInboxMove = {
   id: string
   sessionID: string
@@ -2535,8 +2565,6 @@ export type SessionInboxMove = {
   delivery: SessionInboxDelivery
   payload: SessionInboxMovePayload
 }
-
-export type ModelRef = { id: string; providerID: string; variant?: string; connection?: ConnectionRef }
 
 export type ModelVariant = {
   id: string
@@ -2549,18 +2577,6 @@ export type ProviderRequest = {
   settings: ProviderSettings
   headers: { [x: string]: string }
   body: { [x: string]: any }
-}
-
-export type PermissionRuleset = Array<PermissionRule>
-
-export type SessionRevertStaged = {
-  id: string
-  created: number
-  metadata?: { [x: string]: any }
-  type: "session.revert.staged"
-  durable: { aggregateID: string; seq: number; version: 1 }
-  location?: LocationRef
-  data: { sessionID: string; revert: SessionRevert }
 }
 
 export type SessionMessageUser = {
@@ -2753,14 +2769,6 @@ export type SessionMessageToolStateError1 = {
   metadata?: { [x: string]: JsonValue }
 }
 
-export type FormField =
-  | FormStringField
-  | FormNumberField
-  | FormIntegerField
-  | FormBooleanField
-  | FormMultiselectField
-  | FormExternalField
-
 export type FormState =
   | { status: "pending" }
   | { status: "answered"; answer: FormAnswer }
@@ -2827,8 +2835,6 @@ export type WorkerStatus = {
   platform?: string
 }
 
-export type WorkerManifest = { tasks: Array<WorkerTask> }
-
 export type WorkerReport = { fingerprint: string; tasks: Array<WorkerEntry> }
 
 export type WorkerArtifact = {
@@ -2838,6 +2844,8 @@ export type WorkerArtifact = {
   patchSha256: string
   collectedAt: string
 }
+
+export type WorkerManifest = { tasks: Array<WorkerTask> }
 
 export type SessionMessageCompactionCompleted = {
   type: "compaction"
@@ -2922,61 +2930,27 @@ export type SessionStepStarted = {
   }
 }
 
-export type ModelInfo = {
-  id: string
-  modelID: string
-  providerID: string
-  canonical?: string
-  canonicalModelID?: string
-  type?: string
-  family?: string
-  name: string
-  upstream?: RouterUpstream
-  via?: string
-  aliases?: Array<string>
-  flat?: boolean
-  offers?: Array<RouterOffer>
-  pinOf?: string
-  compatibility?: ModelCompatibility
-  package?: string
-  settings?: ModelSettings
-  headers?: { [x: string]: string }
-  body?: { [x: string]: any }
-  capabilities: ModelCapabilities
-  variants: Array<ModelVariant>
-  reasoningVariantIDs?: Array<string>
-  time: { released: number }
-  cost: Array<ModelCost>
-  status: ModelStatus
-  enabled: boolean
-  limit: { context: number; input?: number; output: number }
-}
-
-export type AgentInfo = {
-  id: string
-  name: string
-  model?: ModelRef
-  request: ProviderRequest
-  system?: string
-  description?: string
-  mode: "subagent" | "primary" | "all"
-  hidden: boolean
-  color?: AgentColor
-  steps?: number
-  permissions: PermissionRuleset
-}
-
-export type SessionPermissions = {
-  id: string
-  created: number
-  metadata?: { [x: string]: any }
-  type: "session.permissions"
-  durable: { aggregateID: string; seq: number; version: 1 }
-  location?: LocationRef
-  data: { sessionID: string; permissions: PermissionRuleset }
-}
-
 export type SessionInfo = {
+  id: string
+  parentID?: string
+  fork?: { sessionID: string; boundary: SessionForkBoundary }
+  projectID: string
+  agent?: string
+  model?: ModelRef
+  cost: MoneyUSD
+  tokens: TokenUsageInfo
+  outcome?: "succeeded" | "failed" | "interrupted"
+  time: { created: number; updated: number; idle?: number; viewed?: number; archived?: number }
+  title?: string
+  share?: { url: string }
+  location: LocationRef
+  subpath?: string
+  metadata?: SessionMetadata
+  permissions?: PermissionRuleset
+  revert?: SessionRevert
+}
+
+export type SessionInfo1 = {
   id: string
   parentID?: string
   fork?: { sessionID: string; boundary: SessionForkBoundary }
@@ -3256,6 +3230,62 @@ export type ConfigEntry =
     }
   | { type: "directory"; path: string }
 
+export type SessionPermissions = {
+  id: string
+  created: number
+  metadata?: { [x: string]: any }
+  type: "session.permissions"
+  durable: { aggregateID: string; seq: number; version: 1 }
+  location?: LocationRef
+  data: { sessionID: string; permissions: PermissionRuleset }
+}
+
+export type FormFields = [FormField, ...Array<FormField>]
+
+export type ModelInfo = {
+  id: string
+  modelID: string
+  providerID: string
+  canonical?: string
+  canonicalModelID?: string
+  type?: string
+  family?: string
+  name: string
+  upstream?: RouterUpstream
+  via?: string
+  aliases?: Array<string>
+  flat?: boolean
+  offers?: Array<RouterOffer>
+  pinOf?: string
+  compatibility?: ModelCompatibility
+  package?: string
+  settings?: ModelSettings
+  headers?: { [x: string]: string }
+  body?: { [x: string]: any }
+  capabilities: ModelCapabilities
+  variants: Array<ModelVariant>
+  reasoningVariantIDs?: Array<string>
+  time: { released: number }
+  cost: Array<ModelCost>
+  status: ModelStatus
+  enabled: boolean
+  limit: { context: number; input?: number; output: number }
+}
+
+export type AgentInfo = {
+  id: string
+  name: string
+  model?: ModelRef
+  request: ProviderRequest
+  system?: string
+  description?: string
+  mode: "subagent" | "primary" | "all"
+  hidden: boolean
+  color?: AgentColor
+  steps?: number
+  permissions: PermissionRuleset
+}
+
 export type SessionInboxUser = {
   id: string
   sessionID: string
@@ -3346,8 +3376,6 @@ export type SessionMessageAssistantTool1 = {
   time: { created: number; ran?: number; completed?: number }
 }
 
-export type FormFields = [FormField, ...Array<FormField>]
-
 export type CredentialValue = CredentialOAuth | CredentialKey | CredentialExternal
 
 export type FormFields2 = [FormField1, ...Array<FormField1>]
@@ -3392,9 +3420,26 @@ export type SessionStatsInfo = {
   models: Array<SessionStatsModelUsage>
 }
 
-export type SessionsResponse = { data: Array<SessionInfo>; cursor: { previous?: string | null; next?: string | null } }
+export type SessionsResponse = { data: Array<SessionInfo1>; cursor: { previous?: string | null; next?: string | null } }
 
-export type SessionImportResult = { session: SessionInfo; sessions: Array<string>; warnings: Array<string> }
+export type SessionImportResult = { session: SessionInfo1; sessions: Array<string>; warnings: Array<string> }
+
+export type FormInfo = { id: string; sessionID: string; title: string; metadata?: FormMetadata; fields: FormFields }
+
+export type FormDetail = {
+  id: string
+  sessionID: string
+  title: string
+  metadata?: FormMetadata
+  fields: FormFields
+  state: FormState
+}
+
+export type IntegrationOAuthMethod = { id: string; type: "oauth"; label: string; form?: FormFields }
+
+export type IntegrationKeyMethod = { type: "key"; label?: string; form?: FormFields }
+
+export type IntegrationExternalMethod = { id: string; type: "external"; label: string; form?: FormFields }
 
 export type SessionInboxInfo = SessionInboxUser | SessionInboxSynthetic | SessionInboxCompaction | SessionInboxMove
 
@@ -3471,23 +3516,6 @@ export type SessionMessageAssistantContentEncoded =
   | SessionMessageAssistantReasoning1
   | SessionMessageAssistantTool1
 
-export type FormInfo = { id: string; sessionID: string; title: string; metadata?: FormMetadata; fields: FormFields }
-
-export type FormDetail = {
-  id: string
-  sessionID: string
-  title: string
-  metadata?: FormMetadata
-  fields: FormFields
-  state: FormState
-}
-
-export type IntegrationOAuthMethod = { id: string; type: "oauth"; label: string; form?: FormFields }
-
-export type IntegrationKeyMethod = { type: "key"; label?: string; form?: FormFields }
-
-export type IntegrationExternalMethod = { id: string; type: "external"; label: string; form?: FormFields }
-
 export type CredentialEntry = {
   id: string
   integrationID: string
@@ -3504,6 +3532,15 @@ export type WorkerSnapshot = {
   workers: Array<WorkerStatus>
   batches: Array<WorkerBatch>
 }
+
+export type AttentionEntry = { session: SessionInfo; permissions: Array<PermissionRequest>; forms: Array<FormInfo> }
+
+export type IntegrationMethod =
+  | IntegrationOAuthMethod
+  | IntegrationCommandMethod
+  | IntegrationKeyMethod
+  | IntegrationExternalMethod
+  | IntegrationEnvMethod
 
 export type SessionMessageInfo =
   | SessionMessageAgentSelected
@@ -3538,13 +3575,6 @@ export type SessionMessageContentUpdated = {
   data: { sessionID: string; messageID: string; content: Array<SessionMessageAssistantContentEncoded> }
 }
 
-export type IntegrationMethod =
-  | IntegrationOAuthMethod
-  | IntegrationCommandMethod
-  | IntegrationKeyMethod
-  | IntegrationExternalMethod
-  | IntegrationEnvMethod
-
 export type FormCreated = {
   id: string
   created: number
@@ -3554,7 +3584,19 @@ export type FormCreated = {
   data: { form: FormInfo1 }
 }
 
-export type SessionTransferData = { info: SessionInfo; messages: Array<SessionMessageInfo> }
+export type AttentionSnapshot = { data: Array<AttentionEntry>; unavailable: Array<LocationRef> }
+
+export type WorkerPending = { task: WorkerEntry; attention: AttentionEntry }
+
+export type IntegrationInfo = {
+  id: string
+  name: string
+  metadata?: { [x: string]: any }
+  methods: Array<IntegrationMethod>
+  connections: Array<ConnectionInfo>
+}
+
+export type SessionTransferData = { info: SessionInfo1; messages: Array<SessionMessageInfo> }
 
 export type SessionMessagesResponse = {
   data: Array<SessionMessageInfo>
@@ -3607,14 +3649,6 @@ export type SessionEventDurable =
   | SessionRevertCommitted
   | SessionUsageRecorded
   | SessionMessageContentUpdated
-
-export type IntegrationInfo = {
-  id: string
-  name: string
-  metadata?: { [x: string]: any }
-  methods: Array<IntegrationMethod>
-  connections: Array<ConnectionInfo>
-}
 
 export type V2Event =
   | LocationShutdown
@@ -3717,6 +3751,8 @@ export type V2Event =
   | McpResourcesChanged
   | V2EventRpc
   | V2EventServerConnected
+
+export type WorkerInbox = { data: Array<WorkerPending>; unavailable: Array<WorkerName> }
 
 export type SessionLogItem = SessionEventDurable | EventLogSynced
 
@@ -3995,6 +4031,10 @@ export type VcsInitNotSupportedError = {
 }
 export const isVcsInitNotSupportedError = (value: unknown): value is VcsInitNotSupportedError =>
   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "VcsInitNotSupportedError"
+
+export type ServerResourcesOutput = HostResourcesSnapshot
+
+export type ServerAttentionOutput = AttentionSnapshot
 
 export type ServerInfoOutput = ServerInfo
 
@@ -4358,7 +4398,7 @@ export type SessionCreateInput = {
   }["permissions"]
 }
 
-export type SessionCreateOutput = { data: SessionInfo }["data"]
+export type SessionCreateOutput = { data: SessionInfo1 }["data"]
 
 export type SessionImportInput = {
   readonly info: {
@@ -5563,7 +5603,7 @@ export type SessionImportInput = {
   }["location"]
 }
 
-export type SessionImportOutput = { data: SessionInfo }["data"]
+export type SessionImportOutput = { data: SessionInfo1 }["data"]
 
 export type SessionForeignSourcesOutput = { data: Array<SessionImportSourceInfo> }["data"]
 
@@ -5618,15 +5658,15 @@ export type SessionActiveOutput = ActiveSessionsResponse["data"]
 
 export type SessionGetInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
 
-export type SessionGetOutput = { data: SessionInfo }["data"]
+export type SessionGetOutput = { data: SessionInfo1 }["data"]
 
 export type SessionShareInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
 
-export type SessionShareOutput = { data: SessionInfo }["data"]
+export type SessionShareOutput = { data: SessionInfo1 }["data"]
 
 export type SessionUnshareInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
 
-export type SessionUnshareOutput = { data: SessionInfo }["data"]
+export type SessionUnshareOutput = { data: SessionInfo1 }["data"]
 
 export type SessionRebindShareInput = {
   readonly sessionID: { readonly sessionID: string }["sessionID"]
@@ -5634,7 +5674,7 @@ export type SessionRebindShareInput = {
   readonly orgID: { readonly credentialID: string; readonly orgID: string }["orgID"]
 }
 
-export type SessionRebindShareOutput = { data: SessionInfo }["data"]
+export type SessionRebindShareOutput = { data: SessionInfo1 }["data"]
 
 export type SessionMonitorListInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
 
@@ -7303,7 +7343,7 @@ export type SessionForkInput = {
   readonly before?: { readonly before?: string | undefined }["before"]
 }
 
-export type SessionForkOutput = { data: SessionInfo }["data"]
+export type SessionForkOutput = { data: SessionInfo1 }["data"]
 
 export type SessionSwitchAgentInput = {
   readonly sessionID: { readonly sessionID: string }["sessionID"]
@@ -11233,6 +11273,34 @@ export type ServerIntelligenceProbeInput = {
 }
 
 export type ServerIntelligenceProbeOutput = IntelligenceCheck
+
+export type WorkersResourcesInput = { readonly id: { readonly id: string }["id"] }
+
+export type WorkersResourcesOutput = HostResourcesSnapshot
+
+export type WorkersAttentionInput = { readonly id: { readonly id: string }["id"] }
+
+export type WorkersAttentionOutput = WorkerInbox
+
+export type WorkersAnswerInput = {
+  readonly id: { readonly id: string }["id"]
+  readonly payload:
+    | {
+        readonly kind: "permission"
+        readonly task: string
+        readonly requestID: string
+        readonly decision: "once" | "always" | "reject"
+      }
+    | {
+        readonly kind: "question"
+        readonly task: string
+        readonly formID: string
+        readonly answer: { readonly [x: string]: string | number | boolean | ReadonlyArray<string> }
+      }
+    | { readonly kind: "cancel"; readonly task: string; readonly formID: string }
+}
+
+export type WorkersAnswerOutput = void
 
 export type WorkersListOutput = WorkerSnapshot
 

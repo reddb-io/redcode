@@ -29,7 +29,9 @@ The earlier two-worker lab passed 16 acceptance checks on Docker Desktop Linux `
 
 Keep the updated agent server running on the machine that will coordinate the pool. Its server-owned worker service runs independently of any desktop/browser connection. In **Agents → Remote workers** on that server, register each machine's address, absolute checkout directory, server password or pairing token, and optional capability tags. **Check connection** verifies authentication and displays the actual platform.
 
-The panel uses the canonical Redcode design-system button, card, input and textarea contracts. Add independent tasks to a batch, choose a worker or allow placement on any available worker, then **Send batch**. The server accepts one unfinished batch at a time, dispatches its tasks across independent checkout slots, and continues observing when the panel closes. Permissions and input requests must be answered in the worker Session using a normal connected client.
+The panel uses the canonical Redcode design-system button, card, input and textarea contracts. Add independent tasks to a batch, choose a worker or allow placement on any available worker, then **Send batch**. The server accepts one unfinished batch at a time, dispatches its tasks across independent checkout slots, and continues observing when the panel closes. Open **Agents → Inbox** on the coordinator to answer the assigned worker's permissions and questions. Other forms, including credential entry, use the worker Session's normal connected client. The coordinator resolves each reply from its saved task assignment and rechecks the original request and current resource grants.
+
+**Agents → Hosts and resources** shows CPU and OS free/total RAM on the coordinator and registered workers. Worker credentials remain on the coordinator. Measurements refresh only while the view is open; unknown, unavailable and stale readings are not reported as zero load. This view does not reserve memory or add resource-based scheduling. Workers need the updated server endpoints to expose resources and pending requests.
 
 The coordinator persists its registry and batch journals under `<Redcode state>/workers`. Each committed batch includes its original registry snapshot for historical patch collection. Worker secrets use the server's existing credential store; registry/API responses contain credential references, never the supplied password. Removing a worker removes its credential and is blocked as soon as a batch is accepted. Credentials follow the existing store's protection; this feature does not add credential encryption. Optional Console organization authorization is described in [infrastructure access](console-infrastructure.md).
 
@@ -113,14 +115,14 @@ Run the same command again with the same manifest, registry and report to observ
 
 States:
 
-| State                                | Meaning                                                                                                                                               |
-| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `queued`                             | No worker assignment yet; a matching worker may be offline or all matching slots are occupied.                                                        |
-| `dispatching`                        | Placement and IDs are journaled before remote creation/admission.                                                                                     |
-| `running`                            | No terminal result yet, including when local observation time expires.                                                                                |
-| `waiting`                            | The worker Session needs permission or form input. Answer through its normal client, then observe again.                                              |
-| `unknown`                            | Creation, admission or observation could not be confirmed. Inspect the assigned Session; the coordinator never automatically replays or transfers it. |
-| `succeeded`, `failed`, `interrupted` | Remote terminal outcome, or a definitive API rejection before admission (`failed`).                                                                   |
+| State                                | Meaning                                                                                                                                                      |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `queued`                             | No worker assignment yet; a matching worker may be offline or all matching slots are occupied.                                                               |
+| `dispatching`                        | Placement and IDs are journaled before remote creation/admission.                                                                                            |
+| `running`                            | No terminal result yet, including when local observation time expires.                                                                                       |
+| `waiting`                            | The worker Session needs permission or form input. Answer permissions/questions in the coordinator Inbox, or other forms through the worker's normal client. |
+| `unknown`                            | Creation, admission or observation could not be confirmed. Inspect the assigned Session; the coordinator never automatically replays or transfers it.        |
+| `succeeded`, `failed`, `interrupted` | Remote terminal outcome, or a definitive API rejection before admission (`failed`).                                                                          |
 
 An unfinished batch retains the registry across invocations through `<registry>.batch.json`. Checkout reservations last until the corresponding terminal state is observed. Offline/unauthorized workers leave tasks queued. Missing credentials, duplicate task IDs, unmatched capabilities and incompatible journals fail before dispatch. If a saved journal is missing, restore it before dispatching more work; silently recreating it could duplicate already running work.
 

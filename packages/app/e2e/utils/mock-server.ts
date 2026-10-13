@@ -1,5 +1,10 @@
 import type { Page } from "@playwright/test"
-import type { OpenCodeEvent, SessionMessageInfo } from "@opencode/client/promise"
+import type {
+  AttentionSnapshot,
+  HostResourcesSnapshot,
+  OpenCodeEvent,
+  SessionMessageInfo,
+} from "@opencode/client/promise"
 import { Permission } from "@opencode/schema/permission"
 import { Worktree } from "@opencode/schema/worktree"
 import type { Redskilled } from "@opencode/schema/redskilled"
@@ -43,6 +48,8 @@ export type MockFileContent =
   | undefined
 
 export interface MockServerConfig {
+  attention?: Resolvable<AttentionSnapshot>
+  resources?: Resolvable<HostResourcesSnapshot>
   server?: string
   provider: Resolvable<MockProviderCatalog>
   integrations?: unknown[]
@@ -848,6 +855,19 @@ function mockHandlers(
         }),
       )
       .handleAll({
+        resources: () =>
+          Effect.succeed(
+            config.resources
+              ? resolve(config.resources)
+              : {
+                  sampledAt: Date.now(),
+                  platform: "linux arm64",
+                  cpu: { count: 4, utilization: null },
+                  memory: { totalBytes: 8 * 1024 ** 3, freeBytes: 6 * 1024 ** 3 },
+                  process: { pid: 42, residentBytes: 128 * 1024 ** 2 },
+                },
+          ),
+        attention: () => Effect.succeed(config.attention ? resolve(config.attention) : { data: [], unavailable: [] }),
         info: () =>
           Effect.succeed({
             version: "2.0.0",

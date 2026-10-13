@@ -10,6 +10,7 @@ import { SettingsSurfaceProvider } from "@/settings/surface"
 import Shell from "@/shell/shell"
 import { requireServerKey } from "./session"
 import { ExtensionAttachment } from "@/runtime/extension/root"
+import { NavigationProvider } from "@/shell/navigation/controller"
 
 export const File = lazy(() => import("@opencode/session-ui/file").then((module) => ({ default: module.File })))
 
@@ -18,6 +19,7 @@ const loadSessionRoute = () => Promise.all([import("@/session/route"), File.prel
 const DraftRoute = lazy(() => import("@/new-session/route").then((module) => ({ default: module.DraftRoute })))
 
 const SettingsScreen = lazy(() => import("@/settings/shell").then((module) => ({ default: module.SettingsScreen })))
+const Agents = lazy(() => import("@/shell/navigation/agents"))
 
 const ConnectServerScreen = lazy(() =>
   import("@/servers/connect/screen").then((module) => ({ default: module.ConnectServerScreen })),
@@ -33,6 +35,7 @@ export function preloadRoute(url: string) {
   if (pathname === "/new-session") return DraftRoute.preload().then(() => undefined)
 
   if (pathname === "/settings") return SettingsScreen.preload().then(() => undefined)
+  if (pathname === "/agents") return Agents.preload().then(() => undefined)
 
   if (/^\/server\/[^/]+\/session\/[^/]+$/.test(pathname))
     return TargetSessionRouteContent.preload().then(() => undefined)
@@ -45,6 +48,7 @@ export function AppRoutes() {
     <Route component={AppLayout}>
       <Route path="/" component={Home} />
       <Route path="/settings" component={SettingsScreen} />
+      <Route path="/agents" component={Agents} />
       <Route
         path="/server/:serverKey/session/:id"
         component={() => (
@@ -101,7 +105,9 @@ function AppLayout(props: ParentProps) {
       <LayoutProvider>
         <SettingsSurfaceProvider>
           <ExtensionAttachment>
-            <Shell>{props.children}</Shell>
+            <NavigationProvider>
+              <Shell>{props.children}</Shell>
+            </NavigationProvider>
           </ExtensionAttachment>
         </SettingsSurfaceProvider>
       </LayoutProvider>
