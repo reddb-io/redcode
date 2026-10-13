@@ -1,5 +1,18 @@
 # @reddb-io/redcode
 
+## 0.79.0
+
+### Minor Changes
+
+- Make Agents a permanent Desktop/web workspace with a design-system sidemenu and host filtering. Add an inbox for local and assigned remote-worker permissions and questions, and demand-driven CPU/RAM measurements for coordinator and worker hosts. Preserve request identity, current organization/resource authorization and unknown/offline states without loading conversation history.
+- Add host-owned Claude Code and Codex harness adapters with installation, sign-in, native session
+  controls and structured requests in the app's Agents workspace. Add guided machine connection and
+  worker checkout registration using existing SSH bootstrap, plus worktree review, explicit commits,
+  fast-forward integration and restorable Git archives. Keep provider CLIs outside the Redcode binary.
+- Add optional CPU/RAM admission requirements and explicit queued reasons to distributed worker tasks. Keep declared budgets for unfinished or uncertain assignments, share them across slots on the same origin, and respect visible Linux cgroup v2 limits in host measurements. Expose task capabilities and resource requirements in the Desktop worker panel, together with native Session harness queue/steer and interrupt controls using original assignments and idempotent prompt IDs.
+
+  Allow cancelling unassigned queued tasks from Desktop or `workers cancel` so impossible resource requirements do not permanently retain a batch. Cancellation never releases uncertain assigned work.
+
 ## 0.78.0
 
 ### Minor Changes
