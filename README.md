@@ -385,25 +385,29 @@ SaaS services remain incomplete. [Implementation status](docs/opencode-parity-le
 | Follow OpenCode adoption and remaining work   | [Adopted changes](docs/upstream-adoption.md) · [Migration notes](docs/migration-parity.md) · [Parity ledger](docs/opencode-parity-ledger.json) |
 
 <details>
-<summary><strong>What's new in 0.78.0</strong></summary>
+<summary><strong>What's new in 0.79.0</strong></summary>
 
-This minor release consolidates the October OpenCode integration while retaining Redcode's
-Design, Vault, S1/S2, Console and worker capabilities.
+This minor release brings agent supervision, remote machine setup and worktree management into
+the Desktop/web app's design-system workspace.
 
-- **Agent engine:** more resilient Git snapshots, worktree tools, subagent tracking across project
-  unloading, mixed line-ending edits and configurable summary-compaction models.
-- **Provider connections:** ChatGPT token sharing alongside existing Codex login methods, Google
-  Vertex project/location setup and corrected Copilot routing. ChatGPT token sharing depends on
-  the provider enabling your account and client.
-- **CLI and TUI:** explicit remote-access consent, periodic update checks, searchable plugin dialogs
-  and preservation of saved model selections when a model becomes unavailable.
-- **Server and SDK:** streamed file downloads, HTTP byte ranges, automatic archiving of inactive
-  projects whose checkouts disappeared, plugin session lifecycle APIs and live integration-policy changes.
+- **Agents workspace:** host-filtered sessions, an inbox for permissions and questions, and CPU/RAM
+  measurements for coordinator and worker hosts.
+- **Claude Code and Codex:** configure, install, sign in and control provider CLIs on the selected host
+  through **Agents → Harnesses**. Native requests retain their process identity; ambiguous interrupted
+  runs require operator reconciliation. Provider CLIs remain separate from Redcode's binary.
+- **Remote machines:** connect through existing SSH bootstrap, inspect the host and register a remote
+  worker checkout through **Agents → Machines**.
+- **Worktrees:** create and review isolated checkouts, commit explicitly, integrate by fast-forward,
+  and archive/restore detached Git worktrees through **Agents → Worktrees**.
+- **Distributed workers:** optional capability and CPU/RAM admission requirements, visible queued
+  reasons, cancellation of unassigned tasks, and native Session queue/steer/interrupt controls.
 
-Read the [release notes](https://github.com/reddb-io/redcode/releases/tag/v0.78.0) or the
-[component-by-component adoption record](docs/upstream-adoption.md). Open upstream proposals remain
-separate from shipped features; physical Raspberry Pi workers and full SaaS isolation still need validation
-and further work.
+Read the [release notes](https://github.com/reddb-io/redcode/releases/tag/v0.79.0),
+[external-agent guide](docs/external-harnesses.md) and [worker guide](docs/distributed-workers.md).
+The [0.78.0 release](https://github.com/reddb-io/redcode/releases/tag/v0.78.0) records the preceding
+OpenCode integration. External harnesses use trusted host-administration access; distributed batches
+still run native Redcode sessions. Physical Raspberry Pi workers and full SaaS isolation still need
+validation and further work.
 
 </details>
 
