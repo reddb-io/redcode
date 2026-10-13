@@ -8,11 +8,14 @@ import { useLanguage } from "@/runtime/i18n/language"
 import { ServerConnection, serverName, useServers } from "@/runtime/server/registry"
 import { useNavigation } from "./controller"
 
-export const AGENT_VIEWS = ["sessions", "inbox", "hosts", "remote", "workers"] as const
+export const AGENT_VIEWS = ["sessions", "inbox", "harness", "machines", "worktrees", "hosts", "remote", "workers"] as const
 export type AgentView = (typeof AGENT_VIEWS)[number]
 export const AGENT_LABELS = {
   sessions: "agents.sessions",
   inbox: "agents.inbox.title",
+  harness: "harness.title",
+  machines: "agentMachines.title",
+  worktrees: "agentWorktrees.title",
   hosts: "agents.hosts.title",
   remote: "remoteWorkers.title",
   workers: "agents.workers",

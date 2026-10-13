@@ -39,6 +39,8 @@ import { LSPGroup } from "./groups/lsp.js"
 import { FormatterGroup } from "./groups/formatter.js"
 import { RedskilledGroup } from "./groups/redskilled.js"
 import { WorkersGroup } from "./groups/workers.js"
+import { HarnessGroup } from "./groups/harness.js"
+import { WorktreeLifecycleGroup } from "./groups/worktree-lifecycle.js"
 
 type LocationGroups<LocationId extends HttpApiMiddleware.AnyId> =
   | HttpApiGroup.AddMiddleware<typeof AgentGroup, LocationId>
@@ -104,6 +106,8 @@ type ApiGroups<
   | typeof CredentialGroup
   | typeof IntelligenceGroup
   | typeof WorkersGroup
+  | typeof HarnessGroup
+  | typeof WorktreeLifecycleGroup
   | LocationGroups<LocationId>
   | LocationGroup<LocationId, LocationService>
   | ReturnType<typeof makePtyGroup<LocationId, LocationService>>
@@ -201,6 +205,8 @@ const makeApiFromGroup = <
     .add(RedskilledGroup.middleware(locationMiddleware))
     .add(IntelligenceGroup)
     .add(WorkersGroup)
+    .add(HarnessGroup)
+    .add(WorktreeLifecycleGroup)
     .annotateMerge(
       OpenApi.annotations({
         title: "opencode HttpApi",

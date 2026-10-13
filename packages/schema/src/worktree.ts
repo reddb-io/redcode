@@ -44,6 +44,51 @@ export const ListEntry = Schema.Struct({
 }).annotate({ identifier: "Worktree.ListEntry" })
 export interface ListEntry extends Schema.Schema.Type<typeof ListEntry> {}
 
+export const InspectInput = Schema.Struct({
+  projectID: Project.ID,
+  directory: AbsolutePath,
+  target: AbsolutePath,
+}).annotate({ identifier: "Worktree.InspectInput" })
+export interface InspectInput extends Schema.Schema.Type<typeof InspectInput> {}
+export const Review = Schema.Struct({
+  directory: AbsolutePath,
+  target: AbsolutePath,
+  branch: Schema.NullOr(Schema.String),
+  head: Schema.String,
+  targetHead: Schema.String,
+  dirty: Schema.Boolean,
+  targetDirty: Schema.Boolean,
+  status: Schema.String,
+  diff: Schema.String,
+  truncated: Schema.Boolean,
+  managed: Schema.Boolean,
+}).annotate({ identifier: "Worktree.Review" })
+export interface Review extends Schema.Schema.Type<typeof Review> {}
+export const IntegrateInput = Schema.Struct({
+  ...InspectInput.fields,
+  head: Schema.String,
+  targetHead: Schema.String,
+}).annotate({ identifier: "Worktree.IntegrateInput" })
+export interface IntegrateInput extends Schema.Schema.Type<typeof IntegrateInput> {}
+export const CheckpointInput = Schema.Struct({
+  projectID: Project.ID,
+  directory: AbsolutePath,
+  message: Schema.NonEmptyString,
+}).annotate({ identifier: "Worktree.CheckpointInput" })
+export interface CheckpointInput extends Schema.Schema.Type<typeof CheckpointInput> {}
+export const ArchiveInput = Schema.Struct({
+  projectID: Project.ID,
+  directory: AbsolutePath,
+  head: Schema.String,
+}).annotate({ identifier: "Worktree.ArchiveInput" })
+export interface ArchiveInput extends Schema.Schema.Type<typeof ArchiveInput> {}
+export const Archive = Schema.Struct({
+  reference: Schema.String,
+  head: Schema.String,
+  createdAt: Schema.String,
+}).annotate({ identifier: "Worktree.Archive" })
+export interface Archive extends Schema.Schema.Type<typeof Archive> {}
+
 export class OperationError extends Schema.TaggedError<OperationError>()("Worktree.OperationError", {
   message: Schema.String,
   forceRequired: optional(Schema.Boolean),

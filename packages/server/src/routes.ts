@@ -62,6 +62,7 @@ import { PtyEnvironment } from "./pty-environment"
 import { PtySockets } from "./pty-sockets"
 import { ServerPairing } from "./pairing"
 import { Workers } from "./workers"
+import { Harnesses } from "./harness"
 import { InfrastructureAccess } from "./infrastructure-access"
 import { layer } from "./location"
 import { formLocationLayer } from "./middleware/form-location"
@@ -110,6 +111,7 @@ const applicationServiceNodes = [
   PtyEnvironment.node,
   ServerPairing.node,
   Workers.node,
+  Harnesses.node,
   LocationServiceMap.node,
   LocationActivity.node,
   SessionRestart.node,

@@ -29,6 +29,10 @@ inbox/resources APIs require infrastructure administration or the existing trust
 See [distributed workers](distributed-workers.md) for registration, credentials, independent checkouts,
 recovery and collecting changes.
 
+**Harnesses**, **Machines** and **Worktrees** extend this workspace with external Claude Code/Codex
+sessions, guided remote registration and a create/review/integrate/archive/restore workflow.
+See [external coding agents and worktrees](external-harnesses.md) for capabilities and host ownership.
+
 ## Modes
 
 A session runs one of four primary agents. `Tab` cycles through them (`Shift+Tab` goes back), and the

@@ -269,6 +269,8 @@ it.live(
           "/api/event",
           "/api/resources",
           "/api/attention",
+          "/api/harness",
+          "/api/worktree/archives?projectID=unavailable",
         ])
           expect((yield* Effect.promise(() => call(path, token, workspace))).status).toBe(403)
         expect((yield* Effect.promise(() => call("/api/pair", token, workspace, "POST", {}))).status).toBe(403)
@@ -277,6 +279,7 @@ it.live(
         ).toBe(403)
       }
       expect((yield* Effect.promise(() => call("/api/info", f.owner.token))).status).toBe(200)
+      expect((yield* Effect.promise(() => call("/api/harness", f.owner.token))).status).toBe(200)
       expect((yield* Effect.promise(() => call("/api/fs/list", user.token, f.workspace.id))).status).toBe(403)
       const workerResource = yield* Effect.promise(() =>
         f.json(`/infrastructure/${f.infrastructure.id}/resources`, f.owner.token, "POST", { name: "Worker" }),

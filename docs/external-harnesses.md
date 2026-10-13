@@ -1,0 +1,114 @@
+# External coding agents and worktrees
+
+The **Desktop / web app** controls these features through **Agents** in the siderail. Its sidemenu
+separates **Harnesses**, **Machines**, **Worktrees**, the native Session inbox and the worker coordinator.
+The host selector determines where an executable, credential, native session or checkout lives.
+**Settings → Servers** also links to the selected host's tools. Normal setup uses these screens;
+editing a configuration file is not required.
+
+## Connect a remote machine
+
+1. Open **Agents → Machines** on the coordinator you want to use.
+2. Choose **Add server**. Enter a reachable server/pairing address, or use **SSH** in the desktop menu.
+   The existing SSH bootstrap checks the platform/version, installs the server when needed, starts
+   its service and forwards its port. Authentication challenges and progress appear in that dialog.
+3. Select the connected machine and **Check server**. Review its platform and server version.
+4. Enter a worker name, an existing checkout directory and any placement tags; choose **Register worker
+   checkout**. The remote directory is resolved on the target before registration. The coordinator
+   stores its server credential through the existing credential store.
+
+Each checkout is an independent execution slot. A desktop-owned loopback forward is suitable for a
+local coordinator. A remote coordinator cannot reach that forward on your desktop; use a direct
+address it can reach instead. Provider credentials stay on the execution machine. Registering a worker
+does not copy your project to it or install its language toolchain.
+
+SSH bootstrap supports Linux ARM64; 32-bit Raspberry Pi installations still need a supported 64-bit
+OS. Physical Pi/LAN validation is separate from Docker and protocol tests.
+
+## Configure Claude Code or Codex
+
+Open **Harnesses** for the execution host. **Check installation** detects the CLI version and account
+state without making an inference request. Set its executable name or path and choose **Save and
+check** if it is outside PATH. Changing an executable requires closing its active harnesses first.
+
+**Install with npm on this host** installs the official `@anthropic-ai/claude-code` or `@openai/codex`
+package. This explicit action needs Node.js/npm and permission for a global installation on that host.
+The CLIs are not bundled into Redcode, and existing installations can be used without downloading them.
+
+**Sign in** runs the provider's own authentication flow on that machine. Codex uses app-server's
+device-code flow: the screen displays its verification link and code. Claude displays its browser
+authorization link; if the provider asks for an authorization code, paste it into the masked field
+and submit. Codes are passed to the live login process and are not stored in Redcode history.
+The provider owns token storage. Sign-in can be cancelled and expires after five minutes.
+
+These host-wide APIs require an infrastructure owner administrator or an existing trusted server
+connection. Organization membership alone does not grant access to the host's provider accounts or
+arbitrary directories. This delivery does not introduce account-profile isolation or tenant-scoped
+external harness execution.
+
+## Run and control a harness
+
+Choose the coding agent, optional model override and checkout directory, then **Start harness**.
+Starting establishes the native protocol; **Send instruction** starts the work. The app shows output,
+tool activity and pending requests for that native session. Only an opened run reads its output;
+the session inventory contains metadata. The output view displays its most recent 200 events.
+
+Codex's installation check also fetches the host/account's advertised models. The model field offers
+those suggestions. Leaving it empty preserves the CLI's configured default; an unavailable default
+is reported by the provider, and you can choose an advertised model without editing a file.
+
+| Adapter | Transport | Active steering | Queued instructions | Interrupt | Native resume |
+| --- | --- | --- | --- | --- | --- |
+| Codex | app-server JSON-RPC over stdio | Yes | Yes | Yes | Saved thread ID |
+| Claude Code | CLI stream-json/control protocol | Unavailable in this adapter | Yes | Yes | Saved session ID |
+
+The adapters preserve each provider's permission behavior. Supported command/file approvals and
+questions appear in the run's panel. Unsupported requests can be declined; the app never fabricates
+support or silently approves them. Answers target a still-pending request on the owning process.
+Codex events from another thread/active turn are ignored.
+
+Sending the same instruction ID again uses first-admission-wins behavior. Reusing it in another run
+is rejected. Queued input is stored on the host, and interruption cancels queued instructions. After
+host restart or process loss, the run displays **Needs reconciliation**; it is not automatically
+replayed. **Resume native session** reattaches using a recorded native ID; input whose delivery was
+ambiguous is not resent. Check the result before asking the agent to continue.
+
+An unknown execution must be reconciled first: check the original machine and confirm in the screen
+that its process has stopped. The server refuses resume/release until that operator confirmation.
+Redcode does not claim to have killed a process it no longer owns.
+
+**Close owned process** stops only the process tree launched for that run, preserving its native
+history and Redcode output. It waits for process closure before releasing the attachment.
+The external sessions remain separate from native Redcode Session IDs and the native worker batch
+engine. Selecting a remote host runs the adapter there; automatic worker-batch placement still uses
+the native Redcode harness. External provider subagent controls and provider-independent rollback
+are outside this delivery.
+
+## Create, review, integrate and archive
+
+1. Open **Worktrees**, choose a known project or **Open repository** using its directory on this host.
+2. Select the source/integration target, a worktree name and an optional existing branch/ref. Creation
+   uses the current strategy and project preparation configuration. The Git strategy creates a
+   detached checkout; the app does not invent a new branch.
+3. Choose **Start coding agent here** to open Harnesses with this exact host and checkout preselected.
+4. Close the attached harness before modifying its Git state. **Review changes** shows the common-base
+   diff, checkout status and both commit IDs. Untracked contents enter the diff after committing.
+5. **Commit all non-ignored changes** stages and commits that managed worktree with your supplied
+   message. Git identity and commit hooks come from the repository/host. A failed hook is reported.
+6. **Integrate reviewed commit** requires clean source and target checkouts and unchanged reviewed
+   commit IDs. It uses `git merge --ff-only`. Divergence is reported without a merge/conflict mutation;
+   resolve it with a manual merge or rebase before reviewing again. Large previews are truncated and
+   the UI disables integration until you can review the full result separately.
+7. **Archive worktree** requires a clean managed checkout and explicit confirmation. It creates a
+   permanent `refs/redcode/archives/...` reference before removal, preserving detached commits against
+   Git garbage collection. Active/recent native sessions or attached external processes can block
+   removal. If removal fails, the reference remains as a recovery record.
+8. **Archived results → Restore as a new worktree** creates another checkout from the saved reference.
+
+Archive preserves committed, non-ignored content. Ignored files and empty directories are not captured;
+move any needed artifacts before confirming removal. Existing worktree safety checks remain in force.
+Integration checks repository identity and recorded checkout ownership. This is not cross-host Git
+synchronization or coordinated multi-server execution ownership.
+
+Protocol references: [Codex app-server](https://developers.openai.com/codex/app-server) and
+[Claude Code programmatic execution](https://code.claude.com/docs/en/headless).

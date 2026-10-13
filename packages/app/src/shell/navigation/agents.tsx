@@ -20,6 +20,9 @@ import { RemoteWorkers } from "./remote-workers"
 
 const AgentInbox = lazy(() => import("./agents-inbox"))
 const AgentHosts = lazy(() => import("./agents-hosts"))
+const AgentHarnesses = lazy(() => import("./agents-harnesses"))
+const AgentMachines = lazy(() => import("./agents-machines"))
+const AgentWorktrees = lazy(() => import("./agents-worktrees"))
 
 type AgentInstruction = {
   sessionID: string
@@ -100,6 +103,15 @@ export default function Agents() {
                     </Match>
                     <Match when={scope.view() === "hosts"}>
                       <AgentHosts server={server} />
+                    </Match>
+                    <Match when={scope.view() === "harness"}>
+                      <AgentHarnesses server={server} />
+                    </Match>
+                    <Match when={scope.view() === "machines"}>
+                      <AgentMachines server={server} />
+                    </Match>
+                    <Match when={scope.view() === "worktrees"}>
+                      <AgentWorktrees server={server} />
                     </Match>
                     <Match when={scope.view() === "remote"}>
                       <RemoteWorkers server={server} />

@@ -25,7 +25,7 @@ import { WebSearchHandler } from "./handlers/websearch"
 import { McpHandler } from "./handlers/mcp"
 import { CredentialHandler } from "./handlers/credential"
 import { ProjectHandler } from "./handlers/project"
-import { WorktreeHandler } from "./handlers/worktree"
+import { WorktreeHandler, WorktreeLifecycleHandler } from "./handlers/worktree"
 import { VcsHandler } from "./handlers/vcs"
 import { EventFeed } from "./event-feed"
 import { MigrationHandler } from "./handlers/migration"
@@ -36,6 +36,7 @@ import { LSPHandler } from "./handlers/lsp"
 import { FormatterHandler } from "./handlers/formatter"
 import { RedskilledHandler } from "./handlers/redskilled"
 import { WorkersHandler } from "./handlers/workers"
+import { HarnessHandler } from "./handlers/harness"
 
 export const handlers = Layer.mergeAll(
   ServerHandler,
@@ -66,6 +67,7 @@ export const handlers = Layer.mergeAll(
   ShellHandler,
   ReferenceHandler,
   WorktreeHandler,
+  WorktreeLifecycleHandler,
   VcsHandler,
   ConfigHandler,
   IntelligenceHandler,
@@ -74,4 +76,5 @@ export const handlers = Layer.mergeAll(
   FormatterHandler,
   RedskilledHandler,
   WorkersHandler,
+  HarnessHandler,
 )

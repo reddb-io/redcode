@@ -9,6 +9,106 @@ import { startServer } from "./fixture/server"
 import { OpenCode } from "@opencode/client"
 import { initRepo } from "../../core/test/fixture/git"
 
+it.live(
+  "reviews, commits, integrates and restores an archived detached worktree through the host API",
+  () =>
+    Effect.gen(function* () {
+      const tmp = yield* Effect.acquireDisposable(Effect.promise(() => tmpdir("redcode-worktree-cycle-")))
+      const source = path.join(tmp.path, "repo")
+      yield* Effect.promise(async () => {
+        await fs.mkdir(source)
+        await initRepo(source)
+      })
+      const server = yield* startServer(path.join(tmp.path, "config"))
+      const api = OpenCode.make({ baseUrl: server.base, headers: server.headers })
+      yield* Effect.promise(async () => {
+        const location = await api.location.get({ location: { directory: source } })
+        const projectID = location.project.id
+        const worktree = await api.worktree.create({ projectID, name: "agent-result" })
+        await fs.writeFile(path.join(worktree.directory, "result.ts"), "export const result = 42\n")
+        const input = { projectID, directory: worktree.directory, target: source }
+        const dirty = await api.worktreeLifecycle.inspect(input)
+        expect(dirty).toMatchObject({ dirty: true, branch: null, managed: true })
+        await expect(
+          api.worktreeLifecycle.integrate({ ...input, head: dirty.head, targetHead: dirty.targetHead }),
+        ).rejects.toMatchObject({ data: { message: expect.stringContaining("Commit source") } })
+        await api.worktreeLifecycle.checkpoint({
+          projectID,
+          directory: worktree.directory,
+          message: "feat: agent result",
+        })
+        const review = await api.worktreeLifecycle.inspect(input)
+        expect(review.diff).toContain("export const result = 42")
+        const integrated = await api.worktreeLifecycle.integrate({
+          ...input,
+          head: review.head,
+          targetHead: review.targetHead,
+        })
+        expect(integrated.targetHead).toBe(review.head)
+        expect((await fs.readFile(path.join(source, "result.ts"), "utf8")).replace(/\r\n/g, "\n")).toBe(
+          "export const result = 42\n",
+        )
+        const archive = await api.worktreeLifecycle.archive({
+          projectID,
+          directory: worktree.directory,
+          head: review.head,
+        })
+        expect(await fs.stat(worktree.directory).catch(() => undefined)).toBeUndefined()
+        expect(await api.worktreeLifecycle.archives({ projectID })).toContainEqual(archive)
+        expect((await $`git rev-parse ${archive.reference}`.cwd(source).quiet()).text().trim()).toBe(review.head)
+        const restored = await api.worktree.create({ projectID, name: "restored", branch: archive.reference })
+        expect((await fs.readFile(path.join(restored.directory, "result.ts"), "utf8")).replace(/\r\n/g, "\n")).toBe(
+          "export const result = 42\n",
+        )
+        await api.worktree.remove({ projectID, directory: restored.directory, force: false })
+      })
+    }),
+  30_000,
+)
+
+it.live(
+  "integration refuses stale reviews, dirty targets and divergent histories without changing the target",
+  () =>
+    Effect.gen(function* () {
+      const tmp = yield* Effect.acquireDisposable(Effect.promise(() => tmpdir("redcode-worktree-review-")))
+      const source = path.join(tmp.path, "repo")
+      yield* Effect.promise(async () => {
+        await fs.mkdir(source)
+        await initRepo(source)
+      })
+      const server = yield* startServer(path.join(tmp.path, "config"))
+      const api = OpenCode.make({ baseUrl: server.base, headers: server.headers })
+      yield* Effect.promise(async () => {
+        const projectID = (await api.location.get({ location: { directory: source } })).project.id
+        const worktree = await api.worktree.create({ projectID, name: "stale-review" })
+        const input = { projectID, directory: worktree.directory, target: source }
+        const initial = await api.worktreeLifecycle.inspect(input)
+        await fs.writeFile(path.join(worktree.directory, "change.txt"), "agent change")
+        await api.worktreeLifecycle.checkpoint({ projectID, directory: worktree.directory, message: "feat: change" })
+        await expect(
+          api.worktreeLifecycle.integrate({ ...input, head: initial.head, targetHead: initial.targetHead }),
+        ).rejects.toMatchObject({ data: { message: expect.stringContaining("revision changed") } })
+        const review = await api.worktreeLifecycle.inspect(input)
+        await fs.writeFile(path.join(source, "other.txt"), "target change")
+        await expect(
+          api.worktreeLifecycle.integrate({ ...input, head: review.head, targetHead: review.targetHead }),
+        ).rejects.toMatchObject({ data: { message: expect.stringContaining("clean the integration target") } })
+        await $`git add other.txt`.cwd(source).quiet()
+        await $`git commit -m target-change`.cwd(source).quiet()
+        const divergent = await api.worktreeLifecycle.inspect(input)
+        await expect(
+          api.worktreeLifecycle.integrate({ ...input, head: divergent.head, targetHead: divergent.targetHead }),
+        ).rejects.toMatchObject({ name: "WorktreeError" })
+        expect((await $`git rev-parse HEAD`.cwd(source).quiet()).text().trim()).toBe(divergent.targetHead)
+        await expect(
+          api.worktreeLifecycle.checkpoint({ projectID, directory: source, message: "should not stage root" }),
+        ).rejects.toMatchObject({ data: { message: expect.stringContaining("managed Git worktree") } })
+        await api.worktree.remove({ projectID, directory: worktree.directory, force: false })
+      })
+    }),
+  30_000,
+)
+
 it.live("list reads saved inventory even when its checkout is missing, without booting a location", () =>
   Effect.gen(function* () {
     const tmp = yield* Effect.acquireDisposable(Effect.promise(() => tmpdir("opencode-worktree-list-")))

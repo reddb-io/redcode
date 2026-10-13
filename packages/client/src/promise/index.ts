@@ -2,6 +2,7 @@ import type { OpenCode } from "./client.js"
 
 export * from "./generated/index.js"
 export { OpenCode } from "./client.js"
+export { Harness } from "@opencode/schema/harness"
 export type {
   AgentApi,
   CommandApi,

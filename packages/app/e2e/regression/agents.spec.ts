@@ -3,8 +3,149 @@ import { fixture, installStressSessionTabs, mockStressTimeline } from "../utils/
 import { sessionHref } from "../utils/app"
 import { status } from "../utils/timeline"
 import { mockRemoteWorkers, mockWaitingWorker } from "../utils/worker-fixture"
+import { mockHarnessOperations, mockWorktreeOperations, mockMachineInspection } from "../utils/agent-operation-fixture"
+import { SERVER } from "../utils/app"
 
 test.use({ viewport: { width: 1440, height: 900 } })
+
+test("starts a native Claude harness and preserves question input across host refresh", async ({ page }) => {
+  await mockStressTimeline(page)
+  await installStressSessionTabs(page, { sessionIDs: [] })
+  const harness = await mockHarnessOperations(page)
+  await page.goto("/agents?view=harness")
+  const workspace = page.getByRole("region", { name: "Agents", exact: true })
+  await workspace.getByLabel("Coding agent", { exact: true }).selectOption("claude")
+  await workspace.getByLabel("Checkout directory on this host", { exact: true }).fill(fixture.directory)
+  const opened = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === "/api/harness/runs" && response.request().method() === "POST",
+  )
+  await workspace.getByRole("button", { name: "Start harness", exact: true }).click()
+  expect((await opened).request().postDataJSON()).toEqual({ driver: "claude", directory: fixture.directory })
+  await expect(workspace.getByRole("log", { name: "Harness output" })).toContainText("Native harness output")
+  await expect(
+    workspace.getByLabel("Delivery", { exact: true }).getByRole("option", { name: "Steer active execution" }),
+  ).toHaveCount(0)
+  await workspace.getByLabel("Instruction", { exact: true }).fill("Build the implementation")
+  await workspace.getByRole("button", { name: "Send instruction", exact: true }).click()
+  await expect(workspace.getByLabel("Instruction", { exact: true })).toHaveValue("")
+  await expect(workspace.getByRole("alert")).toHaveCount(0)
+  const answer = workspace.getByLabel("Which implementation?", { exact: true })
+  await answer.fill("Small")
+  const refreshed = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === "/api/harness/runs/native-run" && response.request().method() === "GET",
+  )
+  await refreshed
+  await expect(answer).toBeFocused()
+  await expect(answer).toHaveValue("Small")
+  const answered = page.waitForResponse((response) => new URL(response.url()).pathname.endsWith("/native-run/answer"))
+  await workspace.getByRole("button", { name: "Submit answers", exact: true }).click()
+  expect((await answered).request().postDataJSON()).toEqual({
+    request: "question-native",
+    allow: true,
+    answers: { choice: "Small" },
+  })
+  await expect(answer).toHaveCount(0)
+  await expect(workspace.getByRole("alert")).toHaveCount(0)
+  await page.screenshot({ path: test.info().outputPath("external-harness.png"), animations: "disabled" })
+  harness.loseProcess()
+  await expect(
+    workspace.getByRole("checkbox", { name: "I confirmed that the original process is stopped" }),
+  ).toBeVisible()
+  await expect(workspace.getByRole("button", { name: "Resume native session", exact: true })).toBeDisabled()
+  await expect(workspace.getByRole("button", { name: "Record reconciliation", exact: true })).toBeDisabled()
+  await workspace.getByRole("checkbox", { name: "I confirmed that the original process is stopped" }).check()
+  await workspace.getByRole("button", { name: "Record reconciliation", exact: true }).click()
+  await expect(workspace.getByRole("button", { name: "Resume native session", exact: true })).toBeEnabled()
+})
+
+test("creates and reviews a worktree, targets its harness and archives a detached result", async ({ page }) => {
+  await mockStressTimeline(page)
+  await installStressSessionTabs(page, { sessionIDs: [] })
+  const tree = await mockWorktreeOperations(page)
+  await mockHarnessOperations(page)
+  await page.goto(`/agents?view=worktrees&project=${fixture.project.id}`)
+  const workspace = page.getByRole("region", { name: "Agents", exact: true })
+  await workspace.getByLabel("Worktree name", { exact: true }).fill("agent-result")
+  await workspace.getByRole("button", { name: "Create worktree", exact: true }).click()
+  const child = workspace.getByRole("article", { name: tree.directory, exact: true })
+  await child.getByRole("button", { name: "Review changes", exact: true }).click()
+  await expect(workspace.getByLabel("Worktree diff", { exact: true })).toContainText("agent result")
+  const integrated = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/worktree/integrate")
+  await workspace.getByRole("button", { name: "Integrate reviewed commit", exact: true }).click()
+  expect((await integrated).request().postDataJSON()).toEqual({
+    projectID: fixture.project.id,
+    directory: tree.directory,
+    target: fixture.directory,
+    head: "a".repeat(40),
+    targetHead: "b".repeat(40),
+  })
+  await workspace.getByRole("button", { name: "Archive worktree", exact: true }).click()
+  await workspace.getByRole("button", { name: "Confirm archive", exact: true }).click()
+  await expect(child).toHaveCount(0)
+  await expect(workspace.getByRole("button", { name: "Restore as a new worktree", exact: true })).toBeVisible()
+  await page.screenshot({ path: test.info().outputPath("worktree-cycle.png"), animations: "disabled" })
+  await workspace.getByRole("button", { name: "Restore as a new worktree", exact: true }).click()
+  await child.getByRole("button", { name: "Start coding agent here", exact: true }).click()
+  await expect(workspace.getByLabel("Checkout directory on this host", { exact: true })).toHaveValue(tree.directory)
+})
+
+test("machine onboarding checks the selected host and blocks an unusable worker route", async ({ page }) => {
+  await mockStressTimeline(page)
+  await installStressSessionTabs(page, { sessionIDs: [] })
+  await mockMachineInspection(page)
+  await page.goto("/agents?view=machines")
+  const workspace = page.getByRole("region", { name: "Agents", exact: true })
+  const picker = workspace.getByLabel("Connected machine", { exact: true })
+  const value = await picker.getByRole("option").nth(1).getAttribute("value")
+  expect(value).toBeTruthy()
+  await picker.selectOption(value!)
+  await workspace.getByRole("button", { name: "Check server", exact: true }).click()
+  await expect(workspace.getByText("Server version:", { exact: false })).toBeVisible()
+  await workspace.getByLabel("Worker name", { exact: true }).fill("pi-a")
+  await workspace.getByLabel("Existing checkout directory on the machine", { exact: true }).fill("/home/pi/project")
+  await expect(workspace.getByRole("button", { name: "3. Register worker checkout", exact: true })).toBeDisabled()
+  await expect(workspace.getByText("The coordinator needs a reachable worker address", { exact: false })).toBeVisible()
+  await page.screenshot({ path: test.info().outputPath("machine-onboarding.png"), animations: "disabled" })
+})
+
+test("machine onboarding registers the verified checkout with its coordinator credential", async ({ page }) => {
+  await mockStressTimeline(page)
+  await mockMachineInspection(page)
+  const workers = await mockRemoteWorkers(page)
+  await page.addInitScript(
+    ({ server, directory }) => {
+      localStorage.setItem(
+        "opencode.global.dat:server",
+        JSON.stringify({
+          list: [{ type: "http", http: { url: server, password: "fixture-worker-secret" } }],
+          projects: { local: [{ worktree: directory, expanded: true }] },
+          lastProject: { local: directory },
+        }),
+      )
+    },
+    { server: SERVER, directory: fixture.directory },
+  )
+  await page.goto("/agents?view=machines")
+  const workspace = page.getByRole("region", { name: "Agents", exact: true })
+  await workspace.getByLabel("Connected machine", { exact: true }).selectOption(SERVER)
+  await workspace.getByRole("button", { name: "Check server", exact: true }).click()
+  await expect(workspace.getByText("Server version: fixture", { exact: true })).toBeVisible()
+  await workspace.getByLabel("Worker name", { exact: true }).fill("pi-a")
+  await workspace.getByLabel("Capabilities (comma-separated)", { exact: true }).fill("linux, arm64")
+  await workspace.getByLabel("Existing checkout directory on the machine", { exact: true }).fill(fixture.directory)
+  await workspace.getByRole("button", { name: "3. Register worker checkout", exact: true }).click()
+  await expect(workspace.getByText("Worker checkout registered", { exact: true })).toBeVisible()
+  expect(
+    workers.requests.find((request) => request.path === "/api/workers" && request.method === "POST")?.body,
+  ).toEqual({
+    id: "pi-a",
+    url: SERVER,
+    password: "fixture-worker-secret",
+    directories: [fixture.directory],
+    tags: ["linux", "arm64"],
+  })
+})
 
 test("sends resource requirements with a worker task and displays its queued reason", async ({ page }) => {
   await mockStressTimeline(page)

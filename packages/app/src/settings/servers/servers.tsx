@@ -1,4 +1,5 @@
 import { Button } from "@opencode/ui/button"
+import { useNavigate } from "@solidjs/router"
 import { useDialog } from "@opencode/ui/context/dialog"
 import { createMemo, Show, type Component } from "solid-js"
 import { ServerRowMenu } from "@/servers/registry/row-menu"
@@ -23,6 +24,7 @@ export const SettingsServerGeneral: Component<{
   onAddServer?: () => void
   onServerChange?: (server: ServerConnection.Any) => void
 }> = (props) => {
+  const navigate = useNavigate()
   const dialog = useDialog()
   const language = useLanguage()
   const controller = useServerCollectionController()
@@ -94,6 +96,31 @@ export const SettingsServerGeneral: Component<{
             </Show>
           </SettingsList>
         </section>
+        <Show when={props.entry.connection}>
+          <section class="settings-section">
+            <h3 class="settings-section-title">{language.t("agents.title")}</h3>
+            <div class="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                onClick={() => navigate(`/agents?view=harness&host=${encodeURIComponent(props.entry.key)}`)}
+              >
+                {language.t("harness.title")}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => navigate(`/agents?view=machines&host=${encodeURIComponent(props.entry.key)}`)}
+              >
+                {language.t("agentMachines.title")}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => navigate(`/agents?view=worktrees&host=${encodeURIComponent(props.entry.key)}`)}
+              >
+                {language.t("agentWorktrees.title")}
+              </Button>
+            </div>
+          </section>
+        </Show>
 
         <Show when={props.entry.connection} keyed>
           {(server) => (

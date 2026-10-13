@@ -430,6 +430,47 @@ import type {
   WorkersRecoverOutput,
   WorkersCollectInput,
   WorkersCollectOutput,
+  HarnessReconcileInput,
+  HarnessReconcileOutput,
+  HarnessInstallInput,
+  HarnessInstallOutput,
+  HarnessLoginAnswerInput,
+  HarnessLoginAnswerOutput,
+  HarnessCancelLoginInput,
+  HarnessCancelLoginOutput,
+  HarnessListOutput,
+  HarnessConfigureInput,
+  HarnessConfigureOutput,
+  HarnessProbeInput,
+  HarnessProbeOutput,
+  HarnessLoginInput,
+  HarnessLoginOutput,
+  HarnessLoginStatusInput,
+  HarnessLoginStatusOutput,
+  HarnessOpenInput,
+  HarnessOpenOutput,
+  HarnessReadInput,
+  HarnessReadOutput,
+  HarnessPromptInput,
+  HarnessPromptOutput,
+  HarnessAnswerInput,
+  HarnessAnswerOutput,
+  HarnessInterruptInput,
+  HarnessInterruptOutput,
+  HarnessResumeInput,
+  HarnessResumeOutput,
+  HarnessCloseInput,
+  HarnessCloseOutput,
+  WorktreeLifecycleArchiveInput,
+  WorktreeLifecycleArchiveOutput,
+  WorktreeLifecycleArchivesInput,
+  WorktreeLifecycleArchivesOutput,
+  WorktreeLifecycleInspectInput,
+  WorktreeLifecycleInspectOutput,
+  WorktreeLifecycleIntegrateInput,
+  WorktreeLifecycleIntegrateOutput,
+  WorktreeLifecycleCheckpointInput,
+  WorktreeLifecycleCheckpointOutput,
 } from "./types.js"
 import { ClientError } from "./client-error.js"
 
@@ -3482,6 +3523,251 @@ export function make(options: ClientOptions) {
             body: { task: input["task"] },
             successStatus: 200,
             declaredStatuses: [400, 401, 403],
+            empty: false,
+          },
+          requestOptions,
+        ),
+    },
+    harness: {
+      reconcile: (input: HarnessReconcileInput, requestOptions?: RequestOptions) =>
+        request<HarnessReconcileOutput>(
+          {
+            method: "POST",
+            path: `/api/harness/runs/${encodeURIComponent(input.runID)}/reconcile`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      install: (input: HarnessInstallInput, requestOptions?: RequestOptions) =>
+        request<HarnessInstallOutput>(
+          {
+            method: "POST",
+            path: `/api/harness/${encodeURIComponent(input.driver)}/install`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      loginAnswer: (input: HarnessLoginAnswerInput, requestOptions?: RequestOptions) =>
+        request<HarnessLoginAnswerOutput>(
+          {
+            method: "POST",
+            path: `/api/harness/${encodeURIComponent(input.driver)}/login/answer`,
+            body: { code: input["code"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403],
+            empty: true,
+          },
+          requestOptions,
+        ),
+      cancelLogin: (input: HarnessCancelLoginInput, requestOptions?: RequestOptions) =>
+        request<HarnessCancelLoginOutput>(
+          {
+            method: "DELETE",
+            path: `/api/harness/${encodeURIComponent(input.driver)}/login`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403],
+            empty: true,
+          },
+          requestOptions,
+        ),
+      list: (requestOptions?: RequestOptions) =>
+        request<HarnessListOutput>(
+          { method: "GET", path: `/api/harness`, successStatus: 200, declaredStatuses: [400, 401, 403], empty: false },
+          requestOptions,
+        ),
+      configure: (input: HarnessConfigureInput, requestOptions?: RequestOptions) =>
+        request<HarnessConfigureOutput>(
+          {
+            method: "POST",
+            path: `/api/harness/config`,
+            body: { driver: input["driver"], executable: input["executable"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      probe: (input: HarnessProbeInput, requestOptions?: RequestOptions) =>
+        request<HarnessProbeOutput>(
+          {
+            method: "POST",
+            path: `/api/harness/${encodeURIComponent(input.driver)}/probe`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      login: (input: HarnessLoginInput, requestOptions?: RequestOptions) =>
+        request<HarnessLoginOutput>(
+          {
+            method: "POST",
+            path: `/api/harness/${encodeURIComponent(input.driver)}/login`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      loginStatus: (input: HarnessLoginStatusInput, requestOptions?: RequestOptions) =>
+        request<HarnessLoginStatusOutput>(
+          {
+            method: "GET",
+            path: `/api/harness/${encodeURIComponent(input.driver)}/login`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      open: (input: HarnessOpenInput, requestOptions?: RequestOptions) =>
+        request<HarnessOpenOutput>(
+          {
+            method: "POST",
+            path: `/api/harness/runs`,
+            body: { driver: input["driver"], directory: input["directory"], model: input["model"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      read: (input: HarnessReadInput, requestOptions?: RequestOptions) =>
+        request<HarnessReadOutput>(
+          {
+            method: "GET",
+            path: `/api/harness/runs/${encodeURIComponent(input.runID)}`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      prompt: (input: HarnessPromptInput, requestOptions?: RequestOptions) =>
+        request<HarnessPromptOutput>(
+          {
+            method: "POST",
+            path: `/api/harness/runs/${encodeURIComponent(input.runID)}/prompt`,
+            body: { id: input["id"], text: input["text"], delivery: input["delivery"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403],
+            empty: true,
+          },
+          requestOptions,
+        ),
+      answer: (input: HarnessAnswerInput, requestOptions?: RequestOptions) =>
+        request<HarnessAnswerOutput>(
+          {
+            method: "POST",
+            path: `/api/harness/runs/${encodeURIComponent(input.runID)}/answer`,
+            body: { request: input["request"], allow: input["allow"], answers: input["answers"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403],
+            empty: true,
+          },
+          requestOptions,
+        ),
+      interrupt: (input: HarnessInterruptInput, requestOptions?: RequestOptions) =>
+        request<HarnessInterruptOutput>(
+          {
+            method: "POST",
+            path: `/api/harness/runs/${encodeURIComponent(input.runID)}/interrupt`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403],
+            empty: true,
+          },
+          requestOptions,
+        ),
+      resume: (input: HarnessResumeInput, requestOptions?: RequestOptions) =>
+        request<HarnessResumeOutput>(
+          {
+            method: "POST",
+            path: `/api/harness/runs/${encodeURIComponent(input.runID)}/resume`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      close: (input: HarnessCloseInput, requestOptions?: RequestOptions) =>
+        request<HarnessCloseOutput>(
+          {
+            method: "DELETE",
+            path: `/api/harness/runs/${encodeURIComponent(input.runID)}`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403],
+            empty: true,
+          },
+          requestOptions,
+        ),
+    },
+    worktreeLifecycle: {
+      archive: (input: WorktreeLifecycleArchiveInput, requestOptions?: RequestOptions) =>
+        request<WorktreeLifecycleArchiveOutput>(
+          {
+            method: "POST",
+            path: `/api/worktree/archive`,
+            body: { projectID: input["projectID"], directory: input["directory"], head: input["head"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 404],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      archives: (input: WorktreeLifecycleArchivesInput, requestOptions?: RequestOptions) =>
+        request<WorktreeLifecycleArchivesOutput>(
+          {
+            method: "GET",
+            path: `/api/worktree/archives`,
+            query: { projectID: input["projectID"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 404],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      inspect: (input: WorktreeLifecycleInspectInput, requestOptions?: RequestOptions) =>
+        request<WorktreeLifecycleInspectOutput>(
+          {
+            method: "POST",
+            path: `/api/worktree/inspect`,
+            body: { projectID: input["projectID"], directory: input["directory"], target: input["target"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 404],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      integrate: (input: WorktreeLifecycleIntegrateInput, requestOptions?: RequestOptions) =>
+        request<WorktreeLifecycleIntegrateOutput>(
+          {
+            method: "POST",
+            path: `/api/worktree/integrate`,
+            body: {
+              projectID: input["projectID"],
+              directory: input["directory"],
+              target: input["target"],
+              head: input["head"],
+              targetHead: input["targetHead"],
+            },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 404],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      checkpoint: (input: WorktreeLifecycleCheckpointInput, requestOptions?: RequestOptions) =>
+        request<WorktreeLifecycleCheckpointOutput>(
+          {
+            method: "POST",
+            path: `/api/worktree/checkpoint`,
+            body: { projectID: input["projectID"], directory: input["directory"], message: input["message"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 404],
             empty: false,
           },
           requestOptions,

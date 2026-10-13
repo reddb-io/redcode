@@ -965,6 +965,38 @@ export type WorkerQueueReason =
 
 export type WorkerResources = { cpu: number; memoryBytes: number; maxCpuUtilization?: number }
 
+export type HarnessDriver = "claude" | "codex"
+
+export type HarnessState =
+  | "starting"
+  | "ready"
+  | "running"
+  | "waiting"
+  | "interrupted"
+  | "failed"
+  | "unknown"
+  | "closed"
+
+export type HarnessEvent = { cursor: number; kind: "text" | "activity" | "error"; text: string }
+
+export type HarnessQuestion = { id: string; text: string; options: Array<string> }
+
+export type WorktreeArchive = { reference: string; head: string; createdAt: string }
+
+export type WorktreeReview = {
+  directory: string
+  target: string
+  branch: string | null
+  head: string
+  targetHead: string
+  dirty: boolean
+  targetDirty: boolean
+  status: string
+  diff: string
+  truncated: boolean
+  managed: boolean
+}
+
 export type ConnectionRef = { type: "credential"; id: string } | ConnectionEnvInfo
 
 export type SessionInboxMovePayload1 = { location: LocationRef; projectID: string; subpath?: string }
@@ -2551,6 +2583,45 @@ export type WorkerTask = {
   resources?: WorkerResources
 }
 
+export type HarnessProvider = {
+  driver: HarnessDriver
+  executable: string
+  installed: boolean
+  version?: string
+  authenticated?: boolean
+  detail?: string
+  models?: Array<{ id: string; label: string; recommended: boolean }>
+}
+
+export type HarnessLogin = {
+  driver: HarnessDriver
+  state: "pending" | "complete" | "failed"
+  url?: string
+  code?: string
+  detail?: string
+}
+
+export type HarnessRun = {
+  id: string
+  driver: HarnessDriver
+  directory: string
+  model?: string
+  nativeID?: string
+  state: HarnessState
+  createdAt: string
+  detail?: string
+  queued: number
+  capabilities: { steer: boolean; resume: boolean; interrupt: boolean }
+}
+
+export type HarnessRequest = {
+  id: string
+  kind: "permission" | "question" | "unsupported"
+  title: string
+  detail: string
+  questions: Array<HarnessQuestion>
+}
+
 export type ModelRef = { id: string; providerID: string; variant?: string; connection?: ConnectionRef }
 
 export type PermissionRuleset = Array<PermissionRule>
@@ -2862,6 +2933,10 @@ export type WorkerArtifact = {
 }
 
 export type WorkerManifest = { tasks: Array<WorkerTask> }
+
+export type HarnessSnapshot = { providers: Array<HarnessProvider>; runs: Array<HarnessRun> }
+
+export type HarnessDetail = { run: HarnessRun; events: Array<HarnessEvent>; requests: Array<HarnessRequest> }
 
 export type SessionMessageCompactionCompleted = {
   type: "compaction"
@@ -11426,3 +11501,173 @@ export type WorkersCollectInput = {
 }
 
 export type WorkersCollectOutput = WorkerArtifact
+
+export type HarnessReconcileInput = { readonly runID: { readonly runID: string }["runID"] }
+
+export type HarnessReconcileOutput = HarnessRun
+
+export type HarnessInstallInput = { readonly driver: { readonly driver: "claude" | "codex" }["driver"] }
+
+export type HarnessInstallOutput = HarnessProvider
+
+export type HarnessLoginAnswerInput = {
+  readonly driver: { readonly driver: "claude" | "codex" }["driver"]
+  readonly code: { readonly code: string }["code"]
+}
+
+export type HarnessLoginAnswerOutput = void
+
+export type HarnessCancelLoginInput = { readonly driver: { readonly driver: "claude" | "codex" }["driver"] }
+
+export type HarnessCancelLoginOutput = void
+
+export type HarnessListOutput = HarnessSnapshot
+
+export type HarnessConfigureInput = {
+  readonly driver: { readonly driver: "claude" | "codex"; readonly executable: string }["driver"]
+  readonly executable: { readonly driver: "claude" | "codex"; readonly executable: string }["executable"]
+}
+
+export type HarnessConfigureOutput = HarnessProvider
+
+export type HarnessProbeInput = { readonly driver: { readonly driver: "claude" | "codex" }["driver"] }
+
+export type HarnessProbeOutput = HarnessProvider
+
+export type HarnessLoginInput = { readonly driver: { readonly driver: "claude" | "codex" }["driver"] }
+
+export type HarnessLoginOutput = HarnessLogin
+
+export type HarnessLoginStatusInput = { readonly driver: { readonly driver: "claude" | "codex" }["driver"] }
+
+export type HarnessLoginStatusOutput = HarnessLogin
+
+export type HarnessOpenInput = {
+  readonly driver: {
+    readonly driver: "claude" | "codex"
+    readonly directory: string
+    readonly model?: string
+  }["driver"]
+  readonly directory: {
+    readonly driver: "claude" | "codex"
+    readonly directory: string
+    readonly model?: string
+  }["directory"]
+  readonly model?: { readonly driver: "claude" | "codex"; readonly directory: string; readonly model?: string }["model"]
+}
+
+export type HarnessOpenOutput = HarnessRun
+
+export type HarnessReadInput = { readonly runID: { readonly runID: string }["runID"] }
+
+export type HarnessReadOutput = HarnessDetail
+
+export type HarnessPromptInput = {
+  readonly runID: { readonly runID: string }["runID"]
+  readonly id: { readonly id: string; readonly text: string; readonly delivery: "steer" | "queue" }["id"]
+  readonly text: { readonly id: string; readonly text: string; readonly delivery: "steer" | "queue" }["text"]
+  readonly delivery: { readonly id: string; readonly text: string; readonly delivery: "steer" | "queue" }["delivery"]
+}
+
+export type HarnessPromptOutput = void
+
+export type HarnessAnswerInput = {
+  readonly runID: { readonly runID: string }["runID"]
+  readonly request: {
+    readonly request: string
+    readonly allow: boolean
+    readonly answers: { readonly [x: string]: string }
+  }["request"]
+  readonly allow: {
+    readonly request: string
+    readonly allow: boolean
+    readonly answers: { readonly [x: string]: string }
+  }["allow"]
+  readonly answers: {
+    readonly request: string
+    readonly allow: boolean
+    readonly answers: { readonly [x: string]: string }
+  }["answers"]
+}
+
+export type HarnessAnswerOutput = void
+
+export type HarnessInterruptInput = { readonly runID: { readonly runID: string }["runID"] }
+
+export type HarnessInterruptOutput = void
+
+export type HarnessResumeInput = { readonly runID: { readonly runID: string }["runID"] }
+
+export type HarnessResumeOutput = HarnessRun
+
+export type HarnessCloseInput = { readonly runID: { readonly runID: string }["runID"] }
+
+export type HarnessCloseOutput = void
+
+export type WorktreeLifecycleArchiveInput = {
+  readonly projectID: { readonly projectID: string; readonly directory: string; readonly head: string }["projectID"]
+  readonly directory: { readonly projectID: string; readonly directory: string; readonly head: string }["directory"]
+  readonly head: { readonly projectID: string; readonly directory: string; readonly head: string }["head"]
+}
+
+export type WorktreeLifecycleArchiveOutput = WorktreeArchive
+
+export type WorktreeLifecycleArchivesInput = { readonly projectID: { readonly projectID: string }["projectID"] }
+
+export type WorktreeLifecycleArchivesOutput = Array<WorktreeArchive>
+
+export type WorktreeLifecycleInspectInput = {
+  readonly projectID: { readonly projectID: string; readonly directory: string; readonly target: string }["projectID"]
+  readonly directory: { readonly projectID: string; readonly directory: string; readonly target: string }["directory"]
+  readonly target: { readonly projectID: string; readonly directory: string; readonly target: string }["target"]
+}
+
+export type WorktreeLifecycleInspectOutput = WorktreeReview
+
+export type WorktreeLifecycleIntegrateInput = {
+  readonly projectID: {
+    readonly projectID: string
+    readonly directory: string
+    readonly target: string
+    readonly head: string
+    readonly targetHead: string
+  }["projectID"]
+  readonly directory: {
+    readonly projectID: string
+    readonly directory: string
+    readonly target: string
+    readonly head: string
+    readonly targetHead: string
+  }["directory"]
+  readonly target: {
+    readonly projectID: string
+    readonly directory: string
+    readonly target: string
+    readonly head: string
+    readonly targetHead: string
+  }["target"]
+  readonly head: {
+    readonly projectID: string
+    readonly directory: string
+    readonly target: string
+    readonly head: string
+    readonly targetHead: string
+  }["head"]
+  readonly targetHead: {
+    readonly projectID: string
+    readonly directory: string
+    readonly target: string
+    readonly head: string
+    readonly targetHead: string
+  }["targetHead"]
+}
+
+export type WorktreeLifecycleIntegrateOutput = WorktreeReview
+
+export type WorktreeLifecycleCheckpointInput = {
+  readonly projectID: { readonly projectID: string; readonly directory: string; readonly message: string }["projectID"]
+  readonly directory: { readonly projectID: string; readonly directory: string; readonly message: string }["directory"]
+  readonly message: { readonly projectID: string; readonly directory: string; readonly message: string }["message"]
+}
+
+export type WorktreeLifecycleCheckpointOutput = string

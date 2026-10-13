@@ -26,6 +26,7 @@ import { Plugin } from "@opencode/schema/plugin"
 import { Project } from "@opencode/schema/project"
 import { Worktree } from "@opencode/schema/worktree"
 import { Worker } from "@opencode/schema/worker"
+import { Harness } from "@opencode/schema/harness"
 import { AgentAttachment, FileAttachment, Prompt, PromptMention } from "@opencode/schema/prompt"
 import { PromptInput } from "@opencode/schema/prompt-input"
 import { Provider } from "@opencode/schema/provider"
@@ -73,6 +74,7 @@ const effectTypeReferences = [
   ...namespaceTypes("Plugin", "@opencode/schema/plugin", Plugin),
   ...namespaceTypes("Project", "@opencode/schema/project", Project),
   ...namespaceTypes("Worktree", "@opencode/schema/worktree", Worktree),
+  ...namespaceTypes("Harness", "@opencode/schema/harness", Harness),
   ...namespaceTypes("Worker", "@opencode/schema/worker", Worker),
   ...namespaceTypes("PromptInput", "@opencode/schema/prompt-input", PromptInput),
   ...namespaceTypes("Provider", "@opencode/schema/provider", Provider),

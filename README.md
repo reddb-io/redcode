@@ -29,6 +29,12 @@ Open **Agents** in the siderail to follow sessions across hosts, answer requests
 **Hosts and resources**, or manage **Remote workers**. This workspace shows agent metadata; opening a
 session loads its conversation. [Agents workspace](docs/agent-features.md#agents-workspace).
 
+**Harnesses** runs installed Claude Code and Codex on the selected host. **Machines** guides remote
+connection, inspection and worker registration. **Worktrees** creates isolated checkouts, reviews and
+commits results, integrates a reviewed commit and archives/restores detached worktrees.
+Configuration is available in the app; **Settings → Servers** links to each host's tools.
+[External agents and worktree workflow](docs/external-harnesses.md).
+
 With mise installed, run:
 
 ```sh

@@ -44,6 +44,7 @@ import type { Hook } from "@opencode/schema/hook"
 import type { LSP } from "@opencode/schema/lsp"
 import type { Formatter } from "@opencode/schema/formatter"
 import type { Worker } from "@opencode/schema/worker"
+import type { Harness } from "@opencode/schema/harness"
 
 export type ServerResourcesOutput = HostResources.Snapshot
 export type ServerResourcesOperation<E = never> = () => Effect.Effect<ServerResourcesOutput, E>
@@ -6536,6 +6537,170 @@ export interface WorkersApi<E = never> {
   readonly collect: WorkersCollectOperation<E>
 }
 
+export type HarnessReconcileInput = { readonly runID: string }
+export type HarnessReconcileOutput = Harness.Run
+export type HarnessReconcileOperation<E = never> = (
+  input: HarnessReconcileInput,
+) => Effect.Effect<HarnessReconcileOutput, E>
+
+export type HarnessInstallInput = { readonly driver: Harness.Driver }
+export type HarnessInstallOutput = Harness.Provider
+export type HarnessInstallOperation<E = never> = (input: HarnessInstallInput) => Effect.Effect<HarnessInstallOutput, E>
+
+export type HarnessLoginAnswerInput = { readonly driver: Harness.Driver; readonly code: string }
+export type HarnessLoginAnswerOutput = void
+export type HarnessLoginAnswerOperation<E = never> = (
+  input: HarnessLoginAnswerInput,
+) => Effect.Effect<HarnessLoginAnswerOutput, E>
+
+export type HarnessCancelLoginInput = { readonly driver: Harness.Driver }
+export type HarnessCancelLoginOutput = void
+export type HarnessCancelLoginOperation<E = never> = (
+  input: HarnessCancelLoginInput,
+) => Effect.Effect<HarnessCancelLoginOutput, E>
+
+export type HarnessListOutput = Harness.Snapshot
+export type HarnessListOperation<E = never> = () => Effect.Effect<HarnessListOutput, E>
+
+export type HarnessConfigureInput = { readonly driver: Harness.Driver; readonly executable: string }
+export type HarnessConfigureOutput = Harness.Provider
+export type HarnessConfigureOperation<E = never> = (
+  input: HarnessConfigureInput,
+) => Effect.Effect<HarnessConfigureOutput, E>
+
+export type HarnessProbeInput = { readonly driver: Harness.Driver }
+export type HarnessProbeOutput = Harness.Provider
+export type HarnessProbeOperation<E = never> = (input: HarnessProbeInput) => Effect.Effect<HarnessProbeOutput, E>
+
+export type HarnessLoginInput = { readonly driver: Harness.Driver }
+export type HarnessLoginOutput = Harness.Login
+export type HarnessLoginOperation<E = never> = (input: HarnessLoginInput) => Effect.Effect<HarnessLoginOutput, E>
+
+export type HarnessLoginStatusInput = { readonly driver: Harness.Driver }
+export type HarnessLoginStatusOutput = Harness.Login
+export type HarnessLoginStatusOperation<E = never> = (
+  input: HarnessLoginStatusInput,
+) => Effect.Effect<HarnessLoginStatusOutput, E>
+
+export type HarnessOpenInput = {
+  readonly driver: Harness.Driver
+  readonly directory: AbsolutePath
+  readonly model?: string | undefined
+}
+export type HarnessOpenOutput = Harness.Run
+export type HarnessOpenOperation<E = never> = (input: HarnessOpenInput) => Effect.Effect<HarnessOpenOutput, E>
+
+export type HarnessReadInput = { readonly runID: string }
+export type HarnessReadOutput = Harness.Detail
+export type HarnessReadOperation<E = never> = (input: HarnessReadInput) => Effect.Effect<HarnessReadOutput, E>
+
+export type HarnessPromptInput = {
+  readonly runID: string
+  readonly id: string
+  readonly text: string
+  readonly delivery: "steer" | "queue"
+}
+export type HarnessPromptOutput = void
+export type HarnessPromptOperation<E = never> = (input: HarnessPromptInput) => Effect.Effect<HarnessPromptOutput, E>
+
+export type HarnessAnswerInput = {
+  readonly runID: string
+  readonly request: string
+  readonly allow: boolean
+  readonly answers: { readonly [x: string]: string }
+}
+export type HarnessAnswerOutput = void
+export type HarnessAnswerOperation<E = never> = (input: HarnessAnswerInput) => Effect.Effect<HarnessAnswerOutput, E>
+
+export type HarnessInterruptInput = { readonly runID: string }
+export type HarnessInterruptOutput = void
+export type HarnessInterruptOperation<E = never> = (
+  input: HarnessInterruptInput,
+) => Effect.Effect<HarnessInterruptOutput, E>
+
+export type HarnessResumeInput = { readonly runID: string }
+export type HarnessResumeOutput = Harness.Run
+export type HarnessResumeOperation<E = never> = (input: HarnessResumeInput) => Effect.Effect<HarnessResumeOutput, E>
+
+export type HarnessCloseInput = { readonly runID: string }
+export type HarnessCloseOutput = void
+export type HarnessCloseOperation<E = never> = (input: HarnessCloseInput) => Effect.Effect<HarnessCloseOutput, E>
+
+export interface HarnessApi<E = never> {
+  readonly reconcile: HarnessReconcileOperation<E>
+  readonly install: HarnessInstallOperation<E>
+  readonly loginAnswer: HarnessLoginAnswerOperation<E>
+  readonly cancelLogin: HarnessCancelLoginOperation<E>
+  readonly list: HarnessListOperation<E>
+  readonly configure: HarnessConfigureOperation<E>
+  readonly probe: HarnessProbeOperation<E>
+  readonly login: HarnessLoginOperation<E>
+  readonly loginStatus: HarnessLoginStatusOperation<E>
+  readonly open: HarnessOpenOperation<E>
+  readonly read: HarnessReadOperation<E>
+  readonly prompt: HarnessPromptOperation<E>
+  readonly answer: HarnessAnswerOperation<E>
+  readonly interrupt: HarnessInterruptOperation<E>
+  readonly resume: HarnessResumeOperation<E>
+  readonly close: HarnessCloseOperation<E>
+}
+
+export type WorktreeLifecycleArchiveInput = {
+  readonly projectID: Project.ID
+  readonly directory: AbsolutePath
+  readonly head: string
+}
+export type WorktreeLifecycleArchiveOutput = Worktree.Archive
+export type WorktreeLifecycleArchiveOperation<E = never> = (
+  input: WorktreeLifecycleArchiveInput,
+) => Effect.Effect<WorktreeLifecycleArchiveOutput, E>
+
+export type WorktreeLifecycleArchivesInput = { readonly projectID: Project.ID }
+export type WorktreeLifecycleArchivesOutput = ReadonlyArray<Worktree.Archive>
+export type WorktreeLifecycleArchivesOperation<E = never> = (
+  input: WorktreeLifecycleArchivesInput,
+) => Effect.Effect<WorktreeLifecycleArchivesOutput, E>
+
+export type WorktreeLifecycleInspectInput = {
+  readonly projectID: Project.ID
+  readonly directory: AbsolutePath
+  readonly target: AbsolutePath
+}
+export type WorktreeLifecycleInspectOutput = Worktree.Review
+export type WorktreeLifecycleInspectOperation<E = never> = (
+  input: WorktreeLifecycleInspectInput,
+) => Effect.Effect<WorktreeLifecycleInspectOutput, E>
+
+export type WorktreeLifecycleIntegrateInput = {
+  readonly projectID: Project.ID
+  readonly directory: AbsolutePath
+  readonly target: AbsolutePath
+  readonly head: string
+  readonly targetHead: string
+}
+export type WorktreeLifecycleIntegrateOutput = Worktree.Review
+export type WorktreeLifecycleIntegrateOperation<E = never> = (
+  input: WorktreeLifecycleIntegrateInput,
+) => Effect.Effect<WorktreeLifecycleIntegrateOutput, E>
+
+export type WorktreeLifecycleCheckpointInput = {
+  readonly projectID: Project.ID
+  readonly directory: AbsolutePath
+  readonly message: string
+}
+export type WorktreeLifecycleCheckpointOutput = string
+export type WorktreeLifecycleCheckpointOperation<E = never> = (
+  input: WorktreeLifecycleCheckpointInput,
+) => Effect.Effect<WorktreeLifecycleCheckpointOutput, E>
+
+export interface WorktreeLifecycleApi<E = never> {
+  readonly archive: WorktreeLifecycleArchiveOperation<E>
+  readonly archives: WorktreeLifecycleArchivesOperation<E>
+  readonly inspect: WorktreeLifecycleInspectOperation<E>
+  readonly integrate: WorktreeLifecycleIntegrateOperation<E>
+  readonly checkpoint: WorktreeLifecycleCheckpointOperation<E>
+}
+
 export interface AppApi<E = never> {
   readonly server: ServerApi<E>
   readonly location: LocationApi<E>
@@ -6573,4 +6738,6 @@ export interface AppApi<E = never> {
   readonly redskilled: RedskilledApi<E>
   readonly "server.intelligence": ServerIntelligenceApi<E>
   readonly workers: WorkersApi<E>
+  readonly harness: HarnessApi<E>
+  readonly worktreeLifecycle: WorktreeLifecycleApi<E>
 }

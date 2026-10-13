@@ -432,6 +432,47 @@ import type {
   WorkersRecoverOutput,
   WorkersCollectInput,
   WorkersCollectOutput,
+  HarnessReconcileInput,
+  HarnessReconcileOutput,
+  HarnessInstallInput,
+  HarnessInstallOutput,
+  HarnessLoginAnswerInput,
+  HarnessLoginAnswerOutput,
+  HarnessCancelLoginInput,
+  HarnessCancelLoginOutput,
+  HarnessListOutput,
+  HarnessConfigureInput,
+  HarnessConfigureOutput,
+  HarnessProbeInput,
+  HarnessProbeOutput,
+  HarnessLoginInput,
+  HarnessLoginOutput,
+  HarnessLoginStatusInput,
+  HarnessLoginStatusOutput,
+  HarnessOpenInput,
+  HarnessOpenOutput,
+  HarnessReadInput,
+  HarnessReadOutput,
+  HarnessPromptInput,
+  HarnessPromptOutput,
+  HarnessAnswerInput,
+  HarnessAnswerOutput,
+  HarnessInterruptInput,
+  HarnessInterruptOutput,
+  HarnessResumeInput,
+  HarnessResumeOutput,
+  HarnessCloseInput,
+  HarnessCloseOutput,
+  WorktreeLifecycleArchiveInput,
+  WorktreeLifecycleArchiveOutput,
+  WorktreeLifecycleArchivesInput,
+  WorktreeLifecycleArchivesOutput,
+  WorktreeLifecycleInspectInput,
+  WorktreeLifecycleInspectOutput,
+  WorktreeLifecycleIntegrateInput,
+  WorktreeLifecycleIntegrateOutput,
+  WorktreeLifecycleCheckpointInput,
+  WorktreeLifecycleCheckpointOutput,
 } from "../api/api.js"
 import { ClientError } from "./client-error.js"
 
@@ -2539,6 +2580,169 @@ const adaptGroupWorkers = (raw: RawClient["server.workers"]) => ({
   collect: EndpointWorkersCollect(raw),
 })
 
+const EndpointHarnessReconcile = (raw: RawClient["server.harness"]) => (input: HarnessReconcileInput) =>
+  preserveEffect<HarnessReconcileOutput>()(
+    raw["harness.reconcile"]({ params: { runID: input["runID"] } }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const EndpointHarnessInstall = (raw: RawClient["server.harness"]) => (input: HarnessInstallInput) =>
+  preserveEffect<HarnessInstallOutput>()(
+    raw["harness.install"]({ params: { driver: input["driver"] } }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const EndpointHarnessLoginAnswer = (raw: RawClient["server.harness"]) => (input: HarnessLoginAnswerInput) =>
+  preserveEffect<HarnessLoginAnswerOutput>()(
+    raw["harness.loginAnswer"]({ params: { driver: input["driver"] }, payload: { code: input["code"] } }).pipe(
+      Effect.mapError(mapClientError),
+    ),
+  )
+
+const EndpointHarnessCancelLogin = (raw: RawClient["server.harness"]) => (input: HarnessCancelLoginInput) =>
+  preserveEffect<HarnessCancelLoginOutput>()(
+    raw["harness.cancelLogin"]({ params: { driver: input["driver"] } }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const EndpointHarnessList = (raw: RawClient["server.harness"]) => () =>
+  preserveEffect<HarnessListOutput>()(raw["harness.list"]({}).pipe(Effect.mapError(mapClientError)))
+
+const EndpointHarnessConfigure = (raw: RawClient["server.harness"]) => (input: HarnessConfigureInput) =>
+  preserveEffect<HarnessConfigureOutput>()(
+    raw["harness.configure"]({ payload: { driver: input["driver"], executable: input["executable"] } }).pipe(
+      Effect.mapError(mapClientError),
+    ),
+  )
+
+const EndpointHarnessProbe = (raw: RawClient["server.harness"]) => (input: HarnessProbeInput) =>
+  preserveEffect<HarnessProbeOutput>()(
+    raw["harness.probe"]({ params: { driver: input["driver"] } }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const EndpointHarnessLogin = (raw: RawClient["server.harness"]) => (input: HarnessLoginInput) =>
+  preserveEffect<HarnessLoginOutput>()(
+    raw["harness.login"]({ params: { driver: input["driver"] } }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const EndpointHarnessLoginStatus = (raw: RawClient["server.harness"]) => (input: HarnessLoginStatusInput) =>
+  preserveEffect<HarnessLoginStatusOutput>()(
+    raw["harness.loginStatus"]({ params: { driver: input["driver"] } }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const EndpointHarnessOpen = (raw: RawClient["server.harness"]) => (input: HarnessOpenInput) =>
+  preserveEffect<HarnessOpenOutput>()(
+    raw["harness.open"]({
+      payload: { driver: input["driver"], directory: input["directory"], model: input["model"] },
+    }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const EndpointHarnessRead = (raw: RawClient["server.harness"]) => (input: HarnessReadInput) =>
+  preserveEffect<HarnessReadOutput>()(
+    raw["harness.read"]({ params: { runID: input["runID"] } }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const EndpointHarnessPrompt = (raw: RawClient["server.harness"]) => (input: HarnessPromptInput) =>
+  preserveEffect<HarnessPromptOutput>()(
+    raw["harness.prompt"]({
+      params: { runID: input["runID"] },
+      payload: { id: input["id"], text: input["text"], delivery: input["delivery"] },
+    }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const EndpointHarnessAnswer = (raw: RawClient["server.harness"]) => (input: HarnessAnswerInput) =>
+  preserveEffect<HarnessAnswerOutput>()(
+    raw["harness.answer"]({
+      params: { runID: input["runID"] },
+      payload: { request: input["request"], allow: input["allow"], answers: input["answers"] },
+    }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const EndpointHarnessInterrupt = (raw: RawClient["server.harness"]) => (input: HarnessInterruptInput) =>
+  preserveEffect<HarnessInterruptOutput>()(
+    raw["harness.interrupt"]({ params: { runID: input["runID"] } }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const EndpointHarnessResume = (raw: RawClient["server.harness"]) => (input: HarnessResumeInput) =>
+  preserveEffect<HarnessResumeOutput>()(
+    raw["harness.resume"]({ params: { runID: input["runID"] } }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const EndpointHarnessClose = (raw: RawClient["server.harness"]) => (input: HarnessCloseInput) =>
+  preserveEffect<HarnessCloseOutput>()(
+    raw["harness.close"]({ params: { runID: input["runID"] } }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const adaptGroupHarness = (raw: RawClient["server.harness"]) => ({
+  reconcile: EndpointHarnessReconcile(raw),
+  install: EndpointHarnessInstall(raw),
+  loginAnswer: EndpointHarnessLoginAnswer(raw),
+  cancelLogin: EndpointHarnessCancelLogin(raw),
+  list: EndpointHarnessList(raw),
+  configure: EndpointHarnessConfigure(raw),
+  probe: EndpointHarnessProbe(raw),
+  login: EndpointHarnessLogin(raw),
+  loginStatus: EndpointHarnessLoginStatus(raw),
+  open: EndpointHarnessOpen(raw),
+  read: EndpointHarnessRead(raw),
+  prompt: EndpointHarnessPrompt(raw),
+  answer: EndpointHarnessAnswer(raw),
+  interrupt: EndpointHarnessInterrupt(raw),
+  resume: EndpointHarnessResume(raw),
+  close: EndpointHarnessClose(raw),
+})
+
+const EndpointWorktreeLifecycleArchive =
+  (raw: RawClient["server.worktreeLifecycle"]) => (input: WorktreeLifecycleArchiveInput) =>
+    preserveEffect<WorktreeLifecycleArchiveOutput>()(
+      raw["worktreeLifecycle.archive"]({
+        payload: { projectID: input["projectID"], directory: input["directory"], head: input["head"] },
+      }).pipe(Effect.mapError(mapClientError)),
+    )
+
+const EndpointWorktreeLifecycleArchives =
+  (raw: RawClient["server.worktreeLifecycle"]) => (input: WorktreeLifecycleArchivesInput) =>
+    preserveEffect<WorktreeLifecycleArchivesOutput>()(
+      raw["worktreeLifecycle.archives"]({ query: { projectID: input["projectID"] } }).pipe(
+        Effect.mapError(mapClientError),
+      ),
+    )
+
+const EndpointWorktreeLifecycleInspect =
+  (raw: RawClient["server.worktreeLifecycle"]) => (input: WorktreeLifecycleInspectInput) =>
+    preserveEffect<WorktreeLifecycleInspectOutput>()(
+      raw["worktreeLifecycle.inspect"]({
+        payload: { projectID: input["projectID"], directory: input["directory"], target: input["target"] },
+      }).pipe(Effect.mapError(mapClientError)),
+    )
+
+const EndpointWorktreeLifecycleIntegrate =
+  (raw: RawClient["server.worktreeLifecycle"]) => (input: WorktreeLifecycleIntegrateInput) =>
+    preserveEffect<WorktreeLifecycleIntegrateOutput>()(
+      raw["worktreeLifecycle.integrate"]({
+        payload: {
+          projectID: input["projectID"],
+          directory: input["directory"],
+          target: input["target"],
+          head: input["head"],
+          targetHead: input["targetHead"],
+        },
+      }).pipe(Effect.mapError(mapClientError)),
+    )
+
+const EndpointWorktreeLifecycleCheckpoint =
+  (raw: RawClient["server.worktreeLifecycle"]) => (input: WorktreeLifecycleCheckpointInput) =>
+    preserveEffect<WorktreeLifecycleCheckpointOutput>()(
+      raw["worktreeLifecycle.checkpoint"]({
+        payload: { projectID: input["projectID"], directory: input["directory"], message: input["message"] },
+      }).pipe(Effect.mapError(mapClientError)),
+    )
+
+const adaptGroupWorktreeLifecycle = (raw: RawClient["server.worktreeLifecycle"]) => ({
+  archive: EndpointWorktreeLifecycleArchive(raw),
+  archives: EndpointWorktreeLifecycleArchives(raw),
+  inspect: EndpointWorktreeLifecycleInspect(raw),
+  integrate: EndpointWorktreeLifecycleIntegrate(raw),
+  checkpoint: EndpointWorktreeLifecycleCheckpoint(raw),
+})
+
 const adaptClient = (raw: RawClient) => ({
   server: adaptGroupServer(raw["server.server"]),
   location: adaptGroupLocation(raw["server.location"]),
@@ -2576,6 +2780,8 @@ const adaptClient = (raw: RawClient) => ({
   redskilled: adaptGroupRedskilled(raw["server.redskilled"]),
   "server.intelligence": adaptGroupServerIntelligence(raw["server.intelligence"]),
   workers: adaptGroupWorkers(raw["server.workers"]),
+  harness: adaptGroupHarness(raw["server.harness"]),
+  worktreeLifecycle: adaptGroupWorktreeLifecycle(raw["server.worktreeLifecycle"]),
 })
 
 export const make = (options?: { readonly baseUrl?: URL | string }) =>
