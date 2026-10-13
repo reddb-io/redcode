@@ -191,6 +191,8 @@ const suites = {
     "test/console.test.ts",
     "test/console-federation.test.ts",
     "test/infrastructure.test.ts",
+    "test/harness.test.ts",
+    "test/worktree.test.ts",
     "test/pairing.test.ts",
     "test/remote-clients.test.ts",
     "test/workers.test.ts",
