@@ -58,7 +58,8 @@ Terminal.prototype.open = function (element) {
       probe.draws++
 
       if (hidden) probe.hiddenDraws++
-      draw.apply(this, args)
+      // oxlint-disable-next-line no-restricted-globals -- Native benchmark instrumentation forwards all drawing overloads with their original receiver and arguments.
+      Reflect.apply(draw, this, args)
     }
   }
 }

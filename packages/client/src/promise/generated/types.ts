@@ -951,6 +951,20 @@ export type WorkerState =
   | "failed"
   | "interrupted"
 
+export type WorkerQueueReason =
+  | "offline"
+  | "checkout-busy"
+  | "resources-unavailable"
+  | "resources-stale"
+  | "cpu-unavailable"
+  | "cpu-capacity"
+  | "cpu-load-unavailable"
+  | "cpu-load"
+  | "memory-unavailable"
+  | "memory-capacity"
+
+export type WorkerResources = { cpu: number; memoryBytes: number; maxCpuUtilization?: number }
+
 export type ConnectionRef = { type: "credential"; id: string } | ConnectionEnvInfo
 
 export type SessionInboxMovePayload1 = { location: LocationRef; projectID: string; subpath?: string }
@@ -2523,6 +2537,7 @@ export type WorkerEntry = {
   sessionID?: string
   messageID?: string
   detail?: string
+  queueReason?: WorkerQueueReason
   text?: string
 }
 
@@ -2533,6 +2548,7 @@ export type WorkerTask = {
   worker?: WorkerName
   agent?: string
   model?: { providerID: string; id: string }
+  resources?: WorkerResources
 }
 
 export type ModelRef = { id: string; providerID: string; variant?: string; connection?: ConnectionRef }
@@ -11274,6 +11290,22 @@ export type ServerIntelligenceProbeInput = {
 
 export type ServerIntelligenceProbeOutput = IntelligenceCheck
 
+export type WorkersControlInput = {
+  readonly id: { readonly id: string }["id"]
+  readonly payload:
+    | { readonly kind: "cancel"; readonly task: string }
+    | { readonly kind: "interrupt"; readonly task: string }
+    | {
+        readonly kind: "prompt"
+        readonly task: string
+        readonly id: string
+        readonly text: string
+        readonly delivery: "steer" | "queue"
+      }
+}
+
+export type WorkersControlOutput = void
+
 export type WorkersResourcesInput = { readonly id: { readonly id: string }["id"] }
 
 export type WorkersResourcesOutput = HostResourcesSnapshot
@@ -11374,6 +11406,7 @@ export type WorkersSubmitInput = {
       readonly worker?: string
       readonly agent?: string
       readonly model?: { readonly providerID: string; readonly id: string }
+      readonly resources?: { readonly cpu: number; readonly memoryBytes: number; readonly maxCpuUtilization?: number }
     }>
   }["tasks"]
 }

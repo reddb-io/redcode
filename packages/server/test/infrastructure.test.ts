@@ -336,6 +336,14 @@ it.live(
       expect(submitted.credentialID).toBeUndefined()
       expect(
         (yield* Effect.promise(() =>
+          call(`/api/workers/batches/${submitted.id}/control`, otherUser.token, f.workspace.id, "POST", {
+            kind: "interrupt",
+            task: "one",
+          }),
+        )).status,
+      ).toBe(403)
+      expect(
+        (yield* Effect.promise(() =>
           call(`/api/workers/batches/${submitted.id}/attention`, otherUser.token, f.workspace.id),
         )).status,
       ).toBe(403)
@@ -361,6 +369,14 @@ it.live(
       const revoked = yield* Effect.promise(async () => (await call("/api/workers", user.token, f.workspace.id)).json())
       expect(revoked.workers).toEqual([])
       expect(revoked.batches).toEqual([])
+      expect(
+        (yield* Effect.promise(() =>
+          call(`/api/workers/batches/${submitted.id}/control`, user.token, f.workspace.id, "POST", {
+            kind: "interrupt",
+            task: "one",
+          }),
+        )).status,
+      ).toBe(403)
       expect(
         (yield* Effect.promise(() => call("/api/workers/allowed/resources", user.token, f.workspace.id))).status,
       ).toBe(403)

@@ -6468,6 +6468,10 @@ export interface ServerIntelligenceApi<E = never> {
   readonly probe: ServerIntelligenceProbeOperation<E>
 }
 
+export type WorkersControlInput = { readonly id: Worker.Name; readonly payload: Worker.Control }
+export type WorkersControlOutput = void
+export type WorkersControlOperation<E = never> = (input: WorkersControlInput) => Effect.Effect<WorkersControlOutput, E>
+
 export type WorkersResourcesInput = { readonly id: Worker.Name }
 export type WorkersResourcesOutput = HostResources.Snapshot
 export type WorkersResourcesOperation<E = never> = (
@@ -6519,6 +6523,7 @@ export type WorkersCollectOutput = Worker.Artifact
 export type WorkersCollectOperation<E = never> = (input: WorkersCollectInput) => Effect.Effect<WorkersCollectOutput, E>
 
 export interface WorkersApi<E = never> {
+  readonly control: WorkersControlOperation<E>
   readonly resources: WorkersResourcesOperation<E>
   readonly attention: WorkersAttentionOperation<E>
   readonly answer: WorkersAnswerOperation<E>

@@ -12,6 +12,7 @@
 **/.codex
 **/.turbo
 **/.cache
+**/.bun-cache
 **/dist
 **/dist-node
 **/dist-whiteboard

@@ -20,6 +20,7 @@ export const WorkersHandler = HttpApiBuilder.group(Api, "server.workers", (handl
     const scoped = <A>(run: (scope: ServerAccess.Principal | undefined) => Promise<A>) =>
       Effect.flatMap(ServerAccess.Current, (scope) => call(() => run(scope)))
     return handlers
+      .handle("workers.control", (ctx) => scoped((scope) => workers.control(ctx.params.id, ctx.payload, scope)))
       .handle("workers.resources", (ctx) => scoped((scope) => workers.resources(ctx.params.id, scope)))
       .handle("workers.attention", (ctx) => scoped((scope) => workers.attention(ctx.params.id, scope)))
       .handle("workers.answer", (ctx) => scoped((scope) => workers.answer(ctx.params.id, ctx.payload, scope)))

@@ -48,6 +48,7 @@ const Handlers = Runtime.handlers(Commands, {
     remove: () => import("./commands/handlers/workers/remove"),
     run: () => import("./commands/handlers/workers/run"),
     recover: () => import("./commands/handlers/workers/recover"),
+    cancel: () => import("./commands/handlers/workers/cancel"),
     collect: () => import("./commands/handlers/workers/collect"),
   },
   console: {

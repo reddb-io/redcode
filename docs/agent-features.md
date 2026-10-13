@@ -17,9 +17,9 @@ section and host are stored in the URL and survive reload; the desktop can resto
   belonging to another assignment are refused. Protected permissions remain visible with automatic
   approval enabled. Other forms, including credentials, require the assigned session's normal client.
 - **Hosts and resources** shows logical CPUs, sampled CPU usage, OS free/total RAM and the Redcode
-  process's memory. The first CPU sample is unknown. Measurements refresh while this view is open;
+  process's memory, considering visible runtime/container limits. The first CPU sample is unknown. Measurements refresh while this view is open or queued tasks need admission;
   failed/disconnected hosts do not display cached values as live. These figures do not reserve RAM or
-  automatically choose placement.
+  enforce OS quotas. Optional [worker task requirements](distributed-workers.md#resource-aware-admission) control admission through the coordinator.
 
 Unavailable locations/tasks are reported explicitly, so incomplete inspection is not presented as an
 empty inbox. Servers without the new endpoints remain usable for sessions and show unavailable states

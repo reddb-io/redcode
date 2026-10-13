@@ -6,6 +6,7 @@ import { optional } from "./schema.js"
 import { Attention } from "./attention.js"
 import { Form } from "./form.js"
 import { Permission } from "./permission.js"
+import { SessionMessage } from "./session-message.js"
 
 export const Name = Schema.String.check(Schema.isMinLength(1), Schema.isPattern(/^[a-zA-Z0-9_-]+$/)).annotate({
   identifier: "Worker.Name",
@@ -23,6 +24,13 @@ export const Registration = Schema.Struct({
 export interface Registration extends Schema.Schema.Type<typeof Registration> {}
 export const Config = Schema.Struct({ workers: Schema.Array(Registration) }).annotate({ identifier: "Worker.Config" })
 export interface Config extends Schema.Schema.Type<typeof Config> {}
+/** Admission budgets owned by one coordinator; they do not enforce OS quotas. */
+export const Resources = Schema.Struct({
+  cpu: Schema.Int.check(Schema.isGreaterThan(0)),
+  memoryBytes: Schema.Int.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(Number.MAX_SAFE_INTEGER)),
+  maxCpuUtilization: optional(Schema.Finite.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(1))),
+}).annotate({ identifier: "Worker.Resources" })
+export interface Resources extends Schema.Schema.Type<typeof Resources> {}
 export const Task = Schema.Struct({
   id: Name,
   prompt: Text,
@@ -30,6 +38,7 @@ export const Task = Schema.Struct({
   worker: optional(Name),
   agent: optional(Text),
   model: optional(Schema.Struct({ providerID: Text, id: Text })),
+  resources: optional(Resources),
 }).annotate({ identifier: "Worker.Task" })
 export interface Task extends Schema.Schema.Type<typeof Task> {}
 export const Manifest = Schema.Struct({ tasks: Schema.Array(Task).check(Schema.isMinLength(1)) }).annotate({
@@ -47,6 +56,19 @@ export const State = Schema.Literals([
   "interrupted",
 ]).annotate({ identifier: "Worker.State" })
 export type State = typeof State.Type
+export const QueueReason = Schema.Literals([
+  "offline",
+  "checkout-busy",
+  "resources-unavailable",
+  "resources-stale",
+  "cpu-unavailable",
+  "cpu-capacity",
+  "cpu-load-unavailable",
+  "cpu-load",
+  "memory-unavailable",
+  "memory-capacity",
+]).annotate({ identifier: "Worker.QueueReason" })
+export type QueueReason = typeof QueueReason.Type
 export const Entry = Schema.Struct({
   id: Name,
   state: State,
@@ -56,6 +78,7 @@ export const Entry = Schema.Struct({
   sessionID: optional(Text),
   messageID: optional(Text),
   detail: optional(Schema.String),
+  queueReason: optional(QueueReason),
   text: optional(Schema.String),
 }).annotate({ identifier: "Worker.Entry" })
 export interface Entry extends Schema.Schema.Type<typeof Entry> {}
@@ -128,3 +151,17 @@ export const Answer = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("cancel"), task: Name, formID: Form.ID }),
 ]).annotate({ identifier: "Worker.Answer" })
 export type Answer = typeof Answer.Type
+
+/** Native harness controls address the saved task, never an arbitrary Session or worker URL. */
+export const Control = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("cancel"), task: Name }),
+  Schema.Struct({ kind: Schema.Literal("interrupt"), task: Name }),
+  Schema.Struct({
+    kind: Schema.Literal("prompt"),
+    task: Name,
+    id: SessionMessage.ID,
+    text: Text,
+    delivery: Schema.Literals(["steer", "queue"]),
+  }),
+]).annotate({ identifier: "Worker.Control" })
+export type Control = typeof Control.Type

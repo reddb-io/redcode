@@ -67,6 +67,24 @@ export async function mockRemoteWorkers(
     const path = new URL(request.url()).pathname
     const body: unknown = request.method() === "POST" ? request.postDataJSON() : undefined
     requests.push({ path, method: request.method(), body })
+    if (path.endsWith("/control")) {
+      const control = Schema.decodeUnknownSync(Worker.Control)(body)
+      const batchID = path.split("/")[4]
+      const batch = snapshot.batches.find((batch) => batch.id === batchID)
+      if (!batch?.report || !batch.report.tasks.some((task) => task.id === control.task))
+        return route.fulfill({ status: 400, json: { message: "Unknown assignment" } })
+      if (control.kind === "interrupt" || control.kind === "cancel")
+        snapshot.batches[snapshot.batches.indexOf(batch)] = {
+          ...batch,
+          report: {
+            ...batch.report,
+            tasks: batch.report.tasks.map((task) =>
+              task.id === control.task ? { ...task, state: "interrupted", queueReason: undefined } : task,
+            ),
+          },
+        }
+      return route.fulfill({ status: 204 })
+    }
     if (path.endsWith("/attention")) return route.fulfill({ json: inbox })
     if (path.endsWith("/answer")) {
       const answer = body as Worker.Answer
@@ -143,5 +161,13 @@ export async function mockRemoteWorkers(
     }
     return route.fulfill({ status: 404, json: { message: "Unknown worker fixture request" } })
   })
-  return { requests, patch }
+  return {
+    requests,
+    patch,
+    update: (batch: Worker.Batch) => {
+      const index = snapshot.batches.findIndex((item) => item.id === batch.id)
+      if (index < 0) throw new Error("Unknown fixture batch")
+      snapshot.batches[index] = batch
+    },
+  }
 }

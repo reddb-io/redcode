@@ -3,6 +3,7 @@ import { button } from "@reddb-io/design-system/contracts/button"
 import { card } from "@reddb-io/design-system/contracts/card"
 import { input } from "@reddb-io/design-system/contracts/input"
 import { textarea } from "@reddb-io/design-system/contracts/textarea"
+import { Key } from "@solid-primitives/keyed"
 import { useQuery } from "@tanstack/solid-query"
 import { For, onCleanup, Show } from "solid-js"
 import { createStore } from "solid-js/store"
@@ -25,6 +26,12 @@ export function RemoteWorkers(props: { server: ServerConnection.Any }) {
     tags: "",
     prompt: "",
     target: "",
+    taskTags: "",
+    requirements: false,
+    cpu: "1",
+    memory: "1",
+    maxCpu: "",
+    instruction: { key: "", id: "", text: "", delivery: "steer" as "steer" | "queue" },
     drafts: [] as Worker.Task[],
     busy: false,
     error: "",
@@ -54,6 +61,23 @@ export function RemoteWorkers(props: { server: ServerConnection.Any }) {
     id: `task-${crypto.randomUUID()}`,
     prompt: state.prompt.trim(),
     ...(state.target ? { worker: state.target } : {}),
+    ...(state.taskTags.trim()
+      ? {
+          tags: state.taskTags
+            .split(",")
+            .map((tag) => tag.trim())
+            .filter(Boolean),
+        }
+      : {}),
+    ...(state.requirements
+      ? {
+          resources: {
+            cpu: Number(state.cpu),
+            memoryBytes: Math.round(Number(state.memory) * 1024 ** 3),
+            ...(state.maxCpu ? { maxCpuUtilization: Number(state.maxCpu) / 100 } : {}),
+          },
+        }
+      : {}),
   })
   const action = (run: () => Promise<unknown>) => {
     if (state.busy) return
@@ -117,14 +141,19 @@ export function RemoteWorkers(props: { server: ServerConnection.Any }) {
                   .map((tag) => tag.trim())
                   .filter(Boolean),
               })
-              if (lifetime.active) setState({ adding: false, id: "", url: "", directory: "", password: "", tags: "", resourceID: "" })
+              if (lifetime.active)
+                setState({ adding: false, id: "", url: "", directory: "", password: "", tags: "", resourceID: "" })
             })
           }}
         >
           <div class={`${appearance.body()} grid gap-3 sm:grid-cols-2`}>
             <label class="flex flex-col gap-1">
               {language.t("remoteWorkers.resourceID")}
-              <input class={input()} value={state.resourceID} onInput={(event) => setState("resourceID", event.currentTarget.value)} />
+              <input
+                class={input()}
+                value={state.resourceID}
+                onInput={(event) => setState("resourceID", event.currentTarget.value)}
+              />
             </label>
             <label>
               {language.t("remoteWorkers.name")}
@@ -293,6 +322,67 @@ export function RemoteWorkers(props: { server: ServerConnection.Any }) {
             <Show when={active()}>
               <p class="text-ink-muted">{language.t("remoteWorkers.active")}</p>
             </Show>
+            <label>
+              {language.t("remoteWorkers.taskTags")}
+              <input
+                class={input()}
+                disabled={state.busy || active()}
+                value={state.taskTags}
+                onInput={(event) => setState("taskTags", event.currentTarget.value)}
+              />
+            </label>
+            <button
+              type="button"
+              class={secondary}
+              aria-pressed={state.requirements}
+              disabled={state.busy || active()}
+              onClick={() => setState("requirements", !state.requirements)}
+            >
+              {language.t("remoteWorkers.resources.toggle")}
+            </button>
+            <Show when={state.requirements}>
+              <fieldset class="grid gap-3 sm:grid-cols-3" disabled={state.busy || active()}>
+                <legend class="mb-2">{language.t("remoteWorkers.resources.title")}</legend>
+                <label>
+                  {language.t("remoteWorkers.resources.cpu")}
+                  <input
+                    class={input()}
+                    type="number"
+                    min="1"
+                    step="1"
+                    required
+                    value={state.cpu}
+                    onInput={(event) => setState("cpu", event.currentTarget.value)}
+                  />
+                </label>
+                <label>
+                  {language.t("remoteWorkers.resources.memory")}
+                  <input
+                    class={input()}
+                    type="number"
+                    min="0.25"
+                    max="8388607"
+                    step="0.25"
+                    required
+                    value={state.memory}
+                    onInput={(event) => setState("memory", event.currentTarget.value)}
+                  />
+                </label>
+                <label>
+                  {language.t("remoteWorkers.resources.load")}
+                  <input
+                    class={input()}
+                    type="number"
+                    min="1"
+                    max="100"
+                    step="1"
+                    value={state.maxCpu}
+                    onInput={(event) => setState("maxCpu", event.currentTarget.value)}
+                  />
+                </label>
+                <p class="sm:col-span-3 text-ink-muted">{language.t("remoteWorkers.resources.note")}</p>
+              </fieldset>
+            </Show>
             <For each={state.drafts}>
               {(task) => (
                 <div class="flex items-center justify-between gap-2">
@@ -320,7 +410,8 @@ export function RemoteWorkers(props: { server: ServerConnection.Any }) {
               type="button"
               class={secondary}
               disabled={state.busy || active() || !state.prompt.trim()}
-              onClick={() => {
+              onClick={(event) => {
+                if (!event.currentTarget.closest("form")?.reportValidity()) return
                 setState("drafts", [...state.drafts, draft()])
                 setState("prompt", "")
               }}
@@ -337,31 +428,148 @@ export function RemoteWorkers(props: { server: ServerConnection.Any }) {
           </div>
         </form>
       </Show>
-      <For each={query.data?.batches}>
+      <Key each={query.data?.batches} by={(batch) => batch.id}>
         {(batch) => (
           <section class={appearance.root()}>
             <div class={appearance.header()}>
               <h4 class={appearance.title()}>{language.t("remoteWorkers.batch")}</h4>
-              <p class={appearance.description()}>{batch.createdAt}</p>
+              <p class={appearance.description()}>{batch().createdAt}</p>
             </div>
             <div class={`${appearance.body()} flex flex-col gap-3`}>
-              <Show when={batch.error}>
+              <Show when={batch().error}>
                 <p role="status" class="text-feedback-warning">
-                  {batch.error}
+                  {batch().error}
                 </p>
               </Show>
-              <For each={batch.manifest.tasks}>
+              <Key each={batch().manifest.tasks} by={(task) => task.id}>
                 {(task) => {
-                  const entry = () => batch.report?.tasks.find((item) => item.id === task.id)
+                  const entry = () => batch().report?.tasks.find((item) => item.id === task().id)
                   return (
                     <article class="flex flex-col gap-2 border-b border-muted pb-3 last:border-b-0">
-                      <p class="whitespace-pre-wrap">{task.prompt}</p>
+                      <p class="whitespace-pre-wrap">{task().prompt}</p>
                       <p class="text-ink-muted">
                         {language.t(`remoteWorkers.state.${entry()?.state ?? "queued"}`)}
                         <Show when={entry()?.worker}> · {entry()?.worker}</Show>
                       </p>
                       <Show when={entry()?.state === "waiting"}>
                         <p>{language.t("remoteWorkers.waiting")}</p>
+                      </Show>
+                      <Show when={task().resources} keyed>
+                        {(resources) => (
+                          <p class="text-ink-muted">
+                            {language.t("remoteWorkers.resources.summary", {
+                              cpu: resources.cpu,
+                              memory: (resources.memoryBytes / 1024 ** 3).toFixed(2),
+                            })}
+                          </p>
+                        )}
+                      </Show>
+                      <Show when={entry()?.queueReason}>
+                        {(reason) => <p role="status">{language.t(`remoteWorkers.queue.${reason()}`)}</p>}
+                      </Show>
+                      <Show when={entry()?.state === "queued" && !entry()?.sessionID}>
+                        <button
+                          class={secondary}
+                          disabled={state.busy}
+                          onClick={() =>
+                            action(() =>
+                              api().control({ id: batch().id, payload: { kind: "cancel", task: task().id } }),
+                            )
+                          }
+                        >
+                          {language.t("remoteWorkers.cancelQueued")}
+                        </button>
+                      </Show>
+                      <Show when={entry()?.sessionID && ["running", "waiting"].includes(entry()?.state ?? "")}>
+                        <div class="flex flex-wrap gap-2">
+                          <button
+                            class={secondary}
+                            disabled={state.busy}
+                            onClick={() =>
+                              setState("instruction", {
+                                key: `${batch().id}/${task().id}`,
+                                id: `msg_${crypto.randomUUID()}`,
+                                text: "",
+                                delivery: "steer",
+                              })
+                            }
+                          >
+                            {language.t("agents.orient")}
+                          </button>
+                          <button
+                            class={button({ variant: "ghost", tone: "danger", size: "sm" })}
+                            disabled={state.busy}
+                            onClick={() =>
+                              action(() =>
+                                api().control({ id: batch().id, payload: { kind: "interrupt", task: task().id } }),
+                              )
+                            }
+                          >
+                            {language.t("agents.interrupt")}
+                          </button>
+                        </div>
+                        <Show when={state.instruction.key === `${batch().id}/${task().id}`}>
+                          <form
+                            class="flex flex-col gap-2"
+                            onSubmit={(event) => {
+                              event.preventDefault()
+                              action(async () => {
+                                await api().control({
+                                  id: batch().id,
+                                  payload: {
+                                    kind: "prompt",
+                                    task: task().id,
+                                    id: state.instruction.id,
+                                    text: state.instruction.text.trim(),
+                                    delivery: state.instruction.delivery,
+                                  },
+                                })
+                                if (lifetime.active) setState("instruction", "key", "")
+                              })
+                            }}
+                          >
+                            <label>
+                              {language.t("agents.instruction")}
+                              <textarea
+                                class={textarea()}
+                                required
+                                disabled={state.busy}
+                                value={state.instruction.text}
+                                onInput={(event) =>
+                                  setState("instruction", {
+                                    text: event.currentTarget.value,
+                                    id: `msg_${crypto.randomUUID()}`,
+                                  })
+                                }
+                              />
+                            </label>
+                            <label>
+                              {language.t("agents.delivery")}
+                              <select
+                                aria-label={language.t("agents.delivery")}
+                                class={input()}
+                                value={state.instruction.delivery}
+                                disabled={state.busy}
+                                onChange={(event) =>
+                                  setState("instruction", {
+                                    delivery: event.currentTarget.value as "steer" | "queue",
+                                    id: `msg_${crypto.randomUUID()}`,
+                                  })
+                                }
+                              >
+                                <option value="steer">{language.t("agents.steer")}</option>
+                                <option value="queue">{language.t("agents.queue")}</option>
+                              </select>
+                            </label>
+                            <button
+                              class={button({ variant: "primary", size: "sm" })}
+                              type="submit"
+                              disabled={state.busy || !state.instruction.text.trim()}
+                            >
+                              {language.t("agents.send")}
+                            </button>
+                          </form>
+                        </Show>
                       </Show>
                       <Show when={entry()?.text}>
                         <details>
@@ -372,8 +580,8 @@ export function RemoteWorkers(props: { server: ServerConnection.Any }) {
                       <Show when={entry()?.state === "unknown" || entry()?.state === "dispatching"}>
                         <button
                           class={secondary}
-                          disabled={state.busy || batch.observing}
-                          onClick={() => action(() => api().recover({ id: batch.id, task: task.id }))}
+                          disabled={state.busy || batch().observing}
+                          onClick={() => action(() => api().recover({ id: batch().id, task: task().id }))}
                         >
                           {language.t("remoteWorkers.recover")}
                         </button>
@@ -388,7 +596,7 @@ export function RemoteWorkers(props: { server: ServerConnection.Any }) {
                           disabled={state.busy}
                           onClick={() =>
                             action(async () => {
-                              const result = await api().collect({ id: batch.id, task: task.id })
+                              const result = await api().collect({ id: batch().id, task: task().id })
                               if (lifetime.active) setState("artifact", result)
                             })
                           }
@@ -399,11 +607,11 @@ export function RemoteWorkers(props: { server: ServerConnection.Any }) {
                     </article>
                   )
                 }}
-              </For>
+              </Key>
             </div>
           </section>
         )}
-      </For>
+      </Key>
       <Show when={state.artifact}>
         {(artifact) => (
           <section class={appearance.root()}>

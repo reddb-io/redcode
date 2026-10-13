@@ -59,11 +59,63 @@ try {
     const system = await WorkerPool.health(registration, environment)
     await WorkerPool.add(config, { ...registration, tags: ["docker", ...system.platform.split(" ")] })
     await Bun.write(path.join(output, `${worker.id}-system.json`), JSON.stringify(system, null, 2))
+    const resources = await worker.api.server.resources({ signal: AbortSignal.timeout(5_000) })
+    await Bun.write(path.join(output, `${worker.id}-resources.json`), JSON.stringify(resources, null, 2))
+    check(`${worker.id} sees its one-CPU container capacity`, resources.cpu.count === 1)
+    check(
+      `${worker.id} sees its 1-GiB memory limit and remaining container memory`,
+      resources.memory.totalBytes === 1024 ** 3 &&
+        resources.memory.freeBytes !== null &&
+        resources.memory.freeBytes >= 0 &&
+        resources.memory.freeBytes <= 1024 ** 3,
+    )
     check(
       `${worker.id} rejects unauthenticated access`,
       (await fetch(`${worker.url}/api/session`, { signal: AbortSignal.timeout(5_000) })).status === 401,
     )
   }
+  const constrainedConfig = path.join(output, "constrained-workers.json")
+  await Bun.write(constrainedConfig, await Bun.file(config).text())
+  const constrainedManifest = path.join(output, "constrained-tasks.json")
+  await Bun.write(
+    constrainedManifest,
+    JSON.stringify({
+      tasks: [
+        {
+          id: "too-many-cpus",
+          prompt: "Must remain queued",
+          worker: "worker-a",
+          resources: { cpu: 2, memoryBytes: 64 * 1024 ** 2 },
+        },
+        {
+          id: "too-much-ram",
+          prompt: "Must remain queued",
+          worker: "worker-a",
+          resources: { cpu: 1, memoryBytes: 2 * 1024 ** 3 },
+        },
+      ],
+    }),
+  )
+  const constrained = await WorkerPool.run({
+    config: constrainedConfig,
+    manifest: constrainedManifest,
+    report: path.join(output, "constrained.run.json"),
+    environment,
+    timeoutMs: 500,
+    pollMs: 100,
+  })
+  check(
+    "CPU-constrained task remains unassigned",
+    constrained.tasks[0]?.state === "queued" &&
+      constrained.tasks[0].queueReason === "cpu-capacity" &&
+      !constrained.tasks[0].sessionID,
+  )
+  check(
+    "RAM-constrained task remains unassigned",
+    constrained.tasks[1]?.state === "queued" &&
+      constrained.tasks[1].queueReason === "memory-capacity" &&
+      !constrained.tasks[1].sessionID,
+  )
   const manifest = path.join(output, "tasks.json")
   const report = path.join(output, "tasks.run.json")
   await Bun.write(
@@ -72,6 +124,7 @@ try {
       tasks: workers.map((worker, index) => ({
         id: index ? "beta" : "alpha",
         worker: worker.id,
+        resources: { cpu: 1, memoryBytes: 128 * 1024 ** 2 },
         prompt: `[worker-task:${index ? "beta" : "alpha"}] Write a result and verify Linux/Git.`,
       })),
     }),

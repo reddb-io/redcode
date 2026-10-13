@@ -25,13 +25,17 @@ Reports, patches, system information and logs are saved under `.red/tmp/redcode-
 
 The earlier two-worker lab passed 16 acceptance checks on Docker Desktop Linux `x86_64` and Docker inside WSL. The extended three-container lab passed 29 checks inside WSL, including permanent coordination, credential persistence and cached artifacts after worker removal. These fixtures do not establish Raspberry Pi ARM64/native-dependency, SSH or physical LAN acceptance.
 
+The resource-admission extension passed 35 checks inside WSL. Both workers reported their one-CPU/1-GiB container limits, and over-budget CPU/RAM tasks stayed unassigned. The original execution, restart and collection checks also passed. Reports include host resource snapshots and a constrained-task journal.
+
 ## Permanent coordinator and desktop
 
 Keep the updated agent server running on the machine that will coordinate the pool. Its server-owned worker service runs independently of any desktop/browser connection. In **Agents → Remote workers** on that server, register each machine's address, absolute checkout directory, server password or pairing token, and optional capability tags. **Check connection** verifies authentication and displays the actual platform.
 
 The panel uses the canonical Redcode design-system button, card, input and textarea contracts. Add independent tasks to a batch, choose a worker or allow placement on any available worker, then **Send batch**. The server accepts one unfinished batch at a time, dispatches its tasks across independent checkout slots, and continues observing when the panel closes. Open **Agents → Inbox** on the coordinator to answer the assigned worker's permissions and questions. Other forms, including credential entry, use the worker Session's normal connected client. The coordinator resolves each reply from its saved task assignment and rechecks the original request and current resource grants.
 
-**Agents → Hosts and resources** shows CPU and OS free/total RAM on the coordinator and registered workers. Worker credentials remain on the coordinator. Measurements refresh only while the view is open; unknown, unavailable and stale readings are not reported as zero load. This view does not reserve memory or add resource-based scheduling. Workers need the updated server endpoints to expose resources and pending requests.
+**Agents → Hosts and resources** shows available CPU slots and RAM on the coordinator and registered workers. Worker credentials remain on the coordinator. Measurements refresh while the view is open or queued tasks need an admission decision; unknown, unavailable and stale readings are not reported as zero load. On Linux cgroup v2 hosts, visible CPU quotas and memory limits/current usage are considered. Unsupported constrained memory measurements remain unknown. Workers need the updated server endpoints to expose resources and pending requests.
+
+For running/waiting tasks, **Send instruction** uses the worker's native Redcode Session harness: choose **Steer current work** or **Queue for later**. **Interrupt** targets that recorded Session. Controls never accept an arbitrary Session/worker address, recheck current access grants, and refuse completed tasks. Prompt IDs survive a retry of the same instruction, preserving first-admission-wins behavior. These controls do not add external Claude Code/Codex CLI harness adapters.
 
 The coordinator persists its registry and batch journals under `<Redcode state>/workers`. Each committed batch includes its original registry snapshot for historical patch collection. Worker secrets use the server's existing credential store; registry/API responses contain credential references, never the supplied password. Removing a worker removes its credential and is blocked as soon as a batch is accepted. Credentials follow the existing store's protection; this feature does not add credential encryption. Optional Console organization authorization is described in [infrastructure access](console-infrastructure.md).
 
@@ -94,6 +98,39 @@ To increase a worker's capacity, register additional independent checkout direct
 
 ## Dispatch a batch
 
+### Resource-aware admission
+
+In the desktop, enable **Set resource requirements** and set CPU slots, a RAM budget in GiB, and an optional maximum measured CPU usage. **Required worker capabilities** adds comma-separated tags. The CLI accepts the same requirements through the task manifest:
+
+```json
+{
+  "tasks": [
+    {
+      "id": "pi-tests",
+      "prompt": "Run the ARM64 test suite.",
+      "tags": ["arm64"],
+      "resources": { "cpu": 1, "memoryBytes": 1073741824, "maxCpuUtilization": 0.8 }
+    }
+  ]
+}
+```
+
+Requirements are optional; tasks without them keep their existing checkout/tag placement behavior. Constrained tasks need a fresh resource sample. The first CPU usage sample is unknown, so a task with a usage threshold may wait for the next sample. Samples older than 30 seconds, unavailable endpoints and unknown required measurements keep tasks queued rather than creating a Session. A smaller eligible task can proceed while another task is blocked.
+
+Declared CPU/RAM budgets of unfinished assignments are deducted before another constrained task is admitted. They are shared across registrations using the same normalized server origin, reconstructed from the saved manifest/journal after restart, and retained for ambiguous `unknown` assignments. RAM accounting is conservative: declared budgets are deducted from reported available RAM even when some of that memory is already in use. Only declared budgets are counted; legacy tasks and external workloads have no known reservation. This is one coordinator's admission policy, not an OS quota, cross-coordinator reservation, full physical-host identity discovery or failover fencing. URL aliases pointing to the same physical machine require operator care.
+
+CPU slots represent available parallelism; fractional visible CPU quotas are rounded up to a slot. They do not represent exclusive physical cores or a guaranteed amount of CPU time.
+
+The permanent coordinator retries queued tasks automatically. A foreground CLI run can report queued work and exits `1` while any task has not succeeded; rerun the unchanged manifest/report to retry after capacity becomes available. `queueReason` distinguishes busy checkouts, unavailable/stale metrics, CPU count/load and insufficient RAM. Metrics account for visible [cgroup v2 CPU and memory controls](https://docs.kernel.org/admin-guide/cgroup-v2.html); inaccessible or unsupported limits can still prevent admission.
+
+If a requirement cannot be satisfied, use **Cancel queued task** or the CLI command below. Cancellation is restricted to a saved queued task with no assigned Session, validates the original manifest/registry journal, and records `interrupted` with `Cancelled before assignment`. It does not send a request to a worker. Once every task is terminal, the registry is released for changes/new batches. Running, waiting or ambiguous assignments cannot be discarded through this command; use their native harness control or original-worker recovery instead.
+
+```powershell
+redcode workers cancel pi-tests --config .\workers.json --manifest .\tasks.json --report .\tasks.run.json
+```
+
+### Task manifest
+
 Create a task manifest. Tasks are independent agent prompts; this version does not split a large prompt into subtasks automatically. Optional `worker` pins placement; every requested tag must match. Optional `agent` and `model: { "providerID": "...", "id": "..." }` select the worker's agent/model.
 
 ```json
@@ -117,7 +154,7 @@ States:
 
 | State                                | Meaning                                                                                                                                                      |
 | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `queued`                             | No worker assignment yet; a matching worker may be offline or all matching slots are occupied.                                                               |
+| `queued`                             | No worker assignment yet. `queueReason` explains offline workers, busy checkouts or unsatisfied resource requirements.                                       |
 | `dispatching`                        | Placement and IDs are journaled before remote creation/admission.                                                                                            |
 | `running`                            | No terminal result yet, including when local observation time expires.                                                                                       |
 | `waiting`                            | The worker Session needs permission or form input. Answer permissions/questions in the coordinator Inbox, or other forms through the worker's normal client. |

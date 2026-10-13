@@ -3,9 +3,32 @@ import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { database, runtime } from "../src/system-info"
-import { createHostResources, cpuUtilization } from "../src/host-resources"
+import { createHostResources, cpuUtilization, cgroupCpuUtilization, cgroupMeasurements } from "../src/host-resources"
 
 describe("system info", () => {
+  test("cgroup v2 measurements use quota-normalized CPU and distinguish unlimited/missing kernel values", () => {
+    expect(
+      cgroupMeasurements({
+        cpuMax: "50000 100000",
+        cpuStat: "nr_periods 4\nusage_usec 200000\n",
+        memoryMax: "1073741824\n",
+        memoryCurrent: "0\n",
+      }),
+    ).toEqual({ cpu: 0.5, usageMicros: 200000, memoryMax: 1073741824, memoryCurrent: 0 })
+    expect(cgroupMeasurements({ cpuMax: "max 100000", memoryMax: "max", memoryCurrent: "invalid" })).toEqual({
+      cpu: undefined,
+      usageMicros: undefined,
+      memoryMax: undefined,
+      memoryCurrent: undefined,
+    })
+    const previous = { source: "/container", usageMicros: 100000, capacity: 0.5, sampledAt: 1000 }
+    const current = { ...previous, usageMicros: 350000, sampledAt: 2000 }
+    expect(cgroupCpuUtilization(undefined, current)).toBeNull()
+    expect(cgroupCpuUtilization(previous, current)).toBe(0.5)
+    expect(cgroupCpuUtilization(previous, { ...current, usageMicros: 900000 })).toBe(1)
+    expect(cgroupCpuUtilization(previous, { ...current, source: "/other" })).toBeNull()
+    expect(cgroupCpuUtilization(previous, { ...current, capacity: 1 })).toBeNull()
+  })
   test("CPU measurements require fresh monotonic counters from the same host sample", () => {
     const before = { count: 4, idle: 100, total: 200, sampledAt: 1000 }
     const after = { count: 4, idle: 150, total: 400, sampledAt: 6000 }
@@ -23,8 +46,8 @@ describe("system info", () => {
       expect(cpuUtilization(before, changed)).toBeNull()
   })
 
-  test("a new host sampler reports unknown CPU usage and OS memory separately from process RSS", () => {
-    const sample = createHostResources()()
+  test("a new host sampler reports unknown CPU usage and OS memory separately from process RSS", async () => {
+    const sample = await createHostResources()()
     expect(sample.cpu.utilization).toBeNull()
     expect(sample.memory.totalBytes).toBeGreaterThan(0)
     expect(sample.memory.freeBytes).toBeGreaterThanOrEqual(0)

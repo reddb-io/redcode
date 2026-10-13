@@ -411,6 +411,8 @@ import type {
   ServerIntelligenceDiscoverOutput,
   ServerIntelligenceProbeInput,
   ServerIntelligenceProbeOutput,
+  WorkersControlInput,
+  WorkersControlOutput,
   WorkersResourcesInput,
   WorkersResourcesOutput,
   WorkersAttentionInput,
@@ -2451,6 +2453,14 @@ const adaptGroupServerIntelligence = (raw: RawClient["server.intelligence"]) => 
   probe: EndpointServerIntelligenceProbe(raw),
 })
 
+type WorkersControlRequest = Parameters<RawClient["server.workers"]["workers.control"]>[0]
+const EndpointWorkersControl = (raw: RawClient["server.workers"]) => (input: WorkersControlInput) =>
+  preserveEffect<WorkersControlOutput>()(
+    raw["workers.control"]({ params: { id: input["id"] }, payload: input["payload"] } as WorkersControlRequest).pipe(
+      Effect.mapError(mapClientError),
+    ),
+  )
+
 const EndpointWorkersResources = (raw: RawClient["server.workers"]) => (input: WorkersResourcesInput) =>
   preserveEffect<WorkersResourcesOutput>()(
     raw["workers.resources"]({ params: { id: input["id"] } }).pipe(Effect.mapError(mapClientError)),
@@ -2516,6 +2526,7 @@ const EndpointWorkersCollect = (raw: RawClient["server.workers"]) => (input: Wor
   )
 
 const adaptGroupWorkers = (raw: RawClient["server.workers"]) => ({
+  control: EndpointWorkersControl(raw),
   resources: EndpointWorkersResources(raw),
   attention: EndpointWorkersAttention(raw),
   answer: EndpointWorkersAnswer(raw),

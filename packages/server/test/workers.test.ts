@@ -39,6 +39,141 @@ const startServer = Effect.fnUntraced(function* (directory: string) {
 })
 
 it.live(
+  "native worker controls retain durable queue/steer identities and interrupt only the assigned harness",
+  () =>
+    Effect.gen(function* () {
+      const checkout = yield* Effect.acquireDisposable(Effect.promise(() => tmpdir()))
+      const directory = yield* Effect.acquireDisposable(Effect.promise(() => tmpdir()))
+      const llm = yield* TestLLM.Test.pipe(Effect.provide(TestLLM.testLayer()))
+      yield* llm.always(TestLLM.hangAfter())
+      const model = SessionRunnerModel.resolved(
+        LanguageModel.make({ id: "worker-model", provider: "test", route: OpenAIChat.route }),
+        {
+          capabilities: { tools: true, input: ["text"], output: ["text"] },
+          cost: [],
+          limit: { context: 200_000, output: 8_192 },
+        },
+      )
+      const context = yield* Layer.build(
+        createRoutes(
+          {
+            password: "secret",
+            database: { path: ":memory:" },
+            workers: { directory: `${checkout.path}/coordinator` },
+            config: { directory: checkout.path, global: false, project: false, content: '{"worktree":{"auto":false}}' },
+            models: { fetch: false },
+            fs: { filewatcher: false, fff: false },
+          },
+          () => [],
+          [
+            llmClient.replace(Layer.succeed(LLMClient.Service, llm)),
+            SessionRunnerModel.node.replace(
+              Layer.succeed(SessionRunnerModel.Service, { resolve: () => Effect.succeed(model) }),
+            ),
+          ],
+        ).pipe(Layer.provide(HttpServer.layerServices)),
+      )
+      const handler = Context.get(context, HttpRouter.HttpRouter)
+        .asHttpEffect()
+        .pipe(HttpEffect.toWebHandlerWith(context))
+      const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: handler })
+      yield* Effect.addFinalizer(() => Effect.sync(() => server.stop(true)))
+      const api = OpenCode.make({
+        baseUrl: server.url.origin,
+        headers: { authorization: `Basic ${btoa("opencode:secret")}` },
+      })
+      const session = yield* Effect.promise(() => api.session.create({ location: { directory: checkout.path } }))
+      yield* Effect.promise(() => api.session.prompt({ sessionID: session.id, text: "Start assigned work" }))
+      yield* llm.wait(1)
+      const input = {
+        config: `${directory.path}/workers.json`,
+        manifest: `${directory.path}/tasks.json`,
+        report: `${directory.path}/report.json`,
+        environment: { WORKER_PASSWORD: "secret" },
+      }
+      yield* Effect.promise(async () => {
+        await WorkerPool.add(input.config, {
+          id: "first",
+          url: server.url.origin,
+          passwordEnv: "WORKER_PASSWORD",
+          directories: [session.location.directory],
+          tags: [],
+        })
+        await Bun.write(input.manifest, JSON.stringify({ tasks: [{ id: "assigned", prompt: "Start" }] }))
+        await Bun.write(
+          input.report,
+          JSON.stringify({
+            fingerprint: "fixture",
+            tasks: [
+              {
+                id: "assigned",
+                state: "running",
+                worker: "first",
+                url: server.url.origin,
+                directory: session.location.directory,
+                sessionID: session.id,
+              },
+            ],
+          }),
+        )
+      })
+      const queueID = SessionMessage.ID.create()
+      const steerID = SessionMessage.ID.create()
+      yield* Effect.promise(async () => {
+        await WorkerPool.control(input, {
+          kind: "prompt",
+          task: "assigned",
+          id: queueID,
+          text: "Later",
+          delivery: "queue",
+        })
+        await WorkerPool.control(input, {
+          kind: "prompt",
+          task: "assigned",
+          id: queueID,
+          text: "Ignored duplicate",
+          delivery: "steer",
+        })
+        await WorkerPool.control(input, {
+          kind: "prompt",
+          task: "assigned",
+          id: steerID,
+          text: "Change direction",
+          delivery: "steer",
+        })
+        await expect(WorkerPool.control(input, { kind: "interrupt", task: "unrelated" })).rejects.toThrow(
+          "no live assigned",
+        )
+      })
+      const pending = yield* Effect.promise(() => api.session.inbox.list({ sessionID: session.id }))
+      expect(
+        pending.map((item) => ({
+          id: item.id,
+          delivery: item.delivery,
+          text: item.type === "user" ? item.payload.text : undefined,
+        })),
+      ).toEqual([
+        { id: queueID, delivery: "queue", text: "Later" },
+        { id: steerID, delivery: "steer", text: "Change direction" },
+      ])
+      yield* Effect.promise(() => WorkerPool.control(input, { kind: "interrupt", task: "assigned" }))
+      expect((yield* Effect.promise(() => api.session.get({ sessionID: session.id }))).outcome).toBe("interrupted")
+      yield* Effect.promise(async () => {
+        await expect(
+          WorkerPool.control(input, {
+            kind: "prompt",
+            task: "assigned",
+            id: SessionMessage.ID.create(),
+            text: "Must not restart",
+            delivery: "steer",
+          }),
+        ).rejects.toThrow("already completed")
+      })
+    }),
+  20_000,
+)
+
+it.live(
   "the coordinator answers only pending requests belonging to the recorded worker assignment",
   () =>
     Effect.gen(function* () {

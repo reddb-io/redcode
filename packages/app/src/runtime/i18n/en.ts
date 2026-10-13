@@ -1,6 +1,30 @@
 import { DESKTOP_NATIVE_ENGLISH } from "./desktop-native"
 
 export const dict = {
+  "remoteWorkers.cancelQueued": "Cancel queued task",
+  "remoteWorkers.taskTags": "Required worker capabilities (optional)",
+  "agents.hosts.runtimeMemory": "RAM available / limit",
+  "agents.hosts.runtimeNote":
+    "Metrics consider visible runtime limits. Sampling runs while this view is open or queued tasks need an admission decision. Declared budgets are advisory.",
+  "remoteWorkers.resources.toggle": "Set resource requirements",
+  "remoteWorkers.resources.title": "Admission requirements",
+  "remoteWorkers.resources.cpu": "CPU slots",
+  "remoteWorkers.resources.memory": "RAM budget (GiB)",
+  "remoteWorkers.resources.load": "Maximum CPU usage (%) — optional",
+  "remoteWorkers.resources.note":
+    "The coordinator waits for fresh measurements and counts declared budgets of unfinished tasks. These budgets do not enforce OS limits.",
+  "remoteWorkers.resources.summary": "CPU: {{cpu}} · RAM: {{memory}} GiB",
+  "remoteWorkers.queue.offline": "Waiting for an eligible worker to connect.",
+  "remoteWorkers.queue.checkout-busy": "Waiting for an eligible checkout to become free.",
+  "remoteWorkers.queue.resources-unavailable":
+    "Waiting for host resource measurements. The worker may need an updated server.",
+  "remoteWorkers.queue.resources-stale": "Waiting for fresh host resource measurements.",
+  "remoteWorkers.queue.cpu-unavailable": "The worker's CPU count is unknown.",
+  "remoteWorkers.queue.cpu-capacity": "Waiting for enough unreserved CPU slots.",
+  "remoteWorkers.queue.cpu-load-unavailable": "Waiting for a measured CPU usage sample.",
+  "remoteWorkers.queue.cpu-load": "Waiting for CPU usage to fall below the task's limit.",
+  "remoteWorkers.queue.memory-unavailable": "The worker's free RAM is unknown.",
+  "remoteWorkers.queue.memory-capacity": "Waiting for enough unreserved free RAM.",
   "agents.scope.host": "Host",
   "agents.scope.all": "All connected hosts",
   "agents.scope.missing": "The selected host is no longer available. Select another host in the sidemenu.",

@@ -7,6 +7,19 @@ import { HostResources } from "@opencode/schema/host-resources"
 
 export const WorkersGroup = HttpApiGroup.make("server.workers")
   .add(
+    HttpApiEndpoint.post("workers.control", "/api/workers/batches/:id/control", {
+      params: { id: Worker.Name },
+      payload: Worker.Control,
+      success: Schema.Void,
+      error: [InvalidRequestError, ConsoleForbiddenError],
+    }).annotateMerge(
+      OpenApi.annotations({
+        identifier: "workers.control",
+        summary: "Control the native harness of an assigned worker task",
+      }),
+    ),
+  )
+  .add(
     HttpApiEndpoint.get("workers.resources", "/api/workers/:id/resources", {
       params: { id: Worker.Name },
       success: HostResources.Snapshot,

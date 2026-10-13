@@ -3,6 +3,8 @@ export * as WorkerPool from "./worker-pool"
 import { Schema } from "effect"
 import { Worker } from "@opencode/schema/worker"
 import { Attention } from "@opencode/schema/attention"
+import { HostResources } from "@opencode/schema/host-resources"
+import { resourceQueueReason } from "./worker-placement"
 import {
   OpenCode,
   isInvalidRequestError,
@@ -167,6 +169,35 @@ export async function run(
     })),
   )
   const saved = { tail: Promise.resolve() }
+  // Share a short-lived sample across slots registered against the same server origin.
+  const samples = new Map<string, { startedAt: number; pending: Promise<HostResources.Snapshot | undefined> }>()
+  const sample = (worker: Worker.Registration) => {
+    const origin = address(worker.url)
+    const cached = samples.get(origin)
+    if (cached && Date.now() - cached.startedAt < 1_000) return cached.pending
+    const pending = clients
+      .get(worker.id)!
+      .server.resources({
+        signal: AbortSignal.any([AbortSignal.timeout(5_000), ...(input.signal ? [input.signal] : [])]),
+      })
+      .then(Schema.decodeUnknownSync(HostResources.Snapshot))
+      .catch(() => undefined)
+    samples.set(origin, { startedAt: Date.now(), pending })
+    return pending
+  }
+  const reserved = (worker: Worker.Registration) =>
+    report.tasks
+      .filter((entry) => entry.url === address(worker.url) && entry.state !== "queued" && !terminal(entry))
+      .reduce(
+        (budget, entry) => {
+          const resources = manifest.tasks.find((task) => task.id === entry.id)?.resources
+          return {
+            cpu: budget.cpu + (resources?.cpu ?? 0),
+            memoryBytes: budget.memoryBytes + (resources?.memoryBytes ?? 0),
+          }
+        },
+        { cpu: 0, memoryBytes: 0 },
+      )
   const update = async (entry: Entry) => {
     report.tasks[report.tasks.findIndex((item) => item.id === entry.id)] = entry
     // Parallel slots serialize atomic journal writes before advancing to the next side effect.
@@ -296,10 +327,19 @@ export async function run(
                   () => false,
                 )
               : true
-            const entry = report.tasks.find(
-              (item) =>
-                item.state === "queued" && eligible(worker, manifest.tasks.find((task) => task.id === item.id)!),
-            )
+            const measurement =
+              allowed && manifest.tasks.some((task) => task.resources && eligible(worker, task))
+                ? await sample(worker)
+                : undefined
+            // Sampling and authority checks precede selection; the journal claim is synchronous up to its write.
+            const entry = report.tasks.find((item) => {
+              const task = manifest.tasks.find((task) => task.id === item.id)!
+              return (
+                item.state === "queued" &&
+                eligible(worker, task) &&
+                (!allowed || !task.resources || !resourceQueueReason(task.resources, measurement, reserved(worker)))
+              )
+            })
             if (!entry) return
             if (!allowed) {
               await update({ ...entry, state: "failed", detail: "Access could not be verified before admission" })
@@ -361,6 +401,36 @@ export async function run(
         }),
       ),
   )
+  for (const entry of report.tasks.filter((entry) => entry.state === "queued")) {
+    const task = manifest.tasks.find((task) => task.id === entry.id)!
+    const candidates = healthy.filter((item) => item.online && eligible(item.worker, task))
+    const free = candidates.filter(({ worker }) =>
+      worker.directories.some(
+        (directory) =>
+          !report.tasks.some(
+            (item) =>
+              item.url === address(worker.url) &&
+              item.directory === directory &&
+              !terminal(item) &&
+              item.state !== "queued",
+          ),
+      ),
+    )
+    const reason: Worker.QueueReason = !candidates.length
+      ? "offline"
+      : !free.length
+        ? "checkout-busy"
+        : task.resources
+          ? ((
+              await Promise.all(
+                free.map(async ({ worker }) =>
+                  resourceQueueReason(task.resources!, await sample(worker), reserved(worker)),
+                ),
+              )
+            ).find((reason) => reason !== undefined) ?? "checkout-busy")
+          : "checkout-busy"
+    if (entry.queueReason !== reason) await update({ ...entry, queueReason: reason })
+  }
   if (report.tasks.every(terminal)) await rm(`${input.config}.batch.json`, { force: true })
   return report
 }
@@ -482,6 +552,40 @@ export async function resources(
   environment: Readonly<Record<string, string | undefined>>,
 ) {
   return client(worker, environment).server.resources({ signal: AbortSignal.timeout(5_000) })
+}
+
+/** Reuse the native Session harness with first-admission-wins prompt IDs and original task placement. */
+export async function control(input: BatchInput, control: Worker.Control) {
+  if (control.kind === "cancel") {
+    await using _lease = await Flock.acquire(path.resolve(input.config), {
+      dir: `${input.config}.locks`,
+      signal: input.signal,
+      timeoutMs: 2_000,
+    })
+    const { report } = await loadBatch(input, false)
+    const entry = report.tasks.find((entry) => entry.id === control.task)
+    if (!entry || entry.state !== "queued" || entry.sessionID)
+      throw new Error("Only an unassigned queued task can be cancelled")
+    report.tasks[report.tasks.indexOf(entry)] = {
+      ...entry,
+      state: "interrupted",
+      queueReason: undefined,
+      detail: "Cancelled before assignment",
+    }
+    await write(input.report, report)
+    if (report.tasks.every(terminal)) await rm(`${input.config}.batch.json`, { force: true })
+    return
+  }
+  const assigned = await assignedSession(input, control.task)
+  if (assigned.session.outcome) throw new Error("The assigned task has already completed")
+  if (control.kind === "interrupt") {
+    await assigned.api.session.interrupt({ sessionID: assigned.session.id }, assigned.options)
+    return
+  }
+  await assigned.api.session.prompt(
+    { sessionID: assigned.session.id, id: control.id, text: control.text, delivery: control.delivery },
+    assigned.options,
+  )
 }
 
 async function assignedSession(input: BatchInput, task: string) {

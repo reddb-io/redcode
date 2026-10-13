@@ -456,6 +456,15 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
             ),
           },
         }),
+        Spec.make("cancel", {
+          description: "Cancel an unassigned queued task without releasing uncertain assigned work",
+          params: {
+            task: Argument.string("task"),
+            config: Flag.string("config"),
+            manifest: Flag.string("manifest"),
+            report: Flag.string("report"),
+          },
+        }),
         Spec.make("collect", {
           description: "Export a finished worker task's text patches and response for review",
           params: {

@@ -307,6 +307,7 @@ command, each with its own checkout and model configuration.
 In Desktop connected to the coordinator:
 
 1. Open **Agents → Remote workers**, register a worker and check the connection.
+   Tasks can require capability tags and CPU/RAM budgets. Unsatisfied requirements keep the task queued with a reason; native harness controls let you steer, queue instructions or interrupt assigned work.
 2. Add independent tasks and send a batch.
 3. Collect and review the resulting patches.
 

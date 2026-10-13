@@ -28,6 +28,7 @@ export interface Interface {
   readonly attention: (id: string, scope?: ServerAccess.Principal) => Promise<Worker.Inbox>
   readonly answer: (id: string, answer: Worker.Answer, scope?: ServerAccess.Principal) => Promise<void>
   readonly resources: (id: string, scope?: ServerAccess.Principal) => Promise<HostResources.Snapshot>
+  readonly control: (id: string, control: Worker.Control, scope?: ServerAccess.Principal) => Promise<void>
 }
 export class Service extends Context.Service<Service, Interface>()("@opencode/Workers") {}
 
@@ -238,6 +239,11 @@ function layer(directory?: string, accessOptions?: InfrastructureAccess.Options)
         })
       }
       return Service.of({
+        control: async (id, control, scope) => {
+          ready()
+          await authorizedBatch(id, scope)
+          await WorkerPool.control(await input(id), control)
+        },
         attention: async (id, scope) => {
           ready()
           const current = await authorizedBatch(id, scope)

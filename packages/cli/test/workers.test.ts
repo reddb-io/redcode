@@ -6,69 +6,288 @@ import path from "node:path"
 import os from "node:os"
 import { isolatedEnv } from "./fixture/environment"
 import { ConsoleForbiddenError } from "@opencode/protocol/console"
+import { HostResources } from "@opencode/schema/host-resources"
 
-async function fixture(mode: "complete" | "waiting" | "lost" | "running" | "admission-lost" | "create-lost" = "complete") {
+async function fixture(
+  mode: "complete" | "waiting" | "lost" | "running" | "admission-lost" | "create-lost" = "complete",
+  measurement?: () => HostResources.Snapshot | undefined,
+) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "redcode-workers-"))
   const sessions = new Map<string, { id: string; location: { directory: string }; outcome?: "succeeded" }>()
   const admitted = new Set<string>()
-  const diffs = [{ file: "../../escaped.txt", patch: "diff --git a/result.txt b/result.txt\n+worker result\n", additions: 1, deletions: 0, status: "added" as const }]
-  const counts = { creates: 0, prompts: 0, wakes: 0, active: 0, peak: 0, rejected: 0, started: [] as number[], finished: [] as number[] }
-  const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
-    if (request.headers.get("authorization") !== `Basic ${btoa("opencode:test-secret")}`) {
-      counts.rejected++
-      return Response.json({}, { status: 401 })
-    }
-    const route = new URL(request.url).pathname
-    if (route === "/api/info") return Response.json({ version: "test", pid: 1, urls: [], paths: { tmp: directory } })
-    if (route === "/api/session/active") return Response.json({ data: Object.fromEntries([...sessions].filter(([, session]) => !session.outcome).map(([id]) => [id, { type: "running" }])) })
-    if (route === "/api/session" && request.method === "POST") {
-      const input = await request.json() as { id: string; location: { directory: string } }
-      counts.creates++
-      if (mode === "create-lost" && counts.creates === 1) return Response.json({}, { status: 503 })
-      if (!sessions.has(input.id)) sessions.set(input.id, input)
-      return Response.json({ data: sessions.get(input.id) })
-    }
-    const match = /^\/api\/session\/([^/]+)(?:\/(.*))?$/.exec(route)
-    const session = match ? sessions.get(match[1]!) : undefined
-    if (!session) return Response.json({ _tag: "SessionNotFoundError", sessionID: match?.[1], message: "Session not found" }, { status: 404 })
-    if (match?.[2] === "prompt") {
-      const input = await request.json() as { id: string; resume?: boolean }
-      counts.prompts++
-      if (admitted.has(input.id)) return Response.json({ data: { id: input.id, type: "user" } })
-      admitted.add(input.id)
-      counts.started.push(Date.now())
-      counts.active++
-      counts.peak = Math.max(counts.peak, counts.active)
-      if (mode === "admission-lost" && counts.prompts === 1) return Response.json({}, { status: 503 })
-      if (mode === "complete" || mode === "create-lost" || mode === "admission-lost") setTimeout(() => { session.outcome = "succeeded"; counts.active--; counts.finished.push(Date.now()) }, 40)
-      return Response.json({ data: { id: "msg_test", type: "user" } })
-    }
-    if (match?.[2] === "wake") {
-      counts.wakes++
-      if (!session.outcome) setTimeout(() => { session.outcome = "succeeded"; counts.active--; counts.finished.push(Date.now()) }, 40)
-      return new Response(null, { status: 204 })
-    }
-    if (match?.[2] === "diff") {
-      expect(new URL(request.url).searchParams.get("from")).toBeTruthy()
-      return Response.json({ data: diffs })
-    }
-    if (match?.[2] === "message") return Response.json({ data: [{ type: "assistant", content: [{ type: "text", text: "remote result" }] }], cursor: {} })
-    if (match?.[2] === "permission") return Response.json({ data: mode === "waiting" ? [{ id: "permission_test" }] : [] })
-    if (match?.[2] === "form") return Response.json({ data: [] })
-    if (mode === "lost" && counts.prompts) return Response.json({}, { status: 503 })
-    return Response.json({ data: session })
-  } })
+  const diffs = [
+    {
+      file: "../../escaped.txt",
+      patch: "diff --git a/result.txt b/result.txt\n+worker result\n",
+      additions: 1,
+      deletions: 0,
+      status: "added" as const,
+    },
+  ]
+  const counts = {
+    creates: 0,
+    prompts: 0,
+    wakes: 0,
+    active: 0,
+    peak: 0,
+    rejected: 0,
+    started: [] as number[],
+    finished: [] as number[],
+  }
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    async fetch(request) {
+      if (request.headers.get("authorization") !== `Basic ${btoa("opencode:test-secret")}`) {
+        counts.rejected++
+        return Response.json({}, { status: 401 })
+      }
+      const route = new URL(request.url).pathname
+      if (route === "/api/info") return Response.json({ version: "test", pid: 1, urls: [], paths: { tmp: directory } })
+      if (route === "/api/resources") {
+        const sample = measurement?.()
+        return sample ? Response.json(sample) : Response.json({}, { status: 404 })
+      }
+      if (route === "/api/session/active")
+        return Response.json({
+          data: Object.fromEntries(
+            [...sessions].filter(([, session]) => !session.outcome).map(([id]) => [id, { type: "running" }]),
+          ),
+        })
+      if (route === "/api/session" && request.method === "POST") {
+        const input = (await request.json()) as { id: string; location: { directory: string } }
+        counts.creates++
+        if (mode === "create-lost" && counts.creates === 1) return Response.json({}, { status: 503 })
+        if (!sessions.has(input.id)) sessions.set(input.id, input)
+        return Response.json({ data: sessions.get(input.id) })
+      }
+      const match = /^\/api\/session\/([^/]+)(?:\/(.*))?$/.exec(route)
+      const session = match ? sessions.get(match[1]!) : undefined
+      if (!session)
+        return Response.json(
+          { _tag: "SessionNotFoundError", sessionID: match?.[1], message: "Session not found" },
+          { status: 404 },
+        )
+      if (match?.[2] === "prompt") {
+        const input = (await request.json()) as { id: string; resume?: boolean }
+        counts.prompts++
+        if (admitted.has(input.id)) return Response.json({ data: { id: input.id, type: "user" } })
+        admitted.add(input.id)
+        counts.started.push(Date.now())
+        counts.active++
+        counts.peak = Math.max(counts.peak, counts.active)
+        if (mode === "admission-lost" && counts.prompts === 1) return Response.json({}, { status: 503 })
+        if (mode === "complete" || mode === "create-lost" || mode === "admission-lost")
+          setTimeout(() => {
+            session.outcome = "succeeded"
+            counts.active--
+            counts.finished.push(Date.now())
+          }, 40)
+        return Response.json({ data: { id: "msg_test", type: "user" } })
+      }
+      if (match?.[2] === "wake") {
+        counts.wakes++
+        if (!session.outcome)
+          setTimeout(() => {
+            session.outcome = "succeeded"
+            counts.active--
+            counts.finished.push(Date.now())
+          }, 40)
+        return new Response(null, { status: 204 })
+      }
+      if (match?.[2] === "diff") {
+        expect(new URL(request.url).searchParams.get("from")).toBeTruthy()
+        return Response.json({ data: diffs })
+      }
+      if (match?.[2] === "message")
+        return Response.json({
+          data: [{ type: "assistant", content: [{ type: "text", text: "remote result" }] }],
+          cursor: {},
+        })
+      if (match?.[2] === "permission")
+        return Response.json({ data: mode === "waiting" ? [{ id: "permission_test" }] : [] })
+      if (match?.[2] === "form") return Response.json({ data: [] })
+      if (mode === "lost" && counts.prompts) return Response.json({}, { status: 503 })
+      return Response.json({ data: session })
+    },
+  })
   const config = path.join(directory, "workers.json")
   const manifest = path.join(directory, "tasks.json")
   const report = path.join(directory, "report.json")
-  const worker: Worker.Registration = { id: "pi-a", url: server.url.origin, passwordEnv: "PI_PASSWORD", directories: ["/checkout/a"], tags: ["linux", "arm64"] }
+  const worker: Worker.Registration = {
+    id: "pi-a",
+    url: server.url.origin,
+    passwordEnv: "PI_PASSWORD",
+    directories: ["/checkout/a"],
+    tags: ["linux", "arm64"],
+  }
   await WorkerPool.add(config, worker)
-  await Bun.write(manifest, JSON.stringify({ tasks: [{ id: "one", prompt: "test", tags: ["arm64"] }, { id: "two", prompt: "test" }, { id: "three", prompt: "test" }] }))
-  return { directory, server, sessions, counts, admitted, diffs, config, manifest, report, worker,
-    run: (options: Partial<Parameters<typeof WorkerPool.run>[0]> = {}) => WorkerPool.run({ config, manifest, report, environment: { PI_PASSWORD: "test-secret" }, pollMs: 5, timeoutMs: 200, ...options }),
-    async [Symbol.asyncDispose]() { server.stop(true); await rm(directory, { recursive: true, force: true }) },
+  await Bun.write(
+    manifest,
+    JSON.stringify({
+      tasks: [
+        { id: "one", prompt: "test", tags: ["arm64"] },
+        { id: "two", prompt: "test" },
+        { id: "three", prompt: "test" },
+      ],
+    }),
+  )
+  return {
+    directory,
+    server,
+    sessions,
+    counts,
+    admitted,
+    diffs,
+    config,
+    manifest,
+    report,
+    worker,
+    run: (options: Partial<Parameters<typeof WorkerPool.run>[0]> = {}) =>
+      WorkerPool.run({
+        config,
+        manifest,
+        report,
+        environment: { PI_PASSWORD: "test-secret" },
+        pollMs: 5,
+        timeoutMs: 200,
+        ...options,
+      }),
+    async [Symbol.asyncDispose]() {
+      server.stop(true)
+      await rm(directory, { recursive: true, force: true })
+    },
   }
 }
+
+const gib = 1024 ** 3
+function resources(memory: number, cpu = 4, utilization: number | null = 0.1): HostResources.Snapshot {
+  return {
+    sampledAt: Date.now(),
+    platform: "linux arm64",
+    cpu: { count: cpu, utilization },
+    memory: { totalBytes: 8 * gib, freeBytes: memory * gib },
+    process: { pid: 123, residentBytes: 128 * 1024 ** 2 },
+  }
+}
+
+test("resource admission selects a fitting worker and keeps a large task from blocking a smaller task", async () => {
+  await using low = await fixture("complete", () => resources(1))
+  await using high = await fixture("complete", () => resources(4))
+  await WorkerPool.add(low.config, { ...high.worker, id: "pi-b" })
+  await Bun.write(
+    low.manifest,
+    JSON.stringify({
+      tasks: [
+        { id: "large", prompt: "Large", resources: { cpu: 1, memoryBytes: 6 * gib } },
+        { id: "fits", prompt: "Fits", resources: { cpu: 1, memoryBytes: 2 * gib } },
+      ],
+    }),
+  )
+  const result = await low.run()
+  expect(result.tasks.map((entry) => entry.state)).toEqual(["queued", "succeeded"])
+  expect(result.tasks[0]?.queueReason).toBe("memory-capacity")
+  expect(result.tasks[0]?.sessionID).toBeUndefined()
+  expect(result.tasks[1]?.worker).toBe("pi-b")
+  expect(low.counts.creates).toBe(0)
+  expect(high.counts.creates).toBe(1)
+})
+
+test("the CLI cancels an impossible unassigned task and releases the registry without creating a Session", async () => {
+  await using host = await fixture("complete", () => resources(1))
+  await Bun.write(
+    host.manifest,
+    JSON.stringify({ tasks: [{ id: "blocked", prompt: "Too large", resources: { cpu: 1, memoryBytes: 2 * gib } }] }),
+  )
+  expect((await host.run()).tasks[0]?.state).toBe("queued")
+  const child = Bun.spawn(
+    [
+      process.execPath,
+      "run",
+      "src/index.ts",
+      "workers",
+      "cancel",
+      "blocked",
+      "--config",
+      host.config,
+      "--manifest",
+      host.manifest,
+      "--report",
+      host.report,
+    ],
+    {
+      cwd: path.resolve(import.meta.dir, ".."),
+      env: isolatedEnv(host.directory),
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+  )
+  const [stdout, stderr, code] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.exited,
+  ])
+  expect({ code, stderr: code ? stderr : "" }).toEqual({ code: 0, stderr: "" })
+  expect(WorkerPool.Report.make(JSON.parse(stdout)).tasks[0]).toMatchObject({
+    id: "blocked",
+    state: "interrupted",
+    detail: "Cancelled before assignment",
+  })
+  expect(host.counts.creates).toBe(0)
+  expect(await Bun.file(`${host.config}.batch.json`).exists()).toBe(false)
+  await WorkerPool.remove(host.config, host.worker.id)
+}, 30_000)
+
+test("declared budgets are shared across registrations at the same origin and survive lost observation", async () => {
+  await using host = await fixture("lost", () => resources(2))
+  await WorkerPool.add(host.config, { ...host.worker, id: "pi-alias", directories: ["/checkout/b"] })
+  await Bun.write(
+    host.manifest,
+    JSON.stringify({
+      tasks: [
+        { id: "one", prompt: "One", resources: { cpu: 1, memoryBytes: 1.25 * gib } },
+        { id: "two", prompt: "Two", resources: { cpu: 1, memoryBytes: 1.25 * gib } },
+      ],
+    }),
+  )
+  const first = await host.run()
+  expect(first.tasks.map((entry) => entry.state)).toEqual(["unknown", "queued"])
+  expect(first.tasks[1]?.queueReason).toBe("memory-capacity")
+  await expect(
+    WorkerPool.control(
+      { config: host.config, manifest: host.manifest, report: host.report },
+      { kind: "cancel", task: "one" },
+    ),
+  ).rejects.toThrow("unassigned queued")
+  expect(host.counts.creates).toBe(1)
+  const resumed = await host.run()
+  expect(resumed.tasks[0]?.sessionID).toBe(first.tasks[0]?.sessionID)
+  expect(resumed.tasks[1]?.state).toBe("queued")
+  expect(host.counts.creates).toBe(1)
+  expect(host.counts.prompts).toBe(1)
+})
+
+test("unknown or busy CPU and an older server keep constrained tasks queued until a measured host is available", async () => {
+  const state = { sample: undefined as HostResources.Snapshot | undefined }
+  await using host = await fixture("complete", () => state.sample)
+  await Bun.write(
+    host.manifest,
+    JSON.stringify({
+      tasks: [{ id: "one", prompt: "One", resources: { cpu: 1, memoryBytes: gib, maxCpuUtilization: 0.8 } }],
+    }),
+  )
+  expect((await host.run()).tasks[0]?.queueReason).toBe("resources-unavailable")
+  state.sample = resources(4, 4, null)
+  expect((await host.run()).tasks[0]?.queueReason).toBe("cpu-load-unavailable")
+  state.sample = resources(4, 4, 0.95)
+  expect((await host.run()).tasks[0]?.queueReason).toBe("cpu-load")
+  expect(host.counts.creates).toBe(0)
+  state.sample = resources(4, 4, 0.2)
+  expect((await host.run()).tasks[0]?.state).toBe("succeeded")
+  await host.run()
+  expect(host.counts.creates).toBe(1)
+  expect(host.counts.prompts).toBe(1)
+})
 
 test("serializes tasks per checkout and collects remote output without storing credentials", async () => {
   await using host = await fixture()
@@ -164,7 +383,14 @@ test("collect exports recorded task patches without interpreting remote filename
   await using host = await fixture()
   await host.run()
   const output = path.join(host.directory, "results", "one")
-  const input = { config: host.config, manifest: host.manifest, report: host.report, task: "one", output, environment: { PI_PASSWORD: "test-secret" } }
+  const input = {
+    config: host.config,
+    manifest: host.manifest,
+    report: host.report,
+    task: "one",
+    output,
+    environment: { PI_PASSWORD: "test-secret" },
+  }
   const artifact = await WorkerPool.collect(input)
   expect(artifact.files).toEqual(host.diffs)
   expect(await Bun.file(path.join(output, "changes.patch")).text()).toBe(host.diffs[0]!.patch)
@@ -177,9 +403,22 @@ test("collect exports recorded task patches without interpreting remote filename
 test("collect refuses unfinished tasks and a Session restarted after completion", async () => {
   await using host = await fixture("waiting")
   const report = await host.run()
-  const input = { config: host.config, manifest: host.manifest, report: host.report, task: "one", output: path.join(host.directory, "result"), environment: { PI_PASSWORD: "test-secret" } }
+  const input = {
+    config: host.config,
+    manifest: host.manifest,
+    report: host.report,
+    task: "one",
+    output: path.join(host.directory, "result"),
+    environment: { PI_PASSWORD: "test-secret" },
+  }
   await expect(WorkerPool.collect(input)).rejects.toThrow("terminal task")
-  await Bun.write(host.report, JSON.stringify({ ...report, tasks: report.tasks.map((entry) => entry.id === "one" ? { ...entry, state: "succeeded" } : entry) }))
+  await Bun.write(
+    host.report,
+    JSON.stringify({
+      ...report,
+      tasks: report.tasks.map((entry) => (entry.id === "one" ? { ...entry, state: "succeeded" } : entry)),
+    }),
+  )
   await expect(WorkerPool.collect(input)).rejects.toThrow("must be idle")
   expect(await Bun.file(input.output).exists()).toBe(false)
 })
@@ -204,7 +443,9 @@ test("pending permissions keep the checkout reserved and require human input", a
   expect(host.counts.prompts).toBe(1)
   await host.run()
   expect(host.counts.prompts).toBe(1)
-  await expect(host.run({ report: path.join(host.directory, "another-report.json") })).rejects.toThrow("unfinished batch")
+  await expect(host.run({ report: path.join(host.directory, "another-report.json") })).rejects.toThrow(
+    "unfinished batch",
+  )
 })
 
 test("lost observation never replays a prompt or releases its checkout", async () => {
@@ -265,22 +506,73 @@ test("worker CLI registers, dispatches, recovers, collects and removes through r
   await Bun.write(manifest, JSON.stringify({ tasks: [{ id: "cli-task", prompt: "Run remote work" }] }))
   const command = async (args: string[]) => {
     const child = Bun.spawn([process.execPath, "run", "src/index.ts", "workers", ...args], {
-      cwd: path.resolve(import.meta.dir, ".."), env: isolatedEnv(host.directory, { PI_PASSWORD: "test-secret" }), stdout: "pipe", stderr: "pipe",
+      cwd: path.resolve(import.meta.dir, ".."),
+      env: isolatedEnv(host.directory, { PI_PASSWORD: "test-secret" }),
+      stdout: "pipe",
+      stderr: "pipe",
     })
-    const [stdout, stderr, code] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited])
+    const [stdout, stderr, code] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
+    ])
     expect({ code, stderr: code ? stderr : "" }).toEqual({ code: 0, stderr: "" })
     return stdout
   }
-  await command(["add", "cli-pi", "--config", config, "--url", host.server.url.origin, "--directory", "/checkout/cli", "--password-env", "PI_PASSWORD", "--tag", "arm64"])
-  const result = WorkerPool.Report.make(JSON.parse(await command(["run", manifest, "--config", config, "--report", report, "--timeout", "5"])))
+  await command([
+    "add",
+    "cli-pi",
+    "--config",
+    config,
+    "--url",
+    host.server.url.origin,
+    "--directory",
+    "/checkout/cli",
+    "--password-env",
+    "PI_PASSWORD",
+    "--tag",
+    "arm64",
+  ])
+  const result = WorkerPool.Report.make(
+    JSON.parse(await command(["run", manifest, "--config", config, "--report", report, "--timeout", "5"])),
+  )
   expect(result.tasks[0]?.state).toBe("succeeded")
   expect(host.counts.prompts).toBe(1)
-  await Bun.write(report, JSON.stringify({ ...result, tasks: result.tasks.map((entry) => ({ ...entry, state: "unknown" })) }))
-  const recovered = WorkerPool.Report.make(JSON.parse(await command(["recover", "cli-task", "--config", config, "--manifest", manifest, "--report", report, "--timeout", "5"])))
+  await Bun.write(
+    report,
+    JSON.stringify({ ...result, tasks: result.tasks.map((entry) => ({ ...entry, state: "unknown" })) }),
+  )
+  const recovered = WorkerPool.Report.make(
+    JSON.parse(
+      await command([
+        "recover",
+        "cli-task",
+        "--config",
+        config,
+        "--manifest",
+        manifest,
+        "--report",
+        report,
+        "--timeout",
+        "5",
+      ]),
+    ),
+  )
   expect(recovered.tasks[0]?.state).toBe("succeeded")
   expect(host.counts.prompts).toBe(1)
   const output = path.join(host.directory, "cli-result")
-  await command(["collect", "cli-task", "--config", config, "--manifest", manifest, "--report", report, "--output", output])
+  await command([
+    "collect",
+    "cli-task",
+    "--config",
+    config,
+    "--manifest",
+    manifest,
+    "--report",
+    report,
+    "--output",
+    output,
+  ])
   expect(await Bun.file(path.join(output, "changes.patch")).text()).toBe(host.diffs[0]!.patch)
   await command(["remove", "cli-pi", "--config", config])
   expect((await WorkerPool.readConfig(config)).workers).toEqual([])

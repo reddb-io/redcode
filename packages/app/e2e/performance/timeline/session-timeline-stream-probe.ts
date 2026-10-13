@@ -145,7 +145,8 @@ export async function installTimelineStreamProbe(
 
           if (state.scroll.lastCallFrame === state.scroll.frame) state.scroll.sameFrameCalls += 1
           state.scroll.lastCallFrame = state.scroll.frame
-          scrollTo.apply(this, typeof first === "number" ? [first, second] : [first])
+          // oxlint-disable-next-line no-restricted-globals -- Benchmark instrumentation must forward either native scroll overload with its original receiver and arguments.
+          Reflect.apply(scrollTo, this, typeof first === "number" ? [first, second] : [first])
         }
 
         Element.prototype.scrollTo = measuredScrollTo

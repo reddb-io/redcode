@@ -6,6 +6,104 @@ import { mockRemoteWorkers, mockWaitingWorker } from "../utils/worker-fixture"
 
 test.use({ viewport: { width: 1440, height: 900 } })
 
+test("sends resource requirements with a worker task and displays its queued reason", async ({ page }) => {
+  await mockStressTimeline(page)
+  await installStressSessionTabs(page, { sessionIDs: [] })
+  const workers = await mockRemoteWorkers(page, {
+    workers: [
+      {
+        worker: {
+          id: "pi-a",
+          url: "http://192.168.1.50:4096",
+          passwordEnv: "credential",
+          directories: ["/checkout"],
+          tags: ["arm64"],
+        },
+        connection: "online",
+      },
+    ],
+  })
+  await page.goto("/agents?view=remote")
+  const workspace = page.getByRole("region", { name: "Agents", exact: true })
+  await workspace.getByLabel("What should the worker do?", { exact: true }).fill("Run resource-aware tests")
+  await workspace.getByLabel("Required worker capabilities (optional)", { exact: true }).fill("arm64")
+  await workspace.getByRole("button", { name: "Set resource requirements", exact: true }).click()
+  await workspace.getByLabel("CPU slots", { exact: true }).fill("2")
+  await workspace.getByLabel("RAM budget (GiB)", { exact: true }).fill("1.5")
+  await workspace.getByLabel("Maximum CPU usage (%) — optional", { exact: true }).fill("80")
+  const submitted = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === "/api/workers/batches" && response.request().method() === "POST",
+  )
+  await workspace.getByRole("button", { name: "Send batch", exact: true }).click()
+  const response = await submitted
+  expect(response.request().postDataJSON()).toEqual({
+    tasks: [
+      {
+        id: expect.any(String),
+        prompt: "Run resource-aware tests",
+        tags: ["arm64"],
+        resources: { cpu: 2, memoryBytes: 1.5 * 1024 ** 3, maxCpuUtilization: 0.8 },
+      },
+    ],
+  })
+  const batch = await response.json()
+  workers.update({
+    ...batch,
+    report: {
+      ...batch.report,
+      tasks: [{ id: batch.manifest.tasks[0].id, state: "queued", queueReason: "memory-capacity" }],
+    },
+  })
+  await expect(workspace.getByText("Waiting for enough unreserved free RAM.", { exact: true })).toBeVisible()
+  await expect(workspace.getByText("CPU: 2 · RAM: 1.50 GiB", { exact: true })).toBeVisible()
+  await page.screenshot({ path: test.info().outputPath("worker-resource-admission.png"), animations: "disabled" })
+  const cancelled = page.waitForResponse((response) =>
+    new URL(response.url()).pathname.endsWith("/batch-fixture/control"),
+  )
+  await workspace.getByRole("button", { name: "Cancel queued task", exact: true }).click()
+  expect((await cancelled).request().postDataJSON()).toEqual({ kind: "cancel", task: batch.manifest.tasks[0].id })
+  await expect(workspace.getByRole("button", { name: "Cancel queued task", exact: true })).toHaveCount(0)
+  await expect(workspace.getByText("Waiting for enough unreserved free RAM.", { exact: true })).toHaveCount(0)
+})
+
+test("controls the assigned native worker harness and retains instruction focus across metadata refresh", async ({
+  page,
+}) => {
+  await mockStressTimeline(page)
+  await installStressSessionTabs(page, { sessionIDs: [] })
+  const workers = await mockWaitingWorker(page, fixture.sessions[2])
+  await page.goto("/agents?view=remote")
+  const workspace = page.getByRole("region", { name: "Agents", exact: true })
+  const task = workspace.getByRole("article").filter({ has: page.getByText("Review the checkout", { exact: true }) })
+  await task.getByRole("button", { name: "Send instruction", exact: true }).click()
+  const editor = task.getByLabel("What should this agent do next?", { exact: true })
+  await editor.fill("Run the ARM64 checks")
+  const refreshed = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === "/api/workers" && response.request().method() === "GET",
+  )
+  await refreshed
+  await expect(editor).toBeFocused()
+  await expect(editor).toHaveValue("Run the ARM64 checks")
+  await task.getByLabel("Delivery", { exact: true }).selectOption("queue")
+  const queued = page.waitForResponse((response) => new URL(response.url()).pathname.endsWith("/batch-waiting/control"))
+  await task.getByRole("button", { name: "Send", exact: true }).click()
+  expect((await queued).request().postDataJSON()).toEqual({
+    kind: "prompt",
+    task: "task-review",
+    id: expect.stringMatching(/^msg_/),
+    text: "Run the ARM64 checks",
+    delivery: "queue",
+  })
+  const interrupted = page.waitForResponse((response) =>
+    new URL(response.url()).pathname.endsWith("/batch-waiting/control"),
+  )
+  await task.getByRole("button", { name: "Interrupt", exact: true }).click()
+  expect((await interrupted).request().postDataJSON()).toEqual({ kind: "interrupt", task: "task-review" })
+  await expect(task.getByText("Interrupted · pi-a", { exact: true })).toBeVisible()
+  await expect(task.getByRole("button", { name: "Interrupt", exact: true })).toHaveCount(0)
+  expect(workers.requests.filter((request) => request.path.endsWith("/control"))).toHaveLength(2)
+})
+
 test("does not report an empty inbox when inspection is incomplete or change hosts behind an unavailable selection", async ({
   page,
 }) => {

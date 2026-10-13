@@ -44,7 +44,9 @@ export default function AgentHosts(props: { server: ServerConnection.Any }) {
           />
         )}
       </Key>
-      <p class="text-13-regular leading-[var(--line-height-base)] text-ink-muted">{language.t("agents.hosts.note")}</p>
+      <p class="text-13-regular leading-[var(--line-height-base)] text-ink-muted">
+        {language.t("agents.hosts.runtimeNote")}
+      </p>
     </div>
   )
 }
@@ -101,7 +103,7 @@ function Resources(props: {
                     <dd>{sample.cpu.count ?? language.t("agents.hosts.unknown")}</dd>
                   </div>
                   <div>
-                    <dt class="text-ink-muted">{language.t("agents.hosts.memory")}</dt>
+                    <dt class="text-ink-muted">{language.t("agents.hosts.runtimeMemory")}</dt>
                     <dd>
                       {language.t("agents.hosts.memoryPair", {
                         free: bytes(sample.memory.freeBytes),

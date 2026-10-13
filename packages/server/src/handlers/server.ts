@@ -20,7 +20,7 @@ export const ServerHandler = HttpApiBuilder.group(Api, "server.server", (handler
     const resources = createHostResources()
 
     return handlers
-      .handle("server.resources", () => Effect.sync(resources))
+      .handle("server.resources", () => Effect.promise(resources))
       .handle("server.attention", () => attention())
       .handle("server.info", () =>
         Effect.gen(function* () {

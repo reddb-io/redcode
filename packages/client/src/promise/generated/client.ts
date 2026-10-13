@@ -409,6 +409,8 @@ import type {
   ServerIntelligenceDiscoverOutput,
   ServerIntelligenceProbeInput,
   ServerIntelligenceProbeOutput,
+  WorkersControlInput,
+  WorkersControlOutput,
   WorkersResourcesInput,
   WorkersResourcesOutput,
   WorkersAttentionInput,
@@ -3356,6 +3358,18 @@ export function make(options: ClientOptions) {
         ),
     },
     workers: {
+      control: (input: WorkersControlInput, requestOptions?: RequestOptions) =>
+        request<WorkersControlOutput>(
+          {
+            method: "POST",
+            path: `/api/workers/batches/${encodeURIComponent(input.id)}/control`,
+            body: input["payload"],
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403],
+            empty: true,
+          },
+          requestOptions,
+        ),
       resources: (input: WorkersResourcesInput, requestOptions?: RequestOptions) =>
         request<WorkersResourcesOutput>(
           {
