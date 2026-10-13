@@ -425,15 +425,16 @@ it.live(
       const deadline = Date.now() + 4_000
       while (Date.now() < deadline) {
         const batches = (yield* Effect.promise(async () => (await call("/api/workers", f.owner.token)).json())).batches
-        if (batches[0].report?.tasks[0]?.state === "failed") {
-          expect(batches[0].report.tasks[0].sessionID).toBeUndefined()
+        const current = batches.find((batch: { id: string }) => batch.id === submitted.id)
+        if (current?.report?.tasks[0]?.state === "failed") {
+          expect(current.report.tasks[0].sessionID).toBeUndefined()
           break
         }
         yield* Effect.sleep("50 millis")
       }
       expect(
-        (yield* Effect.promise(async () => (await call("/api/workers", f.owner.token)).json())).batches[0].report
-          .tasks[0].state,
+        (yield* Effect.promise(async () => (await call("/api/workers", f.owner.token)).json())).batches
+          .find((batch: { id: string }) => batch.id === submitted.id)?.report?.tasks[0]?.state,
       ).toBe("failed")
       yield* Effect.promise(() => f.json(`/resources/${f.resource.id}/grants/${grant.id}`, f.owner.token, "DELETE"))
       expect((yield* Effect.promise(() => call("/api/workers", user.token, f.workspace.id))).status).toBe(403)
