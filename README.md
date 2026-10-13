@@ -336,6 +336,10 @@ See the [worker guide](docs/distributed-workers.md) for setup, credentials and r
 Pairing grants trusted host access; enabling the HTTPS tunnel can restart the managed service.
 See [remote access](docs/remote-access.md) for pairing and SSH setup.
 
+Configure numeric execution reports in **Desktop → Settings → Usage reporting** for each coding server.
+Signed webhooks and RedDB queues receive tokens, cache, S1/S2 usage, durations and session counters;
+conversation content is excluded. [Usage reporting](docs/clients.md#usage-reporting).
+
 </details>
 
 ### Console

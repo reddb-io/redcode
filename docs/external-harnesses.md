@@ -57,10 +57,10 @@ Codex's installation check also fetches the host/account's advertised models. Th
 those suggestions. Leaving it empty preserves the CLI's configured default; an unavailable default
 is reported by the provider, and you can choose an advertised model without editing a file.
 
-| Adapter | Transport | Active steering | Queued instructions | Interrupt | Native resume |
-| --- | --- | --- | --- | --- | --- |
-| Codex | app-server JSON-RPC over stdio | Yes | Yes | Yes | Saved thread ID |
-| Claude Code | CLI stream-json/control protocol | Unavailable in this adapter | Yes | Yes | Saved session ID |
+| Adapter     | Transport                        | Active steering             | Queued instructions | Interrupt | Native resume    |
+| ----------- | -------------------------------- | --------------------------- | ------------------- | --------- | ---------------- |
+| Codex       | app-server JSON-RPC over stdio   | Yes                         | Yes                 | Yes       | Saved thread ID  |
+| Claude Code | CLI stream-json/control protocol | Unavailable in this adapter | Yes                 | Yes       | Saved session ID |
 
 The adapters preserve each provider's permission behavior. Supported command/file approvals and
 questions appear in the run's panel. Unsupported requests can be declined; the app never fabricates
@@ -112,3 +112,26 @@ synchronization or coordinated multi-server execution ownership.
 
 Protocol references: [Codex app-server](https://developers.openai.com/codex/app-server) and
 [Claude Code programmatic execution](https://code.claude.com/docs/en/headless).
+
+## Numeric usage reporting
+
+The host stores a separate numeric projection of usage reported by its installed harnesses. Enable
+delivery in **Settings → Usage reporting**; see [usage reporting](clients.md#usage-reporting) for
+destinations, permissions, signatures and recovery behavior.
+
+Claude result frames produce an interaction usage record with reported tokens/cache for the main agent
+loop. Their `total_cost_usd` and `modelUsage` are cumulative across prior interactions and subagents:
+the reporter sends them separately as a `session.summary.updated` snapshot with `pricingBasis: estimated`
+and `coverage: session_tree`. Never sum this estimate across results or treat it as a provider invoice.
+Codex thread token updates produce cumulative `session.summary.updated` snapshots;
+replace earlier snapshots instead of adding them. Its completed interactions also produce status and
+duration records with unknown usage, so consumers do not charge the same cumulative tokens twice.
+The first cumulative snapshot can include consumption preceding reporter configuration and must be
+treated as an initial baseline when calculating later deltas. Missing or reset counters require
+reconciliation rather than invented positive consumption.
+
+External harness IDs and provider-native session/thread IDs are separate fields. The reporter does not
+invent S1 execution or an upstream provider for an external harness. Unavailable message totals, tool
+statistics, reasoning/cache breakdowns and costs remain `null`. Prompt counts reflect admitted host
+inputs. No raw protocol frames or text events are forwarded. Numeric records survive host restart and
+are acknowledged only after copying into the reporter's durable outbox.

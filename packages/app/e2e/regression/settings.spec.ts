@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test"
 import type { ConfigEntry, OpenCodeEvent, WorktreeDirectory } from "@opencode/client/promise"
 import { NO_PROVIDER, REMOTE_SERVER, SERVER, holdRoute, project, session } from "../utils/app"
-import { mockOpenCodeServer } from "../utils/mock-server"
+import { mockOpenCodeServer, mockUsageReporter } from "../utils/mock-server"
 import { mockRemoteServer, mockWorkspace, openSettings, type WorkspaceInput } from "../utils/workspace"
 
 const directory = "C:/Projects/settings-demo"
@@ -92,6 +92,39 @@ test("a settings page survives refresh", async ({ page }) => {
   await page.reload()
   await expect(appearance).toHaveAttribute("aria-selected", "true")
   await expect(page).toHaveURL("/settings?tab=appearance")
+})
+
+test("usage reporting settings save on the selected server without returning the secret", async ({
+  page,
+}, testInfo) => {
+  const { settings } = await open(page)
+  const reporter = await mockUsageReporter(page)
+  await settings.getByRole("tab", { name: "Usage reporting", exact: true }).click()
+  await expect(page).toHaveURL("/settings?tab=reporting")
+  await expect(settings.getByRole("heading", { name: "Usage reporting", exact: true })).toBeVisible()
+  await settings.getByLabel("Destination URL", { exact: true }).fill("https://metrics.example.test/events")
+  await settings.getByLabel("Signing secret", { exact: true }).fill("reporting-ui-secret")
+  const toggle = settings.getByRole("switch", { name: "Enable reporting", exact: true })
+  await toggle.focus()
+  await toggle.press("Space")
+  await expect(toggle).toBeChecked()
+  await settings.getByRole("button", { name: "Save", exact: true }).click()
+  await expect(settings.getByLabel("Signing secret", { exact: true })).toHaveValue("")
+  expect(reporter.saved()).toEqual({
+    enabled: true,
+    transport: "webhook",
+    url: "https://metrics.example.test/events",
+    queue: "usage_events",
+    secret: "reporting-ui-secret",
+  })
+  await expect(settings.getByText("A credential is saved. Leave blank to keep it.")).toBeVisible()
+  await expect(settings.getByRole("button", { name: "Send pending reports", exact: true })).toBeEnabled()
+  await page.reload()
+  await expect(settings.getByLabel("Destination URL", { exact: true })).toHaveValue(
+    "https://metrics.example.test/events",
+  )
+  await expect(settings.getByLabel("Signing secret", { exact: true })).toHaveValue("")
+  await testInfo.attach("usage-reporting", { body: await page.screenshot(), contentType: "image/png" })
 })
 
 test("another server's settings page survives refresh", async ({ page }) => {

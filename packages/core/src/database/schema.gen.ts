@@ -179,6 +179,39 @@ const schema: Omit<DatabaseMigration.Migration, "id"> = {
         );
       `)
       yield* tx.run(`
+        CREATE TABLE \`usage_reporter_config\` (
+          \`id\` text PRIMARY KEY,
+          \`instance_id\` text NOT NULL,
+          \`enabled\` integer NOT NULL,
+          \`transport\` text NOT NULL,
+          \`url\` text NOT NULL,
+          \`queue\` text NOT NULL,
+          \`credential_id\` text,
+          \`since\` integer NOT NULL
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`usage_reporter_delivery\` (
+          \`id\` text PRIMARY KEY,
+          \`status\` text NOT NULL,
+          \`attempts\` integer DEFAULT 0 NOT NULL,
+          \`next_attempt_at\` integer NOT NULL,
+          \`lease\` text,
+          \`lease_until\` integer,
+          \`http_status\` integer,
+          \`error\` text,
+          \`destination\` text NOT NULL
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`usage_reporter_record\` (
+          \`id\` text PRIMARY KEY,
+          \`session_id\` text NOT NULL,
+          \`created\` integer NOT NULL,
+          \`data\` text NOT NULL
+        );
+      `)
+      yield* tx.run(`
         CREATE TABLE \`account_state\` (
           \`id\` integer PRIMARY KEY,
           \`active_account_id\` text,
@@ -626,12 +659,17 @@ const schema: Omit<DatabaseMigration.Migration, "id"> = {
       yield* tx.run(`CREATE INDEX \`session_guard_trip_created_idx\` ON \`session_guard_trip\` (\`time_created\`);`)
       yield* tx.run(`CREATE INDEX \`todo_session_idx\` ON \`todo\` (\`session_id\`);`)
       yield* tx.run(
+        `CREATE INDEX \`usage_reporter_delivery_due_idx\` ON \`usage_reporter_delivery\` (\`status\`,\`next_attempt_at\`);`,
+      )
+      yield* tx.run(`CREATE INDEX \`usage_reporter_record_session_idx\` ON \`usage_reporter_record\` (\`session_id\`);`)
+      yield* tx.run(
         `CREATE UNIQUE INDEX \`console_invite_email\` ON \`console_invite\` (\`organization_id\`,\`email\`);`,
       )
       yield* tx.run(`CREATE INDEX \`design_document_session_idx\` ON \`design_document\` (\`session_id\`);`)
       yield* tx.run(`CREATE INDEX \`design_revision_document_idx\` ON \`design_revision\` (\`design_id\`);`)
       yield* tx.run(`CREATE UNIQUE INDEX \`event_aggregate_seq_idx\` ON \`event\` (\`aggregate_id\`,\`seq\`);`)
       yield* tx.run(`CREATE INDEX \`event_aggregate_type_seq_idx\` ON \`event\` (\`aggregate_id\`,\`type\`,\`seq\`);`)
+      yield* tx.run(`CREATE INDEX \`event_type_created_id_idx\` ON \`event\` (\`type\`,\`created\`,\`id\`);`)
       yield* tx.run(
         `CREATE INDEX \`intelligence_evaluation_fingerprint_lookup_idx\` ON \`intelligence_evaluation\` (\`fingerprint\`);`,
       )

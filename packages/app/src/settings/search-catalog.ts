@@ -155,6 +155,7 @@ export const clientSettings: Entry<SettingsRootTab>[] = [
 ]
 
 export const serverSettings: Entry<SettingsServerTab>[] = [
+  { tab: "reporting", label: "reporting.title", keywords: "metrics telemetry tokens usage reporter webhook queue" },
   {
     tab: "general",
     label: "server.share.title",

@@ -102,6 +102,7 @@ const suites = {
     "test/session-runner-retry.test.ts",
     "test/session-runner-tool-events.test.ts",
     "test/session-usage.test.ts",
+    "test/usage-reporter.test.ts",
     "test/session-loop-guard.test.ts",
     "test/session-output-guard.test.ts",
     "test/session-reasoning-observation.test.ts",

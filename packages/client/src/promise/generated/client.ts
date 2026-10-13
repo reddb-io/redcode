@@ -461,6 +461,12 @@ import type {
   HarnessResumeOutput,
   HarnessCloseInput,
   HarnessCloseOutput,
+  UsageReporterSnapshotOutput,
+  UsageReporterConfigureInput,
+  UsageReporterConfigureOutput,
+  UsageReporterFlushOutput,
+  UsageReporterRetryInput,
+  UsageReporterRetryOutput,
   WorktreeLifecycleArchiveInput,
   WorktreeLifecycleArchiveOutput,
   WorktreeLifecycleArchivesInput,
@@ -3701,6 +3707,60 @@ export function make(options: ClientOptions) {
             successStatus: 200,
             declaredStatuses: [400, 401, 403],
             empty: true,
+          },
+          requestOptions,
+        ),
+    },
+    usageReporter: {
+      snapshot: (requestOptions?: RequestOptions) =>
+        request<UsageReporterSnapshotOutput>(
+          {
+            method: "GET",
+            path: `/api/usage-reporter`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      configure: (input: UsageReporterConfigureInput, requestOptions?: RequestOptions) =>
+        request<UsageReporterConfigureOutput>(
+          {
+            method: "PUT",
+            path: `/api/usage-reporter`,
+            body: {
+              enabled: input["enabled"],
+              transport: input["transport"],
+              url: input["url"],
+              queue: input["queue"],
+              secret: input["secret"],
+            },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      flush: (requestOptions?: RequestOptions) =>
+        request<UsageReporterFlushOutput>(
+          {
+            method: "POST",
+            path: `/api/usage-reporter/flush`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      retry: (input: UsageReporterRetryInput, requestOptions?: RequestOptions) =>
+        request<UsageReporterRetryOutput>(
+          {
+            method: "POST",
+            path: `/api/usage-reporter/deliveries/${encodeURIComponent(input.id)}/retry`,
+            query: { destination: input["destination"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403],
+            empty: false,
           },
           requestOptions,
         ),

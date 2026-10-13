@@ -45,6 +45,7 @@ import type { LSP } from "@opencode/schema/lsp"
 import type { Formatter } from "@opencode/schema/formatter"
 import type { Worker } from "@opencode/schema/worker"
 import type { Harness } from "@opencode/schema/harness"
+import type { UsageReporter } from "@opencode/schema/usage-reporter"
 
 export type ServerResourcesOutput = HostResources.Snapshot
 export type ServerResourcesOperation<E = never> = () => Effect.Effect<ServerResourcesOutput, E>
@@ -6645,6 +6646,37 @@ export interface HarnessApi<E = never> {
   readonly close: HarnessCloseOperation<E>
 }
 
+export type UsageReporterSnapshotOutput = UsageReporter.Snapshot
+export type UsageReporterSnapshotOperation<E = never> = () => Effect.Effect<UsageReporterSnapshotOutput, E>
+
+export type UsageReporterConfigureInput = {
+  readonly enabled: boolean
+  readonly transport: "webhook" | "reddb"
+  readonly url: string
+  readonly queue: string
+  readonly secret?: string | undefined
+}
+export type UsageReporterConfigureOutput = UsageReporter.Snapshot
+export type UsageReporterConfigureOperation<E = never> = (
+  input: UsageReporterConfigureInput,
+) => Effect.Effect<UsageReporterConfigureOutput, E>
+
+export type UsageReporterFlushOutput = UsageReporter.Snapshot
+export type UsageReporterFlushOperation<E = never> = () => Effect.Effect<UsageReporterFlushOutput, E>
+
+export type UsageReporterRetryInput = { readonly id: string; readonly destination?: "original" | "current" | undefined }
+export type UsageReporterRetryOutput = UsageReporter.Snapshot
+export type UsageReporterRetryOperation<E = never> = (
+  input: UsageReporterRetryInput,
+) => Effect.Effect<UsageReporterRetryOutput, E>
+
+export interface UsageReporterApi<E = never> {
+  readonly snapshot: UsageReporterSnapshotOperation<E>
+  readonly configure: UsageReporterConfigureOperation<E>
+  readonly flush: UsageReporterFlushOperation<E>
+  readonly retry: UsageReporterRetryOperation<E>
+}
+
 export type WorktreeLifecycleArchiveInput = {
   readonly projectID: Project.ID
   readonly directory: AbsolutePath
@@ -6739,5 +6771,6 @@ export interface AppApi<E = never> {
   readonly "server.intelligence": ServerIntelligenceApi<E>
   readonly workers: WorkersApi<E>
   readonly harness: HarnessApi<E>
+  readonly usageReporter: UsageReporterApi<E>
   readonly worktreeLifecycle: WorktreeLifecycleApi<E>
 }

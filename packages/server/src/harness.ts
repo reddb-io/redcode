@@ -5,14 +5,23 @@ import { mkdir, realpath } from "node:fs/promises"
 import path from "node:path"
 import spawn from "cross-spawn"
 import { Harness } from "@opencode/schema/harness"
+import { UsageReporter } from "@opencode/schema/usage-reporter"
+import { createHash } from "node:crypto"
 import { AbsolutePath } from "@opencode/schema/schema"
 import { Global } from "@opencode/util/global"
 import { makeGlobalNode } from "@opencode/util/effect/app-node"
-import { Context, Effect, Layer, Schema } from "effect"
+import { Context, Effect, Layer, Option, Schema } from "effect"
 import { object, string, wire, stopOwnedProcess, type Frame, type Wire } from "./harness-wire"
 
 type Pending = { request: Harness.Request; frame: Frame }
-type Live = { wire: Wire; turn: string; pending: Map<string, Pending>; sending: boolean }
+type Live = {
+  wire: Wire
+  turn: string
+  pending: Map<string, Pending>
+  sending: boolean
+  input?: string
+  started?: number
+}
 
 /** Persistence belongs to the execution host. Native IDs survive restart; processes are never replayed automatically. */
 export async function createHarnesses(directory: string) {
@@ -24,6 +33,9 @@ export async function createHarnesses(directory: string) {
     CREATE TABLE IF NOT EXISTS event (cursor INTEGER PRIMARY KEY AUTOINCREMENT, run TEXT NOT NULL, kind TEXT NOT NULL, text TEXT NOT NULL);
     CREATE INDEX IF NOT EXISTS event_run ON event(run,cursor);
     CREATE TABLE IF NOT EXISTS prompt (id TEXT PRIMARY KEY, run TEXT NOT NULL, text TEXT NOT NULL, status TEXT NOT NULL);`)
+  db.exec(
+    "CREATE TABLE IF NOT EXISTS metric (id TEXT PRIMARY KEY, data TEXT NOT NULL, reported INTEGER NOT NULL DEFAULT 0)",
+  )
   const live = new Map<string, Live>()
   const lifetime = { closed: false }
   const providers = new Map<Harness.Driver, Harness.Provider>()
@@ -56,6 +68,70 @@ export async function createHarnesses(directory: string) {
   const event = (id: string, kind: "text" | "activity" | "error", text: string) => {
     if (text) db.query("INSERT INTO event(run,kind,text) VALUES (?,?,?)").run(id, kind, text.slice(0, 64_000))
   }
+  const metric = (
+    id: string,
+    identity: string,
+    tokens: UsageReporter.Record["tokens"],
+    cost: number | null,
+    scope: "interaction" | "session",
+    status: UsageReporter.Record["status"],
+    model?: string | null,
+    pricing: "reported" | "estimated" = "reported",
+  ) => {
+    const run = read(id)
+    const connection = live.get(id)
+    const key = `harness:${createHash("sha256").update(`${id}:${run.nativeID}:${identity}`).digest("hex")}`
+    const counts =
+      db
+        .query<
+          { total: number },
+          [string]
+        >("SELECT count(*) AS total FROM prompt WHERE run=? AND status IN ('sent','admitted')")
+        .get(id)?.total ?? 0
+    const at = Date.now()
+    const value: UsageReporter.Record = {
+      id: key,
+      version: 1,
+      instanceID: "execution-host",
+      type: scope === "session" ? "session.summary.updated" : "model.usage.recorded",
+      sessionID: id,
+      nativeSessionID: run.nativeID ?? null,
+      parentSessionID: null,
+      projectID: null,
+      workspaceID: null,
+      source: run.driver,
+      stage: "external",
+      scope,
+      coverage: run.driver === "claude" ? (scope === "session" ? "session_tree" : "main_loop") : "native_session",
+      operation: scope === "session" ? "summary" : "generation",
+      provider: null,
+      model: model === undefined ? run.model || null : model || null,
+      messageID: connection?.input ?? null,
+      messageSequence: counts,
+      revision: scope === "session" ? at : null,
+      usageRecords: scope === "session" ? 0 : 1,
+      unknownUsageRecords: tokens ? 0 : 1,
+      unpricedRecords: cost === null ? 1 : 0,
+      retryCount: null,
+      messages: { total: null, user: counts, assistant: null },
+      status,
+      tokens,
+      usageBasis: tokens ? "reported" : "unknown",
+      cost,
+      currency: "USD",
+      pricingBasis: cost === null ? "unknown" : pricing,
+      startedAt: connection?.started ?? at,
+      completedAt: at,
+      durationMs: connection?.started === undefined ? null : Math.max(0, at - connection.started),
+      firstOutputMs: null,
+      streamDurationMs: null,
+      tools: null,
+    }
+    const decoded = Schema.decodeUnknownOption(UsageReporter.Record)(value)
+    if (Option.isSome(decoded))
+      db.query("INSERT OR IGNORE INTO metric(id,data) VALUES (?,?)").run(key, JSON.stringify(decoded.value))
+  }
+  const count = (value: unknown) => (typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null)
   const executable = (driver: Harness.Driver) =>
     db.query<{ executable: string }, [string]>("SELECT executable FROM config WHERE driver=?").get(driver)
       ?.executable ?? driver
@@ -204,6 +280,21 @@ export async function createHarnesses(directory: string) {
       if (params.threadId && params.threadId !== run.nativeID) return
       if (params.turnId && connection.turn && params.turnId !== connection.turn) return
       const method = string(value.method)
+      if (method === "thread/tokenUsage/updated") {
+        const usage = object(object(params.tokenUsage).total)
+        const cached = count(usage.cachedInputTokens)
+        const input = count(usage.inputTokens)
+        const output = count(usage.outputTokens)
+        const reasoning = count(usage.reasoningOutputTokens)
+        const tokens = {
+          input: input === null || cached === null ? null : Math.max(0, input - cached),
+          output: output === null || reasoning === null ? null : Math.max(0, output - reasoning),
+          reasoning,
+          cache: { read: cached, write: null },
+        }
+        // Codex total is cumulative for the native thread. Preserve it as a replaceable snapshot.
+        metric(id, `usage:${JSON.stringify(tokens)}`, tokens, null, "session", "busy")
+      }
       if (value.id !== undefined && method) {
         const supported = [
           "item/commandExecution/requestApproval",
@@ -230,6 +321,14 @@ export async function createHarnesses(directory: string) {
       if (method === "item/started") event(id, "activity", string(object(params.item).type))
       if (method === "turn/completed") {
         const turn = object(params.turn)
+        metric(
+          id,
+          `turn:${string(turn.id) || connection.turn}`,
+          null,
+          null,
+          "interaction",
+          turn.status === "failed" ? "failed" : turn.status === "interrupted" ? "cancelled" : "succeeded",
+        )
         connection.turn = ""
         connection.pending.clear()
         update(id, {
@@ -271,6 +370,52 @@ export async function createHarnesses(directory: string) {
         })
     }
     if (value.type === "result") {
+      if (string(value.session_id) && string(value.session_id) !== read(id).nativeID)
+        update(id, { nativeID: string(value.session_id) })
+      const usage = object(value.usage)
+      const tokens = Object.keys(usage).length
+        ? {
+            input: count(usage.input_tokens),
+            output: count(usage.output_tokens),
+            reasoning: null,
+            cache: { read: count(usage.cache_read_input_tokens), write: count(usage.cache_creation_input_tokens) },
+          }
+        : null
+      const models = Object.keys(object(value.modelUsage))
+      metric(
+        id,
+        `result:${string(value.uuid) || connection.input || "unknown"}`,
+        tokens,
+        null,
+        "interaction",
+        value.is_error ? "failed" : "succeeded",
+        models.length === 1 ? models[0] : undefined,
+      )
+      // Streaming-input result usage is per interaction; cost/modelUsage include prior turns and subagents.
+      const totals = models.map((model) => object(object(value.modelUsage)[model]))
+      const sum = (field: string) =>
+        totals.length && totals.every((model) => count(model[field]) !== null)
+          ? totals.reduce((total, model) => total + (count(model[field]) ?? 0), 0)
+          : null
+      const cumulative = totals.length
+        ? {
+            input: sum("inputTokens"),
+            output: sum("outputTokens"),
+            reasoning: null,
+            cache: { read: sum("cacheReadInputTokens"), write: sum("cacheCreationInputTokens") },
+          }
+        : null
+      const cost = count(value.total_cost_usd)
+      metric(
+        id,
+        `total:${JSON.stringify({ cumulative, cost })}`,
+        cumulative,
+        cost,
+        "session",
+        value.is_error ? "failed" : "idle",
+        models.length === 1 ? models[0] : null,
+        "estimated",
+      )
       connection.pending.clear()
       update(id, {
         nativeID: string(value.session_id) || run.nativeID,
@@ -346,6 +491,10 @@ export async function createHarnesses(directory: string) {
     const connection = live.get(id)
     if (!connection) throw new Error("Resume the harness before sending input")
     update(id, { state: "running" })
+    if (!steer) {
+      connection.input = prompt.id
+      connection.started = Date.now()
+    }
     db.query("UPDATE prompt SET status='admitted' WHERE id=?").run(prompt.id)
     if (run.driver === "codex") {
       const result = await connection.wire.request(
@@ -389,6 +538,15 @@ export async function createHarnesses(directory: string) {
     }
   }
   const service = {
+    metrics() {
+      return db
+        .query<{ id: string; data: string }, []>("SELECT id,data FROM metric WHERE reported=0 ORDER BY rowid LIMIT 200")
+        .all()
+        .map((row) => Schema.decodeUnknownSync(Schema.fromJsonString(UsageReporter.Record))(row.data))
+    },
+    acknowledgeMetric(id: string) {
+      db.query("UPDATE metric SET reported=1 WHERE id=?").run(id)
+    },
     list: () => ({
       providers: (["claude", "codex"] as const).map(provider),
       runs: runs().map((run) => ({

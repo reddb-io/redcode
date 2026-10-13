@@ -463,6 +463,12 @@ import type {
   HarnessResumeOutput,
   HarnessCloseInput,
   HarnessCloseOutput,
+  UsageReporterSnapshotOutput,
+  UsageReporterConfigureInput,
+  UsageReporterConfigureOutput,
+  UsageReporterFlushOutput,
+  UsageReporterRetryInput,
+  UsageReporterRetryOutput,
   WorktreeLifecycleArchiveInput,
   WorktreeLifecycleArchiveOutput,
   WorktreeLifecycleArchivesInput,
@@ -2689,6 +2695,40 @@ const adaptGroupHarness = (raw: RawClient["server.harness"]) => ({
   close: EndpointHarnessClose(raw),
 })
 
+const EndpointUsageReporterSnapshot = (raw: RawClient["server.usageReporter"]) => () =>
+  preserveEffect<UsageReporterSnapshotOutput>()(raw["usageReporter.snapshot"]({}).pipe(Effect.mapError(mapClientError)))
+
+const EndpointUsageReporterConfigure =
+  (raw: RawClient["server.usageReporter"]) => (input: UsageReporterConfigureInput) =>
+    preserveEffect<UsageReporterConfigureOutput>()(
+      raw["usageReporter.configure"]({
+        payload: {
+          enabled: input["enabled"],
+          transport: input["transport"],
+          url: input["url"],
+          queue: input["queue"],
+          secret: input["secret"],
+        },
+      }).pipe(Effect.mapError(mapClientError)),
+    )
+
+const EndpointUsageReporterFlush = (raw: RawClient["server.usageReporter"]) => () =>
+  preserveEffect<UsageReporterFlushOutput>()(raw["usageReporter.flush"]({}).pipe(Effect.mapError(mapClientError)))
+
+const EndpointUsageReporterRetry = (raw: RawClient["server.usageReporter"]) => (input: UsageReporterRetryInput) =>
+  preserveEffect<UsageReporterRetryOutput>()(
+    raw["usageReporter.retry"]({ params: { id: input["id"] }, query: { destination: input["destination"] } }).pipe(
+      Effect.mapError(mapClientError),
+    ),
+  )
+
+const adaptGroupUsageReporter = (raw: RawClient["server.usageReporter"]) => ({
+  snapshot: EndpointUsageReporterSnapshot(raw),
+  configure: EndpointUsageReporterConfigure(raw),
+  flush: EndpointUsageReporterFlush(raw),
+  retry: EndpointUsageReporterRetry(raw),
+})
+
 const EndpointWorktreeLifecycleArchive =
   (raw: RawClient["server.worktreeLifecycle"]) => (input: WorktreeLifecycleArchiveInput) =>
     preserveEffect<WorktreeLifecycleArchiveOutput>()(
@@ -2781,6 +2821,7 @@ const adaptClient = (raw: RawClient) => ({
   "server.intelligence": adaptGroupServerIntelligence(raw["server.intelligence"]),
   workers: adaptGroupWorkers(raw["server.workers"]),
   harness: adaptGroupHarness(raw["server.harness"]),
+  usageReporter: adaptGroupUsageReporter(raw["server.usageReporter"]),
   worktreeLifecycle: adaptGroupWorktreeLifecycle(raw["server.worktreeLifecycle"]),
 })
 

@@ -62,6 +62,8 @@ import m59 from "./migration/20261010172141_console_infrastructure.js"
 import m60 from "./migration/20261010173240_infrastructure_resource_origins.js"
 import m61 from "./migration/20261010181731_console_auth_settings.js"
 import m62 from "./migration/20261012181744_project-time-archived.js"
+import m63 from "./migration/20261013144643_usage_reporter.js"
+import m64 from "./migration/20261013145858_reporter_delivery_destination.js"
 
 export const migrations = [
   m00,
@@ -127,4 +129,6 @@ export const migrations = [
   m60,
   m61,
   m62,
+  m63,
+  m64,
 ] satisfies DatabaseMigration.Migration[]

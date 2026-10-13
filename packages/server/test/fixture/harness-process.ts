@@ -15,9 +15,26 @@ if (args.includes("login")) {
   console.log("https://claude.example.test/authorize")
   for await (const code of createInterface({ input: process.stdin })) process.exit(code === "fixture-code" ? 0 : 1)
 }
-const state = { turn: "turn-fixture", thread: "thread-fixture" }
+const state = { turn: "turn-fixture", thread: "thread-fixture", completed: 0, prompt: "" }
 const complete = () => {
+  state.completed++
   if (driver === "codex") {
+    const usage = {
+      method: "thread/tokenUsage/updated",
+      params: {
+        threadId: state.thread,
+        tokenUsage: {
+          total: {
+            inputTokens: 100 * state.completed,
+            cachedInputTokens: 80 * state.completed,
+            outputTokens: 30 * state.completed,
+            reasoningOutputTokens: 5 * state.completed,
+          },
+        },
+      },
+    }
+    send(usage)
+    send(usage)
     send({
       method: "item/agentMessage/delta",
       params: { threadId: state.thread, turnId: state.turn, delta: "fixture response" },
@@ -33,7 +50,22 @@ const complete = () => {
       message: { content: [{ type: "text", text: "fixture response" }] },
       parent_tool_use_id: null,
     })
-    send({ type: "result", session_id: "claude-fixture", is_error: false })
+    send({
+      type: "result",
+      uuid: state.prompt,
+      session_id: "claude-fixture",
+      is_error: false,
+      usage: { input_tokens: 20, output_tokens: 30, cache_read_input_tokens: 80, cache_creation_input_tokens: 10 },
+      total_cost_usd: 0.002 * state.completed,
+      modelUsage: {
+        "fixture-model": {
+          inputTokens: 20 * state.completed,
+          outputTokens: 30 * state.completed,
+          cacheReadInputTokens: 80 * state.completed,
+          cacheCreationInputTokens: 10 * state.completed,
+        },
+      },
+    })
   }
 }
 for await (const line of createInterface({ input: process.stdin })) {
@@ -63,6 +95,7 @@ for await (const line of createInterface({ input: process.stdin })) {
     if (["thread/start", "thread/resume"].includes(value.method))
       send({ id: value.id, result: { thread: { id: state.thread } } })
     if (value.method === "turn/start") {
+      state.turn = `turn-${value.id}`
       send({ id: value.id, result: { turn: { id: state.turn } } })
       send({ method: "turn/started", params: { threadId: state.thread, turn: { id: state.turn } } })
       const text = value.params.input[0].text
@@ -115,6 +148,7 @@ for await (const line of createInterface({ input: process.stdin })) {
     if (value.type === "control_request")
       send({ type: "control_response", response: { subtype: "success", request_id: value.request_id, response: {} } })
     if (value.type === "user") {
+      state.prompt = value.uuid
       send({ type: "system", subtype: "init", session_id: "claude-fixture" })
       const text = value.message.content
       if (text === "permission")

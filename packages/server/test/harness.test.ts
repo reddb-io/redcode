@@ -43,6 +43,28 @@ for (const driver of ["codex", "claude"] as const) {
       service.answer(run.id, { request: request.id, allow: true, answers: {} })
       await until(() => service.read(run.id).run.state === "ready")
       expect(service.read(run.id).events.some((event) => event.text === "fixture response")).toBe(true)
+      const metrics = service.metrics()
+      expect(JSON.stringify(metrics)).not.toContain("fixture response")
+      expect(JSON.stringify(metrics)).not.toContain("echo fixture")
+      const usage = metrics.find((item) => item.tokens !== null)!
+      expect(usage).toMatchObject({
+        source: driver,
+        tokens: { input: 20, cache: { read: 80 } },
+        sessionID: run.id,
+        nativeSessionID: driver === "codex" ? "thread-fixture" : "claude-fixture",
+      })
+      expect(usage.scope).toBe(driver === "codex" ? "session" : "interaction")
+      expect(metrics.filter((item) => item.tokens !== null)).toHaveLength(driver === "codex" ? 1 : 2)
+      if (driver === "claude") {
+        expect(usage.cost).toBeNull()
+        expect(metrics.find((item) => item.scope === "session")).toMatchObject({
+          cost: 0.002,
+          pricingBasis: "estimated",
+          coverage: "session_tree",
+        })
+      }
+      service.acknowledgeMetric(usage.id)
+      expect(service.metrics().some((item) => item.id === usage.id)).toBe(false)
       expect(() => service.answer(run.id, { request: request.id, allow: true, answers: {} })).toThrow(
         "no longer pending",
       )
@@ -54,6 +76,20 @@ for (const driver of ["codex", "claude"] as const) {
       service.answer(run.id, { request: question.id, allow: true, answers: { [question.questions[0].id]: "Small" } })
       await until(() => service.read(run.id).run.state === "ready")
       const before = await Bun.file(path.join(tmp.path, "wire.jsonl")).text()
+      if (driver === "claude") {
+        expect(
+          service
+            .metrics()
+            .filter((item) => item.scope === "session")
+            .map((item) => item.cost),
+        ).toEqual([0.002, 0.004])
+        expect(
+          service
+            .metrics()
+            .filter((item) => item.scope === "interaction")
+            .every((item) => item.cost === null),
+        ).toBe(true)
+      }
       await service.prompt(run.id, { id: "permission-input", text: "different payload", delivery: "steer" })
       expect(await Bun.file(path.join(tmp.path, "wire.jsonl")).text()).toBe(before)
       const other = await service.open({ driver, directory: AbsolutePath.make(tmp.path) })

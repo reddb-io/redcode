@@ -3,6 +3,7 @@ import type { OpenCode } from "./client.js"
 export * from "./generated/index.js"
 export { OpenCode } from "./client.js"
 export { Harness } from "@opencode/schema/harness"
+export { UsageReporter } from "@opencode/schema/usage-reporter"
 export type {
   AgentApi,
   CommandApi,

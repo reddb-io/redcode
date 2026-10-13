@@ -23,6 +23,48 @@ import {
   MockUnsupported,
 } from "./mock-api"
 import { installSseTransport } from "./sse-transport"
+import type { UsageReporter } from "@opencode/schema/usage-reporter"
+
+export async function mockUsageReporter(page: Page, server = SERVER) {
+  let saved: UsageReporter.Configure | undefined
+  let snapshot: UsageReporter.Snapshot = {
+    config: {
+      enabled: false,
+      transport: "webhook",
+      url: "",
+      queue: "usage_events",
+      secretConfigured: false,
+      instanceID: "host-fixture",
+      since: 1,
+    },
+    counts: { pending: 0, delivered: 0, dead: 0 },
+    deliveries: [],
+  }
+  const headers = {
+    "access-control-allow-origin": "*",
+    "access-control-allow-methods": "GET, PUT, POST, OPTIONS",
+    "access-control-allow-headers": "*",
+  }
+  await page.route(`${server}/api/usage-reporter**`, async (route) => {
+    if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers })
+    if (route.request().method() === "PUT") {
+      saved = route.request().postDataJSON() as UsageReporter.Configure
+      snapshot = {
+        ...snapshot,
+        config: {
+          ...snapshot.config,
+          enabled: saved.enabled,
+          transport: saved.transport,
+          url: saved.url,
+          queue: saved.queue,
+          secretConfigured: true,
+        },
+      }
+    }
+    await route.fulfill({ json: snapshot, headers })
+  })
+  return { saved: () => saved }
+}
 
 type Resolvable<T> = T | (() => T)
 

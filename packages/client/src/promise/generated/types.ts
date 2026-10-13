@@ -981,6 +981,60 @@ export type HarnessEvent = { cursor: number; kind: "text" | "activity" | "error"
 
 export type HarnessQuestion = { id: string; text: string; options: Array<string> }
 
+export type UsageReporterConfig = {
+  enabled: boolean
+  transport: "webhook" | "reddb"
+  url: string
+  queue: string
+  secretConfigured: boolean
+  instanceID: string
+  since: number
+}
+
+export type UsageReporterRecord = {
+  id: string
+  version: 1
+  type: "model.usage.recorded" | "session.summary.updated"
+  instanceID: string
+  sessionID: string
+  nativeSessionID: string | null
+  parentSessionID: string | null
+  projectID: string | null
+  workspaceID: string | null
+  source: "native" | "claude" | "codex"
+  stage: "s1" | "s2" | "auxiliary" | "external" | "session"
+  scope: "step" | "evaluation" | "interaction" | "session"
+  coverage: "own_session" | "main_loop" | "session_tree" | "native_session"
+  operation: "generation" | "evaluation" | "compaction" | "title" | "summary"
+  provider: string | null
+  model: string | null
+  messageID: string | null
+  messageSequence: number | null
+  revision: number | null
+  usageRecords: number
+  unknownUsageRecords: number
+  unpricedRecords: number
+  retryCount: number | null
+  messages: { total: number | null; user: number | null; assistant: number | null }
+  status: "succeeded" | "failed" | "cancelled" | "busy" | "idle" | "unknown"
+  tokens: {
+    input: number | null
+    output: number | null
+    reasoning: number | null
+    cache: { read: number | null; write: number | null }
+  } | null
+  usageBasis: "recorded" | "reported" | "unknown"
+  cost: number | null
+  currency: "USD"
+  pricingBasis: "recorded" | "reported" | "estimated" | "unknown"
+  startedAt: number
+  completedAt: number | null
+  durationMs: number | null
+  firstOutputMs: number | null
+  streamDurationMs: number | null
+  tools: { calls: number; succeeded: number; failed: number; unfinished: number; durationMs: number } | null
+}
+
 export type WorktreeArchive = { reference: string; head: string; createdAt: string }
 
 export type WorktreeReview = {
@@ -2622,6 +2676,16 @@ export type HarnessRequest = {
   questions: Array<HarnessQuestion>
 }
 
+export type UsageReporterDelivery = {
+  id: string
+  status: "pending" | "sending" | "delivered" | "dead"
+  attempts: number
+  nextAttemptAt: number
+  httpStatus: number | null
+  error: "network" | "http" | "configuration" | null
+  record: UsageReporterRecord
+}
+
 export type ModelRef = { id: string; providerID: string; variant?: string; connection?: ConnectionRef }
 
 export type PermissionRuleset = Array<PermissionRule>
@@ -2937,6 +3001,12 @@ export type WorkerManifest = { tasks: Array<WorkerTask> }
 export type HarnessSnapshot = { providers: Array<HarnessProvider>; runs: Array<HarnessRun> }
 
 export type HarnessDetail = { run: HarnessRun; events: Array<HarnessEvent>; requests: Array<HarnessRequest> }
+
+export type UsageReporterSnapshot = {
+  config: UsageReporterConfig
+  counts: { pending: number; delivered: number; dead: number }
+  deliveries: Array<UsageReporterDelivery>
+}
 
 export type SessionMessageCompactionCompleted = {
   type: "compaction"
@@ -11603,6 +11673,57 @@ export type HarnessResumeOutput = HarnessRun
 export type HarnessCloseInput = { readonly runID: { readonly runID: string }["runID"] }
 
 export type HarnessCloseOutput = void
+
+export type UsageReporterSnapshotOutput = UsageReporterSnapshot
+
+export type UsageReporterConfigureInput = {
+  readonly enabled: {
+    readonly enabled: boolean
+    readonly transport: "webhook" | "reddb"
+    readonly url: string
+    readonly queue: string
+    readonly secret?: string
+  }["enabled"]
+  readonly transport: {
+    readonly enabled: boolean
+    readonly transport: "webhook" | "reddb"
+    readonly url: string
+    readonly queue: string
+    readonly secret?: string
+  }["transport"]
+  readonly url: {
+    readonly enabled: boolean
+    readonly transport: "webhook" | "reddb"
+    readonly url: string
+    readonly queue: string
+    readonly secret?: string
+  }["url"]
+  readonly queue: {
+    readonly enabled: boolean
+    readonly transport: "webhook" | "reddb"
+    readonly url: string
+    readonly queue: string
+    readonly secret?: string
+  }["queue"]
+  readonly secret?: {
+    readonly enabled: boolean
+    readonly transport: "webhook" | "reddb"
+    readonly url: string
+    readonly queue: string
+    readonly secret?: string
+  }["secret"]
+}
+
+export type UsageReporterConfigureOutput = UsageReporterSnapshot
+
+export type UsageReporterFlushOutput = UsageReporterSnapshot
+
+export type UsageReporterRetryInput = {
+  readonly id: { readonly id: string }["id"]
+  readonly destination?: { readonly destination?: "original" | "current" | undefined }["destination"]
+}
+
+export type UsageReporterRetryOutput = UsageReporterSnapshot
 
 export type WorktreeLifecycleArchiveInput = {
   readonly projectID: { readonly projectID: string; readonly directory: string; readonly head: string }["projectID"]

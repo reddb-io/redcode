@@ -19,6 +19,7 @@ import { Session } from "@opencode/core/session"
 import { SessionStore } from "@opencode/core/session/store"
 import { SessionExecution } from "@opencode/core/session/execution"
 import { SessionUsageMirror } from "@opencode/core/usage/mirror"
+import { Reporter } from "@opencode/core/usage/reporter"
 import { SessionInbox } from "@opencode/core/session/inbox"
 import { SessionGoal } from "@opencode/core/session/goal"
 import { SessionBudget } from "@opencode/core/session/budget"
@@ -63,6 +64,7 @@ import { PtySockets } from "./pty-sockets"
 import { ServerPairing } from "./pairing"
 import { Workers } from "./workers"
 import { Harnesses } from "./harness"
+import { harnessUsageNode } from "./harness-usage"
 import { InfrastructureAccess } from "./infrastructure-access"
 import { layer } from "./location"
 import { formLocationLayer } from "./middleware/form-location"
@@ -88,6 +90,7 @@ const applicationServiceNodes = [
   SessionStore.node,
   SessionExecution.node,
   SessionUsageMirror.node,
+  Reporter.node,
   SessionInbox.node,
   SessionGoal.node,
   SessionBudget.node,
@@ -112,6 +115,7 @@ const applicationServiceNodes = [
   ServerPairing.node,
   Workers.node,
   Harnesses.node,
+  harnessUsageNode,
   LocationServiceMap.node,
   LocationActivity.node,
   SessionRestart.node,

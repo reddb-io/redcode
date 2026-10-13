@@ -260,6 +260,19 @@ it.live(
       expect((yield* Effect.promise(() => call("/api/workers", user.token))).status).toBe(403)
       expect((yield* Effect.promise(() => call("/api/workers", "invalid-token", f.workspace.id))).status).toBe(401)
       expect((yield* Effect.promise(() => call("/api/workers", operator.token))).status).toBe(200)
+      expect((yield* Effect.promise(() => call("/api/usage-reporter", f.owner.token))).status).toBe(200)
+      for (const token of [user.token, operator.token, orgAdmin.token]) {
+        expect(
+          (yield* Effect.promise(() =>
+            call("/api/usage-reporter", token, token === operator.token ? undefined : f.workspace.id),
+          )).status,
+        ).toBe(403)
+        expect(
+          (yield* Effect.promise(() =>
+            call("/api/usage-reporter/flush", token, token === operator.token ? undefined : f.workspace.id, "POST"),
+          )).status,
+        ).toBe(403)
+      }
       for (const token of [user.token, operator.token]) {
         const workspace = token === user.token ? f.workspace.id : undefined
         for (const path of [

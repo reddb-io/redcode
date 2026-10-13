@@ -22,5 +22,6 @@ export const EventTable = sqliteTable(
   (table) => [
     uniqueIndex("event_aggregate_seq_idx").on(table.aggregate_id, table.seq),
     index("event_aggregate_type_seq_idx").on(table.aggregate_id, table.type, table.seq),
+    index("event_type_created_id_idx").on(table.type, table.created, table.id),
   ],
 )
