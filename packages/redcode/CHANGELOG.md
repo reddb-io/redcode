@@ -1,5 +1,24 @@
 # @reddb-io/redcode
 
+## 0.81.0
+
+### Minor Changes
+
+- Connect SSH machines directly into worker onboarding, select remote projects through the app,
+  and bootstrap Windows x64/ARM64 servers without manually forwarding ports or copying credentials.
+- Make the remote pairing relay an explicit choice, support self-hosted OpenTunnel-compatible APIs,
+  and persist a separate Redcode identity for each relay. Pairing remembers the selected relay;
+  headless first-time setup requires an explicit relay instead of silently using the hosted service.
+  Previously enabled hosted connections retain their address, and switching relays provisions the
+  new connection before replacing an existing one.
+- Prepare isolated remote worker workspaces from Agents in the desktop and web app. Infrastructure administrators can build a verified server image, clone a public HTTPS Git repository at a recorded base commit, prepare a dedicated worktree and register it with a coordinator. Each workspace has private volumes and credentials, a pinned image, non-root execution, a read-only system and enforced CPU, memory and process limits. An isolated internal network uses a separate gateway for public HTTPS and denies private, loopback and metadata destinations. Stop, archive, restore and confirmed deletion preserve explicit execution ownership and workspace lifecycle; incomplete preparation is not automatically replayed. Private Git authentication, virtual machine isolation, disk quotas and hosted fleet provisioning remain separate work.
+
+### Patch Changes
+
+- Keep long plan descriptions in a bounded scrollable area while approval choices remain visible
+  in the terminal. Support mouse wheel, Page Up/Down, Ctrl+Up/Down and Home/End without changing
+  the selected answer, including when the terminal is resized.
+
 ## 0.80.0
 
 ### Minor Changes
