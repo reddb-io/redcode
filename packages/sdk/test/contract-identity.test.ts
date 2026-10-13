@@ -6,8 +6,11 @@ import { WorkspaceDriver } from "@opencode/core/workspace/driver"
 import { SessionInbox as CoreSessionInbox } from "@opencode/core/session/inbox"
 import { SessionMessage as CoreSessionMessage } from "@opencode/core/session/message"
 import { Agent } from "@opencode/schema/agent"
+import { Attention } from "@opencode/schema/attention"
 import { Config } from "@opencode/schema/config"
 import { Event } from "@opencode/schema/event"
+import { Harness } from "@opencode/schema/harness"
+import { HostResources } from "@opencode/schema/host-resources"
 import { Location } from "@opencode/schema/location"
 import { Model } from "@opencode/schema/model"
 import { Project } from "@opencode/schema/project"
@@ -33,6 +36,9 @@ const CoreWorktree = await import("@opencode/core/worktree")
 test("re-exports canonical contracts directly from Schema", () => {
   expect(SDK.Redcode).toBe(SDK.OpenCode)
   expect(SDK.Agent).toBe(Agent)
+  expect(SDK.Attention).toBe(Attention)
+  expect(SDK.Harness).toBe(Harness)
+  expect(SDK.HostResources).toBe(HostResources)
   expect(SDK.Config).toBe(Config)
   expect(SDK.Event).toBe(Event)
   expect(SDK.Model).toBe(Model)
@@ -43,12 +49,15 @@ test("re-exports canonical contracts directly from Schema", () => {
   expect(Object.keys(SDK).sort()).toEqual([
     "AbsolutePath",
     "Agent",
+    "Attention",
     "ClientError",
     "Command",
     "Config",
     "Credential",
     "Event",
     "FileSystem",
+    "Harness",
+    "HostResources",
     "Integration",
     "Location",
     "Model",
