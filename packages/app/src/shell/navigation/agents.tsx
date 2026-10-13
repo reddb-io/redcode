@@ -22,6 +22,7 @@ const AgentInbox = lazy(() => import("./agents-inbox"))
 const AgentHosts = lazy(() => import("./agents-hosts"))
 const AgentHarnesses = lazy(() => import("./agents-harnesses"))
 const AgentMachines = lazy(() => import("./agents-machines"))
+const AgentEnvironments = lazy(() => import("./agents-environments"))
 const AgentWorktrees = lazy(() => import("./agents-worktrees"))
 
 type AgentInstruction = {
@@ -78,7 +79,20 @@ export default function Agents() {
           <Show when={scope.servers().length === 0}>
             <p role="status">{language.t("agents.scope.missing")}</p>
           </Show>
-          <For each={scope.servers()}>
+          <Show when={scope.view() === "machines" && scope.servers()[0]}>
+            {(server) => (
+              <section class="mb-5">
+                <h2 class="mb-2 text-13-medium text-v2-text-text-muted">{serverName(server())}</h2>
+                <Show
+                  when={!global.servers.health[ServerConnection.key(server())]?.unauthorized}
+                  fallback={<p role="alert">{language.t("agents.unavailable")}</p>}
+                >
+                  <AgentMachines server={server()} />
+                </Show>
+              </section>
+            )}
+          </Show>
+          <For each={scope.view() === "machines" ? [] : scope.servers()}>
             {(server) => (
               <section class="mb-5">
                 <h2 class="mb-2 text-13-medium text-v2-text-text-muted">{serverName(server)}</h2>
@@ -107,8 +121,8 @@ export default function Agents() {
                     <Match when={scope.view() === "harness"}>
                       <AgentHarnesses server={server} />
                     </Match>
-                    <Match when={scope.view() === "machines"}>
-                      <AgentMachines server={server} />
+                    <Match when={scope.view() === "environments"}>
+                      <AgentEnvironments server={server} />
                     </Match>
                     <Match when={scope.view() === "worktrees"}>
                       <AgentWorktrees server={server} />

@@ -7,7 +7,11 @@ import { useServerAddItems } from "@/runtime/extension/servers"
 import { useLanguage } from "@/runtime/i18n/language"
 
 /** The add-server button; extensions that add their own kinds of server turn it into a menu. */
-export function AddServerMenu(props: { onAddServer: () => void; compact?: boolean }) {
+export function AddServerMenu(props: {
+  onAddServer: () => void
+  onConnected?: (key: string) => void
+  compact?: boolean
+}) {
   const language = useLanguage()
   const items = useServerAddItems()
 
@@ -53,7 +57,11 @@ export function AddServerMenu(props: { onAddServer: () => void; compact?: boolea
         <Menu.Portal>
           <Menu.Content>
             <Menu.Item onSelect={props.onAddServer}>{language.t("dialog.server.add.button")}</Menu.Item>
-            <For each={items()}>{(item) => <Menu.Item onSelect={() => item.run()}>{item.title}</Menu.Item>}</For>
+            <For each={items()}>
+              {(item) => (
+                <Menu.Item onSelect={() => item.run({ onConnected: props.onConnected })}>{item.title}</Menu.Item>
+              )}
+            </For>
           </Menu.Content>
         </Menu.Portal>
       </Menu>

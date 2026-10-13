@@ -262,6 +262,8 @@ it.live(
       expect((yield* Effect.promise(() => call("/api/workers", operator.token))).status).toBe(200)
       expect((yield* Effect.promise(() => call("/api/usage-reporter", f.owner.token))).status).toBe(200)
       for (const token of [user.token, operator.token, orgAdmin.token]) {
+        expect((yield* Effect.promise(() => call("/api/worker-environments", token, token === operator.token ? undefined : f.workspace.id))).status).toBe(403)
+        expect((yield* Effect.promise(() => call("/api/worker-environments/image", token, token === operator.token ? undefined : f.workspace.id, "POST", { version: "0.80.0" }))).status).toBe(403)
         expect(
           (yield* Effect.promise(() =>
             call("/api/usage-reporter", token, token === operator.token ? undefined : f.workspace.id),
@@ -325,6 +327,10 @@ it.live(
         expect(response.status).toBe(200)
       }
       const allowed = yield* Effect.promise(async () => (await call("/api/workers", user.token, f.workspace.id)).json())
+      expect((yield* Effect.promise(() => call("/api/workers", f.owner.token, undefined, "POST", {
+        id: "isolated-other-tenant", environmentID: "other-tenant", resourceID: workerResource.id,
+        url: origin, password: "local-secret", directories: ["/workspace/project"], tags: [],
+      }))).status).toBe(400)
       expect(allowed.workers.map((item: { worker: { id: string } }) => item.worker.id)).toEqual(["allowed"])
       expect(allowed.workers[0].worker.directories).toEqual([f.directory.path])
       expect(

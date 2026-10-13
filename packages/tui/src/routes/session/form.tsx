@@ -6,6 +6,7 @@ import {
   stripAnsiSequences,
   TextAttributes,
   type BoxRenderable,
+  type MarkdownRenderable,
   type ScrollBoxRenderable,
   type TextareaRenderable,
 } from "@opentui/core"
@@ -36,6 +37,7 @@ import {
   isFormAnswerField,
 } from "../../util/form"
 import type { FormAnswerField } from "../../util/form"
+import { getScrollAcceleration } from "../../util/scroll"
 
 export const FORM_MODE = "form"
 
@@ -91,6 +93,7 @@ export function FormPrompt(props: {
 
   const [tabHover, setTabHover] = createSignal<number | "confirm" | null>(null)
   const [reviewContentHeight, setReviewContentHeight] = createSignal(0)
+  const [descriptionOverflow, setDescriptionOverflow] = createSignal(false)
   const [store, setStore] = createStore<FormDraft>(
     draft ?? {
       tab: 0,
@@ -106,6 +109,7 @@ export function FormPrompt(props: {
   let textarea: TextareaRenderable | undefined
   const [inputTarget, setInputTarget] = createSignal<TextareaRenderable>()
   let review: ScrollBoxRenderable | undefined
+  let descriptionScroll: ScrollBoxRenderable | undefined
 
   const message = createMemo(() => {
     const value = props.form.metadata?.["message"]
@@ -155,6 +159,7 @@ export function FormPrompt(props: {
   })
   const confirm = createMemo(() => !single() && store.tab >= fields().length)
   const reviewMaxHeight = createMemo(() => Math.max(3, dimensions().height - 14))
+  const scrollAcceleration = createMemo(() => getScrollAcceleration(config))
   const configuredRows = createMemo(() => {
     const current = answerField()
     return current ? formRows(current) : []
@@ -560,6 +565,55 @@ export function FormPrompt(props: {
 
   Keymap.createLayer(() => ({
     mode: FORM_MODE,
+    enabled: !store.editing && !textual() && (confirm() || !!answerField()?.description),
+    commands: [
+      {
+        bind: "ctrl+up",
+        title: "Scroll form up",
+        group: "Form",
+        run: () => (confirm() ? review : descriptionScroll)?.scrollBy(-1),
+      },
+      {
+        bind: "ctrl+down",
+        title: "Scroll form down",
+        group: "Form",
+        run: () => (confirm() ? review : descriptionScroll)?.scrollBy(1),
+      },
+      {
+        bind: "pageup",
+        title: "Previous form page",
+        group: "Form",
+        run: () => {
+          const scroll = confirm() ? review : descriptionScroll
+          scroll?.scrollBy(-Math.max(1, scroll.viewport.height - 1))
+        },
+      },
+      {
+        bind: "pagedown",
+        title: "Next form page",
+        group: "Form",
+        run: () => {
+          const scroll = confirm() ? review : descriptionScroll
+          scroll?.scrollBy(Math.max(1, scroll.viewport.height - 1))
+        },
+      },
+      {
+        bind: "home",
+        title: "Start of form content",
+        group: "Form",
+        run: () => (confirm() ? review : descriptionScroll)?.scrollTo(0),
+      },
+      {
+        bind: "end",
+        title: "End of form content",
+        group: "Form",
+        run: () => (confirm() ? review : descriptionScroll)?.scrollTo(Infinity),
+      },
+    ],
+  }))
+
+  Keymap.createLayer(() => ({
+    mode: FORM_MODE,
     enabled: !confirm() && answerField() !== undefined,
     commands: [
       {
@@ -789,12 +843,13 @@ export function FormPrompt(props: {
 
   return (
     <box
+      maxHeight={Math.max(8, dimensions().height - 4)}
       backgroundColor={theme.background.raised.base}
       border={["left"]}
       borderColor={theme.background.action.primary.focused}
       customBorderChars={SplitBorder.customBorderChars}
     >
-      <box gap={1} paddingLeft={1} paddingRight={3} paddingTop={1} paddingBottom={1}>
+      <box minHeight={0} flexShrink={1} gap={1} paddingLeft={1} paddingRight={3} paddingTop={1} paddingBottom={1}>
         <box paddingLeft={1}>
           <text fg={theme.text.muted}>{props.form.title}</text>
         </box>
@@ -821,11 +876,7 @@ export function FormPrompt(props: {
               {(item, index) => {
                 const isTab = () => index() === store.tab
                 const color = () =>
-                  isTab()
-                    ? theme.text.base
-                    : tabHover() === index()
-                      ? theme.text.formfield.focused
-                      : theme.text.muted
+                  isTab() ? theme.text.base : tabHover() === index() ? theme.text.formfield.focused : theme.text.muted
                 return (
                   <box
                     paddingRight={2}
@@ -899,9 +950,7 @@ export function FormPrompt(props: {
               >
                 {external().url}
               </text>
-              <text
-                fg={store.answers[external().key] === true ? theme.text.feedback.success.base : theme.text.muted}
-              >
+              <text fg={store.answers[external().key] === true ? theme.text.feedback.success.base : theme.text.muted}>
                 {store.answers[external().key] === true
                   ? "✓ Acknowledged"
                   : store.externalReady[external().key]
@@ -913,15 +962,30 @@ export function FormPrompt(props: {
         </Show>
 
         <Show when={!confirm() && answerField()}>
-          <box paddingLeft={1} gap={1}>
-            <box>
-              <Show
-                when={answerField()!.description}
-                fallback={<text fg={theme.text.base}>{formLabel(answerField()!)}</text>}
-              >
-                {(description) => (
-                  // Descriptions are model-authored Markdown, such as a plan under approval; render them like the transcript.
+          <box minHeight={0} flexShrink={1} paddingLeft={1} gap={1}>
+            <Show
+              when={answerField()!.description}
+              fallback={<text fg={theme.text.base}>{formLabel(answerField()!)}</text>}
+            >
+              {(description) => (
+                // Descriptions are model-authored Markdown, such as a plan under approval; render them like the transcript.
+                <scrollbox
+                  id="form-description-scroll"
+                  ref={(scroll: ScrollBoxRenderable) => (descriptionScroll = scroll)}
+                  minHeight={1}
+                  flexShrink={1}
+                  maxHeight={reviewMaxHeight()}
+                  contentOptions={{ minHeight: 0 }}
+                  scrollAcceleration={scrollAcceleration()}
+                  scrollbarOptions={{ visible: false }}
+                  onSizeChange={function (this: ScrollBoxRenderable) {
+                    setDescriptionOverflow(this.scrollHeight > this.viewport.height)
+                  }}
+                >
                   <markdown
+                    onSizeChange={function (this: MarkdownRenderable) {
+                      setDescriptionOverflow(this.height > (descriptionScroll?.viewport.height ?? 0))
+                    }}
                     syntaxStyle={themes.currentSyntax()}
                     content={description()}
                     conceal
@@ -930,11 +994,11 @@ export function FormPrompt(props: {
                     fg={theme.markdown.text}
                     bg={theme.background.raised.base}
                   />
-                )}
-              </Show>
-            </box>
+                </scrollbox>
+              )}
+            </Show>
             <Show when={textual() ? answerField()!.key : undefined} keyed>
-              <box paddingLeft={1}>
+              <box flexShrink={0} paddingLeft={1}>
                 <textarea
                   cursorStyle={config.cursor}
                   ref={(val: TextareaRenderable) => {
@@ -960,7 +1024,7 @@ export function FormPrompt(props: {
               </box>
             </Show>
             <Show when={!textual()}>
-              <box>
+              <box flexShrink={0}>
                 <For each={rows()}>
                   {(row, i) => {
                     const active = () => i() === store.selected
@@ -980,15 +1044,17 @@ export function FormPrompt(props: {
                       >
                         <box flexDirection="row">
                           <box
-                            backgroundColor={active() ? theme.background.formfield.focused : theme.background.raised.base}
+                            backgroundColor={
+                              active() ? theme.background.formfield.focused : theme.background.raised.base
+                            }
                             paddingRight={1}
                           >
-                            <text
-                              fg={active() ? theme.text.formfield.focused : theme.text.muted}
-                            >{`${i() + 1}.`}</text>
+                            <text fg={active() ? theme.text.formfield.focused : theme.text.muted}>{`${i() + 1}.`}</text>
                           </box>
                           <box
-                            backgroundColor={active() ? theme.background.formfield.focused : theme.background.raised.base}
+                            backgroundColor={
+                              active() ? theme.background.formfield.focused : theme.background.raised.base
+                            }
                             flexDirection="row"
                           >
                             <Show when={multi()}>
@@ -1133,9 +1199,7 @@ export function FormPrompt(props: {
                           <span style={{ fg: theme.text.muted }}>{truncate(formLabel(item), 40)}:</span>{" "}
                           <span
                             style={{
-                              fg: acknowledged()
-                                ? theme.text.feedback.success.base
-                                : theme.text.feedback.error.base,
+                              fg: acknowledged() ? theme.text.feedback.success.base : theme.text.feedback.error.base,
                             }}
                           >
                             {acknowledged() ? "Acknowledged" : "(acknowledgement required)"}
@@ -1182,7 +1246,12 @@ export function FormPrompt(props: {
         paddingBottom={1}
         justifyContent="space-between"
       >
-        <box flexDirection="row" gap={2}>
+        <box flexDirection="row" flexWrap="wrap" gap={2}>
+          <Show when={!confirm() && answerField()?.description && descriptionOverflow()}>
+            <text fg={theme.text.base}>
+              pgup/pgdn <span style={{ fg: theme.text.muted }}>scroll</span>
+            </text>
+          </Show>
           <Show when={!single()}>
             <text fg={theme.text.base}>
               {"⇆"} <span style={{ fg: theme.text.muted }}>tab</span>

@@ -20,6 +20,7 @@ export const Info = Schema.Struct({
   // Set once the user has accepted exposing the service to the internet, or had remote access on before, so turning
   // remote access off and on again does not ask a second time.
   remoteAccepted: Schema.optional(Schema.Literal(true)),
+  relay: Schema.optional(Schema.String),
   hostname: Schema.optional(Schema.String),
   port: Schema.optional(Schema.Int.check(Schema.isGreaterThanOrEqualTo(1), Schema.isLessThanOrEqualTo(65_535))),
   password: Schema.optional(Schema.String),
@@ -28,7 +29,7 @@ export const Info = Schema.Struct({
 })
 export type Info = typeof Info.Type
 
-const keys = ["disabled", "remote", "hostname", "port", "password", "cors", "env"] as const
+const keys = ["disabled", "remote", "relay", "hostname", "port", "password", "cors", "env"] as const
 type Key = (typeof keys)[number]
 
 const decodeInfo = Schema.decodeUnknownEffect(Schema.fromJsonString(Info))
@@ -94,6 +95,7 @@ function configKey(key: string): Key {
   if (
     key === "disabled" ||
     key === "remote" ||
+    key === "relay" ||
     key === "hostname" ||
     key === "port" ||
     key === "password" ||
@@ -193,6 +195,23 @@ export const remote = Effect.fn("cli.service-config.remote")(function* () {
   return next
 })
 
+export const enableRemote = Effect.fn("cli.service-config.enable-remote")(function* (relay: string) {
+  const api = RemoteTunnel.apiURL(relay)
+  const existing = yield* read()
+  // Provision before replacing a live connection: a failed relay leaves it untouched.
+  yield* RemoteTunnel.ensure(api)
+  if (existing.remote && (existing.relay ?? RemoteTunnel.HOSTED_API) === api) {
+    if (existing.relay !== api) yield* write({ ...existing, relay: api })
+    return
+  }
+  yield* Service.stop(yield* options())
+  yield* write({
+    ...existing,
+    relay: api,
+    remote: { route: existing.relay === api ? (existing.remote?.route ?? route()) : route() },
+  })
+})
+
 export const get = Effect.fn("cli.service-config.get")(function* (key?: string, name?: string) {
   if (key === undefined) {
     const { password: _password, ...safe } = yield* read()
@@ -207,6 +226,9 @@ export const get = Effect.fn("cli.service-config.get")(function* (key?: string, 
     }
     case "remote": {
       return String((yield* read()).remote !== undefined)
+    }
+    case "relay": {
+      return (yield* read()).relay ?? ""
     }
     case "hostname": {
       return (yield* read()).hostname ?? ""
@@ -242,13 +264,22 @@ export const set = Effect.fn("cli.service-config.set")(function* (key: string, v
     case "remote": {
       if (value !== "true" && value !== "false") throw new Error("Remote must be true or false")
       // A tunnel that cannot be created leaves remote access off instead of a service that keeps retrying.
-      if (value === "true") yield* RemoteTunnel.ensure()
-      yield* Service.stop(yield* options())
       if (value === "true") {
-        yield* remote()
-        return
+        const existing = yield* read()
+        if (!existing.relay && !existing.remote)
+          throw new Error("Choose a relay with `redcode pair --remote` or `redcode service set relay <url>` first")
+        return yield* enableRemote(existing.relay ?? RemoteTunnel.HOSTED_API)
       }
+      yield* Service.stop(yield* options())
       yield* disableRemote()
+      return
+    }
+    case "relay": {
+      const relay = RemoteTunnel.apiURL(value)
+      const existing = yield* read()
+      if (existing.remote && (existing.relay ?? RemoteTunnel.HOSTED_API) !== relay)
+        throw new Error("Use `redcode pair --remote --relay <url>` to switch an active relay")
+      yield* write({ ...existing, relay })
       return
     }
     case "hostname": {
@@ -295,6 +326,13 @@ export const unset = Effect.fn("cli.service-config.unset")(function* (key: strin
   const selected = configKey(key)
   if (selected !== "env" && name !== undefined) throw new Error(`Usage: redcode service unset ${selected}`)
   switch (selected) {
+    case "relay": {
+      const existing = yield* read()
+      if (existing.remote) throw new Error("Disable remote access before forgetting its relay")
+      const { relay: _relay, ...next } = existing
+      yield* write(next)
+      return
+    }
     case "disabled": {
       const { disabled: _disabled, ...next } = yield* read()
       yield* write(next)

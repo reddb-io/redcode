@@ -3,10 +3,86 @@ import { fixture, installStressSessionTabs, mockStressTimeline } from "../utils/
 import { sessionHref } from "../utils/app"
 import { status } from "../utils/timeline"
 import { mockRemoteWorkers, mockWaitingWorker } from "../utils/worker-fixture"
-import { mockHarnessOperations, mockWorktreeOperations, mockMachineInspection } from "../utils/agent-operation-fixture"
-import { SERVER } from "../utils/app"
+import {
+  mockHarnessOperations,
+  mockWorktreeOperations,
+  mockMachineInspection,
+  mockWorkerEnvironments,
+} from "../utils/agent-operation-fixture"
+import { SERVER, REMOTE_SERVER } from "../utils/app"
 
 test.use({ viewport: { width: 1440, height: 900 } })
+
+test("prepares an isolated workspace through the DS and restores retained data before explicit deletion", async ({
+  page,
+}) => {
+  await mockStressTimeline(page)
+  await installStressSessionTabs(page, { sessionIDs: [] })
+  await mockWorkerEnvironments(page)
+  await mockRemoteWorkers(page)
+  await page.goto("/agents?view=environments")
+  const workspace = page.getByRole("region", { name: "Agents", exact: true })
+  await expect(
+    page
+      .getByRole("navigation", { name: "Agents", exact: true })
+      .getByRole("button", { name: "Isolated workspaces", exact: true }),
+  ).toHaveAttribute("aria-current", "page")
+  await workspace.getByRole("button", { name: "Build worker image on this host", exact: true }).click()
+  await expect(workspace.getByText("Worker image is ready.", { exact: true })).toBeVisible()
+  await workspace.getByLabel("Environment name", { exact: true }).fill("public-worker")
+  await workspace
+    .getByLabel("Public HTTPS Git repository", { exact: true })
+    .fill("https://github.com/octocat/Hello-World.git")
+  await workspace.getByLabel("CPU limit", { exact: true }).fill("0.5")
+  await workspace.getByLabel("Memory limit (MiB)", { exact: true }).fill("512")
+  await workspace.getByLabel("Model provider (optional)", { exact: true }).selectOption("anthropic")
+  await workspace.getByLabel("Workspace provider API key", { exact: true }).fill("fixture-workspace-key")
+  const prepared = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === "/api/worker-environments" && response.request().method() === "POST",
+  )
+  await workspace.getByRole("button", { name: "Create isolated workspace", exact: true }).click()
+  expect((await prepared).request().postDataJSON()).toEqual({
+    id: "public-worker",
+    repository: "https://github.com/octocat/Hello-World.git",
+    ref: "HEAD",
+    image: "redcode-worker:0.80.0",
+    cpu: 0.5,
+    memoryMiB: 512,
+    provider: { integrationID: "anthropic", key: "fixture-workspace-key" },
+  })
+  await expect(workspace.getByLabel("Workspace provider API key", { exact: true })).toHaveValue("")
+  const environment = workspace.getByRole("article", { name: "public-worker", exact: true })
+  await expect(environment).toContainText("Base commit: " + "a".repeat(40))
+  await expect(environment.getByRole("button", { name: "Register isolated worker", exact: true })).toBeEnabled()
+  await environment.scrollIntoViewIfNeeded()
+  await page.screenshot({
+    path: test.info().outputPath("isolated-workspace-ds.png"),
+    animations: "disabled",
+    fullPage: true,
+  })
+  await environment.getByRole("button", { name: "Stop environment", exact: true }).click()
+  await expect(environment.getByRole("button", { name: "Archive and retain workspace", exact: true })).toBeEnabled()
+  await environment.getByRole("button", { name: "Archive and retain workspace", exact: true }).click()
+  await expect(environment).toContainText("Archived")
+  await environment.getByRole("button", { name: "Start or restore", exact: true }).click()
+  await expect(environment).toContainText("Ready")
+  await environment.getByRole("button", { name: "Stop environment", exact: true }).click()
+  await expect(environment.getByRole("button", { name: "Delete permanently", exact: true })).toBeEnabled()
+  await environment.getByRole("button", { name: "Delete permanently", exact: true }).click()
+  await expect(environment).toContainText("Permanently delete this environment")
+  await environment.getByRole("button", { name: "Confirm permanent deletion", exact: true }).click()
+  await expect(environment).toHaveCount(0)
+  await workspace.getByLabel("Model provider (optional)", { exact: true }).selectOption("")
+  await workspace.getByRole("button", { name: "Create isolated workspace", exact: true }).click()
+  await expect(environment.getByRole("button", { name: "Register isolated worker", exact: true })).toBeEnabled()
+  const registered = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === "/api/worker-environments/public-worker/register",
+  )
+  await environment.getByRole("button", { name: "Register isolated worker", exact: true }).click()
+  expect((await registered).request().postDataJSON()).toEqual({})
+  await expect(page).toHaveURL(/view=remote/)
+})
 
 test("starts a native Claude harness and preserves question input across host refresh", async ({ page }) => {
   await mockStressTimeline(page)
@@ -104,47 +180,92 @@ test("machine onboarding checks the selected host and blocks an unusable worker 
   await expect(workspace.getByText("Server version:", { exact: false })).toBeVisible()
   await workspace.getByLabel("Worker name", { exact: true }).fill("pi-a")
   await workspace.getByLabel("Existing checkout directory on the machine", { exact: true }).fill("/home/pi/project")
-  await expect(workspace.getByRole("button", { name: "3. Register worker checkout", exact: true })).toBeDisabled()
+  await expect(workspace.getByRole("button", { name: "Register worker checkout", exact: true })).toBeDisabled()
   await expect(workspace.getByText("The coordinator needs a reachable worker address", { exact: false })).toBeVisible()
   await page.screenshot({ path: test.info().outputPath("machine-onboarding.png"), animations: "disabled" })
 })
 
 test("machine onboarding registers the verified checkout with its coordinator credential", async ({ page }) => {
-  await mockStressTimeline(page)
+  await mockStressTimeline(page, { projects: [{ ...fixture.project, canonical: fixture.directory }] })
+  await mockStressTimeline(page, {
+    server: REMOTE_SERVER,
+    projects: [{ ...fixture.project, canonical: fixture.directory }],
+  })
   await mockMachineInspection(page)
   const workers = await mockRemoteWorkers(page)
-  await page.addInitScript(
-    ({ server, directory }) => {
-      localStorage.setItem(
-        "opencode.global.dat:server",
-        JSON.stringify({
-          list: [{ type: "http", http: { url: server, password: "fixture-worker-secret" } }],
-          projects: { local: [{ worktree: directory, expanded: true }] },
-          lastProject: { local: directory },
-        }),
-      )
-    },
-    { server: SERVER, directory: fixture.directory },
+  await page.goto(
+    `/e2e/utils/settings-wsl.html?${new URLSearchParams({ server: SERVER, mode: "ready", ssh: REMOTE_SERVER, path: "/agents?view=machines" })}`,
   )
-  await page.goto("/agents?view=machines")
   const workspace = page.getByRole("region", { name: "Agents", exact: true })
-  await workspace.getByLabel("Connected machine", { exact: true }).selectOption(SERVER)
-  await workspace.getByRole("button", { name: "Check server", exact: true }).click()
+  await workspace.getByRole("button", { name: "Add server", exact: true }).click()
+  await page.getByRole("menuitem", { name: "Add SSH server", exact: true }).click()
+  const connect = page.getByRole("dialog")
+  await connect.getByLabel("Host or SSH command", { exact: true }).fill("filip@10.101.1.105")
+  await connect.getByLabel("Server name (optional)", { exact: true }).fill("Strong PC")
+  await connect.getByRole("button", { name: "Add server", exact: true }).click()
+  await expect(connect).toHaveCount(0)
+  await expect(
+    workspace.getByText("Connected to Strong PC. Choose how to use this machine below.", { exact: true }),
+  ).toBeVisible()
   await expect(workspace.getByText("Server version: fixture", { exact: true })).toBeVisible()
+  await workspace.getByRole("button", { name: "Use this project as a worker", exact: true }).click()
+  await expect(workspace.getByLabel("Worker name", { exact: true })).toHaveValue("strong-pc")
+  const strongKey = await workspace.getByLabel("Connected machine", { exact: true }).inputValue()
   await workspace.getByLabel("Worker name", { exact: true }).fill("pi-a")
   await workspace.getByLabel("Capabilities (comma-separated)", { exact: true }).fill("linux, arm64")
-  await workspace.getByLabel("Existing checkout directory on the machine", { exact: true }).fill(fixture.directory)
-  await workspace.getByRole("button", { name: "3. Register worker checkout", exact: true }).click()
+  await workspace.getByLabel("Project on the machine", { exact: true }).selectOption(fixture.directory)
+  await expect(workspace.getByLabel("Existing checkout directory on the machine", { exact: true })).toHaveValue(
+    fixture.directory,
+  )
+  await workspace.getByRole("button", { name: "Register worker checkout", exact: true }).click()
   await expect(workspace.getByText("Worker checkout registered", { exact: true })).toBeVisible()
   expect(
     workers.requests.find((request) => request.path === "/api/workers" && request.method === "POST")?.body,
   ).toEqual({
     id: "pi-a",
-    url: SERVER,
-    password: "fixture-worker-secret",
+    url: REMOTE_SERVER,
+    password: "ssh-2",
     directories: [fixture.directory],
     tags: ["linux", "arm64"],
   })
+  await workspace.getByRole("button", { name: "Manage workers on this machine", exact: true }).click()
+  await expect(workspace.getByRole("heading", { name: "Remote workers", exact: true, level: 1 })).toBeVisible()
+  await expect(
+    page.getByRole("complementary", { name: "Agents", exact: true }).getByLabel("Host", { exact: true }),
+  ).toHaveValue(/^ssh:/)
+  await page
+    .getByRole("complementary", { name: "Agents", exact: true })
+    .getByRole("button", { name: "Machines", exact: true })
+    .click()
+  await workspace.getByLabel("Connected machine", { exact: true }).selectOption("ssh:box")
+  await workspace.getByRole("button", { name: "Use this project as a worker", exact: true }).click()
+  await expect(workspace.getByText("Server version: fixture", { exact: true })).toBeVisible()
+  await workspace.getByLabel("Project on the machine", { exact: true }).selectOption(fixture.directory)
+  await expect(workspace.getByRole("button", { name: "Register worker checkout", exact: true })).toBeDisabled()
+  await expect(
+    workspace.getByText(/A desktop loopback forward cannot be registered with a remote coordinator/),
+  ).toBeVisible()
+  await workspace.getByLabel("Connected machine", { exact: true }).selectOption(strongKey)
+  await workspace.getByLabel("Project on the machine", { exact: true }).selectOption(fixture.directory)
+  await workspace.getByLabel("Worker name", { exact: true }).fill("strong-self")
+  await expect(workspace.getByRole("button", { name: "Register worker checkout", exact: true })).toBeEnabled()
+  await workspace.getByRole("button", { name: "Register worker checkout", exact: true }).click()
+  await expect(workspace.getByText("Worker checkout registered", { exact: true })).toBeVisible()
+  expect(
+    workers.requests
+      .filter((request) => request.path === "/api/workers" && request.method === "POST")
+      .map((request) => request.body),
+  ).toEqual([
+    { id: "pi-a", url: REMOTE_SERVER, password: "ssh-2", directories: [fixture.directory], tags: ["linux", "arm64"] },
+    { id: "strong-self", url: "http://127.0.0.1:35555", password: "ssh-2", directories: [fixture.directory], tags: [] },
+  ])
+  await page.screenshot({
+    path: test.info().outputPath("remote-coordinator-onboarding.png"),
+    animations: "disabled",
+    fullPage: true,
+  })
+  await workspace.getByRole("button", { name: "Code in this project on this machine", exact: true }).click()
+  await expect(page.locator('[data-component="composer-editor"]')).toBeEditable()
 })
 
 test("sends resource requirements with a worker task and displays its queued reason", async ({ page }) => {

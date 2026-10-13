@@ -46,6 +46,7 @@ import type { Formatter } from "@opencode/schema/formatter"
 import type { Worker } from "@opencode/schema/worker"
 import type { Harness } from "@opencode/schema/harness"
 import type { UsageReporter } from "@opencode/schema/usage-reporter"
+import type { WorkerEnvironment } from "@opencode/schema/worker-environment"
 
 export type ServerResourcesOutput = HostResources.Snapshot
 export type ServerResourcesOperation<E = never> = () => Effect.Effect<ServerResourcesOutput, E>
@@ -6500,6 +6501,8 @@ export type WorkersAddInput = {
   readonly tags: ReadonlyArray<string>
   readonly password: string
   readonly resourceID?: string | undefined
+  readonly environmentID?: Worker.Name | undefined
+  readonly environmentProxy?: boolean | undefined
 }
 export type WorkersAddOutput = Worker.Status
 export type WorkersAddOperation<E = never> = (input: WorkersAddInput) => Effect.Effect<WorkersAddOutput, E>
@@ -6677,6 +6680,76 @@ export interface UsageReporterApi<E = never> {
   readonly retry: UsageReporterRetryOperation<E>
 }
 
+export type WorkerEnvironmentsListOutput = WorkerEnvironment.Snapshot
+export type WorkerEnvironmentsListOperation<E = never> = () => Effect.Effect<WorkerEnvironmentsListOutput, E>
+
+export type WorkerEnvironmentsCreateInput = {
+  readonly id: Worker.Name
+  readonly repository: string
+  readonly ref: string
+  readonly image: string
+  readonly cpu: number
+  readonly memoryMiB: number
+  readonly setup?: string | undefined
+  readonly provider?: { readonly integrationID: string; readonly key: string } | undefined
+}
+export type WorkerEnvironmentsCreateOutput = WorkerEnvironment.Info
+export type WorkerEnvironmentsCreateOperation<E = never> = (
+  input: WorkerEnvironmentsCreateInput,
+) => Effect.Effect<WorkerEnvironmentsCreateOutput, E>
+
+export type WorkerEnvironmentsBuildInput = { readonly version: string }
+export type WorkerEnvironmentsBuildOutput = { readonly image: string }
+export type WorkerEnvironmentsBuildOperation<E = never> = (
+  input: WorkerEnvironmentsBuildInput,
+) => Effect.Effect<WorkerEnvironmentsBuildOutput, E>
+
+export type WorkerEnvironmentsStartInput = { readonly id: Worker.Name }
+export type WorkerEnvironmentsStartOutput = WorkerEnvironment.Info
+export type WorkerEnvironmentsStartOperation<E = never> = (
+  input: WorkerEnvironmentsStartInput,
+) => Effect.Effect<WorkerEnvironmentsStartOutput, E>
+
+export type WorkerEnvironmentsRegisterInput = { readonly id: Worker.Name; readonly resourceID?: string | undefined }
+export type WorkerEnvironmentsRegisterOutput = Worker.Status
+export type WorkerEnvironmentsRegisterOperation<E = never> = (
+  input: WorkerEnvironmentsRegisterInput,
+) => Effect.Effect<WorkerEnvironmentsRegisterOutput, E>
+
+export type WorkerEnvironmentsStopInput = { readonly id: Worker.Name }
+export type WorkerEnvironmentsStopOutput = WorkerEnvironment.Info
+export type WorkerEnvironmentsStopOperation<E = never> = (
+  input: WorkerEnvironmentsStopInput,
+) => Effect.Effect<WorkerEnvironmentsStopOutput, E>
+
+export type WorkerEnvironmentsRemoveInput = { readonly id: Worker.Name; readonly purge: boolean }
+export type WorkerEnvironmentsRemoveOutput = void
+export type WorkerEnvironmentsRemoveOperation<E = never> = (
+  input: WorkerEnvironmentsRemoveInput,
+) => Effect.Effect<WorkerEnvironmentsRemoveOutput, E>
+
+export type WorkerEnvironmentsRequestInput = {
+  readonly id: Worker.Name
+  readonly method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
+  readonly path: string
+  readonly body?: string | undefined
+}
+export type WorkerEnvironmentsRequestOutput = WorkerEnvironment.Response
+export type WorkerEnvironmentsRequestOperation<E = never> = (
+  input: WorkerEnvironmentsRequestInput,
+) => Effect.Effect<WorkerEnvironmentsRequestOutput, E>
+
+export interface WorkerEnvironmentsApi<E = never> {
+  readonly list: WorkerEnvironmentsListOperation<E>
+  readonly create: WorkerEnvironmentsCreateOperation<E>
+  readonly build: WorkerEnvironmentsBuildOperation<E>
+  readonly start: WorkerEnvironmentsStartOperation<E>
+  readonly register: WorkerEnvironmentsRegisterOperation<E>
+  readonly stop: WorkerEnvironmentsStopOperation<E>
+  readonly remove: WorkerEnvironmentsRemoveOperation<E>
+  readonly request: WorkerEnvironmentsRequestOperation<E>
+}
+
 export type WorktreeLifecycleArchiveInput = {
   readonly projectID: Project.ID
   readonly directory: AbsolutePath
@@ -6772,5 +6845,6 @@ export interface AppApi<E = never> {
   readonly workers: WorkersApi<E>
   readonly harness: HarnessApi<E>
   readonly usageReporter: UsageReporterApi<E>
+  readonly workerEnvironments: WorkerEnvironmentsApi<E>
   readonly worktreeLifecycle: WorktreeLifecycleApi<E>
 }

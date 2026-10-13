@@ -38,6 +38,7 @@ import { RedskilledHandler } from "./handlers/redskilled"
 import { WorkersHandler } from "./handlers/workers"
 import { HarnessHandler } from "./handlers/harness"
 import { UsageReporterHandler } from "./handlers/usage-reporter"
+import { WorkerEnvironmentsHandler } from "./handlers/worker-environments"
 
 export const handlers = Layer.mergeAll(
   ServerHandler,
@@ -79,4 +80,5 @@ export const handlers = Layer.mergeAll(
   WorkersHandler,
   HarnessHandler,
   UsageReporterHandler,
+  WorkerEnvironmentsHandler,
 )

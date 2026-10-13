@@ -3,7 +3,75 @@ import { Schema } from "effect"
 import { Harness } from "@opencode/schema/harness"
 import { Worktree } from "@opencode/schema/worktree"
 import { AbsolutePath } from "@opencode/schema/schema"
+import { WorkerEnvironment } from "@opencode/schema/worker-environment"
 import { fixture } from "./session-fixture"
+
+export async function mockWorkerEnvironments(page: Page) {
+  const environments: WorkerEnvironment.Info[] = []
+  await page.route("**/api/integration", (route) =>
+    route.fulfill({
+      json: {
+        location: { directory: fixture.directory },
+        data: [{ id: "anthropic", name: "Anthropic", methods: [{ type: "key" }], connections: [] }],
+      },
+    }),
+  )
+  await page.route("**/api/worker-environments**", async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (request.method() === "GET")
+      return route.fulfill({ json: { available: true, engine: "linux fixture", environments } })
+    if (url.pathname.endsWith("/image")) return route.fulfill({ json: { image: "redcode-worker:0.80.0" } })
+    if (url.pathname === "/api/worker-environments" && request.method() === "POST") {
+      const input = Schema.decodeUnknownSync(WorkerEnvironment.Create)(request.postDataJSON())
+      const info: WorkerEnvironment.Info = {
+        id: input.id,
+        repository: input.repository,
+        ref: input.ref,
+        image: input.image,
+        cpu: input.cpu,
+        memoryMiB: input.memoryMiB,
+        directory: "/workspace/project",
+        state: "ready",
+        phase: "complete",
+        createdAt: "2026-10-13T12:00:00Z",
+        commit: "a".repeat(40),
+      }
+      environments.push(info)
+      return route.fulfill({ json: info })
+    }
+    const environment = environments.find((item) => url.pathname.includes(`/${item.id}`))
+    if (!environment) return route.fulfill({ status: 404, json: { message: "Missing fixture environment" } })
+    if (url.pathname.endsWith("/stop")) {
+      Object.assign(environment, { state: "stopped" })
+      return route.fulfill({ json: environment })
+    }
+    if (url.pathname.endsWith("/start")) {
+      Object.assign(environment, { state: "ready" })
+      return route.fulfill({ json: environment })
+    }
+    if (url.pathname.endsWith("/register"))
+      return route.fulfill({
+        json: {
+          connection: "online",
+          worker: {
+            id: environment.id,
+            environmentID: environment.id,
+            url: url.origin,
+            passwordEnv: "fixture-credential-reference",
+            directories: [environment.directory],
+            tags: ["isolated"],
+          },
+        },
+      })
+    if (request.method() === "DELETE") {
+      if (url.searchParams.get("purge") === "true") environments.splice(environments.indexOf(environment), 1)
+      else Object.assign(environment, { state: "archived" })
+      return route.fulfill({ status: 204 })
+    }
+    return route.fulfill({ status: 400, json: { message: "Unsupported fixture operation" } })
+  })
+}
 
 export async function mockMachineInspection(page: Page) {
   await page.route("**/api/system", (route) =>
@@ -15,7 +83,7 @@ export async function mockMachineInspection(page: Page) {
         pid: 1,
         started: 1,
         memory: 1024,
-        urls: [new URL(route.request().url()).origin],
+        urls: ["http://127.0.0.1:35555"],
         paths: { config: "/config", data: "/data", state: "/state", cache: "/cache", log: "/log", tmp: "/tmp" },
         database: { kind: "memory" },
       },

@@ -41,6 +41,7 @@ import { RedskilledGroup } from "./groups/redskilled.js"
 import { WorkersGroup } from "./groups/workers.js"
 import { HarnessGroup } from "./groups/harness.js"
 import { UsageReporterGroup } from "./groups/usage-reporter.js"
+import { WorkerEnvironmentsGroup } from "./groups/worker-environments.js"
 import { WorktreeLifecycleGroup } from "./groups/worktree-lifecycle.js"
 
 type LocationGroups<LocationId extends HttpApiMiddleware.AnyId> =
@@ -109,6 +110,7 @@ type ApiGroups<
   | typeof WorkersGroup
   | typeof HarnessGroup
   | typeof UsageReporterGroup
+  | typeof WorkerEnvironmentsGroup
   | typeof WorktreeLifecycleGroup
   | LocationGroups<LocationId>
   | LocationGroup<LocationId, LocationService>
@@ -209,6 +211,7 @@ const makeApiFromGroup = <
     .add(WorkersGroup)
     .add(HarnessGroup)
     .add(UsageReporterGroup)
+    .add(WorkerEnvironmentsGroup)
     .add(WorktreeLifecycleGroup)
     .annotateMerge(
       OpenApi.annotations({

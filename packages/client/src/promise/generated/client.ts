@@ -467,6 +467,21 @@ import type {
   UsageReporterFlushOutput,
   UsageReporterRetryInput,
   UsageReporterRetryOutput,
+  WorkerEnvironmentsListOutput,
+  WorkerEnvironmentsCreateInput,
+  WorkerEnvironmentsCreateOutput,
+  WorkerEnvironmentsBuildInput,
+  WorkerEnvironmentsBuildOutput,
+  WorkerEnvironmentsStartInput,
+  WorkerEnvironmentsStartOutput,
+  WorkerEnvironmentsRegisterInput,
+  WorkerEnvironmentsRegisterOutput,
+  WorkerEnvironmentsStopInput,
+  WorkerEnvironmentsStopOutput,
+  WorkerEnvironmentsRemoveInput,
+  WorkerEnvironmentsRemoveOutput,
+  WorkerEnvironmentsRequestInput,
+  WorkerEnvironmentsRequestOutput,
   WorktreeLifecycleArchiveInput,
   WorktreeLifecycleArchiveOutput,
   WorktreeLifecycleArchivesInput,
@@ -3468,6 +3483,8 @@ export function make(options: ClientOptions) {
               tags: input["tags"],
               password: input["password"],
               resourceID: input["resourceID"],
+              environmentID: input["environmentID"],
+              environmentProxy: input["environmentProxy"],
             },
             successStatus: 200,
             declaredStatuses: [400, 401, 403],
@@ -3758,6 +3775,110 @@ export function make(options: ClientOptions) {
             method: "POST",
             path: `/api/usage-reporter/deliveries/${encodeURIComponent(input.id)}/retry`,
             query: { destination: input["destination"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403],
+            empty: false,
+          },
+          requestOptions,
+        ),
+    },
+    workerEnvironments: {
+      list: (requestOptions?: RequestOptions) =>
+        request<WorkerEnvironmentsListOutput>(
+          {
+            method: "GET",
+            path: `/api/worker-environments`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      create: (input: WorkerEnvironmentsCreateInput, requestOptions?: RequestOptions) =>
+        request<WorkerEnvironmentsCreateOutput>(
+          {
+            method: "POST",
+            path: `/api/worker-environments`,
+            body: {
+              id: input["id"],
+              repository: input["repository"],
+              ref: input["ref"],
+              image: input["image"],
+              cpu: input["cpu"],
+              memoryMiB: input["memoryMiB"],
+              setup: input["setup"],
+              provider: input["provider"],
+            },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      build: (input: WorkerEnvironmentsBuildInput, requestOptions?: RequestOptions) =>
+        request<WorkerEnvironmentsBuildOutput>(
+          {
+            method: "POST",
+            path: `/api/worker-environments/image`,
+            body: { version: input["version"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      start: (input: WorkerEnvironmentsStartInput, requestOptions?: RequestOptions) =>
+        request<WorkerEnvironmentsStartOutput>(
+          {
+            method: "POST",
+            path: `/api/worker-environments/${encodeURIComponent(input.id)}/start`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      register: (input: WorkerEnvironmentsRegisterInput, requestOptions?: RequestOptions) =>
+        request<WorkerEnvironmentsRegisterOutput>(
+          {
+            method: "POST",
+            path: `/api/worker-environments/${encodeURIComponent(input.id)}/register`,
+            body: { resourceID: input["resourceID"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      stop: (input: WorkerEnvironmentsStopInput, requestOptions?: RequestOptions) =>
+        request<WorkerEnvironmentsStopOutput>(
+          {
+            method: "POST",
+            path: `/api/worker-environments/${encodeURIComponent(input.id)}/stop`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      remove: (input: WorkerEnvironmentsRemoveInput, requestOptions?: RequestOptions) =>
+        request<WorkerEnvironmentsRemoveOutput>(
+          {
+            method: "DELETE",
+            path: `/api/worker-environments/${encodeURIComponent(input.id)}`,
+            query: { purge: input["purge"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403],
+            empty: true,
+          },
+          requestOptions,
+        ),
+      request: (input: WorkerEnvironmentsRequestInput, requestOptions?: RequestOptions) =>
+        request<WorkerEnvironmentsRequestOutput>(
+          {
+            method: "POST",
+            path: `/api/worker-environments/${encodeURIComponent(input.id)}/request`,
+            body: { method: input["method"], path: input["path"], body: input["body"] },
             successStatus: 200,
             declaredStatuses: [400, 401, 403],
             empty: false,

@@ -68,17 +68,19 @@ const setup: Setup<typeof definition> = (ctx) => {
       dialog.open(() => render(module))
     })
 
-  const add = (openProject: boolean) =>
+  const add = (openProject: boolean, onConnected?: (key: string) => void) =>
     show((module) => (
       <module.DialogSsh
         ssh={ssh}
         onOpenProject={
-          openProject
+          openProject || onConnected
             ? (id) => {
+                if (ctx.signal.aborted) return
                 const item = ssh.item(id)
 
                 if (!item) return
-                layout.project(`ssh:${id}`, ctx.t("project", { host: sshName(item.config) }))
+                if (onConnected) onConnected(`ssh:${id}`)
+                else layout.project(`ssh:${id}`, ctx.t("project", { host: sshName(item.config) }))
               }
             : undefined
         }
@@ -126,7 +128,13 @@ const setup: Setup<typeof definition> = (ctx) => {
 
   ctx.add(
     MenuItem,
-    (): MenuItem => ({ menu: "server.add", id: "add", title: ctx.t("add"), order: 1, run: () => add(false) }),
+    (): MenuItem => ({
+      menu: "server.add",
+      id: "add",
+      title: ctx.t("add"),
+      order: 1,
+      run: (options) => add(false, options?.onConnected),
+    }),
   )
   ctx.add(
     Command,

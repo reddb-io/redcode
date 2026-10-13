@@ -4,6 +4,7 @@ import { Schema } from "effect"
 import { Worker } from "@opencode/schema/worker"
 import { Attention } from "@opencode/schema/attention"
 import { HostResources } from "@opencode/schema/host-resources"
+import { WorkerEnvironment } from "@opencode/schema/worker-environment"
 import { resourceQueueReason } from "./worker-placement"
 import {
   OpenCode,
@@ -47,7 +48,7 @@ export async function readConfig(file: string): Promise<Config> {
   const ids = config.workers.map((worker) => worker.id)
   if (new Set(ids).size !== ids.length) throw new Error("Worker IDs must be unique")
   const slots = config.workers.flatMap((worker) =>
-    worker.directories.map((directory) => `${address(worker.url)}:${directory}`),
+    worker.directories.map((directory) => JSON.stringify([address(worker.url), worker.environmentID ?? null, directory])),
   )
   if (new Set(slots).size !== slots.length) throw new Error("Each server checkout may belong to only one worker slot")
   config.workers.forEach((worker) => address(worker.url))
@@ -74,6 +75,7 @@ export async function add(file: string, worker: Worker.Registration) {
         config.workers.some(
           (item) =>
             address(item.url) === address(worker.url) &&
+            item.environmentID === worker.environmentID &&
             item.directories.some((dir) => worker.directories.includes(dir)),
         )
       )
@@ -658,6 +660,20 @@ function client(worker: Worker.Registration, environment: Readonly<Record<string
   return OpenCode.make({
     baseUrl: address(worker.url),
     headers: { authorization: `Basic ${btoa(`opencode:${password}`)}` },
+    ...(worker.environmentID && worker.environmentProxy ? {
+      fetch: Object.assign(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const request = new Request(input, init)
+        const url = new URL(request.url)
+        const response = await fetch(`${address(worker.url)}/api/worker-environments/${encodeURIComponent(worker.environmentID!)}/request`, {
+          method: "POST", headers: { authorization: `Basic ${btoa(`opencode:${password}`)}`, "content-type": "application/json" },
+          body: JSON.stringify({ method: request.method, path: url.pathname + url.search,
+            ...(!["GET", "HEAD"].includes(request.method) ? { body: await request.text() } : {}) }), signal: request.signal,
+        })
+        if (!response.ok) return response
+        const result = Schema.decodeUnknownSync(WorkerEnvironment.Response)(await response.json())
+        return new Response(result.status === 204 ? null : result.body, { status: result.status, headers: { "content-type": result.contentType } })
+      }, { preconnect: fetch.preconnect }),
+    } : {}),
   })
 }
 

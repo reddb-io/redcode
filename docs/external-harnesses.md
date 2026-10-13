@@ -6,6 +6,12 @@ The host selector determines where an executable, credential, native session or 
 **Settings → Servers** also links to the selected host's tools. Normal setup uses these screens;
 editing a configuration file is not required.
 
+For a fresh worker checkout, **Agents → Isolated workspaces** builds a dedicated Linux container and
+prepares a public Git repository automatically. Its setup and lifecycle are described in
+[distributed workers](distributed-workers.md#prepare-isolated-workspaces-in-the-app). Worker-batch
+placement still uses the native Redcode harness; the host-wide Claude/Codex adapters below do not
+automatically enter the isolated worker pool.
+
 ## Connect a remote machine
 
 1. Open **Agents → Machines** on the coordinator you want to use.
@@ -13,6 +19,9 @@ editing a configuration file is not required.
    The existing SSH bootstrap checks the platform/version, installs the server when needed, starts
    its service and forwards its port. Authentication challenges and progress appear in that dialog.
 3. Select the connected machine and **Check server**. Review its platform and server version.
+   New connections select and inspect the machine automatically. **Manage workers on this machine**
+   opens its coordinator; **Code in this project on this machine** starts a draft on its filesystem.
+   Use the project selector or **Browse this machine** to choose the remote directory.
 4. Enter a worker name, an existing checkout directory and any placement tags; choose **Register worker
    checkout**. The remote directory is resolved on the target before registration. The coordinator
    stores its server credential through the existing credential store.
@@ -22,8 +31,9 @@ local coordinator. A remote coordinator cannot reach that forward on your deskto
 address it can reach instead. Provider credentials stay on the execution machine. Registering a worker
 does not copy your project to it or install its language toolchain.
 
-SSH bootstrap supports Linux ARM64; 32-bit Raspberry Pi installations still need a supported 64-bit
+SSH bootstrap supports Windows, Linux and macOS x64/ARM64; 32-bit Raspberry Pi installations still need a supported 64-bit
 OS. Physical Pi/LAN validation is separate from Docker and protocol tests.
+For offsite Desktop access through a router VPN, see [remote coding access](remote-access.md#connect-desktop-over-your-lan-or-router-vpn).
 
 ## Configure Claude Code or Codex
 

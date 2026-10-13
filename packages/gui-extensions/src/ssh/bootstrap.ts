@@ -2,6 +2,7 @@ import { Effect, Option, Schema } from "effect"
 import { HttpClient } from "effect/unstable/http"
 import { parseTarget, quote, runSsh, sshArgs, SshFailure } from "./command"
 import { RemoteCli } from "./remote-cli"
+import { WindowsSsh } from "./windows"
 
 // Use commands supported by released V2 CLIs. The registration is the service's
 // complete private discovery contract; no remote Python/Node runtime is needed.
@@ -89,6 +90,48 @@ export const bootstrap = Effect.fn("Ssh.bootstrap")(function* (input: {
     })
 
   yield* input.stage("checking")
+  const platform = yield* runSsh({
+    args: [...sshArgs(input.target), input.target.host, WindowsSsh.probe],
+    env: input.env,
+    timeout: 30_000,
+  }).pipe(Effect.orElseSucceed(() => ""))
+  const windows = platform
+    .split(/\r?\n/)
+    .find((line) => line.startsWith("REDCODE_REMOTE_WINDOWS="))
+    ?.split("=")[1]
+  if (windows) {
+    if (windows === "unsupported") return yield* Effect.fail(new SshFailure("platform"))
+    const execute = (script: string) =>
+      runSsh({
+        args: [...sshArgs(input.target), input.target.host, WindowsSsh.command(script)],
+        env: input.env,
+      })
+    const registered = parseRegistration(yield* execute(WindowsSsh.discover))
+    if (registered && (input.development || registered.version === input.version))
+      return yield* Effect.try({
+        try: () => ({ ...connectionAddress(registered.url, registered.password), windows: true }),
+        catch: SshFailure.from,
+      })
+    if (registered && !input.replace) return yield* Effect.fail(new SshFailure("version", registered.version))
+    const staged = RemoteCli.parseVersion(yield* execute(WindowsSsh.staged(input.version))) === input.version
+    const version =
+      input.development && !staged
+        ? yield* RemoteCli.latestRelease().pipe(Effect.mapError(SshFailure.from))
+        : input.version
+    if (!staged) {
+      yield* input.stage("downloading")
+      yield* execute(WindowsSsh.install(windows, version)).pipe(Effect.mapError(() => new SshFailure("install")))
+    }
+    yield* input.stage("starting")
+    const current = parseRegistration(yield* execute(WindowsSsh.start(version, input.replace ?? false)))
+    if (!current) return yield* Effect.fail(new SshFailure("service"))
+    if (!input.development && current.version !== input.version)
+      return yield* Effect.fail(new SshFailure("version", current.version))
+    return yield* Effect.try({
+      try: () => ({ ...connectionAddress(current.url, current.password), windows: true }),
+      catch: SshFailure.from,
+    })
+  }
   const registered = parseRegistration(yield* run(discoverScript))
 
   if (registered && (input.development || registered.version === input.version)) {
@@ -103,7 +146,7 @@ export const bootstrap = Effect.fn("Ssh.bootstrap")(function* (input: {
   if (registered && !input.replace) return yield* Effect.fail(new SshFailure("version", registered.version))
   const destination = yield* Effect.try({ try: () => binaryPath(input.version), catch: SshFailure.from })
   const existing = yield* run(
-    `if [ -x "${destination}-rpc-sidecar" ] && [ -x "${destination}-design" ]; then\n${RemoteCli.versionScript(`"${destination}"`)}fi\n`,
+    `if [ -x "${destination}-rpc-sidecar" ]; then\n${RemoteCli.versionScript(`"${destination}"`)}fi\n`,
   )
   const staged = RemoteCli.parseVersion(existing) === input.version
 
@@ -125,17 +168,13 @@ export const bootstrap = Effect.fn("Ssh.bootstrap")(function* (input: {
       ?.split("=")[1]
 
     const url = yield* Effect.try({ try: () => RemoteCli.archiveUrl(target ?? "", version), catch: SshFailure.from })
-    const designURL = RemoteCli.archiveUrl(target ?? "", version, true)
     yield* input.stage("downloading")
-    yield* run(RemoteCli.installScript({ ...setup, source: { type: "download", url, designURL } })).pipe(
+    yield* run(RemoteCli.installScript({ ...setup, source: { type: "download", url } })).pipe(
       Effect.catch(
         Effect.fnUntraced(function* (error) {
           yield* input.stage("uploading")
           const http = yield* HttpClient.HttpClient
-          for (const download of [
-            { url, companion: false },
-            { url: designURL, companion: true },
-          ]) {
+          for (const download of [{ url, companion: false }]) {
             const response = yield* http.get(download.url).pipe(Effect.mapError(SshFailure.from))
 
             if (response.status < 200 || response.status >= 300)

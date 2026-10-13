@@ -51,28 +51,9 @@ export async function buildLocalWslCli(input: { version: string; script: string;
       ],
       { cwd: root, env: { ...environment, REDCODE_RPC_SIDECAR_DIR: sidecarDir }, windowsHide: true },
     )
-    await execFileAsync(
-      "bunx",
-      [
-        packageManager,
-        join(root, "packages/design-app/script/build.ts"),
-        `--target=redcode-design-${target}`,
-        "--skip-install",
-        `--outdir=${join(directory, "design")}`,
-      ],
-      {
-        cwd: root,
-        env: environment,
-        windowsHide: true,
-      },
-    )
     await mkdir(dirname(input.output), { recursive: true })
     await copyFile(join(directory, "cli", `redcode-${target}`, "bin", "redcode"), input.output)
     await copyFile(sidecar, join(dirname(input.output), "redcode-rpc-sidecar"))
-    await copyFile(
-      join(directory, "design", `redcode-design-${target}`, "redcode-design"),
-      join(dirname(input.output), "redcode-design"),
-    )
 
     return input.output
   }

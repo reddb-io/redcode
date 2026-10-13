@@ -29,5 +29,10 @@ it.live("boots the workerd profile over durable object storage", () =>
 
     const body: unknown = yield* Effect.promise(() => status.json())
     expect(body).toMatchObject({ version: "workerd-test" })
+    const environments = yield* Effect.promise(() => handler(new Request("http://opencode.local/api/worker-environments", {
+      headers: { authorization: `Basic ${btoa("opencode:secret")}` },
+    })))
+    expect(environments.status).toBe(200)
+    expect(yield* Effect.promise(() => environments.json())).toEqual({ available: false, engine: "unsupported", environments: [] })
   }),
 )

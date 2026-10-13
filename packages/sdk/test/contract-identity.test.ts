@@ -11,6 +11,7 @@ import { Config } from "@opencode/schema/config"
 import { Event } from "@opencode/schema/event"
 import { Harness } from "@opencode/schema/harness"
 import { UsageReporter } from "@opencode/schema/usage-reporter"
+import { WorkerEnvironment } from "@opencode/schema/worker-environment"
 import { HostResources } from "@opencode/schema/host-resources"
 import { Location } from "@opencode/schema/location"
 import { Model } from "@opencode/schema/model"
@@ -40,6 +41,7 @@ test("re-exports canonical contracts directly from Schema", () => {
   expect(SDK.Attention).toBe(Attention)
   expect(SDK.Harness).toBe(Harness)
   expect(SDK.UsageReporter).toBe(UsageReporter)
+  expect(SDK.WorkerEnvironment).toBe(WorkerEnvironment)
   expect(SDK.HostResources).toBe(HostResources)
   expect(SDK.Config).toBe(Config)
   expect(SDK.Event).toBe(Event)
@@ -82,6 +84,7 @@ test("re-exports canonical contracts directly from Schema", () => {
     "Tool",
     "UsageReporter",
     "WebSearch",
+    "WorkerEnvironment",
     "Workspace",
     "Worktree",
   ])

@@ -63,6 +63,7 @@ import { PtyEnvironment } from "./pty-environment"
 import { PtySockets } from "./pty-sockets"
 import { ServerPairing } from "./pairing"
 import { Workers } from "./workers"
+import { WorkerEnvironments } from "./worker-environments"
 import { Harnesses } from "./harness"
 import { harnessUsageNode } from "./harness-usage"
 import { InfrastructureAccess } from "./infrastructure-access"
@@ -74,6 +75,7 @@ import { DesignBrowser } from "./design-browser"
 import { LegacyRpcApi } from "@opencode/protocol/groups/legacy-rpc"
 import { LegacyRpcHandler } from "./handlers/legacy-rpc"
 import type { ServerOptions } from "./options"
+import path from "node:path"
 
 const applicationServiceNodes = [
   Global.node,
@@ -114,6 +116,7 @@ const applicationServiceNodes = [
   PtyEnvironment.node,
   ServerPairing.node,
   Workers.node,
+  WorkerEnvironments.node,
   Harnesses.node,
   harnessUsageNode,
   LocationServiceMap.node,
@@ -223,6 +226,7 @@ function makeRoutes<AuthError, AuthServices>(
     const replacements: LayerNode.Replacements = [
       ...standard,
       Workers.node.replace(Workers.configured(options.workers?.directory, options.access)),
+      ...(options.workers?.directory ? [WorkerEnvironments.node.replace(WorkerEnvironments.configured(path.join(options.workers.directory, "environments")))] : []),
       // Private instances resolve this list lazily so they inherit the complete host graph, including the selector.
       ...(instances ? [Instance.node.replace(instances(() => replacements))] : []),
       ...overrides,

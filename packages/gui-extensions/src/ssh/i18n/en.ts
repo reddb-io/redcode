@@ -20,7 +20,7 @@ export default {
   "error.input": "Enter a host or SSH connection command. Remote commands and unsupported SSH options aren’t allowed.",
   "error.connection": "Could not establish the SSH connection. Check your network and SSH configuration.",
   "error.platform":
-    "This remote platform is not supported. Automatic setup currently requires Linux or macOS on x64 or arm64.",
+    "This remote platform is not supported. Automatic setup requires 64-bit Windows, Linux or macOS on x64 or arm64.",
   "error.version": "The remote service must match this Desktop version before connecting.",
   "error.install": "Could not install the remote server. Check connectivity, disk space, and that tar is installed.",
   "error.unpublished":

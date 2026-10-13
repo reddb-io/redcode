@@ -3,6 +3,7 @@ import { Schema } from "effect"
 import { Spec } from "../framework/spec"
 import { Updater } from "../services/updater"
 import { name } from "@opencode/util/product"
+import { RemoteTunnel } from "../services/remote-tunnel"
 
 export const PrintLogs = GlobalFlag.setting("print-logs")({
   flag: Flag.boolean("print-logs").pipe(
@@ -1029,6 +1030,16 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
     Spec.make("pair", {
       description: "Print one-time links to connect a browser or app",
       params: {
+        relay: Flag.string("relay").pipe(
+          Flag.withDescription(
+            "OpenTunnel-compatible relay API origin; requires --remote and is saved for future pairing",
+          ),
+          Flag.mapTryCatch(
+            RemoteTunnel.apiURL,
+            () => "Expected an HTTPS relay origin, or HTTP loopback for development",
+          ),
+          Flag.optional,
+        ),
         remote: Flag.boolean("remote").pipe(
           Flag.withDescription("Connect through an HTTPS tunnel (exposes the server to the internet)"),
           Flag.withDefault(false),

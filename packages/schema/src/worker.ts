@@ -20,6 +20,8 @@ export const Registration = Schema.Struct({
   directories: Schema.Array(Text.check(Schema.isPattern(/^(\/|[a-zA-Z]:[\\/])/))).check(Schema.isMinLength(1)),
   tags: Schema.Array(Text),
   resourceID: optional(Text),
+  environmentID: optional(Name),
+  environmentProxy: optional(Schema.Boolean),
 }).annotate({ identifier: "Worker.Registration" })
 export interface Registration extends Schema.Schema.Type<typeof Registration> {}
 export const Config = Schema.Struct({ workers: Schema.Array(Registration) }).annotate({ identifier: "Worker.Config" })
@@ -93,6 +95,8 @@ export const Register = Schema.Struct({
   tags: Registration.fields.tags,
   password: Text,
   resourceID: optional(Text),
+  environmentID: optional(Name),
+  environmentProxy: optional(Schema.Boolean),
 }).annotate({ identifier: "Worker.Register" })
 export interface Register extends Schema.Schema.Type<typeof Register> {}
 export const Status = Schema.Struct({

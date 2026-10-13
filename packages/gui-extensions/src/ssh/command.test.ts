@@ -43,6 +43,12 @@ describe("SSH connection commands", () => {
     ).toBe("read interrupted")
     expect(commandFailureDetail(255, { stdout: "", stderr: "" })).toBe('{"exitCode":255}')
   })
+  test("Windows forwarding keeps an independent connection without requiring a Unix shell", () => {
+    const args = tunnelArgs({ host: "user@windows", args: [] }, 1234, { host: "127.0.0.1", port: 35555, windows: true })
+    expect(args).toContain("-N")
+    expect(args.slice(4, 7)).toEqual(["-S", "none", "-N"])
+    expect(args.slice(-3)).toEqual(["-L", "127.0.0.1:1234:127.0.0.1:35555", "user@windows"])
+  })
   test("preserves aliases and connection options without invoking a shell", () => {
     expect(parseTarget('ssh -p 2222 -i "~/.ssh/work key" -J gateway user@devbox')).toEqual({
       host: "user@devbox",

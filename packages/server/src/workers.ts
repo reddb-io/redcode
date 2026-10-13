@@ -294,6 +294,9 @@ function layer(directory?: string, accessOptions?: InfrastructureAccess.Options)
             }
             if ((await all()).some((item) => !terminal(item.report)))
               throw new Error("Finish the current batch before changing workers")
+            if (value.resourceID && (await WorkerPool.readConfig(config)).workers.some((item) =>
+              item.resourceID === value.resourceID && item.environmentID !== value.environmentID && (item.environmentID || value.environmentID),
+            )) throw new Error("An isolated environment needs its own Console resource; do not share grants across environments")
             const stored = await run(
               credential.create({
                 integrationID: Integration.ID.make(`redcode-worker:${value.id}`),
@@ -306,6 +309,8 @@ function layer(directory?: string, accessOptions?: InfrastructureAccess.Options)
               url: value.url,
               directories: value.directories,
               ...(value.resourceID ? { resourceID: value.resourceID } : {}),
+              ...(value.environmentID ? { environmentID: value.environmentID } : {}),
+              ...(value.environmentProxy !== undefined ? { environmentProxy: value.environmentProxy } : {}),
               tags: value.tags,
               passwordEnv: stored.id,
             }

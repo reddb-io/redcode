@@ -1035,6 +1035,8 @@ export type UsageReporterRecord = {
   tools: { calls: number; succeeded: number; failed: number; unfinished: number; durationMs: number } | null
 }
 
+export type WorkerEnvironmentResponse = { status: number; body: string; contentType: string }
+
 export type WorktreeArchive = { reference: string; head: string; createdAt: string }
 
 export type WorktreeReview = {
@@ -2605,6 +2607,22 @@ export type IntelligenceCheck = {
   requests?: Array<ConnectionCheckRequest1> | null
 }
 
+export type WorkerEnvironmentInfo = {
+  id: WorkerName
+  repository: string
+  ref: string
+  image: string
+  cpu: number
+  imageID?: string
+  memoryMiB: number
+  directory: "/workspace/project"
+  state: "preparing" | "ready" | "stopped" | "archived" | "failed" | "reconcile"
+  phase: "container" | "clone" | "checkout" | "setup" | "server" | "complete"
+  createdAt: string
+  commit?: string
+  error?: string
+}
+
 export type WorkerRegistration = {
   id: WorkerName
   url: string
@@ -2612,6 +2630,8 @@ export type WorkerRegistration = {
   directories: Array<string>
   tags: Array<string>
   resourceID?: string
+  environmentID?: WorkerName
+  environmentProxy?: boolean
 }
 
 export type WorkerEntry = {
@@ -2978,6 +2998,12 @@ export type IntelligenceDetectedRouter = {
   detection: RouterDetection
   evaluator?: IntelligenceEvaluator
   recommended?: RouterRecommendations
+}
+
+export type WorkerEnvironmentSnapshot = {
+  available: boolean
+  engine: string
+  environments: Array<WorkerEnvironmentInfo>
 }
 
 export type WorkerStatus = {
@@ -11489,6 +11515,8 @@ export type WorkersAddInput = {
     readonly tags: ReadonlyArray<string>
     readonly password: string
     readonly resourceID?: string
+    readonly environmentID?: string
+    readonly environmentProxy?: boolean
   }["id"]
   readonly url: {
     readonly id: string
@@ -11497,6 +11525,8 @@ export type WorkersAddInput = {
     readonly tags: ReadonlyArray<string>
     readonly password: string
     readonly resourceID?: string
+    readonly environmentID?: string
+    readonly environmentProxy?: boolean
   }["url"]
   readonly directories: {
     readonly id: string
@@ -11505,6 +11535,8 @@ export type WorkersAddInput = {
     readonly tags: ReadonlyArray<string>
     readonly password: string
     readonly resourceID?: string
+    readonly environmentID?: string
+    readonly environmentProxy?: boolean
   }["directories"]
   readonly tags: {
     readonly id: string
@@ -11513,6 +11545,8 @@ export type WorkersAddInput = {
     readonly tags: ReadonlyArray<string>
     readonly password: string
     readonly resourceID?: string
+    readonly environmentID?: string
+    readonly environmentProxy?: boolean
   }["tags"]
   readonly password: {
     readonly id: string
@@ -11521,6 +11555,8 @@ export type WorkersAddInput = {
     readonly tags: ReadonlyArray<string>
     readonly password: string
     readonly resourceID?: string
+    readonly environmentID?: string
+    readonly environmentProxy?: boolean
   }["password"]
   readonly resourceID?: {
     readonly id: string
@@ -11529,7 +11565,29 @@ export type WorkersAddInput = {
     readonly tags: ReadonlyArray<string>
     readonly password: string
     readonly resourceID?: string
+    readonly environmentID?: string
+    readonly environmentProxy?: boolean
   }["resourceID"]
+  readonly environmentID?: {
+    readonly id: string
+    readonly url: string
+    readonly directories: ReadonlyArray<string>
+    readonly tags: ReadonlyArray<string>
+    readonly password: string
+    readonly resourceID?: string
+    readonly environmentID?: string
+    readonly environmentProxy?: boolean
+  }["environmentID"]
+  readonly environmentProxy?: {
+    readonly id: string
+    readonly url: string
+    readonly directories: ReadonlyArray<string>
+    readonly tags: ReadonlyArray<string>
+    readonly password: string
+    readonly resourceID?: string
+    readonly environmentID?: string
+    readonly environmentProxy?: boolean
+  }["environmentProxy"]
 }
 
 export type WorkersAddOutput = WorkerStatus
@@ -11724,6 +11782,140 @@ export type UsageReporterRetryInput = {
 }
 
 export type UsageReporterRetryOutput = UsageReporterSnapshot
+
+export type WorkerEnvironmentsListOutput = WorkerEnvironmentSnapshot
+
+export type WorkerEnvironmentsCreateInput = {
+  readonly id: {
+    readonly id: string
+    readonly repository: string
+    readonly ref: string
+    readonly image: string
+    readonly cpu: number
+    readonly memoryMiB: number
+    readonly setup?: string
+    readonly provider?: { readonly integrationID: string; readonly key: string }
+  }["id"]
+  readonly repository: {
+    readonly id: string
+    readonly repository: string
+    readonly ref: string
+    readonly image: string
+    readonly cpu: number
+    readonly memoryMiB: number
+    readonly setup?: string
+    readonly provider?: { readonly integrationID: string; readonly key: string }
+  }["repository"]
+  readonly ref: {
+    readonly id: string
+    readonly repository: string
+    readonly ref: string
+    readonly image: string
+    readonly cpu: number
+    readonly memoryMiB: number
+    readonly setup?: string
+    readonly provider?: { readonly integrationID: string; readonly key: string }
+  }["ref"]
+  readonly image: {
+    readonly id: string
+    readonly repository: string
+    readonly ref: string
+    readonly image: string
+    readonly cpu: number
+    readonly memoryMiB: number
+    readonly setup?: string
+    readonly provider?: { readonly integrationID: string; readonly key: string }
+  }["image"]
+  readonly cpu: {
+    readonly id: string
+    readonly repository: string
+    readonly ref: string
+    readonly image: string
+    readonly cpu: number
+    readonly memoryMiB: number
+    readonly setup?: string
+    readonly provider?: { readonly integrationID: string; readonly key: string }
+  }["cpu"]
+  readonly memoryMiB: {
+    readonly id: string
+    readonly repository: string
+    readonly ref: string
+    readonly image: string
+    readonly cpu: number
+    readonly memoryMiB: number
+    readonly setup?: string
+    readonly provider?: { readonly integrationID: string; readonly key: string }
+  }["memoryMiB"]
+  readonly setup?: {
+    readonly id: string
+    readonly repository: string
+    readonly ref: string
+    readonly image: string
+    readonly cpu: number
+    readonly memoryMiB: number
+    readonly setup?: string
+    readonly provider?: { readonly integrationID: string; readonly key: string }
+  }["setup"]
+  readonly provider?: {
+    readonly id: string
+    readonly repository: string
+    readonly ref: string
+    readonly image: string
+    readonly cpu: number
+    readonly memoryMiB: number
+    readonly setup?: string
+    readonly provider?: { readonly integrationID: string; readonly key: string }
+  }["provider"]
+}
+
+export type WorkerEnvironmentsCreateOutput = WorkerEnvironmentInfo
+
+export type WorkerEnvironmentsBuildInput = { readonly version: { readonly version: string }["version"] }
+
+export type WorkerEnvironmentsBuildOutput = { image: string }
+
+export type WorkerEnvironmentsStartInput = { readonly id: { readonly id: string }["id"] }
+
+export type WorkerEnvironmentsStartOutput = WorkerEnvironmentInfo
+
+export type WorkerEnvironmentsRegisterInput = {
+  readonly id: { readonly id: string }["id"]
+  readonly resourceID?: { readonly resourceID?: string }["resourceID"]
+}
+
+export type WorkerEnvironmentsRegisterOutput = WorkerStatus
+
+export type WorkerEnvironmentsStopInput = { readonly id: { readonly id: string }["id"] }
+
+export type WorkerEnvironmentsStopOutput = WorkerEnvironmentInfo
+
+export type WorkerEnvironmentsRemoveInput = {
+  readonly id: { readonly id: string }["id"]
+  readonly purge: { readonly purge: boolean }["purge"]
+}
+
+export type WorkerEnvironmentsRemoveOutput = void
+
+export type WorkerEnvironmentsRequestInput = {
+  readonly id: { readonly id: string }["id"]
+  readonly method: {
+    readonly method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
+    readonly path: string
+    readonly body?: string
+  }["method"]
+  readonly path: {
+    readonly method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
+    readonly path: string
+    readonly body?: string
+  }["path"]
+  readonly body?: {
+    readonly method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
+    readonly path: string
+    readonly body?: string
+  }["body"]
+}
+
+export type WorkerEnvironmentsRequestOutput = WorkerEnvironmentResponse
 
 export type WorktreeLifecycleArchiveInput = {
   readonly projectID: { readonly projectID: string; readonly directory: string; readonly head: string }["projectID"]

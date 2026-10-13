@@ -11,7 +11,7 @@ import { ServerConnection } from "../../src/runtime/server/registry"
 import { useExtensionServers } from "../../src/runtime/extension/servers"
 
 /** The input of a WSL or SSH method this fixture answers. */
-type FixtureInput = { id?: string; name?: string }
+type FixtureInput = { id?: string; name?: string; target?: string }
 
 /** A main-side method: SSH `start` answers with the state revision, the others with nothing. */
 type FixtureMethod = (input: FixtureInput) => number | void
@@ -160,9 +160,22 @@ export function mount(input: {
 
     const ssh = {
       // Like main: a connect opens a new tunnel to a remote server with a new password.
-      start() {
+      start(value) {
         setStore("connects", (count) => count + 1)
-        setSsh({ stage: "ready", http: { url: input.ssh ?? "", password: `ssh-${store.connects + 1}` } })
+        const config = { id: value.id ?? "box", name: value.name ?? "box", target: value.target ?? "box" }
+        setStore("ssh", (state) => ({
+          revision: state.revision + 1,
+          servers: [
+            ...state.servers.filter((item) => item.config.id !== config.id),
+            {
+              config,
+              saved: true,
+              stage: "ready",
+              http: { url: input.ssh ?? "", password: `ssh-${store.connects + 1}` },
+              detail: "",
+            },
+          ],
+        }))
 
         return store.ssh.revision
       },

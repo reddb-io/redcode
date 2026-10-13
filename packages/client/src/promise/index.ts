@@ -4,6 +4,7 @@ export * from "./generated/index.js"
 export { OpenCode } from "./client.js"
 export { Harness } from "@opencode/schema/harness"
 export { UsageReporter } from "@opencode/schema/usage-reporter"
+export { WorkerEnvironment } from "@opencode/schema/worker-environment"
 export type {
   AgentApi,
   CommandApi,

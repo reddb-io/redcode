@@ -24,7 +24,12 @@
     "infrastructureAccess": {
       "implemented": true,
       "newWork": "unreleased",
-      "roles": ["infrastructure admin", "infrastructure user", "organization owner/admin", "organization member"],
+      "roles": [
+        "infrastructure admin",
+        "infrastructure user",
+        "organization owner/admin",
+        "organization member"
+      ],
       "features": [
         "separate owner memberships",
         "explicit workspace checkout grants",
@@ -153,9 +158,36 @@
       "upstream": {
         "v2Execution": "process-local",
         "remoteWorkspacesBranch": "implementation plan, excludes clustered Session execution"
+      },
+      "isolatedWorkspaces": {
+        "implemented": true,
+        "newWork": "unreleased",
+        "entrypoint": "Agents → Isolated workspaces",
+        "features": [
+          "public HTTPS clone and recorded base commit",
+          "detached workspace preparation",
+          "pinned worker image and verified release archive",
+          "non-root read-only container with private volumes and credentials",
+          "enforced CPU/memory/PID limits",
+          "internal isolated networks and public HTTPS gateway",
+          "same-host and remote-coordinator registration",
+          "operator-controlled stop/archive/restore/purge"
+        ],
+        "verified": [
+          "source app production browser lifecycle",
+          "real Docker filesystem/process/resource/network containment and HTTP forwarding"
+        ],
+        "pending": [
+          "private Git authentication",
+          "physical Pi ARM64/LAN acceptance",
+          "installed desktop acceptance",
+          "volume disk quotas",
+          "VM isolation",
+          "cross-coordinator drain/fencing and hosted provisioning"
+        ]
       }
     },
-    "lastReleasedVersion": "0.77.1",
+    "lastReleasedVersion": "0.80.0",
     "recentAdoption": {
       "counts": {
         "present-capability": 49,

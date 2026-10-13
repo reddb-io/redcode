@@ -80,7 +80,7 @@ export function archiveUrl(target: string, version: string, companion = false) {
   return `https://registry.npmjs.org/@reddb-io/${name}/-/${name}-${requireVersion(version)}.tgz`
 }
 
-type Source = { type: "download"; url: string; designURL: string } | { type: "archive"; companion?: boolean }
+type Source = { type: "download"; url: string } | { type: "archive"; companion?: boolean }
 
 export function installScript(input: { version: string; directory?: string; source: Source }) {
   const version = requireVersion(input.version)
@@ -94,7 +94,6 @@ trap 'rm -rf "$stage"' EXIT
 ${stageBinary(input.source)}
 chmod 755 "$stage/package/bin/"*
 ${input.source.type === "archive" && input.source.companion ? 'test -f "$stage/package/bin/redcode-design"' : `test -f "$stage/package/bin/redcode-rpc-sidecar"\n${verifyScript('"$stage/package/bin/redcode"', version)}`}
-${input.source.type === "download" ? 'test -f "$stage/package/bin/redcode-design"' : ""}
 mv "$stage/package/bin/"* "$destination/"
 `
 }
@@ -102,7 +101,7 @@ mv "$stage/package/bin/"* "$destination/"
 function stageBinary(source: Source) {
   if (source.type === "archive") return 'cat > "$stage/archive.tgz"\ntar -xzf "$stage/archive.tgz" -C "$stage"'
 
-  return [source.url, source.designURL]
+  return [source.url]
     .map(
       (url) => `url=${quote(url)}
 if command -v curl >/dev/null 2>&1; then

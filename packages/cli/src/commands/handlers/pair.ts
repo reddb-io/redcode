@@ -1,4 +1,4 @@
-import { cancel, confirm, isCancel, log } from "@clack/prompts"
+import { cancel, confirm, isCancel, log, select, text } from "@clack/prompts"
 import { EOL } from "os"
 import { Effect, Option, Schedule } from "effect"
 import { Service } from "@opencode/client/effect/service"
@@ -19,10 +19,16 @@ export default Runtime.handler(
       )
     if (input.remote && Option.isSome(input.url))
       return yield* Effect.fail(new Error("--remote cannot be combined with --url"))
-    if (input.remote && config.remote === undefined) {
-      if (!(yield* remoteConsent(config, input))) return
-      // Changing the setting restarts the service, and the ensure below starts it again with the tunnel.
-      yield* ServiceConfig.set("remote", "true")
+    if (!input.remote && Option.isSome(input.relay)) return yield* Effect.fail(new Error("--relay requires --remote"))
+    if (input.remote) {
+      if (config.remote === undefined && !(yield* remoteConsent(config, input))) return
+      const relay =
+        Option.getOrUndefined(input.relay) ??
+        config.relay ??
+        (config.remote ? RemoteTunnel.HOSTED_API : yield* chooseRelay())
+      if (!relay) return
+      if (config.remote === undefined || config.relay !== relay)
+        yield* ServiceConfig.enableRemote(relay)
     }
     const endpoint = yield* Service.ensure(yield* ServiceConfig.options())
     const client = OpenCode.make({ baseUrl: endpoint.url, headers: Service.headers(endpoint) })
@@ -53,7 +59,7 @@ export default Runtime.handler(
       ].join(EOL) + EOL,
     )
 
-    if (input.remote || Option.isSome(input.url)) return
+    if (input.remote || config.remote || Option.isSome(input.url)) return
     const url = new URL(endpoint.url)
     if (!["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)) return
     process.stderr.write(
@@ -121,14 +127,59 @@ const pairingURLs = Effect.fnUntraced(function* (
 ) {
   if (input.remote) return [yield* remoteURL(client)]
   if (Option.isSome(input.url)) return [input.url.value]
+  if ((yield* ServiceConfig.read()).remote) return [yield* remoteURL(client)]
   return (yield* Effect.tryPromise(() => client.server.info())).urls
+})
+
+const chooseRelay = Effect.fn("cli.pair.relay")(function* () {
+  if (!process.stdin.isTTY || !process.stdout.isTTY)
+    return yield* Effect.fail(
+      new Error(
+        "Choose a relay with --relay <https://your-relay> (or explicitly --relay https://opentunnel.xyz). --yes only accepts internet exposure.",
+      ),
+    )
+  const provider = yield* Effect.promise(() =>
+    select({
+      message: "Where should Redcode connect?",
+      options: [
+        { value: "self", label: "Your own relay", hint: "OpenTunnel-compatible API on your infrastructure" },
+        { value: "hosted", label: "Hosted OpenTunnel", hint: "Uses the external service at opentunnel.xyz" },
+      ],
+    }),
+  )
+  if (isCancel(provider)) {
+    cancel("Pairing cancelled")
+    process.exitCode = 130
+    return
+  }
+  if (provider === "hosted") return RemoteTunnel.HOSTED_API
+  const address = yield* Effect.promise(() =>
+    text({
+      message: "Relay API address",
+      placeholder: "https://relay.example.org",
+      validate: (value) => {
+        try {
+          RemoteTunnel.apiURL(value ?? "")
+        } catch {
+          return "Enter an HTTPS origin; HTTP loopback is supported for local development"
+        }
+      },
+    }),
+  )
+  if (isCancel(address)) {
+    cancel("Pairing cancelled")
+    process.exitCode = 130
+    return
+  }
+  return RemoteTunnel.apiURL(address)
 })
 
 // The service attaches the tunnel in the background, so wait for its URL to appear in server info.
 const remoteURL = Effect.fnUntraced(function* (client: ReturnType<typeof OpenCode.make>) {
   const tunnelURL = Effect.gen(function* () {
-    const route = (yield* ServiceConfig.read()).remote?.route
-    const hostname = route === undefined ? undefined : yield* RemoteTunnel.hostname(route)
+    const config = yield* ServiceConfig.read()
+    const route = config.remote?.route
+    const hostname = route === undefined ? undefined : yield* RemoteTunnel.hostname(route, config.relay)
     const info = yield* Effect.tryPromise(() => client.server.info())
     const url = info.urls.find((candidate) => hostname !== undefined && new URL(candidate).hostname === hostname)
     if (url === undefined) return yield* Effect.fail(new Error("Remote tunnel is not ready"))

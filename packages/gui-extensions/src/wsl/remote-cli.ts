@@ -52,19 +52,17 @@ ${
     ? `mkdir -p "$stage/package/bin"
 binary=${input.binary}
 cp "$binary" "$stage/package/bin/redcode"
-cp "$(dirname "$binary")/redcode-rpc-sidecar" "$stage/package/bin/redcode-rpc-sidecar"
-cp "$(dirname "$binary")/redcode-design" "$stage/package/bin/redcode-design"`
+cp "$(dirname "$binary")/redcode-rpc-sidecar" "$stage/package/bin/redcode-rpc-sidecar"`
     : `arch=$(uname -m)
 case "$arch" in x86_64|amd64) arch=x64-baseline ;; aarch64|arm64) arch=arm64 ;; *) printf 'Unsupported Redcode architecture: %s\\n' "$arch" >&2; exit 2 ;; esac
 target="linux-$arch"
 if [ -f /etc/alpine-release ] || (ldd --version 2>&1 | grep -qi musl); then target="$target-musl"; fi
-for package in "redcode-$target" "redcode-design-$target"; do
+for package in "redcode-$target"; do
   url="https://registry.npmjs.org/@reddb-io/$package/-/$package-${version}.tgz"
   curl -fsSL --connect-timeout 15 --max-time 180 "$url" -o "$stage/archive.tgz"
   tar -xzf "$stage/archive.tgz" -C "$stage"
 done
-test -f "$stage/package/bin/redcode-rpc-sidecar"
-test -f "$stage/package/bin/redcode-design"`
+test -f "$stage/package/bin/redcode-rpc-sidecar"`
 }
 chmod 755 "$stage/package/bin/"*
 test "$("$stage/package/bin/redcode" --version | awk '{print $NF}' | sed 's/^v//')" = ${quote(version)}

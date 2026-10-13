@@ -1,5 +1,6 @@
 /** @jsxImportSource @opentui/solid */
 import { testRender } from "@opentui/solid"
+import { ScrollBoxRenderable } from "@opentui/core"
 import { expect, test } from "bun:test"
 import { mkdir } from "node:fs/promises"
 import path from "node:path"
@@ -581,10 +582,89 @@ test("renders a field description as Markdown", async () => {
   try {
     const frame = await prompt.app.waitForFrame((frame) => frame.includes("Execute this plan?"))
     expect(frame).not.toContain("**this**")
+    expect(frame).not.toContain("pgup/pgdn scroll")
   } finally {
     prompt.app.renderer.destroy()
   }
 })
+
+for (const width of [58, 160]) {
+  test(`long plan approval keeps its actions visible and scrolls at ${width} columns`, async () => {
+    await using tmp = await tmpdir()
+    const prompt = await mountForm(
+      tmp.path,
+      width,
+      [
+        {
+          key: "choice",
+          type: "string",
+          title: "Execute this plan?",
+          description: [
+            "session plan, revision fixture-revision",
+            "# Implementation plan",
+            ...Array.from(
+              { length: 80 },
+              (_, i) => `## Step ${i + 1}\n\nImplement **deliverable ${i + 1}** and verify its acceptance criterion.\n`,
+            ),
+            "## End of reviewed plan",
+          ].join("\n\n"),
+          options: [
+            { value: "Execute", label: "Execute", description: "Approve this revision and continue in Build" },
+            { value: "Refine", label: "Refine", description: "Stay in Plan" },
+          ],
+          custom: false,
+        },
+      ],
+      24,
+    )
+    try {
+      const frame = await prompt.app.waitForFrame((frame) => frame.includes("Implementation plan"))
+      expect(frame).toContain("Implementation plan")
+      expect(frame).toContain("1. Execute")
+      expect(frame).toContain("2. Refine")
+      expect(frame).toContain("enter submit")
+      expect(frame).toContain("esc dismiss")
+      expect(frame).toContain("pgup/pgdn scroll")
+      expect(prompt.replies).toEqual([])
+      const scroll = prompt.app.renderer.root.findDescendantById("form-description-scroll")
+      expect(scroll).toBeInstanceOf(ScrollBoxRenderable)
+      if (!(scroll instanceof ScrollBoxRenderable)) throw new Error("Missing plan viewport")
+      expect(scroll.scrollHeight).toBeGreaterThan(scroll.viewport.height)
+      await prompt.app.mockMouse.scroll(scroll.x + 3, scroll.viewport.y + 1, "down")
+      await prompt.app.waitFor(() => scroll.scrollTop > 0)
+      prompt.app.mockInput.pressKey("HOME")
+      await prompt.app.waitFor(() => scroll.scrollTop === 0)
+      prompt.app.mockInput.pressArrow("down", { ctrl: true })
+      await prompt.app.waitFor(() => scroll.scrollTop > 0)
+      prompt.app.mockInput.pressArrow("up", { ctrl: true })
+      await prompt.app.waitFor(() => scroll.scrollTop === 0)
+      await prompt.app.mockInput.pressKeys(["\u001b[6~"])
+      await prompt.app.waitFor(() => scroll.scrollTop > 1)
+      await prompt.app.mockInput.pressKeys(["\u001b[5~"])
+      await prompt.app.waitFor(() => scroll.scrollTop === 0)
+      expect(prompt.replies).toEqual([])
+      prompt.app.resize(width === 58 ? 80 : 58, 18)
+      await prompt.app.waitForFrame((frame) => frame.includes("enter submit") && frame.includes("2. Refine"))
+      expect(scroll.viewport.height).toBeGreaterThan(0)
+      prompt.app.mockInput.pressKey("END")
+      await prompt.app.waitFor(() => scroll.scrollTop > 0)
+      await prompt.app.waitForFrame((frame) => frame.includes("End of reviewed plan"))
+      expect(prompt.app.captureCharFrame()).toContain("enter submit")
+      if (width === 160) {
+        const lines = prompt.app.captureCharFrame().split("\n")
+        const row = lines.findIndex((line) => line.includes("1. Execute"))
+        await prompt.app.mockMouse.click(lines[row].indexOf("Execute") + 1, row)
+      } else {
+        prompt.app.mockInput.pressArrow("down")
+        prompt.app.mockInput.pressEnter()
+      }
+      await prompt.app.waitFor(() => prompt.replies.length === 1)
+      expect(prompt.replies).toEqual([{ answer: { choice: width === 160 ? "Execute" : "Refine" } }])
+    } finally {
+      prompt.app.renderer.destroy()
+    }
+  })
+}
 
 test("committing a custom multiselect answer keeps one editable custom row", async () => {
   await using tmp = await tmpdir()

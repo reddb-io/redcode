@@ -281,13 +281,21 @@ the composer. Unix uses a local socket; Windows retains dit's existing input inj
 Use these options for remote coding, distributed tasks or shared access.
 For local terminal use, Redcode manages the agent server in the background automatically.
 
+Desktop, CLI and browser are clients: they display conversations and let you control execution.
+The **agent server** owns the sessions, project files, tools and provider connections on its machine.
+That same server becomes a **coordinator** when you register workers with it. It can run your coding
+session locally and dispatch independent batch tasks to registered checkouts on itself or other machines.
+**Console** manages identities and access to these resources.
+
 <a id="components"></a>
 
-| Component        | Purpose                                                                        |
-| ---------------- | ------------------------------------------------------------------------------ |
-| **Agent server** | Runs the agent, tools and files on its machine. Desktop and CLI connect to it. |
-| **Workers**      | Additional agent servers that receive independent tasks from a coordinator.    |
-| **Console**      | Administers accounts, organizations, authentication and resource access.       |
+| Component        | Purpose                                                                       |
+| ---------------- | ----------------------------------------------------------------------------- |
+| **Clients**      | Desktop, CLI and browser connect to the machine where you want work to run.     |
+| **Agent server** | Runs the agent and tools, and owns sessions and project files on its machine.  |
+| **Coordinator**  | An agent server that dispatches batches to its registered worker checkouts.    |
+| **Workers**      | Agent servers that execute assigned tasks in their own checkouts.             |
+| **Console**      | Administers accounts, organizations, authentication and resource access.      |
 
 ### Agent server
 
@@ -300,8 +308,36 @@ redcode serve --hostname 127.0.0.1 --port 4096
 For a headless host, choose a `redcode-server-<target>` archive from [Releases](https://github.com/reddb-io/redcode/releases).
 To access the CLI's managed background server from another device, run `redcode pair --remote`
 on its host and open the one-time link.
+First-time remote pairing lets you choose a self-hosted relay or the external hosted OpenTunnel
+service. A configured relay is remembered by `redcode pair`; use
+`redcode pair --remote --relay https://relay.example.org` for your own OpenTunnel-compatible endpoint.
 The first remote setup asks you to accept trusted access to the host; headless setup requires `--yes`.
 [Remote access setup](docs/remote-access.md).
+
+### Remote coding over LAN or VPN
+
+A laptop can control a stronger PC at home, which executes work itself or coordinates additional
+workers. For offsite access, the connection follows this path:
+
+**Your client → router VPN → agent server/coordinator → execution there or on its workers.**
+
+1. Connect your router VPN so the PC's address and SSH service are reachable. On the same LAN,
+   connect directly. The execution host must already have SSH available.
+2. In Desktop, open **Agents → Machines → Add server → Add SSH server**. Enter the host or SSH
+   alias, such as `user@10.0.0.50`. Complete authentication in the dialog; Desktop manages server
+   setup and forwarding.
+3. Choose a remote project or **Browse this machine**, then **Code in this project on this machine**.
+   Your conversation and tools execute on that PC.
+4. Choose **Manage workers on this machine** to control its pool. In **Agents → Remote workers**,
+   register reachable workers and send a batch. To include execution on the coordinator in a batch,
+   register an independent checkout on that machine as a worker too.
+
+Worker addresses must be reachable **from the coordinator**. A tunnel on your laptop only connects
+your client to the server; the server does not yet manage its own SSH tunnels to workers. Keep
+Desktop running while its SSH forward is in use. Closing the client leaves remote sessions and the
+coordinator running. Each machine owns its checkout; changes return as patches for review rather
+than automatic repository synchronization.
+[Remote connection guide](docs/remote-access.md#connect-desktop-over-your-lan-or-router-vpn).
 
 <a id="add-workers-to-the-coordinator"></a>
 
@@ -366,8 +402,10 @@ Configure a compatible OIDC provider in onboarding or settings: global, infrastr
 organization-specific. Login redirects to the selected provider; membership still follows invitation
 and identity-linking rules. Local use requires no domain.
 
-Delegated batches are supported. Tenant-isolated interactive terminals, OS sandboxing and full hosted
-SaaS services remain incomplete. [Implementation status](docs/opencode-parity-ledger.json).
+Delegated batches and dedicated container workspaces are supported. Prepare public Git checkouts,
+set enforced resource limits and register isolated workers through **Agents → Isolated workspaces**.
+Tenant-scoped interactive terminals, virtual machine isolation and full hosted SaaS services remain
+incomplete. [Worker setup and isolation](docs/distributed-workers.md) · [Implementation status](docs/opencode-parity-ledger.json).
 
 </details>
 

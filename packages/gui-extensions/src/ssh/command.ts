@@ -157,7 +157,7 @@ export function sshArgs(target: ReturnType<typeof parseTarget>) {
 export function tunnelArgs(
   target: ReturnType<typeof parseTarget>,
   localPort: number,
-  remote: { host: string; port: number },
+  remote: { host: string; port: number; windows?: boolean },
 ) {
   // A multiplexed `ssh -N` may exit after handing forwarding to its master.
   // Keep a session open on stdin instead; the scoped process owns that pipe.
@@ -166,13 +166,14 @@ export function tunnelArgs(
     "ControlMaster=no",
     "-o",
     "ControlPersist=no",
+    ...(remote.windows ? ["-S", "none", "-N"] : []),
     ...sshArgs(target),
     "-o",
     "ExitOnForwardFailure=yes",
     "-L",
     `127.0.0.1:${localPort}:${remote.host}:${remote.port}`,
     target.host,
-    "sh -c 'exec cat >/dev/null'",
+    ...(remote.windows ? [] : ["sh -c 'exec cat >/dev/null'"]),
   ]
 }
 

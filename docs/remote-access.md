@@ -4,6 +4,38 @@ Remote access connects a client to an **agent server**. Sessions, tools, provide
 project files remain on that server's machine. Console is a separate administration listener;
 opening Console does not connect a coding client to a project.
 
+## Connect Desktop over your LAN or router VPN
+
+The computer running Desktop can be your control device while a stronger machine runs the agent
+server and coordinates other workers. Connect your router VPN before opening the saved server;
+the VPN must route the execution host's address and permit SSH. A router VPN does not require
+publishing Redcode's coding port to the internet.
+
+1. Open **Agents → Machines** and **Add server → Add SSH server** in Desktop. Enter the execution
+   host or SSH alias, such as `user@10.0.0.50`, and an optional display name.
+2. Complete SSH authentication and host-key verification in the dialog. Desktop checks the remote
+   service, stages the matching server when needed, starts it and manages a loopback SSH forward.
+   An existing incompatible service requires **Update and reconnect** before replacement.
+   Bootstrap supports 64-bit Windows, Linux and macOS on x64/ARM64; the host must already have SSH.
+3. The connected machine is selected and inspected automatically. Choose a known project or
+   **Browse this machine**, then **Code in this project on this machine** to execute there.
+4. Choose **Manage workers on this machine** to make it the active coordinator. Add its other
+   workers using addresses reachable from that coordinator, then send batches through **Remote
+   workers**. A normal coding session runs directly on the selected server; batch tasks execute on
+   registered worker checkouts, including its own checkout if explicitly registered.
+
+For example, a laptop can connect through the VPN to a workstation that dispatches to additional
+LAN workers. Only the laptop-to-workstation connection depends on the laptop's tunnel. Worker
+connections must be reachable from the workstation itself; a forward on the laptop cannot serve
+as a workstation-to-worker route. **Register worker checkout** remains available when you instead
+want to delegate from the currently selected coordinator to the newly connected machine.
+The coordinator does not yet manage its own SSH tunnels to workers. Register worker addresses
+that it can reach directly, or separately managed forwards on the coordinator's machine.
+
+Keep Desktop running while its SSH forward is in use. Saved connections reconnect when Desktop
+opens; SSH authentication can still require interaction. Closing Desktop does not stop the remote
+service or erase sessions. Repositories and worker patches are not automatically synchronized.
+
 ## Pair a browser with the managed service
 
 On the machine that owns the projects:
@@ -12,14 +44,51 @@ On the machine that owns the projects:
 redcode pair --remote
 ```
 
-This enables the managed service's HTTPS tunnel and prints expiring, one-time connection links.
+On first use, choose **Your own relay** and enter its OpenTunnel-compatible API address, or explicitly
+choose **Hosted OpenTunnel** to use `opentunnel.xyz`. Redcode saves that choice; future `redcode pair`
+commands use the enabled remote connection and print expiring, one-time links.
+
+For a known self-hosted endpoint:
+
+```sh
+redcode pair --remote --relay https://relay.example.org
+```
+
+Headless first-time setup also requires `--yes`. This accepts internet exposure; it does not choose
+a provider. There is no implicit hosted-provider selection for new headless installations. Switching
+relays prepares the new identity before replacing the current service connection, so a provisioning
+failure preserves its old configuration. Identities live under Redcode's data directory in separate
+profiles per relay. Existing hosted connections retain their address when upgraded.
+
+This enables the managed service's HTTPS tunnel.
 Enabling the tunnel can restart that service. Open a link on your other device, then select the
 project on the host. Pairing credentials give trusted access to that host; they are not scoped
 organization-user credentials.
 
 On first use, Redcode asks you to accept internet exposure before enabling the tunnel.
-For a non-interactive setup, explicitly accept with `redcode pair --remote --yes`.
+For a non-interactive setup, explicitly select and accept with
+`redcode pair --remote --relay https://relay.example.org --yes`.
 Acceptance is remembered; declining leaves remote access disabled and local pairing available.
+
+## Operate your own relay
+
+OpenTunnel is MIT-licensed software with a self-hostable Rust server; using its SDK does not require
+an OpenCode account or OpenCode's hosted coding service. The relay API address is configured by the
+operator. Redcode supplies the client-side integration, not an already deployed relay service.
+
+The upstream server needs its own public domain and wildcard DNS, a public TCP/TLS listener, MySQL
+storage, and certificate issuance. Its current production DNS-01 adapter uses Cloudflare; the local
+test CA is for development only. Deploy its supplied Docker image build on your own infrastructure.
+For Kubernetes, route the tunnel listener through a TCP load balancer or TLS passthrough rather than
+terminating tunnel TLS at a normal HTTP ingress. The client terminates that TLS connection locally.
+Configure the server's domain, certificate/DNS credentials and database for your installation; do not
+keep the upstream hosted defaults. [Server deployment documentation](https://github.com/anomalyco/opentunnel/blob/master/docs/server.md).
+
+Pairing authorizes access to the coding host. It is separate from worker enrollment, organization
+membership and Console grants. External Cloudflare/WireGuard connections can provide a reachable
+address, but their installation and management are not yet part of this relay selection.
+
+## Pair through an existing endpoint
 
 For an HTTPS endpoint you already operate, use:
 
@@ -33,7 +102,8 @@ or start a server at that address. Route that endpoint to the same managed agent
 
 ## Keep the server on loopback and forward it through SSH
 
-On the host, start the managed service if needed and generate a link:
+On the host, start the managed service if needed and generate a link. If a remote relay is already
+enabled, run `redcode service set remote false` first so pairing uses the local address.
 
 ```sh
 redcode service start

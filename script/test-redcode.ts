@@ -150,6 +150,7 @@ const suites = {
   ],
   cli: [
     "test/pair-remote-consent.test.ts",
+    "test/remote-tunnel.test.ts",
     "test/run/noninteractive.test.ts",
     "test/updater-install.test.ts",
     "test/auth-login-choices.test.ts",
@@ -189,6 +190,7 @@ const suites = {
     "test/session-diff.test.ts",
     "test/session-import-foreign.test.ts",
     "test/system-info.test.ts",
+    "test/worker-environments.test.ts",
     "test/console.test.ts",
     "test/console-federation.test.ts",
     "test/infrastructure.test.ts",
@@ -200,6 +202,7 @@ const suites = {
   ],
   client: ["test/service.test.ts", "test/promise-service.test.ts"],
   tui: [
+    "test/cli/tui/form.test.tsx",
     "test/plugin-select.test.tsx",
     "test/cli/tui/dialog-select.test.tsx",
     "test/context/local-selection.test.tsx",

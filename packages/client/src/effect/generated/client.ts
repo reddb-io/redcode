@@ -469,6 +469,21 @@ import type {
   UsageReporterFlushOutput,
   UsageReporterRetryInput,
   UsageReporterRetryOutput,
+  WorkerEnvironmentsListOutput,
+  WorkerEnvironmentsCreateInput,
+  WorkerEnvironmentsCreateOutput,
+  WorkerEnvironmentsBuildInput,
+  WorkerEnvironmentsBuildOutput,
+  WorkerEnvironmentsStartInput,
+  WorkerEnvironmentsStartOutput,
+  WorkerEnvironmentsRegisterInput,
+  WorkerEnvironmentsRegisterOutput,
+  WorkerEnvironmentsStopInput,
+  WorkerEnvironmentsStopOutput,
+  WorkerEnvironmentsRemoveInput,
+  WorkerEnvironmentsRemoveOutput,
+  WorkerEnvironmentsRequestInput,
+  WorkerEnvironmentsRequestOutput,
   WorktreeLifecycleArchiveInput,
   WorktreeLifecycleArchiveOutput,
   WorktreeLifecycleArchivesInput,
@@ -2539,6 +2554,8 @@ const EndpointWorkersAdd = (raw: RawClient["server.workers"]) => (input: Workers
         tags: input["tags"],
         password: input["password"],
         resourceID: input["resourceID"],
+        environmentID: input["environmentID"],
+        environmentProxy: input["environmentProxy"],
       },
     }).pipe(Effect.mapError(mapClientError)),
   )
@@ -2729,6 +2746,83 @@ const adaptGroupUsageReporter = (raw: RawClient["server.usageReporter"]) => ({
   retry: EndpointUsageReporterRetry(raw),
 })
 
+const EndpointWorkerEnvironmentsList = (raw: RawClient["server.workerEnvironments"]) => () =>
+  preserveEffect<WorkerEnvironmentsListOutput>()(
+    raw["workerEnvironments.list"]({}).pipe(Effect.mapError(mapClientError)),
+  )
+
+const EndpointWorkerEnvironmentsCreate =
+  (raw: RawClient["server.workerEnvironments"]) => (input: WorkerEnvironmentsCreateInput) =>
+    preserveEffect<WorkerEnvironmentsCreateOutput>()(
+      raw["workerEnvironments.create"]({
+        payload: {
+          id: input["id"],
+          repository: input["repository"],
+          ref: input["ref"],
+          image: input["image"],
+          cpu: input["cpu"],
+          memoryMiB: input["memoryMiB"],
+          setup: input["setup"],
+          provider: input["provider"],
+        },
+      }).pipe(Effect.mapError(mapClientError)),
+    )
+
+const EndpointWorkerEnvironmentsBuild =
+  (raw: RawClient["server.workerEnvironments"]) => (input: WorkerEnvironmentsBuildInput) =>
+    preserveEffect<WorkerEnvironmentsBuildOutput>()(
+      raw["workerEnvironments.build"]({ payload: { version: input["version"] } }).pipe(Effect.mapError(mapClientError)),
+    )
+
+const EndpointWorkerEnvironmentsStart =
+  (raw: RawClient["server.workerEnvironments"]) => (input: WorkerEnvironmentsStartInput) =>
+    preserveEffect<WorkerEnvironmentsStartOutput>()(
+      raw["workerEnvironments.start"]({ params: { id: input["id"] } }).pipe(Effect.mapError(mapClientError)),
+    )
+
+const EndpointWorkerEnvironmentsRegister =
+  (raw: RawClient["server.workerEnvironments"]) => (input: WorkerEnvironmentsRegisterInput) =>
+    preserveEffect<WorkerEnvironmentsRegisterOutput>()(
+      raw["workerEnvironments.register"]({
+        params: { id: input["id"] },
+        payload: { resourceID: input["resourceID"] },
+      }).pipe(Effect.mapError(mapClientError)),
+    )
+
+const EndpointWorkerEnvironmentsStop =
+  (raw: RawClient["server.workerEnvironments"]) => (input: WorkerEnvironmentsStopInput) =>
+    preserveEffect<WorkerEnvironmentsStopOutput>()(
+      raw["workerEnvironments.stop"]({ params: { id: input["id"] } }).pipe(Effect.mapError(mapClientError)),
+    )
+
+const EndpointWorkerEnvironmentsRemove =
+  (raw: RawClient["server.workerEnvironments"]) => (input: WorkerEnvironmentsRemoveInput) =>
+    preserveEffect<WorkerEnvironmentsRemoveOutput>()(
+      raw["workerEnvironments.remove"]({ params: { id: input["id"] }, query: { purge: input["purge"] } }).pipe(
+        Effect.mapError(mapClientError),
+      ),
+    )
+
+const EndpointWorkerEnvironmentsRequest =
+  (raw: RawClient["server.workerEnvironments"]) => (input: WorkerEnvironmentsRequestInput) =>
+    preserveEffect<WorkerEnvironmentsRequestOutput>()(
+      raw["workerEnvironments.request"]({
+        params: { id: input["id"] },
+        payload: { method: input["method"], path: input["path"], body: input["body"] },
+      }).pipe(Effect.mapError(mapClientError)),
+    )
+
+const adaptGroupWorkerEnvironments = (raw: RawClient["server.workerEnvironments"]) => ({
+  list: EndpointWorkerEnvironmentsList(raw),
+  create: EndpointWorkerEnvironmentsCreate(raw),
+  build: EndpointWorkerEnvironmentsBuild(raw),
+  start: EndpointWorkerEnvironmentsStart(raw),
+  register: EndpointWorkerEnvironmentsRegister(raw),
+  stop: EndpointWorkerEnvironmentsStop(raw),
+  remove: EndpointWorkerEnvironmentsRemove(raw),
+  request: EndpointWorkerEnvironmentsRequest(raw),
+})
+
 const EndpointWorktreeLifecycleArchive =
   (raw: RawClient["server.worktreeLifecycle"]) => (input: WorktreeLifecycleArchiveInput) =>
     preserveEffect<WorktreeLifecycleArchiveOutput>()(
@@ -2822,6 +2916,7 @@ const adaptClient = (raw: RawClient) => ({
   workers: adaptGroupWorkers(raw["server.workers"]),
   harness: adaptGroupHarness(raw["server.harness"]),
   usageReporter: adaptGroupUsageReporter(raw["server.usageReporter"]),
+  workerEnvironments: adaptGroupWorkerEnvironments(raw["server.workerEnvironments"]),
   worktreeLifecycle: adaptGroupWorktreeLifecycle(raw["server.worktreeLifecycle"]),
 })
 

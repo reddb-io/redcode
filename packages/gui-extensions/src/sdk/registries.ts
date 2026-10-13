@@ -89,8 +89,15 @@ export interface SessionPanelMenuItem extends MenuItemBase {
 export interface ServerAddMenuItem extends MenuItemBase {
   /** The host menu: `server.add`. */
   readonly menu: "server.add"
-  /** Runs the item. */
-  run(): void
+  /** Opens connection setup. Calls `onConnected` with the registered server key after success when supported.
+   * @param options Optional completion callback; omitting it preserves the item's normal navigation.
+   */
+  run(options?: {
+    /** Receives the registered server key; never called for failed or cancelled connections.
+     * @param key The server's extension-qualified registry key.
+     */
+    onConnected?: (key: string) => void
+  }): void
 }
 
 /** An item of the menu of each server row in Settings. */

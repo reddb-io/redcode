@@ -183,6 +183,7 @@ const processEffect = Effect.fnUntraced(function* (options: Options) {
         yield* Effect.forkScoped(
           RemoteTunnel.run({
             route: config.remote.route,
+            api: config.relay,
             target: bound.host,
             onURL: (url) => {
               remote.urls = url === undefined ? [] : [url]

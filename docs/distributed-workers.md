@@ -43,6 +43,75 @@ An ownership lease prevents two server processes from operating the same coordin
 
 For terminal tasks, **Review changes** collects the recorded turn's file diffs and lets you download its text patch. Collected artifacts are cached on the coordinator and remain reviewable after a worker is removed. Collection never applies a patch to the local project. Initial collection still needs the worker and its credential; collect results before removing that worker.
 
+## Prepare isolated workspaces in the app
+
+Open **Agents → Isolated workspaces** and choose the execution host in the sidemenu. This is a host
+administration surface: organization roles and worker-task grants do not authorize Docker management.
+The host needs a local **Docker 28 or newer Linux engine**. Windows hosts can use Docker Desktop's
+Linux engine; remote Linux hosts run their own engine. A remote Docker context is not used in place
+of a reachable Redcode host.
+
+1. Choose a published Redcode release and **Build worker image on this host**. The host downloads the
+   server archive, verifies its release checksum and builds the image. It includes Bun, Git, curl,
+   ripgrep and bash. An administrator-provided toolchain image must retain the managed gateway
+   protocol and helper from this image; installing host tools is not part of workspace creation.
+2. Enter an environment name, a **public HTTPS Git repository**, and a branch, tag or commit. Set CPU
+   and memory limits. Creation resolves the ref to a commit and creates a detached worktree at
+   `/workspace/project` in that environment. The image's immutable ID is recorded for restoration.
+3. Supply preparation commands if needed, such as `bun install`. They run as the workspace user in
+   that checkout. Repository setup scripts are not executed automatically; dependency installers
+   may execute their own lifecycle scripts when explicitly invoked.
+4. Optionally choose a model provider and supply a key for this workspace. Only that supplied key is
+   stored in the worker's private home. Host accounts, Git credentials and project files are not
+   copied. Private repositories and provider methods requiring additional configuration are outside
+   this first onboarding flow.
+5. Inspect the recorded stage and base commit, select the coordinator and **Register isolated
+   worker**. Registration on this host uses the worker's internally stored credential. Another
+   coordinator uses an authenticated HTTP proxy through the execution host; it must be able to reach
+   that host. A desktop-only SSH forward is not a route reachable by a remote coordinator.
+
+For Console delegation, use a **separate Console resource per isolated environment** and grant its
+`/workspace/project` checkout to the intended workspace. The coordinator rejects sharing a resource
+between different environments. Without a resource, registration remains infrastructure-admin only.
+Task dispatch, questions, interruption and patch collection continue through the existing worker
+pool. The proxy targets the saved environment and excludes credential and host-management APIs.
+
+Each worker runs with UID/GID 1000, no added capabilities, `no-new-privileges`, a read-only system,
+private home/workspace volumes, a 256-process limit and enforced CPU/RAM limits. No host checkout,
+host home or Docker socket is mounted. The kernel enforces these quotas even when task admission
+budgets are omitted. There is also a separate gateway with **0.25 CPU, 128 MiB and 64 processes**;
+include it when sizing a host.
+
+The worker attaches only to its own internal bridge with isolated IPv4/IPv6 gateway modes. Public
+outbound traffic uses **HTTPS CONNECT on port 443**, with DNS results checked against private,
+loopback, link-local, metadata and reserved ranges before dialing a validated numeric address.
+Direct outbound connections and connections to other workspace networks are unavailable. Programs
+must honor the supplied HTTP/HTTPS proxy variables. Internal model endpoints, arbitrary TCP/UDP,
+SSH Git remotes and browser streaming require separate network adapters. Public HTTPS is not a
+destination allowlist; agents can still contact public services permitted by this policy.
+
+Collect results and unregister the slot from its coordinators before stopping or archiving it.
+Active native sessions block stopping. **Archive and retain workspace** removes the owned containers
+and keeps their volumes and record; **Start or restore** recreates the same environment from its
+pinned image and waits for the server. **Delete permanently** requires a separate confirmation and
+removes its volumes, history and saved credential. Removal never performs a Docker-wide prune.
+
+Failed or interrupted preparation stays recorded and is not silently repeated. **Prepare another
+workspace** creates a draft with a new identity while retaining the original data; review its inputs
+and supply commands and credentials again. Completing fleet drain and cross-coordinator ownership
+remains separate from these operator-controlled lifecycle actions.
+
+Containers share the host kernel, and volume disk quotas are not yet enforced. This implementation
+does not claim virtual machine isolation, tenant-scoped interactive desktop access, hosted fleet
+provisioning or complete SaaS readiness. Physical Raspberry Pi and installed desktop acceptance
+remain separate from the source app and Docker acceptance.
+
+From `packages/server`, `bun run script/worker-environments-acceptance.ts /path/to/report.json` runs an
+optional real Docker lab using an owned temporary host and published server binaries, without LLM
+inference. It creates two public-repository environments and verifies containment, quotas, network
+restrictions, coordinator registration, HTTP forwarding and archive/restore. Cleanup targets only
+the lab's owned containers, volumes and networks; the built image remains cached.
+
 ## Raspberry Pi prerequisites
 
 The Redcode build targets and SSH bootstrap support Linux ARM64. Confirm the OS architecture and address on each Pi:
@@ -200,4 +269,8 @@ The current observed V2 head is `4b6fea2875e4f2e3e8a8fee181803e54f7056845`; the 
 
 `docs/opencode-upstream-branches.json` records all 2,032 observed public branch heads and five scoped remote/workspace branch comparisons. It explicitly marks the remaining branches/features unreviewed. Branch names alone do not establish feature completeness. `docs/opencode-parity-ledger.json` continues to mark full parity false.
 
-Next acceptance work: install and exercise the updated desktop; physical Pi ARM64/LAN/SSH execution; checkout synchronization and binary/commit transfer; agent-tool integration; resource scheduling; and explicit failover ownership. Hosted Console gateway, billing and SSO/SCIM remain separate parity work.
+Next acceptance work: install and exercise the updated desktop; physical Pi ARM64/LAN/SSH execution;
+private Git authentication and transfer of local uncommitted work; external-harness placement;
+distributed scheduling and explicit failover ownership. Public Git workspace preparation and kernel
+resource limits have separate acceptance above. Hosted Console gateway, billing and SCIM remain
+separate work; configurable OIDC federation is described in [Console authentication](console-federation.md).

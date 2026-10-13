@@ -69,6 +69,7 @@ export const groupNames = {
   "server.formatter": "formatter",
   "server.redskilled": "redskilled",
   "server.workers": "workers",
+  "server.workerEnvironments": "workerEnvironments",
   "server.harness": "harness",
   "server.usageReporter": "usageReporter",
   "server.worktreeLifecycle": "worktreeLifecycle",

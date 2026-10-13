@@ -1,5 +1,10 @@
 # GUI extensions
 
+Items contributed to the Add server menu may accept `run({ onConnected })`. A connection provider
+calls this callback with its registered server key after a successful connection, allowing the
+caller to continue machine onboarding without navigating away. Failed or cancelled connections
+do not call it. With no callback, the item keeps its normal behavior.
+
 Every feature of the desktop and web app that is not the core shell is an extension: the terminal, review, files, the browser, SSH, WSL, the updater and more. Each one builds only on the SDK in [`src/sdk`](src/sdk). The SDK is typed so that the common bugs fail to compile or fail the lint, and every declaration has TSDoc, so editor hovers answer most questions. This guide shows how the parts fit, with code from the extensions that ship. [Build your first extension](#build-your-first-extension) walks through [`src/pairing`](src/pairing), a small built-in that uses both processes. `bun run lint` checks every code block marked with its source against that source.
 
 - Window SDK: `@opencode/gui-extensions/sdk` ([`index.ts`](src/sdk/index.ts))

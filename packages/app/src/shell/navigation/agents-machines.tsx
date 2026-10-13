@@ -4,7 +4,7 @@ import { card } from "@reddb-io/design-system/contracts/card"
 import { input } from "@reddb-io/design-system/contracts/input"
 import { Button } from "@opencode/ui/button"
 import { useDialog } from "@opencode/ui/context/dialog"
-import { For, onCleanup, Show } from "solid-js"
+import { createEffect, For, onCleanup, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useLanguage } from "@/runtime/i18n/language"
 import { ServerConnection, serverName, useServers } from "@/runtime/server/registry"
@@ -12,12 +12,17 @@ import { useGlobal } from "@/runtime/server/runtime"
 import { AddServerMenu } from "@/servers/registry/add-menu"
 import { DialogServer } from "@/servers/connect/dialog"
 import { errorMessage } from "@/shell/layout/helpers"
+import { DirectoryPickerDialog } from "@/workspaces/selection/dialog"
+import { useProjectActions } from "@/home/projects/actions"
+import { useLayout } from "@/shell/state/layout"
 
 export default function AgentMachines(props: { server: ServerConnection.Any }) {
   const language = useLanguage()
   const servers = useServers()
   const global = useGlobal()
   const dialog = useDialog()
+  const projectsActions = useProjectActions()
+  const layout = useLayout()
   const [, setParams] = useSearchParams()
   const [state, setState] = createStore({
     selected: "",
@@ -28,8 +33,13 @@ export default function AgentMachines(props: { server: ServerConnection.Any }) {
     error: "",
     checked: false,
     registered: false,
+    connected: false,
+    registration: false,
   })
   const target = () => servers.visible.find((server) => ServerConnection.key(server) === state.selected)
+  const select = (key: string, connected = false) => {
+    setState({ selected: key, checked: true, registered: false, connected, directory: "", id: "", tags: "", error: "" })
+  }
   const appearance = card({ padding: "md" })
   const lifetime = { active: true }
   onCleanup(() => {
@@ -41,6 +51,24 @@ export default function AgentMachines(props: { server: ServerConnection.Any }) {
     enabled: !!target() && state.checked,
     retry: false,
   }))
+  const projects = useQuery(() => ({
+    queryKey: ["machine-projects", state.selected],
+    queryFn: ({ signal }) => global.ensureServerCtx(target()!).sdk.api.project.list(undefined, { signal }),
+    enabled: !!target() && state.checked,
+    retry: false,
+  }))
+  createEffect(() => {
+    const selected = target()
+    if (selected && !state.id)
+      setState(
+        "id",
+        serverName(selected)
+          .toLowerCase()
+          .replace(/[^a-z0-9-]+/g, "-")
+          .replace(/^-|-$/g, "")
+          .slice(0, 80),
+      )
+  })
   const action = async (run: () => Promise<unknown>) => {
     if (state.busy) return
     setState({ busy: true, error: "" })
@@ -53,11 +81,25 @@ export default function AgentMachines(props: { server: ServerConnection.Any }) {
     }
   }
   const loopback = (url: string) => ["localhost", "127.0.0.1", "[::1]"].includes(new URL(url).hostname)
+  const workerAddress = () => {
+    const selected = target()
+    if (!selected) return undefined
+    // Self-registration uses the execution host's listener, not the Desktop's SSH forward.
+    if (ServerConnection.key(selected) === ServerConnection.key(props.server))
+      return system.data?.urls.find((url) => new URL(url).protocol === "http:" && loopback(url))
+    return selected.http.url
+  }
   const routeEligible = () => {
     const selected = target()
     if (!selected || !selected.http.password) return false
     // A desktop-owned forward is not reachable from a remote coordinator. Never copy it there.
-    return !loopback(selected.http.url) || loopback(props.server.http.url)
+    const address = workerAddress()
+    if (!address) return false
+    return (
+      ServerConnection.key(selected) === ServerConnection.key(props.server) ||
+      !loopback(address) ||
+      (props.server.type !== "extension" && loopback(props.server.http.url))
+    )
   }
   return (
     <div class="flex flex-col gap-4 text-13-regular leading-[var(--line-height-base)]">
@@ -70,15 +112,20 @@ export default function AgentMachines(props: { server: ServerConnection.Any }) {
           <h3 class="text-13-medium">{language.t("agentMachines.connect")}</h3>
           <p>{language.t("agentMachines.connectNote")}</p>
           <AddServerMenu
+            onConnected={(key) => {
+              if (lifetime.active) select(key, true)
+            }}
             onAddServer={() =>
               dialog.show(() => (
-                <DialogServer
-                  mode="add"
-                  onSave={(server) => setState({ selected: ServerConnection.key(server), checked: true })}
-                />
+                <DialogServer mode="add" onSave={(server) => select(ServerConnection.key(server), true)} />
               ))
             }
           />
+          <Show when={state.connected && target()}>
+            <p role="status">{language.t("agentMachines.connected", { name: serverName(target()) })}</p>
+          </Show>
+          <p class="text-ink-muted">{language.t("agentMachines.sshLifetime")}</p>
+          <p>{language.t("agentMachines.remoteControl")}</p>
         </div>
       </article>
       <article class={appearance.root()}>
@@ -90,7 +137,8 @@ export default function AgentMachines(props: { server: ServerConnection.Any }) {
               aria-label={language.t("agentMachines.machine")}
               class={input({ size: "sm", class: "mt-1 w-full" })}
               value={state.selected}
-              onChange={(event) => setState({ selected: event.currentTarget.value, checked: false, registered: false })}
+              onChange={(event) => select(event.currentTarget.value)}
+              disabled={state.busy}
             >
               <option value="">{language.t("agentMachines.choose")}</option>
               <For each={servers.visible}>
@@ -120,6 +168,18 @@ export default function AgentMachines(props: { server: ServerConnection.Any }) {
             )}
           </Show>
           <p class="text-ink-muted">{language.t("agentMachines.credentials")}</p>
+          <Button
+            variant="outline"
+            disabled={!system.data || system.isError || state.busy}
+            onClick={() => {
+              const selected = target()
+              if (!selected) return
+              layout.home.setSelection({ server: ServerConnection.key(selected) })
+              setParams({ view: "remote", host: ServerConnection.key(selected) })
+            }}
+          >
+            {language.t("agentMachines.useCoordinator")}
+          </Button>
         </div>
       </article>
       <form
@@ -129,80 +189,163 @@ export default function AgentMachines(props: { server: ServerConnection.Any }) {
           void action(async () => {
             const selected = target()
             if (!selected || !routeEligible()) throw new Error(language.t("agentMachines.routeUnavailable"))
-            const location = await global
-              .ensureServerCtx(selected)
-              .sdk.api.location.get({ location: { directory: state.directory } })
-            await global.ensureServerCtx(props.server).sdk.api.workers.add({
+            const coordinator = props.server
+            const registration = {
               id: state.id,
-              url: selected.http.url,
+              url: workerAddress()!,
               password: selected.http.password!,
-              directories: [location.directory],
               tags: state.tags
                 .split(",")
                 .map((tag) => tag.trim())
                 .filter(Boolean),
+            }
+            const location = await global
+              .ensureServerCtx(selected)
+              .sdk.api.location.get({ location: { directory: state.directory } })
+            await global.ensureServerCtx(coordinator).sdk.api.workers.add({
+              ...registration,
+              directories: [location.directory],
             })
-            if (lifetime.active) setState("registered", true)
+            if (
+              lifetime.active &&
+              ServerConnection.key(coordinator) === ServerConnection.key(props.server) &&
+              ServerConnection.key(selected) === state.selected
+            )
+              setState("registered", true)
           })
         }}
       >
         <div class={appearance.body({ class: "grid gap-3 sm:grid-cols-2" })}>
-          <h3 class="text-13-medium sm:col-span-2">{language.t("agentMachines.register")}</h3>
-          <p class="text-ink-muted sm:col-span-2">
-            {language.t("agentMachines.coordinator", { name: serverName(props.server) })}
-          </p>
-          <label>
-            {language.t("agentMachines.workerID")}
-            <input
-              required
-              class={input({ size: "sm", class: "mt-1 w-full" })}
-              value={state.id}
-              onInput={(event) => setState("id", event.currentTarget.value)}
-            />
-          </label>
-          <label>
-            {language.t("agentMachines.tags")}
-            <input
-              class={input({ size: "sm", class: "mt-1 w-full" })}
-              value={state.tags}
-              onInput={(event) => setState("tags", event.currentTarget.value)}
-            />
-          </label>
+          <h3 class="text-13-medium sm:col-span-2">{language.t("agentMachines.selectProject")}</h3>
+          <Show when={state.registration}>
+            <p class="text-ink-muted sm:col-span-2">
+              {language.t("agentMachines.coordinator", { name: serverName(props.server) })}
+            </p>
+            <label>
+              {language.t("agentMachines.workerID")}
+              <input
+                required
+                class={input({ size: "sm", class: "mt-1 w-full" })}
+                value={state.id}
+                disabled={state.busy}
+                onInput={(event) => setState("id", event.currentTarget.value)}
+              />
+            </label>
+            <label>
+              {language.t("agentMachines.tags")}
+              <input
+                class={input({ size: "sm", class: "mt-1 w-full" })}
+                value={state.tags}
+                disabled={state.busy}
+                onInput={(event) => setState("tags", event.currentTarget.value)}
+              />
+            </label>
+          </Show>
+          <Show when={projects.data?.length}>
+            <label class="sm:col-span-2">
+              {language.t("agentMachines.project")}
+              <select
+                aria-label={language.t("agentMachines.project")}
+                class={input({ size: "sm", class: "mt-1 w-full" })}
+                disabled={state.busy}
+                value={state.directory}
+                onChange={(event) => setState("directory", event.currentTarget.value)}
+              >
+                <option value="">{language.t("agentMachines.chooseProject")}</option>
+                <For each={projects.data}>
+                  {(project) => <option value={project.canonical}>{project.name || project.canonical}</option>}
+                </For>
+              </select>
+            </label>
+          </Show>
           <label class="sm:col-span-2">
             {language.t("agentMachines.directory")}
             <input
               required
               class={input({ size: "sm", class: "mt-1 w-full" })}
               value={state.directory}
+              disabled={state.busy}
               onInput={(event) => setState("directory", event.currentTarget.value)}
             />
           </label>
-          <Show when={target() && !routeEligible()}>
-            <p role="status" class="sm:col-span-2">
-              {language.t("agentMachines.routeUnavailable")}
-            </p>
-          </Show>
           <Button
-            type="submit"
-            disabled={
-              state.busy ||
-              !system.data ||
-              system.isError ||
-              !routeEligible() ||
-              !state.id.trim() ||
-              !state.directory.trim()
-            }
+            variant="outline"
+            type="button"
+            disabled={!target() || state.busy}
+            onClick={() => {
+              const selected = target()
+              if (!selected) return
+              dialog.show(() => (
+                <DirectoryPickerDialog
+                  server={selected}
+                  start={state.directory || undefined}
+                  onSelect={(directory) => {
+                    if (lifetime.active && typeof directory === "string") setState("directory", directory)
+                  }}
+                />
+              ))
+            }}
           >
-            {language.t("agentMachines.register")}
+            {language.t("agentMachines.browse")}
           </Button>
-          <Show when={state.registered}>
-            <p role="status">{language.t("agentMachines.registered")}</p>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={!system.data || system.isError || state.busy || !state.directory.trim()}
+            onClick={() => {
+              void action(async () => {
+                const selected = target()
+                if (!selected) return
+                const location = await global
+                  .ensureServerCtx(selected)
+                  .sdk.api.location.get({ location: { directory: state.directory } })
+                if (!lifetime.active) return
+                layout.home.setSelection({ server: ServerConnection.key(selected) })
+                projectsActions.newSession(selected, location.directory)
+              })
+            }}
+          >
+            {language.t("agentMachines.codeHere")}
+          </Button>
+          <Button
+            variant="ghost-muted"
+            type="button"
+            class="sm:col-span-2"
+            aria-expanded={state.registration}
+            disabled={state.busy}
+            onClick={() => setState("registration", !state.registration)}
+          >
+            {language.t("agentMachines.configureWorker")}
+          </Button>
+          <Show when={state.registration}>
+            <Show when={target() && !routeEligible()}>
+              <p role="status" class="sm:col-span-2">
+                {language.t("agentMachines.routeUnavailable")}
+              </p>
+            </Show>
             <Button
-              variant="outline"
-              onClick={() => setParams({ view: "remote", host: ServerConnection.key(props.server) })}
+              type="submit"
+              disabled={
+                state.busy ||
+                !system.data ||
+                system.isError ||
+                !routeEligible() ||
+                !state.id.trim() ||
+                !state.directory.trim()
+              }
             >
-              {language.t("remoteWorkers.title")}
+              {language.t("agentMachines.registerCheckout")}
             </Button>
+            <Show when={state.registered}>
+              <p role="status">{language.t("agentMachines.registered")}</p>
+              <p>{language.t("agentMachines.dispatchNote")}</p>
+              <Button
+                variant="outline"
+                onClick={() => setParams({ view: "remote", host: ServerConnection.key(props.server) })}
+              >
+                {language.t("remoteWorkers.title")}
+              </Button>
+            </Show>
           </Show>
           <Button
             variant="outline"
