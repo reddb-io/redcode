@@ -40,7 +40,7 @@ Open your project and use **Connect provider** to add a model.
 
 <img src="docs/screenshots/workspace.png" alt="Redcode web workspace showing a demo planning conversation, session tabs and the composer" width="100%" />
 
-*The web workspace shared with Desktop, with a demonstration conversation.*
+_The web workspace shared with Desktop, with a demonstration conversation._
 
 </details>
 
@@ -100,7 +100,7 @@ In the TUI, `Tab` cycles modes and `Shift+Tab` goes back. [Mode details](docs/ag
 
 <img src="docs/sections/features.svg" alt="03: Features — explore individual capabilities" width="100%" />
 
-Open a feature to see its SVG, where it runs and how to use it.
+Expand a feature to learn where it runs and how to use it.
 
 <a id="vault"></a>
 <a id="secrets-and-safeguards"></a>
@@ -187,6 +187,7 @@ the observations. [Monitor behavior](docs/agent-features.md#monitors).
 **Session engine.** TUI `/compact` accepts a focus and retains important messages and decisions.
 Summaries use the vault's redaction; `/restricted` manages restricted content.
 Git sessions also retain the active worktree's branch and changed-file counts; outside Git, nothing is added.
+Summary compaction can use a separately configured model; an explicit S2 transformations model takes priority.
 [Compaction details](docs/agent-features.md#compaction).
 
 </details>
@@ -201,6 +202,9 @@ Git sessions also retain the active worktree's branch and changed-file counts; o
 **CLI/TUI · agent server.** `redcode --tmp` starts in a temporary Git worktree; `/worktrees` or
 `redcode worktrees` manages checkouts. The background server retains sessions when the terminal closes.
 Inspect it with `redcode service`. [Worktrees and service](docs/agent-features.md#worktrees-and-the-background-service).
+
+Agents can also create, list and remove worktrees through their tools, subject to permissions.
+Subagent completion and cancellation remain tracked when the server unloads a project's runtime.
 
 Histories from OpenCode, Claude Code, Codex, Pi and oh-my-pi can be imported through Desktop or CLI.
 Import preserves the source history. [Import commands](docs/clients.md#desktop).
@@ -269,11 +273,11 @@ For local terminal use, Redcode manages the agent server in the background autom
 
 <a id="components"></a>
 
-| Component | Purpose |
-| --- | --- |
+| Component        | Purpose                                                                        |
+| ---------------- | ------------------------------------------------------------------------------ |
 | **Agent server** | Runs the agent, tools and files on its machine. Desktop and CLI connect to it. |
-| **Workers** | Additional agent servers that receive independent tasks from a coordinator. |
-| **Console** | Administers accounts, organizations, authentication and resource access. |
+| **Workers**      | Additional agent servers that receive independent tasks from a coordinator.    |
+| **Console**      | Administers accounts, organizations, authentication and resource access.       |
 
 ### Agent server
 
@@ -286,6 +290,7 @@ redcode serve --hostname 127.0.0.1 --port 4096
 For a headless host, choose a `redcode-server-<target>` archive from [Releases](https://github.com/reddb-io/redcode/releases).
 To access the CLI's managed background server from another device, run `redcode pair --remote`
 on its host and open the one-time link.
+The first remote setup asks you to accept trusted access to the host; headless setup requires `--yes`.
 [Remote access setup](docs/remote-access.md).
 
 <a id="add-workers-to-the-coordinator"></a>
@@ -357,27 +362,50 @@ SaaS services remain incomplete. [Implementation status](docs/opencode-parity-le
 
 <img src="docs/sections/guides.svg" alt="05: Documentation — choose your next task" width="100%" />
 
-| Task | Guide |
-| --- | --- |
-| Install Desktop, CLI or a headless host | [Installation](docs/installation.md) |
-| Use commands or import conversation histories | [Clients](docs/clients.md) |
-| Learn modes, Design and session features | [Agent features](docs/agent-features.md) |
-| Connect from another computer | [Remote access](docs/remote-access.md) |
-| Add workers and collect their changes | [Distributed workers](docs/distributed-workers.md) |
-| Manage resource ownership and access | [Console infrastructure](docs/console-infrastructure.md) |
-| Configure authentication | [Console federation](docs/console-federation.md) |
-| Follow OpenCode adoption and remaining work | [Migration notes](docs/migration-parity.md) · [Parity ledger](docs/opencode-parity-ledger.json) |
+| Task                                          | Guide                                                                                                                                          |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Install Desktop, CLI or a headless host       | [Installation](docs/installation.md)                                                                                                           |
+| Use commands or import conversation histories | [Clients](docs/clients.md)                                                                                                                     |
+| Learn modes, Design and session features      | [Agent features](docs/agent-features.md)                                                                                                       |
+| Connect from another computer                 | [Remote access](docs/remote-access.md)                                                                                                         |
+| Add workers and collect their changes         | [Distributed workers](docs/distributed-workers.md)                                                                                             |
+| Manage resource ownership and access          | [Console infrastructure](docs/console-infrastructure.md)                                                                                       |
+| Configure authentication                      | [Console federation](docs/console-federation.md)                                                                                               |
+| Follow OpenCode adoption and remaining work   | [Adopted changes](docs/upstream-adoption.md) · [Migration notes](docs/migration-parity.md) · [Parity ledger](docs/opencode-parity-ledger.json) |
+
+<details>
+<summary><strong>What's new in 0.78.0</strong></summary>
+
+This minor release consolidates the October OpenCode integration while retaining Redcode's
+Design, Vault, S1/S2, Console and worker capabilities.
+
+- **Agent engine:** more resilient Git snapshots, worktree tools, subagent tracking across project
+  unloading, mixed line-ending edits and configurable summary-compaction models.
+- **Provider connections:** ChatGPT token sharing alongside existing Codex login methods, Google
+  Vertex project/location setup and corrected Copilot routing. ChatGPT token sharing depends on
+  the provider enabling your account and client.
+- **CLI and TUI:** explicit remote-access consent, periodic update checks, searchable plugin dialogs
+  and preservation of saved model selections when a model becomes unavailable.
+- **Server and SDK:** streamed file downloads, HTTP byte ranges, automatic archiving of inactive
+  projects whose checkouts disappeared, plugin session lifecycle APIs and live integration-policy changes.
+
+Read the [release notes](https://github.com/reddb-io/redcode/releases/tag/v0.78.0) or the
+[component-by-component adoption record](docs/upstream-adoption.md). Open upstream proposals remain
+separate from shipped features; physical Raspberry Pi workers and full SaaS isolation still need validation
+and further work.
+
+</details>
 
 <a id="contributing"></a>
 
 <details>
 <summary>Contributing, development and releases</summary>
 
-| Repository area | Packages |
-| --- | --- |
-| **Agent runtime and API** | `core`, `server`, `protocol`, `schema`, `client` |
-| **Clients and Design** | `cli`, `tui`, `app`, `desktop`, `design-app`, `session-ui` |
-| **Distribution** | `redcode`, `rpc-sidecar` |
+| Repository area           | Packages                                                   |
+| ------------------------- | ---------------------------------------------------------- |
+| **Agent runtime and API** | `core`, `server`, `protocol`, `schema`, `client`           |
+| **Clients and Design**    | `cli`, `tui`, `app`, `desktop`, `design-app`, `session-ui` |
+| **Distribution**          | `redcode`, `rpc-sidecar`                                   |
 
 Internal `@opencode/*` names preserve the upstream architecture; development happens on `main`.
 Use the Bun version in `package.json`, run `bun install`, then `bun run check`. Run tests from package

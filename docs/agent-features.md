@@ -285,6 +285,10 @@ anchors: the user messages and decisions that must survive verbatim. Its output 
 redaction as the vault, so a secret pasted earlier in the chat does not come back in the summary.
 `/restricted` lists the messages marked as restricted content and lets you remove one from the context.
 
+Summary compaction uses the explicit S2 transformations model when configured. Otherwise it can use
+the `compaction` agent's configured model, falling back to the session model if that optional model is
+unavailable. Native provider compaction continues to use its original backend.
+
 When the session directory is inside Git, the completed checkpoint also includes a fresh **Repository Status**:
 the active worktree's path and kind (main or linked), branch (or detached HEAD), and changed-file counts.
 Tracked, untracked, staged, unstaged and conflicted changes are distinguished; a file changed both in the index
@@ -305,6 +309,11 @@ and append the snapshot as readable context for the next request.
 creates, refreshes and cleans the project's worktrees. The server that holds your sessions can run in the
 background, so closing the terminal does not stop them: `redcode service status|start|stop|restart`. If
 it fails to start, the message says why.
+
+Agents can manage checkouts with `worktree_create`, `worktree_list` and `worktree_remove` through
+Code Mode. Removal is permission-gated, requires explicit force when needed, and protects the primary
+checkout. Subagent completion and cancellation are tracked independently of the project's loaded runtime,
+so unloading that runtime does not lose the pending job notification.
 
 ## Dictation
 

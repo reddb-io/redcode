@@ -17,6 +17,10 @@ Enabling the tunnel can restart that service. Open a link on your other device, 
 project on the host. Pairing credentials give trusted access to that host; they are not scoped
 organization-user credentials.
 
+On first use, Redcode asks you to accept internet exposure before enabling the tunnel.
+For a non-interactive setup, explicitly accept with `redcode pair --remote --yes`.
+Acceptance is remembered; declining leaves remote access disabled and local pairing available.
+
 For an HTTPS endpoint you already operate, use:
 
 ```sh
