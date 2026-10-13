@@ -5,6 +5,12 @@
 - The default and sole development branch of this fork is `main`. Keep V2 migration work on `main` and use `main` or `origin/main` for diffs.
 - Do not create topic branches, development worktrees, or pull requests for this migration unless the requester explicitly asks.
 
+## Product Documentation
+
+- Keep the README a cohesive product guide with a consistent tone. Describe capabilities in their corresponding Desktop, CLI, features, infrastructure or Console sections.
+- Do not add "What's new" blocks or version announcements to the README. Release history belongs in Changesets, the changelog and GitHub release notes.
+- Preserve the README's SVG artwork and section hierarchy. Update SVGs through their generator; do not replace them with Mermaid diagrams.
+
 ## Live V2 TUI Testing
 
 - Run `bun run dev:live` from a development worktree to test its TUI against the currently elected `opencode` background server and live sessions.
