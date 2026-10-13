@@ -18,6 +18,7 @@ import { KV } from "./kv.js"
 
 const Refresh = Schema.Struct({
   attemptedAt: Schema.Number,
+  cloneFailed: Schema.optional(Schema.Boolean),
 })
 const refreshInterval = Duration.toMillis(Duration.days(1))
 
@@ -33,7 +34,7 @@ export type Result = {
 
 export type EnsureInput = {
   readonly reference: Repository.RemoteReference
-  /** `daily` throttles existing checkouts; `true` forces a refresh. */
+  /** `daily` throttles network attempts, including failed clones; `true` forces a retry. */
   readonly refresh?: boolean | "daily"
   readonly branch?: string
 }
@@ -148,14 +149,20 @@ const layer = Layer.effect(
                   originReference &&
                   Repository.same(originReference, cloneTarget),
               )
-              if (!reuse && (yield* fs.existsSafe(localPath))) {
-                yield* cacheOperation(fs.remove(localPath, { recursive: true }), "remove stale cache", localPath)
-              }
-
               const now = yield* Clock.currentTimeMillis
               const previous = Option.getOrUndefined(Schema.decodeUnknownOption(Refresh)(yield* kv.get(key)))
               const refresh =
                 input.refresh === "daily" ? !previous || now - previous.attemptedAt >= refreshInterval : input.refresh
+              if (!reuse && previous?.cloneFailed && input.refresh === "daily" && !refresh) {
+                return yield* new CloneFailedError({
+                  repository,
+                  message:
+                    "A recent clone failed; automatic retries are paused until the daily refresh interval. Force a refresh to retry now.",
+                })
+              }
+              if (!reuse && (yield* fs.existsSafe(localPath))) {
+                yield* cacheOperation(fs.remove(localPath, { recursive: true }), "remove stale cache", localPath)
+              }
               const status = !reuse ? ("cloned" as const) : refresh ? ("refreshed" as const) : ("cached" as const)
 
               if (status !== "cached") {
@@ -169,7 +176,14 @@ const layer = Layer.effect(
                       directory: AbsolutePath.make(localPath),
                       branch: input.branch,
                     })
-                    .pipe(Effect.mapError((error) => new CloneFailedError({ repository, message: error.message })))
+                    .pipe(
+                      Effect.catch((error) =>
+                        Effect.gen(function* () {
+                          yield* kv.set(key, { attemptedAt: now, cloneFailed: true })
+                          return yield* new CloneFailedError({ repository, message: error.message })
+                        }),
+                      ),
+                    )
                 }
 
                 if (status === "refreshed") {

@@ -19,6 +19,49 @@ const it = testEffect(Layer.empty)
 setDefaultTimeout(15_000)
 
 describe("RepositoryCache", () => {
+  for (const recovery of ["interval", "forced"] as const) {
+    it.live(`throttles failed initial clones across recreation and recovers by ${recovery}`, () =>
+      withRemote((fixture) =>
+        Effect.gen(function* () {
+          yield* Effect.promise(() =>
+            fs.rename(path.join(fixture.root, "origin.git"), path.join(fixture.root, "offline.git")),
+          )
+          yield* Effect.gen(function* () {
+            const cache = yield* RepositoryCache.Service
+            expect(yield* Effect.flip(cache.ensure({ reference: fixture.reference, refresh: "daily" }))).toBeInstanceOf(
+              RepositoryCache.CloneFailedError,
+            )
+          }).pipe(Effect.provide(cacheLayer(fixture.root)))
+
+          // The remote is reachable again: a repeated network attempt would succeed.
+          yield* Effect.promise(() =>
+            fs.rename(path.join(fixture.root, "offline.git"), path.join(fixture.root, "origin.git")),
+          )
+          yield* Effect.gen(function* () {
+            const cache = yield* RepositoryCache.Service
+            const kv = yield* KV.Service
+            expect(yield* Effect.flip(cache.ensure({ reference: fixture.reference, refresh: "daily" }))).toBeInstanceOf(
+              RepositoryCache.CloneFailedError,
+            )
+            const localPath = Repository.cachePath(path.join(fixture.root, "repos"), fixture.reference)
+            if (recovery === "interval") {
+              yield* kv.set(`repository-cache:${localPath}`, {
+                attemptedAt: (yield* Clock.currentTimeMillis) - Duration.toMillis(Duration.days(1)),
+                cloneFailed: true,
+              })
+            }
+            const result = yield* cache.ensure({
+              reference: fixture.reference,
+              refresh: recovery === "forced" ? true : "daily",
+            })
+            expect(result.status).toBe("cloned")
+            expect(yield* read(path.join(result.localPath, "README.md"))).toBe("one\n")
+          }).pipe(Effect.provide(cacheLayer(fixture.root)))
+        }),
+      ),
+    )
+  }
+
   it.live("persists the daily throttle across cache recreation and serializes competing refreshes", () =>
     withRemote((fixture) =>
       Effect.gen(function* () {

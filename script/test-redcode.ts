@@ -75,6 +75,8 @@ const suites = {
     "test/mcp-instructions.test.ts",
     "test/mcp-import-boundary.test.ts",
     "test/remote-check.test.ts",
+    "test/release-metadata.test.ts",
+    "test/repository-cache.test.ts",
     "test/integration-check.test.ts",
     "test/integration.test.ts",
     "test/plugin/provider-red-router.test.ts",

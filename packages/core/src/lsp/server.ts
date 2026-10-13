@@ -9,6 +9,9 @@ import path from "node:path"
 import { Global } from "@opencode/util/global"
 import { which } from "../util/which.js"
 import type { Handle } from "./client.js"
+import type { Schema } from "effect"
+
+export type ReleaseLookup = (url: string) => Promise<Schema.Json>
 
 export interface Info {
   readonly id: string
@@ -290,8 +293,8 @@ function ancestors(start: string, stop: string) {
   }
 }
 
-export async function start(server: Info, root: string, directory: string, downloads: boolean): Promise<Handle> {
-  const specialized = await specializedLaunch(server, root, directory, downloads)
+export async function start(server: Info, root: string, directory: string, downloads: boolean, releaseLookup: ReleaseLookup): Promise<Handle> {
+  const specialized = await specializedLaunch(server, root, directory, downloads, releaseLookup)
   const executable = specialized?.executable
     ?? resolveCommand(server, root, directory)
     ?? (isRoslyn(server) ? await installRoslyn(downloads) : undefined)
@@ -347,19 +350,19 @@ async function download(server: Info, enabled: boolean) {
   return Npm.which(server.download.package, server.download.bin)
 }
 
-async function specializedLaunch(server: Info, root: string, directory: string, downloads: boolean) {
+async function specializedLaunch(server: Info, root: string, directory: string, downloads: boolean, releaseLookup: ReleaseLookup) {
   if (server.id === "jdtls" && server.command[0] === "java") return javaLaunch(downloads)
   if (server.id === "oxlint" && server.command[0] === "oxc_language_server")
     return oxlintLaunch(server, root, directory)
   if (resolveCommand(server, root, directory)) return
-  if (server.id === "zls" && server.command[0] === "zls") return zlsLaunch(downloads)
-  if (server.id === "clangd" && server.command[0] === "clangd") return clangdLaunch(downloads)
-  if (server.id === "lua-ls" && server.command[0] === "lua-language-server") return luaLaunch(downloads)
+  if (server.id === "zls" && server.command[0] === "zls") return zlsLaunch(downloads, releaseLookup)
+  if (server.id === "clangd" && server.command[0] === "clangd") return clangdLaunch(downloads, releaseLookup)
+  if (server.id === "lua-ls" && server.command[0] === "lua-language-server") return luaLaunch(downloads, releaseLookup)
   if (server.id === "elixir-ls" && server.command[0] === "elixir-ls") return elixirLaunch(downloads)
   if (server.id === "terraform" && server.command[0] === "terraform-ls") return terraformLaunch(downloads)
-  if (server.id === "texlab" && server.command[0] === "texlab") return texlabLaunch(downloads)
-  if (server.id === "tinymist" && server.command[0] === "tinymist") return tinymistLaunch(downloads)
-  if (server.id === "kotlin-ls" && server.command[0] === "kotlin-lsp") return kotlinLaunch(downloads)
+  if (server.id === "texlab" && server.command[0] === "texlab") return texlabLaunch(downloads, releaseLookup)
+  if (server.id === "tinymist" && server.command[0] === "tinymist") return tinymistLaunch(downloads, releaseLookup)
+  if (server.id === "kotlin-ls" && server.command[0] === "kotlin-lsp") return kotlinLaunch(downloads, releaseLookup)
   if (server.id === "sourcekit-lsp" && server.command[0] === "sourcekit-lsp") return sourcekitLaunch()
 }
 
@@ -380,7 +383,7 @@ async function oxlintLaunch(server: Info, root: string, directory: string) {
   return code === 0 && output.includes("--lsp") ? { executable, args: ["--lsp"] } : undefined
 }
 
-async function zlsLaunch(downloads: boolean) {
+async function zlsLaunch(downloads: boolean, releaseLookup: ReleaseLookup) {
   if (!downloads || !which("zig")) return
   const platform = globalThis.process.platform === "darwin" ? "macos" : globalThis.process.platform === "win32" ? "windows" : globalThis.process.platform
   const arch = globalThis.process.arch === "arm64" ? "aarch64" : globalThis.process.arch === "x64" ? "x86_64" : globalThis.process.arch === "ia32" ? "x86" : globalThis.process.arch
@@ -388,7 +391,7 @@ async function zlsLaunch(downloads: boolean) {
   const name = `zls-${arch}-${platform}.${extension}`
   if (!["zls-x86_64-linux.tar.xz", "zls-x86_64-macos.tar.xz", "zls-x86_64-windows.zip", "zls-aarch64-linux.tar.xz", "zls-aarch64-macos.tar.xz", "zls-aarch64-windows.zip", "zls-x86-linux.tar.xz", "zls-x86-windows.zip"].includes(name))
     throw new Error(`LSP server zls does not support ${platform}-${arch}`)
-  await unpack(await githubAsset("zigtools/zls", name), name, Global.Path.bin)
+  await unpack(await githubAsset("zigtools/zls", name, releaseLookup), name, Global.Path.bin)
   const executable = path.join(Global.Path.bin, `zls${globalThis.process.platform === "win32" ? ".exe" : ""}`)
   if (!existsSync(executable)) throw new Error("LSP server zls archive has no executable")
   if (globalThis.process.platform !== "win32") await chmod(executable, 0o755)
@@ -407,14 +410,12 @@ function clangdCache() {
   }
 }
 
-async function clangdLaunch(downloads: boolean) {
+async function clangdLaunch(downloads: boolean, releaseLookup: ReleaseLookup) {
   const cached = clangdCache()
   if (cached) return { executable: cached, args: ["--background-index", "--clang-tidy"] }
   if (!downloads) return
   const platform = globalThis.process.platform === "darwin" ? "mac" : globalThis.process.platform === "win32" ? "windows" : "linux"
-  const response = await fetch("https://api.github.com/repos/clangd/clangd/releases/latest")
-  if (!response.ok) throw new Error(`LSP server clangd release lookup failed: HTTP ${response.status}`)
-  const release: unknown = await response.json()
+  const release: unknown = await releaseLookup("https://api.github.com/repos/clangd/clangd/releases/latest")
   const tag = typeof release === "object" && release !== null && "tag_name" in release && typeof release.tag_name === "string"
     ? release.tag_name : undefined
   const assets = typeof release === "object" && release !== null && "assets" in release && Array.isArray(release.assets)
@@ -438,7 +439,7 @@ function luaExecutable() {
   return path.join(Global.Path.bin, `lua-language-server-${globalThis.process.arch}-${globalThis.process.platform}`, "bin", `lua-language-server${globalThis.process.platform === "win32" ? ".exe" : ""}`)
 }
 
-async function luaLaunch(downloads: boolean) {
+async function luaLaunch(downloads: boolean, releaseLookup: ReleaseLookup) {
   const executable = luaExecutable()
   if (existsSync(executable)) return { executable, args: [] }
   if (!downloads) return
@@ -446,9 +447,7 @@ async function luaLaunch(downloads: boolean) {
   const combination = `${globalThis.process.platform}-${globalThis.process.arch}.${extension}`
   if (!["darwin-arm64.tar.gz", "darwin-x64.tar.gz", "linux-x64.tar.gz", "linux-arm64.tar.gz", "win32-x64.zip", "win32-ia32.zip"].includes(combination))
     throw new Error(`LSP server lua-ls does not support ${combination}`)
-  const response = await fetch("https://api.github.com/repos/LuaLS/lua-language-server/releases/latest")
-  if (!response.ok) throw new Error(`LSP server lua-ls release lookup failed: HTTP ${response.status}`)
-  const release: unknown = await response.json()
+  const release: unknown = await releaseLookup("https://api.github.com/repos/LuaLS/lua-language-server/releases/latest")
   const tag = typeof release === "object" && release !== null && "tag_name" in release && typeof release.tag_name === "string"
     ? release.tag_name : undefined
   const name = `lua-language-server-${tag}-${combination}`
@@ -508,38 +507,36 @@ async function terraformLaunch(downloads: boolean) {
   return { executable, args: ["serve"] }
 }
 
-async function texlabLaunch(downloads: boolean) {
+async function texlabLaunch(downloads: boolean, releaseLookup: ReleaseLookup) {
   if (!downloads) return
   if (!["x64", "arm64"].includes(globalThis.process.arch) || !["linux", "darwin", "win32"].includes(globalThis.process.platform))
     throw new Error(`LSP server texlab does not support ${globalThis.process.platform}-${globalThis.process.arch}`)
   const arch = globalThis.process.arch === "arm64" ? "aarch64" : "x86_64"
   const platform = globalThis.process.platform === "darwin" ? "macos" : globalThis.process.platform === "win32" ? "windows" : "linux"
   const name = `texlab-${arch}-${platform}.${globalThis.process.platform === "win32" ? "zip" : "tar.gz"}`
-  await unpack(await githubAsset("latex-lsp/texlab", name), name, Global.Path.bin)
+  await unpack(await githubAsset("latex-lsp/texlab", name, releaseLookup), name, Global.Path.bin)
   const executable = path.join(Global.Path.bin, `texlab${globalThis.process.platform === "win32" ? ".exe" : ""}`)
   if (!existsSync(executable)) throw new Error("LSP server texlab archive has no executable")
   if (globalThis.process.platform !== "win32") await chmod(executable, 0o755)
   return { executable, args: [] }
 }
 
-async function tinymistLaunch(downloads: boolean) {
+async function tinymistLaunch(downloads: boolean, releaseLookup: ReleaseLookup) {
   if (!downloads) return
   if (!["x64", "arm64"].includes(globalThis.process.arch) || !["linux", "darwin", "win32"].includes(globalThis.process.platform))
     throw new Error(`LSP server tinymist does not support ${globalThis.process.platform}-${globalThis.process.arch}`)
   const arch = globalThis.process.arch === "arm64" ? "aarch64" : "x86_64"
   const platform = globalThis.process.platform === "darwin" ? "apple-darwin" : globalThis.process.platform === "win32" ? "pc-windows-msvc" : "unknown-linux-gnu"
   const name = `tinymist-${arch}-${platform}.${globalThis.process.platform === "win32" ? "zip" : "tar.gz"}`
-  await unpack(await githubAsset("Myriad-Dreamin/tinymist", name), name, Global.Path.bin, globalThis.process.platform === "win32" ? 0 : 1)
+  await unpack(await githubAsset("Myriad-Dreamin/tinymist", name, releaseLookup), name, Global.Path.bin, globalThis.process.platform === "win32" ? 0 : 1)
   const executable = path.join(Global.Path.bin, `tinymist${globalThis.process.platform === "win32" ? ".exe" : ""}`)
   if (!existsSync(executable)) throw new Error("LSP server tinymist archive has no executable")
   if (globalThis.process.platform !== "win32") await chmod(executable, 0o755)
   return { executable, args: [] }
 }
 
-async function githubAsset(repository: string, name: string) {
-  const response = await fetch(`https://api.github.com/repos/${repository}/releases/latest`)
-  if (!response.ok) throw new Error(`LSP server ${repository} release lookup failed: HTTP ${response.status}`)
-  const release: unknown = await response.json()
+async function githubAsset(repository: string, name: string, releaseLookup: ReleaseLookup) {
+  const release: unknown = await releaseLookup(`https://api.github.com/repos/${repository}/releases/latest`)
   const assets = typeof release === "object" && release !== null && "assets" in release && Array.isArray(release.assets)
     ? release.assets as unknown[] : []
   const asset = assets.find((item) => typeof item === "object" && item !== null && "name" in item && item.name === name)
@@ -605,13 +602,11 @@ function kotlinLauncher() {
   return path.join(Global.Path.bin, "kotlin-ls", globalThis.process.platform === "win32" ? "kotlin-lsp.cmd" : "kotlin-lsp.sh")
 }
 
-async function kotlinLaunch(downloads: boolean) {
+async function kotlinLaunch(downloads: boolean, releaseLookup: ReleaseLookup) {
   const launcher = kotlinLauncher()
   if (existsSync(launcher)) return { executable: launcher, args: ["--stdio"] }
   if (!downloads) throw new Error("LSP server kotlin-ls is not installed")
-  const response = await fetch("https://api.github.com/repos/Kotlin/kotlin-lsp/releases/latest")
-  if (!response.ok) throw new Error(`LSP server kotlin-ls release lookup failed: HTTP ${response.status}`)
-  const release: unknown = await response.json()
+  const release: unknown = await releaseLookup("https://api.github.com/repos/Kotlin/kotlin-lsp/releases/latest")
   const version = typeof release === "object" && release !== null && "name" in release && typeof release.name === "string"
     ? release.name.replace(/^v/, "") : undefined
   if (!version) throw new Error("LSP server kotlin-ls release has no version")

@@ -17,7 +17,7 @@ export function available(_server: LSPServer.Info, _root: string, _directory: st
   return false
 }
 
-export function start(_server: LSPServer.Info, _root: string, _directory: string, _downloads: boolean): Handle {
+export function start(_server: LSPServer.Info, _root: string, _directory: string, _downloads: boolean, _releaseLookup: LSPServer.ReleaseLookup): Handle {
   throw new Error("Language servers are unavailable on the workerd runtime")
 }
 

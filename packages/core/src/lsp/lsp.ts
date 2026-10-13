@@ -8,6 +8,7 @@ import { makeLocationNode } from "@opencode/util/effect/app-node"
 import type { Info } from "@opencode/schema/config"
 import { Config } from "../config.js"
 import { Location } from "../location.js"
+import { ReleaseMetadata } from "../release-metadata.js"
 import type { LSPClient } from "./client.js"
 import { LSPLaunch } from "./launch.js"
 import type { LSPServer } from "./server.js"
@@ -52,6 +53,7 @@ const layer = Layer.effect(
   Effect.gen(function* () {
     const location = yield* Location.Service
     const config = yield* Config.Service
+    const releases = yield* ReleaseMetadata.Service
     const context = yield* Effect.context()
     const runFork = Effect.runForkWith(context)
     const downloads = !["1", "true"].includes(process.env["REDCODE_DISABLE_LSP_DOWNLOAD"]?.toLowerCase() ?? "")
@@ -135,7 +137,7 @@ const layer = Layer.effect(
         // A Node-based server whose runtime rejects a flag in the inherited NODE_OPTIONS exits
         // before initialize. Restart it exactly once without that flag instead of staying broken.
         const launch = async (info: LSPServer.Info, retry: boolean): Promise<LSPClient.Info> => {
-          const handle = await backend.start(info, root, location.directory, downloads)
+          const handle = await backend.start(info, root, location.directory, downloads, (url) => Effect.runPromise(releases.get(url)))
           return backend.createClient({
               serverID: server.id,
               server: handle,
@@ -304,5 +306,5 @@ function fileInside(directory: string, file: string) {
 export const node = makeLocationNode({
   service: Service,
   layer,
-  deps: [Config.node, Location.node],
+  deps: [Config.node, Location.node, ReleaseMetadata.node],
 })
