@@ -65,15 +65,13 @@ export interface Limits {
 export const DEFAULT_LIMITS: Limits = { timeoutMs: 240_000, maxToolCalls: 100, maxOutputBytes: 2_000_000 }
 
 /**
- * Resolves `experimental.code_mode`. Code Mode stays off unless it is explicitly turned on: until
- * then every tool is advertised directly. When on, each program runs under bounded limits.
+ * Resolves execution limits for Code Mode, which is always on across session clients.
  */
-export const gate = (config: ConfigExperimental.Info["code_mode"]): Limits | false => {
-  if (config?.enabled !== "on") return false
+export const limits = (config: ConfigExperimental.Info["code_mode"]): Limits => {
   return {
-    timeoutMs: config.timeout_ms ?? DEFAULT_LIMITS.timeoutMs,
-    maxToolCalls: config.max_tool_calls ?? DEFAULT_LIMITS.maxToolCalls,
-    maxOutputBytes: config.max_output_bytes ?? DEFAULT_LIMITS.maxOutputBytes,
+    timeoutMs: config?.timeout_ms ?? DEFAULT_LIMITS.timeoutMs,
+    maxToolCalls: config?.max_tool_calls ?? DEFAULT_LIMITS.maxToolCalls,
+    maxOutputBytes: config?.max_output_bytes ?? DEFAULT_LIMITS.maxOutputBytes,
   }
 }
 

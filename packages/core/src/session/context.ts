@@ -146,7 +146,7 @@ const layer = Layer.effect(
       if (!agent.info) return yield* new AgentNotFoundError({ sessionID: session.id, agent: session.agent ?? agent.id })
       // Discovery and execution must agree on the permissions of the selected agent.
       const permissions = Permission.forAgent(agent.info, session.permissions)
-      const codeMode = CodeModeTool.gate(Config.latestExperimental(yield* config.entries(), "code_mode"))
+      const codeMode = CodeModeTool.limits(Config.latestExperimental(yield* config.entries(), "code_mode"))
       const tools = yield* registry.snapshot(permissions, { codeMode })
       const settings = yield* intelligence
         .read(sessionID)
@@ -176,7 +176,7 @@ const layer = Layer.effect(
           discovery: discovery.load(),
           skills: skillInstructions.load(permissions),
           references: referenceInstructions.load(),
-          mcp: mcpInstructions.load(permissions, codeMode !== false),
+          mcp: mcpInstructions.load(permissions),
           entries: entries.load(sessionID),
         },
         { concurrency: "unbounded" },

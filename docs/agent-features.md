@@ -33,6 +33,17 @@ recovery and collecting changes.
 sessions, guided remote registration and a create/review/integrate/archive/restore workflow.
 See [external coding agents and worktrees](external-harnesses.md) for capabilities and host ownership.
 
+## Tool discovery
+
+Code Mode is always enabled on the agent server, so Desktop, web and CLI sessions use the same
+tool discovery. The model receives a compact catalog and can search connected MCP tools through
+`execute` when it needs a tool that is not listed inline. The inline catalog targets approximately
+2,000 tokens; this is not a limit on the conversation, tool results or the complete request.
+
+Each tool call keeps its permission checks. Execution time, tool-call count and output size remain
+bounded. `experimental.code_mode` configures execution limits; the obsolete `enabled` field is
+ignored. S1 catalog ranking is a separate opt-in.
+
 ## Modes
 
 A session runs one of four primary agents. `Tab` cycles through them (`Shift+Tab` goes back), and the

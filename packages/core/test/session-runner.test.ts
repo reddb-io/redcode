@@ -4380,7 +4380,7 @@ describe("SessionRunnerLLM", () => {
     expect(userTexts(s.requests[0])[0]).toContain("older exchanges omitted")
     expect(userTexts(s.requests[0])[0]).not.toContain("Request 0:")
     expect(userTexts(s.requests[0])[0]).not.toContain("Request 1:")
-    expect(userTexts(s.requests[0])[0]).toContain("Request 2:")
+    expect(userTexts(s.requests[0])[0]).toContain("Request 3:")
     expect((yield* s.messages).find((message) => message.id === compaction.id)).toMatchObject({
       status: "completed",
       summary: expect.stringContaining("## Objective\n- Recovered"),
@@ -4935,9 +4935,7 @@ describe("SessionRunnerLLM", () => {
     const error = yield* s.resume.pipe(Effect.flip)
 
     expect(error.message).toStartWith("Compaction cannot bring this conversation under the context window: ")
-    expect(error.message).toContain(
-      " after compaction (the system prompt, instructions and tool definitions take 105,0",
-    )
+    expect(error.message).toContain(" after compaction (the system prompt, instructions and tool definitions take ")
     expect(error.message).toContain(
       " against a window of 115,200 tokens (a guess: fake reported no context size for guessed, and the models catalog does not list it). ",
     )

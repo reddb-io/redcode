@@ -597,6 +597,8 @@ function normalizeExperimental(
         if (value !== undefined) result[key] = value
       }
       if (own(experimental, "code_mode")) {
+        if (isRecord(experimental.code_mode))
+          unsupportedIfPresent(experimental.code_mode, "enabled", ["experimental", "code_mode", "enabled"], diagnostics)
         const value = decodeEncoded(
           ConfigExperimental.Info.fields.code_mode,
           experimental.code_mode,

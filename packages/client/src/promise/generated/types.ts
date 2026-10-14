@@ -3432,12 +3432,7 @@ export type ConfigEntry =
           turn_stall?: false | { warn_ms?: number; abort_ms?: number }
           tool_timeout?: false | number
           model_suggestions?: boolean
-          code_mode?: {
-            enabled?: "off" | "on"
-            max_tool_calls?: number
-            timeout_ms?: number
-            max_output_bytes?: number
-          }
+          code_mode?: { max_tool_calls?: number; timeout_ms?: number; max_output_bytes?: number }
           policies?: Array<{
             action: "provider.use" | "tool.use" | "integration.use" | "permission"
             resource: string

@@ -111,10 +111,6 @@ export class Info extends Schema.Class<Info>("ConfigExperimental.Info")({
       "Offer a card to switch to another model of a connected RedRouter when its recommend_models tool suggests one, asked by the agent or by Redcode when the session needs vision or tools the model lacks, nears its context limit, keeps failing at the provider or runs out of quota, or has a much cheaper equivalent; nothing switches until you accept. Defaults to true.",
   }),
   code_mode: Schema.Struct({
-    enabled: Schema.Literals(["off", "on"]).pipe(optional).annotate({
-      description:
-        'Call tools from a confined JavaScript program through the execute tool: "on" enables it. Defaults to "off", which advertises every tool directly.',
-    }),
     max_tool_calls: PositiveInt.pipe(optional).annotate({
       description: "Tool calls one program may make before it is stopped. Defaults to 100.",
     }),
@@ -127,7 +123,9 @@ export class Info extends Schema.Class<Info>("ConfigExperimental.Info")({
     }),
   })
     .pipe(optional)
-    .annotate({ description: "Code Mode: tools called from a confined program. Off by default." }),
+    .annotate({
+      description: "Execution limits for Code Mode. Tools are called from a confined program in every session.",
+    }),
   policies: ConfigPolicy.Info.pipe(Schema.Array, optional).annotate({
     description: "Ordered policies controlling access to configured resources",
   }),

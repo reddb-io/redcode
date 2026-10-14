@@ -724,13 +724,12 @@ describe("Tool", () => {
     }),
   )
 
-  it.effect("resolves the experimental Code Mode gate off unless it is turned on", () =>
+  it.effect("resolves always-on Code Mode execution limits", () =>
     Effect.sync(() => {
-      expect(CodeModeTool.gate(undefined)).toBe(false)
-      expect(CodeModeTool.gate({ enabled: "off" })).toBe(false)
-      expect(CodeModeTool.gate({ max_tool_calls: 5 })).toBe(false)
-      expect(CodeModeTool.gate({ enabled: "on" })).toEqual(CodeModeTool.DEFAULT_LIMITS)
-      expect(CodeModeTool.gate({ enabled: "on", max_tool_calls: 5, timeout_ms: 1_000 })).toEqual({
+      expect(CodeModeTool.limits(undefined)).toEqual(CodeModeTool.DEFAULT_LIMITS)
+      expect(CodeModeTool.limits({})).toEqual(CodeModeTool.DEFAULT_LIMITS)
+      expect(CodeModeTool.limits({ max_tool_calls: 5 })).toEqual({ ...CodeModeTool.DEFAULT_LIMITS, maxToolCalls: 5 })
+      expect(CodeModeTool.limits({ max_tool_calls: 5, timeout_ms: 1_000 })).toEqual({
         ...CodeModeTool.DEFAULT_LIMITS,
         maxToolCalls: 5,
         timeoutMs: 1_000,

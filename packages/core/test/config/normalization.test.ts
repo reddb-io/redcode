@@ -17,6 +17,16 @@ function decoded(input: unknown) {
   return Schema.decodeUnknownSync(Info, options)(normalized(input).encoded)
 }
 
+test("ignores obsolete Code Mode enablement flags while retaining execution limits", () => {
+  const result = normalized({ experimental: { code_mode: { enabled: "off", max_tool_calls: 5 } } })
+  expect(result.encoded.experimental).toEqual({ code_mode: { max_tool_calls: 5 } })
+  expect(result.diagnostics).toContainEqual({
+    kind: "unsupported",
+    path: ["experimental", "code_mode", "enabled"],
+    message: expect.any(String),
+  })
+})
+
 function withoutEmptyCompatibilityContainers(input: Record<string, unknown>) {
   const result = structuredClone(input)
   if (typeof result.mcp === "object" && result.mcp !== null && !Array.isArray(result.mcp)) {

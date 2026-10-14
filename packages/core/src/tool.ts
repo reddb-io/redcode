@@ -46,8 +46,8 @@ type Data = {
 export interface SnapshotOptions {
   /**
    * Limits for the `execute` Code Mode tool, or false to advertise every active tool directly.
-   * Sessions pass the `experimental.code_mode` gate, which is off by default; omitted, Code Mode
-   * runs under its default limits.
+   * Sessions always enable Code Mode using their configured execution limits. Internal restricted
+   * requests can advertise tools directly; omitted, Code Mode runs under its default limits.
    */
   readonly codeMode?: CodeModeTool.Limits | false
 }

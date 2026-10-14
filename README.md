@@ -42,6 +42,10 @@ Configuration is available in the app; **Settings → Servers** links to each ho
 computer use on the selected execution host. Installation and enablement are explicit; CLI and TUI
 share those settings. [Capabilities and setup](docs/agent-tools.md).
 
+The agent server uses **Code Mode** in every Desktop, web and CLI session: a compact tool
+catalog and on-demand search help the agent find tools from connected MCP servers. Tool permissions
+still apply. [Tool discovery](docs/agent-features.md#tool-discovery).
+
 With mise installed, run:
 
 ```sh
