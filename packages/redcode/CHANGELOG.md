@@ -1,5 +1,13 @@
 # @reddb-io/redcode
 
+## 0.81.3
+
+### Patch Changes
+
+- Release idle project and workspace runtimes after five minutes while preserving execution stall limits, pending questions, permissions, interactive terminals and background shell jobs. Report the managed service's heap, external memory and cached runtime counts through memory diagnostics without starting or replacing the service. Measure repeated project loading and eviction separately from process resident memory.
+- Fix agent harnesses, remote worker tasks, environment cloning, SSH dialogs and side questions over LAN HTTP when the browser does not expose crypto.randomUUID. Reuse the shared identifier generator with a random-byte UUID fallback for those browsers.
+- Move the fixed navigation rail into a header menu on narrow screens so conversations use the full mobile width. Keep project and agent sidemenus available as overlays with an explicit close button, preserve desktop navigation and prevent mobile drawers from remaining stuck while closing.
+
 ## 0.81.2
 
 ### Patch Changes
