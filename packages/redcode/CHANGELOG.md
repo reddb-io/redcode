@@ -1,5 +1,13 @@
 # @reddb-io/redcode
 
+## 0.81.2
+
+### Patch Changes
+
+- Share SSH restores and health probes across desktop windows, back off unstable tunnels and pause automatic recovery after repeated failures. Keep event connections open during slow handshakes and apply backoff when managed event streams fail. Cache desktop GitHub release queries across windows and restarts, including rate-limit responses.
+- Make Desktop drafts use the host's saved S2 settings alongside its S1 evaluator and S2 transformation model. Share and invalidate the settings cache when CLI, TUI or Desktop changes reasoning roles, retain session overrides, and require an explicit replacement for an unavailable chosen model. Recommend RedRouter in provider settings and connection dialogs, use Redcode pairing commands, and correct the About page's product attribution while preserving upstream credits.
+- Add host-owned settings for optional Rift, Browser Control, Terminal Control and Computer Use capabilities across Desktop, CLI and TUI. Install pinned packages explicitly, register enabled MCP tools with permission prompts, and configure Rift workspaces without embedding the optional runtimes in the main binaries. Guide Desktop setup with the execution host, separate installed and enabled states, operation progress and the browser or operating-system steps that require completion on that host.
+
 ## 0.81.1
 
 ### Patch Changes
