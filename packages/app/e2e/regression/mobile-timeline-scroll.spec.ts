@@ -11,7 +11,7 @@ import {
   textPart,
   userMessage,
 } from "../utils/timeline"
-import { capturePromptMotion, promptMotionIssues, readPromptPositions } from "../utils/prompt-motion"
+import { capturePromptMotion, markPromptForCapture, promptMotionIssues, readPromptPositions } from "../utils/prompt-motion"
 
 // Compositor prediction can add 20–25px to discrete CDP moves even in a plain
 // scrollport. Disable it so the visual assertion measures the supplied gesture.
@@ -832,6 +832,7 @@ test("painted motion rejects a prompt whose pixels disappear", async ({ page }) 
     viewport: { width: 390, height: 844 },
   })
   const timeline = page.locator('[data-slot="session-timeline-scroll"]')
+  await markPromptForCapture(page)
   await expect(timeline.locator("[data-timeline-virtual-content]")).toBeVisible()
   await page.evaluate(() => document.fonts.ready)
   const prompt = timeline.locator('[data-timeline-row="UserMessage"]')

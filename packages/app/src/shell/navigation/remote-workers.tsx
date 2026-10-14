@@ -8,6 +8,7 @@ import { useQuery } from "@tanstack/solid-query"
 import { For, onCleanup, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useLanguage } from "@/runtime/i18n/language"
+import { uuid } from "@/runtime/persistence/uuid"
 import { ServerConnection } from "@/runtime/server/registry"
 import { useGlobal } from "@/runtime/server/runtime"
 import { errorMessage } from "@/shell/layout/helpers"
@@ -58,7 +59,7 @@ export function RemoteWorkers(props: { server: ServerConnection.Any }) {
   const appearance = card({ padding: "md" })
   const secondary = button({ variant: "secondary", size: "sm" })
   const draft = (): Worker.Task => ({
-    id: `task-${crypto.randomUUID()}`,
+    id: `task-${uuid()}`,
     prompt: state.prompt.trim(),
     ...(state.target ? { worker: state.target } : {}),
     ...(state.taskTags.trim()
@@ -488,7 +489,7 @@ export function RemoteWorkers(props: { server: ServerConnection.Any }) {
                             onClick={() =>
                               setState("instruction", {
                                 key: `${batch().id}/${task().id}`,
-                                id: `msg_${crypto.randomUUID()}`,
+                                id: `msg_${uuid()}`,
                                 text: "",
                                 delivery: "steer",
                               })
@@ -538,7 +539,7 @@ export function RemoteWorkers(props: { server: ServerConnection.Any }) {
                                 onInput={(event) =>
                                   setState("instruction", {
                                     text: event.currentTarget.value,
-                                    id: `msg_${crypto.randomUUID()}`,
+                                    id: `msg_${uuid()}`,
                                   })
                                 }
                               />
@@ -553,7 +554,7 @@ export function RemoteWorkers(props: { server: ServerConnection.Any }) {
                                 onChange={(event) =>
                                   setState("instruction", {
                                     delivery: event.currentTarget.value as "steer" | "queue",
-                                    id: `msg_${crypto.randomUUID()}`,
+                                    id: `msg_${uuid()}`,
                                   })
                                 }
                               >

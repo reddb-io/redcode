@@ -9,6 +9,7 @@ import { For, onCleanup, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { Key } from "@solid-primitives/keyed"
 import { useLanguage } from "@/runtime/i18n/language"
+import { uuid } from "@/runtime/persistence/uuid"
 import { useGlobal } from "@/runtime/server/runtime"
 import { ServerConnection } from "@/runtime/server/registry"
 import { errorMessage } from "@/shell/layout/helpers"
@@ -28,7 +29,7 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
     error: "",
     runID: "",
     prompt: "",
-    promptID: crypto.randomUUID(),
+    promptID: uuid(),
     delivery: "queue" as "queue" | "steer",
     answers: {} as Record<string, string>,
     code: "",
@@ -291,7 +292,7 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                     answers: {},
                     prompt: "",
                     delivery: "queue",
-                    promptID: crypto.randomUUID(),
+                    promptID: uuid(),
                   })
                 }}
               >
@@ -454,7 +455,7 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                       text: state.prompt,
                       delivery: state.delivery,
                     })
-                    if (lifetime.active) setState({ prompt: "", promptID: crypto.randomUUID() })
+                    if (lifetime.active) setState({ prompt: "", promptID: uuid() })
                   })
                 }}
                 class="flex flex-col gap-2"
@@ -465,7 +466,7 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                     required
                     class={textarea({ class: "mt-1 w-full" })}
                     value={state.prompt}
-                    onInput={(event) => setState({ prompt: event.currentTarget.value, promptID: crypto.randomUUID() })}
+                    onInput={(event) => setState({ prompt: event.currentTarget.value, promptID: uuid() })}
                   />
                 </label>
                 <label>
@@ -477,7 +478,7 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                     onChange={(event) =>
                       setState({
                         delivery: event.currentTarget.value === "steer" ? "steer" : "queue",
-                        promptID: crypto.randomUUID(),
+                        promptID: uuid(),
                       })
                     }
                   >

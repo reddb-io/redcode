@@ -7,6 +7,7 @@ import { Button } from "@opencode/ui/button"
 import { For, onCleanup, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useLanguage } from "@/runtime/i18n/language"
+import { uuid } from "@/runtime/persistence/uuid"
 import { useGlobal } from "@/runtime/server/runtime"
 import { ServerConnection, serverName, useServers } from "@/runtime/server/registry"
 import { errorMessage } from "@/shell/layout/helpers"
@@ -125,7 +126,7 @@ export default function AgentEnvironments(props: { server: ServerConnection.Any 
         <p class="text-ink-muted">{language.t("environments.lifecycle")}</p>
         <Show when={environment.state === "failed" || environment.state === "reconcile"}><p role="status">{language.t("environments.reconcile")}</p></Show>
         <Show when={environment.state === "failed" || environment.state === "reconcile"}>
-          <Button variant="outline" disabled={state.busy} onClick={() => setState({ id: `${environment.id.slice(0, 50)}-${crypto.randomUUID().slice(0, 8)}`,
+          <Button variant="outline" disabled={state.busy} onClick={() => setState({ id: `${environment.id.slice(0, 50)}-${uuid().slice(0, 8)}`,
             repository: environment.repository, ref: environment.commit ?? environment.ref, image: environment.image, cpu: environment.cpu,
             memoryMiB: environment.memoryMiB, setup: "", key: "", provider: "", notice: language.t("environments.anotherDescription") })}>
             {language.t("environments.another")}</Button>

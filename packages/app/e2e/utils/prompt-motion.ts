@@ -4,6 +4,7 @@ export type PromptPosition = { frame: number; top: number | null }
 
 // Records painted compositor frames; the returned stop function reads the prompt position in each frame.
 export async function capturePromptMotion(page: Page, view: { x: number; y: number; width: number }) {
+  await markPromptForCapture(page)
   const session = await page.context().newCDPSession(page)
   const frames: string[] = []
   const acknowledgements: Promise<unknown>[] = []
@@ -31,6 +32,11 @@ export async function capturePromptMotion(page: Page, view: { x: number; y: numb
 
     return { positions: await readPromptPositions(page, frames, view), frames }
   }
+}
+
+// A fixture marker makes pixel tracking independent of the product's theme colours.
+export async function markPromptForCapture(page: Page) {
+  await page.addStyleTag({ content: '[data-timeline-row="UserMessage"] [data-slot="user-message-text"], [data-timeline-row="UserMessage"] [data-slot="user-message-text"] * { color: rgb(0, 64, 255) !important; }' })
 }
 
 // Finds the top of the only blue ink (the user prompt) in the top 200px of `view` in each JPEG frame.

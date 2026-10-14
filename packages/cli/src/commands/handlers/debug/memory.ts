@@ -9,6 +9,8 @@ import { Commands } from "../../commands"
 import { Runtime } from "../../../framework/runtime"
 import { select } from "../../../database-selection"
 import { ServiceConfig } from "../../../services/service-config"
+import { Service } from "@opencode/client/effect/service"
+import { OpenCode } from "@opencode/client/promise"
 
 const Registration = Schema.fromJsonString(Schema.Struct({ pid: Schema.Int }))
 
@@ -32,8 +34,30 @@ export default Runtime.handler(
       const [messages] = yield* database.db.all<{ total: number }>(sql`SELECT count(*) AS total FROM session_message`)
       return { ...row, messages: messages?.total ?? 0 }
     }).pipe(Effect.provide(Database.layer(selected)))
-    const registration = (yield* ServiceConfig.options()).file
+    const options = yield* ServiceConfig.options()
+    const registration = options.file
+    // Discover only: diagnostics must not start or replace the managed service.
+    const endpoint = yield* Service.discover({ ...options, version: undefined })
+    const snapshot = endpoint
+      ? yield* Effect.tryPromise({
+          try: () =>
+            OpenCode.make({ baseUrl: endpoint.url, headers: Service.headers(endpoint) }).server.system({
+              signal: AbortSignal.timeout(5_000),
+            }),
+          catch: (cause) => cause,
+        }).pipe(Effect.orElseSucceed(() => undefined))
+      : undefined
     const service = yield* Effect.promise(async () => {
+      if (snapshot)
+        return {
+          pid: snapshot.pid,
+          version: snapshot.version,
+          runtime: snapshot.runtime,
+          rss: snapshot.memory,
+          ...snapshot.processMemory,
+          ...snapshot.activity,
+          swap: undefined,
+        }
       const text = await Bun.file(registration)
         .text()
         .catch(() => undefined)
@@ -70,9 +94,27 @@ export default Runtime.handler(
       `  rss         ${bytes(report.process.rss)}`,
       `  heap        ${bytes(report.process.heapUsed)} used of ${bytes(report.process.heapTotal)} (limit ${bytes(report.process.heapLimit)})`,
       `  external    ${bytes(report.process.external)} (array buffers ${bytes(report.process.arrayBuffers)})`,
-      service
-        ? `Background service (pid ${service.pid})${EOL}  rss         ${service.rss === undefined ? "unavailable on this platform" : bytes(service.rss)}${service.swap ? `${EOL}  swap        ${bytes(service.swap)}` : ""}`
-        : "Background service not running",
+      ...(service
+        ? [
+            `Background service (pid ${service.pid})`,
+            ...("version" in service && service.version
+              ? [`  version     ${service.version} (${service.runtime})`]
+              : []),
+            `  rss         ${service.rss === undefined ? "unavailable on this platform" : bytes(service.rss)}`,
+            ...("heapUsed" in service && service.heapUsed !== undefined
+              ? [
+                  `  heap        ${bytes(service.heapUsed)} used (heapTotal ${bytes(service.heapTotal ?? 0)})`,
+                  `  external    ${bytes(service.external ?? 0)} (array buffers ${bytes(service.arrayBuffers ?? 0)})`,
+                ]
+              : []),
+            ...("cachedLocations" in service && service.cachedLocations !== undefined
+              ? [
+                  `  cached      ${service.cachedLocations} projects/workspaces (${service.activeExecutions} active executions)`,
+                ]
+              : []),
+            ...(service.swap ? [`  swap        ${bytes(service.swap)}`] : []),
+          ]
+        : ["Background service not running"]),
       `Database ${database.location ?? "unknown"}`,
       ...(database.bytes !== undefined
         ? [`  size        ${bytes(database.bytes)} (+ ${bytes(database.walBytes ?? 0)} WAL)`]

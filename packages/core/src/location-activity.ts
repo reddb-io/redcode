@@ -7,6 +7,7 @@ import { Job } from "./job.js"
 import { Location } from "./location.js"
 import { LocationServiceMap } from "./location-service-map.js"
 import { Permission } from "./permission.js"
+import { Pty } from "./pty.js"
 import { SessionEvent } from "./session/event.js"
 import { SessionExecution } from "./session/execution.js"
 import { SessionStore } from "./session/store.js"
@@ -16,7 +17,13 @@ const isSessionEvent = Schema.is(SessionEvent.Durable)
 
 export class Service extends Context.Service<Service, {}>()("@opencode/LocationActivity") {}
 
-export function layer(options: { readonly timeToLive?: Duration.Input; readonly sweepInterval?: Duration.Input } = {}) {
+export function layer(
+  options: {
+    readonly timeToLive?: Duration.Input
+    readonly idleTimeToLive?: Duration.Input
+    readonly sweepInterval?: Duration.Input
+  } = {},
+) {
   return Layer.effect(
     Service,
     Effect.gen(function* () {
@@ -27,11 +34,13 @@ export function layer(options: { readonly timeToLive?: Duration.Input; readonly 
       const sessions = yield* SessionStore.Service
       const jobs = yield* Job.Service
       const timeToLive = Duration.toMillis(options.timeToLive ?? "60 minutes")
-      const entries = new Map<string, { readonly ref: Location.Ref; expiresAt: number }>()
+      const idleTimeToLive = Math.min(timeToLive, Duration.toMillis(options.idleTimeToLive ?? "5 minutes"))
+      const entries = new Map<string, { readonly ref: Location.Ref; expiresAt: number; idleExpiresAt: number }>()
       const key = (ref: Location.Ref) => `${LocationServiceMap.canonical(ref).directory}\0${ref.workspaceID ?? ""}`
       const touch = (ref: Location.Ref) =>
         Effect.sync(() => {
-          entries.set(key(ref), { ref, expiresAt: clock.currentTimeMillisUnsafe() + timeToLive })
+          const now = clock.currentTimeMillisUnsafe()
+          entries.set(key(ref), { ref, expiresAt: now + timeToLive, idleExpiresAt: now + idleTimeToLive })
         })
       const runningShellLocations = jobs.runningBackgroundShellLocations.pipe(
         Effect.map((running) => new Set(running.map(key))),
@@ -39,14 +48,19 @@ export function layer(options: { readonly timeToLive?: Duration.Input; readonly 
 
       // Waiting on a person produces no durable activity. Keep the whole Location
       // alive: a parent may also be idle while a child holds the question.
-      const awaitingReply = (ref: Location.Ref) =>
+      const interactive = (ref: Location.Ref) =>
         Effect.gen(function* () {
           const context = yield* locations.contextEffectOption(ref)
           if (Option.isNone(context)) return false
           const forms = Context.getOption(context.value, Form.Service)
           if (Option.isSome(forms) && (yield* forms.value.list()).length > 0) return true
           const permissions = Context.getOption(context.value, Permission.Service)
-          return Option.isSome(permissions) && (yield* permissions.value.list()).length > 0
+          if (Option.isSome(permissions) && (yield* permissions.value.list()).length > 0) return true
+          const terminals = Context.getOption(context.value, Pty.Service)
+          return (
+            Option.isSome(terminals) &&
+            (yield* terminals.value.list()).some((terminal) => terminal.status === "running")
+          )
         }).pipe(
           // A short borrow must not retain the Location after checking pending input.
           Effect.scoped,
@@ -73,7 +87,7 @@ export function layer(options: { readonly timeToLive?: Duration.Input; readonly 
           if (!cached.has(id)) entries.delete(id)
         }
         const now = clock.currentTimeMillisUnsafe()
-        const expired = Array.from(entries.values()).filter((entry) => entry.expiresAt <= now)
+        const expired = Array.from(entries.values()).filter((entry) => entry.idleExpiresAt <= now)
         if (expired.length === 0) return
         const shells = yield* runningShellLocations
         const active = yield* Effect.forEach(yield* execution.active, (sessionID) => sessions.get(sessionID))
@@ -81,10 +95,12 @@ export function layer(options: { readonly timeToLive?: Duration.Input; readonly 
           expired,
           (entry) =>
             Effect.gen(function* () {
-              if (shells.has(key(entry.ref)) || (yield* awaitingReply(entry.ref))) return yield* touch(entry.ref)
+              if (shells.has(key(entry.ref)) || (yield* interactive(entry.ref))) return yield* touch(entry.ref)
               const owners = active.flatMap((session) =>
                 session && key(session.location) === key(entry.ref) ? [session] : [],
               )
+              // Release idle graphs quickly without shortening an execution's stall budget.
+              if (owners.length > 0 && entry.expiresAt > now) return
               // Invalidation only detaches the cache entry; borrowers retain the old
               // graph. Stop its executions and settle tool cleanup before detaching it.
               yield* Effect.forEach(
@@ -100,7 +116,7 @@ export function layer(options: { readonly timeToLive?: Duration.Input; readonly 
               if (
                 remaining.some((session) => session && key(session.location) === key(entry.ref)) ||
                 (yield* runningShellLocations).has(key(entry.ref)) ||
-                (yield* awaitingReply(entry.ref))
+                (yield* interactive(entry.ref))
               ) {
                 yield* touch(entry.ref)
                 return

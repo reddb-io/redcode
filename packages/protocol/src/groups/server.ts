@@ -30,6 +30,17 @@ export const SystemInfo = Schema.Struct({
   started: Schema.Finite,
   /** The server process's resident memory in bytes. */
   memory: Schema.Finite,
+  /** Memory of this server's runtime, not the client making the diagnostic request. */
+  processMemory: Schema.optionalKey(
+    Schema.Struct({
+      heapUsed: Schema.Finite,
+      heapTotal: Schema.Finite,
+      external: Schema.Finite,
+      arrayBuffers: Schema.Finite,
+    }),
+  ),
+  /** Counts only; reading this snapshot never starts a project runtime or an execution. */
+  activity: Schema.optionalKey(Schema.Struct({ cachedLocations: Schema.Int, activeExecutions: Schema.Int })),
   urls: Schema.Array(Schema.String),
   paths: Schema.Struct({
     config: Schema.String,

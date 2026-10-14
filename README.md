@@ -25,6 +25,9 @@ Choose the interface you prefer. Both work with your project's files and the mod
 
 **The visual app:** conversations, sessions, subagents and Design review in one workspace.
 
+On phones, the shared web workspace uses a header navigation menu and overlay sidemenus so the
+conversation keeps the full screen width. [Remote access](docs/remote-access.md).
+
 Open **Agents** in the siderail to follow sessions across hosts, answer requests in **Inbox**, inspect
 **Hosts and resources**, or manage **Remote workers**. This workspace shows agent metadata; opening a
 session loads its conversation. [Agents workspace](docs/agent-features.md#agents-workspace).

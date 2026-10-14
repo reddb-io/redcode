@@ -6,6 +6,45 @@ import { fileNode } from "../utils/workspace"
 // The source and target sessions; the child session is not a home row.
 const rows = 2
 
+test("mobile navigation leaves the conversation full width and keeps scopes accessible", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockStressTimeline(page)
+  await openStress(page)
+  await page.goto(sessionHref(fixture.targetID))
+  const rail = page.getByRole("navigation", { name: "Navigation", exact: true })
+  const main = page.getByRole("main")
+  const menu = page.getByRole("button", { name: "Navigation", exact: true })
+  await expect(page.getByRole("textbox", { name: "Prompt", exact: true })).toBeVisible()
+  for (const width of [320, 390, 700]) {
+    await page.setViewportSize({ width, height: 844 })
+    await expect(rail).toBeHidden()
+    await expect.poll(async () => (await main.boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(width - 2)
+  }
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.screenshot({ path: test.info().outputPath("mobile-full-width-session.png"), animations: "disabled" })
+  await menu.click()
+  for (const name of ["Home", "New session", "Search", "Toggle sidebar", "Agents", "Settings", "Servers", "Help"])
+    await expect(page.getByRole("menuitem", { name, exact: true })).toBeVisible()
+  await page.getByRole("menuitem", { name: "Toggle sidebar", exact: true }).click()
+  const sidebar = page.getByRole("complementary", { name: "Projects and sessions", exact: true })
+  await expect(sidebar).toBeVisible()
+  await sidebar.getByRole("button", { name: "Close sidebar", exact: true }).click()
+  await expect(sidebar).toBeHidden()
+  await menu.click()
+  await page.getByRole("menuitem", { name: "Agents", exact: true }).click()
+  await expect(page.getByRole("region", { name: "Agents", exact: true })).toBeVisible()
+  await menu.click()
+  await page.getByRole("menuitem", { name: "Toggle sidebar", exact: true }).click()
+  const agents = page.getByRole("complementary", { name: "Agents", exact: true })
+  await expect(agents.getByRole("button", { name: "Machines", exact: true })).toBeVisible()
+  await expect(agents).toBeFocused()
+  await page.keyboard.press("Escape")
+  await expect(agents).toBeHidden()
+  await page.setViewportSize({ width: 1024, height: 900 })
+  await expect(rail).toBeVisible()
+  await expect(menu).toBeHidden()
+})
+
 async function openStress(page: Page, extra: SeedInput = {}) {
   await seed(page, {
     projects: { local: [{ worktree: fixture.directory, expanded: true }] },
@@ -79,13 +118,12 @@ for (const position of ["top", "bottom"] as const) {
     const drawer = page.getByRole("dialog", { name: "Tabs", exact: true })
     await expect(drawer).toHaveAttribute("data-open", "")
     await expect(drawer).not.toHaveAttribute("data-transitioning")
-    await expect(drawer.getByRole("button", { name: "Settings", exact: true })).toBeInViewport()
-    await drawer.getByRole("button", { name: "Settings", exact: true }).click()
+    await navigateFromMenu(page, "Settings")
     await expect(page.getByTestId("settings-screen")).toBeVisible()
     await page.getByRole("button", { name: "Back to app", exact: true }).click()
     await page.getByRole("button", { name: "Tabs", exact: true }).click()
     await expect(drawer).not.toHaveAttribute("data-transitioning")
-    await expect(drawer.getByRole("button", { name: "Settings", exact: true })).toBeInViewport()
+    await expect(drawer.getByRole("button", { name: "New session", exact: true })).toBeInViewport()
     await page.keyboard.press("Escape")
     await expect(drawer).toBeHidden()
 
@@ -223,7 +261,7 @@ for (const position of ["top", "bottom"] as const) {
     await views.getByRole("button", { name: "Files", exact: true }).click()
     await expect(picker).toHaveText("More...")
     await openTabs()
-    await drawer.getByRole("button", { name: "Home", exact: true }).click()
+    await navigateFromMenu(page, "Home")
     await expect(page).toHaveURL("/")
     await expect(drawer).toBeHidden()
     await openTab(fixture.expected.sourceTitle)
@@ -240,16 +278,18 @@ test("the summary's changes row switches the view and keeps the side tabs", asyn
   await mockStressTimeline(page, {
     fileList: (path) => (path ? [] : [fileNode(fixture.directory, "README.md")]),
     fileContent: (path) => ({ type: "text", content: `contents:${path}` }),
+    findFiles: ({ query }) => ("README.md".includes(query) ? [fileNode(fixture.directory, "README.md")] : []),
   })
   await openStress(page, { lastProject: { local: fixture.directory } })
   await page.goto(sessionHref(fixture.targetID))
 
-  // One click previews the file in place of the Open file tab.
-  const panel = page.locator("#review-panel")
+  const panel = page.getByRole("complementary", { name: "Review and files", exact: true })
   const readme = panel.getByRole("tab", { name: "README.md", exact: true })
   await page.getByRole("button", { name: "Toggle review", exact: true }).click()
-  await panel.getByRole("button", { name: "Open file", exact: true }).click()
-  await panel.getByRole("button", { name: "README.md", exact: true }).click()
+  await page.keyboard.press("ControlOrMeta+p")
+  const filePicker = page.getByRole("dialog")
+  await filePicker.getByRole("textbox").fill("README")
+  await filePicker.getByRole("option", { name: "/ README.md", exact: true }).click()
   await expect(readme).toHaveAttribute("aria-selected", "true")
   await expect(panel.getByRole("tab", { name: "Open file", exact: true })).toHaveCount(0)
 
@@ -272,22 +312,16 @@ test("the summary's changes row switches the view and keeps the side tabs", asyn
   await page.setViewportSize({ width: 1280, height: 900 })
   await expect(readme).toHaveAttribute("aria-selected", "true")
 
-  // After a reload forgets the preview, a stored Open file tab is still the slot a narrow-screen file open replaces.
-  const launcher = panel.getByRole("tab", { name: "Open file", exact: true })
-  await panel.getByRole("button", { name: "Open file", exact: true }).click()
-  await expect(launcher).toHaveAttribute("aria-selected", "true")
-  await expect(readme).toHaveCount(0)
+  // The file tab survives reload and remains available when the layout narrows.
   await page.reload()
-  await expect(launcher).toHaveAttribute("aria-selected", "true")
+  await expect(readme).toHaveAttribute("aria-selected", "true")
   await page.setViewportSize({ width: 390, height: 844 })
   await more.click()
   await views.getByRole("button", { name: "Files", exact: true }).click()
   const files = page.locator('[data-slot="session-mobile-files"]')
-  await files.getByRole("button", { name: "README.md", exact: true }).click()
   await expect(files.getByText("contents:README.md", { exact: true })).toBeVisible()
   await page.setViewportSize({ width: 1280, height: 900 })
   await expect(readme).toHaveAttribute("aria-selected", "true")
-  await expect(launcher).toHaveCount(0)
 })
 
 test("a narrow-screen palette pick keeps the view and dock, and the side region shows the file when wide", async ({
@@ -316,11 +350,11 @@ test("a narrow-screen palette pick keeps the view and dock, and the side region 
   await dialog.getByRole("option", { name: "/ README.md", exact: true }).click()
   await expect(dialog).toHaveCount(0)
   await expect(tabs.getByRole("tab", { selected: true })).toHaveText("More...")
-  await expect(terminal).toHaveAttribute("data-opened", "true")
+  await expect(terminal).toBeVisible()
 
   await page.setViewportSize({ width: 1280, height: 900 })
-  await expect(terminal).toHaveAttribute("data-opened", "true")
-  const panel = page.locator("#review-panel")
+  await expect(terminal).toBeVisible()
+  const panel = page.getByRole("complementary", { name: "Review and files", exact: true })
   await expect(panel.getByRole("tab", { name: "README.md", exact: true })).toHaveAttribute("aria-selected", "true")
   await expect(panel.getByText("contents:README.md", { exact: true })).toBeVisible()
 })
@@ -340,7 +374,7 @@ test.describe("touch", () => {
     await projects.click()
     const picker = page.getByRole("dialog", { name: "Projects", exact: true })
     await expect(picker.getByRole("button", { name: "All projects", exact: true })).toBeVisible()
-    await picker.getByRole("button", { name: new RegExp(` ${fixture.project.name}$`) }).click()
+    await picker.getByRole("button", { name: fixture.project.name, exact: true }).click()
     await expect(picker).toBeHidden()
     await expect(projects).toContainText(fixture.project.name)
 
@@ -349,29 +383,21 @@ test.describe("touch", () => {
     await trigger.click()
     await expect(trigger).toHaveAttribute("aria-expanded", "true")
     await expect(drawer.locator('[data-slot="tab-project"]')).toHaveCount(0)
-    const settings = drawer.getByRole("button", { name: "Settings", exact: true })
-    const help = drawer.getByRole("button", { name: "Help", exact: true })
-    await expect(settings).toBeVisible()
-    await expect(help).toBeVisible()
-    expect((await settings.boundingBox())?.width).toBeGreaterThan((await help.boundingBox())?.width ?? 0)
+    await expect(drawer.getByRole("button", { name: "New session", exact: true })).toBeVisible()
 
     await drawer.locator('[data-slot="tab-link"]').filter({ hasText: fixture.expected.sourceTitle }).click()
     await expect(page).toHaveURL(new RegExp(`/session/${fixture.sourceID}$`))
     await expect(drawer).toBeHidden()
     await expect(trigger).toContainText(fixture.expected.sourceTitle)
     await trigger.click()
-    await drawer.getByRole("button", { name: "Home", exact: true }).click()
+    await navigateFromMenu(page, "Home")
     await expect(page).toHaveURL("/")
     await expect(drawer).toBeHidden()
     await expect(page.locator('[data-component="home-session-row"]')).toHaveCount(rows)
   })
 
   test("mobile settings section menu stays above a full-width panel", async ({ page }) => {
-    await page.locator('[data-slot="mobile-tabs-trigger"]').click()
-    await page
-      .locator('[data-slot="mobile-tabs-drawer"]')
-      .getByRole("button", { name: "Settings", exact: true })
-      .click()
+    await navigateFromMenu(page, "Settings")
     const settings = page.getByTestId("settings-screen")
     const menu = settings.getByRole("button", { name: "Preferences", exact: true })
     const panel = settings.getByRole("tabpanel")
@@ -435,7 +461,7 @@ test.describe("touch", () => {
     test("dismisses a touch context menu by tapping outside", async ({ page }) => {
       const drawer = page.locator('[data-slot="mobile-tabs-drawer"]')
       const tab = drawer.locator('[data-slot="tab-link"]').filter({ hasText: fixture.expected.sourceTitle })
-      const homeBox = await drawer.getByRole("button", { name: "Home", exact: true }).boundingBox()
+      const homeBox = await page.getByRole("dialog", { name: "Tabs", exact: true }).locator('[data-slot="mobile-drawer-handle"]').boundingBox()
       const box = await tab.boundingBox()
       expect(homeBox).not.toBeNull()
       expect(box).not.toBeNull()
@@ -454,6 +480,17 @@ test.describe("touch", () => {
     })
   })
 })
+
+async function navigateFromMenu(page: Page, name: string) {
+  const drawer = page.getByRole("dialog", { name: "Tabs", exact: true })
+  if (await drawer.isVisible()) {
+    await expect(page.locator('[data-slot="mobile-drawer-content"][data-open]')).not.toHaveAttribute("data-transitioning")
+    await page.keyboard.press("Escape")
+    await expect(drawer).toBeHidden()
+  }
+  await page.getByRole("button", { name: "Navigation", exact: true }).click()
+  await page.getByRole("menuitem", { name, exact: true }).click()
+}
 
 async function touchDrag(
   page: Page,

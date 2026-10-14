@@ -1,4 +1,5 @@
 import { batch, onCleanup } from "solid-js"
+import { uuid } from "@opencode/util/uuid"
 import { createStore } from "solid-js/store"
 import { showToast } from "@opencode/ui/toast"
 import type { MountedSession, SetupContext } from "../sdk"
@@ -73,7 +74,7 @@ export function createBtw(ctx: SetupContext<typeof Btw>) {
 
     if (!session?.id) return
 
-    const id = crypto.randomUUID()
+    const id = uuid()
 
     // Desktop storage loads asynchronously. A write before load queues and lands in the same batch that marks the
     // store ready, and the panel keeps a tab hidden until then, so the chat and its tab need not wait. The session's

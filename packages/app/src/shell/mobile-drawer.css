@@ -31,11 +31,13 @@
 }
 
 [data-slot="mobile-drawer-content"][data-transitioning] {
-  transition: transform 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* The drawer caches transition styles; use an immediate lifecycle for reliable dismissal. */
+  transition: none;
 }
 
 [data-slot="mobile-drawer-content"][data-closing] {
-  transition-duration: 200ms;
+  /* Closing can leave transform unchanged; Corvu must not wait for a missing transitionend. */
+  transition: none;
 }
 
 [data-slot="mobile-drawer-content"][data-closed] {

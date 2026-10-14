@@ -15,6 +15,8 @@ import { Location } from "@opencode/core/location"
 import { LocationActivity } from "@opencode/core/location-activity"
 import { LocationServiceMap, type LocationServices } from "@opencode/core/location-services"
 import { Permission } from "@opencode/core/permission"
+import { Pty } from "@opencode/core/pty"
+import { PtyID } from "@opencode/core/pty/schema"
 import { Project } from "@opencode/core/project"
 import { ProjectTable } from "@opencode/core/project/sql"
 import { AbsolutePath } from "@opencode/core/schema"
@@ -52,7 +54,8 @@ const locations = Layer.effect(
     const map = yield* LayerMap.make(
       (ref: Location.Ref) => {
         const pending = new Map<Permission.ID, { request: Permission.Request; deferred: Deferred.Deferred<void> }>()
-        // The fixture only exercises these four Location services.
+        const terminals = new Map<PtyID, Pty.Info>()
+        // Keep only the Location services involved in activity and interactive work.
         // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
         return Layer.merge(
           Layer.succeed(
@@ -81,6 +84,27 @@ const locations = Layer.effect(
           Layer.provideMerge(
             Layer.mergeAll(
               Form.layer,
+              Layer.mock(Pty.Service, {
+                list: () => Effect.sync(() => Array.from(terminals.values())),
+                create: (input) =>
+                  Effect.sync(() => {
+                    const terminal: Pty.Info = {
+                      id: PtyID.create(),
+                      title: input.title ?? "Interactive terminal",
+                      command: input.command ?? "sh",
+                      args: input.args ?? [],
+                      cwd: input.cwd ?? ref.directory,
+                      status: "running",
+                      pid: 0,
+                    }
+                    terminals.set(terminal.id, terminal)
+                    return terminal
+                  }),
+                remove: (id) =>
+                  Effect.sync(() => {
+                    terminals.delete(id)
+                  }),
+              }),
               Layer.mock(Permission.Service, {
                 close: Effect.void,
                 assert: (input) =>
@@ -213,6 +237,31 @@ const reaped = (events: ReadonlyArray<SessionEvent.Execution.Interrupted["data"]
   events.filter((event) => event.reason === "inactivity").map((event) => event.sessionID)
 
 describe("LocationActivity human waits", () => {
+  it.effect("releases an unused location after the short idle deadline", () =>
+    Effect.gen(function* () {
+      const map = yield* LocationServiceMap.Service
+      yield* map.contextEffect(ref).pipe(Effect.scoped)
+      yield* TestClock.adjust("4 minutes")
+      expect(Array.from(yield* RcMap.keys(map.rcMap))).toEqual([ref])
+      yield* TestClock.adjust("3 minutes")
+      expect(Array.from(yield* RcMap.keys(map.rcMap))).toEqual([])
+    }),
+  )
+
+  it.effect("keeps an interactive terminal until it closes, then releases its location", () =>
+    Effect.gen(function* () {
+      const map = yield* LocationServiceMap.Service
+      const context = yield* map.contextEffect(ref).pipe(Effect.scoped)
+      const terminals = Context.get(context, Pty.Service)
+      const terminal = yield* terminals.create({ title: "Interactive terminal" })
+      yield* TestClock.adjust("3 hours")
+      expect(Array.from(yield* RcMap.keys(map.rcMap))).toEqual([ref])
+      expect((yield* terminals.list()).map((info) => info.id)).toEqual([terminal.id])
+      yield* terminals.remove(terminal.id)
+      yield* TestClock.adjust("7 minutes")
+      expect(Array.from(yield* RcMap.keys(map.rcMap))).toEqual([])
+    }),
+  )
   it.effect("keeps the location cached while a question stays pending", () =>
     Effect.gen(function* () {
       const sessionID = Session.ID.make("ses_waiting_form")
@@ -309,7 +358,10 @@ describe("LocationActivity human waits", () => {
         yield* TestClock.adjust("1 minute")
         expect(Array.from(yield* execution.active).toSorted()).toEqual(sessionIDs.toSorted())
 
-        yield* TestClock.adjust("62 minutes")
+        yield* TestClock.adjust("10 minutes")
+        expect(Array.from(yield* execution.active).toSorted()).toEqual(sessionIDs.toSorted())
+        expect(Array.from(yield* RcMap.keys(map.rcMap))).toEqual([ref])
+        yield* TestClock.adjust("52 minutes")
         // Interruption has stopped every drain, but slow cleanup still owns the graph.
         expect(Array.from(yield* execution.active).toSorted()).toEqual(sessionIDs.toSorted())
         expect(Array.from(yield* RcMap.keys(map.rcMap))).toEqual([ref])

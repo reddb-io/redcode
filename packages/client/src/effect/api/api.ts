@@ -70,6 +70,13 @@ export type ServerSystemOutput = {
   readonly pid: number
   readonly started: number
   readonly memory: number
+  readonly processMemory?: {
+    readonly heapUsed: number
+    readonly heapTotal: number
+    readonly external: number
+    readonly arrayBuffers: number
+  }
+  readonly activity?: { readonly cachedLocations: number; readonly activeExecutions: number }
   readonly urls: ReadonlyArray<string>
   readonly paths: {
     readonly config: string

@@ -262,3 +262,4 @@ export function togglePinned(list: readonly PinnedSession[], entry: PinnedSessio
   if (pinned) return list.filter((item) => item.server !== entry.server || item.session !== entry.session)
   return [entry, ...list]
 }
+export const NAVIGATION_PANEL_ID = "navigation-sidemenu"

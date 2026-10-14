@@ -1,14 +1,55 @@
 import { Icon } from "@opencode/ui/icon"
+import { IconButton } from "@opencode/ui/icon-button"
+import { Menu } from "@opencode/ui/menu"
 import { Keybind } from "@opencode/ui/keybind"
 import { Tooltip } from "@opencode/ui/tooltip"
 import { sidebarRail } from "@reddb-io/design-system/contracts/sidebar-rail"
 import { type JSX, Show } from "solid-js"
 import { serverName } from "@/runtime/server/registry"
 import { useCommand } from "@/shell/commands/command"
-import type { NavigationController } from "./controller"
+import { useNavigation, type NavigationController } from "./controller"
 import { Glyph } from "./glyphs"
+import { NAVIGATION_PANEL_ID } from "./model"
 
 const rail = sidebarRail()
+
+/** Compact navigation leaves the conversation full width on phones. */
+export function MobileNavigation() {
+  const navigation = useNavigation()
+  const language = navigation.language
+  return (
+    <Menu placement="bottom-start" gutter={4}>
+      <Menu.Trigger
+        as={IconButton}
+        variant="ghost-muted"
+        size="large"
+        icon={<Icon name="menu" />}
+        aria-label={language.t("navigation.label")}
+        class="shrink-0 [app-region:no-drag]"
+      />
+      <Menu.Portal>
+        <Menu.Content
+          onCloseAutoFocus={(event) => {
+            if (!navigation.panel.opened()) return
+            event.preventDefault()
+            // The menu restores its trigger after this callback; transfer focus afterwards.
+            queueMicrotask(() => document.getElementById(NAVIGATION_PANEL_ID)?.focus())
+          }}
+        >
+          <Menu.Item onSelect={navigation.go.home}>{language.t("home.title")}</Menu.Item>
+          <Menu.Item onSelect={navigation.go.newSession}>{language.t("command.session.new")}</Menu.Item>
+          <Menu.Item onSelect={navigation.go.search}>{language.t("navigation.search")}</Menu.Item>
+          <Menu.Item onSelect={navigation.panel.toggle}>{language.t("command.sidebar.toggle")}</Menu.Item>
+          <Menu.Item onSelect={navigation.go.agents}>{language.t("agents.title")}</Menu.Item>
+          <Menu.Separator />
+          <Menu.Item onSelect={navigation.go.settings}>{language.t("sidebar.settings")}</Menu.Item>
+          <Menu.Item onSelect={navigation.go.servers}>{language.t("settings.tab.servers")}</Menu.Item>
+          <Menu.Item onSelect={navigation.go.help}>{language.t("navigation.help")}</Menu.Item>
+        </Menu.Content>
+      </Menu.Portal>
+    </Menu>
+  )
+}
 
 /**
  * The always-present icon column: destinations and actions, a background work badge, settings and

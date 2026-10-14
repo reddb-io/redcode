@@ -3,7 +3,7 @@
 // temporary home, an in-memory database, no filesystem watchers, and no network,
 // so it never touches a live server, database, or user configuration.
 //
-//   bun run script/benchmark-location-memory.ts [--locations 6] [--plugins 8] [--json out.json]
+//   bun run script/benchmark-location-memory.ts [--locations 6] [--plugins 8] [--cycles 1] [--json out.json]
 //
 // "retained" numbers are heapUsed after two forced GCs. RSS is reported separately.
 // Source definitions and materialized candidates are counted independently: the
@@ -19,6 +19,8 @@ import { LayerNode } from "@opencode/util/effect/layer-node"
 import { AppNodeBuilder } from "../src/effect/app-node-builder"
 import { Bus } from "../src/bus"
 import { Database } from "../src/database/database"
+import { Config } from "../src/config"
+import { InstructionDiscovery } from "../src/instruction-discovery"
 import { Integration } from "../src/integration"
 import { Location } from "../src/location"
 import { LocationServiceMap } from "../src/location-service-map"
@@ -45,6 +47,7 @@ const flag = (name: string, fallback: number) => {
 }
 const locationCount = flag("locations", 6)
 const pluginCount = flag("plugins", 8)
+const cycleCount = flag("cycles", 1)
 const jsonIndex = args.indexOf("--json")
 const jsonPath = jsonIndex === -1 ? undefined : args[jsonIndex + 1]
 
@@ -87,6 +90,8 @@ const globalLayer = Global.layerWith({
 })
 const replacements = [
   Global.node.replace(globalLayer),
+  Config.node.replace(Config.configured({ project: false, global: false })),
+  InstructionDiscovery.node.replace(InstructionDiscovery.configured({ project: false, global: false })),
   ModelsDev.node.replace(ModelsDev.configured({ fetch: false })),
   Watcher.node.replace(Watcher.configured({ enabled: false })),
 ]
@@ -104,11 +109,10 @@ const population = Effect.gen(function* () {
   } satisfies Population
 })
 
-// One full Location graph per directory, retained for the rest of the run, the
-// way a long-running server retains every directory a client has touched.
+// Short-lived borrowers simulate completed API requests. Graphs stay in the host
+// cache until explicit eviction, independently of those borrowers.
 const locationsProgram = Effect.gen(function* () {
   const locations = yield* LocationServiceMap.Service
-  const scope = yield* Scope.Scope
   const before = sample()
   const deltas: number[] = []
   const rss: number[] = []
@@ -117,24 +121,35 @@ const locationsProgram = Effect.gen(function* () {
   for (let index = 0; index < locationCount; index++) {
     const directory = path.join(root, "projects", `location-${index}`)
     yield* Effect.promise(() => fs.mkdir(directory, { recursive: true }))
-    const context = yield* locations
-      .contextEffect(Location.Ref.make({ directory: AbsolutePath.make(directory) }))
-      .pipe(Scope.provide(scope))
-    const plugins = yield* Plugin.Service.pipe(Effect.provideContext(context))
-    yield* plugins.awaitActivation
-    // Force the actual read models before sampling, including lazy materialization.
-    populations.push(yield* population.pipe(Effect.provideContext(context)))
+    populations.push(
+      yield* Effect.gen(function* () {
+        const context = yield* locations.contextEffect(Location.Ref.make({ directory: AbsolutePath.make(directory) }))
+        const plugins = yield* Plugin.Service.pipe(Effect.provideContext(context))
+        yield* plugins.awaitActivation
+        // Force the actual read models before sampling, including lazy materialization.
+        return yield* population.pipe(Effect.provideContext(context))
+      }).pipe(Effect.scoped),
+    )
     const current = sample()
     deltas.push(current.heapUsed - previous.heapUsed)
     rss.push(current.rss)
     previous = current
   }
+  yield* Effect.forEach(
+    Array.from({ length: locationCount }, (_, index) =>
+      Location.Ref.make({ directory: AbsolutePath.make(path.join(root, "projects", `location-${index}`)) }),
+    ),
+    (ref) => locations.invalidate(ref),
+    { discard: true },
+  )
+  yield* Effect.yieldNow
   return {
     before,
     after: previous,
     deltas,
     rss,
     populations,
+    afterEviction: sample(),
   }
 }).pipe(Effect.scoped)
 
@@ -187,12 +202,12 @@ const program = Effect.gen(function* () {
   const plugin = yield* pluginProgram.pipe(
     Effect.provide(AppNodeBuilder.build(LayerNode.group([Database.node, Bus.node, ModelsDev.node]), replacements)),
   )
-  const locations = yield* locationsProgram.pipe(
+  const cycles = yield* Effect.forEach(Array.from({ length: cycleCount }), () => locationsProgram).pipe(
     Effect.provide(
       AppNodeBuilder.build(LayerNode.group([Database.node, Bus.node, LocationServiceMap.node]), replacements),
     ),
   )
-  return { plugin, locations }
+  return { plugin, locations: cycles[0]!, cycles }
 }).pipe(
   Effect.provide(Logger.layer([])),
   Effect.provideService(
@@ -223,6 +238,12 @@ console.log(
   `  heapUsed before ${mib(result.locations.before.heapUsed)} MiB -> after ${mib(result.locations.after.heapUsed)} MiB`,
 )
 console.log(`  rss before ${mib(result.locations.before.rss)} MiB -> after ${mib(result.locations.after.rss)} MiB`)
+console.log(`  heapUsed after eviction: ${mib(result.locations.afterEviction.heapUsed)} MiB`)
+console.log(`  rss after eviction: ${mib(result.locations.afterEviction.rss)} MiB`)
+console.log(`Repeated load/eviction cycles: ${cycleCount}`)
+console.log(
+  `  retained heap after each eviction (MiB): ${result.cycles.map((cycle) => mib(cycle.afterEviction.heapUsed).trim()).join(", ")}`,
+)
 
 if (jsonPath) {
   await fs.mkdir(path.dirname(jsonPath), { recursive: true })
@@ -235,6 +256,7 @@ if (jsonPath) {
         bunRevision: Bun.revision,
         locationCount,
         pluginCount,
+        cycleCount,
         ...result,
       },
       null,

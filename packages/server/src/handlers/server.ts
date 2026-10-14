@@ -1,7 +1,9 @@
 import { sql } from "drizzle-orm"
 import { Database } from "@opencode/core/database/database"
 import { Global } from "@opencode/util/global"
-import { Duration, Effect } from "effect"
+import { Duration, Effect, RcMap } from "effect"
+import { LocationServiceMap } from "@opencode/core/location-service-map"
+import { SessionExecution } from "@opencode/core/session/execution"
 import { HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { UnauthorizedError } from "@opencode/protocol/errors"
@@ -38,6 +40,9 @@ export const ServerHandler = HttpApiBuilder.group(Api, "server.server", (handler
           const info = yield* ServerInfo.Service
           const global = yield* Global.Service
           const storage = yield* Database.Service
+          const locations = yield* LocationServiceMap.Service
+          const execution = yield* SessionExecution.Service
+          const usage = process.memoryUsage()
           const counted = yield* Effect.gen(function* () {
             const [sessions] = yield* storage.db.all<{ total: number }>(sql`SELECT count(*) AS total FROM session_v2`)
             const [messages] = yield* storage.db.all<{ total: number }>(
@@ -51,7 +56,17 @@ export const ServerHandler = HttpApiBuilder.group(Api, "server.server", (handler
             platform: `${process.platform} ${process.arch}`,
             pid: process.pid ?? 0,
             started: info.started,
-            memory: process.memoryUsage().rss,
+            memory: usage.rss,
+            processMemory: {
+              heapUsed: usage.heapUsed,
+              heapTotal: usage.heapTotal,
+              external: usage.external,
+              arrayBuffers: usage.arrayBuffers,
+            },
+            activity: {
+              cachedLocations: Array.from(yield* RcMap.keys(locations.rcMap)).length,
+              activeExecutions: Array.from(yield* execution.active).length,
+            },
             urls: info.urls(),
             paths: {
               config: global.config,

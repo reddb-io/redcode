@@ -281,7 +281,7 @@ describe("LocationServiceMap", () => {
       const read = Location.Service.pipe(Effect.provide(locations.get(ref)), Effect.scoped)
 
       yield* read
-      yield* TestClock.adjust("59 minutes")
+      yield* TestClock.adjust("4 minutes")
       yield* bus.publish(Provider.Event.Updated, {}, { location: ref })
       yield* bus.publish(Model.Event.Updated, {}, { location: ref })
       yield* TestClock.adjust("2 minutes")
@@ -289,11 +289,11 @@ describe("LocationServiceMap", () => {
 
       yield* read
       yield* bus.publish(SessionEvent.Execution.Started, { sessionID }, { location: ref })
-      yield* TestClock.adjust("59 minutes")
+      yield* TestClock.adjust("4 minutes")
       yield* bus.publish(SessionEvent.Execution.Succeeded, { sessionID }, { location: ref })
       yield* TestClock.adjust("1 minute")
       expect(Array.from(yield* RcMap.keys(locations.rcMap))).toEqual([ref])
-      yield* TestClock.adjust("59 minutes")
+      yield* TestClock.adjust("4 minutes")
       expect(Array.from(yield* RcMap.keys(locations.rcMap))).toEqual([])
     }),
   )

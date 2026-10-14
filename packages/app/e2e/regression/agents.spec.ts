@@ -13,6 +13,13 @@ import { SERVER, REMOTE_SERVER } from "../utils/app"
 
 test.use({ viewport: { width: 1440, height: 900 } })
 
+// LAN HTTP pages expose getRandomValues but not the secure-context randomUUID API.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(crypto, "randomUUID", { configurable: true, value: undefined })
+  })
+})
+
 test("prepares an isolated workspace through the DS and restores retained data before explicit deletion", async ({
   page,
 }) => {
@@ -178,6 +185,7 @@ test("machine onboarding checks the selected host and blocks an unusable worker 
   await picker.selectOption(value!)
   await workspace.getByRole("button", { name: "Check server", exact: true }).click()
   await expect(workspace.getByText("Server version:", { exact: false })).toBeVisible()
+  await workspace.getByRole("button", { name: "Use this project as a worker", exact: true }).click()
   await workspace.getByLabel("Worker name", { exact: true }).fill("pi-a")
   await workspace.getByLabel("Existing checkout directory on the machine", { exact: true }).fill("/home/pi/project")
   await expect(workspace.getByRole("button", { name: "Register worker checkout", exact: true })).toBeDisabled()

@@ -2,6 +2,8 @@ import { createMemo, Show, Suspense, type ParentProps } from "solid-js"
 import { createStore } from "solid-js/store"
 import { makeEventListener } from "@solid-primitives/event-listener"
 import { ResizeHandle } from "@opencode/ui/resize-handle"
+import { IconButton } from "@opencode/ui/icon-button"
+import { Icon } from "@opencode/ui/icon"
 import { sidebarLayout } from "@reddb-io/design-system/contracts/sidebar-layout"
 import { Titlebar } from "@/shell/titlebar/titlebar"
 import { usePlatform } from "@/runtime/platform/platform"
@@ -17,9 +19,8 @@ import { useNavigation } from "@/shell/navigation/controller"
 import { AgentsMenu } from "@/shell/navigation/agents-menu"
 import { NavigationRail } from "@/shell/navigation/rail"
 import { NavigationSidemenu } from "@/shell/navigation/sidemenu"
-import { NAVIGATION_MAX_WIDTH, NAVIGATION_MIN_WIDTH } from "@/shell/navigation/model"
+import { NAVIGATION_MAX_WIDTH, NAVIGATION_MIN_WIDTH, NAVIGATION_PANEL_ID } from "@/shell/navigation/model"
 
-const NAVIGATION_PANEL_ID = "navigation-sidemenu"
 // The rail's own width, as the DS rail layout computes it.
 const RAIL_WIDTH = "calc(var(--reddb-spatial-control-height-md) + 2 * var(--reddb-spatial-inset-sm))"
 
@@ -33,7 +34,7 @@ export default function Layout(props: ParentProps) {
   const mobile = navigation.mobile
   const bottomTitlebar = () => mobile() && preferences.general.mobileTitlebarPosition() === "bottom"
   const opened = () => navigation.panel.opened()
-  const frame = createMemo(() => sidebarLayout({ rail: true, railOpen: true, panelOpen: opened() }))
+  const frame = createMemo(() => sidebarLayout({ rail: true, railOpen: !mobile(), panelOpen: opened() }))
 
   // The DS drawer closes on Escape; the window listener runs after dialogs and menus took theirs.
   makeEventListener(window, "keydown", (event) => {
@@ -76,7 +77,11 @@ export default function Layout(props: ParentProps) {
             transition: state.resizing ? "none" : undefined,
           }}
         >
-          <div class={frame().railRegion()} style={{ "min-height": "0" }} data-sidebar-layout-region="rail">
+          <div
+            class={frame().railRegion({ class: "max-md:hidden" })}
+            style={{ "min-height": "0" }}
+            data-sidebar-layout-region="rail"
+          >
             <NavigationRail navigation={navigation} panelID={NAVIGATION_PANEL_ID} />
           </div>
           <Show when={mobile() && opened()}>
@@ -90,6 +95,7 @@ export default function Layout(props: ParentProps) {
           </Show>
           <aside
             id={NAVIGATION_PANEL_ID}
+            tabIndex={-1}
             aria-label={language.t(navigation.route.agents() ? "agents.title" : "sidebar.nav.projectsAndSessions")}
             data-sidebar-layout-region="sidebar"
             data-mobile-presentation="drawer"
@@ -98,6 +104,20 @@ export default function Layout(props: ParentProps) {
             class={frame().panel({ class: "relative flex min-h-0 flex-col max-md:p-0" })}
             classList={{ "max-md:invisible md:border-e-0": !opened() }}
           >
+            <Show when={mobile()}>
+              <div class="flex shrink-0 items-center justify-between gap-2 p-2">
+                <span class="text-13-medium">
+                  {language.t(navigation.route.agents() ? "agents.title" : "sidebar.nav.projectsAndSessions")}
+                </span>
+                <IconButton
+                  variant="ghost-muted"
+                  size="large"
+                  icon={<Icon name="close" />}
+                  aria-label={language.t("navigation.close")}
+                  onClick={navigation.panel.close}
+                />
+              </div>
+            </Show>
             <Show when={navigation.route.agents()} fallback={<NavigationSidemenu navigation={navigation} />}>
               <AgentsMenu />
             </Show>

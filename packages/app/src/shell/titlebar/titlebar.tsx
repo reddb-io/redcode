@@ -33,6 +33,7 @@ import { TitlebarItem } from "@opencode/gui-extensions/sdk"
 import { useExtensionHost } from "@/runtime/extension/host"
 import { TitlebarItems, useTitlebarItems } from "@/runtime/extension/titlebar-items"
 import { Logo } from "@opencode/ui/logo"
+import { MobileNavigation } from "@/shell/navigation/rail"
 
 const titlebarHeight = 36
 
@@ -467,6 +468,9 @@ export function Titlebar() {
                   "ps-3.5": windows(),
                 }}
               >
+                <Show when={mobile()}>
+                  <MobileNavigation />
+                </Show>
                 <Show when={!mobile()}>
                   <ChannelIndicator horizontal />
                 </Show>

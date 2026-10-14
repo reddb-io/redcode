@@ -36,6 +36,19 @@ Keep Desktop running while its SSH forward is in use. Saved connections reconnec
 opens; SSH authentication can still require interaction. Closing Desktop does not stop the remote
 service or erase sessions. Repositories and worker patches are not automatically synchronized.
 
+The agent service releases unused project and workspace runtimes after five minutes of inactivity,
+checked once a minute. Their watchers, indexes and local MCP connections close with the runtime;
+session history remains stored. Running executions retain their existing inactivity budget, and
+pending questions, permissions, interactive terminals and background shell jobs keep their runtime
+alive. Opening the project again rebuilds its runtime as needed.
+
+Use `redcode debug memory --json` on the execution host to inspect memory without starting or
+replacing the managed service. The `process` section describes the diagnostic command itself;
+`service` describes the agent server, including its version, resident memory, runtime heap and
+cached project/workspace count when supported. Resident memory can remain above the live heap
+after cached objects are released, so compare successive samples rather than interpreting one
+resident-memory number as proof of a leak.
+
 Desktop windows share one SSH connection attempt per machine. Automatic recovery uses increasing
 delays and pauses after five repeated failures; use **Connect** on that machine to try again.
 A tunnel that stays healthy for a minute restores the automatic retry budget.
@@ -73,6 +86,9 @@ On first use, Redcode asks you to accept internet exposure before enabling the t
 For a non-interactive setup, explicitly select and accept with
 `redcode pair --remote --relay https://relay.example.org --yes`.
 Acceptance is remembered; declining leaves remote access disabled and local pairing available.
+
+On phones, the header's **Navigation** menu provides app destinations and settings. **Toggle sidebar**
+opens the project/session or agent sidemenu over the page; close it to use the full width for coding.
 
 ## Operate your own relay
 

@@ -1,4 +1,5 @@
 import { Button } from "@opencode/ui/button"
+import { uuid } from "@opencode/util/uuid"
 import { Dialog, DialogBody, DialogFooter, DialogHeader, DialogTitle } from "@opencode/ui/dialog"
 import { Divider } from "@opencode/ui/divider"
 import { TextInput } from "@opencode/ui/text-input"
@@ -26,7 +27,7 @@ export function DialogSsh(props: {
   const ssh = props.ssh
   // Entry-point behavior is fixed for the lifetime of this dialog.
   const openProject = props.onOpenProject
-  const id = props.config?.id ?? crypto.randomUUID()
+  const id = props.config?.id ?? uuid()
   let cancelButton: HTMLButtonElement | undefined
 
   const [state, setState] = createStore({

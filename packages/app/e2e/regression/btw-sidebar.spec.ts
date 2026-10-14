@@ -5,6 +5,12 @@ import { expectSessionTitle } from "../utils/waits"
 
 test.use({ viewport: { width: 1440, height: 900 } })
 
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(crypto, "randomUUID", { configurable: true, value: undefined })
+  })
+})
+
 test("keeps separate one-shot /btw answers and restores them after reload", async ({ page }, testInfo) => {
   const prompts: unknown[] = []
   const generations: { sessionID: string; prompt: string }[] = []

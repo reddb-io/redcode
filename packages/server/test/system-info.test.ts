@@ -4,6 +4,38 @@ import os from "node:os"
 import path from "node:path"
 import { database, runtime } from "../src/system-info"
 import { createHostResources, cpuUtilization, cgroupCpuUtilization, cgroupMeasurements } from "../src/host-resources"
+import { Effect, Schema } from "effect"
+import { SystemInfo } from "@opencode/protocol/groups/server"
+import { ServerFetch } from "../src/fetch"
+import { it } from "../../core/test/lib/effect"
+
+it.live("memory diagnostics report the server heap without booting project runtimes", () =>
+  Effect.gen(function* () {
+    const handler = yield* ServerFetch.make({
+      app: { version: "memory-test" },
+      database: { path: ":memory:" },
+      config: { project: false, global: false },
+      models: { fetch: false },
+      fs: { filewatcher: false },
+      password: "secret",
+    })
+    const request = new Request("http://opencode.local/api/system", {
+      headers: { authorization: `Basic ${btoa("opencode:secret")}` },
+    })
+    for (let index = 0; index < 3; index++) {
+      const response = yield* Effect.promise(() => handler(request.clone()))
+      expect(response.status).toBe(200)
+      const snapshot = Schema.decodeUnknownSync(SystemInfo)(yield* Effect.promise(() => response.json()))
+      expect(snapshot.pid).toBe(process.pid)
+      expect(snapshot.memory).toBeGreaterThan(0)
+      expect(snapshot.processMemory?.heapUsed).toBeGreaterThan(0)
+      expect(snapshot.processMemory?.heapTotal).toBeGreaterThan(0)
+      expect(snapshot.processMemory?.external).toBeGreaterThanOrEqual(0)
+      expect(snapshot.processMemory?.arrayBuffers).toBeGreaterThanOrEqual(0)
+      expect(snapshot.activity).toEqual({ cachedLocations: 0, activeExecutions: 0 })
+    }
+  }).pipe(Effect.scoped),
+)
 
 describe("system info", () => {
   test("cgroup v2 measurements use quota-normalized CPU and distinguish unlimited/missing kernel values", () => {

@@ -58,6 +58,8 @@ export type SystemInfo = {
   pid: number
   started: number
   memory: number
+  processMemory?: { heapUsed: number; heapTotal: number; external: number; arrayBuffers: number }
+  activity?: { cachedLocations: number; activeExecutions: number }
   urls: Array<string>
   paths: { config: string; data: string; state: string; cache: string; log: string; tmp: string }
   database:
