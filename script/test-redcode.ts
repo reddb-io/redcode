@@ -285,25 +285,30 @@ for (const [name, files] of Object.entries(suites)) {
   }
   console.log(`${name}: ${files.length} Redcode contract files`)
   if (process.argv.includes("--list")) continue
-  // Windows contracts include cold starts of child Bun processes; keep those bounded without the 5s unit default.
-  const result = await Bun.spawn(
-    [
-      process.execPath,
-      "run",
-      name === "gui-extensions" ? "test:native" : "test",
-      ...files,
-      "--timeout",
-      process.platform === "win32" ? "30000" : "5000",
-    ],
-    {
-      cwd,
-      env: { ...process.env, GITHUB_ACTIONS: "false" },
-      stdin: "inherit",
-      stdout: "inherit",
-      stderr: "inherit",
-    },
-  ).exited
-  if (result !== 0) failures.push(`${name} (exit ${result})`)
+  // Windows child-process and renderer fixtures become unreliable in long-lived test processes.
+  // Run every contract in bounded, sequential processes without retrying or relaxing assertions.
+  const size = process.platform === "win32" ? 16 : files.length
+  for (let index = 0; index < files.length; index += size) {
+    console.log(`${name}: contract files ${index + 1}-${Math.min(index + size, files.length)}`)
+    const result = await Bun.spawn(
+      [
+        process.execPath,
+        "run",
+        name === "gui-extensions" ? "test:native" : "test",
+        ...files.slice(index, index + size),
+        "--timeout",
+        process.platform === "win32" ? "30000" : "5000",
+      ],
+      {
+        cwd,
+        env: { ...process.env, GITHUB_ACTIONS: "false" },
+        stdin: "inherit",
+        stdout: "inherit",
+        stderr: "inherit",
+      },
+    ).exited
+    if (result !== 0) failures.push(`${name} files ${index + 1}-${Math.min(index + size, files.length)} (exit ${result})`)
+  }
 }
 
 if (failures.length > 0) {
