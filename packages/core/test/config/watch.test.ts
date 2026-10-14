@@ -14,6 +14,32 @@ const sources: ConfigDiscovery.Sources = {
 }
 
 describe("ConfigWatch.plan", () => {
+  test("excludes service state from the current global root without excluding config sources", () => {
+    const global = AbsolutePath.make(path.join(project, ".red", "code"))
+    const runtime = ["data", "cache", "state"].map((name) => path.join(global, name))
+    const plan = ConfigWatch.plan({ ...sources, global }, runtime)
+    expect(Array.from(plan.values())).toContainEqual({
+      path: global,
+      type: "directory",
+      ignore: ["node_modules", ".git", "**/{node_modules,.git}/**", "data", "cache", "state"],
+    })
+    expect(Array.from(plan.values())).toContainEqual({
+      path: project,
+      type: "entries",
+      names: [".agents", ".claude", ".opencode", "opencode.json", "opencode.jsonc"],
+    })
+  })
+
+  test("uses contained runtime paths rather than ignoring unrelated config directories", () => {
+    const runtime = [path.join(root, "runtime", "data"), path.resolve("watch-plan-external", "cache"), root]
+    const plan = ConfigWatch.plan({ ...sources, project: [{ path: root, present: true }] }, runtime)
+    expect(Array.from(plan.values())).toContainEqual({
+      path: root,
+      type: "directory",
+      ignore: ["node_modules", ".git", "**/{node_modules,.git}/**", path.join("runtime", "data")],
+    })
+  })
+
   test("groups missing candidates and keeps parent watches when roots appear", () => {
     const missing = ConfigWatch.plan(sources)
     expect(Array.from(missing.values())).toEqual([

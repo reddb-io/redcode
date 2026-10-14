@@ -46,6 +46,7 @@ function testLayer(
   credentialNode = emptyCredentialNode,
   wellknownNode = emptyWellknownNode,
   options?: Config.Options,
+  runtime?: Partial<Global.Interface>,
 ) {
   const locationLayer = Layer.succeed(
     Location.Service,
@@ -59,7 +60,9 @@ function testLayer(
   const built = AppNodeBuilder.build(LayerNode.group([Config.node, Bus.node]), [
     Config.node.replace(Config.configured(options)),
     Location.node.replace(locationLayer),
-    Global.node.replace(Global.layerWith({ config: globalDirectory, home: path.join(globalDirectory, "home") })),
+    Global.node.replace(
+      Global.layerWith({ config: globalDirectory, home: path.join(globalDirectory, "home"), ...runtime }),
+    ),
     Credential.node.replace(credentialNode),
     WellKnown.node.replace(wellknownNode),
     Watcher.node.replace(watcher),
@@ -78,6 +81,65 @@ const provider = {
 }
 
 describe("Config", () => {
+  it.live("does not reload current global configuration on service log or database writes", () =>
+    Effect.acquireDisposable(Effect.promise(() => tmpdir())).pipe(
+      Effect.flatMap((tmp) => {
+        const global = path.join(tmp.path, ".red", "code")
+        const runtime = {
+          data: path.join(global, "data"),
+          cache: path.join(global, "cache"),
+          state: path.join(global, "state"),
+        }
+        return Effect.promise(async () => {
+          await fs.mkdir(global, { recursive: true })
+          await fs.writeFile(path.join(global, "opencode.json"), JSON.stringify({ shell: "global" }))
+        }).pipe(
+          Effect.andThen(
+            Effect.gen(function* () {
+              const config = yield* Config.Service
+              const watcher = yield* Watcher.Test
+              expect(Config.latest(yield* config.entries(), "shell")).toBe("global")
+              const changes: string[] = []
+              yield* config.changes().pipe(
+                Stream.runForEach((update) => Effect.sync(() => changes.push(update.path))),
+                Effect.forkScoped({ startImmediately: true }),
+              )
+              yield* watcher.emit({ type: "update", path: path.join(runtime.data, "log", "service.log") })
+              yield* watcher.emit({ type: "update", path: path.join(runtime.data, "redcode.db-wal") })
+              yield* watcher.emit({ type: "update", path: path.join(runtime.cache, "models.json") })
+              yield* Effect.yieldNow
+              expect(changes).toEqual([])
+              const file = path.join(global, "opencode.json")
+              yield* Effect.promise(() => fs.writeFile(file, JSON.stringify({ shell: "updated" })))
+              const updated = yield* Stream.runHead(config.changes()).pipe(
+                Effect.forkScoped({ startImmediately: true }),
+              )
+              yield* watcher.emit({ type: "update", path: file })
+              yield* Fiber.join(updated)
+              expect(changes).toEqual([file])
+              yield* config.reload!()
+              expect(Config.latest(yield* config.entries(), "shell")).toBe("updated")
+            }).pipe(
+              Effect.provide(
+                testLayer(
+                  tmp.path,
+                  global,
+                  tmp.path,
+                  undefined,
+                  undefined,
+                  undefined,
+                  undefined,
+                  { project: false },
+                  runtime,
+                ),
+              ),
+            ),
+          ),
+        )
+      }),
+    ),
+  )
+
   it.live("excludes home-level claude and agents directories when global is disabled", () =>
     Effect.acquireDisposable(Effect.promise(() => tmpdir())).pipe(
       Effect.flatMap((tmp) => {

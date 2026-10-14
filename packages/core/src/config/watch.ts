@@ -5,7 +5,7 @@ import { FSUtil } from "@opencode/util/fs-util"
 import type { Watcher } from "../filesystem/watcher.js"
 import type { ConfigDiscovery } from "./discovery.js"
 
-export function plan(sources: ConfigDiscovery.Sources) {
+export function plan(sources: ConfigDiscovery.Sources, runtimeDirectories: readonly string[] = []) {
   // Redcode's old global config shares a home with its live databases and caches.
   const legacyState = ["data", "cache", "state", "evaluations"]
   const directories = [
@@ -27,14 +27,19 @@ export function plan(sources: ConfigDiscovery.Sources) {
   )
   return new Map(
     [
-      ...directories.map((path) => ({
-        path,
+      ...directories.map((directory) => ({
+        path: directory,
         type: "directory" as const,
         ignore: [
           "node_modules",
           ".git",
           "**/{node_modules,.git}/**",
-          ...(path === sources.legacyGlobal ? legacyState : []),
+          ...(directory === sources.legacyGlobal ? legacyState : []),
+          // The shipped Redcode layout shares config with live service state.
+          // Exclude the actual runtime paths, including non-default nested paths.
+          ...runtimeDirectories
+            .filter((runtime) => runtime !== directory && FSUtil.contains(directory, runtime))
+            .map((runtime) => path.relative(directory, runtime)),
         ],
       })),
       ...Array.from(parents, ([parent, files]) => ({
