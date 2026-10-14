@@ -22,6 +22,7 @@ import { SessionSchema } from "./session/schema.js"
 import { Config } from "./config.js"
 import { ToolOutput } from "./tool-output.js"
 import { ShellResult } from "./shell/result.js"
+import { writeOutput } from "./shell/output.js"
 
 export class NotFoundError extends Schema.TaggedError<NotFoundError>()("Shell.NotFoundError", {
   id: Shell.ID,
@@ -340,29 +341,13 @@ const layer = () =>
               commands.set(id, command)
 
               const stream = createWriteStream(file)
-              const pump = handle.all.pipe(
-                Stream.runForEach((chunk: Uint8Array) =>
-                  Effect.sync(() => {
-                    stream.write(chunk)
-                    command.size += chunk.length
-                    // Count while streaming so truncation notices never rescan the output file.
-                    for (let index = chunk.indexOf(10); index !== -1; index = chunk.indexOf(10, index + 1))
-                      command.newlines++
-                  }),
-                ),
-              )
-              runFork(
-                Effect.gen(function* () {
-                  yield* pump.pipe(Effect.catch(() => Effect.void))
-                  yield* Effect.promise(
-                    () =>
-                      new Promise<void>((resolve) => {
-                        stream.end(() => resolve())
-                      }),
-                  )
-                  yield* outputDone.open
-                }),
-              )
+              const pump = writeOutput(handle.all, stream, (chunk) => {
+                command.size += chunk.length
+                // Count while streaming so truncation notices never rescan the output file.
+                for (let index = chunk.indexOf(10); index !== -1; index = chunk.indexOf(10, index + 1))
+                  command.newlines++
+              })
+              runFork(pump.pipe(Effect.ignore, Effect.ensuring(outputDone.open)))
               yield* Effect.promise(
                 () =>
                   new Promise<void>((resolve) => {

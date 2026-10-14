@@ -3,7 +3,7 @@ import { PtyProtocol } from "@opencode/core/pty/protocol"
 import { PtyTicket } from "@opencode/core/pty/ticket"
 import { Location } from "@opencode/core/location"
 import { LocationServiceMap } from "@opencode/core/location-service-map"
-import { Deferred, Effect, Queue } from "effect"
+import { Deferred, Effect } from "effect"
 import { HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { HttpApiBuilder, HttpApiSchema } from "effect/unstable/httpapi"
 import { Socket } from "effect/unstable/socket"
@@ -19,6 +19,7 @@ import { locationErrors, requestRef, response } from "../location"
 import { PtyEnvironment } from "../pty-environment"
 import { PtySockets } from "../pty-sockets"
 import { runPtySocket } from "./pty-socket"
+import { makePtyOutbox } from "./pty-outbox"
 
 const ticketScope = Effect.gen(function* () {
   const location = yield* Location.Service
@@ -188,12 +189,12 @@ export const PtyHandler = HttpApiBuilder.group(Api, "server.pty", (handlers) =>
 
             // Outbound frames flow through one queue drained by a single writer so replay, live
             // output, and the close frame keep their order.
-            const outbox = yield* Queue.unbounded<string | Uint8Array | Socket.CloseEvent>()
+            const outbox = yield* makePtyOutbox(write)
             const attachment = yield* pty
               .attach(ctx.params.ptyID, {
                 cursor,
-                onData: (chunk) => Queue.offerUnsafe(outbox, chunk),
-                onEnd: () => Queue.offerUnsafe(outbox, new Socket.CloseEvent(1000)),
+                onData: (chunk) => outbox.offer(chunk),
+                onEnd: () => outbox.offer(new Socket.CloseEvent(1000)),
               })
               .pipe(
                 Effect.catchTags({
@@ -207,24 +208,16 @@ export const PtyHandler = HttpApiBuilder.group(Api, "server.pty", (handlers) =>
 
             const closed = yield* Deferred.make<void>()
             const unregister = yield* sockets.register(
-              Queue.offer(outbox, new Socket.CloseEvent(1001, "server stopping")).pipe(
+              Effect.sync(() => outbox.offer(new Socket.CloseEvent(1001, "server stopping"))).pipe(
                 Effect.andThen(Deferred.await(closed)),
               ),
             )
-            for (const chunk of PtyProtocol.chunks(attachment.replay)) Queue.offerUnsafe(outbox, chunk)
-            Queue.offerUnsafe(outbox, PtyProtocol.metaFrame(attachment.cursor))
+            for (const chunk of PtyProtocol.chunks(attachment.replay)) outbox.offer(chunk)
+            outbox.offer(PtyProtocol.metaFrame(attachment.cursor))
             attachment.activate()
 
-            const drain = Effect.gen(function* () {
-              while (true) {
-                const item = yield* Queue.take(outbox)
-                yield* write(item)
-                if (item instanceof Socket.CloseEvent) return
-              }
-            })
-
             yield* runPtySocket(
-              drain,
+              outbox.drain,
               socket.runRaw((message) => {
                 const decoded = PtyProtocol.decodeInput(message)
                 if (decoded !== undefined) attachment.write(decoded)

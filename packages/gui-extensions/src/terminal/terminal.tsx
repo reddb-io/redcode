@@ -647,17 +647,17 @@ export const Terminal = (props: TerminalProps) => {
         cleanups.push(() => window.removeEventListener("resize", handleResize))
       }
 
-      const write = (data: string) =>
-        new Promise<void>((resolve) => {
-          if (!output) {
-            resolve()
-
-            return
-          }
-
-          output.push(data)
-          output.flush(resolve)
-        })
+      const write = async (data: string) => {
+        // Restoring a saved terminal must obey the same rendering budget as live output.
+        for (let offset = 0; offset < data.length; offset += 64 * 1024) {
+          if (!output || disposed) return
+          const writer = output
+          await new Promise<void>((resolve) => {
+            writer.push(data.slice(offset, offset + 64 * 1024))
+            writer.flush(resolve)
+          })
+        }
+      }
 
       if (restore && restoreSize) {
         await write(restore)
@@ -767,7 +767,7 @@ export const Terminal = (props: TerminalProps) => {
         }
 
         const handleMessage = (event: MessageEvent) => {
-          if (disposed) return
+          if (disposed || socket.readyState !== WebSocket.OPEN) return
 
           if (event.data instanceof ArrayBuffer) {
             const bytes = new Uint8Array(event.data)
@@ -795,7 +795,12 @@ export const Terminal = (props: TerminalProps) => {
           const data = String(event.data)
 
           if (!data) return
-          output?.push(data)
+          if (output && !output.push(data)) {
+            // Browser clients may close only with 1000 or a private code. Reconnect at the last
+            // admitted cursor: the frame that did not fit must be replayed, not skipped.
+            socket.close(4008)
+            return
+          }
 
           if (!revealed) output?.flush(reveal)
           cursor += data.length

@@ -145,6 +145,7 @@ const suites = {
     "test/tool-skill.test.ts",
     "test/shell-parse.test.ts",
     "test/shell-retention.test.ts",
+    "test/shell-output.test.ts",
     "test/session-runner-tool-events.test.ts",
     "test/github-copilot/convert-to-copilot-messages.test.ts",
     "test/github-copilot/copilot-chat-model.test.ts",
@@ -176,6 +177,7 @@ const suites = {
     "test/acp/replay.test.ts",
   ],
   server: [
+    "test/pty-socket.test.ts",
     "test/agent-tools.test.ts",
     "test/fs.test.ts",
     "test/fetch.test.ts",
@@ -206,7 +208,8 @@ const suites = {
     "test/workers.test.ts",
   ],
   client: ["test/service.test.ts", "test/promise-service.test.ts", "test/solid-connection.test.ts"],
-  "gui-extensions": ["test/ssh-main.test.ts", "test/updater-main.test.ts"],
+  app: ["src/runtime/server/request-queue.test.ts"],
+  "gui-extensions": ["test/ssh-main.test.ts", "test/updater-main.test.ts", "./src/terminal/writer.test.ts"],
   tui: [
     "test/cli/tui/form.test.tsx",
     "test/plugin-select.test.tsx",
@@ -293,8 +296,7 @@ for (const [name, files] of Object.entries(suites)) {
     const result = await Bun.spawn(
       [
         process.execPath,
-        "run",
-        name === "gui-extensions" ? "test:native" : "test",
+        ...(name === "app" ? ["test"] : ["run", name === "gui-extensions" ? "test:native" : "test"]),
         ...files.slice(index, index + size),
         "--timeout",
         process.platform === "win32" ? "30000" : "5000",
@@ -307,7 +309,8 @@ for (const [name, files] of Object.entries(suites)) {
         stderr: "inherit",
       },
     ).exited
-    if (result !== 0) failures.push(`${name} files ${index + 1}-${Math.min(index + size, files.length)} (exit ${result})`)
+    if (result !== 0)
+      failures.push(`${name} files ${index + 1}-${Math.min(index + size, files.length)} (exit ${result})`)
   }
 }
 

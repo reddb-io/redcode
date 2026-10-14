@@ -111,15 +111,21 @@ describe("createRequestQueue", () => {
     expect(input.queue.inflight()).toBe(1)
   })
 
-  test("aborted requests leave the queue without being sent", async () => {
+  test("aborted requests leave the queue while the server is still blocked", async () => {
     const input = setup({ limit: 1 })
     const controller = new AbortController()
     void input.queue.fetch("http://server/api/first")
-    const aborted = input.queue.fetch("http://server/api/second", { signal: controller.signal })
+    const aborted = input.queue
+      .fetch("http://server/api/second", { signal: controller.signal })
+      .catch((error: unknown) => error)
+    expect(input.queue.queued()).toBe(1)
     controller.abort()
     await input.settle()
+    expect(input.queue.queued()).toBe(0)
+    expect(await aborted).toBeInstanceOf(DOMException)
+    expect(input.queue.inflight()).toBe(1)
     input.pending[0]!.resolve()
-    await expect(aborted).rejects.toBeInstanceOf(DOMException)
+    await input.settle()
     expect(input.pending.map((item) => new URL(item.url).pathname)).toEqual(["/api/first"])
     expect(input.queue.inflight()).toBe(0)
   })

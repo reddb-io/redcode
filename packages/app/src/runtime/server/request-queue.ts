@@ -86,6 +86,12 @@ export function createRequestQueue(input: {
     return [...inflight].filter((item) => item.slow).length < slowLimit
   }
 
+  const stopWatchingIfIdle = () => {
+    if (waiting.length > 0 || watcher === undefined) return
+    clearTimeout(watcher)
+    watcher = undefined
+  }
+
   // FIFO, except a slow request waits its turn behind faster ones while the slow slots are full.
   const release = (entry: Entry) => {
     inflight.delete(entry)
@@ -93,9 +99,10 @@ export function createRequestQueue(input: {
 
     if (index === -1) return
     waiting.splice(index, 1)[0]?.start()
+    stopWatchingIfIdle()
   }
 
-  const acquire = (entry: Entry) => {
+  const acquire = (entry: Entry, signal: AbortSignal) => {
     // A free slot must start fetch before the caller's synchronous UI work.
     // Awaiting an already-resolved promise postpones that dispatch until after it.
     if (canStart(entry)) {
@@ -104,14 +111,23 @@ export function createRequestQueue(input: {
       return
     }
 
-    return new Promise<void>((resolve) => {
+    return new Promise<void>((resolve, reject) => {
       const start = () => {
+        signal.removeEventListener("abort", abort)
         entry.at = now()
         inflight.add(entry)
         resolve()
       }
+      const pending = { entry, start }
+      const abort = () => {
+        const index = waiting.indexOf(pending)
+        if (index !== -1) waiting.splice(index, 1)
+        stopWatchingIfIdle()
+        reject(signal.reason)
+      }
 
-      waiting.push({ entry, start })
+      waiting.push(pending)
+      signal.addEventListener("abort", abort, { once: true })
       watcher ??= setTimeout(watch, stallMs)
     })
   }
@@ -123,8 +139,9 @@ export function createRequestQueue(input: {
 
       // The event stream is long-lived; never count it against the request budget.
       if (pathname === "/api/event") return base(request)
+      request.signal.throwIfAborted()
       const entry = { method: request.method, url: request.url, at: now(), slow: isSlowRequest(pathname) }
-      const queued = acquire(entry)
+      const queued = acquire(entry, request.signal)
 
       if (queued) await queued
 
@@ -134,17 +151,21 @@ export function createRequestQueue(input: {
       }
 
       const controller = new AbortController()
-      request.signal.addEventListener("abort", () => controller.abort(request.signal.reason), { once: true })
+      const abort = () => controller.abort(request.signal.reason)
+      request.signal.addEventListener("abort", abort, { once: true })
 
       const timer = setTimeout(
         () => controller.abort(new DOMException("Timed out waiting for the server to respond", "TimeoutError")),
         isSetupRequest(request.method, pathname) ? setupHeadersTimeoutMs : headersTimeoutMs,
       )
 
-      return base(new Request(request, { signal: controller.signal })).finally(() => {
+      try {
+        return await base(new Request(request, { signal: controller.signal }))
+      } finally {
         clearTimeout(timer)
+        request.signal.removeEventListener("abort", abort)
         release(entry)
-      })
+      }
     },
     // Bun's fetch type carries preconnect; the browser never calls it.
     { preconnect: () => {} },

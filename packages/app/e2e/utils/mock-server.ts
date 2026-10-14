@@ -569,8 +569,11 @@ export async function mockOpenCodeServer(page: Page, config: MockServerConfig) {
         }
 
         ws.onMessage((message) => socket.input.push(message.toString()))
-        ws.onClose(() => {
+        ws.onClose((code, reason) => {
           socket.closed = true
+          // Installing onClose takes over the mock server's close handshake.
+          // A client-initiated close must still complete in the browser before it can reconnect.
+          void ws.close({ code, reason })
         })
         transport.pty.sockets.push(socket)
       },

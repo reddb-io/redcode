@@ -137,6 +137,28 @@ test("reconnects the same terminal after a transient connection failure", async 
   expect(pty.created.map((item) => item.id)).toEqual([id])
 })
 
+test("reconnects without skipping output that exceeded the terminal rendering budget", async ({ page }) => {
+  const { pty } = await openSession(page, workspace)
+  await page.keyboard.press("Control+Backquote")
+  const terminal = page.locator('[data-component="terminal"]')
+  await expect(terminal.locator("textarea")).toHaveCount(1)
+  await expect.poll(() => pty.sockets.length).toBe(1)
+  const id = pty.sockets[0]!.id
+  pty.send("ready")
+  await expect(terminal).toHaveCSS("opacity", "1")
+
+  pty.send("x".repeat(4 * 1024 * 1024 + 1))
+  await expect.poll(() => pty.sockets.length).toBe(2)
+  expect(pty.sockets[0]!.closed).toBe(true)
+  expect(pty.sockets[1]!.id).toBe(id)
+  expect(pty.sockets[1]!.url.searchParams.get("cursor")).toBe("5")
+  expect(pty.created.map((item) => item.id)).toEqual([id])
+  pty.send("resumed")
+  await terminal.locator("textarea").focus()
+  await page.keyboard.type("pwd")
+  await expect.poll(() => pty.sockets[1]!.input.join("")).toBe("pwd")
+})
+
 test("focuses a terminal created from the new-terminal button", async ({ page }) => {
   const { editor } = await openSession(page, workspace)
   const terminal = page.locator('[data-component="terminal"]')
