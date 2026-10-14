@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test"
 import type { ConfigEntry, OpenCodeEvent, WorktreeDirectory } from "@opencode/client/promise"
 import { NO_PROVIDER, REMOTE_SERVER, SERVER, holdRoute, project, session } from "../utils/app"
-import { mockOpenCodeServer, mockUsageReporter } from "../utils/mock-server"
+import { mockAgentTools, mockOpenCodeServer, mockUsageReporter } from "../utils/mock-server"
 import { mockRemoteServer, mockWorkspace, openSettings, type WorkspaceInput } from "../utils/workspace"
 
 const directory = "C:/Projects/settings-demo"
@@ -12,8 +12,6 @@ const sandboxes = Array.from({ length: 12 }, (_, index) => `${directory}/workspa
 
 const override =
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16'%3E%3Crect width='16' height='16' fill='red'/%3E%3C/svg%3E"
-
-const contributors = "https://api.github.com/repos/anomalyco/opencode/contributors?anon=1&per_page=1"
 
 test.use({ serviceWorkers: "block" })
 
@@ -92,6 +90,75 @@ test("a settings page survives refresh", async ({ page }) => {
   await page.reload()
   await expect(appearance).toHaveAttribute("aria-selected", "true")
   await expect(page).toHaveURL("/settings?tab=appearance")
+})
+
+test("agent tools share host settings, install explicitly and preserve configuration across refresh", async ({
+  page,
+}, testInfo) => {
+  const { settings } = await open(page)
+  const tools = await mockAgentTools(page)
+  await settings.getByRole("tab", { name: "Agent tools", exact: true }).click()
+  await expect(settings.getByText(/Execution host: Windows workstation/)).toBeVisible()
+  await expect(settings.getByRole("heading", { name: "Install and enable tools", exact: true })).toBeVisible()
+  await expect(settings.getByText(/Installation downloads the package; it does not enable it for agents/)).toBeVisible()
+  expect(tools.operations).toEqual([])
+  const browser = settings.getByRole("region", { name: "Browser Control", exact: true })
+  const enabled = browser.getByRole("switch", { name: "Enable for agents", exact: true })
+  await expect(enabled).toBeDisabled()
+  await expect(browser.getByText("Enable for agents", { exact: true })).toBeVisible()
+  await expect(browser.getByRole("status")).toHaveText("Not installed · Unavailable to agents")
+  await expect(browser.getByText(/choose Load unpacked and select that directory/)).toBeVisible()
+  const computer = settings.getByRole("region", { name: "Computer Use", exact: true })
+  await expect(computer.getByText(/Sign in to a graphical desktop on this host/)).toBeVisible()
+  const terminal = settings.getByRole("region", { name: "Terminal Control", exact: true })
+  await expect(terminal.getByRole("button", { name: "Install managed version", exact: true })).toBeDisabled()
+  await browser.getByRole("button", { name: "Install managed version", exact: true }).click()
+  await expect(enabled).toBeEnabled()
+  await expect(enabled).not.toBeChecked()
+  await expect(browser.getByRole("status")).toHaveText("Installed · Disabled for agents")
+  await expect(browser.getByRole("button", { name: "Reinstall managed version", exact: true })).toBeEnabled()
+  await expect(browser.getByLabel("Browser extension directory on this host", { exact: true })).toHaveValue(
+    "/owned/browser/extension/dist",
+  )
+  await testInfo.attach("browser-tool-setup", { body: await browser.screenshot(), contentType: "image/png" })
+  await enabled.focus()
+  await enabled.press("Space")
+  await expect(enabled).toBeChecked()
+  await expect(browser.getByRole("status")).toHaveText("Installed · Enabled for agents")
+  await browser.getByText("Options", { exact: true }).click()
+  await browser.getByLabel("Custom command (JSON array)", { exact: true }).fill('["node", "/owned/mcp.js"]')
+  await browser.getByLabel("Execution timeout (milliseconds)", { exact: true }).fill("45000")
+  await browser.getByRole("button", { name: "Save", exact: true }).click()
+  await expect(browser.getByRole("button", { name: "Run diagnostics", exact: true })).toBeEnabled()
+  await browser.getByRole("button", { name: "Run diagnostics", exact: true }).click()
+  await expect(browser.getByText("Owned fixture ready", { exact: true })).toBeVisible()
+  await expect(browser.getByText(/Installed or enabled does not mean those steps are complete/)).toBeVisible()
+  expect(tools.snapshot.tools.find((tool) => tool.id === "browser-control")?.settings).toEqual({
+    enabled: true,
+    command: ["node", "/owned/mcp.js"],
+    timeout: 45000,
+  })
+  await page.reload()
+  await expect(enabled).toBeChecked()
+  await browser.getByText("Options", { exact: true }).click()
+  await expect(browser.getByLabel("Execution timeout (milliseconds)", { exact: true })).toHaveValue("45000")
+  await testInfo.attach("agent-tools", { body: await page.screenshot(), contentType: "image/png" })
+})
+
+test("agent tools operate on the selected remote host", async ({ page }) => {
+  await mockRemoteServer(page, { directory: "/remote/settings-demo" })
+  const { settings } = await open(page)
+  const local = await mockAgentTools(page)
+  const remote = await mockAgentTools(page, REMOTE_SERVER)
+  await page.goto(`/settings?server=${encodeURIComponent(REMOTE_SERVER)}&tab=agent-tools`)
+  await expect(settings.getByText(/Execution host: Remote Linux host/)).toBeVisible()
+  await expect(settings.getByText(/Installation and actions happen on Remote Linux host/)).toBeVisible()
+  const terminal = settings.getByRole("region", { name: "Terminal Control", exact: true })
+  await expect(terminal.getByRole("button", { name: "Install managed version", exact: true })).toBeEnabled()
+  await terminal.getByRole("button", { name: "Install managed version", exact: true }).click()
+  await expect(terminal.getByRole("switch", { name: "Enable for agents", exact: true })).toBeEnabled()
+  expect(remote.operations).toEqual(["install"])
+  expect(local.operations).toEqual([])
 })
 
 test("usage reporting settings save on the selected server without returning the secret", async ({
@@ -442,47 +509,25 @@ test.describe("pages open before slow data", () => {
     await expect(settings.getByRole("switch", { name: "demo-mcp" })).toBeChecked()
   })
 
-  for (const fails of [false, true]) {
-    test(`about ${fails ? "keeps its fallback when contributors fail" : "updates contributors later"}`, async ({
-      page,
-    }) => {
-      const { settings } = await open(page)
-      const gate = Promise.withResolvers<void>()
-      await page.route(contributors, async (route) => {
-        await gate.promise
-
-        if (fails) return route.abort("failed")
-        await route.fulfill({
-          json: [],
-          headers: {
-            "access-control-allow-origin": "*",
-            "access-control-expose-headers": "Link",
-            Link: `<${contributors}&page=1004>; rel="last"`,
-          },
-        })
-      })
-      const requested = page.waitForRequest(contributors)
-      await settings.getByRole("tab", { name: "About", exact: true }).click()
-      await requested
-      await expect(settings.getByText("Released under the MIT License", { exact: true })).toBeVisible()
-      await expect(settings.getByRole("link", { name: "935 others", exact: true })).toBeVisible()
-      await expect(settings.getByRole("button", { name: "Back to app" })).toBeVisible()
-
-      const website = settings.getByRole("link", { name: "www.opencode.ai", exact: true })
-      await website.focus()
-
-      const settled = fails
-        ? page.waitForEvent("requestfailed", (request) => request.url() === contributors)
-        : page.waitForResponse(contributors)
-
-      gate.resolve()
-      await settled
-      await expect(settings.getByRole("link", { name: fails ? "935 others" : "988 others", exact: true })).toBeVisible()
-      await expect(website).toBeFocused()
-    })
-  }
+  test("about identifies Redcode and keeps upstream credits and license notices", async ({ page }) => {
+    const { settings } = await open(page)
+    await settings.getByRole("tab", { name: "About", exact: true }).click()
+    await expect(settings.getByText("Redcode is developed by reddb.io.", { exact: true })).toBeVisible()
+    await expect(settings.getByText("Released under the MIT License", { exact: true })).toBeVisible()
+    await expect(settings.getByRole("link", { name: "github.com/reddb-io/redcode", exact: true })).toHaveAttribute(
+      "href",
+      "https://github.com/reddb-io/redcode",
+    )
+    await expect(
+      settings.getByRole("link", {
+        name: "Based on OpenCode, an open-source project by Anomaly Innovations, Inc.",
+        exact: true,
+      }),
+    ).toHaveAttribute("href", "https://github.com/anomalyco/opencode")
+    await settings.getByRole("button", { name: "Third-party notices", exact: true }).click()
+    await expect(page.getByRole("dialog", { name: "Third-party notices", exact: true })).toBeVisible()
+  })
 })
-
 test("worktrees follow inventory events, wait for session counts, and delete by project", async ({ page }) => {
   const empty = `${directory}/empty-workspace`
   const discovered = `${directory}/discovered-workspace`
@@ -766,6 +811,7 @@ for (const row of [
           connections: row.connections,
         },
         { id: "opencode-go", name: "OpenCode Go", methods: [{ type: "key" }], connections: [] },
+        { id: "red-router", name: "RedRouter", methods: [{ type: "key" }], connections: [] },
         { id: "anthropic", name: "Anthropic", methods: [{ type: "key" }], connections: [] },
       ],
     })
@@ -779,6 +825,9 @@ for (const row of [
     if (!row.paid) await expect(settings.getByText("No connected providers")).toBeVisible()
     // Anthropic only exists in the integration fixture, so its row proves the integration list has loaded.
     await expect(settings.getByText("Anthropic", { exact: true })).toBeVisible()
+    const recommended = settings.locator(".settings-provider-row").filter({ hasText: "Recommended" })
+    await expect(recommended).toHaveCount(1)
+    await expect(recommended).toContainText("RedRouter")
     await expect(settings.getByText("OpenCode Console", { exact: true })).toHaveCount(row.console ? 1 : 0)
   })
 }
@@ -838,7 +887,7 @@ test("the add server dialog pairs from a one-time link and explains a spent one"
 
   const spent = await addServer()
   await expect(spent.getByRole("alert")).toHaveText(
-    "This pairing link expired or was already used. Run opencode pair to get a new one.",
+    "This pairing link expired or was already used. Run redcode pair to get a new one.",
   )
 })
 

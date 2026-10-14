@@ -8,6 +8,7 @@ export type SettingsRootTab =
   | "providers"
   | "models"
   | "reporting"
+  | "agent-tools"
   | "extensions"
   | "servers"
   | "experimental"
@@ -27,6 +28,7 @@ export type SettingsServerTab =
   | "models"
   | "extensions"
   | "reporting"
+  | "agent-tools"
 
 export type SettingsProjectTab = "general" | "workspaces" | "extensions"
 
@@ -64,6 +66,7 @@ const rootTabs: Record<SettingsRootTab, true> = {
   providers: true,
   models: true,
   reporting: true,
+  "agent-tools": true,
   extensions: true,
   servers: true,
   experimental: true,
@@ -78,6 +81,7 @@ const serverTabs: Record<SettingsServerTab, true> = {
   providers: true,
   models: true,
   reporting: true,
+  "agent-tools": true,
   extensions: true,
 }
 

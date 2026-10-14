@@ -104,6 +104,7 @@ export function createNewSessionComposerAdapter(props: {
         model: {
           id: selection.model.modelID,
           providerID: selection.model.providerID,
+          connection: selection.model.connection,
           variant: selection.variant,
         },
         location: { directory: sessionDirectory },

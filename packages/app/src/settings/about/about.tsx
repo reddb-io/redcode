@@ -54,10 +54,10 @@ export function SettingsAbout() {
       </p>
 
       <div class="settings-about-details">
-        <p>{language.t("settings.about.description")}</p>
+        <p>{language.t("settings.about.redcode.description")}</p>
         <p>
           <ExternalLink href="https://github.com/anomalyco/opencode">
-            {language.t("settings.about.trademark")}
+            {language.t("settings.about.redcode.upstream")}
           </ExternalLink>
         </p>
         <p>{language.t("settings.about.typeset")}</p>
@@ -69,7 +69,7 @@ export function SettingsAbout() {
       </div>
 
       <div class="settings-about-copyright">
-        <p>{language.t("settings.about.copyright")}</p>
+        <p>{language.t("settings.about.redcode.copyright")}</p>
       </div>
     </div>
   )

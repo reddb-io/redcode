@@ -30,6 +30,7 @@ type ProviderSource = "env" | "api" | "account" | "config" | "custom"
 type ProviderItem = ReturnType<ReturnType<typeof useProviders>["connected"]>[number]
 
 const PROVIDER_NOTES = [
+  { match: (id: string) => id === "red-router", key: "dialog.provider.redRouter.note" },
   { match: (id: string) => id === "opencode", key: "dialog.provider.opencode.note" },
   { match: (id: string) => id === "opencode-go", key: "dialog.provider.opencodeGo.tagline" },
   { match: (id: string) => id === "anthropic", key: "dialog.provider.anthropic.note" },
@@ -653,7 +654,7 @@ export const SettingsProviders: Component<{
                     <div class="settings-provider-copy">
                       <div class="settings-provider-main">
                         <span class="settings-provider-name">{item.name}</span>
-                        <Show when={item.id === "opencode" || item.id === "opencode-go"}>
+                        <Show when={item.id === "red-router"}>
                           <Badge>{language.t("dialog.provider.tag.recommended")}</Badge>
                         </Show>
                       </div>

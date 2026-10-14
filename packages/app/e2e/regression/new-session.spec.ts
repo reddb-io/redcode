@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page } from "@playwright/test"
 import type { OpenCodeEvent, WorktreeDirectory } from "@opencode/client/promise"
-import { draftHref, expectPath, provider, sessionHref } from "../utils/app"
+import { draftHref, expectPath, provider, sessionHref, T0 } from "../utils/app"
+import type { IntelligenceStatus } from "@opencode/client/promise"
 import type { MockAnswer } from "../utils/mock-server"
 import { openDraft, openSession, openWorktreeDraft, type WorkspaceInput } from "../utils/workspace"
 
@@ -49,6 +50,126 @@ test.use({
 test("the new session screen does not show session details", async ({ page }) => {
   await openDraft(page, { name: "Summary" })
   await expect(page.getByRole("button", { name: "Session details", exact: true })).toHaveCount(0)
+})
+
+test("new sessions retain the saved reasoning models across navigation and host settings updates", async ({ page }) => {
+  const ready = Promise.withResolvers<void>()
+  const reads: (string | undefined)[] = []
+  const creates: unknown[] = []
+  const prompts: unknown[] = []
+  const intelligence: IntelligenceStatus = {
+    settings: {
+      enabled: true,
+      onboarding: "completed",
+      reasoning: "dual",
+      principal: { providerID: "red-router", id: "saved-s2", connection: { type: "credential", id: "cred_chosen_s2" } },
+      fast: { providerID: "red-router", id: "review-s2" },
+      evaluator: { transport: "red-router", baseURL: "https://router.example.test", model: "saved-s1" },
+    },
+    environment: "",
+    evaluators: [],
+    effective: { reasoning: "dual", source: "config" },
+  }
+  const modelCatalog = {
+    all: [
+      { id: "opencode", name: "OpenCode", models: { first: { id: "first", name: "Catalog First" } } },
+      {
+        id: "red-router",
+        name: "RedRouter",
+        models: Object.fromEntries(
+          [
+            ["saved-s2", "Saved S2"],
+            ["review-s2", "Review S2"],
+            ["next-s2", "Next S2"],
+          ].map(([id, name]) => [id, { id, name }]),
+        ),
+      },
+    ],
+    connected: ["opencode", "red-router"],
+    default: { providerID: "opencode", modelID: "first" },
+  }
+  const opening = openDraft(page, {
+    name: "RetainedRoles",
+    provider: modelCatalog,
+    intelligence: () => intelligence,
+    beforeIntelligenceResponse: () => ready.promise,
+    onIntelligenceStatus: (sessionID) => reads.push(sessionID),
+    onSessionCreate: (body) => {
+      creates.push(body)
+    },
+    onPrompt: ({ body }) => prompts.push(body),
+  })
+  const picker = page.locator('[data-action="composer-model"]')
+  await expect.poll(() => reads.length).toBe(1)
+  await expect(page.getByText("Catalog First", { exact: true })).toHaveCount(0)
+  ready.resolve()
+  const workspace = await opening
+  await expect(picker).toHaveText("Saved S2")
+  await workspace.editor.fill("Keep my saved models")
+  await workspace.editor.press("Enter")
+  await expect(page).toHaveURL(/\/session\//)
+  expect(creates).toEqual([
+    expect.objectContaining({
+      model: { id: "saved-s2", providerID: "red-router", connection: { type: "credential", id: "cred_chosen_s2" } },
+    }),
+  ])
+  await expect.poll(() => prompts.length).toBe(1)
+  expect(prompts[0]).toMatchObject({
+    metadata: {
+      model: {
+        modelID: "saved-s2",
+        providerID: "red-router",
+        connection: { type: "credential", id: "cred_chosen_s2" },
+      },
+    },
+  })
+  intelligence.settings.principal = { providerID: "red-router", id: "next-s2" }
+  await workspace.push([
+    { id: "evt_intelligence_settings_changed", created: T0 + 1, type: "intelligence.settings.updated", data: {} },
+  ])
+  await expect.poll(() => reads.filter((id) => id === undefined).length).toBe(2)
+  await expect(picker).toHaveText("Saved S2")
+  await page
+    .getByRole("navigation", { name: "Navigation", exact: true })
+    .getByRole("button", { name: "New session", exact: true })
+    .click()
+  await expect(picker).toHaveText("Next S2")
+  await page
+    .getByRole("navigation", { name: "Navigation", exact: true })
+    .getByRole("button", { name: "New session", exact: true })
+    .click()
+  await expect(picker).toHaveText("Next S2")
+  expect(reads.filter((id) => id === undefined)).toHaveLength(2)
+  expect(intelligence.settings.fast).toEqual({ providerID: "red-router", id: "review-s2" })
+  expect(intelligence.settings.evaluator?.model).toBe("saved-s1")
+})
+
+test("an unavailable saved S2 is not silently replaced by the first catalog model", async ({ page }) => {
+  const creates: unknown[] = []
+  const intelligence: IntelligenceStatus = {
+    settings: {
+      enabled: true,
+      onboarding: "completed",
+      reasoning: "single",
+      principal: { providerID: "red-router", id: "unavailable" },
+    },
+    environment: "",
+    evaluators: [],
+    effective: { reasoning: "single", source: "config" },
+  }
+  const { editor } = await openDraft(page, {
+    name: "UnavailableS2",
+    provider: provider({ id: "first", name: "Catalog First" }),
+    intelligence,
+    onSessionCreate: (body) => {
+      creates.push(body)
+    },
+  })
+  await editor.fill("Do not replace my chosen model")
+  await expect(page.getByText("Catalog First", { exact: true })).toHaveCount(0)
+  await editor.press("Enter")
+  await expect(page.getByText("Select an agent and model", { exact: true })).toBeVisible()
+  expect(creates).toEqual([])
 })
 
 test("the dark new session panel exposes no lighter background at its rounded corners", async ({ page }) => {

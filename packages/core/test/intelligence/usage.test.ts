@@ -2,6 +2,8 @@ import { describe, expect } from "bun:test"
 import { Credential } from "@opencode/core/credential"
 import { Database } from "@opencode/core/database/database"
 import { Intelligence, type EvaluationInput } from "@opencode/core/intelligence"
+import { Bus } from "@opencode/core/bus"
+import { IntelligenceEvent } from "@opencode/schema/intelligence-event"
 import { ProjectTable } from "@opencode/core/project/sql"
 import { SessionBudget } from "@opencode/core/session/budget"
 import { SessionTable } from "@opencode/core/session/sql"
@@ -14,14 +16,43 @@ import { Session } from "@opencode/schema/session"
 import { LayerNode } from "@opencode/util/effect/layer-node"
 import { Global } from "@opencode/util/global"
 import { eq } from "drizzle-orm"
-import { Effect } from "effect"
+import { Effect, Fiber, Stream } from "effect"
 import { tempGlobalLayer } from "../fixture/global"
 import { testEffect } from "../lib/effect"
 
 const it = testEffect(
-  LayerNode.compile(LayerNode.group([Intelligence.node, Credential.node, Database.node, SessionBudget.node]), {
-    replacements: [Global.node.replace(tempGlobalLayer)],
-  }),
+  LayerNode.compile(
+    LayerNode.group([Intelligence.node, Credential.node, Database.node, SessionBudget.node, Bus.node]),
+    {
+      replacements: [Global.node.replace(tempGlobalLayer)],
+    },
+  ),
+)
+
+it.live(
+  "saving reasoning roles notifies connected clients after persisting without exposing settings in the event",
+  () =>
+    Effect.gen(function* () {
+      const intelligence = yield* Intelligence.Service
+      const bus = yield* Bus.Service
+      const notification = yield* bus
+        .subscribe(IntelligenceEvent.SettingsUpdated)
+        .pipe(Stream.take(1), Stream.runCollect, Effect.forkScoped({ startImmediately: true }))
+      yield* intelligence.save({
+        settings: {
+          enabled: true,
+          reasoning: "single",
+          onboarding: "completed",
+          principal: { providerID: Provider.ID.make("red-router"), id: Model.ID.make("selected-s2") },
+          fast: { providerID: Provider.ID.make("red-router"), id: Model.ID.make("review-s2") },
+        },
+      })
+      const events = yield* Fiber.join(notification)
+      expect(events).toHaveLength(1)
+      expect(events[0].data).toEqual({})
+      expect((yield* intelligence.read()).principal?.id).toBe(Model.ID.make("selected-s2"))
+      expect((yield* intelligence.read()).fast?.id).toBe(Model.ID.make("review-s2"))
+    }).pipe(Effect.timeout("5 seconds")),
 )
 
 const serve = (fetch: (request: Request) => Response | Promise<Response>) =>

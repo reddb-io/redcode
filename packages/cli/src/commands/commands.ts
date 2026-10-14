@@ -96,6 +96,31 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
     model: Flag.string("model").pipe(Flag.withDescription("Model for a new session"), Flag.optional),
   },
   commands: [
+    Spec.make("tools", {
+      description: "Configure optional agent tools on the connected host",
+      params: {
+        ...ServerParams,
+        action: Argument.string("action").pipe(Argument.optional),
+        id: Argument.string("tool").pipe(Argument.optional),
+        command: Flag.string("command-json").pipe(
+          Flag.optional,
+          Flag.withDescription("Custom command as a JSON array"),
+        ),
+        timeout: Flag.integer("timeout").pipe(
+          Flag.optional,
+          Flag.withDescription("Tool execution timeout in milliseconds"),
+        ),
+        copyAll: Flag.boolean("copy-all").pipe(Flag.optional, Flag.withDescription("Include caches in Rift snapshots")),
+        resetCommand: Flag.boolean("reset-command").pipe(
+          Flag.withDefault(false),
+          Flag.withDescription("Use the managed installation instead of a custom command"),
+        ),
+        directory: Flag.string("directory").pipe(
+          Flag.optional,
+          Flag.withDescription("Rift source directory on the connected host"),
+        ),
+      },
+    }),
     Spec.make("restart", { description: "Restart the background server, including when it is unresponsive" }),
     Spec.make("upgrade", {
       description: `Upgrade ${name} to the latest or a specific version`,

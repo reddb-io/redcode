@@ -1,7 +1,7 @@
 import type { Data } from "@opencode/client/solid"
 import type { SessionMessageUser } from "@opencode/client/promise"
 import type { Accessor } from "solid-js"
-import type { ModelSelection } from "@/providers/models/selection"
+import type { ModelKey, ModelSelection } from "@/providers/models/selection"
 import type { ServerSDK } from "@/runtime/server/client"
 import type { ComposerReasoning } from "./reasoning/state"
 import type { ComposerStateTarget } from "./submission-state"
@@ -26,7 +26,7 @@ export type ComposerControls = {
 
 export type ComposerSelection = {
   agent: string
-  model: { providerID: string; modelID: string }
+  model: Omit<ModelKey, "variant">
   variant?: string
 }
 

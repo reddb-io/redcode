@@ -981,6 +981,10 @@ export type HarnessEvent = { cursor: number; kind: "text" | "activity" | "error"
 
 export type HarnessQuestion = { id: string; text: string; options: Array<string> }
 
+export type AgentToolsID = "rift" | "browser-control" | "terminal-control" | "computer-use"
+
+export type AgentToolsSettings = { enabled: boolean; command?: Array<string>; timeout?: number; copyAll?: boolean }
+
 export type UsageReporterConfig = {
   enabled: boolean
   transport: "webhook" | "reddb"
@@ -1833,6 +1837,15 @@ export type SessionGuardTripped = {
     detail: string
     at: number
   }
+}
+
+export type IntelligenceSettingsUpdated = {
+  id: string
+  created: number
+  metadata?: { [x: string]: any }
+  type: "intelligence.settings.updated"
+  location?: LocationRef
+  data: {}
 }
 
 export type FilesystemChanged = {
@@ -2696,6 +2709,18 @@ export type HarnessRequest = {
   questions: Array<HarnessQuestion>
 }
 
+export type AgentToolsStatus = {
+  id: AgentToolsID
+  settings: AgentToolsSettings
+  supported: boolean
+  installed: boolean
+  package: string
+  command?: Array<string>
+  extensionDirectory?: string
+  diagnosis?: string
+  checkedAt?: number | "Infinity" | "-Infinity" | "NaN"
+}
+
 export type UsageReporterDelivery = {
   id: string
   status: "pending" | "sending" | "delivered" | "dead"
@@ -3027,6 +3052,11 @@ export type WorkerManifest = { tasks: Array<WorkerTask> }
 export type HarnessSnapshot = { providers: Array<HarnessProvider>; runs: Array<HarnessRun> }
 
 export type HarnessDetail = { run: HarnessRun; events: Array<HarnessEvent>; requests: Array<HarnessRequest> }
+
+export type AgentToolsSnapshot = {
+  host: { name: string; platform: string; arch: string }
+  tools: Array<AgentToolsStatus>
+}
 
 export type UsageReporterSnapshot = {
   config: UsageReporterConfig
@@ -3897,6 +3927,7 @@ export type V2Event =
   | SessionRevertStaged
   | SessionRevertCleared
   | SessionRevertCommitted
+  | IntelligenceSettingsUpdated
   | FilesystemChanged
   | ReferenceUpdated
   | PermissionAsked
@@ -11731,6 +11762,47 @@ export type HarnessResumeOutput = HarnessRun
 export type HarnessCloseInput = { readonly runID: { readonly runID: string }["runID"] }
 
 export type HarnessCloseOutput = void
+
+export type AgentToolsListOutput = AgentToolsSnapshot
+
+export type AgentToolsConfigureInput = {
+  readonly id: {
+    readonly id: "rift" | "browser-control" | "terminal-control" | "computer-use"
+    readonly settings: {
+      readonly enabled: boolean
+      readonly command?: ReadonlyArray<string>
+      readonly timeout?: number
+      readonly copyAll?: boolean
+    }
+  }["id"]
+  readonly settings: {
+    readonly id: "rift" | "browser-control" | "terminal-control" | "computer-use"
+    readonly settings: {
+      readonly enabled: boolean
+      readonly command?: ReadonlyArray<string>
+      readonly timeout?: number
+      readonly copyAll?: boolean
+    }
+  }["settings"]
+}
+
+export type AgentToolsConfigureOutput = AgentToolsStatus
+
+export type AgentToolsInstallInput = {
+  readonly id: { readonly id: "rift" | "browser-control" | "terminal-control" | "computer-use" }["id"]
+}
+
+export type AgentToolsInstallOutput = AgentToolsStatus
+
+export type AgentToolsProbeInput = {
+  readonly id: { readonly id: "rift" | "browser-control" | "terminal-control" | "computer-use" }["id"]
+}
+
+export type AgentToolsProbeOutput = AgentToolsStatus
+
+export type AgentToolsInitializeInput = { readonly directory: { readonly directory: string }["directory"] }
+
+export type AgentToolsInitializeOutput = JsonValue
 
 export type UsageReporterSnapshotOutput = UsageReporterSnapshot
 

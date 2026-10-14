@@ -10,11 +10,14 @@ import { Context, Effect, Layer, Schema, Semaphore } from "effect"
 import { Credential } from "../credential.js"
 import { KV } from "../kv.js"
 import { IntelligenceEvaluation } from "./evaluation.js"
+import { Bus } from "../bus.js"
+import { IntelligenceEvent } from "@opencode/schema/intelligence-event"
 
 const make = Effect.gen(function* () {
   const global = yield* Global.Service
   const credentials = yield* Credential.Service
   const kv = yield* KV.Service
+  const bus = yield* Bus.Service
   const lock = yield* Semaphore.make(1)
   const key = "redcode.intelligence.settings"
   const file = path.join(global.config, "intelligence.json")
@@ -96,6 +99,7 @@ const make = Effect.gen(function* () {
         Effect.mapError(() => new IntelligenceEvaluation.Error({ message: "Invalid intelligence configuration" })),
       ),
     )
+    yield* bus.publish(IntelligenceEvent.SettingsUpdated, {})
     return next
   }, lock.withPermits(1))
 
@@ -106,7 +110,7 @@ export class Service extends Context.Service<Service, Effect.Success<typeof make
 export const node = makeGlobalNode({
   service: Service,
   layer: Layer.effect(Service, make),
-  deps: [Global.node, Credential.node, KV.node],
+  deps: [Global.node, Credential.node, KV.node, Bus.node],
 })
 
 export function validURL(value: string) {

@@ -11,6 +11,9 @@ export default Extension.define({
   id: "updater",
   provides: { updater: Updater },
   stores: {
+    releaseCache: Store.main(Schema.Struct({ until: Schema.Number, data: Schema.optional(Schema.String) }), {
+      until: 0,
+    }),
     // Whether What's New shows after an update; stored before in the app settings.
     releaseNotes: Store.global(
       ReleaseNotes,

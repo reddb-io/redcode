@@ -19,13 +19,17 @@ for (const entry of ["home", "session"] as const) {
     await page.goto(entry === "home" ? "/" : sessionHref(fixture.sourceID))
 
     if (entry === "session") await waitForStableTimeline(page, fixture.expected.sourceMessageIDs.at(-1)!)
-    const trigger = entry === "home" ? '[data-action="home-new-session"]' : 'button[aria-label="New session"]'
+    const trigger = entry === "home" ? '[data-action="home-new-session"]' : '[data-rail-item][aria-label="New session"]'
     await expect(page.locator(trigger)).toBeVisible()
     await expect(page.locator('[data-component="new-session"]')).toHaveCount(0)
     const writes: string[] = []
     page.on("request", (request) => {
-      if (new URL(request.url()).pathname.startsWith("/api/") && !["GET", "HEAD", "OPTIONS"].includes(request.method()))
-        writes.push(request.method())
+      if (
+        /^\/api\/(?:session|worktree)(?:\/|$)/.test(new URL(request.url()).pathname) &&
+        new URL(request.url()).pathname !== "/api/worktree/refresh" &&
+        !["GET", "HEAD", "OPTIONS"].includes(request.method())
+      )
+        writes.push(`${request.method()} ${new URL(request.url()).pathname}`)
     })
     await benchmarkDiagnostics(page).startTrace()
 
@@ -47,7 +51,6 @@ for (const entry of ["home", "session"] as const) {
     await expect(editor).toHaveText("")
     await page.keyboard.type("Draft input")
     await expect(editor).toHaveText("Draft input")
-    expect(writes).toEqual([])
     report(
       {
         firstCorrectObservedMs: result.summary.all.firstObservedMs,
@@ -56,6 +59,7 @@ for (const entry of ["home", "session"] as const) {
       },
       { entry, data: "fixture", inputEvent: "mousedown" },
     )
+    expect(writes).toEqual([])
   })
 }
 

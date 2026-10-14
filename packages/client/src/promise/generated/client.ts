@@ -461,6 +461,15 @@ import type {
   HarnessResumeOutput,
   HarnessCloseInput,
   HarnessCloseOutput,
+  AgentToolsListOutput,
+  AgentToolsConfigureInput,
+  AgentToolsConfigureOutput,
+  AgentToolsInstallInput,
+  AgentToolsInstallOutput,
+  AgentToolsProbeInput,
+  AgentToolsProbeOutput,
+  AgentToolsInitializeInput,
+  AgentToolsInitializeOutput,
   UsageReporterSnapshotOutput,
   UsageReporterConfigureInput,
   UsageReporterConfigureOutput,
@@ -3724,6 +3733,65 @@ export function make(options: ClientOptions) {
             successStatus: 200,
             declaredStatuses: [400, 401, 403],
             empty: true,
+          },
+          requestOptions,
+        ),
+    },
+    agentTools: {
+      list: (requestOptions?: RequestOptions) =>
+        request<AgentToolsListOutput>(
+          {
+            method: "GET",
+            path: `/api/agent-tools`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      configure: (input: AgentToolsConfigureInput, requestOptions?: RequestOptions) =>
+        request<AgentToolsConfigureOutput>(
+          {
+            method: "POST",
+            path: `/api/agent-tools/config`,
+            body: { id: input["id"], settings: input["settings"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      install: (input: AgentToolsInstallInput, requestOptions?: RequestOptions) =>
+        request<AgentToolsInstallOutput>(
+          {
+            method: "POST",
+            path: `/api/agent-tools/${encodeURIComponent(input.id)}/install`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      probe: (input: AgentToolsProbeInput, requestOptions?: RequestOptions) =>
+        request<AgentToolsProbeOutput>(
+          {
+            method: "POST",
+            path: `/api/agent-tools/${encodeURIComponent(input.id)}/probe`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      initialize: (input: AgentToolsInitializeInput, requestOptions?: RequestOptions) =>
+        request<AgentToolsInitializeOutput>(
+          {
+            method: "POST",
+            path: `/api/agent-tools/rift/initialize`,
+            body: { directory: input["directory"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403],
+            empty: false,
           },
           requestOptions,
         ),

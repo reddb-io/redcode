@@ -2,12 +2,20 @@ import { showToast } from "@opencode/ui/toast"
 import { createSignal, lazy, onCleanup, Suspense } from "solid-js"
 import { createKeyed, onIdle, Command, SettingsPage, type Setup, type SetupContext } from "../sdk"
 import type definition from "./index"
+import { RELEASES_URL } from "./release"
 
 const setup: Setup<typeof definition> = (ctx) => {
-  whatsNew(ctx)
-
-  if (!ctx.desktop) return
+  if (!ctx.desktop) {
+    whatsNew(ctx, () =>
+      fetch(RELEASES_URL, { signal: ctx.signal, headers: { Accept: "application/json" } }).then((response) =>
+        response.ok ? response.text() : null,
+      ),
+    )
+    return
+  }
   const updater = ctx.uses.updater
+  // Release lookups belong to the active main generation and share its persistent cache across windows.
+  createKeyed(updater, (client) => whatsNew(ctx, () => client.releases({ signal: ctx.signal })))
   const [checking, setChecking] = createSignal(false)
 
   // Undefined while main is not active.
@@ -72,7 +80,7 @@ const setup: Setup<typeof definition> = (ctx) => {
  * What's New after an update, on every platform: the release highlights since the version last seen. The first run
  * and a disabled What's New only remember the version.
  */
-function whatsNew(ctx: SetupContext<typeof definition>) {
+function whatsNew(ctx: SetupContext<typeof definition>, read: () => Promise<string | null>) {
   const version = ctx.build.version
   const seen = ctx.stores.seen
   const previous = seen.value.version
@@ -89,7 +97,7 @@ function whatsNew(ctx: SetupContext<typeof definition>) {
   void import("./whats-new").then((module) => {
     if (ctx.signal.aborted) return
 
-    module.showWhatsNew(ctx, { previous, current: version, markSeen })
+    module.showWhatsNew(ctx, { previous, current: version, markSeen, read })
   })
 }
 

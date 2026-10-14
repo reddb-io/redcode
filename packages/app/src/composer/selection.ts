@@ -86,15 +86,20 @@ export function createComposerModelSelection(input: {
       return modelID ? [{ providerID: provider.id, modelID }] : []
     })[0]
 
-  const current = () => {
+  const current = createMemo(() => {
     if (!configuredModel.ready()) return
 
-    const key = [prompt.model.current(), input.agent()?.model, configuredModel(), recent(), fallback()].find(
-      (item): item is ModelKey => !!item && valid(item),
-    )
+    const key: ModelKey | undefined =
+      prompt.model.current() ??
+      configuredModel.principal() ??
+      input.agent()?.model ??
+      configuredModel() ??
+      recent() ??
+      fallback()
 
-    return key ? models.find(key) : undefined
-  }
+    const model = key ? models.find(key) : undefined
+    return model ? { ...model, ...(key?.connection ? { connection: key.connection } : {}) } : undefined
+  })
 
   const recentModels = createMemo(() =>
     models.recent
@@ -183,7 +188,12 @@ export function createComposerModelSelection(input: {
           const model = current()
 
           if (!model) return
-          prompt.model.set({ providerID: model.provider.id, modelID: model.id, variant: value ?? null })
+          prompt.model.set({
+            providerID: model.provider.id,
+            modelID: model.id,
+            variant: value ?? null,
+            connection: model.connection,
+          })
           models.variant.set({ providerID: model.provider.id, modelID: model.id }, value)
         })
       },

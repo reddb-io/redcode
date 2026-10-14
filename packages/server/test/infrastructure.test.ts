@@ -261,7 +261,18 @@ it.live(
       expect((yield* Effect.promise(() => call("/api/workers", "invalid-token", f.workspace.id))).status).toBe(401)
       expect((yield* Effect.promise(() => call("/api/workers", operator.token))).status).toBe(200)
       expect((yield* Effect.promise(() => call("/api/usage-reporter", f.owner.token))).status).toBe(200)
+      expect((yield* Effect.promise(() => call("/api/agent-tools", f.owner.token))).status).toBe(200)
       for (const token of [user.token, operator.token, orgAdmin.token]) {
+        const workspace = token === operator.token ? undefined : f.workspace.id
+        expect((yield* Effect.promise(() => call("/api/agent-tools", token, workspace))).status).toBe(403)
+        expect((yield* Effect.promise(() => call("/api/agent-tools/config", token, workspace, "POST", {
+          id: "computer-use", settings: { enabled: false },
+        }))).status).toBe(403)
+        expect((yield* Effect.promise(() => call("/api/agent-tools/computer-use/install", token, workspace, "POST"))).status).toBe(403)
+        expect((yield* Effect.promise(() => call("/api/agent-tools/computer-use/probe", token, workspace, "POST"))).status).toBe(403)
+        expect((yield* Effect.promise(() => call("/api/agent-tools/rift/initialize", token, workspace, "POST", {
+          directory: f.directory.path,
+        }))).status).toBe(403)
         expect((yield* Effect.promise(() => call("/api/worker-environments", token, token === operator.token ? undefined : f.workspace.id))).status).toBe(403)
         expect((yield* Effect.promise(() => call("/api/worker-environments/image", token, token === operator.token ? undefined : f.workspace.id, "POST", { version: "0.80.0" }))).status).toBe(403)
         expect(

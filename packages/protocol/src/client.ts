@@ -71,6 +71,7 @@ export const groupNames = {
   "server.workers": "workers",
   "server.workerEnvironments": "workerEnvironments",
   "server.harness": "harness",
+  "server.agentTools": "agentTools",
   "server.usageReporter": "usageReporter",
   "server.worktreeLifecycle": "worktreeLifecycle",
 } as const

@@ -26,6 +26,7 @@ type Connection = {
   owner?: number
   before?: SshItem
   ready: Deferred.Deferred<SshHttp | null>
+  readyAt?: number
   respond?: (id: string, value: string) => Effect.Effect<void>
 }
 
@@ -56,6 +57,9 @@ export const createSshController = Effect.fn("Ssh.controller")(function* (input:
   const attempts = new Map<string, Attempt>()
   const paused = new Set(items.keys())
   const failures = new Map<string, number>()
+  const retryAt = new Map<string, number>()
+  const restored = new Set<string>()
+  const resolving = new Map<string, Deferred.Deferred<SshHttp | null>>()
   const lifecycle = { closed: false }
   const emit = PubSub.publish(changed, undefined).pipe(Effect.asVoid)
 
@@ -85,6 +89,35 @@ export const createSshController = Effect.fn("Ssh.controller")(function* (input:
 
     return config ? { ...value, config } : value
   }
+
+  const recordFailure = Effect.fnUntraced(function* (id: string, connection: Connection, failure: SshFailure) {
+    const now = yield* Clock.currentTimeMillis
+    // Briefly reaching ready must not reset the budget of a flapping tunnel.
+    if (connection.readyAt !== undefined && now - connection.readyAt >= 60_000) failures.delete(id)
+    const count = (failures.get(id) ?? 0) + 1
+    failures.set(id, count)
+    retryAt.set(id, now + Math.min(60_000, 3000 * 2 ** (count - 1)))
+    const code = /REMOTE HOST IDENTIFICATION HAS CHANGED|Host key verification failed/.test(failure.message)
+      ? "host-key"
+      : /spawn .*ENOENT/.test(failure.message)
+        ? "ssh-missing"
+        : failure.code
+    if (
+      ["version", "input", "unpublished", "platform", "host-key", "ssh-missing"].includes(code) ||
+      /Permission denied/.test(failure.message) ||
+      count >= 5
+    )
+      paused.add(id)
+    yield* update(
+      id,
+      withSavedConfig(id, {
+        stage: code === "version" ? "incompatible" : "failed",
+        error: code,
+        detail: failure.message,
+        prompt: undefined,
+      }),
+    )
+  })
 
   const run = (options: Parameters<typeof runSsh>[0]) =>
     runSsh(options).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner))
@@ -208,7 +241,7 @@ export const createSshController = Effect.fn("Ssh.controller")(function* (input:
       const saved = new Map(configs).set(config.id, config)
       yield* input.save([...saved.values()])
       configs.set(config.id, config)
-      failures.delete(config.id)
+      connection.readyAt = yield* Clock.currentTimeMillis
       yield* update(config.id, { http, stage: "ready", saved: true, detail: "", prompt: undefined, error: undefined })
       yield* Deferred.succeed(connection.ready, http)
       yield* closed
@@ -223,6 +256,16 @@ export const createSshController = Effect.fn("Ssh.controller")(function* (input:
 
     if (lifecycle.closed || !/^[a-zA-Z0-9-]{1,80}$/.test(id)) return
     const previous = attempts.get(id)
+    // Windows share this controller. A restore must join its current attempt,
+    // and a newly opened window must respect an automatic pause or disconnect.
+    if (
+      request.background &&
+      (previous ||
+        items.get(id)?.stage === "ready" ||
+        (restored.has(id) && paused.has(id)) ||
+        (yield* Clock.currentTimeMillis) < (retryAt.get(id) ?? 0))
+    )
+      return
 
     // A second window must not replace an interactive attempt while its owner
     // is connecting or answering a challenge.
@@ -246,30 +289,7 @@ export const createSshController = Effect.fn("Ssh.controller")(function* (input:
       Effect.catchCause(
         Effect.fnUntraced(function* (cause) {
           if (Cause.hasInterruptsOnly(cause) || paused.has(id) || attempts.get(id)?.ready !== connection.ready) return
-          const failure = SshFailure.from(Cause.squash(cause))
-          failures.set(id, (failures.get(id) ?? 0) + 1)
-
-          const code = /REMOTE HOST IDENTIFICATION HAS CHANGED|Host key verification failed/.test(failure.message)
-            ? "host-key"
-            : /spawn .*ENOENT/.test(failure.message)
-              ? "ssh-missing"
-              : failure.code
-
-          if (
-            ["version", "input", "unpublished", "platform", "host-key", "ssh-missing"].includes(code) ||
-            /Permission denied/.test(failure.message) ||
-            (failures.get(id) ?? 0) >= 5
-          )
-            paused.add(id)
-          yield* update(
-            id,
-            withSavedConfig(id, {
-              stage: code === "version" ? "incompatible" : "failed",
-              error: code,
-              detail: failure.message,
-              prompt: undefined,
-            }),
-          )
+          yield* recordFailure(id, connection, SshFailure.from(Cause.squash(cause)))
         }),
       ),
       Effect.ensuring(
@@ -293,8 +313,12 @@ export const createSshController = Effect.fn("Ssh.controller")(function* (input:
       detail: "",
     })
     paused.delete(id)
+    restored.add(id)
 
-    if (!request.background) failures.delete(id)
+    if (!request.background) {
+      failures.delete(id)
+      retryAt.delete(id)
+    }
     yield* emit
     yield* Deferred.succeed(admitted, undefined)
   }, Effect.uninterruptible)
@@ -337,32 +361,49 @@ export const createSshController = Effect.fn("Ssh.controller")(function* (input:
 
   yield* Effect.addFinalizer(() => close)
 
+  const resolve = Effect.fn("Ssh.resolveTunnel")(function* (id: string) {
+    const item = items.get(id)
+    if (lifecycle.closed || !item || paused.has(id)) return null
+    if (item.stage === "ready" && item.http) {
+      const healthy = yield* checkHealth(item.http).pipe(Effect.provideService(HttpClient.HttpClient, httpClient))
+      if (lifecycle.closed || paused.has(id)) return null
+      if (items.get(id) === item) {
+        if (healthy) return item.http
+        const attempt = attempts.get(id)
+        if (attempt) {
+          yield* recordFailure(id, attempt, new SshFailure("service"))
+          yield* Fiber.interrupt(attempt.fiber)
+        }
+        return null
+      }
+    }
+    if (!attempts.has(id) && items.has(id)) yield* start({ ...item.config, background: true })
+    const attempt = attempts.get(id)
+    return attempt && items.get(id)?.stage !== "failed" ? yield* Deferred.await(attempt.ready) : null
+  })
+
   return {
     state,
     changes: (owner?: number) => Stream.fromPubSub(changed).pipe(Stream.mapEffect(() => state(owner))),
     start,
-    resolve: Effect.fn("Ssh.resolve")(function* (id: string) {
-      const item = items.get(id)
-
-      if (lifecycle.closed || !item || paused.has(id)) return null
-
-      if (item.stage === "ready" && item.http) {
-        const healthy = yield* checkHealth(item.http).pipe(Effect.provideService(HttpClient.HttpClient, httpClient))
-
-        if (lifecycle.closed || paused.has(id)) return null
-
-        // Another window may already have replaced this tunnel during the probe.
-        if (items.get(id) === item) {
-          if (healthy) return item.http
-          yield* start({ ...item.config, background: true })
-        }
-      }
-
-      if (!attempts.has(id) && items.has(id)) yield* start({ ...item.config, background: true })
-      const attempt = attempts.get(id)
-
-      return attempt ? yield* Deferred.await(attempt.ready) : null
-    }),
+    resolve: Effect.fn("Ssh.resolve")((id: string) =>
+      Effect.uninterruptibleMask((restore) =>
+        Effect.gen(function* () {
+          const previous = resolving.get(id)
+          if (previous) return yield* restore(Deferred.await(previous))
+          const pending = yield* Deferred.make<SshHttp | null>()
+          resolving.set(id, pending)
+          // Register and fork atomically: cancelling a caller must not leave a deferred with no producer.
+          // The probe belongs to main; each window can cancel only its own wait.
+          yield* resolve(id).pipe(
+            Effect.onExit((exit) => Deferred.done(pending, exit)),
+            Effect.ensuring(Effect.sync(() => resolving.delete(id))),
+            Effect.forkIn(lifetime, { uninterruptible: false }),
+          )
+          return yield* restore(Deferred.await(pending))
+        }),
+      ),
+    ),
     respond: Effect.fn("Ssh.respond")(function* (id: string, prompt: string, value: string, owner: number) {
       const attempt = attempts.get(id)
 
@@ -374,6 +415,9 @@ export const createSshController = Effect.fn("Ssh.controller")(function* (input:
       yield* disconnect(id)
       items.delete(id)
       configs.delete(id)
+      restored.delete(id)
+      failures.delete(id)
+      retryAt.delete(id)
       yield* input.save([...configs.values()])
       yield* emit
     }),
@@ -406,7 +450,7 @@ const waitReady = Effect.fn("Ssh.waitReady")(function* (http: SshHttp, authentic
     if (now >= clock.deadline) return yield* Effect.fail(new SshFailure("service"))
 
     return yield* checkHealth(http)
-  }).pipe(Effect.repeat({ until: (ready) => ready, schedule: Schedule.spaced(100) }))
+  }).pipe(Effect.repeat({ until: (ready) => ready, schedule: Schedule.spaced(500) }))
 })
 
 const checkHealth = Effect.fn("Ssh.checkHealth")(function* (http: SshHttp) {
@@ -417,7 +461,8 @@ const checkHealth = Effect.fn("Ssh.checkHealth")(function* (http: SshHttp) {
       headers: { authorization: `Basic ${Buffer.from(`opencode:${http.password}`).toString("base64")}` },
     })
     .pipe(
-      Effect.timeout(2000),
+      // A busy remote host or VPN must not make a healthy tunnel flap every two seconds.
+      Effect.timeout(10_000),
       Effect.map((response) => response.status >= 200 && response.status < 300),
       Effect.orElseSucceed(() => false),
     )

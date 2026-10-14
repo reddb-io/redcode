@@ -7,6 +7,8 @@ export const Updater = Ipc.define({
   /** Whether the app runs the CLI of a Redcode installation, the only CLI `redcode upgrade` can update. */
   state: Schema.Struct({ upgradable: Schema.Boolean }),
   methods: {
+    /** Public release metadata as JSON text, cached in main across windows. Null while unavailable. */
+    releases: { output: Schema.NullOr(Schema.String) },
     /** Quits the app and runs the installation's `redcode upgrade` in a detached process. */
     upgrade: {},
   },

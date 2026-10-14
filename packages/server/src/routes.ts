@@ -65,6 +65,7 @@ import { ServerPairing } from "./pairing"
 import { Workers } from "./workers"
 import { WorkerEnvironments } from "./worker-environments"
 import { Harnesses } from "./harness"
+import { AgentTools } from "@opencode/core/agent-tools"
 import { harnessUsageNode } from "./harness-usage"
 import { InfrastructureAccess } from "./infrastructure-access"
 import { layer } from "./location"
@@ -118,6 +119,7 @@ const applicationServiceNodes = [
   Workers.node,
   WorkerEnvironments.node,
   Harnesses.node,
+  AgentTools.node,
   harnessUsageNode,
   LocationServiceMap.node,
   LocationActivity.node,
@@ -226,7 +228,13 @@ function makeRoutes<AuthError, AuthServices>(
     const replacements: LayerNode.Replacements = [
       ...standard,
       Workers.node.replace(Workers.configured(options.workers?.directory, options.access)),
-      ...(options.workers?.directory ? [WorkerEnvironments.node.replace(WorkerEnvironments.configured(path.join(options.workers.directory, "environments")))] : []),
+      ...(options.workers?.directory
+        ? [
+            WorkerEnvironments.node.replace(
+              WorkerEnvironments.configured(path.join(options.workers.directory, "environments")),
+            ),
+          ]
+        : []),
       // Private instances resolve this list lazily so they inherit the complete host graph, including the selector.
       ...(instances ? [Instance.node.replace(instances(() => replacements))] : []),
       ...overrides,

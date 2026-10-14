@@ -148,7 +148,7 @@ export const useComposerCommands = (input: { model?: ModelSelection } = {}) => {
     providerCommand({
       id: "provider.connect",
       title: language.t("command.provider.connect"),
-      description: language.t("command.provider.connect.description"),
+      description: language.t("command.provider.connect.redcodeDescription"),
       slash: "connect",
       onSelect: connectProvider,
     }),

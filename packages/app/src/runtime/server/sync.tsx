@@ -10,6 +10,7 @@ import { createChildStoreManager } from "./global-sync/child-store"
 import type { ProjectMeta } from "./global-sync/types"
 import { formatServerError } from "@/runtime/server/errors"
 import { queryOptions, useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/solid-query"
+import { intelligenceSettingsKey } from "./intelligence"
 import { createRefreshQueue } from "./global-sync/queue"
 import { directoryKey, updateProjectInfo } from "./global-sync/utils"
 import { PathKey } from "@/workspaces/path-key"
@@ -241,6 +242,14 @@ export function createServerSyncContextInner(serverSDK: ServerSDK, data: Data) {
 
   const unsub = serverSDK.event.listen((event) => {
     connection.handleEvent({ type: event.type })
+
+    if (event.type === "intelligence.settings.updated") {
+      void queryClient.invalidateQueries(
+        { queryKey: intelligenceSettingsKey(serverSDK.scope) },
+        { cancelRefetch: false },
+      )
+      return
+    }
 
     if (event.type === "project.updated") applyProjectUpdate(event.data)
 

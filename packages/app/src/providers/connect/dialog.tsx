@@ -379,14 +379,8 @@ function ProviderPicker(props: { directory?: string; onSelect: (provider: string
                         <span class="flex min-w-0 flex-1 flex-col">
                           <span class="flex min-w-0 items-center gap-2">
                             <span class="min-w-0 truncate font-medium text-foreground">{integration.name}</span>
-                            <Show when={CONSOLE_PROVIDERS.has(integration.id) && integration.connections.length === 0}>
-                              <span class="min-w-0 truncate font-normal text-ink-muted">
-                                {language.t(
-                                  integration.id === "opencode"
-                                    ? "dialog.provider.opencode.tagline"
-                                    : "dialog.provider.opencodeGo.tagline",
-                                )}
-                              </span>
+                            <Show when={integration.id === "red-router"}>
+                              <Badge class="shrink-0">{language.t("dialog.provider.tag.recommended")}</Badge>
                             </Show>
                             <Show when={integration.id === OPENAI_COMPATIBLE}>
                               <Badge class="shrink-0">{language.t("settings.providers.tag.custom")}</Badge>

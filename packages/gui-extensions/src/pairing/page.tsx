@@ -30,7 +30,7 @@ export type PairingServer = {
 }
 
 /** The command that lets the local server accept connections from other devices. */
-const LISTEN_COMMAND = "opencode service set hostname 0.0.0.0"
+const LISTEN_COMMAND = "redcode service set hostname 0.0.0.0"
 
 export default function PairingPage(props: {
   server: Accessor<PairingServer | undefined>

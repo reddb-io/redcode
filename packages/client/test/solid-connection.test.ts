@@ -108,6 +108,21 @@ test("keepalive comments hold a quiet stream open", async () => {
   }
 })
 
+test("a slow first event does not trigger repeated connection attempts", async () => {
+  const fake = server()
+  const ctx = setup(fake, 10_000)
+  try {
+    await until(() => fake.streams.length === 1)
+    await Bun.sleep(3000)
+    expect(fake.streams[0].aborted).toBe(false)
+    expect(fake.streams).toHaveLength(1)
+    fake.streams[0].write(`data: ${JSON.stringify(connected)}\n\n`)
+    await until(() => ctx.connection.status() === "connected")
+  } finally {
+    ctx.dispose()
+  }
+}, 10_000)
+
 test("a forced resync replaces the stream immediately and only while connected", async () => {
   const fake = server()
   const ctx = setup(fake, 10_000)
@@ -151,3 +166,31 @@ test("a stream the server closes reconnects and reports the disconnect", async (
     ctx.dispose()
   }
 })
+
+test("a managed endpoint resolver does not bypass backoff when the event stream keeps closing", async () => {
+  const fake = server()
+  const ctx = createRoot((dispose) => ({
+    dispose,
+    connection: createClientConnection(fake.api, {
+      reconnect: async () => fake.api,
+      idleTimeout: 10_000,
+      onEvent: () => {},
+    }),
+  }))
+  try {
+    await until(() => fake.streams.length === 1)
+    fake.streams[0].write(`data: ${JSON.stringify(connected)}\n\n`)
+    await until(() => ctx.connection.status() === "connected")
+    fake.streams[0].close()
+    await until(() => ctx.connection.status() === "reconnecting")
+    await Bun.sleep(150)
+    expect(fake.streams).toHaveLength(1)
+    await until(() => fake.streams.length === 2)
+    fake.streams[1].close()
+    await Bun.sleep(1200)
+    expect(fake.streams).toHaveLength(2)
+    await until(() => fake.streams.length === 3)
+  } finally {
+    ctx.dispose()
+  }
+}, 10_000)

@@ -12,6 +12,7 @@ import { FileSystemV1 } from "./filesystem-v1.js"
 import { Form } from "./form.js"
 import { InstallationEvent } from "./installation-event.js"
 import { Integration } from "./integration.js"
+import { IntelligenceEvent } from "./intelligence-event.js"
 import { LegacyEventV1 } from "./legacy-event.js"
 import { LspEvent } from "./lsp-event.js"
 import { LocationEvent } from "./location-event.js"
@@ -55,6 +56,7 @@ const foundationDefinitions = Event.inventory(
 )
 
 const featureDefinitions = Event.inventory(
+  ...IntelligenceEvent.Definitions,
   ...FileSystem.Event.Definitions,
   ...Reference.Event.Definitions,
   ...Permission.Event.Definitions,

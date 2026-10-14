@@ -45,6 +45,7 @@ import type { LSP } from "@opencode/schema/lsp"
 import type { Formatter } from "@opencode/schema/formatter"
 import type { Worker } from "@opencode/schema/worker"
 import type { Harness } from "@opencode/schema/harness"
+import type { AgentTools } from "@opencode/schema/agent-tools"
 import type { UsageReporter } from "@opencode/schema/usage-reporter"
 import type { WorkerEnvironment } from "@opencode/schema/worker-environment"
 
@@ -6649,6 +6650,41 @@ export interface HarnessApi<E = never> {
   readonly close: HarnessCloseOperation<E>
 }
 
+export type AgentToolsListOutput = AgentTools.Snapshot
+export type AgentToolsListOperation<E = never> = () => Effect.Effect<AgentToolsListOutput, E>
+
+export type AgentToolsConfigureInput = { readonly id: AgentTools.ID; readonly settings: AgentTools.Settings }
+export type AgentToolsConfigureOutput = AgentTools.Status
+export type AgentToolsConfigureOperation<E = never> = (
+  input: AgentToolsConfigureInput,
+) => Effect.Effect<AgentToolsConfigureOutput, E>
+
+export type AgentToolsInstallInput = { readonly id: AgentTools.ID }
+export type AgentToolsInstallOutput = AgentTools.Status
+export type AgentToolsInstallOperation<E = never> = (
+  input: AgentToolsInstallInput,
+) => Effect.Effect<AgentToolsInstallOutput, E>
+
+export type AgentToolsProbeInput = { readonly id: AgentTools.ID }
+export type AgentToolsProbeOutput = AgentTools.Status
+export type AgentToolsProbeOperation<E = never> = (
+  input: AgentToolsProbeInput,
+) => Effect.Effect<AgentToolsProbeOutput, E>
+
+export type AgentToolsInitializeInput = { readonly directory: AbsolutePath }
+export type AgentToolsInitializeOutput = Schema.Json
+export type AgentToolsInitializeOperation<E = never> = (
+  input: AgentToolsInitializeInput,
+) => Effect.Effect<AgentToolsInitializeOutput, E>
+
+export interface AgentToolsApi<E = never> {
+  readonly list: AgentToolsListOperation<E>
+  readonly configure: AgentToolsConfigureOperation<E>
+  readonly install: AgentToolsInstallOperation<E>
+  readonly probe: AgentToolsProbeOperation<E>
+  readonly initialize: AgentToolsInitializeOperation<E>
+}
+
 export type UsageReporterSnapshotOutput = UsageReporter.Snapshot
 export type UsageReporterSnapshotOperation<E = never> = () => Effect.Effect<UsageReporterSnapshotOutput, E>
 
@@ -6844,6 +6880,7 @@ export interface AppApi<E = never> {
   readonly "server.intelligence": ServerIntelligenceApi<E>
   readonly workers: WorkersApi<E>
   readonly harness: HarnessApi<E>
+  readonly agentTools: AgentToolsApi<E>
   readonly usageReporter: UsageReporterApi<E>
   readonly workerEnvironments: WorkerEnvironmentsApi<E>
   readonly worktreeLifecycle: WorktreeLifecycleApi<E>

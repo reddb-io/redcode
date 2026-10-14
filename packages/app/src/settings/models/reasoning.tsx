@@ -3,12 +3,13 @@ import { Button } from "@opencode/ui/button"
 import { Select } from "@opencode/ui/select"
 import { TextField } from "@opencode/ui/text-field"
 import { firstConnectionFailure, type ConnectionFailure } from "@opencode/util/connection-failure"
-import { createMemo, createResource, Show } from "solid-js"
+import { createMemo, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useIntegrations } from "@/providers/catalog/integrations"
 import { useModels } from "@/providers/models/models"
 import { useLanguage } from "@/runtime/i18n/language"
 import { useServerSDK } from "@/runtime/server/client"
+import { useIntelligenceSettings } from "@/runtime/server/intelligence"
 import { SettingsList } from "@/settings/list"
 import { SettingsRow } from "@/settings/row"
 import { showToast } from "@/shell/notifications/toast"
@@ -57,10 +58,11 @@ export function SettingsReasoningRoles() {
   const integrations = useIntegrations(() => undefined)
   const server = useServerSDK()
   const api = server.api["server.intelligence"]
-  const [status, { refetch }] = createResource(() => api.status())
+  const status = useIntelligenceSettings()
+  const refetch = status.refetch
   const [draft, setDraft] = createStore<Draft>({ checking: false })
   // Reading an unresolved resource would suspend the settings page, so only settled values are read.
-  const current = () => (status.state === "ready" || status.state === "refreshing" ? status.latest : undefined)
+  const current = status.status
   const modelKey = (ref: { providerID: string; id: string } | undefined) =>
     ref ? `${ref.providerID}/${ref.id}` : undefined
   const modelOptions = createMemo(() =>
@@ -209,7 +211,7 @@ export function SettingsReasoningRoles() {
         when={current()}
         fallback={
           <div class="settings-models-status">
-            {status.error
+            {status.error()
               ? language.t("settings.models.reasoning.unavailable")
               : `${language.t("common.loading")}${language.t("common.loading.ellipsis")}`}
           </div>

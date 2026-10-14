@@ -463,6 +463,15 @@ import type {
   HarnessResumeOutput,
   HarnessCloseInput,
   HarnessCloseOutput,
+  AgentToolsListOutput,
+  AgentToolsConfigureInput,
+  AgentToolsConfigureOutput,
+  AgentToolsInstallInput,
+  AgentToolsInstallOutput,
+  AgentToolsProbeInput,
+  AgentToolsProbeOutput,
+  AgentToolsInitializeInput,
+  AgentToolsInitializeOutput,
   UsageReporterSnapshotOutput,
   UsageReporterConfigureInput,
   UsageReporterConfigureOutput,
@@ -2712,6 +2721,39 @@ const adaptGroupHarness = (raw: RawClient["server.harness"]) => ({
   close: EndpointHarnessClose(raw),
 })
 
+const EndpointAgentToolsList = (raw: RawClient["server.agentTools"]) => () =>
+  preserveEffect<AgentToolsListOutput>()(raw["agentTools.list"]({}).pipe(Effect.mapError(mapClientError)))
+
+const EndpointAgentToolsConfigure = (raw: RawClient["server.agentTools"]) => (input: AgentToolsConfigureInput) =>
+  preserveEffect<AgentToolsConfigureOutput>()(
+    raw["agentTools.configure"]({ payload: { id: input["id"], settings: input["settings"] } }).pipe(
+      Effect.mapError(mapClientError),
+    ),
+  )
+
+const EndpointAgentToolsInstall = (raw: RawClient["server.agentTools"]) => (input: AgentToolsInstallInput) =>
+  preserveEffect<AgentToolsInstallOutput>()(
+    raw["agentTools.install"]({ params: { id: input["id"] } }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const EndpointAgentToolsProbe = (raw: RawClient["server.agentTools"]) => (input: AgentToolsProbeInput) =>
+  preserveEffect<AgentToolsProbeOutput>()(
+    raw["agentTools.probe"]({ params: { id: input["id"] } }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const EndpointAgentToolsInitialize = (raw: RawClient["server.agentTools"]) => (input: AgentToolsInitializeInput) =>
+  preserveEffect<AgentToolsInitializeOutput>()(
+    raw["agentTools.initialize"]({ payload: { directory: input["directory"] } }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const adaptGroupAgentTools = (raw: RawClient["server.agentTools"]) => ({
+  list: EndpointAgentToolsList(raw),
+  configure: EndpointAgentToolsConfigure(raw),
+  install: EndpointAgentToolsInstall(raw),
+  probe: EndpointAgentToolsProbe(raw),
+  initialize: EndpointAgentToolsInitialize(raw),
+})
+
 const EndpointUsageReporterSnapshot = (raw: RawClient["server.usageReporter"]) => () =>
   preserveEffect<UsageReporterSnapshotOutput>()(raw["usageReporter.snapshot"]({}).pipe(Effect.mapError(mapClientError)))
 
@@ -2915,6 +2957,7 @@ const adaptClient = (raw: RawClient) => ({
   "server.intelligence": adaptGroupServerIntelligence(raw["server.intelligence"]),
   workers: adaptGroupWorkers(raw["server.workers"]),
   harness: adaptGroupHarness(raw["server.harness"]),
+  agentTools: adaptGroupAgentTools(raw["server.agentTools"]),
   usageReporter: adaptGroupUsageReporter(raw["server.usageReporter"]),
   workerEnvironments: adaptGroupWorkerEnvironments(raw["server.workerEnvironments"]),
   worktreeLifecycle: adaptGroupWorktreeLifecycle(raw["server.worktreeLifecycle"]),

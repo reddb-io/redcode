@@ -3,6 +3,12 @@
 Use `/connect` to connect a provider, then `/dual` inside the TUI or `redcode setup`
 from the shell. `/setup` remains a compatibility alias. Configuration belongs to the connected server.
 
+Desktop edits the same roles under **Settings → Models**. New conversations use the saved S2
+default and retain the S1 evaluator and S2 transformations model. Changes made through CLI, TUI
+or Desktop refresh the connected Desktop's settings. Existing conversations keep their explicit
+model selection. If a selected model becomes unavailable, choose a replacement explicitly;
+Redcode does not silently switch to another provider's first model.
+
 - **S2 / System Two** generates responses and performs agent work.
 - **S1 / System One** evaluates candidates using typed TypeSafe/JEV questions.
 - **Single** reasoning uses S2. **Dual** reasoning adds S1 evaluation.

@@ -1,4 +1,5 @@
 export { Agent } from "./agent.js"
+export { AgentTools } from "./agent-tools.js"
 export { Command } from "./command.js"
 export { Config } from "./config.js"
 export { Console } from "./console.js"

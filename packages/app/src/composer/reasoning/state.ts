@@ -6,6 +6,7 @@ import { createStore } from "solid-js/store"
 import { useLanguage } from "@/runtime/i18n/language"
 import { useServerSDK } from "@/runtime/server/client"
 import { useData } from "@/runtime/server/current"
+import { useIntelligenceSettings } from "@/runtime/server/intelligence"
 import { formatServerError } from "@/runtime/server/errors"
 import { errorStatus } from "@/shell/errors/description"
 import { showToast } from "@/shell/notifications/toast"
@@ -26,6 +27,7 @@ export function createComposerReasoning(input: { session: Accessor<string | unde
   const server = useServerSDK()
   const data = useData()
   const language = useLanguage()
+  const settings = useIntelligenceSettings()
   const [state, setState] = createStore<{ tick: number; draft: ReasoningChoice }>({ tick: 0, draft: "default" })
   // S1 settles evaluations as the session works; the TUI footer refreshes on the same cadence.
   const timer = setInterval(() => setState("tick", (value) => value + 1), 60_000)
@@ -41,14 +43,22 @@ export function createComposerReasoning(input: { session: Accessor<string | unde
 
   // The override is part of the key, so a mode change made anywhere reads the new effective mode.
   const [status, statusActions] = createResource(
-    () => ({ sessionID: input.session(), override: override(), tick: state.tick }),
+    () =>
+      input.session()
+        ? { sessionID: input.session(), override: override(), tick: state.tick, settings: settings.status() }
+        : false,
     (key) => server.api["server.intelligence"].status({ sessionID: key.sessionID }),
   )
   // Reading an unresolved resource would suspend the composer, so only settled values are read.
-  const current = () => (status.state === "ready" || status.state === "refreshing" ? status.latest : undefined)
+  const current = () =>
+    !input.session()
+      ? settings.status()
+      : status.state === "ready" || status.state === "refreshing"
+        ? status.latest
+        : undefined
   // A server without the experimental reasoning API answers 404: the feature is absent there, not offline.
-  const unsupported = () => status.state === "errored" && errorStatus(status.error) === 404
-  const failed = () => status.state === "errored" && !unsupported()
+  const unsupported = () => errorStatus(input.session() ? status.error : settings.error()) === 404
+  const failed = () => !!(input.session() ? status.error : settings.error()) && !unsupported()
 
   const mode = createMemo<Intelligence.Reasoning | undefined>(() => {
     const choice = override()

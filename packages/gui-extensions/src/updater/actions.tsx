@@ -1,11 +1,12 @@
 import { Button } from "@opencode/ui/button"
+import { Schema } from "effect"
 import { Dialog, DialogFooter, DialogHeader, DialogTitleGroup } from "@opencode/ui/dialog"
 import { Icon } from "@opencode/ui/icon"
 import { showToast } from "@opencode/ui/toast"
 import type { DialogHandle, IpcClient, SetupContext } from "../sdk"
 import type { Updater } from "./contract"
 import type definition from "./index"
-import { newerRelease, RELEASES_URL } from "./release"
+import { newerRelease } from "./release"
 
 type Client = IpcClient<typeof Updater.spec>
 
@@ -16,9 +17,14 @@ type Context = SetupContext<typeof definition>
  * already the newest. A failed read still offers it, without a version.
  */
 export async function check(ctx: Context, client: Client) {
-  const release = await fetch(RELEASES_URL, { signal: ctx.signal, headers: { Accept: "application/json" } })
-    .then((response) => (response.ok ? response.json() : undefined))
-    .then((json) => newerRelease(json, ctx.build.version))
+  const release = await client
+    .releases({ signal: ctx.signal })
+    .then((json) =>
+      newerRelease(
+        json === null ? undefined : Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown))(json),
+        ctx.build.version,
+      ),
+    )
     .catch(() => ({ status: "unknown" as const }))
 
   if (ctx.signal.aborted) return

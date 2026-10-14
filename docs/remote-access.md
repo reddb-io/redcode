@@ -36,6 +36,10 @@ Keep Desktop running while its SSH forward is in use. Saved connections reconnec
 opens; SSH authentication can still require interaction. Closing Desktop does not stop the remote
 service or erase sessions. Repositories and worker patches are not automatically synchronized.
 
+Desktop windows share one SSH connection attempt per machine. Automatic recovery uses increasing
+delays and pauses after five repeated failures; use **Connect** on that machine to try again.
+A tunnel that stays healthy for a minute restores the automatic retry budget.
+
 ## Pair a browser with the managed service
 
 On the machine that owns the projects:

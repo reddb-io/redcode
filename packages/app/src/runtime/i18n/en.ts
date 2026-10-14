@@ -1,14 +1,92 @@
 import { DESKTOP_NATIVE_ENGLISH } from "./desktop-native"
 
 export const dict = {
+  "agentTools.initialized": "Rift source initialized. You can now create Rift workspaces from it.",
+  "agentTools.title": "Agent tools",
+  "agentTools.setup.title": "Install and enable tools",
+  "agentTools.setup.target":
+    "Installation and actions happen on {{name}}. When connected to a remote server, these tools control that server's applications, not this device's.",
+  "agentTools.setup.install":
+    "Install the tools you want on this host. Installation downloads the package; it does not enable it for agents.",
+  "agentTools.setup.prepare": "Complete the tool's required setup on this host before using it.",
+  "agentTools.setup.enable":
+    "Run diagnostics, then turn on Enable for agents. Disabling a tool keeps its installed files for later use.",
+  "agentTools.setup.required": "Required setup on this host",
+  "agentTools.setup.manual":
+    "Redcode does not verify browser approval or operating-system permissions here. Installed or enabled does not mean those steps are complete.",
+  "agentTools.browser-control.requirements":
+    "After installation, use the extension directory below. In this host's Chrome or Edge, open Extensions, enable Developer mode, choose Load unpacked and select that directory. Approve the extension in that browser.",
+  "agentTools.computer-use.requirements":
+    "Sign in to a graphical desktop on this host and grant any accessibility or screen-capture permissions requested by the operating system. A headless worker or a Windows service outside that desktop session cannot control your applications.",
+  "agentTools.terminal-control.requirements":
+    "Use a supported Linux or macOS host. Linux requires glibc. This tool controls terminal sessions on that host.",
+  "agentTools.rift.requirements":
+    "Use a supported copy-on-write filesystem and initialize each source directory below before creating snapshots. Installing Rift alone does not prepare a repository.",
+  "agentTools.state.missing": "Not installed · Unavailable to agents",
+  "agentTools.state.installed": "Installed · Disabled for agents",
+  "agentTools.state.enabled": "Installed · Enabled for agents",
+  "agentTools.operation.install": "Installing on this host… This may take several minutes.",
+  "agentTools.operation.configure": "Saving settings on this host…",
+  "agentTools.operation.probe": "Running diagnostics on this host…",
+  "agentTools.operation.initialize": "Initializing the source directory on this host…",
+  "agentTools.reinstall": "Reinstall managed version",
+  "agentTools.description":
+    "Optional capabilities shared by CLI, TUI and Desktop on this execution host. Infrastructure administration is required.",
+  "agentTools.host":
+    "Execution host: {{name}} · {{platform}}/{{arch}}. Browser and computer actions use this host's desktop.",
+  "agentTools.rift.name": "Rift",
+  "agentTools.rift.description":
+    "Copy-on-write snapshots of the selected source's current working state. Explicit initialization is required. Starting refs and Windows workspace creation are unsupported; repository hooks stay disabled.",
+  "agentTools.browser-control.name": "Browser Control",
+  "agentTools.browser-control.description":
+    "Use the existing Chromium browser and its logged-in sessions on this host. Install and approve the browser extension separately.",
+  "agentTools.terminal-control.name": "Terminal Control",
+  "agentTools.terminal-control.description":
+    "Inspect and drive real terminal applications through MCP on Linux and macOS.",
+  "agentTools.computer-use.name": "Computer Use",
+  "agentTools.computer-use.description":
+    "Inspect and operate applications on this host. Complete operating-system permissions on that machine. Agent actions ask for approval by default.",
+  "agentTools.enabled": "Enable for agents",
+  "agentTools.install": "Install managed version",
+  "agentTools.probe": "Run diagnostics",
+  "agentTools.refresh": "Refresh status",
+  "agentTools.installed": "Installed",
+  "agentTools.missing": "Install the tool or configure a custom command before enabling it.",
+  "agentTools.unsupported": "This host platform is unsupported by this integration.",
+  "agentTools.working": "Working…",
+  "agentTools.package": "Managed package: {{package}}",
+  "agentTools.extension": "Browser extension directory on this host",
+  "agentTools.extensionHelp":
+    "In this host's Chromium browser, open Extensions, enable Developer mode and choose Load unpacked with this directory.",
+  "agentTools.options": "Options",
+  "agentTools.command": "Custom command (JSON array)",
+  "agentTools.commandHelp":
+    "Leave blank to use the managed installation. Supply an MCP stdio command for control tools, or the Rift CLI command. No shell interpolation is used.",
+  "agentTools.timeout": "Execution timeout (milliseconds)",
+  "agentTools.copyAll": "Include caches in Rift snapshots",
+  "agentTools.directory": "Source directory on this host",
+  "agentTools.initialize": "Initialize Rift source",
+  "agentTools.initializeHelp":
+    "Register this source for snapshots. On btrfs, Rift may convert it into a subvolume. This action is explicit and is never performed on settings load.",
+  "agentTools.initializeFailed":
+    "Rift initialization failed. Check the selected host, source path and filesystem support.",
+  "agentTools.failed": "The operation failed. Check host permissions and run diagnostics before retrying.",
+  "agentTools.invalid": "Enter a command JSON array and a timeout between 1 and 600000 milliseconds.",
+  "agentTools.unavailable":
+    "Agent tools are unavailable. Connect to a compatible server with infrastructure administration access.",
   "environments.title": "Isolated workspaces",
   "environments.description": "Prepare a dedicated worker workspace on this host, then register it with a coordinator.",
-  "environments.policy": "Each workspace runs as a non-root Linux container with its own volumes and credentials, a read-only system, CPU/RAM limits and no host disk or Docker socket mounts. Its internal network allows outbound HTTPS through a gateway that blocks private, loopback and metadata addresses. Containers still share the host kernel.",
-  "environments.access": "This host requires infrastructure administration and an updated server for workspace management.",
-  "environments.dockerUnavailable": "A local Docker 28 or newer engine using Linux containers is required on this host. Install or start it, then refresh this view.",
-  "environments.working": "Preparing on the selected host. This operation can take several minutes; progress appears below.",
+  "environments.policy":
+    "Each workspace runs as a non-root Linux container with its own volumes and credentials, a read-only system, CPU/RAM limits and no host disk or Docker socket mounts. Its internal network allows outbound HTTPS through a gateway that blocks private, loopback and metadata addresses. Containers still share the host kernel.",
+  "environments.access":
+    "This host requires infrastructure administration and an updated server for workspace management.",
+  "environments.dockerUnavailable":
+    "A local Docker 28 or newer engine using Linux containers is required on this host. Install or start it, then refresh this view.",
+  "environments.working":
+    "Preparing on the selected host. This operation can take several minutes; progress appears below.",
   "environments.imageTitle": "Worker image",
-  "environments.imageDescription": "Build the Redcode server image from a published release, checking its archive checksum. For a different toolchain, use an image prepared by your infrastructure administrator.",
+  "environments.imageDescription":
+    "Build the Redcode server image from a published release, checking its archive checksum. For a different toolchain, use an image prepared by your infrastructure administrator.",
   "environments.version": "Redcode release version",
   "environments.build": "Build worker image on this host",
   "environments.imageReady": "Worker image is ready.",
@@ -20,21 +98,26 @@ export const dict = {
   "environments.cpu": "CPU limit",
   "environments.memory": "Memory limit (MiB)",
   "environments.setup": "Preparation commands (optional)",
-  "environments.setupDescription": "Commands you supply run in the isolated checkout. Repository setup scripts are not executed automatically. A failed preparation stays inspectable and is not replayed.",
+  "environments.setupDescription":
+    "Commands you supply run in the isolated checkout. Repository setup scripts are not executed automatically. A failed preparation stays inspectable and is not replayed.",
   "environments.provider": "Model provider (optional)",
   "environments.noProvider": "Configure a provider later",
-  "environments.lifecycle": "Collect results and unregister this slot from its coordinators before stopping or archiving. Active sessions must finish first.",
+  "environments.lifecycle":
+    "Collect results and unregister this slot from its coordinators before stopping or archiving. Active sessions must finish first.",
   "environments.key": "Workspace provider API key",
-  "environments.credentials": "Only this supplied key is stored in the worker's private home. Host provider accounts are not copied. Private Git authentication will be configured separately.",
+  "environments.credentials":
+    "Only this supplied key is stored in the worker's private home. Host provider accounts are not copied. Private Git authentication will be configured separately.",
   "environments.create": "Create isolated workspace",
   "environments.ready": "Workspace prepared. Review its base commit and register the worker.",
   "environments.failed": "Preparation failed. Inspect its recorded stage before continuing.",
   "environments.pool": "Worker pool",
   "environments.coordinator": "Coordinator",
   "environments.resource": "Console resource ID for delegation (optional)",
-  "environments.poolDescription": "Registration makes this checkout an execution slot. Use a separate Console resource for each isolated environment; leave it blank for infrastructure administration only. A different coordinator needs an authenticated route to this host.",
+  "environments.poolDescription":
+    "Registration makes this checkout an execution slot. Use a separate Console resource for each isolated environment; leave it blank for infrastructure administration only. A different coordinator needs an authenticated route to this host.",
   "environments.coordinatorUnavailable": "Select a connected coordinator.",
-  "environments.remoteCredential": "Connect to this execution host with a server credential or pairing token before registering it remotely.",
+  "environments.remoteCredential":
+    "Connect to this execution host with a server credential or pairing token before registering it remotely.",
   "environments.register": "Register isolated worker",
   "environments.registered": "Isolated worker registered.",
   "environments.status": "{{state}} · {{phase}}",
@@ -44,11 +127,14 @@ export const dict = {
   "environments.stop": "Stop environment",
   "environments.archive": "Archive and retain workspace",
   "environments.delete": "Delete permanently",
-  "environments.deleteDescription": "Permanently delete this environment, its checkout, history and credentials. Collect and review all results first.",
+  "environments.deleteDescription":
+    "Permanently delete this environment, its checkout, history and credentials. Collect and review all results first.",
   "environments.confirmDelete": "Confirm permanent deletion",
-  "environments.reconcile": "Check this environment on its original host. Unknown or incomplete preparation is not retried automatically.",
+  "environments.reconcile":
+    "Check this environment on its original host. Unknown or incomplete preparation is not retried automatically.",
   "environments.another": "Prepare another workspace",
-  "environments.anotherDescription": "A new workspace draft is ready above. The original workspace is retained; review the inputs and supply preparation commands and credentials before creating the replacement.",
+  "environments.anotherDescription":
+    "A new workspace draft is ready above. The original workspace is retained; review the inputs and supply preparation commands and credentials before creating the replacement.",
   "environments.empty": "No isolated workspaces on this host.",
   "environments.state.preparing": "Preparing",
   "environments.state.ready": "Ready",
@@ -167,17 +253,20 @@ export const dict = {
   "harness.send": "Send instruction",
   "agentMachines.title": "Machines",
   "agentMachines.connected": "Connected to {{name}}. Choose how to use this machine below.",
-  "agentMachines.remoteControl": "Connect from your LAN or router VPN using a reachable address. Your Desktop can control this machine as a coding server or coordinator; workers are reached from the coordinator.",
+  "agentMachines.remoteControl":
+    "Connect from your LAN or router VPN using a reachable address. Your Desktop can control this machine as a coding server or coordinator; workers are reached from the coordinator.",
   "agentMachines.useCoordinator": "Manage workers on this machine",
   "agentMachines.codeHere": "Code in this project on this machine",
   "agentMachines.selectProject": "3. Choose a project",
   "agentMachines.configureWorker": "Use this project as a worker",
   "agentMachines.registerCheckout": "Register worker checkout",
-  "agentMachines.sshLifetime": "Desktop manages SSH authentication, setup and forwarding. Keep this Desktop running while its coordinator uses an SSH worker; saved connections reconnect when Desktop opens.",
+  "agentMachines.sshLifetime":
+    "Desktop manages SSH authentication, setup and forwarding. Keep this Desktop running while its coordinator uses an SSH worker; saved connections reconnect when Desktop opens.",
   "agentMachines.project": "Project on the machine",
   "agentMachines.chooseProject": "Choose a project",
   "agentMachines.browse": "Browse this machine",
-  "agentMachines.dispatchNote": "Open Remote workers to send a task to this checkout and review its resulting patch. Files are not synchronized automatically.",
+  "agentMachines.dispatchNote":
+    "Open Remote workers to send a task to this checkout and review its resulting patch. Files are not synchronized automatically.",
   "agentMachines.description":
     "Connect a machine, inspect its server and register an independent checkout with the selected coordinator.",
   "agentMachines.connect": "1. Connect the machine",
@@ -328,7 +417,7 @@ export const dict = {
   "command.project.next": "Next project",
   "command.project.copyID": "Copy Project ID",
   "command.provider.connect": "Connect provider",
-  "command.provider.connect.description": "Sign in to OpenCode Go, OpenCode Console, or another model provider",
+  "command.provider.connect.description": "Connect RedRouter or another model provider",
   "command.settings.open": "Open settings",
   "command.session.previous": "Previous session",
   "command.session.next": "Next session",
@@ -438,6 +527,8 @@ export const dict = {
   "dialog.provider.environmentOnly": "Environment only",
   "dialog.provider.connected": "Connected",
   "dialog.provider.tag.recommended": "Recommended",
+  "dialog.provider.redRouter.note": "Use your RedRouter endpoint for model providers and evaluation.",
+  "command.provider.connect.redcodeDescription": "Connect RedRouter or another model provider",
   "dialog.provider.opencode.note": "Curated models including Claude, GPT, Gemini and more",
   "dialog.provider.opencode.tagline": "Reliable optimized models",
   "dialog.provider.opencodeGo.tagline": "Low cost subscription for everyone",
@@ -1264,7 +1355,10 @@ export const dict = {
   "settings.about.license": "Released under the MIT License",
   "settings.about.website": "github.com/reddb-io/redcode",
   "settings.about.description": "Redcode, the coding agent from reddb.io",
-  "settings.about.trademark": "Built on Redcode by Anomaly Innovations, Inc., released under the MIT License.",
+  "settings.about.trademark": "Based on OpenCode, an open-source project by Anomaly Innovations, Inc.",
+  "settings.about.redcode.description": "Redcode is developed by reddb.io.",
+  "settings.about.redcode.upstream": "Based on OpenCode, an open-source project by Anomaly Innovations, Inc.",
+  "settings.about.redcode.copyright": "© reddb.io",
   "settings.about.typeset": "Typeset in Space Grotesk and JetBrains Mono",
   "settings.about.notices.title": "Third-party notices",
   "settings.about.notices.description": "Redcode includes the following open source software.",

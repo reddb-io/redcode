@@ -29,7 +29,9 @@ export type ClientConnectionOptions = {
   }
 }
 
-const connectTimeout = 2_000
+// The first event can wait behind server startup or a slow VPN connection.
+// Use the same connection budget as health probes instead of aborting every two seconds.
+const connectTimeout = 30_000
 const reconnectDelay = 1_000
 const connectionHistoryLimit = 50
 export const defaultIdleTimeout = 45_000
@@ -155,7 +157,7 @@ export function createClientConnection(initialApi: OpenCodeClient, options: Clie
       const result = await connect(controller.signal, attempt)
       abort.signal.removeEventListener("abort", cancel)
       if (abort.signal.aborted || !started || generation !== active) return
-      if (result.connectedAt !== undefined && Date.now() - result.connectedAt >= reconnectDelay) attempt = 0
+      if (result.connectedAt !== undefined && Date.now() - result.connectedAt >= 30_000) attempt = 0
       attempt += 1
       const message = errorMessage(result.error)
       record("disconnected", attempt, message)
@@ -170,7 +172,6 @@ export function createClientConnection(initialApi: OpenCodeClient, options: Clie
         if (abort.signal.aborted || controller.signal.aborted || !started || generation !== active) return
         if (next) {
           api = next
-          if (attempt === 1) continue
         }
       }
       // A deliberate resync already knows the old socket is gone; reconnect without backing off.
@@ -178,7 +179,7 @@ export function createClientConnection(initialApi: OpenCodeClient, options: Clie
         forced = false
         continue
       }
-      await wait(reconnectDelay, controller.signal)
+      await wait(Math.min(30_000, reconnectDelay * 2 ** Math.min(attempt - 1, 5)), controller.signal)
     }
   }
 

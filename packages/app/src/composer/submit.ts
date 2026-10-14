@@ -109,8 +109,7 @@ export function createComposerSubmit(input: ComposerSubmitInput) {
       : readSubmission(input, submission.prompt, submission.context, text, options?.alternate ?? false)
     if (!read) {
       // An empty `/queue` sends nothing, and must not stop the running turn either.
-      if (!queued && input.adapter.working() && input.adapter.kind === "active-session")
-        void input.adapter.interrupt()
+      if (!queued && input.adapter.working() && input.adapter.kind === "active-session") void input.adapter.interrupt()
       return
     }
 
@@ -331,7 +330,7 @@ function currentSelection(input: ComposerSubmitInput): ComposerSelection | undef
 
   return {
     agent,
-    model: { modelID: model.id, providerID: model.provider.id },
+    model: { modelID: model.id, providerID: model.provider.id, connection: model.connection },
     variant: controls.model.selection.variant.current(),
   }
 }
@@ -483,7 +482,12 @@ async function applySelection(
     // The server deduplicates unchanged selections; cached SSE state may still be behind an earlier switch.
     await session.api.switchModel({
       sessionID: session.id,
-      model: { id: selection.model.modelID, providerID: selection.model.providerID, variant: selection.variant },
+      model: {
+        id: selection.model.modelID,
+        providerID: selection.model.providerID,
+        variant: selection.variant,
+        connection: selection.model.connection,
+      },
     })
   } catch (error) {
     cancel?.()

@@ -10,6 +10,7 @@ import SidebarMcp from "../feature-plugins/sidebar/mcp"
 import DiffViewer from "../feature-plugins/system/diff-viewer"
 import Notifications from "../feature-plugins/system/notifications"
 import Plugins from "../feature-plugins/system/plugins"
+import AgentTools from "../feature-plugins/system/agent-tools"
 import Storybook from "../feature-plugins/system/storybook"
 import Stats from "../feature-plugins/system/stats"
 import Workers from "../feature-plugins/system/workers"
@@ -30,6 +31,7 @@ export const builtins = [
   SidebarFooter,
   Notifications,
   Plugins,
+  AgentTools,
   Stats,
   Workers,
   Reasoning,

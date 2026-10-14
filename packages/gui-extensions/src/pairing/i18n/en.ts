@@ -26,8 +26,8 @@ export default {
   "custom.title": "Custom address",
   "custom.description":
     "An address that reaches this computer from other devices, such as a VPN, tunnel, or reverse proxy URL.",
-  "custom.placeholder": "https://opencode.example.com",
-  "custom.invalid": "Enter an HTTP or HTTPS address without a path, such as https://opencode.example.com.",
+  "custom.placeholder": "https://redcode.example.com",
+  "custom.invalid": "Enter an HTTP or HTTPS address without a path, such as https://redcode.example.com.",
   "unreachable.title": "Only this computer can reach the Redcode server",
   "unreachable.description":
     "To pair a device on your network, run this command in a terminal, then reopen Pairing. You can also add a custom address below.",

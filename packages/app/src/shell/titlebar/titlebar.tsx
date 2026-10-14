@@ -21,7 +21,6 @@ import { readSessionTabsRemovedDetail, SESSION_TABS_REMOVED_EVENT } from "@/shel
 import { useGlobal } from "@/runtime/server/runtime"
 import { ServerConnection } from "@/runtime/server/registry"
 import { tabKey, useTabs } from "@/shell/tabs/tabs"
-import type { ComposerState } from "@/composer/persistence"
 import "./titlebar.css"
 import { TitlebarRightMount } from "@/shell/titlebar/right-slot"
 import { MobileDrawer, MobileDrawerContent, MobileDrawerLabel, MobileDrawerTrigger } from "@/shell/mobile-drawer"
@@ -323,8 +322,7 @@ export function Titlebar() {
                   const pending = tabs.pendingSession(route.server, route.sessionId)
 
                   if (pending) {
-                    const model = tabs.stateValue<ComposerState>(pending.draft, "prompt")?.model.current()
-                    void tabs.newDraft({ server: route.server, directory: pending.draft.directory }, "", model)
+                    void tabs.newDraft({ server: route.server, directory: pending.draft.directory }, "")
 
                     return
                   }
@@ -339,12 +337,7 @@ export function Titlebar() {
                     sessionId: activeSession.id,
                   }
 
-                  const model = tabs.stateValue<ComposerState>(sessionTab, "prompt")?.model.current()
-                  void tabs.newDraft(
-                    { server: sessionTab.server, directory: activeSession.location.directory },
-                    "",
-                    model,
-                  )
+                  void tabs.newDraft({ server: sessionTab.server, directory: activeSession.location.directory }, "")
 
                   return
                 }
@@ -354,8 +347,7 @@ export function Titlebar() {
 
                   if (activeTab?.type !== "draft") return
 
-                  const model = tabs.stateValue<ComposerState>(activeTab, "prompt")?.model.current()
-                  void tabs.newDraft({ server: activeTab.server, directory: activeTab.directory }, "", model)
+                  void tabs.newDraft({ server: activeTab.server, directory: activeTab.directory }, "")
 
                   return
                 }

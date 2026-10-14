@@ -37,6 +37,7 @@ import { FormatterHandler } from "./handlers/formatter"
 import { RedskilledHandler } from "./handlers/redskilled"
 import { WorkersHandler } from "./handlers/workers"
 import { HarnessHandler } from "./handlers/harness"
+import { AgentToolsHandler } from "./handlers/agent-tools"
 import { UsageReporterHandler } from "./handlers/usage-reporter"
 import { WorkerEnvironmentsHandler } from "./handlers/worker-environments"
 
@@ -79,6 +80,7 @@ export const handlers = Layer.mergeAll(
   RedskilledHandler,
   WorkersHandler,
   HarnessHandler,
+  AgentToolsHandler,
   UsageReporterHandler,
   WorkerEnvironmentsHandler,
 )

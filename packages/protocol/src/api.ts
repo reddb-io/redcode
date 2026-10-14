@@ -40,6 +40,7 @@ import { FormatterGroup } from "./groups/formatter.js"
 import { RedskilledGroup } from "./groups/redskilled.js"
 import { WorkersGroup } from "./groups/workers.js"
 import { HarnessGroup } from "./groups/harness.js"
+import { AgentToolsGroup } from "./groups/agent-tools.js"
 import { UsageReporterGroup } from "./groups/usage-reporter.js"
 import { WorkerEnvironmentsGroup } from "./groups/worker-environments.js"
 import { WorktreeLifecycleGroup } from "./groups/worktree-lifecycle.js"
@@ -109,6 +110,7 @@ type ApiGroups<
   | typeof IntelligenceGroup
   | typeof WorkersGroup
   | typeof HarnessGroup
+  | typeof AgentToolsGroup
   | typeof UsageReporterGroup
   | typeof WorkerEnvironmentsGroup
   | typeof WorktreeLifecycleGroup
@@ -210,6 +212,7 @@ const makeApiFromGroup = <
     .add(IntelligenceGroup)
     .add(WorkersGroup)
     .add(HarnessGroup)
+    .add(AgentToolsGroup)
     .add(UsageReporterGroup)
     .add(WorkerEnvironmentsGroup)
     .add(WorktreeLifecycleGroup)

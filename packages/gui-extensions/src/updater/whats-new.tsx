@@ -4,7 +4,6 @@ import { Button } from "@opencode/ui/button"
 import { Dialog } from "@opencode/ui/dialog"
 import { useExtension, type DialogHandle, type SetupContext } from "../sdk"
 import type definition from "./index"
-import { RELEASES_URL } from "./release"
 
 type Highlight = {
   title: string
@@ -45,7 +44,7 @@ const Releases = Schema.Array(entry(Release))
 
 const Changelog = Schema.Union([Releases, Schema.Struct({ releases: Releases })])
 
-const decodeChangelog = Schema.decodeUnknownOption(Changelog)
+const decodeChangelog = Schema.decodeUnknownOption(Schema.fromJsonString(Changelog))
 
 /**
  * Shows the desktop highlights of the releases since `previous` once the changelog loads, and remembers the current
@@ -54,7 +53,12 @@ const decodeChangelog = Schema.decodeUnknownOption(Changelog)
  */
 export function showWhatsNew(
   ctx: SetupContext<typeof definition>,
-  input: { readonly previous: string; readonly current: string; readonly markSeen: () => void },
+  input: {
+    readonly previous: string
+    readonly current: string
+    readonly markSeen: () => void
+    readonly read: () => Promise<string | null>
+  },
 ) {
   const timers = new Set<ReturnType<typeof setTimeout>>()
 
@@ -62,8 +66,8 @@ export function showWhatsNew(
 
   // GitHub releases carry no desktop highlights, so this only records the version as seen until Redcode publishes its
   // own.
-  fetch(RELEASES_URL, { signal: ctx.signal, headers: { Accept: "application/json" } })
-    .then((response) => (response.ok ? response.json() : undefined))
+  input
+    .read()
     .then((json) => {
       if (!json) return
 

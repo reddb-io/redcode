@@ -174,6 +174,7 @@ const suites = {
     "test/acp/replay.test.ts",
   ],
   server: [
+    "test/agent-tools.test.ts",
     "test/fs.test.ts",
     "test/fetch.test.ts",
     "test/session-instances.test.ts",
@@ -202,7 +203,8 @@ const suites = {
     "test/remote-clients.test.ts",
     "test/workers.test.ts",
   ],
-  client: ["test/service.test.ts", "test/promise-service.test.ts"],
+  client: ["test/service.test.ts", "test/promise-service.test.ts", "test/solid-connection.test.ts"],
+  "gui-extensions": ["test/ssh-main.test.ts", "test/updater-main.test.ts"],
   tui: [
     "test/cli/tui/form.test.tsx",
     "test/plugin-select.test.tsx",
@@ -283,7 +285,14 @@ for (const [name, files] of Object.entries(suites)) {
   if (process.argv.includes("--list")) continue
   // Windows contracts include cold starts of child Bun processes; keep those bounded without the 5s unit default.
   const result = await Bun.spawn(
-    [process.execPath, "run", "test", ...files, "--timeout", process.platform === "win32" ? "30000" : "5000"],
+    [
+      process.execPath,
+      "run",
+      name === "gui-extensions" ? "test:native" : "test",
+      ...files,
+      "--timeout",
+      process.platform === "win32" ? "30000" : "5000",
+    ],
     {
       cwd,
       env: { ...process.env, GITHUB_ACTIONS: "false" },

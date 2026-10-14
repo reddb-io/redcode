@@ -35,6 +35,10 @@ commits results, integrates a reviewed commit and archives/restores detached wor
 Configuration is available in the app; **Settings → Servers** links to each host's tools.
 [External agents and worktree workflow](docs/external-harnesses.md).
 
+**Settings → Agent tools** configures optional Rift snapshots, browser control, terminal control and
+computer use on the selected execution host. Installation and enablement are explicit; CLI and TUI
+share those settings. [Capabilities and setup](docs/agent-tools.md).
+
 With mise installed, run:
 
 ```sh
@@ -65,6 +69,8 @@ redcode
 ```
 
 Inside the TUI, use `/connect` to add a model provider, then describe your task.
+Use `/agent-tools` or `redcode tools` to configure the host's optional browser, terminal, desktop and
+snapshot capabilities. [Agent tools](docs/agent-tools.md).
 The npm package includes the coding engine and Design; Desktop uses the full distribution above.
 
 [Installation and platforms](docs/installation.md) · [Client commands and history imports](docs/clients.md)

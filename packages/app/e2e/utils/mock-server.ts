@@ -2,6 +2,7 @@ import type { Page } from "@playwright/test"
 import type {
   AttentionSnapshot,
   HostResourcesSnapshot,
+  IntelligenceStatus,
   OpenCodeEvent,
   SessionMessageInfo,
 } from "@opencode/client/promise"
@@ -24,6 +25,52 @@ import {
 } from "./mock-api"
 import { installSseTransport } from "./sse-transport"
 import type { UsageReporter } from "@opencode/schema/usage-reporter"
+import { AgentTools } from "@opencode/schema/agent-tools"
+
+export async function mockAgentTools(page: Page, server = SERVER) {
+  const operations: string[] = []
+  const snapshot: AgentTools.Snapshot = {
+    host: {
+      name: server === SERVER ? "Windows workstation" : "Remote Linux host",
+      platform: server === SERVER ? "win32" : "linux",
+      arch: "x64",
+    },
+    tools: AgentTools.ID.literals.map((id) => ({
+      id,
+      settings: { enabled: false },
+      supported: server !== SERVER || id === "browser-control" || id === "computer-use",
+      installed: false,
+      package: `fixture-${id}@1.0.0`,
+    })),
+  }
+  const headers = {
+    "access-control-allow-origin": "*",
+    "access-control-allow-methods": "GET, POST, OPTIONS",
+    "access-control-allow-headers": "*",
+  }
+  await page.route(`${server}/api/agent-tools**`, async (route) => {
+    const request = route.request()
+    if (request.method() === "OPTIONS") return route.fulfill({ status: 204, headers })
+    const pathname = new URL(request.url()).pathname
+    if (request.method() === "GET") return route.fulfill({ json: snapshot, headers })
+    const command = pathname.split("/").at(-1)!
+    operations.push(command)
+    if (command === "initialize") return route.fulfill({ json: null, headers })
+    const config =
+      command === "config" ? Schema.decodeUnknownSync(AgentTools.Configure)(request.postDataJSON()) : undefined
+    const id = config?.id ?? pathname.split("/").at(-2)
+    const item = snapshot.tools.find((tool) => tool.id === id)!
+    if (config) Object.assign(item, { settings: config.settings })
+    if (command === "install")
+      Object.assign(item, {
+        installed: true,
+        ...(id === "browser-control" ? { extensionDirectory: "/owned/browser/extension/dist" } : {}),
+      })
+    if (command === "probe") Object.assign(item, { diagnosis: "Owned fixture ready", checkedAt: 1 })
+    await route.fulfill({ json: item, headers })
+  })
+  return { operations, snapshot }
+}
 
 export async function mockUsageReporter(page: Page, server = SERVER) {
   let saved: UsageReporter.Configure | undefined
@@ -95,6 +142,9 @@ export interface MockServerConfig {
   server?: string
   provider: Resolvable<MockProviderCatalog>
   integrations?: unknown[]
+  intelligence?: Resolvable<IntelligenceStatus>
+  beforeIntelligenceResponse?: () => Promise<void>
+  onIntelligenceStatus?: (sessionID?: string) => void
   agents?: unknown[]
   onConnectKey?: (input: { integrationID: string; body: unknown }) => void
   // Terminal shells the settings offer (`/api/config/shell`).
@@ -618,7 +668,7 @@ function retryableDelivery(cause: unknown) {
 
 const PTY_TICKET = "e2e-ticket"
 
-const mockIntelligence = {
+const mockIntelligence: IntelligenceStatus = {
   settings: { enabled: false, onboarding: "completed", reasoning: "single" },
   environment: "",
   evaluators: [],
@@ -1310,7 +1360,12 @@ function mockHandlers(
           }),
         sessionGoal: () => Effect.succeed({ data: null }),
         // Reasoning roles are set up and every session runs single, so S1 has nothing to say.
-        intelligenceStatus: () => Effect.succeed(mockIntelligence),
+        intelligenceStatus: (ctx) =>
+          Effect.promise(async () => {
+            config.onIntelligenceStatus?.(ctx.query.sessionID)
+            await config.beforeIntelligenceResponse?.()
+            return resolve(config.intelligence ?? mockIntelligence)
+          }),
         intelligenceHistory: () => Effect.succeed([]),
         intelligenceSessionMode: (ctx) =>
           Effect.tryPromise({

@@ -33,6 +33,7 @@ import { SettingsNotifications } from "./notifications/notifications"
 import { SettingsProviders } from "./providers/providers"
 import { SettingsModels } from "./models/models"
 import { SettingsReporting } from "./reporting/reporting"
+import { SettingsAgentTools } from "./agent-tools/agent-tools"
 import { SettingsServerGeneral } from "./servers/servers"
 import { useSettingsServers, useSettingsServersLoaded, type SettingsServer } from "./servers/inventory"
 import { SettingsWorkspaces } from "./workspaces/workspaces"
@@ -70,6 +71,7 @@ const serverTabs = [
   { value: "providers", icon: pageIcons.providers, label: "settings.providers.title" },
   { value: "models", icon: pageIcons.models, label: "settings.models.title" },
   { value: "reporting", icon: pageIcons.reporting, label: "reporting.title" },
+  { value: "agent-tools", icon: pageIcons["agent-tools"], label: "agentTools.title" },
   { value: "extensions", icon: pageIcons.extensions, label: "settings.tab.extensions" },
 ] as const
 
@@ -386,6 +388,9 @@ function RootSettings() {
       <Show when={single()} keyed>
         {(server) => (
           <SettingsServerDataScope server={server}>
+            <Tabs.Content value="agent-tools" class="settings-panel">
+              <SettingsAgentTools />
+            </Tabs.Content>
             <Tabs.Content value="reporting" class="settings-panel">
               <SettingsReporting />
             </Tabs.Content>
@@ -489,6 +494,9 @@ function ServerSettings(props: { entry: SettingsServer }) {
       <Show when={props.entry.connection} keyed>
         {(server) => (
           <SettingsServerDataScope server={server}>
+            <Tabs.Content value="agent-tools" class="settings-panel">
+              <SettingsAgentTools />
+            </Tabs.Content>
             <Tabs.Content value="reporting" class="settings-panel">
               <SettingsReporting />
             </Tabs.Content>

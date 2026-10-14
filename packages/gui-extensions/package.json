@@ -14,7 +14,8 @@
     "./updater": "./src/updater/contract.ts"
   },
   "scripts": {
-    "typecheck": "tsgo -b",
+    "typecheck": "tsgo -b tsconfig.json tsconfig.tests.json",
+    "test:native": "bun test --config=bunfig.native.toml",
     "test": "bun test"
   },
   "dependencies": {

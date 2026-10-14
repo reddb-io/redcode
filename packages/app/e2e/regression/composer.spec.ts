@@ -367,6 +367,7 @@ test("shows thinking on hover or a non-default selection while preserving keyboa
   const { editor: input } = await openSession(page, {
     name: "ComposerThinking",
     provider: provider({ id: "thinking-model", name: "Thinking Model", variants: { high: {} } }),
+    sessions: [{ id: "ses_composerthinking", model: { providerID: "opencode", id: "thinking-model" } }],
   })
 
   const composer = page.locator('[data-component="composer"]')

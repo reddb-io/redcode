@@ -4,6 +4,7 @@ import { useParams } from "@solidjs/router"
 import { batch, createEffect, createMemo, onCleanup } from "solid-js"
 import { createStore } from "solid-js/store"
 import { Schema, SchemaGetter } from "effect"
+import { Connection } from "@opencode/schema/connection"
 import { useModels } from "@/providers/models/models"
 import { useSettings } from "@/settings/model"
 import { useProviders } from "@/providers/catalog/providers"
@@ -22,6 +23,7 @@ const ModelKeySchema = Schema.Struct({
   providerID: Schema.String,
   modelID: Schema.String,
   variant: Schema.optional(Schema.String),
+  connection: Schema.optional(Schema.toEncoded(Connection.Ref)),
 })
 
 export type ModelKey = typeof ModelKeySchema.Type
@@ -243,7 +245,8 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           // Pin both choices while the agent and model acknowledgments arrive separately.
           const selected = current()
 
-          if (selected) model.set({ providerID: selected.provider.id, modelID: selected.id })
+          if (selected)
+            model.set({ providerID: selected.provider.id, modelID: selected.id, connection: selected.connection })
         })
       },
       move(direction: 1 | -1) {
@@ -270,23 +273,23 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     const current = createMemo(() => {
       if (!configuredModel.ready()) return
 
-      const item = firstModel(
-        () => scope()?.model,
-        () => {
-          const session = durable()
-
-          if (session?.agent && session.agent !== agent.current()?.name) return
-          const model = session?.model
-
-          return model && { providerID: model.providerID, modelID: model.id }
-        },
-        () => agent.current()?.model,
-        fallback,
-      )
+      const session = durable()
+      const committed = session?.agent && session.agent !== agent.current()?.name ? undefined : session?.model
+      // Explicit selections remain pinned even if their provider is temporarily unavailable.
+      const item: ModelKey | undefined =
+        scope()?.model ??
+        (committed
+          ? { providerID: committed.providerID, modelID: committed.id, connection: committed.connection }
+          : undefined) ??
+        configuredModel.principal() ??
+        agent.current()?.model ??
+        configuredModel() ??
+        fallback()
 
       if (!item) return
 
-      return models.find(item)
+      const model = models.find(item)
+      return model ? { ...model, ...(item.connection ? { connection: item.connection } : {}) } : undefined
     })
 
     const configured = () => {
@@ -325,7 +328,9 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
 
       return {
         agent: agent.current()?.name,
-        model: selected ? { providerID: selected.provider.id, modelID: selected.id } : undefined,
+        model: selected
+          ? { providerID: selected.provider.id, modelID: selected.id, connection: selected.connection }
+          : undefined,
         variant: selected ? (model.variant.current() ?? null) : undefined,
       } satisfies State
     }
@@ -355,6 +360,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       a.agent === b.agent &&
       a.model?.providerID === b.model?.providerID &&
       a.model?.modelID === b.model?.modelID &&
+      JSON.stringify(a.model?.connection) === JSON.stringify(b.model?.connection) &&
       (a.variant ?? "default") === (b.variant ?? "default")
 
     const reconcile = (sessionID: string) => {
@@ -366,7 +372,11 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       if (
         !sameSelection(expected, {
           agent: session.agent,
-          model: { providerID: session.model.providerID, modelID: session.model.id },
+          model: {
+            providerID: session.model.providerID,
+            modelID: session.model.id,
+            connection: session.model.connection,
+          },
           variant: session.model.variant,
         })
       )
@@ -466,7 +476,10 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             const model = current()
 
             if (!model) return
-            write({ model: { providerID: model.provider.id, modelID: model.id }, variant: value ?? null })
+            write({
+              model: { providerID: model.provider.id, modelID: model.id, connection: model.connection },
+              variant: value ?? null,
+            })
             models.variant.set({ providerID: model.provider.id, modelID: model.id }, value)
           })
         },
@@ -507,7 +520,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             selection &&
             sameSelection(next, {
               agent: created.agent,
-              model: { providerID: selection.providerID, modelID: selection.id },
+              model: { providerID: selection.providerID, modelID: selection.id, connection: selection.connection },
               variant: selection.variant,
             })
               ? { choices: next.choices }

@@ -1,6 +1,7 @@
 import { Schema, SchemaGetter, Struct } from "effect"
 import { checksum } from "@opencode/util/encode"
 import { SessionMessage } from "@opencode/schema/session-message"
+import { Connection } from "@opencode/schema/connection"
 import { Skill } from "@opencode/schema/skill"
 import { Persistence } from "@/runtime/persistence/schema"
 import { FileSelection, SelectedLineRange } from "@/workspaces/files/types"
@@ -134,6 +135,7 @@ export type Prompt = typeof Prompt.Type
 export const PromptModel = Persistence.struct({
   providerID: Schema.String,
   modelID: Schema.String,
+  connection: Persistence.optional(Schema.toEncoded(Connection.Ref)),
   variant: Persistence.optional(Schema.NullOr(Schema.String)),
 })
 
