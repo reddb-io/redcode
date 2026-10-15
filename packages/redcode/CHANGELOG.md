@@ -1,5 +1,11 @@
 # @reddb-io/redcode
 
+## 0.81.8
+
+### Patch Changes
+
+- Recover the Linux graphical session when launching Desktop from a terminal without display variables. On Linux, Windows, and macOS, report preparation failures and early startup crashes with diagnostic output and a startup log instead of failing silently.
+
 ## 0.81.7
 
 ### Patch Changes
