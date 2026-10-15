@@ -48,6 +48,9 @@ Desktop is a client of an agent server. A local connection works on this machine
 works on the remote server's projects and filesystem. The selected server determines where tools run.
 Use **Agents → Remote workers** to administer that server's permanent worker pool.
 Desktop does not come with the npm package; use mise or a full release archive.
+On Windows, `redcode desktop` installs the app in the user's Programs directory and adds a Start
+Menu shortcut. Remove it through **Settings → Apps → Installed apps → Redcode**; session data and
+settings are kept. See [installation](installation.md) for updates and distribution details.
 
 The **Agents** view groups sessions and subagents across servers/projects, with filters, steering,
 queued instructions and interruption controls. Its RedSkills Workers tab and Remote workers panel

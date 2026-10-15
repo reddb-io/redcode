@@ -16,21 +16,34 @@ export default Runtime.handler(
     const fs = yield* FileSystem.FileSystem
     const global = yield* Global.Service
     const target = DesktopApp.target()
-    const cli = DesktopApp.cli()
-    const located = yield* Effect.try({
+    const originalCli = DesktopApp.cli()
+    const original = yield* Effect.try({
       try: () =>
         DesktopApp.locate({
           env: process.env,
           target,
-          executable: cli ?? process.execPath,
+          executable: originalCli ?? process.execPath,
           source: DesktopApp.checkout(),
         }),
       catch: (cause) => cause,
     })
     if (input.path) {
-      process.stdout.write(located.app + EOL)
+      process.stdout.write(original.app + EOL)
       return
     }
+    const { located, cli } = yield* Effect.tryPromise(async () => {
+      if (process.platform !== "win32" || !originalCli || original.source !== "archive")
+        return { located: original, cli: originalCli }
+      const { DesktopWindows } = await import("../../services/desktop-windows")
+      log.info("Installing Redcode Desktop for this Windows user...")
+      return DesktopWindows.install({
+        located: original,
+        cli: originalCli,
+        version: OPENCODE_VERSION,
+        target,
+        env: process.env,
+      })
+    })
     const env = input.refresh
       ? process.env
       : yield* Effect.tryPromise({

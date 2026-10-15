@@ -163,6 +163,7 @@ const suites = {
     "test/debug-guards-report.test.ts",
     "test/debug-memory.test.ts",
     "test/desktop.test.ts",
+    "test/desktop-windows.test.ts",
     "test/import-boundaries.test.ts",
     "test/import-foreign.test.ts",
     "test/server-connection.test.ts",
