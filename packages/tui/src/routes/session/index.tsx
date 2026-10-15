@@ -1666,16 +1666,6 @@ export function Session(props: {
       },
     },
     {
-      title: "Open Workers drawer",
-      id: "session.composer.workers",
-      group: "Session",
-      palette: undefined,
-      run: () => {
-        setComposer({ open: true, tab: "workers" })
-        dialog.clear()
-      },
-    },
-    {
       title: "Open MCPs drawer",
       id: "session.composer.mcps",
       group: "Session",

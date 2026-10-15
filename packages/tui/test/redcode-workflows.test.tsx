@@ -4,6 +4,35 @@ import { createAppFixture } from "./fixture/app"
 import { tmpdir } from "./fixture/fixture"
 import { directory, json } from "./fixture/tui-client"
 
+test("CLI diagnostics and new sessions do not contact the removed RedSkills integration", async () => {
+  await using state = await tmpdir()
+  const reads: string[] = []
+  await using setup = await createAppFixture({
+    state: state.path,
+    config: { animations: false, debug: { devtools: true } },
+    fetch: (url) => {
+      if (url.pathname === "/api/info") return json({ version: "test", pid: 1, urls: [], paths: {} })
+      if (url.pathname !== "/api/redskilled") return
+      reads.push(url.pathname)
+      return json({
+        location: { directory },
+        data: { lifecycle: "unavailable", consent: "unknown", scope: "project", native: true },
+      })
+    },
+  })
+  await setup.ready
+  await setup.waitForFrame((frame) => frame.includes("Server"))
+  expect(setup.captureCharFrame()).not.toContain("Redskilled")
+  await Bun.sleep(10_100)
+  expect(reads).toEqual([])
+  await setup.mockInput.typeText("/new")
+  setup.mockInput.pressEnter()
+  await setup.waitForFrame(
+    (frame) => !frame.includes("/new") && Boolean(setup.renderer.root.findDescendantById("session-pane")),
+  )
+  expect(reads).toEqual([])
+})
+
 test("historical thinking and timestamp commands change display preferences", async () => {
   await using state = await tmpdir()
   await using setup = await createAppFixture({ state: state.path })

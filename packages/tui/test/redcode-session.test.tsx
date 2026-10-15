@@ -364,17 +364,6 @@ test.each([80, 160])(
               },
             ],
           })
-        if (url.pathname === "/api/redskilled")
-          return json({
-            location,
-            data: {
-              lifecycle: "unavailable",
-              consent: "unknown",
-              scope: "project",
-              native: true,
-              error: "Fixture worker unavailable",
-            },
-          })
       },
     })
     await setup.ready
@@ -410,12 +399,6 @@ test.each([80, 160])(
     expect(setup.captureCharFrame()).not.toContain("▼ LSP")
     expect(setup.captureCharFrame()).not.toContain("▼ Modified Files")
     expect(setup.captureCharFrame().indexOf("LSP")).toBeLessThan(setup.captureCharFrame().indexOf("Modified Files"))
-    await setup.mockInput.typeText("/workers")
-    setup.mockInput.pressEnter()
-    await setup.waitForFrame(
-      (frame) => frame.includes("Subagents") && frame.includes("Workers") && frame.includes("No workers connected."),
-    )
-    setup.mockInput.pressEscape()
     await setup.mockInput.typeText("/subagents")
     setup.mockInput.pressEnter()
     await setup.waitForFrame((frame) => frame.includes("No active subagents"))
@@ -668,9 +651,9 @@ test.each([
     await setup.waitForFrame(() => setup.renderer.root.findDescendantById("session-sidebar")?.width === expected)
     setup.mockInput.pressKey("F8")
     await setup.waitForFrame(() => setup.renderer.root.findDescendantById("session-sidebar")?.width === expected + 4)
-    await setup.mockInput.typeText("/workers")
+    await setup.mockInput.typeText("/subagents")
     setup.mockInput.pressEnter()
-    await setup.waitForFrame((frame) => frame.includes("No workers connected."))
+    await setup.waitForFrame((frame) => frame.includes("No active subagents"))
   }
   {
     await using setup = await createAppFixture({ state: state.path, width: columns, height: 40, config })
@@ -714,7 +697,7 @@ test.each([80, 160])("large MCP catalogs and tools scroll inside their panels at
     },
   })
   await setup.ready
-  await setup.waitForFrame((frame) => !frame.includes("Opening session"))
+  await setup.waitForFrame(() => Boolean(setup.renderer.root.findDescendantById("session-pane")))
   if (width === 160)
     await setup.waitForFrame(() => setup.renderer.root.findDescendantById("sidebar-mcps-scroll")?.height === 5)
   const sidebar = setup.renderer.root.findDescendantById("sidebar-mcps-scroll")

@@ -17,7 +17,6 @@ export const AGENT_VIEWS = [
   "worktrees",
   "hosts",
   "remote",
-  "workers",
 ] as const
 export type AgentView = (typeof AGENT_VIEWS)[number]
 export const AGENT_LABELS = {
@@ -29,7 +28,6 @@ export const AGENT_LABELS = {
   worktrees: "agentWorktrees.title",
   hosts: "agents.hosts.title",
   remote: "remoteWorkers.title",
-  workers: "agents.workers",
 } as const
 
 export function useAgentsScope() {

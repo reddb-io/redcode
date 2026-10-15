@@ -5,8 +5,8 @@ This guide describes coding-session features. Slash commands are entered in the 
 ## Agents workspace
 
 **Desktop / web app.** Open **Agents** in the siderail, or use `Ctrl+Shift+A` (`Cmd+Shift+A` on macOS).
-Its sidemenu separates **Sessions**, **Inbox**, **Hosts and resources**, **Remote workers** and the
-optional RedSkills **Workers** integration. Select one host or view all configured hosts. The selected
+Its sidemenu separates **Sessions**, **Inbox**, **Machines**, **Harness**, **Environments**,
+**Worktrees**, **Hosts and resources** and **Remote workers**. Select one host or view all configured hosts. The selected
 section and host are stored in the URL and survive reload; the desktop can restore the Agents page.
 
 - **Sessions** groups root sessions and subagents by status. Filter by session/project/worktree,
@@ -298,15 +298,6 @@ The agent uses monitors to wait for an HTTP endpoint, a file change or a process
 updates are bounded and coalesced; only completion can wake the session, respecting newer
 instructions and paused goals. Completed monitors leave the drawer. Long commands use the
 background shell, with their own output and completion notifications.
-
-## Local RedSkills fleet
-
-<img src="features/workers.svg" alt="Workers" width="100%" />
-
-Redcode integrates natively with [RedSkills](https://github.com/reddb-io/red-skills) and its host-scoped
-`redskilled` daemon. The **Workers** view is a live, project-scoped console: each worker's identity,
-process and time, an activity feed of arrivals and departures, and project controls such as drain, stop
-and status. Redcode keeps no separate control state; the daemon owns it.
 
 ## Stop-loss and loop guard
 

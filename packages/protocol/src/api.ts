@@ -37,7 +37,6 @@ import { IntelligenceGroup } from "./groups/intelligence.js"
 import { HookGroup } from "./groups/hook.js"
 import { LSPGroup } from "./groups/lsp.js"
 import { FormatterGroup } from "./groups/formatter.js"
-import { RedskilledGroup } from "./groups/redskilled.js"
 import { WorkersGroup } from "./groups/workers.js"
 import { HarnessGroup } from "./groups/harness.js"
 import { AgentToolsGroup } from "./groups/agent-tools.js"
@@ -65,7 +64,6 @@ type LocationGroups<LocationId extends HttpApiMiddleware.AnyId> =
   | HttpApiGroup.AddMiddleware<typeof HookGroup, LocationId>
   | HttpApiGroup.AddMiddleware<typeof LSPGroup, LocationId>
   | HttpApiGroup.AddMiddleware<typeof FormatterGroup, LocationId>
-  | HttpApiGroup.AddMiddleware<typeof RedskilledGroup, LocationId>
 
 type SessionGroups<
   SessionLocationId extends HttpApiMiddleware.AnyId,
@@ -208,7 +206,6 @@ const makeApiFromGroup = <
     .add(HookGroup.middleware(locationMiddleware))
     .add(LSPGroup.middleware(locationMiddleware))
     .add(FormatterGroup.middleware(locationMiddleware))
-    .add(RedskilledGroup.middleware(locationMiddleware))
     .add(IntelligenceGroup)
     .add(WorkersGroup)
     .add(HarnessGroup)

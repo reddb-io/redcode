@@ -26,7 +26,6 @@
     "build:console": "bun run script/console-ui.ts"
   },
   "dependencies": {
-    "@agentclientprotocol/sdk": "1.2.1",
     "@effect/platform-node": "catalog:",
     "@effect/platform-node-shared": "catalog:",
     "@opencode/client": "workspace:*",

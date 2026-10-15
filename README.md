@@ -262,16 +262,16 @@ pinned offers and MCP tools. TUI `/connect` manages provider connections; `/dual
 
 </details>
 
-<a id="local-redskills-fleet"></a>
+<a id="worker-pool"></a>
 
 <details>
-<summary><strong>Local RedSkills fleet</strong> — integrate the external redskilled daemon</summary>
+<summary><strong>Worker pool</strong> — dispatch work to connected Redcode servers</summary>
 
-<img src="docs/features/workers.svg" alt="Local RedSkills worker fleet" width="100%" />
+<img src="docs/features/workers.svg" alt="Redcode worker pool" width="100%" />
 
-**Optional `redskilled` integration · TUI/Desktop.** Shows that daemon's project workers and fleet controls.
-TUI `/workers` and the Desktop Workers tab refer to RedSkills; **Agents → Remote workers** manages the
-separate [Redcode worker pool](#add-workers-to-the-coordinator). [Integration details](docs/agent-features.md#local-redskills-fleet).
+**CLI / Desktop / web · agent server.** Register execution machines, dispatch tasks and collect results
+through **Agents → Remote workers** or `redcode workers`. Each worker owns its checkout, sessions and
+provider configuration. [Connect workers to a coordinator](#add-workers-to-the-coordinator).
 
 </details>
 
@@ -382,7 +382,7 @@ Checkouts are not synchronized automatically; ambiguous tasks recover on the ori
 Physical Raspberry Pi ARM64 execution still needs device acceptance.
 
 The CLI worker registry, permanent coordinator pool and Console resource inventory are separate.
-The `redskilled` integration and Cloudflare `workerd` profile are also separate from Redcode's worker pool.
+The Cloudflare `workerd` runtime profile is separate from Redcode's worker pool.
 See the [worker guide](docs/distributed-workers.md) for setup, credentials and recovery.
 
 Pairing grants trusted host access; enabling the HTTPS tunnel can restart the managed service.

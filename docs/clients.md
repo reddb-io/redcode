@@ -34,7 +34,6 @@ Use `--standalone` for a private server instead.
 | `/vault`, `/monitors`, `/worktrees`         | Inspect project secrets, observations and worktrees.                                                                          |
 | `/intelligence`, `/reasoning`               | Inspect evaluations or change the session's reasoning mode.                                                                   |
 | `/budget`, `/compact`                       | Set an optional budget or compact context.                                                                                    |
-| `/workers`                                  | Inspect the local **RedSkills** fleet. For remote Redcode tasks, use the [distributed workers guide](distributed-workers.md). |
 
 ## Desktop
 
@@ -53,8 +52,9 @@ Menu shortcut. Remove it through **Settings → Apps → Installed apps → Redc
 settings are kept. See [installation](installation.md) for updates and distribution details.
 
 The **Agents** view groups sessions and subagents across servers/projects, with filters, steering,
-queued instructions and interruption controls. Its RedSkills Workers tab and Remote workers panel
-serve the two different fleet models described above.
+queued instructions and interruption controls. Use **Agents → Machines** to connect execution hosts and
+**Agents → Remote workers** to coordinate their tasks. The CLI exposes the same pool through
+`redcode workers`; see the [distributed workers guide](distributed-workers.md).
 
 Published Design previews open beside their conversation. The embedded review keeps annotations,
 feedback and approval while omitting the duplicate conversation panel. The standalone browser review

@@ -15,7 +15,6 @@ import { showToast } from "@/shell/notifications/toast"
 import { useNavigation } from "./controller"
 import { AGENT_LABELS, useAgentsScope } from "./agents-menu"
 import { agentSessionTrees, SESSION_STATUSES, rollupSessionStatus, sessionAwaitsUser, sessionStatus } from "./model"
-import { AgentWorkers } from "./workers"
 import { RemoteWorkers } from "./remote-workers"
 
 const AgentInbox = lazy(() => import("./agents-inbox"))
@@ -129,9 +128,6 @@ export default function Agents() {
                     </Match>
                     <Match when={scope.view() === "remote"}>
                       <RemoteWorkers server={server} />
-                    </Match>
-                    <Match when={scope.view() === "workers"}>
-                      <AgentWorkers server={server} />
                     </Match>
                   </Switch>
                 </Show>

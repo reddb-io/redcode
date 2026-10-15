@@ -38,14 +38,27 @@ test("exposes every standard HTTP API group", () => {
     "hook",
     "lsp",
     "formatter",
-    "redskilled",
     "server.intelligence",
     "workers",
+    "harness",
+    "agentTools",
+    "usageReporter",
+    "workerEnvironments",
+    "worktreeLifecycle",
   ])
   expect(Object.keys(client.debug)).toEqual(["rg", "todos", "guards", "location"])
   expect(Object.keys(client.debug.location)).toEqual(["list", "evict"])
   expect(Object.keys(client.message)).toEqual(["list"])
-  expect(Object.keys(client.integration)).toEqual(["check", "console", "list", "get", "wellknown", "connect", "oauth", "command"])
+  expect(Object.keys(client.integration)).toEqual([
+    "check",
+    "console",
+    "list",
+    "get",
+    "wellknown",
+    "connect",
+    "oauth",
+    "command",
+  ])
   expect(Object.keys(client.integration.wellknown)).toEqual(["add"])
   expect(Object.keys(client.integration.connect)).toEqual(["key", "external"])
   expect(Object.keys(client.integration.oauth)).toEqual(["connect", "status", "complete", "cancel"])

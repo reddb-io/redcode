@@ -6,6 +6,29 @@ The desktop's **Agents → Remote workers** panel and `redcode workers` coordina
 
 This is a batch coordinator, not clustered ownership of a shared Session database. Do not share SQLite files between workers. Use one registry on one coordinator for this initial version; another registry or unrelated client is not governed by its checkout reservations.
 
+## Connecting from the web client
+
+**Agents → Remote workers** registers workers on the selected coordinator. The coordinator connects
+to each worker; the browser needs access to the coordinator, and the coordinator needs network access
+and credentials for its workers. Each worker is an independent Redcode server.
+
+**Agents → Machines** also lets the browser connect directly to another Redcode server. When the web
+page and that server have different origins, allow the web page's origin on the destination server.
+For example, if the web client is open at `http://10.0.0.10:4096`, run on the destination machine:
+
+```sh
+redcode service set cors http://10.0.0.10:4096
+redcode service start
+```
+
+This updates the managed service's allowed origins. To retain other configured origins, include them
+in the comma-separated value; inspect the current list with `redcode service get cors` first.
+For a foreground server, use `redcode serve --hostname 0.0.0.0 --port 4096 --cors http://10.0.0.10:4096`.
+Use the origin of the page open in the browser, including its scheme and port, without a path or
+trailing slash. Pairing still requires a valid link or credentials. A VPN provides network reachability;
+it does not change browser CORS rules. An HTTPS web client also needs an HTTPS destination or an
+appropriate tunnel to avoid mixed-content blocking.
+
 ## Docker acceptance lab
 
 A permanent Linux coordinator and two isolated Linux workers validate the software path before connecting physical devices:

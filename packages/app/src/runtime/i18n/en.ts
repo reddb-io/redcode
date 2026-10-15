@@ -1790,7 +1790,6 @@ export const dict = {
   "agents.send": "Send",
   "agents.noProject": "Open a project to manage its workers.",
   "agents.project": "Project",
-  "agents.workersUnavailable": "Workers are unavailable. Sessions work independently of redskilled.",
   "agents.startWorkers": "Start project workers",
   "agents.workerTarget": "Worker target",
   "agents.resize": "Apply target",
@@ -1802,7 +1801,6 @@ export const dict = {
   "agents.confirm": "Confirm",
   "agents.reconnecting": "Connecting to this server…",
   "agents.workersConnecting": "Connecting to project workers…",
-  "agents.workersIneligible": "This project has no worker configuration. Configure redskilled to start workers here.",
   "remoteWorkers.title": "Remote workers",
   "remoteWorkers.description":
     "Send work to connected machines. This server keeps observing tasks when you close the app.",

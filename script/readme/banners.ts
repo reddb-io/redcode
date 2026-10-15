@@ -163,13 +163,13 @@ const banners: Banner[] = [
   },
   {
     id: "workers",
-    kicker: "REDSKILLS",
+    kicker: "DISTRIBUTED EXECUTION",
     title: "workers",
-    tagline: "The RedSkills worker fleet as a tab in your session, not a dashboard.",
-    chips: ["/workers", "drain", "stop", "per-project"],
+    tagline: "Dispatch coding tasks to connected Redcode machines and collect their results.",
+    chips: ["redcode workers", "dispatch", "observe", "collect"],
     accent: "#ff2056",
     watermark: "##",
-    description: "Workers: a live, project-scoped console over the RedSkills worker fleet.",
+    description: "Workers: independent Redcode servers coordinated through an authenticated API.",
     glyph: `<rect x="0" y="0" width="62" height="62" rx="12" stroke-opacity="0.6"/>
       <rect x="78" y="0" width="62" height="62" rx="12" stroke-opacity="0.35"/>
       <rect x="0" y="78" width="62" height="62" rx="12" stroke-opacity="0.35"/>
