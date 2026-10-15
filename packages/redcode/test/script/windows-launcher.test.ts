@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import { $ } from "bun"
-import { mkdtemp, mkdir, copyFile, writeFile, readFile, rm } from "node:fs/promises"
+import { mkdtemp, mkdir, copyFile, realpath, writeFile, readFile, rm } from "node:fs/promises"
 import path from "node:path"
 import os from "node:os"
 import { spawnSync } from "node:child_process"
@@ -30,6 +30,7 @@ test.skipIf(process.platform !== "win32")(
     await mkdir(path.join(source, "bin"), { recursive: true })
     await mkdir(path.dirname(binary), { recursive: true })
     await copyFile(process.execPath, binary)
+    const image = await realpath(binary)
     for (const command of ["redcode", "redcode-rpc-sidecar"]) {
       await copyFile(path.join(import.meta.dir, "../../bin/redcode"), path.join(source, "bin", command))
     }
@@ -93,7 +94,7 @@ test.skipIf(process.platform !== "win32")(
             error: undefined,
             stderr: "",
           })
-          expect(JSON.parse(result.stdout)).toEqual({ image: binary, args: ["two words", "世界"] })
+          expect(JSON.parse(result.stdout)).toEqual({ image, args: ["two words", "世界"] })
         }
       }
     }
