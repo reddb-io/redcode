@@ -18,6 +18,7 @@ import { TabsProvider } from "@/shell/tabs/tabs"
 import { ErrorPage } from "@/shell/errors/error"
 import { AppRoutes, File, preloadRoute } from "@/shell/routes/routes"
 import { ExtensionRoot } from "@/runtime/extension/root"
+import { createMediaQuery } from "@solid-primitives/media"
 
 export { preloadRoute }
 
@@ -36,8 +37,10 @@ function QueryProvider(props: ParentProps) {
 }
 
 function BodyTypography() {
+  const mobile = createMediaQuery("(max-width: 767px)")
   createRenderEffect(() => {
     if (typeof document === "undefined") return
+    document.documentElement.dataset.density = mobile() ? "tiny" : "compact"
     document.body.classList.remove("text-12-regular")
     document.body.classList.add("font-(family-name:--font-family-text)", "text-[13px]", "font-normal")
   })

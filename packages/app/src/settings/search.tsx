@@ -80,7 +80,7 @@ export function SettingsSearch() {
     settingsSearchIndex({
       servers: inventory(),
       desktop: platform.platform === "desktop",
-      browser: platform.platform === "desktop",
+      browser: platform.platform === "web",
       mobile: mobile(),
       translate: language.t,
       extensions: surface.extensions.items(),

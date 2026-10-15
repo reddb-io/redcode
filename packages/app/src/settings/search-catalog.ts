@@ -24,6 +24,13 @@ export const clientSettings: Entry<SettingsRootTab>[] = [
   { tab: "general", label: "settings.general.row.language.title", target: "settings-language" },
   {
     tab: "general",
+    label: "settings.general.install.title",
+    target: "settings-install-app",
+    available: "browser",
+    keywords: "PWA install Android iOS home screen standalone",
+  },
+  {
+    tab: "general",
     label: "settings.general.row.showNavigation.title",
     description: "settings.general.row.showNavigation.description",
     target: "settings-show-navigation",

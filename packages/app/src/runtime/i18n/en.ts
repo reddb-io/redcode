@@ -1,6 +1,18 @@
 import { DESKTOP_NATIVE_ENGLISH } from "./desktop-native"
 
 export const dict = {
+  "settings.general.install.title": "Install Redcode",
+  "settings.general.install.description": "Add Redcode to your home screen and open it in its own window.",
+  "settings.general.install.action": "Install app",
+  "settings.general.install.pending": "Installing…",
+  "settings.general.install.installed": "Installed",
+  "settings.general.install.installedDescription": "Redcode is installed and opens in its own window.",
+  "settings.general.install.manual":
+    "Use your browser's Install app or Add to Home Screen menu. On iPhone or iPad, use Share → Add to Home Screen.",
+  "settings.general.install.insecure":
+    "Open this server over HTTPS to install Redcode. Plain HTTP on a network IP only supports a browser shortcut.",
+  "settings.general.install.failed":
+    "Installation could not start. Use your browser's Install app or Add to Home Screen menu.",
   "agentTools.initialized": "Rift source initialized. You can now create Rift workspaces from it.",
   "agentTools.title": "Agent tools",
   "agentTools.setup.title": "Install and enable tools",

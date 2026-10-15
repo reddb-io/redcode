@@ -1,9 +1,11 @@
 import { createBrowserDraftStore } from "@/runtime/persistence/drafts"
 import type { Platform } from "./platform"
+import { createPwaInstallation } from "./pwa"
 
 export function createWebPlatform(version: string) {
   const platform: Platform = {
     platform: "web",
+    installation: createPwaInstallation(),
     draftStore: createBrowserDraftStore(),
     version,
     openExternal(value) {

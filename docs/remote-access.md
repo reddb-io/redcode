@@ -53,6 +53,22 @@ Desktop windows share one SSH connection attempt per machine. Automatic recovery
 delays and pauses after five repeated failures; use **Connect** on that machine to try again.
 A tunnel that stays healthy for a minute restores the automatic retry budget.
 
+## Install the web app on a phone
+
+Open your Redcode server in your phone's browser, then go to **Settings → Preferences → Install Redcode**.
+When supported, **Install app** opens the browser's installation dialog. You can also use Chrome or Edge's
+**Install app** / **Add to Home Screen** menu. On iPhone or iPad, use **Share → Add to Home Screen** in Safari.
+Launch Redcode from the home-screen icon to use its own window without the browser address bar.
+
+Use an HTTPS address with a certificate the phone trusts, such as the HTTPS URL from your configured
+pairing tunnel or reverse proxy. Access through a VPN still needs HTTPS: `http://10.x.x.x:4096` can open
+the web interface but does not meet browser PWA installation requirements. Settings explains this when
+the current connection is insecure.
+
+Narrow screens automatically use the design system's `tiny` spacing and smaller reading text. Touch
+targets and editable text retain the design system's mobile minimums. The installed app restores its
+last session; running agents and loading server data still require a connection to the server.
+
 ## Pair a browser with the managed service
 
 On the machine that owns the projects:

@@ -62,6 +62,9 @@ describe("settings search index", () => {
     expect(targets({})).not.toContain("settings-show-project-icon")
     expect(targets({})).not.toContain("settings-mobile-titlebar-bottom")
     expect(targets({ mobile: true })).toContain("settings-mobile-titlebar-bottom")
+    expect(targets({})).not.toContain("settings-install-app")
+    expect(targets({ browser: true })).toContain("settings-install-app")
+    expect(targets({ desktop: true })).not.toContain("settings-install-app")
   })
 
   test("uses section labels and stable identities independent of translated text", () => {

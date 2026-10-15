@@ -1,5 +1,48 @@
 import { useLocation } from "@solidjs/router"
 import { createEffect } from "solid-js"
+import { createStore } from "solid-js/store"
+
+type InstallPrompt = Event & {
+  prompt(): Promise<void>
+  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>
+}
+
+export function createPwaInstallation() {
+  const [state, setState] = createStore({
+    prompt: undefined as InstallPrompt | undefined,
+    installed: isStandalone(),
+    pending: false,
+    failed: false,
+  })
+
+  // Capture the browser's one-use prompt before the user opens Settings.
+  // This controller lives for the web entrypoint's lifetime.
+  window.addEventListener("beforeinstallprompt", (event) => {
+    event.preventDefault()
+    setState({ prompt: event as InstallPrompt, failed: false })
+  })
+  window.addEventListener("appinstalled", () => setState({ installed: true, prompt: undefined }))
+
+  return {
+    status: () => {
+      if (state.installed) return "installed" as const
+      if (!window.isSecureContext) return "insecure" as const
+      return state.prompt ? ("available" as const) : ("manual" as const)
+    },
+    pending: () => state.pending,
+    failed: () => state.failed,
+    async install() {
+      const prompt = state.prompt
+      if (!prompt || state.pending) return
+      setState({ prompt: undefined, pending: true, failed: false })
+      await prompt
+        .prompt()
+        .then(() => prompt.userChoice)
+        .catch(() => setState("failed", true))
+        .finally(() => setState("pending", false))
+    },
+  }
+}
 
 const LAST_ROUTE_KEY = "opencode.pwa.last-route"
 

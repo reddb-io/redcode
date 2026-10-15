@@ -15,6 +15,10 @@ test("mobile navigation leaves the conversation full width and keeps scopes acce
   const main = page.getByRole("main")
   const menu = page.getByRole("button", { name: "Navigation", exact: true })
   await expect(page.getByRole("textbox", { name: "Prompt", exact: true })).toBeVisible()
+  await expect(page.locator("html")).toHaveAttribute("data-density", "tiny")
+  await expect(page.locator('[data-component="markdown"]').first()).toHaveCSS("font-size", "13px")
+  await page.setViewportSize({ width: 1024, height: 900 })
+  await expect(page.locator('[data-component="markdown"]').first()).toHaveCSS("font-size", "14px")
   for (const width of [320, 390, 700]) {
     await page.setViewportSize({ width, height: 844 })
     await expect(rail).toBeHidden()
@@ -41,8 +45,34 @@ test("mobile navigation leaves the conversation full width and keeps scopes acce
   await page.keyboard.press("Escape")
   await expect(agents).toBeHidden()
   await page.setViewportSize({ width: 1024, height: 900 })
+  await expect(page.locator("html")).toHaveAttribute("data-density", "compact")
   await expect(rail).toBeVisible()
   await expect(menu).toBeHidden()
+})
+
+test.describe("mobile touch density", () => {
+  test.use({ isMobile: true, hasTouch: true, viewport: { width: 390, height: 844 } })
+
+  test("denser reading preserves touch targets and editable text", async ({ page }) => {
+    await mockStressTimeline(page)
+    await openStress(page)
+    await page.goto(sessionHref(fixture.targetID))
+    const composer = page.getByRole("textbox", { name: "Prompt", exact: true })
+    await expect(page.locator("[data-timeline-virtual-content]")).toBeVisible()
+    await expect(
+      page.locator(`[data-timeline-row="UserMessage"][data-message-id="${fixture.expected.targetMessageIDs.at(-1)}"]`),
+    ).toBeInViewport()
+    await expect(composer).toHaveCSS("font-size", "16px")
+    await expect(page.locator('[data-component="markdown"]').first()).toHaveCSS("font-size", "13px")
+    const menu = page.getByRole("button", { name: "Navigation", exact: true })
+    await expect.poll(async () => (await menu.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44)
+    await expect.poll(async () => (await menu.boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(44)
+    await page.screenshot({ path: test.info().outputPath("android-dense-session.png"), animations: "disabled" })
+    await menu.click()
+    await page.getByRole("menuitem", { name: "Settings", exact: true }).click()
+    await expect(page.getByText("Install Redcode", { exact: true })).toBeVisible()
+    await page.screenshot({ path: test.info().outputPath("android-installation-settings.png"), animations: "disabled" })
+  })
 })
 
 async function openStress(page: Page, extra: SeedInput = {}) {

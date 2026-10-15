@@ -10,6 +10,36 @@
   font-style: normal;
 }
 
+@media (max-width: 767px) {
+  html[data-density="tiny"] {
+    --reddb-type-body-font-size: calc((var(--reddb-font-size-xs) + var(--reddb-font-size-sm)) / 2);
+    --reddb-type-body-line-height: var(--line-height-base);
+    --font-size-base: var(--reddb-type-body-font-size);
+  }
+
+  html[data-density="tiny"] [data-component="markdown"] {
+    font-size: var(--reddb-type-body-font-size);
+    line-height: var(--line-height-base);
+  }
+
+  html[data-density="tiny"] .settings-tab-body {
+    gap: var(--reddb-spatial-layout-gap-md);
+    padding-block-start: var(--reddb-spatial-inset-md);
+  }
+
+  html[data-density="tiny"] .settings-section {
+    gap: var(--reddb-spatial-gap-lg);
+  }
+
+  html[data-density="tiny"] [data-component="settings-list"] {
+    --settings-list-row-padding: var(--reddb-spatial-inset-md);
+  }
+
+  html[data-density="tiny"] [data-component="settings-row"] {
+    gap: var(--reddb-spatial-gap-lg);
+  }
+}
+
 /* Space Grotesk and JetBrains Mono come from the design system (design-system/assets/fonts.css). */
 
 @media (display-mode: standalone) {

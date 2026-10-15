@@ -68,6 +68,43 @@ test("settings has its own route and returns through app history", async ({ page
   await expect(settings).toBeHidden()
 })
 
+test("browser installation captures the prompt before Settings opens and handles dismissal and installation", async ({
+  page,
+}) => {
+  const { settings } = await open(page)
+  await expect(settings.getByText("Install Redcode", { exact: true })).toBeVisible()
+  await expect(settings.getByText(/Use your browser's Install app/)).toBeVisible()
+  await settings.getByRole("combobox", { name: "Search", exact: true }).fill("PWA")
+  await page.getByRole("option", { name: "Install Redcode, Preferences / General", exact: true }).click()
+  await settings.getByRole("combobox", { name: "Search", exact: true }).clear()
+  await settings.getByRole("button", { name: "Back to app", exact: true }).click()
+
+  for (const outcome of ["dismissed", "failed", "accepted"] as const) {
+    await page.evaluate((outcome) => {
+      const event = new Event("beforeinstallprompt", { cancelable: true })
+      Object.assign(event, {
+        prompt: async () => {
+          if (outcome === "failed") throw new Error("Browser refused installation")
+          if (outcome === "accepted") window.dispatchEvent(new Event("appinstalled"))
+        },
+        userChoice: Promise.resolve({ outcome: outcome === "accepted" ? "accepted" : "dismissed" }),
+      })
+      window.dispatchEvent(event)
+    }, outcome)
+    await page.getByRole("button", { name: "Settings", exact: true }).click()
+    await settings.getByRole("button", { name: "Install app", exact: true }).click()
+    await expect(settings.getByRole("button", { name: "Install app", exact: true })).toBeHidden()
+    if (outcome !== "accepted") {
+      await expect(
+        settings.getByText(outcome === "failed" ? /Installation could not start/ : /Use your browser's Install app/),
+      ).toBeVisible()
+      await settings.getByRole("button", { name: "Back to app", exact: true }).click()
+      continue
+    }
+    await expect(settings.getByText("Installed", { exact: true })).toBeVisible()
+  }
+})
+
 test("Ctrl+, opens settings as soon as the app loads", async ({ page }) => {
   await mockWorkspace(page, {
     name: "Settings demo",
@@ -977,7 +1014,7 @@ for (const viewport of [
       "Worktrees",
       "Providers",
       "Models",
-      "Extensions",
+      "Agent extensions",
       "Server",
       "About",
     ]

@@ -4,6 +4,7 @@ import type { Accessor } from "solid-js"
 import type { DesktopMenuAction } from "@/shell/commands/desktop-menu"
 import type { DraftStore } from "@/runtime/persistence/drafts"
 import type { Bridge } from "@opencode/gui-extensions/sdk/bridge"
+import type { createPwaInstallation } from "./pwa"
 
 type PickerPaths = string | string[] | null
 
@@ -32,6 +33,9 @@ export type FatalRendererErrorLog = {
 }
 
 type PlatformBase = {
+  /** Browser installation, captured for the lifetime of the web client. */
+  installation?: ReturnType<typeof createPwaInstallation>
+
   /** App version */
   version?: string
 

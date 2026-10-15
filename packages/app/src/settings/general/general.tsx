@@ -2,6 +2,7 @@ import { Component, Show, createMemo, createResource } from "solid-js"
 import { createMediaQuery } from "@solid-primitives/media"
 import { Select } from "@opencode/ui/select"
 import { Switch } from "@opencode/ui/switch"
+import { Button } from "@opencode/ui/button"
 import { TimelineDetailControl } from "@/settings/timeline-detail"
 import { useLanguage } from "@/runtime/i18n/language"
 import { usePlatform } from "@/runtime/platform/platform"
@@ -17,6 +18,13 @@ import { SettingsList } from "@/settings/list"
 import { SettingsRow } from "@/settings/row"
 import { createShellOptions, type ShellSettingsController } from "./controllers"
 import "@/settings/settings.css"
+
+const installationDescriptions = {
+  available: "settings.general.install.description",
+  installed: "settings.general.install.installedDescription",
+  insecure: "settings.general.install.insecure",
+  manual: "settings.general.install.manual",
+} as const
 
 const AutoApprovePermissionsSetting: Component = () => {
   const language = useLanguage()
@@ -233,6 +241,35 @@ export const SettingsGeneral: Component = () => {
       <h3 class="settings-section-title">{language.t("settings.general.section.general")}</h3>
       <SettingsList>
         <LanguageSetting />
+        <Show when={platform.installation}>
+          {(installation) => (
+            <SettingsRow
+              title={language.t("settings.general.install.title")}
+              description={language.t(
+                installation().failed()
+                  ? "settings.general.install.failed"
+                  : installationDescriptions[installation().status()],
+              )}
+            >
+              <div data-action="settings-install-app" aria-live="polite">
+                <Show when={installation().status() === "available" || installation().pending()}>
+                  <Button
+                    variant="outline"
+                    disabled={installation().pending()}
+                    onClick={() => installation().install()}
+                  >
+                    {language.t(
+                      installation().pending() ? "settings.general.install.pending" : "settings.general.install.action",
+                    )}
+                  </Button>
+                </Show>
+                <Show when={installation().status() === "installed"}>
+                  <span>{language.t("settings.general.install.installed")}</span>
+                </Show>
+              </div>
+            </SettingsRow>
+          )}
+        </Show>
         <NavigationControlsSetting />
 
         <WorkspaceDestinationSetting />
