@@ -312,7 +312,10 @@ jobs:
           set -euo pipefail
           file=zig-x86_64-linux-0.17.0-dev.1857+3c46da14d.tar.xz
           for base in https://ziglang.org/builds https://pkg.hexops.org/zig https://zig.squirl.dev https://zig.tilok.dev https://pkg.earth/zig https://zig.bcr.ist https://zig.chainsafe.dev; do
-            if curl --fail --location --silent --show-error --retry 2 --output /tmp/redcode-zig.tar.xz "$base/$file" &&
+            # A stalled mirror must yield to the next one instead of occupying the runner until the job times out.
+            if curl --fail --location --silent --show-error \
+              --connect-timeout 10 --max-time 90 --speed-limit 1024 --speed-time 15 \
+              --retry 2 --retry-max-time 120 --output /tmp/redcode-zig.tar.xz "$base/$file" &&
               echo "0825e4a55baf4a6647c3ce3077a7236c9ffec5b17e1ca0102a930fe33d631bc6  /tmp/redcode-zig.tar.xz" | sha256sum --check -; then
               break
             fi
