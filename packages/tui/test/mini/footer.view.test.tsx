@@ -396,6 +396,47 @@ test("mini replaces selected text with a tracked image attachment", async () => 
   }
 })
 
+test.each(
+  [
+    { name: "Ctrl+V", key: "v", modifiers: { ctrl: true } },
+    { name: "Ctrl+Shift+V", key: "v", modifiers: { ctrl: true, shift: true } },
+    { name: "Alt+V", key: "v", modifiers: { meta: true } },
+    { name: "Shift+Insert", key: "\x1b[2~", modifiers: { shift: true } },
+    { name: "right-click", key: undefined, modifiers: {} },
+  ].flatMap((shortcut) => ["text/plain", "image/png"].map((mime) => ({ ...shortcut, mime }))),
+)("mini pastes and submits $mime using $name", async ({ key, modifiers, mime }) => {
+  const sent = Promise.withResolvers<RunPrompt>()
+  const data = mime === "text/plain" ? "ação 世界\r\nsecond" : Buffer.from(diffImageFixture).toString("base64")
+  const app = await renderFooter({
+    tuiConfig: createTuiResolvedConfig({ prompt: { image_preview: false } }),
+    clipboard: { read: async () => ({ mime, data }) },
+    onSubmit: (prompt) => {
+      sent.resolve(prompt)
+      return true
+    },
+  })
+  try {
+    await app.renderOnce()
+    if (key) app.mockInput.pressKey(key, modifiers)
+    else {
+      const textarea = app.renderer.currentFocusedEditor!
+      await app.mockMouse.click(textarea.x + 1, textarea.y, 2)
+    }
+    await app.waitFor(
+      () =>
+        app.renderer.currentFocusedEditor?.plainText === (mime === "text/plain" ? "ação 世界\nsecond" : "[Image 1] "),
+    )
+    app.mockInput.pressEnter()
+    const prompt = await sent.promise
+    expect(prompt.text).toBe(mime === "text/plain" ? "ação 世界\nsecond" : "[Image 1] ")
+    expect(prompt.parts).toEqual(
+      mime === "text/plain" ? [] : [expect.objectContaining({ mime, url: `data:${mime};base64,${data}` })],
+    )
+  } finally {
+    app.cleanup()
+  }
+})
+
 test("mini retains ordinary paste ANSI stripping and newline normalization", async () => {
   const sent = Promise.withResolvers<RunPrompt>()
   const app = await renderFooter({

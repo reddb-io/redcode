@@ -207,4 +207,8 @@ if (!resolved) {
   process.exit(1)
 }
 
-run(resolved)
+if (process.platform === "win32" && process.env.REDCODE_INSTALL_WINDOWS_SHIMS === "1") {
+  require("../postinstall.cjs").install(resolved, sidecar ? "redcode-rpc-sidecar" : "redcode")
+} else {
+  run(resolved)
+}

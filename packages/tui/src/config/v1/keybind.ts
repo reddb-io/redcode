@@ -175,7 +175,10 @@ export const Definitions = {
   prompt_stash_list: keybind("none", "List stashed prompts"),
 
   input_clear: keybind("ctrl+c", "Clear input field"),
-  input_paste: keybind({ key: "ctrl+v,ctrl+shift+v", preventDefault: false }, "Paste from clipboard"),
+  input_paste: keybind(
+    { key: "ctrl+v,ctrl+shift+v,alt+v,shift+insert", preventDefault: false },
+    "Paste from clipboard",
+  ),
   input_submit: keybind("return", "Submit input"),
   input_newline: keybind("shift+return,ctrl+return,alt+return,ctrl+j", "Insert newline in input"),
   // Redcode V1 names: migrated to `prompt.queue` and `prompt.steer`.

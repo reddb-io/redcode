@@ -211,6 +211,9 @@ const suites = {
   app: ["src/runtime/server/request-queue.test.ts"],
   "gui-extensions": ["test/ssh-main.test.ts", "test/updater-main.test.ts", "./src/terminal/writer.test.ts"],
   tui: [
+    "test/clipboard.test.ts",
+    "test/keybind.test.ts",
+    "test/cli/tui/dialog-prompt.test.tsx",
     "test/cli/tui/form.test.tsx",
     "test/plugin-select.test.tsx",
     "test/cli/tui/dialog-select.test.tsx",
@@ -276,7 +279,11 @@ const suites = {
     "test/transport.test.ts",
     "test/worktree.test.ts",
   ],
-  redcode: ["test/script/publish-registry.test.ts", "test/script/packages.test.ts"],
+  redcode: [
+    "test/script/publish-registry.test.ts",
+    "test/script/packages.test.ts",
+    "test/script/windows-launcher.test.ts",
+  ],
   "rpc-sidecar": ["test/sidecar.test.ts"],
 }
 

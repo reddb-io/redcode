@@ -51,6 +51,7 @@ await rm(meta, { recursive: true, force: true })
 await $`mkdir -p ${path.join(meta, "bin")}`
 await $`cp ./bin/redcode ${path.join(meta, "bin", product)}`
 await $`cp ./bin/redcode ${path.join(meta, "bin", "redcode-rpc-sidecar")}`
+await $`cp ./postinstall.cjs ${path.join(meta, "postinstall.cjs")}`
 await Bun.file(path.join(meta, "LICENSE")).write(await Bun.file("../../LICENSE").text())
 await Bun.file(path.join(meta, "NOTICE")).write(await Bun.file("../../NOTICE").text())
 // The registry page is written here rather than copied from the repository README,
@@ -102,6 +103,7 @@ await Bun.file(path.join(meta, "package.json")).write(
       license: "MIT",
       repository: { type: "git", url: "https://github.com/reddb-io/redcode" },
       bin: { [product]: `./bin/${product}`, "redcode-rpc-sidecar": "./bin/redcode-rpc-sidecar" },
+      scripts: { postinstall: "node postinstall.cjs" },
       os: ["darwin", "linux", "win32"],
       cpu: ["arm64", "x64"],
       optionalDependencies: Object.fromEntries(

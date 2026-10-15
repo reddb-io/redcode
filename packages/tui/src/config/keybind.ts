@@ -221,7 +221,10 @@ export const Definitions = {
   "prompt.stash.list": keybind("none", "List stashed prompts"),
 
   "prompt.clear": keybind("ctrl+c", "Clear input field"),
-  "prompt.paste": keybind({ key: "ctrl+v,ctrl+shift+v", preventDefault: false }, "Paste from clipboard"),
+  "prompt.paste": keybind(
+    { key: "ctrl+v,ctrl+shift+v,alt+v,shift+insert", preventDefault: false },
+    "Paste from clipboard",
+  ),
   "input.submit": keybind("return", "Submit input"),
   "input.newline": keybind("shift+return,ctrl+return,alt+return,ctrl+j", "Insert newline in input"),
   "input.move.left": keybind("left,ctrl+b", "Move cursor left in input"),

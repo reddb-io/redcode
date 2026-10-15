@@ -7,6 +7,9 @@ test("binds agent cycling only to shift+tab by default", () => {
 })
 
 // Terminals with the kitty keyboard protocol (and zellij for such panes) forward Ctrl+Shift+V as a key.
-test("binds paste to both ctrl+v and ctrl+shift+v by default", () => {
-  expect(TuiKeybind.Definitions["prompt.paste"].default).toEqual({ key: "ctrl+v,ctrl+shift+v", preventDefault: false })
+test("binds paste to terminal shortcuts and an Alt+V fallback", () => {
+  expect(TuiKeybind.Definitions["prompt.paste"].default).toEqual({
+    key: "ctrl+v,ctrl+shift+v,alt+v,shift+insert",
+    preventDefault: false,
+  })
 })

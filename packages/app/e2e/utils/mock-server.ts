@@ -26,6 +26,7 @@ import {
 import { installSseTransport } from "./sse-transport"
 import type { UsageReporter } from "@opencode/schema/usage-reporter"
 import { AgentTools } from "@opencode/schema/agent-tools"
+import { Model } from "@opencode/schema/model"
 
 export async function mockAgentTools(page: Page, server = SERVER) {
   const operations: string[] = []
@@ -1607,7 +1608,7 @@ function currentModels(catalog: MockProviderCatalog) {
           modelID: model.api?.id ?? model.id,
           providerID: provider.id,
           name: model.name,
-          capabilities: { tools: true, input: ["text"], output: ["text"] },
+          capabilities: model.capabilities ?? { tools: true, input: ["text"], output: ["text"] },
           variants: Object.entries(model.variants ?? {}).map(([id, settings]) =>
             Predicate.isObject(settings) ? { id, settings } : { id },
           ),
@@ -1733,6 +1734,7 @@ const decodeModel = Schema.decodeUnknownOption(
     id: Schema.String,
     name: Schema.String,
     api: lenient(Schema.Struct({ id: Schema.String })),
+    capabilities: lenient(Model.Capabilities),
     limit: lenient(Schema.Struct({ context: lenient(Schema.Number), output: lenient(Schema.Number) })),
     cost: lenient(Schema.Struct({ input: lenient(Schema.Number), output: lenient(Schema.Number) })),
     variants: lenient(Schema.Record(Schema.String, Schema.Unknown)),

@@ -1,5 +1,6 @@
 import {
   BoxRenderable,
+  MouseButton,
   RGBA,
   TextareaRenderable,
   MouseEvent,
@@ -1935,6 +1936,13 @@ export function Prompt(props: PromptProps) {
               onMouseDown={(r: MouseEvent) => {
                 if (disabled()) {
                   r.preventDefault()
+                  return
+                }
+                if (r.button === MouseButton.RIGHT) {
+                  r.preventDefault()
+                  r.stopPropagation()
+                  input.focus()
+                  keymap.dispatch("prompt.paste")
                   return
                 }
                 if (r.button !== 0) return

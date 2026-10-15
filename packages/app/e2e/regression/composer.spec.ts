@@ -203,6 +203,43 @@ test("pastes plain text without markup and keeps native undo", async ({ page }) 
   }
 })
 
+test("pastes a clipboard image once and submits it with the draft text", async ({ page }) => {
+  const prompts: unknown[] = []
+  const { editor } = await openDraft(page, {
+    name: "ClipboardImage",
+    provider: provider({
+      id: "vision",
+      name: "Vision",
+      capabilities: { tools: true, input: ["text", "image"], output: ["text"] },
+    }),
+    onPrompt: ({ body }) => prompts.push(body),
+  })
+  await editor.fill("Explain this screenshot")
+  await editor.click()
+  await page.evaluate(async () => {
+    const canvas = document.createElement("canvas")
+    canvas.width = 8
+    canvas.height = 8
+    const context = canvas.getContext("2d")!
+    context.fillStyle = "#ff0055"
+    context.fillRect(0, 0, 8, 8)
+    const blob = await new Promise<Blob>((resolve) => canvas.toBlob((value) => resolve(value!), "image/png"))
+    await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })])
+  })
+  await editor.press("ControlOrMeta+V")
+  const images = page.locator('[data-component="composer-attachments"]').getByRole("img")
+  await expect(images).toHaveCount(1)
+  await expect(images).toBeVisible()
+  await expect(images).toHaveJSProperty("naturalWidth", 8)
+  await expect(editor).toHaveText("Explain this screenshot")
+  await editor.press("Enter")
+  await expect.poll(() => prompts.length).toBe(1)
+  expect(prompts[0]).toMatchObject({
+    text: "Explain this screenshot",
+    files: [{ name: "image.png", uri: expect.stringMatching(/^data:image\/png;base64,[A-Za-z0-9+/]+=*$/) }],
+  })
+})
+
 test("replaces only the selected text and leaves the caret after the paste", async ({ page }) => {
   const input = await draft(page)
   await page.evaluate(() => navigator.clipboard.writeText("one\ntwo"))

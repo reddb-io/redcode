@@ -6,6 +6,7 @@
 // composer while the footer view renders any active menus below it.
 /** @jsxImportSource @opentui/solid */
 import {
+  MouseButton,
   StyledText,
   decodePasteBytes,
   fg,
@@ -234,6 +235,7 @@ export function RunPromptBody(props: {
   bind: (area?: TextareaRenderable) => void
 }) {
   const renderer = useRenderer()
+  const keymap = Keymap.use()
   let area: TextareaRenderable | undefined
   let pasteTick: ReturnType<typeof setTimeout> | undefined
 
@@ -334,6 +336,13 @@ export function RunPromptBody(props: {
           cursorStyle={props.cursorStyle}
           onSubmit={props.onSubmit}
           onKeyDown={props.onKeyDown}
+          onMouseDown={(event) => {
+            if (event.button !== MouseButton.RIGHT) return
+            event.preventDefault()
+            event.stopPropagation()
+            area?.focus()
+            keymap.dispatch("prompt.paste")
+          }}
           onPaste={(event) => {
             void props.onPaste(event).finally(refreshPasteLayout)
           }}
