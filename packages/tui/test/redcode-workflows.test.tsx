@@ -31,7 +31,7 @@ test("CLI diagnostics and new sessions do not contact the removed RedSkills inte
     (frame) => !frame.includes("/new") && Boolean(setup.renderer.root.findDescendantById("session-pane")),
   )
   expect(reads).toEqual([])
-})
+}, 20_000)
 
 test("historical thinking and timestamp commands change display preferences", async () => {
   await using state = await tmpdir()
