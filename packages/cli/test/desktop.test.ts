@@ -1,9 +1,23 @@
-import { describe, expect, test } from "bun:test"
+import { afterAll, beforeAll, describe, expect, test } from "bun:test"
+import { symlink } from "node:fs/promises"
 import path from "node:path"
 import { DesktopApp } from "../src/services/desktop-app"
 // The app reads the pointer this command writes; both sides of that file are checked together.
 import { locateCli } from "../../desktop/src/main/service/cli-location"
 import { tmpdir } from "./fixture/tmpdir"
+
+const fixture = await tmpdir()
+const app = path.join(fixture.path, process.platform === "win32" ? "desktop.exe" : "desktop")
+
+beforeAll(async () => {
+  const result = await Bun.build({
+    entrypoints: [path.join(import.meta.dir, "fixture/desktop-app.ts")],
+    compile: { outfile: app, autoloadBunfig: false, autoloadDotenv: false },
+  })
+  if (!result.success) throw new AggregateError(result.logs, "Could not build desktop process fixture")
+})
+
+afterAll(() => fixture[Symbol.asyncDispose]())
 
 const options = (root: string, extra: Partial<DesktopApp.Options> = {}): DesktopApp.Options => ({
   env: {},
@@ -20,13 +34,145 @@ async function files(root: string, ...names: string[]) {
 
 describe("redcode desktop", () => {
   test.each([
+    { target: "linux-x64", env: { DISPLAY: ":7", XAUTHORITY: "/forwarded/auth" } },
+    { target: "linux-arm64", env: { WAYLAND_DISPLAY: "wayland-3" } },
+    { target: "windows-x64", env: { SESSIONNAME: "Console" } },
+    { target: "darwin-arm64", env: { TERM: "xterm-256color" } },
+  ])("preserves explicit graphical sessions and native $target environments", async (input) => {
+    expect(await DesktopApp.environment(input.env, input.target)).toEqual(input.env)
+  })
+
+  test.skipIf(process.platform !== "linux")(
+    "recovers only missing graphical session variables from systemd",
+    async () => {
+      await using root = await tmpdir()
+      await symlink(app, path.join(root.path, "systemctl"))
+      const env = {
+        PATH: root.path,
+        XDG_RUNTIME_DIR: "/explicit/runtime",
+        REDCODE_DESKTOP_FIXTURE_SESSION: JSON.stringify({
+          DISPLAY: ":0",
+          WAYLAND_DISPLAY: "wayland-0",
+          XAUTHORITY: "/a path/with spaces/auth",
+          XDG_RUNTIME_DIR: "/session/runtime",
+          DBUS_SESSION_BUS_ADDRESS: "unix:path=/session/bus",
+          PATH: "/unrelated/path",
+          REDCODE_DESKTOP_CLI: "/unrelated/cli",
+        }),
+      }
+      expect(await DesktopApp.environment(env, "linux-x64")).toEqual({
+        ...env,
+        DISPLAY: ":0",
+        WAYLAND_DISPLAY: "wayland-0",
+        XAUTHORITY: "/a path/with spaces/auth",
+        DBUS_SESSION_BUS_ADDRESS: "unix:path=/session/bus",
+      })
+    },
+  )
+
+  test.skipIf(process.platform !== "linux").each([
+    { name: "no systemd", session: undefined },
+    { name: "no graphical session", session: "{}" },
+    { name: "invalid session data", session: "not json" },
+    { name: "invalid session values", session: '{"DISPLAY":5}' },
+  ])("explains how to launch from a graphical terminal with $name", async (input) => {
+    await using root = await tmpdir()
+    if (input.session) await symlink(app, path.join(root.path, "systemctl"))
+    await expect(
+      DesktopApp.environment({ PATH: root.path, REDCODE_DESKTOP_FIXTURE_SESSION: input.session }, "linux-x64"),
+    ).rejects.toThrow("Run redcode desktop from a terminal in your desktop session")
+  })
+
+  // A real executable exercises exit codes, stderr inheritance and detachment on every CI OS.
+  test.each(
+    [
+      { mode: "crash", message: "exit code 23", diagnostic: "desktop startup fixture failed" },
+      { mode: "large-error", message: "exit code 24", diagnostic: "last startup diagnostic" },
+      { mode: "signal", message: "SIGTERM", diagnostic: "" },
+    ].filter((input) => process.platform !== "win32" || input.mode !== "signal"),
+  )("reports an early $mode with a bounded diagnostic and a log path", async (input) => {
+    await using root = await tmpdir()
+    const log = path.join(root.path, "log", "desktop.log")
+    const error = await DesktopApp.launch(
+      { source: "environment", app, executable: app },
+      { env: { ...process.env, REDCODE_DESKTOP_FIXTURE_MODE: input.mode }, log },
+    ).then(
+      () => undefined,
+      (cause: Error) => cause,
+    )
+    expect(error).toBeInstanceOf(Error)
+    expect(error?.message).toContain(input.message)
+    expect(error?.message).toContain(input.diagnostic)
+    expect(error?.message).toContain(`Startup log: ${log}`)
+    expect(error!.message.length).toBeLessThan(9000)
+    if (input.mode === "large-error") expect(await Bun.file(log).text()).toStartWith("first diagnostic")
+  })
+
+  test("reports a missing executable instead of succeeding", async () => {
+    await using root = await tmpdir()
+    const executable = path.join(root.path, "missing-desktop")
+    await expect(
+      DesktopApp.launch(
+        { source: "environment", app: executable, executable },
+        { env: process.env, log: path.join(root.path, "desktop.log") },
+      ),
+    ).rejects.toThrow(`Could not start Redcode Desktop at ${executable}`)
+  })
+
+  test("accepts a clean handoff to an existing desktop", async () => {
+    await using root = await tmpdir()
+    await DesktopApp.launch(
+      { source: "environment", app, executable: app },
+      { env: { ...process.env, REDCODE_DESKTOP_FIXTURE_MODE: "handoff" }, log: path.join(root.path, "desktop.log") },
+    )
+  })
+
+  test("leaves a running desktop detached with its CLI and writable diagnostics", async () => {
+    await using root = await tmpdir()
+    const state = path.join(root.path, "state.json")
+    const log = path.join(root.path, "desktop.log")
+    const launched = DesktopApp.launch(
+      { source: "environment", app, executable: app },
+      {
+        cli: "/installation/redcode",
+        env: { ...process.env, REDCODE_DESKTOP_FIXTURE_MODE: "running", REDCODE_DESKTOP_FIXTURE_STATE: state },
+        log,
+      },
+    )
+    try {
+      await launched
+      const running = await Bun.file(state).json()
+      expect(running.cli).toBe("/installation/redcode")
+      expect(isRunning(running.pid)).toBe(true)
+      // Ask the detached child to write after the launcher's log descriptor has closed.
+      await Bun.write(path.join(root.path, "write"), "")
+      const deadline = Date.now() + 2000
+      while (!(await Bun.file(log).text()).includes("still writable") && Date.now() < deadline) await Bun.sleep(20)
+      expect(await Bun.file(log).text()).toContain("still writable")
+    } finally {
+      if (await Bun.file(state).exists()) {
+        const pid = (await Bun.file(state).json()).pid
+        process.kill(pid, "SIGKILL")
+        const deadline = Date.now() + 2000
+        while (isRunning(pid) && Date.now() < deadline) await Bun.sleep(20)
+        expect(isRunning(pid)).toBe(false)
+      }
+    }
+  }, 10_000)
+
+  test.each([
     {
       layout: "a Linux archive",
       target: "linux-x64-baseline",
       app: "desktop/io.reddb.redcode",
       executable: "desktop/io.reddb.redcode",
     },
-    { layout: "a Windows archive", target: "windows-arm64", app: "desktop/Redcode.exe", executable: "desktop/Redcode.exe" },
+    {
+      layout: "a Windows archive",
+      target: "windows-arm64",
+      app: "desktop/Redcode.exe",
+      executable: "desktop/Redcode.exe",
+    },
     {
       layout: "a macOS archive",
       target: "darwin-arm64",
@@ -141,7 +287,9 @@ describe("redcode desktop", () => {
     expected: string[][]
   }[])("prepares an app it unpacked: $name", (input) => {
     expect(
-      DesktopApp.preparation({ ...input.located, executable: input.located.app }, input.target, { SystemRoot: "C:\\Win" }),
+      DesktopApp.preparation({ ...input.located, executable: input.located.app }, input.target, {
+        SystemRoot: "C:\\Win",
+      }),
     ).toEqual(input.expected)
   })
 
@@ -199,3 +347,12 @@ describe("redcode desktop", () => {
     ).toEqual({ source: "pointer", binary: cli, version: "1.2.3" })
   })
 })
+
+function isRunning(pid: number) {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}

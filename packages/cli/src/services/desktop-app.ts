@@ -1,8 +1,11 @@
 export * as DesktopApp from "./desktop-app"
 
-import { spawn } from "node:child_process"
+import { execFile, spawn } from "node:child_process"
 import { existsSync, realpathSync } from "node:fs"
+import { mkdir, open } from "node:fs/promises"
 import path from "node:path"
+import { promisify } from "node:util"
+import { Schema } from "effect"
 
 /**
  * Where Redcode Desktop comes from. It ships in the same `vX.Y.Z` release archive as redcode (which mise installs),
@@ -44,7 +47,9 @@ export function locate(options: Options): Located {
   if (existsSync(archived))
     return { source: "archive", app: archived, executable: executable(platform.os, archived), root: folder }
   if (options.source)
-    throw new Error(`Redcode Desktop is not built in this checkout. Run it from source: cd ${options.source} && bun run dev`)
+    throw new Error(
+      `Redcode Desktop is not built in this checkout. Run it from source: cd ${options.source} && bun run dev`,
+    )
   if (npm(options.executable))
     throw new Error(
       "Redcode Desktop is not included in the npm package. Install Redcode with mise (mise use -g github:reddb-io/redcode@latest) or from the release archive at https://github.com/reddb-io/redcode/releases, or set REDCODE_DESKTOP_APP to the app.",
@@ -105,18 +110,66 @@ export function record(input: { readonly version: string; readonly cli: string; 
   return JSON.stringify({ version: input.version, cli: input.cli, app: input.app }, null, 2)
 }
 
-/** Starts the app on its own, with the CLI it should run, and returns once it is running. */
-export async function launch(located: Located, cli?: string) {
+/** Recover a local Linux desktop session for terminals started outside the graphical session. */
+export async function environment(env: NodeJS.ProcessEnv, target: string) {
+  if (parse(target).os !== "linux" || env.DISPLAY || env.WAYLAND_DISPLAY) return env
+  const session = await promisify(execFile)("systemctl", ["--user", "show-environment", "--output=json"], {
+    env,
+    timeout: 2000,
+    maxBuffer: 64 * 1024,
+  })
+    .then((result) =>
+      Schema.decodeUnknownPromise(Schema.fromJsonString(Schema.Record(Schema.String, Schema.String)))(result.stdout),
+    )
+    .catch(() => ({}))
+  const recovered = {
+    ...env,
+    ...Object.fromEntries(
+      Object.entries(session).filter(
+        ([key]) =>
+          ["DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS"].includes(key) &&
+          !env[key],
+      ),
+    ),
+  }
+  if (recovered.DISPLAY || recovered.WAYLAND_DISPLAY) return recovered
+  throw new Error(
+    "Redcode Desktop needs an active graphical session. DISPLAY and WAYLAND_DISPLAY are missing, and no graphical session could be recovered from systemd. Run redcode desktop from a terminal in your desktop session.",
+  )
+}
+
+/** Observe early exits on every OS; a clean exit can hand off to an existing desktop instance. */
+export async function launch(located: Located, options: { cli?: string; env: NodeJS.ProcessEnv; log: string }) {
+  await mkdir(path.dirname(options.log), { recursive: true })
+  // An inherited file stays writable after the CLI exits, unlike a pipe closed on detachment.
+  await using log = await open(options.log, "w", 0o600)
   const child = spawn(located.executable, [], {
     detached: true,
-    stdio: "ignore",
-    env: { ...process.env, ...(cli ? { REDCODE_DESKTOP_CLI: cli } : {}) },
+    stdio: ["ignore", log.fd, log.fd],
+    env: { ...options.env, ...(options.cli ? { REDCODE_DESKTOP_CLI: options.cli } : {}) },
   })
-  await new Promise((resolve, reject) => {
-    child.once("spawn", resolve)
-    child.once("error", reject)
-  })
-  child.unref()
+  const result = await new Promise<{ code: number | null; signal: NodeJS.Signals | null } | undefined>(
+    (resolve, reject) => {
+      const timer = setTimeout(() => resolve(undefined), 3000)
+      child.once("error", (cause) => {
+        clearTimeout(timer)
+        reject(new Error(`Could not start Redcode Desktop at ${located.executable}: ${cause.message}`, { cause }))
+      })
+      child.once("exit", (code, signal) => {
+        clearTimeout(timer)
+        resolve({ code, signal })
+      })
+    },
+  ).finally(() => child.unref())
+  if (!result || result.code === 0) return
+  const details = (
+    await Bun.file(options.log)
+      .slice(Math.max(0, (await log.stat()).size - 8192))
+      .text()
+  ).trim()
+  throw new Error(
+    `Redcode Desktop exited during startup (${result.signal ?? `exit code ${result.code}`}).${details ? `\n${details}` : ""}\nStartup log: ${options.log}`,
+  )
 }
 
 /** Runs a command with the terminal attached and returns its exit code. */

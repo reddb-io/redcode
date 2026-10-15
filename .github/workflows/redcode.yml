@@ -408,6 +408,9 @@ jobs:
         run: |
           bun run typecheck
           bun run test
+      - name: Test Desktop CLI startup diagnostics on the native OS
+        working-directory: packages/cli
+        run: bun test test/desktop.test.ts
       # Releases are not signed yet; electron-builder must not look for certificates or try to publish.
       - name: Build the unpacked app
         env:

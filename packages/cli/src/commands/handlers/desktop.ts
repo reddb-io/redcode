@@ -19,13 +19,24 @@ export default Runtime.handler(
     const cli = DesktopApp.cli()
     const located = yield* Effect.try({
       try: () =>
-        DesktopApp.locate({ env: process.env, target, executable: cli ?? process.execPath, source: DesktopApp.checkout() }),
+        DesktopApp.locate({
+          env: process.env,
+          target,
+          executable: cli ?? process.execPath,
+          source: DesktopApp.checkout(),
+        }),
       catch: (cause) => cause,
     })
     if (input.path) {
       process.stdout.write(located.app + EOL)
       return
     }
+    const env = input.refresh
+      ? process.env
+      : yield* Effect.tryPromise({
+          try: () => DesktopApp.environment(process.env, target),
+          catch: (cause) => cause,
+        })
 
     // The pointer records the installation the app was last prepared for; a new version or path prepares it again.
     const file = DesktopApp.pointer(global.state)
@@ -33,14 +44,21 @@ export default Runtime.handler(
     const current = yield* fs.readFileString(file).pipe(Effect.orElseSucceed(() => ""))
     if (input.refresh || current !== record)
       yield* Effect.forEach(DesktopApp.preparation(located, target, process.env), (command) =>
-        Effect.tryPromise(() => DesktopApp.run(command, "ignore")).pipe(
-          Effect.flatMap((code) => (code === 0 ? Effect.void : Effect.fail(code))),
-          Effect.catch(() => Effect.sync(() => log.warn(`Could not prepare Redcode Desktop: ${command.join(" ")}`))),
+        Effect.tryPromise(() => DesktopApp.run(command)).pipe(
+          Effect.flatMap((code) =>
+            code === 0
+              ? Effect.void
+              : Effect.fail(new Error(`Could not prepare Redcode Desktop (exit code ${code}): ${command.join(" ")}`)),
+          ),
         ),
       )
 
     const helper = path.join(path.dirname(located.executable), "chrome-sandbox")
-    const sandbox = DesktopApp.sandbox(located, target, yield* Effect.promise(() => stat(helper).catch(() => undefined)))
+    const sandbox = DesktopApp.sandbox(
+      located,
+      target,
+      yield* Effect.promise(() => stat(helper).catch(() => undefined)),
+    )
     if (sandbox) yield* fixSandbox(sandbox)
 
     if (record && current !== record) {
@@ -51,7 +69,10 @@ export default Runtime.handler(
       process.stdout.write(`Redcode Desktop is ready: ${located.app}` + EOL)
       return
     }
-    yield* Effect.tryPromise({ try: () => DesktopApp.launch(located, cli), catch: (cause) => cause })
+    yield* Effect.tryPromise({
+      try: () => DesktopApp.launch(located, { cli, env, log: path.join(global.log, "desktop-launch.log") }),
+      catch: (cause) => cause,
+    })
   }, handlePromptErrors),
 )
 
@@ -68,7 +89,9 @@ const fixSandbox = Effect.fnUntraced(function* (sandbox: NonNullable<ReturnType<
   if (!accepted) return yield* Effect.fail(new Error(`Redcode Desktop cannot start until you run:${EOL}  ${command}`))
   yield* Effect.forEach(sandbox.commands, (item) =>
     Effect.tryPromise({ try: () => DesktopApp.run(item), catch: (cause) => cause }).pipe(
-      Effect.flatMap((code) => (code === 0 ? Effect.void : Effect.fail(new Error(`${item.join(" ")} exited with ${code}`)))),
+      Effect.flatMap((code) =>
+        code === 0 ? Effect.void : Effect.fail(new Error(`${item.join(" ")} exited with ${code}`)),
+      ),
     ),
   )
 })
