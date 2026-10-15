@@ -1,5 +1,11 @@
 # @reddb-io/redcode
 
+## 0.81.9
+
+### Patch Changes
+
+- Fix clipboard paste in terminal setup dialogs, add Alt+V and Shift+Insert shortcuts and right-click paste in prompt inputs. On Windows, npm installation creates launchers that invoke the native executable directly without a persistent Node.js parent process.
+
 ## 0.81.8
 
 ### Patch Changes
