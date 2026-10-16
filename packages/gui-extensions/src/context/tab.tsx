@@ -233,12 +233,33 @@ export default function SessionContextTab(props: { session: MountedSession }) {
     return c.modelLabel
   })
 
+  const selected = createMemo(() => {
+    const model = info()?.model
+
+    if (!model) return
+    const entry = catalogModel(props.session, model)
+
+    return {
+      name: entry?.model?.name ?? model.id,
+      provider: entry?.provider.name ?? model.providerID,
+      limit: entry?.model?.limit,
+    }
+  })
+
   const stats = [
     { label: "stats.session", value: () => info()?.title ?? (props.session.id || "—") },
     { label: "stats.messages", value: () => counts().all.toLocaleString(i18n.locale()) },
-    { label: "stats.provider", value: providerLabel },
-    { label: "stats.model", value: modelLabel },
-    { label: "stats.limit", value: () => formatter().number(context()?.limit) },
+    { label: "stats.selectedProvider", value: () => selected()?.provider ?? "—" },
+    { label: "stats.selectedModel", value: () => selected()?.name ?? "—" },
+    { label: "stats.selectedContext", value: () => formatter().number(selected()?.limit?.context || undefined) },
+    {
+      label: "stats.selectedInput",
+      value: () => formatter().number(selected()?.limit?.input || selected()?.limit?.context || undefined),
+    },
+    { label: "stats.selectedOutput", value: () => formatter().number(selected()?.limit?.output || undefined) },
+    { label: "stats.lastProvider", value: providerLabel },
+    { label: "stats.lastModel", value: modelLabel },
+    { label: "stats.lastContext", value: () => formatter().number(context()?.limit) },
     { label: "stats.totalTokens", value: () => formatter().number(context()?.tokens) },
     {
       label: "stats.usage",

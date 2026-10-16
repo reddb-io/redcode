@@ -108,7 +108,7 @@ it.effect("adds independent endpoints on the same host and multiple credentials 
   }),
 )
 
-const endpoint = (answer: Record<string, string | number>) => {
+const endpoint = (answer: Record<string, string | number | boolean>) => {
   const parsed = parseEndpoint({ providerID: "local", ...answer })
   if (typeof parsed === "string") throw new Error(parsed)
   return parsed
@@ -184,14 +184,27 @@ describe("OpenAI-compatible wizard answers", () => {
       { id: "lmstudio", loaded_context_length: 16_384 },
       { id: "openrouter", top_provider: { context_length: 200_000, max_completion_tokens: 16_000 } },
       { id: "llamacpp", meta: { n_ctx_train: 8_192 } },
+      { id: "gateway", context_length: 1_000_000, max_input_tokens: 900_000, max_output_tokens: 128_000 },
+      { id: "input-only", max_input_tokens: 524_288 },
       { id: "silent" },
     ])
     expect(config.models.vllm?.limit?.context).toBe(32_768)
     expect(config.models.lmstudio?.limit?.context).toBe(16_384)
     expect(config.models.openrouter?.limit).toEqual({ context: 200_000, output: 16_000 })
     expect(config.models.llamacpp?.limit?.context).toBe(8_192)
+    expect(config.models.gateway?.limit).toEqual({ context: 1_000_000, input: 900_000, output: 128_000 })
+    expect(config.models["input-only"]?.limit).toEqual({ input: 524_288 })
     // A limit the endpoint did not report is not written: the load resolves it from the current catalog, or guesses.
     expect(config.models.silent).toEqual({ name: "silent" })
+  })
+
+  test("keeps LiteLLM model fallbacks disabled only for explicitly configured LiteLLM gateways", () => {
+    const configured = endpoint({ baseURL: "https://api.example.com/v1", litellm: true })
+    expect(configured).toHaveProperty("litellm", true)
+    expect(providerConfig(configured, [{ id: "glm-5.3-flash" }])).toHaveProperty("body.disable_fallbacks", true)
+    expect(
+      providerConfig(endpoint({ baseURL: "https://api.example.com/v1" }), [{ id: "glm-5.3-flash" }]),
+    ).not.toHaveProperty("body")
   })
 
   test("writes discovered and entered models with the limits reported or entered, never a guess", () => {

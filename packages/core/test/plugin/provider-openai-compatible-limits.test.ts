@@ -1,5 +1,6 @@
 import { afterAll, describe, expect } from "bun:test"
-import { Effect, Option, Schedule } from "effect"
+import { Effect, Layer, Option, Schedule, Schema } from "effect"
+import { FetchHttpClient } from "effect/unstable/http"
 import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
 import { Bus } from "@opencode/core/bus"
 import { Config } from "@opencode/core/config"
@@ -8,6 +9,9 @@ import { Integration } from "@opencode/core/integration"
 import { Location } from "@opencode/core/location"
 import { LocationServiceMap } from "@opencode/core/location-services"
 import { Model } from "@opencode/core/model"
+import { ModelResolver } from "@opencode/core/model-resolver"
+import { LLM } from "@opencode/ai"
+import { LLMClient, RequestExecutor } from "@opencode/ai/route"
 import { ModelLimit } from "@opencode/core/model-limit"
 import { ModelsDev } from "@opencode/core/models-dev"
 import { Plugin } from "@opencode/core/plugin"
@@ -26,18 +30,30 @@ import { testEffect } from "../lib/effect"
 // describes itself, and one nobody knows.
 const server = Bun.serve({
   port: 0,
-  fetch(request) {
+  async fetch(request) {
     const url = new URL(request.url)
     if (request.headers.get("authorization") !== "Bearer sk-good") return new Response("no", { status: 401 })
     if (url.pathname === "/v1/models")
       return Response.json({
         data: [
           { id: "glm-5.3-flash" },
+          { id: "zai/glm-5.3-flash", max_input_tokens: 900_000, max_output_tokens: 128_000 },
           { id: "mimo-v2.6-pro" },
           { id: "reported", context_length: 64_000, max_completion_tokens: 4_000 },
           { id: "nobody-knows-this-one" },
         ],
       })
+    if (url.pathname === "/v1/chat/completions") {
+      const body = Schema.decodeUnknownSync(Schema.Struct({ model: Schema.String, disable_fallbacks: Schema.Boolean }))(
+        await request.json(),
+      )
+      expect(body.model).toBe("zai/glm-5.3-flash")
+      expect(body.disable_fallbacks).toBe(true)
+      return new Response(
+        `data: ${JSON.stringify({ id: "completion", object: "chat.completion.chunk", created: 1, model: body.model, choices: [{ index: 0, delta: { role: "assistant", content: "selected model" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 } })}\n\ndata: [DONE]\n\n`,
+        { headers: { "content-type": "text/event-stream" } },
+      )
+    }
     return new Response("missing", { status: 404 })
   },
 })
@@ -77,7 +93,7 @@ describe("OpenAI-compatible endpoints where the server runs the wizard", () => {
         yield* integrations.connection.key({
           integrationID: Integration.ID.make("openai-compatible"),
           key: "sk-good",
-          answer: { baseURL },
+          answer: { baseURL, advanced: true, api: "chat", litellm: true },
         })
         const config = yield* Config.Service
         const models = yield* Model.Service
@@ -101,10 +117,21 @@ describe("OpenAI-compatible endpoints where the server runs the wizard", () => {
         // Only what the endpoint reported is written; the rest is resolved from the current catalog on every load.
         expect(saved.models?.["reported"]?.limit).toEqual({ context: 64_000, output: 4_000 })
         expect(saved.models?.["glm-5.3-flash"]?.limit).toBeUndefined()
+        expect(saved.models?.["zai/glm-5.3-flash"]?.limit).toEqual({ input: 900_000, output: 128_000 })
         expect(saved.models?.["mimo-v2.6-pro"]?.limit).toBeUndefined()
         expect(saved.models?.["nobody-knows-this-one"]?.limit).toBeUndefined()
         expect((yield* loaded("reported")).limit).toEqual({ context: 64_000, output: 4_000 })
         expect((yield* loaded("glm-5.3-flash")).limit).toEqual(expected("glm-5.3-flash"))
+        const bounded = yield* loaded("zai/glm-5.3-flash")
+        expect(bounded.limit).toEqual({ context: 1_048_576, input: 900_000, output: 128_000 })
+        const resolver = yield* ModelResolver.Service
+        const resolved = yield* resolver.resolveModel(bounded)
+        const result = yield* LLM.generate({ model: resolved.model, prompt: "Keep the selected model" }).pipe(
+          Effect.provide(
+            LLMClient.layer.pipe(Layer.provide(RequestExecutor.layer.pipe(Layer.provide(FetchHttpClient.layer)))),
+          ),
+        )
+        expect(result.text).toBe("selected model")
         expect((yield* loaded("mimo-v2.6-pro")).limit).toEqual(expected("mimo-v2.6-pro"))
         expect((yield* loaded("nobody-knows-this-one")).limit).toEqual({ context: guess, output: 8_192 })
       }).pipe(Effect.scoped, Effect.provide(LocationServiceMap.Service.get(ref)))

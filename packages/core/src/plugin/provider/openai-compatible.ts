@@ -51,6 +51,7 @@ const ListedModel = Schema.Struct({
   max_context_length: limitValue,
   loaded_context_length: limitValue,
   max_model_len: limitValue,
+  max_input_tokens: limitValue,
   max_output_tokens: limitValue,
   max_completion_tokens: limitValue,
   top_provider: Schema.optional(
@@ -71,6 +72,7 @@ export interface Endpoint {
   readonly models: ReadonlyArray<string>
   readonly context?: number
   readonly output?: number
+  readonly litellm?: boolean
 }
 
 export const OpenAICompatiblePlugin = define({
@@ -230,6 +232,14 @@ export const OpenAICompatiblePlugin = define({
               when: ADVANCED,
             },
             {
+              type: "boolean",
+              key: "litellm",
+              title: "Keep the selected model on a LiteLLM gateway?",
+              description:
+                "For LiteLLM gateways only. An unavailable model reports an error instead of being replaced by another model. Requires gateway support.",
+              when: ADVANCED,
+            },
+            {
               type: "integer",
               key: "output",
               title: "Maximum output tokens",
@@ -275,6 +285,7 @@ export function parseEndpoint(answer: Form.Answer): Endpoint | string {
     models,
     ...(context === undefined ? {} : { context }),
     ...(output === undefined ? {} : { output }),
+    ...(answer.litellm === true ? { litellm: true } : {}),
   }
 }
 
@@ -406,6 +417,7 @@ export function providerConfig(endpoint: Endpoint, listed: ReadonlyArray<Listed>
     name: endpoint.name,
     package: endpoint.responses ? RESPONSES_PACKAGE : CHAT_PACKAGE,
     settings: { baseURL: endpoint.baseURL, provider: endpoint.providerID },
+    ...(endpoint.litellm ? { body: { disable_fallbacks: true } } : {}),
     ...(Object.keys(endpoint.headers).length ? { headers: { ...endpoint.headers } } : {}),
     models: Object.fromEntries(
       ids.map((id) => {
@@ -425,9 +437,11 @@ export function providerConfig(endpoint: Endpoint, listed: ReadonlyArray<Listed>
         const reported =
           endpoint.output ??
           positive([model?.max_completion_tokens, model?.max_output_tokens, model?.top_provider?.max_completion_tokens])
+        const input = positive([model?.max_input_tokens])
         const output = reported === undefined || context === undefined ? reported : Math.min(reported, context)
         const limit = {
           ...(context === undefined ? {} : { context }),
+          ...(input === undefined ? {} : { input }),
           ...(output === undefined ? {} : { output }),
         }
         return [id, { name: display || id, ...(Object.keys(limit).length ? { limit } : {}) }] as const

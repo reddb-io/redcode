@@ -159,6 +159,8 @@ const suites = {
     "test/tool-shell.test.ts",
     "test/worktree.test.ts",
     "test/worker-lease.test.ts",
+    "test/plugin/catalog-limits.test.ts",
+    "test/plugin/provider-openai-compatible-limits.test.ts",
   ],
   cli: [
     "test/pair-remote-consent.test.ts",
@@ -229,7 +231,11 @@ const suites = {
     "test/solid-data.test.ts",
     "test/import-boundaries.test.ts",
   ],
-  app: ["src/runtime/server/request-queue.test.ts"],
+  app: [
+    "src/runtime/server/request-queue.test.ts",
+    "src/composer/submit.test.ts",
+    "./test-browser/model-selection.test.ts",
+  ],
   "gui-extensions": ["test/ssh-main.test.ts", "test/updater-main.test.ts", "./src/terminal/writer.test.ts"],
   tui: [
     "test/clipboard.test.ts",

@@ -70,6 +70,25 @@ redcode session import --from claude-code --latest
 Imports leave source histories unchanged and report unsupported content. Importing a history is
 different from synchronizing live sessions between servers.
 
+## Models and context
+
+CLI, Desktop and web use the same agent-server model resolver and context management. An explicit
+session selection takes precedence over the default S2 model. If that selection becomes unavailable,
+Redcode keeps it selected rather than silently choosing another model.
+
+A model gateway can apply its own fallback policy after receiving the selected model. For a LiteLLM
+gateway, use the shared connection setup: **OpenAI-compatible endpoint → Customize the connection →
+Keep the selected model on a LiteLLM gateway**. This asks the gateway to disable model fallbacks.
+Run connection setup again to apply it to an existing provider; other OpenAI-compatible providers
+do not receive this gateway-specific option. The gateway must honor it.
+
+Context capacity, maximum input and maximum output are separate limits. A gateway refusing a
+`max_tokens` value does not establish a smaller context window. Redcode reads declared input and
+output limits independently and resolves missing context information from its model catalog.
+The Desktop and web Context panel separates the selected session model and its limits from the
+last request that reported token usage. After switching models, the previous request's usage
+remains attributed to the model that produced it.
+
 ## Agent server
 
 For an explicit foreground server on a chosen port:

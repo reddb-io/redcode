@@ -2,6 +2,7 @@ import { afterEach, expect, mock, test } from "bun:test"
 import { createRequire } from "node:module"
 import { createComponent, createRoot } from "solid-js"
 import { createStore } from "solid-js/store"
+import { QueryClient, QueryClientProvider } from "@tanstack/solid-query"
 import type { Agent } from "@/runtime/server/types"
 import type { ModelKey } from "@/providers/models/selection"
 import { ServerScope } from "@/runtime/server/scope"
@@ -87,6 +88,7 @@ const { Persist } = await import("@/runtime/persistence/storage")
 const { createMemoryComposerState } = await import("@/composer/state")
 
 const { createComposerModelSelection } = await import("@/composer/selection")
+const { intelligenceSettingsKey } = await import("@/runtime/server/intelligence")
 
 const cleanups: Array<() => void> = []
 
@@ -99,6 +101,12 @@ afterEach(() =>
 
 function fixture(input: { session?: Commit; agents?: Agent[]; config?: ConfigModel; preferred?: string } = {}) {
   const directory = `/selection-test/${crypto.randomUUID()}`
+  const query = new QueryClient()
+  const intelligence = {
+    settings: { enabled: false, principal: undefined as { providerID: string; id: string } | undefined },
+  }
+  query.setQueryData(intelligenceSettingsKey(ServerScope.local), intelligence)
+  cleanups.push(() => query.clear())
 
   const [state, set] = createStore({
     visible: true,
@@ -160,6 +168,7 @@ function fixture(input: { session?: Commit; agents?: Agent[]; config?: ConfigMod
     },
     sdk: {
       scope: ServerScope.local,
+      api: { "server.intelligence": { status: async () => intelligence } },
       connection: { status: () => state.connection },
       event: {
         on(type: string, handler: (event: Event) => void) {
@@ -175,22 +184,32 @@ function fixture(input: { session?: Commit; agents?: Agent[]; config?: ConfigMod
       events.get(type)?.forEach((handler) => handler({ data: { sessionID } }))
     },
     configLoads,
+    setPrincipal(model: string) {
+      query.setQueryData(intelligenceSettingsKey(ServerScope.local), {
+        settings: { enabled: true, principal: { providerID: "provider", id: model } },
+      })
+    },
     mount(draft = false) {
       active = result
       let local!: ReturnType<typeof useLocal>
       let composer: ReturnType<typeof createComposerModelSelection> | undefined
 
       const dispose = createRoot((dispose) => {
-        createComponent(ModelsProvider, {
-          directory,
+        createComponent(QueryClientProvider, {
+          client: query,
           get children() {
-            return createComponent(LocalProvider, {
+            return createComponent(ModelsProvider, {
+              directory,
               get children() {
-                local = useLocal()
+                return createComponent(LocalProvider, {
+                  get children() {
+                    local = useLocal()
 
-                if (draft) composer = createComposerModelSelection({ agent: local.agent.current })
+                    if (draft) composer = createComposerModelSelection({ agent: local.agent.current })
 
-                return null
+                    return null
+                  },
+                })
               },
             })
           },
@@ -351,7 +370,7 @@ test("uses historical message selection only when durable and local selection ar
   expect(selection(local)).toEqual({ agent: "plan", model: "b", variant: "high" })
 })
 
-test("invalid durable models fall through agent, global, recent, and connected defaults", () => {
+test("an unavailable explicit model stays pinned until the user selects another model", () => {
   const f = fixture({
     session: durable("removed", "high"),
     agents: [agent("build", key("b"), "low")],
@@ -359,16 +378,55 @@ test("invalid durable models fall through agent, global, recent, and connected d
   })
 
   const { local } = f.mount()
-  expect(selection(local)).toEqual({ agent: "build", model: "b", variant: "low" })
+  expect(local.model.current()).toBeUndefined()
   f.set("agents", [agent("build", key("removed"))])
-  expect(local.model.current()?.id).toBe("c")
+  expect(local.model.current()).toBeUndefined()
   f.setPreferences("recent", [key("removed"), key("b")])
   f.set("config", "provider/removed")
-  expect(local.model.current()?.id).toBe("b")
+  expect(local.model.current()).toBeUndefined()
   f.setPreferences("recent", [key("removed")])
-  expect(local.model.current()?.id).toBe("a")
+  expect(local.model.current()).toBeUndefined()
+  local.model.set(key("b"))
+  expect(local.model.current()?.id).toBe("b")
   f.set("providers", [])
   expect(local.model.current()).toBeUndefined()
+})
+
+test("an explicit provider selection survives S2 defaults, session switches and catalog refreshes", async () => {
+  const f = fixture({ session: durable("a"), config: "provider/a" })
+  f.set("providers", [...f.state.providers, { ...f.state.providers[0], id: "gateway", name: "Gateway" }])
+  f.set("models", [
+    ...f.state.models,
+    {
+      ...f.state.models[0],
+      id: "glm-5.3-flash",
+      modelID: "glm-5.3-flash",
+      providerID: "gateway",
+      limit: { context: 1_000_000, output: 131_072 },
+    },
+  ])
+  f.setPrincipal("a")
+  const { local } = f.mount()
+  local.model.set({ providerID: "gateway", modelID: "glm-5.3-flash" })
+  expect(local.model.current()).toMatchObject({
+    id: "glm-5.3-flash",
+    provider: { id: "gateway" },
+    limit: { context: 1_000_000, output: 131_072 },
+  })
+  f.setPrincipal("c")
+  await Bun.sleep(0)
+  f.set("route", "id", "ses_b")
+  expect(local.model.current()?.id).toBe("c")
+  f.set(
+    "models",
+    f.state.models.map((model) => ({ ...model })),
+  )
+  f.set("route", "id", "ses_a")
+  expect(local.model.current()).toMatchObject({
+    id: "glm-5.3-flash",
+    provider: { id: "gateway" },
+    limit: { context: 1_000_000 },
+  })
 })
 
 test("global and agent model/variant defaults react to configuration replacement", () => {
