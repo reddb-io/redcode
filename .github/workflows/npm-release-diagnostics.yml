@@ -1,0 +1,34 @@
+name: npm release diagnostics
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    if: github.repository == 'reddb-io/redcode' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: red-release
+    steps:
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+      - name: Install the release's npm version
+        env:
+          NODE_AUTH_TOKEN: ""
+        run: npm install --global npm@11.20.0
+      - name: Inspect release identity and staged versions without publishing
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm whoami --registry https://registry.npmjs.org
+          npm stage list '@reddb-io/redcode-linux-arm64-musl'
+          npm stage list '@reddb-io/redcode'
+          npm view '@reddb-io/redcode-linux-arm64-musl@0.84.1' version --prefer-online || true
+          npm view '@reddb-io/redcode@0.84.1' version --prefer-online || true
