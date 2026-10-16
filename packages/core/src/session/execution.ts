@@ -67,6 +67,7 @@ export const layer: Layer.Layer<
     const bus = yield* Bus.Service
     const jobs = yield* Job.Service
     const db = (yield* Database.Service).db
+    const owned = new Set<SessionSchema.ID>()
     const reportLifecycle = <A>(sessionID: SessionSchema.ID, effect: Effect.Effect<A>) =>
       effect.pipe(
         Effect.tapCause((cause) =>
@@ -115,50 +116,70 @@ export const layer: Layer.Layer<
     })
     const coordinator = yield* SessionRunCoordinator.make<SessionSchema.ID, SessionRunner.RunError, InterruptReason>({
       started: (sessionID) =>
-        reportLifecycle(
-          sessionID,
-          bus.publish(SessionEvent.Execution.Started, { sessionID }, claimOnCommit(sessionID)),
-        ),
+        Effect.gen(function* () {
+          if (!(yield* store.acquireExecution(sessionID)))
+            return yield* Effect.fail(
+              new Error("This session is executing on another server. Connect to that server to control it."),
+            )
+          owned.add(sessionID)
+          yield* reportLifecycle(
+            sessionID,
+            bus.publish(SessionEvent.Execution.Started, { sessionID }, claimOnCommit(sessionID)),
+          )
+        }),
       drain: (sessionID, force, promotable) => drain(sessionID, force, undefined, promotable),
       // One terminal observation per busy period, covering every coalesced drain.
       settled: (sessionID, exit, reason) =>
-        reportLifecycle(
-          sessionID,
-          Effect.gen(function* () {
-            const outcome = terminal(exit, reason)
-            if (outcome.type === "succeeded") {
-              yield* bus.publish(SessionEvent.Execution.Succeeded, { sessionID }, releaseOnCommit(sessionID))
-              const session = yield* store.get(sessionID)
-              if (session)
-                yield* HookRuntime.Service.use((hooks) =>
-                  hooks.run({ event: "Stop", session_id: sessionID, matcher: "stop" }),
-                ).pipe(
-                  instances.provide(session),
-                  // A Location removed during the run has no hooks left to observe the stop.
-                  Effect.catchTag("FileSystem.DirectoryNotFoundError", () => Effect.void),
+        Effect.suspend(() => {
+          if (!owned.has(sessionID)) return Effect.void
+          return reportLifecycle(
+            sessionID,
+            Effect.gen(function* () {
+              const outcome = terminal(exit, reason)
+              if (outcome.type === "succeeded") {
+                yield* bus.publish(SessionEvent.Execution.Succeeded, { sessionID }, releaseOnCommit(sessionID))
+                const session = yield* store.get(sessionID)
+                if (session)
+                  yield* HookRuntime.Service.use((hooks) =>
+                    hooks.run({ event: "Stop", session_id: sessionID, matcher: "stop" }),
+                  ).pipe(
+                    instances.provide(session),
+                    // A Location removed during the run has no hooks left to observe the stop.
+                    Effect.catchTag("FileSystem.DirectoryNotFoundError", () => Effect.void),
+                  )
+                return
+              }
+              if (outcome.type === "interrupted") {
+                // Deliberate stops release the claim; shutdown keeps it for restart continuity.
+                if (outcome.reason !== "shutdown") yield* jobs.cancel(sessionID)
+                yield* bus.publish(
+                  SessionEvent.Execution.Interrupted,
+                  { sessionID, reason: outcome.reason },
+                  outcome.reason === "shutdown" ? undefined : releaseOnCommit(sessionID),
                 )
-              return
-            }
-            if (outcome.type === "interrupted") {
-              // Deliberate stops release the claim; shutdown keeps it for restart continuity.
-              if (outcome.reason !== "shutdown") yield* jobs.cancel(sessionID)
+                return
+              }
               yield* bus.publish(
-                SessionEvent.Execution.Interrupted,
-                { sessionID, reason: outcome.reason },
-                outcome.reason === "shutdown" ? undefined : releaseOnCommit(sessionID),
+                SessionEvent.Execution.Failed,
+                {
+                  sessionID,
+                  error: outcome.error,
+                },
+                releaseOnCommit(sessionID),
               )
-              return
-            }
-            yield* bus.publish(
-              SessionEvent.Execution.Failed,
-              {
-                sessionID,
-                error: outcome.error,
-              },
-              releaseOnCommit(sessionID),
-            )
-          }),
-        ),
+            }),
+          ).pipe(
+            Effect.ensuring(
+              store.releaseExecution(sessionID).pipe(
+                Effect.andThen(
+                  Effect.sync(() => {
+                    owned.delete(sessionID)
+                  }),
+                ),
+              ),
+            ),
+          )
+        }),
     })
 
     return Service.of({

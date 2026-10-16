@@ -38,6 +38,8 @@ import { HookGroup } from "./groups/hook.js"
 import { LSPGroup } from "./groups/lsp.js"
 import { FormatterGroup } from "./groups/formatter.js"
 import { WorkersGroup } from "./groups/workers.js"
+import { WorkerLeaseGroup } from "./groups/worker-lease.js"
+import { WorkerFencing } from "./middleware/worker-fencing.js"
 import { HarnessGroup } from "./groups/harness.js"
 import { AgentToolsGroup } from "./groups/agent-tools.js"
 import { UsageReporterGroup } from "./groups/usage-reporter.js"
@@ -107,6 +109,7 @@ type ApiGroups<
   | typeof CredentialGroup
   | typeof IntelligenceGroup
   | typeof WorkersGroup
+  | typeof WorkerLeaseGroup
   | typeof HarnessGroup
   | typeof AgentToolsGroup
   | typeof UsageReporterGroup
@@ -134,14 +137,17 @@ export type Api<
   "server",
   HttpApiGroup.AddMiddleware<
     HttpApiGroup.AddMiddleware<
-      ApiGroups<
-        LocationId,
-        LocationService,
-        FormLocationId,
-        FormLocationService,
-        SessionLocationId,
-        SessionLocationService,
-        Event
+      HttpApiGroup.AddMiddleware<
+        ApiGroups<
+          LocationId,
+          LocationService,
+          FormLocationId,
+          FormLocationService,
+          SessionLocationId,
+          SessionLocationService,
+          Event
+        >,
+        WorkerFencing
       >,
       Authorization
     >,
@@ -208,6 +214,7 @@ const makeApiFromGroup = <
     .add(FormatterGroup.middleware(locationMiddleware))
     .add(IntelligenceGroup)
     .add(WorkersGroup)
+    .add(WorkerLeaseGroup)
     .add(HarnessGroup)
     .add(AgentToolsGroup)
     .add(UsageReporterGroup)
@@ -220,6 +227,7 @@ const makeApiFromGroup = <
         description: "Experimental HttpApi surface for selected instance routes.",
       }),
     )
+    .middleware(WorkerFencing)
     .middleware(Authorization)
     .middleware(SchemaErrorMiddleware)
 

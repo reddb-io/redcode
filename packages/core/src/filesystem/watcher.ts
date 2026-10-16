@@ -6,7 +6,7 @@ import type ParcelWatcher from "@parcel/watcher"
 import { FileSystem } from "@opencode/schema/filesystem"
 import { makeGlobalNode } from "@opencode/util/effect/app-node"
 import { FSUtil } from "@opencode/util/fs-util"
-import { Cause, Context, Effect, Layer, PubSub, RcMap, Schema, Stream } from "effect"
+import { Cause, Clock, Context, Effect, Layer, PubSub, RcMap, Schema, Stream } from "effect"
 import { lazy } from "../util/lazy.js"
 import { watch } from "node:fs"
 import path from "path"
@@ -89,17 +89,35 @@ export const layer = (options?: Options) =>
         return Service.of({ subscribe: () => Effect.succeed(Stream.empty) })
       }
       const native = yield* Native
+      const failed = new Map<string, number>()
 
       // Keys compare structurally (effect Equal), so equivalent watches share one entry.
       const watchers = yield* RcMap.make({
         lookup: (key: Target) =>
           Effect.gen(function* () {
             const pubsub = yield* Effect.acquireRelease(PubSub.unbounded<Update>(), (pubsub) => PubSub.shutdown(pubsub))
+            const identity = JSON.stringify(key)
+            const now = yield* Clock.currentTimeMillis
+            if ((failed.get(identity) ?? 0) > now) {
+              yield* PubSub.shutdown(pubsub)
+              return pubsub
+            }
             const subscription = yield* Effect.acquireRelease(
-              native.subscribe({
-                ...key,
-                publish: (update) => PubSub.publishUnsafe(pubsub, update),
-              }),
+              native
+                .subscribe({
+                  ...key,
+                  publish: (update) => PubSub.publishUnsafe(pubsub, update),
+                })
+                .pipe(
+                  Effect.catchCause((cause) =>
+                    Cause.hasInterruptsOnly(cause)
+                      ? Effect.failCause(cause)
+                      : Effect.logWarning("watcher unavailable; acquisition is cooling down", {
+                          path: key.target,
+                          cause: Cause.pretty(cause),
+                        }).pipe(Effect.as(undefined)),
+                  ),
+                ),
               (subscription) =>
                 subscription
                   ? Effect.promise(() => subscription.unsubscribe()).pipe(
@@ -112,10 +130,14 @@ export const layer = (options?: Options) =>
               { interruptible: true },
             )
             if (!subscription) {
+              for (const [id, until] of failed) if (until <= now) failed.delete(id)
+              if (failed.size >= 1024) failed.delete(failed.keys().next().value!)
+              failed.set(identity, (yield* Clock.currentTimeMillis) + 60_000)
               // Unsupported backend: end subscriber streams instead of hanging them.
               yield* PubSub.shutdown(pubsub)
               return pubsub
             }
+            failed.delete(identity)
             yield* Effect.logInfo("watcher started", {
               path: key.target,
               type: key.type,

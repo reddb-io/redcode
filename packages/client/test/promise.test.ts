@@ -40,6 +40,7 @@ test("exposes every standard HTTP API group", () => {
     "formatter",
     "server.intelligence",
     "workers",
+    "workerLease",
     "harness",
     "agentTools",
     "usageReporter",

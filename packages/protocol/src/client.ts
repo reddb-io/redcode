@@ -68,6 +68,7 @@ export const groupNames = {
   "server.lsp": "lsp",
   "server.formatter": "formatter",
   "server.workers": "workers",
+  "server.workerLease": "workerLease",
   "server.workerEnvironments": "workerEnvironments",
   "server.harness": "harness",
   "server.agentTools": "agentTools",

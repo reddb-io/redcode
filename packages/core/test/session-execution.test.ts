@@ -8,6 +8,7 @@ import { Bus } from "@opencode/core/bus"
 import { Instance } from "@opencode/core/instance/service"
 import { Job } from "@opencode/core/job"
 import { KV } from "@opencode/core/kv"
+import { HookRuntime } from "@opencode/core/hook"
 import { LocationServiceMap } from "@opencode/core/location-service-map"
 import type { LocationServices } from "@opencode/core/location-services"
 import { Project } from "@opencode/core/project"
@@ -33,6 +34,46 @@ const it = testEffect(
 )
 
 describe("SessionExecution lifecycle", () => {
+  it.effect("only one runtime claims a session, and recovery waits until that owner ends", () =>
+    Effect.gen(function* () {
+      const database = yield* Database.Service
+      const sessionID = Session.ID.make("ses_execution_owner")
+      yield* seedSessions(database, [sessionID], { time_suspended: Date.now() })
+      const firstScope = yield* Scope.make()
+      const secondScope = yield* Scope.make()
+      yield* Effect.addFinalizer(() => Scope.close(firstScope, Exit.void))
+      yield* Effect.addFinalizer(() => Scope.close(secondScope, Exit.void))
+      const runtime = (scope: Scope.Closeable) =>
+        Layer.buildWithScope(
+          AppNodeBuilder.build(SessionStore.node, [
+            Database.node.replace(Layer.succeed(Database.Service, database)),
+          ]).pipe(Layer.fresh),
+          scope,
+        )
+      const first = Context.get(yield* runtime(firstScope), SessionStore.Service)
+      const second = Context.get(yield* runtime(secondScope), SessionStore.Service)
+      const claims = yield* Effect.all([first.acquireExecution(sessionID), second.acquireExecution(sessionID)], {
+        concurrency: "unbounded",
+      })
+      expect(claims.filter(Boolean)).toHaveLength(1)
+      const loser = claims[0] ? second : first
+      expect(yield* loser.executionOwnedElsewhere(sessionID)).toBe(true)
+      expect(yield* loser.listSuspended()).toEqual([])
+      yield* loser.releaseExecution(sessionID)
+      expect(yield* loser.acquireExecution(sessionID)).toBe(false)
+      yield* Scope.close(claims[0] ? firstScope : secondScope, Exit.void)
+      expect(yield* loser.listSuspended()).toEqual([sessionID])
+      expect(yield* loser.acquireExecution(sessionID)).toBe(true)
+      yield* loser.releaseExecution(sessionID)
+      const row = yield* database.db
+        .select({ owner: SessionTable.execution_owner })
+        .from(SessionTable)
+        .where(eq(SessionTable.id, sessionID))
+        .get()
+      expect(row?.owner).toBeNull()
+    }),
+  )
+
   test("classifies success and typed failure terminals", () => {
     expect(SessionExecution.terminal(Exit.succeed(undefined))).toEqual({ type: "succeeded" })
     expect(
@@ -222,20 +263,20 @@ describe("SessionExecution lifecycle", () => {
       const sessionIDs = Array.from({ length: 5 }, (_, index) => Session.ID.make(`ses_resume_concurrent_${index}`))
       yield* seedSessions(database, sessionIDs, { time_suspended: Date.now() })
 
-      const fourStarted = yield* Deferred.make<void>()
+      const allStarted = yield* Deferred.make<void>()
       const started: Session.ID[] = []
       const scope = yield* Scope.make()
       yield* Effect.addFinalizer(() => Scope.close(scope, Exit.void))
       const context = yield* buildExecution(scope, ({ sessionID }) =>
         Effect.sync(() => {
           started.push(sessionID)
-          if (started.length === 4) Deferred.doneUnsafe(fourStarted, Effect.void)
+          if (started.length === sessionIDs.length) Deferred.doneUnsafe(allStarted, Effect.void)
         }).pipe(Effect.andThen(Effect.never)),
       )
       const execution = Context.get(context, SessionExecution.Service)
       const restart = Context.get(context, SessionRestart.Service)
       yield* restart.resumeSuspendedSessions.pipe(Effect.forkIn(scope))
-      yield* Deferred.await(fourStarted)
+      yield* Deferred.await(allStarted)
 
       expect([...(yield* execution.active)].toSorted()).toEqual(sessionIDs.toSorted())
     }),
@@ -1271,7 +1312,9 @@ function seedInbox(
           id: SessionMessage.ID.create(),
           session_id: sessionID,
           type: entry.type,
-          payload: (entry.type === "user" ? { text: "queued prompt" } : {}) as (typeof SessionInboxTable.$inferInsert)["payload"],
+          payload: (entry.type === "user"
+            ? { text: "queued prompt" }
+            : {}) as (typeof SessionInboxTable.$inferInsert)["payload"],
           delivery: entry.delivery,
           enqueued_seq: index + 1,
         }
@@ -1347,6 +1390,19 @@ function buildExecution(
     const store = yield* SessionStore.Service
     const jobs = overrideJobs ?? (yield* Job.Service)
     const sessions = yield* Session.Service
+    // These restart fixtures retain the previous Job object in this test process.
+    // Mark its persisted running records as belonging to a disposed runtime, as
+    // process death would. Live-owner exclusion is exercised separately below.
+    if (overrideJobs) {
+      const kv = yield* KV.Service
+      for (const pending of yield* overrideJobs.pendingBackground) {
+        if (!pending.owner || pending.status !== "running") continue
+        yield* kv.set(`job.background/${pending.notificationID}`, {
+          ...pending,
+          owner: { ...pending.owner, token: `disposed:${pending.owner.token}` },
+        })
+      }
+    }
     const sessionLayer = Layer.effect(
       Session.Service,
       Effect.gen(function* () {
@@ -1372,7 +1428,19 @@ function buildExecution(
         () =>
           // The local execution test only needs the Session runner from the Location graph.
           // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
-          runner as unknown as Layer.Layer<LocationServices, FileSystem.DirectoryNotFoundError>,
+          Layer.merge(
+            runner,
+            Layer.succeed(
+              HookRuntime.Service,
+              HookRuntime.Service.of({
+                run: () => Effect.succeed({ continue: true }),
+                status: () => Effect.die("unused"),
+                trust: () => Effect.die("unused"),
+                revoke: () => Effect.die("unused"),
+                importClaude: () => Effect.die("unused"),
+              }),
+            ),
+          ) as unknown as Layer.Layer<LocationServices, FileSystem.DirectoryNotFoundError>,
       ),
     )
     return yield* Layer.buildWithScope(

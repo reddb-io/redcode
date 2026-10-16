@@ -35,6 +35,7 @@ import { HookHandler } from "./handlers/hook"
 import { LSPHandler } from "./handlers/lsp"
 import { FormatterHandler } from "./handlers/formatter"
 import { WorkersHandler } from "./handlers/workers"
+import { WorkerLeaseHandler } from "./handlers/worker-lease"
 import { HarnessHandler } from "./handlers/harness"
 import { AgentToolsHandler } from "./handlers/agent-tools"
 import { UsageReporterHandler } from "./handlers/usage-reporter"
@@ -77,6 +78,7 @@ export const handlers = Layer.mergeAll(
   LSPHandler,
   FormatterHandler,
   WorkersHandler,
+  WorkerLeaseHandler,
   HarnessHandler,
   AgentToolsHandler,
   UsageReporterHandler,

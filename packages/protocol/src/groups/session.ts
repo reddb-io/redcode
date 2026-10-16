@@ -1,4 +1,5 @@
 import { SessionMessage } from "@opencode/schema/session-message"
+import { SessionObservation } from "@opencode/schema/session-observation"
 import { SessionInbox } from "@opencode/schema/session-inbox"
 import { PromptInput } from "@opencode/schema/prompt-input"
 import { Session } from "@opencode/schema/session"
@@ -425,6 +426,21 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI ext
       ),
     )
     .add(
+      HttpApiEndpoint.get("session.observation", "/api/session/:sessionID/observation", {
+        params: { sessionID: Session.ID },
+        query: { messageID: SessionMessage.ID },
+        success: Schema.Struct({ data: SessionObservation.Info }),
+        error: [SessionNotFoundError, LocationNotFoundError],
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "session.observation",
+          summary: "Observe an admitted task",
+          description:
+            "Read the original user-message receipt and execution state in one snapshot, without conversation content. Does not admit or resume work.",
+        }),
+      ),
+    )
+    .add(
       HttpApiEndpoint.post("session.share", "/api/session/:sessionID/share", {
         params: { sessionID: Session.ID },
         success: Schema.Struct({ data: PublicSessionInfo }),
@@ -540,7 +556,7 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI ext
         params: { sessionID: Session.ID },
         payload: SessionGoal.Input,
         success: Schema.Struct({ data: SessionGoal.Info }),
-        error: [SessionNotFoundError, InvalidRequestError],
+        error: [SessionNotFoundError, SessionBusyError, InvalidRequestError],
       })
         .middleware(sessionLocationMiddleware)
         .annotateMerge(
@@ -557,7 +573,7 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI ext
         params: { sessionID: Session.ID },
         payload: SessionGoal.Control,
         success: Schema.Struct({ data: Schema.NullOr(SessionGoal.Info) }),
-        error: [SessionNotFoundError, InvalidRequestError],
+        error: [SessionNotFoundError, SessionBusyError, InvalidRequestError],
       })
         .middleware(sessionLocationMiddleware)
         .annotateMerge(
@@ -815,7 +831,7 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI ext
       HttpApiEndpoint.delete("session.remove", "/api/session/:sessionID", {
         params: { sessionID: Session.ID },
         success: HttpApiSchema.NoContent,
-        error: SessionNotFoundError,
+        error: [SessionNotFoundError, SessionBusyError],
       }).annotateMerge(
         OpenApi.annotations({
           identifier: "session.remove",
@@ -917,7 +933,7 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI ext
         params: { sessionID: Session.ID },
         payload: Schema.Struct({ ...Location.PublicRef.fields, delivery: SessionInbox.Delivery.pipe(Schema.optional) }),
         success: HttpApiSchema.NoContent,
-        error: [SessionNotFoundError, InvalidRequestError],
+        error: [SessionNotFoundError, SessionBusyError, InvalidRequestError],
       }).annotateMerge(
         OpenApi.annotations({
           identifier: "session.move",
@@ -937,7 +953,7 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI ext
           resume: Schema.Boolean.pipe(Schema.optional),
         }),
         success: Schema.Struct({ data: SessionInbox.User }),
-        error: [ConflictError, InvalidRequestError, SessionNotFoundError],
+        error: [ConflictError, InvalidRequestError, SessionNotFoundError, SessionBusyError],
       })
         .middleware(sessionLocationMiddleware)
         .annotateMerge(
@@ -958,7 +974,7 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI ext
           delivery: SessionInbox.Delivery.pipe(Schema.optional),
         }),
         success: HttpApiSchema.NoContent,
-        error: [SessionNotFoundError, CommandNotFoundError, CommandExecutionError],
+        error: [SessionNotFoundError, CommandNotFoundError, CommandExecutionError, SessionBusyError],
       })
         .middleware(sessionLocationMiddleware)
         .annotateMerge(
@@ -1000,7 +1016,7 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI ext
           resume: Schema.Boolean.pipe(Schema.optional),
         }),
         success: Schema.Struct({ data: SessionInbox.Synthetic }),
-        error: [ConflictError, SessionNotFoundError],
+        error: [ConflictError, SessionNotFoundError, SessionBusyError],
       })
         .middleware(sessionLocationMiddleware)
         .annotateMerge(
@@ -1019,7 +1035,7 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI ext
           command: Schema.String,
         }),
         success: HttpApiSchema.NoContent,
-        error: SessionNotFoundError,
+        error: [SessionNotFoundError, SessionBusyError],
       })
         .middleware(sessionLocationMiddleware)
         .annotateMerge(
@@ -1043,7 +1059,7 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI ext
           }),
         }),
         success: Schema.Struct({ data: SessionInbox.Compaction }),
-        error: [ConflictError, SessionNotFoundError],
+        error: [ConflictError, SessionNotFoundError, SessionBusyError],
       })
         .middleware(sessionLocationMiddleware)
         .annotateMerge(
@@ -1289,7 +1305,7 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI ext
       HttpApiEndpoint.post("session.wake", "/api/session/:sessionID/wake", {
         params: { sessionID: Session.ID },
         success: HttpApiSchema.NoContent,
-        error: SessionNotFoundError,
+        error: [SessionNotFoundError, SessionBusyError],
       })
         .middleware(sessionLocationMiddleware)
         .annotateMerge(
@@ -1310,7 +1326,7 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI ext
             description: "Whether an active execution owned by this OpenCode process was interrupted.",
           }),
         }).annotate({ identifier: "SessionInterruptResponse" }),
-        error: SessionNotFoundError,
+        error: [SessionNotFoundError, SessionBusyError],
       })
         .middleware(sessionLocationMiddleware)
         .annotateMerge(

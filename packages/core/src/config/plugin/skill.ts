@@ -13,6 +13,7 @@ import { AbsolutePath } from "../../schema.js"
 import { Skill } from "../../skill.js"
 import { SkillDiscovery } from "../../skill/discovery.js"
 import { SkillFile } from "./skill-file.js"
+import { SkillScan } from "./skill-scan.js"
 
 type Source = Skill.DirectorySource | Skill.UrlSource
 
@@ -32,13 +33,19 @@ export const Plugin = define({
     const watches = yield* FiberMap.make<string>()
     const changes = yield* PubSub.sliding<string>(1)
     const lock = Semaphore.makeUnsafe(1)
+    const desired = new Set<string>()
 
     const watch = Effect.fn("ConfigSkillPlugin.watch")(function* (directory: string, type: "file" | "directory") {
       const target = path.resolve(directory)
-      const updates = yield* watcher.subscribe({ path: target, type })
+      const key = `${type}:${target}`
+      desired.add(key)
+      if (FiberMap.hasUnsafe(watches, key)) return
+      const updates = yield* watcher.subscribe(
+        type === "directory" ? { path: target, type, ignore: SkillScan.ignore } : { path: target, type },
+      )
       yield* FiberMap.run(
         watches,
-        `${type}:${target}`,
+        key,
         updates.pipe(Stream.runForEach((update) => PubSub.publish(changes, update.path).pipe(Effect.asVoid))),
         { onlyIfMissing: true, startImmediately: true },
       )
@@ -117,12 +124,9 @@ export const Plugin = define({
       const roots = (yield* Effect.forEach(directories, watchDirectory)).flat()
       const skills: Skill.Info[] = []
       for (const directory of directories) {
-        const files = yield* fs
-          .scan("{*.md,**/SKILL.md}", { cwd: directory, absolute: true, include: "file", symlink: true, dot: true })
-          .pipe(Effect.orElseSucceed(() => [] as string[]))
-        for (const filepath of files.toSorted()) {
+        for (const filepath of yield* SkillScan.scan(directory)) {
           const resolved = yield* fs.realPath(filepath).pipe(Effect.orElseSucceed(() => filepath))
-          if (!roots.some((root) => FSUtil.contains(root, resolved))) yield* watch(path.dirname(resolved), "directory")
+          if (!roots.some((root) => FSUtil.contains(root, resolved))) yield* watch(resolved, "file")
           const content = yield* fs.readFileStringSafe(filepath).pipe(Effect.orElseSucceed(() => undefined))
           if (!content) continue
           const parsed = SkillFile.parse(directory, filepath, content)
@@ -148,13 +152,16 @@ export const Plugin = define({
 
     const refresh = Effect.fn("ConfigSkillPlugin.refresh")(
       function* (file?: string) {
-        yield* FiberMap.clear(watches)
+        desired.clear()
         const skills = new Map<Skill.ID, Skill.Info>()
         const current = sources()
         for (const source of current) {
           for (const skill of yield* load(source)) skills.set(skill.id, skill)
         }
         loaded.skills = Array.from(skills.values())
+        for (const [key] of watches) {
+          if (!desired.has(key)) yield* FiberMap.remove(watches, key)
+        }
         if (file) {
           yield* Effect.logInfo("skills rescanned", {
             file,

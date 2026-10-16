@@ -12,6 +12,14 @@ const sources: ConfigDiscovery.Sources = {
   claude: [AbsolutePath.make(path.join(project, ".claude"))],
   agents: [AbsolutePath.make(path.join(project, ".agents"))],
 }
+const ignored = [
+  "node_modules",
+  ".git",
+  ".venv",
+  "venv",
+  "__pycache__",
+  "**/{node_modules,.git,.venv,venv,__pycache__}/**",
+]
 
 describe("ConfigWatch.plan", () => {
   test("excludes service state from the current global root without excluding config sources", () => {
@@ -21,7 +29,7 @@ describe("ConfigWatch.plan", () => {
     expect(Array.from(plan.values())).toContainEqual({
       path: global,
       type: "directory",
-      ignore: ["node_modules", ".git", "**/{node_modules,.git}/**", "data", "cache", "state"],
+      ignore: [...ignored, "data", "cache", "state"],
     })
     expect(Array.from(plan.values())).toContainEqual({
       path: project,
@@ -36,7 +44,7 @@ describe("ConfigWatch.plan", () => {
     expect(Array.from(plan.values())).toContainEqual({
       path: root,
       type: "directory",
-      ignore: ["node_modules", ".git", "**/{node_modules,.git}/**", path.join("runtime", "data")],
+      ignore: [...ignored, path.join("runtime", "data")],
     })
   })
 
@@ -47,7 +55,7 @@ describe("ConfigWatch.plan", () => {
     ])
     const present = ConfigWatch.plan({ ...sources, project: [{ path: root, present: true }] })
     expect(Array.from(present.values())).toEqual([
-      { path: root, type: "directory", ignore: ["node_modules", ".git", "**/{node_modules,.git}/**"] },
+      { path: root, type: "directory", ignore: ignored },
       ...missing.values(),
     ])
   })

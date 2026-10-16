@@ -27,13 +27,13 @@ Use `--standalone` for a private server instead.
 
 **Slash commands belong in a TUI conversation**, not in your shell or Console:
 
-| TUI command                                 | Purpose                                                                                                                       |
-| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `/design`, `/design-open`, `/design-review` | Enter Design, resume it, or open its review.                                                                                  |
-| `/goal`                                     | Start, inspect or control a goal.                                                                                             |
-| `/vault`, `/monitors`, `/worktrees`         | Inspect project secrets, observations and worktrees.                                                                          |
-| `/intelligence`, `/reasoning`               | Inspect evaluations or change the session's reasoning mode.                                                                   |
-| `/budget`, `/compact`                       | Set an optional budget or compact context.                                                                                    |
+| TUI command                                 | Purpose                                                     |
+| ------------------------------------------- | ----------------------------------------------------------- |
+| `/design`, `/design-open`, `/design-review` | Enter Design, resume it, or open its review.                |
+| `/goal`                                     | Start, inspect or control a goal.                           |
+| `/vault`, `/monitors`, `/worktrees`         | Inspect project secrets, observations and worktrees.        |
+| `/intelligence`, `/reasoning`               | Inspect evaluations or change the session's reasoning mode. |
+| `/budget`, `/compact`                       | Set an optional budget or compact context.                  |
 
 ## Desktop
 
@@ -84,6 +84,34 @@ separate process/listener. Port **4096** in the examples is an explicitly chosen
 
 `redcode web` starts an agent server and opens its browser client. ACP uses `redcode acp`;
 MCP integrations are managed through `redcode mcp`. None of these commands starts Console.
+
+### Recovery and session execution
+
+CLI, Desktop and web use the same server-side recovery rules. When a provider account returns a
+rate limit, its requests share a cooldown on that server. Repeated upstream failures also open a
+temporary circuit. After the cooldown, one request checks recovery before other sessions resume.
+HTTP and WebSocket requests participate in this coordination; distinct credentials remain separate.
+The existing session retry status shows the wait. A client reconnects with backoff and jitter after
+losing its event stream; reconnecting does not start another execution of the session.
+
+MCP startup admits at most four connections at a time per server. Transient startup failures and
+unexpected connection closures get three recovery attempts with increasing delays. A connection
+that survives for a minute resets that budget. Authentication and permanent startup errors require
+an explicit correction; **Connect** or **Restart** starts a fresh recovery budget. Disconnecting cancels
+pending recovery. Provider and integration catalog events refresh only catalogs already requested by
+the client, avoiding plugin and MCP startup for unopened directories.
+
+Skill discovery skips hidden and dependency directories, stops below each skill's `SKILL.md`, limits
+directory depth to six and reuses unchanged watches. An exhausted native watcher enters a one-minute
+cooldown before a new subscription can attempt acquisition again. Watcher failures are logged;
+they do not trigger an unbounded resubscription loop.
+
+An executing session records its owning local runtime in the database. Another process using that
+database receives a `409 SessionBusyError` when it attempts execution or execution control; connect
+to the original server to continue. Restart recovery skips live owners and can reclaim ownership
+after a local owner exits. This protects local processes, not a cluster sharing SQLite: workers keep
+independent databases, and external tool side effects can still repeat after a crash. See the
+[worker execution model](distributed-workers.md).
 
 ## Usage reporting
 

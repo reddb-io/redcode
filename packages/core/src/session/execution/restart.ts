@@ -13,6 +13,7 @@ import { SessionSchema } from "../schema.js"
 import { SessionStore } from "../store.js"
 import { ShellResult } from "../../shell/result.js"
 import { SubagentCompletion } from "../subagent-completion.js"
+import { ExecutionOwner } from "../../execution-owner.js"
 
 const CONTINUE_AFTER_SERVER_RESTART =
   "The server restarted while you were working. Continue from where you left off without repeating completed work."
@@ -54,13 +55,11 @@ export interface Interface {
  * Recovery is at-least-once: local coordination prevents concurrent drains,
  * not repeated external side effects after a crash.
  *
- * The sweep assumes every orphaned claim's owner is dead. The managed-server
- * protocol guarantees this: a successor is only spawned after the previous
- * process is confirmed dead (client service `kill`/`evict` poll the PID), the
- * registration lock admits one managed server at a time, and unregistered
- * servers sharing the database never sweep. The service is inert until called
- * — the managed server invokes it at boot; embedders may call it from their
- * own start-up.
+ * The sweep skips live execution and background-job owners, and acquires the
+ * durable local ownership gate before resuming. This also protects embedders
+ * and independently started servers sharing the database on the same host.
+ * A foreign-host owner is kept intact; this is not a distributed lease.
+ * The service is inert until called by managed-server boot or an embedder.
  */
 export class Service extends Context.Service<Service, Interface>()("@opencode/SessionRestart") {}
 
@@ -77,10 +76,14 @@ export const layer = (options?: Options) =>
       const maxAttempts = options?.maxAttempts ?? DEFAULT_MAX_ATTEMPTS
 
       const prepareResume = Effect.fnUntraced(function* (sessionID: SessionSchema.ID) {
+        if (!(yield* store.acquireExecution(sessionID))) return false
         // Durable before the resume runs, so a crash inside the resumed turn is
         // counted by the next sweep and the budget cannot be dodged.
         const attempts = yield* store.countResume(sessionID)
-        if (attempts === undefined) return false
+        if (attempts === undefined) {
+          yield* store.releaseExecution(sessionID)
+          return false
+        }
         if (attempts > maxAttempts) {
           // Terminalize instead: the release hook clears the claim and resets the
           // counter atomically with the terminal event.
@@ -89,6 +92,7 @@ export const layer = (options?: Options) =>
             { sessionID, error: RESUME_EXHAUSTED },
             { commit: () => store.release(sessionID) },
           )
+          yield* store.releaseExecution(sessionID)
           return false
         }
         yield* bus.publish(SessionEvent.Synthetic, {
@@ -162,7 +166,9 @@ export const layer = (options?: Options) =>
           return
         }
         if (yield* execution.isActive(recovery.childSessionID)) return
+        if (yield* store.executionOwnedElsewhere(recovery.parentSessionID)) return
         if (!(yield* prepareResume(recovery.childSessionID))) {
+          if (yield* store.executionOwnedElsewhere(recovery.childSessionID)) return
           yield* notify({ status: "error", error: RESUME_EXHAUSTED.message })
           return
         }
@@ -198,7 +204,9 @@ export const layer = (options?: Options) =>
       return Service.of({
         resumeSuspendedSessions: Effect.gen(function* () {
           const active = yield* execution.active
-          const pending = yield* jobs.pendingBackground
+          const pending = (yield* jobs.pendingBackground).filter(
+            (job) => job.status !== "running" || !job.owner || !ExecutionOwner.alive(job.owner),
+          )
           const children = pending.flatMap((background) =>
             background.status === "running" && background.recovery.kind === "subagent"
               ? [background.recovery.childSessionID]

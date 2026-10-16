@@ -2171,6 +2171,57 @@ test("adds, disconnects, and reconnects MCP servers at runtime", async () => {
   )
 })
 
+testEffect(Layer.empty).effect(
+  "MCP crash recovery backs off, stops after three attempts, and honors disconnect",
+  () =>
+    Effect.gen(function* () {
+      const temporary = yield* tmpdirScoped()
+      const counter = path.join(temporary.path, "starts")
+      yield* Effect.gen(function* () {
+        const service = yield* Mcp.Service
+        const failed = Effect.gen(function* () {
+          for (let attempt = 0; attempt < 1000; attempt++) {
+            if ((yield* service.servers()).find((item) => item.name === "crashing")?.status.status === "failed") return
+            yield* Effect.promise(() => Bun.sleep(5))
+          }
+          return yield* Effect.die("MCP did not report its process exit")
+        })
+        yield* service.add(
+          "crashing",
+          new ConfigMCP.Local({
+            type: "local",
+            command: [process.execPath, path.join(import.meta.dir, "fixture/mcp-crash.ts"), counter],
+          }),
+        )
+        for (const [index, delay] of [1_200, 4_800, 19_200].entries()) {
+          yield* failed
+          expect(Number(yield* Effect.promise(() => Bun.file(counter).text()))).toBe(index + 1)
+          yield* Effect.yieldNow
+          yield* TestClock.adjust(delay)
+          // Starting the next child performs real process I/O, independently of TestClock.
+          for (let attempt = 0; attempt < 1000; attempt++) {
+            const count = Number(yield* Effect.promise(() => Bun.file(counter).text()))
+            if (count === index + 2) break
+            if (attempt === 999) return yield* Effect.die("MCP recovery never started")
+            yield* Effect.promise(() => Bun.sleep(5))
+          }
+        }
+        yield* failed
+        yield* TestClock.adjust("10 minutes")
+        expect(Number(yield* Effect.promise(() => Bun.file(counter).text()))).toBe(4)
+        yield* service.connect("crashing")
+        yield* failed
+        yield* service.disconnect("crashing")
+        yield* TestClock.adjust("10 minutes")
+        expect(Number(yield* Effect.promise(() => Bun.file(counter).text()))).toBe(5)
+        expect((yield* service.servers()).find((item) => item.name === "crashing")?.status.status).toBe("disabled")
+      }).pipe(
+        Effect.provide(resourceMcpLayer(new ConfigMCP.Local({ type: "local", command: ["not-used"], disabled: true }))),
+      )
+    }),
+  15_000,
+)
+
 test("reconnects enabled MCP servers and resets runtime overrides to the configuration", async () => {
   const fixture = [process.execPath, path.join(import.meta.dir, "fixture/mcp-output-schema.ts")]
   await Effect.runPromise(

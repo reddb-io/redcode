@@ -4,6 +4,7 @@ import path from "path"
 import { FSUtil } from "@opencode/util/fs-util"
 import type { Watcher } from "../filesystem/watcher.js"
 import type { ConfigDiscovery } from "./discovery.js"
+import { SkillScan } from "./plugin/skill-scan.js"
 
 export function plan(sources: ConfigDiscovery.Sources, runtimeDirectories: readonly string[] = []) {
   // Redcode's old global config shares a home with its live databases and caches.
@@ -31,9 +32,8 @@ export function plan(sources: ConfigDiscovery.Sources, runtimeDirectories: reado
         path: directory,
         type: "directory" as const,
         ignore: [
-          "node_modules",
-          ".git",
-          "**/{node_modules,.git}/**",
+          ...SkillScan.ignoredDirectories,
+          `**/{${SkillScan.ignoredDirectories.join(",")}}/**`,
           ...(directory === sources.legacyGlobal ? legacyState : []),
           // The shipped Redcode layout shares config with live service state.
           // Exclude the actual runtime paths, including non-default nested paths.

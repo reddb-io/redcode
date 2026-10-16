@@ -2,6 +2,7 @@
 import { OpenCode } from "@opencode/client/promise"
 import { WorkerPool } from "../src/workers/pool"
 import { Worker } from "@opencode/schema/worker"
+import { Schema } from "effect"
 import { mkdir } from "node:fs/promises"
 import { randomUUID } from "node:crypto"
 import path from "node:path"
@@ -342,6 +343,7 @@ try {
       snapshot.batches
         .find((item) => item.id === batch.id)
         ?.report?.tasks.every((task) => task.state === "succeeded") ?? false,
+    90_000,
   )
   const original = completed.batches.find((item) => item.id === batch.id)!
   check(
@@ -373,10 +375,11 @@ try {
   const savedArtifact = await coordinator.workers.collect({ id: batch.id, task: "central-b" })
   check("Collected patches survive worker removal", savedArtifact.patch.includes("worker-b completed central-b"))
   await Bun.write(path.join(output, "coordinator.json"), JSON.stringify(completed, null, 2))
-  async function central(predicate: (snapshot: Worker.Snapshot) => boolean) {
-    const deadline = Date.now() + 30_000
+  async function central(predicate: (snapshot: Worker.Snapshot) => boolean, timeoutMs = 30_000) {
+    // A new coordinator incarnation must outlive the previous worker-side lease.
+    const deadline = Date.now() + timeoutMs
     while (Date.now() < deadline) {
-      const snapshot = await coordinator.workers.list()
+      const snapshot = Schema.decodeUnknownSync(Worker.Snapshot)(await coordinator.workers.list())
       if (predicate(snapshot)) return snapshot
       await Bun.sleep(100)
     }

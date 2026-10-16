@@ -14,8 +14,10 @@ describe("public import boundaries", () => {
   test("isolates each public entrypoint", async () => {
     const root = await bundleInputs("@opencode/client", "browser")
 
-    expect(within(root.all, effect)).toEqual([])
-    expect(within(root.all, schema)).toEqual([])
+    // Public runtime contracts (Harness, AgentTools, UsageReporter and
+    // WorkerEnvironment) deliberately expose Schema constructors at the root.
+    expect(within(root.all, effect).length).toBeGreaterThan(0)
+    expect(within(root.all, schema).length).toBeGreaterThan(0)
     expect(within(root.all, protocol)).toEqual([])
     expect(within(root.all, core)).toEqual([])
     expect(within(root.all, server)).toEqual([])

@@ -1835,6 +1835,22 @@ export const dict = {
   "remoteWorkers.waiting": "Open the assigned worker's session to answer its permission or input request.",
   "remoteWorkers.response": "Worker response",
   "remoteWorkers.recover": "Recover on the original worker",
+  "remoteWorkers.recoveryReason.unreachable":
+    "The worker cannot be observed. Its session and checkout remain reserved; the task has not been sent again.",
+  "remoteWorkers.recoveryReason.admission-missing":
+    "The worker has not confirmed the original task. Recover using the same worker and task IDs.",
+  "remoteWorkers.recoveryReason.execution-idle":
+    "The task was accepted, but execution is idle. Recover on the original worker to continue.",
+  "remoteWorkers.recoveryReason.execution-suspended":
+    "Execution stopped before completion. The session and checkout remain reserved for recovery.",
+  "remoteWorkers.recoveryReason.placement-changed":
+    "The session moved to a different checkout. Restore its original location before recovering this task.",
+  "remoteWorkers.recoveryReason.lease-lost":
+    "Coordinator access could not be renewed. Work may still be running; the checkout stays reserved. Recover on the original worker.",
+  "remoteWorkers.queue.lease-unsupported": "Update this worker to support checkout reservation before sending tasks.",
+  "remoteWorkers.queue.lease-busy": "Another coordinator has reserved this checkout. Waiting for it to finish.",
+  "remoteWorkers.lease.held": "Checkout reserved · generation {{generation}}",
+  "remoteWorkers.lease.released": "Checkout released",
   "remoteWorkers.review": "Review changes",
   "remoteWorkers.changes": "Collected changes",
   "remoteWorkers.reviewDescription":

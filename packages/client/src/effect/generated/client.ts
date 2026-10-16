@@ -48,6 +48,8 @@ import type {
   SessionActiveOutput,
   SessionGetInput,
   SessionGetOutput,
+  SessionObservationInput,
+  SessionObservationOutput,
   SessionShareInput,
   SessionShareOutput,
   SessionUnshareInput,
@@ -416,6 +418,12 @@ import type {
   WorkersRecoverOutput,
   WorkersCollectInput,
   WorkersCollectOutput,
+  WorkerLeaseAcquireInput,
+  WorkerLeaseAcquireOutput,
+  WorkerLeaseRenewInput,
+  WorkerLeaseRenewOutput,
+  WorkerLeaseReleaseInput,
+  WorkerLeaseReleaseOutput,
   HarnessReconcileInput,
   HarnessReconcileOutput,
   HarnessInstallInput,
@@ -720,6 +728,17 @@ const EndpointSessionActive = (raw: RawClient["server.session"]) => () =>
 const EndpointSessionGet = (raw: RawClient["server.session"]) => (input: SessionGetInput) =>
   preserveEffect<SessionGetOutput>()(
     raw["session.get"]({ params: { sessionID: input["sessionID"] } }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
+const EndpointSessionObservation = (raw: RawClient["server.session"]) => (input: SessionObservationInput) =>
+  preserveEffect<SessionObservationOutput>()(
+    raw["session.observation"]({
+      params: { sessionID: input["sessionID"] },
+      query: { messageID: input["messageID"] },
+    }).pipe(
       Effect.mapError(mapClientError),
       Effect.map((value) => value.data),
     ),
@@ -1350,6 +1369,7 @@ const adaptGroupSession = (raw: RawClient["server.session"]) => ({
   export: EndpointSessionExport(raw),
   active: EndpointSessionActive(raw),
   get: EndpointSessionGet(raw),
+  observation: EndpointSessionObservation(raw),
   share: EndpointSessionShare(raw),
   unshare: EndpointSessionUnshare(raw),
   rebindShare: EndpointSessionRebindShare(raw),
@@ -2522,6 +2542,58 @@ const adaptGroupWorkers = (raw: RawClient["server.workers"]) => ({
   collect: EndpointWorkersCollect(raw),
 })
 
+const EndpointWorkerLeaseAcquire = (raw: RawClient["server.workerLease"]) => (input: WorkerLeaseAcquireInput) =>
+  preserveEffect<WorkerLeaseAcquireOutput>()(
+    raw["workerLease.acquire"]({
+      payload: {
+        directory: input["directory"],
+        owner: input["owner"],
+        sessionID: input["sessionID"],
+        messageID: input["messageID"],
+        holder: input["holder"],
+        recover: input["recover"],
+      },
+    }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const EndpointWorkerLeaseRenew = (raw: RawClient["server.workerLease"]) => (input: WorkerLeaseRenewInput) =>
+  preserveEffect<WorkerLeaseRenewOutput>()(
+    raw["workerLease.renew"]({
+      payload: {
+        directory: input["directory"],
+        owner: input["owner"],
+        sessionID: input["sessionID"],
+        messageID: input["messageID"],
+        holder: input["holder"],
+        generation: input["generation"],
+        expiresAt: input["expiresAt"],
+        remainingMs: input["remainingMs"],
+      },
+    }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const EndpointWorkerLeaseRelease = (raw: RawClient["server.workerLease"]) => (input: WorkerLeaseReleaseInput) =>
+  preserveEffect<WorkerLeaseReleaseOutput>()(
+    raw["workerLease.release"]({
+      payload: {
+        directory: input["directory"],
+        owner: input["owner"],
+        sessionID: input["sessionID"],
+        messageID: input["messageID"],
+        holder: input["holder"],
+        generation: input["generation"],
+        expiresAt: input["expiresAt"],
+        remainingMs: input["remainingMs"],
+      },
+    }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const adaptGroupWorkerLease = (raw: RawClient["server.workerLease"]) => ({
+  acquire: EndpointWorkerLeaseAcquire(raw),
+  renew: EndpointWorkerLeaseRenew(raw),
+  release: EndpointWorkerLeaseRelease(raw),
+})
+
 const EndpointHarnessReconcile = (raw: RawClient["server.harness"]) => (input: HarnessReconcileInput) =>
   preserveEffect<HarnessReconcileOutput>()(
     raw["harness.reconcile"]({ params: { runID: input["runID"] } }).pipe(Effect.mapError(mapClientError)),
@@ -2760,7 +2832,7 @@ const EndpointWorkerEnvironmentsRequest =
     preserveEffect<WorkerEnvironmentsRequestOutput>()(
       raw["workerEnvironments.request"]({
         params: { id: input["id"] },
-        payload: { method: input["method"], path: input["path"], body: input["body"] },
+        payload: { method: input["method"], path: input["path"], body: input["body"], fence: input["fence"] },
       }).pipe(Effect.mapError(mapClientError)),
     )
 
@@ -2865,6 +2937,7 @@ const adaptClient = (raw: RawClient) => ({
   formatter: adaptGroupFormatter(raw["server.formatter"]),
   "server.intelligence": adaptGroupServerIntelligence(raw["server.intelligence"]),
   workers: adaptGroupWorkers(raw["server.workers"]),
+  workerLease: adaptGroupWorkerLease(raw["server.workerLease"]),
   harness: adaptGroupHarness(raw["server.harness"]),
   agentTools: adaptGroupAgentTools(raw["server.agentTools"]),
   usageReporter: adaptGroupUsageReporter(raw["server.usageReporter"]),

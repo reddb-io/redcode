@@ -1,6 +1,7 @@
 export * as WorkerEnvironment from "./worker-environment.js"
 
 import { Schema } from "effect"
+import { WorkerLease } from "./worker-lease.js"
 import { optional } from "./schema.js"
 import { Worker } from "./worker.js"
 
@@ -45,6 +46,7 @@ export const Request = Schema.Struct({
   method: Schema.Literals(["GET", "POST", "PUT", "PATCH", "DELETE"]),
   path: Text,
   body: optional(Schema.String.check(Schema.isMaxLength(1048576))),
+  fence: optional(WorkerLease.Fence),
 }).annotate({ identifier: "WorkerEnvironment.Request" })
 export interface Request extends Schema.Schema.Type<typeof Request> {}
 export const Response = Schema.Struct({ status: Schema.Int, body: Schema.String, contentType: Schema.String }).annotate({

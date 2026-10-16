@@ -71,6 +71,8 @@ import { InfrastructureAccess } from "./infrastructure-access"
 import { layer } from "./location"
 import { formLocationLayer } from "./middleware/form-location"
 import { sessionLocationLayer } from "./middleware/session-location"
+import { workerFencingLayer } from "./middleware/worker-fencing"
+import { WorkerLease } from "@opencode/core/worker-lease"
 import { ServerInfo } from "./server-info"
 import { DesignBrowser } from "./design-browser"
 import { LegacyRpcApi } from "@opencode/protocol/groups/legacy-rpc"
@@ -91,6 +93,7 @@ const applicationServiceNodes = [
   Worktree.node,
   Session.node,
   SessionStore.node,
+  WorkerLease.node,
   SessionExecution.node,
   SessionUsageMirror.node,
   Reporter.node,
@@ -283,6 +286,7 @@ function makeRoutes<AuthError, AuthServices>(
       ).pipe(
         Layer.provide(formLocationLayer),
         Layer.provide(sessionLocationLayer),
+        Layer.provide(workerFencingLayer),
         Layer.provide(layer),
         Layer.provide(authorizationLayer),
         Layer.provide(InfrastructureAccess.layer(options.access)),

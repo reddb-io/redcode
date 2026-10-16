@@ -4,7 +4,44 @@ Available in Redcode 0.76.0 and later. CLI and server coordination have Docker a
 
 The desktop's **Agents → Remote workers** panel and `redcode workers` coordinate independent Redcode servers through the authenticated V2 API. Each server owns its own database, sessions, tools, provider configuration and checkout. A registered checkout is one execution slot. Tasks in different slots run concurrently; tasks in the same slot run sequentially.
 
-This is a batch coordinator, not clustered ownership of a shared Session database. Do not share SQLite files between workers. Use one registry on one coordinator for this initial version; another registry or unrelated client is not governed by its checkout reservations.
+Each worker arbitrates its own checkout reservations, including requests from different coordinators and registries. Workers keep independent databases; do not share SQLite files between hosts. A worker database is the authority for that worker, rather than a shared Session execution cluster.
+
+## Checkout ownership and reconnection
+
+Sending a task first reserves its existing checkout on the worker. The worker records the original
+Session and message IDs, a task owner, the coordinator's current runtime identity and an increasing
+generation. The reservation is written before creating the Session or admitting its prompt. Two
+coordinators asking the same worker for that checkout cannot both acquire it. Paths are resolved on
+the worker, so alternate spellings and symlink aliases do not create extra slots.
+
+Coordinator control expires after 60 seconds and is renewed while observing work, normally every
+20 seconds. The worker validates the current fence on mutating Session requests, including queued
+input, permissions, forms and interruption. Requests already admitted hold the fence until their
+handler finishes. A superseded generation cannot control or restart its old assignment, including
+through the ordinary Session endpoints. Managed assignments retain their Session and placement;
+moving, deleting or forking them through those endpoints is blocked.
+
+Expiration revokes commands; it does not free the checkout or stop an agent that may still be
+working. Pending input, suspended execution and active child Sessions retain the reservation.
+Release requires confirmation from the worker that no admitted or executing work remains. Only
+then may another task acquire the checkout, with a new generation. An ambiguous response retains
+the original assignment instead of dispatching it elsewhere.
+
+After a coordinator restart, its new runtime waits for its predecessor's deadline before reclaiming
+observation of the original assignment. This changes the fence without replaying a prompt or waking
+the agent. Unconfirmed admission or an idle interrupted task still uses **Recover on the original
+worker**, or `redcode workers recover`, with the saved registry, manifest and report. Keep those
+files: their original IDs are needed for recovery. A permanently abandoned reservation is deliberately
+not reassigned to a different task just because its timer expired.
+
+The CLI reports reservation generations and release alongside task state. **Agents → Remote workers**
+shows the same state, explains a lost lease and offers recovery in desktop and web. Older workers
+without the fencing capability leave new tasks queued with an upgrade explanation. Existing
+unfenced assignments can still be observed; their ambiguous prompts are never automatically resent.
+
+These guarantees apply to Redcode's native worker Session controls. They do not sandbox arbitrary
+host processes, make tool side effects exactly once or aggregate resource budgets across
+coordinators. Use isolated workspaces for OS resource limits and checkout isolation.
 
 ## Connecting from the web client
 
@@ -62,7 +99,11 @@ For running/waiting tasks, **Send instruction** uses the worker's native Redcode
 
 The coordinator persists its registry and batch journals under `<Redcode state>/workers`. Each committed batch includes its original registry snapshot for historical patch collection. Worker secrets use the server's existing credential store; registry/API responses contain credential references, never the supplied password. Removing a worker removes its credential and is blocked as soon as a batch is accepted. Credentials follow the existing store's protection; this feature does not add credential encryption. Optional Console organization authorization is described in [infrastructure access](console-infrastructure.md).
 
-An ownership lease prevents two server processes from operating the same coordinator directory. On Linux, lock metadata also records the boot ID and process start time so a container restart that reuses its PID can recover immediately. After restart, the coordinator observes saved assignments rather than automatically replaying ambiguous prompts. **Recover on the original worker** explicitly retries with the original placement and admission IDs. The lease is local coordination, not clustered execution ownership or failover fencing.
+A local ownership lock prevents two server processes from operating the same coordinator directory.
+On Linux, its metadata also records the boot ID and process start time so a container restart that
+reuses its PID can reclaim that local lock. The worker-side checkout lease is separate: a new
+coordinator runtime must also wait for the previous remote lease deadline before recovering its
+saved assignments. Neither mechanism automatically replays ambiguous prompts.
 
 For terminal tasks, **Review changes** collects the recorded turn's file diffs and lets you download its text patch. Collected artifacts are cached on the coordinator and remain reviewable after a worker is removed. Collection never applies a patch to the local project. Initial collection still needs the worker and its credential; collect results before removing that worker.
 
@@ -248,12 +289,25 @@ States:
 | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `queued`                             | No worker assignment yet. `queueReason` explains offline workers, busy checkouts or unsatisfied resource requirements.                                       |
 | `dispatching`                        | Placement and IDs are journaled before remote creation/admission.                                                                                            |
-| `running`                            | No terminal result yet, including when local observation time expires.                                                                                       |
+| `running`                            | The original input is confirmed and the worker reports live execution, including when local observation time expires.                                        |
 | `waiting`                            | The worker Session needs permission or form input. Answer permissions/questions in the coordinator Inbox, or other forms through the worker's normal client. |
 | `unknown`                            | Creation, admission or observation could not be confirmed. Inspect the assigned Session; the coordinator never automatically replays or transfers it.        |
 | `succeeded`, `failed`, `interrupted` | Remote terminal outcome, or a definitive API rejection before admission (`failed`).                                                                          |
 
 An unfinished batch retains the registry across invocations through `<registry>.batch.json`. Checkout reservations last until the corresponding terminal state is observed. Offline/unauthorized workers leave tasks queued. Missing credentials, duplicate task IDs, unmatched capabilities and incompatible journals fail before dispatch. If a saved journal is missing, restore it before dispatching more work; silently recreating it could duplicate already running work.
+
+Current workers report the original message receipt, checkout, execution state and whether input is
+waiting through one observation request. The receipt and durable execution fields come from one
+database snapshot; delivery cannot disappear between a pending-input read and a visible-message read.
+This response contains metadata, without prompts or response content. Older workers use their existing
+inbox, message and activity APIs for compatible confirmation.
+
+An existing Session alone does not confirm a task. A task remains reserved if its input is missing,
+accepted but idle, suspended, or its connection cannot be observed. A terminal result releases the
+checkout only after the original input was delivered, execution is idle and the inbox is empty.
+**Agents → Remote workers** explains the recovery reason beside the task and offers **Recover on
+the original worker**. Repeated checks do not re-admit the prompt, create a replacement Session or
+rewrite an unchanged journal. The CLI reports the same states and reasons.
 
 ## Recover ambiguous admission
 
@@ -263,7 +317,7 @@ Ordinary `run` only observes previously assigned Sessions. If creation or prompt
 redcode workers recover linux-tests --config .\workers.json --manifest .\tasks.json --report .\tasks.run.json --timeout 300
 ```
 
-Recovery retains the original worker, checkout, Session ID and message ID. It creates the Session only after that worker reports it missing, then re-admits the same prompt ID using V2's first-admission-wins contract. The authenticated `POST /api/session/:sessionID/wake` endpoint schedules admitted work without interrupting active execution. Finished Sessions are observed without another prompt. Repeated wakeups coalesce and do not admit new input. Workers need the updated server exposing this endpoint.
+Recovery retains the original worker, checkout, Session ID and message ID. It creates the Session only after that worker reports it missing, then re-admits the same prompt ID using V2's first-admission-wins contract. The authenticated `POST /api/session/:sessionID/wake` endpoint schedules admitted work without interrupting active execution. A finished original admission is observed without another prompt. A Session moved to another checkout must be restored to its original location before recovery. Repeated wakeups coalesce and do not admit new input. Workers need the updated server exposing this endpoint.
 
 An unreachable worker remains `unknown` and retains its checkout. Recovery does not move ambiguous work to another machine, restart intentionally interrupted/failed tasks, or approve permissions. After recovery, the coordinator observes the batch and dispatches eligible queued tasks. Automated failover requires a separate ownership/fencing design; local recovery markers are not clustered ownership or an exactly-once guarantee.
 

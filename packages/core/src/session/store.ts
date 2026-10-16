@@ -2,6 +2,10 @@ export * as SessionStore from "./store.js"
 
 import { and, asc, desc, eq, gt, isNotNull, isNull, like, lt, notInArray, or, sql, type SQL } from "drizzle-orm"
 import { Context, Effect, Layer, Schema } from "effect"
+import { ExecutionOwner } from "../execution-owner.js"
+import { executionGate } from "../worker-lease.js"
+import { FSUtil } from "@opencode/util/fs-util"
+import path from "node:path"
 import { Project } from "@opencode/schema/project"
 import { Workspace } from "@opencode/schema/workspace"
 import { AbsolutePath, PositiveInt, RelativePath } from "@opencode/schema/schema"
@@ -11,7 +15,8 @@ import { SessionHistory } from "./history.js"
 import { MessageDecodeError } from "./error.js"
 import { SessionMessage } from "./message.js"
 import { Session } from "@opencode/schema/session"
-import { SessionMessageTable, SessionTable } from "./sql.js"
+import { SessionObservation } from "@opencode/schema/session-observation"
+import { SessionInboxTable, SessionMessageTable, SessionTable } from "./sql.js"
 import { fromRow } from "./info.js"
 
 const ListInputBase = {
@@ -51,6 +56,13 @@ export type MessagesInput = {
 }
 
 export interface Interface {
+  readonly observation: (
+    sessionID: Session.ID,
+    messageID: SessionMessage.ID,
+  ) => Effect.Effect<Omit<SessionObservation.Info, "waiting"> | undefined>
+  readonly acquireExecution: (sessionID: Session.ID) => Effect.Effect<boolean>
+  readonly releaseExecution: (sessionID: Session.ID) => Effect.Effect<void>
+  readonly executionOwnedElsewhere: (sessionID: Session.ID) => Effect.Effect<boolean>
   readonly get: (sessionID: Session.ID) => Effect.Effect<Session.Info | undefined>
   readonly cacheRoot: (sessionID: Session.ID) => Effect.Effect<Session.ID | undefined>
   readonly list: (input?: ListInput) => Effect.Effect<Session.Info[]>
@@ -91,8 +103,97 @@ const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
     const { db } = yield* Database.Service
+    const owner = yield* ExecutionOwner.make
+    const fs = yield* FSUtil.Service
+    const ownedElsewhere = (value: ExecutionOwner.Info | null) =>
+      value !== null && value.token !== owner.token && ExecutionOwner.alive(value)
 
     return Service.of({
+      observation: Effect.fn("SessionStore.observation")(function* (sessionID, messageID) {
+        // One SQLite snapshot: delivery consumes the inbox and inserts the message
+        // atomically, so separate HTTP reads cannot lose the admission between them.
+        const row = yield* db
+          .select({
+            directory: SessionTable.directory,
+            owner: SessionTable.execution_owner,
+            suspended: SessionTable.time_suspended,
+            outcome: SessionTable.idle_outcome,
+            pending:
+              sql<boolean>`exists(select 1 from ${SessionInboxTable} where ${SessionInboxTable.session_id} = ${SessionTable.id})`.mapWith(
+                Boolean,
+              ),
+            admitted:
+              sql<boolean>`exists(select 1 from ${SessionInboxTable} where ${SessionInboxTable.session_id} = ${SessionTable.id} and ${SessionInboxTable.id} = ${messageID} and ${SessionInboxTable.type} = 'user')`.mapWith(
+                Boolean,
+              ),
+            delivered:
+              sql<boolean>`exists(select 1 from ${SessionMessageTable} where ${SessionMessageTable.session_id} = ${SessionTable.id} and ${SessionMessageTable.id} = ${messageID} and ${SessionMessageTable.type} = 'user')`.mapWith(
+                Boolean,
+              ),
+          })
+          .from(SessionTable)
+          .where(eq(SessionTable.id, sessionID))
+          .get()
+          .pipe(Effect.orDie)
+        if (!row) return undefined
+        return {
+          sessionID,
+          messageID,
+          directory: AbsolutePath.make(row.directory),
+          admission: row.delivered ? "delivered" : row.admitted ? "pending" : "missing",
+          execution:
+            row.owner && ExecutionOwner.alive(row.owner) ? "running" : row.suspended !== null ? "suspended" : "idle",
+          pending: row.pending,
+          outcome: row.outcome ?? undefined,
+        }
+      }),
+      acquireExecution: Effect.fn("SessionStore.acquireExecution")(function* (sessionID) {
+        const row = yield* db
+          .select({ owner: SessionTable.execution_owner, directory: SessionTable.directory })
+          .from(SessionTable)
+          .where(eq(SessionTable.id, sessionID))
+          .get()
+          .pipe(Effect.orDie)
+        if (!row || ownedElsewhere(row.owner)) return false
+        const resolved = yield* fs.resolve(row.directory)
+        const directory =
+          process.platform === "win32" ? path.normalize(resolved).toLowerCase() : path.normalize(resolved)
+        const acquired = yield* db
+          .update(SessionTable)
+          .set({
+            execution_owner: owner,
+            execution_directory: directory,
+            time_updated: sql`${SessionTable.time_updated}`,
+          })
+          .where(
+            and(
+              eq(SessionTable.id, sessionID),
+              executionGate(sessionID, directory),
+              row.owner === null ? isNull(SessionTable.execution_owner) : eq(SessionTable.execution_owner, row.owner),
+            ),
+          )
+          .returning({ id: SessionTable.id })
+          .get()
+          .pipe(Effect.orDie)
+        return acquired !== undefined
+      }),
+      releaseExecution: Effect.fn("SessionStore.releaseExecution")((sessionID) =>
+        db
+          .update(SessionTable)
+          .set({ execution_owner: null, time_updated: sql`${SessionTable.time_updated}` })
+          .where(and(eq(SessionTable.id, sessionID), eq(SessionTable.execution_owner, owner)))
+          .run()
+          .pipe(Effect.orDie, Effect.asVoid),
+      ),
+      executionOwnedElsewhere: Effect.fn("SessionStore.executionOwnedElsewhere")(function* (sessionID) {
+        const row = yield* db
+          .select({ owner: SessionTable.execution_owner })
+          .from(SessionTable)
+          .where(eq(SessionTable.id, sessionID))
+          .get()
+          .pipe(Effect.orDie)
+        return row ? ownedElsewhere(row.owner) : false
+      }),
       get: Effect.fnUntraced(function* (sessionID) {
         const row = yield* db.select().from(SessionTable).where(eq(SessionTable.id, sessionID)).get().pipe(Effect.orDie)
         return row ? fromRow(row) : undefined
@@ -208,13 +309,13 @@ const layer = Layer.effect(
       }),
       listSuspended: Effect.fn("SessionStore.listSuspended")(function* () {
         return yield* db
-          .select({ sessionID: SessionTable.id })
+          .select({ sessionID: SessionTable.id, owner: SessionTable.execution_owner })
           .from(SessionTable)
           .where(and(isNotNull(SessionTable.time_suspended), isNull(SessionTable.parent_id)))
           .all()
           .pipe(
             Effect.orDie,
-            Effect.map((rows) => rows.map((row) => row.sessionID)),
+            Effect.map((rows) => rows.filter((row) => !ownedElsewhere(row.owner)).map((row) => row.sessionID)),
           )
       }),
       claim: Effect.fn("SessionStore.claim")(function* (sessionID) {
@@ -237,10 +338,10 @@ const layer = Layer.effect(
           .run()
           .pipe(Effect.orDie)
       }),
-      releaseChildClaims: Effect.fn("SessionStore.releaseChildClaims")((recoverable) =>
-        db
-          .update(SessionTable)
-          .set({ time_suspended: null, resume_attempts: 0, time_updated: sql`${SessionTable.time_updated}` })
+      releaseChildClaims: Effect.fn("SessionStore.releaseChildClaims")(function* (recoverable) {
+        const rows = yield* db
+          .select({ id: SessionTable.id, owner: SessionTable.execution_owner })
+          .from(SessionTable)
           .where(
             and(
               isNotNull(SessionTable.time_suspended),
@@ -248,9 +349,23 @@ const layer = Layer.effect(
               recoverable.length > 0 ? notInArray(SessionTable.id, Array.from(recoverable)) : undefined,
             ),
           )
-          .run()
-          .pipe(Effect.orDie, Effect.asVoid),
-      ),
+          .all()
+          .pipe(Effect.orDie)
+        for (const row of rows) {
+          if (row.owner && ExecutionOwner.alive(row.owner)) continue
+          yield* db
+            .update(SessionTable)
+            .set({ time_suspended: null, resume_attempts: 0, time_updated: sql`${SessionTable.time_updated}` })
+            .where(
+              and(
+                eq(SessionTable.id, row.id),
+                row.owner === null ? isNull(SessionTable.execution_owner) : eq(SessionTable.execution_owner, row.owner),
+              ),
+            )
+            .run()
+            .pipe(Effect.orDie)
+        }
+      }),
       countResume: Effect.fn("SessionStore.countResume")(function* (sessionID) {
         const row = yield* db
           .update(SessionTable)
@@ -268,4 +383,4 @@ const layer = Layer.effect(
   }),
 )
 
-export const node = makeGlobalNode({ service: Service, layer, deps: [Database.node] })
+export const node = makeGlobalNode({ service: Service, layer, deps: [Database.node, FSUtil.node] })

@@ -41,6 +41,8 @@ import { AbsolutePath, PositiveInt, RelativePath } from "@opencode/schema/schema
 import { Session } from "@opencode/schema/session"
 import { SessionMessage } from "@opencode/schema/session-message"
 import { SessionInbox } from "@opencode/schema/session-inbox"
+import { SessionObservation } from "@opencode/schema/session-observation"
+import { WorkerLease } from "@opencode/schema/worker-lease"
 import { Shell } from "@opencode/schema/shell"
 import { Skill } from "@opencode/schema/skill"
 import { Vcs } from "@opencode/schema/vcs"
@@ -90,6 +92,8 @@ const effectTypeReferences = [
   ...namespaceTypes("Session", "@opencode/schema/session", Session),
   ...namespaceTypes("SessionMessage", "@opencode/schema/session-message", SessionMessage),
   ...namespaceTypes("SessionInbox", "@opencode/schema/session-inbox", SessionInbox),
+  ...namespaceTypes("SessionObservation", "@opencode/schema/session-observation", SessionObservation),
+  ...namespaceTypes("WorkerLease", "@opencode/schema/worker-lease", WorkerLease),
   ...namespaceTypes("Shell", "@opencode/schema/shell", Shell),
   ...namespaceTypes("Skill", "@opencode/schema/skill", Skill),
   ...namespaceTypes("Vcs", "@opencode/schema/vcs", Vcs),

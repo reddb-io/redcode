@@ -212,6 +212,26 @@ const schema: Omit<DatabaseMigration.Migration, "id"> = {
         );
       `)
       yield* tx.run(`
+        CREATE TABLE \`worker_assignment\` (
+          \`session_id\` text PRIMARY KEY,
+          \`directory\` text NOT NULL,
+          \`generation\` integer NOT NULL
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`worker_lease\` (
+          \`directory\` text PRIMARY KEY,
+          \`generation\` integer NOT NULL,
+          \`owner\` text NOT NULL,
+          \`holder\` text NOT NULL,
+          \`session_id\` text NOT NULL,
+          \`message_id\` text NOT NULL,
+          \`expires_at\` integer NOT NULL,
+          \`released\` integer DEFAULT false NOT NULL,
+          \`operations\` text NOT NULL
+        );
+      `)
+      yield* tx.run(`
         CREATE TABLE \`account_state\` (
           \`id\` integer PRIMARY KEY,
           \`active_account_id\` text,
@@ -626,6 +646,8 @@ const schema: Omit<DatabaseMigration.Migration, "id"> = {
           \`time_compacting\` integer,
           \`time_archived\` integer,
           \`time_suspended\` integer,
+          \`execution_owner\` text,
+          \`execution_directory\` text,
           \`resume_attempts\` integer DEFAULT 0 NOT NULL,
           CONSTRAINT \`fk_session_v2_project_id_project_id_fk\` FOREIGN KEY (\`project_id\`) REFERENCES \`project\`(\`id\`) ON DELETE CASCADE
         );

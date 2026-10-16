@@ -6,7 +6,22 @@ import { ephemeral } from "@opencode/schema/event"
 import type { Session } from "@opencode/schema/session"
 import { createHash } from "node:crypto"
 import { isDeepStrictEqual } from "node:util"
-import { Cause, Context, Effect, Exit, FiberSet, Latch, Layer, Schema, Scope, Semaphore, Stream, Types } from "effect"
+import {
+  Cause,
+  Clock,
+  Context,
+  Effect,
+  Exit,
+  FiberMap,
+  FiberSet,
+  Latch,
+  Layer,
+  Schema,
+  Scope,
+  Semaphore,
+  Stream,
+  Types,
+} from "effect"
 import { makeLocationNode } from "@opencode/util/effect/app-node"
 import { Credential } from "../credential.js"
 import { Bus } from "../bus.js"
@@ -82,6 +97,9 @@ const unavailable = (server: ServerName, status: Status) => {
 }
 
 type ServerEntry = {
+  recoveryAttempts?: number
+  connectedAt?: number
+  retryable?: boolean
   readonly config: Mcp.ServerConfig
   status: Status
   readonly startup: Latch.Latch
@@ -99,6 +117,7 @@ const GLOBAL_ELICITATION_SESSION_ID = "global"
 const URL_ELICITATION_FIELD_KEY = "elicitation"
 // Connections remain Location-scoped, but shared remote endpoints should not receive concurrent startup bursts.
 const endpointLoads = KeyedMutex.makeUnsafe<string>()
+const startups = Semaphore.makeUnsafe(4)
 
 type Data = {
   servers: Map<ServerName, Types.DeepMutable<Mcp.ServerConfig>>
@@ -173,6 +192,7 @@ export const layer = (options?: Options) =>
       const fork = yield* FiberSet.makeRuntime<never, void, never>()
 
       const entries = new Map<ServerName, ServerEntry>()
+      const recoveries = yield* FiberMap.make<ServerName>()
       // Serializes lifecycle operations per server. Anything taking this lock from a connection
       // callback must stay forked: lifecycle operations close scopes while holding it, firing onClose.
       const locks = KeyedMutex.makeUnsafe<ServerName>()
@@ -410,14 +430,40 @@ export const layer = (options?: Options) =>
           ),
         )
 
+      const scheduleRecovery = (name: ServerName, entry: ServerEntry): Effect.Effect<void> =>
+        Effect.gen(function* () {
+          if (!entry.retryable || entry.status.status !== "failed") return
+          yield* FiberMap.run(
+            recoveries,
+            name,
+            Effect.gen(function* () {
+              while ((entry.recoveryAttempts ?? 0) < 3) {
+                const delay = 1_000 * 4 ** (entry.recoveryAttempts ?? 0)
+                entry.recoveryAttempts = (entry.recoveryAttempts ?? 0) + 1
+                yield* Effect.sleep(delay + Math.floor(Math.random() * delay * 0.2))
+                yield* Effect.gen(function* () {
+                  if (entries.get(name) !== entry || entry.status.status !== "failed" || !entry.retryable) return
+                  yield* startServer(name, entry)
+                }).pipe(locks.withLock(name))
+                if (entries.get(name) !== entry || entry.status.status !== "failed" || !entry.retryable) return
+              }
+            }),
+            { onlyIfMissing: true, startImmediately: true },
+          )
+        })
+
       const watch = (name: ServerName, entry: ServerEntry, connection: McpClient.Connection) => {
         const live = whenLive(name, entry, connection)
         connection.onClose((reason) =>
           live(
             Effect.gen(function* () {
+              if (entry.connectedAt !== undefined && (yield* Clock.currentTimeMillis) - entry.connectedAt >= 60_000)
+                entry.recoveryAttempts = 0
+              entry.retryable = true
               entry.status = { status: "failed", error: reason }
               yield* stopServer(name, entry)
               yield* bus.publish(McpEvent.StatusChanged, { server: name })
+              yield* scheduleRecovery(name, entry)
             }),
           ),
         )
@@ -435,7 +481,7 @@ export const layer = (options?: Options) =>
         connection.onResourcesChanged(() => live(bus.publish(McpEvent.ResourcesChanged, { server: name })))
       }
 
-      const startServer = (name: ServerName, entry: ServerEntry) =>
+      const startServer = (name: ServerName, entry: ServerEntry): Effect.Effect<void> =>
         Effect.gen(function* () {
           // Announce the handshake so connect() and credential reconnects don't show a stale
           // disabled/failed status for the duration of the connection attempt.
@@ -460,14 +506,17 @@ export const layer = (options?: Options) =>
             Effect.provideService(Environment.Service, environment),
             Scope.provide(scope),
           )
+          const limited = startups.withPermit(load)
           const result = yield* (
-            entry.config.type === "remote" ? endpointLoads.withLock(entry.config.url)(load) : load
+            entry.config.type === "remote" ? endpointLoads.withLock(entry.config.url)(limited) : limited
           ).pipe(Effect.exit)
           if (Exit.isSuccess(result)) {
             entry.client = result.value.connection
             entry.tools = result.value.tools.map((tool) => toTool(name, entry, tool))
             entry.prompts = []
             entry.status = { status: "connected" }
+            entry.connectedAt = yield* Clock.currentTimeMillis
+            entry.retryable = false
             watch(name, entry, result.value.connection)
             yield* Effect.logInfo("mcp connected", { server: name, tools: entry.tools.length })
             // The tool registry reads on this event; a late-connecting server has no other way to appear.
@@ -480,12 +529,15 @@ export const layer = (options?: Options) =>
           yield* Scope.close(scope, Exit.void)
           entry.scope = undefined
           const error = Cause.squash(result.cause)
+          entry.retryable =
+            (error instanceof McpClient.ConnectError && error.retryable === true) || McpClient.isTransient(error)
           entry.status =
             error instanceof McpClient.NeedsAuthError
               ? { status: "needs_auth", error: error.message }
               : { status: "failed", error: error instanceof Error ? error.message : String(error) }
           yield* Effect.logWarning("mcp connect failed", { server: name, status: entry.status })
           yield* bus.publish(McpEvent.StatusChanged, { server: name })
+          yield* scheduleRecovery(name, entry)
         }).pipe(
           Effect.ensuring(entry.startup.open),
           Effect.annotateLogs({ server: name, directory: location.directory, connectionID: crypto.randomUUID() }),
@@ -505,6 +557,7 @@ export const layer = (options?: Options) =>
       })
 
       const disposeServer = Effect.fnUntraced(function* (name: ServerName, entry: ServerEntry) {
+        yield* FiberMap.remove(recoveries, name)
         yield* stopServer(name, entry)
         if (entry.integrationID) owned.delete(entry.integrationID)
         if (entry.registration) yield* entry.registration.dispose
@@ -597,6 +650,8 @@ export const layer = (options?: Options) =>
             const entry = entries.get(name)
             if (!entry || entry.integrationID !== integrationID) return
             if (entry.status.status === "disabled") return
+            yield* FiberMap.remove(recoveries, name)
+            entry.recoveryAttempts = 0
             yield* stopServer(name, entry)
             yield* startServer(name, entry)
           }).pipe(locks.withLock(name))
@@ -650,14 +705,17 @@ export const layer = (options?: Options) =>
         }),
         connect: Effect.fn("MCP.connect")(function* (server) {
           const name = ServerName.make(server)
+          yield* FiberMap.remove(recoveries, name)
           yield* Effect.gen(function* () {
             const target = yield* requireServer(name)
+            target.entry.recoveryAttempts = 0
             yield* stopServer(name, target.entry)
             yield* startServer(name, target.entry)
           }).pipe(locks.withLock(name))
         }),
         disconnect: Effect.fn("MCP.disconnect")(function* (server) {
           const name = ServerName.make(server)
+          yield* FiberMap.remove(recoveries, name)
           yield* Effect.gen(function* () {
             const target = yield* requireServer(name)
             yield* stopServer(name, target.entry)
@@ -678,6 +736,8 @@ export const layer = (options?: Options) =>
               Effect.gen(function* () {
                 // add() or remove() may have replaced or deleted the entry while this waited for the lock.
                 if (entries.get(name) !== entry) return
+                yield* FiberMap.remove(recoveries, name)
+                entry.recoveryAttempts = 0
                 yield* stopServer(name, entry)
                 yield* startServer(name, entry)
               }).pipe(locks.withLock(name)),

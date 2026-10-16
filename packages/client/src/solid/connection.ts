@@ -179,7 +179,9 @@ export function createClientConnection(initialApi: OpenCodeClient, options: Clie
         forced = false
         continue
       }
-      await wait(Math.min(30_000, reconnectDelay * 2 ** Math.min(attempt - 1, 5)), controller.signal)
+      const delay = Math.min(30_000, reconnectDelay * 2 ** Math.min(attempt - 1, 5))
+      // Clients returning from a VPN outage must not probe the server in lockstep.
+      await wait(Math.round(delay * (0.8 + Math.random() * 0.4)), controller.signal)
     }
   }
 
@@ -267,6 +269,7 @@ function errorMessage(error: unknown) {
 
 function wait(delay: number, signal: AbortSignal) {
   return new Promise<void>((resolve) => {
+    if (signal.aborted) return resolve()
     const timer = setTimeout(done, delay)
     signal.addEventListener("abort", done, { once: true })
     function done() {

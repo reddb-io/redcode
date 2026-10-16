@@ -49,7 +49,13 @@ export type FormOption = { value: string; label: string; description?: string }
 
 export type FormExternalField = { key: string; type: "external"; url: string; title?: string; description?: string }
 
-export type ServerInfo = { version: string; pid: number; urls: Array<string>; paths: { tmp: string } }
+export type ServerInfo = {
+  capabilities?: { sessionObservation: boolean; workerLease?: boolean | undefined } | undefined
+  version: string
+  pid: number
+  urls: Array<string>
+  paths: { tmp: string }
+}
 
 export type SystemInfo = {
   version: string
@@ -211,6 +217,17 @@ export type SessionProviderContextProvenance = {
 }
 
 export type SessionActive = { type: "running" }
+
+export type SessionObservationInfo = {
+  sessionID: string
+  messageID: string
+  directory: string
+  admission: "missing" | "pending" | "delivered"
+  execution: "idle" | "running" | "suspended"
+  pending: boolean
+  outcome?: "succeeded" | "failed" | "interrupted"
+  waiting: boolean | null
+}
 
 export type MonitorFileProbe = {
   type: "file"
@@ -953,9 +970,22 @@ export type WorkerState =
   | "failed"
   | "interrupted"
 
+export type WorkerLeaseInfo = {
+  directory: string
+  owner: string
+  sessionID: string
+  messageID: string
+  holder: string
+  generation: number
+  expiresAt: number
+  remainingMs: number
+}
+
 export type WorkerQueueReason =
   | "offline"
   | "checkout-busy"
+  | "lease-unsupported"
+  | "lease-busy"
   | "resources-unavailable"
   | "resources-stale"
   | "cpu-unavailable"
@@ -964,6 +994,14 @@ export type WorkerQueueReason =
   | "cpu-load"
   | "memory-unavailable"
   | "memory-capacity"
+
+export type WorkerRecoveryReason =
+  | "unreachable"
+  | "admission-missing"
+  | "execution-idle"
+  | "execution-suspended"
+  | "placement-changed"
+  | "lease-lost"
 
 export type WorkerResources = { cpu: number; memoryBytes: number; maxCpuUtilization?: number }
 
@@ -2657,8 +2695,13 @@ export type WorkerEntry = {
   directory?: string
   sessionID?: string
   messageID?: string
+  leaseOwner?: string
+  lease?: WorkerLeaseInfo
+  leaseRenewAt?: number
+  leaseReleased?: boolean
   detail?: string
   queueReason?: WorkerQueueReason
+  recoveryReason?: WorkerRecoveryReason
   text?: string
 }
 
@@ -2671,6 +2714,12 @@ export type WorkerTask = {
   model?: { providerID: string; id: string }
   resources?: WorkerResources
 }
+
+export type WorkerLeaseResult =
+  | { state: "acquired"; lease: WorkerLeaseInfo }
+  | { state: "held"; lease: WorkerLeaseInfo }
+  | { state: "released"; lease: WorkerLeaseInfo }
+  | { state: "busy" }
 
 export type HarnessProvider = {
   driver: HarnessDriver
@@ -3988,6 +4037,14 @@ export type ConsoleForbiddenError = { readonly _tag: "ConsoleForbiddenError"; re
 export const isConsoleForbiddenError = (value: unknown): value is ConsoleForbiddenError =>
   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "ConsoleForbiddenError"
 
+export type ConflictError = {
+  readonly _tag: "ConflictError"
+  readonly message: string
+  readonly resource?: string | undefined
+}
+export const isConflictError = (value: unknown): value is ConflictError =>
+  typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "ConflictError"
+
 export type LocationNotFoundError = {
   readonly _tag: "LocationNotFoundError"
   readonly location: { readonly directory: string }
@@ -4035,14 +4092,6 @@ export type SessionNotFoundError = {
 export const isSessionNotFoundError = (value: unknown): value is SessionNotFoundError =>
   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "SessionNotFoundError"
 
-export type ConflictError = {
-  readonly _tag: "ConflictError"
-  readonly message: string
-  readonly resource?: string | undefined
-}
-export const isConflictError = (value: unknown): value is ConflictError =>
-  typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "ConflictError"
-
 export type UnknownError = {
   readonly _tag: "UnknownError"
   readonly message: string
@@ -4058,6 +4107,14 @@ export type MonitorNotFoundError = {
 }
 export const isMonitorNotFoundError = (value: unknown): value is MonitorNotFoundError =>
   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "MonitorNotFoundError"
+
+export type SessionBusyError = {
+  readonly _tag: "SessionBusyError"
+  readonly sessionID: string
+  readonly message: string
+}
+export const isSessionBusyError = (value: unknown): value is SessionBusyError =>
+  typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "SessionBusyError"
 
 export type DesignNotFoundError = {
   readonly _tag: "DesignNotFoundError"
@@ -4099,14 +4156,6 @@ export type SkillNotFoundError = {
 }
 export const isSkillNotFoundError = (value: unknown): value is SkillNotFoundError =>
   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "SkillNotFoundError"
-
-export type SessionBusyError = {
-  readonly _tag: "SessionBusyError"
-  readonly sessionID: string
-  readonly message: string
-}
-export const isSessionBusyError = (value: unknown): value is SessionBusyError =>
-  typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "SessionBusyError"
 
 export type InstructionEntryValueTooLargeError = {
   readonly _tag: "InstructionEntryValueTooLargeError"
@@ -5874,6 +5923,13 @@ export type SessionActiveOutput = ActiveSessionsResponse["data"]
 export type SessionGetInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
 
 export type SessionGetOutput = { data: SessionInfo1 }["data"]
+
+export type SessionObservationInput = {
+  readonly sessionID: { readonly sessionID: string }["sessionID"]
+  readonly messageID: { readonly messageID: string }["messageID"]
+}
+
+export type SessionObservationOutput = { data: SessionObservationInfo }["data"]
 
 export type SessionShareInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
 
@@ -10880,6 +10936,229 @@ export type WorkersCollectInput = {
 
 export type WorkersCollectOutput = WorkerArtifact
 
+export type WorkerLeaseAcquireInput = {
+  readonly directory: {
+    readonly directory: string
+    readonly owner: string
+    readonly sessionID: string
+    readonly messageID: string
+    readonly holder: string
+    readonly recover?: { readonly owner: string; readonly holder: string; readonly generation: number }
+  }["directory"]
+  readonly owner: {
+    readonly directory: string
+    readonly owner: string
+    readonly sessionID: string
+    readonly messageID: string
+    readonly holder: string
+    readonly recover?: { readonly owner: string; readonly holder: string; readonly generation: number }
+  }["owner"]
+  readonly sessionID: {
+    readonly directory: string
+    readonly owner: string
+    readonly sessionID: string
+    readonly messageID: string
+    readonly holder: string
+    readonly recover?: { readonly owner: string; readonly holder: string; readonly generation: number }
+  }["sessionID"]
+  readonly messageID: {
+    readonly directory: string
+    readonly owner: string
+    readonly sessionID: string
+    readonly messageID: string
+    readonly holder: string
+    readonly recover?: { readonly owner: string; readonly holder: string; readonly generation: number }
+  }["messageID"]
+  readonly holder: {
+    readonly directory: string
+    readonly owner: string
+    readonly sessionID: string
+    readonly messageID: string
+    readonly holder: string
+    readonly recover?: { readonly owner: string; readonly holder: string; readonly generation: number }
+  }["holder"]
+  readonly recover?: {
+    readonly directory: string
+    readonly owner: string
+    readonly sessionID: string
+    readonly messageID: string
+    readonly holder: string
+    readonly recover?: { readonly owner: string; readonly holder: string; readonly generation: number }
+  }["recover"]
+}
+
+export type WorkerLeaseAcquireOutput = WorkerLeaseResult
+
+export type WorkerLeaseRenewInput = {
+  readonly directory: {
+    readonly directory: string
+    readonly owner: string
+    readonly sessionID: string
+    readonly messageID: string
+    readonly holder: string
+    readonly generation: number
+    readonly expiresAt: number
+    readonly remainingMs: number
+  }["directory"]
+  readonly owner: {
+    readonly directory: string
+    readonly owner: string
+    readonly sessionID: string
+    readonly messageID: string
+    readonly holder: string
+    readonly generation: number
+    readonly expiresAt: number
+    readonly remainingMs: number
+  }["owner"]
+  readonly sessionID: {
+    readonly directory: string
+    readonly owner: string
+    readonly sessionID: string
+    readonly messageID: string
+    readonly holder: string
+    readonly generation: number
+    readonly expiresAt: number
+    readonly remainingMs: number
+  }["sessionID"]
+  readonly messageID: {
+    readonly directory: string
+    readonly owner: string
+    readonly sessionID: string
+    readonly messageID: string
+    readonly holder: string
+    readonly generation: number
+    readonly expiresAt: number
+    readonly remainingMs: number
+  }["messageID"]
+  readonly holder: {
+    readonly directory: string
+    readonly owner: string
+    readonly sessionID: string
+    readonly messageID: string
+    readonly holder: string
+    readonly generation: number
+    readonly expiresAt: number
+    readonly remainingMs: number
+  }["holder"]
+  readonly generation: {
+    readonly directory: string
+    readonly owner: string
+    readonly sessionID: string
+    readonly messageID: string
+    readonly holder: string
+    readonly generation: number
+    readonly expiresAt: number
+    readonly remainingMs: number
+  }["generation"]
+  readonly expiresAt: {
+    readonly directory: string
+    readonly owner: string
+    readonly sessionID: string
+    readonly messageID: string
+    readonly holder: string
+    readonly generation: number
+    readonly expiresAt: number
+    readonly remainingMs: number
+  }["expiresAt"]
+  readonly remainingMs: {
+    readonly directory: string
+    readonly owner: string
+    readonly sessionID: string
+    readonly messageID: string
+    readonly holder: string
+    readonly generation: number
+    readonly expiresAt: number
+    readonly remainingMs: number
+  }["remainingMs"]
+}
+
+export type WorkerLeaseRenewOutput = WorkerLeaseInfo
+
+export type WorkerLeaseReleaseInput = {
+  readonly directory: {
+    readonly directory: string
+    readonly owner: string
+    readonly sessionID: string
+    readonly messageID: string
+    readonly holder: string
+    readonly generation: number
+    readonly expiresAt: number
+    readonly remainingMs: number
+  }["directory"]
+  readonly owner: {
+    readonly directory: string
+    readonly owner: string
+    readonly sessionID: string
+    readonly messageID: string
+    readonly holder: string
+    readonly generation: number
+    readonly expiresAt: number
+    readonly remainingMs: number
+  }["owner"]
+  readonly sessionID: {
+    readonly directory: string
+    readonly owner: string
+    readonly sessionID: string
+    readonly messageID: string
+    readonly holder: string
+    readonly generation: number
+    readonly expiresAt: number
+    readonly remainingMs: number
+  }["sessionID"]
+  readonly messageID: {
+    readonly directory: string
+    readonly owner: string
+    readonly sessionID: string
+    readonly messageID: string
+    readonly holder: string
+    readonly generation: number
+    readonly expiresAt: number
+    readonly remainingMs: number
+  }["messageID"]
+  readonly holder: {
+    readonly directory: string
+    readonly owner: string
+    readonly sessionID: string
+    readonly messageID: string
+    readonly holder: string
+    readonly generation: number
+    readonly expiresAt: number
+    readonly remainingMs: number
+  }["holder"]
+  readonly generation: {
+    readonly directory: string
+    readonly owner: string
+    readonly sessionID: string
+    readonly messageID: string
+    readonly holder: string
+    readonly generation: number
+    readonly expiresAt: number
+    readonly remainingMs: number
+  }["generation"]
+  readonly expiresAt: {
+    readonly directory: string
+    readonly owner: string
+    readonly sessionID: string
+    readonly messageID: string
+    readonly holder: string
+    readonly generation: number
+    readonly expiresAt: number
+    readonly remainingMs: number
+  }["expiresAt"]
+  readonly remainingMs: {
+    readonly directory: string
+    readonly owner: string
+    readonly sessionID: string
+    readonly messageID: string
+    readonly holder: string
+    readonly generation: number
+    readonly expiresAt: number
+    readonly remainingMs: number
+  }["remainingMs"]
+}
+
+export type WorkerLeaseReleaseOutput = void
+
 export type HarnessReconcileInput = { readonly runID: { readonly runID: string }["runID"] }
 
 export type HarnessReconcileOutput = HarnessRun
@@ -11193,17 +11472,26 @@ export type WorkerEnvironmentsRequestInput = {
     readonly method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
     readonly path: string
     readonly body?: string
+    readonly fence?: { readonly owner: string; readonly holder: string; readonly generation: number }
   }["method"]
   readonly path: {
     readonly method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
     readonly path: string
     readonly body?: string
+    readonly fence?: { readonly owner: string; readonly holder: string; readonly generation: number }
   }["path"]
   readonly body?: {
     readonly method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
     readonly path: string
     readonly body?: string
+    readonly fence?: { readonly owner: string; readonly holder: string; readonly generation: number }
   }["body"]
+  readonly fence?: {
+    readonly method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
+    readonly path: string
+    readonly body?: string
+    readonly fence?: { readonly owner: string; readonly holder: string; readonly generation: number }
+  }["fence"]
 }
 
 export type WorkerEnvironmentsRequestOutput = WorkerEnvironmentResponse

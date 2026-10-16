@@ -1,4 +1,5 @@
 import { Worker } from "@opencode/schema/worker"
+import { Schema } from "effect"
 import { button } from "@reddb-io/design-system/contracts/button"
 import { card } from "@reddb-io/design-system/contracts/card"
 import { input } from "@reddb-io/design-system/contracts/input"
@@ -455,6 +456,22 @@ export function RemoteWorkers(props: { server: ServerConnection.Any }) {
                       <Show when={entry()?.state === "waiting"}>
                         <p>{language.t("remoteWorkers.waiting")}</p>
                       </Show>
+                      <Show when={entry()?.recoveryReason}>
+                        {(reason) => (
+                          <p role="status" class="text-ink-muted">
+                            {language.t(`remoteWorkers.recoveryReason.${reason()}`)}
+                          </p>
+                        )}
+                      </Show>
+                      <Show when={entry()?.lease}>
+                        {(lease) => (
+                          <p class="text-ink-muted">
+                            {entry()?.leaseReleased
+                              ? language.t("remoteWorkers.lease.released")
+                              : language.t("remoteWorkers.lease.held", { generation: lease().generation })}
+                          </p>
+                        )}
+                      </Show>
                       <Show when={task().resources} keyed>
                         {(resources) => (
                           <p class="text-ink-muted">
@@ -598,7 +615,8 @@ export function RemoteWorkers(props: { server: ServerConnection.Any }) {
                           onClick={() =>
                             action(async () => {
                               const result = await api().collect({ id: batch().id, task: task().id })
-                              if (lifetime.active) setState("artifact", result)
+                              if (lifetime.active)
+                                setState("artifact", Schema.decodeUnknownSync(Worker.Artifact)(result))
                             })
                           }
                         >

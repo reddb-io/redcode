@@ -7,8 +7,10 @@ import { KV } from "./kv.js"
 import { Location } from "./location.js"
 import { SessionMessage } from "./session/message.js"
 import { SessionSchema } from "./session/schema.js"
+import { ExecutionOwner } from "./execution-owner.js"
 
 const Background = Schema.Struct({
+  owner: Schema.optionalKey(ExecutionOwner.Info),
   id: Schema.String,
   notificationID: SessionMessage.ID,
   recovery: Schema.Union([
@@ -183,6 +185,7 @@ function decrementSession(input: Map<SessionSchema.ID, number>, sessionID: Sessi
  */
 export const make = Effect.gen(function* () {
   const kv = yield* KV.Service
+  const owner = yield* ExecutionOwner.make
   const state: State = {
     jobs: yield* SynchronizedRef.make(new Map()),
     scope: yield* Scope.Scope,
@@ -204,6 +207,7 @@ export const make = Effect.gen(function* () {
   const persistBackground = Effect.fnUntraced(function* (job: Active) {
     if (!job.recovery || !job.info.notificationID) return
     yield* kv.set(`${backgroundPrefix}${job.info.notificationID}`, {
+      owner,
       id: job.info.id,
       notificationID: job.info.notificationID,
       recovery: job.recovery,

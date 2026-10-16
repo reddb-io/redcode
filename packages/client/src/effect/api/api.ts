@@ -14,6 +14,7 @@ import type { Model } from "@opencode/schema/model"
 import type { DateTime } from "effect"
 import type { Permission } from "@opencode/schema/permission"
 import type { SessionMessage } from "@opencode/schema/session-message"
+import type { SessionObservation } from "@opencode/schema/session-observation"
 import type { Credential } from "@opencode/schema/credential"
 import type { Event } from "@opencode/schema/event"
 import type { Schema } from "effect"
@@ -44,6 +45,7 @@ import type { Hook } from "@opencode/schema/hook"
 import type { LSP } from "@opencode/schema/lsp"
 import type { Formatter } from "@opencode/schema/formatter"
 import type { Worker } from "@opencode/schema/worker"
+import type { WorkerLease } from "@opencode/schema/worker-lease"
 import type { Harness } from "@opencode/schema/harness"
 import type { AgentTools } from "@opencode/schema/agent-tools"
 import type { UsageReporter } from "@opencode/schema/usage-reporter"
@@ -56,6 +58,9 @@ export type ServerAttentionOutput = Attention.Snapshot
 export type ServerAttentionOperation<E = never> = () => Effect.Effect<ServerAttentionOutput, E>
 
 export type ServerInfoOutput = {
+  readonly capabilities?:
+    | { readonly sessionObservation: boolean; readonly workerLease?: boolean | undefined }
+    | undefined
   readonly version: string
   readonly pid: number
   readonly urls: ReadonlyArray<string>
@@ -352,6 +357,12 @@ export type SessionActiveOperation<E = never> = () => Effect.Effect<SessionActiv
 export type SessionGetInput = { readonly sessionID: Session.ID }
 export type SessionGetOutput = Session.Info
 export type SessionGetOperation<E = never> = (input: SessionGetInput) => Effect.Effect<SessionGetOutput, E>
+
+export type SessionObservationInput = { readonly sessionID: Session.ID; readonly messageID: SessionMessage.ID }
+export type SessionObservationOutput = SessionObservation.Info
+export type SessionObservationOperation<E = never> = (
+  input: SessionObservationInput,
+) => Effect.Effect<SessionObservationOutput, E>
 
 export type SessionShareInput = { readonly sessionID: Session.ID }
 export type SessionShareOutput = Session.Info
@@ -3851,6 +3862,7 @@ export interface SessionApi<E = never> {
   readonly export: SessionExportOperation<E>
   readonly active: SessionActiveOperation<E>
   readonly get: SessionGetOperation<E>
+  readonly observation: SessionObservationOperation<E>
   readonly share: SessionShareOperation<E>
   readonly unshare: SessionUnshareOperation<E>
   readonly rebindShare: SessionRebindShareOperation<E>
@@ -5638,6 +5650,55 @@ export interface WorkersApi<E = never> {
   readonly collect: WorkersCollectOperation<E>
 }
 
+export type WorkerLeaseAcquireInput = {
+  readonly directory: AbsolutePath
+  readonly owner: string
+  readonly sessionID: Session.ID
+  readonly messageID: SessionMessage.ID
+  readonly holder: string
+  readonly recover?: WorkerLease.Fence | undefined
+}
+export type WorkerLeaseAcquireOutput = WorkerLease.Result
+export type WorkerLeaseAcquireOperation<E = never> = (
+  input: WorkerLeaseAcquireInput,
+) => Effect.Effect<WorkerLeaseAcquireOutput, E>
+
+export type WorkerLeaseRenewInput = {
+  readonly directory: AbsolutePath
+  readonly owner: string
+  readonly sessionID: Session.ID
+  readonly messageID: SessionMessage.ID
+  readonly holder: string
+  readonly generation: number
+  readonly expiresAt: number
+  readonly remainingMs: number
+}
+export type WorkerLeaseRenewOutput = WorkerLease.Info
+export type WorkerLeaseRenewOperation<E = never> = (
+  input: WorkerLeaseRenewInput,
+) => Effect.Effect<WorkerLeaseRenewOutput, E>
+
+export type WorkerLeaseReleaseInput = {
+  readonly directory: AbsolutePath
+  readonly owner: string
+  readonly sessionID: Session.ID
+  readonly messageID: SessionMessage.ID
+  readonly holder: string
+  readonly generation: number
+  readonly expiresAt: number
+  readonly remainingMs: number
+}
+export type WorkerLeaseReleaseOutput = void
+export type WorkerLeaseReleaseOperation<E = never> = (
+  input: WorkerLeaseReleaseInput,
+) => Effect.Effect<WorkerLeaseReleaseOutput, E>
+
+export interface WorkerLeaseApi<E = never> {
+  readonly acquire: WorkerLeaseAcquireOperation<E>
+  readonly renew: WorkerLeaseRenewOperation<E>
+  readonly release: WorkerLeaseReleaseOperation<E>
+}
+
 export type HarnessReconcileInput = { readonly runID: string }
 export type HarnessReconcileOutput = Harness.Run
 export type HarnessReconcileOperation<E = never> = (
@@ -5865,6 +5926,7 @@ export type WorkerEnvironmentsRequestInput = {
   readonly method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
   readonly path: string
   readonly body?: string | undefined
+  readonly fence?: WorkerLease.Fence | undefined
 }
 export type WorkerEnvironmentsRequestOutput = WorkerEnvironment.Response
 export type WorkerEnvironmentsRequestOperation<E = never> = (
@@ -5974,6 +6036,7 @@ export interface AppApi<E = never> {
   readonly formatter: FormatterApi<E>
   readonly "server.intelligence": ServerIntelligenceApi<E>
   readonly workers: WorkersApi<E>
+  readonly workerLease: WorkerLeaseApi<E>
   readonly harness: HarnessApi<E>
   readonly agentTools: AgentToolsApi<E>
   readonly usageReporter: UsageReporterApi<E>

@@ -1,20 +1,38 @@
 import { Worker } from "@opencode/schema/worker"
 import { expect, test } from "bun:test"
 import { WorkerPool } from "../src/workers/pool"
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdtemp, rm, stat } from "node:fs/promises"
 import path from "node:path"
 import os from "node:os"
 import { isolatedEnv } from "./fixture/environment"
 import { ConsoleForbiddenError } from "@opencode/protocol/console"
 import { HostResources } from "@opencode/schema/host-resources"
+import type { WorkerLease } from "@opencode/schema/worker-lease"
 
 async function fixture(
-  mode: "complete" | "waiting" | "lost" | "running" | "admission-lost" | "create-lost" = "complete",
+  mode:
+    | "complete"
+    | "waiting"
+    | "lost"
+    | "running"
+    | "admission-lost"
+    | "create-lost"
+    | "admission-missing"
+    | "idle-admission" = "complete",
   measurement?: () => HostResources.Snapshot | undefined,
+  modern = true,
+  fenced = true,
 ) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "redcode-workers-"))
-  const sessions = new Map<string, { id: string; location: { directory: string }; outcome?: "succeeded" }>()
+  const sessions = new Map<
+    string,
+    { id: string; location: { directory: string }; outcome?: "succeeded"; pending?: string; started?: boolean }
+  >()
   const admitted = new Set<string>()
+  const receipts = new Map<string, string>()
+  const leases = new Map<string, WorkerLease.Info>()
+  const released = new Set<string>()
+  const leaseState = { denyRenewal: false, acquisitions: 0, renewals: 0, releases: 0 }
   const diffs = [
     {
       file: "../../escaped.txt",
@@ -33,6 +51,10 @@ async function fixture(
     rejected: 0,
     started: [] as number[],
     finished: [] as number[],
+    observations: 0,
+    sessionReads: 0,
+    permissionReads: 0,
+    formReads: 0,
   }
   const server = Bun.serve({
     hostname: "127.0.0.1",
@@ -43,7 +65,71 @@ async function fixture(
         return Response.json({}, { status: 401 })
       }
       const route = new URL(request.url).pathname
-      if (route === "/api/info") return Response.json({ version: "test", pid: 1, urls: [], paths: { tmp: directory } })
+      if (route === "/api/info")
+        return Response.json({
+          version: "test",
+          pid: 1,
+          urls: [],
+          paths: { tmp: directory },
+          capabilities: { sessionObservation: modern, workerLease: fenced },
+        })
+      if (route === "/api/worker-lease/acquire") {
+        leaseState.acquisitions++
+        const input = (await request.json()) as WorkerLease.Acquire
+        const old = leases.get(input.directory)
+        if (old && !released.has(old.sessionID) && (old.owner !== input.owner || old.sessionID !== input.sessionID))
+          return Response.json({ state: "busy" })
+        if (old && old.owner === input.owner && old.sessionID === input.sessionID && released.has(old.sessionID))
+          return Response.json({ state: "released", lease: old })
+        if (old && old.owner === input.owner && old.sessionID === input.sessionID) {
+          if (input.recover && (old.generation !== input.recover.generation || old.holder !== input.recover.holder))
+            return Response.json({ _tag: "ConflictError", message: "Stale fence" }, { status: 409 })
+          if (!input.recover || old.expiresAt > Date.now()) {
+            if (input.recover && old.holder !== input.holder) return Response.json({ state: "busy" })
+            return Response.json({
+              state: old.holder === input.holder ? "acquired" : "held",
+              lease: { ...old, remainingMs: Math.max(0, old.expiresAt - Date.now()) },
+            })
+          }
+        }
+        const lease = {
+          directory: input.directory,
+          owner: input.owner,
+          holder: input.holder,
+          sessionID: input.sessionID,
+          messageID: input.messageID,
+          generation: (old?.generation ?? 0) + 1,
+          expiresAt: Date.now() + 60_000,
+          remainingMs: 60_000,
+        }
+        leases.set(input.directory, lease)
+        return Response.json({ state: "acquired", lease })
+      }
+      if (route === "/api/worker-lease/renew" || route === "/api/worker-lease/release") {
+        const input = (await request.json()) as WorkerLease.Info
+        const old = leases.get(input.directory)
+        if (
+          !old ||
+          old.owner !== input.owner ||
+          old.holder !== input.holder ||
+          old.generation !== input.generation ||
+          leaseState.denyRenewal
+        )
+          return Response.json({ _tag: "ConflictError", message: "Worker lease lost" }, { status: 409 })
+        if (route.endsWith("/renew")) {
+          leaseState.renewals++
+          const lease = { ...old, expiresAt: Date.now() + 60_000, remainingMs: 60_000 }
+          leases.set(input.directory, lease)
+          return Response.json(lease)
+        }
+        leaseState.releases++
+        released.add(old.sessionID)
+        return new Response(null, { status: 204 })
+      }
+      if (route.startsWith("/api/session") && request.method !== "GET") {
+        const fence = request.headers.get("x-redcode-worker-fence")
+        if (!fence) return Response.json({ _tag: "ConflictError", message: "Missing worker fence" }, { status: 409 })
+      }
       if (route === "/api/resources") {
         const sample = measurement?.()
         return sample ? Response.json(sample) : Response.json({}, { status: 404 })
@@ -51,7 +137,9 @@ async function fixture(
       if (route === "/api/session/active")
         return Response.json({
           data: Object.fromEntries(
-            [...sessions].filter(([, session]) => !session.outcome).map(([id]) => [id, { type: "running" }]),
+            [...sessions]
+              .filter(([, session]) => session.started && !session.outcome)
+              .map(([id]) => [id, { type: "running" }]),
           ),
         })
       if (route === "/api/session" && request.method === "POST") {
@@ -71,13 +159,20 @@ async function fixture(
       if (match?.[2] === "prompt") {
         const input = (await request.json()) as { id: string; resume?: boolean }
         counts.prompts++
+        if (mode === "admission-missing" && counts.prompts === 1) return Response.json({}, { status: 503 })
         if (admitted.has(input.id)) return Response.json({ data: { id: input.id, type: "user" } })
         admitted.add(input.id)
+        receipts.set(input.id, session.id)
+        if (input.resume === false || (mode === "idle-admission" && counts.prompts === 1)) {
+          session.pending = input.id
+          return Response.json({ data: { id: input.id, type: "user" } })
+        }
+        session.started = true
         counts.started.push(Date.now())
         counts.active++
         counts.peak = Math.max(counts.peak, counts.active)
         if (mode === "admission-lost" && counts.prompts === 1) return Response.json({}, { status: 503 })
-        if (mode === "complete" || mode === "create-lost" || mode === "admission-lost")
+        if (["complete", "create-lost", "admission-lost", "admission-missing", "idle-admission"].includes(mode))
           setTimeout(() => {
             session.outcome = "succeeded"
             counts.active--
@@ -87,13 +182,54 @@ async function fixture(
       }
       if (match?.[2] === "wake") {
         counts.wakes++
-        if (!session.outcome)
+        if (session.pending) session.outcome = undefined
+        if (!session.outcome) {
+          session.pending = undefined
+          if (!session.started) {
+            session.started = true
+            counts.active++
+            counts.started.push(Date.now())
+          }
           setTimeout(() => {
             session.outcome = "succeeded"
             counts.active--
             counts.finished.push(Date.now())
           }, 40)
+        }
         return new Response(null, { status: 204 })
+      }
+      if (mode === "lost" && counts.prompts) return Response.json({}, { status: 503 })
+      if (match?.[2] === "observation") {
+        counts.observations++
+        const messageID = new URL(request.url).searchParams.get("messageID")!
+        return Response.json({
+          data: {
+            sessionID: session.id,
+            messageID,
+            directory: session.location.directory,
+            admission:
+              receipts.get(messageID) !== session.id
+                ? "missing"
+                : session.pending === messageID
+                  ? "pending"
+                  : "delivered",
+            pending: !!session.pending,
+            execution: session.started && !session.outcome ? "running" : "idle",
+            outcome: session.outcome,
+            waiting: mode === "waiting" && !session.outcome,
+          },
+        })
+      }
+      if (match?.[2] === "inbox")
+        return Response.json({ data: session.pending ? [{ id: session.pending, type: "user" }] : [] })
+      if (match?.[2]?.startsWith("message/")) {
+        const id = match[2].slice("message/".length)
+        return receipts.get(id) === session.id && session.pending !== id
+          ? Response.json({ data: { id, type: "user" } })
+          : Response.json(
+              { _tag: "MessageNotFoundError", messageID: id, message: "Message not found" },
+              { status: 404 },
+            )
       }
       if (match?.[2] === "diff") {
         expect(new URL(request.url).searchParams.get("from")).toBeTruthy()
@@ -104,10 +240,15 @@ async function fixture(
           data: [{ type: "assistant", content: [{ type: "text", text: "remote result" }] }],
           cursor: {},
         })
-      if (match?.[2] === "permission")
+      if (match?.[2] === "permission") {
+        counts.permissionReads++
         return Response.json({ data: mode === "waiting" ? [{ id: "permission_test" }] : [] })
-      if (match?.[2] === "form") return Response.json({ data: [] })
-      if (mode === "lost" && counts.prompts) return Response.json({}, { status: 503 })
+      }
+      if (match?.[2] === "form") {
+        counts.formReads++
+        return Response.json({ data: [] })
+      }
+      counts.sessionReads++
       return Response.json({ data: session })
     },
   })
@@ -133,6 +274,8 @@ async function fixture(
     }),
   )
   return {
+    leases,
+    leaseState,
     directory,
     server,
     sessions,
@@ -161,6 +304,107 @@ async function fixture(
 }
 
 const gib = 1024 ** 3
+test("an older worker stays queued until checkout fencing is supported", async () => {
+  await using host = await fixture("complete", undefined, true, false)
+  const result = await host.run()
+  expect(result.tasks.every((entry) => entry.state === "queued" && entry.queueReason === "lease-unsupported")).toBe(
+    true,
+  )
+  expect(host.counts.creates).toBe(0)
+  expect(host.counts.prompts).toBe(0)
+})
+
+test("independent coordinator registries cannot dispatch into the same reserved checkout", async () => {
+  await using host = await fixture("running")
+  await Bun.write(host.manifest, JSON.stringify({ tasks: [{ id: "one", prompt: "Keep working" }] }))
+  const first = await host.run()
+  const other = {
+    config: path.join(host.directory, "other-workers.json"),
+    manifest: path.join(host.directory, "other-tasks.json"),
+    report: path.join(host.directory, "other-report.json"),
+    environment: { PI_PASSWORD: "test-secret" },
+    timeoutMs: 20,
+    pollMs: 5,
+  }
+  await WorkerPool.add(other.config, host.worker)
+  await Bun.write(other.manifest, JSON.stringify({ tasks: [{ id: "other", prompt: "Competing work" }] }))
+  const blocked = await WorkerPool.run(other)
+  expect(blocked.tasks).toEqual([{ id: "other", state: "queued", queueReason: "lease-busy" }])
+  expect(host.counts.creates).toBe(1)
+  expect(host.counts.prompts).toBe(1)
+  expect(first.tasks[0]?.lease?.generation).toBe(1)
+  host.sessions.get(first.tasks[0]!.sessionID!)!.outcome = "succeeded"
+  const finished = await host.run()
+  expect(finished.tasks[0]?.leaseReleased).toBe(true)
+  const second = await WorkerPool.run(other)
+  expect(second.tasks[0]?.state).toBe("running")
+  expect(second.tasks[0]?.lease?.generation).toBe(2)
+})
+
+test("lost renewal keeps original placement and explicit recovery advances its fence without a new prompt", async () => {
+  await using host = await fixture("running")
+  await Bun.write(host.manifest, JSON.stringify({ tasks: [{ id: "one", prompt: "Keep working" }] }))
+  const first = await host.run()
+  const entry = first.tasks[0]!
+  const expired = { ...entry.lease!, expiresAt: 1 }
+  host.leases.set(entry.directory!, expired)
+  await Bun.write(host.report, JSON.stringify({ ...first, tasks: [{ ...entry, lease: expired, leaseRenewAt: 1 }] }))
+  host.leaseState.denyRenewal = true
+  const lost = await host.run()
+  expect(lost.tasks[0]).toMatchObject({
+    state: "unknown",
+    recoveryReason: "lease-lost",
+    sessionID: entry.sessionID,
+    messageID: entry.messageID,
+  })
+  expect(host.counts.prompts).toBe(1)
+  host.leaseState.denyRenewal = false
+  const recovered = await host.run({ recoverTask: "one" })
+  expect(recovered.tasks[0]).toMatchObject({
+    state: "succeeded",
+    sessionID: entry.sessionID,
+    messageID: entry.messageID,
+    leaseReleased: true,
+  })
+  expect(recovered.tasks[0]?.lease?.generation).toBe(2)
+  expect(host.admitted.size).toBe(1)
+})
+
+test("a restarted coordinator waits for its predecessor and recovers observation without replaying work", async () => {
+  await using host = await fixture("running")
+  await Bun.write(host.manifest, JSON.stringify({ tasks: [{ id: "one", prompt: "Keep working" }] }))
+  const first = await host.run({ coordinator: "runtime-one" })
+  const waiting = await host.run({ coordinator: "runtime-two" })
+  expect(waiting.tasks[0]?.recoveryReason).toBe("lease-lost")
+  expect(host.counts.prompts).toBe(1)
+  const entry = first.tasks[0]!
+  const expired = { ...entry.lease!, expiresAt: 1 }
+  host.leases.set(entry.directory!, expired)
+  await Bun.write(host.report, JSON.stringify({ ...first, tasks: [{ ...entry, lease: expired }] }))
+  const recovered = await host.run({ coordinator: "runtime-two" })
+  expect(recovered.tasks[0]?.lease).toMatchObject({ holder: "runtime-two", generation: 2 })
+  expect(recovered.tasks[0]?.state).toBe("running")
+  expect(host.counts.prompts).toBe(1)
+  expect(host.counts.wakes).toBe(0)
+  const stale = await host.run({ coordinator: "runtime-one" })
+  expect(stale.tasks[0]?.recoveryReason).toBe("lease-lost")
+  expect(host.counts.prompts).toBe(1)
+})
+
+test("renewal scheduling does not compare the worker's absolute clock with the coordinator clock", async () => {
+  await using host = await fixture("running")
+  await Bun.write(host.manifest, JSON.stringify({ tasks: [{ id: "one", prompt: "Keep working" }] }))
+  const report = await host.run()
+  const entry = report.tasks[0]!
+  await Bun.write(
+    host.report,
+    JSON.stringify({ ...report, tasks: [{ ...entry, lease: { ...entry.lease!, expiresAt: 1 } }] }),
+  )
+  expect((await host.run()).tasks[0]?.state).toBe("running")
+  expect(host.leaseState.renewals).toBe(0)
+  expect(host.counts.prompts).toBe(1)
+})
+
 function resources(memory: number, cpu = 4, utilization: number | null = 0.1): HostResources.Snapshot {
   return {
     sampledAt: Date.now(),
@@ -358,6 +602,77 @@ test("explicit recovery resumes lost admission using the original worker and IDs
   await expect(host.run({ recoverTask: "one" })).rejects.toThrow("unknown or dispatching")
 })
 
+for (const modern of [true, false]) {
+  for (const mode of ["admission-missing", "idle-admission"] as const) {
+    test(`${modern ? "current" : "older"} worker retains ${mode} until explicit recovery confirms the original admission`, async () => {
+      await using host = await fixture(mode, undefined, modern)
+      const initial = await host.run()
+      expect(initial.tasks[0]?.state).toBe("unknown")
+      const resumed = await host.run()
+      expect(resumed.tasks[0]).toMatchObject({
+        state: "unknown",
+        recoveryReason: mode === "admission-missing" ? "admission-missing" : "execution-idle",
+      })
+      expect(resumed.tasks[0]?.sessionID).toBe(initial.tasks[0]?.sessionID)
+      expect(resumed.tasks[0]?.messageID).toBe(initial.tasks[0]?.messageID)
+      expect(host.counts.creates).toBe(1)
+      expect(host.counts.prompts).toBe(1)
+      expect(host.counts.wakes).toBe(0)
+      const recovered = await host.run({ recoverTask: "one" })
+      expect(recovered.tasks.map((entry) => entry.state)).toEqual(["succeeded", "succeeded", "succeeded"])
+      expect(recovered.tasks[0]?.sessionID).toBe(initial.tasks[0]?.sessionID)
+      expect(recovered.tasks[0]?.messageID).toBe(initial.tasks[0]?.messageID)
+      expect(recovered.tasks[0]?.recoveryReason).toBeUndefined()
+      expect(host.admitted.size).toBe(3)
+      expect(host.counts.wakes).toBe(1)
+      if (modern) {
+        expect(host.counts.observations).toBeGreaterThan(0)
+        expect(host.counts.sessionReads).toBe(1) // explicit recovery checks placement
+        expect(host.counts.permissionReads + host.counts.formReads).toBe(0)
+      }
+    })
+  }
+}
+
+test("recovery refuses an assigned Session moved to another checkout", async () => {
+  await using host = await fixture("admission-missing")
+  const initial = await host.run()
+  host.sessions.get(initial.tasks[0]!.sessionID!)!.location.directory = "/different-checkout"
+  const recovered = await host.run({ recoverTask: "one" })
+  expect(recovered.tasks[0]).toMatchObject({ state: "unknown", recoveryReason: "placement-changed" })
+  expect(host.counts.prompts).toBe(1)
+  expect(host.counts.wakes).toBe(0)
+  expect(host.counts.creates).toBe(1)
+})
+
+test("an old terminal outcome cannot release a checkout whose original task was never admitted", async () => {
+  await using host = await fixture("admission-missing")
+  const initial = await host.run()
+  host.sessions.get(initial.tasks[0]!.sessionID!)!.outcome = "succeeded"
+  const observed = await host.run()
+  expect(observed.tasks[0]).toMatchObject({ state: "unknown", recoveryReason: "admission-missing" })
+  expect(host.counts.creates).toBe(1)
+  expect(host.counts.prompts).toBe(1)
+  const recovered = await host.run({ recoverTask: "one" })
+  expect(recovered.tasks.every((task) => task.state === "succeeded")).toBe(true)
+  expect(recovered.tasks[0]?.sessionID).toBe(initial.tasks[0]?.sessionID)
+  expect(recovered.tasks[0]?.messageID).toBe(initial.tasks[0]?.messageID)
+  expect(host.counts.wakes).toBe(1)
+  expect(host.admitted.size).toBe(3)
+})
+
+test("recovery accepts equivalent Windows checkout spelling without moving the assignment", async () => {
+  await using host = await fixture("admission-missing")
+  await Bun.write(host.config, JSON.stringify({ workers: [{ ...host.worker, directories: ["C:/work/project/"] }] }))
+  const initial = await host.run()
+  host.sessions.get(initial.tasks[0]!.sessionID!)!.location.directory = "c:\\WORK\\project"
+  const recovered = await host.run({ recoverTask: "one" })
+  expect(recovered.tasks.every((task) => task.state === "succeeded")).toBe(true)
+  expect(recovered.tasks[0]?.directory).toBe("C:/work/project/")
+  expect(recovered.tasks[0]?.sessionID).toBe(initial.tasks[0]?.sessionID)
+  expect(recovered.tasks[0]?.messageID).toBe(initial.tasks[0]?.messageID)
+})
+
 test("explicit recovery recreates an unacknowledged missing Session with the journaled ID", async () => {
   await using host = await fixture("create-lost")
   const initial = await host.run()
@@ -452,6 +767,12 @@ test("lost observation never replays a prompt or releases its checkout", async (
   await using host = await fixture("lost")
   expect((await host.run()).tasks.map((entry) => entry.state)).toEqual(["unknown", "queued", "queued"])
   await host.run()
+  const journal = await stat(host.report, { bigint: true })
+  const registry = await stat(`${host.config}.batch.json`, { bigint: true })
+  await host.run()
+  expect((await stat(host.report, { bigint: true })).mtimeNs).toBe(journal.mtimeNs)
+  expect((await stat(host.report, { bigint: true })).ino).toBe(journal.ino)
+  expect((await stat(`${host.config}.batch.json`, { bigint: true })).mtimeNs).toBe(registry.mtimeNs)
   expect(host.counts.creates).toBe(1)
   expect(host.counts.prompts).toBe(1)
 })

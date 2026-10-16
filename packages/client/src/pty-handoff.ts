@@ -14,7 +14,7 @@ type Sidecar = {
 export async function prepare(file: string, info: Info, timeout: number) {
   const existing = await read(file)
   if (existing !== undefined && existing.expiresAt > Date.now() && same(existing.source, info)) return
-  const { OpenCode } = await import("./promise/index.js")
+  const { OpenCode } = await import("./promise/client.js")
   const client = OpenCode.make({
     baseUrl: info.url,
     headers:

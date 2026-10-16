@@ -1195,8 +1195,7 @@ export function createData(config: CreateDataInput) {
         const ref = JSON.parse(key) as [string, string | null]
         const location = { directory: ref[0], workspaceID: ref[1] ?? undefined }
         if (event.type === "credential.updated") {
-          result.location.integration.invalidate(location)
-          refresh(() => result.location.integration.sync(location))
+          refreshCatalog("integration", location)
           return
         }
         setStore("location", key, (data) => ({
@@ -1212,9 +1211,8 @@ export function createData(config: CreateDataInput) {
             }
           }),
         }))
-        result.location.model.invalidate(location)
-        result.location.provider.invalidate(location)
-        refresh(() => Promise.all([result.location.model.sync(location), result.location.provider.sync(location)]))
+        refreshCatalog("model", location)
+        refreshCatalog("provider", location)
       })
       return
     }
@@ -1223,12 +1221,10 @@ export function createData(config: CreateDataInput) {
     const location = event.location
     switch (event.type) {
       case "provider.updated":
-        result.location.provider.invalidate(location)
-        refresh(() => result.location.provider.sync(location))
+        refreshCatalog("provider", location)
         break
       case "model.updated":
-        result.location.model.invalidate(location)
-        refresh(() => result.location.model.sync(location))
+        refreshCatalog("model", location)
         break
       case "agent.updated":
         result.location.agent.invalidate(location)
@@ -1278,16 +1274,9 @@ export function createData(config: CreateDataInput) {
         refresh(() => result.location.reference.sync(location))
         break
       case "integration.updated":
-        result.location.integration.invalidate(location)
-        result.location.model.invalidate(location)
-        result.location.provider.invalidate(location)
-        refresh(() =>
-          Promise.all([
-            result.location.integration.sync(location),
-            result.location.model.sync(location),
-            result.location.provider.sync(location),
-          ]),
-        )
+        refreshCatalog("integration", location)
+        refreshCatalog("model", location)
+        refreshCatalog("provider", location)
         break
       case "config.updated":
         result.location.config.invalidate(location)
@@ -1315,6 +1304,15 @@ export function createData(config: CreateDataInput) {
   // A cached per-location catalog. `sync` loads once per invalidation, keyed by the
   // effective location, and publishes under the server's canonical location; `alias`
   // also publishes under the requested key when the two differ.
+  function refreshCatalog(field: "integration" | "model" | "provider", location: LocationRef) {
+    const resource = result.location[field]
+    const loaded = resource.list(location) !== undefined || sync.has(`location.${field}:${locationKey(location)}`)
+    resource.invalidate(location)
+    // Global events also describe Locations this client never opened. Loading them
+    // here boots their plugin graphs and MCP processes merely to refresh a catalog.
+    if (loaded) refresh(() => resource.sync(location))
+  }
+
   function locationResource<Field extends keyof LocationData>(
     field: Field,
     load: (location: ReturnType<typeof locationQuery>) => Promise<{ location: LocationRef; data: LocationData[Field] }>,

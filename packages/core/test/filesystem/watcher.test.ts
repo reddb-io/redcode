@@ -3,6 +3,7 @@ import { describe, expect } from "bun:test"
 import fs from "fs/promises"
 import path from "path"
 import { Deferred, Duration, Effect, Fiber, Layer, Option, Schedule, Stream } from "effect"
+import { TestClock } from "effect/testing"
 import { Config } from "@opencode/core/config"
 import { ConfigLocationWatcherPlugin } from "@opencode/core/config/plugin/location-watcher"
 import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
@@ -21,6 +22,7 @@ import { PluginSupervisor } from "@opencode/core/plugin/supervisor"
 import { AbsolutePath } from "@opencode/core/schema"
 import { location } from "../fixture/location"
 import { tmpdir } from "../fixture/tmpdir"
+import { offlineModels } from "../fixture/models"
 import { testEffect } from "../lib/effect"
 import { host } from "../plugin/host"
 
@@ -53,6 +55,36 @@ function countingNative() {
 }
 
 describe("Watcher lifecycle", () => {
+  it.effect("backs off failed native acquisitions and permits a later recovery", () => {
+    let attempts = 0
+    return Effect.gen(function* () {
+      const watcher = yield* Watcher.Service
+      const consume = () =>
+        watcher.subscribe({ path: "/exhausted", type: "directory" }).pipe(Effect.flatMap(Stream.runDrain))
+      yield* consume()
+      yield* consume()
+      yield* consume()
+      expect(attempts).toBe(1)
+      yield* TestClock.adjust("60 seconds")
+      const ready = yield* Deferred.make<void>()
+      const recovered = yield* watcher
+        .subscribe({ path: "/exhausted", type: "directory" }, Deferred.succeed(ready, undefined))
+        .pipe(Effect.flatMap(Stream.runDrain), Effect.forkScoped)
+      yield* Deferred.await(ready)
+      expect(attempts).toBe(2)
+      yield* Fiber.interrupt(recovered)
+    }).pipe(
+      withNative({
+        subscribe: () =>
+          Effect.suspend(() =>
+            ++attempts === 1
+              ? Effect.die(new Error("inotify_add_watch: No space left on device"))
+              : Effect.succeed({ unsubscribe: async () => {} }),
+          ),
+      }),
+    )
+  })
+
   it.effect("signals readiness after acquisition and buffers updates published by the ready callback", () =>
     Effect.gen(function* () {
       const publish = yield* Deferred.make<(update: Watcher.Update) => void>()
@@ -242,6 +274,7 @@ function provide(
       Location.node.replace(locationLayer),
       plugins ?? PluginSupervisor.node.replace(Layer.empty),
       ...(watcher ? ([Watcher.node.replace(watcher)] as const) : []),
+      offlineModels,
       ...replacements,
     ],
   )

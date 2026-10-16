@@ -1,5 +1,6 @@
 import { Session } from "@opencode/core/session"
 import { SessionExecution } from "@opencode/core/session/execution"
+import { SessionStore } from "@opencode/core/session/store"
 import { Bus } from "@opencode/core/bus"
 import { MonitorRuntime } from "@opencode/core/monitor"
 import { Monitor } from "@opencode/schema/monitor"
@@ -21,6 +22,8 @@ import { SessionImport } from "@opencode/core/session/import/service"
 import { SessionShare } from "@opencode/core/session/share"
 import { InstructionEntry } from "@opencode/core/session/instruction-entry"
 import { Form } from "@opencode/core/form"
+import { Permission } from "@opencode/core/permission"
+import { Instance } from "@opencode/core/instance/service"
 import { DateTime, Effect, Stream } from "effect"
 import { HttpApiBuilder, HttpApiSchema } from "effect/unstable/httpapi"
 import { Api } from "../api"
@@ -59,6 +62,15 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
   Effect.gen(function* () {
     const session = yield* Session.Service
     const execution = yield* SessionExecution.Service
+    const store = yield* SessionStore.Service
+    const instances = yield* Instance.Service
+    const requireOwner = Effect.fn("session.requireOwner")(function* (sessionID: Session.ID) {
+      if (yield* store.executionOwnedElsewhere(sessionID))
+        return yield* new SessionBusyError({
+          sessionID,
+          message: "This session is executing on another server. Connect to that server to control it.",
+        })
+    })
     const bus = yield* Bus.Service
     const goals = yield* SessionGoal.Service
     const budgets = yield* SessionBudget.Service
@@ -92,6 +104,27 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
       )
 
     return handlers
+      .handle(
+        "session.observation",
+        Effect.fn(function* (ctx) {
+          const data = yield* store.observation(ctx.params.sessionID, ctx.query.messageID)
+          if (!data)
+            return yield* new SessionNotFoundError({ sessionID: ctx.params.sessionID, message: "Session not found" })
+          if (data.execution !== "running") return { data: { ...data, waiting: false } }
+          if (!(yield* execution.isActive(ctx.params.sessionID))) return { data: { ...data, waiting: null } }
+          const info = yield* session
+            .get(ctx.params.sessionID)
+            .pipe(Effect.catchTag("Session.NotFoundError", missingSession))
+          const waiting = yield* Effect.gen(function* () {
+            const permission = yield* Permission.Service
+            const form = yield* Form.Service
+            const requests = yield* permission.forSession(ctx.params.sessionID)
+            const forms = yield* form.list({ sessionID: ctx.params.sessionID })
+            return requests.length > 0 || forms.length > 0
+          }).pipe(instances.provide(info), locationErrors)
+          return { data: { ...data, waiting } }
+        }),
+      )
       .handle("session.design.conversations", (ctx) =>
         DesignConversations.list(ctx.query.directory).pipe(
           Effect.mapError((error) => new InvalidRequestError({ message: error.message })),
@@ -368,6 +401,7 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
       .handle(
         "session.goal.start",
         Effect.fn(function* (ctx) {
+          yield* requireOwner(ctx.params.sessionID)
           const goal = yield* goals
             .start(ctx.params.sessionID, ctx.payload)
             .pipe(Effect.mapError((error) => new InvalidRequestError({ message: error.message })))
@@ -402,6 +436,7 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
       .handle(
         "session.goal.control",
         Effect.fn(function* (ctx) {
+          yield* requireOwner(ctx.params.sessionID)
           const previous = yield* goals
             .get(ctx.params.sessionID)
             .pipe(Effect.mapError((error) => new InvalidRequestError({ message: error.message })))
@@ -623,6 +658,7 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
       .handle(
         "session.remove",
         Effect.fn(function* (ctx) {
+          yield* requireOwner(ctx.params.sessionID)
           yield* session.remove(ctx.params.sessionID).pipe(Effect.catchTag("Session.NotFoundError", missingSession))
           return HttpApiSchema.NoContent.make()
         }),
@@ -700,6 +736,7 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
       .handle(
         "session.move",
         Effect.fn(function* (ctx) {
+          yield* requireOwner(ctx.params.sessionID)
           yield* session
             .move({
               sessionID: ctx.params.sessionID,
@@ -724,6 +761,7 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
       .handle(
         "session.prompt",
         Effect.fn(function* (ctx) {
+          if (ctx.payload.resume !== false) yield* requireOwner(ctx.params.sessionID)
           return {
             data: yield* session
               .prompt({
@@ -770,6 +808,7 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
       .handle(
         "session.command",
         Effect.fn(function* (ctx) {
+          yield* requireOwner(ctx.params.sessionID)
           yield* session
             .command({
               sessionID: ctx.params.sessionID,
@@ -826,6 +865,7 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
       .handle(
         "session.synthetic",
         Effect.fn(function* (ctx) {
+          if (ctx.payload.resume !== false) yield* requireOwner(ctx.params.sessionID)
           const data = yield* session
             .synthetic({
               id: ctx.payload.id,
@@ -853,6 +893,7 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
       .handle(
         "session.shell",
         Effect.fn(function* (ctx) {
+          yield* requireOwner(ctx.params.sessionID)
           yield* session
             .shell({ sessionID: ctx.params.sessionID, id: ctx.payload.id, command: ctx.payload.command })
             .pipe(Effect.catchTag("Session.NotFoundError", missingSession))
@@ -862,6 +903,7 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
       .handle(
         "session.compact",
         Effect.fn(function* (ctx) {
+          yield* requireOwner(ctx.params.sessionID)
           return {
             data: yield* session
               .compact({
@@ -894,6 +936,7 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
       .handle(
         "session.revert.stage",
         Effect.fn(function* (ctx) {
+          yield* requireOwner(ctx.params.sessionID)
           yield* Effect.log("session.revert.stage", {
             sessionID: ctx.params.sessionID,
             messageID: ctx.payload.messageID,
@@ -915,6 +958,7 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
       .handle(
         "session.revert.clear",
         Effect.fn(function* (ctx) {
+          yield* requireOwner(ctx.params.sessionID)
           yield* Effect.log("session.revert.clear", { sessionID: ctx.params.sessionID })
           yield* session.revert
             .clear(ctx.params.sessionID)
@@ -930,6 +974,7 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
       .handle(
         "session.revert.commit",
         Effect.fn(function* (ctx) {
+          yield* requireOwner(ctx.params.sessionID)
           yield* Effect.log("session.revert.commit", { sessionID: ctx.params.sessionID })
           yield* session.revert
             .commit(ctx.params.sessionID)
@@ -1051,6 +1096,7 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
       .handle(
         "session.wake",
         Effect.fn(function* (ctx) {
+          yield* requireOwner(ctx.params.sessionID)
           yield* session.get(ctx.params.sessionID).pipe(Effect.catchTag("Session.NotFoundError", missingSession))
           yield* execution.wake(ctx.params.sessionID)
           return HttpApiSchema.NoContent.make()
@@ -1059,6 +1105,7 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
       .handle(
         "session.interrupt",
         Effect.fn(function* (ctx) {
+          yield* requireOwner(ctx.params.sessionID)
           return { interrupted: yield* session.interrupt(ctx.params.sessionID, { resume: ctx.query.resume }) }
         }),
       )

@@ -29,6 +29,7 @@ export const ServerHandler = HttpApiBuilder.group(Api, "server.server", (handler
           const info = yield* ServerInfo.Service
           return {
             version: info.app.version ?? "unknown",
+            capabilities: { sessionObservation: true, workerLease: true },
             pid: process.pid ?? 0,
             urls: info.urls(),
             paths: info.paths,

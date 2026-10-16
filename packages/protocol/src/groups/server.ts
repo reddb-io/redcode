@@ -5,6 +5,7 @@ import { Attention } from "@opencode/schema/attention"
 import { HostResources } from "@opencode/schema/host-resources"
 
 export const ServerInfo = Schema.Struct({
+  capabilities: Schema.optional(Schema.Struct({ sessionObservation: Schema.Boolean, workerLease: Schema.optional(Schema.Boolean) })),
   version: Schema.String,
   // 0 means the runtime has no OS process identity (e.g. workerd).
   pid: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),

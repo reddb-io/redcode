@@ -54,7 +54,7 @@ const describe = (error: unknown) => {
 }
 
 // Retry only failures that can recover while the same server is starting or overloaded.
-const isTransient = (error: unknown) =>
+export const isTransient = (error: unknown) =>
   error instanceof SdkHttpError
     ? error.status === 408 ||
       error.status === 429 ||
@@ -82,6 +82,7 @@ export class NeedsAuthError extends Schema.TaggedError<NeedsAuthError>()("MCP.Ne
 export class ConnectError extends Schema.TaggedError<ConnectError>()("MCP.ConnectError", {
   server: Schema.String,
   message: Schema.String,
+  retryable: Schema.optionalKey(Schema.Boolean),
 }) {}
 
 /** A legacy Streamable HTTP server no longer recognizes this connection's session; the lifecycle reconnects. */
@@ -308,7 +309,8 @@ export const connect = Effect.fnUntraced(function* (
     // Servers that bundle their own Code Mode (Cloudflare and others) expose raw tools when asked
     // with ?codemode=false, which is what our Code Mode wants. The configured URL stays the OAuth identity.
     const url = new URL(config.url)
-    const addedCodemode = config.codemode !== false && !url.searchParams.has("codemode")
+    const rejectsCodemode = url.hostname.endsWith(".googleapis.com") || /^zohomcp\./.test(url.hostname)
+    const addedCodemode = !rejectsCodemode && config.codemode !== false && !url.searchParams.has("codemode")
     if (addedCodemode) url.searchParams.set("codemode", "false")
     const open = Effect.fnUntraced(function* (url: URL) {
       session.transport = new StreamableHTTPClientTransport(url, {
@@ -375,21 +377,29 @@ export const connect = Effect.fnUntraced(function* (
       instructions: client.getInstructions()?.trim() || undefined,
       identity: client.getServerVersion()?.name,
       tools: () =>
-        list("list MCP tools", (signal) => client.listTools(undefined, { ...catalog, signal })).pipe(
-          Effect.map((r) => r.tools),
-        ),
+        !client.getServerCapabilities()?.tools
+          ? Effect.succeed([])
+          : list("list MCP tools", (signal) => client.listTools(undefined, { ...catalog, signal })).pipe(
+              Effect.map((r) => r.tools),
+            ),
       prompts: () =>
-        list("list MCP prompts", (signal) => client.listPrompts(undefined, { ...catalog, signal })).pipe(
-          Effect.map((r) => r.prompts),
-        ),
+        !client.getServerCapabilities()?.prompts
+          ? Effect.succeed([])
+          : list("list MCP prompts", (signal) => client.listPrompts(undefined, { ...catalog, signal })).pipe(
+              Effect.map((r) => r.prompts),
+            ),
       resources: () =>
-        list("list MCP resources", (signal) => client.listResources(undefined, { ...catalog, signal })).pipe(
-          Effect.map((r) => r.resources),
-        ),
+        !client.getServerCapabilities()?.resources
+          ? Effect.succeed([])
+          : list("list MCP resources", (signal) => client.listResources(undefined, { ...catalog, signal })).pipe(
+              Effect.map((r) => r.resources),
+            ),
       resourceTemplates: () =>
-        list("list MCP resource templates", (signal) =>
-          client.listResourceTemplates(undefined, { ...catalog, signal }),
-        ).pipe(Effect.map((r) => r.resourceTemplates)),
+        !client.getServerCapabilities()?.resources
+          ? Effect.succeed([])
+          : list("list MCP resource templates", (signal) =>
+              client.listResourceTemplates(undefined, { ...catalog, signal }),
+            ).pipe(Effect.map((r) => r.resourceTemplates)),
       readResource: (input) => {
         if (!client.getServerCapabilities()?.resources) return Effect.succeed(undefined)
         return request("read MCP resource", (signal) =>
@@ -447,7 +457,7 @@ export const connect = Effect.fnUntraced(function* (
       server,
       message: `${error.message}; the server supports ${error.supported.join(", ")}. Set "protocol" for this server to one of those or to "legacy".`,
     })
-  return yield* new ConnectError({ server, message: explain(error) })
+  return yield* new ConnectError({ server, message: explain(error), retryable: isTransient(error) })
 })
 
 // Absent config is legacy: the SDK sends the plain initialize handshake with no discover probe.

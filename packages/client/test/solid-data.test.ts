@@ -589,6 +589,64 @@ for (const resource of ["provider", "model"] as const) {
   })
 }
 
+test("catalog events do not load unopened locations or unused catalogs", async () => {
+  const listeners = new Set<Parameters<CreateDataInput["event"]["listen"]>[0]>()
+  const requests: URL[] = []
+  const api = OpenCode.make({
+    baseUrl: "http://opencode.local",
+    fetch: async (input, init) => {
+      const url = new URL((input instanceof Request ? input : new Request(input, init)).url)
+      requests.push(url)
+      return Response.json({
+        location: { directory: url.searchParams.get("location[directory]") ?? "/project" },
+        data: [],
+      })
+    },
+  })
+  const setup = createRoot((dispose) => ({
+    data: createData({
+      api: () => api,
+      directory: "/project",
+      event: {
+        on: () => () => {},
+        listen(handler) {
+          listeners.add(handler)
+          return () => listeners.delete(handler)
+        },
+      },
+      connection: { status: () => "connected" },
+    }),
+    dispose,
+  }))
+  try {
+    await setup.data.location.model.sync()
+    requests.length = 0
+    const emit = (type: "model.updated" | "provider.updated" | "integration.updated", directory: string) => {
+      const event: OpenCodeEvent = {
+        id: `evt_${type}_${directory}`,
+        created: 1,
+        type,
+        location: { directory },
+        data: {},
+      }
+      listeners.forEach((listener) => listener({ name: event.type, details: event }))
+    }
+    emit("integration.updated", "/never-opened")
+    emit("model.updated", "/never-opened")
+    emit("provider.updated", "/project")
+    emit("integration.updated", "/project")
+    await wait(() => requests.length === 1)
+    expect(requests.map((url) => [url.pathname, url.searchParams.get("location[directory]")])).toEqual([
+      ["/api/model", "/project"],
+    ])
+    await setup.data.location.model.sync({ directory: "/never-opened" })
+    expect(requests).toHaveLength(2)
+    expect(requests[1]!.searchParams.get("location[directory]")).toBe("/never-opened")
+  } finally {
+    setup.dispose()
+  }
+})
+
 test("revalidates model discovery when an update overtakes an in-flight model list", async () => {
   const started = Promise.withResolvers<void>()
   const release = Promise.withResolvers<void>()

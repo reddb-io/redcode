@@ -82,14 +82,40 @@ it.live(
         baseUrl: server.url.origin,
         headers: { authorization: `Basic ${btoa("opencode:secret")}` },
       })
-      const session = yield* Effect.promise(() => api.session.create({ location: { directory: checkout.path } }))
-      yield* Effect.promise(() => api.session.prompt({ sessionID: session.id, text: "Start assigned work" }))
+      const sessionID = Session.ID.create()
+      const messageID = SessionMessage.ID.create()
+      const acquired = yield* Effect.promise(() =>
+        api.workerLease.acquire({
+          owner: "controls",
+          holder: "controls-runtime",
+          sessionID,
+          messageID,
+          directory: checkout.path,
+        }),
+      )
+      if (acquired.state !== "acquired") throw new Error("Expected worker reservation")
+      const fenced = {
+        headers: {
+          "x-redcode-worker-fence": JSON.stringify({
+            owner: acquired.lease.owner,
+            holder: acquired.lease.holder,
+            generation: acquired.lease.generation,
+          }),
+        },
+      }
+      const session = yield* Effect.promise(() =>
+        api.session.create({ id: sessionID, location: { directory: checkout.path } }, fenced),
+      )
+      yield* Effect.promise(() =>
+        api.session.prompt({ sessionID: session.id, id: messageID, text: "Start assigned work" }, fenced),
+      )
       yield* llm.wait(1)
       const input = {
         config: `${directory.path}/workers.json`,
         manifest: `${directory.path}/tasks.json`,
         report: `${directory.path}/report.json`,
         environment: { WORKER_PASSWORD: "secret" },
+        coordinator: "controls-runtime",
       }
       yield* Effect.promise(async () => {
         await WorkerPool.add(input.config, {
@@ -112,6 +138,9 @@ it.live(
                 url: server.url.origin,
                 directory: session.location.directory,
                 sessionID: session.id,
+                messageID,
+                leaseOwner: acquired.lease.owner,
+                lease: acquired.lease,
               },
             ],
           }),
@@ -240,7 +269,13 @@ it.live(
       const config = `${directory.path}/workers.json`
       const manifest = `${directory.path}/tasks.json`
       const report = `${directory.path}/report.json`
-      const input = { config, manifest, report, environment: { WORKER_PASSWORD: "secret" } }
+      const input = {
+        config,
+        manifest,
+        report,
+        environment: { WORKER_PASSWORD: "secret" },
+        coordinator: "answers-runtime",
+      }
       const task = {
         id: "assigned",
         state: "waiting" as const,
@@ -249,6 +284,21 @@ it.live(
         sessionID: one.id,
         directory: one.location.directory,
       }
+      const acquired = yield* Effect.promise(() =>
+        api.workerLease.acquire({
+          owner: "answers",
+          holder: "answers-runtime",
+          sessionID: one.id,
+          messageID: SessionMessage.ID.create(),
+          directory: one.location.directory,
+        }),
+      )
+      if (acquired.state !== "acquired") throw new Error("Expected worker reservation")
+      Object.assign(task, {
+        lease: acquired.lease,
+        leaseOwner: acquired.lease.owner,
+        messageID: acquired.lease.messageID,
+      })
       yield* Effect.promise(async () => {
         await WorkerPool.add(config, {
           id: "first",

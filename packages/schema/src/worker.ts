@@ -7,6 +7,7 @@ import { Attention } from "./attention.js"
 import { Form } from "./form.js"
 import { Permission } from "./permission.js"
 import { SessionMessage } from "./session-message.js"
+import { WorkerLease } from "./worker-lease.js"
 
 export const Name = Schema.String.check(Schema.isMinLength(1), Schema.isPattern(/^[a-zA-Z0-9_-]+$/)).annotate({
   identifier: "Worker.Name",
@@ -61,6 +62,8 @@ export type State = typeof State.Type
 export const QueueReason = Schema.Literals([
   "offline",
   "checkout-busy",
+  "lease-unsupported",
+  "lease-busy",
   "resources-unavailable",
   "resources-stale",
   "cpu-unavailable",
@@ -71,6 +74,15 @@ export const QueueReason = Schema.Literals([
   "memory-capacity",
 ]).annotate({ identifier: "Worker.QueueReason" })
 export type QueueReason = typeof QueueReason.Type
+export const RecoveryReason = Schema.Literals([
+  "unreachable",
+  "admission-missing",
+  "execution-idle",
+  "execution-suspended",
+  "placement-changed",
+  "lease-lost",
+]).annotate({ identifier: "Worker.RecoveryReason" })
+export type RecoveryReason = typeof RecoveryReason.Type
 export const Entry = Schema.Struct({
   id: Name,
   state: State,
@@ -79,8 +91,13 @@ export const Entry = Schema.Struct({
   directory: optional(Text),
   sessionID: optional(Text),
   messageID: optional(Text),
+  leaseOwner: optional(Text),
+  lease: optional(WorkerLease.Info),
+  leaseRenewAt: optional(Schema.Finite),
+  leaseReleased: optional(Schema.Boolean),
   detail: optional(Schema.String),
   queueReason: optional(QueueReason),
+  recoveryReason: optional(RecoveryReason),
   text: optional(Schema.String),
 }).annotate({ identifier: "Worker.Entry" })
 export interface Entry extends Schema.Schema.Type<typeof Entry> {}

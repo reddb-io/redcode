@@ -30,6 +30,11 @@
     "./*": "./src/*.ts"
   },
   "imports": {
+    "#execution-owner-platform": {
+      "types": "./src/execution-owner.node.ts",
+      "workerd": "./src/execution-owner.workerd.ts",
+      "default": "./src/execution-owner.node.ts"
+    },
     "#database-reddb": {
       "types": "./src/database/reddb.ts",
       "workerd": "./src/database/reddb.workerd.ts",

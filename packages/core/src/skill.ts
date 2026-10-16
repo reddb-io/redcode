@@ -5,6 +5,7 @@ import type { FSUtil } from "@opencode/util/fs-util"
 import path from "path"
 import { Context, Effect, Layer, Types } from "effect"
 import { Skill } from "@opencode/schema/skill"
+import { SkillScan } from "./config/plugin/skill-scan.js"
 import { Bus } from "./bus.js"
 import { Permission } from "./permission.js"
 import { State } from "./state.js"
@@ -56,7 +57,13 @@ export const prepare = Effect.fn("Skill.prepare")(function* (fs: FSUtil.Interfac
   const directory = path.dirname(skill.path)
   const files =
     path.basename(skill.path) === "SKILL.md"
-      ? (yield* fs.scan("**/*", { cwd: directory, absolute: true, include: "file", dot: true }))
+      ? (yield* fs.scan("**/*", {
+          cwd: directory,
+          absolute: true,
+          include: "file",
+          dot: false,
+          ignore: SkillScan.ignore,
+        }))
           .filter((file) => path.basename(file) !== "SKILL.md")
           .toSorted()
           .slice(0, 10)

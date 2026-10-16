@@ -1,8 +1,8 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "488862c3-e851-4c18-8e77-042b743d540e",
-  "prevIds": ["9f75805c-6862-45f3-9aba-48e848a5488c"],
+  "id": "e5e68abc-8f8d-4d5c-96c4-82dafc958200",
+  "prevIds": ["a0ef879c-cf86-417b-957c-9b5d814278cd"],
   "ddl": [
     {
       "name": "console_auth_provider",
@@ -78,6 +78,14 @@
     },
     {
       "name": "usage_reporter_record",
+      "entityType": "tables"
+    },
+    {
+      "name": "worker_assignment",
+      "entityType": "tables"
+    },
+    {
+      "name": "worker_lease",
       "entityType": "tables"
     },
     {
@@ -1357,6 +1365,126 @@
       "name": "data",
       "entityType": "columns",
       "table": "usage_reporter_record"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "session_id",
+      "entityType": "columns",
+      "table": "worker_assignment"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "directory",
+      "entityType": "columns",
+      "table": "worker_assignment"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "generation",
+      "entityType": "columns",
+      "table": "worker_assignment"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "directory",
+      "entityType": "columns",
+      "table": "worker_lease"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "generation",
+      "entityType": "columns",
+      "table": "worker_lease"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "owner",
+      "entityType": "columns",
+      "table": "worker_lease"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "holder",
+      "entityType": "columns",
+      "table": "worker_lease"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "session_id",
+      "entityType": "columns",
+      "table": "worker_lease"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "message_id",
+      "entityType": "columns",
+      "table": "worker_lease"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "expires_at",
+      "entityType": "columns",
+      "table": "worker_lease"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "false",
+      "generated": null,
+      "name": "released",
+      "entityType": "columns",
+      "table": "worker_lease"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "operations",
+      "entityType": "columns",
+      "table": "worker_lease"
     },
     {
       "type": "integer",
@@ -3819,6 +3947,26 @@
       "table": "session_v2"
     },
     {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "execution_owner",
+      "entityType": "columns",
+      "table": "session_v2"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "execution_directory",
+      "entityType": "columns",
+      "table": "session_v2"
+    },
+    {
       "type": "integer",
       "notNull": true,
       "autoincrement": false,
@@ -4549,6 +4697,20 @@
       "nameExplicit": false,
       "name": "usage_reporter_record_pk",
       "table": "usage_reporter_record",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["session_id"],
+      "nameExplicit": false,
+      "name": "worker_assignment_pk",
+      "table": "worker_assignment",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["directory"],
+      "nameExplicit": false,
+      "name": "worker_lease_pk",
+      "table": "worker_lease",
       "entityType": "pks"
     },
     {

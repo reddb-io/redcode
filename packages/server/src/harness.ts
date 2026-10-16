@@ -1,6 +1,5 @@
 export * as Harnesses from "./harness"
 
-import { Database } from "bun:sqlite"
 import { mkdir, realpath } from "node:fs/promises"
 import path from "node:path"
 import spawn from "cross-spawn"
@@ -25,6 +24,7 @@ type Live = {
 
 /** Persistence belongs to the execution host. Native IDs survive restart; processes are never replayed automatically. */
 export async function createHarnesses(directory: string) {
+  const { Database } = await import("bun:sqlite")
   await mkdir(directory, { recursive: true })
   const db = new Database(path.join(directory, "harness.sqlite"), { create: true })
   db.exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;

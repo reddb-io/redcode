@@ -28,9 +28,7 @@ const run = <A, E>(effect: Effect.Effect<A, E, SqlClient | Scope.Scope | Global.
     ),
   )
 
-const session = (
-  overrides: Partial<typeof SessionTable.$inferSelect> = {},
-): typeof SessionTable.$inferSelect => ({
+const session = (overrides: Partial<typeof SessionTable.$inferSelect> = {}): typeof SessionTable.$inferSelect => ({
   id: SessionSchema.ID.make("ses_test"),
   project_id: Project.ID.global,
   workspace_id: null,
@@ -67,6 +65,8 @@ const session = (
   time_compacting: 3,
   time_archived: null,
   time_suspended: null,
+  execution_owner: null,
+  execution_directory: null,
   resume_attempts: 0,
   ...overrides,
 })
@@ -244,9 +244,7 @@ describe("V1Migration.transformSession", () => {
 
     expect(result.messages[0].data).toEqual({
       text: "Before the files\n\n[Attachment unavailable after migration: inline attachment (text/plain)]\n\n[Attachment unavailable after migration: bad-escape.txt (text/plain)]\n\n[Attachment unavailable after migration: bad-base64.txt (text/plain)]",
-      files: [
-        { data: "c3RpbGwgaGVyZQ==", mime: "text/plain", source: { type: "inline" }, name: "valid.txt" },
-      ],
+      files: [{ data: "c3RpbGwgaGVyZQ==", mime: "text/plain", source: { type: "inline" }, name: "valid.txt" }],
       time: { created: 10 },
     })
   })
@@ -1151,22 +1149,30 @@ describe("V1Migration database workflow", () => {
           VALUES ('red-project', '/tmp/custom-child', 'existing/strategy', 4)
         `)
         expect(yield* V1Migration.importRedcode(filename)).toEqual({ imported: 2, skipped: 0 })
-        expect(yield* db.all(sql`
+        expect(
+          yield* db.all(sql`
           SELECT directory, strategy, time_created FROM worktree WHERE project_id = 'red-project' ORDER BY directory
-        `)).toEqual([
-          { directory: '/tmp/custom-child', strategy: 'existing/strategy', time_created: 4 },
-          { directory: '/tmp/git-child', strategy: 'git', time_created: 2 },
-          { directory: '/tmp/redcode', strategy: null, time_created: 1 },
+        `),
+        ).toEqual([
+          { directory: "/tmp/custom-child", strategy: "existing/strategy", time_created: 4 },
+          { directory: "/tmp/git-child", strategy: "git", time_created: 2 },
+          { directory: "/tmp/redcode", strategy: null, time_created: 1 },
         ])
-        expect(yield* db.get(sql`
+        expect(
+          yield* db.get(sql`
           SELECT baseline, replacement_seq FROM redcode_session_context_epoch WHERE session_id = 'ses_redcode_epoch'
-        `)).toEqual({ baseline: "Old baseline", replacement_seq: 4 })
-        expect(yield* db.get(sql`
+        `),
+        ).toEqual({ baseline: "Old baseline", replacement_seq: 4 })
+        expect(
+          yield* db.get(sql`
           SELECT baseline, replacement_seq FROM redcode_session_context_epoch
           WHERE session_id = 'ses_redcode_requested_epoch'
-        `)).toEqual({ baseline: "Requested baseline", replacement_seq: 4 })
+        `),
+        ).toEqual({ baseline: "Requested baseline", replacement_seq: 4 })
         expect(yield* V1Migration.importRedcode(filename)).toEqual({ imported: 0, skipped: 2 })
-        expect(yield* db.get(sql`SELECT COUNT(*) AS count FROM worktree WHERE project_id = 'red-project'`)).toEqual({ count: 3 })
+        expect(yield* db.get(sql`SELECT COUNT(*) AS count FROM worktree WHERE project_id = 'red-project'`)).toEqual({
+          count: 3,
+        })
       }),
     )
   })

@@ -203,7 +203,9 @@ describe("ConfigSkillPlugin.Plugin", () => {
             { claude: [AbsolutePath.make(claude)], agents: [AbsolutePath.make(agents)] },
           )
           const watcher = yield* Watcher.Test
-          expect(yield* watcher.subscriptions()).toEqual(expected.map((item) => ({ path: item, type: "directory" })))
+          expect((yield* watcher.subscriptions()).filter((item) => item.type === "directory")).toMatchObject(
+            expected.map((item) => ({ path: item, type: "directory" })),
+          )
         }),
       ),
     ),
@@ -308,6 +310,8 @@ describe("ConfigSkillPlugin.Plugin", () => {
             await write(tmp.path, "deploy", "Initial")
           })
           const skill = yield* start([tmp.path], tmp.path)
+          const watcher = yield* Watcher.Test
+          const initialWatches = (yield* watcher.subscriptions()).length
           expect((yield* skill.list()).find((item) => item.id === "deploy")?.description).toBe("Initial")
 
           const deploy = path.join(tmp.path, "deploy", "SKILL.md")
@@ -328,6 +332,36 @@ describe("ConfigSkillPlugin.Plugin", () => {
           yield* Effect.promise(() => fs.rm(path.join(tmp.path, "review"), { recursive: true }))
           yield* emitAndWait({ type: "delete", path: path.join(tmp.path, "review", "SKILL.md") })
           expect((yield* skill.list()).map((item) => item.id)).toEqual([Skill.ID.make("deploy")])
+          expect((yield* watcher.subscriptions()).length).toBe(initialWatches)
+        }),
+      ),
+    ),
+  )
+
+  it.live("bounds discovery, ignores dependencies, and terminates symlink cycles", () =>
+    Effect.acquireDisposable(Effect.promise(() => tmpdir())).pipe(
+      Effect.flatMap((tmp) =>
+        Effect.gen(function* () {
+          const source = path.join(tmp.path, "skills")
+          yield* Effect.promise(async () => {
+            for (const name of [
+              "deploy",
+              "node_modules/vendor",
+              ".archive/hidden",
+              "venv/package",
+              "deploy/nested",
+              "a/b/c/d/e/f/g/deep",
+            ]) {
+              await fs.mkdir(path.join(source, name), { recursive: true })
+              await fs.writeFile(
+                path.join(source, name, "SKILL.md"),
+                `---\nname: ${path.basename(name)}\ndescription: Test\n---\n# Test`,
+              )
+            }
+            await fs.symlink(source, path.join(source, "cycle"), process.platform === "win32" ? "junction" : undefined)
+          })
+          const skills = yield* start([source], tmp.path)
+          expect((yield* skills.list()).map((skill) => skill.name)).toEqual([Skill.Name.make("deploy")])
         }),
       ),
     ),
@@ -350,7 +384,7 @@ describe("ConfigSkillPlugin.Plugin", () => {
           const skill = yield* start([source], tmp.path)
           const watcher = yield* Watcher.Test
           expect((yield* skill.list()).find((item) => item.id === "bro")?.description).toBe("Initial")
-          expect(yield* watcher.subscriptions()).toContainEqual({ path: target, type: "directory" })
+          expect(yield* watcher.subscriptions()).toContainEqual({ path: file, type: "file" })
 
           yield* Effect.promise(() => fs.writeFile(file, "---\nname: bro\ndescription: Updated\n---\n# bro"))
           yield* emitAndWait({ type: "update", path: file })
@@ -378,7 +412,7 @@ describe("ConfigSkillPlugin.Plugin", () => {
           const skill = yield* start([source], tmp.path)
           const watcher = yield* Watcher.Test
           expect((yield* skill.list()).find((item) => item.id === "bro")?.description).toBe("First")
-          expect(yield* watcher.subscriptions()).toEqual([
+          expect(yield* watcher.subscriptions()).toMatchObject([
             { path: first, type: "directory" },
             { path: source, type: "file" },
           ])
@@ -390,11 +424,10 @@ describe("ConfigSkillPlugin.Plugin", () => {
           yield* emitAndWait({ type: "update", path: source })
 
           expect((yield* skill.list()).find((item) => item.id === "bro")?.description).toBe("Second")
-          expect(yield* watcher.subscriptions()).toEqual([
+          expect(yield* watcher.subscriptions()).toMatchObject([
             { path: first, type: "directory" },
             { path: source, type: "file" },
             { path: second, type: "directory" },
-            { path: source, type: "file" },
           ])
         }),
       ),

@@ -1,4 +1,7 @@
 import { expect, test } from "@playwright/test"
+import type { Worker } from "@opencode/schema/worker"
+import { WorkerLease } from "@opencode/schema/worker-lease"
+import { Schema } from "effect"
 import { fixture, installStressSessionTabs, mockStressTimeline } from "../utils/session-fixture"
 import { sessionHref } from "../utils/app"
 import { status } from "../utils/timeline"
@@ -475,6 +478,80 @@ test("shows unknown initial CPU usage and hides stale resources after a failed r
   await expect(host.getByText("Host resources are unavailable. Previous measurements are not live.")).toBeVisible()
   await expect(host.getByText("6.00 GiB / 8.00 GiB", { exact: true })).toHaveCount(0)
   await page.screenshot({ path: test.info().outputPath("agents-hosts.png"), animations: "disabled" })
+})
+
+test("explains unconfirmed worker execution and recovers the saved assignment without loading its conversation", async ({
+  page,
+}) => {
+  const messages: string[] = []
+  const prompts: string[] = []
+  await mockStressTimeline(page, {
+    onMessages: (request) => messages.push(request.sessionID),
+    onPrompt: (input) => prompts.push(input.sessionID),
+  })
+  await installStressSessionTabs(page, { sessionIDs: [] })
+  const batch: Worker.Batch = {
+    id: "batch-recovery",
+    createdAt: "2026-10-15T00:00:00Z",
+    observing: false,
+    manifest: { tasks: [{ id: "task-unconfirmed", prompt: "Check the original admission" }] },
+    report: {
+      fingerprint: "fixture",
+      tasks: [
+        {
+          id: "task-unconfirmed",
+          state: "unknown",
+          worker: "pi-a",
+          directory: "/home/pi/project",
+          sessionID: "ses_original",
+          messageID: "msg_original",
+          recoveryReason: "lease-lost",
+          lease: Schema.decodeUnknownSync(WorkerLease.Info)({
+            directory: "/home/pi/project",
+            owner: "original-task",
+            holder: "original-coordinator",
+            sessionID: "ses_original",
+            messageID: "msg_original",
+            generation: 1,
+            expiresAt: 1,
+              remainingMs: 0,
+          }),
+        },
+      ],
+    },
+  }
+  const workers = await mockRemoteWorkers(page, { batches: [batch] })
+  await page.goto("/agents?view=remote")
+  const workspace = page.getByRole("region", { name: "Agents", exact: true })
+  const task = workspace
+    .getByRole("article")
+    .filter({ has: page.getByText("Check the original admission", { exact: true }) })
+  await expect(task.getByRole("status")).toHaveText(
+    "Coordinator access could not be renewed. Work may still be running; the checkout stays reserved. Recover on the original worker.",
+  )
+  await expect(task.getByRole("button", { name: "Review changes", exact: true })).toHaveCount(0)
+  await expect(task.getByText("Checkout reserved · generation 1", { exact: true })).toBeVisible()
+  await page.screenshot({ path: test.info().outputPath("worker-recovery.png"), animations: "disabled" })
+  const recovered = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === "/api/workers/batches/batch-recovery/recover" &&
+      response.request().method() === "POST",
+  )
+  await task.getByRole("button", { name: "Recover on the original worker", exact: true }).click()
+  const response = await recovered
+  expect(response.request().postDataJSON()).toEqual({ task: "task-unconfirmed" })
+  expect((await response.json()).report.tasks[0]).toMatchObject({
+    worker: "pi-a",
+    sessionID: "ses_original",
+    messageID: "msg_original",
+  })
+  await expect(task.getByText("Running · pi-a", { exact: true })).toBeVisible()
+  await expect(task.getByText("Checkout reserved · generation 2", { exact: true })).toBeVisible()
+  await expect(task.getByRole("status")).toHaveCount(0)
+  expect(messages).toEqual([])
+  expect(prompts).toEqual([])
+  expect(workers.requests.filter((request) => request.method === "POST")).toHaveLength(1)
+  await page.screenshot({ path: test.info().outputPath("worker-recovered.png"), animations: "disabled" })
 })
 
 test("registers remote workers, sends an independent task batch and downloads reviewed changes", async ({ page }) => {

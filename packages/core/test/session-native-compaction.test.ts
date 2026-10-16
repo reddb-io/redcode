@@ -315,20 +315,17 @@ it.live(
       yield* fixture.hooks.register("session", "retry", (event) =>
         Effect.sync(() => {
           retries.push(event)
-          event.decision = { retry: true, delay: 0 }
+          // A hook may tune retry policy without bypassing the provider account's cooldown.
+          event.decision = { retry: true, delay: 2100 }
         }),
       )
       fixture.state.flaky = true
       expect(yield* fixture.compact).toEqual({ status: "completed" })
       expect(fixture.state.calls).toBe(7)
-      expect(retries).toMatchObject([
-        {
-          agent: "build",
-          attempt: 2,
-          error: { type: "provider.rate-limit" },
-          decision: { retry: true, delay: 0 },
-        },
-      ])
+      expect(retries[0]).toMatchObject({ agent: "build", attempt: 2, error: { type: "provider.rate-limit" } })
+      // A retained account cooldown may add a local wait; seven upstream calls
+      // above prove those waits never resubmit the physical request.
+      expect(retries.every((event) => event.decision.retry && event.decision.delay === 2100)).toBe(true)
       expect(
         SessionProviderContext.decode(yield* fixture.checkpoint).filter((message) => message.role === "user"),
       ).toHaveLength(3)

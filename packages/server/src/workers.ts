@@ -77,6 +77,7 @@ function layer(directory?: string, accessOptions?: InfrastructureAccess.Options)
       const batches = path.join(root, "batches")
       const abort = new AbortController()
       const state = { busy: false, error: undefined as string | undefined }
+      const coordinator = randomUUID()
       const connections = new Map<string, Worker.Status>()
       const failures = new Map<string, string>()
       const name = (id: string) => Schema.decodeUnknownSync(Worker.Name)(id)
@@ -132,6 +133,7 @@ function layer(directory?: string, accessOptions?: InfrastructureAccess.Options)
         abort.signal.throwIfAborted()
       }
       const input = async (id: string) => ({
+        coordinator,
         config: path.join(folder(id), "registry.json"),
         manifest: path.join(folder(id), "manifest.json"),
         report: path.join(folder(id), "report.json"),

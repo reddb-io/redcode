@@ -200,11 +200,13 @@ export async function createWorkerEnvironments(root: string, credentials: Creden
     const url = new URL(input.path, "http://worker")
     const pathname = decodeURIComponent(url.pathname)
     if (!input.path.startsWith("/api/") || input.path.includes("\\") || pathname.includes("\\") || pathname.includes("%") || url.origin !== "http://worker" || url.hash ||
-      !/^\/api\/(info|system|resources|location|session|permission|form|fs)(\/|$)/.test(pathname))
+      !/^\/api\/(info|system|resources|location|session|permission|form|fs|worker-lease)(\/|$)/.test(pathname))
       throw new Error("Unsupported environment request")
     const response = await fetch(`${await endpoint(saved.info)}${pathname}${url.search}`, {
       method: input.method, body: input.body,
-      headers: { authorization: `Basic ${btoa(`opencode:${await password(saved)}`)}`, "content-type": "application/json" },
+      headers: { authorization: `Basic ${btoa(`opencode:${await password(saved)}`)}`, "content-type": "application/json",
+        ...(input.fence ? { "x-redcode-worker-fence": JSON.stringify(input.fence) } : {}),
+      },
       redirect: "error", signal: AbortSignal.timeout(40_000),
     })
     const chunks: Uint8Array[] = []

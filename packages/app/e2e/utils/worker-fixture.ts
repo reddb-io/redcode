@@ -67,6 +67,42 @@ export async function mockRemoteWorkers(
     const path = new URL(request.url()).pathname
     const body: unknown = request.method() === "POST" ? request.postDataJSON() : undefined
     requests.push({ path, method: request.method(), body })
+    if (path.endsWith("/recover")) {
+      const input = Schema.decodeUnknownSync(Schema.Struct({ task: Worker.Name }))(body)
+      const batch = snapshot.batches.find((batch) => batch.id === path.split("/")[4])
+      if (
+        !batch?.report ||
+        !batch.report.tasks.some((task) => task.id === input.task && ["unknown", "dispatching"].includes(task.state))
+      )
+        return route.fulfill({ status: 400, json: { message: "Unknown recovery assignment" } })
+      const recovered: Worker.Batch = {
+        ...batch,
+        observing: false,
+        report: {
+          ...batch.report,
+          tasks: batch.report.tasks.map((task) =>
+            task.id === input.task
+              ? {
+                  ...task,
+                  state: "running",
+                  recoveryReason: undefined,
+                  ...(task.lease
+                    ? {
+                        lease: {
+                          ...task.lease,
+                          holder: "recovered-coordinator",
+                          generation: task.lease.generation + 1,
+                        },
+                      }
+                    : {}),
+                }
+              : task,
+          ),
+        },
+      }
+      snapshot.batches[snapshot.batches.indexOf(batch)] = recovered
+      return route.fulfill({ json: recovered })
+    }
     if (path.endsWith("/control")) {
       const control = Schema.decodeUnknownSync(Worker.Control)(body)
       const batchID = path.split("/")[4]

@@ -16,6 +16,7 @@ import type { Model } from "@opencode/schema/model"
 import type { CompactionPayload, MovePayload, SyntheticPayload, UserPayload } from "@opencode/schema/session-inbox"
 import type { RevertV1 } from "@opencode/schema/session-revert"
 import type { Schema } from "effect"
+import type { ExecutionOwner } from "../execution-owner.js"
 
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never
 type SessionMessageData = DistributiveOmit<(typeof SessionMessage.Info)["Encoded"], "type" | "id">
@@ -67,6 +68,8 @@ export const SessionTable = sqliteTable(
     time_archived: integer(),
     /** The execution claim timestamp (historical column name; see SessionStore.claim). */
     time_suspended: integer(),
+    execution_owner: text({ mode: "json" }).$type<ExecutionOwner.Info>(),
+    execution_directory: text(),
     resume_attempts: integer().notNull().default(0),
   },
   (table) => [
