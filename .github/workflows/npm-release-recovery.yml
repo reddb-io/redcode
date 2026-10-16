@@ -110,6 +110,14 @@ jobs:
           npm install --prefer-online --prefix "$root/install" --ignore-scripts --no-audit --no-fund "@reddb-io/redcode@$REDCODE_VERSION"
           test "$("$root/install/node_modules/.bin/redcode" --version)" = "redcode v$REDCODE_VERSION"
           test "$("$root/install/node_modules/.bin/redcode" __design-app --version)" = "$REDCODE_VERSION"
+          for attempt in {1..20}; do
+            if tarball=$(npm view "@reddb-io/redcode-$target@$expected" dist.tarball --prefer-online 2>/dev/null) &&
+              [ -n "$tarball" ] && curl --fail --silent --show-error --head --location --max-time 30 "$tarball" >/dev/null; then
+              break
+            fi
+            test "$attempt" -lt 20
+            sleep 30
+          done
           npm pack "@reddb-io/redcode-$target@$expected" --ignore-scripts --pack-destination "$root" --json > "$root/pack.json"
           mkdir "$root/native"
           tar -xzf "$root/$(jq -r '.[0].filename' "$root/pack.json")" -C "$root/native"
