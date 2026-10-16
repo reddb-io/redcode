@@ -96,12 +96,28 @@ test("compiled Redcode launches its own Design entry and the child selects local
     }))
   `,
   )
-  const built = await Bun.build({
-    entrypoints: [entry],
-    compile: { outfile: binary },
-    define: { REDCODE_DESIGN_EMBEDDED: "true", REDCODE_DESIGN_PROCESS_HOST: "true" },
-  })
-  expect(built.success).toBe(true)
+  // Keep the compiler out of the test runtime that owns native filesystem watchers.
+  const build = Bun.spawn(
+    [
+      process.execPath,
+      "build",
+      entry,
+      "--compile",
+      "--outfile",
+      binary,
+      "--define",
+      "REDCODE_DESIGN_EMBEDDED=true",
+      "--define",
+      "REDCODE_DESIGN_PROCESS_HOST=true",
+    ],
+    { stdout: "pipe", stderr: "pipe" },
+  )
+  const [built, output, error] = await Promise.all([
+    build.exited,
+    new Response(build.stdout).text(),
+    new Response(build.stderr).text(),
+  ])
+  expect(built, output + error).toBe(0)
   for (const args of [[], [DesignAppBinary.SUBCOMMAND]]) {
     const child = Bun.spawn([binary, ...args], { stdout: "pipe", stderr: "pipe" })
     const [code, output, error] = await Promise.all([
