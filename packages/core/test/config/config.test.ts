@@ -1200,7 +1200,14 @@ describe("Config", () => {
               {
                 type: "directory",
                 path: AbsolutePath.make(path.join(tmp.path, "global")),
-                ignore: ["**/{node_modules,.git}/**", ".git", "node_modules"],
+                ignore: [
+                  "**/{node_modules,.git,.venv,venv,__pycache__}/**",
+                  ".git",
+                  ".venv",
+                  "__pycache__",
+                  "node_modules",
+                  "venv",
+                ],
               },
               {
                 type: "entries",

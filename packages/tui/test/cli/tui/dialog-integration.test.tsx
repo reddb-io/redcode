@@ -80,7 +80,7 @@ test("adds another connection without removing existing credentials and skips hi
   }
 })
 
-test("switches the selected account with enter and keeps the reactive account manager open", async () => {
+test("switches the selected account without loading unused catalogs and keeps the account manager open", async () => {
   const fixture = await renderIntegration()
 
   try {
@@ -97,8 +97,8 @@ test("switches the selected account with enter and keeps the reactive account ma
     const frame = fixture.app.captureCharFrame()
     expect(frame.indexOf("Work")).toBeLessThan(frame.indexOf("Personal"))
     expect(fixture.reads.integration).toBe(1)
-    expect(fixture.reads.model).toBeGreaterThan(0)
-    expect(fixture.reads.provider).toBeGreaterThan(0)
+    expect(fixture.reads.model).toBe(0)
+    expect(fixture.reads.provider).toBe(0)
   } finally {
     fixture.app.renderer.destroy()
   }
