@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test"
 import { realpathSync } from "node:fs"
 import { mkdtemp, rm } from "node:fs/promises"
-import { join, resolve, sep } from "node:path"
+import { dirname, join, resolve, sep } from "node:path"
+import { fileURLToPath } from "node:url"
 
 const directory = resolve(import.meta.dir, "..")
-const effect = realpathSync(resolve(import.meta.dir, "../node_modules/effect"))
+const effect = realpathSync(dirname(dirname(fileURLToPath(import.meta.resolve("effect")))))
 const schema = resolve(import.meta.dir, "../../schema")
 const protocol = resolve(import.meta.dir, "../../protocol")
 const core = resolve(import.meta.dir, "../../core")
