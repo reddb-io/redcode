@@ -1,5 +1,14 @@
 # @reddb-io/redcode
 
+## 0.84.0
+
+### Minor Changes
+
+- Add static creative canvases to Design with social and banner sizes, exact-size PNG and PDF exports, and revision-scoped System One assessments in the shared desktop/web review. Creative assessments classify message, audience awareness, visual style and calls to action; all design targets can review hierarchy, clarity, density and legibility. Explicit image reviews use the configured evaluator's experimental image support and report evidence, usage and limitations without changing the user's model selection.
+- Configure HTTPS from Desktop and web Settings, or the server pairing dialog. Choose an existing self-hosted relay or explicitly select Hosted OpenTunnel, accept internet exposure, and let the execution host provision its certificate and tunnel without restarting the server. Generate an expiring pairing link and QR code to open the secure page and install the PWA.
+
+  Keep tunnel settings on the execution host, preserve an existing connection if replacement fails, and require infrastructure administration for HTTPS configuration. Show setup and reconnection status with bounded foreground polling; disabling the tunnel leaves local access and running agents intact.
+
 ## 0.83.0
 
 ### Minor Changes
