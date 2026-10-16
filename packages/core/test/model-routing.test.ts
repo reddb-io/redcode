@@ -185,4 +185,16 @@ describe("Selected model routing", () => {
       expect(request.body).not.toHaveProperty("disable_fallbacks")
     }),
   )
+
+  it.effect("also rejects reported substitutions on a native API HTTP fallback", () =>
+    Effect.gen(function* () {
+      const model = OpenAI.configure({ apiKey: "fixture", baseURL: `${server.url.origin}/fallback/v1` }).chat("gpt-5.5")
+      const error = yield* LLM.generate({ model, prompt: "Test" }, { http: ModelRouting.middleware(model) }).pipe(
+        Effect.flip,
+      )
+      expect(error.reason._tag).toBe("InvalidProviderOutput")
+      expect(isRetryable(error)).toBe(false)
+      expect(received.at(-1)?.body).not.toHaveProperty("disable_fallbacks")
+    }).pipe(Effect.provide(layer)),
+  )
 })

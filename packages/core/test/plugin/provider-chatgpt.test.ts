@@ -1204,7 +1204,8 @@ describe("ChatGPTPlugin", () => {
       const disabled = yield* prepare("http")
 
       expect(prepared.options.webSocket).toBe(executor)
-      expect(prepared.options.http).toBeUndefined()
+      // WebSocket selection retains the HTTP guard for a transport fallback.
+      expect(prepared.options.http).toBeDefined()
       expect(defaulted.options.webSocket).toBeUndefined()
       expect(disabled.options.webSocket).toBeUndefined()
     }),
