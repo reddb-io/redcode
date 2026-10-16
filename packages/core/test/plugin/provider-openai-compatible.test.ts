@@ -198,15 +198,6 @@ describe("OpenAI-compatible wizard answers", () => {
     expect(config.models.silent).toEqual({ name: "silent" })
   })
 
-  test("keeps LiteLLM model fallbacks disabled only for explicitly configured LiteLLM gateways", () => {
-    const configured = endpoint({ baseURL: "https://api.example.com/v1", litellm: true })
-    expect(configured).toHaveProperty("litellm", true)
-    expect(providerConfig(configured, [{ id: "glm-5.3-flash" }])).toHaveProperty("body.disable_fallbacks", true)
-    expect(
-      providerConfig(endpoint({ baseURL: "https://api.example.com/v1" }), [{ id: "glm-5.3-flash" }]),
-    ).not.toHaveProperty("body")
-  })
-
   test("writes discovered and entered models with the limits reported or entered, never a guess", () => {
     const config = providerConfig(endpoint({ baseURL: "https://api.example.com/v1", models: "gamma", output: 2_000 }), [
       { id: "alpha", name: "Alpha", context_length: 64_000 },

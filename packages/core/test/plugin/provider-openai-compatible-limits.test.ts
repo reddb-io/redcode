@@ -93,7 +93,7 @@ describe("OpenAI-compatible endpoints where the server runs the wizard", () => {
         yield* integrations.connection.key({
           integrationID: Integration.ID.make("openai-compatible"),
           key: "sk-good",
-          answer: { baseURL, advanced: true, api: "chat", litellm: true },
+          answer: { baseURL },
         })
         const config = yield* Config.Service
         const models = yield* Model.Service

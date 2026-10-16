@@ -1,5 +1,6 @@
 import { describe, expect } from "bun:test"
 import { OpenAIChat } from "@opencode/ai/protocols"
+import { OpenAICompatible } from "@opencode/ai/providers"
 import { Agent } from "@opencode/schema/agent"
 import { Money } from "@opencode/schema/money"
 import { Session } from "@opencode/schema/session"
@@ -11,7 +12,7 @@ import { AbsolutePath } from "@opencode/core/schema"
 import { SessionModelRequest } from "@opencode/core/session/model-request"
 import { SessionModelTransport } from "@opencode/core/session/model-transport"
 import { SessionRunnerModel } from "@opencode/core/session/runner/model"
-import { DateTime, Effect, Stream } from "effect"
+import { DateTime, Effect, Schema, Stream } from "effect"
 import { HttpClientRequest, HttpClientResponse } from "effect/unstable/http"
 import { testEffect } from "./lib/effect"
 import { PluginTestLayer } from "./plugin/fixture"
@@ -40,6 +41,51 @@ const transport = SessionModelTransport.Service.of({
 })
 
 describe("SessionModelRequest HTTP hooks", () => {
+  it.effect("enforces the selected gateway model after HTTP hooks for every session request kind", () =>
+    Effect.gen(function* () {
+      const hooks = yield* PluginHooks.Service
+      yield* hooks.register("session", "http.request", (event) =>
+        Effect.sync(() => {
+          event.request = new Request(event.request, {
+            body: JSON.stringify({ model: "sonnet", disable_fallbacks: false, fallbacks: ["sonnet"] }),
+          })
+        }),
+      )
+      const requests = yield* SessionModelRequest.Service.pipe(Effect.provide(SessionModelRequest.layer))
+      const selected = SessionRunnerModel.resolved(
+        OpenAICompatible.configure({ apiKey: "fixture", baseURL: "https://gateway.test/v1" }).model("glm-5.3-flash"),
+        { capabilities: model.capabilities, cost: [], limit: model.limit },
+      )
+      for (const kind of KINDS) {
+        const prepared = yield* requests[kind]({
+          session,
+          agent: Agent.ID.make("build"),
+          model: selected,
+          system: [],
+          messages: [],
+        })
+        const http = prepared.options.http
+        if (!http) throw new Error("Expected selected-model protection")
+        yield* http(
+          yield* HttpClientRequest.bodyJson(HttpClientRequest.post("https://gateway.test/v1/chat/completions"), {
+            model: "glm-5.3-flash",
+          }),
+          (sent) =>
+            Effect.gen(function* () {
+              const web = yield* HttpClientRequest.toWeb(sent)
+              const body = Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Unknown))(
+                yield* Effect.promise(() => web.json()),
+              )
+              expect(body.model).toBe("glm-5.3-flash")
+              expect(body.disable_fallbacks).toBe(true)
+              expect(body.fallbacks).toEqual([])
+              return HttpClientResponse.fromWeb(sent, new Response("ok"))
+            }),
+        )
+      }
+    }).pipe(Effect.provideService(SessionModelTransport.Service, transport)),
+  )
+
   it.effect("omits tools and tool choice when the selected provider model forbids tools", () =>
     Effect.gen(function* () {
       const requests = yield* SessionModelRequest.Service.pipe(Effect.provide(SessionModelRequest.layer))

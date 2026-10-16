@@ -14,6 +14,7 @@ import type { RuntimeInfo } from "./model.js"
 import { ModelsDev } from "./models-dev.js"
 import { Npm } from "@opencode/util/npm"
 import { Provider } from "./provider.js"
+import { ModelRouting } from "./model-routing.js"
 import { KV } from "./kv.js"
 
 export class VariantUnavailableError extends Schema.TaggedError<VariantUnavailableError>()(
@@ -186,6 +187,7 @@ export const fromCatalogModel = (
   | UnsupportedCompactionError
 > =>
   resolveCatalogModel(model, credential, dependencies).pipe(
+    Effect.map(ModelRouting.apply),
     Effect.flatMap((resolved) => validateProviderVariables(model, resolved)),
     Effect.flatMap((resolved) => {
       // Reject provider compaction policies up front so the misconfiguration surfaces before any step runs.

@@ -76,11 +76,18 @@ CLI, Desktop and web use the same agent-server model resolver and context manage
 session selection takes precedence over the default S2 model. If that selection becomes unavailable,
 Redcode keeps it selected rather than silently choosing another model.
 
-A model gateway can apply its own fallback policy after receiving the selected model. For a LiteLLM
-gateway, use the shared connection setup: **OpenAI-compatible endpoint → Customize the connection →
-Keep the selected model on a LiteLLM gateway**. This asks the gateway to disable model fallbacks.
-Run connection setup again to apply it to an existing provider; other OpenAI-compatible providers
-do not receive this gateway-specific option. The gateway must honor it.
+Redcode sends the selected model and connection without automatically substituting another model or
+account. OpenAI-compatible gateway requests disable LiteLLM model, context-window and content-policy
+fallbacks automatically, including connections created before this behavior was introduced. OpenRouter
+requests restrict the model list to the selected model and disable backup-provider routing. There is
+no connection setting to enable these fallbacks. Unsupported routing controls produce an error;
+Redcode does not retry after removing them.
+
+If a gateway reports a fallback or a different LiteLLM model group, Redcode rejects the response before
+consuming generated text or tool calls and displays an error in CLI, Desktop and web. Same-model
+retries retain the selected connection. An explicitly selected gateway alias or routing combo still
+delegates its underlying deployment to that gateway; response headers cannot reveal substitutions a
+gateway conceals. Operators must configure gateways to honor the requested routing controls.
 
 Context capacity, maximum input and maximum output are separate limits. A gateway refusing a
 `max_tokens` value does not establish a smaller context window. Redcode reads declared input and

@@ -29,6 +29,7 @@ import { makeLocationNode } from "@opencode/util/effect/app-node"
 import { App } from "../app.js"
 import { Permission } from "../permission.js"
 import { PluginHooks } from "../plugin/hooks.js"
+import { ModelRouting } from "../model-routing.js"
 import { VaultRequestTool } from "../tool/plugin/vault-request.js"
 import { Config } from "../config.js"
 import { QuestionTool } from "../tool/plugin/question.js"
@@ -410,32 +411,35 @@ export const layer = Layer.effect(
       const hasHttpHooks =
         (yield* hooks.has("session", "http.request", model.ref.providerID)) ||
         (yield* hooks.has("session", "http.response", model.ref.providerID))
-      const http: StreamOptions["http"] = hasHttpHooks
-        ? (req, handler) =>
-            Effect.gen(function* () {
-              const before = yield* hooks.trigger("session", "http.request", {
-                ...scope,
-                request: yield* HttpClientRequest.toWeb(req),
-              })
-              let sent = HttpClientRequest.fromWeb(before.request)
-              if (before.request.body)
-                sent = HttpClientRequest.bodyUint8Array(
-                  sent,
-                  new Uint8Array(yield* Effect.promise(() => before.request.clone().arrayBuffer())),
-                  before.request.headers.get("content-type") ?? undefined,
-                )
-              const res = yield* handler(sent)
-              const after = yield* hooks.trigger("session", "http.response", {
-                ...scope,
-                request: before.request,
-                response: new Response(
-                  [204, 205, 304].includes(res.status) ? null : yield* Stream.toReadableStreamEffect(res.stream),
-                  { status: res.status, headers: res.headers },
-                ),
-              })
-              return HttpClientResponse.fromWeb(sent, after.response)
-            }).pipe(Effect.mapError((cause) => (cause instanceof Error ? cause : new Error(String(cause)))))
-        : undefined
+      const http: StreamOptions["http"] = ModelRouting.middleware(
+        request.model,
+        hasHttpHooks
+          ? (req, handler) =>
+              Effect.gen(function* () {
+                const before = yield* hooks.trigger("session", "http.request", {
+                  ...scope,
+                  request: yield* HttpClientRequest.toWeb(req),
+                })
+                let sent = HttpClientRequest.fromWeb(before.request)
+                if (before.request.body)
+                  sent = HttpClientRequest.bodyUint8Array(
+                    sent,
+                    new Uint8Array(yield* Effect.promise(() => before.request.clone().arrayBuffer())),
+                    before.request.headers.get("content-type") ?? undefined,
+                  )
+                const res = yield* handler(sent)
+                const after = yield* hooks.trigger("session", "http.response", {
+                  ...scope,
+                  request: before.request,
+                  response: new Response(
+                    [204, 205, 304].includes(res.status) ? null : yield* Stream.toReadableStreamEffect(res.stream),
+                    { status: res.status, headers: res.headers },
+                  ),
+                })
+                return HttpClientResponse.fromWeb(sent, after.response)
+              }).pipe(Effect.mapError((cause) => (cause instanceof Error ? cause : new Error(String(cause)))))
+          : undefined,
+      )
       // HTTP hooks wrap every HTTP request, including the WebSocket fallback path. The route decides
       // which transport actually carries the request, so both hook families are always offered.
       const webSocket =
@@ -467,7 +471,7 @@ export const layer = Layer.effect(
       return {
         event: shaped,
         request,
-        options: { ...(http ? { http } : {}), ...(webSocket ? { webSocket } : {}) },
+        options: { http, ...(webSocket ? { webSocket } : {}) },
         retry: (event: Parameters<Prepared["retry"]>[0]) =>
           hooks.trigger("session", "retry", event).pipe(Effect.asVoid),
         // Permission.assert and the question tool throw declines as defects so tools cannot

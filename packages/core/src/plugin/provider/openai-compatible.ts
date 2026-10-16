@@ -72,7 +72,6 @@ export interface Endpoint {
   readonly models: ReadonlyArray<string>
   readonly context?: number
   readonly output?: number
-  readonly litellm?: boolean
 }
 
 export const OpenAICompatiblePlugin = define({
@@ -232,14 +231,6 @@ export const OpenAICompatiblePlugin = define({
               when: ADVANCED,
             },
             {
-              type: "boolean",
-              key: "litellm",
-              title: "Keep the selected model on a LiteLLM gateway?",
-              description:
-                "For LiteLLM gateways only. An unavailable model reports an error instead of being replaced by another model. Requires gateway support.",
-              when: ADVANCED,
-            },
-            {
               type: "integer",
               key: "output",
               title: "Maximum output tokens",
@@ -285,7 +276,6 @@ export function parseEndpoint(answer: Form.Answer): Endpoint | string {
     models,
     ...(context === undefined ? {} : { context }),
     ...(output === undefined ? {} : { output }),
-    ...(answer.litellm === true ? { litellm: true } : {}),
   }
 }
 
@@ -417,7 +407,6 @@ export function providerConfig(endpoint: Endpoint, listed: ReadonlyArray<Listed>
     name: endpoint.name,
     package: endpoint.responses ? RESPONSES_PACKAGE : CHAT_PACKAGE,
     settings: { baseURL: endpoint.baseURL, provider: endpoint.providerID },
-    ...(endpoint.litellm ? { body: { disable_fallbacks: true } } : {}),
     ...(Object.keys(endpoint.headers).length ? { headers: { ...endpoint.headers } } : {}),
     models: Object.fromEntries(
       ids.map((id) => {

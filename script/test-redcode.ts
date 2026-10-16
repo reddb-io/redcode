@@ -161,6 +161,7 @@ const suites = {
     "test/worker-lease.test.ts",
     "test/plugin/catalog-limits.test.ts",
     "test/plugin/provider-openai-compatible-limits.test.ts",
+    "test/model-routing.test.ts",
   ],
   cli: [
     "test/pair-remote-consent.test.ts",
