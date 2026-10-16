@@ -204,8 +204,15 @@ function harness(sessionIDs: ReadonlyArray<Session.ID>, later: ReadonlyArray<Ses
     const requests: Permission.Request[] = []
     const interrupted: SessionEvent.Execution.Interrupted["data"][] = []
     const waited = yield* Deferred.make<void>()
+    const started = new Set<Session.ID>()
+    const ready = yield* Deferred.make<void>()
     const unsubscribe = yield* bus.listen((event) =>
       Effect.gen(function* () {
+        if (event.type === SessionEvent.Execution.Started.type) {
+          const data = Schema.decodeUnknownSync(SessionEvent.Execution.Started.data)(event.data)
+          if (sessionIDs.includes(data.sessionID)) started.add(data.sessionID)
+          if (started.size === sessionIDs.length) yield* Deferred.succeed(ready, undefined)
+        }
         if (event.type === SessionEvent.Execution.Interrupted.type) {
           interrupted.push(Schema.decodeUnknownSync(SessionEvent.Execution.Interrupted.data)(event.data))
         }
@@ -229,6 +236,9 @@ function harness(sessionIDs: ReadonlyArray<Session.ID>, later: ReadonlyArray<Ses
     const running = yield* Effect.forEach(sessionIDs, (sessionID) =>
       execution.resume(sessionID).pipe(Effect.exit, Effect.forkScoped),
     )
+    // Commit startup activity before advancing the clock; otherwise a delayed
+    // ownership claim can renew the inactivity deadline midway through a sweep.
+    if (sessionIDs.length > 0) yield* Deferred.await(ready)
     return { forms, requests, interrupted, waited, running }
   })
 }
