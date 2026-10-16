@@ -4,6 +4,54 @@ import { createAppFixture } from "./fixture/app"
 import { tmpdir } from "./fixture/fixture"
 import { directory, json } from "./fixture/tui-client"
 
+test("environment recipes load only when opened and use the active server worktree without submitting a prompt", async () => {
+  await using state = await tmpdir()
+  const reads: string[] = []
+  const writes: string[] = []
+  await using setup = await createAppFixture({
+    state: state.path,
+    fetch: (url, request) => {
+      if (request.method !== "GET") writes.push(url.pathname)
+      if (url.pathname !== "/api/project-environments") return
+      reads.push(url.searchParams.get("directory") ?? "")
+      return json({
+        directory,
+        projectID: "project",
+        environments: [],
+        recipes: [
+          {
+            id: "payments",
+            name: "Payments development",
+            backend: "compose",
+            composeFile: "compose.yaml",
+            prepare: "",
+            start: "",
+            stop: "",
+            validate: "bun run check",
+            timeoutSeconds: 300,
+            secrets: {},
+            projectID: "project",
+            revision: 1,
+            updatedAt: "2026-10-16T12:00:00Z",
+          },
+        ],
+      })
+    },
+  })
+  await setup.ready
+  await setup.waitForFrame(() => Boolean(setup.renderer.root.findDescendantById("session-pane")))
+  expect(reads).toEqual([])
+  const before = writes.length
+  await setup.mockInput.typeText("/environments")
+  setup.mockInput.pressEnter()
+  await setup.waitForFrame((frame) => frame.includes("Payments development"))
+  expect(reads).toEqual([directory])
+  expect(writes.slice(before)).toEqual([])
+  setup.mockInput.pressEnter()
+  await setup.waitForFrame((frame) => frame.includes("revision 1") && frame.includes("validate"))
+  expect(writes.slice(before)).toEqual([])
+})
+
 test("CLI diagnostics and new sessions do not contact the removed RedSkills integration", async () => {
   await using state = await tmpdir()
   const reads: string[] = []

@@ -22,6 +22,7 @@ const AgentHosts = lazy(() => import("./agents-hosts"))
 const AgentHarnesses = lazy(() => import("./agents-harnesses"))
 const AgentMachines = lazy(() => import("./agents-machines"))
 const AgentEnvironments = lazy(() => import("./agents-environments"))
+const ProjectEnvironments = lazy(() => import("./project-environments"))
 const AgentWorktrees = lazy(() => import("./agents-worktrees"))
 
 type AgentInstruction = {
@@ -122,6 +123,9 @@ export default function Agents() {
                     </Match>
                     <Match when={scope.view() === "environments"}>
                       <AgentEnvironments server={server} />
+                    </Match>
+                    <Match when={scope.view() === "project-environments"}>
+                      <ProjectEnvironments server={server} />
                     </Match>
                     <Match when={scope.view() === "worktrees"}>
                       <AgentWorktrees server={server} />

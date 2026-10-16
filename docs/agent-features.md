@@ -33,6 +33,10 @@ recovery and collecting changes.
 sessions, guided remote registration and a create/review/integrate/archive/restore workflow.
 See [external coding agents and worktrees](external-harnesses.md) for capabilities and host ownership.
 
+**Project environments** stores reusable preparation and validation recipes. Run a Docker Compose
+stack or existing project scripts on the selected host, with separate execution state per worktree.
+See [project environments](project-environments.md) for setup, ports, Vault bindings and recovery.
+
 ## Tool discovery
 
 Code Mode is always enabled on the agent server, so Desktop, web and CLI sessions use the same

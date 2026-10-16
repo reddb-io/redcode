@@ -15,6 +15,7 @@ import { CrossSpawnSpawner } from "@opencode/util/cross-spawn-spawner"
 import type { LayerNode } from "@opencode/util/effect/layer-node"
 import { ServerFetch } from "./fetch"
 import { WorkerEnvironments } from "./worker-environments"
+import { ProjectEnvironments } from "./project-environments"
 import type { ServerOptions } from "./options"
 
 /**
@@ -78,6 +79,7 @@ export function replacements(options: Options): LayerNode.Replacements {
   return [
     Database.node.replace(Database.configuredClient(sqliteLayer({ storage: options.storage }))),
     WorkerEnvironments.node.replace(WorkerEnvironments.unavailableLayer),
+    ProjectEnvironments.node.replace(ProjectEnvironments.unavailableLayer),
     CrossSpawnSpawner.node.replace(EnvironmentUnavailable.layer),
     Snapshot.node.replace(Snapshot.noopLayer),
     Vcs.node.replace(vcsLayer),

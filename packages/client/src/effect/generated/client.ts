@@ -485,6 +485,12 @@ import type {
   WorkerEnvironmentsRemoveOutput,
   WorkerEnvironmentsRequestInput,
   WorkerEnvironmentsRequestOutput,
+  ProjectEnvironmentsListInput,
+  ProjectEnvironmentsListOutput,
+  ProjectEnvironmentsSaveInput,
+  ProjectEnvironmentsSaveOutput,
+  ProjectEnvironmentsRunInput,
+  ProjectEnvironmentsRunOutput,
   WorktreeLifecycleArchiveInput,
   WorktreeLifecycleArchiveOutput,
   WorktreeLifecycleArchivesInput,
@@ -2847,6 +2853,47 @@ const adaptGroupWorkerEnvironments = (raw: RawClient["server.workerEnvironments"
   request: EndpointWorkerEnvironmentsRequest(raw),
 })
 
+const EndpointProjectEnvironmentsList =
+  (raw: RawClient["server.projectEnvironments"]) => (input: ProjectEnvironmentsListInput) =>
+    preserveEffect<ProjectEnvironmentsListOutput>()(
+      raw["projectEnvironments.list"]({ query: { directory: input["directory"] } }).pipe(
+        Effect.mapError(mapClientError),
+      ),
+    )
+
+const EndpointProjectEnvironmentsSave =
+  (raw: RawClient["server.projectEnvironments"]) => (input: ProjectEnvironmentsSaveInput) =>
+    preserveEffect<ProjectEnvironmentsSaveOutput>()(
+      raw["projectEnvironments.save"]({
+        payload: {
+          directory: input["directory"],
+          expectedRevision: input["expectedRevision"],
+          definition: input["definition"],
+        },
+      }).pipe(Effect.mapError(mapClientError)),
+    )
+
+const EndpointProjectEnvironmentsRun =
+  (raw: RawClient["server.projectEnvironments"]) => (input: ProjectEnvironmentsRunInput) =>
+    preserveEffect<ProjectEnvironmentsRunOutput>()(
+      raw["projectEnvironments.run"]({
+        payload: {
+          directory: input["directory"],
+          recipeID: input["recipeID"],
+          action: input["action"],
+          revision: input["revision"],
+          requestID: input["requestID"],
+          confirmReconciled: input["confirmReconciled"],
+        },
+      }).pipe(Effect.mapError(mapClientError)),
+    )
+
+const adaptGroupProjectEnvironments = (raw: RawClient["server.projectEnvironments"]) => ({
+  list: EndpointProjectEnvironmentsList(raw),
+  save: EndpointProjectEnvironmentsSave(raw),
+  run: EndpointProjectEnvironmentsRun(raw),
+})
+
 const EndpointWorktreeLifecycleArchive =
   (raw: RawClient["server.worktreeLifecycle"]) => (input: WorktreeLifecycleArchiveInput) =>
     preserveEffect<WorktreeLifecycleArchiveOutput>()(
@@ -2942,6 +2989,7 @@ const adaptClient = (raw: RawClient) => ({
   agentTools: adaptGroupAgentTools(raw["server.agentTools"]),
   usageReporter: adaptGroupUsageReporter(raw["server.usageReporter"]),
   workerEnvironments: adaptGroupWorkerEnvironments(raw["server.workerEnvironments"]),
+  projectEnvironments: adaptGroupProjectEnvironments(raw["server.projectEnvironments"]),
   worktreeLifecycle: adaptGroupWorktreeLifecycle(raw["server.worktreeLifecycle"]),
 })
 

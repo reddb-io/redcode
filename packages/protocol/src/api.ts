@@ -44,6 +44,7 @@ import { HarnessGroup } from "./groups/harness.js"
 import { AgentToolsGroup } from "./groups/agent-tools.js"
 import { UsageReporterGroup } from "./groups/usage-reporter.js"
 import { WorkerEnvironmentsGroup } from "./groups/worker-environments.js"
+import { ProjectEnvironmentsGroup } from "./groups/project-environments.js"
 import { WorktreeLifecycleGroup } from "./groups/worktree-lifecycle.js"
 
 type LocationGroups<LocationId extends HttpApiMiddleware.AnyId> =
@@ -114,6 +115,7 @@ type ApiGroups<
   | typeof AgentToolsGroup
   | typeof UsageReporterGroup
   | typeof WorkerEnvironmentsGroup
+  | typeof ProjectEnvironmentsGroup
   | typeof WorktreeLifecycleGroup
   | LocationGroups<LocationId>
   | LocationGroup<LocationId, LocationService>
@@ -219,6 +221,7 @@ const makeApiFromGroup = <
     .add(AgentToolsGroup)
     .add(UsageReporterGroup)
     .add(WorkerEnvironmentsGroup)
+    .add(ProjectEnvironmentsGroup)
     .add(WorktreeLifecycleGroup)
     .annotateMerge(
       OpenApi.annotations({

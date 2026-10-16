@@ -45,6 +45,7 @@ test("exposes every standard HTTP API group", () => {
     "agentTools",
     "usageReporter",
     "workerEnvironments",
+    "projectEnvironments",
     "worktreeLifecycle",
   ])
   expect(Object.keys(client.debug)).toEqual(["rg", "todos", "guards", "location"])

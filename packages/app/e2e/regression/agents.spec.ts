@@ -11,6 +11,7 @@ import {
   mockWorktreeOperations,
   mockMachineInspection,
   mockWorkerEnvironments,
+  mockProjectEnvironments,
 } from "../utils/agent-operation-fixture"
 import { SERVER, REMOTE_SERVER } from "../utils/app"
 
@@ -21,6 +22,51 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(crypto, "randomUUID", { configurable: true, value: undefined })
   })
+})
+
+test("saves a project environment through the DS and requires review before running on its selected worktree", async ({
+  page,
+}) => {
+  await mockStressTimeline(page)
+  await installStressSessionTabs(page, { sessionIDs: [] })
+  const mock = await mockProjectEnvironments(page)
+  await page.goto("/agents?view=project-environments")
+  const workspace = page.getByRole("region", { name: "Agents", exact: true })
+  await expect(
+    page
+      .getByRole("navigation", { name: "Agents", exact: true })
+      .getByRole("button", { name: "Project environments", exact: true }),
+  ).toHaveAttribute("aria-current", "page")
+  await workspace.getByLabel("Project or worktree directory on this host").fill(fixture.directory)
+  await workspace.getByRole("button", { name: "Open environments", exact: true }).click()
+  await workspace.getByLabel("Recipe name", { exact: true }).fill("Payments development")
+  await workspace.getByLabel("Preparation command (optional)").fill("bun install --frozen-lockfile")
+  await workspace.getByLabel("Validation command", { exact: true }).fill("bun run check")
+  await workspace.getByLabel("Vault bindings (one VARIABLE=vault-name per line)").fill("API_TOKEN=payments-token")
+  await workspace.getByRole("button", { name: "Save recipe", exact: true }).click()
+  await expect(workspace.getByRole("status")).toContainText("Recipe saved.")
+  const recipe = workspace.getByRole("article", { name: "Payments development", exact: true })
+  await expect(recipe.getByText("Recipe revision 1", { exact: true })).toBeVisible()
+  expect(mock.operations).toHaveLength(0)
+  await recipe.getByRole("button", { name: "Start", exact: true }).click()
+  await expect(
+    recipe.getByText("Review this recipe before running it on the selected host.", { exact: false }),
+  ).toBeVisible()
+  expect(mock.operations).toHaveLength(0)
+  await recipe.getByRole("button", { name: "Confirm operation", exact: true }).click()
+  await expect(recipe.getByRole("status")).toHaveText("Validation passed")
+  await expect(recipe.getByText("Application checks passed", { exact: true })).toBeVisible()
+  expect(mock.operations).toHaveLength(1)
+  expect(mock.operations[0]).toMatchObject({
+    directory: fixture.directory,
+    recipeID: "dev",
+    revision: 1,
+    action: "start",
+  })
+  await page.screenshot({ path: test.info().outputPath("project-environments-desktop.png"), fullPage: true })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(recipe.getByRole("button", { name: "Stop", exact: true })).toBeVisible()
+  await page.screenshot({ path: test.info().outputPath("project-environments-mobile.png"), fullPage: true })
 })
 
 test("prepares an isolated workspace through the DS and restores retained data before explicit deletion", async ({
@@ -514,7 +560,7 @@ test("explains unconfirmed worker execution and recovers the saved assignment wi
             messageID: "msg_original",
             generation: 1,
             expiresAt: 1,
-              remainingMs: 0,
+            remainingMs: 0,
           }),
         },
       ],

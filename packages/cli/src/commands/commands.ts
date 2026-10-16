@@ -649,6 +649,49 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
         }),
       ],
     }),
+    Spec.make("environments", {
+      description: "Manage reusable project environment recipes on the selected server",
+      commands: [
+        Spec.make("list", {
+          description: "List recipes and recorded worktree operations",
+          params: {
+            server: ServerParams.server,
+            directory: Flag.string("directory").pipe(Flag.withDefault(process.cwd())),
+          },
+        }),
+        Spec.make("save", {
+          description: "Save a recipe; no commands run until an explicit operation",
+          params: {
+            server: ServerParams.server,
+            directory: Flag.string("directory").pipe(Flag.withDefault(process.cwd())),
+            id: Argument.string("id"),
+            name: Flag.string("name"),
+            backend: Flag.choice("backend", ["compose", "commands"]).pipe(Flag.withDefault("compose")),
+            composeFile: Flag.string("compose-file").pipe(Flag.withDefault("compose.yaml")),
+            prepare: Flag.string("prepare").pipe(Flag.withDefault("")),
+            start: Flag.string("start").pipe(Flag.withDefault("")),
+            stop: Flag.string("stop").pipe(Flag.withDefault("")),
+            validate: Flag.string("validate"),
+            timeout: Flag.integer("timeout").pipe(Flag.withDefault(300)),
+            revision: Flag.integer("revision").pipe(Flag.withDefault(0)),
+            secret: Flag.string("secret").pipe(Flag.atLeast(0)),
+          },
+        }),
+        Spec.make("run", {
+          description: "Run prepare, start, stop, recreate, validate or reconciliation",
+          params: {
+            server: ServerParams.server,
+            directory: Flag.string("directory").pipe(Flag.withDefault(process.cwd())),
+            id: Argument.string("id"),
+            action: Argument.choice("action", ["prepare", "start", "stop", "recreate", "validate", "reconcile"]),
+            revision: Flag.integer("revision"),
+            yes: Flag.boolean("yes").pipe(Flag.withDefault(false)),
+            confirmReconciled: Flag.boolean("confirm-reconciled").pipe(Flag.withDefault(false)),
+            requestID: Flag.string("request-id").pipe(Flag.optional),
+          },
+        }),
+      ],
+    }),
     Spec.make("worktrees", {
       description: "Manage project worktrees",
       commands: [

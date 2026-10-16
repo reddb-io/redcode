@@ -40,6 +40,7 @@ import { HarnessHandler } from "./handlers/harness"
 import { AgentToolsHandler } from "./handlers/agent-tools"
 import { UsageReporterHandler } from "./handlers/usage-reporter"
 import { WorkerEnvironmentsHandler } from "./handlers/worker-environments"
+import { ProjectEnvironmentsHandler } from "./handlers/project-environments"
 
 export const handlers = Layer.mergeAll(
   ServerHandler,
@@ -83,4 +84,5 @@ export const handlers = Layer.mergeAll(
   AgentToolsHandler,
   UsageReporterHandler,
   WorkerEnvironmentsHandler,
+  ProjectEnvironmentsHandler,
 )

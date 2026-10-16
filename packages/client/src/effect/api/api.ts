@@ -50,6 +50,7 @@ import type { Harness } from "@opencode/schema/harness"
 import type { AgentTools } from "@opencode/schema/agent-tools"
 import type { UsageReporter } from "@opencode/schema/usage-reporter"
 import type { WorkerEnvironment } from "@opencode/schema/worker-environment"
+import type { ProjectEnvironment } from "@opencode/schema/project-environment"
 
 export type ServerResourcesOutput = HostResources.Snapshot
 export type ServerResourcesOperation<E = never> = () => Effect.Effect<ServerResourcesOutput, E>
@@ -5944,6 +5945,41 @@ export interface WorkerEnvironmentsApi<E = never> {
   readonly request: WorkerEnvironmentsRequestOperation<E>
 }
 
+export type ProjectEnvironmentsListInput = { readonly directory: AbsolutePath }
+export type ProjectEnvironmentsListOutput = ProjectEnvironment.Snapshot
+export type ProjectEnvironmentsListOperation<E = never> = (
+  input: ProjectEnvironmentsListInput,
+) => Effect.Effect<ProjectEnvironmentsListOutput, E>
+
+export type ProjectEnvironmentsSaveInput = {
+  readonly directory: AbsolutePath
+  readonly expectedRevision: number
+  readonly definition: ProjectEnvironment.Definition
+}
+export type ProjectEnvironmentsSaveOutput = ProjectEnvironment.Recipe
+export type ProjectEnvironmentsSaveOperation<E = never> = (
+  input: ProjectEnvironmentsSaveInput,
+) => Effect.Effect<ProjectEnvironmentsSaveOutput, E>
+
+export type ProjectEnvironmentsRunInput = {
+  readonly directory: AbsolutePath
+  readonly recipeID: ProjectEnvironment.ID
+  readonly action: ProjectEnvironment.Action
+  readonly revision: number
+  readonly requestID: string
+  readonly confirmReconciled?: boolean | undefined
+}
+export type ProjectEnvironmentsRunOutput = ProjectEnvironment.Info
+export type ProjectEnvironmentsRunOperation<E = never> = (
+  input: ProjectEnvironmentsRunInput,
+) => Effect.Effect<ProjectEnvironmentsRunOutput, E>
+
+export interface ProjectEnvironmentsApi<E = never> {
+  readonly list: ProjectEnvironmentsListOperation<E>
+  readonly save: ProjectEnvironmentsSaveOperation<E>
+  readonly run: ProjectEnvironmentsRunOperation<E>
+}
+
 export type WorktreeLifecycleArchiveInput = {
   readonly projectID: Project.ID
   readonly directory: AbsolutePath
@@ -6041,5 +6077,6 @@ export interface AppApi<E = never> {
   readonly agentTools: AgentToolsApi<E>
   readonly usageReporter: UsageReporterApi<E>
   readonly workerEnvironments: WorkerEnvironmentsApi<E>
+  readonly projectEnvironments: ProjectEnvironmentsApi<E>
   readonly worktreeLifecycle: WorktreeLifecycleApi<E>
 }

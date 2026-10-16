@@ -51,6 +51,11 @@ const Handlers = Runtime.handlers(Commands, {
     cancel: () => import("./commands/handlers/workers/cancel"),
     collect: () => import("./commands/handlers/workers/collect"),
   },
+  environments: {
+    list: () => import("./commands/handlers/environments/list"),
+    save: () => import("./commands/handlers/environments/save"),
+    run: () => import("./commands/handlers/environments/run"),
+  },
   console: {
     serve: () => import("./commands/handlers/console/serve"),
     orgs: () => import("./commands/handlers/console/orgs"),

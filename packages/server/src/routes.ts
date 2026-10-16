@@ -64,6 +64,7 @@ import { PtySockets } from "./pty-sockets"
 import { ServerPairing } from "./pairing"
 import { Workers } from "./workers"
 import { WorkerEnvironments } from "./worker-environments"
+import { ProjectEnvironments } from "./project-environments"
 import { Harnesses } from "./harness"
 import { AgentTools } from "@opencode/core/agent-tools"
 import { harnessUsageNode } from "./harness-usage"
@@ -121,6 +122,7 @@ const applicationServiceNodes = [
   ServerPairing.node,
   Workers.node,
   WorkerEnvironments.node,
+  ProjectEnvironments.node,
   Harnesses.node,
   AgentTools.node,
   harnessUsageNode,
@@ -235,6 +237,9 @@ function makeRoutes<AuthError, AuthServices>(
         ? [
             WorkerEnvironments.node.replace(
               WorkerEnvironments.configured(path.join(options.workers.directory, "environments")),
+            ),
+            ProjectEnvironments.node.replace(
+              ProjectEnvironments.configured(path.join(options.workers.directory, "project-environments")),
             ),
           ]
         : []),

@@ -1081,6 +1081,10 @@ export type UsageReporterRecord = {
 
 export type WorkerEnvironmentResponse = { status: number; body: string; contentType: string }
 
+export type ProjectEnvironmentID = string
+
+export type ProjectEnvironmentAction = "prepare" | "start" | "stop" | "recreate" | "validate" | "reconcile"
+
 export type WorktreeArchive = { reference: string; head: string; createdAt: string }
 
 export type WorktreeReview = {
@@ -2782,6 +2786,40 @@ export type UsageReporterDelivery = {
   record: UsageReporterRecord
 }
 
+export type ProjectEnvironmentRecipe = {
+  id: ProjectEnvironmentID
+  name: string
+  backend: "compose" | "commands"
+  composeFile: string
+  prepare: string
+  start: string
+  stop: string
+  validate: string
+  timeoutSeconds: number
+  secrets: { [x: string]: string }
+  projectID: string
+  revision: number
+  updatedAt: string
+  validatedRevision?: number
+  validatedAt?: string
+}
+
+export type ProjectEnvironmentInfo = {
+  directory: string
+  recipeID: ProjectEnvironmentID
+  id: string
+  projectID: string
+  composeProject: string
+  revision: number
+  state: "stopped" | "prepared" | "ready" | "working" | "failed" | "reconcile" | "reconciled"
+  action: ProjectEnvironmentAction
+  requestID: string
+  updatedAt: string
+  output: string
+  detail?: string
+  validatedAt?: string
+}
+
 export type ModelRef = { id: string; providerID: string; variant?: string; connection?: ConnectionRef }
 
 export type PermissionRuleset = Array<PermissionRule>
@@ -3113,6 +3151,13 @@ export type UsageReporterSnapshot = {
   config: UsageReporterConfig
   counts: { pending: number; delivered: number; dead: number }
   deliveries: Array<UsageReporterDelivery>
+}
+
+export type ProjectEnvironmentSnapshot = {
+  directory: string
+  projectID: string
+  recipes: Array<ProjectEnvironmentRecipe>
+  environments: Array<ProjectEnvironmentInfo>
 }
 
 export type SessionMessageCompactionCompleted = {
@@ -11495,6 +11540,116 @@ export type WorkerEnvironmentsRequestInput = {
 }
 
 export type WorkerEnvironmentsRequestOutput = WorkerEnvironmentResponse
+
+export type ProjectEnvironmentsListInput = { readonly directory: { readonly directory: string }["directory"] }
+
+export type ProjectEnvironmentsListOutput = ProjectEnvironmentSnapshot
+
+export type ProjectEnvironmentsSaveInput = {
+  readonly directory: {
+    readonly directory: string
+    readonly expectedRevision: number
+    readonly definition: {
+      readonly id: string
+      readonly name: string
+      readonly backend: "compose" | "commands"
+      readonly composeFile: string
+      readonly prepare: string
+      readonly start: string
+      readonly stop: string
+      readonly validate: string
+      readonly timeoutSeconds: number
+      readonly secrets: { readonly [x: string]: string }
+    }
+  }["directory"]
+  readonly expectedRevision: {
+    readonly directory: string
+    readonly expectedRevision: number
+    readonly definition: {
+      readonly id: string
+      readonly name: string
+      readonly backend: "compose" | "commands"
+      readonly composeFile: string
+      readonly prepare: string
+      readonly start: string
+      readonly stop: string
+      readonly validate: string
+      readonly timeoutSeconds: number
+      readonly secrets: { readonly [x: string]: string }
+    }
+  }["expectedRevision"]
+  readonly definition: {
+    readonly directory: string
+    readonly expectedRevision: number
+    readonly definition: {
+      readonly id: string
+      readonly name: string
+      readonly backend: "compose" | "commands"
+      readonly composeFile: string
+      readonly prepare: string
+      readonly start: string
+      readonly stop: string
+      readonly validate: string
+      readonly timeoutSeconds: number
+      readonly secrets: { readonly [x: string]: string }
+    }
+  }["definition"]
+}
+
+export type ProjectEnvironmentsSaveOutput = ProjectEnvironmentRecipe
+
+export type ProjectEnvironmentsRunInput = {
+  readonly directory: {
+    readonly directory: string
+    readonly recipeID: string
+    readonly action: "prepare" | "start" | "stop" | "recreate" | "validate" | "reconcile"
+    readonly revision: number
+    readonly requestID: string
+    readonly confirmReconciled?: boolean
+  }["directory"]
+  readonly recipeID: {
+    readonly directory: string
+    readonly recipeID: string
+    readonly action: "prepare" | "start" | "stop" | "recreate" | "validate" | "reconcile"
+    readonly revision: number
+    readonly requestID: string
+    readonly confirmReconciled?: boolean
+  }["recipeID"]
+  readonly action: {
+    readonly directory: string
+    readonly recipeID: string
+    readonly action: "prepare" | "start" | "stop" | "recreate" | "validate" | "reconcile"
+    readonly revision: number
+    readonly requestID: string
+    readonly confirmReconciled?: boolean
+  }["action"]
+  readonly revision: {
+    readonly directory: string
+    readonly recipeID: string
+    readonly action: "prepare" | "start" | "stop" | "recreate" | "validate" | "reconcile"
+    readonly revision: number
+    readonly requestID: string
+    readonly confirmReconciled?: boolean
+  }["revision"]
+  readonly requestID: {
+    readonly directory: string
+    readonly recipeID: string
+    readonly action: "prepare" | "start" | "stop" | "recreate" | "validate" | "reconcile"
+    readonly revision: number
+    readonly requestID: string
+    readonly confirmReconciled?: boolean
+  }["requestID"]
+  readonly confirmReconciled?: {
+    readonly directory: string
+    readonly recipeID: string
+    readonly action: "prepare" | "start" | "stop" | "recreate" | "validate" | "reconcile"
+    readonly revision: number
+    readonly requestID: string
+    readonly confirmReconciled?: boolean
+  }["confirmReconciled"]
+}
+
+export type ProjectEnvironmentsRunOutput = ProjectEnvironmentInfo
 
 export type WorktreeLifecycleArchiveInput = {
   readonly projectID: { readonly projectID: string; readonly directory: string; readonly head: string }["projectID"]

@@ -4,7 +4,59 @@ import { Harness } from "@opencode/schema/harness"
 import { Worktree } from "@opencode/schema/worktree"
 import { AbsolutePath } from "@opencode/schema/schema"
 import { WorkerEnvironment } from "@opencode/schema/worker-environment"
+import { ProjectEnvironment } from "@opencode/schema/project-environment"
 import { fixture } from "./session-fixture"
+
+export async function mockProjectEnvironments(page: Page) {
+  const recipes: ProjectEnvironment.Recipe[] = []
+  const environments: ProjectEnvironment.Info[] = []
+  const operations: ProjectEnvironment.Run[] = []
+  await page.route("**/api/project-environments**", async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (request.method() === "GET")
+      return route.fulfill({
+        json: {
+          directory: url.searchParams.get("directory"),
+          projectID: fixture.projectID,
+          recipes,
+          environments,
+        },
+      })
+    if (url.pathname.endsWith("/recipes")) {
+      const input = Schema.decodeUnknownSync(ProjectEnvironment.Save)(request.postDataJSON())
+      const existing = recipes.findIndex((item) => item.id === input.definition.id)
+      const recipe: ProjectEnvironment.Recipe = {
+        ...input.definition,
+        projectID: fixture.projectID,
+        revision: input.expectedRevision + 1,
+        updatedAt: "2026-10-16T12:00:00Z",
+      }
+      if (existing >= 0) recipes[existing] = recipe
+      else recipes.push(recipe)
+      return route.fulfill({ json: recipe })
+    }
+    const input = Schema.decodeUnknownSync(ProjectEnvironment.Run)(request.postDataJSON())
+    operations.push(input)
+    const info: ProjectEnvironment.Info = {
+      id: "fixture-stack",
+      recipeID: input.recipeID,
+      projectID: fixture.projectID,
+      directory: input.directory,
+      revision: input.revision,
+      composeProject: "redcode-fixture-stack",
+      action: input.action,
+      state: input.action === "stop" ? "stopped" : "ready",
+      requestID: input.requestID,
+      output: "Application checks passed",
+      updatedAt: "2026-10-16T12:01:00Z",
+      validatedAt: "2026-10-16T12:01:00Z",
+    }
+    environments.splice(0, environments.length, info)
+    return route.fulfill({ json: info })
+  })
+  return { operations }
+}
 
 export async function mockWorkerEnvironments(page: Page) {
   const environments: WorkerEnvironment.Info[] = []

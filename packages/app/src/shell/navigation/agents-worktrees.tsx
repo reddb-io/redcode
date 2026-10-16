@@ -223,6 +223,18 @@ export default function AgentWorktrees(props: { server: ServerConnection.Any }) 
                   >
                     {language.t("agentWorktrees.startAgent")}
                   </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() =>
+                      setParams({
+                        view: "project-environments",
+                        directory: item.directory,
+                        host: ServerConnection.key(props.server),
+                      })
+                    }
+                  >
+                    {language.t("projectEnvironments.title")}
+                  </Button>
                 </div>
               </div>
             </article>

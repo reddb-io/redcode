@@ -101,6 +101,8 @@ are outside this delivery.
    uses the current strategy and project preparation configuration. The Git strategy creates a
    detached checkout; the app does not invent a new branch.
 3. Choose **Start coding agent here** to open Harnesses with this exact host and checkout preselected.
+   **Project environments** opens reusable preparation and validation recipes for that same host and
+   worktree. See [project environments](project-environments.md) for service lifecycle and ports.
 4. Close the attached harness before modifying its Git state. **Review changes** shows the common-base
    diff, checkout status and both commit IDs. Untracked contents enter the diff after committing.
 5. **Commit all non-ignored changes** stages and commits that managed worktree with your supplied

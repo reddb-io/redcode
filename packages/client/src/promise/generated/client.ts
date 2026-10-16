@@ -483,6 +483,12 @@ import type {
   WorkerEnvironmentsRemoveOutput,
   WorkerEnvironmentsRequestInput,
   WorkerEnvironmentsRequestOutput,
+  ProjectEnvironmentsListInput,
+  ProjectEnvironmentsListOutput,
+  ProjectEnvironmentsSaveInput,
+  ProjectEnvironmentsSaveOutput,
+  ProjectEnvironmentsRunInput,
+  ProjectEnvironmentsRunOutput,
   WorktreeLifecycleArchiveInput,
   WorktreeLifecycleArchiveOutput,
   WorktreeLifecycleArchivesInput,
@@ -3943,6 +3949,55 @@ export function make(options: ClientOptions) {
             method: "POST",
             path: `/api/worker-environments/${encodeURIComponent(input.id)}/request`,
             body: { method: input["method"], path: input["path"], body: input["body"], fence: input["fence"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 409],
+            empty: false,
+          },
+          requestOptions,
+        ),
+    },
+    projectEnvironments: {
+      list: (input: ProjectEnvironmentsListInput, requestOptions?: RequestOptions) =>
+        request<ProjectEnvironmentsListOutput>(
+          {
+            method: "GET",
+            path: `/api/project-environments`,
+            query: { directory: input["directory"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 409],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      save: (input: ProjectEnvironmentsSaveInput, requestOptions?: RequestOptions) =>
+        request<ProjectEnvironmentsSaveOutput>(
+          {
+            method: "PUT",
+            path: `/api/project-environments/recipes`,
+            body: {
+              directory: input["directory"],
+              expectedRevision: input["expectedRevision"],
+              definition: input["definition"],
+            },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 409],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      run: (input: ProjectEnvironmentsRunInput, requestOptions?: RequestOptions) =>
+        request<ProjectEnvironmentsRunOutput>(
+          {
+            method: "POST",
+            path: `/api/project-environments/run`,
+            body: {
+              directory: input["directory"],
+              recipeID: input["recipeID"],
+              action: input["action"],
+              revision: input["revision"],
+              requestID: input["requestID"],
+              confirmReconciled: input["confirmReconciled"],
+            },
             successStatus: 200,
             declaredStatuses: [400, 401, 403, 409],
             empty: false,

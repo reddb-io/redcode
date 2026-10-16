@@ -207,6 +207,7 @@ const suites = {
     "test/session-import-foreign.test.ts",
     "test/system-info.test.ts",
     "test/worker-environments.test.ts",
+    "test/project-environments.test.ts",
     "test/console.test.ts",
     "test/console-federation.test.ts",
     "test/infrastructure.test.ts",

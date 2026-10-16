@@ -1,6 +1,58 @@
 import { DESKTOP_NATIVE_ENGLISH } from "./desktop-native"
 
 export const dict = {
+  "projectEnvironments.title": "Project environments",
+  "projectEnvironments.description":
+    "Save a tested setup recipe and reuse it in this project's worktrees on the selected host.",
+  "projectEnvironments.execution":
+    "Commands run on this execution host with its user permissions. These development stacks are separate from isolated worker sandboxes.",
+  "projectEnvironments.directory": "Project or worktree directory on this host",
+  "projectEnvironments.open": "Open environments",
+  "projectEnvironments.recipe": "Environment recipe",
+  "projectEnvironments.id": "Recipe ID",
+  "projectEnvironments.name": "Recipe name",
+  "projectEnvironments.composeFile": "Compose file relative to the worktree",
+  "projectEnvironments.backend": "Execution backend",
+  "projectEnvironments.compose": "Docker Compose",
+  "projectEnvironments.commands": "Project commands",
+  "projectEnvironments.composeHelp":
+    "Redcode assigns a Compose project name per worktree and preserves volumes when stopping. Use dynamically assigned host ports to run stacks together; fixed host ports can conflict. Preparation and validation run in this worktree on the host.",
+  "projectEnvironments.commandsHelp":
+    "Start and stop commands must return after managing the project's services. Use REDCODE_ENVIRONMENT_ID to scope resources. Redcode times out foreground commands; it cannot identify resources created independently by your scripts.",
+  "projectEnvironments.command.prepare": "Preparation command (optional)",
+  "projectEnvironments.command.start": "Start command",
+  "projectEnvironments.command.stop": "Stop command",
+  "projectEnvironments.command.validate": "Validation command",
+  "projectEnvironments.timeout": "Timeout per command (seconds)",
+  "projectEnvironments.bindings": "Vault bindings (one VARIABLE=vault-name per line)",
+  "projectEnvironments.bindingHelp":
+    "Enter Vault names, never secret values. References resolve from this host's project Vault when a command runs. Secrets are not copied to another host.",
+  "projectEnvironments.bindingFormat": "Use VARIABLE=vault-name, one binding per line.",
+  "projectEnvironments.saved": "Recipe saved. Run validation to record that this revision works.",
+  "projectEnvironments.save": "Save recipe",
+  "projectEnvironments.new": "New recipe",
+  "projectEnvironments.revision": "Recipe revision {{revision}}",
+  "projectEnvironments.validated": "This revision passed validation on {{date}}.",
+  "projectEnvironments.lastOperation": "Recorded result from {{date}}. This is not a live service health check.",
+  "projectEnvironments.state.stopped": "Stopped",
+  "projectEnvironments.state.prepared": "Prepared",
+  "projectEnvironments.state.ready": "Validation passed",
+  "projectEnvironments.state.working": "Operation in progress",
+  "projectEnvironments.state.failed": "Operation failed",
+  "projectEnvironments.state.reconcile": "Needs reconciliation",
+  "projectEnvironments.state.reconciled": "Reconciled; start, validate or stop explicitly",
+  "projectEnvironments.action.prepare": "Prepare",
+  "projectEnvironments.action.start": "Start",
+  "projectEnvironments.action.stop": "Stop",
+  "projectEnvironments.action.recreate": "Recreate services",
+  "projectEnvironments.action.validate": "Validate",
+  "projectEnvironments.action.reconcile": "Reconcile",
+  "projectEnvironments.runConfirm":
+    "Review this recipe before running it on the selected host. Recreate stops this stack and runs preparation again; retained volumes are preserved.",
+  "projectEnvironments.reconcileConfirm":
+    "Confirm that the original operation has stopped on this host. Reconciliation retains containers and data and does not replay commands.",
+  "projectEnvironments.confirm": "Confirm operation",
+  "projectEnvironments.empty": "No recipes saved for this project. Configure the setup above, then validate it.",
   "settings.general.install.title": "Install Redcode",
   "settings.general.install.description": "Add Redcode to your home screen and open it in its own window.",
   "settings.general.install.action": "Install app",

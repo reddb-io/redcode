@@ -30,6 +30,7 @@ import { Harness } from "@opencode/schema/harness"
 import { AgentTools } from "@opencode/schema/agent-tools"
 import { UsageReporter } from "@opencode/schema/usage-reporter"
 import { WorkerEnvironment } from "@opencode/schema/worker-environment"
+import { ProjectEnvironment } from "@opencode/schema/project-environment"
 import { AgentAttachment, FileAttachment, Prompt, PromptMention } from "@opencode/schema/prompt"
 import { PromptInput } from "@opencode/schema/prompt-input"
 import { Provider } from "@opencode/schema/provider"
@@ -82,6 +83,7 @@ const effectTypeReferences = [
   ...namespaceTypes("AgentTools", "@opencode/schema/agent-tools", AgentTools),
   ...namespaceTypes("UsageReporter", "@opencode/schema/usage-reporter", UsageReporter),
   ...namespaceTypes("WorkerEnvironment", "@opencode/schema/worker-environment", WorkerEnvironment),
+  ...namespaceTypes("ProjectEnvironment", "@opencode/schema/project-environment", ProjectEnvironment),
   ...namespaceTypes("Worker", "@opencode/schema/worker", Worker),
   ...namespaceTypes("PromptInput", "@opencode/schema/prompt-input", PromptInput),
   ...namespaceTypes("Provider", "@opencode/schema/provider", Provider),

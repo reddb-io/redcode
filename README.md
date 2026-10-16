@@ -41,6 +41,11 @@ commits results, integrates a reviewed commit and archives/restores detached wor
 Configuration is available in the app; **Settings → Servers** links to each host's tools.
 [External agents and worktree workflow](docs/external-harnesses.md).
 
+**Project environments** saves tested setup recipes and runs preparation, services and validation on
+the selected host. Recipes are shared by project, with separate execution state for each worktree.
+Configure them in **Agents → Project environments**, `/environments` or `redcode environments`.
+[Environment setup and lifecycle](docs/project-environments.md).
+
 **Settings → Agent tools** configures optional Rift snapshots, browser control, terminal control and
 computer use on the selected execution host. Installation and enablement are explicit; CLI and TUI
 share those settings. [Capabilities and setup](docs/agent-tools.md).
@@ -438,6 +443,7 @@ incomplete. [Worker setup and isolation](docs/distributed-workers.md) · [Implem
 | Learn modes, Design and session features      | [Agent features](docs/agent-features.md)                                                                                                       |
 | Connect from another computer                 | [Remote access](docs/remote-access.md)                                                                                                         |
 | Add workers and collect their changes         | [Distributed workers](docs/distributed-workers.md)                                                                                             |
+| Reuse a project's development setup           | [Project environments](docs/project-environments.md)                                                                                           |
 | Manage resource ownership and access          | [Console infrastructure](docs/console-infrastructure.md)                                                                                       |
 | Configure authentication                      | [Console federation](docs/console-federation.md)                                                                                               |
 | Follow OpenCode adoption and remaining work   | [Adopted changes](docs/upstream-adoption.md) · [Migration notes](docs/migration-parity.md) · [Parity ledger](docs/opencode-parity-ledger.json) |

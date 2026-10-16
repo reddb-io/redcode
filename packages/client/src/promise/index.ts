@@ -6,6 +6,7 @@ export { Harness } from "@opencode/schema/harness"
 export { AgentTools } from "@opencode/schema/agent-tools"
 export { UsageReporter } from "@opencode/schema/usage-reporter"
 export { WorkerEnvironment } from "@opencode/schema/worker-environment"
+export { ProjectEnvironment } from "@opencode/schema/project-environment"
 export type {
   AgentApi,
   CommandApi,

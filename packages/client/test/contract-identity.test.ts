@@ -7,6 +7,7 @@ import { Prompt } from "@opencode/schema/prompt"
 import { Session } from "@opencode/schema/session"
 import { SessionObservation } from "@opencode/schema/session-observation"
 import { WorkerLease } from "@opencode/schema/worker-lease"
+import { ProjectEnvironment } from "@opencode/schema/project-environment"
 import { SessionMessage } from "@opencode/schema/session-message"
 import { Vcs } from "@opencode/schema/vcs"
 
@@ -19,6 +20,7 @@ test("effect entrypoint exposes canonical Schema contracts", () => {
   expect(Client.Session).toBe(Session)
   expect(Client.SessionObservation.Info).toBe(SessionObservation.Info)
   expect(Client.WorkerLease.Info).toBe(WorkerLease.Info)
+  expect(Client.ProjectEnvironment.Recipe).toBe(ProjectEnvironment.Recipe)
   expect(Client.Vcs.Base).toBe(Vcs.Base)
 })
 
