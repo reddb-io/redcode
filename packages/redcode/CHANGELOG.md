@@ -1,5 +1,12 @@
 # @reddb-io/redcode
 
+## 0.84.1
+
+### Patch Changes
+
+- Preserve gateway-reported input limits separately from model context and output limits. Show the selected model and its limits separately from the last measured request in the desktop and web context panel, and validate model selection across providers, sessions and S2 defaults in the release pipeline.
+- Keep selected models and connections fixed across CLI, Desktop and web. Disable gateway model fallbacks automatically for existing and new OpenAI-compatible connections, restrict OpenRouter routing, and reject reported gateway substitutions before consuming generated content or tool calls. Preserve policy errors as non-retryable failures.
+
 ## 0.84.0
 
 ### Minor Changes
