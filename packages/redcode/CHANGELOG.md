@@ -1,5 +1,21 @@
 # @reddb-io/redcode
 
+## 0.82.1
+
+### Patch Changes
+
+- Coordinate provider cooldowns across sessions using the same server and authenticated account, including HTTP and WebSocket requests, with one recovery probe after overload. Preserve the existing retry status in CLI, Desktop and web.
+
+  Bound MCP startup concurrency and crash recovery, stop retries after repeated failures, reuse skill watches and avoid recursive scans of dependency directories. Suppress repeated failed watcher acquisitions and avoid loading unused provider catalogs from background events.
+
+  Persist local session execution ownership so another server process sharing the database cannot execute, interrupt, move, compact, revert or delete an owned session. Recover abandoned local ownership after process exit, preserve restart claims and return typed conflicts with CORS headers intact. Add jitter to client reconnection attempts.
+
+- Confirm the original worker task admission and live execution before reporting running or releasing a checkout. Observe current workers through one metadata-only API snapshot, with compatible receipt checks for older workers. Retain the original placement and IDs across interrupted admissions and recover only on explicit request.
+
+  Explain missing admission, idle or suspended execution, lost observation and changed placement in the Desktop and web worker panel using the existing design system. Reject recovery of a Session moved away from its assigned checkout, preserve canonical SDK contracts and avoid rewriting unchanged observation journals.
+
+- Reserve worker checkouts at the execution host with durable leases and monotonically increasing fences. Competing coordinators cannot dispatch into an occupied checkout; expired or superseded coordinators cannot send Session commands, permissions or forms. Renew control while observing work, retain reservations across partitions and suspended execution, and recover the original assignment after a coordinator restart without replaying its prompt. CLI, desktop and web share the worker protocol and display reservation, release and recovery states. Workers must support checkout fencing before accepting new coordinated tasks.
+
 ## 0.82.0
 
 ### Minor Changes
