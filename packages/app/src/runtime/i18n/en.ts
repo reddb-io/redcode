@@ -65,6 +65,48 @@ export const dict = {
     "Open this server over HTTPS to install Redcode. Plain HTTP on a network IP only supports a browser shortcut.",
   "settings.general.install.failed":
     "Installation could not start. Use your browser's Install app or Add to Home Screen menu.",
+  "https.title": "HTTPS and mobile access",
+  "https.description":
+    "Set up a secure address, pair your phone and install Redcode without configuring certificates or a reverse proxy.",
+  "https.configure": "Configure HTTPS",
+  "https.secureConnection": "Secure this connection",
+  "https.host": "Execution host",
+  "https.selectedHost": "Configure HTTPS on {{host}}.",
+  "https.provider": "Connection service",
+  "https.provider.own": "Your own relay",
+  "https.provider.hosted": "Hosted OpenTunnel",
+  "https.relay": "Relay API address",
+  "https.relayPlaceholder": "https://relay.example.org",
+  "https.relayHint":
+    "Use an existing OpenTunnel-compatible relay on your infrastructure. Redcode handles this device's certificate and connection.",
+  "https.hostedHint": "Uses the external service at opentunnel.xyz. You can choose your own relay instead.",
+  "https.exposure":
+    "This creates an internet-reachable HTTPS address for this execution host. Access still requires authentication. Pairing links grant trusted host access. A VPN is not required for this address.",
+  "https.consent": "I accept enabling internet access through the selected relay",
+  "https.enable": "Enable HTTPS",
+  "https.working": "Setting up HTTPS…",
+  "https.refresh": "Refresh connection status",
+  "https.state.disabled": "HTTPS access is off.",
+  "https.state.provisioning": "Preparing the secure address and certificate…",
+  "https.state.connecting": "Connecting the HTTPS tunnel…",
+  "https.state.ready": "HTTPS access is ready.",
+  "https.state.failed": "HTTPS access needs attention.",
+  "https.address": "HTTPS address",
+  "https.failed":
+    "Could not complete HTTPS setup. Check the relay address and this host's internet connection, then try again. An existing connection is kept when a replacement fails.",
+  "https.unavailable":
+    "HTTPS setup is unavailable on this host or your account cannot manage it. Update the execution host or ask its administrator.",
+  "https.generate": "Create secure pairing link",
+  "https.readyHint":
+    "The execution host manages the certificate and connection. Create a one-time link to continue on your phone or this device.",
+  "https.change": "Change connection service",
+  "https.open": "Open secure link",
+  "https.installHint":
+    "Open this one-time link on your phone or scan the QR code. On the secure page, choose Settings → Preferences → Install Redcode. On iPhone or iPad, use Safari → Share → Add to Home Screen.",
+  "https.disable": "Turn off HTTPS access",
+  "https.disableHint":
+    "Devices using this HTTPS address will disconnect. Local and VPN connections remain available. This does not stop agents or erase sessions.",
+  "https.confirmDisable": "Confirm turn off",
   "agentTools.initialized": "Rift source initialized. You can now create Rift workspaces from it.",
   "agentTools.title": "Agent tools",
   "agentTools.setup.title": "Install and enable tools",

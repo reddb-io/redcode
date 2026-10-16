@@ -1,11 +1,15 @@
 import { Schema } from "effect"
 import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema, OpenApi } from "effect/unstable/httpapi"
-import { UnauthorizedError } from "../errors.js"
+import { InvalidRequestError, UnauthorizedError } from "../errors.js"
+import { ConsoleForbiddenError } from "../console.js"
+import { RemoteAccess } from "@opencode/schema/remote-access"
 import { Attention } from "@opencode/schema/attention"
 import { HostResources } from "@opencode/schema/host-resources"
 
 export const ServerInfo = Schema.Struct({
-  capabilities: Schema.optional(Schema.Struct({ sessionObservation: Schema.Boolean, workerLease: Schema.optional(Schema.Boolean) })),
+  capabilities: Schema.optional(
+    Schema.Struct({ sessionObservation: Schema.Boolean, workerLease: Schema.optional(Schema.Boolean) }),
+  ),
   version: Schema.String,
   // 0 means the runtime has no OS process identity (e.g. workerd).
   pid: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
@@ -87,6 +91,25 @@ export function isPairingConnectURL(url: URL) {
 }
 
 export const ServerGroup = HttpApiGroup.make("server.server")
+  .add(
+    HttpApiEndpoint.get("server.remoteAccess", "/api/remote-access", {
+      success: RemoteAccess.Status,
+      error: [InvalidRequestError, ConsoleForbiddenError],
+    }),
+  )
+  .add(
+    HttpApiEndpoint.post("server.configureRemoteAccess", "/api/remote-access", {
+      payload: RemoteAccess.Configure,
+      success: RemoteAccess.Status,
+      error: [InvalidRequestError, ConsoleForbiddenError],
+    }),
+  )
+  .add(
+    HttpApiEndpoint.delete("server.disableRemoteAccess", "/api/remote-access", {
+      success: RemoteAccess.Status,
+      error: [InvalidRequestError, ConsoleForbiddenError],
+    }),
+  )
   .add(
     HttpApiEndpoint.get("server.resources", "/api/resources", {
       success: HostResources.Snapshot,

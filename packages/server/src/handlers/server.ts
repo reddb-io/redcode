@@ -6,7 +6,10 @@ import { LocationServiceMap } from "@opencode/core/location-service-map"
 import { SessionExecution } from "@opencode/core/session/execution"
 import { HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
-import { UnauthorizedError } from "@opencode/protocol/errors"
+import { InvalidRequestError, UnauthorizedError } from "@opencode/protocol/errors"
+import { ConsoleForbiddenError } from "@opencode/protocol/console"
+import { ServerAccess } from "@opencode/protocol/server-access"
+import type { RemoteAccessHost } from "../remote-access"
 import { Api } from "../api"
 import { ServerAuth } from "../auth"
 import { ServerInfo } from "../server-info"
@@ -20,8 +23,36 @@ export const ServerHandler = HttpApiBuilder.group(Api, "server.server", (handler
     const pairing = yield* ServerPairing.Service
     const auth = yield* ServerAuth.Config
     const resources = createHostResources()
+    const remote = <A>(operation: (host: RemoteAccessHost.Interface | undefined) => Promise<A>) =>
+      Effect.gen(function* () {
+        const principal = yield* ServerAccess.Current
+        if (principal && principal.access.ownerRole !== "admin")
+          return yield* new ConsoleForbiddenError({
+            message: "Infrastructure administration is required for HTTPS access",
+          })
+        const info = yield* ServerInfo.Service
+        return yield* Effect.tryPromise({
+          try: () => operation(info.remoteAccess),
+          catch: () => new InvalidRequestError({ message: "Unable to change HTTPS access on this host" }),
+        })
+      })
 
     return handlers
+      .handle("server.remoteAccess", () =>
+        remote(async (host) => host?.status() ?? { available: false, state: "disabled" as const }),
+      )
+      .handle("server.configureRemoteAccess", (ctx) =>
+        remote(async (host) => {
+          if (!host) throw new Error("This host does not provide HTTPS setup")
+          return host.configure(ctx.payload)
+        }),
+      )
+      .handle("server.disableRemoteAccess", () =>
+        remote(async (host) => {
+          if (!host) throw new Error("This host does not provide HTTPS setup")
+          return host.disable()
+        }),
+      )
       .handle("server.resources", () => Effect.promise(resources))
       .handle("server.attention", () => attention())
       .handle("server.info", () =>

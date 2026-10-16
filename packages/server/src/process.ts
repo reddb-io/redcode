@@ -23,6 +23,7 @@ import { ServerInfo } from "./server-info"
 import { Status } from "./service-status"
 import { resume } from "./restart-continuity"
 import type { ServerOptions } from "./options"
+import type { RemoteAccessHost } from "./remote-access"
 
 export interface Lifecycle<E = never, R = never> {
   readonly onListen: (
@@ -52,6 +53,7 @@ export const start = Effect.fn("ServerProcess.start")(function* <E, R>(
   lifecycle?: Lifecycle<E, R>,
   transform?: Transform,
   additionalURLs?: () => ReadonlyArray<string>,
+  remoteAccess?: RemoteAccessHost.Interface,
 ) {
   const password = options.password
   if (!password) return yield* Effect.fail(new Error("Missing server password"))
@@ -71,7 +73,15 @@ export const start = Effect.fn("ServerProcess.start")(function* <E, R>(
   }
   const application = yield* Ref.make(Option.none<App>())
   const ptySockets = yield* PtySockets.make
-  const app = dispatch(password, status, application, options.app?.version ?? "unknown", urls, Global.Path.tmp, !!options.access)
+  const app = dispatch(
+    password,
+    status,
+    application,
+    options.app?.version ?? "unknown",
+    urls,
+    Global.Path.tmp,
+    !!options.access,
+  )
   // Request fibers may continue inbound trace context, but must not inherit the server startup parent.
   yield* bound.http
     .serve(
@@ -102,7 +112,7 @@ export const start = Effect.fn("ServerProcess.start")(function* <E, R>(
   )
 
   const boot = Effect.gen(function* () {
-    const routes = createRoutes({ ...options, password }, urls, [], { ptySockets }).pipe(
+    const routes = createRoutes({ ...options, password }, urls, [], { ptySockets, remoteAccess }).pipe(
       Layer.provideMerge(NodeHttpServer.layerHttpServices),
     )
     // makeRoutes provides request services through its dynamic Layer.flatMap.
@@ -220,7 +230,12 @@ function dispatch(
           !hasPersistentPtyConnectTicketURL(url) &&
           !["/design", "/design/", "/design/new"].includes(url.pathname) &&
           !url.pathname.startsWith("/design/session/"))) &&
-      !(consoleAccess && ready && url.pathname.startsWith("/api/") && request.headers.authorization?.startsWith("Bearer ")) &&
+      !(
+        consoleAccess &&
+        ready &&
+        url.pathname.startsWith("/api/") &&
+        request.headers.authorization?.startsWith("Bearer ")
+      ) &&
       !(yield* authorizedRequest(request, auth))
     )
       return unauthorizedResponse(request)

@@ -8,6 +8,7 @@ import { isAllowedCorsOrigin } from "./cors"
 import { createRoutes } from "./routes"
 import { resume } from "./restart-continuity"
 import type { ServerOptions } from "./options"
+import type { RemoteAccessHost } from "./remote-access"
 
 export interface BootOptions {
   /**
@@ -15,6 +16,7 @@ export interface BootOptions {
    * win — swaps services the standard graph assumes are local. See `ServerWorkerd.replacements`.
    */
   readonly overrides?: LayerNode.Replacements
+  readonly remoteAccess?: RemoteAccessHost.Interface
 }
 
 /**
@@ -40,7 +42,9 @@ export interface BootOptions {
  * next boot, and the sweep is a no-op when nothing is suspended.
  */
 export const make = Effect.fn("ServerFetch.make")(function* (options: ServerOptions = {}, boot: BootOptions = {}) {
-  const routes = createRoutes(options, () => [], boot.overrides ?? []).pipe(Layer.provide(HttpServer.layerServices))
+  const routes = createRoutes(options, () => [], boot.overrides ?? [], { remoteAccess: boot.remoteAccess }).pipe(
+    Layer.provide(HttpServer.layerServices),
+  )
   // The dynamic route layer supplies its request services, as in ServerProcess.start.
   const context = yield* Layer.build(
     routes as unknown as Layer.Layer<Layer.Success<typeof routes>, Layer.Error<typeof routes>>,

@@ -15,7 +15,7 @@ import { ServiceConfig } from "./services/service-config"
 import { RetainedImage } from "./services/retained-image"
 import { ServiceRegistration } from "./services/service-registration"
 import { WebUi } from "./services/web-ui"
-import { RemoteTunnel } from "./services/remote-tunnel"
+import { RemoteAccessController } from "./services/remote-access"
 import { select } from "./database-selection"
 import { ModelsSources } from "./models-sources"
 import type { InfrastructureAccess } from "@opencode/server/infrastructure-access"
@@ -92,7 +92,7 @@ const processEffect = Effect.fnUntraced(function* (options: Options) {
       if (!password) return yield* Effect.fail(new Error("Missing server password"))
       const instanceID = randomUUID()
       const transform = yield* WebUi.handler()
-      const remote = { urls: [] as ReadonlyArray<string> }
+      const remote = yield* RemoteAccessController.make(options.mode === "service")
       const server = yield* start(
         {
           app: {
@@ -156,7 +156,8 @@ const processEffect = Effect.fnUntraced(function* (options: Options) {
                 }),
             },
         transform,
-        () => remote.urls,
+        remote.urls,
+        remote.host,
       ).pipe(
         Effect.catch((error) => {
           if (serviceOptions === undefined || port === undefined || !addressInUse(error)) return Effect.fail(error)
@@ -177,20 +178,9 @@ const processEffect = Effect.fnUntraced(function* (options: Options) {
       )
       if (server === undefined) return
       const url = HttpServer.formatAddress(server.address)
-      if (serviceOptions !== undefined && config.remote !== undefined) {
-        const bound = new URL(url)
-        if (["0.0.0.0", "[::]"].includes(bound.hostname)) bound.hostname = "127.0.0.1"
-        yield* Effect.forkScoped(
-          RemoteTunnel.run({
-            route: config.remote.route,
-            api: config.relay,
-            target: bound.host,
-            onURL: (url) => {
-              remote.urls = url === undefined ? [] : [url]
-            },
-          }),
-        )
-      }
+      const bound = new URL(url)
+      if (["0.0.0.0", "[::]"].includes(bound.hostname)) bound.hostname = "127.0.0.1"
+      yield* remote.bind(bound.host)
       console.log(options.mode === "stdio" ? JSON.stringify({ url }) : `server listening on ${url}`)
       if (foreground && !environmentPassword) console.log(`server password ${password}`)
       if (options.openBrowser) {

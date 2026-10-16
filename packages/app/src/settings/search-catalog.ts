@@ -31,6 +31,12 @@ export const clientSettings: Entry<SettingsRootTab>[] = [
   },
   {
     tab: "general",
+    label: "https.title",
+    target: "settings-https-access",
+    keywords: "HTTPS PWA certificate tunnel relay secure phone mobile",
+  },
+  {
+    tab: "general",
     label: "settings.general.row.showNavigation.title",
     description: "settings.general.row.showNavigation.description",
     target: "settings-show-navigation",

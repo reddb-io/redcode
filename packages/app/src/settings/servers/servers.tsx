@@ -11,6 +11,7 @@ import { ServerConnection, serverName } from "@/runtime/server/registry"
 import { useServerCollectionController } from "@/servers/registry/controller"
 import { DialogServer } from "@/servers/connect/dialog"
 import { DialogShareServer } from "@/servers/connect/share-dialog"
+import { DialogHttpsAccess } from "@/servers/connect/https-dialog"
 import { SettingsList } from "@/settings/list"
 import { SettingsRow } from "@/settings/row"
 import { ShellSetting } from "@/settings/general/general"
@@ -141,6 +142,15 @@ export const SettingsServerGeneral: Component<{
                         {language.t("server.share.open")}
                       </Button>
                     </div>
+                  </SettingsRow>
+                  <SettingsRow title={language.t("https.title")} description={language.t("https.description")}>
+                    <Button
+                      variant="outline"
+                      disabled={!!health()?.unauthorized}
+                      onClick={() => void dialog.push(() => <DialogHttpsAccess server={server} />)}
+                    >
+                      {language.t("https.configure")}
+                    </Button>
                   </SettingsRow>
                 </SettingsList>
               </section>

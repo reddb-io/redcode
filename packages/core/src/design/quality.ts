@@ -17,6 +17,22 @@ export function minimumControl(platform: Platform | undefined) {
   return platform ? device(platform).touch : 24
 }
 
+/** Fixed creative exports clip to the viewport; vertical scrolling is a defect for this target. */
+export function canvas() {
+  const width = document.documentElement.scrollWidth
+  const height = document.documentElement.scrollHeight
+  if (width <= innerWidth + 1 && height <= innerHeight + 1) return []
+  return [
+    {
+      rule: "creative-overflow",
+      severity: "error" as const,
+      selector: "body",
+      evidence: `Content occupies ${width}×${height}px, beyond the ${innerWidth}×${innerHeight}px creative canvas; the export clips it.`,
+      fix: "Fit the composition to the recorded artboard. Move required text and imagery inside its bounds, then inspect the exported PNG and PDF.",
+    },
+  ]
+}
+
 /**
  * Runs inside the isolated prototype page. Signals invite review; they never infer authorship. A
  * `minimum` above 24 is a phone's touch target, which applies to both sides of a control.
@@ -374,7 +390,9 @@ export async function screenNotice(root: string, engine: Design.Info["engine"], 
 
 /** A check's stable name across revisions and viewports: its own key, else rule, direction, slide and selector. */
 export function key(check: Pick<Design.AuditCheck, "rule" | "key" | "variant" | "screen" | "selector">) {
-  return check.key ?? `${check.rule}@${check.variant ?? "page"}${check.screen ? `/${check.screen}` : ""}:${check.selector}`
+  return (
+    check.key ?? `${check.rule}@${check.variant ?? "page"}${check.screen ? `/${check.screen}` : ""}:${check.selector}`
+  )
 }
 
 /** The decision id that records a check as an accepted exception. */
@@ -422,7 +440,9 @@ export function settle(
   decisions: readonly Design.Decision[],
   system?: { readonly gradient: boolean; readonly glass: boolean },
 ) {
-  const keys = new Set(decisions.flatMap((decision) => (decision.id.startsWith("accept:") ? [decision.id.slice(7)] : [])))
+  const keys = new Set(
+    decisions.flatMap((decision) => (decision.id.startsWith("accept:") ? [decision.id.slice(7)] : [])),
+  )
   const keyed = checks.map((check) => {
     const named = { ...check, key: key(check) }
     const declared =
@@ -446,7 +466,18 @@ export function settle(
 export function report(
   jobs: readonly Pick<
     Design.Job,
-    "id" | "input" | "status" | "progress" | "phase" | "result" | "error" | "created" | "finished" | "audit" | "verify"
+    | "id"
+    | "input"
+    | "status"
+    | "progress"
+    | "phase"
+    | "result"
+    | "error"
+    | "created"
+    | "finished"
+    | "audit"
+    | "verify"
+    | "assessment"
   >[],
   revision: string | null,
   /**
@@ -480,6 +511,23 @@ export function report(
       (job) =>
         `${job.id}: ${job.status} (${job.phase === "preparing" ? "preparing the build and browser" : `${Math.round(job.progress * 100)}%`}) revision=${job.input.revision}${job.input.variant ? ` variant=${job.input.variant}` : ""} ${job.result ?? job.error ?? ""}`,
     ),
+    ...jobs
+      .filter((job) => job.input.revision === revision && job.assessment)
+      .flatMap((job) => {
+        const assessment = job.assessment!
+        return [
+          `S1 assessment: ${job.id}, revision ${assessment.revision}${assessment.variant ? `, variant ${assessment.variant}` : ""}, ${assessment.status}, basis=${assessment.basis}.`,
+          ...assessment.judgments.map((item) => `${item.label}: ${item.value}. Review: ${item.followUp}`),
+          ...assessment.limitations,
+          ...assessment.evidence.flatMap((item) =>
+            item.capture
+              ? [
+                  `Capture: ${item.capture} (${item.width}×${item.height}${item.screen ? `, slide ${item.screen}` : ""})`,
+                ]
+              : [],
+          ),
+        ]
+      }),
     ...(jobs.length > status.length ? [`${jobs.length - status.length} older job statuses omitted.`] : []),
     ...(verify?.verify
       ? [

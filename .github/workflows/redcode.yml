@@ -193,7 +193,7 @@ jobs:
       - name: Install Chromium for Design integration
         if: runner.os == 'Linux'
         working-directory: packages/core
-        run: bun node_modules/playwright-core/cli.js install --with-deps --only-shell chromium
+        run: bun node_modules/playwright-core/cli.js install --with-deps chromium
       - name: Verify Design review responsiveness and revision selection
         if: runner.os == 'Linux'
         working-directory: packages/core

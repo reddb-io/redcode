@@ -11,6 +11,7 @@ import { usePlatform } from "@/runtime/platform/platform"
 import { useServerCtx } from "@/runtime/server/runtime"
 import { ServerConnection } from "@/runtime/server/registry"
 import { forwardedPairingAddress, pairingAddresses } from "./share"
+import { DialogHttpsAccess } from "./https-dialog"
 import "./share.css"
 
 export function DialogShareServer(props: { server: ServerConnection.Any }) {
@@ -100,6 +101,9 @@ export function DialogShareServer(props: { server: ServerConnection.Any }) {
       </DialogHeader>
       <DialogBody class="server-share">
         <p>{language.t("server.share.access")}</p>
+        <Button variant="outline" onClick={() => void dialog.push(() => <DialogHttpsAccess server={props.server} />)}>
+          {language.t("https.configure")}
+        </Button>
         <Show when={info.loading}>
           <p role="status">{language.t("server.share.loading")}</p>
         </Show>

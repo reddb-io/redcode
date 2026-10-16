@@ -3,9 +3,15 @@ export * as DesignChecklist from "./checklist.js"
 import { Design } from "@opencode/schema/design"
 import { DesignSystem } from "./system.js"
 
-export type Artifact = "component" | "screen" | "flow" | "slides"
+export type Artifact = "component" | "screen" | "flow" | "slides" | "creative"
 
 const criteria = {
+  creative: [
+    "Check the exact artboard size and placement; keep required content inside the export canvas.",
+    "Make one main message and focal point legible at the intended display size, including a phone thumbnail.",
+    "Review imagery, typography, claims, brand consistency and the call to action against the brief.",
+    "Inspect the PNG and PDF exports for clipping, missing fonts and assets; a quality judgment does not predict ad performance.",
+  ],
   component: [
     "Reuse the recorded component and tokens; justify any extension to its API or styling.",
     "Check default, focus, disabled, loading, error and long-content states that apply.",
@@ -33,6 +39,7 @@ const criteria = {
 } satisfies Record<Artifact, readonly string[]>
 
 export function artifact(document: Pick<Design.Info, "kind" | "target">): Artifact {
+  if (document.target === "creative") return "creative"
   if (document.target === "presentation" || document.kind === "deck") return "slides"
   if (document.kind === "flow") return "flow"
   return "screen"

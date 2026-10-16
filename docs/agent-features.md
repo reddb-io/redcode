@@ -219,7 +219,7 @@ Design mode is for working out what something should be by building it. The agen
 prototype, you review it in your browser, and what you decide becomes a plan. The agent cannot edit the
 product in this mode, only the prototype, so nothing you say changes code until you leave.
 
-- **Targets.** Prototype for the `web`, for an `app`, or as `presentation` slides.
+- **Targets.** Prototype for the `web`, for an `app`, as `presentation` slides, or as a static `creative`.
 - **Review in the browser.** Click an element, select text or a diagram node and leave a note. Nothing
   reaches the agent until you press **Send to Agent**. New published revisions update the revision
   picker and preview together, keeping your notes, selected screen and scroll position. Browsing an
@@ -259,6 +259,38 @@ Open `http://localhost:35555/design` to create a Design session from a project
 loaded in Redcode or resume an existing one. The browser connects once through
 `redcode pair`; shared review links are scoped to their Design session.
 The review shows the same persisted Design tasks as the CLI.
+
+### Creative canvases and assessments
+
+Choose **Creative (ads and artwork)** when starting a design, or run `redcode design --target creative`.
+Use a square (1080×1080), portrait (1080×1350), story (1080×1920), banner (1200×628), or custom canvas.
+Custom dimensions range from 64 to 4096 pixels per side. **Details → Canvas size** records dimensions
+in a new revision; ask the agent to adapt the composition when changing placement. Each direction is
+a variant. **Assets → Export PNG / Export PDF** exports the selected direction at its recorded size.
+PNG uses the exact canvas pixels; PDF produces one page with corresponding physical dimensions
+(96 CSS pixels per inch). Review the export before print production; this is not a PDF/X or CMYK workflow.
+
+Open **Review → Design assessment → Analyze with System One** for feedback on the selected revision
+and variant. Web, mobile and slides review hierarchy, message clarity, density and legibility, with
+separate judgments about available interaction, technical or narrative evidence. Creative assessments
+also classify archetype, persuasion lever, audience awareness, production style and explicit CTA.
+These are advisory judgments, not conversion predictions or approval. Technical audits and built
+implementation comparisons remain the evidence for implementation quality.
+
+The analysis uses your configured S1 without changing its model or provider. By default it sends
+bounded visible text, layout measurements, brief and existing technical audit evidence. Checking
+**Include rendered images (experimental)** also sends up to six rendered views to an endpoint that
+supports TypeSafe image requests. The panel records scope, model, duration, reported tokens and cost;
+the downloadable assessment includes its evidence and image captures. Missing configuration or
+unsupported image transport is shown as unavailable, with no automatic retry or silent text fallback.
+Further slides, states and offscreen content remain outside the sample. The agent can read assessments
+through `design_jobs` and request them through `design_export` with `format: "analysis"` and optional
+`visual: true`. An analysis does not edit or approve the design.
+
+Use PNG as the default image delivery format for artwork with text and sharp edges. Preserve genuine
+SVG assets as vector sources; HTML compositions and photographs are not automatically vectorized.
+WebP is useful for optimized website delivery, but this canvas exporter currently provides PNG and PDF.
+See the [image format guide](https://developer.mozilla.org/en-US/docs/Web/Media/Guides/Formats/Image_types).
 
 To let colleagues on your local network annotate the same prototype:
 

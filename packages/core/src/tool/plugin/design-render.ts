@@ -26,7 +26,7 @@ export const Plugin = {
           name: "design_export",
           options: { codemode: false },
           description:
-            "Start a local HTML or PDF export, rendered audit, implementation comparison, SVG to GIF export, or feedback round verification. A native monitor waits for completion and resumes this Session with the result and evidence; do not repeatedly poll design_jobs.",
+            "Start an HTML export, a creative PNG/PDF export, presentation PDF, rendered audit, implementation comparison, SVG to GIF export, feedback verification or S1 analysis. Analysis reviews this published revision's structure/content; visual true explicitly includes rendered images through the configured S1's experimental image support. Judgments are advisory, not proof of defects or campaign performance. A native monitor waits for completion and resumes this Session with the result and evidence; do not repeatedly poll design_jobs.",
           input: Schema.Struct({ id: Design.ID, input: Design.Render }),
           output: Design.Job,
           execute: (input, context) =>

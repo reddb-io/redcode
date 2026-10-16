@@ -163,7 +163,7 @@ export async function remember(state: string, directory: string, choice: Choice)
   ).catch(() => undefined)
 }
 
-/** The five answers the confirmation offers, in a stable order. */
+/** The answers the confirmation offers, in a stable order. */
 const OPTIONS: ReadonlyArray<Choice & { readonly label: string; readonly description: string }> = [
   { target: "web", label: "Web", description: "Responsive frontend reviewed at the configured breakpoints" },
   {
@@ -180,6 +180,7 @@ const OPTIONS: ReadonlyArray<Choice & { readonly label: string; readonly descrip
   },
   { target: "app", label: "Mobile app", description: "iOS and Android, reviewed on both phones" },
   { target: "presentation", label: "Presentation", description: "Slide deck at 1920×1080" },
+  { target: "creative", label: "Creative", description: "Static ad, social artwork, poster or banner on a fixed canvas" },
 ]
 const RECOMMENDED = " (Recommended)"
 

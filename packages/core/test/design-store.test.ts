@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test"
 import path from "node:path"
 import { mkdir, rm, symlink, writeFile } from "node:fs/promises"
+import { existsSync } from "node:fs"
+import { chromium } from "playwright-core"
 import { Effect, Layer, Schema } from "effect"
 import { PNG } from "pngjs"
 import { Design } from "@opencode/schema/design"
@@ -18,6 +20,8 @@ import { DesignCapture } from "../src/design/capture"
 import { DesignFiles } from "../src/design/files"
 import { DesignRounds } from "../src/design/rounds"
 import { DesignStore } from "../src/design/store"
+import { DesignRenderer } from "../src/design/renderer"
+import { DesignRendererLocal } from "../src/design/renderer-local"
 import { DesignVerify } from "../src/design/verify"
 import { Intelligence, type EvaluationInput } from "../src/intelligence"
 import { IntelligenceEvaluation } from "../src/intelligence/evaluation"
@@ -96,7 +100,7 @@ const evaluation = (input: EvaluationInput, answered: Record<string, number> | "
 
 // The store always authors prototypes inside its Session Location; worktree preparation belongs to the Session.
 const it = testEffect(
-  AppNodeBuilder.build(LayerNode.group([Database.node, Location.node, DesignStore.node]), [
+  AppNodeBuilder.build(LayerNode.group([Database.node, Location.node, DesignStore.node, DesignRendererLocal.node]), [
     Location.node.replace(tempLocationLayer),
     Config.node.replace(Config.testLayer()),
     Intelligence.node.replace(
@@ -166,6 +170,95 @@ const write = (file: string, content: string) =>
 const read = (file: string) => Effect.promise(() => Bun.file(file).text())
 
 describe("DesignStore lifecycle", () => {
+  // Linux CI provisions Chromium; other hosts run this integration when a browser is installed.
+  ;(existsSync(chromium.executablePath()) ? it.live : it.live.skip)(
+    "exports the selected creative at exact PNG/PDF dimensions and captures visual S1 evidence",
+    () =>
+      Effect.gen(function* () {
+        yield* seed
+        yield* reasoning(single)
+        const store = yield* DesignStore.Service
+        const renderer = yield* DesignRenderer.Service
+        const created = yield* store.create(sessionID, {
+          ...checkout,
+          target: "creative",
+          artboard: { width: 400, height: 600 },
+        })
+        yield* write(
+          path.join(created.root, "index.html"),
+          '<!doctype html><style>html,body{margin:0}section{width:400px;height:600px}#red{background:red}#blue{background:blue}</style><section id="red" data-design-variant="red"><h1>Red artwork</h1><p>Buy now</p></section><section id="blue" data-design-variant="blue"><h1>Blue artwork</h1></section>',
+        )
+        const revision = yield* store.publish(sessionID, created.id, "Creative")
+        const finish = (input: Design.Render) =>
+          Effect.gen(function* () {
+            const started = yield* renderer.start(sessionID, created.id, input)
+            for (;;) {
+              const job = (yield* renderer.jobs(sessionID, created.id)).find((item) => item.id === started.id)!
+              if (job.status !== "queued" && job.status !== "running") {
+                expect(job.error).toBeNull()
+                expect(job.status).toBe("completed")
+                return job
+              }
+              yield* Effect.sleep("20 millis")
+            }
+          }).pipe(Effect.timeout("30 seconds"))
+        const png = yield* finish({ revision: revision.id, format: "png", variant: "blue" })
+        const image = PNG.sync.read(Buffer.from(yield* Effect.promise(() => Bun.file(png.result!).bytes())))
+        expect([image.width, image.height]).toEqual([400, 600])
+        expect([...image.data.slice((500 * 400 + 200) * 4, (500 * 400 + 200) * 4 + 4)]).toEqual([0, 0, 255, 255])
+        const pdf = yield* finish({ revision: revision.id, format: "pdf", variant: "blue" })
+        const document = Buffer.from(yield* Effect.promise(() => Bun.file(pdf.result!).bytes())).toString("latin1")
+        expect(document).toStartWith("%PDF-")
+        expect(document).toMatch(/\/MediaBox\s*\[\s*0\s+0\s+300\s+450\s*\]/)
+        const audit = yield* finish({ revision: revision.id, format: "audit", variant: "blue" })
+        expect(audit.audit?.checks?.some((check) => check.rule === "creative-overflow")).toBe(true)
+        const analysis = yield* finish({ revision: revision.id, format: "analysis", variant: "blue", visual: true })
+        expect(analysis.assessment).toMatchObject({
+          revision: revision.id,
+          variant: "blue",
+          basis: "rendered-images",
+          status: "unavailable",
+          judgments: [],
+        })
+        expect(analysis.assessment!.evidence[0].content).toContain("Blue artwork")
+        expect(analysis.assessment!.evidence[0].content).not.toContain("Red artwork")
+        expect(yield* Effect.promise(() => Bun.file(analysis.assessment!.evidence[0].capture!).exists())).toBe(true)
+        const request = systemOne.asked.at(-1)!
+        expect(request.operation).toBe("design_analysis")
+        expect(Object.keys(request.assets!)).toHaveLength(1)
+        expect(Object.keys(request.questions)).toHaveLength(9)
+        expect(JSON.stringify(request.sources)).not.toContain(created.root)
+      }),
+    120000,
+  )
+  it.live("versions creative canvas changes and restores the recorded dimensions", () =>
+    Effect.gen(function* () {
+      yield* seed
+      const store = yield* DesignStore.Service
+      const created = yield* store.create(sessionID, {
+        ...checkout,
+        target: "creative",
+        artboard: { width: 1080, height: 1920 },
+      })
+      expect((yield* store.get(sessionID, created.id)).artboard).toEqual({ width: 1080, height: 1920 })
+      const first = yield* store.publish(sessionID, created.id, "Story")
+      yield* store.update(sessionID, created.id, { artboard: { width: 1200, height: 628 } })
+      const second = yield* store.publish(sessionID, created.id, "Banner")
+      expect(second.id).not.toBe(first.id)
+      expect(second.document.artboard).toEqual({ width: 1200, height: 628 })
+      expect((yield* store.revision(sessionID, created.id, first.id)).document.artboard).toEqual({
+        width: 1080,
+        height: 1920,
+      })
+      const restored = yield* store.restore(sessionID, created.id, first.id)
+      expect(restored.document.artboard).toEqual({ width: 1080, height: 1920 })
+      yield* store.update(sessionID, created.id, { target: "web" })
+      expect((yield* store.get(sessionID, created.id)).artboard).toBeUndefined()
+      expect(
+        (yield* store.update(sessionID, created.id, { artboard: { width: 500, height: 500 } }).pipe(Effect.flip)).code,
+      ).toBe("invalid")
+    }),
+  )
   it.live("a Git-backed Session authors and restores its prototype in the same Location", () =>
     Effect.gen(function* () {
       const directory = yield* seed

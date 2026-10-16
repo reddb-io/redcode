@@ -114,6 +114,7 @@ export const Operation = Schema.Literals([
   "session_progress",
   "subagent_result",
   "design_target",
+  "design_analysis",
   "design_system_detect",
   "goal_command",
 ])

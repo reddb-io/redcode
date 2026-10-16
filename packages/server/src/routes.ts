@@ -39,6 +39,7 @@ import { MonitorRuntime } from "@opencode/core/monitor"
 import { Job } from "@opencode/core/job"
 import { Mcp } from "@opencode/core/mcp/index"
 import { Global } from "@opencode/util/global"
+import type { RemoteAccessHost } from "./remote-access"
 import { InstructionDiscovery } from "@opencode/core/instruction-discovery"
 import { LocationServiceMap } from "@opencode/core/location-service-map"
 import { LocationActivity } from "@opencode/core/location-activity"
@@ -137,7 +138,11 @@ export function createRoutes(
   options: ServerOptions = {},
   serviceURLs: () => ReadonlyArray<string> = () => [],
   overrides: LayerNode.Replacements = [],
-  features: { readonly v1Migration?: boolean; readonly ptySockets?: PtySockets.Interface } = {},
+  features: {
+    readonly v1Migration?: boolean
+    readonly ptySockets?: PtySockets.Interface
+    readonly remoteAccess?: RemoteAccessHost.Interface
+  } = {},
 ) {
   return makeRoutes(
     options.password
@@ -149,6 +154,7 @@ export function createRoutes(
     features.v1Migration !== false && !options.database?.url,
     undefined,
     features.ptySockets,
+    features.remoteAccess,
   )
 }
 
@@ -180,6 +186,7 @@ function makeRoutes<AuthError, AuthServices>(
   runV1Migration = true,
   instances?: InstanceNode,
   ptySockets?: PtySockets.Interface,
+  remoteAccess?: RemoteAccessHost.Interface,
 ) {
   const standard: LayerNode.Replacements = [
     Database.node.replace(Database.configured(options.database)),
@@ -274,7 +281,13 @@ function makeRoutes<AuthError, AuthServices>(
             WellKnown.Service,
           )(context),
         ),
-        ServerInfo.layer(serviceURLs, Context.get(context, Global.Service).tmp, options.app, options.database),
+        ServerInfo.layer(
+          serviceURLs,
+          Context.get(context, Global.Service).tmp,
+          options.app,
+          options.database,
+          remoteAccess,
+        ),
       )
       const api = Layer.mergeAll(
         HttpApiBuilder.layer(Api, { openapiPath: "/openapi.json" }).pipe(

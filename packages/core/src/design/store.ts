@@ -26,6 +26,8 @@ import { DesignBuild } from "./build.js"
 import { DesignAssets } from "./assets.js"
 import { DesignCapture } from "./capture.js"
 import { DesignJudge } from "./judge.js"
+import { DesignAnalysis } from "./analysis.js"
+import type { EvaluationInput } from "../intelligence.js"
 import { DesignReuse } from "./reuse.js"
 import { DesignLint } from "./lint.js"
 import { DesignSignature } from "./signature.js"
@@ -95,6 +97,8 @@ const make = Effect.gen(function* () {
     const target = input.target ?? "web"
     if (input.platform && target !== "app")
       return yield* new Design.Error({ code: "invalid", message: "Only an app design takes a platform" })
+    if (input.artboard && target !== "creative")
+      return yield* new Design.Error({ code: "invalid", message: "Only a creative design takes an artboard" })
     const design = yield* configured(sessionID)
     const named = input.application ?? design?.application ?? "."
     const source = yield* Effect.tryPromise({
@@ -139,6 +143,7 @@ const make = Effect.gen(function* () {
       engine: input.engine,
       kind: input.kind,
       target,
+      ...(target === "creative" ? { artboard: input.artboard ?? { width: 1080, height: 1080 } } : {}),
       ...(input.platform ? { platform: input.platform } : {}),
       root,
       application,
@@ -316,6 +321,7 @@ const make = Effect.gen(function* () {
           "kind",
           "target",
           "platform",
+          "artboard",
           "root",
           "application",
           "entry",
@@ -820,9 +826,11 @@ const make = Effect.gen(function* () {
     }).pipe(
       Effect.catch((error) =>
         Effect.logWarning("design reuse check failed", { error }).pipe(
-          Effect.map((): ReturnType<typeof DesignReuse.check> => ({
-            checks: [DesignReuse.unavailable(error instanceof Error ? error.message : String(error), width)],
-          })),
+          Effect.map(
+            (): ReturnType<typeof DesignReuse.check> => ({
+              checks: [DesignReuse.unavailable(error instanceof Error ? error.message : String(error), width)],
+            }),
+          ),
         ),
       ),
     )
@@ -837,7 +845,9 @@ const make = Effect.gen(function* () {
       sessionID,
       document.id,
       DesignJudge.subjects(
-        found.filter((check) => !decisions.some((decision) => check.key && decision.id === DesignQuality.accepted(check.key))),
+        found.filter(
+          (check) => !decisions.some((decision) => check.key && decision.id === DesignQuality.accepted(check.key)),
+        ),
         { signatures, approved: facts.approved.designs, files, inventory, aliases },
       ),
     )
@@ -858,6 +868,75 @@ const make = Effect.gen(function* () {
 
   /** Verdicts already given, per design, flagged key and evidence hash, so an unchanged item is not judged again. */
   const verdicts = new Map<string, DesignJudge.Outcome>()
+
+  const assess = Effect.fn("DesignStore.assess")(function* (
+    recorded: Design.Revision,
+    evidence: Design.Assessment["evidence"],
+    variant?: string,
+    images?: EvaluationInput["assets"],
+  ) {
+    const technical = (yield* jobs(recorded.document.sessionID, recorded.designID))
+      .filter(
+        (job) =>
+          job.input.revision === recorded.id &&
+          job.status === "completed" &&
+          job.audit &&
+          (job.input.variant === undefined || job.input.variant === variant),
+      )
+      .toSorted((a, b) => b.created - a.created)
+      .slice(0, 1)
+      .map((job) => ({
+        job: job.id,
+        variant: job.input.variant,
+        findings: job.audit!.findings.slice(0, 12),
+        scenarios: job.audit!.scenarios.slice(0, 12),
+        checks: job.audit!.checks?.slice(0, 24),
+      }))
+    const result = yield* Effect.result(
+      intelligence.evaluate({
+        sessionID: recorded.document.sessionID,
+        subjectID: recorded.designID,
+        candidateID: recorded.id,
+        operation: "design_analysis",
+        kind: "classification",
+        sources: {
+          brief: IntelligenceEvaluation.evidence(recorded.document.brief, { limit: 4000 }),
+          target: recorded.document.target ?? "web",
+          revision: recorded.id,
+          variant,
+          visual: !!images,
+          technical: IntelligenceEvaluation.evidence(technical, { limit: 6000 }),
+          views: evidence.map(({ capture: _capture, ...view }) => view),
+        },
+        questions: DesignAnalysis.questions(recorded.document.target),
+        ...(images ? { assets: images } : {}),
+      }),
+    )
+    const evaluation = Result.isSuccess(result) ? result.success : undefined
+    return {
+      revision: recorded.id,
+      ...(variant ? { variant } : {}),
+      basis: images ? "rendered-images" : "rendered-dom",
+      status: evaluation && evaluation.decision !== "unavailable" ? "completed" : "unavailable",
+      ...(evaluation
+        ? { evaluation: evaluation.id, model: evaluation.model, duration: evaluation.duration, usage: evaluation.usage }
+        : {}),
+      judgments: DesignAnalysis.read(recorded.document.target, evaluation),
+      evidence,
+      limitations: [
+        ...(images
+          ? ["Image evaluation is an experimental provider capability. Results require human review."]
+          : ["Text and layout evidence only; photographs and rendered appearance were not visually assessed."]),
+        "This review covers up to six rendered views. It does not certify accessibility, validate all interactions, or predict campaign performance.",
+        "Suggestions are review prompts, not automatically verified defects. Use the technical audit and implementation comparison for code quality.",
+        ...(Result.isFailure(result)
+          ? [result.failure.message]
+          : !evaluation
+            ? ["Enable and configure System One to run this analysis."]
+            : evaluation.issues),
+      ],
+    } satisfies Design.Assessment
+  })
 
   /**
    * One System One request per {@link DesignJudge.LIMIT} flagged items not judged before, all sent at
@@ -984,8 +1063,8 @@ const make = Effect.gen(function* () {
                         [
                           `note_${index}_change`,
                           `Does sources.notes[${index}].change.delta show that the element changed in a way that cannot plausibly carry out what the original note in sources.notes[${index}].request asks (for example only an unrelated property changed, or the new text contradicts the text the note asks for)? Judge only the change flags, the text before and after and the addressed summary; answer no when the change could plausibly carry out the note or when the note asks for something the delta cannot show.`,
-                      ],
-                    ]
+                        ],
+                      ]
                     : []),
                 ]),
               ),
@@ -1061,9 +1140,11 @@ const make = Effect.gen(function* () {
     )
       return yield* new Design.Error({ code: "invalid", message: "Target paths must stay inside the project" })
     const target = input.target ?? current.target ?? "web"
+    if (input.artboard && target !== "creative")
+      return yield* new Design.Error({ code: "invalid", message: "Only a creative design takes an artboard" })
     if (input.platform && target !== "app")
       return yield* new Design.Error({ code: "invalid", message: "Only an app design takes a platform" })
-    const { notes: statuses, addressed: claims, by, platform: _platform, ...fields } = input
+    const { notes: statuses, addressed: claims, by, platform: _platform, artboard: _artboard, ...fields } = input
     const platform = target === "app" ? (input.platform ?? current.platform) : undefined
     const recorder = by ?? "agent"
     if (claims?.length && recorder === "reviewer")
@@ -1073,11 +1154,13 @@ const make = Effect.gen(function* () {
       })
     const marked = claims?.length ? DesignRounds.tick(current, claims) : undefined
     const base = marked ? { ...current, notes: marked.notes } : current
-    const next = {
+    const next: Design.Info = {
       ...current,
       ...fields,
       ...(targets ? { targets } : {}),
       target,
+      artboard:
+        target === "creative" ? (input.artboard ?? current.artboard ?? { width: 1080, height: 1080 }) : undefined,
       ...(platform ? { platform } : {}),
     }
     yield* Effect.try({
@@ -1488,7 +1571,11 @@ const make = Effect.gen(function* () {
       .update(DesignTable)
       .set({ data: { ...document, ...rounds, updated: Date.now() } })
       .where(
-        and(eq(DesignTable.id, id), eq(DesignTable.session_id, sessionID), eq(DesignTable.directory, location.directory)),
+        and(
+          eq(DesignTable.id, id),
+          eq(DesignTable.session_id, sessionID),
+          eq(DesignTable.directory, location.directory),
+        ),
       )
       .run()
       .pipe(Effect.orDie)
@@ -1519,6 +1606,7 @@ const make = Effect.gen(function* () {
     jobs,
     putJob,
     repetition,
+    assess,
     implementation,
     update,
     amend,

@@ -9,8 +9,11 @@ import type { ConfigDesign } from "@opencode/schema/config/design"
  * breakpoints. The definition itself is shared with the review page; see `viewports`.
  */
 export function of(
-  document: Pick<Design.Info, "target" | "platform">,
+  document: Pick<Design.Info, "target" | "platform" | "artboard">,
   config: Pick<ConfigDesign.Effective, "breakpoints"> | undefined,
 ) {
-  return viewports(document.target, document.platform, { breakpoints: config?.breakpoints })
+  return viewports(document.target, document.platform, {
+    breakpoints: config?.breakpoints,
+    artboard: document.artboard,
+  })
 }

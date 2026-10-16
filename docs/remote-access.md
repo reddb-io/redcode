@@ -60,10 +60,35 @@ When supported, **Install app** opens the browser's installation dialog. You can
 **Install app** / **Add to Home Screen** menu. On iPhone or iPad, use **Share → Add to Home Screen** in Safari.
 Launch Redcode from the home-screen icon to use its own window without the browser address bar.
 
-Use an HTTPS address with a certificate the phone trusts, such as the HTTPS URL from your configured
-pairing tunnel or reverse proxy. Access through a VPN still needs HTTPS: `http://10.x.x.x:4096` can open
-the web interface but does not meet browser PWA installation requirements. Settings explains this when
-the current connection is insecure.
+If you opened an HTTP network address, choose **Secure this connection** in that installation row,
+or **Configure HTTPS** under **Settings → Preferences → HTTPS and mobile access**. Desktop offers the
+same setup in Preferences and each server's settings; **Pair another device** also links to it.
+
+1. Select the execution host. Choose **Your own relay** and enter an existing OpenTunnel-compatible
+   relay API address, or explicitly choose **Hosted OpenTunnel** to use `opentunnel.xyz`.
+2. Read and accept enabling internet access through that relay, then choose **Enable HTTPS**.
+   Redcode prepares this host's certificate and connection without restarting the listener or its
+   running agents. The dialog shows preparation, connection, readiness and failures.
+3. Choose **Create secure pairing link**. Scan its QR code on your phone, or choose **Open secure link**
+   on the current device. This expiring, single-use link signs that browser into the execution host.
+4. On the HTTPS page, choose **Settings → Preferences → Install Redcode**, or use the browser's
+   home-screen installation menu. The browser still controls the final installation prompt.
+
+The relay creates an internet-reachable HTTPS address even if you currently use a VPN. Authentication
+remains required; pairing grants trusted host access. There is no automatic relay selection. Your own
+relay must already be deployed; this dialog configures the host's connection, not the relay's infrastructure.
+You do not need to edit proxy files or manage this host's certificate manually. A failed replacement
+keeps the previous connection. **Turn off HTTPS access** requires confirmation because clients using
+that address disconnect; local/VPN access, agents and sessions remain available.
+
+The managed service shares its saved relay with `redcode pair --remote`. Standalone `redcode serve`
+listeners save their own connection by listening address and port, so they do not replace the managed
+service's tunnel. Keep that listener running; starting it again on the same address/port restores its
+connection. Other embedded server runtimes can report that this setup is unavailable.
+
+Access through a VPN still needs HTTPS: `http://10.x.x.x:4096` can open the web interface but does not
+meet browser PWA installation requirements. `http://localhost` and loopback addresses are development
+exceptions on the device opening them; on a phone, localhost refers to the phone itself.
 
 Narrow screens automatically use the design system's `tiny` spacing and smaller reading text. Touch
 targets and editable text retain the design system's mobile minimums. The installed app restores its

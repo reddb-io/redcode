@@ -119,6 +119,12 @@ const make = Effect.gen(function* () {
       })
     const vercel = evaluator.transport === "vercel" && body !== undefined
     const cloudflare = evaluator.transport === "cloudflare-ai-gateway" && body !== undefined
+    const images = body !== null && typeof body === "object" && "assets" in body
+    if (images && (vercel || cloudflare))
+      return yield* new IntelligenceEvaluation.Error({
+        message:
+          "This System One transport does not forward image assets. Configure a decision endpoint that supports TypeSafe image requests, or run a text and structure review.",
+      })
     const endpoint =
       suffix === "systemone"
         ? (evaluator.endpoint ??
@@ -138,13 +144,24 @@ const make = Effect.gen(function* () {
             signal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]),
             headers: {
               "Content-Type": "application/json",
+              ...(images ? { "TypeSafe-Danger-Zone-Images": "true" } : {}),
               ...(key ? { Authorization: `Bearer ${key}` } : {}),
               ...(gatewayID ? { "cf-aig-gateway-id": gatewayID } : {}),
               ...(vercel ? { "ai-evaluation-model-specification-version": "4", "ai-model-id": evaluator.model } : {}),
             },
             ...(body === undefined
               ? {}
-              : { body: JSON.stringify(cloudflare ? cloudflareBody(body) : vercel ? vercelBody(body) : body) }),
+              : {
+                  body: JSON.stringify(
+                    cloudflare
+                      ? cloudflareBody(body)
+                      : vercel
+                        ? vercelBody(body)
+                        : evaluator.transport === "openrouter"
+                          ? openrouterBody(body)
+                          : body,
+                  ),
+                }),
           },
           requests,
         )
@@ -489,6 +506,33 @@ function record(value: unknown): value is Record<string, unknown> {
 function cloudflareBody(body: unknown) {
   if (!record(body)) return body
   return { model: body.model, input: { state: body.state, questions: body.questions } }
+}
+
+/** OpenRouter ignores TypeSafe's top-level assets map; its Decisions API reads image content parts. */
+function openrouterBody(body: unknown) {
+  if (!record(body) || !record(body.assets)) return body
+  const { assets, ...request } = body
+  return {
+    ...request,
+    state: [
+      { type: "text", text: JSON.stringify(body.state) },
+      ...Object.entries(assets).flatMap(([reference, asset]) => {
+        if (
+          !record(asset) ||
+          typeof asset.data_base64 !== "string" ||
+          !["png", "jpg", "jpeg"].includes(String(asset.format))
+        )
+          throw new IntelligenceEvaluation.Error({ message: "Invalid System One image asset" })
+        return [
+          { type: "text", text: `Rendered image reference: ${reference}` },
+          {
+            type: "image_url",
+            image_url: { url: `data:image/${asset.format === "png" ? "png" : "jpeg"};base64,${asset.data_base64}` },
+          },
+        ]
+      }),
+    ],
+  }
 }
 
 function vercelBody(body: unknown) {

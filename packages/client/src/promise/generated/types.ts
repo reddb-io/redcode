@@ -1,5 +1,13 @@
 export type JsonValue = null | boolean | number | string | Array<JsonValue> | { [key: string]: JsonValue }
 
+export type RemoteAccessStatus = {
+  available: boolean
+  state: "disabled" | "provisioning" | "connecting" | "ready" | "failed"
+  relay?: string
+  url?: string
+  detail?: string
+}
+
 export type HostResourcesSnapshot = {
   sampledAt: number
   platform: string
@@ -351,6 +359,8 @@ export type DesignParamField =
 
 export type DesignParamValues = { [x: string]: { [x: string]: string | number | boolean } }
 
+export type DesignArtboard = { width: number; height: number }
+
 export type DesignBrief = {
   objective: string
   audience: string
@@ -389,7 +399,7 @@ export type DesignNoteEvidence = { job: string; revision?: string; capture?: str
 
 export type DesignRender = {
   revision: string
-  format: "html" | "gif" | "audit" | "compare" | "verify" | "pdf"
+  format: "html" | "gif" | "audit" | "compare" | "verify" | "pdf" | "png" | "analysis"
   variant?: string
   round?: number
   implementation?: string
@@ -401,6 +411,7 @@ export type DesignRender = {
   repeat?: number
   background?: string
   transparent?: boolean
+  visual?: boolean
 }
 
 export type DesignAuditCheck = {
@@ -437,6 +448,20 @@ export type DesignAuditReuse = {
   redeclared: Array<string>
   files: Array<string>
   ratio?: number | "Infinity" | "-Infinity" | "NaN"
+}
+
+export type DesignAssessment = {
+  revision: string
+  variant?: string
+  basis: "rendered-dom" | "rendered-images"
+  status: "completed" | "unavailable"
+  evaluation?: string
+  model?: string
+  duration?: number
+  usage?: { input_tokens: number; output_tokens: number; cost?: number; unpriced?: number }
+  judgments: Array<{ id: string; label: string; value: string; followUp: string }>
+  evidence: Array<{ width: number; height: number; screen?: string; content: string; capture?: string }>
+  limitations: Array<string>
 }
 
 export type DesignVerifyDelta = {
@@ -2610,6 +2635,7 @@ export type IntelligenceEvaluation = {
     | "session_progress"
     | "subagent_result"
     | "design_target"
+    | "design_analysis"
     | "design_system_detect"
     | "goal_command"
   kind?: "classification" | "gate"
@@ -3666,6 +3692,7 @@ export type DesignJob = {
   started?: number | "Infinity" | "-Infinity" | "NaN"
   finished?: number | "Infinity" | "-Infinity" | "NaN"
   audit?: DesignAudit
+  assessment?: DesignAssessment
   verify?: DesignVerify
 }
 
@@ -3788,7 +3815,8 @@ export type DesignInfo = {
   journey: "new" | "existing"
   engine: "html" | "react" | "solid"
   kind: "screen" | "flow" | "comparison" | "deck"
-  target?: "web" | "app" | "presentation"
+  target?: "web" | "app" | "presentation" | "creative"
+  artboard?: DesignArtboard
   platform?: "ios" | "android"
   root: string
   application: string
@@ -4340,6 +4368,17 @@ export type VcsInitNotSupportedError = {
 }
 export const isVcsInitNotSupportedError = (value: unknown): value is VcsInitNotSupportedError =>
   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "VcsInitNotSupportedError"
+
+export type ServerRemoteAccessOutput = RemoteAccessStatus
+
+export type ServerConfigureRemoteAccessInput = {
+  readonly relay: { readonly relay: string; readonly acceptExposure: true }["relay"]
+  readonly acceptExposure: { readonly relay: string; readonly acceptExposure: true }["acceptExposure"]
+}
+
+export type ServerConfigureRemoteAccessOutput = RemoteAccessStatus
+
+export type ServerDisableRemoteAccessOutput = RemoteAccessStatus
 
 export type ServerResourcesOutput = HostResourcesSnapshot
 
@@ -6229,7 +6268,8 @@ export type SessionDesignCreateInput = {
     readonly kind: "screen" | "flow" | "comparison" | "deck"
     readonly designSystem?: string | { readonly [x: string]: JsonValue }
     readonly application?: string
-    readonly target?: "web" | "app" | "presentation"
+    readonly target?: "web" | "app" | "presentation" | "creative"
+    readonly artboard?: { readonly width: number; readonly height: number }
     readonly platform?: "ios" | "android"
   }["name"]
   readonly journey: {
@@ -6239,7 +6279,8 @@ export type SessionDesignCreateInput = {
     readonly kind: "screen" | "flow" | "comparison" | "deck"
     readonly designSystem?: string | { readonly [x: string]: JsonValue }
     readonly application?: string
-    readonly target?: "web" | "app" | "presentation"
+    readonly target?: "web" | "app" | "presentation" | "creative"
+    readonly artboard?: { readonly width: number; readonly height: number }
     readonly platform?: "ios" | "android"
   }["journey"]
   readonly engine: {
@@ -6249,7 +6290,8 @@ export type SessionDesignCreateInput = {
     readonly kind: "screen" | "flow" | "comparison" | "deck"
     readonly designSystem?: string | { readonly [x: string]: JsonValue }
     readonly application?: string
-    readonly target?: "web" | "app" | "presentation"
+    readonly target?: "web" | "app" | "presentation" | "creative"
+    readonly artboard?: { readonly width: number; readonly height: number }
     readonly platform?: "ios" | "android"
   }["engine"]
   readonly kind: {
@@ -6259,7 +6301,8 @@ export type SessionDesignCreateInput = {
     readonly kind: "screen" | "flow" | "comparison" | "deck"
     readonly designSystem?: string | { readonly [x: string]: JsonValue }
     readonly application?: string
-    readonly target?: "web" | "app" | "presentation"
+    readonly target?: "web" | "app" | "presentation" | "creative"
+    readonly artboard?: { readonly width: number; readonly height: number }
     readonly platform?: "ios" | "android"
   }["kind"]
   readonly designSystem?: {
@@ -6269,7 +6312,8 @@ export type SessionDesignCreateInput = {
     readonly kind: "screen" | "flow" | "comparison" | "deck"
     readonly designSystem?: string | { readonly [x: string]: JsonValue }
     readonly application?: string
-    readonly target?: "web" | "app" | "presentation"
+    readonly target?: "web" | "app" | "presentation" | "creative"
+    readonly artboard?: { readonly width: number; readonly height: number }
     readonly platform?: "ios" | "android"
   }["designSystem"]
   readonly application?: {
@@ -6279,7 +6323,8 @@ export type SessionDesignCreateInput = {
     readonly kind: "screen" | "flow" | "comparison" | "deck"
     readonly designSystem?: string | { readonly [x: string]: JsonValue }
     readonly application?: string
-    readonly target?: "web" | "app" | "presentation"
+    readonly target?: "web" | "app" | "presentation" | "creative"
+    readonly artboard?: { readonly width: number; readonly height: number }
     readonly platform?: "ios" | "android"
   }["application"]
   readonly target?: {
@@ -6289,9 +6334,21 @@ export type SessionDesignCreateInput = {
     readonly kind: "screen" | "flow" | "comparison" | "deck"
     readonly designSystem?: string | { readonly [x: string]: JsonValue }
     readonly application?: string
-    readonly target?: "web" | "app" | "presentation"
+    readonly target?: "web" | "app" | "presentation" | "creative"
+    readonly artboard?: { readonly width: number; readonly height: number }
     readonly platform?: "ios" | "android"
   }["target"]
+  readonly artboard?: {
+    readonly name: string
+    readonly journey: "new" | "existing"
+    readonly engine: "html" | "react" | "solid"
+    readonly kind: "screen" | "flow" | "comparison" | "deck"
+    readonly designSystem?: string | { readonly [x: string]: JsonValue }
+    readonly application?: string
+    readonly target?: "web" | "app" | "presentation" | "creative"
+    readonly artboard?: { readonly width: number; readonly height: number }
+    readonly platform?: "ios" | "android"
+  }["artboard"]
   readonly platform?: {
     readonly name: string
     readonly journey: "new" | "existing"
@@ -6299,7 +6356,8 @@ export type SessionDesignCreateInput = {
     readonly kind: "screen" | "flow" | "comparison" | "deck"
     readonly designSystem?: string | { readonly [x: string]: JsonValue }
     readonly application?: string
-    readonly target?: "web" | "app" | "presentation"
+    readonly target?: "web" | "app" | "presentation" | "creative"
+    readonly artboard?: { readonly width: number; readonly height: number }
     readonly platform?: "ios" | "android"
   }["platform"]
 }
@@ -6365,7 +6423,8 @@ export type SessionDesignUpdateInput = {
       readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
     }>
     readonly name?: string
-    readonly target?: "web" | "app" | "presentation"
+    readonly target?: "web" | "app" | "presentation" | "creative"
+    readonly artboard?: { readonly width: number; readonly height: number }
     readonly platform?: "ios" | "android"
     readonly brief?: {
       readonly objective: string
@@ -6443,7 +6502,8 @@ export type SessionDesignUpdateInput = {
       readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
     }>
     readonly name?: string
-    readonly target?: "web" | "app" | "presentation"
+    readonly target?: "web" | "app" | "presentation" | "creative"
+    readonly artboard?: { readonly width: number; readonly height: number }
     readonly platform?: "ios" | "android"
     readonly brief?: {
       readonly objective: string
@@ -6521,7 +6581,8 @@ export type SessionDesignUpdateInput = {
       readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
     }>
     readonly name?: string
-    readonly target?: "web" | "app" | "presentation"
+    readonly target?: "web" | "app" | "presentation" | "creative"
+    readonly artboard?: { readonly width: number; readonly height: number }
     readonly platform?: "ios" | "android"
     readonly brief?: {
       readonly objective: string
@@ -6599,7 +6660,8 @@ export type SessionDesignUpdateInput = {
       readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
     }>
     readonly name?: string
-    readonly target?: "web" | "app" | "presentation"
+    readonly target?: "web" | "app" | "presentation" | "creative"
+    readonly artboard?: { readonly width: number; readonly height: number }
     readonly platform?: "ios" | "android"
     readonly brief?: {
       readonly objective: string
@@ -6677,7 +6739,8 @@ export type SessionDesignUpdateInput = {
       readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
     }>
     readonly name?: string
-    readonly target?: "web" | "app" | "presentation"
+    readonly target?: "web" | "app" | "presentation" | "creative"
+    readonly artboard?: { readonly width: number; readonly height: number }
     readonly platform?: "ios" | "android"
     readonly brief?: {
       readonly objective: string
@@ -6755,7 +6818,8 @@ export type SessionDesignUpdateInput = {
       readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
     }>
     readonly name?: string
-    readonly target?: "web" | "app" | "presentation"
+    readonly target?: "web" | "app" | "presentation" | "creative"
+    readonly artboard?: { readonly width: number; readonly height: number }
     readonly platform?: "ios" | "android"
     readonly brief?: {
       readonly objective: string
@@ -6833,7 +6897,8 @@ export type SessionDesignUpdateInput = {
       readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
     }>
     readonly name?: string
-    readonly target?: "web" | "app" | "presentation"
+    readonly target?: "web" | "app" | "presentation" | "creative"
+    readonly artboard?: { readonly width: number; readonly height: number }
     readonly platform?: "ios" | "android"
     readonly brief?: {
       readonly objective: string
@@ -6869,6 +6934,85 @@ export type SessionDesignUpdateInput = {
     readonly entry?: string
     readonly tweaks?: { readonly [x: string]: string }
   }["target"]
+  readonly artboard?: {
+    readonly notes?: ReadonlyArray<{
+      readonly feedback: string
+      readonly index: number
+      readonly status: "resolved" | "partial" | "unresolved" | "accepted"
+      readonly reason?: string
+      readonly evidence?: { readonly job: string }
+    }>
+    readonly addressed?: ReadonlyArray<{ readonly feedback: string; readonly index: number; readonly summary: string }>
+    readonly by?: "reviewer"
+    readonly controls?: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly selector: string
+      readonly variant?: string
+      readonly fields: ReadonlyArray<
+        | { readonly id: string; readonly name: string; readonly type: "text"; readonly default: string }
+        | { readonly id: string; readonly name: string; readonly type: "boolean"; readonly default: boolean }
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "number"
+            readonly default: number
+            readonly min?: number
+            readonly max?: number
+          }
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "select"
+            readonly default: string
+            readonly options: ReadonlyArray<string>
+          }
+      >
+    }>
+    readonly presets?: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly variant?: string
+      readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+    }>
+    readonly name?: string
+    readonly target?: "web" | "app" | "presentation" | "creative"
+    readonly artboard?: { readonly width: number; readonly height: number }
+    readonly platform?: "ios" | "android"
+    readonly brief?: {
+      readonly objective: string
+      readonly audience: string
+      readonly content: string
+      readonly constraints: string
+      readonly references: ReadonlyArray<string>
+    }
+    readonly decisions?: ReadonlyArray<{
+      readonly id: string
+      readonly text: string
+      readonly revision?: string
+      readonly feedback?: string
+    }>
+    readonly questions?: ReadonlyArray<string>
+    readonly scenarios?: ReadonlyArray<{
+      readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly id: string
+      readonly name: string
+      readonly variant?: string
+      readonly screen?: string
+      readonly selector: string
+      readonly state: "loading" | "empty" | "error" | "populated" | "edge"
+      readonly actions: ReadonlyArray<{
+        readonly selector: string
+        readonly action: "click" | "fill" | "press"
+        readonly value?: string
+      }>
+      readonly notApplicable?: string
+    }>
+    readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }>
+    readonly designSystem?: string | { readonly [x: string]: JsonValue }
+    readonly entry?: string
+    readonly tweaks?: { readonly [x: string]: string }
+  }["artboard"]
   readonly platform?: {
     readonly notes?: ReadonlyArray<{
       readonly feedback: string
@@ -6911,7 +7055,8 @@ export type SessionDesignUpdateInput = {
       readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
     }>
     readonly name?: string
-    readonly target?: "web" | "app" | "presentation"
+    readonly target?: "web" | "app" | "presentation" | "creative"
+    readonly artboard?: { readonly width: number; readonly height: number }
     readonly platform?: "ios" | "android"
     readonly brief?: {
       readonly objective: string
@@ -6989,7 +7134,8 @@ export type SessionDesignUpdateInput = {
       readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
     }>
     readonly name?: string
-    readonly target?: "web" | "app" | "presentation"
+    readonly target?: "web" | "app" | "presentation" | "creative"
+    readonly artboard?: { readonly width: number; readonly height: number }
     readonly platform?: "ios" | "android"
     readonly brief?: {
       readonly objective: string
@@ -7067,7 +7213,8 @@ export type SessionDesignUpdateInput = {
       readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
     }>
     readonly name?: string
-    readonly target?: "web" | "app" | "presentation"
+    readonly target?: "web" | "app" | "presentation" | "creative"
+    readonly artboard?: { readonly width: number; readonly height: number }
     readonly platform?: "ios" | "android"
     readonly brief?: {
       readonly objective: string
@@ -7145,7 +7292,8 @@ export type SessionDesignUpdateInput = {
       readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
     }>
     readonly name?: string
-    readonly target?: "web" | "app" | "presentation"
+    readonly target?: "web" | "app" | "presentation" | "creative"
+    readonly artboard?: { readonly width: number; readonly height: number }
     readonly platform?: "ios" | "android"
     readonly brief?: {
       readonly objective: string
@@ -7223,7 +7371,8 @@ export type SessionDesignUpdateInput = {
       readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
     }>
     readonly name?: string
-    readonly target?: "web" | "app" | "presentation"
+    readonly target?: "web" | "app" | "presentation" | "creative"
+    readonly artboard?: { readonly width: number; readonly height: number }
     readonly platform?: "ios" | "android"
     readonly brief?: {
       readonly objective: string
@@ -7301,7 +7450,8 @@ export type SessionDesignUpdateInput = {
       readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
     }>
     readonly name?: string
-    readonly target?: "web" | "app" | "presentation"
+    readonly target?: "web" | "app" | "presentation" | "creative"
+    readonly artboard?: { readonly width: number; readonly height: number }
     readonly platform?: "ios" | "android"
     readonly brief?: {
       readonly objective: string
@@ -7379,7 +7529,8 @@ export type SessionDesignUpdateInput = {
       readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
     }>
     readonly name?: string
-    readonly target?: "web" | "app" | "presentation"
+    readonly target?: "web" | "app" | "presentation" | "creative"
+    readonly artboard?: { readonly width: number; readonly height: number }
     readonly platform?: "ios" | "android"
     readonly brief?: {
       readonly objective: string
@@ -7457,7 +7608,8 @@ export type SessionDesignUpdateInput = {
       readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
     }>
     readonly name?: string
-    readonly target?: "web" | "app" | "presentation"
+    readonly target?: "web" | "app" | "presentation" | "creative"
+    readonly artboard?: { readonly width: number; readonly height: number }
     readonly platform?: "ios" | "android"
     readonly brief?: {
       readonly objective: string
@@ -7535,7 +7687,8 @@ export type SessionDesignUpdateInput = {
       readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
     }>
     readonly name?: string
-    readonly target?: "web" | "app" | "presentation"
+    readonly target?: "web" | "app" | "presentation" | "creative"
+    readonly artboard?: { readonly width: number; readonly height: number }
     readonly platform?: "ios" | "android"
     readonly brief?: {
       readonly objective: string

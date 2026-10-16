@@ -5,6 +5,10 @@ import { HttpClientError } from "effect/unstable/http"
 import { HttpApiClient } from "effect/unstable/httpapi"
 import { ClientApi } from "../../contract"
 import type {
+  ServerRemoteAccessOutput,
+  ServerConfigureRemoteAccessInput,
+  ServerConfigureRemoteAccessOutput,
+  ServerDisableRemoteAccessOutput,
   ServerResourcesOutput,
   ServerAttentionOutput,
   ServerInfoOutput,
@@ -520,6 +524,22 @@ const preserveStream =
   <E, R>(stream: Stream.Stream<A, E, R>) =>
     stream
 
+const EndpointServerRemoteAccess = (raw: RawClient["server.server"]) => () =>
+  preserveEffect<ServerRemoteAccessOutput>()(raw["server.remoteAccess"]({}).pipe(Effect.mapError(mapClientError)))
+
+const EndpointServerConfigureRemoteAccess =
+  (raw: RawClient["server.server"]) => (input: ServerConfigureRemoteAccessInput) =>
+    preserveEffect<ServerConfigureRemoteAccessOutput>()(
+      raw["server.configureRemoteAccess"]({
+        payload: { relay: input["relay"], acceptExposure: input["acceptExposure"] },
+      }).pipe(Effect.mapError(mapClientError)),
+    )
+
+const EndpointServerDisableRemoteAccess = (raw: RawClient["server.server"]) => () =>
+  preserveEffect<ServerDisableRemoteAccessOutput>()(
+    raw["server.disableRemoteAccess"]({}).pipe(Effect.mapError(mapClientError)),
+  )
+
 const EndpointServerResources = (raw: RawClient["server.server"]) => () =>
   preserveEffect<ServerResourcesOutput>()(raw["server.resources"]({}).pipe(Effect.mapError(mapClientError)))
 
@@ -546,6 +566,9 @@ const EndpointServerConnect = (raw: RawClient["server.server"]) => (input: Serve
   )
 
 const adaptGroupServer = (raw: RawClient["server.server"]) => ({
+  remoteAccess: EndpointServerRemoteAccess(raw),
+  configureRemoteAccess: EndpointServerConfigureRemoteAccess(raw),
+  disableRemoteAccess: EndpointServerDisableRemoteAccess(raw),
   resources: EndpointServerResources(raw),
   attention: EndpointServerAttention(raw),
   info: EndpointServerInfo(raw),
@@ -910,6 +933,7 @@ const EndpointSessionDesignCreate = (raw: RawClient["server.session"]) => (input
         designSystem: input["designSystem"],
         application: input["application"],
         target: input["target"],
+        artboard: input["artboard"],
         platform: input["platform"],
       },
     }).pipe(
@@ -946,6 +970,7 @@ const EndpointSessionDesignUpdate = (raw: RawClient["server.session"]) => (input
         presets: input["presets"],
         name: input["name"],
         target: input["target"],
+        artboard: input["artboard"],
         platform: input["platform"],
         brief: input["brief"],
         decisions: input["decisions"],

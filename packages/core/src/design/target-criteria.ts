@@ -10,6 +10,7 @@ export const TARGETS = {
   web: "A website or web application used in a browser, responsive across phone, tablet and desktop widths",
   app: "A mobile app for phones, with native iOS or Android screens, navigation and controls",
   presentation: "A slide deck, talk, pitch or other paced presentation shown one slide at a time",
+  creative: "A static advertisement, social post, campaign artwork, poster or banner on a fixed-size canvas",
 }
 
 export const PLATFORMS = {

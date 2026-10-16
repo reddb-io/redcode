@@ -27,6 +27,8 @@ import { DesignViewports } from "./viewports.js"
 import { DesignGate } from "./gate.js"
 import { DesignLocate } from "./locate.js"
 import { DesignVerify } from "./verify.js"
+import { DesignAnalysis } from "./analysis.js"
+import type { EvaluationInput } from "../intelligence.js"
 import { screens } from "./ui/screens.js"
 import { deck, slides } from "./ui/slides.js"
 import { device } from "./ui/devices.js"
@@ -342,7 +344,7 @@ export const make = Effect.gen(function* () {
     job: Design.Job,
     budget: number,
   ) {
-    const report: { audit?: Design.Audit; verify?: Design.Verify } = {}
+    const report: { audit?: Design.Audit; verify?: Design.Verify; assessment?: Design.Assessment } = {}
     const started = Date.now()
     yield* store.putJob(sessionID, { ...job, status: "running", started, phase: "preparing" })
     const revision = yield* store.revision(sessionID, job.designID, job.input.revision)
@@ -438,7 +440,11 @@ export const make = Effect.gen(function* () {
           job.input.format === "audit" || job.input.format === "compare" || job.input.format === "verify"
         // The page is replaced when an app job moves to the other phone; helpers read it when they run.
         // A PDF is printed from the presentation's own 1920×1080 viewport.
-        let page = yield* open((inspected && sizes[0]?.device) || job.input.format === "pdf" ? sizes[0] : undefined)
+        let page = yield* open(
+          (inspected && sizes[0]?.device) || ["pdf", "png", "analysis"].includes(job.input.format)
+            ? sizes[0]
+            : undefined,
+        )
         let emulated = inspected ? sizes[0]?.device : undefined
         /** Shows the page at a viewport: resized in place, or a new page when the phone changes. */
         const emulate = Effect.fn("DesignRenderer.emulate")(function* (viewport: Viewport) {
@@ -531,7 +537,170 @@ export const make = Effect.gen(function* () {
           yield* io(() => DesignFiles.atomic(output, injectScreens(html, revision.document.target)))
         }
 
-        if (job.input.format === "pdf") {
+        if (
+          job.input.format === "png" ||
+          (job.input.format === "pdf" && revision.document.target === "creative") ||
+          job.input.format === "analysis"
+        ) {
+          const variants = yield* io(() =>
+            page
+              .locator("[data-design-variant]")
+              .evaluateAll((elements) => elements.map((element) => element.getAttribute("data-design-variant"))),
+          )
+          if (variants.length > 1 && !job.input.variant)
+            return yield* new Design.Error({
+              code: "invalid",
+              message: "Choose one variant for the export or analysis",
+            })
+          if (job.input.variant && !variants.includes(job.input.variant))
+            return yield* new Design.Error({
+              code: "invalid",
+              message: "The selected variant is not present in this revision",
+            })
+          if (job.input.variant)
+            yield* io(() =>
+              page.evaluate((id) => {
+                window.dispatchEvent(new CustomEvent("design:variant", { detail: { id } }))
+                document.querySelectorAll<HTMLElement>("[data-design-variant]").forEach((element) => {
+                  if (element.dataset.designVariant !== id) element.style.setProperty("display", "none", "important")
+                })
+              }, job.input.variant!),
+            )
+        }
+
+        if (job.input.format === "png")
+          yield* io(async () =>
+            DesignFiles.atomic(
+              output,
+              await page.screenshot({
+                type: "png",
+                animations: "disabled",
+                omitBackground: job.input.transparent ?? false,
+                fullPage: false,
+                scale: "css",
+              }),
+            ),
+          )
+
+        if (job.input.format === "pdf" && revision.document.target === "creative") {
+          const canvas = sizes[0]!
+          yield* io(() => page.emulateMedia({ media: "screen" }))
+          yield* io(() =>
+            page.addStyleTag({
+              content: `@page{size:${canvas.width}px ${canvas.height}px;margin:0}html,body{margin:0!important;width:${canvas.width}px!important;height:${canvas.height}px!important;overflow:hidden!important}`,
+            }),
+          )
+          yield* io(async () =>
+            DesignFiles.atomic(
+              output,
+              await page.pdf({
+                width: `${canvas.width}px`,
+                height: `${canvas.height}px`,
+                preferCSSPageSize: false,
+                printBackground: true,
+                pageRanges: "1",
+                margin: { top: 0, bottom: 0, left: 0, right: 0 },
+              }),
+            ),
+          )
+        }
+
+        if (job.input.format === "analysis") {
+          const evidence: Design.Assessment["evidence"][number][] = []
+          const assets: NonNullable<EvaluationInput["assets"]> = {}
+          yield* io(() => page.waitForFunction(anyScreen, undefined, { timeout: 2000 }).catch(() => undefined))
+          const screens = presentation
+            ? (yield* io(() => page.evaluate(declaredScreens))).filter(
+                (item) => !job.input.variant || item.variant === job.input.variant || item.variant === "",
+              )
+            : []
+          const views = screens.length
+            ? screens.slice(0, 6).map((screen) => ({ ...sizes[0]!, screen: screen.id }))
+            : sizes.slice(0, 6).map((size) => ({ ...size, screen: undefined }))
+          for (const view of views) {
+            yield* emulate(view)
+            yield* io(() => page.goto(`http://design.local/${entry}`, { waitUntil: "load" }))
+            if (job.input.variant)
+              yield* io(() =>
+                page.evaluate((id) => {
+                  document.querySelectorAll<HTMLElement>("[data-design-variant]").forEach((element) => {
+                    if (element.dataset.designVariant !== id) element.style.setProperty("display", "none", "important")
+                  })
+                }, job.input.variant!),
+              )
+            if (view.screen)
+              yield* io(() =>
+                page.waitForFunction(
+                  listsScreen,
+                  { screen: view.screen!, variant: job.input.variant },
+                  { timeout: 2000 },
+                ),
+              )
+            if (
+              view.screen &&
+              !(yield* io(() => page.evaluate(openScreen, { screen: view.screen!, variant: job.input.variant })))
+            )
+              return yield* new Design.Error({
+                code: "invalid",
+                message: `Could not open slide ${view.screen} for analysis`,
+              })
+            yield* io(() => page.evaluate(() => document.fonts.ready.then(() => undefined)))
+            const facts = yield* io(() => page.evaluate(DesignAnalysis.capture))
+            const image = job.input.visual ? crypto.randomUUID() : undefined
+            const capture = image
+              ? path.join(path.dirname(output), `${job.id}-analysis-${evidence.length}.jpg`)
+              : undefined
+            if (image) {
+              const bytes = yield* io(() =>
+                page.screenshot({ type: "jpeg", quality: 80, animations: "disabled", fullPage: false, scale: "css" }),
+              )
+              // Normalize in an isolated blank page: preserve the whole capture, fit within the
+              // provider's 280..1568 image bounds, and never resize the artifact itself.
+              const encoder = yield* io(() => instance.newPage())
+              const encoded = yield* io(() =>
+                encoder.evaluate(async (data) => {
+                  const bitmap = await createImageBitmap(await (await fetch(`data:image/jpeg;base64,${data}`)).blob())
+                  const scale = Math.min(1, 1568 / Math.max(bitmap.width, bitmap.height))
+                const width = Math.max(280, Math.round(bitmap.width * scale))
+                const height = Math.max(280, Math.round(bitmap.height * scale))
+                  const canvas = new OffscreenCanvas(width, height)
+                  const context = canvas.getContext("2d")!
+                  context.fillStyle = "white"
+                  context.fillRect(0, 0, width, height)
+                  context.drawImage(bitmap, 0, 0, Math.round(bitmap.width * scale), Math.round(bitmap.height * scale))
+                  bitmap.close()
+                  const blob = await canvas.convertToBlob({ type: "image/jpeg", quality: 0.85 })
+                  return await new Promise<string>((resolve, reject) => {
+                    const reader = new FileReader()
+                    reader.onload = () => resolve(String(reader.result).split(",")[1]!)
+                    reader.onerror = () => reject(new Error("Could not encode the review capture"))
+                    reader.readAsDataURL(blob)
+                  })
+                }, bytes.toString("base64")),
+              )
+              yield* io(() => encoder.close())
+              yield* io(() => DesignFiles.atomic(capture!, Buffer.from(encoded, "base64")))
+              assets[image] = { type: "image", format: "jpg", data_base64: encoded }
+            }
+            evidence.push({
+              width: view.width,
+              height: view.height,
+              ...(view.screen ? { screen: view.screen } : {}),
+              ...(capture ? { capture } : {}),
+              content: JSON.stringify({ ...facts, ...(image ? { image } : {}) }),
+            })
+            yield* progress(evidence.length / (views.length + 1))
+          }
+          report.assessment = yield* store.assess(
+            revision,
+            evidence,
+            job.input.variant,
+            job.input.visual ? assets : undefined,
+          )
+          yield* io(() => DesignFiles.atomic(output, DesignAnalysis.html(report.assessment!, Object.values(assets))))
+        }
+
+        if (job.input.format === "pdf" && presentation) {
           // Frameworks can mount their slides after load; give them a moment, as the audit does.
           yield* io(() => page.waitForFunction(anyScreen, undefined, { timeout: 2000 }).catch(() => undefined))
           // Every slide shows at once, one per 1920×1080 page (the slide runtime's print rules); notes stay hidden.
@@ -1164,6 +1333,14 @@ export const make = Effect.gen(function* () {
               ),
             )
             // Presentations are also checked per slide: content leaving the slide and text too small to project.
+            if (revision.document.target === "creative")
+              checks.push(
+                ...(yield* io(() => page.evaluate(DesignQuality.canvas))).map((check) => ({
+                  ...check,
+                  width,
+                  ...(variant ? { variant } : {}),
+                })),
+              )
             if (presentation)
               checks.push(
                 ...(yield* io(() => page.evaluate(DesignQuality.slide, 24))).map((check) => ({
@@ -1231,7 +1408,11 @@ export const make = Effect.gen(function* () {
           const widest = sizes.toSorted((a, b) => b.width - a.width)[0]
           if (widest && !presentation) {
             yield* emulate(widest)
-            for (const variant of job.input.variant ? [job.input.variant] : valid.length ? valid.slice(0, 6) : [undefined]) {
+            for (const variant of job.input.variant
+              ? [job.input.variant]
+              : valid.length
+                ? valid.slice(0, 6)
+                : [undefined]) {
               yield* reset(variant)
               if (screensMarked)
                 yield* io(() => page.waitForFunction(anyScreen, undefined, { timeout: 2000 }).catch(() => undefined))
@@ -1378,7 +1559,7 @@ export const make = Effect.gen(function* () {
             findings.push(
               "Capture budget reached (36 views). Check the capture manifest and inspect any missing variants or states separately.",
             )
-          if (!evidence.length)
+          if (!evidence.length && revision.document.target !== "creative")
             findings.push("No scenarios have been exercised; interaction behavior remains unverified.")
           const unvisited = [...declared].filter((key) => !visited.has(key))
           if (unvisited.length)
@@ -1444,15 +1625,21 @@ export const make = Effect.gen(function* () {
     input: Design.Render,
   ) {
     const revision = yield* store.revision(sessionID, id, input.revision)
-    if (input.variant && input.format !== "audit" && input.format !== "pdf")
+    if (input.variant && !["audit", "pdf", "png", "analysis"].includes(input.format))
       return yield* new Design.Error({
         code: "invalid",
-        message: "A variant filter is supported only for audits and PDF exports",
+        message: "A variant filter is supported only for audits, analysis, PNG and PDF exports",
       })
-    if (input.format === "pdf" && revision.document.target !== "presentation")
+    if (input.format === "png" && revision.document.target !== "creative")
+      return yield* new Design.Error({ code: "invalid", message: "PNG export requires a creative design" })
+    if (
+      input.format === "pdf" &&
+      revision.document.target !== "presentation" &&
+      revision.document.target !== "creative"
+    )
       return yield* new Design.Error({
         code: "invalid",
-        message: "PDF export prints presentation slides; this design's target is not presentation",
+        message: "PDF export requires a presentation or creative design",
       })
     // Two renders per note plus scoped checks; the round decides the budget, bounded to half an hour.
     let budget = 120

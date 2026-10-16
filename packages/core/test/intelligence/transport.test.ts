@@ -7,7 +7,7 @@ import { IntelligenceRouter } from "@opencode/core/intelligence/router"
 import { Integration } from "@opencode/schema/integration"
 import { Global } from "@opencode/util/global"
 import { LayerNode } from "@opencode/util/effect/layer-node"
-import { Effect } from "effect"
+import { Effect, Schema } from "effect"
 import { tempGlobalLayer } from "../fixture/global"
 import { testEffect } from "../lib/effect"
 
@@ -471,6 +471,39 @@ describe("OpenRouter System One transport", () => {
 })
 
 describe("current RedRouter decision contract", () => {
+  it.live("converts OpenRouter visual decisions into image content parts without changing the model", () =>
+    Effect.gen(function* () {
+      const calls: string[] = []
+      const server = yield* serve(async (request) => {
+        calls.push(new URL(request.url).pathname)
+        expect(request.headers.get("TypeSafe-Danger-Zone-Images")).toBe("true")
+        const body = Schema.decodeUnknownSync(
+          Schema.Struct({ model: Schema.String, state: Schema.Unknown, assets: Schema.optional(Schema.Unknown) }),
+        )(await request.json())
+        expect(body.model).toBe("typesafe/jev-selected")
+        expect(body.assets).toBeUndefined()
+        expect(body.state).toEqual([
+          { type: "text", text: JSON.stringify({ sources: { image: "capture-id", text: "Recorded brief" } }) },
+          { type: "text", text: "Rendered image reference: capture-id" },
+          { type: "image_url", image_url: { url: "data:image/png;base64,aW1hZ2U=" } },
+        ])
+        return Response.json({ model: body.model, answers: {}, usage: { input_tokens: 1, output_tokens: 0 } })
+      })
+      const transport = yield* IntelligenceTransport.Service
+      yield* transport.request(
+        { transport: "openrouter", baseURL: server.url.href, endpoint: "decisions", model: "typesafe/jev-selected" },
+        "systemone",
+        {
+          model: "typesafe/jev-selected",
+          state: { sources: { image: "capture-id", text: "Recorded brief" } },
+          questions: {},
+          assets: { "capture-id": { type: "image", format: "png", data_base64: "aW1hZ2U=" } },
+        },
+        "fixture-key",
+      )
+      expect(calls).toEqual(["/decisions"])
+    }),
+  )
   it.live("uses the first advertised alias and preserves full routed IDs on the wire", () =>
     Effect.gen(function* () {
       const id = "red/red/openrouter/typesafe/jev-1.13"

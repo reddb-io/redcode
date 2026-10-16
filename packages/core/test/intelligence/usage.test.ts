@@ -17,6 +17,8 @@ import { LayerNode } from "@opencode/util/effect/layer-node"
 import { Global } from "@opencode/util/global"
 import { eq } from "drizzle-orm"
 import { Effect, Fiber, Stream } from "effect"
+import { PNG } from "pngjs"
+import { DesignAnalysis } from "../../src/design/analysis"
 import { tempGlobalLayer } from "../fixture/global"
 import { testEffect } from "../lib/effect"
 
@@ -110,6 +112,62 @@ const configure = (baseURL: string) =>
   })
 
 describe("System One usage accounting", () => {
+  it.live("sends visual review assets only on explicit image requests and accounts for the selected S1", () =>
+    Effect.gen(function* () {
+      const image = PNG.sync.write(new PNG({ width: 256, height: 256 })).toString("base64")
+      const reference = crypto.randomUUID()
+      const assets = { [reference]: { type: "image" as const, format: "png" as const, data_base64: image } }
+      const calls: Request[] = []
+      const server = yield* serve(async (request) => {
+        calls.push(request)
+        const body = (await request.json()) as {
+          model: string
+          assets?: typeof assets
+          questions: ReturnType<typeof DesignAnalysis.questions>
+        }
+        expect(request.headers.get("authorization")).toBe("Bearer test-key")
+        expect(body.model).toBe("jev")
+        expect(request.headers.get("TypeSafe-Danger-Zone-Images")).toBe(calls.length === 1 ? "true" : null)
+        expect(body.assets).toEqual(calls.length === 1 ? assets : undefined)
+        return Response.json({
+          model: body.model,
+          answers: Object.fromEntries(
+            Object.entries(body.questions).map(([id, question]) => {
+              if (question.type !== "choice") throw new Error("Expected typed review question")
+              const choice = Object.keys(question.criteria)[0]!
+              return [id, { type: "choice", choice, confidence: 1, probabilities: { [choice]: 1 } }]
+            }),
+          ),
+          usage: { input_tokens: 123, output_tokens: 9, cost: 0.0001 },
+        })
+      })
+      const sessionID = yield* configure(`${server.url.href}v1`)
+      const intelligence = yield* Intelligence.Service
+      const budget = yield* SessionBudget.Service
+      const input: EvaluationInput = {
+        sessionID,
+        operation: "design_analysis",
+        kind: "classification",
+        sources: { views: [{ image: reference }] },
+        questions: DesignAnalysis.questions("creative"),
+      }
+      const result = yield* intelligence.evaluate({ ...input, assets })
+      expect(result?.decision).not.toBe("unavailable")
+      expect(result?.usage).toEqual({ input_tokens: 123, output_tokens: 9, cost: 0.0001 })
+      expect(DesignAnalysis.read("creative", result)).toHaveLength(9)
+      const saved = JSON.stringify(yield* intelligence.evidence(sessionID, result!.id))
+      expect(saved).toContain(reference)
+      expect(saved).not.toContain(image)
+      yield* intelligence.evaluate(input)
+      expect(yield* budget.totals(sessionID)).toEqual({ cost: 0.0002, tokens: 264, unpriced: 0 })
+      const refused = yield* intelligence.evaluate({
+        ...input,
+        assets: Object.fromEntries(Array.from({ length: 7 }, (_, index) => [`image-${index}`, assets[reference]])),
+      })
+      expect(refused?.decision).toBe("unavailable")
+      expect(calls).toHaveLength(2)
+    }),
+  )
   ;([0, 0.0042] as const).forEach((cost) => {
     it.live(`persists each reported USD charge of ${cost} without locally caching responses`, () =>
       Effect.gen(function* () {

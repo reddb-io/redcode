@@ -3,6 +3,7 @@ import type { ConfigEntry, OpenCodeEvent, WorktreeDirectory } from "@opencode/cl
 import { NO_PROVIDER, REMOTE_SERVER, SERVER, holdRoute, project, session } from "../utils/app"
 import { mockAgentTools, mockOpenCodeServer, mockUsageReporter } from "../utils/mock-server"
 import { mockRemoteServer, mockWorkspace, openSettings, type WorkspaceInput } from "../utils/workspace"
+import { mockHttpsAccess } from "../utils/https-fixture"
 
 const directory = "C:/Projects/settings-demo"
 
@@ -103,6 +104,55 @@ test("browser installation captures the prompt before Settings opens and handles
     }
     await expect(settings.getByText("Installed", { exact: true })).toBeVisible()
   }
+})
+
+test("HTTPS setup requires explicit relay consent, recovers from failure and pairs a phone through a secure link", async ({
+  page,
+}, testInfo) => {
+  const { settings } = await open(page)
+  const fixture = await mockHttpsAccess(page)
+  await settings.getByRole("button", { name: "Configure HTTPS", exact: true }).click()
+  const dialog = page.getByRole("dialog")
+  await expect(dialog.getByRole("status")).toHaveText("HTTPS access is off.")
+  await expect(dialog.getByRole("button", { name: "Enable HTTPS", exact: true })).toBeDisabled()
+  expect(fixture.operations).toEqual([])
+  await dialog.getByRole("button", { name: /^Connection service/ }).click()
+  await page.getByRole("option", { name: "Your own relay", exact: true }).click()
+  await dialog.getByRole("textbox", { name: "Relay API address", exact: true }).fill("https://relay.example.test")
+  await expect(dialog.getByRole("button", { name: "Enable HTTPS", exact: true })).toBeDisabled()
+  await dialog.getByText("I accept enabling internet access through the selected relay", { exact: true }).click()
+  await expect(
+    dialog.getByRole("switch", { name: "I accept enabling internet access through the selected relay", exact: true }),
+  ).toBeChecked()
+  await dialog.getByRole("button", { name: "Enable HTTPS", exact: true }).click()
+  await expect(dialog.getByRole("alert")).toContainText("Could not complete HTTPS setup")
+  await expect(dialog.getByRole("button", { name: "Create secure pairing link", exact: true })).toHaveCount(0)
+  await dialog.getByRole("button", { name: /^Connection service/ }).click()
+  await page.getByRole("option", { name: "Hosted OpenTunnel", exact: true }).click()
+  await expect(dialog.getByText(/Uses the external service at opentunnel.xyz/)).toBeVisible()
+  await dialog.getByText("I accept enabling internet access through the selected relay", { exact: true }).click()
+  await dialog.getByRole("button", { name: "Enable HTTPS", exact: true }).click()
+  await expect(dialog.getByRole("status")).toHaveText("HTTPS access is ready.")
+  expect(fixture.operations).toEqual([
+    { method: "POST", relay: "https://relay.example.test", acceptExposure: true },
+    { method: "POST", relay: "https://opentunnel.xyz", acceptExposure: true },
+  ])
+  await dialog.getByRole("button", { name: "Create secure pairing link", exact: true }).click()
+  await expect(dialog.getByRole("textbox", { name: "Pairing link", exact: true })).toHaveValue(
+    "https://device.secure.example.test/auth/connect/https-one-time-code",
+  )
+  await expect(dialog.getByRole("img", { name: "One-time server pairing QR code", exact: true })).toBeVisible()
+  await expect(dialog.getByText(/On the secure page, choose Settings/)).toBeVisible()
+  await page.screenshot({ path: testInfo.outputPath("https-desktop.png") })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(dialog.getByRole("button", { name: "Open secure link", exact: true })).toBeVisible()
+  await page.screenshot({ path: testInfo.outputPath("https-mobile.png") })
+  await dialog.getByRole("button", { name: "Turn off HTTPS access", exact: true }).click()
+  expect(fixture.operations.at(-1)).toEqual({ method: "pair" })
+  await dialog.getByRole("button", { name: "Confirm turn off", exact: true }).click()
+  await expect(dialog.getByRole("status")).toHaveText("HTTPS access is off.")
+  expect(fixture.operations.at(-1)).toEqual({ method: "DELETE" })
+  await expect(dialog.getByRole("button", { name: "Open secure link", exact: true })).toHaveCount(0)
 })
 
 test("Ctrl+, opens settings as soon as the app loads", async ({ page }) => {

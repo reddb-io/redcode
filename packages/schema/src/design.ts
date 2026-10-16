@@ -11,12 +11,18 @@ export const Kind = Schema.Literals(["screen", "flow", "comparison", "deck"])
 export const Journey = Schema.Literals(["new", "existing"])
 export const Engine = Schema.Literals(["html", "react", "solid"])
 /**
- * What the design is for: a responsive web frontend, a mobile app or a presentation. It decides the
+ * What the design is for: a responsive web frontend, mobile app, presentation or static creative. It decides the
  * viewports the review and the audit use and the playbook the agent follows; `Kind` still describes
  * the artifact's shape. Documents stored before targets existed are web.
  */
-export const Surface = Schema.Literals(["web", "app", "presentation"])
+export const Surface = Schema.Literals(["web", "app", "presentation", "creative"])
 export type Surface = typeof Surface.Type
+/** Fixed creative canvas in CSS pixels. Raster exports use these exact dimensions. */
+export const Artboard = Schema.Struct({
+  width: Schema.Int.check(Schema.isBetween({ minimum: 64, maximum: 4096 })),
+  height: Schema.Int.check(Schema.isBetween({ minimum: 64, maximum: 4096 })),
+}).annotate({ identifier: "Design.Artboard" })
+export interface Artboard extends Schema.Schema.Type<typeof Artboard> {}
 /** The mobile platform an app design follows (Human Interface Guidelines or Material); absent means both. */
 export const Platform = Schema.Literals(["ios", "android"])
 export type Platform = typeof Platform.Type
@@ -290,6 +296,7 @@ export const Create = Schema.Struct({
   application: Schema.String.pipe(optional),
   /** Defaults to web. */
   target: Surface.pipe(optional),
+  artboard: Artboard.pipe(optional),
   /** Only meaningful when target is app. */
   platform: Platform.pipe(optional),
 }).annotate({ identifier: "Design.Create" })
@@ -312,6 +319,7 @@ export const Update = Schema.Struct({
   name: Schema.NonEmptyString.pipe(optional),
   /** Changing the target away from app drops the platform. */
   target: Surface.pipe(optional),
+  artboard: Artboard.pipe(optional),
   /** Only accepted when the resulting target is app. */
   platform: Platform.pipe(optional),
   brief: Brief.pipe(optional),
@@ -336,6 +344,7 @@ export const Info = Schema.Struct({
   kind: Kind,
   /** Absent only on revisions and approvals recorded before targets existed; those are web. */
   target: Surface.pipe(optional),
+  artboard: Artboard.pipe(optional),
   platform: Platform.pipe(optional),
   root: Schema.String,
   application: Schema.String,
@@ -624,9 +633,9 @@ export interface ImportAsset extends Schema.Schema.Type<typeof ImportAsset> {}
 
 export const Render = Schema.Struct({
   revision: Schema.String,
-  /** pdf prints a presentation's slides, one 1920×1080 page each, without speaker notes. */
-  format: Schema.Literals(["html", "gif", "audit", "compare", "verify", "pdf"]),
-  /** With format audit: inspect only this variant; omitted audits every direction. With pdf: print only its slides. */
+  /** pdf prints slides without notes or one creative canvas; png captures one creative canvas. */
+  format: Schema.Literals(["html", "gif", "audit", "compare", "verify", "pdf", "png", "analysis"]),
+  /** Audit one direction, analyze one direction, or export its slides/artwork. */
   variant: VariantID.pipe(optional),
   /** With format verify: the feedback round whose notes are verified against `revision`; the latest round by default. */
   round: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)).pipe(optional),
@@ -639,6 +648,8 @@ export const Render = Schema.Struct({
   repeat: Schema.Int.check(Schema.isGreaterThanOrEqualTo(-1)).pipe(optional),
   background: Schema.String.pipe(optional),
   transparent: Schema.Boolean.pipe(optional),
+  /** Explicitly include rendered captures in the S1 analysis request (experimental provider capability). */
+  visual: Schema.Boolean.pipe(optional),
 }).annotate({ identifier: "Design.Render" })
 export interface Render extends Schema.Schema.Type<typeof Render> {}
 
@@ -646,6 +657,7 @@ export interface Render extends Schema.Schema.Type<typeof Render> {}
 export function exportFile(format: Render["format"]) {
   if (format === "gif") return { extension: "gif", mime: "image/gif" } as const
   if (format === "pdf") return { extension: "pdf", mime: "application/pdf" } as const
+  if (format === "png") return { extension: "png", mime: "image/png" } as const
   return { extension: "html", mime: "text/html" } as const
 }
 
@@ -718,6 +730,42 @@ export const Audit = Schema.Struct({
   reuse: AuditReuse.pipe(optional),
 }).annotate({ identifier: "Design.Audit" })
 export interface Audit extends Schema.Schema.Type<typeof Audit> {}
+
+/** An explicit S1 content/structure review, tied to the rendered revision and selected direction. */
+export const Assessment = Schema.Struct({
+  revision: Schema.String,
+  variant: Schema.String.pipe(optional),
+  basis: Schema.Literals(["rendered-dom", "rendered-images"]),
+  status: Schema.Literals(["completed", "unavailable"]),
+  evaluation: Schema.String.pipe(optional),
+  model: Schema.String.pipe(optional),
+  duration: Schema.Finite.pipe(optional),
+  usage: Schema.Struct({
+    input_tokens: Schema.Int,
+    output_tokens: Schema.Int,
+    cost: Schema.Finite.pipe(optional),
+    unpriced: Schema.Int.pipe(optional),
+  }).pipe(optional),
+  judgments: Schema.Array(
+    Schema.Struct({
+      id: Schema.String,
+      label: Schema.String,
+      value: Schema.String,
+      followUp: Schema.String,
+    }),
+  ),
+  evidence: Schema.Array(
+    Schema.Struct({
+      width: Schema.Int,
+      height: Schema.Int,
+      screen: Schema.String.pipe(optional),
+      content: Schema.String,
+      capture: Schema.String.pipe(optional),
+    }),
+  ),
+  limitations: Schema.Array(Schema.String),
+}).annotate({ identifier: "Design.Assessment" })
+export interface Assessment extends Schema.Schema.Type<typeof Assessment> {}
 
 /**
  * What differs in a note's element between the revision the note was taken on and the verified one.
@@ -806,6 +854,7 @@ export const Job = Schema.Struct({
   started: Schema.Number.pipe(optional),
   finished: Schema.Number.pipe(optional),
   audit: Audit.pipe(optional),
+  assessment: Assessment.pipe(optional),
   verify: Verify.pipe(optional),
 }).annotate({ identifier: "Design.Job" })
 export interface Job extends Schema.Schema.Type<typeof Job> {}

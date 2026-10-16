@@ -62,7 +62,8 @@ describe("DesignTarget", () => {
     expect(DesignPlaybooks.forTarget(undefined)).toEqual(["screen", "flow", "quality"])
     expect(DesignPlaybooks.forTarget("app")).toEqual(["mobile-app", "quality"])
     expect(DesignPlaybooks.forTarget("presentation")).toEqual(["slides", "quality"])
-    const targets = ["web", "app", "presentation"] as const
+    expect(DesignPlaybooks.forTarget("creative")).toEqual(["creative", "quality"])
+    const targets = ["web", "app", "presentation", "creative"] as const
     expect(targets.flatMap((target) => DesignPlaybooks.forTarget(target)).every((id) => DesignPlaybooks.find(id))).toBe(
       true,
     )
@@ -82,6 +83,7 @@ describe("DesignTarget", () => {
       "iOS app",
       "Android app",
       "Presentation",
+      "Creative",
     ])
     expect(DesignTarget.answer("Mobile app (Recommended)")).toEqual({ target: "app" })
     expect(DesignTarget.answer("Android app")).toEqual({ target: "app", platform: "android" })

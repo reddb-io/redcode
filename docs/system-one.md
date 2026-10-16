@@ -13,6 +13,20 @@ Redcode does not silently switch to another provider's first model.
 - **S1 / System One** evaluates candidates using typed TypeSafe/JEV questions.
 - **Single** reasoning uses S2. **Dual** reasoning adds S1 evaluation.
 
+Design can request structured content and visual assessments from the same S1. Its image option is
+explicit per analysis: the configured decision endpoint receives bounded rendered captures in an
+`assets` map with `TypeSafe-Danger-Zone-Images: true`. Images remain an
+[experimental TypeSafe capability](https://docs.typesafe.ai/images); Redcode preserves your chosen
+model and reports unsupported requests as unavailable. Vercel and Cloudflare transport adapters
+currently support text assessments only. Text-only calls do not send assets or the image header.
+Assessment usage goes through the existing S1 session accounting, and durable evaluation records
+keep the evidence references rather than embedding image bytes. Design jobs retain their local captures.
+
+The OpenRouter adapter converts image assets into its Decisions API's multimodal content parts;
+forwarding a TypeSafe `assets` map unchanged would let that gateway silently ignore the images.
+Captures are prepared within TypeSafe's current 280–1568 pixel bounds without changing the original
+creative or its exports.
+
 The setup selects an enabled text model for S2, discovers evaluator models for S1,
 and checks the connections before saving. Cancelling setup leaves saved settings
 unchanged. A blank S1 API key reuses credentials when the selected connection supports it.

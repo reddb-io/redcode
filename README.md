@@ -28,7 +28,9 @@ Choose the interface you prefer. Both work with your project's files and the mod
 On phones, the shared web workspace uses a header navigation menu and overlay sidemenus so the
 conversation keeps the full screen width, with denser spacing and reading text from the design system.
 Install it on your home screen through **Settings → Preferences → Install Redcode** or your browser's
-install menu. PWA installation requires HTTPS; a plain HTTP address on the local network remains a
+install menu. **Settings → Preferences → HTTPS and mobile access** configures a relay connection and
+generates a secure pairing QR code without manual certificate or reverse-proxy setup.
+PWA installation requires HTTPS; a plain HTTP address on the local network remains a
 browser shortcut. [Remote access and mobile installation](docs/remote-access.md#install-the-web-app-on-a-phone).
 
 Open **Agents** in the siderail to follow sessions across hosts, answer requests in **Inbox**, inspect
@@ -170,9 +172,11 @@ stopping conditions. Pause, resume or drop it with `/goal-pause`, `/goal-resume`
 
 <img src="docs/features/design-flow.svg" alt="Design workflow: describe, prototype, review, plan and build" width="100%" />
 
-**Design mode · Desktop/browser review.** Prototype interfaces or slides using the project's design
-system. Annotate elements, compare revisions and send queued feedback with **Send to Agent**.
-Approval records decisions for Plan and Build.
+**Design mode · Desktop/browser review.** Design web pages, mobile screens, slides or static
+creatives using the project's design system. Annotate elements, compare revisions and send queued
+feedback with **Send to Agent**. **Design assessment** reviews the selected revision with your S1;
+optional image analysis adds rendered captures. Creative canvases export PNG and PDF; slides export
+PDF. Approval records decisions for Plan and Build.
 
 <img src="docs/features/design-review.svg" alt="Standalone Design review with annotation pins and queued feedback" width="100%" />
 
@@ -312,9 +316,9 @@ session locally and dispatch independent batch tasks to registered checkouts on 
 
 | Component        | Purpose                                                                       |
 | ---------------- | ----------------------------------------------------------------------------- |
-| **Clients**      | Desktop, CLI and browser connect to the machine where you want work to run.     |
-| **Agent server** | Runs the agent and tools, and owns sessions and project files on its machine.  |
-| **Coordinator**  | An agent server that dispatches batches to its registered worker checkouts.    |
+| **Clients**      | Desktop, CLI and browser connect to the machine where you want work to run.   |
+| **Agent server** | Runs the agent and tools, and owns sessions and project files on its machine. |
+| **Coordinator**  | An agent server that dispatches batches to its registered worker checkouts.   |
 | **Workers**      | Agent servers that execute assigned tasks in their own checkouts.             |
 | **Console**      | Administers accounts, organizations, authentication and resource access.      |
 

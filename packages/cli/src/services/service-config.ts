@@ -181,9 +181,19 @@ export const acceptRemote = Effect.fn("cli.service-config.accept-remote")(functi
 
 // Disabling forgets the address, so enabling again issues a new unguessable one. Having had it on counts as
 // accepting remote access.
-const disableRemote = Effect.fnUntraced(function* () {
+export const disableRemote = Effect.fnUntraced(function* () {
   const { remote, ...next } = yield* read()
   yield* write(remote === undefined ? next : { ...next, remoteAccepted: true })
+})
+
+/** Save a tunnel already attached by this listener; never stop the running service. */
+export const rememberRemote = Effect.fnUntraced(function* (relay: string, selectedRoute: string) {
+  yield* write({
+    ...(yield* read()),
+    relay: RemoteTunnel.apiURL(relay),
+    remote: { route: selectedRoute },
+    remoteAccepted: true,
+  })
 })
 
 // Turns remote access on and returns its route, created once and kept so the remote URL survives restarts.

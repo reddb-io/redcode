@@ -7,6 +7,7 @@ import { chromium } from "playwright-core"
 import { Schema } from "effect"
 import { PNG } from "pngjs"
 import { DesignAssets } from "@opencode/core/design/assets"
+import { DesignAnalysis } from "@opencode/core/design/analysis"
 import { Design } from "@opencode/schema/design"
 import { DesignPage } from "@opencode/core/design/ui/page"
 import { tmpdir } from "../test/fixture/tmpdir"
@@ -75,6 +76,7 @@ const state = {
   document: design,
   revisions,
   jobs,
+  renders: [] as Design.Render[],
   todos: [
     {
       id: "todo_profile",
@@ -178,7 +180,46 @@ const server = Bun.serve({
       )
     }
     if (route.endsWith("/status")) return Response.json({ stage: "ready" })
-    if (route.endsWith("/job")) return Response.json(state.jobs)
+    if (route.endsWith("/job")) {
+      if (request.method === "POST") {
+        const input = Schema.decodeUnknownSync(Design.Render)(await request.json())
+        state.renders.push(input)
+        const job: Design.Job = {
+          id: `job_review_${state.renders.length}`,
+          designID: design.id,
+          input,
+          status: "completed",
+          progress: 1,
+          result: null,
+          error: null,
+          created: Date.now(),
+          ...(input.format === "analysis"
+            ? {
+                assessment: {
+                  revision: input.revision,
+                  variant: input.variant,
+                  basis: input.visual ? "rendered-images" : "rendered-dom",
+                  status: "completed",
+                  model: "selected-s1",
+                  duration: 590,
+                  usage: { input_tokens: 123, output_tokens: 9, cost: 0.0001 },
+                  judgments: DesignAnalysis.criteria(state.document.target).map((item) => ({
+                    id: item.id,
+                    label: item.label,
+                    value: "Review fixture",
+                    followUp: item.followUp,
+                  })),
+                  evidence: [],
+                  limitations: ["Fixture assessment of the selected revision"],
+                },
+              }
+            : {}),
+        }
+        state.jobs.push(job)
+        return Response.json(job)
+      }
+      return Response.json(state.jobs)
+    }
     if (route.endsWith("/asset")) {
       if (request.method === "GET") return Response.json(state.assets)
       const input = Schema.decodeUnknownSync(Design.ImportAsset)(await request.json())
@@ -1069,6 +1110,47 @@ try {
   assert.deepEqual(state.platforms, ["android"])
   assert.equal(state.document.platform, "android")
   assert.equal(await page.locator("#platform").inputValue(), "android")
+  // The same serialized review hosts creative exports and assessments on desktop and mobile.
+  state.document = {
+    ...state.document,
+    target: "creative",
+    artboard: { width: 1080, height: 1350 },
+    platform: undefined,
+  }
+  state.revisions = state.revisions.map((revision) => ({
+    ...revision,
+    document: { ...revision.document, target: "creative", artboard: { width: 1080, height: 1350 } },
+  }))
+  await page.reload()
+  await page.locator("#tab-assets").click()
+  await page.locator("#png").waitFor({ state: "visible" })
+  await page.locator("#png").click()
+  assert.equal(state.renders.at(-1)?.format, "png")
+  await page.locator("#tab-review").click()
+  await page.locator("#assessment summary").click()
+  await page.locator("#analysis-visual").check()
+  await page.locator("#analysis").click()
+  await page.locator("#analysis-results").getByText("selected-s1", { exact: false }).waitFor()
+  assert.equal(state.renders.at(-1)?.format, "analysis")
+  assert.equal(state.renders.at(-1)?.visual, true)
+  assert.equal(await page.locator("#analysis-results dt").count(), 9)
+  await page.locator("#variant-two").click()
+  assert.equal(await page.locator("#analysis-results dt").count(), 0)
+  await page.locator("#variant-one").click()
+  assert.equal(await page.locator("#analysis-results dt").count(), 9)
+  const artboard = await page
+    .locator("#preview-device")
+    .evaluate((node) => ({ width: (node as HTMLElement).offsetWidth, height: (node as HTMLElement).offsetHeight }))
+  assert.deepEqual(artboard, { width: 1080, height: 1350 })
+  await page.screenshot({
+    path: path.join(process.env.REDCODE_DESIGN_SMOKE_ARTIFACTS ?? directory.path, "creative-desktop.png"),
+  })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.locator("#analysis-results").getByText("selected-s1", { exact: false }).waitFor()
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true)
+  await page.screenshot({
+    path: path.join(process.env.REDCODE_DESIGN_SMOKE_ARTIFACTS ?? directory.path, "creative-mobile.png"),
+  })
   assert.deepEqual(errors, [])
   console.log(
     JSON.stringify({

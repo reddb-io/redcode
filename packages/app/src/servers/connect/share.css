@@ -19,6 +19,12 @@
     gap: var(--reddb-spatial-gap-sm);
     min-width: 0;
   }
+  .server-share-consent {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--reddb-spatial-gap-md);
+  }
   .server-share-setup {
     display: flex;
     flex-direction: column;

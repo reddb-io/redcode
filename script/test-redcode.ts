@@ -24,6 +24,8 @@ const suites = {
     "test/design-document-input.test.ts",
     "test/design-build-home.test.ts",
     "test/design-store.test.ts",
+    "test/design-analysis.test.ts",
+    "test/design-viewports.test.ts",
     "test/design-tools.test.ts",
     "test/design-gate.test.ts",
     "test/design-quality.test.ts",

@@ -1,4 +1,8 @@
 import type {
+  ServerRemoteAccessOutput,
+  ServerConfigureRemoteAccessInput,
+  ServerConfigureRemoteAccessOutput,
+  ServerDisableRemoteAccessOutput,
   ServerResourcesOutput,
   ServerAttentionOutput,
   ServerInfoOutput,
@@ -653,6 +657,40 @@ export function make(options: ClientOptions) {
 
   return {
     server: {
+      remoteAccess: (requestOptions?: RequestOptions) =>
+        request<ServerRemoteAccessOutput>(
+          {
+            method: "GET",
+            path: `/api/remote-access`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 409],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      configureRemoteAccess: (input: ServerConfigureRemoteAccessInput, requestOptions?: RequestOptions) =>
+        request<ServerConfigureRemoteAccessOutput>(
+          {
+            method: "POST",
+            path: `/api/remote-access`,
+            body: { relay: input["relay"], acceptExposure: input["acceptExposure"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 409],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      disableRemoteAccess: (requestOptions?: RequestOptions) =>
+        request<ServerDisableRemoteAccessOutput>(
+          {
+            method: "DELETE",
+            path: `/api/remote-access`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 409],
+            empty: false,
+          },
+          requestOptions,
+        ),
       resources: (requestOptions?: RequestOptions) =>
         request<ServerResourcesOutput>(
           {
@@ -875,6 +913,7 @@ export function make(options: ClientOptions) {
                 designSystem: input["designSystem"],
                 application: input["application"],
                 target: input["target"],
+                artboard: input["artboard"],
                 platform: input["platform"],
               },
               successStatus: 200,
@@ -918,6 +957,7 @@ export function make(options: ClientOptions) {
                 presets: input["presets"],
                 name: input["name"],
                 target: input["target"],
+                artboard: input["artboard"],
                 platform: input["platform"],
                 brief: input["brief"],
                 decisions: input["decisions"],

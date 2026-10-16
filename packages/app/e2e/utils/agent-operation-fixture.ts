@@ -18,7 +18,7 @@ export async function mockProjectEnvironments(page: Page) {
       return route.fulfill({
         json: {
           directory: url.searchParams.get("directory"),
-          projectID: fixture.projectID,
+          projectID: fixture.project.id,
           recipes,
           environments,
         },
@@ -28,7 +28,7 @@ export async function mockProjectEnvironments(page: Page) {
       const existing = recipes.findIndex((item) => item.id === input.definition.id)
       const recipe: ProjectEnvironment.Recipe = {
         ...input.definition,
-        projectID: fixture.projectID,
+        projectID: fixture.project.id,
         revision: input.expectedRevision + 1,
         updatedAt: "2026-10-16T12:00:00Z",
       }
@@ -41,7 +41,7 @@ export async function mockProjectEnvironments(page: Page) {
     const info: ProjectEnvironment.Info = {
       id: "fixture-stack",
       recipeID: input.recipeID,
-      projectID: fixture.projectID,
+      projectID: fixture.project.id,
       directory: input.directory,
       revision: input.revision,
       composeProject: "redcode-fixture-stack",

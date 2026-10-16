@@ -44,6 +44,12 @@ describe("viewports", () => {
       [{ width: 393, height: 852, device: "ios" }],
     ],
     ["a presentation is one 16:9 slide", ["presentation", undefined], [{ width: 1920, height: 1080 }]],
+    ["a creative defaults to a square canvas", ["creative", undefined], [{ width: 1080, height: 1080 }]],
+    [
+      "a creative uses its artboard instead of responsive breakpoints",
+      ["creative", undefined, { artboard: { width: 1080, height: 1920 }, breakpoints: [390] }],
+      [{ width: 1080, height: 1920 }],
+    ],
   ]
   test.each(cases)("%s", (_name, input, expected) => {
     expect(viewports(...input)).toEqual(expected)

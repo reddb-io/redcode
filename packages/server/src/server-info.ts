@@ -1,6 +1,7 @@
 import { Context, Layer } from "effect"
 import { networkInterfaces } from "node:os"
 import type { ServerOptions } from "./options"
+import type { RemoteAccessHost } from "./remote-access"
 
 export class Service extends Context.Service<
   Service,
@@ -12,6 +13,7 @@ export class Service extends Context.Service<
     readonly database: { readonly path?: string; readonly url?: string } | undefined
     /** When the server started, in epoch milliseconds. */
     readonly started: number
+    readonly remoteAccess?: RemoteAccessHost.Interface
   }
 >()("@opencode/server/ServerInfo") {}
 
@@ -20,6 +22,7 @@ export function layer(
   tmp: string,
   app: ServerOptions["app"] = {},
   database?: ServerOptions["database"],
+  remoteAccess?: RemoteAccessHost.Interface,
 ) {
   return Layer.succeed(
     Service,
@@ -29,6 +32,7 @@ export function layer(
       paths: { tmp },
       database: database && { path: database.path, url: database.url },
       started: Date.now(),
+      remoteAccess,
     }),
   )
 }

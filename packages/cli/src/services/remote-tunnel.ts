@@ -1,7 +1,7 @@
 export * as RemoteTunnel from "./remote-tunnel"
 
 import type { OpenTunnelError } from "@opentunnel/client/effect"
-import { Cause, Effect, Schedule } from "effect"
+import { Cause, Effect, Schedule, Stream } from "effect"
 import { EOL } from "os"
 import { Global } from "@opencode/util/global"
 import { createHash } from "node:crypto"
@@ -62,6 +62,7 @@ export const run = Effect.fnUntraced(function* (input: {
   readonly target: string
   readonly onURL: (url: string | undefined) => void
   readonly api?: string
+  readonly onError?: () => void
 }) {
   const { OpenTunnelClient, OpenTunnelAttachError } = yield* Effect.promise(() => import("@opentunnel/client/effect"))
   const fatal = (error: OpenTunnelError) =>
@@ -74,7 +75,14 @@ export const run = Effect.fnUntraced(function* (input: {
       profile: options.profile,
       routes: { [input.route]: input.target },
     })
-    input.onURL(`https://${input.route}.${connection.tunnel.hostname}`)
+    yield* Effect.forkScoped(
+      Stream.runForEach(connection.events, (event) =>
+        Effect.sync(() => {
+          if (event.type === "connected") input.onURL(`https://${input.route}.${connection.tunnel.hostname}`)
+          if (["connecting", "disconnected", "reconnecting", "stopped"].includes(event.type)) input.onURL(undefined)
+        }),
+      ),
+    )
     yield* connection.closed
   }).pipe(
     Effect.scoped,
@@ -90,7 +98,13 @@ export const run = Effect.fnUntraced(function* (input: {
     Effect.catchCause((cause) =>
       Cause.hasInterruptsOnly(cause)
         ? Effect.failCause(cause)
-        : Effect.logError("remote access tunnel stopped; run `redcode service set remote true` to retry", { cause }),
+        : Effect.sync(() => input.onError?.()).pipe(
+            Effect.andThen(
+              Effect.logError("remote access tunnel stopped; run `redcode service set remote true` to retry", {
+                cause,
+              }),
+            ),
+          ),
     ),
   )
 })

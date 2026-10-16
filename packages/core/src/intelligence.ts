@@ -27,6 +27,8 @@ export interface EvaluationInput {
   sources: unknown
   candidate?: unknown
   questions: Record<string, Intelligence.Question>
+  /** Explicit image review only; bytes stay out of the durable evaluation evidence. */
+  assets?: Record<string, { type: "image"; format: "png" | "jpg" | "jpeg"; data_base64: string }>
 }
 
 const make = Effect.gen(function* () {
@@ -128,6 +130,8 @@ const make = Effect.gen(function* () {
     const charges = { cost: 0, priced: 0, unknown: 0 }
     const response =
       !selected.evaluator ||
+      (input.assets !== undefined &&
+        (Object.keys(input.assets).length > 6 || JSON.stringify(input.assets).length > 8 * 1024 * 1024)) ||
       !Object.keys(input.questions).length ||
       !requests.length ||
       requests.some((item) => JSON.stringify({ state: item.state, questions: item.questions }).length > 80_000)
@@ -144,6 +148,7 @@ const make = Effect.gen(function* () {
                   model: selected.evaluator!.model,
                   state: item.state,
                   questions: item.questions,
+                  ...(input.assets ? { assets: input.assets } : {}),
                 })
                 .pipe(
                   Effect.tapError(() =>

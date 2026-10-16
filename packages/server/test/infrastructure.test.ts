@@ -262,19 +262,60 @@ it.live(
       expect((yield* Effect.promise(() => call("/api/workers", operator.token))).status).toBe(200)
       expect((yield* Effect.promise(() => call("/api/usage-reporter", f.owner.token))).status).toBe(200)
       expect((yield* Effect.promise(() => call("/api/agent-tools", f.owner.token))).status).toBe(200)
+      expect((yield* Effect.promise(() => call("/api/remote-access", f.owner.token))).status).toBe(200)
       for (const token of [user.token, operator.token, orgAdmin.token]) {
         const workspace = token === operator.token ? undefined : f.workspace.id
+        for (const method of ["GET", "POST", "DELETE"]) {
+          expect(
+            (yield* Effect.promise(() =>
+              call(
+                "/api/remote-access",
+                token,
+                workspace,
+                method,
+                method === "POST" ? { relay: "https://relay.example.test", acceptExposure: true } : undefined,
+              ),
+            )).status,
+          ).toBe(403)
+        }
         expect((yield* Effect.promise(() => call("/api/agent-tools", token, workspace))).status).toBe(403)
-        expect((yield* Effect.promise(() => call("/api/agent-tools/config", token, workspace, "POST", {
-          id: "computer-use", settings: { enabled: false },
-        }))).status).toBe(403)
-        expect((yield* Effect.promise(() => call("/api/agent-tools/computer-use/install", token, workspace, "POST"))).status).toBe(403)
-        expect((yield* Effect.promise(() => call("/api/agent-tools/computer-use/probe", token, workspace, "POST"))).status).toBe(403)
-        expect((yield* Effect.promise(() => call("/api/agent-tools/rift/initialize", token, workspace, "POST", {
-          directory: f.directory.path,
-        }))).status).toBe(403)
-        expect((yield* Effect.promise(() => call("/api/worker-environments", token, token === operator.token ? undefined : f.workspace.id))).status).toBe(403)
-        expect((yield* Effect.promise(() => call("/api/worker-environments/image", token, token === operator.token ? undefined : f.workspace.id, "POST", { version: "0.80.0" }))).status).toBe(403)
+        expect(
+          (yield* Effect.promise(() =>
+            call("/api/agent-tools/config", token, workspace, "POST", {
+              id: "computer-use",
+              settings: { enabled: false },
+            }),
+          )).status,
+        ).toBe(403)
+        expect(
+          (yield* Effect.promise(() => call("/api/agent-tools/computer-use/install", token, workspace, "POST"))).status,
+        ).toBe(403)
+        expect(
+          (yield* Effect.promise(() => call("/api/agent-tools/computer-use/probe", token, workspace, "POST"))).status,
+        ).toBe(403)
+        expect(
+          (yield* Effect.promise(() =>
+            call("/api/agent-tools/rift/initialize", token, workspace, "POST", {
+              directory: f.directory.path,
+            }),
+          )).status,
+        ).toBe(403)
+        expect(
+          (yield* Effect.promise(() =>
+            call("/api/worker-environments", token, token === operator.token ? undefined : f.workspace.id),
+          )).status,
+        ).toBe(403)
+        expect(
+          (yield* Effect.promise(() =>
+            call(
+              "/api/worker-environments/image",
+              token,
+              token === operator.token ? undefined : f.workspace.id,
+              "POST",
+              { version: "0.80.0" },
+            ),
+          )).status,
+        ).toBe(403)
         expect(
           (yield* Effect.promise(() =>
             call("/api/usage-reporter", token, token === operator.token ? undefined : f.workspace.id),
@@ -338,10 +379,19 @@ it.live(
         expect(response.status).toBe(200)
       }
       const allowed = yield* Effect.promise(async () => (await call("/api/workers", user.token, f.workspace.id)).json())
-      expect((yield* Effect.promise(() => call("/api/workers", f.owner.token, undefined, "POST", {
-        id: "isolated-other-tenant", environmentID: "other-tenant", resourceID: workerResource.id,
-        url: origin, password: "local-secret", directories: ["/workspace/project"], tags: [],
-      }))).status).toBe(400)
+      expect(
+        (yield* Effect.promise(() =>
+          call("/api/workers", f.owner.token, undefined, "POST", {
+            id: "isolated-other-tenant",
+            environmentID: "other-tenant",
+            resourceID: workerResource.id,
+            url: origin,
+            password: "local-secret",
+            directories: ["/workspace/project"],
+            tags: [],
+          }),
+        )).status,
+      ).toBe(400)
       expect(allowed.workers.map((item: { worker: { id: string } }) => item.worker.id)).toEqual(["allowed"])
       expect(allowed.workers[0].worker.directories).toEqual([f.directory.path])
       expect(
@@ -444,8 +494,9 @@ it.live(
         yield* Effect.sleep("50 millis")
       }
       expect(
-        (yield* Effect.promise(async () => (await call("/api/workers", f.owner.token)).json())).batches
-          .find((batch: { id: string }) => batch.id === submitted.id)?.report?.tasks[0]?.state,
+        (yield* Effect.promise(async () => (await call("/api/workers", f.owner.token)).json())).batches.find(
+          (batch: { id: string }) => batch.id === submitted.id,
+        )?.report?.tasks[0]?.state,
       ).toBe("failed")
       yield* Effect.promise(() => f.json(`/resources/${f.resource.id}/grants/${grant.id}`, f.owner.token, "DELETE"))
       expect((yield* Effect.promise(() => call("/api/workers", user.token, f.workspace.id))).status).toBe(403)

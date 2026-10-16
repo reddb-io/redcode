@@ -3,6 +3,8 @@ import { createMediaQuery } from "@solid-primitives/media"
 import { Select } from "@opencode/ui/select"
 import { Switch } from "@opencode/ui/switch"
 import { Button } from "@opencode/ui/button"
+import { useDialog } from "@opencode/ui/context/dialog"
+import { DialogHttpsAccess } from "@/servers/connect/https-dialog"
 import { TimelineDetailControl } from "@/settings/timeline-detail"
 import { useLanguage } from "@/runtime/i18n/language"
 import { usePlatform } from "@/runtime/platform/platform"
@@ -216,6 +218,7 @@ const NavigationControlsSetting = () => {
 }
 
 export const SettingsGeneral: Component = () => {
+  const dialog = useDialog()
   const language = useLanguage()
   const platform = usePlatform()
   const settings = useSettings()
@@ -241,6 +244,13 @@ export const SettingsGeneral: Component = () => {
       <h3 class="settings-section-title">{language.t("settings.general.section.general")}</h3>
       <SettingsList>
         <LanguageSetting />
+        <SettingsRow title={language.t("https.title")} description={language.t("https.description")}>
+          <div data-action="settings-https-access">
+            <Button variant="outline" onClick={() => void dialog.push(() => <DialogHttpsAccess />)}>
+              {language.t("https.configure")}
+            </Button>
+          </div>
+        </SettingsRow>
         <Show when={platform.installation}>
           {(installation) => (
             <SettingsRow
@@ -252,6 +262,11 @@ export const SettingsGeneral: Component = () => {
               )}
             >
               <div data-action="settings-install-app" aria-live="polite">
+                <Show when={installation().status() === "insecure"}>
+                  <Button variant="outline" onClick={() => void dialog.push(() => <DialogHttpsAccess />)}>
+                    {language.t("https.secureConnection")}
+                  </Button>
+                </Show>
                 <Show when={installation().status() === "available" || installation().pending()}>
                   <Button
                     variant="outline"

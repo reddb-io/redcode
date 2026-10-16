@@ -386,12 +386,32 @@ export const PLAYBOOKS: readonly Playbook[] = [
       'Export with design_export input {revision, format: "pdf"}: one 1920×1080 page per slide without notes; wait for its native monitor to return the file. Format html exports a standalone deck that keeps keyboard navigation. A format audit before handing off is optional unless design.gate requires it; report its overflow findings as pending follow-up for the next requested round.',
     ],
   },
+  {
+    id: "creative",
+    use_when: "Create static campaign artwork, ads, social posts, posters or banners (target creative)",
+    choose: [
+      "Use target creative and kind screen. Record artboard width and height in pixels; default 1080×1080. Common placements: 1080×1350 portrait, 1080×1920 story, 1200×628 banner. Confirm the intended placement from the brief.",
+    ],
+    structure: [
+      "Use one fixed-size canvas per variant, matching document.artboard exactly. Start at the top-left with html/body margin 0; keep controls, review chrome and instructions outside the artwork. Use data-design-variant for alternate creative directions.",
+    ],
+    design_rules: [
+      "Use the project's design system and approved brand assets. Keep text and logos as editable HTML/CSS or genuine SVG source; generated photography is a versioned local asset. Design a clear focal point, message and reading order at the intended display size.",
+    ],
+    pitfalls: [
+      "Do not add app navigation or fake interactive controls to a static creative. Do not invent campaign performance, claim a screenshot is vector artwork, or call a model judgment an accessibility certification.",
+    ],
+    review_notes: [
+      "Use design_export format analysis for an explicit S1 content/structure review; visual true includes rendered screenshots through the configured evaluator's experimental image capability. Keep the selected S1 model. Read status, limitations and evidence before acting. Use format audit for technical findings. Export PNG for faithful pixel artwork and PDF for review; select a variant when alternatives exist. Native SVG assets remain editable downloads; do not wrap a screenshot in SVG.",
+    ],
+  },
 ]
 
 export const ids = () => PLAYBOOKS.map((item) => item.id)
 
 /** The playbooks a design of this target starts from; a design without a target is web. */
 export function forTarget(target: Design.Surface | undefined) {
+  if (target === "creative") return ["creative", "quality"]
   if (target === "app") return ["mobile-app", "quality"]
   if (target === "presentation") return ["slides", "quality"]
   return ["screen", "flow", "quality"]

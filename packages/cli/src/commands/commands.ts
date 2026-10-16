@@ -1141,7 +1141,7 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
         model: Flag.string("model").pipe(Flag.optional),
         directory: Flag.string("directory").pipe(Flag.optional),
         review: Flag.boolean("review").pipe(Flag.withDefault(false)),
-        target: Flag.choice("target", ["web", "app", "presentation"]).pipe(
+        target: Flag.choice("target", ["web", "app", "presentation", "creative"]).pipe(
           Flag.withDescription("Design target for new designs; skips target detection (runs a private server)"),
           Flag.optional,
         ),
