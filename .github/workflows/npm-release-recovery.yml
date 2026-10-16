@@ -1,0 +1,118 @@
+name: npm release recovery
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run:
+        description: "Verified redcode.yml release run whose native artifacts must be reused"
+        required: true
+        type: string
+      version:
+        description: "Existing stable GitHub release version"
+        required: true
+        type: string
+      repack:
+        description: "Reserved native package target and packaging revision, e.g. linux-arm64-musl:1"
+        required: true
+        type: string
+
+concurrency:
+  group: redcode-npm-recovery
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  publish:
+    if: github.repository == 'reddb-io/redcode' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: red-release
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    env:
+      GH_REPO: reddb-io/redcode
+      REDCODE_VERSION: ${{ inputs.version }}
+      REDCODE_CHANNEL: latest
+      REDCODE_RELEASE: "1"
+      SOURCE_RUN: ${{ inputs.source_run }}
+      REPACK: ${{ inputs.repack }}
+      NPM_CONFIG_REGISTRY: https://registry.npmjs.org
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+      - name: Validate the immutable source release and its completed checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_RUN" =~ ^[0-9]+$ ]]
+          [[ "$REDCODE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$REPACK" =~ ^[a-z0-9-]+:[1-9][0-9]*$ ]]
+          test "$(gh api "repos/$GH_REPO/actions/runs/$SOURCE_RUN" --jq .path)" = '.github/workflows/redcode.yml'
+          test "$(gh api "repos/$GH_REPO/actions/runs/$SOURCE_RUN" --jq .status)" = 'completed'
+          test "$(gh api "repos/$GH_REPO/actions/runs/$SOURCE_RUN" --jq .head_sha)" = "$(git rev-parse "v$REDCODE_VERSION^{commit}")"
+          test "$(gh release view "v$REDCODE_VERSION" --json isDraft --jq .isDraft)" = 'false'
+          gh run view "$SOURCE_RUN" --json jobs > "$RUNNER_TEMP/source-jobs.json"
+          jq -e '.jobs | length >= 20 and all(.conclusion == "success" or .name == "publish (npm)" or .name == "release status")' "$RUNNER_TEMP/source-jobs.json"
+      - uses: ./.github/actions/setup-bun
+        with:
+          install-flags: --filter=@reddb-io/redcode
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+      - name: Install the release's npm version
+        env:
+          NODE_AUTH_TOKEN: ""
+        run: npm install --global npm@11.20.0
+      - name: Validate the existing release token
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm whoami --registry https://registry.npmjs.org
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: redcode-native-packages
+          path: packages/redcode/dist
+          run-id: ${{ inputs.source_run }}
+          github-token: ${{ github.token }}
+      - name: Test packaging recovery and registry orchestration
+        working-directory: packages/redcode
+        run: bun test test/script/packages.test.ts test/script/publish-registry.test.ts --timeout 60000
+      - name: Publish unchanged binaries under the packaging revision, then the stable main package
+        working-directory: packages/redcode
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: bun run publish --repack="$REPACK"
+      - name: Verify the public stable package and an installed native executable
+        env:
+          NODE_AUTH_TOKEN: ""
+        shell: bash
+        run: |
+          set -euo pipefail
+          target=${REPACK%:*}
+          revision=${REPACK##*:}
+          expected="$REDCODE_VERSION-repack.$revision"
+          for attempt in {1..20}; do
+            if npm view "@reddb-io/redcode@$REDCODE_VERSION" version --prefer-online >/dev/null 2>&1; then break; fi
+            test "$attempt" -lt 20
+            sleep 30
+          done
+          root=$(mktemp -d)
+          npm view "@reddb-io/redcode@$REDCODE_VERSION" --json > "$root/published.json"
+          jq -e --arg name "@reddb-io/redcode-$target" --arg version "$expected" '.optionalDependencies[$name] == $version' "$root/published.json"
+          npm install --prefer-online --prefix "$root/install" --ignore-scripts --no-audit --no-fund "@reddb-io/redcode@$REDCODE_VERSION"
+          test "$("$root/install/node_modules/.bin/redcode" --version)" = "redcode v$REDCODE_VERSION"
+          test "$("$root/install/node_modules/.bin/redcode" __design-app --version)" = "$REDCODE_VERSION"
+          npm pack "@reddb-io/redcode-$target@$expected" --ignore-scripts --pack-destination "$root" --json > "$root/pack.json"
+          mkdir "$root/native"
+          tar -xzf "$root/$(jq -r '.[0].filename' "$root/pack.json")" -C "$root/native"
+          cmp "packages/redcode/dist/redcode-$target/bin/redcode" "$root/native/package/bin/redcode"
+          cmp "packages/redcode/dist/redcode-$target/bin/redcode-rpc-sidecar" "$root/native/package/bin/redcode-rpc-sidecar"
+          echo "Published Redcode $REDCODE_VERSION with byte-identical $target executables."

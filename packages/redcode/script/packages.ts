@@ -65,6 +65,19 @@ export async function list(dist: string, version: string) {
   )
 }
 
+/** Repackage an unchanged release binary when npm permanently reserves its original package version. */
+export async function repack(packages: Package[], specification: string) {
+  const match = /^([a-z0-9]+(?:-[a-z0-9]+)*):([1-9]\d*)$/.exec(specification)
+  if (!match) throw new Error("Expected --repack=<native-target>:<positive-revision>")
+  const item = packages.find((item) => item.target === match[1])
+  if (!item) throw new Error(`Unknown native repack target: ${match[1]}`)
+  if (!/^\d+\.\d+\.\d+$/.test(item.manifest.version))
+    throw new Error(`Repack requires an original stable release: ${item.manifest.version}`)
+  item.manifest = { ...item.manifest, version: `${item.manifest.version}-repack.${match[2]}` }
+  await Bun.file(path.join(item.dir, "package.json")).write(JSON.stringify(item.manifest, null, 2))
+  return item
+}
+
 /** The executables a package must carry in bin/, with .exe on Windows. */
 export function binaries(item: Pick<Package, "kind" | "target">) {
   const extension = item.target.startsWith("windows-") ? ".exe" : ""

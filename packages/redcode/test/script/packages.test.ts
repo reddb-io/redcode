@@ -11,6 +11,7 @@ const targets = [
   { target: "linux-x64", os: "linux", cpu: "x64", desktop: "linux-x64" },
   { target: "linux-x64-baseline", os: "linux", cpu: "x64", desktop: "linux-x64" },
   { target: "linux-x64-baseline-musl", os: "linux", cpu: "x64", desktop: undefined },
+  { target: "linux-arm64-musl", os: "linux", cpu: "arm64", desktop: undefined },
   { target: "darwin-arm64", os: "darwin", cpu: "arm64", desktop: "darwin-arm64" },
   ...(Bun.which("zip") && Bun.which("unzip")
     ? [{ target: "windows-x64", os: "win32", cpu: "x64", desktop: "windows-x64" }]
@@ -174,6 +175,57 @@ test("npm installs one baseline native package for each Linux libc", async () =>
     ])
   }
 }, 45_000)
+
+test("repack pins the stable meta package to unchanged native executables in the actual npm archives", async () => {
+  await using input = await fixture()
+  const native = path.join(input.dist, "redcode-linux-arm64-musl")
+  const original = await Bun.file(path.join(native, "package.json")).json()
+  const before = await Promise.all(
+    ["redcode", "redcode-rpc-sidecar"].map((name) => Bun.file(path.join(native, "bin", name)).text()),
+  )
+  await run("publish.ts", input, "--pack-only", "--repack=linux-arm64-musl:1")
+  const meta = path.join(input.dist, "redcode-package")
+  const manifest = await Bun.file(path.join(meta, "package.json")).json()
+  expect(manifest.version).toBe(version)
+  expect(manifest.optionalDependencies[original.name]).toBe(`${version}-repack.1`)
+  expect(manifest.optionalDependencies["@reddb-io/redcode-linux-x64-baseline"]).toBe(version)
+  expect(await Bun.file(path.join(native, "package.json")).json()).toEqual({
+    ...original,
+    version: `${version}-repack.1`,
+  })
+  const tarball = (await readdir(native)).find((file) => file.endsWith(".tgz"))!
+  for (const [index, name] of ["redcode", "redcode-rpc-sidecar"].entries())
+    expect(await $`tar -xOf ${tarball} ${`package/bin/${name}`}`.cwd(native).text()).toBe(before[index]!)
+  const packed = JSON.parse(await $`tar -xOf ${tarball} package/package.json`.cwd(native).text())
+  expect(packed.version).toBe(`${version}-repack.1`)
+  const mainTarball = (await readdir(meta)).find((file) => file.endsWith(".tgz"))!
+  const main = JSON.parse(await $`tar -xOf ${mainTarball} package/package.json`.cwd(meta).text())
+  expect(main.version).toBe(version)
+  expect(main.optionalDependencies[original.name]).toBe(`${version}-repack.1`)
+  const installation = path.join(input.root, "arm64-musl-installation")
+  await Bun.write(
+    path.join(installation, "package.json"),
+    JSON.stringify({
+      name: "repack-fixture",
+      version,
+      optionalDependencies: {
+        [original.name]: `file:${path.join(native, tarball).replaceAll("\\", "/")}`,
+      },
+    }),
+  )
+  await $`npm install --offline --ignore-scripts --no-audit --no-fund --os=linux --cpu=arm64 --libc=musl`
+    .cwd(installation).quiet()
+  expect(await Bun.file(path.join(installation, "node_modules", original.name, "bin/redcode")).text()).toBe(before[0]!)
+}, 45_000)
+
+test("repack rejects unknown targets and invalid revisions before modifying release metadata", async () => {
+  await using input = await fixture()
+  const packages = await RedcodePackages.list(input.dist, version)
+  for (const specification of ["linux-arm64-musl:0", "linux-arm64-musl:1.1", "../../escape:1", "unknown:1"])
+    await expect(RedcodePackages.repack(packages, specification)).rejects.toThrow()
+  const original = await RedcodePackages.list(input.dist, version)
+  expect(original.every((item) => item.manifest.version === version)).toBe(true)
+})
 
 test.each([
   { target: "linux-x64", desktop: "linux-x64" },

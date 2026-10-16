@@ -11,6 +11,7 @@ const product = "redcode"
 const packageName = "@reddb-io/redcode"
 const packOnly = process.argv.includes("--pack-only")
 const dir = path.resolve(import.meta.dir, "..")
+const dist = path.resolve(dir, process.argv.find((arg) => arg.startsWith("--dist="))?.slice(7) ?? "dist")
 if (Script.release && !process.env.REDCODE_VERSION)
   throw new Error("REDCODE_VERSION must be set explicitly for a Redcode release")
 
@@ -37,7 +38,7 @@ async function packAndPublish(target: string, name: string) {
   await $`npm publish ${tarball} --access public --provenance --tag ${Script.channel}`.cwd(target)
 }
 
-const manifests = await RedcodePackages.list("./dist", Script.version)
+const manifests = await RedcodePackages.list(dist, Script.version)
 if (!manifests.some((item) => item.kind === "cli")) throw new Error("no Redcode binary packages were built")
 for (const item of manifests) {
   for (const name of RedcodePackages.files(item)) {
@@ -46,7 +47,28 @@ for (const item of manifests) {
   }
 }
 
-const meta = `./dist/${product}-package`
+const repack = process.argv.find((arg) => arg.startsWith("--repack="))?.slice(9)
+if (repack !== undefined) {
+  const target = manifests.find((item) => item.target === repack.split(":")[0])
+  if (!target) throw new Error(`Unknown native repack target: ${repack}`)
+  const binaries = await Promise.all(
+    RedcodePackages.files(target).map(async (name) => ({
+      name,
+      digest: new Bun.CryptoHasher("sha256").update(await Bun.file(path.join(target.dir, name)).bytes()).digest("hex"),
+    })),
+  )
+  const item = await RedcodePackages.repack(manifests, repack)
+  for (const binary of binaries) {
+    const digest = new Bun.CryptoHasher("sha256")
+      .update(await Bun.file(path.join(item.dir, binary.name)).bytes())
+      .digest("hex")
+    if (digest !== binary.digest) throw new Error(`Repack changed a release executable: ${binary.name}`)
+    console.log(`Verified unchanged release executable: ${binary.name} sha256:${digest}`)
+  }
+  console.log(`Repacking unchanged Redcode ${Script.version} executables as ${item.manifest.name}@${item.manifest.version}`)
+}
+
+const meta = path.join(dist, `${product}-package`)
 await rm(meta, { recursive: true, force: true })
 await $`mkdir -p ${path.join(meta, "bin")}`
 await $`cp ./bin/redcode ${path.join(meta, "bin", product)}`
