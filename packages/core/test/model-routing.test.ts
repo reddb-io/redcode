@@ -150,16 +150,30 @@ describe("Selected model routing", () => {
         OpenRouter.configure({
           apiKey: "fixture",
           baseURL: `${server.url.origin}/ok/v1`,
-          providerOptions: { models: ["sonnet"], provider: { only: ["z-ai"], allow_fallbacks: true } },
+          http: { body: { provider: { sort: "latency" }, custom: true } },
+          providerOptions: {
+            models: ["sonnet"],
+            provider: { only: ["z-ai"], allow_fallbacks: true },
+            reasoning: { max_tokens: 100_000 },
+          },
         }).model("z-ai/glm-5.3-flash"),
       )
-      const result = yield* LLM.generate({ model, prompt: "Test" }, { http: ModelRouting.middleware(model) })
+      const result = yield* LLM.generate(
+        { model, prompt: "Test", generation: { maxTokens: 4_096 } },
+        { http: ModelRouting.middleware(model) },
+      )
       expect(result.text).toBe("selected model")
       expect(received.at(-1)?.body).toMatchObject({
         model: "z-ai/glm-5.3-flash",
         models: ["z-ai/glm-5.3-flash"],
-        provider: { only: ["z-ai"], allow_fallbacks: false },
+        provider: { only: ["z-ai"], sort: "latency", allow_fallbacks: false },
+        custom: true,
       })
+      const reasoning = Schema.decodeUnknownSync(Schema.Struct({ max_tokens: Schema.Number }))(
+        received.at(-1)?.body.reasoning,
+      )
+      expect(reasoning.max_tokens).toBeGreaterThan(0)
+      expect(reasoning.max_tokens).toBeLessThan(4_096)
     }).pipe(Effect.provide(layer)),
   )
 

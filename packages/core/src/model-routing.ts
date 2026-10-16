@@ -41,10 +41,20 @@ export function apply(model: LanguageModel) {
       http: new HttpOptions({
         ...http,
         body: body(model, {
-          ...(model.route.id === "openrouter"
-            ? { ...model.route.defaults.providerOptions, ...model.defaults?.providerOptions }
-            : {}),
           ...http?.body,
+          ...(model.route.id === "openrouter"
+            ? {
+                provider: {
+                  ...(isRecord(model.route.defaults.providerOptions?.provider)
+                    ? model.route.defaults.providerOptions.provider
+                    : {}),
+                  ...(isRecord(model.defaults?.providerOptions?.provider)
+                    ? model.defaults.providerOptions.provider
+                    : {}),
+                  ...(isRecord(http?.body?.provider) ? http.body.provider : {}),
+                },
+              }
+            : {}),
         }),
       }),
     },
