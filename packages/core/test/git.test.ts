@@ -426,7 +426,10 @@ describe("Git objects", () => {
 
         expect((yield* git.tree.files({ repository, from: trees[0]!, to: trees.at(-1)! })).length).toBe(2100 + 16)
       }),
-    { timeout: 60_000 },
+    // This is an object-integrity test, not a latency benchmark: Windows runners must write and
+    // index 2,100 files, then create and merge 16 packs. Keep every integrity assertion, but allow
+    // the slower hosted Windows filesystem to finish before the harness kills its Git process.
+    { timeout: process.platform === "win32" ? 180_000 : 60_000 },
   )
 })
 
