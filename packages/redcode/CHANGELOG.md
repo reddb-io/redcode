@@ -1,5 +1,36 @@
 # @reddb-io/redcode
 
+## 0.84.2
+
+### Patch Changes
+
+- Add zoom, actual size, fit and optional pan controls for mobile frames, slides and creative canvases in embedded and standalone Design reviews. Keep prototype interaction separate from canvas gestures, preserve annotation geometry and unsent notes, and scope keyboard shortcuts to the focused canvas.
+
+  Present completed implementation checks with revision scope, severity counts, suggested corrections and measured design-system reuse. Show System One judgments together with their evidence and limitations, keeping an unavailable assessment distinct from a successful review. Results remain advisory and do not imply approval.
+
+- Update the vendored RedDB design system to v2026.10.20 across desktop, web and the embedded designer. Keep selection lists within the viewport, use density-aware switch tracks with full touch targets, and align navigation badges and card spacing with the updated contracts.
+
+  Use the shared SidebarPanel contract for the Design session panel. Let standalone and embedded design reviews follow the host density or narrow viewport, retaining readable editable text and toolbar touch targets on phones.
+
+- Make Agents sections directly selectable from a compact mobile header through the shared searchable DS selector. Preserve the selected host when navigating or cancelling a search, keep New session accessible as a touch-sized action, and use density-aware insets so agent forms have more usable width.
+- Make worker patch and worktree reviews directly accessible on phones using the shared design system panel. Keep review actions visible while diffs scroll, show the originating task or integration target, and return focus to the originating task or worktree without losing unsent drafts. Preserve explicit archive confirmation and reviewed revision checks.
+- Give the mobile Design preview the full workspace height instead of reserving a second pane for its inspector. Open the existing inspector in a modal sheet, keep history and device settings there, and condense canvas controls into one touch-friendly row. Preserve the live prototype, feedback drafts and desktop inspector when switching layouts.
+- Place the selected Inbox request before its list on mobile and focus its review when explicitly opened. Add navigation back to the original request without answering it, preserve question drafts when reopening, and retain request-button identity across metadata refreshes so focus can return correctly.
+- Prioritize native session details on mobile, with persistent navigation back to the session picker and a shortcut to pending agent requests. Keep setup forms out of the detail view, bound the inspector to available workspace space, and collapse long output and execution controls on narrow screens.
+
+  Preserve unsent instructions and question answers when reopening the same session, clear them when selecting another run, pause detail polling while the inspector is closed, and retain output scroll position across metadata refreshes. Returning to the picker never stops the owned process.
+
+- Improve worker setup and task composition on narrow screens with design system controls, persistent form actions, searchable worker selection and per-draft routing/resource summaries. Preserve explicit worker assignments across registry refreshes and block sending drafts whose worker is no longer registered. Keep active worker searches intact across metadata refreshes. Cancellation clears the connection credential and returns focus to worker setup.
+- Use labelled design-system navigation on desktop, with a persistent Navigation labels preference in Settings. The rail and resizable sidemenu now share an intrinsic grid track, so changing labels or density keeps the content aligned.
+
+  Add a full-width mobile navigation dock with Home, Browse, Agents, Search and More. The dock reserves space below the composer, keeps running-session badges, and shares the existing navigation actions and server scopes. Retain safe-area clearance and the bottom titlebar preference, and return focus to Browse when the contextual sidebar is dismissed.
+
+  Restore the connected opener when a programmatically opened dialog closes, while respecting explicit focus callbacks. Closing Search from the dock returns keyboard focus to Search.
+
+- Add searchable host, remote project and native agent session selectors to the shared desktop and web interface. Search matches names, paths and aliases locally and preserves the current selection when dismissed.
+
+  Use the design system's contextual panel layout for native harness details, with an independent scrolling body and a close action that leaves the agent running. Align the designer inspector with density spacing, keyboard scrolling and persistent section tabs while preserving unsent feedback.
+
 ## 0.84.1
 
 ### Patch Changes
