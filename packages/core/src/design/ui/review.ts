@@ -75,23 +75,46 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
     })
   const root = host.attachShadow({ mode: "open" })
   host.dataset.theme = "application"
-  host.dataset.density = "compact"
   host.dataset.embedded = String(!!options.embedded)
   const scheme = matchMedia("(prefers-color-scheme: dark)")
+  const compactViewport = matchMedia("(max-width: 767px)")
+  const densitySource = host.parentElement?.closest<HTMLElement>("[data-density]") ?? document.documentElement
+  const syncDensity = () => {
+    const inherited = densitySource.dataset.density
+    host.dataset.density =
+      inherited && ["tiny", "compact", "comfortable", "spacious"].includes(inherited)
+        ? inherited
+        : compactViewport.matches
+          ? "tiny"
+          : "compact"
+  }
   const syncScheme = () => {
     const inherited = getComputedStyle(host.parentElement ?? document.documentElement).colorScheme
     host.dataset.colorScheme = inherited === "dark" || (inherited !== "light" && scheme.matches) ? "dark" : "light"
   }
   syncScheme()
+  syncDensity()
   scheme.addEventListener("change", syncScheme)
-  const schemeObserver = new MutationObserver(syncScheme)
+  compactViewport.addEventListener("change", syncDensity)
+  const schemeObserver = new MutationObserver(() => {
+    syncScheme()
+    syncDensity()
+  })
   schemeObserver.observe(document.documentElement, {
     attributes: true,
-    attributeFilter: ["class", "style", "data-color-scheme", "data-theme"],
+    attributeFilter: ["class", "style", "data-color-scheme", "data-theme", "data-density"],
   })
+  if (densitySource !== document.documentElement)
+    schemeObserver.observe(densitySource, { attributes: true, attributeFilter: ["data-density"] })
   const endpoint =
     options.endpoint ?? `${options.base.replace(/\/$/, "")}/api/session/${encodeURIComponent(options.sessionID)}/design`
   const state = {
+    canvas: {
+      kind: "",
+      fit: true,
+      pan: false,
+      views: {} as Record<string, { x: number; y: number; scale: number }>,
+    },
     creating: false,
     mode: "",
     design: undefined as Design.Info | undefined,
@@ -262,6 +285,7 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
     switchedTimer: undefined as ReturnType<typeof setTimeout> | undefined,
   }
   const geometry = options.stage()
+  const reports = { evidence: "", assessment: "" }
   const loader = options.loading()
   const loading = {
     view: loader.initial(Date.now()),
@@ -318,6 +342,7 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
     element("status").dataset.tone = tone
     root.querySelectorAll("dialog[open] [data-action-status]").forEach((node) => {
       node.textContent = text
+      node.setAttribute("data-tone", tone)
     })
     if (key) element("status").dataset.copy = key
     else delete element("status").dataset.copy
@@ -371,12 +396,17 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
     attach: icon(
       '<path d="M12.6 7.3 8 11.9a2.6 2.6 0 0 1-3.7-3.7l5-5a1.7 1.7 0 0 1 2.4 2.4L6.9 10.4a.8.8 0 0 1-1.1-1.1L10 5.1"/>',
     ),
+    inspector: icon('<rect x="2" y="2" width="12" height="12" rx="1.5"/><path d="M10 2v12"/>'),
+    fit: icon('<path d="M6 2H2v4m8-4h4v4M2 10v4h4m8-4v4h-4"/>'),
+    pan: icon(
+      '<path d="M8 1v14M1 8h14M5.5 3.5 8 1l2.5 2.5M5.5 12.5 8 15l2.5-2.5M3.5 5.5 1 8l2.5 2.5M12.5 5.5 15 8l-2.5 2.5"/>',
+    ),
   }
   root.innerHTML = `<style>${options.appearance?.css ?? ""}</style><style>
 :host(:focus){outline:none}:host{container-type:inline-size;display:flex;flex-direction:column;height:100%;min-height:0;overflow:hidden;color-scheme:light dark;--surface:var(--reddb-color-background);--panel:var(--reddb-color-elevation-raised-surface);--canvas:var(--reddb-color-elevation-sunken-surface);--ink:var(--reddb-color-foreground);--muted:var(--reddb-color-ink-muted);--edge:var(--reddb-color-elevation-base-border);--accent:var(--reddb-color-primary);--accent-ink:var(--reddb-color-on-primary);background:var(--surface);color:var(--ink);font:13px/1.5 var(--reddb-font-family-sans,system-ui)}
 *{box-sizing:border-box}[hidden]{display:none!important}button,input,select,textarea{font:inherit;color:inherit;background:var(--surface);border:1px solid var(--edge);border-radius:var(--reddb-radius-md);padding:var(--reddb-spatial-gap-md) var(--reddb-spatial-inset-sm);min-height:var(--reddb-spatial-control-height-md);min-width:0}button{cursor:pointer;line-height:18px;transition:background-color var(--reddb-duration-fast) ease,border-color var(--reddb-duration-fast) ease}button:hover{background:var(--panel);border-color:var(--muted)}button:active{background:var(--canvas)}button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}button:disabled{opacity:.45;cursor:default}.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}.primary:hover{background:color-mix(in oklch,var(--accent) 88%,var(--ink));border-color:var(--accent)}
-header{display:flex;gap:8px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--edge);flex:none;min-width:0}#toolbar{flex-wrap:wrap;gap:6px;padding:5px 12px;background:var(--panel)}#toolbar :is(button,select):not(.icon){padding-top:3px;padding-bottom:3px;min-height:28px}h1{font-size:13px;letter-spacing:-.02em;margin:0 6px 0 0;display:flex;align-items:center;gap:6px;white-space:nowrap}h1 img{width:18px;height:18px;display:block}h2{font-size:15px;letter-spacing:-.015em;margin:0 0 12px}#toolbar select{width:auto;max-width:220px;flex:0 1 200px;min-width:0}.tools{display:contents}.actions{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:6px;flex:0 1 auto;min-width:0;margin-left:auto}.spacer{flex:1 1 0;min-width:8px}#toolbar #width{flex:0 0 auto;width:auto;max-width:130px}#restore{border-color:transparent;background:transparent;color:var(--muted)}#approve,#reopen,#newer,#restore{white-space:nowrap}#toolbar #annotate{display:inline-flex;align-items:center;gap:6px;flex:none;white-space:nowrap;padding-inline:8px 10px;color:var(--muted)}#annotate svg{display:block;flex:none}#annotate:hover{color:var(--ink)}#annotate[aria-pressed=true]{background:color-mix(in oklch,var(--accent) 16%,var(--surface));border-color:var(--accent);color:var(--ink);font-weight:600}.icon{width:28px;height:28px;min-height:28px;padding:0;display:inline-flex;align-items:center;justify-content:center;flex:none;background:transparent;color:var(--muted)}.icon:hover{color:var(--ink)}.icon svg{display:block}.menu-host{position:relative;flex:none;display:flex}#menu{position:absolute;right:0;top:calc(100% + 4px);z-index:5;min-width:200px;padding:4px;display:grid;background:var(--surface);color:var(--ink);border:1px solid var(--edge);border-radius:var(--reddb-radius-md);box-shadow:0 8px 28px color-mix(in oklch,var(--ink) 18%,transparent)}#toolbar #menu button{border:0;background:transparent;text-align:left;border-radius:4px;padding:6px 10px;min-height:0;white-space:nowrap}#toolbar #menu button:hover,#toolbar #menu button:focus-visible{background:var(--panel);outline-offset:-2px}
-#studio{flex:1;min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr)}main{min-height:0;min-width:0;display:grid;grid-template-columns:minmax(0,1fr) 336px;overflow:hidden}.canvas{background:var(--canvas);overflow:auto;min-height:0;min-width:0;padding:24px}iframe{display:block;background:oklch(99% .002 220);border:0;height:100%;min-height:0;width:100%;margin:0 auto;box-shadow:0 0 0 1px var(--edge),0 6px 24px color-mix(in oklch,var(--ink) 7%,transparent)}aside{min-height:0;min-width:0;border-left:1px solid var(--edge);display:grid;grid-template-rows:auto minmax(0,1fr);overflow:hidden}.tabs{display:flex;padding:0 16px;border-bottom:1px solid var(--edge);gap:18px}.tabs button{border:0;border-radius:0;background:none;padding:13px 0;color:var(--muted);position:relative}.tabs button[aria-selected=true]{color:var(--ink);font-weight:600}.tabs button[aria-selected=true]::after{content:"";position:absolute;bottom:0;left:0;right:0;height:2px;background:var(--accent)}.panel{overflow:auto;min-height:0;padding:20px}.panel>p{margin:0 0 16px}.section{margin-top:24px;padding-top:18px;border-top:1px solid var(--edge)}label{display:grid;gap:6px;margin-bottom:14px;font-size:12px;font-weight:500}label input,label select,label textarea{font-size:13px;font-weight:400}textarea{min-height:96px;resize:vertical;width:100%;line-height:1.55}input:not([type=checkbox]),select{max-width:100%;width:100%}input[type=checkbox]{accent-color:var(--accent);margin:0}label.check{display:flex;align-items:center;gap:8px;font-weight:400}.row{display:flex;gap:8px;align-items:center}.row>*{flex:1;min-width:0}#add{margin-bottom:14px}#attachment{font-size:11px;padding:6px;width:100%}#attachment::file-selector-button{font:inherit;border:0;border-radius:3px;padding:4px 7px;margin-right:8px;background:var(--panel);color:var(--ink);cursor:pointer}
+header{display:flex;gap:8px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--edge);flex:none;min-width:0}#toolbar{flex-wrap:wrap;gap:6px;padding:5px 12px;background:var(--panel)}#toolbar :is(button,select):not(.icon){padding-top:var(--reddb-spatial-gap-sm);padding-bottom:var(--reddb-spatial-gap-sm);min-height:var(--reddb-spatial-control-height-sm)}h1{font-size:13px;letter-spacing:-.02em;margin:0 6px 0 0;display:flex;align-items:center;gap:6px;white-space:nowrap}h1 img{width:18px;height:18px;display:block}h2{font-size:15px;letter-spacing:-.015em;margin:0 0 12px}#toolbar select{width:auto;max-width:220px;flex:0 1 200px;min-width:0}.tools{display:contents}.actions{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:6px;flex:0 1 auto;min-width:0;margin-left:auto}.spacer{flex:1 1 0;min-width:8px}#toolbar #width{flex:0 0 auto;width:auto;max-width:130px}#restore{border-color:transparent;background:transparent;color:var(--muted)}#approve,#reopen,#newer,#restore{white-space:nowrap}#toolbar #annotate{display:inline-flex;align-items:center;gap:6px;flex:none;white-space:nowrap;padding-inline:8px 10px;color:var(--muted)}#annotate svg{display:block;flex:none}#annotate:hover{color:var(--ink)}#annotate[aria-pressed=true]{background:color-mix(in oklch,var(--accent) 16%,var(--surface));border-color:var(--accent);color:var(--ink);font-weight:600}.icon{width:28px;height:28px;min-height:28px;padding:0;display:inline-flex;align-items:center;justify-content:center;flex:none;background:transparent;color:var(--muted)}.icon:hover{color:var(--ink)}.icon svg{display:block}.menu-host{position:relative;flex:none;display:flex}#menu{position:absolute;right:0;top:calc(100% + 4px);z-index:5;min-width:200px;padding:4px;display:grid;background:var(--surface);color:var(--ink);border:1px solid var(--edge);border-radius:var(--reddb-radius-md);box-shadow:0 8px 28px color-mix(in oklch,var(--ink) 18%,transparent)}#toolbar #menu button{border:0;background:transparent;text-align:left;border-radius:4px;padding:6px 10px;min-height:0;white-space:nowrap}#toolbar #menu button:hover,#toolbar #menu button:focus-visible{background:var(--panel);outline-offset:-2px}
+#studio{flex:1;min-height:0;display:flex;flex-direction:column}main{flex:1;min-height:0;min-width:0;display:grid;grid-template-columns:minmax(0,1fr) 336px;overflow:hidden}.canvas{background:var(--canvas);overflow:auto;min-height:0;min-width:0;padding:24px}iframe{display:block;background:oklch(99% .002 220);border:0;height:100%;min-height:0;width:100%;margin:0 auto;box-shadow:0 0 0 1px var(--edge),0 6px 24px color-mix(in oklch,var(--ink) 7%,transparent)}aside{min-height:0;min-width:0;border-left:1px solid var(--edge);display:grid;grid-template-rows:auto minmax(0,1fr);overflow:hidden}.tabs{display:flex;padding:0 16px;border-bottom:1px solid var(--edge);gap:18px}.tabs button{border:0;border-radius:0;background:none;padding:13px 0;color:var(--muted);position:relative}.tabs button[aria-selected=true]{color:var(--ink);font-weight:600}.tabs button[aria-selected=true]::after{content:"";position:absolute;bottom:0;left:0;right:0;height:2px;background:var(--accent)}.panel{overflow:auto;min-height:0;padding:20px}.panel>p{margin:0 0 16px}.section{margin-top:24px;padding-top:18px;border-top:1px solid var(--edge)}label{display:grid;gap:6px;margin-bottom:14px;font-size:12px;font-weight:500}label input,label select,label textarea{font-size:var(--reddb-editable-text-md,var(--reddb-type-body-font-size));font-weight:400}textarea{min-height:96px;resize:vertical;width:100%;line-height:1.55}input:not([type=checkbox]),select{max-width:100%;width:100%}input[type=checkbox]{accent-color:var(--accent);margin:0}label.check{display:flex;align-items:center;gap:8px;font-weight:400}.row{display:flex;gap:8px;align-items:center}.row>*{flex:1;min-width:0}#add{margin-bottom:14px}#attachment{font-size:11px;padding:6px;width:100%}#attachment::file-selector-button{font:inherit;border:0;border-radius:3px;padding:4px 7px;margin-right:8px;background:var(--panel);color:var(--ink);cursor:pointer}
 details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;font-weight:600;list-style-position:inside;color:var(--ink);margin-bottom:0}details[open]>summary{margin-bottom:14px}details:last-child{padding-bottom:0}.note{padding:10px 0;border-bottom:1px solid var(--edge);overflow-wrap:anywhere}.note button{float:right;padding:2px 7px;font-size:11px}.muted,small{font-size:12px;color:var(--muted);font-weight:400}small{display:block}#target{overflow-wrap:anywhere;background:var(--panel);font:11px/1.5 ui-monospace,monospace;padding:7px 9px;border-radius:4px;margin:12px 0}#target:empty{display:none}#status{flex:none;min-height:28px;padding:5px 16px;border-top:1px solid var(--edge);font-size:11px;color:var(--muted)}#status:empty{display:none}.asset{display:flex;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--edge)}.asset img{width:48px;height:48px;object-fit:contain;background:var(--panel);border-radius:4px}#jobs .note{display:grid;gap:6px}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}#source-files{font-size:12px;overflow-wrap:anywhere}#html,#audit,#compare,#gif{margin-bottom:12px}#intake{flex:1;overflow:auto}form.intake{max-width:600px;margin:32px auto;padding:24px}form.intake h2{font-size:24px;margin-bottom:24px}#board-dialog{padding:12px;background:var(--surface);color:var(--ink);border:1px solid var(--edge);border-radius:10px}#board-dialog::backdrop{background:color-mix(in oklch,var(--canvas) 70%,transparent)}#board-close{margin-bottom:12px}#board-frame{box-shadow:none}.canvas:has(iframe[src="about:blank"])::before{content:attr(data-empty);display:block;color:var(--muted);text-align:center;padding:24px}
 @container(max-width:860px){#toolbar{padding:4px 10px}#toolbar #annotate{width:28px;padding:0;justify-content:center}#annotate .label{display:none}h1{margin-right:2px}#toolbar select{flex:1 1 140px;max-width:200px}#restore{font-size:0;width:28px;height:28px;flex:none;padding:0}#restore::before{content:"↶";font-size:18px}main{grid-template-columns:minmax(0,1fr) 300px}.canvas{padding:16px}.panel{padding:16px}}
 @container(max-width:640px){:host{min-height:0}#toolbar select{flex:1 1 120px;max-width:none}#toolbar #width{flex:0 1 84px;max-width:84px}#approve,#reopen{font-size:12px;padding-left:8px;padding-right:8px}main{display:grid;grid-template-columns:1fr;grid-template-rows:minmax(180px,1fr) minmax(220px,.85fr)}.canvas{padding:12px}aside{border-left:0;border-top:1px solid var(--edge)}.tabs{gap:24px}.tabs button{padding:10px 0}.panel{padding:16px}form.intake{margin:0;padding:20px}}
@@ -391,20 +421,51 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
 #inbox-count{font-size:11px;font-weight:600;padding:1px 8px;border-radius:999px;background:var(--panel);border:1px solid var(--edge);color:var(--muted)}#inbox-count[data-open="true"]{color:var(--accent-ink);background:var(--accent);border-color:var(--accent)}.finding{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 8px;padding:8px 0;border-bottom:1px solid var(--edge);font-size:12px;overflow-wrap:anywhere}.finding input{margin-top:3px}.finding .finding-tag{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;padding:1px 6px;border-radius:4px;border:1px solid var(--edge);color:var(--muted);align-self:start;margin-top:2px}.finding[data-severity=warn] .finding-tag{color:var(--reddb-color-feedback-danger-foreground);border-color:currentColor}.finding[data-status=resolved]{color:var(--muted)}.finding .finding-body{display:grid;gap:2px}.finding .finding-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}.finding .finding-actions button{padding:2px 7px;font-size:11px}.finding .finding-status{font-size:11px;color:var(--muted)}#queue-fixes{margin-top:10px}#inbox-empty{margin:6px 0 0}
 #variant-menu{position:absolute;right:0;top:calc(100% + 4px);z-index:5;min-width:200px;padding:4px;display:grid;background:var(--surface);color:var(--ink);border:1px solid var(--edge);border-radius:var(--reddb-radius-md);box-shadow:0 8px 28px color-mix(in oklch,var(--ink) 18%,transparent)}#variant-menu button{border:0;background:transparent;text-align:left;border-radius:4px;padding:6px 10px;min-height:0;white-space:nowrap;font-size:12px}#variant-menu button:hover,#variant-menu button:focus-visible{background:var(--panel);outline-offset:-2px}.op-badge{margin-left:6px;font-size:10px;font-weight:600;line-height:16px;padding:0 6px;border-radius:999px;border:1px solid currentColor;color:var(--accent);white-space:nowrap}.variant-bar .tabs button[data-operation]{color:var(--accent)}#merge-bar{display:flex;align-items:center;gap:10px;min-width:0;overflow:auto;font-size:12px}#merge-options{display:flex;gap:10px}#merge-bar label{margin:0;display:flex;gap:6px;align-items:center;font-weight:400;white-space:nowrap}#merge-bar button{min-height:24px;padding:1px 8px;font-size:12px;white-space:nowrap}#operation-state{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 10px;margin:0 0 12px;border-radius:var(--reddb-radius-md);background:var(--panel);color:var(--reddb-color-feedback-danger-foreground);overflow-wrap:anywhere}#feedback-status[data-tone=error]{color:var(--reddb-color-feedback-danger-foreground)}#feedback-status[data-tone=success]{color:var(--reddb-color-feedback-success-foreground)}#operation-state button{padding:2px 8px;font-size:12px;color:var(--ink)}.note .note-orphaned{font-size:10px;font-weight:600;padding:0 6px;border-radius:4px;border:1px solid currentColor;color:var(--reddb-color-feedback-danger-foreground)}#approval-reselect{color:var(--reddb-color-feedback-danger-foreground)}
 .canvas{position:relative}.preview-state{position:absolute;inset:0;z-index:3;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:24px;background:var(--canvas);pointer-events:none;overflow:hidden}.preview-state button{pointer-events:auto}.canvas[data-phase=ready] .preview-state{display:none}.canvas:not([data-phase=ready]) .preview-pane{opacity:0}.canvas[data-phase=ready] .preview-pane{opacity:1;transition:opacity .24s ease-out}.skeleton{display:flex;flex-direction:column;align-items:center;gap:10px;width:min(100%,760px)}.sk-strip{display:none;gap:8px;align-self:stretch;overflow:hidden}.sk-strip i{flex:none;width:80px;aspect-ratio:16/9;border-radius:4px}.sk-frame{width:min(100%,calc(50vh * 4 / 3));aspect-ratio:4/3;border-radius:var(--reddb-radius-md);background:var(--surface);box-shadow:0 0 0 1px var(--edge);display:flex;flex-direction:column;gap:12px;padding:6%}.sk-frame i{display:block;height:10px;border-radius:4px}.sk-frame i:first-child{height:18px;width:45%}.sk-frame i:nth-child(2){width:80%}.sk-frame i:nth-child(3){width:62%}.sk-strip i,.sk-frame i{background:linear-gradient(90deg,var(--panel) 25%,color-mix(in oklch,var(--panel) 55%,var(--canvas)) 50%,var(--panel) 75%);background-size:300% 100%;animation:shimmer 1.6s ease-in-out infinite}@keyframes shimmer{from{background-position:100% 0}to{background-position:0 0}}.preview-state[data-target=presentation] .sk-strip{display:flex}.preview-state[data-target=presentation] .sk-frame{width:min(100%,calc(50vh * 16 / 9));aspect-ratio:16/9}.preview-state[data-target=app] .skeleton{width:auto}.preview-state[data-target=app] .sk-frame{width:auto;height:min(52vh,520px);aspect-ratio:9/19.5;border-radius:34px;box-shadow:0 0 0 8px var(--panel),0 0 0 9px var(--edge);padding:48px 18px}.preview-note{display:grid;justify-items:center;gap:4px;text-align:center;max-width:520px}#preview-stage{margin:0;font-weight:600}#preview-agent{margin:0}#preview-elapsed{font-variant-numeric:tabular-nums}#preview-elapsed:empty{display:none}#preview-error{margin:4px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--reddb-color-feedback-danger-foreground)}#preview-retry{margin-top:8px}.canvas[data-phase=error] .skeleton{display:none}.canvas[data-phase=empty] :is(.sk-strip,.sk-frame) i{animation:none}#no-variants{font-size:11px;opacity:.75}@media(prefers-reduced-motion:reduce){.canvas[data-phase=ready] .preview-pane{transition:none}.sk-strip i,.sk-frame i{animation:none}}
-.visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0;min-height:0}#tab-review{white-space:nowrap}.tab-count{display:inline-block;margin-left:6px;min-width:18px;padding:0 6px;border-radius:999px;background:var(--accent);color:var(--accent-ink);font-size:11px;font-weight:600;line-height:16px;text-align:center;font-variant-numeric:tabular-nums}#panel-review{display:flex;flex-direction:column;padding:0;overflow:hidden;--ok:var(--reddb-color-feedback-success-foreground);--warn:var(--reddb-color-feedback-warning-foreground);--bad:var(--reddb-color-feedback-danger-foreground);--info:var(--reddb-color-feedback-info-foreground);--mono:var(--reddb-font-family-mono,ui-monospace,monospace)}.review-scroll{flex:1 1 auto;min-height:0;overflow:auto;padding:14px 16px 16px;display:flex;flex-direction:column}.review-scroll>:not([hidden])~*{margin-top:12px}.review-scroll>.fold+.fold{margin-top:0}.review-scroll>p{margin:0}#rounds{display:grid;gap:6px;min-width:0}.round-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;min-width:0}.round-head h2{font-size:15px;margin:0;white-space:nowrap}.round-tally{font-size:12px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}#rounds-only{margin-left:auto;flex:none;min-height:0;padding:1px 10px;border-radius:999px;font-size:12px;line-height:18px;color:var(--muted);background:transparent}#rounds-only:hover{color:var(--ink)}#rounds-only[aria-pressed=true]{border-color:var(--ink);color:var(--ink);font-weight:600}.round-sub{margin:0;font-size:11px;color:var(--muted);display:flex;flex-wrap:wrap;gap:2px 10px;overflow-wrap:anywhere}.round-sub:empty{display:none}.round-sub .link{font-size:inherit;line-height:inherit}.round-sub a,.row-evidence,.round-left a{color:var(--accent)}.round-alert{margin:0;padding:6px 10px;border:1px solid var(--bad);border-radius:var(--reddb-radius-md);background:var(--reddb-color-feedback-danger-surface,transparent);font-size:12px;overflow-wrap:anywhere}.round-alert strong{color:var(--bad)}.round-message{margin:0;font-size:12px;color:var(--muted);white-space:pre-line;overflow-wrap:anywhere;max-height:4.5em;overflow:hidden}.round-message strong{color:var(--ink);font-weight:600}#rounds-list{display:grid;min-width:0}#rounds-list>.rows,#rounds-list>.round-left{margin-bottom:10px}.rows{list-style:none;margin:0;padding:0;border-top:1px solid var(--edge);min-width:0}.rows>li{border-bottom:1px solid var(--edge);min-width:0}#rounds[data-only=true] .rows[data-block=current]>li[data-left=false]{display:none}.row-toggle{width:100%;display:grid;grid-template-columns:14px 18px 44px minmax(0,1fr);gap:6px;align-items:start;padding:5px 2px;border:0;border-radius:0;background:transparent;text-align:left;min-height:29px;font-size:13px;line-height:18px;font-weight:400}.row-toggle:hover{background:color-mix(in oklch,var(--ink) 5%,transparent)}.row-toggle:active{background:color-mix(in oklch,var(--ink) 9%,transparent)}.row-toggle:focus-visible{outline-offset:-2px}.row-toggle .num{font:500 11px/18px var(--mono);color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}.row-toggle .tag{font:10px/18px var(--mono);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.row-text{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.row-toggle[aria-expanded=true] .row-text{white-space:pre-wrap;overflow-wrap:anywhere}.rows>li[data-status=resolved] .row-text,.rows>li[data-status=accepted] .row-text{color:var(--muted)}.glyph{width:14px;height:14px;display:block;flex:none;color:var(--muted)}.row-toggle .glyph{margin-top:2px}.glyph[data-mark=addressed]{color:var(--info)}.glyph[data-mark=resolved]{color:var(--ok)}.glyph[data-mark=partial]{color:var(--warn)}.glyph[data-mark=unresolved]{color:var(--bad)}.glyph .tick{stroke:var(--surface)}.row-body{padding:0 2px 10px 46px;display:grid;gap:6px;font-size:12px;min-width:0;overflow-wrap:anywhere}.row-body p{margin:0}.row-where{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}.row-label{display:block;font:11px/1.45 var(--mono);color:var(--muted);overflow-wrap:anywhere}.row-claim b,.row-outcome b{font-size:11px;font-weight:600;margin-right:6px}.row-claim b{color:var(--info)}.row-outcome[data-status=resolved] b{color:var(--ok)}.row-outcome[data-status=partial] b{color:var(--warn)}.row-outcome[data-status=unresolved] b{color:var(--bad)}.row-outcome[data-status=accepted] b{color:var(--muted)}.row-note,.row-claim>[data-copy=notVerified]{color:var(--muted)}.row-actions{display:flex;gap:6px;flex-wrap:wrap}.row-actions button{min-height:0;padding:1px 8px;font-size:11px;line-height:18px}.row-record{display:grid;gap:6px;padding:8px;border:1px solid var(--edge);border-radius:var(--reddb-radius-md);background:var(--panel)}.row-record label{margin:0;font-size:11px}.row-record select,.row-record input{min-height:26px;padding:2px 6px;font-size:12px}.row-record .row-actions{justify-content:flex-end}.tally{display:inline-flex;align-items:center;gap:3px;font-variant-numeric:tabular-nums}.tally .glyph{width:12px;height:12px}.fold{border-top:1px solid var(--edge);padding:0;min-width:0}.review-scroll details.fold:last-of-type{padding-bottom:0}.fold>summary{display:flex;align-items:baseline;gap:8px;padding:6px 2px;font-size:12px;list-style:none;min-width:0;border-radius:2px}.fold>summary::-webkit-details-marker{display:none}.fold>summary::before{content:"";flex:none;align-self:center;width:5px;height:5px;margin:0 4px 0 3px;border:solid var(--muted);border-width:0 1.5px 1.5px 0;transform:rotate(-45deg)}.fold[open]>summary{margin-bottom:0}.fold[open]>summary::before{transform:rotate(45deg)}.fold>summary:focus-visible{outline-offset:-2px}.fold-side{margin-left:auto;display:inline-flex;align-items:center;gap:8px;color:var(--muted);font-weight:400;white-space:nowrap;font-variant-numeric:tabular-nums}.fold-body{padding:2px 2px 10px 16px}.fold>.rows{margin:0 0 6px 16px}.round-done>summary b,.round-group>summary b{font-weight:600}.round-subhead{margin:8px 0 4px;font-size:11px;color:var(--muted)}.round-left{display:grid;gap:4px}.round-line{margin:0;display:flex;gap:8px;align-items:baseline;font-size:12px}.round-line .fold-side{margin-left:auto}#design-tasks .note{padding:3px 0;border:0;font-size:12px;display:flex;gap:8px;align-items:baseline;flex-wrap:nowrap}#design-tasks .note span{min-width:0;flex:1}#design-tasks .note small{display:inline;flex:none;font-size:11px}#design-tasks .note[data-status=completed] span,#design-tasks .note[data-status=cancelled] span{color:var(--muted)}.reply{display:grid;gap:4px;padding:8px 10px;border:1px solid var(--edge);border-radius:var(--reddb-radius-md);background:var(--panel);font-size:12px;min-width:0}.reply small{font-size:11px}.reply-text{line-height:18px;max-height:54px;overflow:hidden;overflow-wrap:anywhere}.reply[data-expanded=true] .reply-text{max-height:50vh;overflow:auto}.reply-text p{margin:0;min-height:6px}.reply:not([data-expanded=true]) .reply-text p:empty{display:none}.reply-text code{font:11px var(--mono);padding:0 3px;border-radius:3px;background:var(--canvas)}.link{justify-self:start;min-height:0;padding:0;border:0;background:none;color:var(--accent);font-size:12px}.link:hover{background:none;text-decoration:underline}#feed{display:grid;gap:6px;max-height:40vh;overflow:auto}#feed:not(:has(.entry:not([hidden]))) #feed-empty{display:block}#feed-empty{margin:0}#feed:has(.entry:not([hidden])) #feed-empty{display:none}.entry[data-kind=tool][data-status=failed]{color:var(--bad)}.entry p{margin:0;min-height:6px}.entry code{font:11px var(--mono)}#inbox summary{display:flex;align-items:center;gap:8px}#inbox-count{margin-left:auto}.fold-body label{margin-bottom:8px}.composer{flex:none;display:grid;gap:8px;padding:10px 16px 12px;border-top:1px solid var(--edge);background:var(--surface);min-width:0}#note{min-height:52px;height:52px;resize:vertical;padding:6px 9px;font-size:13px;line-height:20px}.composer[data-open=true] #note{min-height:88px}.compose-bar{display:flex;gap:8px;align-items:center;min-width:0}.attach{position:relative;margin:0;display:inline-flex;align-items:center;justify-content:center;flex:none;width:30px;height:30px;border:1px solid var(--edge);border-radius:var(--reddb-radius-md);color:var(--muted);cursor:pointer}.attach:hover{color:var(--ink);border-color:var(--muted)}.attach:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:3px}.attach:has(input:disabled){opacity:.45;cursor:default}.attach svg{display:block}.sends{display:flex;gap:8px;flex:1;min-width:0}.sends>*{min-width:0}#send{flex:1 1 auto;margin:0}#send-end{flex:0 1 auto;white-space:nowrap}.hints{font-size:11px;color:var(--muted)}#feedback-status{margin:0;font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere}#notes{display:grid;max-height:min(30vh,180px);overflow:auto;margin:0;border-top:1px solid var(--edge)}#notes:empty{display:none}.draft{display:flex;flex-wrap:wrap;align-items:center;gap:2px 6px;padding:4px 0;border-bottom:1px solid var(--edge);font-size:12px;min-width:0}.draft:hover,.draft:focus-within{background:color-mix(in oklch,var(--panel) 60%,transparent)}.draft-tag{flex:none;max-width:84px;font:10px/18px var(--mono);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.draft-text{flex:1 1 0;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.draft button{flex:none;min-height:0;padding:0 7px;font-size:11px;line-height:18px}.draft .note-orphaned{font-size:10px;font-weight:600;padding:0 6px;border-radius:4px;border:1px solid currentColor;color:var(--bad)}@container(max-width:860px){aside>.tabs{gap:14px}}@container(max-width:640px){.review-scroll{padding:12px}.composer{padding:8px 12px;gap:6px}.composer:not([data-open=true]){grid-template-columns:minmax(0,1fr) auto;align-items:center}.composer:not([data-open=true])>:is(#notes,#feedback-status){grid-column:1/-1}.composer:not([data-open=true]) #note{min-height:32px;height:32px;resize:none;overflow:hidden;padding-top:5px;padding-bottom:5px;line-height:20px}.composer:not([data-open=true]) :is(.hints,.attach,#send-end){display:none}#notes{max-height:72px}}
+.visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0;min-height:0}#tab-review{white-space:nowrap}.tab-count{display:inline-block;margin-left:6px;min-width:18px;padding:0 6px;border-radius:999px;background:var(--accent);color:var(--accent-ink);font-size:11px;font-weight:600;line-height:16px;text-align:center;font-variant-numeric:tabular-nums}#panel-review{display:flex;flex-direction:column;padding:0;overflow:hidden;--ok:var(--reddb-color-feedback-success-foreground);--warn:var(--reddb-color-feedback-warning-foreground);--bad:var(--reddb-color-feedback-danger-foreground);--info:var(--reddb-color-feedback-info-foreground);--mono:var(--reddb-font-family-mono,ui-monospace,monospace)}.review-scroll{flex:1 1 auto;min-height:0;overflow:auto;padding:14px 16px 16px;display:flex;flex-direction:column}.review-scroll>:not([hidden])~*{margin-top:12px}.review-scroll>.fold+.fold{margin-top:0}.review-scroll>p{margin:0}#rounds{display:grid;gap:6px;min-width:0}.round-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;min-width:0}.round-head h2{font-size:15px;margin:0;white-space:nowrap}.round-tally{font-size:12px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}#rounds-only{margin-left:auto;flex:none;min-height:0;padding:1px 10px;border-radius:999px;font-size:12px;line-height:18px;color:var(--muted);background:transparent}#rounds-only:hover{color:var(--ink)}#rounds-only[aria-pressed=true]{border-color:var(--ink);color:var(--ink);font-weight:600}.round-sub{margin:0;font-size:11px;color:var(--muted);display:flex;flex-wrap:wrap;gap:2px 10px;overflow-wrap:anywhere}.round-sub:empty{display:none}.round-sub .link{font-size:inherit;line-height:inherit}.round-sub a,.row-evidence,.round-left a{color:var(--accent)}.round-alert{margin:0;padding:6px 10px;border:1px solid var(--bad);border-radius:var(--reddb-radius-md);background:var(--reddb-color-feedback-danger-surface,transparent);font-size:12px;overflow-wrap:anywhere}.round-alert strong{color:var(--bad)}.round-message{margin:0;font-size:12px;color:var(--muted);white-space:pre-line;overflow-wrap:anywhere;max-height:4.5em;overflow:hidden}.round-message strong{color:var(--ink);font-weight:600}#rounds-list{display:grid;min-width:0}#rounds-list>.rows,#rounds-list>.round-left{margin-bottom:10px}.rows{list-style:none;margin:0;padding:0;border-top:1px solid var(--edge);min-width:0}.rows>li{border-bottom:1px solid var(--edge);min-width:0}#rounds[data-only=true] .rows[data-block=current]>li[data-left=false]{display:none}.row-toggle{width:100%;display:grid;grid-template-columns:14px 18px 44px minmax(0,1fr);gap:6px;align-items:start;padding:5px 2px;border:0;border-radius:0;background:transparent;text-align:left;min-height:29px;font-size:13px;line-height:18px;font-weight:400}.row-toggle:hover{background:color-mix(in oklch,var(--ink) 5%,transparent)}.row-toggle:active{background:color-mix(in oklch,var(--ink) 9%,transparent)}.row-toggle:focus-visible{outline-offset:-2px}.row-toggle .num{font:500 11px/18px var(--mono);color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}.row-toggle .tag{font:10px/18px var(--mono);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.row-text{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.row-toggle[aria-expanded=true] .row-text{white-space:pre-wrap;overflow-wrap:anywhere}.rows>li[data-status=resolved] .row-text,.rows>li[data-status=accepted] .row-text{color:var(--muted)}.glyph{width:14px;height:14px;display:block;flex:none;color:var(--muted)}.row-toggle .glyph{margin-top:2px}.glyph[data-mark=addressed]{color:var(--info)}.glyph[data-mark=resolved]{color:var(--ok)}.glyph[data-mark=partial]{color:var(--warn)}.glyph[data-mark=unresolved]{color:var(--bad)}.glyph .tick{stroke:var(--surface)}.row-body{padding:0 2px 10px 46px;display:grid;gap:6px;font-size:12px;min-width:0;overflow-wrap:anywhere}.row-body p{margin:0}.row-where{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}.row-label{display:block;font:11px/1.45 var(--mono);color:var(--muted);overflow-wrap:anywhere}.row-claim b,.row-outcome b{font-size:11px;font-weight:600;margin-right:6px}.row-claim b{color:var(--info)}.row-outcome[data-status=resolved] b{color:var(--ok)}.row-outcome[data-status=partial] b{color:var(--warn)}.row-outcome[data-status=unresolved] b{color:var(--bad)}.row-outcome[data-status=accepted] b{color:var(--muted)}.row-note,.row-claim>[data-copy=notVerified]{color:var(--muted)}.row-actions{display:flex;gap:6px;flex-wrap:wrap}.row-actions button{min-height:0;padding:1px 8px;font-size:11px;line-height:18px}.row-record{display:grid;gap:6px;padding:8px;border:1px solid var(--edge);border-radius:var(--reddb-radius-md);background:var(--panel)}.row-record label{margin:0;font-size:11px}.row-record select,.row-record input{min-height:26px;padding:2px 6px;font-size:12px}.row-record .row-actions{justify-content:flex-end}.tally{display:inline-flex;align-items:center;gap:3px;font-variant-numeric:tabular-nums}.tally .glyph{width:12px;height:12px}.fold{border-top:1px solid var(--edge);padding:0;min-width:0}.review-scroll details.fold:last-of-type{padding-bottom:0}.fold>summary{display:flex;align-items:baseline;gap:8px;padding:6px 2px;font-size:12px;list-style:none;min-width:0;border-radius:2px}.fold>summary::-webkit-details-marker{display:none}.fold>summary::before{content:"";flex:none;align-self:center;width:5px;height:5px;margin:0 4px 0 3px;border:solid var(--muted);border-width:0 1.5px 1.5px 0;transform:rotate(-45deg)}.fold[open]>summary{margin-bottom:0}.fold[open]>summary::before{transform:rotate(45deg)}.fold>summary:focus-visible{outline-offset:-2px}.fold-side{margin-left:auto;display:inline-flex;align-items:center;gap:8px;color:var(--muted);font-weight:400;white-space:nowrap;font-variant-numeric:tabular-nums}.fold-body{padding:2px 2px 10px 16px}.fold>.rows{margin:0 0 6px 16px}.round-done>summary b,.round-group>summary b{font-weight:600}.round-subhead{margin:8px 0 4px;font-size:11px;color:var(--muted)}.round-left{display:grid;gap:4px}.round-line{margin:0;display:flex;gap:8px;align-items:baseline;font-size:12px}.round-line .fold-side{margin-left:auto}#design-tasks .note{padding:3px 0;border:0;font-size:12px;display:flex;gap:8px;align-items:baseline;flex-wrap:nowrap}#design-tasks .note span{min-width:0;flex:1}#design-tasks .note small{display:inline;flex:none;font-size:11px}#design-tasks .note[data-status=completed] span,#design-tasks .note[data-status=cancelled] span{color:var(--muted)}.reply{display:grid;gap:4px;padding:8px 10px;border:1px solid var(--edge);border-radius:var(--reddb-radius-md);background:var(--panel);font-size:12px;min-width:0}.reply small{font-size:11px}.reply-text{line-height:18px;max-height:54px;overflow:hidden;overflow-wrap:anywhere}.reply[data-expanded=true] .reply-text{max-height:50vh;overflow:auto}.reply-text p{margin:0;min-height:6px}.reply:not([data-expanded=true]) .reply-text p:empty{display:none}.reply-text code{font:11px var(--mono);padding:0 3px;border-radius:3px;background:var(--canvas)}.link{justify-self:start;min-height:0;padding:0;border:0;background:none;color:var(--accent);font-size:12px}.link:hover{background:none;text-decoration:underline}#feed{display:grid;gap:6px;max-height:40vh;overflow:auto}#feed:not(:has(.entry:not([hidden]))) #feed-empty{display:block}#feed-empty{margin:0}#feed:has(.entry:not([hidden])) #feed-empty{display:none}.entry[data-kind=tool][data-status=failed]{color:var(--bad)}.entry p{margin:0;min-height:6px}.entry code{font:11px var(--mono)}#inbox summary{display:flex;align-items:center;gap:8px}#inbox-count{margin-left:auto}.fold-body label{margin-bottom:8px}.composer{flex:none;display:grid;gap:8px;padding:10px 16px 12px;border-top:1px solid var(--edge);background:var(--surface);min-width:0}#note{min-height:52px;height:52px;resize:vertical;padding:6px 9px;font-size:var(--reddb-editable-text-md,var(--reddb-type-body-font-size));line-height:20px}.composer[data-open=true] #note{min-height:88px}.compose-bar{display:flex;gap:8px;align-items:center;min-width:0}.attach{position:relative;margin:0;display:inline-flex;align-items:center;justify-content:center;flex:none;width:30px;height:30px;border:1px solid var(--edge);border-radius:var(--reddb-radius-md);color:var(--muted);cursor:pointer}.attach:hover{color:var(--ink);border-color:var(--muted)}.attach:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:3px}.attach:has(input:disabled){opacity:.45;cursor:default}.attach svg{display:block}.sends{display:flex;gap:8px;flex:1;min-width:0}.sends>*{min-width:0}#send{flex:1 1 auto;margin:0}#send-end{flex:0 1 auto;white-space:nowrap}.hints{font-size:11px;color:var(--muted)}#feedback-status{margin:0;font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere}#notes{display:grid;max-height:min(30vh,180px);overflow:auto;margin:0;border-top:1px solid var(--edge)}#notes:empty{display:none}.draft{display:flex;flex-wrap:wrap;align-items:center;gap:2px 6px;padding:4px 0;border-bottom:1px solid var(--edge);font-size:12px;min-width:0}.draft:hover,.draft:focus-within{background:color-mix(in oklch,var(--panel) 60%,transparent)}.draft-tag{flex:none;max-width:84px;font:10px/18px var(--mono);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.draft-text{flex:1 1 0;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.draft button{flex:none;min-height:0;padding:0 7px;font-size:11px;line-height:18px}.draft .note-orphaned{font-size:10px;font-weight:600;padding:0 6px;border-radius:4px;border:1px solid currentColor;color:var(--bad)}@container(max-width:860px){aside>.tabs{gap:14px}}@container(max-width:640px){.review-scroll{padding:12px}.composer{padding:8px 12px;gap:6px}.composer:not([data-open=true]){grid-template-columns:minmax(0,1fr) auto;align-items:center}.composer:not([data-open=true])>:is(#notes,#feedback-status){grid-column:1/-1}.composer:not([data-open=true]) #note{min-height:var(--reddb-spatial-control-height-md);height:var(--reddb-spatial-control-height-md);resize:none;overflow:hidden;padding-top:5px;padding-bottom:5px;line-height:20px}.composer:not([data-open=true]) :is(.hints,.attach,#send-end){display:none}#notes{max-height:72px}}
 :host{--ok:var(--reddb-color-feedback-success-foreground);--warn:var(--reddb-color-feedback-warning-foreground);--bad:var(--reddb-color-feedback-danger-foreground)}#toolbar .rev-chip{display:inline-flex;align-items:center;gap:6px;flex:none;padding:3px 9px;font-size:12px;font-weight:600;white-space:nowrap;color:var(--ink)}#toolbar .rev-chip:disabled{opacity:1}.rev-chip:not([data-action=true]){cursor:default}.rev-chip:not([data-action=true]):hover{background:var(--surface);border-color:var(--edge)}.rev-chip .dot{width:8px;height:8px;flex:none;border-radius:50%;background:var(--ok)}.rev-chip[data-chip=behind],.rev-chip[data-chip=offline]{border-color:var(--warn)}.rev-chip[data-chip=behind] .dot{background:transparent;border:2px solid var(--warn)}.rev-chip[data-chip=offline] .dot{background:var(--warn);border-radius:1px;height:2px;width:9px}.rev-chip[data-chip=updating] .dot{background:transparent;border:2px solid var(--accent);border-right-color:transparent;animation:spin .8s linear infinite}.rev-chip[data-chip=failed]{border-color:var(--bad);color:var(--bad)}.rev-chip[data-chip=failed] .dot{background:var(--bad);border-radius:1px}.stage{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--canvas)}.stage>.canvas{flex:1 1 auto}.revision-line{flex:none;margin:12px 16px 0;padding:5px 10px;display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px;font-size:12px;line-height:18px;border:1px solid var(--edge);border-left-width:3px;border-radius:var(--reddb-radius-md);background:var(--surface);color:var(--ink);overflow-wrap:anywhere;min-width:0}.revision-line[data-tone=warn]{border-color:var(--warn)}.revision-line[data-tone=bad]{border-color:var(--bad)}.revision-line[data-tone=ok]{border-left-color:var(--ok)}.revision-line b{font-weight:600}.revision-line span{color:var(--muted)}.revision-line button{margin-left:auto;min-height:0;padding:1px 10px;font-size:12px;line-height:18px;font-weight:600}.round-progress{display:grid;gap:5px;min-width:0}.steps{display:grid;grid-template-columns:repeat(5,1fr);gap:3px}.steps i{height:4px;border-radius:2px;background:var(--edge)}.steps i[data-s=done]{background:color-mix(in oklch,var(--ink) 70%,var(--edge))}.steps i[data-s=now]{background:var(--accent)}.steps[data-tone=halt] i[data-s=now]{background:var(--warn)}.steps[data-tone=ready] i{background:var(--ok)}.round-stage{margin:0;font-size:12px;min-width:0;overflow-wrap:anywhere}#round-stage b{font-weight:600}#round-stage span{color:var(--muted)}.round-live{display:flex;align-items:center;gap:8px;min-width:0}.round-live>.live{flex:0 1 auto}#round-received{display:block;margin-left:auto;flex:none;font-size:11px;line-height:18px;font-variant-numeric:tabular-nums}.live{margin:0;display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);min-width:0}.live .dot{width:7px;height:7px;flex:none;border-radius:50%;background:var(--muted)}.live[data-state=working] .dot{background:var(--accent);animation:pulse 1.6s ease-in-out infinite}.live[data-state=offline],.live[data-state=waiting]{color:var(--warn)}
 .live[data-state=waiting] .dot{background:var(--warn)}
 .live[data-state=failed]{color:var(--bad)}
 .live[data-state=failed] .dot{background:var(--bad)}.live[data-state=offline] .dot{background:var(--warn);border-radius:1px;height:2px;width:9px}.live>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}.action-dialog [data-newer]{margin:0 0 12px;padding:6px 10px;border:1px solid var(--warn);border-radius:var(--reddb-radius-md);font-size:12px}@keyframes pulse{50%{opacity:.3}}@media(prefers-reduced-motion:reduce){.live .dot,.rev-chip .dot{animation:none}}@container(max-width:640px){.revision-line{margin:8px 12px 0}#toolbar :is(#designs,#revisions){flex:1 1 88px}}
-    </style><header id="toolbar"><h1>${options.appearance ? `<img src="${options.appearance.favicon}" alt="RedDB">` : ""}<span data-copy="title">${copy.title}</span></h1><select id="designs" aria-label="${copy.alternatives}" data-copy-aria-label="alternatives"></select><div id="revision-tools" class="tools" hidden><select id="revisions" aria-label="${copy.history}" data-copy-aria-label="history"></select><button type="button" id="newer" class="rev-chip" data-chip="latest" hidden><i class="dot" aria-hidden="true"></i><span id="newer-label"></span></button></div><div class="actions"><div id="review-tools" class="tools" hidden><button type="button" id="annotate" aria-pressed="false" aria-label="${copy.annotate}" data-copy-aria-label="annotate" title="${copy.annotateShortcut}" data-copy-title="annotateShortcut">${icons.annotate}<span class="label" data-copy="annotateShort">${copy.annotateShort}</span></button><select id="width" aria-label="${copy.width}" data-copy-aria-label="width"><option value="100%" data-copy="full">${copy.full}</option><option value="390" data-copy="mobile">${copy.mobile}</option><option value="768" data-copy="tablet">${copy.tablet}</option><option value="1440" data-copy="desktop">${copy.desktop}</option></select><span class="segment" id="device-switch" role="group" aria-label="${copy.devicePlatform}" data-copy-aria-label="devicePlatform" hidden><button type="button" id="device-ios" aria-pressed="false"><span data-copy="platformIos">${copy.platformIos}</span></button><button type="button" id="device-android" aria-pressed="false"><span data-copy="platformAndroid">${copy.platformAndroid}</span></button></span><button id="restore" hidden title="${copy.restore}" data-copy-title="restore" aria-label="${copy.restore}" data-copy-aria-label="restore"><span data-copy="restore">${copy.restore}</span></button><button type="button" id="present" hidden><span data-copy="present">${copy.present}</span></button><button id="approve" class="primary"><span data-copy="approve">${copy.approve}</span></button><button id="reopen" hidden><span data-copy="reopen">${copy.reopen}</span></button></div><button type="button" id="refresh" class="icon" aria-label="${copy.refresh}" data-copy-aria-label="refresh" title="${copy.refresh}" data-copy-title="refresh">${icons.refresh}</button><div class="menu-host" id="menu-host"><button type="button" id="more" class="icon" aria-label="${copy.more}" data-copy-aria-label="more" title="${copy.more}" data-copy-title="more" aria-haspopup="menu" aria-expanded="false" aria-controls="menu">${icons.more}</button><div id="menu" role="menu" aria-label="${copy.more}" data-copy-aria-label="more" hidden><button type="button" role="menuitem" id="share"><span data-copy="share">${copy.share}</span></button><button type="button" role="menuitem" id="new"><span data-copy="create">${copy.create}</span></button><button type="button" role="menuitem" id="menu-refresh" data-for="refresh"><span data-copy="refresh">${copy.refresh}</span></button><button type="button" role="menuitem" id="menu-add-variant" data-for="add-variant"><span data-copy="addVariant">${copy.addVariant}</span></button><button type="button" role="menuitem" id="organize-variants"><span data-copy="organizeVariants">${copy.organizeVariants}</span></button></div></div></div></header>
+input:not([type="checkbox"]):not([type="radio"]),select,textarea{font-size:var(--reddb-editable-text-md,var(--reddb-type-body-font-size));line-height:var(--reddb-line-height-normal)}#toolbar button.icon{min-width:var(--reddb-spatial-target-min);min-height:var(--reddb-spatial-control-height-sm)}
+/* PanZoomViewport interaction and spatial roles adapted to the native, serialized iframe host. */
+.viewport[data-device]{overflow:clip}
+#canvas-controls button{touch-action:manipulation}
+[data-review-evidence] meter{height:.5rem;border:0;border-radius:999px;background:var(--panel)}[data-review-evidence] meter::-webkit-meter-bar{border:0;border-radius:999px;background:var(--panel)}[data-review-evidence] meter::-webkit-meter-optimum-value{background:var(--ink)}[data-review-evidence] meter::-moz-meter-bar{background:var(--ink)}
+[data-review-evidence]{min-width:0;padding:var(--reddb-spatial-inset-sm);border:1px solid var(--edge);border-radius:var(--reddb-radius-md);margin-block:var(--reddb-spatial-gap-md);overflow-wrap:anywhere}[data-review-evidence] h3{font-size:var(--reddb-type-body-font-size);margin:0 0 var(--reddb-spatial-gap-sm)}.quality-counts{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--reddb-spatial-gap-sm);font-variant-numeric:tabular-nums}.quality-counts dd{margin:0}[data-review-evidence] meter{display:block;width:100%;accent-color:var(--ink)}[data-review-evidence] code{overflow-wrap:anywhere}#analysis-results .assessment-judgment{border:1px solid var(--edge);border-radius:var(--reddb-radius-md);padding:var(--reddb-spatial-inset-sm);margin-block:var(--reddb-spatial-gap-sm)}#analysis-results .assessment-judgment small{margin-top:var(--reddb-spatial-gap-sm)}
+#canvas-controls{display:flex;flex:none;flex-wrap:wrap;align-items:center;gap:var(--reddb-spatial-gap-sm);padding:var(--reddb-spatial-inset-sm);border-bottom:1px solid var(--edge)}#canvas-controls button{min-width:var(--reddb-spatial-target-min);min-height:var(--reddb-spatial-target-min)}#canvas-controls button[aria-pressed=true]{background:var(--panel);color:var(--ink);border-color:var(--ink)}#canvas-scale{min-width:5ch;text-align:center;font-family:var(--reddb-font-family-mono);font-size:var(--reddb-type-caption-font-size);font-variant-numeric:tabular-nums}.canvas-pan-shield{display:none;position:absolute;inset:0;z-index:1;touch-action:none;cursor:grab}.viewport[data-panning=true]>.canvas-pan-shield{display:block}.canvas-pan-shield:active{cursor:grabbing}.viewport:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+/* Native shadow-root equivalent of SidebarPanel: fixed controls, a plain scrolling body and a feedback footer. */
+#inspector>.tabs{min-width:0;overflow-x:auto;overscroll-behavior-x:contain;gap:var(--reddb-spatial-gap-md);padding-inline:var(--reddb-spatial-inset-sm)}#inspector>.tabs button{flex:none;white-space:nowrap;min-height:max(var(--reddb-spatial-control-height-md),var(--reddb-spatial-target-min));padding-block:var(--reddb-spatial-gap-sm)}#inspector>.panel{min-width:0;overscroll-behavior:contain;padding:var(--reddb-spatial-inset-sm);scrollbar-gutter:stable}#inspector>.panel:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}#inspector>#panel-review{padding:0}.review-scroll{padding:var(--reddb-spatial-inset-sm);overscroll-behavior:contain;scrollbar-gutter:stable}.composer{padding:var(--reddb-spatial-inset-sm);gap:var(--reddb-spatial-gap-sm)}
+
+/* The narrow review prioritizes the live preview; the same inspector opens as a modal sheet. */
+.mobile-only,.canvas-compact{display:none}
+#inspector-sheet{padding:0;width:min(100% - 2 * var(--reddb-spatial-inset-sm),36rem);height:min(85dvh,46rem);max-height:calc(100dvh - 2 * var(--reddb-spatial-inset-sm));max-width:none;inset:auto 0 0;margin:0 auto;border:1px solid var(--edge);border-bottom:0;border-radius:var(--reddb-radius-md) var(--reddb-radius-md) 0 0;background:var(--surface);color:var(--ink);overflow:hidden;padding-bottom:env(safe-area-inset-bottom,0px)}
+#inspector-sheet[open]{display:flex;flex-direction:column}
+#inspector-sheet::backdrop{background:color-mix(in oklch,var(--ink) 35%,transparent)}
+#inspector-sheet>header{justify-content:space-between;padding:var(--reddb-spatial-gap-sm) var(--reddb-spatial-inset-sm)}
+#inspector-sheet h2{margin:0;font-size:var(--reddb-type-body-font-size)}
+#inspector-sheet #inspector{flex:1;border:0;min-height:0}#inspector-sheet .sheet-status{order:2;flex:none;margin:0;padding:var(--reddb-spatial-gap-sm) var(--reddb-spatial-inset-sm);max-height:20dvh;overflow:auto;font-size:var(--reddb-type-caption-font-size);overflow-wrap:anywhere}#inspector-sheet .sheet-status:empty{display:none}#inspector-sheet .sheet-status[data-tone=error]{color:var(--reddb-color-feedback-danger-foreground)}
+#inspector-close{min-width:max(44px,var(--reddb-spatial-target-min));min-height:max(44px,var(--reddb-spatial-target-min))}
+@container(max-width:640px){
+.mobile-only{display:block}#toolbar{flex-wrap:nowrap;gap:var(--reddb-spatial-gap-sm);padding:var(--reddb-spatial-gap-sm) var(--reddb-spatial-inset-sm)}
+#toolbar h1,#toolbar :is(#approve,#reopen,#restore,#present,#refresh),#toolbar #newer{display:none}
+#toolbar #designs{flex:1 1 0;max-width:none;width:0;height:44px;min-height:44px}#toolbar .actions{display:contents}
+#toolbar #annotate,#toolbar button.icon{width:44px;height:44px;min-width:44px;min-height:44px;padding:0;display:inline-flex;align-items:center;justify-content:center}
+#toolbar #refresh{display:none}#toolbar #menu{max-height:calc(100dvh - 76px);overflow:auto;max-width:calc(100vw - 32px)}#toolbar #menu button{min-height:44px;white-space:normal}
+main{grid-template-rows:minmax(0,1fr)}main>#inspector{display:none}
+#mobile-preview-settings{padding-bottom:var(--reddb-spatial-inset-sm);margin-bottom:var(--reddb-spatial-inset-sm);border-bottom:1px solid var(--edge)}#mobile-preview-settings label{margin-block:var(--reddb-spatial-gap-md) var(--reddb-spatial-gap-sm)}#mobile-preview-settings select{width:100%;min-height:44px}#mobile-preview-settings .tools{display:flex;flex-wrap:wrap;gap:var(--reddb-spatial-gap-sm)}#mobile-revisions select{flex:1 1 100%}#mobile-width:has(select[hidden]){display:none}#mobile-device .segment{margin-top:var(--reddb-spatial-gap-md)}#mobile-device button{min-height:44px}
+.variant-bar:has(#variants:empty):not(:has(#merge-bar:not([hidden]))){display:none}
+#canvas-controls{flex-wrap:nowrap;gap:var(--reddb-spatial-gap-sm);padding:var(--reddb-spatial-gap-sm) var(--reddb-spatial-inset-sm)}#canvas-controls button{width:44px;height:44px;min-width:44px;min-height:44px;padding:0}#canvas-scale{flex:1;min-width:4ch}.canvas-compact{display:inline-flex;align-items:center;justify-content:center}.canvas-label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.canvas{padding:var(--reddb-spatial-gap-sm)}#status{min-height:0;padding:var(--reddb-spatial-gap-sm) var(--reddb-spatial-inset-sm)}#status[data-copy=done]{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);padding:0;border:0}
+}
+</style><dialog id="inspector-sheet" aria-labelledby="inspector-heading"><header><h2 id="inspector-heading" data-copy="inspector">${copy.inspector}</h2><button type="button" id="inspector-close" class="icon" aria-label="${copy.closeInspector}" data-copy-aria-label="closeInspector">×</button></header><p class="sheet-status" data-action-status role="status" aria-live="polite"></p></dialog><header id="toolbar"><h1>${options.appearance ? `<img src="${options.appearance.favicon}" alt="RedDB">` : ""}<span data-copy="title">${copy.title}</span></h1><select id="designs" aria-label="${copy.alternatives}" data-copy-aria-label="alternatives"></select><div id="revision-tools" class="tools" hidden><select id="revisions" aria-label="${copy.history}" data-copy-aria-label="history"></select><button type="button" id="newer" class="rev-chip" data-chip="latest" hidden><i class="dot" aria-hidden="true"></i><span id="newer-label"></span></button></div><div class="actions"><div id="review-tools" class="tools" hidden><button type="button" id="annotate" aria-pressed="false" aria-label="${copy.annotate}" data-copy-aria-label="annotate" title="${copy.annotateShortcut}" data-copy-title="annotateShortcut">${icons.annotate}<span class="label" data-copy="annotateShort">${copy.annotateShort}</span></button><select id="width" aria-label="${copy.width}" data-copy-aria-label="width"><option value="100%" data-copy="full">${copy.full}</option><option value="390" data-copy="mobile">${copy.mobile}</option><option value="768" data-copy="tablet">${copy.tablet}</option><option value="1440" data-copy="desktop">${copy.desktop}</option></select><span class="segment" id="device-switch" role="group" aria-label="${copy.devicePlatform}" data-copy-aria-label="devicePlatform" hidden><button type="button" id="device-ios" aria-pressed="false"><span data-copy="platformIos">${copy.platformIos}</span></button><button type="button" id="device-android" aria-pressed="false"><span data-copy="platformAndroid">${copy.platformAndroid}</span></button></span><button id="restore" hidden title="${copy.restore}" data-copy-title="restore" aria-label="${copy.restore}" data-copy-aria-label="restore"><span data-copy="restore">${copy.restore}</span></button><button type="button" id="present" hidden><span data-copy="present">${copy.present}</span></button><button id="approve" class="primary"><span data-copy="approve">${copy.approve}</span></button><button id="reopen" hidden><span data-copy="reopen">${copy.reopen}</span></button></div><button type="button" id="inspect" class="icon mobile-only" aria-label="${copy.inspector}" data-copy-aria-label="inspector" title="${copy.inspector}" data-copy-title="inspector" aria-haspopup="dialog" aria-controls="inspector-sheet" aria-expanded="false">${icons.inspector}</button><button type="button" id="refresh" class="icon" aria-label="${copy.refresh}" data-copy-aria-label="refresh" title="${copy.refresh}" data-copy-title="refresh">${icons.refresh}</button><div class="menu-host" id="menu-host"><button type="button" id="more" class="icon" aria-label="${copy.more}" data-copy-aria-label="more" title="${copy.more}" data-copy-title="more" aria-haspopup="menu" aria-expanded="false" aria-controls="menu">${icons.more}</button><div id="menu" role="menu" aria-label="${copy.more}" data-copy-aria-label="more" hidden><button type="button" role="menuitem" id="share"><span data-copy="share">${copy.share}</span></button><button type="button" role="menuitem" id="new"><span data-copy="create">${copy.create}</span></button><button type="button" role="menuitem" id="menu-preview-settings" class="mobile-only" data-copy="previewSettings">${copy.previewSettings}</button><button type="button" role="menuitem" id="menu-approve" class="mobile-only" data-for="approve" data-copy="approve">${copy.approve}</button><button type="button" role="menuitem" id="menu-restore" class="mobile-only" data-for="restore" data-copy="restore">${copy.restore}</button><button type="button" role="menuitem" id="menu-present" class="mobile-only" data-for="present" data-copy="present">${copy.present}</button><button type="button" role="menuitem" id="menu-refresh" data-for="refresh"><span data-copy="refresh">${copy.refresh}</span></button><button type="button" role="menuitem" id="menu-add-variant" data-for="add-variant"><span data-copy="addVariant">${copy.addVariant}</span></button><button type="button" role="menuitem" id="organize-variants"><span data-copy="organizeVariants">${copy.organizeVariants}</span></button></div></div></div></header>
     <p id="access" class="access" role="alert" hidden><span data-copy="accessLost">${copy.accessLost}</span><button type="button" id="access-reload"><span data-copy="accessReload">${copy.accessReload}</span></button></p>
     <style>#design-artboard-field,#artboard-field{border:1px solid var(--edge);border-radius:var(--reddb-radius-md);padding:12px;margin:12px 0}#analysis-results dl{margin:16px 0}#analysis-results dt{font-size:12px;color:var(--muted)}#analysis-results dd{margin:0 0 12px;padding:4px 0 12px;border-bottom:1px solid var(--edge)}#analysis-results p{font-size:12px;overflow-wrap:anywhere}</style><section id="intake" hidden><form class="intake" id="create"><h2><span data-copy="create">${copy.create}</span></h2><label><span data-copy="name">${copy.name}</span><input id="name" required></label><div class="row"><label><span data-copy="journey">${copy.journey}</span><select id="journey"><option value="new" data-copy="new">${copy.new}</option><option value="existing" data-copy="existing">${copy.existing}</option></select></label><label><span data-copy="engine">${copy.engine}</span><select id="engine"><option value="html">HTML</option><option value="react">React</option><option value="solid">Solid</option></select></label></div><div class="row"><label><span data-copy="designTarget">${copy.designTarget}</span><select id="design-target"><option value="web" data-copy="targetWeb">${copy.targetWeb}</option><option value="app" data-copy="targetApp">${copy.targetApp}</option><option value="presentation" data-copy="targetPresentation">${copy.targetPresentation}</option><option value="creative" data-copy="targetCreative">${copy.targetCreative}</option></select></label><label id="design-platform-field" hidden><span data-copy="designPlatform">${copy.designPlatform}</span><select id="design-platform"><option value="" data-copy="platformBoth">${copy.platformBoth}</option><option value="ios" data-copy="platformIos">${copy.platformIos}</option><option value="android" data-copy="platformAndroid">${copy.platformAndroid}</option></select></label></div><fieldset id="design-artboard-field" hidden><legend data-copy="artboard">${copy.artboard}</legend><select id="design-artboard"><option value="1080x1080" data-copy="artboardSquare">${copy.artboardSquare}</option><option value="1080x1350" data-copy="artboardPortrait">${copy.artboardPortrait}</option><option value="1080x1920" data-copy="artboardStory">${copy.artboardStory}</option><option value="1200x628" data-copy="artboardBanner">${copy.artboardBanner}</option><option value="custom" data-copy="artboardCustom">${copy.artboardCustom}</option></select><div class="row"><label><span data-copy="artboardWidth">${copy.artboardWidth}</span><input id="design-artboard-width" type="number" min="64" max="4096" step="1" value="1080"></label><label><span data-copy="artboardHeight">${copy.artboardHeight}</span><input id="design-artboard-height" type="number" min="64" max="4096" step="1" value="1080"></label></div></fieldset><label><span data-copy="application">${copy.application}</span><input id="application" value="."></label><label><span data-copy="objective">${copy.objective}</span><textarea id="objective" required></textarea></label><label><span data-copy="audience">${copy.audience}</span><input id="audience"></label><label><span data-copy="constraints">${copy.constraints}</span><textarea id="constraints"></textarea></label><label><span data-copy="references">${copy.references}</span><textarea id="references"></textarea></label><button class="primary"><span data-copy="create">${copy.create}</span></button></form></section>
-    <section id="studio"><div class="variant-bar"><div id="variants" class="tabs" role="tablist" aria-label="${copy.variants}" data-copy-aria-label="variants"></div><span id="no-variants" class="muted" data-copy="noVariants">${copy.noVariants}</span><div id="merge-bar" role="group" aria-label="${copy.mergeSelection}" data-copy-aria-label="mergeSelection" hidden><span id="merge-options"></span><button type="button" id="merge-variants" class="primary"><span data-copy="mergeVariants">${copy.mergeVariants}</span></button><button type="button" id="cancel-merge"><span data-copy="cancel">${copy.cancel}</span></button></div><span id="operation-badge" class="op-badge" role="status" hidden></span><span class="spacer"></span><button type="button" id="add-variant" class="icon" aria-label="${copy.addVariant}" data-copy-aria-label="addVariant" title="${copy.addVariant}" data-copy-title="addVariant">${icons.add}</button><div class="menu-host" id="variant-menu-host"><button type="button" id="variant-actions" aria-label="${copy.variantActions}" data-copy-aria-label="variantActions" title="${copy.variantActions}" data-copy-title="variantActions" aria-haspopup="menu" aria-expanded="false" aria-controls="variant-menu" hidden>${icons.more}<span class="label" data-copy="variantActions">${copy.variantActions}</span></button><div id="variant-menu" role="menu" aria-label="${copy.variantActions}" data-copy-aria-label="variantActions" hidden><button type="button" role="menuitem" id="run-anti-slop"><span data-copy="runAntiSlop">${copy.runAntiSlop}</span></button><button type="button" role="menuitem" id="rename-variant"><span data-copy="renameVariant">${copy.renameVariant}</span></button><button type="button" role="menuitem" id="split-variant"><span data-copy="splitVariant">${copy.splitVariant}</span></button><button type="button" role="menuitem" id="delete-variant"><span data-copy="deleteVariant">${copy.deleteVariant}</span></button><button type="button" role="menuitem" id="move-left"><span data-copy="moveLeft">${copy.moveLeft}</span></button><button type="button" role="menuitem" id="move-right"><span data-copy="moveRight">${copy.moveRight}</span></button><button type="button" role="menuitem" id="select-merge"><span data-copy="selectMerge">${copy.selectMerge}</span></button><button type="button" role="menuitem" id="menu-newer" data-for="newer"><span data-copy="latest">${copy.latest}</span></button><button type="button" role="menuitem" id="menu-reopen" data-for="reopen"><span data-copy="reopen">${copy.reopen}</span></button></div></div><span class="segment"><button type="button" id="view-single" class="icon" aria-pressed="true" aria-label="${copy.single}" data-copy-aria-label="single" title="${copy.single}" data-copy-title="single">${icons.single}</button><button type="button" id="view-compare" class="icon" aria-pressed="false" aria-label="${copy.sideBySide}" data-copy-aria-label="sideBySide" title="${copy.sideBySide}" data-copy-title="sideBySide">${icons.compare}</button></span></div><main><div class="stage" id="stage"><p id="revision-line" class="revision-line" role="status" hidden></p><div class="canvas" id="canvas" data-phase="loading"><div id="preview-state" class="preview-state" data-target="web"><div class="skeleton" aria-hidden="true"><div class="sk-strip"><i></i><i></i><i></i><i></i><i></i></div><div class="sk-frame"><i></i><i></i><i></i></div></div><div class="preview-note"><p id="preview-stage" role="status" aria-live="polite"></p><p id="preview-agent" class="muted" aria-live="polite" hidden></p><small id="preview-elapsed" class="muted" aria-hidden="true"></small><p id="preview-error" role="alert" hidden></p><button type="button" id="preview-retry" hidden><span data-copy="previewRetry">${copy.previewRetry}</span></button></div></div><section class="preview-pane" id="primary-pane" role="tabpanel"><div class="pane-label" id="primary-label" hidden></div><div id="screen-bar" class="screen-bar" hidden><span class="muted" id="screens-label" data-copy="screens">${copy.screens}</span><div id="screens" class="tabs" role="tablist" aria-label="${copy.screens}" data-copy-aria-label="screens"></div><span id="slide-count" class="muted" aria-live="polite" hidden></span></div><div class="viewport"><div class="device" id="preview-device"><div class="device-chrome"></div><iframe id="preview" title="${copy.review}" data-copy-title="review" sandbox="allow-scripts allow-forms" allow=""></iframe></div><div id="card" hidden role="dialog" aria-labelledby="card-label"><header><span id="card-label"></span><button type="button" id="card-close" aria-label="${copy.closeCard}" data-copy-aria-label="closeCard" title="${copy.closeCard}" data-copy-title="closeCard">×</button></header><textarea id="card-text" aria-label="${copy.cardNote}" data-copy-aria-label="cardNote"></textarea><small class="muted" data-copy="cardHint">${copy.cardHint}</small><div class="row"><button type="button" id="card-add" class="primary"><span data-copy="add">${copy.add}</span></button></div></div></div></section><section class="preview-pane" id="peer-pane" hidden><label class="pane-label"><span data-copy="compareVariant">${copy.compareVariant}</span><select id="peer-variant"></select></label><div class="viewport"><div class="device" id="peer-preview-device"><div class="device-chrome"></div><iframe id="peer-preview" title="${copy.compareVariant}" data-copy-title="compareVariant" sandbox="allow-scripts allow-forms" allow=""></iframe></div></div></section></div></div><aside><div class="tabs" role="tablist" aria-label="${copy.review}"><button type="button" role="tab" id="tab-review" aria-controls="panel-review" aria-selected="true" tabindex="0"><span data-copy="feedback">${copy.feedback}</span><span id="rounds-count" class="tab-count" data-open="false" hidden>0</span></button><button type="button" role="tab" id="tab-assets" aria-controls="panel-assets" aria-selected="false" tabindex="-1"><span data-copy="assets">${copy.assets}</span></button><button type="button" role="tab" id="tab-details" aria-controls="panel-details" aria-selected="false" tabindex="-1"><span data-copy="details">${copy.details}</span></button><button type="button" role="tab" id="tab-params" aria-controls="panel-params" aria-selected="false" tabindex="-1"><span data-copy="params">${copy.params}</span></button></div><section class="panel" role="tabpanel" id="panel-review" aria-labelledby="tab-review"><div class="review-scroll" id="review-scroll"><p id="agent-state" class="live" hidden><i class="dot" aria-hidden="true"></i><span id="agent-text"></span></p><p id="review-state" class="muted"></p><div id="operation-state" role="alert" hidden><span id="operation-error"></span><button type="button" id="retry-operation"><span data-copy="operationRetry">${copy.operationRetry}</span></button></div><p id="approval-reselect" data-copy="approvalReselect" hidden>${copy.approvalReselect}</p><section id="rounds" aria-labelledby="round-title" data-only="false" hidden><div class="round-head"><h2 id="round-title"></h2><span id="round-tally" class="round-tally" aria-live="polite"></span><button type="button" id="rounds-only" class="chip" aria-pressed="false"><span data-copy="onlyLeft">${copy.onlyLeft}</span></button></div><div id="round-progress" class="round-progress"><div id="round-steps" class="steps" role="img"><i></i><i></i><i></i><i></i><i></i></div><p class="round-stage"><span id="round-stage" aria-live="polite"></span></p><div id="round-live" class="round-live"><small id="round-received"></small></div></div><p id="round-sub" class="round-sub"></p><p id="round-alert" class="round-alert" role="status" hidden></p><p id="round-message" class="round-message" dir="auto" hidden></p><div id="rounds-list"></div></section><details id="design-tasks-section" class="fold"><summary><span data-copy="tasks">${copy.tasks}</span><span id="tasks-count" class="fold-side"></span></summary><div id="design-tasks" class="fold-body" aria-live="polite"></div></details><div id="reply" class="reply" hidden><small id="reply-head"></small><div id="reply-text" class="reply-text" dir="auto"></div><button type="button" id="reply-more" class="link" aria-expanded="false" aria-controls="reply-text" hidden></button></div><details id="activity" class="fold" hidden><summary><span data-copy="activity">${copy.activity}</span><span id="activity-count" class="fold-side"></span></summary><div id="feed" class="fold-body" role="log" aria-live="polite" hidden><p id="feed-empty" class="muted" data-copy="feedEmpty">${copy.feedEmpty}</p></div></details><details id="approved-record" class="fold" hidden><summary data-copy="approvalDetails">${copy.approvalDetails}</summary><pre id="approved-details" class="fold-body"></pre></details><details id="inbox" class="fold"><summary><span data-copy="findings">${copy.findings}</span><span id="inbox-count" data-open="false">0</span></summary><div class="fold-body"><p id="inbox-empty" class="muted" data-copy="inboxEmpty">${copy.inboxEmpty}</p><div id="inbox-list"></div><button type="button" id="queue-fixes" hidden><span data-copy="queueFixes">${copy.queueFixes}</span></button></div></details><details id="assessment" class="fold"><summary data-copy="analysisTitle">${copy.analysisTitle}</summary><div class="fold-body"><p class="muted" data-copy="analysisScope">${copy.analysisScope}</p><label class="check"><input type="checkbox" id="analysis-visual"><span data-copy="analysisImages">${copy.analysisImages}</span></label><button type="button" id="analysis" data-copy="analysis">${copy.analysis}</button><div id="analysis-results" role="status" aria-live="polite"></div></div></details><details class="fold"><summary><span data-copy="diagram">${copy.diagram}</span></summary><div class="fold-body"><label><span data-copy="diagram">${copy.diagram}</span><textarea id="selection"></textarea></label><button type="button" id="whiteboard"><span data-copy="whiteboard">${copy.whiteboard}</span></button></div></details><small id="target" hidden></small></div><div class="composer" id="composer"><div id="notes"></div><p id="feedback-status" role="status" aria-live="polite" aria-atomic="true" hidden></p><div id="pending-actions" class="row" hidden><button type="button" id="discard-pending"><span data-copy="discardPending">${copy.discardPending}</span></button><button type="button" id="reload-resend"><span data-copy="reloadResend">${copy.reloadResend}</span></button></div><textarea id="note" rows="2" aria-label="${copy.notes}" data-copy-aria-label="notes" placeholder="${copy.messageHint}" data-copy-placeholder="messageHint"></textarea><div class="compose-bar"><label class="attach" title="${copy.attachment}" data-copy-title="attachment">${icons.attach}<input id="attachment" class="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif" aria-label="${copy.attachment}" data-copy-aria-label="attachment"></label><div class="sends"><button id="send" class="primary"><span data-copy="send">${copy.send}</span></button><button id="send-end"><span data-copy="sendEnd">${copy.sendEnd}</span></button></div></div><small class="hints"><span id="send-hint" data-copy="sendHint">${copy.sendHint}</span> · <span id="draft" data-copy="draft">${copy.draft}</span></small><small id="round-open" class="hints" data-copy="roundOpen" hidden>${copy.roundOpen}</small></div></section><section class="panel" role="tabpanel" id="panel-assets" aria-labelledby="tab-assets" hidden><details open><summary><span data-copy="assets">${copy.assets}</span></summary><div id="assets"></div></details><details open><summary><span data-copy="export">${copy.export}</span></summary><button id="html"><span data-copy="html">${copy.html}</span></button><button id="png" hidden><span data-copy="png">${copy.png}</span></button><button id="pdf" hidden><span data-copy="pdf">${copy.pdf}</span></button><button id="audit"><span data-copy="audit">${copy.audit}</span></button><label><span data-copy="implementation">${copy.implementation}</span><input id="implementation" value="dist"></label><button id="compare"><span data-copy="compare">${copy.compare}</span></button><label><span data-copy="source">${copy.source}</span><select id="svg"></select></label><div class="row"><label><span data-copy="duration">${copy.duration}</span><input id="duration" type="number" min="0.1" max="10" step="0.1" value="3"></label><label><span data-copy="fps">${copy.fps}</span><input id="fps" type="number" min="1" max="25" value="20"></label></div><label><span data-copy="size">${copy.size}</span><input id="size" type="number" min="16" max="1024" value="512"></label><label class="check"><input type="checkbox" id="transparent"><span data-copy="transparent">${copy.transparent}</span></label><button id="gif"><span data-copy="gif">${copy.gif}</span></button></details><details open><summary><span data-copy="jobs">${copy.jobs}</span></summary><div id="jobs"></div></details>
-    </section><section class="panel" role="tabpanel" id="panel-details" aria-labelledby="tab-details" hidden>
-    <fieldset id="artboard-field" hidden><legend data-copy="artboard">${copy.artboard}</legend><div class="row"><label><span data-copy="artboardWidth">${copy.artboardWidth}</span><input id="artboard-width" type="number" min="64" max="4096" step="1"></label><label><span data-copy="artboardHeight">${copy.artboardHeight}</span><input id="artboard-height" type="number" min="64" max="4096" step="1"></label></div><button type="button" id="artboard-save" data-copy="artboardSave">${copy.artboardSave}</button></fieldset><label id="platform-field" hidden><span data-copy="designPlatform">${copy.designPlatform}</span><select id="platform"><option value="" data-copy="platformBoth">${copy.platformBoth}</option><option value="ios" data-copy="platformIos">${copy.platformIos}</option><option value="android" data-copy="platformAndroid">${copy.platformAndroid}</option></select><small class="muted" data-copy="platformHint">${copy.platformHint}</small></label>
+    <section id="studio"><div class="variant-bar"><div id="variants" class="tabs" role="tablist" aria-label="${copy.variants}" data-copy-aria-label="variants"></div><span id="no-variants" class="muted" data-copy="noVariants">${copy.noVariants}</span><div id="merge-bar" role="group" aria-label="${copy.mergeSelection}" data-copy-aria-label="mergeSelection" hidden><span id="merge-options"></span><button type="button" id="merge-variants" class="primary"><span data-copy="mergeVariants">${copy.mergeVariants}</span></button><button type="button" id="cancel-merge"><span data-copy="cancel">${copy.cancel}</span></button></div><span id="operation-badge" class="op-badge" role="status" hidden></span><span class="spacer"></span><button type="button" id="add-variant" class="icon" aria-label="${copy.addVariant}" data-copy-aria-label="addVariant" title="${copy.addVariant}" data-copy-title="addVariant">${icons.add}</button><div class="menu-host" id="variant-menu-host"><button type="button" id="variant-actions" aria-label="${copy.variantActions}" data-copy-aria-label="variantActions" title="${copy.variantActions}" data-copy-title="variantActions" aria-haspopup="menu" aria-expanded="false" aria-controls="variant-menu" hidden>${icons.more}<span class="label" data-copy="variantActions">${copy.variantActions}</span></button><div id="variant-menu" role="menu" aria-label="${copy.variantActions}" data-copy-aria-label="variantActions" hidden><button type="button" role="menuitem" id="run-anti-slop"><span data-copy="runAntiSlop">${copy.runAntiSlop}</span></button><button type="button" role="menuitem" id="rename-variant"><span data-copy="renameVariant">${copy.renameVariant}</span></button><button type="button" role="menuitem" id="split-variant"><span data-copy="splitVariant">${copy.splitVariant}</span></button><button type="button" role="menuitem" id="delete-variant"><span data-copy="deleteVariant">${copy.deleteVariant}</span></button><button type="button" role="menuitem" id="move-left"><span data-copy="moveLeft">${copy.moveLeft}</span></button><button type="button" role="menuitem" id="move-right"><span data-copy="moveRight">${copy.moveRight}</span></button><button type="button" role="menuitem" id="select-merge"><span data-copy="selectMerge">${copy.selectMerge}</span></button><button type="button" role="menuitem" id="menu-newer" data-for="newer"><span data-copy="latest">${copy.latest}</span></button><button type="button" role="menuitem" id="menu-reopen" data-for="reopen"><span data-copy="reopen">${copy.reopen}</span></button></div></div><span class="segment"><button type="button" id="view-single" class="icon" aria-pressed="true" aria-label="${copy.single}" data-copy-aria-label="single" title="${copy.single}" data-copy-title="single">${icons.single}</button><button type="button" id="view-compare" class="icon" aria-pressed="false" aria-label="${copy.sideBySide}" data-copy-aria-label="sideBySide" title="${copy.sideBySide}" data-copy-title="sideBySide">${icons.compare}</button></span></div><div id="canvas-controls" role="group" aria-label="${copy.canvasControls}" data-copy-aria-label="canvasControls" hidden><button type="button" id="canvas-out" aria-label="${copy.canvasZoomOut}" data-copy-aria-label="canvasZoomOut">−</button><output id="canvas-scale" aria-live="polite" aria-atomic="true">100%</output><button type="button" id="canvas-in" aria-label="${copy.canvasZoomIn}" data-copy-aria-label="canvasZoomIn">+</button><button type="button" id="canvas-fit" aria-pressed="true"><span class="canvas-compact" aria-hidden="true">${icons.fit}</span><span class="canvas-label" data-copy="canvasFit">${copy.canvasFit}</span></button><button type="button" id="canvas-actual"><span class="canvas-compact" aria-hidden="true">1:1</span><span class="canvas-label" data-copy="canvasActual">${copy.canvasActual}</span></button><button type="button" id="canvas-pan" aria-pressed="false"><span class="canvas-compact" aria-hidden="true">${icons.pan}</span><span class="canvas-label" data-copy="canvasPan">${copy.canvasPan}</span></button><span id="canvas-hint" class="visually-hidden" data-copy="canvasHint">${copy.canvasHint}</span></div><main><div class="stage" id="stage"><p id="revision-line" class="revision-line" role="status" hidden></p><div class="canvas" id="canvas" data-phase="loading"><div id="preview-state" class="preview-state" data-target="web"><div class="skeleton" aria-hidden="true"><div class="sk-strip"><i></i><i></i><i></i><i></i><i></i></div><div class="sk-frame"><i></i><i></i><i></i></div></div><div class="preview-note"><p id="preview-stage" role="status" aria-live="polite"></p><p id="preview-agent" class="muted" aria-live="polite" hidden></p><small id="preview-elapsed" class="muted" aria-hidden="true"></small><p id="preview-error" role="alert" hidden></p><button type="button" id="preview-retry" hidden><span data-copy="previewRetry">${copy.previewRetry}</span></button></div></div><section class="preview-pane" id="primary-pane" role="tabpanel"><div class="pane-label" id="primary-label" hidden></div><div id="screen-bar" class="screen-bar" hidden><span class="muted" id="screens-label" data-copy="screens">${copy.screens}</span><div id="screens" class="tabs" role="tablist" aria-label="${copy.screens}" data-copy-aria-label="screens"></div><span id="slide-count" class="muted" aria-live="polite" hidden></span></div><div class="viewport"><div class="device" id="preview-device"><div class="device-chrome"></div><iframe id="preview" title="${copy.review}" data-copy-title="review" sandbox="allow-scripts allow-forms" allow=""></iframe></div><div id="card" hidden role="dialog" aria-labelledby="card-label"><header><span id="card-label"></span><button type="button" id="card-close" aria-label="${copy.closeCard}" data-copy-aria-label="closeCard" title="${copy.closeCard}" data-copy-title="closeCard">×</button></header><textarea id="card-text" aria-label="${copy.cardNote}" data-copy-aria-label="cardNote"></textarea><small class="muted" data-copy="cardHint">${copy.cardHint}</small><div class="row"><button type="button" id="card-add" class="primary"><span data-copy="add">${copy.add}</span></button></div></div></div></section><section class="preview-pane" id="peer-pane" hidden><label class="pane-label"><span data-copy="compareVariant">${copy.compareVariant}</span><select id="peer-variant"></select></label><div class="viewport"><div class="device" id="peer-preview-device"><div class="device-chrome"></div><iframe id="peer-preview" title="${copy.compareVariant}" data-copy-title="compareVariant" sandbox="allow-scripts allow-forms" allow=""></iframe></div></div></section></div></div><aside id="inspector" aria-label="${copy.review}" data-copy-aria-label="review"><div class="tabs" role="tablist" aria-label="${copy.review}"><button type="button" role="tab" id="tab-review" aria-controls="panel-review" aria-selected="true" tabindex="0"><span data-copy="feedback">${copy.feedback}</span><span id="rounds-count" class="tab-count" data-open="false" hidden>0</span></button><button type="button" role="tab" id="tab-assets" aria-controls="panel-assets" aria-selected="false" tabindex="-1"><span data-copy="assets">${copy.assets}</span></button><button type="button" role="tab" id="tab-details" aria-controls="panel-details" aria-selected="false" tabindex="-1"><span data-copy="details">${copy.details}</span></button><button type="button" role="tab" id="tab-params" aria-controls="panel-params" aria-selected="false" tabindex="-1"><span data-copy="params">${copy.params}</span></button></div><section class="panel" role="tabpanel" tabindex="0" id="panel-review" aria-labelledby="tab-review"><div class="review-scroll" id="review-scroll"><p id="agent-state" class="live" hidden><i class="dot" aria-hidden="true"></i><span id="agent-text"></span></p><p id="review-state" class="muted"></p><div id="operation-state" role="alert" hidden><span id="operation-error"></span><button type="button" id="retry-operation"><span data-copy="operationRetry">${copy.operationRetry}</span></button></div><p id="approval-reselect" data-copy="approvalReselect" hidden>${copy.approvalReselect}</p><section id="rounds" aria-labelledby="round-title" data-only="false" hidden><div class="round-head"><h2 id="round-title"></h2><span id="round-tally" class="round-tally" aria-live="polite"></span><button type="button" id="rounds-only" class="chip" aria-pressed="false"><span data-copy="onlyLeft">${copy.onlyLeft}</span></button></div><div id="round-progress" class="round-progress"><div id="round-steps" class="steps" role="img"><i></i><i></i><i></i><i></i><i></i></div><p class="round-stage"><span id="round-stage" aria-live="polite"></span></p><div id="round-live" class="round-live"><small id="round-received"></small></div></div><p id="round-sub" class="round-sub"></p><p id="round-alert" class="round-alert" role="status" hidden></p><p id="round-message" class="round-message" dir="auto" hidden></p><div id="rounds-list"></div></section><details id="design-tasks-section" class="fold"><summary><span data-copy="tasks">${copy.tasks}</span><span id="tasks-count" class="fold-side"></span></summary><div id="design-tasks" class="fold-body" aria-live="polite"></div></details><div id="reply" class="reply" hidden><small id="reply-head"></small><div id="reply-text" class="reply-text" dir="auto"></div><button type="button" id="reply-more" class="link" aria-expanded="false" aria-controls="reply-text" hidden></button></div><details id="activity" class="fold" hidden><summary><span data-copy="activity">${copy.activity}</span><span id="activity-count" class="fold-side"></span></summary><div id="feed" class="fold-body" role="log" aria-live="polite" hidden><p id="feed-empty" class="muted" data-copy="feedEmpty">${copy.feedEmpty}</p></div></details><details id="approved-record" class="fold" hidden><summary data-copy="approvalDetails">${copy.approvalDetails}</summary><pre id="approved-details" class="fold-body"></pre></details><details id="inbox" class="fold"><summary><span data-copy="findings">${copy.findings}</span><span id="inbox-count" data-open="false">0</span></summary><div class="fold-body"><p id="inbox-empty" class="muted" data-copy="inboxEmpty">${copy.inboxEmpty}</p><div id="inbox-list"></div><button type="button" id="queue-fixes" hidden><span data-copy="queueFixes">${copy.queueFixes}</span></button></div></details><details id="assessment" class="fold"><summary data-copy="analysisTitle">${copy.analysisTitle}</summary><div class="fold-body"><p class="muted" data-copy="analysisScope">${copy.analysisScope}</p><label class="check"><input type="checkbox" id="analysis-visual"><span data-copy="analysisImages">${copy.analysisImages}</span></label><button type="button" id="analysis" data-copy="analysis">${copy.analysis}</button><div id="analysis-results" role="status" aria-live="polite"></div></div></details><details class="fold"><summary><span data-copy="diagram">${copy.diagram}</span></summary><div class="fold-body"><label><span data-copy="diagram">${copy.diagram}</span><textarea id="selection"></textarea></label><button type="button" id="whiteboard"><span data-copy="whiteboard">${copy.whiteboard}</span></button></div></details><small id="target" hidden></small></div><div class="composer" id="composer"><div id="notes"></div><p id="feedback-status" role="status" aria-live="polite" aria-atomic="true" hidden></p><div id="pending-actions" class="row" hidden><button type="button" id="discard-pending"><span data-copy="discardPending">${copy.discardPending}</span></button><button type="button" id="reload-resend"><span data-copy="reloadResend">${copy.reloadResend}</span></button></div><textarea id="note" rows="2" aria-label="${copy.notes}" data-copy-aria-label="notes" placeholder="${copy.messageHint}" data-copy-placeholder="messageHint"></textarea><div class="compose-bar"><label class="attach" title="${copy.attachment}" data-copy-title="attachment">${icons.attach}<input id="attachment" class="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif" aria-label="${copy.attachment}" data-copy-aria-label="attachment"></label><div class="sends"><button id="send" class="primary"><span data-copy="send">${copy.send}</span></button><button id="send-end"><span data-copy="sendEnd">${copy.sendEnd}</span></button></div></div><small class="hints"><span id="send-hint" data-copy="sendHint">${copy.sendHint}</span> · <span id="draft" data-copy="draft">${copy.draft}</span></small><small id="round-open" class="hints" data-copy="roundOpen" hidden>${copy.roundOpen}</small></div></section><section class="panel" role="tabpanel" tabindex="0" id="panel-assets" aria-labelledby="tab-assets" hidden><details open><summary><span data-copy="assets">${copy.assets}</span></summary><div id="assets"></div></details><details open><summary><span data-copy="export">${copy.export}</span></summary><button id="html"><span data-copy="html">${copy.html}</span></button><button id="png" hidden><span data-copy="png">${copy.png}</span></button><button id="pdf" hidden><span data-copy="pdf">${copy.pdf}</span></button><button id="audit"><span data-copy="audit">${copy.audit}</span></button><label><span data-copy="implementation">${copy.implementation}</span><input id="implementation" value="dist"></label><button id="compare"><span data-copy="compare">${copy.compare}</span></button><label><span data-copy="source">${copy.source}</span><select id="svg"></select></label><div class="row"><label><span data-copy="duration">${copy.duration}</span><input id="duration" type="number" min="0.1" max="10" step="0.1" value="3"></label><label><span data-copy="fps">${copy.fps}</span><input id="fps" type="number" min="1" max="25" value="20"></label></div><label><span data-copy="size">${copy.size}</span><input id="size" type="number" min="16" max="1024" value="512"></label><label class="check"><input type="checkbox" id="transparent"><span data-copy="transparent">${copy.transparent}</span></label><button id="gif"><span data-copy="gif">${copy.gif}</span></button></details><details open><summary><span data-copy="jobs">${copy.jobs}</span></summary><div id="jobs"></div></details>
+    </section><section class="panel" role="tabpanel" tabindex="0" id="panel-details" aria-labelledby="tab-details" hidden>
+    <section id="mobile-preview-settings" class="mobile-only"><h2 data-copy="previewSettings">${copy.previewSettings}</h2><label for="revisions" data-copy="history">${copy.history}</label><div id="mobile-revisions"></div><div id="mobile-width"><label for="width" data-copy="width">${copy.width}</label></div><div id="mobile-device"></div></section><fieldset id="artboard-field" hidden><legend data-copy="artboard">${copy.artboard}</legend><div class="row"><label><span data-copy="artboardWidth">${copy.artboardWidth}</span><input id="artboard-width" type="number" min="64" max="4096" step="1"></label><label><span data-copy="artboardHeight">${copy.artboardHeight}</span><input id="artboard-height" type="number" min="64" max="4096" step="1"></label></div><button type="button" id="artboard-save" data-copy="artboardSave">${copy.artboardSave}</button></fieldset><label id="platform-field" hidden><span data-copy="designPlatform">${copy.designPlatform}</span><select id="platform"><option value="" data-copy="platformBoth">${copy.platformBoth}</option><option value="ios" data-copy="platformIos">${copy.platformIos}</option><option value="android" data-copy="platformAndroid">${copy.platformAndroid}</option></select><small class="muted" data-copy="platformHint">${copy.platformHint}</small></label>
     <details><summary><span data-copy="system">${copy.system}</span></summary><div id="source-files"></div><button id="refresh-system"><span data-copy="refreshSystem">${copy.refreshSystem}</span></button></details><details><summary><span data-copy="decisions">${copy.decisions}</span></summary><div id="decisions"></div><h2><span data-copy="questions">${copy.questions}</span></h2><div id="questions"></div><h2><span data-copy="scenarios">${copy.scenarios}</span></h2><div id="scenarios"></div></details>
     <details><summary><span data-copy="tweaks">${copy.tweaks}</span></summary><label><span data-copy="token">${copy.token}</span><input id="token" value="--accent"></label><label><span data-copy="value">${copy.value}</span><input id="value" value="#285b49"></label><button id="apply"><span data-copy="apply">${copy.apply}</span></button><button id="reset"><span data-copy="reset">${copy.reset}</span></button></details>
-    </section><section class="panel" role="tabpanel" id="panel-params" aria-labelledby="tab-params" hidden>
+    </section><section class="panel" role="tabpanel" tabindex="0" id="panel-params" aria-labelledby="tab-params" hidden>
     <p id="params-empty" class="muted" data-copy="paramEmpty">${copy.paramEmpty}</p>
     <div id="params-controls" hidden>
     <label><span data-copy="paramScenario">${copy.paramScenario}</span><select id="param-preset" aria-label="${copy.paramScenario}" data-copy-aria-label="paramScenario"></select></label>
@@ -446,11 +507,14 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
           control.id.startsWith("tab-") ||
           control.id.startsWith("cancel-") ||
           control.id === "board-close" ||
+          control.id === "inspector-close" ||
           control.id === "card-close"
         )
           return
         control.disabled = state.working
       })
+    element<HTMLButtonElement>("inspect").disabled = !state.design
+    element<HTMLButtonElement>("menu-preview-settings").disabled = !state.revision
     for (const id of [
       "approve",
       "restore",
@@ -561,6 +625,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     drawParams()
     element(`variant-${id}`).focus()
     drawAnalysis()
+    drawEvidence()
   }
   const drawVariants = () => {
     const items = state.variants
@@ -867,7 +932,10 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     }
   }
   for (const name of tabs) {
-    element(`tab-${name}`).onclick = () => selectTab(name)
+    element(`tab-${name}`).onclick = () => {
+      selectTab(name)
+      element(`tab-${name}`).scrollIntoView({ block: "nearest", inline: "nearest" })
+    }
     element(`tab-${name}`).onkeydown = (event) => {
       if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return
       event.preventDefault()
@@ -879,8 +947,67 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
             : (tabs.indexOf(name) + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length
       selectTab(tabs[index])
       element(`tab-${tabs[index]}`).focus()
+      element(`tab-${tabs[index]}`).scrollIntoView({ block: "nearest", inline: "nearest" })
     }
   }
+
+  const inspector = element("inspector")
+  const inspectorSheet = element<HTMLDialogElement>("inspector-sheet")
+  const inspectorSlot = document.createComment("inspector")
+  inspector.before(inspectorSlot)
+  const previewControls = [
+    ["revision-tools", "mobile-revisions"],
+    ["width", "mobile-width"],
+    ["device-switch", "mobile-device"],
+  ].map(([id, slot]) => {
+    const node = element(id)
+    const anchor = document.createComment(id)
+    node.before(anchor)
+    return { node, anchor, slot: element(slot) }
+  })
+  let inspectorOpener: HTMLElement | undefined
+  const openInspector = (settings = false) => {
+    inspectorOpener = root.activeElement instanceof HTMLElement ? root.activeElement : element("inspect")
+    inspectorSheet.querySelector<HTMLElement>("[data-action-status]")!.textContent = ""
+    if (settings) selectTab("details")
+    inspectorSheet.append(inspector)
+    inspectorSheet.showModal()
+    element("inspect").setAttribute("aria-expanded", "true")
+    if (settings) return input("revisions").focus()
+    inspector.querySelector<HTMLElement>("[role=tab][aria-selected=true]")?.focus()
+  }
+  element("inspect").onclick = () => openInspector()
+  element("inspector-close").onclick = () => inspectorSheet.close()
+  inspectorSheet.addEventListener(
+    "close",
+    () => {
+      if (state.stopped) return
+      const focused = root.activeElement
+      inspectorSlot.after(inspector)
+      element("inspect").setAttribute("aria-expanded", "false")
+      if (host.clientWidth > 640) {
+        if (focused instanceof HTMLElement && inspector.contains(focused)) focused.focus({ preventScroll: true })
+        else inspector.querySelector<HTMLElement>("[role=tab][aria-selected=true]")?.focus({ preventScroll: true })
+        return
+      }
+      inspectorOpener?.focus({ preventScroll: true })
+    },
+    { signal: controller.signal },
+  )
+  const syncInspectorLayout = () => {
+    const narrow = host.clientWidth <= 640
+    // Only controls and the inspector move. The live preview iframes keep their DOM parent and state.
+    for (const control of previewControls) {
+      const parent = narrow ? control.slot : control.anchor.parentNode!
+      if (control.node.parentNode === parent) continue
+      if (narrow) control.slot.append(control.node)
+      else control.anchor.after(control.node)
+    }
+    if (!narrow && inspectorSheet.open) inspectorSheet.close()
+  }
+  const inspectorLayout = new ResizeObserver(syncInspectorLayout)
+  inspectorLayout.observe(host)
+  syncInspectorLayout()
 
   const paramContext = (): Design.ParamContext => ({
     values: structuredClone(state.params),
@@ -969,6 +1096,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
   }
   input("param-select").onchange = () => {
     setAnnotate(false)
+    if (input("param-select").checked && inspectorSheet.open) inspectorSheet.close()
     element<HTMLIFrameElement>("preview").contentWindow?.postMessage(
       { type: "design:params-select", enabled: input("param-select").checked },
       "*",
@@ -2503,7 +2631,10 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       state.card.rect,
       stageOf(frame, viewport),
       { width: card.offsetWidth, height: card.offsetHeight },
-      { width: viewport.scrollWidth, height: viewport.scrollHeight },
+      {
+        width: viewport.dataset.device ? viewport.clientWidth : viewport.scrollWidth,
+        height: viewport.dataset.device ? viewport.clientHeight : viewport.scrollHeight,
+      },
     )
     card.style.left = `${place.left}px`
     card.style.top = `${place.top}px`
@@ -2760,9 +2891,71 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
   const drawEvidence = () => {
     const summary = root.querySelector<HTMLElement>("[data-review-evidence]")
     if (!summary) return
-    summary.textContent = state.audits.length
-      ? `${copy.evidence}: ${state.audits.map((job) => `${job.audit!.scenarios.length} · ${copy.findings}: ${job.audit!.findings.length}`).join("; ")}`
-      : copy.noAudit
+    const current = state.audits
+      .filter(
+        (job) =>
+          job.status === "completed" &&
+          job.audit?.revision === state.revision &&
+          (!job.input.variant || job.input.variant === state.variant),
+      )
+      .toSorted((a, b) => b.created - a.created)[0]
+    const audit = current?.audit
+    const signature = JSON.stringify([state.revision, state.variant, current])
+    if (reports.evidence === signature) return
+    reports.evidence = signature
+    summary.replaceChildren()
+    if (!audit) {
+      summary.textContent = copy.noAudit
+      return
+    }
+    const heading = document.createElement("h3")
+    heading.textContent = copy.qualityChecks
+    const scope = document.createElement("small")
+    scope.textContent = fill(copy.qualityScope, {
+      revision: audit.revision,
+      variant: current.input.variant || copy.qualityWhole,
+    })
+    const counts = document.createElement("dl")
+    counts.className = "quality-counts"
+    if (audit.checks)
+      for (const [severity, label] of [
+        ["error", copy.qualityErrors],
+        ["review", copy.qualityNeedsReview],
+        ["info", copy.qualityInformation],
+      ] as const) {
+        const title = document.createElement("dt")
+        title.textContent = label
+        const value = document.createElement("dd")
+        value.textContent = String(audit.checks.filter((check) => check.severity === severity).length)
+        counts.append(title, value)
+      }
+    const reuse = document.createElement("p")
+    reuse.textContent = copy.qualityReuseUnknown
+    summary.append(heading, scope, counts, reuse)
+    if (audit.reuse?.ratio !== undefined) {
+      const percent = Math.round(Math.max(0, Math.min(1, audit.reuse.ratio)) * 100)
+      reuse.textContent = `${copy.qualityReuse}: ${percent}% (${audit.reuse.imported.length} / ${audit.reuse.imported.length + audit.reuse.redeclared.length})`
+      const meter = document.createElement("meter")
+      meter.min = 0
+      meter.max = 100
+      meter.value = percent
+      meter.setAttribute("aria-label", copy.qualityReuse)
+      summary.append(meter)
+    }
+    for (const check of audit.checks ?? []) {
+      const detail = document.createElement("details")
+      const title = document.createElement("summary")
+      const severity = { error: copy.qualityErrors, review: copy.qualityNeedsReview, info: copy.qualityInformation }
+      title.textContent = `${check.rule} · ${severity[check.severity]} · ${check.width}px${check.screen ? ` · ${check.screen}` : ""}`
+      const target = document.createElement("code")
+      target.textContent = check.selector
+      const evidence = document.createElement("p")
+      evidence.textContent = check.evidence
+      const fix = document.createElement("p")
+      fix.textContent = `${copy.qualityRemediation}: ${check.fix}`
+      detail.append(title, target, evidence, fix)
+      summary.append(detail)
+    }
   }
   const stageCopy = {
     revision: "loadingRevision",
@@ -3248,7 +3441,6 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     const current = jobs[0]
     const result = current?.assessment
     const box = element("analysis-results")
-    box.replaceChildren()
     const paragraph = (value: string) => {
       const line = document.createElement("p")
       line.textContent = value
@@ -3256,6 +3448,10 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     }
     element<HTMLButtonElement>("analysis").disabled =
       state.working || !state.revision || current?.status === "queued" || current?.status === "running"
+    const signature = JSON.stringify([state.revision, state.variant, current])
+    if (reports.assessment === signature) return
+    reports.assessment = signature
+    box.replaceChildren()
     if (current?.status === "queued" || current?.status === "running") return paragraph(copy.analysisRunning)
     if (!result) return paragraph(current?.error ?? copy.analysisEmpty)
     paragraph(
@@ -3274,6 +3470,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       const title = document.createElement("dt")
       title.textContent = judgment.label
       const value = document.createElement("dd")
+      value.className = "assessment-judgment"
       const outcome = document.createElement("strong")
       outcome.textContent = judgment.value
       const followUp = document.createElement("small")
@@ -3282,6 +3479,20 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       list.append(title, value)
     }
     box.append(list)
+    if (result.evidence.length) {
+      const details = document.createElement("details")
+      const title = document.createElement("summary")
+      title.textContent = copy.analysisEvidence
+      details.append(title)
+      for (const item of result.evidence) {
+        const caption = document.createElement("strong")
+        caption.textContent = `${item.width} × ${item.height}${item.screen ? ` · ${item.screen}` : ""}`
+        const content = document.createElement("pre")
+        content.textContent = item.content
+        details.append(caption, content)
+      }
+      box.append(details)
+    }
     for (const limit of result.limitations) paragraph(limit)
   }
 
@@ -3682,6 +3893,13 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
    */
   const drawDevice = () => {
     const spec = frame()
+    element("canvas-controls").hidden = !spec
+    if (state.canvas.kind !== (spec?.kind ?? "")) {
+      state.canvas.kind = spec?.kind ?? ""
+      state.canvas.fit = true
+      state.canvas.pan = false
+      state.canvas.views = {}
+    }
     element("device-switch").hidden = !phone()
     element("platform-field").hidden = state.design?.target !== "app"
     // The page cannot clear a saved platform, so "both" is offered only while none is saved.
@@ -3704,6 +3922,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       const chrome = box.querySelector<HTMLElement>(".device-chrome")!
       if (!spec) {
         delete viewport.dataset.device
+        delete viewport.dataset.panning
         box.removeAttribute("style")
         chrome.replaceChildren()
         continue
@@ -3727,14 +3946,128 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     for (const id of ["preview", "peer-preview"]) {
       const box = element(`${id}-device`)
       const viewport = box.parentElement!
-      const at = geometry.fit(
-        { width: spec.width + 2 * spec.bezel, height: spec.height + 2 * spec.bezel },
-        { width: viewport.clientWidth, height: viewport.clientHeight },
-        12,
-      )
+      const at =
+        !state.canvas.fit && state.canvas.views[id]
+          ? state.canvas.views[id]
+          : geometry.fit(
+              { width: spec.width + 2 * spec.bezel, height: spec.height + 2 * spec.bezel },
+              { width: viewport.clientWidth, height: viewport.clientHeight },
+              12,
+            )
+      state.canvas.views[id] = at
       box.style.transform = `translate(${at.x}px,${at.y}px) scale(${at.scale})`
+      viewport.dataset.panning = String(state.canvas.pan)
     }
+    const percentage = `${Math.round((state.canvas.views.preview?.scale ?? 1) * 100)}%`
+    if (element("canvas-scale").textContent !== percentage) element("canvas-scale").textContent = percentage
+    element("canvas-fit").setAttribute("aria-pressed", String(state.canvas.fit))
+    element("canvas-pan").setAttribute("aria-pressed", String(state.canvas.pan))
     placeCard()
+  }
+  const zoomCanvas = (factor: number, actual = false) => {
+    if (!frame()) return
+    for (const id of ["preview", "peer-preview"]) {
+      const viewport = element(`${id}-device`).parentElement!
+      const view = state.canvas.views[id]
+      if (!view) continue
+      state.canvas.views[id] = geometry.zoom(view, actual ? 1 / view.scale : factor, {
+        x: viewport.clientWidth / 2,
+        y: viewport.clientHeight / 2,
+      })
+    }
+    state.canvas.fit = false
+    fitDevice()
+  }
+  const resetCanvas = () => {
+    state.canvas.fit = true
+    fitDevice()
+  }
+  element("canvas-in").onclick = () => zoomCanvas(1.25)
+  element("canvas-out").onclick = () => zoomCanvas(1 / 1.25)
+  element("canvas-actual").onclick = () => zoomCanvas(1, true)
+  element("canvas-fit").onclick = resetCanvas
+  element("canvas-pan").onclick = () => {
+    state.canvas.pan = !state.canvas.pan
+    if (state.canvas.pan) setAnnotate(false)
+    fitDevice()
+  }
+  for (const id of ["preview", "peer-preview"]) {
+    const viewport = element(`${id}-device`).parentElement!
+    viewport.tabIndex = 0
+    viewport.setAttribute("aria-label", copy.canvasViewport)
+    viewport.dataset.copyAriaLabel = "canvasViewport"
+    viewport.setAttribute("aria-describedby", "canvas-hint")
+    const shield = document.createElement("div")
+    shield.className = "canvas-pan-shield"
+    shield.setAttribute("aria-hidden", "true")
+    viewport.append(shield)
+    let drag: { pointer: number; x: number; y: number; view: { x: number; y: number; scale: number } } | undefined
+    shield.addEventListener(
+      "pointerdown",
+      (event) => {
+        if (event.button !== 0 || !event.isPrimary || !state.canvas.pan || !state.canvas.views[id]) return
+        event.preventDefault()
+        viewport.focus({ preventScroll: true })
+        drag = { pointer: event.pointerId, x: event.clientX, y: event.clientY, view: { ...state.canvas.views[id] } }
+        shield.setPointerCapture(event.pointerId)
+      },
+      { signal: controller.signal },
+    )
+    shield.addEventListener(
+      "pointermove",
+      (event) => {
+        if (!state.canvas.pan || !drag || drag.pointer !== event.pointerId) return
+        state.canvas.fit = false
+        state.canvas.views[id] = {
+          ...drag.view,
+          x: drag.view.x + event.clientX - drag.x,
+          y: drag.view.y + event.clientY - drag.y,
+        }
+        fitDevice()
+      },
+      { signal: controller.signal },
+    )
+    const finishDrag = (event: PointerEvent) => {
+      if (!drag || drag.pointer !== event.pointerId) return
+      drag = undefined
+      if (shield.hasPointerCapture(event.pointerId)) shield.releasePointerCapture(event.pointerId)
+    }
+    shield.addEventListener("pointerup", finishDrag, { signal: controller.signal })
+    shield.addEventListener("pointercancel", finishDrag, { signal: controller.signal })
+    shield.addEventListener(
+      "lostpointercapture",
+      () => {
+        drag = undefined
+      },
+      { signal: controller.signal },
+    )
+    viewport.addEventListener(
+      "keydown",
+      (event) => {
+        if (event.target !== viewport || event.ctrlKey || event.metaKey || event.altKey || !frame()) return
+        const arrows: Record<string, { x: number; y: number }> = {
+          ArrowLeft: { x: -32, y: 0 },
+          ArrowRight: { x: 32, y: 0 },
+          ArrowUp: { x: 0, y: -32 },
+          ArrowDown: { x: 0, y: 32 },
+        }
+        const direction = state.canvas.pan ? arrows[event.key] : undefined
+        if (!["+", "=", "-", "0", "1"].includes(event.key) && !direction) return
+        event.preventDefault()
+        event.stopPropagation()
+        if (direction) {
+          const view = state.canvas.views[id]
+          if (!view) return
+          state.canvas.fit = false
+          state.canvas.views[id] = { ...view, x: view.x + direction.x, y: view.y + direction.y }
+          fitDevice()
+          return
+        }
+        if (event.key === "0") return resetCanvas()
+        zoomCanvas(event.key === "-" ? 1 / 1.25 : 1.25, event.key === "1")
+      },
+      { signal: controller.signal },
+    )
   }
   /**
    * CSS env() cannot be set from outside a page, so the framed prototype gets the phone's safe-area
@@ -4583,6 +4916,10 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     return element("annotate").getAttribute("aria-pressed") === "true"
   }
   function setAnnotate(enabled: boolean) {
+    if (enabled && state.canvas.pan) {
+      state.canvas.pan = false
+      fitDevice()
+    }
     if (annotating() === enabled) return
     element("annotate").setAttribute("aria-pressed", String(enabled))
     if (enabled) {
@@ -4732,6 +5069,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       if (!paramComponents().some((item) => item.id === event.data.component)) return
       state.component = event.data.component
       selectTab("params")
+      if (host.clientWidth <= 640 && !inspectorSheet.open) openInspector()
       drawParams()
       save()
       return
@@ -5034,7 +5372,9 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     const menu = element(menuID)
     const trigger = element<HTMLButtonElement>(triggerID)
     const items = () =>
-      [...menu.querySelectorAll<HTMLButtonElement>("button")].filter((item) => !item.hidden && !item.disabled)
+      [...menu.querySelectorAll<HTMLButtonElement>("button")].filter(
+        (item) => !item.hidden && !item.disabled && item.getClientRects().length > 0,
+      )
     const close = (refocus = false) => {
       if (menu.hidden) return
       menu.hidden = true
@@ -5089,6 +5429,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
   const overflow = dropdown("menu-host", "more", "menu", (item) => {
     // Create design opens the brief and takes focus there; the other entries hand it back.
     overflow.close(item.id !== "new")
+    if (item.id === "menu-preview-settings") return openInspector(true)
     if (item.dataset.for) element(item.dataset.for).click()
   })
   const variantMenu = dropdown("variant-menu-host", "variant-actions", "variant-menu", (item) => {
@@ -5174,7 +5515,10 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     clearTimeout(state.idleCheck)
     clearTimeout(liveness.switchedTimer)
     scheme.removeEventListener("change", syncScheme)
+    compactViewport.removeEventListener("change", syncDensity)
     schemeObserver.disconnect()
+    inspectorLayout.disconnect()
+    if (inspectorSheet.open) inspectorSheet.close()
     fitting.disconnect()
     replyFit.disconnect()
     state.stopped = true
@@ -5220,7 +5564,10 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
         })
       }
       drawSources(state.revisionInfo)
+      reports.evidence = ""
+      reports.assessment = ""
       drawEvidence()
+      drawAnalysis()
       drawLoading()
       // Rows and lines with counts in their text are rebuilt in the new language.
       feedbackView.rows.clear()

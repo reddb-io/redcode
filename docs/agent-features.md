@@ -8,6 +8,8 @@ This guide describes coding-session features. Slash commands are entered in the 
 Its sidemenu separates **Sessions**, **Inbox**, **Machines**, **Harness**, **Environments**,
 **Worktrees**, **Hosts and resources** and **Remote workers**. Select one host or view all configured hosts. The selected
 section and host are stored in the URL and survive reload; the desktop can restore the Agents page.
+On mobile, open **Agents** in the bottom navigation and use the section selector in its header.
+Changing sections keeps the selected host. **Browse** opens the sidemenu to change the host scope.
 
 - **Sessions** groups root sessions and subagents by status. Filter by session/project/worktree,
   send a steering or queued instruction, interrupt running work, or open its conversation.
@@ -16,6 +18,8 @@ section and host are stored in the URL and survive reload; the desktop can resto
   using its stored worker credential and recorded task assignment. Requests already answered or
   belonging to another assignment are refused. Protected permissions remain visible with automatic
   approval enabled. Other forms, including credentials, require the assigned session's normal client.
+  On mobile, the selected request appears before the list. **Back to requests** returns focus to the
+  original row without sending an answer; reopening the same question keeps its draft choice.
 - **Hosts and resources** shows logical CPUs, sampled CPU usage, OS free/total RAM and the Redcode
   process's memory, considering visible runtime/container limits. The first CPU sample is unknown. Measurements refresh while this view is open or queued tasks need admission;
   failed/disconnected hosts do not display cached values as live. These figures do not reserve RAM or
@@ -224,6 +228,14 @@ product in this mode, only the prototype, so nothing you say changes code until 
   reaches the agent until you press **Send to Agent**. New published revisions update the revision
   picker and preview together, keeping your notes, selected screen and scroll position. Browsing an
   older revision keeps that selection until you open the latest one.
+- **Mobile review.** The canvas fills the workspace. Open **Inspector** for Feedback, Assets, Details
+  and Params; close it to return to the live prototype. **More → Preview settings** opens history and
+  device controls. **More → Approve this revision** keeps the explicit approval step available.
+- **Canvas navigation.** Mobile frames, slides and creatives have zoom, **Fit canvas**, **Actual size**
+  and **Pan canvas** controls. Enable Pan to drag the canvas with a mouse or touch; turn it off to use
+  prototype controls and scrolling. Focus the canvas for `+`/`-`, `0` (Fit), `1` (Actual size) and, while
+  Pan is on, arrow-key movement. Annotations follow the view transform and keep unsent text. Web pages
+  retain the responsive width selector.
 - **Layout audit.** After every load the browser looks for cut-off text, controls outside the viewport and
   sideways scrolling. You choose which findings to queue as fixes.
 - **Whiteboard.** Mermaid diagrams open in an Excalidraw whiteboard; your edits go back as a note and a PNG.
@@ -276,6 +288,11 @@ separate judgments about available interaction, technical or narrative evidence.
 also classify archetype, persuasion lever, audience awareness, production style and explicit CTA.
 These are advisory judgments, not conversion predictions or approval. Technical audits and built
 implementation comparisons remain the evidence for implementation quality.
+
+Assessment cards include the recorded evidence and limitations. In **Assets**, implementation checks
+show their revision scope, severity counts, targets and suggested corrections. Design-system reuse is
+shown only when measured; unavailable data is not a zero score. Opening a finding keeps it open when
+the same results refresh. These summaries do not approve the design or claim that untested flows work.
 
 The analysis uses your configured S1 without changing its model or provider. By default it sends
 bounded visible text, layout measurements, brief and existing technical audit evidence. Checking
@@ -383,6 +400,12 @@ Agents can manage checkouts with `worktree_create`, `worktree_list` and `worktre
 Code Mode. Removal is permission-gated, requires explicit force when needed, and protects the primary
 checkout. Subagent completion and cancellation are tracked independently of the project's loaded runtime,
 so unloading that runtime does not lose the pending job notification.
+
+In Desktop and web, **Agents → Worktrees → Review changes** opens a focused diff with the
+source checkout, integration target and reviewed revisions. On phones, the diff scrolls while
+integration and archive actions remain accessible. **Back** returns to the originating worktree
+without integrating or archiving. Archive remains a separate confirmation and preserves the
+committed result as described in the [worktree lifecycle](external-harnesses.md#create-review-integrate-and-archive).
 
 ## Dictation
 

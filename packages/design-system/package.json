@@ -40,6 +40,7 @@
     "./contracts/shopping-cart": "./kits/app/src/composites/shopping-cart.variants.ts",
     "./contracts/sidebar-layout": "./kits/app/src/composites/sidebar-layout.variants.ts",
     "./contracts/sidebar-navigation": "./kits/app/src/composites/sidebar-navigation.variants.ts",
+    "./contracts/sidebar-panel": "./kits/app/src/composites/sidebar-panel.variants.ts",
     "./contracts/sidebar-rail": "./kits/app/src/composites/sidebar-rail.variants.ts",
     "./contracts/speed-dial": "./kits/app/src/composites/speed-dial.variants.ts",
     "./contracts/store-navigation": "./kits/app/src/composites/store-navigation.variants.ts",

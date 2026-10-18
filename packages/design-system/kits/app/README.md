@@ -1,5 +1,12 @@
 # Application Kit
 
+SidebarRail and SidebarNavigation destinations accept `badge`, `badgeLabel`,
+`badgeTone` and `status: { label, tone? }`. Counts and presence are independent
+of the selected destination, share its focus target, and remain in its
+accessible name. Numeric rail counts above 99 display `99+` while the full
+count stays accessible. SidebarPanel accepts the same markers in its heading;
+rich avatar rows compose Base Indicator and StatusIndicator in ListRow's slots.
+
 The Kit every public Product Application receives (`kit.json` routes it to
 `"*"`). It is the landing place for the Harvest: components brought in from the
 applications, re-based on the DS Layers, and organized here
@@ -18,7 +25,7 @@ batches (issues #7 and #8):
 | `NodeBadge`      | A reddb node and whether the cluster can reach it.           |
 | `SplitView`      | Two panes and a divider movable by pointer or by arrow key.  |
 
-…and thirty-one **Composites**, including the canonical application frame and column
+…and **Composites** including the canonical application frame and column
 arrangements, command surfaces, titling surfaces, refinement controls, social surfaces,
 commerce surfaces, commerce catalogue contracts, comparison, and merchandising contracts:
 
@@ -28,6 +35,7 @@ commerce surfaces, commerce catalogue contracts, comparison, and merchandising c
 | `CommandPalette` | Global caller-owned command search composing canonical Popover and Combobox focus. |
 | `Menubar`      | Top-level application commands with roving focus and menus.     |
 | `SidebarNavigation` | A vertical destination list with exactly one announced current item. |
+| `SidebarPanel` | Contextual toolbar, heading actions, controls, scrolling links or rich rows, and an optional footer. |
 | `SidebarRail`  | A compact workspace rail of Tooltip-labelled controls with roving focus and a caller-owned selection. |
 | `BottomNavigation` | A compact, keyboard-reachable destination bar with consumer-owned placement. |
 | `StoreNavigation` | A store masthead composing the canonical Base Navbar around caller-owned regions. |
@@ -447,3 +455,49 @@ pnpm --filter kit-app check   # consumer svelte-check over the Kit's source, str
 pnpm --filter kit-app lint    # anti-hardcode lint over the Kit's source: colour, radius, spatial
 pnpm --filter kit-app build   # stage the vendorable source into dist/ for the release bundle
 ```
+
+## Contextual sidebar panels
+
+SidebarPanel owns the rhythm of a contextual toolbar, title with `actions`,
+`controls` such as search and filters, a named native scrolling body and optional
+`footer`. Its children may be SidebarNavigation links or grouped ListRows with
+Avatar leading content, supporting text, timestamps and counts. Use SectionHeading
+for labelled groups and native Buttons or DropdownMenu for panel actions.
+
+`backHref` and `ondismiss` are opt-in. Supplying `toolbar` replaces the complete
+contextual row, so custom actions never duplicate built-in Back or Close controls.
+SidebarNavigation also accepts a toolbar for a simpler destination-only panel.
+The `/kit/sidebar-panel` specimen exercises both forms and a rich grouped list.
+
+SidebarRail keeps its compact icon column free of native scrollbars; wheel, touch
+and roving keyboard focus continue to scroll its collection. Content panels keep
+their ordinary native scrollbar. This prevents a narrow horizontal scrollbar
+from appearing when the vertical rail overflows.
+
+### Rail groups and visible labels
+
+`SidebarRail showLabels` places each destination label below its icon or
+initials. An item with `separatorBefore: true` begins a new group with a
+Divider, without adding a tab stop. Notification counts and presence remain
+independent of selection. SidebarLayout follows the supplied rail width,
+including label presentation and Density changes, without a second size prop.
+
+### Coordinated primary navigation
+
+`SidebarLayout` can own the application navigation frame from one primary item list:
+
+```svelte
+<SidebarLayout navigation={sections} currentId={currentSection} dockable>
+  {#snippet header()}
+    <Navbar links={products} {brand} {actions} />
+  {/snippet}
+  {#snippet sidebar({ item, close })}
+    <!-- Render this section's menu; its native links dismiss the mobile drawer. -->
+  {/snippet}
+  <!-- Current page -->
+</SidebarLayout>
+```
+
+The Navbar's global product links collapse into its menu at the top. The primary rail becomes a bottom dock on mobile, with up to five entries and automatic More overflow. `href` items navigate; items without `href` open a contextual sidebar. Opening a menu does not change `currentId`; the application updates that when the route changes. `dockable={false}` keeps the primary rail vertical. The docking configuration belongs to the layout so the header, rail, drawer and content spacing stay coordinated.
+
+Use the existing `rail` snippet for organization/workspace switchers. Those keep their existing presentation rather than automatically becoming page navigation. See `/examples/responsive-navigation` for the complete composition and append `?dock=false` to review the opt-out.

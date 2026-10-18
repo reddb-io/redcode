@@ -263,3 +263,4 @@ export function togglePinned(list: readonly PinnedSession[], entry: PinnedSessio
   return [entry, ...list]
 }
 export const NAVIGATION_PANEL_ID = "navigation-sidemenu"
+export const NAVIGATION_BROWSE_ID = "navigation-browse"

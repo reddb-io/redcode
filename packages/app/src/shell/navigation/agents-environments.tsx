@@ -50,7 +50,7 @@ export default function AgentEnvironments(props: { server: ServerConnection.Any 
     <Show when={state.notice}><p role="status">{state.notice}</p></Show>
     <Show when={state.busy}><p role="status">{language.t("environments.working")}</p></Show>
     <article class={appearance.root()}>
-      <div class={appearance.body({ class: "flex flex-col gap-3" })}>
+      <div class={appearance.body({ class: "flex flex-col gap-3 space-y-0" })}>
         <h3 class="text-13-medium">{language.t("environments.imageTitle")}</h3>
         <p>{language.t("environments.imageDescription")}</p>
         <label>{language.t("environments.version")}<input class={input({ size: "sm", class: "mt-1 w-full" })}
@@ -73,7 +73,7 @@ export default function AgentEnvironments(props: { server: ServerConnection.Any 
         if (lifetime.active) setState("notice", language.t(result.state === "ready" ? "environments.ready" : "environments.failed"))
       })
     }}>
-      <div class={appearance.body({ class: "grid gap-3 sm:grid-cols-2" })}>
+      <div class={appearance.body({ class: "grid gap-3 sm:grid-cols-2 space-y-0" })}>
         <h3 class="text-13-medium sm:col-span-2">{language.t("environments.prepare")}</h3>
         <For each={[
           ["id", "environments.name"], ["repository", "environments.repository"], ["ref", "environments.ref"], ["image", "environments.image"],
@@ -106,7 +106,7 @@ export default function AgentEnvironments(props: { server: ServerConnection.Any 
           {language.t("environments.create")}</Button>
       </div>
     </form>
-    <article class={appearance.root()}><div class={appearance.body({ class: "flex flex-col gap-3" })}>
+    <article class={appearance.root()}><div class={appearance.body({ class: "flex flex-col gap-3 space-y-0" })}>
       <h3 class="text-13-medium">{language.t("environments.pool")}</h3>
       <label>{language.t("environments.coordinator")}<select aria-label={language.t("environments.coordinator")} class={input({ size: "sm", class: "mt-1 w-full" })} value={state.coordinator}
         onChange={(event) => setState("coordinator", event.currentTarget.value)}>
@@ -117,7 +117,7 @@ export default function AgentEnvironments(props: { server: ServerConnection.Any 
       <p class="text-ink-muted">{language.t("environments.poolDescription")}</p>
     </div></article>
     <For each={query.data?.environments}>{(environment) => <article aria-label={environment.id} class={appearance.root()}>
-      <div class={appearance.body({ class: "flex flex-col gap-3" })}>
+      <div class={appearance.body({ class: "flex flex-col gap-3 space-y-0" })}>
         <h3 class="text-13-medium">{environment.id}</h3>
         <p>{environment.repository}</p>
         <p>{language.t("environments.status", { state: language.t(`environments.state.${environment.state}`), phase: language.t(`environments.phase.${environment.phase}`) })}</p>

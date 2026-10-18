@@ -112,6 +112,7 @@
   --color-magenta-400: var(--reddb-color-magenta-400);
   --color-magenta-600: var(--reddb-color-magenta-600);
   --color-muted: var(--reddb-color-muted);
+  --color-navigation-surface: var(--reddb-color-navigation-surface);
   --color-neutral-0: var(--reddb-color-neutral-0);
   --color-neutral-100: var(--reddb-color-neutral-100);
   --color-neutral-200: var(--reddb-color-neutral-200);

@@ -12,7 +12,7 @@ import { navItem } from "@reddb-io/design-system/contracts/nav-item"
 import { Button } from "@opencode/ui/button"
 import { useQuery } from "@tanstack/solid-query"
 import { Key } from "@solid-primitives/keyed"
-import { createMemo, For, Show } from "solid-js"
+import { createMemo, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useLanguage } from "@/runtime/i18n/language"
 import { ServerProvider } from "@/runtime/server/current"
@@ -195,6 +195,8 @@ function Requests(props: {
   const language = useLanguage()
   const appearance = card({ padding: "md" })
   const [state, setState] = createStore({ busy: false })
+  let details: HTMLDivElement | undefined
+  let opener: HTMLButtonElement | undefined
   const requests = createMemo<Request[]>(() =>
     props.entries.flatMap((entry) => [
       ...entry.permissions.map((permission) => ({ key: `${entry.session.id}:${permission.id}`, permission, entry })),
@@ -221,29 +223,63 @@ function Requests(props: {
       <Show when={props.ready && props.complete !== false && requests().length === 0}>
         <p role="status">{language.t("agents.inbox.empty")}</p>
       </Show>
-      <For each={requests()}>
+      <Key each={requests()} by="key">
         {(request) => (
           <button
             type="button"
-            aria-pressed={props.selection.get() === `${props.scope}:${request.key}`}
+            aria-pressed={props.selection.get() === `${props.scope}:${request().key}`}
             disabled={state.busy}
-            class={navItem({ current: props.selection.get() === `${props.scope}:${request.key}` }).root({
+            class={navItem({ current: props.selection.get() === `${props.scope}:${request().key}` }).root({
               class: "text-start",
             })}
-            onClick={() => props.selection.set(`${props.scope}:${request.key}`)}
+            onClick={(event) => {
+              opener = event.currentTarget
+              props.selection.set(`${props.scope}:${request().key}`)
+              queueMicrotask(() => {
+                if (!details?.isConnected) return
+                details.focus({ preventScroll: true })
+                details.scrollIntoView({ block: "nearest" })
+              })
+            }}
           >
             <span class="min-w-0 flex-1 truncate">
-              {sessionLabel(request.entry.session)} · {request.permission?.action ?? request.form?.title}
+              {sessionLabel(request().entry.session)} · {request().permission?.action ?? request().form?.title}
             </span>
             <span class="text-caption text-ink-muted">
-              {language.t(request.permission ? "notification.permission.title" : "agents.inbox.question")}
+              {language.t(request().permission ? "notification.permission.title" : "agents.inbox.question")}
             </span>
           </button>
         )}
-      </For>
+      </Key>
       <Show when={selected()} keyed>
         {(request) => (
-          <div class={appearance.root()}>
+          <div
+            ref={details}
+            tabIndex={-1}
+            role="region"
+            aria-label={language.t("agents.inbox.details")}
+            class={appearance.root({ class: "max-md:order-first focus-visible:outline-2 focus-visible:outline-focus" })}
+          >
+            <div
+              class={appearance.header({
+                class: "flex flex-row flex-wrap items-center justify-between gap-[var(--reddb-spatial-gap-sm)]",
+              })}
+            >
+              <h4 class="min-w-0 text-body font-medium">{language.t("agents.inbox.details")}</h4>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  props.selection.set("")
+                  queueMicrotask(() => {
+                    if (!opener?.isConnected) return
+                    opener.focus({ preventScroll: true })
+                    opener.scrollIntoView({ block: "nearest" })
+                  })
+                }}
+              >
+                {language.t("agents.inbox.back")}
+              </Button>
+            </div>
             <div class={appearance.body({ class: "min-w-0" })}>
               <Show when={request.permission} keyed>
                 {(permission) => (

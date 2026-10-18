@@ -2,6 +2,7 @@
 // Input skins; segment size and group flow are the only added arrangement.
 
 import { tv, type VariantProps } from "tailwind-variants";
+import { typeRoleMerge } from "./type-roles";
 import { fieldset } from "./fieldset.variants";
 import { input } from "./input.variants";
 
@@ -16,6 +17,6 @@ export const oneTimeCodeInput = tv({
     help: fieldset().help(),
     error: fieldset().error(),
   },
-});
+}, typeRoleMerge);
 
 export type OneTimeCodeInputVariants = VariantProps<typeof oneTimeCodeInput>;

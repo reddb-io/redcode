@@ -30,6 +30,7 @@
 // that every raw interactive element in a Kit does one or the other.
 
 import { tv, type VariantProps } from "tailwind-variants";
+import { typeRoleMerge } from "./type-roles";
 
 /** The quiet fill under the pointer. */
 export const QUIET_HOVER = "hover:bg-foreground/8";
@@ -79,7 +80,7 @@ export const quietControl = tv({
   ].join(" "),
   variants: { ink: INK, focus: FOCUS, selected: SELECTED },
   defaultVariants: { ink: "muted", focus: "offset", selected: false },
-});
+}, typeRoleMerge);
 
 export type QuietControlVariants = VariantProps<typeof quietControl>;
 export type QuietControlInk = NonNullable<QuietControlVariants["ink"]>;

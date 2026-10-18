@@ -1,13 +1,13 @@
 /*
   Switch, drawn to the design system's Switch (@reddb-io/design-system/contracts/switch): a pill track on the
   `muted` surface inside a 1px `control-edge` outline with an ink thumb; on, the track fills with the Brand red.
-  `compact` is the dense row size (16px tall), `standard` the form size (20px tall). The thumb slides with a short
-  transform that drops under reduced motion.
+  The Density owns track and thumb sizes, separately from the control's touch target. The thumb slides with a
+  short transform that drops under reduced motion. Both legacy appearances follow the same Density contract.
 */
 [data-component="switch"] {
-  --switch-height: var(--reddb-spatial-icon-size-md);
+  --switch-height: var(--reddb-spatial-switch-track-height);
   --switch-width: calc(var(--switch-height) * 1.75);
-  --switch-thumb: calc(var(--switch-height) - 6px);
+  --switch-thumb: var(--reddb-spatial-switch-thumb-size);
   --switch-travel: calc(var(--switch-width) - var(--switch-height));
 
   position: relative;
@@ -30,21 +30,38 @@
 
   [data-slot="switch-control"] {
     box-sizing: border-box;
+    position: relative;
     display: inline-flex;
     justify-content: flex-start;
     align-items: center;
-    padding: 0 2px;
-    width: var(--switch-width);
-    height: var(--switch-height);
+    padding: 0;
+    width: max(var(--reddb-spatial-target-min), var(--switch-width));
+    height: var(--reddb-spatial-control-height-sm);
     flex-shrink: 0;
     border-radius: var(--reddb-radius-full);
-    border: 1px solid var(--v2-border-border-strong);
-    background: var(--v2-border-border-muted);
+    border: 0;
+    background: transparent;
     box-shadow: none;
+
+    &::before {
+      content: "";
+      position: absolute;
+      box-sizing: border-box;
+      inset-inline-start: calc((100% - var(--switch-width)) / 2);
+      top: calc((100% - var(--switch-height)) / 2);
+      width: var(--switch-width);
+      height: var(--switch-height);
+      border-radius: inherit;
+      border: 1px solid var(--v2-border-border-strong);
+      background: var(--v2-border-border-muted);
+    }
   }
 
   [data-slot="switch-thumb"] {
     box-sizing: border-box;
+    position: absolute;
+    inset-inline-start: calc((100% - var(--switch-width) + var(--switch-height) - var(--switch-thumb)) / 2);
+    top: calc((100% - var(--switch-thumb)) / 2);
     width: var(--switch-thumb);
     height: var(--switch-thumb);
     transform: translateX(0);
@@ -86,7 +103,7 @@
     display: none;
   }
 
-  &:hover:not([data-disabled], [data-readonly], [data-checked]) [data-slot="switch-control"] {
+  &:hover:not([data-disabled], [data-readonly], [data-checked]) [data-slot="switch-control"]::before {
     border-color: var(--v2-text-text-base);
   }
 
@@ -95,12 +112,12 @@
     outline-offset: 2px;
   }
 
-  &[data-checked] [data-slot="switch-control"] {
+  &[data-checked] [data-slot="switch-control"]::before {
     border-color: var(--v2-background-bg-accent);
     background: var(--v2-background-bg-accent);
   }
 
-  &[data-checked]:hover:not([data-disabled], [data-readonly]) [data-slot="switch-control"] {
+  &[data-checked]:hover:not([data-disabled], [data-readonly]) [data-slot="switch-control"]::before {
     border-color: var(--surface-brand-hover);
     background: var(--surface-brand-hover);
   }
@@ -122,7 +139,7 @@
     opacity: 0.5;
   }
 
-  &[data-invalid] [data-slot="switch-control"] {
+  &[data-invalid] [data-slot="switch-control"]::before {
     border-color: var(--v2-state-border-danger);
   }
 
@@ -130,10 +147,6 @@
     cursor: default;
     pointer-events: none;
   }
-}
-
-[data-component="switch"][data-appearance="standard"] {
-  --switch-height: calc(var(--reddb-spatial-icon-size-md) + 4px);
 }
 
 @media (prefers-reduced-motion: reduce) {

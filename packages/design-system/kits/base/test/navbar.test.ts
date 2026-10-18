@@ -364,17 +364,17 @@ describe("menus composed into Base Navbar actions", () => {
 });
 
 describe("the Base Navbar appearance", () => {
-  it("wears the complete chrome elevation material", () => {
+  it("wears the Theme masthead surface with a quiet boundary", () => {
     const worn = classes(mountNavbar());
-    expect(worn.has("bg-elevation-sunken-surface")).toBe(true);
-    expect(worn.has("border-elevation-sunken-border")).toBe(true);
-    expect(worn.has("shadow-elevation-sunken")).toBe(true);
+    expect(worn.has("bg-navigation-surface")).toBe(true);
+    expect(worn.has("border-muted")).toBe(true);
+    expect(worn.has("font-sans")).toBe(true);
   });
 
   it("uses Density axis insets and gaps", () => {
     const worn = classes(rail(mountNavbar())!);
-    expect(worn.has("h-[var(--reddb-spatial-control-height-md)]")).toBe(true);
-    expect(worn.has("px-[var(--reddb-spatial-inset-sm)]")).toBe(true);
+    expect(worn.has("min-h-[var(--reddb-spatial-control-height-lg)]")).toBe(true);
+    expect(worn.has("px-[var(--reddb-spatial-inset-md)]")).toBe(true);
     expect(worn.has("gap-[var(--reddb-spatial-gap-lg)]")).toBe(true);
   });
 

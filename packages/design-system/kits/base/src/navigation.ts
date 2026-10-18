@@ -72,3 +72,28 @@ export function routableAnchor(
   const href = anchor.getAttribute("href") ?? "";
   return owns(href, anchor) ? anchor : null;
 }
+
+/** A shell-scoped coordinator for mutually exclusive navigation disclosures. */
+interface NavigationDisclosures {
+  register(close: () => void): { open: () => void; destroy: () => void };
+}
+const DISCLOSURES = Symbol("reddb-navigation-disclosures");
+
+/** Establish an optional navigation disclosure scope for a page shell. */
+export function provideNavigationDisclosures(): void {
+  const closers = new Set<() => void>();
+  setContext<NavigationDisclosures>(DISCLOSURES, {
+    register(close) {
+      closers.add(close);
+      return {
+        open: () => { for (const other of closers) if (other !== close) other(); },
+        destroy: () => { closers.delete(close); },
+      };
+    },
+  });
+}
+
+/** Join the nearest shell's disclosure scope; standalone navigation stays independent. */
+export function navigationDisclosure(close: () => void): { open: () => void; destroy: () => void } | undefined {
+  return getContext<NavigationDisclosures | undefined>(DISCLOSURES)?.register(close);
+}

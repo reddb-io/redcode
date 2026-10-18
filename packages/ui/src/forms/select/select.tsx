@@ -145,7 +145,7 @@ export function Select<T>(props: SelectProps<T>) {
       sameWidth={local.sameWidth ?? false}
       flip={local.flip ?? true}
       slide={local.slide ?? true}
-      fitViewport={local.fitViewport ?? false}
+      fitViewport={local.fitViewport ?? true}
       value={local.current}
       options={grouped()}
       optionValue={(x) => (local.value ? local.value(x) : String(x as string))}

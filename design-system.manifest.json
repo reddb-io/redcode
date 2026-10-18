@@ -1,9 +1,10 @@
 {
   "source": "reddb-io/design-system",
-  "version": "v2026.10.3",
+  "version": "v2026.10.20",
   "consumer": "redcode",
   "kits": ["app"],
   "layers": ["color"],
   "styles": ["application"],
+  "distribution": { "format": "source" },
   "dest": "packages/design-system"
 }

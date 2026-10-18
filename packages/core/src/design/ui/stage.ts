@@ -47,6 +47,12 @@ export function stage() {
     width: rect.width * at.scale,
     height: rect.height * at.scale,
   })
+  /** Keep the same content coordinate under the chosen viewport anchor while zooming. */
+  const zoom = (at: Stage, factor: number, point: { x: number; y: number }): Stage => {
+    const scale = Math.max(0.01, Math.min(4, at.scale * factor))
+    const ratio = scale / at.scale
+    return { scale, x: point.x - (point.x - at.x) * ratio, y: point.y - (point.y - at.y) * ratio }
+  }
   /**
    * Where a card of the given size goes for an element: under it when it fits there or cannot go
    * above, over it otherwise, left-aligned with it, and always inside the pane's bounds.
@@ -61,5 +67,5 @@ export function stage() {
       top: Math.round(Math.max(0, Math.min(top, bounds.height - card.height))),
     }
   }
-  return { fit, project, anchor }
+  return { fit, zoom, project, anchor }
 }

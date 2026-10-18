@@ -94,7 +94,7 @@
       {#if actions}
         {@render actions()}
       {:else if submitLabel}
-        <Button type="submit">{submitLabel}</Button>
+        <Button type="submit" variant="primary">{submitLabel}</Button>
       {/if}
     </div>
   {/if}

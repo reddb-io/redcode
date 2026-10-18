@@ -23,7 +23,7 @@
   import { warnDeprecated } from "./deprecation";
 
   interface Common {
-    /** Emphasis. Defaults to `primary`. */
+    /** Emphasis. Defaults to `secondary`; choose `primary` for the leading action. */
     variant?: ButtonVariant;
     /** What the action means: the shared tone vocabulary (ADR 0026). Defaults to `neutral`. */
     tone?: ButtonTone;
@@ -55,7 +55,7 @@
   type Props = ButtonMode | AnchorMode;
 
   const {
-    variant = "primary",
+    variant = "secondary",
     tone,
     intent,
     size = "md",
@@ -66,6 +66,7 @@
     // A native button defaults to `button` so placing this control in a form
     // cannot submit by accident. An anchor receives no invented MIME hint.
     type,
+    tabindex,
     class: className,
     children,
     ...rest
@@ -95,8 +96,8 @@
   // destination and tab stop and declares the state accessibly.
   const native = $derived(
     tag === "a"
-      ? { href: inert ? undefined : href, type, tabindex: inert ? -1 : undefined }
-      : { type: type ?? "button", disabled: inert },
+      ? { href: inert ? undefined : href, type, tabindex: inert ? -1 : tabindex }
+      : { type: type ?? "button", disabled: inert, tabindex },
   );
 </script>
 

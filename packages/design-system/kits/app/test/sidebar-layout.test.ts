@@ -108,6 +108,25 @@ describe("SidebarLayout", () => {
     expect(layout.querySelector("#deployment-content")?.tagName).toBe("DIV");
   });
 
+  it("opts primary rails into visible labels while preserving destinations and mobile labels", () => {
+    const navigation = [
+      { id: "users", label: "Users", fallback: "US", href: "/users" },
+      { id: "settings", label: "Application settings", fallback: "AS", href: "/settings" },
+    ];
+    for (const showRailLabels of [false, true]) {
+      const layout = render(SidebarLayout, { navigation, currentId: "users", showRailLabels });
+      const rail = layout.querySelector("[data-primary-navigation-rail]")!;
+      expect(rail.querySelectorAll("[data-sidebar-rail-label]")).toHaveLength(showRailLabels ? 2 : 0);
+      if (showRailLabels) expect([...rail.querySelectorAll("[data-sidebar-rail-label]")].map(label => label.textContent))
+        .toEqual(navigation.map(item => item.label));
+      expect(rail.querySelector('[data-sidebar-rail-item="users"]')?.getAttribute("href")).toBe("/users");
+      expect(rail.querySelector('[data-sidebar-rail-item="users"]')?.getAttribute("aria-current")).toBe("page");
+      const dock = layout.querySelector("[data-primary-navigation-bottom]")!;
+      expect(dock.textContent).toContain("Users");
+      expect(dock.textContent).toContain("Application settings");
+    }
+  });
+
   it("ships complete showcase, consumer, distributed export, and readiness evidence", () => {
     expectLayoutReadiness("sidebar-layout", "SidebarLayout");
   });

@@ -7,11 +7,13 @@
 // - the GUI imports its contracts, Logo modules, Color Layer, styles and platform icons;
 // - the core design app gets one shadow-root stylesheet, the favicon and the Brand's faces, generated into its brand.gen.ts.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { createHash } from "node:crypto"
 import { join, resolve } from "node:path"
 
 const root = resolve(import.meta.dir, "..")
 const source = resolve(process.argv[2] ?? join(root, "../design-system"))
 const manifest = JSON.parse(readFileSync(join(root, "design-system.manifest.json"), "utf8")) as {
+  consumer: string
   version: string
   dest: string
 }
@@ -22,7 +24,14 @@ const pinned = (await Bun.$`git -C ${source} rev-parse ${manifest.version}^{comm
 if ((await Bun.$`git -C ${source} rev-parse HEAD`.text()).trim() !== pinned)
   throw new Error(`Check out ${manifest.version} in ${source} before synchronizing`)
 
-await Bun.$`bun ${join(source, "scripts/producer/src/cli.ts")}`.cwd(root)
+// The receipt hashes bytes. Keep the producer's temporary clone canonical on Windows too.
+const gitConfigCount = Number(process.env.GIT_CONFIG_COUNT ?? 0)
+await Bun.$`bun ${join(source, "scripts/producer/src/cli.ts")}`.cwd(root).env({
+  ...process.env,
+  GIT_CONFIG_COUNT: String(gitConfigCount + 1),
+  [`GIT_CONFIG_KEY_${gitConfigCount}`]: "core.autocrlf",
+  [`GIT_CONFIG_VALUE_${gitConfigCount}`]: "false",
+})
 
 // The Sync does not route the Assets Contract's platform icons yet, so they are taken byte-for-byte from the same tag.
 const platform = JSON.parse(
@@ -66,9 +75,26 @@ writeFileSync(
   ) + "\n",
 )
 
+// Keep the producer's provenance and record the Solid export adaptation explicitly. The file hashes
+// describe the delivered package, including the platform icons that this wrapper adds after Sync.
+const receiptPath = join(dest, "design-system.receipt.json")
+const receipt = JSON.parse(readFileSync(receiptPath, "utf8"))
+const upstreamPackageSha256 = receipt.files["package.json"]
+for (const file of ["package.json", "platform/platform-manifest.json", ...platform.icons.map((icon) => `platform/${icon.file}`)])
+  receipt.files[file] = createHash("sha256").update(readFileSync(join(dest, file))).digest("hex")
+receipt.consumer = { name: manifest.consumer, framework: "solid", upstreamPackageSha256 }
+writeFileSync(receiptPath, JSON.stringify(receipt, null, 2) + "\n")
+
 // The design app injects its UI into a shadow root, so it takes the Application direction, both Color Schemes and
-// the compact Density as one stylesheet (every DS appearance artifact also matches `:host`).
-const css = ["tokens/tokens.css", "theme/theme-base.css", "theme/theme-application.css", "theme/scheme-light.css", "theme/scheme-dark.css", "tokens/density-compact.css"]
+// every Density as one stylesheet (every DS appearance artifact also matches `:host`).
+const css = [
+  "tokens/tokens.css",
+  "theme/theme-base.css",
+  "theme/theme-application.css",
+  "theme/scheme-light.css",
+  "theme/scheme-dark.css",
+  ...["tiny", "compact", "comfortable", "spacious"].map((density) => `tokens/density-${density}.css`),
+]
   .map((file) => readFileSync(join(dest, file), "utf8").replaceAll("\r\n", "\n"))
   .join("\n")
 const favicon = `data:image/svg+xml,${encodeURIComponent(readFileSync(join(dest, "platform/favicon.svg"), "utf8").replaceAll("\r\n", "\n"))}`

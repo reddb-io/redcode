@@ -161,7 +161,7 @@ export default function ProjectEnvironments(props: { server: ServerConnection.An
             })
           }}
         >
-          <div class={appearance.body({ class: "grid gap-3 sm:grid-cols-2" })}>
+          <div class={appearance.body({ class: "grid gap-3 sm:grid-cols-2 space-y-0" })}>
             <h3 class="text-13-medium sm:col-span-2">{language.t("projectEnvironments.recipe")}</h3>
             <For
               each={
@@ -262,7 +262,7 @@ export default function ProjectEnvironments(props: { server: ServerConnection.An
             const current = () => instances().find((item) => item.recipeID === recipe.id)
             return (
               <article aria-label={recipe.name} class={appearance.root()}>
-                <div class={appearance.body({ class: "flex flex-col gap-3" })}>
+                <div class={appearance.body({ class: "flex flex-col gap-3 space-y-0" })}>
                   <h3 class="text-13-medium">{recipe.name}</h3>
                   <p>{language.t("projectEnvironments.revision", { revision: recipe.revision })}</p>
                   <Show when={recipe.validatedRevision === recipe.revision}>

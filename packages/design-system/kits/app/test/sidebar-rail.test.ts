@@ -52,6 +52,16 @@ describe("SidebarRail", () => {
     expect(document.body.querySelector('[role="tooltip"]')?.textContent).toBe("Orbit workspace");
   });
 
+  it("keeps native destinations in the same roving focus order as section buttons", async () => {
+    const root=render(SidebarRail,{label:"Primary",currentId:"home",items:[{id:"home",label:"Home",href:"/home"},{id:"users",label:"Users"},{id:"reports",label:"Reports",href:"/reports",disabled:true}]});
+    const entries=[...root.querySelectorAll<HTMLElement>("[data-sidebar-rail-item]")];
+    expect(entries.map(entry=>entry.tagName)).toEqual(["A","BUTTON","A"]);
+    expect(entries.map(entry=>entry.tabIndex)).toEqual([0,-1,-1]);
+    entries[0]!.focus();entries[0]!.dispatchEvent(new KeyboardEvent("keydown",{key:"ArrowDown",bubbles:true,cancelable:true}));await settle();
+    expect(document.activeElement).toBe(entries[1]);
+    expect(entries[2]!.hasAttribute("href")).toBe(false);
+  });
+
   it("leads a tile's name with the initials it shows (WCAG 2.5.3, Label in Name)", () => {
     const root = render(SidebarRail, {
       label: "Organizations",
@@ -73,6 +83,23 @@ describe("SidebarRail", () => {
     for (const control of controls) expect(labelInName(control), control.getAttribute("aria-label")!).toBe(true);
     // The tile still shows only the initials; the label stays the Tooltip content.
     expect(controls[0]!.textContent?.trim()).toBe("RD");
+  });
+
+  it("shows labels below faces and separates groups without adding focus stops", async () => {
+    const root = render(SidebarRail, { label: "Areas", showLabels: true, items: [
+      { id: "users", label: "Users" },
+      { id: "workspaces", label: "Workspaces", separatorBefore: true, disabled: true },
+      { id: "settings", label: "Settings", separatorBefore: true },
+    ] });
+    expect(root.querySelectorAll("[data-sidebar-rail-label]")).toHaveLength(3);
+    expect(root.querySelectorAll('[role="separator"]')).toHaveLength(2);
+    const buttons = [...root.querySelectorAll<HTMLButtonElement>("[data-sidebar-rail-item]")];
+    expect(buttons.filter(button => !button.disabled && button.tabIndex === 0)).toHaveLength(1);
+    buttons[0]!.focus();
+    buttons[0]!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
+    await settle();
+    expect(document.activeElement).toBe(buttons[2]);
+    for (const button of buttons) expect(labelInName(button)).toBe(true);
   });
 
   it("emits the selected id without taking ownership of organization state", () => {
@@ -166,7 +193,7 @@ describe("SidebarRail", () => {
         "w-[calc(var(--reddb-spatial-control-height-md)+2*var(--reddb-spatial-inset-sm))]",
       ),
     ).toBe(true);
-    expect(classes(list).has("gap-[var(--reddb-spatial-gap-sm)]")).toBe(true);
+    expect(classes(list).has("gap-[var(--reddb-spatial-gap-md)]")).toBe(true);
     expect(classes(item).has("size-[var(--reddb-spatial-control-height-md)]")).toBe(true);
     expect(rail.hasAttribute("data-density")).toBe(false);
   });
@@ -197,13 +224,13 @@ describe("the double-sidebar composition", () => {
       railOpen: true,
       panelOpen: true,
       columns:
-        "md:grid-cols-[calc(var(--reddb-spatial-control-height-md)+2*var(--reddb-spatial-inset-sm))_minmax(12rem,1fr)_minmax(0,3fr)]",
+        "md:grid-cols-[auto_minmax(12rem,1fr)_minmax(0,3fr)]",
     },
     {
       railOpen: true,
       panelOpen: false,
       columns:
-        "md:grid-cols-[calc(var(--reddb-spatial-control-height-md)+2*var(--reddb-spatial-inset-sm))_0_minmax(0,1fr)]",
+        "md:grid-cols-[auto_0_minmax(0,1fr)]",
     },
     {
       railOpen: false,
@@ -280,13 +307,13 @@ describe("the double-sidebar composition", () => {
     expect(classes(closed).has("motion-reduce:transition-none")).toBe(true);
     expect(
       classes(closed).has(
-        "md:grid-cols-[calc(var(--reddb-spatial-control-height-md)+2*var(--reddb-spatial-inset-sm))_0_minmax(0,1fr)]",
+        "md:grid-cols-[auto_0_minmax(0,1fr)]",
       ),
     ).toBe(true);
     expect(classes(closedPanel).has("md:w-0")).toBe(true);
     expect(
       classes(open).has(
-        "md:grid-cols-[calc(var(--reddb-spatial-control-height-md)+2*var(--reddb-spatial-inset-sm))_minmax(12rem,1fr)_minmax(0,3fr)]",
+        "md:grid-cols-[auto_minmax(12rem,1fr)_minmax(0,3fr)]",
       ),
     ).toBe(true);
   });

@@ -29,6 +29,10 @@
      * `neutral` (the default). `primary` is deprecated for one release.
      */
     tone?: MeterTone | DeprecatedMeterTone;
+    /** Arrange the track beside the reading (`inline`) or below its summary (`stacked`, the default). */
+    layout?: "stacked" | "inline";
+    /** Hide the visible label when a table column or surrounding heading supplies it. The meter retains its accessible name. */
+    labelHidden?: boolean;
     /** Extra classes, merged over the root slot's own. */
     class?: string;
   }
@@ -40,13 +44,15 @@
     label = "Meter",
     formatValue,
     tone = "neutral",
+    layout = "stacked",
+    labelHidden = false,
     class: className,
     ...rest
   }: Props = $props();
 
   const range = $derived(normalizeRange(value, min, max));
   const valueText = $derived(formatValue?.(range.value) ?? formatPercent(range));
-  const slots = $derived(meter({ tone }));
+  const slots = $derived(meter({ tone, layout, labelHidden }));
 
   $effect(() => {
     if (tone === "primary") {

@@ -3,6 +3,19 @@
   import type { LucideProps } from "@lucide/svelte";
   import type { Component } from "svelte";
 
+  /*! @license Built-in menu geometry: Copyright (c) 2026 Lucide Icons and Contributors.
+   * Permission to use, copy, modify, and/or distribute this software for any
+   * purpose with or without fee is hereby granted, provided that the above
+   * copyright notice and this permission notice appear in all copies.
+   * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+   * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+   * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+   * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+   * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+   * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+   * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+   */
+
   export const ICON_SIZES = ["sm", "md", "lg"] as const;
   export type IconSize = (typeof ICON_SIZES)[number];
 
@@ -47,8 +60,8 @@
       SVGAttributes<SVGSVGElement>,
       "color" | "height" | "stroke" | "stroke-width" | "width"
     > {
-    /** A `@lucide/svelte` glyph imported by the consumer. */
-    icon: IconGlyph;
+    /** A consumer-supplied Lucide glyph, or the built-in menu glyph used by navigation without loading the optional icon package. */
+    icon: IconGlyph | "menu";
     /** Density-responsive DS size. */
     size?: IconSize;
     /**
@@ -93,11 +106,11 @@
   });
 </script>
 
-<RenderGlyph
-  {...rest}
-  data-icon
-  size={dimension}
-  color={resolvedColor}
-  strokeWidth={2}
-  class={className}
-/>
+{#if Glyph === "menu"}
+  <!-- Geometry: Lucide menu, @lucide/svelte 1.52.0 (ISC). -->
+  <svg {...rest} data-icon width={dimension} height={dimension} viewBox="0 0 24 24" fill="none" stroke={resolvedColor} stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={className}>
+    <path d="M4 5h16" /><path d="M4 12h16" /><path d="M4 19h16" />
+  </svg>
+{:else}
+  <RenderGlyph {...rest} data-icon size={dimension} color={resolvedColor} strokeWidth={2} class={className} />
+{/if}

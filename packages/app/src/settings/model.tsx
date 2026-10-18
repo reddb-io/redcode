@@ -92,6 +92,7 @@ const generalSchema = Persistence.struct({
   releaseNotes: Persistence.optional(Schema.Boolean),
   showFileTree: Schema.Boolean,
   showNavigation: Persistence.optional(Schema.Boolean),
+  navigationLabels: Persistence.optional(Schema.Boolean),
   showSearch: Persistence.optional(Schema.Boolean),
   showTerminal: Persistence.optional(Schema.Boolean),
   timelineDetail: Persistence.struct({
@@ -260,6 +261,7 @@ export const defaultSettings: Settings = {
   general: {
     showFileTree: false,
     showNavigation: true,
+    navigationLabels: true,
     timelineDetail: { ...timelinePresets[2].value },
     showAgent: true,
     mobileTitlebarPosition: "top",
@@ -323,6 +325,10 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
         ),
         setShowNavigation(value: boolean) {
           setStore("general", "showNavigation", value)
+        },
+        navigationLabels: withFallback(() => store.general?.navigationLabels, true),
+        setNavigationLabels(value: boolean) {
+          setStore("general", "navigationLabels", value)
         },
         timelineDetail: withFallback(() => store.general?.timelineDetail, defaultSettings.general.timelineDetail),
         setTimelineDetail(value: TimelineDetail) {

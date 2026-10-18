@@ -63,6 +63,15 @@ Starting establishes the native protocol; **Send instruction** starts the work. 
 tool activity and pending requests for that native session. Only an opened run reads its output;
 the session inventory contains metadata. The output view displays its most recent 200 events.
 
+On mobile, starting or selecting a run opens its details as the main workspace view. **Review requests**
+brings pending questions or approvals into view without scrolling past the output. **Execution controls**
+and **Harness output** can be expanded when needed. The header remains outside the scrolling body.
+
+**Back to sessions** returns to setup and the picker; **Open session details** reopens the selected run.
+Desktop uses **Close** to dismiss the inspector. These navigation actions preserve an unsent instruction
+and answers for the same run and never stop its process. Selecting a different run clears those drafts.
+Detail polling pauses while the inspector is closed; the host's session inventory continues to refresh.
+
 Codex's installation check also fetches the host/account's advertised models. The model field offers
 those suggestions. Leaving it empty preserves the CLI's configured default; an unavailable default
 is reported by the provider, and you can choose an advertised model without editing a file.

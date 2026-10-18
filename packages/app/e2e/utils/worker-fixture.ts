@@ -200,6 +200,9 @@ export async function mockRemoteWorkers(
   return {
     requests,
     patch,
+    setWorkers: (workers: Worker.Status[]) => {
+      snapshot.workers = workers
+    },
     update: (batch: Worker.Batch) => {
       const index = snapshot.batches.findIndex((item) => item.id === batch.id)
       if (index < 0) throw new Error("Unknown fixture batch")

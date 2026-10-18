@@ -3,8 +3,9 @@ import { useSearchParams } from "@solidjs/router"
 import { card } from "@reddb-io/design-system/contracts/card"
 import { input } from "@reddb-io/design-system/contracts/input"
 import { Button } from "@opencode/ui/button"
+import { SearchSelect } from "@opencode/ui/search-select"
 import { useDialog } from "@opencode/ui/context/dialog"
-import { createEffect, For, onCleanup, Show } from "solid-js"
+import { createEffect, onCleanup, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useLanguage } from "@/runtime/i18n/language"
 import { ServerConnection, serverName, useServers } from "@/runtime/server/registry"
@@ -108,7 +109,7 @@ export default function AgentMachines(props: { server: ServerConnection.Any }) {
         <p role="alert">{state.error}</p>
       </Show>
       <article class={appearance.root()}>
-        <div class={appearance.body({ class: "flex flex-col gap-3" })}>
+        <div class={appearance.body({ class: "flex flex-col gap-3 space-y-0" })}>
           <h3 class="text-13-medium">{language.t("agentMachines.connect")}</h3>
           <p>{language.t("agentMachines.connectNote")}</p>
           <AddServerMenu
@@ -129,22 +130,23 @@ export default function AgentMachines(props: { server: ServerConnection.Any }) {
         </div>
       </article>
       <article class={appearance.root()}>
-        <div class={appearance.body({ class: "flex flex-col gap-3" })}>
+        <div class={appearance.body({ class: "flex flex-col gap-3 space-y-0" })}>
           <h3 class="text-13-medium">{language.t("agentMachines.inspect")}</h3>
           <label>
             {language.t("agentMachines.machine")}
-            <select
-              aria-label={language.t("agentMachines.machine")}
-              class={input({ size: "sm", class: "mt-1 w-full" })}
+            <SearchSelect
+              label={language.t("agentMachines.machine")}
+              class="mt-1 w-full"
               value={state.selected}
-              onChange={(event) => select(event.currentTarget.value)}
+              placeholder={language.t("agentMachines.choose")}
+              options={servers.visible.map((server) => ({
+                value: ServerConnection.key(server),
+                label: serverName(server),
+                description: server.http.url,
+              }))}
+              onChange={(key) => select(key)}
               disabled={state.busy}
-            >
-              <option value="">{language.t("agentMachines.choose")}</option>
-              <For each={servers.visible}>
-                {(server) => <option value={ServerConnection.key(server)}>{serverName(server)}</option>}
-              </For>
-            </select>
+            />
           </label>
           <Button
             variant="outline"
@@ -215,7 +217,7 @@ export default function AgentMachines(props: { server: ServerConnection.Any }) {
           })
         }}
       >
-        <div class={appearance.body({ class: "grid gap-3 sm:grid-cols-2" })}>
+        <div class={appearance.body({ class: "grid gap-3 sm:grid-cols-2 space-y-0" })}>
           <h3 class="text-13-medium sm:col-span-2">{language.t("agentMachines.selectProject")}</h3>
           <Show when={state.registration}>
             <p class="text-ink-muted sm:col-span-2">
@@ -244,18 +246,19 @@ export default function AgentMachines(props: { server: ServerConnection.Any }) {
           <Show when={projects.data?.length}>
             <label class="sm:col-span-2">
               {language.t("agentMachines.project")}
-              <select
-                aria-label={language.t("agentMachines.project")}
-                class={input({ size: "sm", class: "mt-1 w-full" })}
+              <SearchSelect
+                label={language.t("agentMachines.project")}
+                class="mt-1 w-full"
                 disabled={state.busy}
                 value={state.directory}
-                onChange={(event) => setState("directory", event.currentTarget.value)}
-              >
-                <option value="">{language.t("agentMachines.chooseProject")}</option>
-                <For each={projects.data}>
-                  {(project) => <option value={project.canonical}>{project.name || project.canonical}</option>}
-                </For>
-              </select>
+                placeholder={language.t("agentMachines.chooseProject")}
+                options={(projects.data ?? []).map((project) => ({
+                  value: project.canonical,
+                  label: project.name || project.canonical,
+                  description: project.canonical,
+                }))}
+                onChange={(directory) => setState("directory", directory)}
+              />
             </label>
           </Show>
           <label class="sm:col-span-2">

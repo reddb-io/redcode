@@ -63,14 +63,17 @@ export function denied(input: { sessionID: string; retry: string; expired: boole
 function shell(body: string, script = "") {
   const content = `<style>${appearance.css}</style><style>
   :host{display:block;color-scheme:light dark;min-height:100vh;background:var(--reddb-color-background);color:var(--reddb-color-foreground);font:14px/1.5 var(--reddb-font-family-sans,system-ui)}
-  *{box-sizing:border-box}main{max-width:760px;margin:auto;padding:32px 24px}header{display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--reddb-color-elevation-base-border);padding-bottom:20px}header img{width:24px;height:24px}h1{font-size:22px;margin:0}h2{font-size:16px;margin:28px 0 12px}p,small{color:var(--reddb-color-ink-muted)}small{display:block;overflow-wrap:anywhere}label{display:flex;align-items:flex-start;gap:12px;padding:14px 0;border-bottom:1px solid var(--reddb-color-elevation-base-border)}label span{min-width:0}button{margin-top:20px;padding:10px 16px;border:0;border-radius:var(--reddb-radius-md);background:var(--reddb-color-primary);color:var(--reddb-color-on-primary);font:inherit;cursor:pointer}button:disabled{opacity:.5;cursor:wait}a{color:var(--reddb-color-primary)}li{margin:12px 0}#error{color:var(--reddb-color-feedback-danger-foreground)}
+  *{box-sizing:border-box}main{max-width:760px;margin:auto;padding:32px 24px}header{display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--reddb-color-elevation-base-border);padding-bottom:20px}header img{width:24px;height:24px}h1{font-size:22px;margin:0}h2{font-size:16px;margin:28px 0 12px}p,small{color:var(--reddb-color-ink-muted)}small{display:block;overflow-wrap:anywhere}label{display:flex;align-items:flex-start;gap:12px;padding:14px 0;border-bottom:1px solid var(--reddb-color-elevation-base-border)}label span{min-width:0}button{min-height:var(--reddb-spatial-control-height-md);min-width:var(--reddb-spatial-target-min);margin-top:20px;padding:10px 16px;border:0;border-radius:var(--reddb-radius-md);background:var(--reddb-color-primary);color:var(--reddb-color-on-primary);font:inherit;cursor:pointer}button:disabled{opacity:.5;cursor:wait}a{color:var(--reddb-color-primary)}li{margin:12px 0}#error{color:var(--reddb-color-feedback-danger-foreground)}
   </style><main><header><img src="${appearance.favicon}" alt="RedDB"><h1>Design · Redcode</h1></header>
   ${body}
   </main>`
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Design · Redcode</title><link rel="icon" href="${appearance.favicon}"><style>${fonts}</style><style>body{margin:0}</style></head><body><div id="launcher"></div><script>
   const host = document.getElementById('launcher');
   host.dataset.theme = 'application';
-  host.dataset.density = 'compact';
+  const compactViewport = matchMedia('(max-width: 767px)');
+  const syncDensity = () => {host.dataset.density = compactViewport.matches ? 'tiny' : 'compact'};
+  syncDensity();
+  compactViewport.addEventListener('change', syncDensity);
   host.dataset.colorScheme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   const root = host.attachShadow({mode:'open'});
   root.innerHTML = ${JSON.stringify(content).replaceAll("<", "\\u003c")};

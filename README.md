@@ -174,7 +174,8 @@ stopping conditions. Pause, resume or drop it with `/goal-pause`, `/goal-resume`
 
 **Design mode · Desktop/browser review.** Design web pages, mobile screens, slides or static
 creatives using the project's design system. Annotate elements, compare revisions and send queued
-feedback with **Send to Agent**. **Design assessment** reviews the selected revision with your S1;
+feedback with **Send to Agent**. Mobile frames, slides and creative canvases support zoom, fit and
+optional pan, keeping notes attached to their elements. **Design assessment** reviews the selected revision with your S1;
 optional image analysis adds rendered captures. Creative canvases export PNG and PDF; slides export
 PDF. Approval records decisions for Plan and Build.
 

@@ -57,6 +57,7 @@
   --reddb-color-foreground: var(--reddb-scheme-not-light, var(--reddb-theme-ink-light)) var(--reddb-scheme-not-dark, var(--reddb-theme-ink-dark));
   --reddb-color-ink-muted: var(--reddb-scheme-not-light, var(--reddb-theme-ink-muted-light)) var(--reddb-scheme-not-dark, var(--reddb-theme-ink-muted-dark));
   --reddb-color-muted: var(--reddb-scheme-not-light, var(--reddb-theme-muted-light)) var(--reddb-scheme-not-dark, var(--reddb-theme-muted-dark));
+  --reddb-color-navigation-surface: var(--reddb-scheme-not-light, var(--reddb-theme-navigation-surface-light)) var(--reddb-scheme-not-dark, var(--reddb-theme-navigation-surface-dark));
   --reddb-color-on-feedback: var(--reddb-scheme-not-light, var(--reddb-theme-on-feedback-light)) var(--reddb-scheme-not-dark, var(--reddb-theme-on-feedback-dark));
   --reddb-color-on-muted: var(--reddb-scheme-not-light, var(--reddb-theme-on-muted-light)) var(--reddb-scheme-not-dark, var(--reddb-theme-on-muted-dark));
   --reddb-color-on-primary: var(--reddb-scheme-not-light, var(--reddb-theme-on-accent-light)) var(--reddb-scheme-not-dark, var(--reddb-theme-on-accent-dark));

@@ -1,5 +1,11 @@
 # Base Kit
 
+Dialog and Drawer accept `header`, a snippet receiving `{ close }`. It
+replaces the visible title and standard close control; the required `title`
+remains their accessible name. A custom header keeps the body in one scrolling
+region. The Drawer showcase demonstrates summaries, member search,
+shared-content tabs, previews, return navigation and a persistent footer.
+
 The parent Kit every other Kit inherits, routed to every consumer (ADR 0004).
 Its `kit.json` declares `audience: "*"` and no `parents` — it is the root of
 the Kit graph, and every other Kit in `kits/` declares it as a parent.
@@ -226,7 +232,23 @@ The exported `badge`, `indicator`, and `statusIndicator` functions are optional
 appearance Extension Seams. Their spatial roles resolve through the active
 Density scope, and none selects Theme, Color Scheme, or Density for a consumer.
 
+## Switch and neutral surfaces
+
+Neutral Card now uses the raised surface with its quiet border and no default
+shadow, separating a card from the canvas in the dark Color Scheme. Explicit
+`raised` adds the complete border/shadow treatment. Feedback tones keep their
+paired surfaces and copy. A continuous surface can explicitly use `bg-background`.
+
+Switch separates its painted track and centred thumb from the native input's
+hit area. Density controls their proportions, while a coarse pointer still
+receives a target of at least 44px without enlarging the visual switch. Native
+form semantics, label association, keyboard handling, validation, disabled and
+reduced-motion behavior remain intact.
+
 ## Dialog, Drawer, AlertDialog, and Tooltip
+
+Dialog also accepts `size="xl"`, using the DS wide container for expanded
+charts and detail tables. Its existing sizes remain unchanged.
 
 Dialog owns the complete modal lifecycle behind one Base API. Its visible
 `title` labels the native dialog, an optional `description` is associated with
@@ -697,6 +719,42 @@ The exported `label`, `field`, `fieldset`, `form`, `input`, `textarea`, and `sel
 the optional appearance Extension Seams. Their classes resolve through Theme,
 Color Scheme, and Density roles, so the same markup renders throughout the
 showcase's full appearance product without selecting an axis itself.
+
+## SearchSelect
+
+A closed selection control with search inside its Popover. Use it for choosing
+from a long list; the existing Combobox remains the editable typeahead.
+`multiple` changes the selected `value` from a string to a string array and
+shows removable chips. The public types keep those two contracts distinct.
+
+```svelte
+<script lang="ts">
+  import { SearchSelect, type SearchSelectOption } from "@reddb-io/design-system/base";
+  const regions: readonly SearchSelectOption[] = [
+    { value: "gru", label: "São Paulo", description: "Brazil", keywords: ["sa-east-1"] },
+    { value: "fra", label: "Frankfurt", description: "Germany", keywords: ["eu-central-1"] },
+  ];
+  let region = $state("");
+  let replicas = $state<string[]>([]);
+</script>
+
+<SearchSelect label="Primary region" options={regions} name="region" bind:value={region} required />
+<SearchSelect multiple label="Replica regions" options={regions} name="replicas" bind:value={replicas} />
+```
+
+Search matches labels, descriptions and explicit keywords without accents or
+case sensitivity; all query terms must match. Disabled choices stay visible.
+Reopening starts with the complete list, and multiple selection retains earlier
+choices across searches. `searchPlaceholder`, `emptyText`, `requiredMessage`
+and the collapsed `placeholder` are caller-owned copy seams.
+
+Native select controls preserve form submission, required validation, disabled
+exclusion and reset even while the search popup is closed. Multiple values use
+repeated form entries under the same `name`. Selection and Escape restore the
+trigger's focus; Tab continues out of the picker. Clear and chip removal retain
+focus on the trigger and announce the remaining selection. Field carries help
+and validation relationships. `controlSize` follows Input and Button, while
+Theme, Color Scheme and Density remain inherited.
 
 ## Combobox
 
@@ -1273,3 +1331,43 @@ outside `src/`), because a wildcard ambient module can only be declared once in
 a program and a second copy would fail a consumer's build in a file they never
 wrote. `test/consumer-check.test.ts` runs the check on every `test`, so that
 cannot regress unnoticed.
+
+## Minimum configuration
+
+Button defaults to secondary emphasis; the leading action selects `variant="primary"`. Stack spaces blocks with `layout-md` by default; use a component gap for small internal groups and `gap="none"` for contiguous content. Card owns the layout-sm rhythm between body blocks. These defaults inherit the selected Theme, Color Scheme and Density. Controls consume pointer-aware editable text, so touch entry is at least 16px without per-component touch overrides. See ADR 0029 and the first specimens in the showcase.
+
+### Inline measurements
+
+`Meter layout="inline" labelHidden` places its track beside the reading for table cells. The label remains its accessible name; the caller supplies the metric and threshold tone. The default stacked layout is unchanged.
+
+`ScrollArea variant="plain"` embeds a named, keyboard-scrollable region in an existing panel without adding another frame or inset. The default `outline` remains appropriate for standalone regions.
+
+### Inline editing
+
+`InlineEdit` composes canonical Input and Button around a visible field label.
+`bind:value` is the committed text; keystrokes stay in an independent draft until
+Save or Enter succeeds. Escape or Cancel discards the draft and returns focus to
+the edit action. An externally updated value does not overwrite an open draft.
+
+```svelte
+<InlineEdit label="Project name" bind:value={name}
+  validate={value => value.trim().length < 3 ? "Use at least three characters." : undefined}
+  onconfirm={value => persistName(value)} />
+```
+
+The application owns validation and persistence. A rejected `onconfirm` retains the
+draft with an announced `saveErrorMessage`, and a pending save prevents duplicate
+submission. `onvaluechange` follows successful persistence. `editing` is bindable;
+its paired callback is `oneditingchange`. Data fetching and router interception
+remain outside this component. The native form and input need no popup focus
+manager. See `/kit/inline-edit` for validation, retry and disabled examples.
+
+## Carousel rendering seam
+
+`viewport` is an optional `Snippet<[CarouselViewportContext]>` that replaces only
+slide drawing. It receives `slides`, the clamped `active` index, `playing` and
+`firstIndex`. Base retains previous/next controls, position, rotation and pausing
+on focus or pointer interaction. The custom renderer must provide named slide
+groups, exclude inactive content from focus and accessibility, honor Image
+priority and carry its own reduced-motion presentation. Marketing's
+`PerspectiveCarousel` is the canonical example of this seam.

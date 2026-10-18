@@ -42,6 +42,8 @@
     title: string;
     /** Optional visible detail associated with the Dialog. */
     description?: string;
+    /** Replaces the visible title and default close control with a caller-owned header. The required title remains the accessible name; the header receives the canonical close operation. A custom header keeps the body in its own scrolling region. */
+    header?: Snippet<[{ close: () => void }]>;
     /**
      * Optional custom trigger content; `triggerLabel` remains its accessible name. Words it shows
      * must appear, in order, in `triggerLabel`, ideally first (WCAG 2.5.3, Label in Name).
@@ -71,6 +73,7 @@
     triggerLabel,
     title,
     description,
+    header,
     trigger,
     children,
     actions,
@@ -219,7 +222,7 @@
   aria-modal="true"
   aria-labelledby={titleId}
   aria-describedby={description ? descriptionId : undefined}
-  class={dialogAppearance({ size, class: className })}
+  class={dialogAppearance({ size, class: [header ? "open:flex open:flex-col overflow-hidden" : "", className].filter(Boolean).join(" ") })}
   tabindex="-1"
   onkeydown={handleKeydown}
   onclick={handleClick}
@@ -229,16 +232,17 @@
     id={titleId}
     data-dialog-title
     class={[
-      "text-heading",
+      header ? "sr-only" : "text-heading",
       showClose && "pr-[var(--reddb-spatial-control-height-md)]",
     ]}
   >{title}</h2>
+  {#if header}<div data-dialog-header class="shrink-0">{@render header({ close })}</div>{/if}
   {#if description}
     <p id={descriptionId} data-dialog-description class="mt-[var(--reddb-spatial-gap-sm)] text-ink-muted">
       {description}
     </p>
   {/if}
-  {#if showClose}
+  {#if showClose && !header}
     <button
       type="button"
       data-dialog-close
@@ -248,7 +252,7 @@
     >
   {/if}
   {#if children}
-    <div data-dialog-body class="mt-[var(--reddb-spatial-gap-lg)]">{@render children()}</div>
+    <div data-dialog-body class={header ? "min-h-0 flex-1 overflow-y-auto" : "mt-[var(--reddb-spatial-gap-lg)]"}>{@render children()}</div>
   {/if}
   {#if actions}
     <div data-dialog-actions>{@render actions({ close })}</div>

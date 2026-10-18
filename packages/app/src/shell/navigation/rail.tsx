@@ -1,53 +1,129 @@
 import { Icon } from "@opencode/ui/icon"
-import { IconButton } from "@opencode/ui/icon-button"
 import { Menu } from "@opencode/ui/menu"
 import { Keybind } from "@opencode/ui/keybind"
 import { Tooltip } from "@opencode/ui/tooltip"
 import { sidebarRail } from "@reddb-io/design-system/contracts/sidebar-rail"
-import { type JSX, Show } from "solid-js"
+import { bottomNavigation } from "@reddb-io/design-system/contracts/bottom-navigation"
+import { navItem } from "@reddb-io/design-system/contracts/nav-item"
+import { indicator } from "@reddb-io/design-system/contracts/indicator"
+import { badge } from "@reddb-io/design-system/contracts/badge"
+import { createMemo, type JSX, Show } from "solid-js"
+import { useSettings } from "@/settings/model"
 import { serverName } from "@/runtime/server/registry"
 import { useCommand } from "@/shell/commands/command"
 import { useNavigation, type NavigationController } from "./controller"
 import { Glyph } from "./glyphs"
-import { NAVIGATION_PANEL_ID } from "./model"
+import { NAVIGATION_PANEL_ID, NAVIGATION_BROWSE_ID } from "./model"
 
-const rail = sidebarRail()
+const notification = indicator()
+const dock = bottomNavigation()
 
-/** Compact navigation leaves the conversation full width on phones. */
-export function MobileNavigation() {
+/** The dock reserves its height in shell flow; the last bottom bar owns safe-area padding. */
+export function MobileNavigationDock(props: { safeArea: boolean }) {
   const navigation = useNavigation()
   const language = navigation.language
+  const count = () => navigation.background().length
+  const browse = () => {
+    navigation.panel.toggle()
+    if (navigation.panel.opened()) queueMicrotask(() => document.getElementById(NAVIGATION_PANEL_ID)?.focus())
+  }
   return (
-    <Menu placement="bottom-start" gutter={4}>
-      <Menu.Trigger
-        as={IconButton}
-        variant="ghost-muted"
-        size="large"
-        icon={<Icon name="menu" />}
-        aria-label={language.t("navigation.label")}
-        class="shrink-0 [app-region:no-drag]"
-      />
-      <Menu.Portal>
-        <Menu.Content
-          onCloseAutoFocus={(event) => {
-            if (!navigation.panel.opened()) return
-            event.preventDefault()
-            // The menu restores its trigger after this callback; transfer focus afterwards.
-            queueMicrotask(() => document.getElementById(NAVIGATION_PANEL_ID)?.focus())
-          }}
+    <nav
+      aria-label={language.t("navigation.mobile")}
+      class={dock.root({ class: "shrink-0" })}
+      style={{
+        "padding-bottom": props.safeArea ? "var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))" : "0px",
+      }}
+    >
+      <ul class={dock.list()}>
+        <DockItem label={language.t("home.title")} current={navigation.route.home()} onClick={navigation.go.home}>
+          <Glyph name="home" />
+        </DockItem>
+        <DockItem
+          id={NAVIGATION_BROWSE_ID}
+          label={language.t("navigation.browse")}
+          expanded={navigation.panel.opened()}
+          controls={NAVIGATION_PANEL_ID}
+          current={!navigation.route.home() && !navigation.route.agents() && !navigation.route.settings()}
+          onClick={browse}
         >
-          <Menu.Item onSelect={navigation.go.home}>{language.t("home.title")}</Menu.Item>
-          <Menu.Item onSelect={navigation.go.newSession}>{language.t("command.session.new")}</Menu.Item>
-          <Menu.Item onSelect={navigation.go.search}>{language.t("navigation.search")}</Menu.Item>
-          <Menu.Item onSelect={navigation.panel.toggle}>{language.t("command.sidebar.toggle")}</Menu.Item>
-          <Menu.Item onSelect={navigation.go.agents}>{language.t("agents.title")}</Menu.Item>
-          <Menu.Separator />
-          <Menu.Item onSelect={navigation.go.settings}>{language.t("sidebar.settings")}</Menu.Item>
-          <Menu.Item onSelect={navigation.go.servers}>{language.t("settings.tab.servers")}</Menu.Item>
-          <Menu.Item onSelect={navigation.go.help}>{language.t("navigation.help")}</Menu.Item>
-        </Menu.Content>
-      </Menu.Portal>
-    </Menu>
+          <Icon name="layout-left" />
+        </DockItem>
+        <DockItem
+          label={language.t("agents.title")}
+          current={navigation.route.agents()}
+          onClick={navigation.go.agents}
+          description={count() > 0 ? language.plural("navigation.background.running", count()) : undefined}
+        >
+          <span class={notification.root({ class: "size-full items-center justify-center" })}>
+            <Glyph name="activity" />
+            <Show when={count() > 0}>
+              <span data-indicator-marker class={notification.marker()} aria-hidden="true">
+                <span class={badge({ variant: "filled", class: dock.badge() })}>{count() > 99 ? "99+" : count()}</span>
+              </span>
+            </Show>
+          </span>
+        </DockItem>
+        <DockItem label={language.t("navigation.search")} onClick={navigation.go.search}>
+          <Icon name="magnifying-glass" />
+        </DockItem>
+        <li class={dock.entry()}>
+          <Menu placement="top-end" gutter={4}>
+            <Menu.Trigger
+              class={navItem({ current: navigation.route.settings() }).root({
+                class: dock.item({ class: "flex w-full min-h-[44px]" }),
+              })}
+              aria-label={language.t("navigation.more")}
+              aria-pressed={navigation.route.settings()}
+            >
+              <span class={dock.face()}>
+                <Icon name="menu" />
+              </span>
+              <span class="max-w-full break-words">{language.t("navigation.more")}</span>
+            </Menu.Trigger>
+            <Menu.Portal>
+              <Menu.Content>
+                <Menu.Item onSelect={navigation.go.newSession}>{language.t("command.session.new")}</Menu.Item>
+                <Menu.Separator />
+                <Menu.Item onSelect={navigation.go.settings}>{language.t("sidebar.settings")}</Menu.Item>
+                <Menu.Item onSelect={navigation.go.servers}>{language.t("settings.tab.servers")}</Menu.Item>
+                <Menu.Item onSelect={navigation.go.help}>{language.t("navigation.help")}</Menu.Item>
+              </Menu.Content>
+            </Menu.Portal>
+          </Menu>
+        </li>
+      </ul>
+    </nav>
+  )
+}
+
+function DockItem(props: {
+  id?: string
+  label: string
+  description?: string
+  current?: boolean
+  expanded?: boolean
+  controls?: string
+  onClick: () => void
+  children: JSX.Element
+}) {
+  return (
+    <li class={dock.entry()}>
+      <button
+        id={props.id}
+        type="button"
+        aria-label={props.label}
+        aria-description={props.description}
+        aria-pressed={props.current}
+        aria-expanded={props.expanded}
+        aria-controls={props.controls}
+        class={navItem({ current: props.current }).root({ class: dock.item({ class: "flex min-h-[44px]" }) })}
+        onClick={props.onClick}
+      >
+        <span class={dock.face()}>{props.children}</span>
+        <span class="max-w-full break-words">{props.label}</span>
+      </button>
+    </li>
   )
 }
 
@@ -58,6 +134,9 @@ export function MobileNavigation() {
 export function NavigationRail(props: { navigation: NavigationController; panelID: string }) {
   const command = useCommand()
   const language = props.navigation.language
+  const settings = useSettings()
+  const labelled = settings.general.navigationLabels
+  const rail = createMemo(() => sidebarRail({ labelled: labelled() }))
 
   const count = () => props.navigation.background().length
   const avatar = () => {
@@ -89,12 +168,13 @@ export function NavigationRail(props: { navigation: NavigationController; panelI
     <nav
       data-component="navigation-rail"
       aria-label={language.t("navigation.label")}
-      class={rail.root()}
+      class={rail().root()}
       onKeyDown={onKeyDown}
     >
-      <div class={rail.region({ class: rail.middle({ class: "overflow-x-hidden" }) })}>
-        <ul class={rail.list()}>
+      <div class={rail().region({ class: rail().middle({ class: "overflow-x-hidden" }) })}>
+        <ul class={rail().list()}>
           <RailItem
+            labelled={labelled()}
             label={language.t("home.title")}
             keybind={command.keybindParts("home.toggle")}
             current={props.navigation.route.home()}
@@ -104,6 +184,7 @@ export function NavigationRail(props: { navigation: NavigationController; panelI
             <Glyph name="home" />
           </RailItem>
           <RailItem
+            labelled={labelled()}
             label={language.t("command.session.new")}
             keybind={command.keybindParts("tab.new")}
             onClick={props.navigation.go.newSession}
@@ -111,6 +192,7 @@ export function NavigationRail(props: { navigation: NavigationController; panelI
             <Icon name="new-session" />
           </RailItem>
           <RailItem
+            labelled={labelled()}
             label={language.t("navigation.search")}
             keybind={command.keybindParts("command.palette")}
             onClick={props.navigation.go.search}
@@ -118,6 +200,7 @@ export function NavigationRail(props: { navigation: NavigationController; panelI
             <Icon name="magnifying-glass" />
           </RailItem>
           <RailItem
+            labelled={labelled()}
             label={language.t("command.sidebar.toggle")}
             keybind={command.keybindParts("sidebar.toggle")}
             expanded={props.navigation.panel.opened()}
@@ -127,26 +210,32 @@ export function NavigationRail(props: { navigation: NavigationController; panelI
             <Icon name={props.navigation.panel.opened() ? "layout-left-full" : "layout-left"} />
           </RailItem>
           <RailItem
+            labelled={labelled()}
             label={language.t("agents.title")}
+            description={count() > 0 ? language.plural("navigation.background.running", count()) : undefined}
             current={props.navigation.route.agents()}
             keybind={command.keybindParts("agents.open")}
             onClick={props.navigation.go.agents}
           >
-            <Glyph name="activity" />
-            <Show when={count() > 0}>
-              <span
-                class="absolute end-0.5 top-0.5 rounded-full bg-foreground px-1 text-caption text-background"
-                aria-hidden="true"
-              >
-                {count()}
+            <span class={rail().face()}>
+              <span class={notification.root({ class: rail().badgeAnchor() })}>
+                <Glyph name="activity" />
+                <Show when={count() > 0}>
+                  <span data-indicator-marker class={notification.marker()} aria-hidden="true">
+                    <span class={badge({ variant: "filled", class: rail().badge() })}>
+                      {count() > 99 ? "99+" : count()}
+                    </span>
+                  </span>
+                </Show>
               </span>
-            </Show>
+            </span>
           </RailItem>
         </ul>
       </div>
-      <div class={rail.region()}>
-        <ul class={rail.list()}>
+      <div class={rail().region()}>
+        <ul class={rail().list()}>
           <RailItem
+            labelled={labelled()}
             label={language.t("sidebar.settings")}
             keybind={command.keybindParts("settings.open")}
             current={props.navigation.route.settings()}
@@ -154,10 +243,14 @@ export function NavigationRail(props: { navigation: NavigationController; panelI
           >
             <Icon name="settings-gear" />
           </RailItem>
-          <RailItem label={language.t("navigation.help")} onClick={props.navigation.go.help}>
+          <RailItem labelled={labelled()} label={language.t("navigation.help")} onClick={props.navigation.go.help}>
             <Icon name="help" />
           </RailItem>
-          <RailItem label={serverName(props.navigation.server())} onClick={props.navigation.go.servers}>
+          <RailItem
+            labelled={labelled()}
+            label={serverName(props.navigation.server())}
+            onClick={props.navigation.go.servers}
+          >
             <span
               class="flex size-6 items-center justify-center rounded-full border border-control-edge bg-muted text-caption font-medium text-foreground"
               aria-hidden="true"
@@ -172,7 +265,9 @@ export function NavigationRail(props: { navigation: NavigationController; panelI
 }
 
 function RailItem(props: {
+  labelled: boolean
   label: string
+  description?: string
   keybind?: string[]
   current?: boolean
   expanded?: boolean
@@ -181,9 +276,11 @@ function RailItem(props: {
   onClick: () => void
   children: JSX.Element
 }) {
+  const rail = createMemo(() => sidebarRail({ labelled: props.labelled }))
   return (
-    <li>
+    <li class={props.labelled ? "w-full" : undefined}>
       <Tooltip
+        class={props.labelled ? "w-full" : undefined}
         placement="right"
         value={
           <>
@@ -198,14 +295,18 @@ function RailItem(props: {
           type="button"
           data-rail-item
           tabIndex={props.first ? 0 : -1}
-          class={rail.item({ class: "flex items-center justify-center" })}
+          class={rail().item({ class: "flex items-center justify-center" })}
           aria-label={props.label}
+          aria-description={props.description}
           aria-pressed={props.current === undefined ? undefined : props.current}
           aria-expanded={props.expanded}
           aria-controls={props.controls}
           onClick={() => props.onClick()}
         >
-          {props.children}
+          <span class={rail().face()}>{props.children}</span>
+          <Show when={props.labelled}>
+            <span class={rail().label()}>{props.label}</span>
+          </Show>
         </button>
       </Tooltip>
     </li>

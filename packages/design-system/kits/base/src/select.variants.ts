@@ -2,6 +2,7 @@
 // popup and keyboard model while giving the closed control a canonical skin.
 
 import { tv, type VariantProps } from "tailwind-variants";
+import { typeRoleMerge } from "./type-roles";
 
 export const select = tv({
   base: [
@@ -17,13 +18,13 @@ export const select = tv({
     // share one control height at every Density stop. Named `controlSize` on
     // the component: the native \`size\` attribute is still spread through.
     size: {
-      sm: "h-[var(--reddb-spatial-control-height-sm)] px-[var(--reddb-spatial-inset-sm)] text-sm",
-      md: "h-[var(--reddb-spatial-control-height-md)] px-[var(--reddb-spatial-inset-md)] text-sm",
-      lg: "h-[var(--reddb-spatial-control-height-lg)] px-[var(--reddb-spatial-inset-lg)] text-base",
+      sm: "h-[var(--reddb-spatial-control-height-sm)] px-[var(--reddb-spatial-inset-sm)] text-editable-sm",
+      md: "h-[var(--reddb-spatial-control-height-md)] px-[var(--reddb-spatial-inset-md)] text-editable-md",
+      lg: "h-[var(--reddb-spatial-control-height-lg)] px-[var(--reddb-spatial-inset-lg)] text-editable-lg",
     },
   },
   defaultVariants: { size: "md" },
-});
+}, typeRoleMerge);
 
 export type SelectVariants = VariantProps<typeof select>;
 export type SelectSize = NonNullable<SelectVariants["size"]>;

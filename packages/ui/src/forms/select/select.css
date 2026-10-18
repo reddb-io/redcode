@@ -14,7 +14,7 @@
 [data-component="menu-v2-content"][data-slot="select-v2-content"] {
   padding: 0;
   min-width: 10rem;
-  max-width: 23rem;
+  max-width: min(23rem, var(--kb-popper-content-available-width, calc(100dvw - 16px)));
   overflow: hidden;
   transform-origin: top center;
   animation: select-v2-content-in 120ms ease-out;
@@ -187,11 +187,12 @@
   list-style: none;
   min-width: 0;
   width: 100%;
-  max-height: 16rem;
+  max-height: min(70dvh, var(--kb-popper-content-available-height, 70dvh));
   overflow-x: hidden;
   overflow-y: auto;
   outline: none;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 
   &:focus {
     outline: none;

@@ -286,6 +286,20 @@ export const SettingsGeneral: Component = () => {
           )}
         </Show>
         <NavigationControlsSetting />
+        <Show when={!mobile()}>
+          <SettingsRow
+            title={language.t("settings.general.row.navigationLabels.title")}
+            description={language.t("settings.general.row.navigationLabels.description")}
+          >
+            <Switch
+              hideLabel
+              checked={settings.general.navigationLabels()}
+              onChange={settings.general.setNavigationLabels}
+            >
+              {language.t("settings.general.row.navigationLabels.title")}
+            </Switch>
+          </SettingsRow>
+        </Show>
 
         <WorkspaceDestinationSetting />
         <AutoApprovePermissionsSetting />

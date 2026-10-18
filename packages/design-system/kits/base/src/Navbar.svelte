@@ -30,8 +30,10 @@
 </script>
 
 <script lang="ts">
-  import type { Snippet } from "svelte";
+  import { onDestroy, untrack, type Snippet } from "svelte";
+  import { navigationDisclosure } from "./navigation";
   import Button from "./Button.svelte";
+  import Icon from "./Icon.svelte";
   import Link from "./Link.svelte";
   import { navbar } from "./navbar.variants";
   import { quietControl } from "./quiet-control.variants";
@@ -94,6 +96,10 @@
   const styles = $derived(navbar({ collapse, align, open }));
   const shown = $derived(arrangements(collapse));
 
+  const disclosure = navigationDisclosure(() => setOpen(false));
+  onDestroy(() => disclosure?.destroy());
+  $effect(() => { if (open) untrack(() => disclosure?.open()); });
+
   function currentValue(link: NavbarLink): NavbarLink["current"] | undefined {
     if (link.current === true || link.active) return "page";
     return link.current || undefined;
@@ -136,7 +142,7 @@
       {#if links.length > 0}
         <ul data-navbar-region="links" class={styles.links()}>
           {#each links as link (link.id)}
-            <li>
+            <li class={styles.item()}>
               {#if link.disabled && link.href !== undefined}
                 <a aria-disabled="true" data-navbar-link={link.id} class={quietControl({ class: styles.link() })}>{link.label}</a>
               {:else if link.href !== undefined}
@@ -151,6 +157,7 @@
                 <Button
                   variant="ghost"
                   disabled={link.disabled}
+                  aria-current={currentValue(link)}
                   data-navbar-link={link.id}
                   class={styles.link()}
                   onclick={link.onselect}
@@ -175,7 +182,7 @@
         aria-expanded={open}
         aria-controls={panelId}
         onclick={() => setOpen(!open)}
-      >{menuLabel}</Button>
+      ><Icon icon="menu" size="sm" aria-hidden="true" />{menuLabel}</Button>
     </div>
     <div id={panelId} data-navbar-panel hidden={!open} class={styles.panel()}>
       {#if links.length > 0}
@@ -199,6 +206,7 @@
                 <Button
                   variant="ghost"
                   disabled={link.disabled}
+                  aria-current={currentValue(link)}
                   data-navbar-link={link.id}
                   class={styles.panelLink()}
                   onclick={() => {

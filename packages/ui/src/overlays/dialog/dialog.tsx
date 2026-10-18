@@ -1,5 +1,13 @@
 import { CloseButton, Content, Description, Title } from "@kobalte/core/dialog"
-import { type ComponentProps, type JSXElement, type ParentProps, Show, children, createEffect, splitProps } from "solid-js"
+import {
+  type ComponentProps,
+  type JSXElement,
+  type ParentProps,
+  Show,
+  children,
+  createEffect,
+  splitProps,
+} from "solid-js"
 import { useDialogLayer } from "../../context/dialog"
 import { useI18n } from "../../context/i18n"
 import "./dialog.css"
@@ -86,6 +94,8 @@ export function DialogHeader(props: DialogHeaderProps) {
 }
 
 export function Dialog(props: DialogProps) {
+  // These dialogs are opened programmatically, without a Kobalte trigger to restore.
+  const opener = globalThis.document?.activeElement
   const [local] = splitProps(props, [
     "size",
     "variant",
@@ -111,7 +121,12 @@ export function Dialog(props: DialogProps) {
       <div data-slot="dialog-container" class={local.containerClass}>
         <Content
           data-slot="dialog-content"
-          onCloseAutoFocus={local.onCloseAutoFocus}
+          onCloseAutoFocus={(event) => {
+            local.onCloseAutoFocus?.(event)
+            if (event.defaultPrevented || !(opener instanceof HTMLElement) || !opener.isConnected) return
+            event.preventDefault()
+            opener.focus({ preventScroll: true })
+          }}
           onPointerDownOutside={(event) => {
             if (local.preventBackdropDismiss) event.preventDefault()
           }}

@@ -72,7 +72,7 @@ function Resources(props: {
       : language.t("agents.hosts.memoryValue", { value: (value / 1024 ** 3).toFixed(2) })
   return (
     <article aria-label={props.name} class={appearance.root()}>
-      <div class={appearance.body({ class: "flex flex-col gap-3" })}>
+      <div class={appearance.body({ class: "flex flex-col gap-3 space-y-0" })}>
         <h3 class="text-13-medium leading-[var(--line-height-base)]">{props.name}</h3>
         <Show
           when={props.connected && !query.isError}

@@ -179,6 +179,33 @@ test("a settings page survives refresh", async ({ page }) => {
   await expect(page).toHaveURL("/settings?tab=appearance")
 })
 
+test("appearance options remain reachable in a short viewport", async ({ page }) => {
+  const { settings } = await open(page)
+  await settings.getByRole("tab", { name: "Appearance", exact: true }).click()
+  await page.setViewportSize({ width: 1280, height: 360 })
+  const theme = settings.locator('[data-action="settings-theme"] [data-component="select-v2"]')
+  await theme.press("ArrowDown")
+  const list = page.getByRole("listbox")
+  await expect(list).toBeVisible()
+  await expect
+    .poll(async () => {
+      const box = await list.boundingBox()
+      return !!box && box.y >= 0 && box.y + box.height <= 360
+    })
+    .toBe(true)
+  // Keyboard navigation must scroll the final option into view, rather than clipping it.
+  await list.press("Home")
+  await expect(list.getByRole("option").first()).toBeInViewport()
+  await list.press("End")
+  const last = list.getByRole("option").last()
+  await expect(last).toBeInViewport()
+  const label = await last.innerText()
+  await page.screenshot({ path: test.info().outputPath("short-viewport-theme-options.png"), animations: "disabled" })
+  await last.click()
+  await expect(list).toBeHidden()
+  await expect(theme).toContainText(label)
+})
+
 test("agent tools share host settings, install explicitly and preserve configuration across refresh", async ({
   page,
 }, testInfo) => {
@@ -1015,6 +1042,48 @@ test("a pairing code with several addresses keeps the first one that works with 
   await expect(settings.getByText(second, { exact: true })).toHaveCount(0)
 })
 
+test("navigation labels preserve rail and panel geometry and survive reload", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  const { settings } = await open(page)
+  const rail = page.getByRole("navigation", { name: "Navigation", exact: true })
+  const toggle = settings.getByRole("switch", { name: "Navigation labels", exact: true })
+  const home = rail.getByRole("button", { name: "Home", exact: true })
+  await expect(toggle).toBeChecked()
+  await expect(home).toHaveText("Home")
+  const labelledWidth = await rail.evaluate((element) => element.getBoundingClientRect().width)
+  const aligned = async () => {
+    const iconColumn = await rail.boundingBox()
+    const sidebar = await page.getByRole("complementary", { name: "Projects and sessions", exact: true }).boundingBox()
+    const main = await page.getByRole("main").boundingBox()
+    return (
+      !!iconColumn &&
+      !!sidebar &&
+      !!main &&
+      Math.abs(iconColumn.x + iconColumn.width - sidebar.x) < 1 &&
+      Math.abs(sidebar.x + sidebar.width - main.x) < 1
+    )
+  }
+  await expect.poll(aligned).toBe(true)
+  await home.focus()
+  await home.press("ArrowDown")
+  await expect(rail.getByRole("button", { name: "New session", exact: true })).toBeFocused()
+  await toggle.focus()
+  await toggle.press("Space")
+  await expect(toggle).not.toBeChecked()
+  await expect(home).toHaveText("")
+  await expect.poll(() => rail.evaluate((element) => element.getBoundingClientRect().width)).toBeLessThan(labelledWidth)
+  await expect.poll(aligned).toBe(true)
+  await page.reload()
+  await expect(toggle).not.toBeChecked()
+  await expect(home).toHaveText("")
+  await expect.poll(aligned).toBe(true)
+  await toggle.focus()
+  await toggle.press("Space")
+  await expect(home).toHaveText("Home")
+  await expect.poll(aligned).toBe(true)
+  await page.screenshot({ path: test.info().outputPath("labelled-navigation.png"), animations: "disabled" })
+})
+
 test("the tab layout preference switches to vertical tabs and survives reload", async ({ page }) => {
   const { settings } = await open(page)
   const layout = settings.locator('[data-action="settings-tab-layout"]')
@@ -1050,8 +1119,8 @@ for (const viewport of [
       await expect(toggle.getByRole("switch")).toBeChecked()
     }
 
-    // Wheel over the outer gutter must not move the entire settings screen.
-    await main.hover({ position: { x: 1, y: 200 } })
+    // Use the far outer gutter; the near edge belongs to the sidebar's resize handle.
+    await main.hover({ position: { x: await main.evaluate((element) => element.clientWidth - 2), y: 200 } })
     await page.mouse.wheel(0, 10000)
     await expect(main).toHaveJSProperty("scrollTop", 0)
 

@@ -143,7 +143,7 @@ export async function mockMachineInspection(page: Page) {
   )
 }
 
-export async function mockHarnessOperations(page: Page) {
+export async function mockHarnessOperations(page: Page, input: { output?: string } = {}) {
   const state = {
     runs: [] as Harness.Run[],
     requests: [] as Harness.Request[],
@@ -169,8 +169,8 @@ export async function mockHarnessOperations(page: Page) {
       const input = Schema.decodeUnknownSync(Harness.Open)(request.postDataJSON())
       const run: Harness.Run = {
         ...input,
-        id: "native-run",
-        nativeID: "provider-session",
+        id: state.runs.length ? `native-run-${state.runs.length + 1}` : "native-run",
+        nativeID: state.runs.length ? `provider-session-${state.runs.length + 1}` : "provider-session",
         state: "ready",
         createdAt: "2026-10-13T12:00:00Z",
         queued: 0,
@@ -213,7 +213,11 @@ export async function mockHarnessOperations(page: Page) {
     }
     if (run)
       return route.fulfill({
-        json: { run, events: [{ cursor: 1, kind: "text", text: "Native harness output" }], requests: state.requests },
+        json: {
+          run,
+          events: [{ cursor: 1, kind: "text", text: input.output ?? "Native harness output" }],
+          requests: state.requests,
+        },
       })
     return route.fulfill({ status: 400, json: { message: "Unsupported fixture operation" } })
   })
@@ -224,7 +228,7 @@ export async function mockHarnessOperations(page: Page) {
   }
 }
 
-export async function mockWorktreeOperations(page: Page) {
+export async function mockWorktreeOperations(page: Page, options: { diff?: string } = {}) {
   const child = fixture.directory + "/worktree-agent"
   const state = { created: false, archived: false }
   const archive = {
@@ -261,7 +265,7 @@ export async function mockWorktreeOperations(page: Page) {
           dirty: false,
           targetDirty: false,
           status: "",
-          diff: "+ agent result",
+          diff: options.diff ?? "+ agent result",
           truncated: false,
           managed: true,
         },

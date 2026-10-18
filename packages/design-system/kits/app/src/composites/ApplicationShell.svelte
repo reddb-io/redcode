@@ -19,7 +19,7 @@
     children?: Snippet;
     /** Product-wide status or legal chrome after the page content. */
     footer?: Snippet;
-    /** Let application layouts consume the viewport edge instead of the prose measure. */
+    /** Let layouts consume the viewport edge. Header content owns its vertical rhythm and shares the navigation plane, so a Navbar is flush with the shell. */
     fullWidth?: boolean;
     /**
      * The shell is embedded in a host document that already owns the page's
@@ -52,7 +52,7 @@
   const rendersMain = $derived(!(embedded ?? nested));
   if (!(untrack(() => embedded) ?? nested)) claimMainLandmark();
 
-  const slots = $derived(applicationShell());
+  const slots = $derived(applicationShell({ fullWidth }));
   // Full width is the Container's own `full` size (ADR 0021); the shell only
   // drops the inline inset, so an application layout reaches the edge.
   const containerSize = $derived(fullWidth ? "full" : "wide");

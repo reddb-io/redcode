@@ -54,6 +54,8 @@ export { default as Heading } from "./Heading.svelte";
 export { default as Icon } from "./Icon.svelte";
 export { default as Image } from "./Image.svelte";
 export { default as Indicator } from "./Indicator.svelte";
+export { default as InlineEdit } from "./InlineEdit.svelte";
+export { inlineEdit } from "./inline-edit.variants";
 export { default as Input } from "./Input.svelte";
 export { default as Kbd } from "./Kbd.svelte";
 export { default as Label } from "./Label.svelte";
@@ -84,6 +86,8 @@ export { default as Reveal } from "./Reveal.svelte";
 export { default as ScrollArea } from "./ScrollArea.svelte";
 export { default as SectionHeading } from "./SectionHeading.svelte";
 export { default as SectionSlide } from "./SectionSlide.svelte";
+export { default as SearchSelect } from "./SearchSelect.svelte";
+export { searchSelect, searchSelectOptions, type SearchSelectOption } from "./search-select.variants";
 export { default as Select } from "./Select.svelte";
 export type { SelectOption } from "./Select.svelte";
 export { default as Skeleton } from "./Skeleton.svelte";
@@ -207,6 +211,7 @@ export const BASE_COMPONENTS = [
   "Icon",
   "Image",
   "Indicator",
+  "InlineEdit",
   "Input",
   "Kbd",
   "Label",
@@ -235,6 +240,7 @@ export const BASE_COMPONENTS = [
   "Rating",
   "Reveal",
   "ScrollArea",
+  "SearchSelect",
   "SectionHeading",
   "SectionSlide",
   "Select",
@@ -341,6 +347,7 @@ export const BASE_COMPONENT_PURPOSES = {
   Icon: "Data display",
   Image: "Data display",
   Indicator: "Layout",
+  InlineEdit: "Data input",
   Input: "Data input",
   Kbd: "Data display",
   Label: "Data input",
@@ -371,6 +378,7 @@ export const BASE_COMPONENT_PURPOSES = {
   ScrollArea: "Layout",
   SectionHeading: "Data display",
   SectionSlide: "Layout",
+  SearchSelect: "Data input",
   Select: "Data input",
   Skeleton: "Feedback",
   SkipLink: "Navigation",
@@ -423,7 +431,7 @@ export {
 } from "./window-mockup.variants";
 export type { StepItem, StepState } from "./Steps.svelte";
 export { steps, type StepsVariants } from "./steps.variants";
-export type { CarouselSlide } from "./Carousel.svelte";
+export type { CarouselSlide, CarouselViewportContext } from "./Carousel.svelte";
 export type { TableCellContext, TableCellValue, TableColumn, TableRow } from "./Table.svelte";
 
 /** Components that compose another canonical Base component. */
@@ -452,6 +460,7 @@ export const BASE_COMPOSITES = [
   "FigureSlide",
   "FileInput",
   "GridList",
+  "InlineEdit",
   "ListContainer",
   "Navbar",
   "NavigationMenu",
@@ -464,6 +473,7 @@ export const BASE_COMPOSITES = [
   "RadioGroup",
   "RangeCalendar",
   "Rating",
+  "SearchSelect",
   "SectionSlide",
   "Slider",
   "Statistic",
@@ -962,3 +972,5 @@ export {
 } from "./slide-frame.variants";
 export { slideLayout, type SlideLayoutVariants } from "./slide-layout.variants";
 export { deck, type DeckVariants } from "./deck.variants";
+
+export { provideNavigationDisclosures, navigationDisclosure } from "./navigation";

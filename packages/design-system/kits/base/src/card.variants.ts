@@ -20,7 +20,7 @@ const RAISED = {
 // on every other component, and a grey Card is `neutral`.
 const TONE = {
   neutral: {
-    root: "bg-background text-foreground",
+    root: "bg-elevation-raised-surface text-foreground",
     header: "text-foreground",
     title: "text-foreground",
     description: "text-ink-muted",
@@ -150,7 +150,9 @@ export const card = tv({
     icon: "shrink-0",
     title: "text-base font-medium leading-tight",
     description: "max-w-prose text-sm",
-    body: "flex-1",
+    // Keep native inline flow (text + emphasis is still one sentence) while
+    // spacing direct body blocks. A flex column would split inline content.
+    body: "flow-root flex-1 space-y-[var(--reddb-spatial-layout-gap-sm)]",
     footer: "flex flex-wrap items-center gap-[var(--reddb-spatial-gap-md)] border-t",
   },
   variants: {

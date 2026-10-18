@@ -14,6 +14,7 @@ import {
   mockProjectEnvironments,
 } from "../utils/agent-operation-fixture"
 import { SERVER, REMOTE_SERVER } from "../utils/app"
+import { chooseSearchOption } from "../utils/search-select"
 
 test.use({ viewport: { width: 1440, height: 900 } })
 
@@ -146,7 +147,7 @@ test("starts a native Claude harness and preserves question input across host re
   const harness = await mockHarnessOperations(page)
   await page.goto("/agents?view=harness")
   const workspace = page.getByRole("region", { name: "Agents", exact: true })
-  await workspace.getByLabel("Coding agent", { exact: true }).selectOption("claude")
+  await chooseSearchOption(page, workspace.getByRole("button", { name: "Coding agent", exact: true }), "Claude Code")
   await workspace.getByLabel("Checkout directory on this host", { exact: true }).fill(fixture.directory)
   const opened = page.waitForResponse(
     (response) => new URL(response.url()).pathname === "/api/harness/runs" && response.request().method() === "POST",
@@ -189,37 +190,279 @@ test("starts a native Claude harness and preserves question input across host re
   await workspace.getByRole("checkbox", { name: "I confirmed that the original process is stopped" }).check()
   await workspace.getByRole("button", { name: "Record reconciliation", exact: true }).click()
   await expect(workspace.getByRole("button", { name: "Resume native session", exact: true })).toBeEnabled()
+  const closed: string[] = []
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname.endsWith("/native-run/close")) closed.push(request.url())
+  })
+  const inspector = workspace.getByRole("article", { name: "Native session details", exact: true })
+  await inspector.getByRole("button", { name: "Close", exact: true }).click()
+  await expect(inspector).toBeHidden()
+  expect(closed).toEqual([])
+  await workspace.getByRole("button", { name: "Open session details", exact: true }).click()
+  await expect(inspector.getByRole("button", { name: "Resume native session", exact: true })).toBeEnabled()
 })
 
-test("creates and reviews a worktree, targets its harness and archives a detached result", async ({ page }) => {
-  await mockStressTimeline(page)
-  await installStressSessionTabs(page, { sessionIDs: [] })
-  const tree = await mockWorktreeOperations(page)
-  await mockHarnessOperations(page)
-  await page.goto(`/agents?view=worktrees&project=${fixture.project.id}`)
-  const workspace = page.getByRole("region", { name: "Agents", exact: true })
-  await workspace.getByLabel("Worktree name", { exact: true }).fill("agent-result")
-  await workspace.getByRole("button", { name: "Create worktree", exact: true }).click()
-  const child = workspace.getByRole("article", { name: tree.directory, exact: true })
-  await child.getByRole("button", { name: "Review changes", exact: true }).click()
-  await expect(workspace.getByLabel("Worktree diff", { exact: true })).toContainText("agent result")
-  const integrated = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/worktree/integrate")
-  await workspace.getByRole("button", { name: "Integrate reviewed commit", exact: true }).click()
-  expect((await integrated).request().postDataJSON()).toEqual({
-    projectID: fixture.project.id,
-    directory: tree.directory,
-    target: fixture.directory,
-    head: "a".repeat(40),
-    targetHead: "b".repeat(40),
+test.describe("Remote project search on mobile", () => {
+  test.use({ isMobile: true, hasTouch: true, viewport: { width: 390, height: 640 } })
+  test("keeps native requests and drafts usable in a dedicated mobile inspector", async ({ page }) => {
+    await mockStressTimeline(page)
+    await installStressSessionTabs(page, { sessionIDs: [] })
+    await mockHarnessOperations(page, { output: "A long native output line\n".repeat(100) })
+    const mutations: string[] = []
+    page.on("request", (request) => {
+      if (request.method() !== "GET" && new URL(request.url()).pathname.startsWith("/api/harness/runs"))
+        mutations.push(request.method() + " " + new URL(request.url()).pathname)
+    })
+    await page.goto("/agents?view=harness")
+    const workspace = page.getByRole("region", { name: "Agents", exact: true })
+    await chooseSearchOption(page, workspace.getByRole("button", { name: "Coding agent", exact: true }), "Claude Code")
+    await workspace.getByLabel("Checkout directory on this host", { exact: true }).fill(fixture.directory)
+    await workspace.getByRole("button", { name: "Start harness", exact: true }).tap()
+    const inspector = workspace.getByRole("article", { name: "Native session details", exact: true })
+    await expect(inspector).toBeVisible()
+    await expect(workspace.getByRole("button", { name: "Coding agent", exact: true })).toBeHidden()
+    const draft = inspector.getByLabel("Instruction", { exact: true })
+    await draft.fill("Build the implementation")
+    await inspector.getByRole("button", { name: "Send instruction", exact: true }).tap()
+    await inspector.getByRole("button", { name: "Review requests", exact: true }).tap()
+    const answer = inspector.getByLabel("Which implementation?", { exact: true })
+    await answer.fill("Small")
+    const refreshed = page.waitForResponse(
+      (response) => new URL(response.url()).pathname === "/api/harness/runs/native-run",
+    )
+    await refreshed
+    await expect(answer).toBeFocused()
+    await expect(answer).toHaveValue("Small")
+    await draft.fill("Keep this unsent instruction")
+    await inspector.getByRole("button", { name: "Back to sessions", exact: true }).tap()
+    await expect(inspector).toBeHidden()
+    const open = workspace.getByRole("button", { name: "Open session details", exact: true })
+    await expect(open).toBeFocused()
+    await open.tap()
+    await expect(draft).toHaveValue("Keep this unsent instruction")
+    await expect(answer).toHaveValue("Small")
+    await inspector.getByRole("button", { name: "Review requests", exact: true }).tap()
+    const dock = page.getByRole("navigation", { name: "Mobile navigation", exact: true })
+    for (const size of [
+      { width: 390, height: 640 },
+      { width: 320, height: 480 },
+    ]) {
+      await page.setViewportSize(size)
+      await expect
+        .poll(async () => {
+          const panel = await inspector.boundingBox()
+          const bar = await dock.boundingBox()
+          return !!panel && !!bar && panel.y >= 0 && panel.y + panel.height <= bar.y
+        })
+        .toBe(true)
+      await inspector.getByRole("button", { name: "Review requests", exact: true }).tap()
+      await expect(answer).toBeInViewport({ ratio: 1 })
+      await expect(inspector.getByRole("button", { name: "Submit answers", exact: true })).toBeInViewport({ ratio: 1 })
+    }
+    await page.screenshot({ path: test.info().outputPath("mobile-native-requests.png"), animations: "disabled" })
+    await page.setViewportSize({ width: 1200, height: 900 })
+    await expect(workspace.getByRole("button", { name: "Coding agent", exact: true })).toBeVisible()
+    await expect(draft).toHaveValue("Keep this unsent instruction")
+    await expect(answer).toHaveValue("Small")
+    expect(mutations).toEqual(["POST /api/harness/runs", "POST /api/harness/runs/native-run/prompt"])
+    const output = inspector.getByRole("log", { name: "Harness output", exact: true })
+    await output.press("End")
+    await expect.poll(() => output.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
+    const scrolled = await output.evaluate((element) => element.scrollTop)
+    const read = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/harness/runs/native-run")
+    await read
+    await expect.poll(() => output.evaluate((element) => element.scrollTop)).toBe(scrolled)
+    const sent = page.waitForResponse((response) => new URL(response.url()).pathname.endsWith("/native-run/answer"))
+    await inspector.getByRole("button", { name: "Submit answers", exact: true }).click()
+    expect((await sent).request().postDataJSON()).toMatchObject({
+      request: "question-native",
+      answers: { choice: "Small" },
+      allow: true,
+    })
+    await expect(answer).toHaveCount(0)
+    await workspace.getByRole("button", { name: "Start harness", exact: true }).click()
+    await expect(draft).toHaveValue("")
+    await draft.fill("A separate task")
+    await inspector.getByRole("button", { name: "Send instruction", exact: true }).click()
+    await expect(answer).toHaveValue("")
   })
-  await workspace.getByRole("button", { name: "Archive worktree", exact: true }).click()
-  await workspace.getByRole("button", { name: "Confirm archive", exact: true }).click()
-  await expect(child).toHaveCount(0)
-  await expect(workspace.getByRole("button", { name: "Restore as a new worktree", exact: true })).toBeVisible()
-  await page.screenshot({ path: test.info().outputPath("worktree-cycle.png"), animations: "disabled" })
-  await workspace.getByRole("button", { name: "Restore as a new worktree", exact: true }).click()
-  await child.getByRole("button", { name: "Start coding agent here", exact: true }).click()
-  await expect(workspace.getByLabel("Checkout directory on this host", { exact: true })).toHaveValue(tree.directory)
+
+  test("changes the Agents section without reopening the drawer or losing the selected host", async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 640 })
+    await mockStressTimeline(page)
+    await installStressSessionTabs(page, { sessionIDs: [] })
+    await mockMachineInspection(page)
+    await mockHarnessOperations(page)
+    const mutations: string[] = []
+    page.on("request", (request) => {
+      if (request.method() !== "GET" && new URL(request.url()).pathname.startsWith("/api/harness"))
+        mutations.push(request.url())
+    })
+    await page.goto(`/agents?view=machines&host=${encodeURIComponent(SERVER)}`)
+    const workspace = page.getByRole("region", { name: "Agents", exact: true })
+    const section = workspace.getByRole("button", { name: "Agents section", exact: true })
+    await expect(section).toBeVisible()
+    await expect(section).toContainText("Machines")
+    const create = workspace.getByRole("button", { name: "New session", exact: true })
+    await expect.poll(async () => (await create.boundingBox())!.height).toBeGreaterThanOrEqual(44)
+    await expect.poll(async () => (await create.boundingBox())!.width).toBeGreaterThanOrEqual(44)
+    await expect
+      .poll(async () => (await workspace.locator(":scope > div > header").boundingBox())!.height)
+      .toBeLessThanOrEqual(80)
+    await section.tap()
+    await page.getByRole("option", { name: "Harnesses", exact: true }).tap()
+    await expect(section).toContainText("Harnesses")
+    await expect.poll(() => new URL(page.url()).searchParams.get("view")).toBe("harness")
+    expect(new URL(page.url()).searchParams.get("host")).toBe(SERVER)
+    await expect(workspace.getByRole("button", { name: "Coding agent", exact: true })).toBeVisible()
+    await expect.poll(() => workspace.evaluate((element) => element.scrollWidth - element.clientWidth)).toBe(0)
+    await page.screenshot({ path: test.info().outputPath("mobile-agents-sections.png"), animations: "disabled" })
+    await section.tap()
+    await page.getByRole("combobox", { name: "Search options", exact: true }).fill("Machines")
+    await page.keyboard.press("Escape")
+    await expect(section).toBeFocused()
+    await expect(section).toContainText("Harnesses")
+    expect(new URL(page.url()).searchParams.get("host")).toBe(SERVER)
+    expect(mutations).toEqual([])
+    await page.setViewportSize({ width: 1200, height: 900 })
+    await expect(section).toBeHidden()
+    await expect(workspace.getByRole("heading", { name: "Harnesses", exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByRole("navigation", { name: "Agents", exact: true })
+        .getByRole("button", { name: "Harnesses", exact: true }),
+    ).toHaveAttribute("aria-current", "page")
+  })
+
+  test("searches remote projects locally and preserves the choice when search is dismissed", async ({ page }) => {
+    await mockStressTimeline(page, {
+      projects: [
+        ...Array.from({ length: 35 }, (_, index) => ({
+          ...fixture.project,
+          id: `project_${index}`,
+          name: `Project ${index}`,
+          canonical: `/srv/project-${index}`,
+        })),
+        { ...fixture.project, id: "project_cafe", name: "Payments Café", canonical: "/srv/payments" },
+      ],
+    })
+    await installStressSessionTabs(page, { sessionIDs: [] })
+    await mockMachineInspection(page)
+    await page.goto("/agents?view=machines")
+    const workspace = page.getByRole("region", { name: "Agents", exact: true })
+    const machine = workspace.getByRole("button", { name: "Connected machine", exact: true })
+    await machine.tap()
+    const machineSearch = page.getByRole("combobox", { name: "Search options", exact: true })
+    await expect(machineSearch).toBeFocused()
+    await machineSearch.fill(new URL(SERVER).host)
+    await page.getByRole("option", { name: new URL(SERVER).host, exact: true }).tap()
+    await expect(machine).toContainText(new URL(SERVER).host)
+    const project = workspace.getByRole("button", { name: "Project on the machine", exact: true })
+    await project.press("ArrowDown")
+    const search = page.getByRole("combobox", { name: "Search options", exact: true })
+    await expect(search).toBeFocused()
+    await search.fill("cafe")
+    await expect(page.getByRole("option", { name: "Payments Café", exact: true })).toBeVisible()
+    await page.screenshot({ path: test.info().outputPath("mobile-project-search-open.png"), animations: "disabled" })
+    await search.press("ArrowDown")
+    await search.press("Enter")
+    await expect(project).toContainText("Payments Café")
+    const directory = workspace.getByLabel("Existing checkout directory on the machine", { exact: true })
+    await expect(directory).toHaveValue("/srv/payments")
+    await project.click()
+    await search.fill("not-a-project")
+    await expect(page.getByRole("status").filter({ hasText: "No matching options" })).toBeVisible()
+    await search.press("Escape")
+    await expect(project).toBeFocused()
+    await expect(project).toContainText("Payments Café")
+    await expect(directory).toHaveValue("/srv/payments")
+    await page.screenshot({ path: test.info().outputPath("mobile-project-search.png"), animations: "disabled" })
+  })
+})
+
+test.describe("Worktree touch review", () => {
+  test.use({ hasTouch: true, isMobile: true })
+  test("creates and reviews a worktree, targets its harness and archives a detached result", async ({ page }) => {
+    await mockStressTimeline(page)
+    await installStressSessionTabs(page, { sessionIDs: [] })
+    const tree = await mockWorktreeOperations(page, {
+      diff: Array.from({ length: 80 }, (_, i) => `+ agent result ${i}: ${"code ".repeat(40)}`).join("\n"),
+    })
+    const writes: string[] = []
+    page.on("request", (request) => {
+      const path = new URL(request.url()).pathname
+      if (request.method() === "POST" && path.startsWith("/api/worktree")) writes.push(path)
+    })
+    await mockHarnessOperations(page)
+    await page.goto(`/agents?view=worktrees&project=${fixture.project.id}`)
+    const workspace = page.getByRole("region", { name: "Agents", exact: true })
+    await workspace.getByLabel("Worktree name", { exact: true }).fill("agent-result")
+    await workspace.getByRole("button", { name: "Create worktree", exact: true }).click()
+    const child = workspace.getByRole("article", { name: tree.directory, exact: true })
+    await expect(child).toBeVisible()
+    await workspace.getByLabel("Worktree name", { exact: true }).fill("next-worktree-draft")
+    await page.setViewportSize({ width: 390, height: 640 })
+    const opener = child.getByRole("button", { name: "Review changes", exact: true })
+    await opener.click()
+    const review = workspace.getByRole("region", { name: "Review changes", exact: true })
+    await expect(review).toBeFocused()
+    await expect(workspace.getByLabel("Worktree name", { exact: true })).toBeHidden()
+    await expect(review.getByText(`Integration target: ${fixture.directory}`, { exact: true })).toBeVisible()
+    for (const size of [
+      { width: 390, height: 640 },
+      { width: 320, height: 480 },
+    ]) {
+      await page.setViewportSize(size)
+      await expect(review.getByRole("button", { name: "Back to worktrees", exact: true })).toBeInViewport({ ratio: 1 })
+      await expect(review.getByRole("button", { name: "Integrate reviewed commit", exact: true })).toBeInViewport({
+        ratio: 1,
+      })
+      await expect(review.getByRole("button", { name: "Archive worktree", exact: true })).toBeInViewport({ ratio: 1 })
+    }
+    const diff = review.getByLabel("Worktree diff", { exact: true })
+    await diff.focus()
+    await diff.press("Control+End")
+    await expect.poll(() => diff.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
+    await expect(review.getByRole("button", { name: "Integrate reviewed commit", exact: true })).toBeInViewport({
+      ratio: 1,
+    })
+    await page.screenshot({ path: test.info().outputPath("mobile-worktree-review.png"), animations: "disabled" })
+    await review.getByRole("button", { name: "Back to worktrees", exact: true }).click()
+    await expect(opener).toBeFocused()
+    await expect(workspace.getByLabel("Worktree name", { exact: true })).toHaveValue("next-worktree-draft")
+    expect(writes).toEqual(["/api/worktree", "/api/worktree/inspect"])
+    await opener.click()
+    await expect(review).toBeFocused()
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await expect(workspace.getByLabel("Worktree name", { exact: true })).toBeVisible()
+    await expect(workspace.getByLabel("Worktree diff", { exact: true })).toContainText("agent result")
+    const integrated = page.waitForResponse(
+      (response) => new URL(response.url()).pathname === "/api/worktree/integrate",
+    )
+    await workspace.getByRole("button", { name: "Integrate reviewed commit", exact: true }).click()
+    expect((await integrated).request().postDataJSON()).toEqual({
+      projectID: fixture.project.id,
+      directory: tree.directory,
+      target: fixture.directory,
+      head: "a".repeat(40),
+      targetHead: "b".repeat(40),
+    })
+    await workspace.getByRole("button", { name: "Archive worktree", exact: true }).click()
+    await page.setViewportSize({ width: 320, height: 480 })
+    await expect(review.getByRole("alert")).toBeInViewport()
+    await expect(review.getByRole("button", { name: "Confirm archive", exact: true })).toBeInViewport({ ratio: 1 })
+    expect(writes.filter((path) => path === "/api/worktree/archive")).toEqual([])
+    await review.getByRole("button", { name: "Keep worktree", exact: true }).click()
+    await expect(review.getByRole("button", { name: "Confirm archive", exact: true })).toHaveCount(0)
+    await review.getByRole("button", { name: "Archive worktree", exact: true }).click()
+    await workspace.getByRole("button", { name: "Confirm archive", exact: true }).click()
+    await expect(child).toHaveCount(0)
+    await expect(workspace.getByRole("button", { name: "Restore as a new worktree", exact: true })).toBeVisible()
+    await page.screenshot({ path: test.info().outputPath("worktree-cycle.png"), animations: "disabled" })
+    await workspace.getByRole("button", { name: "Restore as a new worktree", exact: true }).click()
+    await child.getByRole("button", { name: "Start coding agent here", exact: true }).click()
+    await expect(workspace.getByLabel("Checkout directory on this host", { exact: true })).toHaveValue(tree.directory)
+  })
 })
 
 test("machine onboarding checks the selected host and blocks an unusable worker route", async ({ page }) => {
@@ -228,10 +471,8 @@ test("machine onboarding checks the selected host and blocks an unusable worker 
   await mockMachineInspection(page)
   await page.goto("/agents?view=machines")
   const workspace = page.getByRole("region", { name: "Agents", exact: true })
-  const picker = workspace.getByLabel("Connected machine", { exact: true })
-  const value = await picker.getByRole("option").nth(1).getAttribute("value")
-  expect(value).toBeTruthy()
-  await picker.selectOption(value!)
+  const picker = workspace.getByRole("button", { name: "Connected machine", exact: true })
+  await chooseSearchOption(page, picker, new URL(SERVER).host)
   await workspace.getByRole("button", { name: "Check server", exact: true }).click()
   await expect(workspace.getByText("Server version:", { exact: false })).toBeVisible()
   await workspace.getByRole("button", { name: "Use this project as a worker", exact: true }).click()
@@ -267,10 +508,14 @@ test("machine onboarding registers the verified checkout with its coordinator cr
   await expect(workspace.getByText("Server version: fixture", { exact: true })).toBeVisible()
   await workspace.getByRole("button", { name: "Use this project as a worker", exact: true }).click()
   await expect(workspace.getByLabel("Worker name", { exact: true })).toHaveValue("strong-pc")
-  const strongKey = await workspace.getByLabel("Connected machine", { exact: true }).inputValue()
   await workspace.getByLabel("Worker name", { exact: true }).fill("pi-a")
   await workspace.getByLabel("Capabilities (comma-separated)", { exact: true }).fill("linux, arm64")
-  await workspace.getByLabel("Project on the machine", { exact: true }).selectOption(fixture.directory)
+  await chooseSearchOption(
+    page,
+    workspace.getByRole("button", { name: "Project on the machine", exact: true }),
+    fixture.project.name,
+    fixture.directory,
+  )
   await expect(workspace.getByLabel("Existing checkout directory on the machine", { exact: true })).toHaveValue(
     fixture.directory,
   )
@@ -288,22 +533,32 @@ test("machine onboarding registers the verified checkout with its coordinator cr
   await workspace.getByRole("button", { name: "Manage workers on this machine", exact: true }).click()
   await expect(workspace.getByRole("heading", { name: "Remote workers", exact: true, level: 1 })).toBeVisible()
   await expect(
-    page.getByRole("complementary", { name: "Agents", exact: true }).getByLabel("Host", { exact: true }),
-  ).toHaveValue(/^ssh:/)
+    page.getByRole("complementary", { name: "Agents", exact: true }).getByRole("button", { name: "Host", exact: true }),
+  ).toContainText("Strong PC")
   await page
     .getByRole("complementary", { name: "Agents", exact: true })
     .getByRole("button", { name: "Machines", exact: true })
     .click()
-  await workspace.getByLabel("Connected machine", { exact: true }).selectOption("ssh:box")
+  await chooseSearchOption(page, workspace.getByRole("button", { name: "Connected machine", exact: true }), "box")
   await workspace.getByRole("button", { name: "Use this project as a worker", exact: true }).click()
   await expect(workspace.getByText("Server version: fixture", { exact: true })).toBeVisible()
-  await workspace.getByLabel("Project on the machine", { exact: true }).selectOption(fixture.directory)
+  await chooseSearchOption(
+    page,
+    workspace.getByRole("button", { name: "Project on the machine", exact: true }),
+    fixture.project.name,
+    fixture.directory,
+  )
   await expect(workspace.getByRole("button", { name: "Register worker checkout", exact: true })).toBeDisabled()
   await expect(
     workspace.getByText(/A desktop loopback forward cannot be registered with a remote coordinator/),
   ).toBeVisible()
-  await workspace.getByLabel("Connected machine", { exact: true }).selectOption(strongKey)
-  await workspace.getByLabel("Project on the machine", { exact: true }).selectOption(fixture.directory)
+  await chooseSearchOption(page, workspace.getByRole("button", { name: "Connected machine", exact: true }), "Strong PC")
+  await chooseSearchOption(
+    page,
+    workspace.getByRole("button", { name: "Project on the machine", exact: true }),
+    fixture.project.name,
+    fixture.directory,
+  )
   await workspace.getByLabel("Worker name", { exact: true }).fill("strong-self")
   await expect(workspace.getByRole("button", { name: "Register worker checkout", exact: true })).toBeEnabled()
   await workspace.getByRole("button", { name: "Register worker checkout", exact: true }).click()
@@ -442,69 +697,82 @@ test("does not report an empty inbox when inspection is incomplete or change hos
   await expect(workspace.getByText("Requests on this host", { exact: true })).toHaveCount(0)
 })
 
-test("restores the Agents workspace and answers the original worker requests without opening its transcript", async ({
-  page,
-}) => {
-  const messages: string[] = []
-  await mockStressTimeline(page, { onMessages: (request) => messages.push(request.sessionID) })
-  await installStressSessionTabs(page, { sessionIDs: [] })
-  const workers = await mockWaitingWorker(page, fixture.sessions[2])
-  await page.goto("/agents?view=inbox")
-  const workspace = page.getByRole("region", { name: "Agents", exact: true })
-  const menu = page.getByRole("navigation", { name: "Agents", exact: true })
-  await expect(menu.getByRole("button", { name: "Inbox", exact: true })).toHaveAttribute("aria-current", "page")
-  await expect(workspace.getByRole("button", { name: /Inspect child navigation · edit/ })).toBeVisible()
-  await page.reload()
-  await expect(workspace.getByRole("heading", { name: "Inbox", exact: true })).toBeVisible()
-  await workspace.getByRole("button", { name: /Inspect child navigation · edit/ }).click()
-  const permission = workspace.locator('[data-component="dock-prompt"][data-kind="permission"]')
-  await expect(permission.getByText("worker.txt", { exact: true })).toBeVisible()
-  const permissionReply = page.waitForResponse(
-    (response) =>
-      new URL(response.url()).pathname.endsWith("/batch-waiting/answer") && response.request().method() === "POST",
-  )
-  await permission.getByRole("button", { name: "Allow once", exact: true }).click()
-  expect((await permissionReply).request().postDataJSON()).toEqual({
-    kind: "permission",
-    task: "task-review",
-    requestID: "per_worker_edit",
-    decision: "once",
-  })
-  await expect(permission).toHaveCount(0)
-  await expect(workspace.locator('[data-component="dock-prompt"][data-kind="question"]')).toHaveCount(0)
-  await workspace.getByRole("button", { name: /Inspect child navigation · Worker question/ }).click()
-  const question = workspace.locator('[data-component="dock-prompt"][data-kind="question"]')
-  await question.getByRole("radio", { name: "Minimal", exact: true }).click()
-  // A metadata refresh must retain the selected question and draft answer.
-  const refreshed = page.waitForResponse((response) =>
-    new URL(response.url()).pathname.endsWith("/batch-waiting/attention"),
-  )
-  await workspace
-    .getByRole("region", { name: "batch-waiting", exact: true })
-    .getByRole("button", { name: "Refresh worker requests", exact: true })
-    .click()
-  await refreshed
-  await expect(
-    workspace
+test.describe("Inbox touch navigation", () => {
+  test.use({ hasTouch: true, isMobile: true })
+  test("restores the Agents workspace and answers the original worker requests without opening its transcript", async ({
+    page,
+  }) => {
+    const messages: string[] = []
+    await mockStressTimeline(page, { onMessages: (request) => messages.push(request.sessionID) })
+    await installStressSessionTabs(page, { sessionIDs: [] })
+    const workers = await mockWaitingWorker(page, fixture.sessions[2])
+    await page.goto("/agents?view=inbox")
+    const workspace = page.getByRole("region", { name: "Agents", exact: true })
+    const menu = page.getByRole("navigation", { name: "Agents", exact: true })
+    await expect(menu.getByRole("button", { name: "Inbox", exact: true })).toHaveAttribute("aria-current", "page")
+    await expect(workspace.getByRole("button", { name: /Inspect child navigation · edit/ })).toBeVisible()
+    await page.reload()
+    await expect(workspace.getByRole("heading", { name: "Inbox", exact: true })).toBeVisible()
+    await workspace.getByRole("button", { name: /Inspect child navigation · edit/ }).click()
+    const permission = workspace.locator('[data-component="dock-prompt"][data-kind="permission"]')
+    await expect(permission.getByText("worker.txt", { exact: true })).toBeVisible()
+    const permissionReply = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname.endsWith("/batch-waiting/answer") && response.request().method() === "POST",
+    )
+    await permission.getByRole("button", { name: "Allow once", exact: true }).click()
+    expect((await permissionReply).request().postDataJSON()).toEqual({
+      kind: "permission",
+      task: "task-review",
+      requestID: "per_worker_edit",
+      decision: "once",
+    })
+    await expect(permission).toHaveCount(0)
+    await expect(workspace.locator('[data-component="dock-prompt"][data-kind="question"]')).toHaveCount(0)
+    await page.setViewportSize({ width: 390, height: 640 })
+    const selected = workspace.getByRole("region", { name: "Selected request", exact: true })
+    const original = workspace.getByRole("button", { name: /Inspect child navigation · Worker question/ })
+    await original.click()
+    await expect(selected).toBeInViewport()
+    const question = workspace.locator('[data-component="dock-prompt"][data-kind="question"]')
+    await question.getByRole("radio", { name: "Minimal", exact: true }).click()
+    // A metadata refresh must retain the selected question and draft answer.
+    const refreshed = page.waitForResponse((response) =>
+      new URL(response.url()).pathname.endsWith("/batch-waiting/attention"),
+    )
+    await workspace
       .getByRole("region", { name: "batch-waiting", exact: true })
-      .getByRole("button", { name: "Refresh worker requests", exact: true }),
-  ).toBeEnabled()
-  await expect(question.getByRole("radio", { name: "Minimal", exact: true })).toHaveAttribute("aria-checked", "true")
-  await page.screenshot({ path: test.info().outputPath("agents-inbox.png"), animations: "disabled" })
-  const questionReply = page.waitForResponse(
-    (response) =>
-      new URL(response.url()).pathname.endsWith("/batch-waiting/answer") && response.request().method() === "POST",
-  )
-  await question.getByRole("button", { name: "Submit", exact: true }).click()
-  expect((await questionReply).request().postDataJSON()).toEqual({
-    kind: "question",
-    task: "task-review",
-    formID: "frm_worker_choice",
-    answer: { q0: "minimal" },
+      .getByRole("button", { name: "Refresh worker requests", exact: true })
+      .click()
+    await refreshed
+    await expect(
+      workspace
+        .getByRole("region", { name: "batch-waiting", exact: true })
+        .getByRole("button", { name: "Refresh worker requests", exact: true }),
+    ).toBeEnabled()
+    await expect(question.getByRole("radio", { name: "Minimal", exact: true })).toHaveAttribute("aria-checked", "true")
+    await selected.getByRole("button", { name: "Back to requests", exact: true }).click()
+    await expect(selected).toBeHidden()
+    await expect(original).toBeFocused()
+    await original.click()
+    await expect(question.getByRole("radio", { name: "Minimal", exact: true })).toHaveAttribute("aria-checked", "true")
+    expect(workers.requests.filter((request) => request.path.endsWith("/answer"))).toHaveLength(1)
+    await page.screenshot({ path: test.info().outputPath("agents-inbox.png"), animations: "disabled" })
+    const questionReply = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname.endsWith("/batch-waiting/answer") && response.request().method() === "POST",
+    )
+    await question.getByRole("button", { name: "Submit", exact: true }).click()
+    expect((await questionReply).request().postDataJSON()).toEqual({
+      kind: "question",
+      task: "task-review",
+      formID: "frm_worker_choice",
+      answer: { q0: "minimal" },
+    })
+    await expect(question).toHaveCount(0)
+    expect(messages).toEqual([])
+    expect(workers.requests.filter((request) => request.path.endsWith("/answer"))).toHaveLength(2)
   })
-  await expect(question).toHaveCount(0)
-  expect(messages).toEqual([])
-  expect(workers.requests.filter((request) => request.path.endsWith("/answer"))).toHaveLength(2)
 })
 
 test("shows unknown initial CPU usage and hides stale resources after a failed refresh", async ({ page }) => {
@@ -600,54 +868,233 @@ test("explains unconfirmed worker execution and recovers the saved assignment wi
   await page.screenshot({ path: test.info().outputPath("worker-recovered.png"), animations: "disabled" })
 })
 
-test("registers remote workers, sends an independent task batch and downloads reviewed changes", async ({ page }) => {
-  await mockStressTimeline(page)
-  await installStressSessionTabs(page, { sessionIDs: [] })
-  const workers = await mockRemoteWorkers(page)
-  await page.goto("/")
-  await page.getByRole("button", { name: "Agents", exact: true }).click()
-  const dialog = page.getByRole("region", { name: "Agents", exact: true })
-  await page
-    .getByRole("navigation", { name: "Agents", exact: true })
-    .getByRole("button", { name: "Remote workers", exact: true })
-    .click()
-  await expect(dialog.getByText("Connect a machine to start sending tasks.")).toBeVisible()
-  await dialog.getByRole("button", { name: "Add worker", exact: true }).click()
-  await dialog.getByLabel("Worker name", { exact: true }).fill("pi-a")
-  await dialog.getByLabel("Server address", { exact: true }).fill("http://192.168.1.50:4096")
-  await dialog.getByLabel("Project directory on the worker", { exact: true }).fill("/home/pi/project")
-  await dialog.getByLabel("Server password or pairing token", { exact: true }).fill("fixture-secret")
-  await dialog.getByLabel("Capabilities, separated by commas", { exact: true }).fill("linux, arm64")
-  await dialog.getByRole("button", { name: "Connect worker", exact: true }).click()
-  await expect(dialog.getByRole("heading", { name: "pi-a · Connected", exact: true })).toBeVisible()
-  await expect(dialog.getByLabel("Server password or pairing token", { exact: true })).toHaveCount(0)
-  await dialog.getByLabel("What should the worker do?", { exact: true }).fill("Review Linux compatibility")
-  await dialog.getByLabel("Run on", { exact: true }).selectOption("pi-a")
-  await dialog.getByRole("button", { name: "Add to batch", exact: true }).click()
-  await dialog.getByLabel("What should the worker do?", { exact: true }).fill("Run the test suite")
-  await dialog.getByRole("button", { name: "Send batch", exact: true }).click()
-  await expect(dialog.getByText("Completed · pi-a", { exact: true })).toHaveCount(2)
-  expect(
-    workers.requests.filter((request) => request.path === "/api/workers/batches").map((request) => request.body),
-  ).toEqual([
-    {
+test.describe("Worker touch review", () => {
+  test.use({ hasTouch: true, isMobile: true })
+  test("reviews each draft's saved routing and resources without replacing a missing worker", async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 480 })
+    await mockStressTimeline(page)
+    await installStressSessionTabs(page, { sessionIDs: [] })
+    const fleet: Worker.Status[] = [
+      {
+        worker: {
+          id: "pi-a",
+          url: "http://192.168.1.50:4096",
+          passwordEnv: "credential",
+          directories: ["/home/pi/checkout"],
+          tags: ["linux", "arm64"],
+        },
+        connection: "online",
+      },
+      {
+        worker: {
+          id: "build-pc",
+          url: "http://192.168.1.51:4096",
+          passwordEnv: "credential",
+          directories: ["/srv/build"],
+          tags: ["linux", "x64"],
+        },
+        connection: "online",
+      },
+    ]
+    const workers = await mockRemoteWorkers(page, { workers: fleet })
+    await page.goto("/agents?view=remote")
+    const workspace = page.getByRole("region", { name: "Agents", exact: true })
+    const form = workspace.getByRole("form", { name: "Compose a task batch", exact: true })
+    const prompt = form.getByLabel("What should the worker do?", { exact: true })
+    const target = form.getByRole("button", { name: "Run on", exact: true })
+    await expect(target).toContainText("Any available worker")
+    await prompt.fill("Build ARM package")
+    await target.click()
+    const search = page.getByRole("combobox", { name: "Search options", exact: true })
+    await search.fill("arm64")
+    const metadata = page.waitForResponse(
+      (response) => new URL(response.url()).pathname === "/api/workers" && response.request().method() === "GET",
+    )
+    workers.setWorkers(fleet.map((worker) => ({ ...worker, platform: "linux" })))
+    await metadata
+    await expect(search).toBeFocused()
+    await expect(search).toHaveValue("arm64")
+    await page.getByRole("option", { name: "pi-a", exact: true }).click()
+    await expect(search).toBeHidden()
+    await expect(target).toContainText("pi-a")
+    await form.getByLabel("Required worker capabilities (optional)", { exact: true }).fill("linux, arm64")
+    await form.getByRole("button", { name: "Set resource requirements", exact: true }).click()
+    await form.getByLabel("CPU slots", { exact: true }).fill("2")
+    await form.getByLabel("RAM budget (GiB)", { exact: true }).fill("1.5")
+    await form.getByLabel("Maximum CPU usage (%) — optional", { exact: true }).fill("80")
+    const load = form.getByLabel("Maximum CPU usage (%) — optional", { exact: true })
+    await expect(load).toBeInViewport({ ratio: 1 })
+    const loadBounds = await load.boundingBox()
+    const sendBounds = await form.getByRole("button", { name: "Send batch", exact: true }).boundingBox()
+    expect(loadBounds!.y + loadBounds!.height).toBeLessThanOrEqual(sendBounds!.y)
+    const send = form.getByRole("button", { name: "Send batch", exact: true })
+    await expect(send).toBeInViewport({ ratio: 1 })
+    await form.getByRole("button", { name: "Add to batch", exact: true }).click()
+    const drafts = form.getByRole("region", { name: "Draft tasks", exact: true })
+    const arm = drafts.getByRole("article", { name: "Build ARM package", exact: true })
+    await expect(arm).toContainText("Run on: pi-a")
+    await expect(arm).toContainText("Required capabilities: linux, arm64")
+    await expect(arm).toContainText("CPU: 2 · RAM: 1.50 GiB")
+    await expect(arm).toContainText("Maximum CPU usage: 80%")
+    await chooseSearchOption(page, target, "Any available worker")
+    await form.getByLabel("Required worker capabilities (optional)", { exact: true }).fill("")
+    await form.getByRole("button", { name: "Set resource requirements", exact: true }).click()
+    await prompt.fill("Discard me")
+    await form.getByRole("button", { name: "Add to batch", exact: true }).click()
+    await drafts.getByRole("button", { name: "Remove task: Discard me", exact: true }).click()
+    await expect(drafts.getByRole("article")).toHaveCount(1)
+    await prompt.fill("Review docs")
+    await form.getByRole("button", { name: "Add to batch", exact: true }).click()
+    await expect(drafts.getByRole("heading", { name: "2 tasks in this batch", exact: true })).toBeVisible()
+    const docs = drafts.getByRole("article", { name: "Review docs", exact: true })
+    await expect(docs).toContainText("Run on: Any available worker")
+    await expect(docs).not.toContainText("CPU:")
+    await expect(arm).toContainText("CPU: 2 · RAM: 1.50 GiB")
+    await chooseSearchOption(page, target, "pi-a", "/home/pi/checkout")
+    const removed = page.waitForResponse(
+      (response) => new URL(response.url()).pathname === "/api/workers" && response.request().method() === "GET",
+    )
+    workers.setWorkers([])
+    await removed
+    await expect(arm.getByRole("status")).toContainText("Worker pi-a is no longer registered.")
+    await expect(target).toContainText("pi-a")
+    await expect(drafts.getByRole("article")).toHaveCount(2)
+    await expect(send).toBeDisabled()
+    expect(workers.requests.filter((request) => request.method === "POST")).toEqual([])
+    const restored = page.waitForResponse(
+      (response) => new URL(response.url()).pathname === "/api/workers" && response.request().method() === "GET",
+    )
+    workers.setWorkers(fleet)
+    await restored
+    await expect(arm.getByRole("status")).toHaveCount(0)
+    await expect(send).toBeEnabled()
+    await arm.scrollIntoViewIfNeeded()
+    await expect(send).toBeInViewport({ ratio: 1 })
+    await page.screenshot({ path: test.info().outputPath("mobile-worker-batch.png"), animations: "disabled" })
+    const dispatched = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === "/api/workers/batches" && response.request().method() === "POST",
+    )
+    await send.click()
+    expect((await dispatched).request().postDataJSON()).toEqual({
       tasks: [
-        { id: expect.any(String), prompt: "Review Linux compatibility", worker: "pi-a" },
-        { id: expect.any(String), prompt: "Run the test suite", worker: "pi-a" },
+        {
+          id: expect.any(String),
+          prompt: "Build ARM package",
+          worker: "pi-a",
+          tags: ["linux", "arm64"],
+          resources: { cpu: 2, memoryBytes: 1.5 * 1024 ** 3, maxCpuUtilization: 0.8 },
+        },
+        { id: expect.any(String), prompt: "Review docs" },
       ],
-    },
-  ])
-  const task = dialog.getByRole("article").filter({ has: page.getByText("Run the test suite", { exact: true }) })
-  await task.getByRole("button", { name: "Review changes", exact: true }).click()
-  await expect(dialog.getByRole("heading", { name: "Collected changes", exact: true })).toBeVisible()
-  await dialog.getByText("result.txt (+1 / −0)", { exact: true }).click()
-  await expect(dialog.getByText(workers.patch, { exact: true })).toBeVisible()
-  const download = page.waitForEvent("download")
-  await dialog.getByRole("button", { name: "Download patch", exact: true }).click()
-  expect((await download).suggestedFilename()).toMatch(/^task-[a-z0-9-]+\.patch$/)
-  await page.screenshot({ path: test.info().outputPath("remote-workers.png"), animations: "disabled" })
-})
+    })
+    await expect(drafts).toHaveCount(0)
+    await expect(prompt).toHaveValue("")
+    expect(workers.requests.filter((request) => request.method === "POST")).toHaveLength(1)
+  })
 
+  test("registers remote workers, sends an independent task batch and downloads reviewed changes", async ({ page }) => {
+    await mockStressTimeline(page)
+    await installStressSessionTabs(page, { sessionIDs: [] })
+    const workers = await mockRemoteWorkers(page)
+    await page.goto("/")
+    await page.getByRole("button", { name: "Agents", exact: true }).click()
+    const dialog = page.getByRole("region", { name: "Agents", exact: true })
+    await page
+      .getByRole("navigation", { name: "Agents", exact: true })
+      .getByRole("button", { name: "Remote workers", exact: true })
+      .click()
+    await expect(dialog.getByText("Connect a machine to start sending tasks.")).toBeVisible()
+    await page.setViewportSize({ width: 320, height: 480 })
+    const add = dialog.getByRole("button", { name: "Add worker", exact: true })
+    await add.click()
+    const connection = dialog.getByRole("form", { name: "Connect a worker", exact: true })
+    await expect(connection).toBeFocused()
+    await connection.getByLabel("Server password or pairing token", { exact: true }).fill("discarded-fixture-secret")
+    await expect(connection.getByRole("button", { name: "Connect worker", exact: true })).toBeInViewport({ ratio: 1 })
+    await expect(connection.getByRole("button", { name: "Cancel", exact: true })).toBeInViewport({ ratio: 1 })
+    await connection.getByRole("button", { name: "Cancel", exact: true }).click()
+    await expect(add).toBeFocused()
+    expect(workers.requests.filter((request) => request.method === "POST")).toEqual([])
+    await add.click()
+    await expect(connection.getByLabel("Server password or pairing token", { exact: true })).toHaveValue("")
+    await dialog.getByLabel("Worker name", { exact: true }).fill("pi-a")
+    await dialog.getByLabel("Server address", { exact: true }).fill("http://192.168.1.50:4096")
+    await dialog.getByLabel("Project directory on the worker", { exact: true }).fill("/home/pi/project")
+    await dialog.getByLabel("Server password or pairing token", { exact: true }).fill("fixture-secret")
+    await dialog.getByText("Advanced worker settings", { exact: true }).click()
+    await dialog.getByLabel("Capabilities, separated by commas", { exact: true }).fill("linux, arm64")
+    await expect(connection.getByRole("button", { name: "Connect worker", exact: true })).toBeInViewport({ ratio: 1 })
+    await page.screenshot({ path: test.info().outputPath("mobile-worker-connection.png"), animations: "disabled" })
+    await dialog.getByRole("button", { name: "Connect worker", exact: true }).click()
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await expect(dialog.getByRole("heading", { name: "pi-a · Connected", exact: true })).toBeVisible()
+    expect(
+      workers.requests.find((request) => request.path === "/api/workers" && request.method === "POST")?.body,
+    ).toEqual({
+      id: "pi-a",
+      url: "http://192.168.1.50:4096",
+      directories: ["/home/pi/project"],
+      password: "fixture-secret",
+      tags: ["linux", "arm64"],
+    })
+    await expect(dialog.getByLabel("Server password or pairing token", { exact: true })).toHaveCount(0)
+    await dialog.getByLabel("What should the worker do?", { exact: true }).fill("Review Linux compatibility")
+    await chooseSearchOption(page, dialog.getByRole("button", { name: "Run on", exact: true }), "pi-a", "arm64")
+    await dialog.getByRole("button", { name: "Add to batch", exact: true }).click()
+    await dialog.getByLabel("What should the worker do?", { exact: true }).fill("Run the test suite")
+    await dialog.getByRole("button", { name: "Send batch", exact: true }).click()
+    await expect(dialog.getByText("Completed · pi-a", { exact: true })).toHaveCount(2)
+    expect(
+      workers.requests.filter((request) => request.path === "/api/workers/batches").map((request) => request.body),
+    ).toEqual([
+      {
+        tasks: [
+          { id: expect.any(String), prompt: "Review Linux compatibility", worker: "pi-a" },
+          { id: expect.any(String), prompt: "Run the test suite", worker: "pi-a" },
+        ],
+      },
+    ])
+    const task = dialog.getByRole("article").filter({ has: page.getByText("Run the test suite", { exact: true }) })
+    await dialog.getByLabel("What should the worker do?", { exact: true }).fill("Follow-up draft")
+    await page.setViewportSize({ width: 390, height: 640 })
+    const opener = task.getByRole("button", { name: "Review changes", exact: true })
+    await opener.click()
+    const review = dialog.getByRole("region", { name: "Collected changes", exact: true })
+    await expect(review).toBeFocused()
+    await expect(review.getByText("Run the test suite", { exact: true })).toBeVisible()
+    await expect(dialog.getByLabel("What should the worker do?", { exact: true })).toBeHidden()
+    await review.getByRole("button", { name: "Back to tasks", exact: true }).click()
+    await expect(opener).toBeFocused()
+    await expect(dialog.getByLabel("What should the worker do?", { exact: true })).toHaveValue("Follow-up draft")
+    const collected = page.waitForResponse((response) => new URL(response.url()).pathname.endsWith("/collect"))
+    await opener.click()
+    const taskID = (await collected).request().postDataJSON().task
+    await expect(review).toContainText(`Task: ${taskID} · Worker: pi-a`)
+    await expect(review).toBeFocused()
+    await expect(dialog.getByRole("heading", { name: "Collected changes", exact: true })).toBeVisible()
+    await dialog.getByText("result.txt (+1 / −0)", { exact: true }).click()
+    await expect(dialog.getByText(workers.patch, { exact: true })).toBeVisible()
+    await page.setViewportSize({ width: 320, height: 480 })
+    await expect(review.getByRole("button", { name: "Back to tasks", exact: true })).toBeInViewport({ ratio: 1 })
+    await expect(review.getByRole("button", { name: "Download patch", exact: true })).toBeInViewport({ ratio: 1 })
+    await review.getByLabel("result.txt", { exact: true }).focus()
+    const refreshed = page.waitForResponse(
+      (response) => new URL(response.url()).pathname === "/api/workers" && response.request().method() === "GET",
+    )
+    await refreshed
+    await expect(review.getByLabel("result.txt", { exact: true })).toBeFocused()
+    await expect(dialog.getByText(workers.patch, { exact: true })).toBeVisible()
+    const download = page.waitForEvent("download")
+    await dialog.getByRole("button", { name: "Download patch", exact: true }).click()
+    expect((await download).suggestedFilename()).toBe(`${taskID}.patch`)
+    expect(workers.requests.filter((request) => request.path === "/api/workers/batches")).toHaveLength(1)
+    await page.screenshot({ path: test.info().outputPath("mobile-worker-review.png"), animations: "disabled" })
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await expect(dialog.getByLabel("What should the worker do?", { exact: true })).toBeVisible()
+    await expect(review).toBeVisible()
+  })
+})
 // The fleet must expose the child that needs the user without loading either transcript.
 test("manages a parallel session tree without opening its conversation", async ({ page }) => {
   const messages: string[] = []

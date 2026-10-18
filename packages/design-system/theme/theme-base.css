@@ -99,6 +99,8 @@
   --reddb-theme-ink-muted-light: var(--reddb-color-neutral-500);
   --reddb-theme-muted-dark: color-mix(in srgb, var(--reddb-color-neutral-50) 8%, transparent);
   --reddb-theme-muted-light: color-mix(in srgb, var(--reddb-color-ink) 8%, transparent);
+  --reddb-theme-navigation-surface-dark: color-mix(in srgb, var(--reddb-color-neutral-50) 6%, var(--reddb-color-neutral-950));
+  --reddb-theme-navigation-surface-light: color-mix(in srgb, var(--reddb-color-ink) 3%, var(--reddb-color-neutral-0));
   --reddb-theme-on-accent-dark: var(--reddb-color-brand-on-primary);
   --reddb-theme-on-accent-light: var(--reddb-color-brand-on-primary);
   --reddb-theme-on-feedback-dark: var(--reddb-color-neutral-950);

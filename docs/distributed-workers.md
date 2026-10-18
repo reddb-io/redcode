@@ -91,7 +91,20 @@ The resource-admission extension passed 35 checks inside WSL. Both workers repor
 
 Keep the updated agent server running on the machine that will coordinate the pool. Its server-owned worker service runs independently of any desktop/browser connection. In **Agents → Remote workers** on that server, register each machine's address, absolute checkout directory, server password or pairing token, and optional capability tags. **Check connection** verifies authentication and displays the actual platform.
 
-The panel uses the canonical Redcode design-system button, card, input and textarea contracts. Add independent tasks to a batch, choose a worker or allow placement on any available worker, then **Send batch**. The server accepts one unfinished batch at a time, dispatches its tasks across independent checkout slots, and continues observing when the panel closes. Open **Agents → Inbox** on the coordinator to answer the assigned worker's permissions and questions. Other forms, including credential entry, use the worker Session's normal connected client. The coordinator resolves each reply from its saved task assignment and rechecks the original request and current resource grants.
+The panel uses the canonical Redcode design-system form contracts. Worker setup starts with the name,
+address, checkout and credential; **Advanced worker settings** holds capability tags and the Console
+resource ID required for organization access. Cancelling clears the credential and returns to
+**Add worker**. Connection and batch actions stay accessible while long forms scroll on phones.
+
+The task composer precedes the worker inventory. **Run on** searches locally by worker name, address,
+checkout or capability; choose **Any available worker** to leave placement to the coordinator.
+Each draft shows its saved worker, required capabilities and declared CPU/RAM budgets, including an
+optional CPU usage threshold. Changing the next task's settings does not change drafts already in the
+batch. If a draft's explicit worker is no longer registered, the UI keeps that assignment and blocks
+sending until the worker returns or the draft is removed. It never replaces that choice with automatic
+placement. Drafts remain visible if the registry becomes empty; register a worker before sending.
+
+Add independent tasks to a batch, choose a worker or allow placement on any available worker, then **Send batch**. The server accepts one unfinished batch at a time, dispatches its tasks across independent checkout slots, and continues observing when the panel closes. Open **Agents → Inbox** on the coordinator to answer the assigned worker's permissions and questions. Other forms, including credential entry, use the worker Session's normal connected client. The coordinator resolves each reply from its saved task assignment and rechecks the original request and current resource grants.
 
 **Agents → Hosts and resources** shows available CPU slots and RAM on the coordinator and registered workers. Worker credentials remain on the coordinator. Measurements refresh while the view is open or queued tasks need an admission decision; unknown, unavailable and stale readings are not reported as zero load. On Linux cgroup v2 hosts, visible CPU quotas and memory limits/current usage are considered. Unsupported constrained memory measurements remain unknown. Workers need the updated server endpoints to expose resources and pending requests.
 
@@ -105,7 +118,7 @@ reuses its PID can reclaim that local lock. The worker-side checkout lease is se
 coordinator runtime must also wait for the previous remote lease deadline before recovering its
 saved assignments. Neither mechanism automatically replays ambiguous prompts.
 
-For terminal tasks, **Review changes** collects the recorded turn's file diffs and lets you download its text patch. Collected artifacts are cached on the coordinator and remain reviewable after a worker is removed. Collection never applies a patch to the local project. Initial collection still needs the worker and its credential; collect results before removing that worker.
+For terminal tasks, **Review changes** collects the recorded turn's file diffs and lets you download its text patch. Review identifies the task and worker, keeps patch download accessible while the diff scrolls, and opens in place of the inventory on phones. **Back** returns to the original task without applying changes or discarding an unsent batch draft. Collected artifacts are cached on the coordinator and remain reviewable after a worker is removed. Collection never applies a patch to the local project. Initial collection still needs the worker and its credential; collect results before removing that worker.
 
 ## Prepare isolated workspaces in the app
 

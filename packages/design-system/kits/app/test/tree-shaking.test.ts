@@ -130,6 +130,7 @@ const MARKERS: Readonly<Record<string, string>> = {
   Pill: "-me-1 inline-flex items-center justify-center rounded-full",
   Review: "grid w-full min-w-0 gap-[var(--reddb-spatial-gap-md)]",
   SidebarNavigation: "m-0 flex list-none flex-col gap-[var(--reddb-spatial-gap-sm)] p-0",
+  SidebarPanel: "flex min-h-0 min-w-0 flex-col bg-elevation-sunken-surface text-foreground",
   SidebarRail: "flex h-full min-h-0 w-[calc(var(--reddb-spatial-control-height-md)+2*var(--reddb-spatial-inset-sm))] shrink-0 flex-col items-center",
   ShoppingCart: "flex min-w-0 flex-wrap items-end gap-[var(--reddb-spatial-gap-md)]",
   PageHeading: "min-w-0 flex-[1_1_20rem]",

@@ -13,7 +13,8 @@ test("mobile navigation leaves the conversation full width and keeps scopes acce
   await page.goto(sessionHref(fixture.targetID))
   const rail = page.getByRole("navigation", { name: "Navigation", exact: true })
   const main = page.getByRole("main")
-  const menu = page.getByRole("button", { name: "Navigation", exact: true })
+  const dock = page.getByRole("navigation", { name: "Mobile navigation", exact: true })
+  const menu = dock.getByRole("button", { name: "More", exact: true })
   await expect(page.getByRole("textbox", { name: "Prompt", exact: true })).toBeVisible()
   await expect(page.locator("html")).toHaveAttribute("data-density", "tiny")
   await expect(page.locator('[data-component="markdown"]').first()).toHaveCSS("font-size", "13px")
@@ -22,31 +23,55 @@ test("mobile navigation leaves the conversation full width and keeps scopes acce
   for (const width of [320, 390, 700]) {
     await page.setViewportSize({ width, height: 844 })
     await expect(rail).toBeHidden()
+    await expect(dock).toBeVisible()
+    await expect(dock.getByRole("button")).toHaveCount(5)
     await expect.poll(async () => (await main.boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(width - 2)
   }
   await page.setViewportSize({ width: 390, height: 844 })
+  const prompt = page.getByRole("textbox", { name: "Prompt", exact: true })
+  await prompt.fill("Keep the mobile draft")
+  for (const height of [480, 844]) {
+    await page.setViewportSize({ width: 390, height })
+    await expect
+      .poll(async () => {
+        const editor = await prompt.boundingBox()
+        const bar = await dock.boundingBox()
+        return !!editor && !!bar && editor.y + editor.height <= bar.y && bar.y + bar.height <= height
+      })
+      .toBe(true)
+    await expect(prompt).toHaveText("Keep the mobile draft")
+  }
   await page.screenshot({ path: test.info().outputPath("mobile-full-width-session.png"), animations: "disabled" })
+  const search = dock.getByRole("button", { name: "Search", exact: true })
+  await search.click()
+  await expect(page.getByPlaceholder("Search files, commands, and sessions", { exact: true })).toBeFocused()
+  await page.keyboard.press("Escape")
+  await expect(search).toBeFocused()
   await menu.click()
-  for (const name of ["Home", "New session", "Search", "Toggle sidebar", "Agents", "Settings", "Servers", "Help"])
+  for (const name of ["New session", "Settings", "Servers", "Help"])
     await expect(page.getByRole("menuitem", { name, exact: true })).toBeVisible()
-  await page.getByRole("menuitem", { name: "Toggle sidebar", exact: true }).click()
+  await expect(page.getByRole("menuitem")).toHaveCount(4)
+  await page.keyboard.press("Escape")
+  await expect(menu).toBeFocused()
+  await dock.getByRole("button", { name: "Browse", exact: true }).click()
   const sidebar = page.getByRole("complementary", { name: "Projects and sessions", exact: true })
   await expect(sidebar).toBeVisible()
   await sidebar.getByRole("button", { name: "Close sidebar", exact: true }).click()
   await expect(sidebar).toBeHidden()
-  await menu.click()
-  await page.getByRole("menuitem", { name: "Agents", exact: true }).click()
+  await expect(dock.getByRole("button", { name: "Browse", exact: true })).toBeFocused()
+  await dock.getByRole("button", { name: "Agents", exact: true }).click()
   await expect(page.getByRole("region", { name: "Agents", exact: true })).toBeVisible()
-  await menu.click()
-  await page.getByRole("menuitem", { name: "Toggle sidebar", exact: true }).click()
+  await dock.getByRole("button", { name: "Browse", exact: true }).click()
   const agents = page.getByRole("complementary", { name: "Agents", exact: true })
   await expect(agents.getByRole("button", { name: "Machines", exact: true })).toBeVisible()
   await expect(agents).toBeFocused()
   await page.keyboard.press("Escape")
   await expect(agents).toBeHidden()
+  await expect(dock.getByRole("button", { name: "Browse", exact: true })).toBeFocused()
   await page.setViewportSize({ width: 1024, height: 900 })
   await expect(page.locator("html")).toHaveAttribute("data-density", "compact")
   await expect(rail).toBeVisible()
+  await expect(dock).toBeHidden()
   await expect(menu).toBeHidden()
 })
 
@@ -64,7 +89,9 @@ test.describe("mobile touch density", () => {
     ).toBeInViewport()
     await expect(composer).toHaveCSS("font-size", "16px")
     await expect(page.locator('[data-component="markdown"]').first()).toHaveCSS("font-size", "13px")
-    const menu = page.getByRole("button", { name: "Navigation", exact: true })
+    const menu = page
+      .getByRole("navigation", { name: "Mobile navigation", exact: true })
+      .getByRole("button", { name: "More", exact: true })
     await expect.poll(async () => (await menu.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44)
     await expect.poll(async () => (await menu.boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(44)
     await page.screenshot({ path: test.info().outputPath("android-dense-session.png"), animations: "disabled" })
@@ -491,7 +518,10 @@ test.describe("touch", () => {
     test("dismisses a touch context menu by tapping outside", async ({ page }) => {
       const drawer = page.locator('[data-slot="mobile-tabs-drawer"]')
       const tab = drawer.locator('[data-slot="tab-link"]').filter({ hasText: fixture.expected.sourceTitle })
-      const homeBox = await page.getByRole("dialog", { name: "Tabs", exact: true }).locator('[data-slot="mobile-drawer-handle"]').boundingBox()
+      const homeBox = await page
+        .getByRole("dialog", { name: "Tabs", exact: true })
+        .locator('[data-slot="mobile-drawer-handle"]')
+        .boundingBox()
       const box = await tab.boundingBox()
       expect(homeBox).not.toBeNull()
       expect(box).not.toBeNull()
@@ -514,11 +544,18 @@ test.describe("touch", () => {
 async function navigateFromMenu(page: Page, name: string) {
   const drawer = page.getByRole("dialog", { name: "Tabs", exact: true })
   if (await drawer.isVisible()) {
-    await expect(page.locator('[data-slot="mobile-drawer-content"][data-open]')).not.toHaveAttribute("data-transitioning")
+    await expect(page.locator('[data-slot="mobile-drawer-content"][data-open]')).not.toHaveAttribute(
+      "data-transitioning",
+    )
     await page.keyboard.press("Escape")
     await expect(drawer).toBeHidden()
   }
-  await page.getByRole("button", { name: "Navigation", exact: true }).click()
+  const navigation = page.getByRole("navigation", { name: "Mobile navigation", exact: true })
+  if (["Home", "Agents", "Search"].includes(name)) {
+    await navigation.getByRole("button", { name, exact: true }).click()
+    return
+  }
+  await navigation.getByRole("button", { name: "More", exact: true }).click()
   await page.getByRole("menuitem", { name, exact: true }).click()
 }
 

@@ -14,6 +14,17 @@
      */
     image?: ImageAsset;
   }
+
+  export interface CarouselViewportContext {
+    /** Slides in caller-owned document order. */
+    slides: readonly CarouselSlide[];
+    /** Current zero-based index; zero for an empty carousel. */
+    active: number;
+    /** Whether automatic rotation is running. */
+    playing: boolean;
+    /** Initial slide index, used to prioritize its image. */
+    firstIndex: number;
+  }
 </script>
 
 <script lang="ts">
@@ -30,6 +41,8 @@
     label: string;
     /** Caller-owned slides in stable document order. */
     slides: readonly CarouselSlide[];
+    /** Replaces the default slide drawing while keeping canonical navigation and rotation. The renderer owns slide semantics, inactive content exclusion and image priority. */
+    viewport?: Snippet<[CarouselViewportContext]>;
     /** Initially selected zero-based slide index. */
     initialIndex?: number;
     /** Opt-in automatic rotation, suspended under reduced motion. A pause/resume control is always rendered when enabled. */
@@ -58,6 +71,7 @@
   let {
     label,
     slides,
+    viewport,
     initialIndex = 0,
     autoplay = false,
     interval = 5_000,
@@ -72,7 +86,8 @@
   }: Props = $props();
 
   const reducedMotion = useReducedMotion();
-  let active = $state(untrack(() => Math.max(0, Math.min(initialIndex, slides.length - 1))));
+  let requestedIndex = $state(untrack(() => Math.max(0, Math.trunc(initialIndex) || 0)));
+  const active = $derived(Math.max(0, Math.min(requestedIndex, slides.length - 1)));
   const firstIndex = untrack(() => active);
   let rotationRequested = $state(untrack(() => autoplay && slides.length > 1));
   const isPlaying = $derived(rotationRequested && !reducedMotion.current);
@@ -80,9 +95,9 @@
 
   function select(index: number): void {
     if (slides.length < 1) return;
-    active = (index + slides.length) % slides.length;
-    onvaluechange?.(active);
-    onchange?.(active);
+    requestedIndex = (index + slides.length) % slides.length;
+    onvaluechange?.(requestedIndex);
+    onchange?.(requestedIndex);
   }
 
   $effect(() => {
@@ -118,6 +133,9 @@
     aria-live={isPlaying ? "off" : "polite"}
     class={styles.viewport({ class: viewportClass })}
   >
+    {#if viewport}
+      {@render viewport({slides, active, playing: isPlaying, firstIndex})}
+    {:else}
     {#each slides as slide, index (slide)}
       <div
         data-carousel-slide
@@ -134,6 +152,7 @@
         {/if}
       </div>
     {/each}
+    {/if}
   </div>
 
   <div data-carousel-controls class={styles.controls({ class: controlsClass })}>

@@ -4,3 +4,4 @@ packages/core/src/models-dev/snapshot.txt linguist-generated
 packages/core/src/**/*.txt text eol=lf
 packages/core/test/fixture/*.txt text eol=lf
 packages/httpapi-codegen/test/generated/*.ts text eol=lf
+packages/design-system/** text=auto eol=lf

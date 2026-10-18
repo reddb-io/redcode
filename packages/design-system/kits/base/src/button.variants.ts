@@ -8,6 +8,7 @@
 import { tv, type VariantProps } from "tailwind-variants";
 import { QUIET_HOVER, QUIET_OPEN, QUIET_PRESSED } from "./quiet-control.variants";
 import type { Tone } from "./tone";
+import { typeRoleMerge } from "./type-roles";
 
 const VARIANT = {
   /** The affirmative action of a view — at most one per view. */
@@ -145,8 +146,8 @@ export const button = tv({
       class: "text-feedback-info-foreground hover:text-feedback-info-foreground hover:bg-feedback-info-surface active:bg-feedback-info-surface",
     },
   ],
-  defaultVariants: { variant: "primary", tone: "neutral", size: "md", block: false },
-});
+  defaultVariants: { variant: "secondary", tone: "neutral", size: "md", block: false },
+}, typeRoleMerge);
 
 /**
  * The loading indicator, inheriting the Button variant's current colour. It

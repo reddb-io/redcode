@@ -1,4 +1,7 @@
 const source = {
+  "ui.searchSelect.placeholder": "Choose an option",
+  "ui.searchSelect.search": "Search options",
+  "ui.searchSelect.empty": "No matching options",
   "ui.sessionReview.title": "Session changes",
   "ui.sessionReview.title.git": "Git changes",
   "ui.sessionReview.title.branch": "Branch changes",

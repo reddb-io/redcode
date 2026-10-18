@@ -67,7 +67,7 @@ export function SettingsAgentTools() {
                   <h3 class={appearance.title()}>{language.t("agentTools.setup.title")}</h3>
                   <p class={appearance.description()}>{language.t("agentTools.host", value().host)}</p>
                 </div>
-                <div class={`${appearance.body()} flex flex-col gap-3`}>
+                <div class={appearance.body({ class: "flex flex-col gap-3 space-y-0" })}>
                   <p class="text-13-regular">{language.t("agentTools.setup.target", { name: value().host.name })}</p>
                   <ol class="list-decimal pl-5 flex flex-col gap-2 text-13-regular">
                     <li>{language.t("agentTools.setup.install")}</li>
@@ -172,7 +172,7 @@ function AgentToolCard(props: {
         </div>
         <p class={appearance.description()}>{language.t(`agentTools.${props.item.id}.description`)}</p>
       </div>
-      <div class={`${appearance.body()} flex flex-col gap-3`}>
+      <div class={appearance.body({ class: "flex flex-col gap-3 space-y-0" })}>
         <p role="status" class="text-13-regular">
           {language.t(
             !props.item.supported

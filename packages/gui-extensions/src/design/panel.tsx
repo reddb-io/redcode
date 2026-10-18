@@ -9,6 +9,7 @@ import { IconButton } from "@opencode/ui/icon-button"
 import { ScrollView } from "@opencode/ui/scroll-view"
 import { Tooltip } from "@opencode/ui/tooltip"
 import { showToast } from "@opencode/ui/toast"
+import { sidebarPanel } from "@reddb-io/design-system/contracts/sidebar-panel"
 import { useExtension, type MountedSession } from "../sdk"
 import type definition from "./index"
 import type { DesignReviewOpener } from "./model"
@@ -16,6 +17,7 @@ import { designActivity, designReview, designStatus } from "./state"
 
 /** The Design tab: the session's designs with their review state, and the way into the review. */
 export default function SessionDesignPanel(props: { session: MountedSession; review: DesignReviewOpener }) {
+  const panel = sidebarPanel()
   const ctx = useExtension<typeof definition>()
   const dialogs = ctx.dialogs
   const client = () => props.session.server.client
@@ -96,10 +98,10 @@ export default function SessionDesignPanel(props: { session: MountedSession; rev
   }
 
   return (
-    <div class="flex h-full min-h-0 flex-col bg-v2-background-bg-base" data-slot="session-design-panel">
-      <div class="flex shrink-0 items-center justify-between gap-3 border-b border-v2-border-border-base px-5 py-3">
-        <div class="min-w-0 truncate text-13-medium text-v2-text-text-base">{ctx.t("title")}</div>
-        <div class="flex shrink-0 items-center gap-2">
+    <div class={panel.root({ class: "h-full" })} data-slot="session-design-panel">
+      <div class={panel.toolbar()}>
+        <div class="min-w-0 truncate text-body font-medium">{ctx.t("title")}</div>
+        <div class={panel.actions()}>
           <Tooltip value={ctx.t("refresh")}>
             <IconButton
               size="small"
@@ -134,7 +136,7 @@ export default function SessionDesignPanel(props: { session: MountedSession; rev
         </div>
       </div>
 
-      <div class="relative min-h-0 flex-1">
+      <div class={panel.body({ class: "relative p-0" })}>
         <Switch>
           <Match when={designs.error}>
             <div class="flex h-full flex-col items-center justify-center gap-3 px-8 pb-24 text-center">

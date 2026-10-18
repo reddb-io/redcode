@@ -119,6 +119,7 @@
         <Bits.Content
           sideOffset={8}
           collisionPadding={8}
+          avoidCollisions={true}
           data-combobox-surface
           data-avoid-collisions="true"
           class={popover({ class: styles.content({ class: contentClass }) })}
@@ -131,7 +132,7 @@
                 disabled={option.disabled}
                 class={styles.item({ class: itemClass })}
               >
-                <span>{option.label}</span>
+                <span class="min-w-0 break-words">{option.label}</span>
                 {#if option.value === value}
                   <span class={styles.indicator()} aria-hidden="true">✓</span>
                   <span class="sr-only">Selected</span>

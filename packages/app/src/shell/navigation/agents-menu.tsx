@@ -2,8 +2,8 @@ import { useSearchParams } from "@solidjs/router"
 import { sidebarNavigation } from "@reddb-io/design-system/contracts/sidebar-navigation"
 import { navItem } from "@reddb-io/design-system/contracts/nav-item"
 import { quietControl } from "@reddb-io/design-system/contracts/quiet-control"
-import { input } from "@reddb-io/design-system/contracts/input"
-import { For, Show } from "solid-js"
+import { SearchSelect } from "@opencode/ui/search-select"
+import { For } from "solid-js"
 import { useLanguage } from "@/runtime/i18n/language"
 import { ServerConnection, serverName, useServers } from "@/runtime/server/registry"
 import { useNavigation } from "./controller"
@@ -66,19 +66,19 @@ export function AgentsMenu() {
       <h2 class="px-2 py-3 text-13-medium leading-[var(--line-height-base)]">{language.t("agents.title")}</h2>
       <label class="flex flex-col gap-1 px-2 pb-4 text-13-regular leading-[var(--line-height-base)]">
         {language.t("agents.scope.host")}
-        <select
-          aria-label={language.t("agents.scope.host")}
-          class={input({ size: "sm" })}
+        <SearchSelect
+          label={language.t("agents.scope.host")}
           value={scope.host()}
-          onChange={(event) => scope.selectHost(event.currentTarget.value)}
-        >
-          <Show when={scope.view() !== "machines"}>
-            <option value="">{language.t("agents.scope.all")}</option>
-          </Show>
-          <For each={servers.visible}>
-            {(server) => <option value={ServerConnection.key(server)}>{serverName(server)}</option>}
-          </For>
-        </select>
+          onChange={scope.selectHost}
+          options={[
+            ...(scope.view() === "machines" ? [] : [{ value: "", label: language.t("agents.scope.all") }]),
+            ...servers.visible.map((server) => ({
+              value: ServerConnection.key(server),
+              label: serverName(server),
+              description: server.http.url,
+            })),
+          ]}
+        />
       </label>
       <ul class={nav.list()}>
         <For each={AGENT_VIEWS}>

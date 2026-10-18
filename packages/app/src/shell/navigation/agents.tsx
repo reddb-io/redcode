@@ -1,9 +1,12 @@
 import type { SessionInfo } from "@opencode/client/promise"
 import { Button } from "@opencode/ui/button"
+import { Icon } from "@opencode/ui/icon"
+import { SearchSelect } from "@opencode/ui/search-select"
 import { input } from "@reddb-io/design-system/contracts/input"
 import { useQuery } from "@tanstack/solid-query"
 import { createMemo, For, lazy, onCleanup, Show, Switch, Match } from "solid-js"
 import { createStore, type SetStoreFunction } from "solid-js/store"
+import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { useLanguage } from "@/runtime/i18n/language"
 import { ServerConnection, serverName } from "@/runtime/server/registry"
 import { useGlobal, type ServerCtx } from "@/runtime/server/runtime"
@@ -13,7 +16,7 @@ import { sessionLabel } from "@/session/title"
 import { errorMessage } from "@/shell/layout/helpers"
 import { showToast } from "@/shell/notifications/toast"
 import { useNavigation } from "./controller"
-import { AGENT_LABELS, useAgentsScope } from "./agents-menu"
+import { AGENT_LABELS, AGENT_VIEWS, useAgentsScope } from "./agents-menu"
 import { agentSessionTrees, SESSION_STATUSES, rollupSessionStatus, sessionAwaitsUser, sessionStatus } from "./model"
 import { RemoteWorkers } from "./remote-workers"
 
@@ -47,20 +50,40 @@ export default function Agents() {
       data-component="agents-workspace"
       class="flex h-full min-h-0 w-full flex-col px-[var(--shell-inline-inset,8px)] pb-[var(--shell-bottom-inset,8px)] pt-[var(--shell-top-inset,8px)]"
     >
-      <div class="flex min-h-0 flex-1 flex-col rounded-lg border border-v2-border-border-base bg-v2-background-bg-base">
-        <header class="flex flex-wrap items-center gap-2 border-b border-v2-border-border-base px-5 py-4">
+      <div class="flex min-h-0 min-w-0 flex-1 flex-col rounded-lg border border-v2-border-border-base bg-v2-background-bg-base">
+        <header class="flex shrink-0 flex-wrap items-center gap-[var(--reddb-spatial-gap-sm)] border-b border-v2-border-border-base px-[var(--reddb-spatial-inset-md)] py-[var(--reddb-spatial-inset-sm)]">
           <div class="min-w-0 flex-1">
-            <h1 class="text-16-medium">{language.t(AGENT_LABELS[scope.view()])}</h1>
-            <p class="text-13-regular leading-[var(--line-height-base)] text-v2-text-text-muted">
+            <h1 class="sr-only text-16-medium md:not-sr-only">{language.t(AGENT_LABELS[scope.view()])}</h1>
+            <div class="md:hidden">
+              <SearchSelect
+                label={language.t("agents.scope.view")}
+                value={scope.view()}
+                class="w-full"
+                options={AGENT_VIEWS.map((view) => ({ value: view, label: language.t(AGENT_LABELS[view]) }))}
+                onChange={(value) => {
+                  const view = AGENT_VIEWS.find((view) => view === value)
+                  if (view) scope.select(view)
+                }}
+              />
+            </div>
+            <p class="hidden text-13-regular leading-[var(--line-height-base)] text-v2-text-text-muted md:block">
               {language.t("agents.description")}
             </p>
           </div>
-          <Button variant="outline" onClick={navigation.go.newSession}>
-            {language.t("command.session.new")}
+          <Button
+            variant="outline"
+            aria-label={language.t("command.session.new")}
+            class="shrink-0 max-md:h-[var(--reddb-spatial-target-min)] max-md:w-[var(--reddb-spatial-target-min)] max-md:p-0"
+            onClick={navigation.go.newSession}
+          >
+            <span class="md:hidden">
+              <Icon name="plus" />
+            </span>
+            <span class="hidden md:inline">{language.t("command.session.new")}</span>
           </Button>
           <Show when={scope.view() === "sessions"}>
             <input
-              class={input({ size: "sm", class: "w-full sm:w-48" })}
+              class={input({ size: "sm", class: "min-h-[var(--reddb-spatial-target-min)] w-full sm:w-48" })}
               aria-label={language.t("agents.filter")}
               placeholder={language.t("agents.filter")}
               value={state.query}
@@ -69,13 +92,21 @@ export default function Agents() {
             <Button
               variant="ghost"
               aria-pressed={state.attention}
+              class="min-h-[var(--reddb-spatial-target-min)]"
               onClick={() => setState("attention", !state.attention)}
             >
               {language.t("agents.attention")}
             </Button>
           </Show>
         </header>
-        <div class="min-h-0 w-full flex-1 overflow-y-auto px-5 py-3">
+        <div
+          ref={(element) =>
+            createResizeObserver(element, (rect) =>
+              element.style.setProperty("--agents-content-height", `${rect.height}px`),
+            )
+          }
+          class="min-h-0 min-w-0 w-full flex-1 overflow-y-auto px-[var(--reddb-spatial-inset-md)] py-[var(--reddb-spatial-inset-sm)] [overflow-wrap:anywhere]"
+        >
           <Show when={scope.servers().length === 0}>
             <p role="status">{language.t("agents.scope.missing")}</p>
           </Show>

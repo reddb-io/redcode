@@ -152,7 +152,10 @@ test("navigation replaces commands without retaining disposed owners", async ({ 
   await expect(page.getByRole("heading", { name: paletteSession.title, exact: true })).toBeVisible()
 
   for (const count of [3, 4]) {
-    await page.getByRole("button", { name: "New session", exact: true }).click()
+    await page
+      .getByRole("navigation", { name: "Navigation", exact: true })
+      .getByRole("button", { name: "New session", exact: true })
+      .click()
     await expect(tabs).toHaveCount(count)
     await expect(editor).toBeEditable()
   }

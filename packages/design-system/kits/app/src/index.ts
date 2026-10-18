@@ -46,6 +46,8 @@ export { default as OrderHistory } from "./composites/OrderHistory.svelte";
 export { default as OrderSummary } from "./composites/OrderSummary.svelte";
 export { default as ShoppingCart } from "./composites/ShoppingCart.svelte";
 export { default as SidebarNavigation } from "./composites/SidebarNavigation.svelte";
+export { default as SidebarPanel } from "./composites/SidebarPanel.svelte";
+export { sidebarPanel } from "./composites/sidebar-panel.variants";
 export { default as SidebarRail } from "./composites/SidebarRail.svelte";
 export { default as StoreNavigation } from "./composites/StoreNavigation.svelte";
 export { default as PageHeading } from "./composites/PageHeading.svelte";
@@ -202,7 +204,7 @@ export {
   storeNavigation,
   type StoreNavigationVariants,
 } from "./composites/store-navigation.variants";
-export type { ApplicationNavigationItem } from "./composites/navigation.behavior";
+export type { ApplicationNavigationItem, PrimaryNavigationItem, NavigationMarkers, NavigationStatus } from "./composites/navigation.behavior";
 export {
   applicationShell,
   type ApplicationShellVariants,
@@ -298,6 +300,7 @@ export const COMPOSITES = [
   "ProductQuickview",
   "SidebarLayout",
   "SidebarNavigation",
+  "SidebarPanel",
   "SidebarRail",
   "ShoppingCart",
   "SpeedDial",
@@ -349,9 +352,12 @@ export const COMPONENT_PURPOSES = {
   ProductQuickview: "Data display",
   SidebarLayout: "Layout",
   SidebarNavigation: "Navigation",
+  SidebarPanel: "Navigation",
   SidebarRail: "Navigation",
   ShoppingCart: "Data input",
   SpeedDial: "Actions",
   StoreNavigation: "Navigation",
   Toolbar: "Actions",
 } as const satisfies Record<ComponentName, PurposeCategory>;
+
+export type { BottomNavigationItem } from "./composites/BottomNavigation.svelte";

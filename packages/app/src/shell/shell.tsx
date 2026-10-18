@@ -17,12 +17,14 @@ import { ExtensionSlot } from "@/runtime/extension/render"
 import { useLanguage } from "@/runtime/i18n/language"
 import { useNavigation } from "@/shell/navigation/controller"
 import { AgentsMenu } from "@/shell/navigation/agents-menu"
-import { NavigationRail } from "@/shell/navigation/rail"
+import { NavigationRail, MobileNavigationDock } from "@/shell/navigation/rail"
 import { NavigationSidemenu } from "@/shell/navigation/sidemenu"
-import { NAVIGATION_MAX_WIDTH, NAVIGATION_MIN_WIDTH, NAVIGATION_PANEL_ID } from "@/shell/navigation/model"
-
-// The rail's own width, as the DS rail layout computes it.
-const RAIL_WIDTH = "calc(var(--reddb-spatial-control-height-md) + 2 * var(--reddb-spatial-inset-sm))"
+import {
+  NAVIGATION_MAX_WIDTH,
+  NAVIGATION_MIN_WIDTH,
+  NAVIGATION_PANEL_ID,
+  NAVIGATION_BROWSE_ID,
+} from "@/shell/navigation/model"
 
 export default function Layout(props: ParentProps) {
   const platform = usePlatform()
@@ -35,11 +37,15 @@ export default function Layout(props: ParentProps) {
   const bottomTitlebar = () => mobile() && preferences.general.mobileTitlebarPosition() === "bottom"
   const opened = () => navigation.panel.opened()
   const frame = createMemo(() => sidebarLayout({ rail: true, railOpen: !mobile(), panelOpen: opened() }))
+  const dismissPanel = () => {
+    navigation.panel.close()
+    if (mobile()) document.getElementById(NAVIGATION_BROWSE_ID)?.focus()
+  }
 
   // The DS drawer closes on Escape; the window listener runs after dialogs and menus took theirs.
   makeEventListener(window, "keydown", (event) => {
     if (event.key !== "Escape" || event.defaultPrevented || !mobile() || !opened()) return
-    navigation.panel.close()
+    dismissPanel()
   })
 
   return (
@@ -56,10 +62,9 @@ export default function Layout(props: ParentProps) {
             : platform.platform === "desktop" && platform.os === "windows"
               ? "1px"
               : "8px",
-          "--shell-bottom-inset": bottomTitlebar()
+          "--shell-bottom-inset": mobile()
             ? "8px"
             : "max(0px, calc(8px - var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))))",
-          "--navigation-rail-width": RAIL_WIDTH,
         }}
       >
         <Titlebar />
@@ -73,7 +78,7 @@ export default function Layout(props: ParentProps) {
             "min-height": "0",
             // The sidemenu keeps the width the user dragged it to rather than the frame's 1 : 3 split.
             "grid-template-columns":
-              !mobile() && opened() ? `${RAIL_WIDTH} ${navigation.panel.width()}px minmax(0, 1fr)` : undefined,
+              !mobile() && opened() ? `max-content ${navigation.panel.width()}px minmax(0, 1fr)` : undefined,
             transition: state.resizing ? "none" : undefined,
           }}
         >
@@ -90,7 +95,7 @@ export default function Layout(props: ParentProps) {
               aria-label={language.t("navigation.close")}
               data-sidebar-drawer-backdrop
               class="fixed inset-0 z-30 bg-foreground/20 md:hidden"
-              onClick={navigation.panel.close}
+              onClick={dismissPanel}
             />
           </Show>
           <aside
@@ -101,7 +106,10 @@ export default function Layout(props: ParentProps) {
             data-mobile-presentation="drawer"
             data-state={opened() ? "open" : "closed"}
             inert={!opened()}
-            class={frame().panel({ class: "relative flex min-h-0 flex-col max-md:p-0" })}
+            class={frame().panel({
+              // Mobile hides the rail, so its drawer can use the whole viewport without a rail-width fallback.
+              class: "relative flex min-h-0 flex-col max-md:p-0 max-md:w-[min(20rem,100dvw)]",
+            })}
             classList={{ "max-md:invisible md:border-e-0": !opened() }}
           >
             <Show when={mobile()}>
@@ -114,7 +122,7 @@ export default function Layout(props: ParentProps) {
                   size="large"
                   icon={<Icon name="close" />}
                   aria-label={language.t("navigation.close")}
-                  onClick={navigation.panel.close}
+                  onClick={dismissPanel}
                 />
               </div>
             </Show>
@@ -151,12 +159,14 @@ export default function Layout(props: ParentProps) {
             style={{
               "padding-top": bottomTitlebar() ? "env(safe-area-inset-top, 0px)" : "0px",
               "padding-bottom":
-                bottomTitlebar() || settings.active()
+                mobile() || settings.active()
                   ? "0px"
                   : "var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))",
               "--settings-bottom-inset": bottomTitlebar()
                 ? "40px"
-                : "var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))",
+                : mobile()
+                  ? "0px"
+                  : "var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))",
             }}
           >
             <ExtensionServerCover>
@@ -165,6 +175,9 @@ export default function Layout(props: ParentProps) {
           </main>
         </div>
         <ExtensionSlot at="window.bottom" input={{}} />
+        <Show when={mobile()}>
+          <MobileNavigationDock safeArea={!bottomTitlebar()} />
+        </Show>
         <ToastRegion />
         <UploadToastHost />
       </div>
