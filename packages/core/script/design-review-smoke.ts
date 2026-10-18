@@ -1146,6 +1146,8 @@ try {
     path: path.join(process.env.REDCODE_DESIGN_SMOKE_ARTIFACTS ?? directory.path, "creative-desktop.png"),
   })
   await page.setViewportSize({ width: 390, height: 844 })
+  await page.locator("#inspect").click()
+  await page.locator("#inspector-sheet[open]").waitFor()
   await page.locator("#analysis-results").getByText("selected-s1", { exact: false }).waitFor()
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true)
   await page.screenshot({
@@ -1185,6 +1187,11 @@ try {
         jobs: root?.querySelector("#jobs")?.children.length,
         picker: root?.querySelector<HTMLSelectElement>("#revisions")?.value,
         preview: root?.querySelector("#preview-error")?.textContent,
+        tab: root?.querySelector("[role=tab][aria-selected=true]")?.id,
+        assessmentOpen: root?.querySelector<HTMLDetailsElement>("#assessment")?.open,
+        inspectorOpen: root?.querySelector<HTMLDialogElement>("#inspector-sheet")?.open,
+        reviewHidden: root?.querySelector<HTMLElement>("#panel-review")?.hidden,
+        hostWidth: document.querySelector("#review")?.clientWidth,
       }
     }),
   )
