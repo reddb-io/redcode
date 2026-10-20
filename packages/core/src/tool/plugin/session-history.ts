@@ -53,15 +53,17 @@ export const Plugin = {
               if (input.messageID !== undefined) {
                 const message = yield* sessions.message({ sessionID: context.sessionID, messageID: input.messageID })
                 if (message?.type !== "assistant") return yield* Effect.fail(new Error("Assistant message not found"))
-                const tools = message.content.filter((part) => part.type === "tool").filter((part) => part.state.status === "completed")
+                const tools = message.content.filter((part) => part.type === "tool")
                 const selected = input.toolCallID === undefined ? tools : tools.filter((part) => part.id === input.toolCallID)
-                if (selected.length === 0) return yield* Effect.fail(new Error("Completed tool output not found"))
+                if (selected.length === 0) return yield* Effect.fail(new Error("Tool call not found in that message"))
                 const result = selected
-                  .flatMap((part) =>
-                    part.state.status === "completed"
-                      ? part.state.content.filter((item) => item.type === "text").map((item) => item.text)
-                      : [],
-                  )
+                  .flatMap((part) => {
+                    if (part.state.status === "completed") {
+                      const text = part.state.content.filter((item) => item.type === "text").map((item) => item.text)
+                      return text.length > 0 ? text : [`[tool ${part.name} completed but persisted no text output]`]
+                    }
+                    return [describeIncomplete(part)]
+                  })
                   .join("\n")
                 return { output: result, content: result, metadata: { matches: selected.length } }
               }
@@ -125,4 +127,13 @@ export const Plugin = {
       )
       .pipe(Effect.orDie)
   }),
+}
+
+/** Non-completed tool parts have no durable output; report their state so the caller can diagnose instead of retrying blindly. */
+function describeIncomplete(part: { name: string; state: { status: string; error?: { message: string } } }): string {
+  if (part.state.status === "error")
+    return `[tool ${part.name} failed: ${part.state.error?.message}]`
+  if (part.state.status === "streaming")
+    return `[tool ${part.name} is still streaming; no output was persisted yet]`
+  return `[tool ${part.name} is still running; no output was persisted yet]`
 }
