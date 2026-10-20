@@ -1,5 +1,15 @@
 # @reddb-io/redcode
 
+## 0.84.3
+
+### Patch Changes
+
+- Design review now opens reliably in the desktop browser pane instead of falling back to the system browser: pending pane opens are queued until the pane attaches, closed Design tabs are reopened without muting the pane, and the pane routes through the same launch-claim as manual opens. Approving from the desktop panel now matches the review page (typed revision, HTML-aware Accept so an ended review renders a readable page instead of a bare 410), and panel notices are localized (en/br) with expandable round notes.
+- session_history tool-inspection now reports streaming/running/errored tool calls instead of failing with "Completed tool output not found", so diagnosing an incomplete execution no longer dead-ends when the inspected tool call never completed.
+- Guide machine and worker checkout setup through explicit connection, server access, project access and usage steps in desktop and web. Preserve drafts when returning to earlier steps, invalidate checks when the target changes, and keep mobile panel actions visible while content scrolls. Failed checks retain the current step and explain how to retry; verification does not start an agent or dispatch work.
+- Organize host resources into a searchable fleet and one selected inspector using the shared design system. Mobile details preserve search and restore focus on return. Only the open host inspector polls resource measurements; removed hosts and failed reads stay visibly unavailable without switching targets or showing stale data as live.
+- Add searchable worker tasks and an execution inspector shared by desktop and web. Show recorded placement, admission budgets, requested model, session identifiers and recovery details without inferring transition times. Preserve instruction drafts and task identity across inspection, refresh and filtering. Mobile details replace the task inventory and restore focus on return; stale reports disable execution controls and removed tasks remain explicitly unavailable.
+
 ## 0.84.2
 
 ### Patch Changes
