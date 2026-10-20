@@ -1,4 +1,4 @@
-import { createMemo, createResource, For, Match, Show, Switch } from "solid-js"
+import { createMemo, createResource, createSignal, For, Match, Show, Switch } from "solid-js"
 import { createStore } from "solid-js/store"
 import type { DesignInfo } from "@opencode/client/promise"
 import { Design } from "@opencode/schema/design"
@@ -37,27 +37,22 @@ export default function SessionDesignPanel(props: { session: MountedSession; rev
     void props.review[where](props.session).finally(() => setStore("opening", false))
   }
   // Approval freezes the current revision and hands the session to Plan; reopening lets the review take notes again.
-  const act = (design: DesignInfo, action: "approve" | "reopen") => {
+  const approve = (design: DesignInfo, revision: string) => {
     const sessionID = props.session.id
     if (!sessionID || store.pending) return
     setStore("pending", design.id)
-    // Annotated so the two branches' different results share one continuation.
-    const request: Promise<unknown> =
-      action === "approve"
-        ? client()
-            .session.design.approve({ sessionID, designID: design.id, revision: design.revision ?? "" })
-            .then((result) =>
-              showToast({
-                variant: "success",
-                title: ctx.t(result.agent === "plan" ? "approve.done.plan" : "approve.done"),
-              }),
-            )
-        : client().session.design.reopen({ sessionID, designID: design.id })
-    void request
+    void client()
+      .session.design.approve({ sessionID, designID: design.id, revision })
+      .then((result) =>
+        showToast({
+          variant: "success",
+          title: ctx.t(result.agent === "plan" ? "approve.done.plan" : "approve.done"),
+        }),
+      )
       .catch((error) =>
         showToast({
           variant: "error",
-          title: ctx.t(action === "approve" ? "approve.failed" : "reopen.failed"),
+          title: ctx.t("approve.failed"),
           description: error instanceof Error && error.message ? error.message : ctx.t("common.requestFailed"),
         }),
       )
@@ -67,7 +62,26 @@ export default function SessionDesignPanel(props: { session: MountedSession; rev
       })
   }
 
-  function ApproveDialog(dialogProps: { design: DesignInfo; close: () => void }) {
+  const reopen = (design: DesignInfo) => {
+    const sessionID = props.session.id
+    if (!sessionID || store.pending) return
+    setStore("pending", design.id)
+    void client()
+      .session.design.reopen({ sessionID, designID: design.id })
+      .catch((error) =>
+        showToast({
+          variant: "error",
+          title: ctx.t("reopen.failed"),
+          description: error instanceof Error && error.message ? error.message : ctx.t("common.requestFailed"),
+        }),
+      )
+      .finally(() => {
+        setStore("pending", "")
+        void refetch()
+      })
+  }
+
+  function ApproveDialog(dialogProps: { design: DesignInfo; revision: string; close: () => void }) {
     return (
       <Dialog fit>
         <DialogHeader hideClose>
@@ -75,7 +89,7 @@ export default function SessionDesignPanel(props: { session: MountedSession; rev
             title={ctx.t("approve.title")}
             description={ctx.t("approve.confirm", {
               name: dialogProps.design.name,
-              revision: dialogProps.design.revision ?? "",
+              revision: dialogProps.revision,
             })}
           />
         </DialogHeader>
@@ -87,7 +101,7 @@ export default function SessionDesignPanel(props: { session: MountedSession; rev
             variant="submit"
             onClick={() => {
               dialogProps.close()
-              act(dialogProps.design, "approve")
+              approve(dialogProps.design, dialogProps.revision)
             }}
           >
             {ctx.t("approve")}
@@ -167,10 +181,12 @@ export default function SessionDesignPanel(props: { session: MountedSession; rev
                         design={design}
                         pending={store.pending === design.id}
                         busy={store.pending !== ""}
-                        onApprove={() =>
-                          dialogs.open((handle) => <ApproveDialog design={design} close={() => handle.close()} />)
+                        onApprove={(revision) =>
+                          dialogs.open((handle) => (
+                            <ApproveDialog design={design} revision={revision} close={() => handle.close()} />
+                          ))
                         }
-                        onReopen={() => act(design, "reopen")}
+                        onReopen={() => reopen(design)}
                       />
                     )}
                   </For>
@@ -207,11 +223,13 @@ function SessionDesignRow(props: {
   design: DesignInfo
   pending: boolean
   busy: boolean
-  onApprove: () => void
+  onApprove: (revision: string) => void
   onReopen: () => void
 }) {
   const ctx = useExtension<typeof definition>()
   const status = () => designStatus(props.design)
+  // The row lists the newest round's first notes until asked for all of them.
+  const [allNotes, setAllNotes] = createSignal(false)
   // A revision's number (R7) is its position in the revision list, read again only when a new revision is published.
   const [revisions] = createResource(
     () => (props.session.id && props.design.revision ? `${props.design.id}:${props.design.revision}` : undefined),
@@ -295,7 +313,7 @@ function SessionDesignRow(props: {
               </Show>
             </div>
             <ul class="flex min-w-0 flex-col gap-0.5 text-12-regular">
-              <For each={review().notes.slice(0, ROUND_NOTES)}>
+              <For each={allNotes() ? review().notes : review().notes.slice(0, ROUND_NOTES)}>
                 {(note) => (
                   <li class="flex min-w-0 items-baseline gap-2" data-status={note.status}>
                     <span
@@ -332,9 +350,15 @@ function SessionDesignRow(props: {
               </For>
             </ul>
             <Show when={review().notes.length > ROUND_NOTES}>
-              <div class="text-12-regular text-v2-text-text-faint">
-                {ctx.t("round.more", { count: review().notes.length - ROUND_NOTES })}
-              </div>
+              <button
+                type="button"
+                class="text-left text-12-regular text-v2-text-text-muted hover:text-v2-text-text-base"
+                onClick={() => setAllNotes((value) => !value)}
+              >
+                {allNotes()
+                  ? ctx.t("round.less")
+                  : ctx.t("round.more", { count: review().notes.length - ROUND_NOTES })}
+              </button>
             </Show>
             <Show when={review().earlier}>
               {(count) => (
@@ -357,9 +381,11 @@ function SessionDesignRow(props: {
       <Show when={props.design.ended || props.design.revision}>
         <div class="flex min-w-0 items-center gap-2 pt-1" aria-busy={props.pending}>
           <Show when={!props.design.ended && props.design.revision}>
-            <Button size="small" variant="outline" disabled={props.busy} onClick={props.onApprove}>
-              {ctx.t("approve")}
-            </Button>
+            {(revision) => (
+              <Button size="small" variant="outline" disabled={props.busy} onClick={() => props.onApprove(revision())}>
+                {ctx.t("approve")}
+              </Button>
+            )}
           </Show>
           <Show when={props.design.ended}>
             <Button size="small" variant="ghost" disabled={props.busy} onClick={props.onReopen}>

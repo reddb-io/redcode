@@ -1,4 +1,4 @@
-import type { DesignInfo, SessionMessageAssistantTool, SessionMessageInfo } from "@opencode/client/promise"
+import type { DesignInfo, SessionMessageInfo } from "@opencode/client/promise"
 import { designRoundSummary } from "@opencode/util/design-round-summary"
 import { designReviewURL } from "@opencode/util/design-review"
 import type { Live } from "../sdk"
@@ -26,10 +26,16 @@ export function designStatus(design: Pick<DesignInfo, "revision" | "approvedRevi
 
 /** The newest completed `design_preview` call, so the Design tab opens once per new preview. */
 export function latestDesignPreview(messages: readonly SessionMessageInfo[]) {
-  return messages
-    .flatMap((message) => (message.type === "assistant" ? message.content : []))
-    .filter((content): content is SessionMessageAssistantTool => content.type === "tool")
-    .findLast((tool) => tool.name === "design_preview" && tool.state.status === "completed")?.id
+  // Recomputed for every message of the session, so one reverse pass instead of a flatten and two filters.
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i]
+    if (message.type !== "assistant") continue
+    const content = message.content
+    for (let j = content.length - 1; j >= 0; j--) {
+      const tool = content[j]
+      if (tool.type === "tool" && tool.name === "design_preview" && tool.state.status === "completed") return tool.id
+    }
+  }
 }
 
 /**

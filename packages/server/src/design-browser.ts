@@ -125,7 +125,18 @@ export const routes = (hosts: () => ReadonlyArray<string>, network: () => string
             const store = yield* DesignStore.Service
             return (yield* store.list(sessionID)).some((document) => document.ended && !!document.approvedRevision)
           }).pipe(instances.provide(session))
-          if (ended) return failure(410, "Design approved. Continue in the terminal with the implementation plan.")
+          if (ended) {
+            const message = "Design approved. Continue in the terminal with the implementation plan."
+            // A browser navigating here reads a page; the JSON shape is for the API surfaces.
+            if (request.headers.accept?.includes("text/html"))
+              return html(
+                `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Design review ended</title>` +
+                  `<style>body{font-family:system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;background:#fafafa;color:#1a1a1a}main{text-align:center;padding:2rem}p{color:#666;max-width:36rem}</style>` +
+                  `</head><body><main><h1>Design review ended</h1><p>${message}</p></main></body></html>`,
+                410,
+              )
+            return failure(410, message)
+          }
         }
         if (parts[0] === "link" && parts.length === 1 && request.method === "GET") {
           if (!trusted) return failure(401, "Server authorization is required to create a review link")

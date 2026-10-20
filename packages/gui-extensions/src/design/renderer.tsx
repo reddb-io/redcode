@@ -11,16 +11,16 @@ const setup: Setup<typeof definition> = (ctx) => {
   onCleanup(onIdle(() => void SessionDesignPanel.preload()))
   const layout = ctx.layout
   const sessions = ctx.sessions
-  const review = createDesignReview(ctx)
   const key = `${ctx.id}:main`
+  const review = createDesignReview(ctx, { waiting: (session) => layout.open(key, session) })
   // Changes when a session mounts or unmounts, not on every switch between sessions.
   const mounted = createMemo(() => !!sessions.current())
 
+  // One open action everywhere: the review beside the session when the pane can show it, held for the
+  // pane while it loads, a system browser when there is no pane.
   const open = () => {
     const session = sessions.current()
-    if (!session) return
-    if (ctx.desktop && openDesignReviewPane(ctx.uses.browser(), session)) return
-    layout.open(key, session)
+    if (session) void review.open(session)
   }
 
   // A preview published while the agent works brings the tab forward once, the way a browser opens a tab; loading an
@@ -40,9 +40,12 @@ const setup: Setup<typeof definition> = (ctx) => {
           state.last = preview
           if (previous === undefined || previous === preview || preview === "none") return
           const session = sessions.current()
-          if (!session || session.server.data.session.status(session.id) === "idle") return
-          // Open a newly published preview directly beside its chat; restored history stays quiet.
-          if (ctx.desktop && openDesignReviewPane(ctx.uses.browser(), session)) return
+          if (!session) return
+          // A preview published while the agent works brings the review forward beside its chat; once the
+          // agent looks idle, or the pane cannot show it, the new revision still opens its tab, only behind
+          // whatever the user is reading. Restored history stays quiet.
+          const idle = session.server.data.session.status(session.id) === "idle"
+          if (ctx.desktop && !idle && !layout.narrow() && openDesignReviewPane(ctx.uses.browser(), session)) return
           layout.open(key, session, { background: true })
         },
       )
@@ -85,7 +88,7 @@ const setup: Setup<typeof definition> = (ctx) => {
     legacy: { design: "main" },
     list: (input) => (input.open.includes("main") ? [tab] : []),
     render: (props) => (
-      <Suspense>
+      <Suspense fallback={<div class="h-full" data-slot="session-design-panel-suspense" />}>
         <SessionDesignPanel session={props.session} review={review} />
       </Suspense>
     ),

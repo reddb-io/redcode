@@ -7,6 +7,14 @@ export default {
   "review.open": "Abrir revisão",
   "review.external": "Abrir no navegador do sistema",
   "review.failed": "Não foi possível abrir a revisão do Design",
+  "notice.unreachable": "Não foi possível pedir ao servidor o link da revisão do Design.",
+  "notice.browserDisabled": "Abertura de navegador desabilitada por {{variable}}. Revisão do Design: {{url}}",
+  "notice.alreadyOpen": "A revisão do Design já está aberta em uma aba do navegador; use-a por lá. {{url}}",
+  "notice.pending":
+    "Uma aba da revisão do Design acabou de ser pedida, ou uma página de revisão acabou de fechar; nenhuma aba nova foi aberta. Revisão do Design: {{url}}",
+  "notice.opened": "Revisão do Design: {{url}}",
+  "notice.launchFailed": "Não foi possível abrir um navegador. Revisão do Design: {{url}}",
+  "notice.network": "Em outro dispositivo: {{network}}",
   "loading": "Carregando designs…",
   "error": "Não foi possível carregar os designs",
   "empty": "Ainda não há designs nesta sessão. Peça ao agente Design para começar um.",
@@ -30,4 +38,6 @@ export default {
   "approve.failed": "Não foi possível aprovar o design",
   "reopen": "Reabrir revisão",
   "reopen.failed": "Não foi possível reabrir a revisão do design",
+  "round.more": "+{{count}} mais",
+  "round.less": "Mostrar menos",
 }

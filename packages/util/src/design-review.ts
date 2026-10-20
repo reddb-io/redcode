@@ -1,5 +1,14 @@
 import { Option, Schema } from "effect"
 
+/** What a notice means, so surfaces with their own copy can translate it; `message` stays the English fallback. */
+export type NoticeCode =
+  | "unreachable"
+  | "browserDisabled"
+  | "alreadyOpen"
+  | "pending"
+  | "opened"
+  | "launchFailed"
+
 export interface Notice {
   readonly variant: "info" | "error"
   readonly message: string
@@ -7,6 +16,10 @@ export interface Notice {
   readonly url?: string
   /** The same review for another device on the network, when the server listens beyond loopback. */
   readonly network?: string
+  /** What the notice means. */
+  readonly code?: NoticeCode
+  /** The variable forbidding browser launches, when `code` is `browserDisabled`. */
+  readonly variable?: string
 }
 
 const Claim = Schema.Struct({
@@ -74,21 +87,39 @@ export async function openDesignReview(input: {
       body: JSON.stringify(body),
     })
   const link = () => getDesignReviewLink(input)
-  const unreachable: Notice = { variant: "error", message: "Could not ask the server for the Design review link." }
-  const notice = (variant: Notice["variant"], message: string, review: { url: string; network?: string }): Notice => ({
+  const unreachable: Notice = {
+    variant: "error",
+    code: "unreachable",
+    message: "Could not ask the server for the Design review link.",
+  }
+  const notice = (
+    variant: Notice["variant"],
+    code: NoticeCode,
+    message: string,
+    review: { url: string; network?: string },
+  ): Notice => ({
     variant,
+    code,
     message: review.network ? `${message}\nOn another device: ${review.network}` : message,
     url: review.url,
     ...(review.network ? { network: review.network } : {}),
   })
   const failed = (review: { url: string; network?: string }) =>
-    notice("error", `Could not open a browser. Design review: ${review.url}`, review)
+    notice("error", "launchFailed", `Could not open a browser. Design review: ${review.url}`, review)
   const opened = (review: { url: string; network?: string }) =>
-    input.reportOpened ? notice("info", `Design review: ${review.url}`, review) : undefined
+    input.reportOpened ? notice("info", "opened", `Design review: ${review.url}`, review) : undefined
   if (input.disabledBy) {
     const review = await link()
     return review
-      ? notice("info", `Browser launch is disabled by ${input.disabledBy}. Design review: ${review.url}`, review)
+      ? {
+          ...notice(
+            "info",
+            "browserDisabled",
+            `Browser launch is disabled by ${input.disabledBy}. Design review: ${review.url}`,
+            review,
+          ),
+          variable: input.disabledBy,
+        }
       : unreachable
   }
   const claim = await post("/launch", { explicit: input.explicit })
@@ -108,12 +139,18 @@ export async function openDesignReview(input: {
   }
   if (claim.outcome === "connected")
     return input.explicit || input.reportOpened
-      ? notice("info", `The Design review is already open in a browser tab; switch to it there. ${claim.url}`, claim)
+      ? notice(
+          "info",
+          "alreadyOpen",
+          `The Design review is already open in a browser tab; switch to it there. ${claim.url}`,
+          claim,
+        )
       : undefined
   if (claim.outcome === "pending")
     return input.explicit || input.reportOpened
       ? notice(
           "info",
+          "pending",
           `A Design review tab was just requested, or a review page just closed; no new tab was opened. Design review: ${claim.url}`,
           claim,
         )

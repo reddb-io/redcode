@@ -67,6 +67,7 @@ describe("openDesignReview", () => {
     expect(await open()).toBeUndefined()
     expect(await open()).toEqual({
       variant: "info",
+      code: "alreadyOpen",
       message: `The Design review is already open in a browser tab; switch to it there. ${review}`,
       url: review,
     })
@@ -103,6 +104,7 @@ describe("openDesignReview", () => {
     })
     expect(notice).toEqual({
       variant: "error",
+      code: "launchFailed",
       message: `Could not open a browser. Design review: ${review}`,
       url: review,
     })
@@ -125,8 +127,10 @@ describe("openDesignReview", () => {
     })
     expect(notice).toEqual({
       variant: "info",
+      code: "browserDisabled",
       message: `Browser launch is disabled by REDCODE_NO_BROWSER. Design review: ${review}`,
       url: review,
+      variable: "REDCODE_NO_BROWSER",
     })
     expect(opener.launched).toEqual([])
     expect(remote.calls).toEqual(["GET /design/session/ses_a/link"])
@@ -157,6 +161,7 @@ describe("openDesignReview", () => {
     })
     expect(notice).toEqual({
       variant: "error",
+      code: "launchFailed",
       message: `Could not open a browser. Design review: ${review}`,
       url: review,
     })
@@ -184,12 +189,14 @@ describe("openDesignReview", () => {
       })
     expect(await open()).toEqual({
       variant: "info",
+      code: "opened",
       message: `Design review: ${review}\nOn another device: ${network}`,
       url: review,
       network,
     })
     expect(await open()).toEqual({
       variant: "info",
+      code: "alreadyOpen",
       message: `The Design review is already open in a browser tab; switch to it there. ${review}\nOn another device: ${network}`,
       url: review,
       network,
@@ -206,7 +213,12 @@ describe("openDesignReview", () => {
       fetch: remote.fetch,
       launch: browser(true).launch,
     })
-    expect(notice).toEqual({ variant: "info", message: `Design review: ${review}`, url: review })
+    expect(notice).toEqual({
+      variant: "info",
+      code: "opened",
+      message: `Design review: ${review}`,
+      url: review,
+    })
   })
 })
 
