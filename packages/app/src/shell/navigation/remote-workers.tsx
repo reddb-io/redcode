@@ -1,13 +1,16 @@
 import { Worker } from "@opencode/schema/worker"
+import type { WorkerBatch, WorkerTask, WorkerEntry } from "@opencode/client/promise"
 import { Schema } from "effect"
 import { button } from "@reddb-io/design-system/contracts/button"
 import { card } from "@reddb-io/design-system/contracts/card"
 import { input } from "@reddb-io/design-system/contracts/input"
 import { textarea } from "@reddb-io/design-system/contracts/textarea"
+import { searchSelectOptions } from "@reddb-io/design-system/contracts/search-select"
+import { emptyState } from "@reddb-io/design-system/contracts/empty-state"
 import { SearchSelect } from "@opencode/ui/search-select"
 import { Key } from "@solid-primitives/keyed"
 import { useQuery } from "@tanstack/solid-query"
-import { For, onCleanup, Show } from "solid-js"
+import { createMemo, For, onCleanup, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useLanguage } from "@/runtime/i18n/language"
 import { uuid } from "@/runtime/persistence/uuid"
@@ -16,11 +19,25 @@ import { useGlobal } from "@/runtime/server/runtime"
 import { errorMessage } from "@/shell/layout/helpers"
 import { useNavigation } from "./controller"
 import { AgentChangeReview } from "./agent-change-review"
+import { WorkerTaskInspector, WorkerTaskStatus } from "./worker-task-inspector"
+
+const TASK_STATES = [
+  "queued",
+  "dispatching",
+  "running",
+  "waiting",
+  "unknown",
+  "succeeded",
+  "failed",
+  "interrupted",
+] as const satisfies readonly Worker.State[]
 
 export function RemoteWorkers(props: { server: ServerConnection.Any }) {
   const language = useLanguage()
   const navigation = useNavigation()
   let reviewOpener: HTMLButtonElement | undefined
+  let inspectorOpener: HTMLButtonElement | undefined
+  let taskSearch: HTMLInputElement | undefined
   let addButton: HTMLButtonElement | undefined
   let addForm: HTMLFormElement | undefined
   const global = useGlobal()
@@ -47,6 +64,9 @@ export function RemoteWorkers(props: { server: ServerConnection.Any }) {
     removing: "",
     artifact: undefined as Worker.Artifact | undefined,
     artifactPrompt: "",
+    inspector: { batch: "", task: "" },
+    taskQuery: "",
+    taskState: "all",
   })
   const lifetime = { active: true }
   onCleanup(() => {
@@ -65,6 +85,44 @@ export function RemoteWorkers(props: { server: ServerConnection.Any }) {
         !batch.report ||
         batch.report.tasks.some((task) => !["succeeded", "failed", "interrupted"].includes(task.state)),
     )
+  const selectedTask = createMemo(() => {
+    const batch = query.data?.batches.find((item) => item.id === state.inspector.batch)
+    const task = batch?.manifest.tasks.find((item) => item.id === state.inspector.task)
+    return batch && task ? { batch, task, entry: batch.report?.tasks.find((item) => item.id === task.id) } : undefined
+  })
+  const matches = createMemo(
+    () =>
+      new Set(
+        searchSelectOptions(
+          (query.data?.batches ?? []).flatMap((batch) =>
+            batch.manifest.tasks.flatMap((task) => {
+              const entry = batch.report?.tasks.find((item) => item.id === task.id)
+              if (state.taskState !== "all" && state.taskState !== (entry?.state ?? "unreported")) return []
+              return [
+                {
+                  value: `${batch.id}/${task.id}`,
+                  label: task.prompt,
+                  description: [batch.id, task.id, task.worker, entry?.worker, entry?.directory]
+                    .filter(Boolean)
+                    .join(" "),
+                  keywords: task.tags,
+                },
+              ]
+            }),
+          ),
+          state.taskQuery,
+        ).map((option) => option.value),
+      ),
+  )
+  const closeInspector = () => {
+    setState("inspector", { batch: "", task: "" })
+    queueMicrotask(() => {
+      const target = inspectorOpener?.isConnected ? inspectorOpener : taskSearch?.isConnected ? taskSearch : addButton
+      target?.focus({ preventScroll: true })
+      target?.scrollIntoView({ block: "nearest" })
+    })
+  }
+  const empty = emptyState({ size: "sm" })
   const appearance = card({ padding: "md" })
   const form = appearance.root({ class: "overflow-visible" })
   const revealField = (event: FocusEvent & { currentTarget: HTMLFormElement }) => {
@@ -132,6 +190,138 @@ export function RemoteWorkers(props: { server: ServerConnection.Any }) {
       reviewOpener.scrollIntoView({ block: "nearest" })
     })
   }
+  const controlsUnavailable = () => state.busy || query.isError || query.data?.available === false
+  const taskControls = (batch: () => WorkerBatch, task: () => WorkerTask, entry: () => WorkerEntry | undefined) => (
+    <div class="flex min-w-0 flex-col gap-2">
+      <Show when={entry()?.state === "queued" && !entry()?.sessionID}>
+        <button
+          class={secondary}
+          disabled={controlsUnavailable()}
+          onClick={() => action(() => api().control({ id: batch().id, payload: { kind: "cancel", task: task().id } }))}
+        >
+          {language.t("remoteWorkers.cancelQueued")}
+        </button>
+      </Show>
+      <Show when={entry()?.sessionID && ["running", "waiting"].includes(entry()?.state ?? "")}>
+        <div class="flex flex-wrap gap-2">
+          <button
+            class={secondary}
+            disabled={controlsUnavailable()}
+            onClick={() =>
+              setState("instruction", {
+                key: `${batch().id}/${task().id}`,
+                id: `msg_${uuid()}`,
+                text: "",
+                delivery: "steer",
+              })
+            }
+          >
+            {language.t("agents.orient")}
+          </button>
+          <button
+            class={button({ variant: "ghost", tone: "danger", size: "sm" })}
+            disabled={controlsUnavailable()}
+            onClick={() =>
+              action(() => api().control({ id: batch().id, payload: { kind: "interrupt", task: task().id } }))
+            }
+          >
+            {language.t("agents.interrupt")}
+          </button>
+        </div>
+        <Show when={state.instruction.key === `${batch().id}/${task().id}`}>
+          <form
+            class="flex flex-col gap-2"
+            onSubmit={(event) => {
+              event.preventDefault()
+              action(async () => {
+                await api().control({
+                  id: batch().id,
+                  payload: {
+                    kind: "prompt",
+                    task: task().id,
+                    id: state.instruction.id,
+                    text: state.instruction.text.trim(),
+                    delivery: state.instruction.delivery,
+                  },
+                })
+                if (lifetime.active) setState("instruction", "key", "")
+              })
+            }}
+          >
+            <label>
+              {language.t("agents.instruction")}
+              <textarea
+                class={textarea()}
+                required
+                disabled={controlsUnavailable()}
+                value={state.instruction.text}
+                onInput={(event) =>
+                  setState("instruction", {
+                    text: event.currentTarget.value,
+                    id: `msg_${uuid()}`,
+                  })
+                }
+              />
+            </label>
+            <label>
+              {language.t("agents.delivery")}
+              <select
+                aria-label={language.t("agents.delivery")}
+                class={input()}
+                value={state.instruction.delivery}
+                disabled={controlsUnavailable()}
+                onChange={(event) =>
+                  setState("instruction", {
+                    delivery: event.currentTarget.value as "steer" | "queue",
+                    id: `msg_${uuid()}`,
+                  })
+                }
+              >
+                <option value="steer">{language.t("agents.steer")}</option>
+                <option value="queue">{language.t("agents.queue")}</option>
+              </select>
+            </label>
+            <button
+              class={button({ variant: "primary", size: "sm" })}
+              type="submit"
+              disabled={controlsUnavailable() || !state.instruction.text.trim()}
+            >
+              {language.t("agents.send")}
+            </button>
+          </form>
+        </Show>
+      </Show>
+      <Show when={entry()?.state === "unknown" || entry()?.state === "dispatching"}>
+        <button
+          class={secondary}
+          disabled={controlsUnavailable() || batch().observing}
+          onClick={() => action(() => api().recover({ id: batch().id, task: task().id }))}
+        >
+          {language.t("remoteWorkers.recover")}
+        </button>
+      </Show>
+      <Show when={entry()?.sessionID && ["succeeded", "failed", "interrupted"].includes(entry()?.state ?? "")}>
+        <button
+          class={secondary}
+          disabled={controlsUnavailable()}
+          onClick={(event) => {
+            reviewOpener = event.currentTarget
+            action(async () => {
+              const prompt = task().prompt
+              const result = await api().collect({ id: batch().id, task: task().id })
+              if (lifetime.active)
+                setState({
+                  artifact: Schema.decodeUnknownSync(Worker.Artifact)(result),
+                  artifactPrompt: prompt,
+                })
+            })
+          }}
+        >
+          {language.t("remoteWorkers.review")}
+        </button>
+      </Show>
+    </div>
+  )
   return (
     <div class="flex min-w-0 flex-col gap-4 text-sm leading-5">
       <Show when={state.artifact}>
@@ -190,7 +380,35 @@ export function RemoteWorkers(props: { server: ServerConnection.Any }) {
           </AgentChangeReview>
         )}
       </Show>
-      <div hidden={!!state.artifact && navigation.mobile()} class="min-w-0 flex flex-col gap-4">
+      <div hidden={!state.inspector.task || (!!state.artifact && navigation.mobile())}>
+        <Show when={state.inspector.task}>
+          <WorkerTaskInspector
+            id={state.inspector.task}
+            selection={selectedTask()}
+            busy={state.busy}
+            stale={query.isError || query.data?.available === false}
+            error={state.error}
+            back={closeInspector}
+            refreshing={query.isFetching}
+            refresh={() => void query.refetch()}
+            controls={
+              <Show when={selectedTask()}>
+                {(selected) =>
+                  taskControls(
+                    () => selected().batch,
+                    () => selected().task,
+                    () => selected().entry,
+                  )
+                }
+              </Show>
+            }
+          />
+        </Show>
+      </div>
+      <div
+        hidden={(!!state.artifact || !!state.inspector.task) && navigation.mobile()}
+        class="min-w-0 flex flex-col gap-4"
+      >
         <header class="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h3 class="font-medium">{language.t("remoteWorkers.title")}</h3>
@@ -624,7 +842,43 @@ export function RemoteWorkers(props: { server: ServerConnection.Any }) {
             </article>
           )}
         </Key>
-        <Key each={query.data?.batches} by={(batch) => batch.id}>
+        <Show when={query.data?.batches.length}>
+          <section
+            aria-label={language.t("remoteWorkers.details.filterTitle")}
+            class="grid gap-[var(--reddb-spatial-gap-md)] sm:grid-cols-2"
+          >
+            <label class="flex flex-col gap-1">
+              {language.t("remoteWorkers.details.search")}
+              <input
+                ref={taskSearch}
+                class={input({ class: "w-full" })}
+                value={state.taskQuery}
+                onInput={(event) => setState("taskQuery", event.currentTarget.value)}
+              />
+            </label>
+            <SearchSelect
+              label={language.t("remoteWorkers.details.filterState")}
+              value={state.taskState}
+              options={[
+                { value: "all", label: language.t("remoteWorkers.details.allStates") },
+                ...TASK_STATES.map((value) => ({ value, label: language.t(`remoteWorkers.state.${value}`) })),
+                { value: "unreported", label: language.t("remoteWorkers.details.unreported") },
+              ]}
+              onChange={(value) => setState("taskState", value)}
+            />
+          </section>
+          <Show when={!matches().size}>
+            <div role="status" class={empty.root()}>
+              <p class={empty.title()}>{language.t("remoteWorkers.details.noMatches")}</p>
+            </div>
+          </Show>
+        </Show>
+        <Key
+          each={query.data?.batches.filter((batch) =>
+            batch.manifest.tasks.some((task) => matches().has(`${batch.id}/${task.id}`)),
+          )}
+          by={(batch) => batch.id}
+        >
           {(batch) => (
             <section class={appearance.root()}>
               <div class={appearance.header()}>
@@ -637,16 +891,27 @@ export function RemoteWorkers(props: { server: ServerConnection.Any }) {
                     {batch().error}
                   </p>
                 </Show>
-                <Key each={batch().manifest.tasks} by={(task) => task.id}>
+                <Key
+                  each={batch().manifest.tasks.filter((task) => matches().has(`${batch().id}/${task.id}`))}
+                  by={(task) => task.id}
+                >
                   {(task) => {
                     const entry = () => batch().report?.tasks.find((item) => item.id === task().id)
                     return (
                       <article class="flex flex-col gap-2 border-b border-muted pb-3 last:border-b-0">
                         <p class="whitespace-pre-wrap">{task().prompt}</p>
-                        <p class="text-ink-muted">
-                          {language.t(`remoteWorkers.state.${entry()?.state ?? "queued"}`)}
-                          <Show when={entry()?.worker}> · {entry()?.worker}</Show>
-                        </p>
+                        <WorkerTaskStatus entry={entry()} />
+                        <button
+                          class={secondary}
+                          disabled={state.busy}
+                          aria-expanded={state.inspector.batch === batch().id && state.inspector.task === task().id}
+                          onClick={(event) => {
+                            inspectorOpener = event.currentTarget
+                            setState({ inspector: { batch: batch().id, task: task().id }, error: "" })
+                          }}
+                        >
+                          {language.t("remoteWorkers.details.open")}
+                        </button>
                         <Show when={entry()?.state === "waiting"}>
                           <p>{language.t("remoteWorkers.waiting")}</p>
                         </Show>
@@ -679,147 +944,14 @@ export function RemoteWorkers(props: { server: ServerConnection.Any }) {
                         <Show when={entry()?.queueReason}>
                           {(reason) => <p role="status">{language.t(`remoteWorkers.queue.${reason()}`)}</p>}
                         </Show>
-                        <Show when={entry()?.state === "queued" && !entry()?.sessionID}>
-                          <button
-                            class={secondary}
-                            disabled={state.busy}
-                            onClick={() =>
-                              action(() =>
-                                api().control({ id: batch().id, payload: { kind: "cancel", task: task().id } }),
-                              )
-                            }
-                          >
-                            {language.t("remoteWorkers.cancelQueued")}
-                          </button>
-                        </Show>
-                        <Show when={entry()?.sessionID && ["running", "waiting"].includes(entry()?.state ?? "")}>
-                          <div class="flex flex-wrap gap-2">
-                            <button
-                              class={secondary}
-                              disabled={state.busy}
-                              onClick={() =>
-                                setState("instruction", {
-                                  key: `${batch().id}/${task().id}`,
-                                  id: `msg_${uuid()}`,
-                                  text: "",
-                                  delivery: "steer",
-                                })
-                              }
-                            >
-                              {language.t("agents.orient")}
-                            </button>
-                            <button
-                              class={button({ variant: "ghost", tone: "danger", size: "sm" })}
-                              disabled={state.busy}
-                              onClick={() =>
-                                action(() =>
-                                  api().control({ id: batch().id, payload: { kind: "interrupt", task: task().id } }),
-                                )
-                              }
-                            >
-                              {language.t("agents.interrupt")}
-                            </button>
-                          </div>
-                          <Show when={state.instruction.key === `${batch().id}/${task().id}`}>
-                            <form
-                              class="flex flex-col gap-2"
-                              onSubmit={(event) => {
-                                event.preventDefault()
-                                action(async () => {
-                                  await api().control({
-                                    id: batch().id,
-                                    payload: {
-                                      kind: "prompt",
-                                      task: task().id,
-                                      id: state.instruction.id,
-                                      text: state.instruction.text.trim(),
-                                      delivery: state.instruction.delivery,
-                                    },
-                                  })
-                                  if (lifetime.active) setState("instruction", "key", "")
-                                })
-                              }}
-                            >
-                              <label>
-                                {language.t("agents.instruction")}
-                                <textarea
-                                  class={textarea()}
-                                  required
-                                  disabled={state.busy}
-                                  value={state.instruction.text}
-                                  onInput={(event) =>
-                                    setState("instruction", {
-                                      text: event.currentTarget.value,
-                                      id: `msg_${uuid()}`,
-                                    })
-                                  }
-                                />
-                              </label>
-                              <label>
-                                {language.t("agents.delivery")}
-                                <select
-                                  aria-label={language.t("agents.delivery")}
-                                  class={input()}
-                                  value={state.instruction.delivery}
-                                  disabled={state.busy}
-                                  onChange={(event) =>
-                                    setState("instruction", {
-                                      delivery: event.currentTarget.value as "steer" | "queue",
-                                      id: `msg_${uuid()}`,
-                                    })
-                                  }
-                                >
-                                  <option value="steer">{language.t("agents.steer")}</option>
-                                  <option value="queue">{language.t("agents.queue")}</option>
-                                </select>
-                              </label>
-                              <button
-                                class={button({ variant: "primary", size: "sm" })}
-                                type="submit"
-                                disabled={state.busy || !state.instruction.text.trim()}
-                              >
-                                {language.t("agents.send")}
-                              </button>
-                            </form>
+                        <Show when={state.inspector.batch !== batch().id || state.inspector.task !== task().id}>
+                          {taskControls(batch, task, entry)}
+                          <Show when={entry()?.text}>
+                            <details>
+                              <summary>{language.t("remoteWorkers.response")}</summary>
+                              <pre class="whitespace-pre-wrap font-sans">{entry()?.text}</pre>
+                            </details>
                           </Show>
-                        </Show>
-                        <Show when={entry()?.text}>
-                          <details>
-                            <summary>{language.t("remoteWorkers.response")}</summary>
-                            <pre class="whitespace-pre-wrap font-sans">{entry()?.text}</pre>
-                          </details>
-                        </Show>
-                        <Show when={entry()?.state === "unknown" || entry()?.state === "dispatching"}>
-                          <button
-                            class={secondary}
-                            disabled={state.busy || batch().observing}
-                            onClick={() => action(() => api().recover({ id: batch().id, task: task().id }))}
-                          >
-                            {language.t("remoteWorkers.recover")}
-                          </button>
-                        </Show>
-                        <Show
-                          when={
-                            entry()?.sessionID && ["succeeded", "failed", "interrupted"].includes(entry()?.state ?? "")
-                          }
-                        >
-                          <button
-                            class={secondary}
-                            disabled={state.busy}
-                            onClick={(event) => {
-                              reviewOpener = event.currentTarget
-                              action(async () => {
-                                const result = await api().collect({ id: batch().id, task: task().id })
-                                if (lifetime.active)
-                                  setState({
-                                    artifact: Schema.decodeUnknownSync(Worker.Artifact)(result),
-                                    artifactPrompt: task().prompt,
-                                  })
-                              })
-                            }}
-                          >
-                            {language.t("remoteWorkers.review")}
-                          </button>
                         </Show>
                       </article>
                     )

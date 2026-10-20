@@ -112,7 +112,7 @@ export default function Agents() {
           </Show>
           <Show when={scope.view() === "machines" && scope.servers()[0]}>
             {(server) => (
-              <section class="mb-5">
+              <section class="flex h-full min-h-0 flex-col">
                 <h2 class="mb-2 text-13-medium text-v2-text-text-muted">{serverName(server())}</h2>
                 <Show
                   when={!global.servers.health[ServerConnection.key(server())]?.unauthorized}

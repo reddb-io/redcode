@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test"
+import type { HostResourcesSnapshot } from "@opencode/client/promise"
 import { Worker } from "@opencode/schema/worker"
 import { Schema } from "effect"
 import { currentSession, type MockSession } from "./mock-server"
@@ -49,9 +50,58 @@ export async function mockWaitingWorker(page: Page, session: MockSession) {
   return mockRemoteWorkers(page, { batches: [batch], inbox })
 }
 
+export async function mockWorkerTaskInspection(page: Page) {
+  const batch = Schema.decodeUnknownSync(Worker.Batch)({
+    id: "batch-inspection",
+    createdAt: "2026-10-20T10:00:00Z",
+    observing: true,
+    manifest: {
+      tasks: [
+        {
+          id: "task-review",
+          prompt: "Review ARM checkout",
+          worker: "pi-requested",
+          tags: ["arm64"],
+          resources: { cpu: 2, memoryBytes: 1024 ** 3 },
+          model: { providerID: "configured-provider", id: "requested-model" },
+        },
+        { id: "task-unreported", prompt: "Build docs" },
+      ],
+    },
+    report: {
+      fingerprint: "fixture",
+      tasks: [
+        {
+          id: "task-review",
+          state: "waiting",
+          worker: "pi-a",
+          directory: "/srv/review",
+          sessionID: "ses_assigned",
+          messageID: "msg_assigned",
+        },
+      ],
+    },
+  })
+  const otherBatch: Worker.Batch = {
+    ...batch,
+    id: "batch-other",
+    manifest: { tasks: [{ ...batch.manifest.tasks[0], prompt: "Review another checkout" }] },
+    report: {
+      fingerprint: "fixture",
+      tasks: [{ ...batch.report!.tasks[0], worker: "pi-b", directory: "/srv/other", sessionID: "ses_other" }],
+    },
+  }
+  return { batch, otherBatch, ...(await mockRemoteWorkers(page, { batches: [batch, otherBatch] })) }
+}
+
 export async function mockRemoteWorkers(
   page: Page,
-  initial?: { workers?: Worker.Status[]; batches?: Worker.Batch[]; inbox?: Worker.Inbox },
+  initial?: {
+    workers?: Worker.Status[]
+    batches?: Worker.Batch[]
+    inbox?: Worker.Inbox
+    resources?: Record<string, HostResourcesSnapshot>
+  },
 ) {
   const snapshot: { available: boolean; workers: Worker.Status[]; batches: Worker.Batch[] } = {
     available: true,
@@ -67,6 +117,12 @@ export async function mockRemoteWorkers(
     const path = new URL(request.url()).pathname
     const body: unknown = request.method() === "POST" ? request.postDataJSON() : undefined
     requests.push({ path, method: request.method(), body })
+    if (path.endsWith("/resources")) {
+      const sample = initial?.resources?.[path.split("/")[3]]
+      return sample
+        ? route.fulfill({ json: sample })
+        : route.fulfill({ status: 503, json: { message: "Resources unavailable" } })
+    }
     if (path.endsWith("/recover")) {
       const input = Schema.decodeUnknownSync(Schema.Struct({ task: Worker.Name }))(body)
       const batch = snapshot.batches.find((batch) => batch.id === path.split("/")[4])
@@ -119,7 +175,7 @@ export async function mockRemoteWorkers(
             ),
           },
         }
-      return route.fulfill({ status: 204 })
+      return route.fulfill({ status: 200, body: "" })
     }
     if (path.endsWith("/attention")) return route.fulfill({ json: inbox })
     if (path.endsWith("/answer")) {
@@ -202,6 +258,12 @@ export async function mockRemoteWorkers(
     patch,
     setWorkers: (workers: Worker.Status[]) => {
       snapshot.workers = workers
+    },
+    setAvailable: (available: boolean) => {
+      snapshot.available = available
+    },
+    setBatches: (batches: Worker.Batch[]) => {
+      snapshot.batches = batches
     },
     update: (batch: Worker.Batch) => {
       const index = snapshot.batches.findIndex((item) => item.id === batch.id)

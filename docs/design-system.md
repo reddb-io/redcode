@@ -72,6 +72,22 @@ Do not edit vendored components or generated theme files by hand.
   the full available width. Metadata refreshes preserve worker row identity and an
   explicit selection; an unavailable registered target blocks dispatch without
   changing the saved task to automatic placement.
+- Machines adapts Base `Steps` and App `SidebarPanel` into a guided connection
+  flow: select or add a server, explicitly check access, check an existing project
+  directory, then open a session or register its checkout as a worker. Returning
+  to earlier steps retains the draft. Choosing another machine invalidates its
+  checks, and editing the directory invalidates project verification. Failed
+  checks retain the current step and expose a retryable explanation. The bounded
+  panel scrolls its content independently from navigation actions on mobile and
+  desktop. Checks do not execute project commands, start an agent or dispatch
+  work; registration still requires a coordinator-reachable address and credential.
+- Host resources composes App `MultiColumnLayout`, `ListRow`, `SidebarPanel` and
+  Base `StatusIndicator` into a searchable fleet and a single selected inspector.
+  On mobile, details replace the list; Back restores its search and focused row.
+  Resource polling belongs only to the open inspector, rather than every worker
+  in the fleet. Closing it on mobile stops those reads. A removed selection stays
+  visibly unavailable instead of switching to the coordinator, and failed reads
+  hide previous measurements rather than presenting them as live.
 - Worker patch review and worktree review use the same `SidebarPanel` contract:
   the diff scrolls independently while Back and contextual actions remain visible.
   On phones, review takes the place of setup and task inventory; returning restores
@@ -79,6 +95,16 @@ Do not edit vendored components or generated theme files by hand.
   Worker patches identify their task and worker and remain downloads. Worktree
   review shows the integration target and source/target revisions; integration
   retains its revision checks and archiving still requires confirmation.
+- Worker task inspection adapts App `SidebarPanel`, Base `StatusIndicator` and
+  the searchable-select filter contract. Search and state filters run locally
+  over the current coordinator report. The selected task shows its saved
+  assignment, checkout, requested model and admission budgets, session identifiers
+  and queue/recovery reasons. Inline and inspector controls share one action
+  implementation and instruction draft. Mobile details replace the inventory;
+  returning restores focus and filters. Refresh failures disable those controls,
+  and a removed task remains unavailable instead of selecting another. The report
+  has no transition timestamps or duration, so this surface does not synthesize
+  a historical timeline. A task without a report is labelled unreported, not queued.
 - Native harness details use `SidebarPanel` with a persistent header and an
   independently scrolling body. Closing details does not stop the harness.
   Mobile prioritizes that inspector over setup, provides a shortcut to pending
@@ -150,7 +176,7 @@ screens, safe areas and no Electron browser service.
 | DS capability                                          | Concrete opportunity                                                                                                                        | Integration boundary                                                                                                                                                                                                                                                                                                                   |
 | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Responsive `SidebarLayout` with labelled dock          | Offer four stable primary destinations plus More on phones, giving clearer discovery than an icon rail while preserving conversation width. | Integrated with the shared navigation controller. The dock's normal layout height reserves its space, Browse opens the current scope, and More preserves the other actions. Resized mobile viewport and touch navigation are covered; physical-device keyboard and installed-PWA safe-area behavior still require device verification. |
-| `SidebarPanel` and Drawer                              | Turn host/workspace details into a drawer on narrow screens and a contextual panel on wide screens.                                         | Native harness details now use a bounded inline inspector. A responsive drawer remains future work; it must preserve focus restoration and the user's current server selection.                                                                                                                                                        |
+| `SidebarPanel` and Drawer                              | Turn host/workspace details into a drawer on narrow screens and a contextual panel on wide screens.                                         | Native harness details use a bounded inspector. Host resources now has a searchable list and selected inspector that replaces the list on mobile and restores focus on return. Workspace drawers remain future work.                                                                                                                   |
 | Data `Table`, `KpiCard`, `BreakdownBar`, `MetricChart` | Make worker fleets comparable with filtering, sorting and CPU/RAM/capacity summaries.                                                       | [`agents-hosts.tsx`](../packages/app/src/shell/navigation/agents-hosts.tsx) currently reads snapshots. Historical charts need timestamped retained samples; an unavailable or stale sample must remain visibly different from zero.                                                                                                    |
 | `TraceWaterfall`, `Diagram`, `SequenceDiagram`         | Explain coordinator → worker dispatch, queue time, execution and retries.                                                                   | Supply actual task/session events, timings and stable identities. DS selection opens the existing task details; it does not acquire execution ownership or infer a successful retry.                                                                                                                                                   |
 
@@ -178,8 +204,8 @@ alone cannot update that shadow-root interface.
    The Design panel and density integration are part of this step.
 2. Adopt searchable host/project/harness selection and contextual inspector
    panels across desktop and web. These use existing data and need no new worker
-   telemetry service. The selectors and native harness inspector are integrated;
-   responsive host/workspace drawers remain pending.
+   telemetry service. The selectors, native harness inspector, guided machine setup and selected host
+   inspector are integrated; responsive workspace drawers remain pending.
 3. Design the labelled rail and responsive mobile dock together, including measured
    widths/heights, keyboard focus, badges and composer clearance. The labelled
    rail and mobile dock are integrated; physical-device PWA verification remains.

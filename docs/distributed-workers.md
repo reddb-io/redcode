@@ -106,6 +106,17 @@ placement. Drafts remain visible if the registry becomes empty; register a worke
 
 Add independent tasks to a batch, choose a worker or allow placement on any available worker, then **Send batch**. The server accepts one unfinished batch at a time, dispatches its tasks across independent checkout slots, and continues observing when the panel closes. Open **Agents → Inbox** on the coordinator to answer the assigned worker's permissions and questions. Other forms, including credential entry, use the worker Session's normal connected client. The coordinator resolves each reply from its saved task assignment and rechecks the original request and current resource grants.
 
+Use **Search tasks** and **Task status** to find a task by its prompt, identifiers,
+worker, checkout or capability tags. **Execution details** shows the worker
+requested by the manifest separately from the worker recorded in the assignment,
+along with its checkout, admission budgets, requested model and execution IDs.
+The details share the list's instruction, interruption, recovery and review
+controls. On mobile they replace the inventory; returning preserves filters and
+unsent instructions. A stale report disables controls and offers **Try again**. A
+removed task remains unavailable instead of changing the selection. Reports
+contain no transition timestamps or execution duration; an absent task entry is
+shown as **Not reported**, rather than assumed to be queued.
+
 **Agents → Hosts and resources** shows available CPU slots and RAM on the coordinator and registered workers. Worker credentials remain on the coordinator. Measurements refresh while the view is open or queued tasks need an admission decision; unknown, unavailable and stale readings are not reported as zero load. On Linux cgroup v2 hosts, visible CPU quotas and memory limits/current usage are considered. Unsupported constrained memory measurements remain unknown. Workers need the updated server endpoints to expose resources and pending requests.
 
 For running/waiting tasks, **Send instruction** uses the worker's native Redcode Session harness: choose **Steer current work** or **Queue for later**. **Interrupt** targets that recorded Session. Controls never accept an arbitrary Session/worker address, recheck current access grants, and refuse completed tasks. Prompt IDs survive a retry of the same instruction, preserving first-admission-wins behavior. These controls do not add external Claude Code/Codex CLI harness adapters.

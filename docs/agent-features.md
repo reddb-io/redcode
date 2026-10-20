@@ -20,10 +20,21 @@ Changing sections keeps the selected host. **Browse** opens the sidemenu to chan
   approval enabled. Other forms, including credentials, require the assigned session's normal client.
   On mobile, the selected request appears before the list. **Back to requests** returns focus to the
   original row without sending an answer; reopening the same question keeps its draft choice.
-- **Hosts and resources** shows logical CPUs, sampled CPU usage, OS free/total RAM and the Redcode
-  process's memory, considering visible runtime/container limits. The first CPU sample is unknown. Measurements refresh while this view is open or queued tasks need admission;
+- **Hosts and resources** provides a searchable host list and one selected resource inspector showing
+  logical CPUs, sampled CPU usage, OS free/total RAM and the Redcode process's memory, considering visible
+  runtime/container limits. Mobile details replace the list; **Back to hosts** preserves its search.
+  The first CPU sample is unknown. Measurements refresh for the open inspector or when queued tasks need admission;
   failed/disconnected hosts do not display cached values as live. These figures do not reserve RAM or
   enforce OS quotas. Optional [worker task requirements](distributed-workers.md#resource-aware-admission) control admission through the coordinator.
+- **Machines** guides connection, server access verification, project access verification and the
+  choice to open a session or register a worker checkout. Going back retains the draft; a changed
+  target requires new checks. Verification does not start an agent or dispatch work.
+- **Remote workers** filters task reports by status or searches their prompt, identifiers, worker,
+  checkout and capability tags. **Execution details** shows the saved assignment and its current
+  queue, input or recovery state. The inspector shares the list's instruction, interruption,
+  recovery and patch-review actions. On mobile it replaces the inventory; returning preserves
+  filters and unsent instructions. A stale report disables execution controls, and a removed task
+  stays explicitly unavailable. Transition times and duration are not recorded in this report.
 
 Unavailable locations/tasks are reported explicitly, so incomplete inspection is not presented as an
 empty inbox. Servers without the new endpoints remain usable for sessions and show unavailable states

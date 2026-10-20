@@ -352,8 +352,9 @@ workers. For offsite access, the connection follows this path:
 2. In Desktop, open **Agents → Machines → Add server → Add SSH server**. Enter the host or SSH
    alias, such as `user@10.0.0.50`. Complete authentication in the dialog; Desktop manages server
    setup and forwarding.
-3. Choose a remote project or **Browse this machine**, then **Code in this project on this machine**.
-   Your conversation and tools execute on that PC.
+3. Continue to **Check access** and choose **Check server**. Then choose a remote project or
+   **Browse this machine** and select **Check project**. These checks verify access without running
+   an agent. In **Use machine**, choose **Code in this project on this machine** to open a session there.
 4. Choose **Manage workers on this machine** to control its pool. In **Agents → Remote workers**,
    register reachable workers and send a batch. To include execution on the coordinator in a batch,
    register an independent checkout on that machine as a worker too.
@@ -377,6 +378,8 @@ In Desktop connected to the coordinator:
 1. Open **Agents → Remote workers**, register a worker and check the connection.
    Tasks can require capability tags and CPU/RAM budgets. Unsatisfied requirements keep the task queued with a reason; native harness controls let you steer, queue instructions or interrupt assigned work.
 2. Add independent tasks and send a batch.
+   Search or filter tasks by status, then open **Execution details** to inspect the saved assignment
+   and control its execution.
 3. Collect and review the resulting patches.
 
 [Worker setup and commands](docs/distributed-workers.md) · [Raspberry Pi prerequisites](docs/distributed-workers.md#raspberry-pi-prerequisites) · [Docker lab](docs/distributed-workers.md#docker-acceptance-lab)

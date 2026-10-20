@@ -126,8 +126,21 @@ export async function mockWorkerEnvironments(page: Page) {
 }
 
 export async function mockMachineInspection(page: Page) {
-  await page.route("**/api/system", (route) =>
-    route.fulfill({
+  const state = { available: true, missingDirectory: "", checks: [] as string[], directories: [] as string[] }
+  await page.route(/\/api\/location(?:\?|$)/, (route) => {
+    const directory = new URL(route.request().url()).searchParams.get("location[directory]") ?? ""
+    state.directories.push(directory)
+    if (directory && directory === state.missingDirectory)
+      return route.fulfill({
+        status: 404,
+        json: { _tag: "LocationNotFoundError", location: { directory }, message: `Location not found: ${directory}` },
+      })
+    return route.fallback()
+  })
+  await page.route("**/api/system", (route) => {
+    state.checks.push(route.request().url())
+    if (!state.available) return route.fulfill({ status: 503, json: { message: "Fixture server unavailable" } })
+    return route.fulfill({
       json: {
         version: "fixture",
         runtime: "bun",
@@ -139,8 +152,9 @@ export async function mockMachineInspection(page: Page) {
         paths: { config: "/config", data: "/data", state: "/state", cache: "/cache", log: "/log", tmp: "/tmp" },
         database: { kind: "memory" },
       },
-    }),
-  )
+    })
+  })
+  return state
 }
 
 export async function mockHarnessOperations(page: Page, input: { output?: string } = {}) {

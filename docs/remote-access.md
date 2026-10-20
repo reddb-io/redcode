@@ -17,8 +17,11 @@ publishing Redcode's coding port to the internet.
    service, stages the matching server when needed, starts it and manages a loopback SSH forward.
    An existing incompatible service requires **Update and reconnect** before replacement.
    Bootstrap supports 64-bit Windows, Linux and macOS on x64/ARM64; the host must already have SSH.
-3. The connected machine is selected and inspected automatically. Choose a known project or
-   **Browse this machine**, then **Code in this project on this machine** to execute there.
+3. The connected machine is selected in the setup flow. Continue to **Check access** and choose
+   **Check server**. Continue to **Choose project**, select a known project or **Browse this machine**,
+   then choose **Check project**. The checks verify access without running project commands or an agent.
+   In **Use machine**, choose **Code in this project on this machine** to open a session there.
+   Going back retains the draft; changing the machine or directory requires its access to be checked again.
 4. Choose **Manage workers on this machine** to make it the active coordinator. Add its other
    workers using addresses reachable from that coordinator, then send batches through **Remote
    workers**. A normal coding session runs directly on the selected server; batch tasks execute on
