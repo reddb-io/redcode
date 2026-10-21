@@ -1,0 +1,774 @@
+{
+  "completed_runs": [
+    {
+      "status": "completed",
+      "started_at": "2026-10-07T13:10:58.539946+00:00",
+      "runner_pid": 1841103,
+      "checkout": "c936a021349c16a11a6b83cb5c9484a565b852cf",
+      "command": [
+        "bun",
+        "test",
+        "/tmp/redcode-upstream-probes-8tgfrcv7/probes.test.ts",
+        "--test-name-pattern",
+        "observe excluded"
+      ],
+      "soak_seconds": 0,
+      "scratch": "/tmp/redcode-upstream-probes-8tgfrcv7",
+      "exit_code": 0,
+      "finished_at": "2026-10-07T13:12:02.881667+00:00",
+      "probe_sha256": "5125de9be0edf7b9014f222752f8e09f1defb6a35598abdebfaf0b4de50a10fb",
+      "log_sha256": "b0881c6b0af5fcaaf40b9d31d7b346bf599c2938678c349b128d8ad25befd38d",
+      "output_directory": "/tmp/redcode-upstream-final-yup901pt/retention-final",
+      "measurements": [
+        {
+          "scenario": "retention",
+          "count": 1000,
+          "before": {
+            "rssBytes": 122236928,
+            "heapUsedBytes": 25620581
+          },
+          "after": {
+            "rssBytes": 149061632,
+            "heapUsedBytes": 33248501
+          },
+          "eventProcessingMs": 359.01474300000007,
+          "activeRows": 1000,
+          "excludedRows": 1000,
+          "excludedChildRows": 1000,
+          "additionalEvictions": 0
+        },
+        {
+          "scenario": "navigation-100",
+          "count": 1000,
+          "excludedRowsAfterNavigation": 1000,
+          "explicitEvictions": 199,
+          "after": {
+            "rssBytes": 166416384,
+            "heapUsedBytes": 38808991
+          }
+        },
+        {
+          "scenario": "retention",
+          "count": 10000,
+          "before": {
+            "rssBytes": 166809600,
+            "heapUsedBytes": 38808991
+          },
+          "after": {
+            "rssBytes": 458436608,
+            "heapUsedBytes": 97827998
+          },
+          "eventProcessingMs": 63238.75311,
+          "activeRows": 10000,
+          "excludedRows": 10000,
+          "excludedChildRows": 10000,
+          "additionalEvictions": 0
+        },
+        {
+          "scenario": "navigation-100",
+          "count": 10000,
+          "excludedRowsAfterNavigation": 10000,
+          "explicitEvictions": 199,
+          "after": {
+            "rssBytes": 474820608,
+            "heapUsedBytes": 99405079
+          }
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "started_at": "2026-10-07T13:04:40.211418+00:00",
+      "runner_pid": 1835102,
+      "checkout": "c936a021349c16a11a6b83cb5c9484a565b852cf",
+      "command": [
+        "bun",
+        "test",
+        "/tmp/redcode-upstream-probes-3z6nekjd/probes.test.ts",
+        "--test-name-pattern",
+        "80 forced"
+      ],
+      "soak_seconds": 0,
+      "scratch": "/tmp/redcode-upstream-probes-3z6nekjd",
+      "exit_code": 0,
+      "finished_at": "2026-10-07T13:04:41.015914+00:00",
+      "probe_sha256": "b3db2b689c94f56d3bc4d7cfb05a3b64d8d92041a5e539d2cdb9d5a4fc884f7d",
+      "log_sha256": "a9f6a9ea43d14c514dcdbe4f1cc623f3ccbfcf13541214df451b11c6755bf0c9",
+      "output_directory": "/tmp/redcode-upstream-final-yup901pt/reconnect",
+      "measurements": [
+        {
+          "scenario": "reconnect-80",
+          "received": 81,
+          "historyLength": 50,
+          "status": "connected",
+          "after": {
+            "rssBytes": 108322816,
+            "heapUsedBytes": 21521809
+          }
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "started_at": "2026-10-07T13:05:50.570601+00:00",
+      "runner_pid": 1836045,
+      "checkout": "c936a021349c16a11a6b83cb5c9484a565b852cf",
+      "command": [
+        "bun",
+        "test",
+        "/tmp/redcode-upstream-probes-x0cbo77d/probes.test.ts",
+        "--test-name-pattern",
+        "loaded history 1000 at width 44"
+      ],
+      "soak_seconds": 0,
+      "scratch": "/tmp/redcode-upstream-probes-x0cbo77d",
+      "exit_code": 0,
+      "finished_at": "2026-10-07T13:05:55.410516+00:00",
+      "probe_sha256": "4b729308973818a7cc6f19f3632d0b38f528fd14d7706cb9e2d91ce061ebe182",
+      "log_sha256": "5ff9c354e943ccfa7da6f38f9ab1a9ac846a6ec4ea5e18f7dede261f5a29ff4d",
+      "output_directory": "/tmp/redcode-upstream-final-yup901pt/render-1000-44",
+      "measurements": [
+        {
+          "scenario": "render",
+          "count": 1000,
+          "width": 44,
+          "hydrationMs": 1193.7660700000001,
+          "before": {
+            "rssBytes": 296861696,
+            "heapUsedBytes": 78403685
+          },
+          "after": {
+            "rssBytes": 382779392,
+            "heapUsedBytes": 87977609
+          },
+          "keyboardSamples": 10,
+          "keyboardMedianMs": 41.67981800000007,
+          "keyboardP95Ms": 50.06729399999995,
+          "eventLoopP99Ms": 667.942911,
+          "cpuMicroseconds": {
+            "user": 1074459,
+            "system": 51583
+          },
+          "durationMs": 0
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "started_at": "2026-10-07T13:07:07.451619+00:00",
+      "runner_pid": 1837317,
+      "checkout": "c936a021349c16a11a6b83cb5c9484a565b852cf",
+      "command": [
+        "bun",
+        "test",
+        "/tmp/redcode-upstream-probes-npqz6kjd/probes.test.ts",
+        "--test-name-pattern",
+        "loaded history 1000 at width 112"
+      ],
+      "soak_seconds": 0,
+      "scratch": "/tmp/redcode-upstream-probes-npqz6kjd",
+      "exit_code": 0,
+      "finished_at": "2026-10-07T13:07:12.685499+00:00",
+      "probe_sha256": "a763fb57dd873ff62f5a92dc4d23a2cb1403949a018c9aff71fb4306792ebf2b",
+      "log_sha256": "4a1fd8f50e804b4707831898fbe08b453d4f54b6c86df924ac0aad90825cb90b",
+      "output_directory": "/tmp/redcode-upstream-final-yup901pt/render-1000-112",
+      "measurements": [
+        {
+          "scenario": "render",
+          "count": 1000,
+          "width": 112,
+          "hydrationMs": 1205.1177739999998,
+          "before": {
+            "rssBytes": 304922624,
+            "heapUsedBytes": 75982887
+          },
+          "after": {
+            "rssBytes": 399249408,
+            "heapUsedBytes": 89931337
+          },
+          "keyboardSamples": 10,
+          "keyboardMedianMs": 37.03415600000062,
+          "keyboardP95Ms": 44.79052899999988,
+          "eventLoopP99Ms": 649.068543,
+          "cpuMicroseconds": {
+            "user": 977650,
+            "system": 63412
+          },
+          "durationMs": 0
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "started_at": "2026-10-07T13:07:12.747333+00:00",
+      "runner_pid": 1837779,
+      "checkout": "c936a021349c16a11a6b83cb5c9484a565b852cf",
+      "command": [
+        "bun",
+        "test",
+        "/tmp/redcode-upstream-probes-w1yw7j7d/probes.test.ts",
+        "--test-name-pattern",
+        "loaded history 10000 at width 44"
+      ],
+      "soak_seconds": 0,
+      "scratch": "/tmp/redcode-upstream-probes-w1yw7j7d",
+      "exit_code": 0,
+      "finished_at": "2026-10-07T13:07:19.797838+00:00",
+      "probe_sha256": "a763fb57dd873ff62f5a92dc4d23a2cb1403949a018c9aff71fb4306792ebf2b",
+      "log_sha256": "a5fc06c7f5f39dfa53097e4f340db72207f131041d263cc7bafcd0f9392b9405",
+      "output_directory": "/tmp/redcode-upstream-final-yup901pt/render-10000-44",
+      "measurements": [
+        {
+          "scenario": "render",
+          "count": 10000,
+          "width": 44,
+          "hydrationMs": 1938.144933,
+          "before": {
+            "rssBytes": 286703616,
+            "heapUsedBytes": 63403730
+          },
+          "after": {
+            "rssBytes": 483880960,
+            "heapUsedBytes": 174592288
+          },
+          "keyboardSamples": 10,
+          "keyboardMedianMs": 86.90745699999934,
+          "keyboardP95Ms": 90.3881080000001,
+          "eventLoopP99Ms": 823.656447,
+          "cpuMicroseconds": {
+            "user": 1991758,
+            "system": 132957
+          },
+          "durationMs": 0
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "started_at": "2026-10-07T13:07:19.871740+00:00",
+      "runner_pid": 1837939,
+      "checkout": "c936a021349c16a11a6b83cb5c9484a565b852cf",
+      "command": [
+        "bun",
+        "test",
+        "/tmp/redcode-upstream-probes-lorigz2d/probes.test.ts",
+        "--test-name-pattern",
+        "loaded history 10000 at width 112"
+      ],
+      "soak_seconds": 0,
+      "scratch": "/tmp/redcode-upstream-probes-lorigz2d",
+      "exit_code": 0,
+      "finished_at": "2026-10-07T13:07:26.500513+00:00",
+      "probe_sha256": "a763fb57dd873ff62f5a92dc4d23a2cb1403949a018c9aff71fb4306792ebf2b",
+      "log_sha256": "64963e485dba451d9ef7863d64e030ca275d7ff40d29806a34a80cb785f86fa8",
+      "output_directory": "/tmp/redcode-upstream-final-yup901pt/render-10000-112",
+      "measurements": [
+        {
+          "scenario": "render",
+          "count": 10000,
+          "width": 112,
+          "hydrationMs": 1693.005682,
+          "before": {
+            "rssBytes": 282497024,
+            "heapUsedBytes": 60966337
+          },
+          "after": {
+            "rssBytes": 563331072,
+            "heapUsedBytes": 167771582
+          },
+          "keyboardSamples": 10,
+          "keyboardMedianMs": 69.15062699999999,
+          "keyboardP95Ms": 75.43399700000009,
+          "eventLoopP99Ms": 766.509055,
+          "cpuMicroseconds": {
+            "user": 1656309,
+            "system": 166324
+          },
+          "durationMs": 0
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "started_at": "2026-10-07T13:07:26.562247+00:00",
+      "runner_pid": 1838086,
+      "checkout": "c936a021349c16a11a6b83cb5c9484a565b852cf",
+      "command": [
+        "bun",
+        "test",
+        "/tmp/redcode-upstream-probes-25_w5hv4/probes.test.ts",
+        "--test-name-pattern",
+        "malformed final"
+      ],
+      "soak_seconds": 0,
+      "scratch": "/tmp/redcode-upstream-probes-25_w5hv4",
+      "exit_code": 0,
+      "finished_at": "2026-10-07T13:07:27.005573+00:00",
+      "probe_sha256": "a763fb57dd873ff62f5a92dc4d23a2cb1403949a018c9aff71fb4306792ebf2b",
+      "log_sha256": "637fd9f64446f5396bd6dc9620ce83757ce009cc9e49d8e845b3b67cd391df66",
+      "output_directory": "/tmp/redcode-upstream-final-yup901pt/tool-json",
+      "measurements": [
+        {
+          "scenario": "malformed-tool-input",
+          "raw": "{\"path\":\"/tmp/fixture",
+          "emittedCall": {
+            "type": "tool-call",
+            "id": "call_audit",
+            "name": "read",
+            "input": {
+              "path": "/tmp/fixture"
+            }
+          }
+        },
+        {
+          "scenario": "malformed-tool-input",
+          "raw": "not-json",
+          "emittedCall": {
+            "type": "tool-call",
+            "id": "call_audit",
+            "name": "read",
+            "input": {}
+          }
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "started_at": "2026-10-07T13:07:27.073956+00:00",
+      "runner_pid": 1838134,
+      "checkout": "c936a021349c16a11a6b83cb5c9484a565b852cf",
+      "command": [
+        "bun",
+        "test",
+        "/tmp/redcode-upstream-probes-h6sqm510/probes.test.ts",
+        "--test-name-pattern",
+        "real partial"
+      ],
+      "soak_seconds": 0,
+      "scratch": "/tmp/redcode-upstream-probes-h6sqm510",
+      "exit_code": 0,
+      "finished_at": "2026-10-07T13:07:32.332914+00:00",
+      "probe_sha256": "a763fb57dd873ff62f5a92dc4d23a2cb1403949a018c9aff71fb4306792ebf2b",
+      "log_sha256": "a81c48729e8edd1185a29cbd1c04a92787913e98ffd6f9bd3a231525cd873f29",
+      "output_directory": "/tmp/redcode-upstream-final-yup901pt/tool-parser",
+      "measurements": [
+        {
+          "scenario": "partial-tool-parser",
+          "bytes": 5011,
+          "chunkBytes": 100,
+          "elapsedMs": 20.573507000000006
+        },
+        {
+          "scenario": "partial-tool-parser",
+          "bytes": 50011,
+          "chunkBytes": 100,
+          "elapsedMs": 300.490376
+        },
+        {
+          "scenario": "partial-tool-parser",
+          "bytes": 200011,
+          "chunkBytes": 100,
+          "elapsedMs": 4487.565305
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "started_at": "2026-10-07T13:07:59.712304+00:00",
+      "runner_pid": 1838514,
+      "checkout": "c936a021349c16a11a6b83cb5c9484a565b852cf",
+      "command": [
+        "bun",
+        "test",
+        "/tmp/redcode-upstream-probes-gnot7clv/probes.test.ts",
+        "--test-name-pattern",
+        "cancelled SDK"
+      ],
+      "soak_seconds": 0,
+      "scratch": "/tmp/redcode-upstream-probes-gnot7clv",
+      "exit_code": 0,
+      "finished_at": "2026-10-07T13:08:00.311485+00:00",
+      "probe_sha256": "2e31b05023ac200efb779f5b5c401d0973911e8e9c752f30deecb7f2d62d7e78",
+      "log_sha256": "f5e4f5a9c67923307ac233ce7a2d6c066f462d1f8f04c5f3450e5782d94d3bbe",
+      "output_directory": "/tmp/redcode-upstream-final-yup901pt/sdk-cancel",
+      "measurements": [
+        {
+          "scenario": "sdk-cancel-refresh",
+          "executed": [
+            2
+          ],
+          "outcomes": [
+            "rejected",
+            "fulfilled"
+          ]
+        }
+      ]
+    }
+  ],
+  "superseded_run": {
+    "status": "failed",
+    "started_at": "2026-10-07T13:02:04.571977+00:00",
+    "runner_pid": 1832598,
+    "checkout": "c936a021349c16a11a6b83cb5c9484a565b852cf",
+    "command": [
+      "bun",
+      "test",
+      "/tmp/redcode-upstream-probes-djxxii4p/probes.test.ts"
+    ],
+    "soak_seconds": 0,
+    "scratch": "/tmp/redcode-upstream-probes-djxxii4p",
+    "exit_code": 1,
+    "finished_at": "2026-10-07T13:03:39.113777+00:00",
+    "measurements": [
+      {
+        "scenario": "retention",
+        "count": 1000,
+        "before": {
+          "rssBytes": 104263680,
+          "heapUsedBytes": 15014967
+        },
+        "after": {
+          "rssBytes": 122949632,
+          "heapUsedBytes": 22559125
+        },
+        "eventProcessingMs": 542.242223,
+        "activeRows": 1000,
+        "excludedRows": 1000,
+        "excludedChildRows": 1000,
+        "additionalEvictions": 0
+      },
+      {
+        "scenario": "navigation-100",
+        "count": 1000,
+        "excludedRowsAfterNavigation": 1000,
+        "explicitEvictions": 199,
+        "after": {
+          "rssBytes": 140611584,
+          "heapUsedBytes": 26081331
+        }
+      },
+      {
+        "scenario": "retention",
+        "count": 10000,
+        "before": {
+          "rssBytes": 141135872,
+          "heapUsedBytes": 26081331
+        },
+        "after": {
+          "rssBytes": 365514752,
+          "heapUsedBytes": 69406119
+        },
+        "eventProcessingMs": 76613.293448,
+        "activeRows": 10000,
+        "excludedRows": 10000,
+        "excludedChildRows": 10000,
+        "additionalEvictions": 0
+      },
+      {
+        "scenario": "navigation-100",
+        "count": 10000,
+        "excludedRowsAfterNavigation": 10000,
+        "explicitEvictions": 199,
+        "after": {
+          "rssBytes": 384126976,
+          "heapUsedBytes": 70129616
+        }
+      },
+      {
+        "scenario": "render",
+        "count": 1000,
+        "width": 44,
+        "hydrationMs": 1269.624220999991,
+        "before": {
+          "rssBytes": 373362688,
+          "heapUsedBytes": 76812843
+        },
+        "after": {
+          "rssBytes": 423534592,
+          "heapUsedBytes": 88187236
+        },
+        "keyboardSamples": 10,
+        "keyboardMedianMs": 38.040961999999126,
+        "keyboardP95Ms": 47.01967700000387,
+        "eventLoopP99Ms": 706.215935,
+        "cpuMicroseconds": {
+          "user": 1079017,
+          "system": 62033
+        },
+        "durationMs": 0
+      },
+      {
+        "scenario": "render",
+        "count": 1000,
+        "width": 112,
+        "hydrationMs": 298.20188199999393,
+        "before": {
+          "rssBytes": 466419712,
+          "heapUsedBytes": 91652361
+        },
+        "after": {
+          "rssBytes": 471932928,
+          "heapUsedBytes": 122828870
+        },
+        "keyboardSamples": 10,
+        "keyboardMedianMs": 39.76620100000582,
+        "keyboardP95Ms": 45.08835199999157,
+        "eventLoopP99Ms": 125.960191,
+        "cpuMicroseconds": {
+          "user": 915246,
+          "system": 56155
+        },
+        "durationMs": 0
+      },
+      {
+        "scenario": "render",
+        "count": 10000,
+        "width": 44,
+        "hydrationMs": 843.7626379999856,
+        "before": {
+          "rssBytes": 516530176,
+          "heapUsedBytes": 125295557
+        },
+        "after": {
+          "rssBytes": 622489600,
+          "heapUsedBytes": 194358699
+        },
+        "keyboardSamples": 10,
+        "keyboardMedianMs": 73.38689100000192,
+        "keyboardP95Ms": 82.13169799999741,
+        "eventLoopP99Ms": 626.524159,
+        "cpuMicroseconds": {
+          "user": 1578946,
+          "system": 96156
+        },
+        "durationMs": 0
+      },
+      {
+        "scenario": "render",
+        "count": 10000,
+        "width": 112,
+        "hydrationMs": 834.2232159999985,
+        "before": {
+          "rssBytes": 695300096,
+          "heapUsedBytes": 198104062
+        },
+        "after": {
+          "rssBytes": 923561984,
+          "heapUsedBytes": 277717835
+        },
+        "keyboardSamples": 10,
+        "keyboardMedianMs": 73.15551099998993,
+        "keyboardP95Ms": 94.13569300000381,
+        "eventLoopP99Ms": 603.979775,
+        "cpuMicroseconds": {
+          "user": 1857465,
+          "system": 134969
+        },
+        "durationMs": 0
+      }
+    ],
+    "note": "Superseded harness run: retention exceeded 60s observer deadline; reconnect URL fixture bug corrected; render observations from shared process excluded from comparable RSS table."
+  },
+  "soak_snapshot": {
+    "status": "running",
+    "started_at": "2026-10-07T13:05:19.483499+00:00",
+    "runner_pid": 1835618,
+    "checkout": "c936a021349c16a11a6b83cb5c9484a565b852cf",
+    "command": [
+      "bun",
+      "test",
+      "/tmp/redcode-upstream-probes-y6oeg9i3/probes.test.ts",
+      "--test-name-pattern",
+      "continuous production"
+    ],
+    "soak_seconds": 86400,
+    "scratch": "/tmp/redcode-upstream-probes-y6oeg9i3",
+    "output_directory": "/tmp/redcode-upstream-final-yup901pt/soak-24h",
+    "probe_sha256": "4b729308973818a7cc6f19f3632d0b38f528fd14d7706cb9e2d91ce061ebe182",
+    "snapshot_at": "2026-10-07T13:19:06.619042+00:00",
+    "samples": [
+      {
+        "scenario": "soak-sample",
+        "count": 10000,
+        "width": 112,
+        "iteration": 0,
+        "elapsedMs": 158,
+        "keyboardMs": 88.01575499999944,
+        "after": {
+          "rssBytes": 471560192,
+          "heapUsedBytes": 157573935
+        },
+        "eventLoopP99Ms": 770.703359
+      },
+      {
+        "scenario": "soak-sample",
+        "count": 10000,
+        "width": 112,
+        "iteration": 1,
+        "elapsedMs": 60304,
+        "keyboardMs": 79.08784000000014,
+        "after": {
+          "rssBytes": 442413056,
+          "heapUsedBytes": 158147380
+        },
+        "eventLoopP99Ms": 2.553855
+      },
+      {
+        "scenario": "soak-sample",
+        "count": 10000,
+        "width": 112,
+        "iteration": 2,
+        "elapsedMs": 120436,
+        "keyboardMs": 57.427900999988196,
+        "after": {
+          "rssBytes": 428433408,
+          "heapUsedBytes": 149448553
+        },
+        "eventLoopP99Ms": 2.437119
+      },
+      {
+        "scenario": "soak-sample",
+        "count": 10000,
+        "width": 112,
+        "iteration": 3,
+        "elapsedMs": 180550,
+        "keyboardMs": 51.49328899997636,
+        "after": {
+          "rssBytes": 418336768,
+          "heapUsedBytes": 139924607
+        },
+        "eventLoopP99Ms": 2.373631
+      },
+      {
+        "scenario": "soak-sample",
+        "count": 10000,
+        "width": 112,
+        "iteration": 4,
+        "elapsedMs": 240677,
+        "keyboardMs": 59.35285300001851,
+        "after": {
+          "rssBytes": 412098560,
+          "heapUsedBytes": 139793419
+        },
+        "eventLoopP99Ms": 2.306047
+      },
+      {
+        "scenario": "soak-sample",
+        "count": 10000,
+        "width": 112,
+        "iteration": 5,
+        "elapsedMs": 300812,
+        "keyboardMs": 74.46208099997602,
+        "after": {
+          "rssBytes": 417738752,
+          "heapUsedBytes": 139876122
+        },
+        "eventLoopP99Ms": 2.275327
+      },
+      {
+        "scenario": "soak-sample",
+        "count": 10000,
+        "width": 112,
+        "iteration": 6,
+        "elapsedMs": 360958,
+        "keyboardMs": 76.50215000001481,
+        "after": {
+          "rssBytes": 418484224,
+          "heapUsedBytes": 141392017
+        },
+        "eventLoopP99Ms": 2.250751
+      },
+      {
+        "scenario": "soak-sample",
+        "count": 10000,
+        "width": 112,
+        "iteration": 7,
+        "elapsedMs": 421075,
+        "keyboardMs": 54.22465899999952,
+        "after": {
+          "rssBytes": 409231360,
+          "heapUsedBytes": 141867310
+        },
+        "eventLoopP99Ms": 2.248703
+      },
+      {
+        "scenario": "soak-sample",
+        "count": 10000,
+        "width": 112,
+        "iteration": 8,
+        "elapsedMs": 481192,
+        "keyboardMs": 51.977146000019275,
+        "after": {
+          "rssBytes": 413683712,
+          "heapUsedBytes": 140393938
+        },
+        "eventLoopP99Ms": 2.236415
+      },
+      {
+        "scenario": "soak-sample",
+        "count": 10000,
+        "width": 112,
+        "iteration": 9,
+        "elapsedMs": 541305,
+        "keyboardMs": 51.571109999902546,
+        "after": {
+          "rssBytes": 413659136,
+          "heapUsedBytes": 140362123
+        },
+        "eventLoopP99Ms": 2.220031
+      },
+      {
+        "scenario": "soak-sample",
+        "count": 10000,
+        "width": 112,
+        "iteration": 10,
+        "elapsedMs": 601441,
+        "keyboardMs": 73.51800199993886,
+        "after": {
+          "rssBytes": 426631168,
+          "heapUsedBytes": 143528946
+        },
+        "eventLoopP99Ms": 2.240511
+      },
+      {
+        "scenario": "soak-sample",
+        "count": 10000,
+        "width": 112,
+        "iteration": 11,
+        "elapsedMs": 661561,
+        "keyboardMs": 53.838340000016615,
+        "after": {
+          "rssBytes": 419594240,
+          "heapUsedBytes": 142730437
+        },
+        "eventLoopP99Ms": 2.275327
+      },
+      {
+        "scenario": "soak-sample",
+        "count": 10000,
+        "width": 112,
+        "iteration": 12,
+        "elapsedMs": 721686,
+        "keyboardMs": 57.73003099998459,
+        "after": {
+          "rssBytes": 419868672,
+          "heapUsedBytes": 142751137
+        },
+        "eventLoopP99Ms": 2.291711
+      },
+      {
+        "scenario": "soak-sample",
+        "count": 10000,
+        "width": 112,
+        "iteration": 13,
+        "elapsedMs": 781808,
+        "keyboardMs": 54.5710830000462,
+        "after": {
+          "rssBytes": 422305792,
+          "heapUsedBytes": 142901298
+        },
+        "eventLoopP99Ms": 2.312191
+      }
+    ]
+  }
+}
