@@ -5,6 +5,8 @@ import { sidebarPanel } from "@reddb-io/design-system/contracts/sidebar-panel"
 import { multiColumnLayout } from "@reddb-io/design-system/contracts/multi-column-layout"
 import { searchSelectOptions } from "@reddb-io/design-system/contracts/search-select"
 import { statusIndicator } from "@reddb-io/design-system/contracts/status-indicator"
+import { meter } from "@reddb-io/design-system/contracts/meter"
+import { card } from "@reddb-io/design-system/contracts/card"
 import { Button } from "@opencode/ui/button"
 import { useQuery } from "@tanstack/solid-query"
 import { createEffect, createMemo, on, Show } from "solid-js"
@@ -139,9 +141,11 @@ export default function AgentHosts(props: { server: ServerConnection.Any }) {
         >
           <header class={panel.toolbar()}>
             <h3 class="min-w-0 text-body font-medium [overflow-wrap:anywhere]">{selected()?.name ?? state.selected}</h3>
-            <Button variant="ghost" class="md:hidden" onClick={back}>
-              {language.t("agents.hosts.back")}
-            </Button>
+            <Show when={navigation.mobile()}>
+              <Button variant="ghost" onClick={back}>
+                {language.t("agents.hosts.back")}
+              </Button>
+            </Show>
           </header>
           <div class={panel.body({ class: "overflow-y-auto overscroll-contain" })}>
             <Show when={selected()} fallback={<p role="alert">{language.t("agents.hosts.missingSelection")}</p>}>
@@ -156,9 +160,10 @@ export default function AgentHosts(props: { server: ServerConnection.Any }) {
                 }
               />
             </Show>
-            <p class="text-13-regular leading-[var(--line-height-base)] text-ink-muted">
-              {language.t("agents.hosts.runtimeNote")}
-            </p>
+            <details class="text-body text-ink-muted">
+              <summary class="cursor-pointer py-2">{language.t("agents.hosts.measurementDetails")}</summary>
+              <p>{language.t("agents.hosts.runtimeNote")}</p>
+            </details>
           </div>
         </section>
       </Show>
@@ -216,6 +221,8 @@ function Resources(props: {
     value === null
       ? language.t("agents.hosts.unknown")
       : language.t("agents.hosts.memoryValue", { value: (value / 1024 ** 3).toFixed(2) })
+  const measure = meter()
+  const surface = card({ padding: "md" })
   return (
     <article aria-label={props.name} class="py-[var(--reddb-spatial-inset-sm)]">
       <div class="flex flex-col gap-[var(--reddb-spatial-gap-md)]">
@@ -234,35 +241,74 @@ function Resources(props: {
             {(sample) => (
               <>
                 <p class="text-13-regular text-ink-muted">{sample.platform}</p>
-                <dl class="grid grid-cols-2 gap-[var(--reddb-spatial-gap-md)] text-13-regular leading-[var(--line-height-base)]">
-                  <div>
+                <dl class="grid gap-[var(--reddb-spatial-gap-lg)] sm:grid-cols-2 text-body">
+                  <div class={surface.root({ class: "p-[var(--reddb-spatial-inset-md)]" })}>
                     <dt class="text-ink-muted">{language.t("agents.hosts.cpu")}</dt>
-                    <dd>
+                    <dd class="mt-2 text-xl font-medium tabular-nums">
                       {sample.cpu.utilization === null
                         ? language.t("agents.hosts.sampling")
                         : language.t("agents.hosts.percent", { value: Math.round(sample.cpu.utilization * 100) })}
                     </dd>
+                    <Show when={sample.cpu.utilization !== null}>
+                      <dd class="mt-3">
+                        <div
+                          role="meter"
+                          aria-label={language.t("agents.hosts.cpu")}
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                          aria-valuenow={sample.cpu.utilization! * 100}
+                          class={measure.track()}
+                        >
+                          <div class={measure.indicator()} style={{ width: `${sample.cpu.utilization! * 100}%` }} />
+                        </div>
+                      </dd>
+                    </Show>
                   </div>
-                  <div>
-                    <dt class="text-ink-muted">{language.t("agents.hosts.cores")}</dt>
-                    <dd>{sample.cpu.count ?? language.t("agents.hosts.unknown")}</dd>
-                  </div>
-                  <div>
+                  <div class={surface.root({ class: "p-[var(--reddb-spatial-inset-md)]" })}>
                     <dt class="text-ink-muted">{language.t("agents.hosts.runtimeMemory")}</dt>
-                    <dd>
+                    <dd class="mt-2 text-lg font-medium tabular-nums">
                       {language.t("agents.hosts.memoryPair", {
                         free: bytes(sample.memory.freeBytes),
                         total: bytes(sample.memory.totalBytes),
                       })}
                     </dd>
+                    <Show
+                      when={
+                        sample.memory.freeBytes !== null &&
+                        sample.memory.totalBytes !== null &&
+                        sample.memory.totalBytes > 0
+                      }
+                    >
+                      <dd class="mt-3">
+                        <div
+                          role="meter"
+                          aria-label={language.t("agents.hosts.runtimeMemory")}
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                          aria-valuenow={(sample.memory.freeBytes! / sample.memory.totalBytes!) * 100}
+                          class={measure.track()}
+                        >
+                          <div
+                            class={measure.indicator()}
+                            style={{ width: `${(sample.memory.freeBytes! / sample.memory.totalBytes!) * 100}%` }}
+                          />
+                        </div>
+                      </dd>
+                    </Show>
+                  </div>
+                  <div>
+                    <dt class="text-ink-muted">{language.t("agents.hosts.cores")}</dt>
+                    <dd class="font-medium tabular-nums">{sample.cpu.count ?? language.t("agents.hosts.unknown")}</dd>
                   </div>
                   <div>
                     <dt class="text-ink-muted">{language.t("agents.hosts.process")}</dt>
-                    <dd>{bytes(sample.process.residentBytes)}</dd>
+                    <dd class="font-medium tabular-nums">{bytes(sample.process.residentBytes)}</dd>
                   </div>
                 </dl>
                 <p class="text-caption text-ink-muted">
-                  {language.t("agents.hosts.sampled", { time: new Date(sample.sampledAt).toLocaleTimeString() })}
+                  {language.t("agents.hosts.sampled", {
+                    time: new Date(sample.sampledAt).toLocaleTimeString(language.intl()),
+                  })}
                 </p>
               </>
             )}

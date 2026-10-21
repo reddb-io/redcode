@@ -6,6 +6,7 @@
   "type": "module",
   "exports": {
     "./color": "./layers/color/src/index.ts",
+    "./base": "./solid-base.ts",
     "./styles/application.css": "./styles/application.css",
     "./contracts/*": "./kits/base/src/*.variants.ts",
     "./contracts/list-row": "./kits/app/src/primitives/list-row.variants.ts",

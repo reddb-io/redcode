@@ -678,7 +678,7 @@
     "styles/all.css": "7d850230ee9cc8d49cf7e642e8754bcd0be09e799758f99907d9d33cd4e8361f",
     "styles/application.css": "7d850230ee9cc8d49cf7e642e8754bcd0be09e799758f99907d9d33cd4e8361f",
     "styles/base.css": "11bb59075a372e0d6d67dee2e338d6fbd6df76f1d91b0d21a9f0f2028b997ca4",
-    "package.json": "50089e512aa243f568becdd338a4e4117d309741195b8f6271b2e1356781fe21",
+    "package.json": "fda43c0c09b33f5520c2251fe6ced14e594944c6beac1338196218abf0379108",
     "platform/platform-manifest.json": "a19bdeac7c3f5ec9cd9681490c661371feab4ac21d893d92168ac56359fa049d",
     "platform/favicon.svg": "9db3260c82ad389f5343ab01b7468bd7edbadce339a8c2b3b2c0883ffce34c87",
     "platform/favicon.ico": "0d39be7207e005930eb5c8d93834e331eae4feba690f9c2451fdb481f6cfcecd",
@@ -686,7 +686,8 @@
     "platform/icon-192.png": "a8d288b0d97d101adf3c0d21e56ecfa41cd2509ae5fcccf86e47e7bc2ad5ebf6",
     "platform/icon-512.png": "f05ebd448beaf4c9e9e57af0b1836f1f07a26db05f7dc3f972dc46cab1cb34b0",
     "platform/maskable-192.png": "3bbad90aef9d53e25d3327c583b607540f0b7d7699416c49c9b5946011b84ba8",
-    "platform/maskable-512.png": "f9eb2a35751029f85a1e6eb8846e3bcf7ee0eac2e642357bb11097175bf7102f"
+    "platform/maskable-512.png": "f9eb2a35751029f85a1e6eb8846e3bcf7ee0eac2e642357bb11097175bf7102f",
+    "solid-base.ts": "dc3f7cb666e00b988bb7e9c6fd888e5a0abb5266e0825e19eff10cd9be74d0b1"
   },
   "consumer": {
     "name": "redcode",

@@ -94,6 +94,45 @@ export async function mockWorkerTaskInspection(page: Page) {
   return { batch, otherBatch, ...(await mockRemoteWorkers(page, { batches: [batch, otherBatch] })) }
 }
 
+export async function mockWorkerDistribution(page: Page) {
+  const batch = Schema.decodeUnknownSync(Worker.Batch)({
+    id: "batch-distribution",
+    createdAt: "2026-10-21T10:00:00Z",
+    observing: true,
+    manifest: {
+      tasks: [
+        { id: "build-api", prompt: "Implement the API", worker: "pi-requested" },
+        { id: "test-api", prompt: "Test the API" },
+        { id: "build-web", prompt: "Implement the page" },
+        { id: "test-web", prompt: "Test the page" },
+        { id: "write-docs", prompt: "Document the API", worker: "pi-b" },
+        { id: "review-docs", prompt: "Review the documentation", worker: "pi-requested" },
+      ],
+    },
+    report: {
+      fingerprint: "fixture",
+      tasks: [
+        { id: "build-api", state: "running", worker: "pi-a", directory: "/srv/api", sessionID: "ses_api" },
+        { id: "test-api", state: "waiting", worker: "pi-b", directory: "/srv/tests", sessionID: "ses_tests" },
+        { id: "build-web", state: "succeeded", worker: "pi-a" },
+        { id: "test-web", state: "failed", worker: "pi-b" },
+        { id: "write-docs", state: "queued", queueReason: "cpu-capacity" },
+      ],
+    },
+  })
+  const workers: Worker.Status[] = [
+    {
+      worker: { id: "pi-a", url: "http://pi-a:4096", directories: ["/srv/api"], tags: [], passwordEnv: "fixture_a" },
+      connection: "online",
+    },
+    {
+      worker: { id: "pi-b", url: "http://pi-b:4096", directories: ["/srv/tests"], tags: [], passwordEnv: "fixture_b" },
+      connection: "offline",
+    },
+  ]
+  return { batch, workers, ...(await mockRemoteWorkers(page, { batches: [batch], workers })) }
+}
+
 export async function mockRemoteWorkers(
   page: Page,
   initial?: {

@@ -42,7 +42,9 @@ writeFileSync(join(dest, "platform/platform-manifest.json"), JSON.stringify(plat
 for (const icon of platform.icons)
   writeFileSync(
     join(dest, "platform", icon.file),
-    new Uint8Array(await Bun.$`git -C ${source} show ${manifest.version}:packages/assets/dist/platform/${icon.file}`.arrayBuffer()),
+    new Uint8Array(
+      await Bun.$`git -C ${source} show ${manifest.version}:packages/assets/dist/platform/${icon.file}`.arrayBuffer(),
+    ),
   )
 
 // Local Divergence: the Kits are Svelte and Redcode renders with Solid, so the package exports their framework-free
@@ -53,6 +55,21 @@ const contracts = (kit: string) =>
     path: `./kits/${kit}/src/${file.replaceAll("\\", "/")}`,
   }))
 const pkg = JSON.parse(readFileSync(join(dest, "package.json"), "utf8"))
+// App appearance contracts import Base vocabulary through the public package seam.
+// Keep that seam framework-free instead of exposing the upstream Svelte barrel.
+writeFileSync(
+  join(dest, "solid-base.ts"),
+  [
+    'export { TONES, FEEDBACK_TONES, isTone, type Tone, type FeedbackTone } from "./kits/base/src/tone"',
+    'export { card } from "./kits/base/src/card.variants"',
+    'export { dropdownMenu, type DropdownMenuSize } from "./kits/base/src/dropdown-menu.variants"',
+    'export { popover } from "./kits/base/src/popover.variants"',
+    'export { mediaObject } from "./kits/base/src/media-object.variants"',
+    'export { gridList, type GridListColumn } from "./kits/base/src/grid-list.variants"',
+    'export { list } from "./kits/base/src/list.variants"',
+    "",
+  ].join("\n"),
+)
 writeFileSync(
   join(dest, "package.json"),
   JSON.stringify(
@@ -60,6 +77,7 @@ writeFileSync(
       ...pkg,
       exports: {
         "./color": pkg.exports["./color"],
+        "./base": "./solid-base.ts",
         "./styles/application.css": pkg.exports["./styles/application.css"],
         "./contracts/*": "./kits/base/src/*.variants.ts",
         ...Object.fromEntries(contracts("app").map((contract) => [`./contracts/${contract.name}`, contract.path])),
@@ -80,8 +98,15 @@ writeFileSync(
 const receiptPath = join(dest, "design-system.receipt.json")
 const receipt = JSON.parse(readFileSync(receiptPath, "utf8"))
 const upstreamPackageSha256 = receipt.files["package.json"]
-for (const file of ["package.json", "platform/platform-manifest.json", ...platform.icons.map((icon) => `platform/${icon.file}`)])
-  receipt.files[file] = createHash("sha256").update(readFileSync(join(dest, file))).digest("hex")
+for (const file of [
+  "package.json",
+  "solid-base.ts",
+  "platform/platform-manifest.json",
+  ...platform.icons.map((icon) => `platform/${icon.file}`),
+])
+  receipt.files[file] = createHash("sha256")
+    .update(readFileSync(join(dest, file)))
+    .digest("hex")
 receipt.consumer = { name: manifest.consumer, framework: "solid", upstreamPackageSha256 }
 writeFileSync(receiptPath, JSON.stringify(receipt, null, 2) + "\n")
 

@@ -37,7 +37,7 @@ For offsite Desktop access through a router VPN, see [remote coding access](remo
 
 ## Configure Claude Code or Codex
 
-Open **Harnesses** for the execution host. **Check installation** detects the CLI version and account
+Open **Harnesses → Agent setup** for the execution host. **Check installation** detects the CLI version and account
 state without making an inference request. Set its executable name or path and choose **Save and
 check** if it is outside PATH. Changing an executable requires closing its active harnesses first.
 
@@ -58,7 +58,7 @@ external harness execution.
 
 ## Run and control a harness
 
-Choose the coding agent, optional model override and checkout directory, then **Start harness**.
+In **Harnesses → Native sessions**, choose the coding agent, optional model override and checkout directory, then **Start harness**.
 Starting establishes the native protocol; **Send instruction** starts the work. The app shows output,
 tool activity and pending requests for that native session. Only an opened run reads its output;
 the session inventory contains metadata. The output view displays its most recent 200 events.
@@ -67,10 +67,12 @@ On mobile, starting or selecting a run opens its details as the main workspace v
 brings pending questions or approvals into view without scrolling past the output. **Execution controls**
 and **Harness output** can be expanded when needed. The header remains outside the scrolling body.
 
-**Back to sessions** returns to setup and the picker; **Open session details** reopens the selected run.
+**Back to sessions** returns to the session picker and creation form; **Open session details** reopens the selected run.
 Desktop uses **Close** to dismiss the inspector. These navigation actions preserve an unsent instruction
 and answers for the same run and never stop its process. Selecting a different run clears those drafts.
 Detail polling pauses while the inspector is closed; the host's session inventory continues to refresh.
+On wide screens, the inspector sits beside the session workspace. The **Agent setup** tab keeps
+installation and account actions separate; changing tabs retains unsaved executable and session fields.
 
 Codex's installation check also fetches the host/account's advertised models. The model field offers
 those suggestions. Leaving it empty preserves the CLI's configured default; an unavailable default

@@ -5,8 +5,10 @@ This guide describes coding-session features. Slash commands are entered in the 
 ## Agents workspace
 
 **Desktop / web app.** Open **Agents** in the siderail, or use `Ctrl+Shift+A` (`Cmd+Shift+A` on macOS).
-Its sidemenu separates **Sessions**, **Inbox**, **Machines**, **Harness**, **Environments**,
-**Worktrees**, **Hosts and resources** and **Remote workers**. Select one host or view all configured hosts. The selected
+Its sidemenu groups **Sessions**, **Inbox**, **Harnesses** and **Remote workers** under
+**Execution**; project environments, isolated workspaces and worktrees under **Workspaces**;
+and **Machines** plus **Hosts and resources** under **Infrastructure**.
+Select one host or view all configured hosts. The selected
 section and host are stored in the URL and survive reload; the desktop can restore the Agents page.
 On mobile, open **Agents** in the bottom navigation and use the section selector in its header.
 Changing sections keeps the selected host. **Browse** opens the sidemenu to change the host scope.
@@ -23,6 +25,7 @@ Changing sections keeps the selected host. **Browse** opens the sidemenu to chan
 - **Hosts and resources** provides a searchable host list and one selected resource inspector showing
   logical CPUs, sampled CPU usage, OS free/total RAM and the Redcode process's memory, considering visible
   runtime/container limits. Mobile details replace the list; **Back to hosts** preserves its search.
+  CPU and available RAM have labelled meters; an unavailable reading has no meter.
   The first CPU sample is unknown. Measurements refresh for the open inspector or when queued tasks need admission;
   failed/disconnected hosts do not display cached values as live. These figures do not reserve RAM or
   enforce OS quotas. Optional [worker task requirements](distributed-workers.md#resource-aware-admission) control admission through the coordinator.
@@ -31,10 +34,15 @@ Changing sections keeps the selected host. **Browse** opens the sidemenu to chan
   target requires new checks. Verification does not start an agent or dispatch work.
 - **Remote workers** filters task reports by status or searches their prompt, identifiers, worker,
   checkout and capability tags. **Execution details** shows the saved assignment and its current
-  queue, input or recovery state. The inspector shares the list's instruction, interruption,
-  recovery and patch-review actions. On mobile it replaces the inventory; returning preserves
+  queue, input or recovery state. Instruction, interruption, recovery and patch-review
+  actions belong to the selected task's inspector. On mobile it replaces the inventory; returning preserves
   filters and unsent instructions. A stale report disables execution controls, and a removed task
   stays explicitly unavailable. Transition times and duration are not recorded in this report.
+  **Tasks**, **Workers** and **New batch** separate execution, machine setup and
+  composition without discarding drafts. A batch progress indicator counts successful
+  executions. Desktop switches between **By worker** and **List** views of the same
+  inventory; mobile uses the compact list. Grouping follows recorded assignments,
+  with unassigned work separate and worker reachability visible.
 
 Unavailable locations/tasks are reported explicitly, so incomplete inspection is not presented as an
 empty inbox. Servers without the new endpoints remain usable for sessions and show unavailable states
@@ -46,6 +54,9 @@ recovery and collecting changes.
 
 **Harnesses**, **Machines** and **Worktrees** extend this workspace with external Claude Code/Codex
 sessions, guided remote registration and a create/review/integrate/archive/restore workflow.
+The harness's **Native sessions** tab contains session selection and creation; **Agent setup**
+contains installation, executable configuration and sign-in. Changing tabs retains unsaved fields.
+On wide screens, selected session details sit beside this workspace; mobile opens those details on their own.
 See [external coding agents and worktrees](external-harnesses.md) for capabilities and host ownership.
 
 **Project environments** stores reusable preparation and validation recipes. Run a Docker Compose

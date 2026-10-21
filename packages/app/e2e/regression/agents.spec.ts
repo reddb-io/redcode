@@ -5,7 +5,12 @@ import { Schema } from "effect"
 import { fixture, installStressSessionTabs, mockStressTimeline } from "../utils/session-fixture"
 import { sessionHref } from "../utils/app"
 import { status } from "../utils/timeline"
-import { mockRemoteWorkers, mockWaitingWorker, mockWorkerTaskInspection } from "../utils/worker-fixture"
+import {
+  mockRemoteWorkers,
+  mockWaitingWorker,
+  mockWorkerTaskInspection,
+  mockWorkerDistribution,
+} from "../utils/worker-fixture"
 import {
   mockHarnessOperations,
   mockWorktreeOperations,
@@ -147,8 +152,25 @@ test("starts a native Claude harness and preserves question input across host re
   const harness = await mockHarnessOperations(page)
   await page.goto("/agents?view=harness")
   const workspace = page.getByRole("region", { name: "Agents", exact: true })
+  await expect(
+    workspace.getByText("No native sessions on this host yet. Start one below.", { exact: true }),
+  ).toBeVisible()
+  await expect(workspace.getByRole("button", { name: "Native sessions", exact: true })).toHaveCount(0)
   await chooseSearchOption(page, workspace.getByRole("button", { name: "Coding agent", exact: true }), "Claude Code")
   await workspace.getByLabel("Checkout directory on this host", { exact: true }).fill(fixture.directory)
+  await workspace.getByRole("tab", { name: "Agent setup", exact: true }).click()
+  const executable = workspace
+    .getByRole("article", { name: "Claude Code", exact: true })
+    .getByLabel("Executable name or path", { exact: true })
+  await executable.fill("claude-custom")
+  await expect(workspace.getByRole("button", { name: "Start harness", exact: true })).toBeHidden()
+  await workspace.getByRole("tab", { name: "Native sessions", exact: true }).click()
+  await expect(workspace.getByLabel("Checkout directory on this host", { exact: true })).toHaveValue(fixture.directory)
+  await expect(workspace.getByRole("button", { name: "Coding agent", exact: true })).toContainText("Claude Code")
+  await workspace.getByRole("tab", { name: "Agent setup", exact: true }).click()
+  await expect(executable).toHaveValue("claude-custom")
+  await workspace.getByRole("tab", { name: "Native sessions", exact: true }).click()
+  await page.screenshot({ path: test.info().outputPath("harness-workspace.png"), animations: "disabled" })
   const opened = page.waitForResponse(
     (response) => new URL(response.url()).pathname === "/api/harness/runs" && response.request().method() === "POST",
   )
@@ -181,6 +203,12 @@ test("starts a native Claude harness and preserves question input across host re
   await expect(answer).toHaveCount(0)
   await expect(workspace.getByRole("alert")).toHaveCount(0)
   await page.screenshot({ path: test.info().outputPath("external-harness.png"), animations: "disabled" })
+  await workspace.getByRole("tab", { name: "Agent setup", exact: true }).click()
+  await expect(executable).toHaveValue("claude-custom")
+  await expect(workspace.getByRole("article", { name: "Native session details", exact: true })).toBeVisible()
+  await expect.poll(() => workspace.evaluate((element) => element.scrollWidth - element.clientWidth)).toBe(0)
+  await page.screenshot({ path: test.info().outputPath("harness-agent-setup.png"), animations: "disabled" })
+  await workspace.getByRole("tab", { name: "Native sessions", exact: true }).click()
   harness.loseProcess()
   await expect(
     workspace.getByRole("checkbox", { name: "I confirmed that the original process is stopped" }),
@@ -701,8 +729,17 @@ test("sends resource requirements with a worker task and displays its queued rea
       tasks: [{ id: batch.manifest.tasks[0].id, state: "queued", queueReason: "memory-capacity" }],
     },
   })
+  await workspace
+    .getByRole("article")
+    .filter({ has: page.getByText("Run resource-aware tests", { exact: true }) })
+    .getByRole("button", { name: "Execution details", exact: true })
+    .click()
   await expect(workspace.getByText("Waiting for enough unreserved free RAM.", { exact: true })).toBeVisible()
-  await expect(workspace.getByText("CPU: 2 · RAM: 1.50 GiB", { exact: true })).toBeVisible()
+  await expect(
+    workspace
+      .getByRole("region", { name: "Task details", exact: true })
+      .getByText("CPU: 2 · RAM: 1.50 GiB", { exact: true }),
+  ).toBeVisible()
   await page.screenshot({ path: test.info().outputPath("worker-resource-admission.png"), animations: "disabled" })
   const cancelled = page.waitForResponse((response) =>
     new URL(response.url()).pathname.endsWith("/batch-fixture/control"),
@@ -722,8 +759,10 @@ test("controls the assigned native worker harness and retains instruction focus 
   await page.goto("/agents?view=remote")
   const workspace = page.getByRole("region", { name: "Agents", exact: true })
   const task = workspace.getByRole("article").filter({ has: page.getByText("Review the checkout", { exact: true }) })
-  await task.getByRole("button", { name: "Send instruction", exact: true }).click()
-  const editor = task.getByLabel("What should this agent do next?", { exact: true })
+  await task.getByRole("button", { name: "Execution details", exact: true }).click()
+  const inspector = workspace.getByRole("region", { name: "Task details", exact: true })
+  await inspector.getByRole("button", { name: "Send instruction", exact: true }).click()
+  const editor = inspector.getByLabel("What should this agent do next?", { exact: true })
   await editor.fill("Run the ARM64 checks")
   const refreshed = page.waitForResponse(
     (response) => new URL(response.url()).pathname === "/api/workers" && response.request().method() === "GET",
@@ -731,9 +770,9 @@ test("controls the assigned native worker harness and retains instruction focus 
   await refreshed
   await expect(editor).toBeFocused()
   await expect(editor).toHaveValue("Run the ARM64 checks")
-  await task.getByLabel("Delivery", { exact: true }).selectOption("queue")
+  await inspector.getByLabel("Delivery", { exact: true }).selectOption("queue")
   const queued = page.waitForResponse((response) => new URL(response.url()).pathname.endsWith("/batch-waiting/control"))
-  await task.getByRole("button", { name: "Send", exact: true }).click()
+  await inspector.getByRole("button", { name: "Send", exact: true }).click()
   expect((await queued).request().postDataJSON()).toEqual({
     kind: "prompt",
     task: "task-review",
@@ -744,10 +783,10 @@ test("controls the assigned native worker harness and retains instruction focus 
   const interrupted = page.waitForResponse((response) =>
     new URL(response.url()).pathname.endsWith("/batch-waiting/control"),
   )
-  await task.getByRole("button", { name: "Interrupt", exact: true }).click()
+  await inspector.getByRole("button", { name: "Interrupt", exact: true }).click()
   expect((await interrupted).request().postDataJSON()).toEqual({ kind: "interrupt", task: "task-review" })
-  await expect(task.getByText("Interrupted · pi-a", { exact: true })).toBeVisible()
-  await expect(task.getByRole("button", { name: "Interrupt", exact: true })).toHaveCount(0)
+  await expect(inspector.getByText("Interrupted · pi-a", { exact: true })).toBeVisible()
+  await expect(inspector.getByRole("button", { name: "Interrupt", exact: true })).toHaveCount(0)
   expect(workers.requests.filter((request) => request.path.endsWith("/control"))).toHaveLength(2)
 })
 
@@ -889,6 +928,11 @@ test("inspects only the selected mobile host and stops resource polling when det
   await expect(inspector).toBeFocused()
   await expect(inspector.getByText("4.00 GiB / 8.00 GiB", { exact: true })).toBeVisible()
   await expect(inspector.getByText("25%", { exact: true })).toBeVisible()
+  await expect(inspector.getByRole("meter", { name: "CPU usage", exact: true })).toHaveAttribute("aria-valuenow", "25")
+  await expect(inspector.getByRole("meter", { name: "RAM available / limit", exact: true })).toHaveAttribute(
+    "aria-valuenow",
+    "50",
+  )
   await expect(search).toBeHidden()
   expect(
     workers.requests.filter((request) => request.path.endsWith("/resources")).map((request) => request.path),
@@ -923,6 +967,22 @@ test.describe("Worker execution inspector on mobile", () => {
     const workers = await mockWorkerTaskInspection(page)
     await page.goto("/agents?view=remote")
     const workspace = page.getByRole("region", { name: "Agents", exact: true })
+    const overview = workspace.getByRole("region", { name: "Batch overview: batch-inspection", exact: true })
+    await expect(overview.getByText("0 / 2 completed", { exact: true })).toBeVisible()
+    await expect(overview.getByText("Distribution map", { exact: true })).toHaveCount(0)
+    const segment = overview
+      .getByRole("article")
+      .filter({ has: page.getByText("Build docs", { exact: true }) })
+      .getByRole("button", { name: "Execution details", exact: true })
+    await segment.click()
+    const taskDetails = workspace.getByRole("region", { name: "Task details", exact: true })
+    await expect(taskDetails.getByText("Not assigned", { exact: true })).toBeVisible()
+    await taskDetails.getByRole("button", { name: "Back to tasks", exact: true }).click()
+    await expect(segment).toBeFocused()
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth),
+    ).toBe(true)
+    await page.screenshot({ path: test.info().outputPath("mobile-worker-summary.png"), animations: "disabled" })
     const search = workspace.getByLabel("Search tasks", { exact: true })
     await search.fill("review arm")
     await chooseSearchOption(
@@ -931,13 +991,13 @@ test.describe("Worker execution inspector on mobile", () => {
       "Needs your input",
     )
     const row = workspace.getByRole("article").filter({ has: page.getByText("Review ARM checkout", { exact: true }) })
-    await row.getByRole("button", { name: "Send instruction", exact: true }).click()
-    await row.getByLabel("What should this agent do next?", { exact: true }).fill("Keep the original assignment")
-    await row.getByLabel("Delivery", { exact: true }).selectOption("queue")
     const opener = row.getByRole("button", { name: "Execution details", exact: true })
     await opener.click()
     const inspector = workspace.getByRole("region", { name: "Task details", exact: true })
     await expect(inspector).toBeFocused()
+    await inspector.getByRole("button", { name: "Send instruction", exact: true }).click()
+    await inspector.getByLabel("What should this agent do next?", { exact: true }).fill("Keep the original assignment")
+    await inspector.getByLabel("Delivery", { exact: true }).selectOption("queue")
     await expect(search).toBeHidden()
     await expect(inspector.getByText("pi-requested", { exact: true })).toBeVisible()
     await expect(inspector.getByText("/srv/review", { exact: true })).toBeVisible()
@@ -956,10 +1016,9 @@ test.describe("Worker execution inspector on mobile", () => {
     await inspector.getByRole("button", { name: "Back to tasks", exact: true }).click()
     await expect(opener).toBeFocused()
     await expect(search).toHaveValue("review arm")
-    await expect(row.getByLabel("What should this agent do next?", { exact: true })).toHaveValue(
-      "Keep the original assignment and run ARM checks",
-    )
+    await expect(row.getByLabel("What should this agent do next?", { exact: true })).toHaveCount(0)
     await opener.click()
+    await expect(editor).toHaveValue("Keep the original assignment and run ARM checks")
     await inspector.getByText("Execution identifiers", { exact: true }).click()
     await expect(inspector.getByText("ses_assigned", { exact: true })).toBeVisible()
     const sent = page.waitForResponse(
@@ -1007,6 +1066,106 @@ test.describe("Worker execution inspector on mobile", () => {
     expect(messages).toEqual([])
     expect(workers.requests.filter((request) => request.method === "POST")).toHaveLength(2)
   })
+})
+
+test("maps only recorded worker assignments and shares task selection without dispatching", async ({ page }) => {
+  const messages: string[] = []
+  await mockStressTimeline(page, { onMessages: (request) => messages.push(request.sessionID) })
+  await installStressSessionTabs(page, { sessionIDs: [] })
+  const workers = await mockWorkerDistribution(page)
+  await page.goto("/agents?view=remote")
+  const workspace = page.getByRole("region", { name: "Agents", exact: true })
+  const overview = workspace.getByRole("region", { name: "Batch overview: batch-distribution", exact: true })
+  await expect(overview.getByText("1 / 6 completed", { exact: true })).toBeVisible()
+  await expect(overview.getByRole("article")).toHaveCount(6)
+  await expect(workspace.getByLabel("What should the worker do?", { exact: true })).toBeHidden()
+  const search = workspace.getByLabel("Search tasks", { exact: true })
+  await search.fill("no matching task")
+  await expect(workspace.getByText("No tasks match these filters.", { exact: true })).toBeVisible()
+  await workspace.getByRole("button", { name: "Clear task filters", exact: true }).click()
+  await expect(search).toBeFocused()
+  await expect(search).toHaveValue("")
+  await expect(overview.getByRole("article")).toHaveCount(6)
+  const assigned = overview.getByRole("region", { name: "pi-a", exact: true })
+  await expect(assigned.getByText("Online", { exact: true })).toBeVisible()
+  await expect(overview.getByRole("region", { name: "pi-requested", exact: true })).toHaveCount(0)
+  const unassigned = overview.getByRole("region", { name: "Not assigned", exact: true })
+  await expect(unassigned.getByText("Document the API", { exact: true })).toBeVisible()
+  await expect(unassigned.getByText("Review the documentation", { exact: true })).toBeVisible()
+  await expect(
+    overview.getByRole("region", { name: "pi-b", exact: true }).getByText("Offline", { exact: true }),
+  ).toBeVisible()
+  const opener = assigned
+    .getByRole("article")
+    .filter({ has: page.getByText("Implement the API", { exact: true }) })
+    .getByRole("button", { name: "Execution details", exact: true })
+  await opener.click()
+  const inspector = workspace.getByRole("region", { name: "Task details", exact: true })
+  await expect(inspector.getByText("/srv/api", { exact: true })).toBeVisible()
+  await expect(opener).toHaveAttribute("aria-pressed", "true")
+  await inspector.getByRole("button", { name: "Send instruction", exact: true }).click()
+  const editor = inspector.getByLabel("What should this agent do next?", { exact: true })
+  await editor.fill("Keep this instruction draft")
+  workers.update({
+    ...workers.batch,
+    report: {
+      ...workers.batch.report!,
+      tasks: workers.batch.report!.tasks.map((entry) =>
+        entry.id === "test-api" ? { ...entry, state: "succeeded" } : entry,
+      ),
+    },
+  })
+  await expect(overview.getByText("2 / 6 completed", { exact: true })).toBeVisible()
+  await expect(editor).toBeFocused()
+  await expect(editor).toHaveValue("Keep this instruction draft")
+  await workspace.getByRole("tab", { name: "Workers", exact: true }).click()
+  await expect(overview).toBeHidden()
+  await expect(workspace.getByRole("button", { name: "Add worker", exact: true })).toBeDisabled()
+  await workspace.getByRole("tab", { name: "Tasks", exact: true }).click()
+  await expect(editor).toHaveValue("Keep this instruction draft")
+  workers.setWorkers([workers.workers[0]])
+  await expect(
+    overview
+      .getByRole("region", { name: "pi-b", exact: true })
+      .getByText("Worker absent from registry", { exact: true }),
+  ).toBeVisible()
+  await overview.scrollIntoViewIfNeeded()
+  await page.screenshot({ path: test.info().outputPath("desktop-worker-distribution.png"), animations: "disabled" })
+  await inspector.getByRole("button", { name: "Back to tasks", exact: true }).click()
+  await expect(opener).toBeFocused()
+  await overview.getByRole("button", { name: "List", exact: true }).click()
+  await expect(overview.getByRole("button", { name: "List", exact: true })).toHaveAttribute("aria-pressed", "true")
+  await expect(overview.getByRole("button", { name: "By worker", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  )
+  await expect(overview.getByRole("article")).toHaveCount(6)
+  await overview
+    .getByRole("article")
+    .filter({ has: page.getByText("Document the API", { exact: true }) })
+    .getByRole("button", { name: "Execution details", exact: true })
+    .click()
+  await expect(inspector.getByText("Not assigned", { exact: true })).toBeVisible()
+  workers.setAvailable(false)
+  await expect(overview.getByRole("status")).toHaveText(
+    "Last known report. Refresh the coordinator to see current task states.",
+  )
+  await expect(inspector.getByRole("button", { name: "Cancel queued task", exact: true })).toBeDisabled()
+  workers.setAvailable(true)
+  workers.update({
+    ...workers.batch,
+    report: {
+      ...workers.batch.report!,
+      tasks: workers.batch.report!.tasks.map((entry) => ({ ...entry, state: "succeeded" })),
+    },
+  })
+  await expect(overview.getByText("5 / 6 completed", { exact: true })).toBeVisible()
+  await workspace.getByRole("tab", { name: "Workers", exact: true }).click()
+  await expect(workspace.getByRole("button", { name: "Add worker", exact: true })).toBeDisabled()
+  expect(
+    workers.requests.filter((request) => request.method === "POST" || request.path.endsWith("/resources")),
+  ).toEqual([])
+  expect(messages).toEqual([])
 })
 
 test("blocks stale task controls and preserves a removed inspector selection", async ({ page }) => {
@@ -1061,7 +1220,13 @@ test("shows unknown initial CPU usage and hides stale resources after a failed r
   const workspace = page.getByRole("region", { name: "Agents", exact: true })
   const host = workspace.getByRole("article", { name: "Coordinator host", exact: true })
   await expect(host.getByText("Collecting CPU sample", { exact: true })).toBeVisible()
+  await expect(host.getByRole("meter", { name: "CPU usage", exact: true })).toHaveCount(0)
   await expect(host.getByText("6.00 GiB / 8.00 GiB", { exact: true })).toBeVisible()
+  await expect(host.getByRole("meter", { name: "RAM available / limit", exact: true })).toHaveAttribute(
+    "aria-valuenow",
+    "75",
+  )
+  await page.screenshot({ path: test.info().outputPath("host-resource-meters.png"), animations: "disabled" })
   const failed = page.waitForResponse(
     (response) => new URL(response.url()).pathname === "/api/resources" && response.status() === 503,
   )
@@ -1069,6 +1234,7 @@ test("shows unknown initial CPU usage and hides stale resources after a failed r
   await failed
   await expect(host.getByText("Host resources are unavailable. Previous measurements are not live.")).toBeVisible()
   await expect(host.getByText("6.00 GiB / 8.00 GiB", { exact: true })).toHaveCount(0)
+  await expect(host.getByRole("meter")).toHaveCount(0)
   await page.screenshot({ path: test.info().outputPath("agents-hosts.png"), animations: "disabled" })
 })
 
@@ -1115,9 +1281,12 @@ test("explains unconfirmed worker execution and recovers the saved assignment wi
   const workers = await mockRemoteWorkers(page, { batches: [batch] })
   await page.goto("/agents?view=remote")
   const workspace = page.getByRole("region", { name: "Agents", exact: true })
-  const task = workspace
+  await workspace
     .getByRole("article")
     .filter({ has: page.getByText("Check the original admission", { exact: true }) })
+    .getByRole("button", { name: "Execution details", exact: true })
+    .click()
+  const task = workspace.getByRole("region", { name: "Task details", exact: true })
   await expect(task.getByRole("status")).toHaveText(
     "Coordinator access could not be renewed. Work may still be running; the checkout stays reserved. Recover on the original worker.",
   )
@@ -1267,6 +1436,7 @@ test.describe("Worker touch review", () => {
       ],
     })
     await expect(drafts).toHaveCount(0)
+    await workspace.getByRole("tab", { name: "New batch", exact: true }).click()
     await expect(prompt).toHaveValue("")
     expect(workers.requests.filter((request) => request.method === "POST")).toHaveLength(1)
   })
@@ -1282,7 +1452,11 @@ test.describe("Worker touch review", () => {
       .getByRole("navigation", { name: "Agents", exact: true })
       .getByRole("button", { name: "Remote workers", exact: true })
       .click()
-    await expect(dialog.getByText("Connect a machine to start sending tasks.")).toBeVisible()
+    await expect(
+      dialog
+        .getByRole("tabpanel", { name: "Workers", exact: true })
+        .getByText("Connect a machine to start sending tasks."),
+    ).toBeVisible()
     await page.setViewportSize({ width: 320, height: 480 })
     const add = dialog.getByRole("button", { name: "Add worker", exact: true })
     await add.click()
@@ -1306,6 +1480,7 @@ test.describe("Worker touch review", () => {
     await page.screenshot({ path: test.info().outputPath("mobile-worker-connection.png"), animations: "disabled" })
     await dialog.getByRole("button", { name: "Connect worker", exact: true }).click()
     await page.setViewportSize({ width: 1440, height: 900 })
+    await dialog.getByRole("tab", { name: "Workers", exact: true }).click()
     await expect(dialog.getByRole("heading", { name: "pi-a · Connected", exact: true })).toBeVisible()
     expect(
       workers.requests.find((request) => request.path === "/api/workers" && request.method === "POST")?.body,
@@ -1317,12 +1492,13 @@ test.describe("Worker touch review", () => {
       tags: ["linux", "arm64"],
     })
     await expect(dialog.getByLabel("Server password or pairing token", { exact: true })).toHaveCount(0)
+    await dialog.getByRole("tab", { name: "New batch", exact: true }).click()
     await dialog.getByLabel("What should the worker do?", { exact: true }).fill("Review Linux compatibility")
     await chooseSearchOption(page, dialog.getByRole("button", { name: "Run on", exact: true }), "pi-a", "arm64")
     await dialog.getByRole("button", { name: "Add to batch", exact: true }).click()
     await dialog.getByLabel("What should the worker do?", { exact: true }).fill("Run the test suite")
     await dialog.getByRole("button", { name: "Send batch", exact: true }).click()
-    await expect(dialog.getByText("Completed · pi-a", { exact: true })).toHaveCount(2)
+    await expect(dialog.getByText("Completed", { exact: true })).toHaveCount(2)
     expect(
       workers.requests.filter((request) => request.path === "/api/workers/batches").map((request) => request.body),
     ).toEqual([
@@ -1334,9 +1510,14 @@ test.describe("Worker touch review", () => {
       },
     ])
     const task = dialog.getByRole("article").filter({ has: page.getByText("Run the test suite", { exact: true }) })
+    await dialog.getByRole("tab", { name: "New batch", exact: true }).click()
     await dialog.getByLabel("What should the worker do?", { exact: true }).fill("Follow-up draft")
+    await dialog.getByRole("tab", { name: "Tasks", exact: true }).click()
+    await task.getByRole("button", { name: "Execution details", exact: true }).click()
     await page.setViewportSize({ width: 390, height: 640 })
-    const opener = task.getByRole("button", { name: "Review changes", exact: true })
+    const opener = dialog
+      .getByRole("region", { name: "Task details", exact: true })
+      .getByRole("button", { name: "Review changes", exact: true })
     await opener.click()
     const review = dialog.getByRole("region", { name: "Collected changes", exact: true })
     await expect(review).toBeFocused()
@@ -1369,8 +1550,11 @@ test.describe("Worker touch review", () => {
     expect(workers.requests.filter((request) => request.path === "/api/workers/batches")).toHaveLength(1)
     await page.screenshot({ path: test.info().outputPath("mobile-worker-review.png"), animations: "disabled" })
     await page.setViewportSize({ width: 1440, height: 900 })
-    await expect(dialog.getByLabel("What should the worker do?", { exact: true })).toBeVisible()
+    await expect(dialog.getByLabel("What should the worker do?", { exact: true })).toBeHidden()
     await expect(review).toBeVisible()
+    await review.getByRole("button", { name: "Back to tasks", exact: true }).click()
+    await dialog.getByRole("tab", { name: "New batch", exact: true }).click()
+    await expect(dialog.getByLabel("What should the worker do?", { exact: true })).toHaveValue("Follow-up draft")
   })
 })
 // The fleet must expose the child that needs the user without loading either transcript.

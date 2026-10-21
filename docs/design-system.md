@@ -14,6 +14,11 @@ contracts, tokens and assets; Svelte components are retained as reference source
 and are not added to the Solid runtime. Interaction behavior from an upstream
 Svelte component must be adapted and validated in its Solid counterpart.
 
+The consumer's generated `solid-base.ts` exposes the framework-neutral Base
+vocabulary used by App contracts through `@reddb-io/design-system/base`. It keeps
+cross-kit imports such as `NodeBadge` independent from the Svelte component barrel;
+the sync wrapper reproduces this adaptation and records it in the receipt.
+
 ## Synchronizing
 
 Check out the manifest's exact tag in a clean design-system checkout, then run
@@ -105,8 +110,22 @@ Do not edit vendored components or generated theme files by hand.
   and a removed task remains unavailable instead of selecting another. The report
   has no transition timestamps or duration, so this surface does not synthesize
   a historical timeline. A task without a report is labelled unreported, not queued.
+- Worker execution uses shared Tabs to separate Tasks, Workers and New batch.
+  Base `Progress` and `Badge` compose with App `NodeBadge`, `ListRow` and
+  `MultiColumnLayout`. A single task inventory uses human-readable prompts and
+  switches between worker lanes and a list, rather than repeating the same tasks
+  in a map and action list. Selection uses the neutral DS role; task outcomes
+  retain feedback tones. The existing inspector owns actions and drafts, with
+  execution IDs and report metadata behind disclosures. Mobile uses the list and
+  full-width inspector. Progress counts successful executions across the whole
+  batch, remains explicit when filtered, and honors reduced motion. Execution
+  completion is distinct from validation. The view adds no report, resource or
+  transcript reads.
 - Native harness details use `SidebarPanel` with a persistent header and an
   independently scrolling body. Closing details does not stop the harness.
+  Shared Tabs separate native sessions from agent setup, retaining drafts in each.
+  `MultiColumnLayout` places session details beside the workspace when its container
+  has room. Agent navigation groups execution, workspaces and infrastructure.
   Mobile prioritizes that inspector over setup, provides a shortcut to pending
   requests and collapses output/execution controls. Its maximum height follows
   the measured Agents content region. Reopening the same run retains drafts;
@@ -114,6 +133,11 @@ Do not edit vendored components or generated theme files by hand.
   Inbox requests retain their button identity across metadata refreshes. On
   mobile, the selected review is placed first, and explicit back navigation
   restores focus without submitting or advancing to another request.
+- Host resource details use labelled Base `Meter` contracts for sampled CPU usage
+  and available RAM as a proportion of the visible limit. They show no bar for
+  unknown readings, and remove previous values when a refresh fails. The view
+  does not infer capacity thresholds or add resource requests. Technical measurement
+  notes remain available in a disclosure.
 - The serialized designer uses the panel's spatial roles in its shadow-root
   CSS. Feedback, Assets, Details and Params keep persistent tabs, keyboard
   navigation and scrollable bodies; changing sections preserves unsent notes.

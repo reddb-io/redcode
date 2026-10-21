@@ -8,17 +8,12 @@ import { useLanguage } from "@/runtime/i18n/language"
 import { ServerConnection, serverName, useServers } from "@/runtime/server/registry"
 import { useNavigation } from "./controller"
 
-export const AGENT_VIEWS = [
-  "sessions",
-  "inbox",
-  "harness",
-  "machines",
-  "project-environments",
-  "environments",
-  "worktrees",
-  "hosts",
-  "remote",
+const AGENT_GROUPS = [
+  { label: "agents.group.execution", views: ["sessions", "inbox", "harness", "remote"] },
+  { label: "agents.group.workspaces", views: ["project-environments", "environments", "worktrees"] },
+  { label: "agents.group.infrastructure", views: ["machines", "hosts"] },
 ] as const
+export const AGENT_VIEWS = AGENT_GROUPS.flatMap((group) => [...group.views])
 export type AgentView = (typeof AGENT_VIEWS)[number]
 export const AGENT_LABELS = {
   sessions: "agents.sessions",
@@ -80,25 +75,35 @@ export function AgentsMenu() {
           ]}
         />
       </label>
-      <ul class={nav.list()}>
-        <For each={AGENT_VIEWS}>
-          {(view) => (
-            <li>
-              <button
-                type="button"
-                aria-current={scope.view() === view ? "page" : undefined}
-                class={quietControl({ focus: "inset", class: navItem({ current: scope.view() === view }).root() })}
-                onClick={() => {
-                  scope.select(view)
-                  if (navigation.mobile()) navigation.panel.close()
-                }}
-              >
-                <span class={navItem().label()}>{language.t(AGENT_LABELS[view])}</span>
-              </button>
-            </li>
-          )}
-        </For>
-      </ul>
+      <For each={AGENT_GROUPS}>
+        {(group) => (
+          <section class="mb-[var(--reddb-spatial-layout-gap-sm)]">
+            <h3 class="px-2 pb-2 text-caption font-medium text-ink-muted">{language.t(group.label)}</h3>
+            <ul aria-label={language.t(group.label)} class={nav.list()}>
+              <For each={group.views}>
+                {(view) => (
+                  <li>
+                    <button
+                      type="button"
+                      aria-current={scope.view() === view ? "page" : undefined}
+                      class={quietControl({
+                        focus: "inset",
+                        class: navItem({ current: scope.view() === view }).root(),
+                      })}
+                      onClick={() => {
+                        scope.select(view)
+                        if (navigation.mobile()) navigation.panel.close()
+                      }}
+                    >
+                      <span class={navItem().label()}>{language.t(AGENT_LABELS[view])}</span>
+                    </button>
+                  </li>
+                )}
+              </For>
+            </ul>
+          </section>
+        )}
+      </For>
     </nav>
   )
 }

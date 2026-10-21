@@ -117,6 +117,22 @@ removed task remains unavailable instead of changing the selection. Reports
 contain no transition timestamps or execution duration; an absent task entry is
 shown as **Not reported**, rather than assumed to be queued.
 
+The **Tasks**, **Workers** and **New batch** tabs separate execution, machine
+setup and composition; changing tabs retains unsent drafts and the selected task.
+Each batch has a progress indicator covering its entire manifest, including tasks
+hidden by filters. Only successful execution counts as completed. Desktop's
+**By worker** view groups a single task inventory by recorded assignment, keeping
+unassigned work separate; **List** changes its presentation without duplicating
+tasks. A requested worker does not establish an assignment. Task rows show their
+brief and status; selecting one opens its execution inspector and controls.
+Worker reachability and task execution are separate readings; an offline or
+removed worker does not move its assigned tasks to another host. Mobile uses the
+compact list, and task details replace it. IDs and report metadata are available
+in the inspector's disclosures.
+Failed refreshes label the overview as the last known report. This view reuses
+the existing report reads and does not load conversations or add resource polling.
+Completed execution does not imply a patch was collected, reviewed or validated.
+
 **Agents → Hosts and resources** shows available CPU slots and RAM on the coordinator and registered workers. Worker credentials remain on the coordinator. Measurements refresh while the view is open or queued tasks need an admission decision; unknown, unavailable and stale readings are not reported as zero load. On Linux cgroup v2 hosts, visible CPU quotas and memory limits/current usage are considered. Unsupported constrained memory measurements remain unknown. Workers need the updated server endpoints to expose resources and pending requests.
 
 For running/waiting tasks, **Send instruction** uses the worker's native Redcode Session harness: choose **Steer current work** or **Queue for later**. **Interrupt** targets that recorded Session. Controls never accept an arbitrary Session/worker address, recheck current access grants, and refuse completed tasks. Prompt IDs survive a retry of the same instruction, preserving first-admission-wins behavior. These controls do not add external Claude Code/Codex CLI harness adapters.
