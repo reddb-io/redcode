@@ -1,5 +1,12 @@
 # @reddb-io/redcode
 
+## 0.84.4
+
+### Patch Changes
+
+- Group agent navigation by execution, workspaces and infrastructure. Separate native harness sessions from agent installation and sign-in, retain setup drafts across tabs, and place the selected session beside its controls on wide screens. Present sampled CPU usage and available memory with design-system meters, keeping unavailable measurements unknown. Clarify worker layout selection and provide a shortcut to clear task filters.
+- Separate Remote workers into Tasks, Workers and New batch through shared design-system tabs, preserving drafts and task selection. Show batch progress and one task inventory that switches between recorded worker assignments and a compact list. Keep task briefs readable, place execution controls in the selected inspector, and disclose technical IDs and report metadata on demand. Mobile uses the list and full-width task details. Retain unassigned, unreported and stale states without dispatching work, loading conversations or adding polling. Successful execution is distinct from reviewed or validated changes.
+
 ## 0.84.3
 
 ### Patch Changes
