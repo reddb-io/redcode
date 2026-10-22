@@ -1,109 +1,46 @@
-import { Component, createMemo, Show } from "solid-js"
+import { createMemo } from "solid-js"
 import { useData } from "@/runtime/server/current"
 import { useWorkspaceLocation } from "@/workspaces/location"
-import { Dialog, DialogBody, DialogHeader, DialogTitleGroup } from "@opencode/ui/dialog"
-import { List } from "@opencode/ui/list"
-import { Switch } from "@opencode/ui/switch"
 import { useLanguage } from "@/runtime/i18n/language"
 import { useMcpToggle } from "@/providers/connect/mcp"
+import { useNativeDialog } from "@/runtime/react/dialog"
+import { sharedSource } from "@/runtime/react/source"
+import { sharedLanguage } from "@/runtime/react/language"
+import { ReactView } from "@/runtime/react/view"
+import { McpDialog } from "./mcp-dialog.react"
 
-const statusLabels = {
-  connected: "mcp.status.connected",
-  failed: "mcp.status.failed",
-  needs_auth: "mcp.status.needs_auth",
-  disabled: "mcp.status.disabled",
-} as const
-
-export const DialogSelectMcp: Component = () => {
+export function DialogSelectMcp() {
   const data = useData()
   const sdk = useWorkspaceLocation()
   const language = useLanguage()
-
+  const modal = useNativeDialog()
+  const toggle = useMcpToggle(() => sdk().directory)
   const items = createMemo(() =>
     (data.location.mcp.server.list({ directory: sdk().directory }) ?? [])
-      .map((server) => ({ name: server.name, status: server.status.status }))
+      .map((server) => ({
+        name: server.name,
+        status: server.status.status,
+        error: server.status.status === "failed" ? server.status.error : undefined,
+      }))
       .sort((a, b) => a.name.localeCompare(b.name)),
   )
-
-  const toggle = useMcpToggle(() => sdk().directory)
-
-  const enabledCount = createMemo(() => items().filter((i) => i.status === "connected").length)
-  const totalCount = createMemo(() => items().length)
-
+  const source = sharedSource(() => ({
+    language: sharedLanguage(language),
+    open: modal.open(),
+    items: items(),
+    busy: toggle.isPending && typeof toggle.variables === "string" ? toggle.variables : undefined,
+  }))
   return (
-    <Dialog>
-      <DialogHeader>
-        <DialogTitleGroup
-          title={language.t("dialog.mcp.title")}
-          description={language.t("dialog.mcp.description", { enabled: enabledCount(), total: totalCount() })}
-        />
-      </DialogHeader>
-      <DialogBody>
-        <List
-          class="px-3"
-          search={{ placeholder: language.t("common.search.placeholder"), autofocus: true }}
-          emptyMessage={language.t("dialog.mcp.empty")}
-          key={(x) => x?.name ?? ""}
-          items={items}
-          filterKeys={["name", "status"]}
-          sortBy={(a, b) => a.name.localeCompare(b.name)}
-          onSelect={(x) => {
-            if (!x || x.status === "pending" || toggle.isPending) return
-            toggle.mutate(x.name)
-          }}
-        >
-          {(i) => {
-            const mcpStatus = () =>
-              data.location.mcp.server.list({ directory: sdk().directory })?.find((server) => server.name === i.name)
-                ?.status
-
-            const status = () => mcpStatus()?.status
-
-            const statusLabel = () => {
-              const key = status() ? statusLabels[status() as keyof typeof statusLabels] : undefined
-
-              if (!key) return
-
-              return language.t(key)
-            }
-
-            const error = () => {
-              const s = mcpStatus()
-
-              if (s?.status === "failed") return s.error
-            }
-
-            const enabled = () => status() === "connected"
-
-            return (
-              <div class="w-full flex items-center justify-between gap-x-3">
-                <div class="flex flex-col gap-0.5 min-w-0">
-                  <div class="flex items-center gap-2">
-                    <span class="truncate">{i.name}</span>
-                    <Show when={statusLabel()}>
-                      <span class="text-11-regular text-text-weaker">{statusLabel()}</span>
-                    </Show>
-                  </div>
-                  <Show when={error()}>
-                    <span class="text-11-regular text-text-weaker truncate">{error()}</span>
-                  </Show>
-                </div>
-                <div onClick={(e) => e.stopPropagation()}>
-                  <Switch
-                    appearance="standard"
-                    checked={enabled()}
-                    disabled={status() === "pending" || (toggle.isPending && toggle.variables === i.name)}
-                    onChange={() => {
-                      if (toggle.isPending) return
-                      toggle.mutate(i.name)
-                    }}
-                  />
-                </div>
-              </div>
-            )
-          }}
-        </List>
-      </DialogBody>
-    </Dialog>
+    <ReactView
+      component={McpDialog}
+      props={{
+        source,
+        close: modal.close,
+        toggle: (name: string) => {
+          if (toggle.isPending || items().find((item) => item.name === name)?.status === "pending") return
+          toggle.mutate(name)
+        },
+      }}
+    />
   )
 }

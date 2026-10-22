@@ -4,9 +4,10 @@ import { Schema } from "effect"
 import { SERVER } from "./app"
 
 export async function mockHttpsAccess(page: Page) {
-  const operations: { method: string; relay?: string; acceptExposure?: boolean }[] = []
+  const operations: { method: string; relay?: string; acceptExposure?: boolean; code?: string }[] = []
   let state: RemoteAccess.Status = { available: true, state: "disabled" }
   let fail = true
+  let pairs = 0
   const headers = {
     "access-control-allow-origin": "*",
     "access-control-allow-methods": "GET, POST, DELETE, OPTIONS",
@@ -34,7 +35,16 @@ export async function mockHttpsAccess(page: Page) {
   await page.route(`${SERVER}/api/pair`, async (route) => {
     if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers })
     operations.push({ method: "pair" })
-    return route.fulfill({ json: { code: "https-one-time-code", expires_in: 300 }, headers })
+    pairs++
+    return route.fulfill({
+      json: { code: pairs === 1 ? "https-one-time-code" : `https-one-time-code-${pairs}`, expires_in: 300 },
+      headers,
+    })
+  })
+  await page.route(`${SERVER}/api/pair/*`, async (route) => {
+    if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers })
+    operations.push({ method: "cancel", code: new URL(route.request().url()).pathname.split("/").pop() })
+    return route.fulfill({ status: 204, headers })
   })
   return { operations }
 }

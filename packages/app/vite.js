@@ -127,6 +127,7 @@ export default [
               "Input",
               "Logo",
               "Select",
+              "SearchSelect",
               "Switch",
               "Tabs",
               "Textarea",
