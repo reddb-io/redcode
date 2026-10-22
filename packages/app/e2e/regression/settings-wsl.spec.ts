@@ -19,6 +19,17 @@ for (const mode of ["failed", "stopped", "ready"] as const) {
     const settings = page.getByTestId("settings-screen")
     await expectAppVisible(settings)
     await expect(settings.getByRole("tab", { name: "Local Server", exact: true })).toBeEnabled()
+    if (mode === "ready") {
+      await settings.getByRole("tab", { name: "Local Server", exact: true }).click()
+      const local = settings.locator('[data-component="settings-server-connection"]')
+      await local.getByRole("button", { name: "More options", exact: true }).click()
+      await expect(page.getByRole("menuitem", { name: "Edit", exact: true })).toBeDisabled()
+      await expect(page.getByRole("menuitem", { name: "Remove", exact: true })).toHaveCount(0)
+      await page.getByRole("menuitem", { name: "Hide from project list", exact: true }).click()
+      await local.getByRole("button", { name: "More options", exact: true }).click()
+      await page.getByRole("menuitem", { name: "Show in project list", exact: true }).click()
+      await settings.getByRole("button", { name: "Back to settings", exact: true }).click()
+    }
     const ubuntu = settings.getByRole("tab", { name: "Ubuntu", exact: true })
     await expect(ubuntu).toHaveCount(1)
     await ubuntu.click()

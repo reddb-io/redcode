@@ -161,6 +161,12 @@ redemption, address fallback, saved names and server registry remain service-own
 The QR reader owns its video and camera engine in React, loads only when scanning
 starts, and destroys that engine when the reader unmounts.
 
+Settings' shared server controls now use native React DS add/manage menus and
+connection indicators. Ordered extension add actions retain their callback
+contracts. Management retains HTTP editing/removal and builtin-server
+hide/show restrictions. The extension SDK's contributed server bodies and
+`ServerRowItems` remain under their existing owners.
+
 ## Distribution and builds
 
 `design-system.manifest.json` selects React and the official compiled distribution.
@@ -557,3 +563,14 @@ and 41/44/47 temporarily missing review file-host samples. All recorded zero
 wrong destinations and zero replaced review file hosts. Completion assertions do
 not prove blank-free transitions. Raw measurements and immutable builds remain
 outside the checkout; the earlier shell/titlebar latency concern remains open.
+
+The final Home, model-manager and server-control build passed all 100 optimized
+Chromium cases together without retries, spanning Home, navigation, mobile
+sessions, shell spacing, model pickers, Settings and WSL/SSH connections. This
+includes direct opening of the manager with its search stylesheet loaded. Root
+checks passed all 27 packages with zero lint warnings/errors; browser-test typing
+and Web/Desktop builds passed. Seven focused development cases covered server
+menus, edit-dialog focus restoration, removal policies, builtin hide/show and
+extension add actions. The authenticated production preview's native connection
+menu displayed the expected Edit action without horizontal overflow or script
+errors; no live server settings were changed.
