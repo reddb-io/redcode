@@ -127,6 +127,27 @@ existing swipe, force-mount and final-focus drawer while its body and controls
 render in React. The desktop list has its own bounded scroller so the real
 provider catalog cannot push its search or actions outside the viewport.
 
+Model visibility management also renders in React with native Dialog, Switch,
+DropdownMenu, ScrollArea and search controls. Filtering temporarily expands
+groups while retaining their collapse preference. Provider-wide changes include
+models hidden by the filter. Existing services retain visibility preferences and
+the provider-connection handoff; Console workspace grouping remains unchanged.
+
+Home now renders its project picker, server actions, session search/list, context
+menus, inline renaming and deletion confirmation in React with native DS controls.
+The session viewport and search results use native ScrollArea; the retired custom
+thumb/wheel plumbing is removed. Group-header opacity subscribes independently
+so scrolling does not rerender the entire session list. Existing avatar/status
+subscriptions retain their custom artwork in service-owned slots.
+
+Project rows keep stable worktree keys through metadata refreshes. The same
+renderer-independent drag engine retains mouse distance, touch delay/tolerance,
+vertical bounds, auto-scroll and drop behavior. Native menus project ordered
+extension actions with the original server/directory contract. Existing services
+still own project order, selection, server authentication and session mutations.
+The Home shortcut retains its pending focus request until the native search input
+mounts; a direct Home-button click does not request search focus.
+
 The directory and file picker also uses a native dialog, path input, suggestions
 and actions. Its existing search, navigation generations, preload queue and
 file-selection policy remain service-owned. React owns the imperative FileTree
@@ -171,7 +192,6 @@ barrel. The older `contracts/base` seam remains available for compatibility.
 - Shared application providers, routing, server subscriptions and desktop startup.
 - Sortable tab strip, previews/context menus, recently-closed menu, mobile tabs drawer,
   Windows/Linux app menu, notification/upload hosts and GUI extension SDK/renderers.
-- Home project selection and session-list surfaces.
 - Agents workspace bodies beyond their migrated scope selectors.
 - Composer, session timeline, diff/review, document and terminal integrations.
 - Remaining generic primitives, followed by removal of the Solid GUI dependencies
@@ -490,3 +510,50 @@ alphabetical names determine release ordering. Existing composer/new-session
 expectations follow the current slash order, neutral prompt text, semantic Brand
 actions and dark panel ground; the retired expectations were independently
 reproduced on the immutable prior build before replacement.
+
+
+Home and model-visibility verification on 2026-10-22:
+
+- Root checks passed all 27 packages with zero lint warnings/errors; browser-test
+  typing and Web/Desktop production builds passed.
+- All 46 optimized Chromium cases across Home, navigation, mobile sessions,
+  shell spacing and model pickers passed together without retries. Focused
+  development keepers also exercised closed-worktree recovery with an open tab
+  preview, identical project paths on different servers, directory loading in
+  older browsers and the model-visibility/provider handoff.
+- The server-password fixture now changes its accepted password before the form
+  starts pre-validating the replacement. Three adjacent production repetitions
+  passed. This corrects fixture timing rather than weakening the authentication
+  assertion.
+- The authenticated preview displayed 64 actual sessions, with a 793px native
+  scroll viewport against 2153px of content. Desktop and mobile inspection found
+  no horizontal overflow or browser script errors. Scrolling retained the search
+  and project headers. The native visibility manager displayed the actual
+  RedRouter catalog without changing visibility, credentials or the selected model.
+- Live inspection found that search styling depended on having opened Settings
+  first. The reusable search input now imports its own stylesheet so the manager
+  has the same layout when opened directly from a session.
+
+The immutable provider reference, repeated model reference and final Home build
+also completed 24 production benchmark cases each (eight scenarios, three serial
+repetitions). Median first-correct/stable observations in milliseconds were:
+
+| Scenario | Provider reference | Model reference | Home |
+| --- | ---: | ---: | ---: |
+| New session from Home | 880.9 / 1053.0 | 594.3 / 699.8 | 543.4 / 657.9 |
+| New session from a session | 437.6 / 452.7 | 400.8 / 466.1 | 523.8 / 582.6 |
+| Cold session from Home | 1976.2 / 1996.4 | 1263.2 / 1326.9 | 992.4 / 1000.8 |
+| Cold tab, review closed | 775.1 / 902.4 | 341.2 / 355.6 | 337.9 / 436.4 |
+| Cold tab, review open | 379.1 / 397.8 | 770.0 / 828.9 | 481.9 / 509.6 |
+| Warm tab, review closed | 112.5 / 178.0 | 136.2 / 250.9 | 104.7 / 154.9 |
+| Warm tab, review open | 162.0 / 242.3 | 288.8 / 317.3 | 124.6 / 227.2 |
+| Warm tab, review resized | 151.6 / 208.3 | 305.5 / 386.3 | 294.7 / 430.0 |
+
+Results remain mixed and host contention varied between batches; these data do
+not establish performance parity or attribute a speedup/regression to Home.
+An earlier, heavily contended model-reference batch is excluded from the table.
+The three listed batches respectively recorded 109/92/108 blank timeline samples
+and 41/44/47 temporarily missing review file-host samples. All recorded zero
+wrong destinations and zero replaced review file hosts. Completion assertions do
+not prove blank-free transitions. Raw measurements and immutable builds remain
+outside the checkout; the earlier shell/titlebar latency concern remains open.
