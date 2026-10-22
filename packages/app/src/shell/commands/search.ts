@@ -1,5 +1,5 @@
 import { createMemo, createResource, onCleanup } from "solid-js"
-import { uniqueCommandPaletteEntries, type CommandPaletteEntry } from "./palette"
+import { uniqueCommandPaletteEntries, type CommandPaletteEntry } from "./entries"
 
 export function createCommandPaletteSearch(props: {
   query: () => string

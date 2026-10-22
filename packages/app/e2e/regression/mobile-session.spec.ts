@@ -460,6 +460,10 @@ test.describe("touch", () => {
     const panel = settings.getByRole("tabpanel")
     await expect(settings.getByRole("heading", { name: "General", exact: true })).toBeVisible()
     await expect(page).toHaveURL("/settings")
+    const more = page
+      .getByRole("navigation", { name: "Mobile navigation", exact: true })
+      .getByRole("button", { name: "More", exact: true })
+    await expect(more.locator("..")).toHaveAttribute("aria-current", "page")
     await expect(menu).toBeVisible()
     await menu.click()
     await expect(menu).toHaveValue("general")
@@ -481,6 +485,7 @@ test.describe("touch", () => {
     await expect.poll(async () => (await panel.boundingBox())?.width ?? 0).toBeGreaterThan(350)
     await settings.getByRole("button", { name: "Back to app", exact: true }).click()
     await expect(page).toHaveURL("/")
+    await expect(more.locator("..")).not.toHaveAttribute("aria-current")
     await expect(settings).toBeHidden()
     await expect(page.locator('[data-component="home-session-row"]')).toHaveCount(rows)
   })

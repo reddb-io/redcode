@@ -85,6 +85,8 @@
     "./theme/*": "./src/theme/*.ts",
     "./theme/context": "./src/theme/context.tsx",
     "./icons/provider": "./src/components/provider-icons/types.ts",
+    "./file-icon-data": "./src/components/file-icon-data.ts",
+    "./file-icon-sprite.svg": "./src/components/file-icons/sprite.svg",
     "./icons/file-type": "./src/components/file-icons/types.ts",
     "./icons/app": "./src/components/app-icons/types.ts",
     "./fonts/*": "./src/assets/fonts/*",

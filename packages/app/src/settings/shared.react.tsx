@@ -1,21 +1,7 @@
 /** @jsxImportSource react */
 import { useId, type ReactNode } from "react"
-import type { useLanguage } from "@/runtime/i18n/language"
 
-export function settingsLanguage(language: ReturnType<typeof useLanguage>) {
-  return {
-    locale: language.locale(),
-    // Track the asynchronously loaded dictionary in the Solid host as well as the selected locale.
-    close: language.t("common.close"),
-    t: language.t,
-    rich: language.rich,
-    tDynamic: language.tDynamic,
-    plural: language.plural,
-    list: (items: readonly string[]) => language.list(items).join(""),
-  }
-}
-
-export type SettingsLanguage = ReturnType<typeof settingsLanguage>
+export { sharedLanguage as settingsLanguage, type SharedLanguage as SettingsLanguage } from "@/runtime/react/language"
 
 export function SettingsHeader(props: { title: string; description: string }) {
   return (
