@@ -1,4 +1,4 @@
-import { createEffect, createSignal, onCleanup, type Accessor } from "solid-js"
+import { createEffect, onCleanup, type Accessor } from "solid-js"
 import { createStore } from "solid-js/store"
 import type { HomeSessionGroup } from "./sessions/controller"
 
@@ -9,9 +9,6 @@ const HOME_SESSION_HEADER_TEXT_HEIGHT = 16
 const HOME_SESSION_HEADER_FADE_DISTANCE = 16
 
 export function createHomeScrollController(groups: Accessor<HomeSessionGroup[]>) {
-  const [thumbTrack, setThumbTrack] = createSignal<HTMLDivElement>()
-  const [hoverTarget, setHoverTarget] = createSignal<HTMLElement>()
-
   const [state, setState] = createStore({
     titleOpacity: {} as Partial<Record<HomeSessionGroup["id"], number>>,
   })
@@ -111,44 +108,14 @@ export function createHomeScrollController(groups: Accessor<HomeSessionGroup[]>)
     if (content) resizeObserver.observe(content)
   }
 
-  function containWheel(event: WheelEvent) {
-    if (!viewport) return
-
-    if (event.defaultPrevented || event.ctrlKey || !event.deltaY) return
-
-    if (!(event.target instanceof Element)) return
-    const scrollable = event.target.closest<HTMLElement>("[data-scrollable]")
-
-    if (
-      scrollable !== viewport &&
-      scrollable &&
-      (event.deltaY < 0
-        ? scrollable.scrollTop > 0
-        : scrollable.scrollTop < scrollable.scrollHeight - scrollable.clientHeight)
-    )
-      return
-    event.preventDefault()
-  }
-
   return {
     viewport: {
-      thumbTrack,
-      hoverTarget,
-      setThumbTrack,
-      setHoverTarget,
       setViewport: (element: HTMLDivElement) => {
         viewport = element
         bindResizeObserver()
         queuePositionUpdate()
       },
       update,
-      containWheel,
-      containOuterWheel: (event: WheelEvent) => {
-        if (!viewport) return
-
-        if (event.target instanceof Node && viewport.contains(event.target)) return
-        containWheel(event)
-      },
     },
     header: {
       setContent: (element: HTMLDivElement) => {

@@ -1,12 +1,7 @@
 import type { HomeProjectsController } from "./controller"
 import { HomeProjectsView } from "./view"
-import type { HomeScrollController } from "../scroll"
 
-export function HomeProjects(props: {
-  projects: HomeProjectsController
-  scroll: HomeScrollController
-  dropdown?: boolean
-}) {
+export function HomeProjects(props: { projects: HomeProjectsController; dropdown?: boolean }) {
   return (
     <HomeProjectsView
       dropdown={props.dropdown}
@@ -21,7 +16,6 @@ export function HomeProjects(props: {
       collapsed={props.projects.server.collapsed}
       canRevealProject={props.projects.project.canReveal}
       unseenCount={props.projects.project.unseenCount}
-      onWheel={props.scroll.viewport.containWheel}
       onChooseProject={props.projects.project.choose}
       onFocusServer={props.projects.server.focus}
       onAuthenticateServer={props.projects.server.authenticate}

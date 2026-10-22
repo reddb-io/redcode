@@ -1,7 +1,10 @@
 import type { SessionInfo } from "@opencode/client/promise"
 import { useDialog } from "@opencode/ui/context/dialog"
-import { Button } from "@opencode/ui/button"
-import { DialogFooter, DialogHeader, DialogTitleGroup, Dialog } from "@opencode/ui/dialog"
+import { useNativeDialog } from "@/runtime/react/dialog"
+import { sharedSource } from "@/runtime/react/source"
+import { sharedLanguage } from "@/runtime/react/language"
+import { ReactView } from "@/runtime/react/view"
+import { DeleteHomeSessionDialog } from "./delete-dialog.react"
 import { skipToken, useQuery, useQueryClient } from "@tanstack/solid-query"
 import { type Accessor, createEffect, createMemo, type JSX, startTransition, untrack } from "solid-js"
 import { notifySessionTabsRemoved } from "@/shell/titlebar/session-events"
@@ -275,31 +278,18 @@ export function createHomeSessionsController(home: HomeController) {
   }
 
   function DeleteDialog(props: { server: ServerConnection.Key; session: SessionInfo }) {
+    const modal = useNativeDialog()
     const name = () => sessionTitle(props.session.title) ?? language.t("command.session.new")
-
+    const source = sharedSource(() => ({
+      language: sharedLanguage(language),
+      open: modal.open(),
+      name: name(),
+    }))
     const confirm = async () => {
       await remove(props.server, props.session)
-      dialog.close()
+      modal.close()
     }
-
-    return (
-      <Dialog fit>
-        <DialogHeader hideClose>
-          <DialogTitleGroup
-            title={language.t("session.delete.title")}
-            description={language.t("session.delete.confirm", { name: name() })}
-          />
-        </DialogHeader>
-        <DialogFooter>
-          <Button variant="ghost" onClick={() => dialog.close()}>
-            {language.t("common.cancel")}
-          </Button>
-          <Button variant="danger" onClick={confirm}>
-            {language.t("session.delete.button")}
-          </Button>
-        </DialogFooter>
-      </Dialog>
-    )
+    return <ReactView component={DeleteHomeSessionDialog} props={{ source, confirm, close: modal.close }} />
   }
 
   return {
