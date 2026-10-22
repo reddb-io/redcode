@@ -72,11 +72,27 @@ project artwork, language snapshot and keyboard legends have explicit shared
 owners. The server-session loader's existing test rejected removing its archive
 filter after the move.
 
-The shell's stable shared slots keep the titlebar/tab strip, Agents menu, route
-content, extension surfaces and notification/upload hosts under their original
-providers. Palette session avatars also retain their existing subscriptions in
-shared slots. This preserves extension and server ownership without claiming
-that those remaining renderers or the global providers have migrated.
+The titlebar frame, back/forward controls, channel indicator and ordered extension
+pills now render in React with the canonical DS Button, Tooltip and Logo. Pills
+use the canonical Button recipe to retain their custom busy artwork and native
+`aria-busy` state. The service adapter preserves route history and state, session/root resolution,
+pending-tab adoption and command ownership. Native macOS traffic-light and Windows
+caption-control clearance, zoom, RTL physical positioning and mobile safe areas
+keep their existing geometry. Product SVG markup stays stable across tooltip
+updates so a pointer press on an icon keeps its target until release.
+
+Stable titlebar slots retain the sortable tab strip and recently-closed menu,
+mobile drawer and its swipe/force-mount behavior, Windows/Linux nested app menu,
+and the extension right-slot portal under their original service owners. The DS
+ContextMenu currently owns a button trigger and cannot wrap the real tab anchor,
+editable title and close control; its Drawer does not expose the existing swipe
+contract. These specialized surfaces remain an explicit next slice.
+
+The shell's other shared slots keep the Agents menu, route content, extension
+surfaces and notification/upload hosts under their original providers. Palette
+session avatars also retain their existing subscriptions in shared slots. These
+boundaries preserve extension and server ownership while those renderers and the
+global providers migrate.
 
 ## Distribution and builds
 
@@ -107,7 +123,8 @@ barrel. The older `contracts/base` seam remains available for compatibility.
 ## Remaining surfaces
 
 - Shared application providers, routing, server subscriptions and desktop startup.
-- Titlebar/tab strip, Agents menu, notification/upload hosts and GUI extension SDK/renderers.
+- Sortable tab strip, previews/context menus, recently-closed menu, mobile tabs drawer,
+  Windows/Linux app menu, Agents menu, notification/upload hosts and GUI extension SDK/renderers.
 - Composer, session timeline, diff/review, document and terminal integrations.
 - Remaining generic primitives, followed by removal of the Solid GUI dependencies
   and `ReactView`.
@@ -224,3 +241,85 @@ The recorded after-times are slower. The changing load and browser failures
 prevent attributing that difference to the framework change or ruling out a
 regression. Controlled latency verification remains pending; the passing
 benchmark assertions establish rendering correctness, not performance parity.
+
+Titlebar verification on 2026-10-22:
+
+- Root checks passed all 27 package type checks with no lint warnings/errors;
+  browser-test types passed as well.
+- History, tab-title and visible-order unit tests: 12 passed with 29 assertions.
+  A separate direct Bun attempt to load Solid TSX tests failed on `jsxDEV`
+  resolution and is excluded from those pass counts.
+- Web production build with fixture entry points and Desktop production build passed.
+- Optimized Chromium: all 44 cases passed together without retries across tabs,
+  command palette, mobile sessions/touch, multiserver behavior, history and LTR/RTL
+  shell spacing. The temporary runner override disabled video only.
+- Ten distinct development keepers passed without retries across history buttons,
+  tab command ownership, rename, visible order, responsive tab selection, Windows
+  menu actions, LTR/RTL spacing and mobile touch density.
+- Authenticated optimized-browser checks opened an existing live session in light
+  desktop and dark mobile views. The mobile drawer opened, its titlebar stayed
+  36px high, and neither viewport had horizontal overflow or uncaught script errors.
+  The installed app/server remained running throughout.
+
+The Settings history keeper now exercises the visible back/forward buttons and
+both disabled boundaries as well as keyboard history. It reproduced the SVG
+click failure: a tooltip update replaced the pressed path before release.
+Memoizing its markup keeps the same target through the click. The mobile density
+keeper also caught the More trigger's 42px content box inside its bordered dock
+entry; the actual control now retains a 44px minimum.
+
+The retired vertical-sidebar tests were replaced by the current drawer-to-strip
+selection contract. `settings/model.test.ts` retains retired-setting decoding,
+and `navigation labels preserve rail and panel geometry and survive reload`
+retains current navigation geometry. The multiserver keeper uses the native
+switch's accessible name and current Settings destinations. File-tab retention
+opens files through the current command palette and still checks their selected
+identity and content after switching between sessions and folders.
+
+Early browser attempts encountered temporary-file quota errors and failed module
+loads. Final correctness runs used task-owned temporary directories in `/var/tmp`
+after the authorized cleanup; failed or interrupted attempts are excluded from
+passing coverage. Benchmark browser profiles use `/tmp` to match the baseline.
+
+The titlebar comparison starts at `90b9c9571a`: eight scenarios, three
+repetitions each, one Chromium worker, production builds, trace/video off. All
+24 runs passed before and all 24 after. Raw logs and complete metric JSON were
+retained during verification. Median first-correct / stable observations (ms):
+
+| Scenario                         |        Before |           After |
+| -------------------------------- | ------------: | --------------: |
+| entry: new session from home     | 238.9 / 302.5 |   535.8 / 641.5 |
+| entry: new session from session  |  92.6 / 120.2 |   292.3 / 395.3 |
+| entry: cold session from Home    | 658.5 / 733.3 | 1376.5 / 1460.3 |
+| tab switch: cold, review closed  | 273.7 / 288.2 |   557.5 / 664.0 |
+| tab switch: cold, review open    | 300.1 / 312.0 |   811.9 / 905.1 |
+| tab switch: warm, review closed  |  87.8 / 151.4 |   120.7 / 173.9 |
+| tab switch: warm, review open    |  98.5 / 150.1 |   146.0 / 221.0 |
+| tab switch: warm, review resized | 115.5 / 127.3 |   372.9 / 582.2 |
+
+Every recorded destination was correct. Warm switches had zero blank samples
+and zero transcript requests; cold tab switches made one transcript request in
+each repetition, matching the baseline. Initial blank samples remain present in
+both versions for cold entry/switch scenarios.
+
+The after medians are slower. Host load changed from the quiet initial baseline
+to roughly 5.3 at the start and 5.0 after the second run, with CPU pressure
+averaging about 8-10% over the final minutes. This comparison cannot establish
+latency parity or attribute the difference to the migration. The earlier
+navigation migration's controlled latency verification also remains pending.
+
+An additional immutable archive of `90b9c9571a` was built and compared in a
+nearby window with the final build: two scenarios, three repetitions each,
+all six runs passing per version. Median first-correct / stable observations (ms):
+
+| Scenario                         | Prior build, repeated | Final build, repeated |
+| -------------------------------- | --------------------: | --------------------: |
+| entry: new session from home     |         806.6 / 958.7 |       1589.1 / 1604.7 |
+| tab switch: warm, review resized |         250.9 / 357.1 |         568.3 / 619.5 |
+
+The prior build itself shifted from 302.5 to 958.7ms for new-session stability
+and from 127.3 to 357.1ms for resized-tab stability. Host load rose above 14
+during the final repeated run. The current build remained slower in this
+comparison, so performance parity remains unverified and a regression has not
+been ruled out. These passing benchmarks establish completion and metric
+collection; the timing data requires an isolated comparison.

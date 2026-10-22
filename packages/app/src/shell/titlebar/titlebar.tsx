@@ -1,11 +1,8 @@
-import { createEffect, createMemo, createResource, Match, Show, Switch, untrack } from "solid-js"
+import { createEffect, createMemo, createResource, Show, untrack } from "solid-js"
 import { createStore, unwrap } from "solid-js/store"
-import { Dynamic } from "solid-js/web"
 import { useLocation, useNavigate } from "@solidjs/router"
-import { IconButton } from "@opencode/ui/icon-button"
 import { Icon } from "@opencode/ui/icon"
 import { Keybind } from "@opencode/ui/keybind"
-import { Tooltip } from "@opencode/ui/tooltip"
 
 import { LayoutRoute, useLayout } from "@/shell/state/layout"
 import { usePlatform } from "@/runtime/platform/platform"
@@ -31,8 +28,12 @@ import { RecentlyClosedTabsMenu } from "./recently-closed-tabs-menu"
 import { rootSession } from "@/shell/routes/session"
 import { TitlebarItem } from "@opencode/gui-extensions/sdk"
 import { useExtensionHost } from "@/runtime/extension/host"
-import { TitlebarItems, useTitlebarItems } from "@/runtime/extension/titlebar-items"
-import { Logo } from "@opencode/ui/logo"
+import { useTitlebarItems } from "@/runtime/extension/titlebar-items"
+import { sharedSource } from "@/runtime/react/source"
+import { sharedMount } from "@/runtime/react/mount"
+import { sharedLanguage } from "@/runtime/react/language"
+import { ReactView } from "@/runtime/react/view"
+import { TitlebarView } from "./titlebar.react"
 
 const titlebarHeight = 36
 
@@ -41,13 +42,6 @@ const windowsTitlebarHeight = 44 // Includes the content inset; matches the nati
 const minTitlebarZoom = 0.25
 
 const windowsControlsBaseWidth = 138 // 3 native Windows caption buttons at 46px each.
-
-// Native controls: 14px left inset, two 20px button pitches, and a 14px button.
-const macTrafficLightsBaseWidth = 68
-
-// iOS blurs page content just below the status bar in Home Screen web apps, so with a top safe area the phone
-// titlebar row stays 16px clear of it, as ChatGPT's phone header does. Without one, 8px matches the content gap below.
-const mobileTopClearance = "max(8px, min(16px, env(safe-area-inset-top, 0px) * 1000))"
 
 export function Titlebar() {
   const platform = usePlatform()
@@ -135,558 +129,433 @@ export function Titlebar() {
     },
   ])
 
-  return (
-    <header
-      data-slot="titlebar-v2"
-      classList={{
-        "shrink-0 relative flex flex-row h-9 bg-v2-background-bg-deep overflow-visible": true,
-        "order-last": bottom(),
-      }}
-      style={{
-        height:
-          platform.platform === "web"
-            ? bottom()
-              ? "calc(28px + max(8px, var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))))"
-              : mobileTop()
-                ? `calc(28px + ${mobileTopClearance} + env(safe-area-inset-top, 0px))`
-                : "calc(28px + max(8px, env(safe-area-inset-top, 0px)))"
-            : undefined,
-        "padding-top": bottom()
-          ? "0px"
-          : mobileTop()
-            ? `calc(${mobileTopClearance} + env(safe-area-inset-top, 0px))`
-            : "env(safe-area-inset-top, 0px)",
-        "padding-bottom": bottom() ? "var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))" : "0px",
-        "min-height": minHeight(),
-        // Keep native macOS traffic lights clear even when the desktop window is narrow.
-        "padding-left": macTrafficLights() ? `${macTrafficLightsBaseWidth / zoom()}px` : 0,
-        width: windows() ? `env(titlebar-area-width, calc(100vw - ${windowsControlsWidth()}))` : undefined,
-        "max-width": windows() ? `env(titlebar-area-width, calc(100vw - ${windowsControlsWidth()}))` : undefined,
-        // Native Windows caption controls remain on the physical right in both writing directions.
-        "margin-right": windows() ? "auto" : undefined,
-      }}
-      data-tauri-drag-region
-    >
-      <Switch>
-        <Match when>
-          {(_) => {
-            const layout = useLayout()
-            const global = useGlobal()
+  const layout = useLayout()
+  const global = useGlobal()
 
-            const tabs = useTabs()
-            const tabsStore = tabs.store
-            const tabsStoreActions = tabs
+  const tabs = useTabs()
+  const tabsStore = tabs.store
+  const tabsStoreActions = tabs
 
-            const preparing = createMemo(() => {
-              const route = layout.route()
+  const preparing = createMemo(() => {
+    const route = layout.route()
 
-              return route.type === "session" && !!tabs.pendingSession(route.server, route.sessionId)
-            })
+    return route.type === "session" && !!tabs.pendingSession(route.server, route.sessionId)
+  })
 
-            const [resolvedSession] = createResource(
-              () => {
-                const route = layout.route()
+  const [resolvedSession] = createResource(
+    () => {
+      const route = layout.route()
 
-                if (route.type !== "session") return undefined
+      if (route.type !== "session") return undefined
 
-                if (preparing()) return undefined
-                const conn = global.servers.list().find((item) => ServerConnection.key(item) === route.server)
+      if (preparing()) return undefined
+      const conn = global.servers.list().find((item) => ServerConnection.key(item) === route.server)
 
-                return conn ? { route, ctx: global.ensureServerCtx(conn) } : undefined
-              },
-              async ({ route, ctx }) => {
-                const info = await ctx.sdk.api.session
-                  .get({ sessionID: route.sessionId })
-                  .catch(() => ctx.data.session.get(route.sessionId))
+      return conn ? { route, ctx: global.ensureServerCtx(conn) } : undefined
+    },
+    async ({ route, ctx }) => {
+      const info = await ctx.sdk.api.session
+        .get({ sessionID: route.sessionId })
+        .catch(() => ctx.data.session.get(route.sessionId))
 
-                if (!info) return
-                ctx.data.session.remember(info)
+      if (!info) return
+      ctx.data.session.remember(info)
 
-                const rootID = await rootSession(info, async (id) => {
-                  const cached = ctx.data.session.get(id)
+      const rootID = await rootSession(info, async (id) => {
+        const cached = ctx.data.session.get(id)
 
-                  if (cached) return cached
-                  const ancestor = await ctx.sdk.api.session.get({ sessionID: id })
-                  ctx.data.session.remember(ancestor)
+        if (cached) return cached
+        const ancestor = await ctx.sdk.api.session.get({ sessionID: id })
+        ctx.data.session.remember(ancestor)
 
-                  return ancestor
-                })
-                  .then((root) => root.id)
-                  .catch(() => ctx.data.session.root(info.id))
+        return ancestor
+      })
+        .then((root) => root.id)
+        .catch(() => ctx.data.session.root(info.id))
 
-                return { info, rootID }
-              },
-            )
-
-            const session = createMemo(() => {
-              const route = layout.route()
-
-              if (route.type !== "session") return
-
-              if (preparing()) return
-              const conn = global.servers.list().find((item) => ServerConnection.key(item) === route.server)
-              const cached = conn ? global.ensureServerCtx(conn).data.session.get(route.sessionId) : undefined
-
-              if (cached) return cached
-              const resolved = resolvedSession()
-
-              return resolved?.info.id === route.sessionId ? resolved.info : undefined
-            })
-
-            const matchRoute = (route: LayoutRoute) => {
-              if (route.type === "home") return
-
-              if (route.type === "draft") {
-                return tabsStore.find((item) => item.type === "draft" && item.draftID === route.draftID)
-              }
-
-              if (route.type === "session") {
-                const main = tabsStore.find(
-                  (item) =>
-                    item.type === "session" &&
-                    item.server === route.server &&
-                    (item.sessionId === route.sessionId || item.routeSessionId === route.sessionId),
-                )
-
-                if (main) return main
-                const s = session()
-
-                if (s?.parentID) {
-                  const resolved = resolvedSession()
-                  const parentID = resolved?.info.id === s.id ? resolved.rootID : s.parentID
-
-                  const parent = tabsStore.find(
-                    (item) => item.type === "session" && item.server === route.server && item.sessionId === parentID,
-                  )
-
-                  if (parent) return parent
-                }
-              }
-            }
-
-            const currentTab = () => matchRoute(layout.route())
-
-            createEffect(() => {
-              const route = layout.route()
-
-              if (!tabs.ready()) return
-              const tab = currentTab()
-
-              if (tab) {
-                const current = session()
-
-                if (
-                  route.type === "session" &&
-                  tab.type === "session" &&
-                  (route.sessionId === tab.sessionId || current?.id === route.sessionId)
-                ) {
-                  tabs.rememberSessionRoute(tab, route.sessionId, current?.parentID)
-                }
-
-                tabs.remember(tab)
-
-                return
-              }
-
-              if (route.type === "session") {
-                if (tabs.pendingSession(route.server, route.sessionId)) {
-                  tabsStoreActions.addSessionTab({ server: route.server, sessionId: route.sessionId })
-
-                  return
-                }
-
-                const s = session()
-
-                if (!s) return
-                const resolved = resolvedSession()
-
-                if (s.parentID && resolved?.info.id !== s.id) return
-                const sessionId = resolved?.info.id === s.id ? resolved.rootID : s.id
-                const next = { server: route.server, sessionId }
-                tabsStoreActions.addSessionTab(next)
-              }
-            })
-
-            makeEventListener(window, SESSION_TABS_REMOVED_EVENT, (event) => {
-              const detail = readSessionTabsRemovedDetail(event)
-
-              if (!detail) return
-              tabsStoreActions.removeSessions(detail)
-            })
-
-            const openNewTab = () => {
-              const route = layout.route()
-
-              switch (route.type) {
-                case "session": {
-                  const pending = tabs.pendingSession(route.server, route.sessionId)
-
-                  if (pending) {
-                    void tabs.newDraft({ server: route.server, directory: pending.draft.directory }, "")
-
-                    return
-                  }
-
-                  const activeSession = session()
-
-                  if (!activeSession) return
-
-                  const sessionTab = {
-                    type: "session" as const,
-                    server: route.server,
-                    sessionId: activeSession.id,
-                  }
-
-                  void tabs.newDraft({ server: sessionTab.server, directory: activeSession.location.directory }, "")
-
-                  return
-                }
-
-                case "draft": {
-                  const activeTab = currentTab()
-
-                  if (activeTab?.type !== "draft") return
-
-                  void tabs.newDraft({ server: activeTab.server, directory: activeTab.directory }, "")
-
-                  return
-                }
-
-                case "settings":
-                case "connect":
-                case "home": {
-                  const selection = layout.home.selection()
-
-                  const conn =
-                    global.servers.list().find((item) => ServerConnection.key(item) === selection.server) ??
-                    global.servers.list()[0]
-
-                  const projects = conn ? global.ensureServerCtx(conn).projects : undefined
-
-                  const project =
-                    projects?.list().find((item) => item.worktree === selection.directory) ??
-                    projects?.list().find((item) => item.worktree === projects.last()) ??
-                    projects?.list()[0]
-
-                  if (conn && project) {
-                    void tabs.newDraft({ server: ServerConnection.key(conn), directory: project.worktree }, "")
-
-                    return
-                  }
-                }
-              }
-            }
-
-            const toggleHome = () => tabs.toggleHome({ home: layout.route().type === "home", current: currentTab() })
-            command.register("titlebar-home", () => [
-              {
-                id: "home.toggle",
-                title: language.t("home.title"),
-                category: language.t("command.category.view"),
-                keybind: windows() ? "alt+home" : "mod+shift+h",
-                hidden: true,
-                onSelect: () => {
-                  if (layout.route().type !== "home") layout.home.searchFocus.request()
-                  toggleHome()
-                },
-              },
-            ])
-
-            command.register("tabs", () => {
-              const current = currentTab()
-
-              return [
-                {
-                  id: "tab.new",
-                  category: "tab",
-                  title: language.t("command.session.new"),
-                  keybind: "mod+t,mod+n",
-                  hidden: true,
-                  onSelect: openNewTab,
-                },
-                current && {
-                  id: "tab.close",
-                  category: "tab",
-                  title: language.t("command.tab.close"),
-                  keybind: "mod+w",
-                  hidden: true,
-                  onSelect: () => {
-                    tabsStoreActions.closeTab(tabsStore.findIndex((tab) => current === tab))
-                  },
-                },
-                {
-                  id: "tab.reopenClosed",
-                  category: language.t("command.category.file"),
-                  title: language.t("command.tab.reopenClosed"),
-                  keybind: "mod+shift+t",
-                  onSelect: () => tabsStoreActions.reopenClosedTab(),
-                },
-              ].filter((v) => v !== undefined)
-            })
-
-            const [mobileTabs, setMobileTabs] = createStore({ open: false })
-
-            const currentProject = createMemo(() => {
-              const tab = currentTab()
-              const value = session()
-
-              if (!tab || !value) return
-              const conn = global.servers.list().find((item) => ServerConnection.key(item) === tab.server)
-
-              return conn ? global.ensureServerCtx(conn).projects.forSession(value) : undefined
-            })
-
-            const currentTitle = () => {
-              const tab = currentTab()
-
-              if (!tab) return language.t("home.title")
-
-              if (tab.type === "draft") return language.t("session.tab.session")
-              const value = session()
-
-              return sessionTabTitle(
-                value ? value.title : tabs.info[tabKey(tab)]?.title,
-                language.t("session.tab.session"),
-              )
-            }
-
-            createEffect(() => {
-              path()
-              mobile()
-              setMobileTabs("open", false)
-            })
-
-            return (
-              <div
-                class="h-full flex-1 overflow-hidden flex flex-row items-center gap-1.5 px-2 md:pe-3"
-                classList={{
-                  "pt-[max(0px,calc(8px-env(safe-area-inset-top,0px)))]": !bottom() && !windows() && !mobileTop(),
-                  "pb-[max(0px,calc(8px-var(--safe-area-inset-bottom,env(safe-area-inset-bottom,0px))))]": bottom(),
-                  "pl-4": macTrafficLights(),
-                  // Center the 20px app icon over the sidebar's 16px icon column.
-                  "ps-3.5": windows(),
-                }}
-              >
-                <Show when={!mobile()}>
-                  <ChannelIndicator horizontal />
-                </Show>
-                <Show when={windows() || linux()}>
-                  <WindowsAppMenu command={command} platform={platform} />
-                </Show>
-                <Show when={!mobile() && settings.general.showNavigation()}>
-                  <div data-slot="titlebar-history" class="flex shrink-0 items-center gap-0.5 [app-region:no-drag]">
-                    <Tooltip
-                      placement="bottom"
-                      value={
-                        <>
-                          {language.t("common.goBack")}
-                          <Keybind keys={command.keybindParts("common.goBack")} variant="neutral" />
-                        </>
-                      }
-                    >
-                      <IconButton
-                        type="button"
-                        data-action="titlebar-back"
-                        variant="ghost-muted"
-                        size="large"
-                        icon={<Icon name="arrow-left" />}
-                        disabled={!backPath(history)}
-                        onClick={back}
-                        aria-label={language.t("common.goBack")}
-                      />
-                    </Tooltip>
-                    <Tooltip
-                      placement="bottom"
-                      value={
-                        <>
-                          {language.t("common.goForward")}
-                          <Keybind keys={command.keybindParts("common.goForward")} variant="neutral" />
-                        </>
-                      }
-                    >
-                      <IconButton
-                        type="button"
-                        data-action="titlebar-forward"
-                        variant="ghost-muted"
-                        size="large"
-                        icon={<Icon name="arrow-right" />}
-                        disabled={!forwardPath(history)}
-                        onClick={forward}
-                        aria-label={language.t("common.goForward")}
-                      />
-                    </Tooltip>
-                  </div>
-                </Show>
-
-                <Show
-                  when={!mobile()}
-                  fallback={
-                    <MobileDrawer open={mobileTabs.open} onOpenChange={(open) => setMobileTabs("open", open)}>
-                      <MobileDrawerTrigger
-                        data-slot="mobile-tabs-trigger"
-                        class="flex h-7 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-[13px] leading-4 text-foreground hover:bg-foreground/8 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus [app-region:no-drag]"
-                        aria-label={language.t("titlebar.tabs")}
-                      >
-                        <Show when={currentTab()} fallback={<Icon name="grid-plus" class="shrink-0" />}>
-                          {(tab) => (
-                            <span
-                              data-slot="project-avatar-slot"
-                              class="flex size-4 shrink-0 items-center justify-center"
-                            >
-                              <Show
-                                when={session()}
-                                fallback={
-                                  tab().type === "draft" ? (
-                                    <Icon name="edit" />
-                                  ) : (
-                                    <Show
-                                      when={preparing()}
-                                      fallback={
-                                        <span
-                                          class="block size-4 rounded-sm border border-control-edge"
-                                          aria-hidden="true"
-                                        />
-                                      }
-                                    >
-                                      <SessionProgressIndicatorV2 />
-                                    </Show>
-                                  )
-                                }
-                              >
-                                {(value) => (
-                                  <SessionTabAvatar
-                                    project={currentProject()}
-                                    directory={value().location.directory}
-                                    sessionId={value().id}
-                                    server={tab().server}
-                                  />
-                                )}
-                              </Show>
-                            </span>
-                          )}
-                        </Show>
-                        <span data-slot="mobile-tab-title" dir="auto" class="min-w-0 flex-1 truncate text-start">
-                          {currentTitle()}
-                        </span>
-                        <span class="shrink-0 tabular-nums text-ink-muted">{tabsStore.length}</span>
-                      </MobileDrawerTrigger>
-                      <MobileDrawerContent>
-                        <MobileDrawerLabel class="sr-only">{language.t("titlebar.tabs")}</MobileDrawerLabel>
-                        <div data-slot="mobile-tabs-drawer" data-corvu-no-drag>
-                          <div data-slot="mobile-tabs-drawer-list">
-                            <TitlebarTabStrip
-                              orientation="vertical"
-                              tabs={tabsStore}
-                              currentTab={currentTab()}
-                              onNavigate={(tab) => {
-                                tabs.select(tab)
-                                setMobileTabs("open", false)
-                              }}
-                              onClose={(tab) => {
-                                const index = tabsStore.findIndex((item) => tabKey(item) === tabKey(tab))
-
-                                if (index !== -1) tabsStoreActions.closeTab(index)
-                              }}
-                              onReorder={(keys) => tabsStoreActions.reorder(keys)}
-                            />
-                          </div>
-                          <button
-                            type="button"
-                            data-action="mobile-tabs-new-session"
-                            class="flex h-11 w-full shrink-0 items-center gap-2 rounded-md px-2 text-body text-foreground hover:bg-foreground/8 active:bg-foreground/12 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
-                            onClick={() => {
-                              openNewTab()
-                              setMobileTabs("open", false)
-                            }}
-                          >
-                            <Icon name="plus" />
-                            {language.t("command.session.new")}
-                          </button>
-                        </div>
-                      </MobileDrawerContent>
-                    </MobileDrawer>
-                  }
-                >
-                  <>
-                    <TitlebarTabStrip
-                      tabs={tabsStore}
-                      currentTab={currentTab()}
-                      onNavigate={(tab, el) => {
-                        tabs.select(tab)
-                        el?.scrollIntoView({ behavior: "instant" })
-                      }}
-                      onClose={(tab) => {
-                        const index = tabsStore.findIndex((item) => tabKey(item) === tabKey(tab))
-
-                        if (index !== -1) tabsStoreActions.closeTab(index)
-                      }}
-                      onReorder={(keys) => tabsStoreActions.reorder(keys)}
-                    />
-                    <RecentlyClosedTabsMenu
-                      onNewTab={openNewTab}
-                      tooltip={
-                        <>
-                          {language.t("command.session.new")}
-                          <Keybind keys={command.keybindParts("tab.new")} variant="neutral" />
-                        </>
-                      }
-                    />
-                  </>
-                </Show>
-                <Show when={!mobile()}>
-                  <div class="flex-1" />
-                </Show>
-                <div class="relative z-20 flex shrink-0 items-center justify-end gap-0 overflow-visible">
-                  <TitlebarItems items={titlebarItems} />
-                  <TitlebarRightMount />
-                </div>
-              </div>
-            )
-          }}
-        </Match>
-      </Switch>
-    </header>
+      return { info, rootID }
+    },
   )
-}
 
-function ChannelIndicator(props: { horizontal?: boolean; sidebar?: boolean }) {
-  const language = useLanguage()
-  const platform = usePlatform()
+  const session = createMemo(() => {
+    const route = layout.route()
+
+    if (route.type !== "session") return
+
+    if (preparing()) return
+    const conn = global.servers.list().find((item) => ServerConnection.key(item) === route.server)
+    const cached = conn ? global.ensureServerCtx(conn).data.session.get(route.sessionId) : undefined
+
+    if (cached) return cached
+    const resolved = resolvedSession()
+
+    return resolved?.info.id === route.sessionId ? resolved.info : undefined
+  })
+
+  const matchRoute = (route: LayoutRoute) => {
+    if (route.type === "home") return
+
+    if (route.type === "draft") {
+      return tabsStore.find((item) => item.type === "draft" && item.draftID === route.draftID)
+    }
+
+    if (route.type === "session") {
+      const main = tabsStore.find(
+        (item) =>
+          item.type === "session" &&
+          item.server === route.server &&
+          (item.sessionId === route.sessionId || item.routeSessionId === route.sessionId),
+      )
+
+      if (main) return main
+      const s = session()
+
+      if (s?.parentID) {
+        const resolved = resolvedSession()
+        const parentID = resolved?.info.id === s.id ? resolved.rootID : s.parentID
+
+        const parent = tabsStore.find(
+          (item) => item.type === "session" && item.server === route.server && item.sessionId === parentID,
+        )
+
+        if (parent) return parent
+      }
+    }
+  }
+
+  const currentTab = () => matchRoute(layout.route())
+
+  createEffect(() => {
+    const route = layout.route()
+
+    if (!tabs.ready()) return
+    const tab = currentTab()
+
+    if (tab) {
+      const current = session()
+
+      if (
+        route.type === "session" &&
+        tab.type === "session" &&
+        (route.sessionId === tab.sessionId || current?.id === route.sessionId)
+      ) {
+        tabs.rememberSessionRoute(tab, route.sessionId, current?.parentID)
+      }
+
+      tabs.remember(tab)
+
+      return
+    }
+
+    if (route.type === "session") {
+      if (tabs.pendingSession(route.server, route.sessionId)) {
+        tabsStoreActions.addSessionTab({ server: route.server, sessionId: route.sessionId })
+
+        return
+      }
+
+      const s = session()
+
+      if (!s) return
+      const resolved = resolvedSession()
+
+      if (s.parentID && resolved?.info.id !== s.id) return
+      const sessionId = resolved?.info.id === s.id ? resolved.rootID : s.id
+      const next = { server: route.server, sessionId }
+      tabsStoreActions.addSessionTab(next)
+    }
+  })
+
+  makeEventListener(window, SESSION_TABS_REMOVED_EVENT, (event) => {
+    const detail = readSessionTabsRemovedDetail(event)
+
+    if (!detail) return
+    tabsStoreActions.removeSessions(detail)
+  })
+
+  const openNewTab = () => {
+    const route = layout.route()
+
+    switch (route.type) {
+      case "session": {
+        const pending = tabs.pendingSession(route.server, route.sessionId)
+
+        if (pending) {
+          void tabs.newDraft({ server: route.server, directory: pending.draft.directory }, "")
+
+          return
+        }
+
+        const activeSession = session()
+
+        if (!activeSession) return
+
+        const sessionTab = {
+          type: "session" as const,
+          server: route.server,
+          sessionId: activeSession.id,
+        }
+
+        void tabs.newDraft({ server: sessionTab.server, directory: activeSession.location.directory }, "")
+
+        return
+      }
+
+      case "draft": {
+        const activeTab = currentTab()
+
+        if (activeTab?.type !== "draft") return
+
+        void tabs.newDraft({ server: activeTab.server, directory: activeTab.directory }, "")
+
+        return
+      }
+
+      case "settings":
+      case "connect":
+      case "home": {
+        const selection = layout.home.selection()
+
+        const conn =
+          global.servers.list().find((item) => ServerConnection.key(item) === selection.server) ??
+          global.servers.list()[0]
+
+        const projects = conn ? global.ensureServerCtx(conn).projects : undefined
+
+        const project =
+          projects?.list().find((item) => item.worktree === selection.directory) ??
+          projects?.list().find((item) => item.worktree === projects.last()) ??
+          projects?.list()[0]
+
+        if (conn && project) {
+          void tabs.newDraft({ server: ServerConnection.key(conn), directory: project.worktree }, "")
+
+          return
+        }
+      }
+    }
+  }
+
+  const toggleHome = () => tabs.toggleHome({ home: layout.route().type === "home", current: currentTab() })
+  command.register("titlebar-home", () => [
+    {
+      id: "home.toggle",
+      title: language.t("home.title"),
+      category: language.t("command.category.view"),
+      keybind: windows() ? "alt+home" : "mod+shift+h",
+      hidden: true,
+      onSelect: () => {
+        if (layout.route().type !== "home") layout.home.searchFocus.request()
+        toggleHome()
+      },
+    },
+  ])
+
+  command.register("tabs", () => {
+    const current = currentTab()
+
+    return [
+      {
+        id: "tab.new",
+        category: "tab",
+        title: language.t("command.session.new"),
+        keybind: "mod+t,mod+n",
+        hidden: true,
+        onSelect: openNewTab,
+      },
+      current && {
+        id: "tab.close",
+        category: "tab",
+        title: language.t("command.tab.close"),
+        keybind: "mod+w",
+        hidden: true,
+        onSelect: () => {
+          tabsStoreActions.closeTab(tabsStore.findIndex((tab) => current === tab))
+        },
+      },
+      {
+        id: "tab.reopenClosed",
+        category: language.t("command.category.file"),
+        title: language.t("command.tab.reopenClosed"),
+        keybind: "mod+shift+t",
+        onSelect: () => tabsStoreActions.reopenClosedTab(),
+      },
+    ].filter((v) => v !== undefined)
+  })
+
+  const [mobileTabs, setMobileTabs] = createStore({ open: false })
+
+  const currentProject = createMemo(() => {
+    const tab = currentTab()
+    const value = session()
+
+    if (!tab || !value) return
+    const conn = global.servers.list().find((item) => ServerConnection.key(item) === tab.server)
+
+    return conn ? global.ensureServerCtx(conn).projects.forSession(value) : undefined
+  })
+
+  const currentTitle = () => {
+    const tab = currentTab()
+
+    if (!tab) return language.t("home.title")
+
+    if (tab.type === "draft") return language.t("session.tab.session")
+    const value = session()
+
+    return sessionTabTitle(value ? value.title : tabs.info[tabKey(tab)]?.title, language.t("session.tab.session"))
+  }
+
+  createEffect(() => {
+    path()
+    mobile()
+    setMobileTabs("open", false)
+  })
+
   const host = useExtensionHost()
   const channel = import.meta.env.VITE_OPENCODE_CHANNEL
-  // Every build shows the RedDB symbol at its 16px minimum; other channels name themselves beside it.
-  if (!channel || channel === "prod") return <Logo layout="symbol" size={16} class="me-1.5 select-none" />
+  const source = sharedSource(() => {
+    const debug =
+      channel === "dev" || channel === "local"
+        ? host.list(TitlebarItem).find((item) => item.placement === "channel")
+        : undefined
+    return {
+      language: sharedLanguage(language),
+      mobile: mobile(),
+      bottom: bottom(),
+      web: platform.platform === "web",
+      windows: windows(),
+      platformMenu: windows() || linux(),
+      mobileTop: mobileTop(),
+      macTrafficLights: macTrafficLights(),
+      zoom: zoom(),
+      minHeight: minHeight(),
+      windowsControlsWidth: windowsControlsWidth(),
+      showNavigation: settings.general.showNavigation(),
+      canBack: !!backPath(history),
+      canForward: !!forwardPath(history),
+      keybinds: {
+        back: command.keybindParts("common.goBack"),
+        forward: command.keybindParts("common.goForward"),
+      },
+      channel: channel && channel !== "prod" ? language.t(`titlebar.channel.${channel}`) : undefined,
+      debug: debug ? { ...debug } : undefined,
+      items: titlebarItems.ids().flatMap((id) => {
+        const item = titlebarItems.item(id)
+        return item ? [{ ...item }] : []
+      }),
+    }
+  })
+  const slots = {
+    platformMenu: sharedMount(() => <WindowsAppMenu command={command} platform={platform} />),
+    right: sharedMount(() => <TitlebarRightMount />),
+    mobileTabs: sharedMount(() => (
+      <MobileDrawer open={mobileTabs.open} onOpenChange={(open) => setMobileTabs("open", open)}>
+        <MobileDrawerTrigger
+          data-slot="mobile-tabs-trigger"
+          class="flex h-7 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-[13px] leading-4 text-foreground hover:bg-foreground/8 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus [app-region:no-drag]"
+          aria-label={language.t("titlebar.tabs")}
+        >
+          <Show when={currentTab()} fallback={<Icon name="grid-plus" class="shrink-0" />}>
+            {(tab) => (
+              <span data-slot="project-avatar-slot" class="flex size-4 shrink-0 items-center justify-center">
+                <Show
+                  when={session()}
+                  fallback={
+                    tab().type === "draft" ? (
+                      <Icon name="edit" />
+                    ) : (
+                      <Show
+                        when={preparing()}
+                        fallback={
+                          <span class="block size-4 rounded-sm border border-control-edge" aria-hidden="true" />
+                        }
+                      >
+                        <SessionProgressIndicatorV2 />
+                      </Show>
+                    )
+                  }
+                >
+                  {(value) => (
+                    <SessionTabAvatar
+                      project={currentProject()}
+                      directory={value().location.directory}
+                      sessionId={value().id}
+                      server={tab().server}
+                    />
+                  )}
+                </Show>
+              </span>
+            )}
+          </Show>
+          <span data-slot="mobile-tab-title" dir="auto" class="min-w-0 flex-1 truncate text-start">
+            {currentTitle()}
+          </span>
+          <span class="shrink-0 tabular-nums text-ink-muted">{tabsStore.length}</span>
+        </MobileDrawerTrigger>
+        <MobileDrawerContent>
+          <MobileDrawerLabel class="sr-only">{language.t("titlebar.tabs")}</MobileDrawerLabel>
+          <div data-slot="mobile-tabs-drawer" data-corvu-no-drag>
+            <div data-slot="mobile-tabs-drawer-list">
+              <TitlebarTabStrip
+                orientation="vertical"
+                tabs={tabsStore}
+                currentTab={currentTab()}
+                onNavigate={(tab) => {
+                  tabs.select(tab)
+                  setMobileTabs("open", false)
+                }}
+                onClose={(tab) => {
+                  const index = tabsStore.findIndex((item) => tabKey(item) === tabKey(tab))
 
-  const label = () => language.t(`titlebar.channel.${channel}`)
+                  if (index !== -1) tabsStoreActions.closeTab(index)
+                }}
+                onReorder={(keys) => tabsStoreActions.reorder(keys)}
+              />
+            </div>
+            <button
+              type="button"
+              data-action="mobile-tabs-new-session"
+              class="flex h-11 w-full shrink-0 items-center gap-2 rounded-md px-2 text-body text-foreground hover:bg-foreground/8 active:bg-foreground/12 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
+              onClick={() => {
+                openNewTab()
+                setMobileTabs("open", false)
+              }}
+            >
+              <Icon name="plus" />
+              {language.t("command.session.new")}
+            </button>
+          </div>
+        </MobileDrawerContent>
+      </MobileDrawer>
+    )),
+    desktopTabs: sharedMount(() => (
+      <>
+        <TitlebarTabStrip
+          tabs={tabsStore}
+          currentTab={currentTab()}
+          onNavigate={(tab, el) => {
+            tabs.select(tab)
+            el?.scrollIntoView({ behavior: "instant" })
+          }}
+          onClose={(tab) => {
+            const index = tabsStore.findIndex((item) => tabKey(item) === tabKey(tab))
 
-  // An extension may turn the dev badge into a toggle (the debug bar does).
-  const debug = () =>
-    channel === "dev" || channel === "local"
-      ? host.list(TitlebarItem).find((item) => item.placement === "channel")
-      : undefined
-
-  return (
-    <Tooltip
-      placement="bottom"
-      value={label()}
-      class={`me-1.5 shrink-0 [app-region:no-drag] ${platform.platform === "web" ? "ps-2.5" : ""}`}
-    >
-      <Dynamic
-        component={debug() ? "button" : "div"}
-        type={debug() ? "button" : undefined}
-        data-slot="channel-indicator"
-        class="flex h-7 shrink-0 items-center gap-0.5 rounded-md pe-1.5 [app-region:no-drag]"
-        classList={{
-          "cursor-pointer hover:bg-foreground/8 active:bg-foreground/12 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus":
-            !!debug(),
-        }}
-        onClick={() => debug()?.run?.()}
-        aria-label={debug()?.label}
-        aria-pressed={debug()?.pressed}
-      >
-        <Logo layout="symbol" size={16} class="m-0" />
-        <span class="select-none text-caption font-medium text-ink-muted">{label()}</span>
-      </Dynamic>
-    </Tooltip>
-  )
+            if (index !== -1) tabsStoreActions.closeTab(index)
+          }}
+          onReorder={(keys) => tabsStoreActions.reorder(keys)}
+        />
+        <RecentlyClosedTabsMenu
+          onNewTab={openNewTab}
+          tooltip={
+            <>
+              {language.t("command.session.new")}
+              <Keybind keys={command.keybindParts("tab.new")} variant="neutral" />
+            </>
+          }
+        />
+      </>
+    )),
+  }
+  return <ReactView component={TitlebarView} props={{ source, slots, back, forward }} />
 }
