@@ -76,9 +76,11 @@ async function setup(page: Page, input: { tabs: TabSeed[]; a?: Partial<MockServe
 
   const enableAutoAccept = async () => {
     await page.keyboard.press("Control+,")
-    const autoAccept = page.getByTestId("settings-screen").locator('[data-action="settings-auto-accept-permissions"]')
-    await autoAccept.locator('[data-slot="switch-control"]').click()
-    await expect(autoAccept.getByRole("switch")).toBeChecked()
+    const autoAccept = page
+      .getByTestId("settings-screen")
+      .getByRole("switch", { name: "Auto-accept permissions", exact: true })
+    await autoAccept.check()
+    await expect(autoAccept).toBeChecked()
   }
 
   return { replies, sessionGets, transport: servers[SERVER]!.transport, listed, enableAutoAccept }
@@ -113,7 +115,9 @@ test("settings opened from a remote session sweep every server and keep the remo
     "Worktrees",
     "Providers",
     "Models",
-    "Extensions",
+    "Usage reporting",
+    "Agent tools",
+    "Agent extensions",
   ])
   await settings.getByRole("tab", { name: "Models" }).click()
   await expect(settings.getByRole("switch", { name: "Server B Model" })).toBeEnabled()
