@@ -88,11 +88,37 @@ ContextMenu currently owns a button trigger and cannot wrap the real tab anchor,
 editable title and close control; its Drawer does not expose the existing swipe
 contract. These specialized surfaces remain an explicit next slice.
 
-The shell's other shared slots keep the Agents menu, route content, extension
+The shell's other shared slots keep route content, extension
 surfaces and notification/upload hosts under their original providers. Palette
 session avatars also retain their existing subscriptions in shared slots. These
 boundaries preserve extension and server ownership while those renderers and the
 global providers migrate.
+
+Agents navigation now renders with native App NavItem and Base SearchSelect.
+The workspace's section, machine, project, harness and task selectors use the
+same native searchable control through a service adapter. Filtering remains local,
+accent-insensitive and independent from the selected value. Metadata updates
+retain the search draft and focus. SearchSelect owns its label; compact contexts
+retain that label for assistive technology without adding another visible row.
+
+Server pairing and HTTPS setup, saved integration connections, MCP management and
+ChatGPT account notices now use native React DS dialogs and controls. Pairing
+retains its link and external-address draft when HTTPS opens above it. The existing
+service stack still owns replacement, nested layers and disposal; the native DS
+owns focus containment, Escape and backdrop behavior. Native layers release their
+modal before the stack restores the invoking control. A menu invocation captures
+its persistent trigger before the selected row disappears.
+
+Connection services retain account activation, serial credential operations,
+two-step deletion, API-check evidence, explicit relay consent and scoped MCP
+requests. Provider sign-in and model selection still have separate Solid views;
+moving their saved-connections pane does not migrate those workflows.
+
+The initial sign-in screen and add/edit server forms also render in React with
+native DS inputs, actions and Logo. Their existing health checks, pairing-token
+redemption, address fallback, saved names and server registry remain service-owned.
+The QR reader owns its video and camera engine in React, loads only when scanning
+starts, and destroys that engine when the reader unmounts.
 
 ## Distribution and builds
 
@@ -124,7 +150,9 @@ barrel. The older `contracts/base` seam remains available for compatibility.
 
 - Shared application providers, routing, server subscriptions and desktop startup.
 - Sortable tab strip, previews/context menus, recently-closed menu, mobile tabs drawer,
-  Windows/Linux app menu, Agents menu, notification/upload hosts and GUI extension SDK/renderers.
+  Windows/Linux app menu, notification/upload hosts and GUI extension SDK/renderers.
+- Provider sign-in and model selection, and directory selection.
+- Agents workspace bodies beyond their migrated scope selectors.
 - Composer, session timeline, diff/review, document and terminal integrations.
 - Remaining generic primitives, followed by removal of the Solid GUI dependencies
   and `ReactView`.
@@ -323,3 +351,41 @@ during the final repeated run. The current build remained slower in this
 comparison, so performance parity remains unverified and a regression has not
 been ruled out. These passing benchmarks establish completion and metric
 collection; the timing data requires an isolated comparison.
+
+Connection and Agents scope verification on 2026-10-22:
+
+- Root checks: all 27 package type checks passed, with no lint warnings/errors.
+  Browser-test typing also passed. Web production with fixture entry points and
+  Desktop production builds passed.
+- Optimized Chromium: 105 cases passed together without retries across Agents,
+  Settings/search/WSL/SSH, mobile navigation, MCPs, navigation and multiple servers.
+  The camera keeper uses full Chromium with a synthetic capture device: it opens
+  a real MediaStream and verifies that every track ends after cancelling the reader.
+- Focused development keepers passed for section and host/project search, task
+  drafts through metadata refresh, HTTPS consent/failure/recovery, saved-connection
+  renaming/API-check recovery, scoped MCP requests, password recovery, server
+  pairing, nested modals and camera cleanup.
+- The provider connection-order units passed five cases and eight assertions.
+  A direct Bun attempt to load pairing, sharing and remote-auth helper suites
+  failed before execution with the existing Solid `jsxDEV` import error; those
+  suites are excluded from the passing counts. Their changed rendered paths are
+  exercised by the browser keepers.
+- Live production preview connected to the elected authenticated server without
+  changing it. Real session inventory, Agents scope search, server pairing and
+  nested HTTPS views rendered in desktop light and mobile dark modes, with no
+  horizontal overflow or uncaught script errors. Pairing and relay configuration
+  were only inspected; the live server's settings and grants were preserved.
+
+The browser keepers now wait for the harness output's End navigation to finish
+before checking scroll retention, and for the Worktrees menu to open before
+sending Escape. Both previously captured an earlier UI state under host load;
+the Worktrees keeper passed three adjacent repetitions before the complete run.
+
+The live preview forwards the existing service through a task-owned loopback
+proxy. It requests uncompressed API responses so Bun's decompression cannot leave
+a stale `Content-Encoding` header for the browser. This verification proxy is not
+part of the shipped application.
+
+This slice does not establish session-rendering latency parity. The earlier
+performance comparison remains unresolved, and the required production baseline
+must precede changes to session or timeline rendering.

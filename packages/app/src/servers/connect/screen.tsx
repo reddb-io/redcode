@@ -1,9 +1,9 @@
-import { lazy, Show, Suspense } from "solid-js"
+import { sharedSource } from "@/runtime/react/source"
+import { sharedLanguage } from "@/runtime/react/language"
+import { ReactView } from "@/runtime/react/view"
+import { ConnectServerView } from "./screen.react"
 import { createStore } from "solid-js/store"
 import { useMutation } from "@tanstack/solid-query"
-import { Button } from "@opencode/ui/button"
-import { TextInput } from "@opencode/ui/text-input"
-import { Logo } from "@opencode/ui/logo"
 import { useLanguage } from "@/runtime/i18n/language"
 import { usePlatform } from "@/runtime/platform/platform"
 import { useCheckServerHealth } from "@/runtime/server/health"
@@ -12,10 +12,8 @@ import { bareServerAddress, serverAddress, type Pairing } from "./pairing"
 import { useRedeemPairing } from "./redeem"
 import { isMixedContent } from "./browser"
 import { cameraHint, createCameraAvailability } from "./camera"
-import { ConnectMethodSwitch, type ConnectMethod } from "./method"
+import type { ConnectMethod } from "./method"
 import "./screen.css"
-
-const PairingScanner = lazy(() => import("./scanner").then((module) => ({ default: module.PairingScanner })))
 
 export function ConnectServerScreen(props: { url?: string } = {}) {
   const language = useLanguage()
@@ -111,146 +109,32 @@ export function ConnectServerScreen(props: { url?: string } = {}) {
     request.mutate()
   }
 
+  const source = sharedSource(() => ({
+    language: sharedLanguage(language),
+    state: { ...state },
+    busy: request.isPending,
+    web: platform.platform === "web",
+    cameraAvailable: camera.available.latest,
+    cameraLoading: camera.available.loading,
+    cameraHint: language.t(cameraHint()),
+  }))
   return (
-    <main data-component="connect-server" aria-labelledby="server-connect-title">
-      <div class="server-connect-content">
-        <div class="server-connect-brand">
-          <Logo />
-        </div>
-        <header>
-          <h1 id="server-connect-title">{language.t("server.connect.title")}</h1>
-          <p>
-            {language.t(state.method === "link" ? "server.connect.description.pairing" : "server.connect.description")}
-          </p>
-        </header>
-        <Show
-          when={!state.scanning}
-          fallback={
-            <Suspense fallback={<p role="status">{language.t("server.connect.camera.starting")}</p>}>
-              <PairingScanner
-                redeem={redeem}
-                onCancel={() => {
-                  setState("scanning", false)
-                  void camera.refetch()
-                }}
-                onScan={(link) => {
-                  setState({ method: "link", link, error: "", scanning: false })
-                  request.mutate()
-                }}
-              />
-            </Suspense>
-          }
-        >
-          <form
-            onSubmit={(event) => {
-              event.preventDefault()
-              submit()
-            }}
-          >
-            <Show
-              when={state.method === "password"}
-              fallback={
-                <div class="server-connect-field">
-                  <label for="server-connect-link">{language.t("server.connect.link")}</label>
-                  <TextInput
-                    id="server-connect-link"
-                    name="link"
-                    dir="ltr"
-                    type="text"
-                    inputMode="url"
-                    autocapitalize="off"
-                    spellcheck={false}
-                    required
-                    appearance="large"
-                    placeholder={language.t("server.connect.link.placeholder")}
-                    value={state.link}
-                    disabled={request.isPending}
-                    aria-describedby={state.error ? "server-connect-error" : undefined}
-                    onInput={(event) => setState({ link: event.currentTarget.value, error: "" })}
-                  />
-                </div>
-              }
-            >
-              <div class="server-connect-field">
-                <label for="server-connect-url">{language.t("dialog.server.add.url")}</label>
-                <TextInput
-                  id="server-connect-url"
-                  name="server"
-                  dir="ltr"
-                  type="text"
-                  inputMode="url"
-                  autocomplete="url"
-                  autocapitalize="off"
-                  spellcheck={false}
-                  required
-                  appearance="large"
-                  placeholder={language.t("dialog.server.add.placeholder")}
-                  value={state.url}
-                  disabled={request.isPending}
-                  aria-describedby={state.error ? "server-connect-error" : undefined}
-                  onInput={(event) => setState({ url: event.currentTarget.value, error: "" })}
-                />
-              </div>
-              <div class="server-connect-field">
-                <label for="server-connect-password">{language.t("dialog.server.add.password")}</label>
-                <TextInput
-                  id="server-connect-password"
-                  name="password"
-                  type="password"
-                  autocomplete="current-password"
-                  appearance="large"
-                  value={state.password}
-                  disabled={request.isPending}
-                  aria-describedby="server-connect-password-hint"
-                  onInput={(event) => setState({ password: event.currentTarget.value, error: "" })}
-                />
-                <p id="server-connect-password-hint" class="server-connect-hint">
-                  {language.t("server.connect.password.hint")}
-                </p>
-              </div>
-            </Show>
-            <Show when={state.error}>
-              <p id="server-connect-error" class="server-connect-error" role="alert">
-                {state.error}
-              </p>
-            </Show>
-            <Button
-              type="submit"
-              variant="contrast"
-              size="large"
-              disabled={request.isPending || !(state.method === "link" ? state.link : state.url).trim()}
-            >
-              {language.t(request.isPending ? "dialog.server.add.checking" : "server.connect.button")}
-            </Button>
-          </form>
-          <Show when={state.method === "link" && platform.platform === "web"}>
-            <Show
-              when={camera.available.latest || camera.available.loading}
-              fallback={<p>{language.t(cameraHint())}</p>}
-            >
-              <Button
-                variant="neutral"
-                size="large"
-                disabled={request.isPending || !camera.available.latest}
-                onClick={() => setState("scanning", true)}
-              >
-                {language.t("server.connect.scan")}
-              </Button>
-            </Show>
-          </Show>
-          <ConnectMethodSwitch
-            method={state.method}
-            disabled={request.isPending}
-            onChange={(method) => setState({ method, error: "" })}
-          />
-          <Show when={state.method === "link"}>
-            <footer>
-              <p>{language.t("server.connect.pair.link")}</p>
-              <code dir="ltr">redcode pair</code>
-            </footer>
-          </Show>
-        </Show>
-      </div>
-    </main>
+    <ReactView
+      component={ConnectServerView}
+      props={{
+        source,
+        submit,
+        update: (patch: Partial<typeof state>) => setState(patch),
+        redeem,
+        scan: (link: string) => {
+          setState({ method: "link", link, error: "", scanning: false })
+          request.mutate()
+        },
+        stopScan: () => {
+          setState("scanning", false)
+          void camera.refetch()
+        },
+      }}
+    />
   )
 }

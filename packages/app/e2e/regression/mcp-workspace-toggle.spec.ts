@@ -122,7 +122,14 @@ for (const surface of ["popover", "dialog"] as const) {
     await expect(view.toggle).toBeEnabled()
     view.requests.length = 0
 
-    await view.panel.locator('[data-slot="switch-control"]').click()
+    if (surface === "dialog") {
+      const search = view.panel.getByRole("textbox")
+      await search.fill("figma")
+      await search.press("ArrowDown")
+      await expect(view.toggle).toBeFocused()
+      await view.toggle.press("Space")
+    }
+    if (surface === "popover") await view.panel.locator('[data-slot="switch-control"]').click()
 
     const toast = page
       .getByRole("listitem", { includeHidden: true })
@@ -148,7 +155,8 @@ for (const surface of ["popover", "dialog"] as const) {
     await reset()
     await expect(view.toggle).not.toBeChecked()
     await expect(view.toggle).toBeEnabled()
-    await view.panel.locator('[data-slot="switch-control"]').click()
+    if (surface === "dialog") await view.toggle.click()
+    if (surface === "popover") await view.panel.locator('[data-slot="switch-control"]').click()
     await expect(view.toggle).toBeChecked()
     await expect(view.toggle).toBeEnabled()
     await expect(toast).toBeHidden()

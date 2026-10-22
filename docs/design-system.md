@@ -9,29 +9,30 @@ host's density when one is set; otherwise it uses tiny on narrow viewports and
 compact on wider ones. Editable text and toolbar controls retain the DS touch
 floor on devices with a coarse pointer.
 
-The distribution uses source files. Redcode imports framework-neutral appearance
-contracts, tokens and assets; Svelte components are retained as reference source
-and are not added to the Solid runtime. Interaction behavior from an upstream
-Svelte component must be adapted and validated in its Solid counterpart.
+The current delivery pins `v2026.10.28`, selects React and uses the official
+compiled distribution. Settings and the migrated shell surfaces consume native
+React controls through canonical Base and App imports. Shared service adapters
+retain the existing router, persistence, server subscriptions and extension owners.
+See [React GUI migration](react-gui-migration.md) for the current boundary and
+validation evidence.
 
-The consumer's generated `solid-base.ts` exposes the framework-neutral Base
-vocabulary used by App contracts through `@reddb-io/design-system/base`. It keeps
-cross-kit imports such as `NodeBadge` independent from the Svelte component barrel;
-the sync wrapper reproduces this adaptation and records it in the receipt.
+The Sync wrapper retains renderer-free `contracts/*`, logo and platform-asset
+exports for the remaining Solid consumers. These are compatibility seams, not a
+second component delivery. The delivered package contains no Svelte renderer.
 
 ## Synchronizing
 
-Check out the manifest's exact tag in a clean design-system checkout, then run
-from the Redcode root:
+Run the pinned producer from the Redcode root:
 
 ```sh
-bun scripts/sync-design-system.ts /path/to/design-system
+bun scripts/sync-design-system.ts
 ```
 
-The wrapper runs that release's own producer, copies its platform icons and
+The wrapper archives the manifest's exact tag without changing the neighboring
+Design System checkout, runs that release's own producer, copies its platform icons and
 regenerates the embedded designer's theme. The delivery receipt records the
 upstream commit and file hashes. Its consumer section preserves the upstream
-package-manifest hash before adapting exports for Solid; the delivered hashes
+package-manifest hash before adding compatibility exports; the delivered hashes
 include that adaptation and the platform icons.
 
 Run `bun run check` and the affected application regression tests after updating.
@@ -224,7 +225,7 @@ alone cannot update that shadow-root interface.
 
 ## Adoption sequence
 
-1. Keep the current source pin, integrity receipt and shared adapters reproducible.
+1. Keep the current compiled pin, integrity receipt and shared adapters reproducible.
    The Design panel and density integration are part of this step.
 2. Adopt searchable host/project/harness selection and contextual inspector
    panels across desktop and web. These use existing data and need no new worker

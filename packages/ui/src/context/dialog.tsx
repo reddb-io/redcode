@@ -12,6 +12,7 @@ import {
   type JSX,
   startTransition,
   For,
+  Show,
 } from "solid-js"
 import { Dialog as Kobalte } from "@kobalte/core/dialog"
 import { makeEventListener } from "@solid-primitives/event-listener"
@@ -25,12 +26,18 @@ type Active = {
   owner: Owner
   onClose?: () => void
   setClosing: (closing: boolean) => void
+  restoreFocus: () => void
 }
 
 const Context = createContext<ReturnType<typeof init>>()
 
 // Lets the dialog rendered in a layer opt out of closing on a backdrop click.
-const LayerContext = createContext<{ setBackdropDismiss: (value: boolean) => void }>()
+const LayerContext = createContext<{
+  setBackdropDismiss: (value: boolean) => void
+  setNative: (value: boolean) => void
+  closing: () => boolean
+  close: () => void
+}>()
 
 export function useDialogLayer() {
   return useContext(LayerContext)
@@ -76,6 +83,8 @@ function init() {
         setExiting((ids) => new Set([...ids].filter((id) => id !== current.id)))
         setStack((items) => items.filter((item) => item.id !== current.id))
         current.dispose()
+        // React releases the native modal in its deferred root teardown before restoring the stack's opener.
+        queueMicrotask(current.restoreFocus)
       }, 100),
     )
     setExiting((ids) => new Set([...ids, current.id]))
@@ -108,6 +117,8 @@ function init() {
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return
+      // Native DS dialogs and their portalled popups own dismissal and focus restoration.
+      if (document.querySelector("dialog[open]")) return
       dismiss()
       event.preventDefault()
       event.stopPropagation()
@@ -116,7 +127,13 @@ function init() {
     makeEventListener(window, "keydown", onKeyDown, { capture: true })
   })
 
-  const mount = (element: DialogElement, owner: Owner, onClose: (() => void) | undefined, key?: string) => {
+  const mount = (
+    element: DialogElement,
+    owner: Owner,
+    onClose: (() => void) | undefined,
+    key: string | undefined,
+    opener: HTMLElement | undefined,
+  ) => {
     // A deferred open (e.g. from a focus callback) must not mount after the provider is gone.
     if (state.disposed) return
     const id = key ?? Math.random().toString(36).slice(2)
@@ -131,6 +148,7 @@ function init() {
     const zIndex = () => String(50 + layer() * 10)
     let dispose: (() => void) | undefined
     let setClosing: ((closing: boolean) => void) | undefined
+    const focus = { native: false }
 
     // Stacked dialogs render as sibling portals, so only the top layer may own the focus trap.
     const node = runWithOwner(owner, () =>
@@ -138,24 +156,30 @@ function init() {
         dispose = d
         const [closing, setClosingSignal] = createSignal(false)
         const [backdropDismiss, setBackdropDismiss] = createSignal(true)
+        const [native, setNative] = createSignal(false)
+        createEffect(() => {
+          focus.native = native()
+        })
         setClosing = setClosingSignal
 
         return (
           <Kobalte
-            modal={stack().findLast((item) => !exiting().has(item.id))?.id === id}
+            modal={!native() && stack().findLast((item) => !exiting().has(item.id))?.id === id}
             open={!closing()}
             onOpenChange={(open: boolean) => {
               if (!open) dismiss(id)
             }}
           >
             <Kobalte.Portal>
-              <Kobalte.Overlay
-                data-component="dialog-overlay"
-                style={{ "z-index": zIndex() }}
-                onClick={() => {
-                  if (backdropDismiss()) dismiss(id)
-                }}
-              />
+              <Show when={!native()}>
+                <Kobalte.Overlay
+                  data-component="dialog-overlay"
+                  style={{ "z-index": zIndex() }}
+                  onClick={() => {
+                    if (backdropDismiss()) dismiss(id)
+                  }}
+                />
+              </Show>
               <div
                 data-dialog-layer={layer()}
                 style={{
@@ -165,10 +189,12 @@ function init() {
                   display: "flex",
                   "align-items": "center",
                   "justify-content": "center",
-                  "pointer-events": "none",
+                  "pointer-events": native() ? "auto" : "none",
                 }}
               >
-                <LayerContext.Provider value={{ setBackdropDismiss }}>{element()}</LayerContext.Provider>
+                <LayerContext.Provider value={{ setBackdropDismiss, setNative, closing, close: () => close(id) }}>
+                  {element()}
+                </LayerContext.Provider>
               </div>
             </Kobalte.Portal>
           </Kobalte>
@@ -178,19 +204,41 @@ function init() {
 
     if (!dispose || !setClosing) return
 
-    const active: Active = { id, node, dispose, owner, onClose, setClosing }
+    const active: Active = {
+      id,
+      node,
+      dispose,
+      owner,
+      onClose,
+      setClosing,
+      restoreFocus: () => {
+        if (focus.native && opener instanceof HTMLElement && opener.isConnected) opener.focus({ preventScroll: true })
+      },
+    }
     setStack((items) => [...items, active])
   }
 
-  const push = (element: DialogElement, owner: Owner, onClose?: () => void, id?: string) => {
+  const push = (
+    element: DialogElement,
+    owner: Owner,
+    onClose: (() => void) | undefined,
+    id: string | undefined,
+    opener: HTMLElement | undefined,
+  ) => {
     lock.value = false
-    mount(element, owner, onClose, id)
+    mount(element, owner, onClose, id, opener)
   }
 
-  const show = (element: DialogElement, owner: Owner, onClose?: () => void, id?: string) => {
+  const show = (
+    element: DialogElement,
+    owner: Owner,
+    onClose: (() => void) | undefined,
+    id: string | undefined,
+    opener: HTMLElement | undefined,
+  ) => {
     disposeAll(true)
     lock.value = false
-    mount(element, owner, onClose, id)
+    mount(element, owner, onClose, id, opener)
   }
 
   return {
@@ -199,6 +247,19 @@ function init() {
     show,
     push,
   }
+}
+
+function dialogOpener() {
+  const focused = document.activeElement
+  if (!(focused instanceof HTMLElement)) return
+  const menu = focused.closest('[role="menu"]')
+  if (!menu?.id) return focused
+  // A menu item disappears on selection; its invoking control remains the dialog's return target.
+  return (
+    [...document.querySelectorAll<HTMLElement>('[aria-haspopup="menu"][aria-controls]')].find((element) =>
+      element.getAttribute("aria-controls")?.split(" ").includes(menu.id),
+    ) ?? focused
+  )
 }
 
 /** Runs a dialog callback so its throw is reported without stopping the caller's cleanup. */
@@ -245,18 +306,20 @@ export function useDialog() {
      */
     show(element: DialogElement, onClose?: () => void, id?: string, signal?: AbortSignal) {
       const base = ctx.stack().at(-1)?.owner ?? owner
+      const opener = dialogOpener()
 
       return startTransition(() => {
         if (signal?.aborted) return isolate(() => onClose?.())
-        ctx.show(element, base, onClose, id)
+        ctx.show(element, base, onClose, id, opener)
       })
     },
     push(element: DialogElement, onClose?: () => void, id?: string, signal?: AbortSignal) {
       const base = ctx.stack().at(-1)?.owner ?? owner
+      const opener = dialogOpener()
 
       return startTransition(() => {
         if (signal?.aborted) return isolate(() => onClose?.())
-        ctx.push(element, base, onClose, id)
+        ctx.push(element, base, onClose, id, opener)
       })
     },
     close(id?: string) {

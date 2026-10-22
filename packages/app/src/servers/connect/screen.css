@@ -61,16 +61,6 @@
     color: var(--reddb-color-foreground);
   }
 
-  [data-component="text-input-v2"] {
-    width: 100%;
-    height: 44px;
-  }
-
-  [data-slot="text-input-v2-input"] {
-    font-size: 16px;
-    line-height: 24px;
-  }
-
   button {
     min-height: 44px;
     width: 100%;
@@ -78,7 +68,7 @@
 
   /* The method switch is a quiet inline link, not a full-width action. */
   [data-component="server-connect-method"] button {
-    min-height: 28px;
+    min-height: max(28px, var(--reddb-spatial-target-min));
     width: auto;
   }
 

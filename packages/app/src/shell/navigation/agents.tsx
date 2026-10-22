@@ -1,7 +1,7 @@
 import type { SessionInfo } from "@opencode/client/promise"
 import { Button } from "@opencode/ui/button"
 import { Icon } from "@opencode/ui/icon"
-import { SearchSelect } from "@opencode/ui/search-select"
+import { SearchSelect } from "@/runtime/react/search-select"
 import { input } from "@reddb-io/design-system/contracts/input"
 import { useQuery } from "@tanstack/solid-query"
 import { createMemo, For, lazy, onCleanup, Show, Switch, Match } from "solid-js"

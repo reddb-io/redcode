@@ -156,7 +156,7 @@ test("starts a native Claude harness and preserves question input across host re
     workspace.getByText("No native sessions on this host yet. Start one below.", { exact: true }),
   ).toBeVisible()
   await expect(workspace.getByRole("button", { name: "Native sessions", exact: true })).toHaveCount(0)
-  await chooseSearchOption(page, workspace.getByRole("button", { name: "Coding agent", exact: true }), "Claude Code")
+  await chooseSearchOption(page, workspace.getByRole("button", { name: /, Coding agent$/ }), "Claude Code")
   await workspace.getByLabel("Checkout directory on this host", { exact: true }).fill(fixture.directory)
   await workspace.getByRole("tab", { name: "Agent setup", exact: true }).click()
   const executable = workspace
@@ -166,7 +166,7 @@ test("starts a native Claude harness and preserves question input across host re
   await expect(workspace.getByRole("button", { name: "Start harness", exact: true })).toBeHidden()
   await workspace.getByRole("tab", { name: "Native sessions", exact: true }).click()
   await expect(workspace.getByLabel("Checkout directory on this host", { exact: true })).toHaveValue(fixture.directory)
-  await expect(workspace.getByRole("button", { name: "Coding agent", exact: true })).toContainText("Claude Code")
+  await expect(workspace.getByRole("button", { name: /, Coding agent$/ })).toContainText("Claude Code")
   await workspace.getByRole("tab", { name: "Agent setup", exact: true }).click()
   await expect(executable).toHaveValue("claude-custom")
   await workspace.getByRole("tab", { name: "Native sessions", exact: true }).click()
@@ -243,12 +243,12 @@ test.describe("Remote project search on mobile", () => {
     })
     await page.goto("/agents?view=harness")
     const workspace = page.getByRole("region", { name: "Agents", exact: true })
-    await chooseSearchOption(page, workspace.getByRole("button", { name: "Coding agent", exact: true }), "Claude Code")
+    await chooseSearchOption(page, workspace.getByRole("button", { name: /, Coding agent$/ }), "Claude Code")
     await workspace.getByLabel("Checkout directory on this host", { exact: true }).fill(fixture.directory)
     await workspace.getByRole("button", { name: "Start harness", exact: true }).tap()
     const inspector = workspace.getByRole("article", { name: "Native session details", exact: true })
     await expect(inspector).toBeVisible()
-    await expect(workspace.getByRole("button", { name: "Coding agent", exact: true })).toBeHidden()
+    await expect(workspace.getByRole("button", { name: /, Coding agent$/ })).toBeHidden()
     const draft = inspector.getByLabel("Instruction", { exact: true })
     await draft.fill("Build the implementation")
     await inspector.getByRole("button", { name: "Send instruction", exact: true }).tap()
@@ -289,13 +289,17 @@ test.describe("Remote project search on mobile", () => {
     }
     await page.screenshot({ path: test.info().outputPath("mobile-native-requests.png"), animations: "disabled" })
     await page.setViewportSize({ width: 1200, height: 900 })
-    await expect(workspace.getByRole("button", { name: "Coding agent", exact: true })).toBeVisible()
+    await expect(workspace.getByRole("button", { name: /, Coding agent$/ })).toBeVisible()
     await expect(draft).toHaveValue("Keep this unsent instruction")
     await expect(answer).toHaveValue("Small")
     expect(mutations).toEqual(["POST /api/harness/runs", "POST /api/harness/runs/native-run/prompt"])
     const output = inspector.getByRole("log", { name: "Harness output", exact: true })
     await output.press("End")
-    await expect.poll(() => output.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
+    await expect
+      .poll(() =>
+        output.evaluate((element) => Math.abs(element.scrollHeight - element.clientHeight - element.scrollTop)),
+      )
+      .toBeLessThanOrEqual(1)
     const scrolled = await output.evaluate((element) => element.scrollTop)
     const read = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/harness/runs/native-run")
     await read
@@ -328,7 +332,7 @@ test.describe("Remote project search on mobile", () => {
     })
     await page.goto(`/agents?view=machines&host=${encodeURIComponent(SERVER)}`)
     const workspace = page.getByRole("region", { name: "Agents", exact: true })
-    const section = workspace.getByRole("button", { name: "Agents section", exact: true })
+    const section = workspace.getByRole("button", { name: /, Agents section$/ })
     await expect(section).toBeVisible()
     await expect(section).toContainText("Machines")
     const create = workspace.getByRole("button", { name: "New session", exact: true })
@@ -342,11 +346,11 @@ test.describe("Remote project search on mobile", () => {
     await expect(section).toContainText("Harnesses")
     await expect.poll(() => new URL(page.url()).searchParams.get("view")).toBe("harness")
     expect(new URL(page.url()).searchParams.get("host")).toBe(SERVER)
-    await expect(workspace.getByRole("button", { name: "Coding agent", exact: true })).toBeVisible()
+    await expect(workspace.getByRole("button", { name: /, Coding agent$/ })).toBeVisible()
     await expect.poll(() => workspace.evaluate((element) => element.scrollWidth - element.clientWidth)).toBe(0)
     await page.screenshot({ path: test.info().outputPath("mobile-agents-sections.png"), animations: "disabled" })
     await section.tap()
-    await page.getByRole("combobox", { name: "Search options", exact: true }).fill("Machines")
+    await page.getByRole("dialog").getByRole("combobox").fill("Machines")
     await page.keyboard.press("Escape")
     await expect(section).toBeFocused()
     await expect(section).toContainText("Harnesses")
@@ -378,23 +382,23 @@ test.describe("Remote project search on mobile", () => {
     await mockMachineInspection(page)
     await page.goto("/agents?view=machines")
     const workspace = page.getByRole("region", { name: "Agents", exact: true })
-    const machine = workspace.getByRole("button", { name: "Connected machine", exact: true })
+    const machine = workspace.getByRole("button", { name: /, Connected machine$/ })
     await machine.tap()
-    const machineSearch = page.getByRole("combobox", { name: "Search options", exact: true })
+    const machineSearch = page.getByRole("dialog").getByRole("combobox")
     await expect(machineSearch).toBeFocused()
     await machineSearch.fill(new URL(SERVER).host)
-    await page.getByRole("option", { name: new URL(SERVER).host, exact: true }).tap()
+    await page.getByRole("option", { name: new RegExp(`^${new URL(SERVER).host.replaceAll(".", "\\.")}`) }).tap()
     await expect(machine).toContainText(new URL(SERVER).host)
     await workspace.getByRole("button", { name: "Continue", exact: true }).tap()
     await workspace.getByRole("button", { name: "Check server", exact: true }).tap()
     await expect(workspace.getByText("Server access verified.", { exact: true })).toBeVisible()
     await workspace.getByRole("button", { name: "Continue", exact: true }).tap()
-    const project = workspace.getByRole("button", { name: "Project on the machine", exact: true })
+    const project = workspace.getByRole("button", { name: /, Project on the machine$/ })
     await project.press("ArrowDown")
-    const search = page.getByRole("combobox", { name: "Search options", exact: true })
+    const search = page.getByRole("dialog").getByRole("combobox")
     await expect(search).toBeFocused()
     await search.fill("cafe")
-    await expect(page.getByRole("option", { name: "Payments Café", exact: true })).toBeVisible()
+    await expect(page.getByRole("option", { name: /Payments Café/ })).toBeVisible()
     await page.screenshot({ path: test.info().outputPath("mobile-project-search-open.png"), animations: "disabled" })
     await search.press("ArrowDown")
     await search.press("Enter")
@@ -512,7 +516,7 @@ test.describe("Machine touch setup", () => {
     const workspace = page.getByRole("region", { name: "Agents", exact: true })
     const next = workspace.getByRole("button", { name: "Continue", exact: true })
     await expect(next).toBeDisabled()
-    const picker = workspace.getByRole("button", { name: "Connected machine", exact: true })
+    const picker = workspace.getByRole("button", { name: /, Connected machine$/ })
     await chooseSearchOption(page, picker, new URL(SERVER).host)
     expect(machine.checks).toHaveLength(0)
     await next.click()
@@ -590,7 +594,7 @@ test("machine onboarding registers the verified checkout with its coordinator cr
   await workspace.getByRole("button", { name: "Continue", exact: true }).click()
   await chooseSearchOption(
     page,
-    workspace.getByRole("button", { name: "Project on the machine", exact: true }),
+    workspace.getByRole("button", { name: /, Project on the machine$/ }),
     fixture.project.name,
     fixture.directory,
   )
@@ -617,20 +621,20 @@ test("machine onboarding registers the verified checkout with its coordinator cr
   await workspace.getByRole("button", { name: "Manage workers on this machine", exact: true }).click()
   await expect(workspace.getByRole("heading", { name: "Remote workers", exact: true, level: 1 })).toBeVisible()
   await expect(
-    page.getByRole("complementary", { name: "Agents", exact: true }).getByRole("button", { name: "Host", exact: true }),
+    page.getByRole("complementary", { name: "Agents", exact: true }).getByRole("button", { name: /, Host$/ }),
   ).toContainText("Strong PC")
   await page
     .getByRole("complementary", { name: "Agents", exact: true })
     .getByRole("button", { name: "Machines", exact: true })
     .click()
-  await chooseSearchOption(page, workspace.getByRole("button", { name: "Connected machine", exact: true }), "box")
+  await chooseSearchOption(page, workspace.getByRole("button", { name: /, Connected machine$/ }), "box")
   await workspace.getByRole("button", { name: "Continue", exact: true }).click()
   await workspace.getByRole("button", { name: "Check server", exact: true }).click()
   await expect(workspace.getByText("Server version: fixture", { exact: true })).toBeVisible()
   await workspace.getByRole("button", { name: "Continue", exact: true }).click()
   await chooseSearchOption(
     page,
-    workspace.getByRole("button", { name: "Project on the machine", exact: true }),
+    workspace.getByRole("button", { name: /, Project on the machine$/ }),
     fixture.project.name,
     fixture.directory,
   )
@@ -644,7 +648,7 @@ test("machine onboarding registers the verified checkout with its coordinator cr
     .getByRole("navigation", { name: "Machine setup", exact: true })
     .getByRole("button", { name: "Connect Completed", exact: true })
     .click()
-  await chooseSearchOption(page, workspace.getByRole("button", { name: "Connected machine", exact: true }), "Strong PC")
+  await chooseSearchOption(page, workspace.getByRole("button", { name: /, Connected machine$/ }), "Strong PC")
   await workspace.getByRole("button", { name: "Continue", exact: true }).click()
   await expect(workspace.getByRole("button", { name: "Continue", exact: true })).toBeDisabled()
   await expect(workspace.getByText("Server access verified.", { exact: true })).toBeHidden()
@@ -653,7 +657,7 @@ test("machine onboarding registers the verified checkout with its coordinator cr
   await workspace.getByRole("button", { name: "Continue", exact: true }).click()
   await chooseSearchOption(
     page,
-    workspace.getByRole("button", { name: "Project on the machine", exact: true }),
+    workspace.getByRole("button", { name: /, Project on the machine$/ }),
     fixture.project.name,
     fixture.directory,
   )
@@ -953,7 +957,7 @@ test("inspects only the selected mobile host and stops resource polling when det
   await removed
   await expect(inspector.getByRole("alert")).toContainText("This host is no longer in the registry.")
   await expect(inspector.getByText("4.00 GiB / 8.00 GiB", { exact: true })).toHaveCount(0)
-  await expect(inspector.getByRole("heading", { name: "pi-a", exact: true })).toBeVisible()
+  await expect(inspector.getByRole("heading", { name: /^pi-a/ })).toBeVisible()
 })
 
 test.describe("Worker execution inspector on mobile", () => {
@@ -985,11 +989,7 @@ test.describe("Worker execution inspector on mobile", () => {
     await page.screenshot({ path: test.info().outputPath("mobile-worker-summary.png"), animations: "disabled" })
     const search = workspace.getByLabel("Search tasks", { exact: true })
     await search.fill("review arm")
-    await chooseSearchOption(
-      page,
-      workspace.getByRole("button", { name: "Task status", exact: true }),
-      "Needs your input",
-    )
+    await chooseSearchOption(page, workspace.getByRole("button", { name: /, Task status$/ }), "Needs your input")
     const row = workspace.getByRole("article").filter({ has: page.getByText("Review ARM checkout", { exact: true }) })
     const opener = row.getByRole("button", { name: "Execution details", exact: true })
     await opener.click()
@@ -1058,7 +1058,7 @@ test.describe("Worker execution inspector on mobile", () => {
     await search.fill("not-a-task")
     await expect(workspace.getByRole("status").filter({ hasText: "No tasks match these filters." })).toBeVisible()
     await search.fill("")
-    await chooseSearchOption(page, workspace.getByRole("button", { name: "Task status", exact: true }), "Not reported")
+    await chooseSearchOption(page, workspace.getByRole("button", { name: /, Task status$/ }), "Not reported")
     const unreported = workspace.getByRole("article").filter({ has: page.getByText("Build docs", { exact: true }) })
     await unreported.getByRole("button", { name: "Execution details", exact: true }).click()
     await expect(inspector.getByText("Not assigned", { exact: true })).toBeVisible()
@@ -1086,7 +1086,7 @@ test("maps only recorded worker assignments and shares task selection without di
   await expect(search).toBeFocused()
   await expect(search).toHaveValue("")
   await expect(overview.getByRole("article")).toHaveCount(6)
-  const assigned = overview.getByRole("region", { name: "pi-a", exact: true })
+  const assigned = overview.getByRole("region", { name: /^pi-a/ })
   await expect(assigned.getByText("Online", { exact: true })).toBeVisible()
   await expect(overview.getByRole("region", { name: "pi-requested", exact: true })).toHaveCount(0)
   const unassigned = overview.getByRole("region", { name: "Not assigned", exact: true })
@@ -1348,11 +1348,11 @@ test.describe("Worker touch review", () => {
     const workspace = page.getByRole("region", { name: "Agents", exact: true })
     const form = workspace.getByRole("form", { name: "Compose a task batch", exact: true })
     const prompt = form.getByLabel("What should the worker do?", { exact: true })
-    const target = form.getByRole("button", { name: "Run on", exact: true })
+    const target = form.getByRole("button", { name: /, Run on$/ })
     await expect(target).toContainText("Any available worker")
     await prompt.fill("Build ARM package")
     await target.click()
-    const search = page.getByRole("combobox", { name: "Search options", exact: true })
+    const search = page.getByRole("dialog").getByRole("combobox")
     await search.fill("arm64")
     const metadata = page.waitForResponse(
       (response) => new URL(response.url()).pathname === "/api/workers" && response.request().method() === "GET",
@@ -1361,7 +1361,7 @@ test.describe("Worker touch review", () => {
     await metadata
     await expect(search).toBeFocused()
     await expect(search).toHaveValue("arm64")
-    await page.getByRole("option", { name: "pi-a", exact: true }).click()
+    await page.getByRole("option", { name: /^pi-a/ }).click()
     await expect(search).toBeHidden()
     await expect(target).toContainText("pi-a")
     await form.getByLabel("Required worker capabilities (optional)", { exact: true }).fill("linux, arm64")
@@ -1494,7 +1494,7 @@ test.describe("Worker touch review", () => {
     await expect(dialog.getByLabel("Server password or pairing token", { exact: true })).toHaveCount(0)
     await dialog.getByRole("tab", { name: "New batch", exact: true }).click()
     await dialog.getByLabel("What should the worker do?", { exact: true }).fill("Review Linux compatibility")
-    await chooseSearchOption(page, dialog.getByRole("button", { name: "Run on", exact: true }), "pi-a", "arm64")
+    await chooseSearchOption(page, dialog.getByRole("button", { name: /, Run on$/ }), "pi-a", "arm64")
     await dialog.getByRole("button", { name: "Add to batch", exact: true }).click()
     await dialog.getByLabel("What should the worker do?", { exact: true }).fill("Run the test suite")
     await dialog.getByRole("button", { name: "Send batch", exact: true }).click()

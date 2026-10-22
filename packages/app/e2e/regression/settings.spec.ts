@@ -4,6 +4,7 @@ import { NO_PROVIDER, REMOTE_SERVER, SERVER, holdRoute, project, session } from 
 import { mockAgentTools, mockOpenCodeServer, mockUsageReporter } from "../utils/mock-server"
 import { mockRemoteServer, mockWorkspace, openSettings, type WorkspaceInput } from "../utils/workspace"
 import { mockHttpsAccess } from "../utils/https-fixture"
+import { mockConnectionEdits } from "../utils/credential-fixture"
 
 const directory = "C:/Projects/settings-demo"
 
@@ -126,8 +127,7 @@ test("HTTPS setup requires explicit relay consent, recovers from failure and pai
   await expect(dialog.getByRole("status")).toHaveText("HTTPS access is off.")
   await expect(dialog.getByRole("button", { name: "Enable HTTPS", exact: true })).toBeDisabled()
   expect(fixture.operations).toEqual([])
-  await dialog.getByRole("button", { name: /^Connection service/ }).click()
-  await page.getByRole("option", { name: "Your own relay", exact: true }).click()
+  await dialog.getByRole("combobox", { name: "Connection service", exact: true }).selectOption("own")
   await dialog.getByRole("textbox", { name: "Relay API address", exact: true }).fill("https://relay.example.test")
   await expect(dialog.getByRole("button", { name: "Enable HTTPS", exact: true })).toBeDisabled()
   await dialog.getByText("I accept enabling internet access through the selected relay", { exact: true }).click()
@@ -137,8 +137,7 @@ test("HTTPS setup requires explicit relay consent, recovers from failure and pai
   await dialog.getByRole("button", { name: "Enable HTTPS", exact: true }).click()
   await expect(dialog.getByRole("alert")).toContainText("Could not complete HTTPS setup")
   await expect(dialog.getByRole("button", { name: "Create secure pairing link", exact: true })).toHaveCount(0)
-  await dialog.getByRole("button", { name: /^Connection service/ }).click()
-  await page.getByRole("option", { name: "Hosted OpenTunnel", exact: true }).click()
+  await dialog.getByRole("combobox", { name: "Connection service", exact: true }).selectOption("hosted")
   await expect(dialog.getByText(/Uses the external service at opentunnel.xyz/)).toBeVisible()
   await dialog.getByText("I accept enabling internet access through the selected relay", { exact: true }).click()
   await dialog.getByRole("button", { name: "Enable HTTPS", exact: true }).click()
@@ -163,6 +162,49 @@ test("HTTPS setup requires explicit relay consent, recovers from failure and pai
   await expect(dialog.getByRole("status")).toHaveText("HTTPS access is off.")
   expect(fixture.operations.at(-1)).toEqual({ method: "DELETE" })
   await expect(dialog.getByRole("button", { name: "Open secure link", exact: true })).toHaveCount(0)
+  await page.keyboard.press("Escape")
+  await expect(dialog).toBeHidden()
+  await expect(settings.getByRole("button", { name: "Configure HTTPS", exact: true })).toBeFocused()
+})
+
+test("pairing keeps its link through nested HTTPS settings and cancels an old grant before regenerating", async ({
+  page,
+}) => {
+  const { settings } = await open(page)
+  const fixture = await mockHttpsAccess(page)
+  await settings.getByRole("tab", { name: "Server", exact: true }).click()
+  const opener = settings.getByRole("button", { name: "Set up pairing", exact: true })
+  await opener.click()
+  const dialog = page.getByRole("dialog", { name: "Connect another device", exact: true })
+  await dialog.getByRole("button", { name: "Use an existing tunnel or forwarded address", exact: true }).click()
+  const address = dialog.getByRole("textbox", { name: "External server address", exact: true })
+  await address.fill("https://pairing.example.test/not-an-origin")
+  await expect(dialog.getByRole("button", { name: "Generate pairing link", exact: true })).toBeDisabled()
+  await address.fill("https://pairing.example.test")
+  await dialog.getByRole("button", { name: "Generate pairing link", exact: true }).click()
+  const link = dialog.getByRole("textbox", { name: "Pairing link", exact: true })
+  await expect(link).toHaveValue("https://pairing.example.test/auth/connect/https-one-time-code")
+  const configure = dialog.getByRole("button", { name: "Configure HTTPS", exact: true })
+  await configure.click()
+  const nested = page.getByRole("dialog", { name: "HTTPS and mobile access", exact: true })
+  await expect(nested.getByRole("status")).toHaveText("HTTPS access is off.")
+  await nested.press("Escape")
+  await expect(nested).toBeHidden()
+  await expect(configure).toBeFocused()
+  await expect(link).toHaveValue("https://pairing.example.test/auth/connect/https-one-time-code")
+  await dialog.getByRole("button", { name: "Generate new link", exact: true }).click()
+  await expect(link).toHaveValue("https://pairing.example.test/auth/connect/https-one-time-code-2")
+  await dialog.getByRole("button", { name: "Cancel unused link", exact: true }).click()
+  await expect(link).toHaveCount(0)
+  expect(fixture.operations).toEqual([
+    { method: "pair" },
+    { method: "cancel", code: "https-one-time-code" },
+    { method: "pair" },
+    { method: "cancel", code: "https-one-time-code-2" },
+  ])
+  await dialog.press("Escape")
+  await expect(dialog).toBeHidden()
+  await expect(opener).toBeFocused()
 })
 
 test("Ctrl+, opens settings as soon as the app loads", async ({ page }) => {
@@ -730,8 +772,12 @@ test("worktrees follow inventory events, wait for session counts, and delete by 
   const row = settings.locator(".settings-workspaces-row").filter({ has: page.getByLabel(empty, { exact: true }) })
   await expect(row).toContainText("Loading messages")
   await settings.getByRole("button", { name: "More options", exact: true }).click()
+  const menu = page.getByRole("menu", { name: "More options", exact: true })
+  await expect(menu).toBeVisible()
   await expect(page.getByRole("menuitem", { name: "Delete worktrees without sessions", exact: true })).toHaveCount(0)
   await page.keyboard.press("Escape")
+  await expect(menu).toBeHidden()
+  await expect(settings).toBeVisible()
   sessions.release()
   await expect(row).toContainText("0 sessions")
 
@@ -1032,6 +1078,36 @@ for (const row of [
     await expect(account.getByRole("option")).toHaveCount(1)
     expect(operations).toEqual(["activate", "remove"])
 
+    const edits = await mockConnectionEdits(page, connections)
+    await connected.getByRole("button", { name: "Manage OpenCode Zen accounts", exact: true }).click()
+    await page.getByRole("menuitem", { name: "Manage connections…", exact: true }).click()
+    const management = page.getByRole("dialog", { name: "OpenCode Zen connections", exact: true })
+    await management.getByRole("button", { name: "Rename API key", exact: true }).click()
+    const rename = management.getByRole("textbox", { name: "Connection name", exact: true })
+    await expect(rename).toBeFocused()
+    await rename.fill("Cancelled name")
+    await rename.press("Escape")
+    await expect(management).toBeVisible()
+    await expect(rename).toHaveCount(0)
+    expect(edits.updates).toEqual([])
+    await management.getByRole("button", { name: "Rename API key", exact: true }).click()
+    await rename.fill("Production")
+    await rename.press("End")
+    await rename.pressSequentially(" key")
+    await expect(rename).toHaveValue("Production key")
+    await management.getByRole("button", { name: "Save", exact: true }).click()
+    await expect(management.getByText("Production key", { exact: true })).toBeVisible()
+    expect(edits.updates).toEqual([{ id: "cred_v1", label: "Production key" }])
+    await management.getByRole("button", { name: "Test remote API", exact: true }).click()
+    await expect(management.getByRole("status")).toContainText("Remote API test failed")
+    await expect(management.getByRole("status")).toContainText("HTTP 503")
+    await management.getByRole("button", { name: "Test remote API", exact: true }).click()
+    await expect(management.getByRole("status")).toContainText("Remote API test passed")
+    await expect(management.getByRole("status")).toContainText("HTTP 200")
+    await management.press("Escape")
+    await expect(management).toBeHidden()
+    await expect(connected.getByRole("button", { name: "Manage OpenCode Zen accounts", exact: true })).toBeFocused()
+
     const removals: boolean[] = []
     await page.route("**/api/experimental/provider/opencode/remove", async (route) => {
       const request = route.request().postDataJSON()
@@ -1078,6 +1154,30 @@ for (const row of [
   })
 }
 
+test("server sign-in keeps a failed password editable and opens the app after authentication", async ({ page }) => {
+  await mockWorkspace(page, {
+    name: "Server sign in",
+    sessions: [],
+    password: "fixture-server-password",
+  })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto("/")
+  const screen = page.locator('[data-component="connect-server"]')
+  await expect(screen).toBeVisible()
+  await screen.getByRole("button", { name: "Use password", exact: true }).click()
+  await screen.getByRole("textbox", { name: "Server address", exact: true }).fill(SERVER)
+  const password = screen.getByLabel("Password", { exact: true })
+  await password.fill("wrong-password")
+  await screen.getByRole("button", { name: "Connect", exact: true }).click()
+  await expect(screen.getByRole("alert")).toBeVisible()
+  await expect(password).toBeEditable()
+  await expect(password).toHaveValue("wrong-password")
+  await password.fill("fixture-server-password")
+  await password.press("Enter")
+  await expect(screen).toHaveCount(0)
+  await expect(page.locator('[data-action="home-new-session"]')).toBeVisible()
+})
+
 test("the add server dialog keeps focus above fullscreen settings", async ({ page }) => {
   await mockRemoteServer(page, { directory: "/remote/settings-demo" })
   const { settings } = await open(page)
@@ -1098,6 +1198,45 @@ test("the add server dialog keeps focus above fullscreen settings", async ({ pag
   await page.keyboard.press("Escape")
   await expect(editor).toBeHidden()
   await expect(settings).toBeVisible()
+})
+
+const cameraTest = test.extend({
+  browser: async ({ playwright }, use) => {
+    // MediaStream capture requires full Chromium; the headless shell can enumerate a camera without opening it.
+    const browser = await playwright.chromium.launch({
+      channel: "chromium",
+      args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"],
+    })
+    await use(browser)
+    await browser.close()
+  },
+})
+
+cameraTest.describe("pairing camera lifecycle", () => {
+  cameraTest.use({ permissions: ["camera"] })
+
+  cameraTest("cancelling the QR scanner releases its camera stream and restores the pairing form", async ({ page }) => {
+    await mockRemoteServer(page, { directory: "/remote/camera" })
+    const { settings } = await open(page)
+    await settings.locator('[data-component="settings-nav-group-header"]').filter({ hasText: "Servers" }).hover()
+    await settings.getByRole("button", { name: "Add server" }).click()
+    const dialog = page.getByRole("dialog", { name: "Add server", exact: true })
+    await dialog.getByRole("button", { name: "Scan QR code", exact: true }).click()
+    const video = dialog.getByLabel("Pairing camera", { exact: true })
+    await expect
+      .poll(() => video.evaluate((element) => (element as HTMLVideoElement).readyState))
+      .toBeGreaterThanOrEqual(2)
+    const stream = await video.evaluateHandle((element) => (element as HTMLVideoElement).srcObject as MediaStream)
+    await dialog.getByRole("button", { name: "Cancel", exact: true }).click()
+    await expect(video).toHaveCount(0)
+    await expect
+      .poll(() => stream.evaluate((stream) => stream.getTracks().every((track) => track.readyState === "ended")))
+      .toBe(true)
+    await stream.dispose()
+    await expect(dialog.getByRole("textbox", { name: "Pairing link", exact: true })).toBeEditable()
+    await dialog.press("Escape")
+    await expect(dialog).toBeHidden()
+  })
 })
 
 test("the add server dialog pairs from a one-time link and explains a spent one", async ({ page }) => {

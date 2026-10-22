@@ -1,9 +1,9 @@
-import { Button } from "@opencode/ui/button"
-import { Dialog, DialogBody, DialogFooter, DialogHeader, DialogTitleGroup } from "@opencode/ui/dialog"
-import { TextInput } from "@opencode/ui/text-input"
-import { Select } from "@opencode/ui/select"
-import { Switch } from "@opencode/ui/switch"
-import { useDialog } from "@opencode/ui/context/dialog"
+import { useNativeDialog } from "@/runtime/react/dialog"
+import { sharedSource } from "@/runtime/react/source"
+import { sharedLanguage } from "@/runtime/react/language"
+import { sharedMount } from "@/runtime/react/mount"
+import { ReactView } from "@/runtime/react/view"
+import { HttpsAccessDialog, HttpsAccessView } from "./https-dialog.react"
 import { createEffect, createMemo, createResource, onCleanup, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { renderSVG } from "uqr"
@@ -15,7 +15,7 @@ import "./share.css"
 
 export function DialogHttpsAccess(props: { server?: ServerConnection.Any }) {
   const language = useLanguage()
-  const dialog = useDialog()
+  const modal = useNativeDialog()
   const servers = useServers()
   const initial =
     props.server ??
@@ -23,35 +23,26 @@ export function DialogHttpsAccess(props: { server?: ServerConnection.Any }) {
     (servers.list.length === 1 ? servers.list[0] : undefined)
   const [state, setState] = createStore({ key: initial ? String(ServerConnection.key(initial)) : "" })
   const server = createMemo(() => props.server ?? servers.list.find((item) => ServerConnection.key(item) === state.key))
+  const source = sharedSource(() => ({
+    language: sharedLanguage(language),
+    open: modal.open(),
+    fixed: !!props.server,
+    server: server() ? String(ServerConnection.key(server()!)) : "",
+    servers: servers.list.map((item) => ({
+      value: String(ServerConnection.key(item)),
+      label: serverName(item) || item.http.url,
+    })),
+  }))
+  const content = sharedMount(() => (
+    <Show when={server()} keyed>
+      {(selected) => <HttpsAccess server={selected} />}
+    </Show>
+  ))
   return (
-    <Dialog fit>
-      <DialogHeader>
-        <DialogTitleGroup title={language.t("https.title")} description={language.t("https.description")} />
-      </DialogHeader>
-      <DialogBody class="server-share">
-        <Show when={!props.server}>
-          <div class="server-share-field">
-            <span id="https-host-label">{language.t("https.host")}</span>
-            <Select
-              options={servers.list}
-              current={server()}
-              value={(item) => ServerConnection.key(item)}
-              label={(item) => serverName(item) || item.http.url}
-              aria-labelledby="https-host-label"
-              onSelect={(item) => item && setState("key", ServerConnection.key(item))}
-            />
-          </div>
-        </Show>
-        <Show when={server()} keyed>
-          {(selected) => <HttpsAccess server={selected} />}
-        </Show>
-      </DialogBody>
-      <DialogFooter>
-        <Button variant="neutral" onClick={() => dialog.close()}>
-          {language.t("common.close")}
-        </Button>
-      </DialogFooter>
-    </Dialog>
+    <ReactView
+      component={HttpsAccessDialog}
+      props={{ source, content, close: modal.close, select: (key: string) => setState("key", key) }}
+    />
   )
 }
 
@@ -73,10 +64,6 @@ function HttpsAccess(props: { server: ServerConnection.Any }) {
     confirmDisable: false,
     editing: false,
   })
-  const providers = [
-    { value: "own", label: language.t("https.provider.own") },
-    { value: "hosted", label: language.t("https.provider.hosted") },
-  ]
   const relay = () => (state.provider === "hosted" ? "https://opentunnel.xyz" : state.relay.trim())
   const validRelay = () => {
     const value = URL.parse(relay())
@@ -90,10 +77,10 @@ function HttpsAccess(props: { server: ServerConnection.Any }) {
       !value.hash
     )
   }
-  const working = createMemo(() => info()?.state === "provisioning" || info()?.state === "connecting")
+  const working = createMemo(() => info.latest?.state === "provisioning" || info.latest?.state === "connecting")
   const link = createMemo(() =>
-    info()?.url && state.code && state.expires > state.now
-      ? new URL(`/auth/connect/${state.code}`, info()!.url).href
+    info.latest?.url && state.code && state.expires > state.now
+      ? new URL(`/auth/connect/${state.code}`, info.latest!.url).href
       : "",
   )
   const qr = createMemo(() =>
@@ -142,7 +129,7 @@ function HttpsAccess(props: { server: ServerConnection.Any }) {
     setState("busy", false)
   }
   const generate = async () => {
-    if (state.busy || info()?.state !== "ready") return
+    if (state.busy || info.latest?.state !== "ready") return
     setState({ busy: true, error: "" })
     await (state.code ? context().sdk.api.server.cancelPair({ code: state.code }) : Promise.resolve())
       .then(() => {
@@ -165,133 +152,31 @@ function HttpsAccess(props: { server: ServerConnection.Any }) {
         () => setState("error", language.t("server.share.copyFailed")),
       )
   }
+  const source = sharedSource(() => ({
+    language: sharedLanguage(language),
+    host: serverName(props.server) || props.server.http.url,
+    state: { ...state },
+    info: info.latest,
+    loading: info.loading,
+    failed: !!info.error,
+    working: working(),
+    validRelay: validRelay(),
+    link: link() ?? "",
+    qr: qr(),
+  }))
   return (
-    <>
-      <p>{language.t("https.selectedHost", { host: serverName(props.server) || props.server.http.url })}</p>
-      <Show when={info.loading}>
-        <p role="status">{language.t("server.share.loading")}</p>
-      </Show>
-      <Show when={info.error || (!info.loading && info()?.available === false)}>
-        <p role="alert">{language.t("https.unavailable")}</p>
-        <Button variant="neutral" onClick={() => void refetch()}>
-          {language.t("server.share.retry")}
-        </Button>
-      </Show>
-      <Show when={!info.error && info()?.available}>
-        <p role="status" aria-live="polite">
-          {language.t(`https.state.${info()!.state}`)}
-        </p>
-        <Show when={info()?.state === "failed"}>
-          <p role="alert">{language.t("https.failed")}</p>
-        </Show>
-        <Show when={info()?.url}>
-          <TextInput readOnly value={info()!.url} aria-label={language.t("https.address")} dir="ltr" />
-        </Show>
-        <Show when={info()?.state !== "ready" || state.editing}>
-          <div class="server-share-field">
-            <span id="https-provider-label">{language.t("https.provider")}</span>
-            <Select
-              options={providers}
-              current={providers.find((provider) => provider.value === state.provider)}
-              value={(item) => item.value}
-              label={(item) => item.label}
-              aria-labelledby="https-provider-label"
-              disabled={state.busy || working()}
-              onSelect={(item) => item && setState({ provider: item.value, accepted: false })}
-            />
-          </div>
-          <Show when={state.provider === "own"}>
-            <div class="server-share-field">
-              <label for="https-relay">{language.t("https.relay")}</label>
-              <TextInput
-                id="https-relay"
-                value={state.relay}
-                disabled={state.busy || working()}
-                dir="ltr"
-                spellcheck={false}
-                placeholder={language.t("https.relayPlaceholder")}
-                onInput={(event) => setState({ relay: event.currentTarget.value, accepted: false })}
-              />
-              <p>{language.t("https.relayHint")}</p>
-            </div>
-          </Show>
-          <Show when={state.provider === "hosted"}>
-            <p>{language.t("https.hostedHint")}</p>
-          </Show>
-          <p>{language.t("https.exposure")}</p>
-          <div class="server-share-consent">
-            <Switch
-              checked={state.accepted}
-              disabled={state.busy || working()}
-              onChange={(value) => setState("accepted", value)}
-            >
-              {language.t("https.consent")}
-            </Switch>
-          </div>
-          <Button
-            variant="submit"
-            disabled={!state.provider || !state.accepted || !validRelay() || state.busy || working()}
-            onClick={() => void configure()}
-          >
-            {language.t(working() ? "https.working" : "https.enable")}
-          </Button>
-        </Show>
-        <Button variant="ghost" disabled={state.busy || info.loading} onClick={() => void refetch()}>
-          {language.t("https.refresh")}
-        </Button>
-        <Show when={info()?.state === "ready" && !link()}>
-          <p>{language.t("https.readyHint")}</p>
-          <Button variant="neutral" disabled={state.busy} onClick={() => void generate()}>
-            {language.t("https.generate")}
-          </Button>
-        </Show>
-        <Show when={link()}>
-          <div class="server-share-result">
-            <TextInput readOnly value={link()} aria-label={language.t("server.connect.link")} dir="ltr" />
-            <Button variant="neutral" onClick={() => void copy()}>
-              {language.t(state.copied ? "server.share.copied" : "server.share.copy")}
-            </Button>
-            <Button variant="submit" onClick={() => platform.openExternal(link())}>
-              {language.t("https.open")}
-            </Button>
-            <img src={qr()} alt={language.t("server.share.qr")} width="192" height="192" />
-            <p>{language.t("https.installHint")}</p>
-            <p>
-              {language.t("server.share.expires", {
-                time: `${Math.floor((state.expires - state.now) / 60000)}:${String(Math.floor((state.expires - state.now) / 1000) % 60).padStart(2, "0")}`,
-              })}
-            </p>
-          </div>
-        </Show>
-        <Show when={state.code && !link()}>
-          <p role="status">{language.t("server.share.expired")}</p>
-        </Show>
-        <Show when={info()?.state === "ready" && !state.editing}>
-          <Button variant="ghost" disabled={state.busy} onClick={() => setState("editing", true)}>
-            {language.t("https.change")}
-          </Button>
-        </Show>
-        <Show when={info()?.url || info()?.state === "failed"}>
-          <Button
-            variant="ghost"
-            disabled={state.busy || working()}
-            onClick={() => setState("confirmDisable", !state.confirmDisable)}
-          >
-            {language.t("https.disable")}
-          </Button>
-          <Show when={state.confirmDisable}>
-            <p>{language.t("https.disableHint")}</p>
-            <Button variant="neutral" disabled={state.busy || working()} onClick={() => void disable()}>
-              {language.t("https.confirmDisable")}
-            </Button>
-          </Show>
-        </Show>
-      </Show>
-      <Show when={state.error}>
-        <p role="alert" class="server-share-error">
-          {state.error}
-        </p>
-      </Show>
-    </>
+    <ReactView
+      component={HttpsAccessView}
+      props={{
+        source,
+        update: (patch: Partial<typeof state>) => setState(patch),
+        retry: () => void refetch(),
+        configure: () => void configure(),
+        disable: () => void disable(),
+        generate: () => void generate(),
+        copy: () => void copy(),
+        openLink: () => platform.openExternal(link()),
+      }}
+    />
   )
 }
