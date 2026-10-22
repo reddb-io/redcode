@@ -1,9 +1,12 @@
 import { usePlatform } from "@/runtime/platform/platform"
 import { useLanguage } from "@/runtime/i18n/language"
-import { Button } from "@opencode/ui/button"
-import { useDialog } from "@opencode/ui/context/dialog"
-import { Dialog, DialogBody, DialogHeader, DialogTitleGroup } from "@opencode/ui/dialog"
-import { JSX } from "solid-js"
+import { useNativeDialog } from "@/runtime/react/dialog"
+import { sharedLanguage } from "@/runtime/react/language"
+import { sharedMount } from "@/runtime/react/mount"
+import { sharedSource } from "@/runtime/react/source"
+import { ReactView } from "@/runtime/react/view"
+import type { JSX } from "solid-js"
+import { UsageExceededDialog } from "./usage-exceeded.react"
 
 export type DialogGoUpsellProps = {
   title: string
@@ -14,38 +17,26 @@ export type DialogGoUpsellProps = {
 }
 
 export function DialogUsageExceeded(props: DialogGoUpsellProps) {
-  const dialog = useDialog()
+  const modal = useNativeDialog()
   const language = useLanguage()
   const platform = usePlatform()
-
-  const runAction = () => {
+  const source = sharedSource(() => ({
+    language: sharedLanguage(language),
+    open: modal.open(),
+    title: props.title,
+    actionLabel: props.actionLabel,
+  }))
+  const description = sharedMount(() => props.description)
+  const action = () => {
     if (props.link) platform.openExternal(props.link)
     props.onClose?.()
-    dialog.close()
+    modal.close()
   }
-
   const dismiss = () => {
     props.onClose?.(true)
-    dialog.close()
+    modal.close()
   }
-
   return (
-    <Dialog fit>
-      <DialogHeader>
-        <DialogTitleGroup title={props.title} description={props.description} />
-      </DialogHeader>
-      <DialogBody>
-        <div class="flex flex-col gap-4 pl-6 pr-2.5 pb-3">
-          <div class="flex justify-end gap-2">
-            <Button variant="ghost" size="large" onClick={dismiss}>
-              {language.t("dialog.usageExceeded.dontShowAgain")}
-            </Button>
-            <Button variant="contrast" size="large" onClick={runAction}>
-              {props.actionLabel}
-            </Button>
-          </div>
-        </div>
-      </DialogBody>
-    </Dialog>
+    <ReactView component={UsageExceededDialog} props={{ source, description, action, dismiss, close: modal.close }} />
   )
 }
