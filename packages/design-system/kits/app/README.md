@@ -1,5 +1,26 @@
 # Application Kit
 
+## Task lifecycles
+
+`TaskList` presents caller-owned tasks in caller order. Each `TaskListItem` needs
+a stable unique `id`, `title` and `state` (`queued`, `running`, `paused`, `blocked`,
+`succeeded`, `failed`, `cancelled`). Optional `stateLabel` localizes the status;
+`tone` overrides its default Feedback Role. Numeric `progress` draws canonical
+Progress, null draws indeterminate progress, and omission hides the track.
+`worker`, `estimate`, `description` and `reason` are already formatted by the
+application; a reason stays visible beside a blocker or failure.
+
+`actions(item)` receives the current task and composes application-owned controls.
+The component does not execute or schedule tasks, calculate estimates, run timers,
+fetch data or announce every progress tick. Applications own those lifecycles and
+may add a concise status announcement after a user action. Empty lists use
+EmptyState (`emptyLabel`, `emptyDescription`) or a caller-supplied `empty` snippet.
+
+The Showcase's Resource collection, Operations inbox and Project onboarding
+examples compose these contracts into complete illustrative workflows. Selection,
+filtering, message read/archive state, configuration drafts and retries remain
+local to those examples, outside the distributed Kits.
+
 SidebarRail and SidebarNavigation destinations accept `badge`, `badgeLabel`,
 `badgeTone` and `status: { label, tone? }`. Counts and presence are independent
 of the selected destination, share its focus target, and remain in its
@@ -501,3 +522,20 @@ including label presentation and Density changes, without a second size prop.
 The Navbar's global product links collapse into its menu at the top. The primary rail becomes a bottom dock on mobile, with up to five entries and automatic More overflow. `href` items navigate; items without `href` open a contextual sidebar. Opening a menu does not change `currentId`; the application updates that when the route changes. `dockable={false}` keeps the primary rail vertical. The docking configuration belongs to the layout so the header, rail, drawer and content spacing stay coordinated.
 
 Use the existing `rail` snippet for organization/workspace switchers. Those keep their existing presentation rather than automatically becoming page navigation. See `/examples/responsive-navigation` for the complete composition and append `?dock=false` to review the opt-out.
+
+## Compact operational components
+
+`TaskCard` accepts a shared `TaskListItem` and optional caller actions. TaskList
+composes the same content. `TelemetryRow` separates the resource measurement from
+operational status and an independent condition. `PropertyPanel` displays named
+read-only properties with optional header actions.
+
+`PhaseSummary` takes explicit named gates (`pending`, `running`, `passed`,
+`failed`); neither 100% progress nor delivery count approves a result.
+`PlaybackControls` reports play, seek, speed and step requests. Its `playing`,
+`position`, `duration` and `speed` are caller-owned: no clock or scheduling
+runs in the component. Missing callbacks disable the corresponding controls.
+
+All visual recipes and portable contracts are shared by the native Svelte and
+React adapters. The four `/examples/labs-*` references compose these capabilities
+with Data visualizations; App itself imports no Data components.

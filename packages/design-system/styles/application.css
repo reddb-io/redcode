@@ -1,3 +1,4 @@
+@source "./candidates.txt";
 @import "../tokens/tokens.css";
 @import "../assets/fonts.css";
 @import "../theme/theme.css";

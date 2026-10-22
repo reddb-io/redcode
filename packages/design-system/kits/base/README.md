@@ -1,5 +1,23 @@
 # Base Kit
 
+## Numeric entry and rich choices
+
+`NumberField` composes Field, Input and Button. Supply a visible `label`, bind
+`value` (`number | null`), and optionally choose finite `min`, `max` and positive
+`step` constraints. Native numeric entry owns keyboard stepping, decimal alignment,
+validation and form submission. Invalid typed values stay visible. Both stepping
+buttons share Input's `controlSize`; readonly and disabled fields cannot step.
+`help`, `error` and `required` use Field's canonical accessible relationships.
+Native form resets update the binding and call `onvaluechange` once. An external
+null clears the field. Applications own persistence, quotas and validation copy.
+
+`RadioGroup` retains its default list and native radio behavior. Set
+`variant="cards"` for responsive bordered choices. Options accept `description`
+for context or an unavailable reason; `optionMedia(option)` supplies noninteractive
+media or metadata beside the canonical label. Do not nest links or buttons inside
+a radio label. Labels name the choice; descriptions are associated separately.
+The application still owns selection, business rules and form submission.
+
 Dialog and Drawer accept `header`, a snippet receiving `{ close }`. It
 replaces the visible title and standard close control; the required `title`
 remains their accessible name. A custom header keeps the body in one scrolling
@@ -1248,6 +1266,9 @@ pnpm --filter kit-base lint
 
 ## Consuming it
 
+For native React, see the [React implementation](react/README.md). Its initial
+coverage is twelve components; Svelte remains the default Sync framework.
+
 Same as any Kit: `ds-sync` lands it as vendorable Svelte 5 source at a pinned
 DS release (ADR 0002), inside the one package it assembles
 (`scripts/producer/README.md`), where this Kit is the `./base` subpath:
@@ -1371,3 +1392,16 @@ on focus or pointer interaction. The custom renderer must provide named slide
 groups, exclude inactive content from focus and accessibility, honor Image
 priority and carry its own reduced-motion presentation. Marketing's
 `PerspectiveCarousel` is the canonical example of this seam.
+
+## Operational presentation
+
+`Progress` and `Meter` accept optional `segments` and `segmentColumns`. Divisions
+are decorative and capped at 128 rendered cells; exact range/value semantics and
+fractional fill remain intact. Omit segments for the continuous default.
+Indeterminate Progress retains its normal representation.
+
+`Statistic animate` gives paint-only update feedback; it does not interpolate the
+semantic value or announce intermediate numbers. `Transfer` takes `fromId`,
+`toId` and a changing `trigger` after the application has committed state. Both
+anchors remain application-owned; the decorative clone is inert, interruptible
+and removed under reduced motion, navigation, cancellation or unmount.

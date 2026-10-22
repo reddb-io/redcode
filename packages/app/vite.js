@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs"
 import { createRequire } from "node:module"
 import solidPlugin from "vite-plugin-solid"
+import reactPlugin from "@vitejs/plugin-react"
 import tailwindcss from "@tailwindcss/vite"
 import { fileURLToPath } from "url"
 
@@ -9,6 +10,7 @@ const theme = fileURLToPath(new URL("./public/oc-theme-preload.js", import.meta.
 const themeScript = readFileSync(theme, "utf8")
 
 const tailwind = tailwindcss()
+const reactSources = [/\.react\.tsx$/]
 
 const tailwindGenerate = tailwind.find((plugin) => plugin.name === "@tailwindcss/vite:generate:serve")
 
@@ -98,6 +100,10 @@ export default [
             "@betteroffice/fonts-cjk": fileURLToPath(
               new URL("../gui-extensions/src/microsoft-office/fonts-cjk.ts", import.meta.url),
             ),
+            // Use the browser build: its `solid` export contains JSX in .js files and cannot be pre-bundled.
+            "@kitlangton/solid-motion": fileURLToPath(
+              new URL("../ui/node_modules/@kitlangton/solid-motion/dist/index.js", import.meta.url),
+            ),
           },
         },
         define: {
@@ -108,10 +114,28 @@ export default [
         },
         optimizeDeps: {
           exclude: [...workerDeps, ...officeDeps],
-          include: ["@opencode/session-ui > mermaid", "@opencode/session-ui > mermaid > katex"],
+          include: [
+            "@opencode/session-ui > mermaid",
+            "@opencode/session-ui > mermaid > katex",
+            ...["Input", "Select", "Switch", "Logo", "Dialog", "Button"].map(
+              (name) => `@reddb-io/design-system/base/${name}`,
+            ),
+          ],
           rolldownOptions: { plugins: [bundleNestedWorkerDeps] },
         },
       }
+    },
+  },
+  {
+    name: "redcode:portable-ds-recipes",
+    enforce: "pre",
+    resolveId(id, importer) {
+      if (
+        id !== "@reddb-io/design-system/base" ||
+        !importer?.replaceAll("\\", "/").includes("/design-system/client/kits/app/src/")
+      )
+        return
+      return this.resolve("@reddb-io/design-system/contracts/base", importer, { skipSelf: true })
     },
   },
   dropUnloadedOfficeFiles,
@@ -123,7 +147,8 @@ export default [
     },
   },
   ...tailwind,
-  solidPlugin(),
+  reactPlugin({ include: reactSources }),
+  solidPlugin({ exclude: reactSources }),
 ]
 
 export function inlineThemePreload(html) {

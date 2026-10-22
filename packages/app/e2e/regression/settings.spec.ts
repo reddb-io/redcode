@@ -183,27 +183,45 @@ test("appearance options remain reachable in a short viewport", async ({ page })
   const { settings } = await open(page)
   await settings.getByRole("tab", { name: "Appearance", exact: true }).click()
   await page.setViewportSize({ width: 1280, height: 360 })
-  const theme = settings.locator('[data-action="settings-theme"] [data-component="select-v2"]')
+  const theme = settings.getByRole("combobox", { name: "Theme", exact: true })
+  await expect(theme).toBeInViewport()
+  await expect(theme.getByRole("option", { name: "Zenburn", exact: true })).toHaveCount(1)
+  // Native selects let the browser keep the popup in view, including choices beyond the scrollport.
+  await theme.selectOption("vesper")
   await theme.press("ArrowDown")
-  const list = page.getByRole("listbox")
-  await expect(list).toBeVisible()
-  await expect
-    .poll(async () => {
-      const box = await list.boundingBox()
-      return !!box && box.y >= 0 && box.y + box.height <= 360
-    })
-    .toBe(true)
-  // Keyboard navigation must scroll the final option into view, rather than clipping it.
-  await list.press("Home")
-  await expect(list.getByRole("option").first()).toBeInViewport()
-  await list.press("End")
-  const last = list.getByRole("option").last()
-  await expect(last).toBeInViewport()
-  const label = await last.innerText()
+  await expect(theme).toHaveValue("zenburn")
+  await expect(page.locator("html")).toHaveAttribute("data-color-theme", "zenburn")
   await page.screenshot({ path: test.info().outputPath("short-viewport-theme-options.png"), animations: "disabled" })
-  await last.click()
-  await expect(list).toBeHidden()
-  await expect(theme).toContainText(label)
+})
+
+test("React settings keep fonts, color scheme, notifications and sounds across navigation and reload", async ({
+  page,
+}) => {
+  const { settings } = await open(page)
+  await settings.getByRole("tab", { name: "Appearance", exact: true }).click()
+  await settings.getByRole("combobox", { name: "Color scheme", exact: true }).selectOption("light")
+  await expect(page.locator("html")).toHaveAttribute("data-color-scheme", "light")
+  for (const name of ["UI Font", "Code Font", "Terminal Font"]) {
+    const input = settings.getByRole("textbox", { name, exact: true })
+    await input.fill("monospace")
+    await expect(input).toHaveValue("monospace")
+  }
+  await settings.getByRole("tab", { name: "Notifications", exact: true }).click()
+  const agent = settings.getByRole("switch", { name: "Agent", exact: true })
+  await agent.setChecked(false)
+  await expect(agent).not.toBeChecked()
+  await settings.getByRole("combobox", { name: "Agent", exact: true }).selectOption("none")
+  await settings.getByRole("tab", { name: "Appearance", exact: true }).click()
+  await expect(settings.getByRole("textbox", { name: "Code Font", exact: true })).toHaveValue("monospace")
+  await page.reload()
+  await expect(settings.getByRole("combobox", { name: "Color scheme", exact: true })).toHaveValue("light")
+  await expect(settings.getByRole("textbox", { name: "UI Font", exact: true })).toHaveValue("monospace")
+  await expect(settings.getByRole("textbox", { name: "Terminal Font", exact: true })).toHaveValue("monospace")
+  await settings.getByRole("tab", { name: "Notifications", exact: true }).click()
+  await expect(agent).not.toBeChecked()
+  await expect(settings.getByRole("combobox", { name: "Agent", exact: true })).toHaveValue("none")
+  await agent.press("Space")
+  await expect(agent).toBeChecked()
 })
 
 test("agent tools share host settings, install explicitly and preserve configuration across refresh", async ({
@@ -640,6 +658,16 @@ test.describe("pages open before slow data", () => {
     ).toHaveAttribute("href", "https://github.com/anomalyco/opencode")
     await settings.getByRole("button", { name: "Third-party notices", exact: true }).click()
     await expect(page.getByRole("dialog", { name: "Third-party notices", exact: true })).toBeVisible()
+    await page
+      .getByRole("dialog", { name: "Third-party notices", exact: true })
+      .getByRole("button", { name: "Close", exact: true })
+      .click()
+    await expect(settings.getByRole("button", { name: "Third-party notices", exact: true })).toBeFocused()
+    await settings.getByRole("button", { name: "Third-party notices", exact: true }).click()
+    await expect(page.getByRole("dialog", { name: "Third-party notices", exact: true })).toBeVisible()
+    await page.keyboard.press("Escape")
+    await expect(page.getByRole("dialog", { name: "Third-party notices", exact: true })).toBeHidden()
+    await expect(settings.getByRole("button", { name: "Third-party notices", exact: true })).toBeFocused()
   })
 })
 test("worktrees follow inventory events, wait for session counts, and delete by project", async ({ page }) => {
