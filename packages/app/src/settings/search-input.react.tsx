@@ -3,6 +3,7 @@ import { useLayoutEffect, useRef, useState, type ComponentProps } from "react"
 import { Input } from "@reddb-io/design-system/base/Input"
 import { Button } from "@reddb-io/design-system/base/Button"
 import { SettingsIcon } from "./icon.react"
+import "./search.css"
 
 export function SettingsSearchInput(
   props: Omit<ComponentProps<typeof Input<"search">>, "type" | "ref"> & {

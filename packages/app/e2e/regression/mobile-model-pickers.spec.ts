@@ -63,6 +63,51 @@ test("desktop models retain favorites, find fuzzy matches and refresh the catalo
   await expect(page.getByRole("menuitemradio", { name: /Alpha/ })).toBeVisible()
 })
 
+test("model visibility retains filtering, provider-wide changes and provider connection handoff", async ({ page }) => {
+  await openDraft(page, {
+    name: "ModelVisibility",
+    provider: provider(
+      { id: "alpha", name: "Alpha", cost: { input: 1, output: 1 } },
+      { id: "beta", name: "Beta", cost: { input: 1, output: 1 } },
+    ),
+  })
+  const trigger = page.locator('[data-action="composer-model"]')
+  await expect(trigger).toHaveText("Alpha")
+  await trigger.click()
+  await page.getByRole("menuitem", { name: "Manage models", exact: true }).click()
+  const manager = page.getByRole("dialog", { name: "Manage models", exact: true })
+  const search = manager.getByRole("searchbox", { name: "Search models", exact: true })
+  await expect(search).toBeFocused()
+  await manager.getByRole("switch", { name: "Alpha", exact: true }).uncheck()
+  await manager.getByRole("button", { name: "Close", exact: true }).click()
+  await expect(manager).toBeHidden()
+  await trigger.click()
+  await expect(page.getByRole("menuitemradio", { name: /Alpha/ })).toHaveCount(0)
+  await expect(page.getByRole("menuitemradio", { name: /Beta/ })).toBeVisible()
+  await page.getByRole("menuitem", { name: "Manage models", exact: true }).click()
+  await search.fill("Bta")
+  await expect(manager.getByRole("switch", { name: "Beta", exact: true })).toBeChecked()
+  await expect(manager.getByRole("switch", { name: "Alpha", exact: true })).toHaveCount(0)
+  await manager.getByRole("switch", { name: "OpenCode", exact: true }).check()
+  await manager.getByRole("button", { name: "Clear", exact: true }).click()
+  await expect(manager.getByRole("switch", { name: "Alpha", exact: true })).toBeChecked()
+  const section = manager.getByRole("button", { name: "OpenCode", exact: true })
+  await section.click()
+  await expect(section).toHaveAttribute("aria-expanded", "false")
+  await expect(manager.getByRole("switch", { name: "Alpha", exact: true })).toHaveCount(0)
+  await search.fill("Alpha")
+  await expect(section).toBeDisabled()
+  await expect(manager.getByRole("switch", { name: "Alpha", exact: true })).toBeChecked()
+  await manager.getByRole("button", { name: "Connect provider", exact: true }).click()
+  await expect(manager).toBeHidden()
+  await expect(
+    page
+      .getByRole("dialog", { name: "Connect provider", exact: true })
+      .getByRole("searchbox", { name: "Search providers", exact: true }),
+  ).toBeFocused()
+  await expect(page.getByRole("dialog")).toHaveCount(1)
+})
+
 test("desktop free models retain selection and hand off to provider search", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 })
   await openPickerSession(page, "ltr", false)
