@@ -37,3 +37,13 @@
     padding-inline: 0;
   }
 }
+
+/* Model details retain the compact metadata rows within the native tooltip. */
+body:has([data-model-tooltip][aria-describedby]) [data-tooltip-surface] {
+  display: block;
+  max-inline-size: min(24rem, calc(100vw - 16px));
+  padding-block: var(--reddb-spatial-inset-sm);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  line-height: var(--reddb-type-caption-line-height);
+}

@@ -1,16 +1,16 @@
 import { Show, createMemo } from "solid-js"
 import { createMediaQuery } from "@solid-primitives/media"
-import { Button } from "@opencode/ui/button"
 import { useDialog } from "@opencode/ui/context/dialog"
 import { Icon } from "@opencode/ui/icon"
 import { Keybind } from "@opencode/ui/keybind"
-import { ProviderModelIcon } from "@/providers/models/provider-group"
 import { Tooltip } from "@opencode/ui/tooltip"
 import { useI18n } from "@opencode/ui/context/i18n"
 import { ComposerEditor, ComposerEditorSelect } from "./editor/editor"
 import { ComposerReasoningControl } from "./reasoning/control"
 import { useSettings } from "@/settings/model"
 import { ModelSelectorPopover } from "@/providers/models/select-dialog"
+import { ReactView } from "@/runtime/react/view"
+import { ModelTriggerButton } from "@/providers/models/popover.react"
 import { DialogSelectModelUnpaid } from "@/providers/models/unpaid"
 import { formatKeybind, useCommand } from "@/shell/commands/command"
 import { useLanguage } from "@/runtime/i18n/language"
@@ -84,23 +84,6 @@ function ComposerModelControl(props: {
   const shouldAnimate = createMemo<boolean>((previous) => previous ?? props.loading)
   const mobile = createMediaQuery("(max-width: 767px)")
 
-  const content = () => (
-    <>
-      <Show when={props.provider}>
-        {(provider) => (
-          <ProviderModelIcon
-            provider={provider()}
-            class="shrink-0 opacity-40 transition-opacity duration-150 group-hover:opacity-100"
-          />
-        )}
-      </Show>
-      <span class="truncate leading-4">{props.modelName}</span>
-      <span class="-ml-0.5 -mr-1 flex shrink-0">
-        <Icon name="chevron-down" />
-      </span>
-    </>
-  )
-
   return (
     <Show when={!props.loading}>
       <Tooltip
@@ -117,37 +100,24 @@ function ComposerModelControl(props: {
         <Show
           when={props.paid || mobile()}
           fallback={
-            <Button
-              data-action="composer-model"
-              data-control-type="dialog"
-              variant="ghost-muted"
-              size="normal"
-              class="min-w-0 max-w-[220px] justify-start !font-normal group"
-              classList={{ "animate-in fade-in": shouldAnimate() }}
-              style={{ height: "28px" }}
-              onClick={props.onUnpaidClick}
-            >
-              {content()}
-            </Button>
+            <ReactView
+              component={ModelTriggerButton}
+              props={{
+                provider: props.provider,
+                label: props.modelName,
+                kind: "dialog",
+                className: `min-w-0 max-w-[220px] justify-start !font-normal group h-7 ${shouldAnimate() ? "animate-in fade-in" : ""}`,
+                onClick: props.onUnpaidClick,
+              }}
+            />
           }
         >
           <ModelSelectorPopover
             model={props.model}
             unpaid={!props.paid}
-            trigger={(triggerProps) => (
-              <Button
-                {...triggerProps}
-                variant="ghost-muted"
-                size="normal"
-                style={{ height: "28px" }}
-                class="min-w-0 max-w-[220px] justify-start !font-normal group"
-                classList={{ "animate-in fade-in": shouldAnimate() }}
-                data-action="composer-model"
-                data-control-type={mobile() ? "drawer" : "popover"}
-              >
-                {content()}
-              </Button>
-            )}
+            triggerProvider={props.provider}
+            triggerLabel={props.modelName}
+            triggerClass={`min-w-0 max-w-[220px] justify-start !font-normal group h-7 ${shouldAnimate() ? "animate-in fade-in" : ""}`}
             onClose={props.onClose}
           />
         </Show>
