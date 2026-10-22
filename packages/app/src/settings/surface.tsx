@@ -1,25 +1,13 @@
 import { useLocation, useNavigate } from "@solidjs/router"
-import { batch, createEffect, on } from "solid-js"
-import { createStore } from "solid-js/store"
+import { createEffect, on, onCleanup } from "solid-js"
+import { createStore, reconcile } from "solid-js/store"
+import { createSettingsController } from "./controller"
 import { createSimpleContext } from "@opencode/ui/context"
 import { useLayout, type LayoutRoute } from "@/shell/state/layout"
 import { useCommand } from "@/shell/commands/command"
 import { createSettingsPages } from "@/runtime/extension/settings-pages"
 import { useSettingsServers } from "./servers/inventory"
-import {
-  isExtensionTab,
-  isProjectTab,
-  isRootTab,
-  isServerTab,
-  parseSettingsView,
-  settingsViewUrl,
-  type SettingsExtensionTab,
-  type SettingsProjectTab,
-  type SettingsRootTab,
-  type SettingsServerTab,
-  type SettingsTransientView,
-  type SettingsView,
-} from "./route"
+import { parseSettingsView, settingsViewUrl, type SettingsTransientView, type SettingsView } from "./route"
 
 export type {
   SettingsExtensionTab,
@@ -50,24 +38,6 @@ export const { use: useSettingsSurface, provider: SettingsSurfaceProvider } = cr
     const view = () =>
       parseSettingsView(location.search, servers().length > 1, location.state?.settings?.view, extensions.tabs())
 
-    const [search, setSearch] = createStore<{
-      query: string
-      origin: SettingsView | undefined
-      selected: string
-      highlighted: string
-      scrollTop: number
-      activation: number
-      expanded: boolean
-    }>({
-      query: "",
-      origin: undefined,
-      selected: "",
-      highlighted: "",
-      scrollTop: 0,
-      activation: 0,
-      expanded: true,
-    })
-
     let focus: HTMLElement | undefined
 
     const show = (view: SettingsView) => {
@@ -85,13 +55,23 @@ export const { use: useSettingsSurface, provider: SettingsSurfaceProvider } = cr
       })
     }
 
+    const controller = createSettingsController({
+      view,
+      active: open,
+      show,
+      multiple: () => servers().length > 1,
+      extensions: extensions.tabs,
+      goBack: () => command.trigger("common.goBack"),
+    })
+    const [search, setSearch] = createStore({ ...controller.search.state })
+    onCleanup(controller.search.source.subscribe(() => setSearch(reconcile(controller.search.state))))
+
     createEffect(
       on(
         open,
         (value) => {
           if (value) return
-          setSearch({ query: "", origin: undefined, selected: "", highlighted: "", scrollTop: 0, expanded: true })
-
+          controller.search.clear()
           if (focus?.isConnected) focus.focus({ preventScroll: true })
           focus = undefined
         },
@@ -104,92 +84,10 @@ export const { use: useSettingsSurface, provider: SettingsSurfaceProvider } = cr
       route: source,
       view,
       extensions,
+      ...controller,
       search: {
+        ...controller.search,
         state: search,
-        input(query: string) {
-          if (!search.query.trim() && query.trim()) setSearch("origin", { ...view(), target: undefined })
-          setSearch({ query, highlighted: "", scrollTop: 0, expanded: true })
-
-          if (!query.trim()) setSearch({ selected: "", origin: undefined })
-        },
-        expand() {
-          setSearch("expanded", true)
-        },
-        highlight(id: string) {
-          setSearch("highlighted", id)
-        },
-        scroll(scrollTop: number) {
-          setSearch("scrollTop", scrollTop)
-        },
-        open(destination: SettingsView, id: string) {
-          batch(() => {
-            show({ ...destination, searchActivation: search.activation + 1 })
-            setSearch({ selected: id, highlighted: id, expanded: false, activation: search.activation + 1 })
-          })
-        },
-        clear() {
-          setSearch({ query: "", selected: "", highlighted: "", scrollTop: 0, origin: undefined, expanded: true })
-        },
-        back() {
-          if (!search.query.trim() || !search.selected || !search.origin) return false
-          show(search.origin)
-          setSearch({ selected: "", expanded: true })
-
-          return true
-        },
-      },
-      open(tab: SettingsRootTab | SettingsExtensionTab = "general") {
-        show({ type: "root", tab })
-      },
-      openServer(server: string, tab: SettingsServerTab = "general") {
-        show({ type: "server", server, tab })
-      },
-      replaceServer(server: string, tab: SettingsServerTab = "general") {
-        show({ type: "server", server, tab })
-      },
-      openProject(input: { server: string; project: string; tab?: SettingsProjectTab }) {
-        show({
-          type: "project",
-          ...input,
-          parent: servers().length > 1 ? "server" : "root",
-          tab: input.tab ?? "general",
-        })
-      },
-      select(tab: string) {
-        const current = view()
-
-        const next: SettingsView =
-          current.type === "root" && (isRootTab(tab) || isExtensionTab(tab, extensions.tabs()))
-            ? { ...current, tab }
-            : current.type === "server" && isServerTab(tab)
-              ? { ...current, tab }
-              : current.type === "project" && isProjectTab(tab)
-                ? { ...current, tab }
-                : current
-
-        show({ ...next, target: undefined, subtab: undefined })
-      },
-      subtab(subtab: SettingsView["subtab"]) {
-        show({ ...view(), subtab, target: undefined })
-      },
-      back() {
-        const current = view()
-
-        if (current.type === "root") {
-          command.trigger("common.goBack")
-
-          return
-        }
-
-        const parent: SettingsView =
-          current.type === "server" || current.parent === "root"
-            ? { type: "root", tab: current.type === "server" ? "general" : "projects" }
-            : { type: "server", server: current.server, tab: "projects" }
-
-        show(parent)
-      },
-      close() {
-        if (open()) command.trigger("common.goBack")
       },
     }
   },

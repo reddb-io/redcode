@@ -221,7 +221,13 @@ export function Select<T>(props: SelectProps<T>) {
         </span>
       </Trigger>
       <Portal>
-        <Content class={local.contentClass} data-component="menu-v2-content" data-slot="select-v2-content">
+        {/* Keep a dialog's outside-content observer from hiding this portalled popup. */}
+        <Content
+          class={local.contentClass}
+          data-component="menu-v2-content"
+          data-slot="select-v2-content"
+          data-kb-top-layer=""
+        >
           <Listbox data-slot="select-v2-listbox" />
         </Content>
       </Portal>

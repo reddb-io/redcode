@@ -332,3 +332,12 @@
     min-height: 48px;
   }
 }
+[data-component="timeline-detail-control"] .settings-timeline-advanced-trigger {
+  width: fit-content;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--reddb-color-ink-muted);
+}

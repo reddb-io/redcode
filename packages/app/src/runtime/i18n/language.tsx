@@ -283,9 +283,9 @@ export const { use: useLanguage, provider: LanguageProvider } = createSimpleCont
       params?: Record<string, string | number | boolean>,
     ) => (intl().toLowerCase().split("-")[0] === "en" ? resolveTemplate(source, params) : t(key, params))
 
-    const rich = <Key extends Extract<keyof Dictionary, string>>(
+    const rich = <Key extends Extract<keyof Dictionary, string>, Value>(
       key: TranslationKey<Key>,
-      params: Record<string, JSX.Element>,
+      params: Record<string, Value>,
     ) => {
       const current = (dictionary.loading ? base : (dictionary() ?? base)) as Record<string, string>
 

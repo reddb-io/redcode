@@ -11,7 +11,7 @@ import {
   sansDefault,
   sansFontFamily,
   terminalFontFamily,
-} from "./model"
+} from "./model-data"
 
 const schema = Persistence.withInitial(settingsPersistence, defaultSettings)
 
@@ -96,6 +96,7 @@ describe("settings schema", () => {
       general: {
         showFileTree: false,
         showNavigation: true,
+        navigationLabels: true,
         timelineDetail: timelinePresets[2].value,
         showAgent: true,
         mobileTitlebarPosition: "top",

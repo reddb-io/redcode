@@ -300,3 +300,65 @@
     animation-timing-function: steps(1, end);
   }
 }
+
+[data-component="settings-search-input"] {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-inline: 8px 2px;
+  min-width: 0;
+  border-radius: 6px;
+  background: transparent;
+}
+[data-component="settings-search-input"]:is(:hover, :focus-within):not([data-disabled]),
+[data-component="settings-search-input"]:has(input:not(:placeholder-shown)) {
+  background: color-mix(in srgb, var(--reddb-color-foreground) 8%, transparent);
+}
+[data-component="settings-search-input"] > svg {
+  flex-shrink: 0;
+}
+[data-component="settings-search-input"] input {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  padding-inline: 0;
+}
+[data-component="settings-search-input"] input::-webkit-search-cancel-button {
+  display: none;
+}
+[data-component="settings-search-input"] > button {
+  flex-shrink: 0;
+}
+.settings-search-scroll {
+  overflow: auto;
+  min-height: 0;
+}
+[data-component="settings-search-input"] input[data-overflow-start="true"] {
+  --mask-start: 16px;
+}
+[data-component="settings-search-input"] input[data-overflow-end="true"] {
+  --mask-end: 16px;
+}
+[data-component="settings-search-input"] input:dir(rtl) {
+  --mask-direction: to left;
+}
+[data-component="settings-search-input"] input:is([data-overflow-start="true"], [data-overflow-end="true"]) {
+  mask-image: linear-gradient(
+    var(--mask-direction, to right),
+    transparent,
+    black var(--mask-start, 0px),
+    black calc(100% - var(--mask-end, 0px)),
+    transparent
+  );
+}
+.settings-search-scroll > .scroll-view__viewport {
+  overflow: auto;
+  min-height: 0;
+  max-height: 100%;
+}
+.settings-search-scroll {
+  display: flex;
+  overflow: hidden;
+}

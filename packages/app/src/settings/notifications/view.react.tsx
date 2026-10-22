@@ -1,4 +1,8 @@
 /** @jsxImportSource react */
+import { useEffect, useState, useSyncExternalStore } from "react"
+import type { SharedSource } from "@/runtime/react/source"
+import { createSoundPreviewController } from "../general/behavior"
+import { playSoundById, SOUND_OPTIONS } from "@/shell/notifications/sound"
 import { Select } from "@reddb-io/design-system/base/Select"
 import { Switch } from "@reddb-io/design-system/base/Switch"
 import { SettingsHeader, SettingsList, SettingsRow, type SettingsLanguage } from "../shared.react"
@@ -70,5 +74,46 @@ export function Notifications(props: {
         </div>
       </div>
     </>
+  )
+}
+
+export function NotificationSettings(props: {
+  services: {
+    snapshot: SharedSource<{
+      language: SettingsLanguage
+      channels: { kind: "agent" | "permissions" | "errors"; checked: boolean; enabled: boolean; sound: string }[]
+    }>
+    actions: Record<
+      "agent" | "permissions" | "errors",
+      { notify: (value: boolean) => void; enable: (value: boolean) => void; sound: (value: string) => void }
+    >
+  }
+}) {
+  const state = useSyncExternalStore(props.services.snapshot.subscribe, props.services.snapshot.getSnapshot)
+  const [preview] = useState(() => createSoundPreviewController(playSoundById))
+  useEffect(() => preview.stop, [preview])
+  const options = [{ id: "none", label: "sound.option.none" } as const, ...SOUND_OPTIONS]
+  return (
+    <Notifications
+      language={state.language}
+      sounds={options.map((option) => ({ value: option.id, label: state.language.t(option.label) }))}
+      channels={state.channels.map((channel) => ({
+        kind: channel.kind,
+        checked: channel.checked,
+        onChange: props.services.actions[channel.kind].notify,
+        sound: channel.enabled ? (options.find((option) => option.id === channel.sound)?.id ?? "none") : "none",
+        onSoundChange(value) {
+          const option = options.find((option) => option.id === value)
+          if (!option) return
+          props.services.actions[channel.kind].enable(option.id !== "none")
+          if (option.id === "none") {
+            preview.stop()
+            return
+          }
+          props.services.actions[channel.kind].sound(option.id)
+          preview.play(option.id)
+        },
+      }))}
+    />
   )
 }

@@ -357,7 +357,7 @@ test("multi-server results navigate to the named server and keep the query on re
 
   await view.search.fill("MCPs")
   await expect(view.results.getByRole("option")).toHaveCount(2)
-  await view.results.getByRole("option", { name: "MCPs, Build server, Extensions", exact: true }).click()
+  await view.results.getByRole("option", { name: "MCPs, Build server, Agent extensions", exact: true }).click()
   await expect(view.search).toHaveCount(0)
   await expect(view.settings.getByRole("tab", { name: "Build server", exact: true })).toBeVisible()
   await expect(view.settings.getByRole("tab", { name: "MCPs", exact: true })).toHaveAttribute("aria-selected", "true")
