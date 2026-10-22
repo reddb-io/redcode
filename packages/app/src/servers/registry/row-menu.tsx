@@ -1,7 +1,7 @@
-import { Icon } from "@opencode/ui/icon"
-import { IconButton } from "@opencode/ui/icon-button"
-import { Menu } from "@opencode/ui/menu"
-import { type Component, Show } from "solid-js"
+import { sharedSource } from "@/runtime/react/source"
+import { ReactView } from "@/runtime/react/view"
+import { NativeServerRowMenu } from "./menus.react"
+import { type Component } from "solid-js"
 import type { ServerActionsController } from "@/servers/registry/controller"
 import { useLanguage } from "@/runtime/i18n/language"
 import { ServerConnection } from "@/runtime/server/registry"
@@ -44,7 +44,7 @@ export function serverMenuLabels(language: ReturnType<typeof useLanguage>) {
   }
 }
 
-export const ServerRowMenuView: Component<{
+type ServerRowMenuViewProps = {
   server: ServerConnection.Any
   labels: ReturnType<typeof serverMenuLabels>
   canRemove: boolean
@@ -56,46 +56,29 @@ export const ServerRowMenuView: Component<{
   onShow?: () => void
   open?: boolean
   onOpenChange?: (open: boolean) => void
-}> = (props) => {
-  const builtin = () => ServerConnection.builtin(props.server)
-  const httpServer = () => (props.server.type === "http" ? props.server : undefined)
+}
 
-  return (
-    <Menu gutter={6} modal={false} placement="bottom-end" open={props.open} onOpenChange={props.onOpenChange}>
-      <Menu.Trigger
-        as={IconButton}
-        variant="ghost-muted"
-        size="small"
-        icon={<Icon name="outline-dots" />}
-        aria-label={props.labels.more}
-      />
-      <Menu.Portal>
-        <Menu.Content>
-          <Menu.Group>
-            <Menu.GroupLabel>{props.labels.server}</Menu.GroupLabel>
-            <Menu.Item
-              disabled={builtin() || !httpServer()}
-              onSelect={() => {
-                const server = httpServer()
+export function createServerRowMenuServices(props: ServerRowMenuViewProps) {
+  return {
+    snapshot: sharedSource(() => ({
+      labels: { ...props.labels },
+      canEdit: !ServerConnection.builtin(props.server) && props.server.type === "http",
+      canRemove: props.canRemove,
+      canHide: !!props.canHide,
+      hidden: !!props.hidden,
+      open: props.open,
+    })),
+    edit: () => {
+      if (props.server.type === "http") props.onEdit(props.server)
+    },
+    remove: () => props.onRemove(),
+    hide: () => props.onHide?.(),
+    show: () => props.onShow?.(),
+    open: (open: boolean) => props.onOpenChange?.(open),
+  }
+}
 
-                if (server) props.onEdit(server)
-              }}
-            >
-              {props.labels.edit}
-            </Menu.Item>
-            <Show when={props.hidden}>
-              <Menu.Item onSelect={props.onShow}>{props.labels.show}</Menu.Item>
-            </Show>
-            <Show when={!props.hidden && props.canHide}>
-              <Menu.Item onSelect={props.onHide}>{props.labels.hide}</Menu.Item>
-            </Show>
-            <Show when={props.canRemove}>
-              <Menu.Separator />
-              <Menu.Item onSelect={props.onRemove}>{props.labels.remove}</Menu.Item>
-            </Show>
-          </Menu.Group>
-        </Menu.Content>
-      </Menu.Portal>
-    </Menu>
-  )
+export function ServerRowMenuView(props: ServerRowMenuViewProps) {
+  const services = createServerRowMenuServices(props)
+  return <ReactView component={NativeServerRowMenu} props={{ services }} />
 }
