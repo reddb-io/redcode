@@ -3,9 +3,9 @@ export declare const slideLayout: import("tailwind-variants").TVReturnType<{
     [key: string]: {
         [key: string]: import("tailwind-variants").ClassValue | {
             body?: import("tailwind-variants").ClassValue;
-            columns?: import("tailwind-variants").ClassValue;
             figure?: import("tailwind-variants").ClassValue;
             header?: import("tailwind-variants").ClassValue;
+            columns?: import("tailwind-variants").ClassValue;
             list?: import("tailwind-variants").ClassValue;
             column?: import("tailwind-variants").ClassValue;
             item?: import("tailwind-variants").ClassValue;
@@ -21,9 +21,9 @@ export declare const slideLayout: import("tailwind-variants").TVReturnType<{
     [x: string]: {
         [x: string]: import("tailwind-variants").ClassValue | {
             body?: import("tailwind-variants").ClassValue;
-            columns?: import("tailwind-variants").ClassValue;
             figure?: import("tailwind-variants").ClassValue;
             header?: import("tailwind-variants").ClassValue;
+            columns?: import("tailwind-variants").ClassValue;
             list?: import("tailwind-variants").ClassValue;
             column?: import("tailwind-variants").ClassValue;
             item?: import("tailwind-variants").ClassValue;
@@ -53,9 +53,9 @@ export declare const slideLayout: import("tailwind-variants").TVReturnType<{
     [key: string]: {
         [key: string]: import("tailwind-variants").ClassValue | {
             body?: import("tailwind-variants").ClassValue;
-            columns?: import("tailwind-variants").ClassValue;
             figure?: import("tailwind-variants").ClassValue;
             header?: import("tailwind-variants").ClassValue;
+            columns?: import("tailwind-variants").ClassValue;
             list?: import("tailwind-variants").ClassValue;
             column?: import("tailwind-variants").ClassValue;
             item?: import("tailwind-variants").ClassValue;

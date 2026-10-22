@@ -2,16 +2,16 @@ import { type VariantProps } from "tailwind-variants";
 export declare const countdown: import("tailwind-variants").TVReturnType<{
     [key: string]: {
         [key: string]: import("tailwind-variants").ClassValue | {
-            root?: import("tailwind-variants").ClassValue;
             label?: import("tailwind-variants").ClassValue;
+            root?: import("tailwind-variants").ClassValue;
             value?: import("tailwind-variants").ClassValue;
         };
     };
 } | {
     [x: string]: {
         [x: string]: import("tailwind-variants").ClassValue | {
-            root?: import("tailwind-variants").ClassValue;
             label?: import("tailwind-variants").ClassValue;
+            root?: import("tailwind-variants").ClassValue;
             value?: import("tailwind-variants").ClassValue;
         };
     };
@@ -22,8 +22,8 @@ export declare const countdown: import("tailwind-variants").TVReturnType<{
 }, undefined, {
     [key: string]: {
         [key: string]: import("tailwind-variants").ClassValue | {
-            root?: import("tailwind-variants").ClassValue;
             label?: import("tailwind-variants").ClassValue;
+            root?: import("tailwind-variants").ClassValue;
             value?: import("tailwind-variants").ClassValue;
         };
     };

@@ -1,4 +1,4 @@
-import { dropdownMenu, popover } from "@reddb-io/design-system/base";
+import { dropdownMenu, popover } from "@reddb-io/design-system/base/recipes";
 import { tv } from "tailwind-variants";
 const contextMenu = tv({
   extend: dropdownMenu,

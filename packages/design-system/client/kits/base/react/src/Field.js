@@ -1,10 +1,14 @@
 "use client";
 import { Fragment, jsx, jsxs } from "react/jsx-runtime";
-import { useId } from "react";
+import { useEffect, useId } from "react";
+import { warnA11y } from "../../src/core/a11y.js";
 import { field } from "../../src/field.variants.js";
 import { Label } from "./Label.js";
 import { fieldAssociation } from "../../src/core/field.js";
 function Field({ label, help, error, required = false, id, layout = "stacked", className, children }) {
+  useEffect(() => {
+    if (!label?.trim()) warnA11y("Field", "has an empty `label`, so its control has no accessible name", "Give the Field a visible `label`.");
+  }, [label]);
   const generated = useId();
   const controlId = id ?? `${generated}-control`;
   const { control, helpId, errorId } = fieldAssociation({ id: controlId, help, error, required });

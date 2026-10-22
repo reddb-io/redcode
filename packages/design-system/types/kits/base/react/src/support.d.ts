@@ -1,4 +1,5 @@
 export { warnDeprecated } from "../../src/deprecation";
+export { warnA11y } from "../../src/core/a11y";
 export { typeRoleMerge } from "../../src/type-roles";
 export { SCHEMA_ORG, absoluteUrl, isAbsoluteUrl, jsonLdScript, serializeJsonLd, breadcrumbList, type JsonLdDocument, type JsonLdNode } from "../../src/structured-data";
 export { card, type CardPadding, type CardVariant } from "../../src/card.variants";

@@ -3,9 +3,9 @@ export declare const productQuickview: import("tailwind-variants").TVReturnType<
     [key: string]: {
         [key: string]: import("tailwind-variants").ClassValue | {
             body?: import("tailwind-variants").ClassValue;
+            dialog?: import("tailwind-variants").ClassValue;
             content?: import("tailwind-variants").ClassValue;
             root?: import("tailwind-variants").ClassValue;
-            dialog?: import("tailwind-variants").ClassValue;
             media?: import("tailwind-variants").ClassValue;
         };
     };
@@ -13,9 +13,9 @@ export declare const productQuickview: import("tailwind-variants").TVReturnType<
     [x: string]: {
         [x: string]: import("tailwind-variants").ClassValue | {
             body?: import("tailwind-variants").ClassValue;
+            dialog?: import("tailwind-variants").ClassValue;
             content?: import("tailwind-variants").ClassValue;
             root?: import("tailwind-variants").ClassValue;
-            dialog?: import("tailwind-variants").ClassValue;
             media?: import("tailwind-variants").ClassValue;
         };
     };
@@ -29,9 +29,9 @@ export declare const productQuickview: import("tailwind-variants").TVReturnType<
     [key: string]: {
         [key: string]: import("tailwind-variants").ClassValue | {
             body?: import("tailwind-variants").ClassValue;
+            dialog?: import("tailwind-variants").ClassValue;
             content?: import("tailwind-variants").ClassValue;
             root?: import("tailwind-variants").ClassValue;
-            dialog?: import("tailwind-variants").ClassValue;
             media?: import("tailwind-variants").ClassValue;
         };
     };

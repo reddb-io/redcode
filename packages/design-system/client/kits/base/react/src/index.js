@@ -131,6 +131,7 @@ import {
 } from "./navigation-disclosures.js";
 import { Transfer } from "./Transfer.js";
 import { observeActivity } from "../../src/core/operational-motion.js";
+import { PhoneInput } from "./PhoneInput.js";
 export {
   APPEARANCE_AXES,
   Accordion,
@@ -198,6 +199,7 @@ export {
   NumberField,
   OneTimeCodeInput,
   Pagination,
+  PhoneInput,
   PhoneMockup,
   Popover,
   Progress,

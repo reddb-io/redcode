@@ -3,8 +3,8 @@ export declare const DEFAULT_BROWSER_MOCKUP_RATIO: number;
 export declare const browserMockup: import("tailwind-variants").TVReturnType<{
     [key: string]: {
         [key: string]: import("tailwind-variants").ClassValue | {
-            root?: import("tailwind-variants").ClassValue;
             address?: import("tailwind-variants").ClassValue;
+            root?: import("tailwind-variants").ClassValue;
             control?: import("tailwind-variants").ClassValue;
             chrome?: import("tailwind-variants").ClassValue;
             controls?: import("tailwind-variants").ClassValue;
@@ -14,8 +14,8 @@ export declare const browserMockup: import("tailwind-variants").TVReturnType<{
 } | {
     [x: string]: {
         [x: string]: import("tailwind-variants").ClassValue | {
-            root?: import("tailwind-variants").ClassValue;
             address?: import("tailwind-variants").ClassValue;
+            root?: import("tailwind-variants").ClassValue;
             control?: import("tailwind-variants").ClassValue;
             chrome?: import("tailwind-variants").ClassValue;
             controls?: import("tailwind-variants").ClassValue;
@@ -32,8 +32,8 @@ export declare const browserMockup: import("tailwind-variants").TVReturnType<{
 }, undefined, {
     [key: string]: {
         [key: string]: import("tailwind-variants").ClassValue | {
-            root?: import("tailwind-variants").ClassValue;
             address?: import("tailwind-variants").ClassValue;
+            root?: import("tailwind-variants").ClassValue;
             control?: import("tailwind-variants").ClassValue;
             chrome?: import("tailwind-variants").ClassValue;
             controls?: import("tailwind-variants").ClassValue;

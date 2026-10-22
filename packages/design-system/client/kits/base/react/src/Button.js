@@ -1,6 +1,9 @@
+"use client";
 import { Fragment, jsx, jsxs } from "react/jsx-runtime";
+import { useAccessibleControl } from "./use-accessible-control.js";
 import { button, buttonSpinner } from "../../src/button.variants.js";
-function Button({ variant = "secondary", tone, size = "md", loading = false, block = false, disabled = false, children, className, ...rest }) {
+function Button({ variant = "secondary", tone, size = "md", loading = false, block = false, disabled = false, children, className, ref, ...rest }) {
+  const element = useAccessibleControl("Button", ref, true);
   const inert = disabled || loading;
   const spinner = buttonSpinner({ size });
   const content = /* @__PURE__ */ jsxs(Fragment, { children: [
@@ -16,6 +19,7 @@ function Button({ variant = "secondary", tone, size = "md", loading = false, blo
       "a",
       {
         ...anchor,
+        ref: element,
         href: inert ? void 0 : href,
         tabIndex: inert ? -1 : anchor.tabIndex,
         onClick: inert ? void 0 : anchor.onClick,
@@ -31,6 +35,7 @@ function Button({ variant = "secondary", tone, size = "md", loading = false, blo
     "button",
     {
       ...native,
+      ref: element,
       type: native.type ?? "button",
       disabled: inert,
       "aria-busy": loading || void 0,

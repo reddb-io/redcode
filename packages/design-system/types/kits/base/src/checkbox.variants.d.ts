@@ -8,18 +8,18 @@ export declare const choiceBox: string;
 export declare const checkbox: import("tailwind-variants").TVReturnType<{
     [key: string]: {
         [key: string]: import("tailwind-variants").ClassValue | {
+            mark?: import("tailwind-variants").ClassValue;
             box?: import("tailwind-variants").ClassValue;
             root?: import("tailwind-variants").ClassValue;
-            mark?: import("tailwind-variants").ClassValue;
             control?: import("tailwind-variants").ClassValue;
         };
     };
 } | {
     [x: string]: {
         [x: string]: import("tailwind-variants").ClassValue | {
+            mark?: import("tailwind-variants").ClassValue;
             box?: import("tailwind-variants").ClassValue;
             root?: import("tailwind-variants").ClassValue;
-            mark?: import("tailwind-variants").ClassValue;
             control?: import("tailwind-variants").ClassValue;
         };
     };
@@ -31,9 +31,9 @@ export declare const checkbox: import("tailwind-variants").TVReturnType<{
 }, undefined, {
     [key: string]: {
         [key: string]: import("tailwind-variants").ClassValue | {
+            mark?: import("tailwind-variants").ClassValue;
             box?: import("tailwind-variants").ClassValue;
             root?: import("tailwind-variants").ClassValue;
-            mark?: import("tailwind-variants").ClassValue;
             control?: import("tailwind-variants").ClassValue;
         };
     };

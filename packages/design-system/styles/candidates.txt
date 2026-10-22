@@ -102,6 +102,7 @@
 -score
 -segment
 -start
+-status
 -title
 -translate-x-1/2
 -translate-y-1/2
@@ -126,6 +127,7 @@
 @container/radio-cards
 @container/range-field
 @container/section-heading
+@container/settings-row
 @container/sidebar-layout
 @container/slide
 @container/slide-frame
@@ -145,6 +147,9 @@
 @sm/card:w-1/2
 @sm/card:w-1/3
 @sm/card:w-2/5
+@sm/settings-row:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]
+@sm/settings-row:items-center
+@sm/settings-row:justify-end
 @type
 [&::-webkit-inner-spin-button]:appearance-none
 [&::-webkit-outer-spin-button]:appearance-none
@@ -165,6 +170,7 @@
 [&>[data-indicator-marker]]:translate-x-0
 [&>[data-indicator-marker]]:translate-x-[var(--reddb-spatial-gap-sm)]
 [&>[data-indicator-marker]]:translate-y-0
+[&>label]:sr-only
 [&[aria-haspopup][aria-expanded=true]]:bg-foreground/10
 [&[multiple]]:h-auto
 [&_[data-description-item]]:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]
@@ -315,8 +321,10 @@
 [:where(&)_ul]:ps-[1.5em]
 [:where(&)_ul_ul]:list-[circle]
 [:where(&)_ul_ul_ul]:list-[square]
+[@media(hover:hover)_and_(pointer:fine)]:opacity-0
 [appearance:textfield]
 [contain:inline-size]
+[overflow-wrap:anywhere]
 [scrollbar-width:none]
 [transform:translate3d(var(--reveal-x),var(--reveal-y),0)]
 [transition-delay:var(--reveal-delay)]
@@ -335,7 +343,9 @@ accepts
 access
 accessibility
 accessible
+accessible-name
 accordion
+accurate
 acknowledges
 across
 action
@@ -361,6 +371,7 @@ active:bg-primary-active
 activeElement
 activity
 activityFeed
+actual
 actually
 adapter
 adapter-owned
@@ -420,6 +431,7 @@ alignment
 all
 allowUnpress
 allowed
+allowlist
 allows
 alone
 along
@@ -447,6 +459,7 @@ and/or
 animate
 animation
 animation-timeline
+announce
 announced
 announcement
 announcements
@@ -459,6 +472,7 @@ anti-hardcode
 any
 anyone
 anything
+anywhere
 apart
 app
 appear
@@ -474,6 +488,7 @@ applicationShell
 applied
 apply
 approval
+approximation
 arbitrate
 are
 area
@@ -567,6 +582,7 @@ audible
 author
 auto
 auto-fill
+auto-inserted
 autoComplete
 autofocus
 automatic
@@ -585,6 +601,7 @@ backLabel
 backdrop
 backdrop:bg-scrim/60
 background
+backward
 badge
 badgeAnchor
 badgeLabel
@@ -628,6 +645,7 @@ before:top-1/2
 before:transition-transform
 before:z-10
 beforeLabel
+beforeinput
 behavior
 behind
 being
@@ -750,6 +768,7 @@ breadcrumbs
 break
 break-inside-avoid
 break-words
+broke
 browser
 browserMockup
 browsing
@@ -774,6 +793,7 @@ by
 bypass
 byte-identically
 bytes
+cached
 calendar
 calendarClass
 calendarLabel
@@ -781,7 +801,9 @@ callbacks
 called
 caller
 caller-owned
+caller-supplied
 callers
+calling
 calls
 came
 can
@@ -809,6 +831,7 @@ card
 cardHeading
 cards
 cares
+caret
 carousel
 carried
 carries
@@ -844,6 +867,7 @@ chart
 chatMessage
 chatbot
 check
+checkFieldName
 checkbox
 checked
 checked:after:bg-primary
@@ -853,6 +877,7 @@ checkout
 checkoutForm
 checks
 child
+childNodes
 children
 chip
 chips
@@ -873,6 +898,7 @@ classGroups
 className
 classes
 classic
+clean
 cleanup
 clear
 clearable
@@ -936,6 +962,7 @@ comment
 commit
 commits
 committed
+committed-state
 common
 commonly
 compact
@@ -955,6 +982,8 @@ composes
 composing
 composite
 composition
+compositionend
+compositionstart
 compound
 compoundVariants
 computed
@@ -1003,6 +1032,7 @@ continues
 contract
 contracts
 contrast
+contributes
 control
 control-agnostic
 control-edge
@@ -1040,6 +1070,10 @@ count
 countdown
 counters
 counting
+countries
+country
+country/territory
+countryLabel
 counts
 cover
 covered
@@ -1252,6 +1286,8 @@ data-incentive
 data-incentive-icon
 data-indicator
 data-indicator-marker
+data-inline-edit
+data-inline-edit-value
 data-kbd
 data-link
 data-link-preview-surface
@@ -1310,14 +1346,17 @@ data-page-heading-context
 data-pagination
 data-panel-open
 data-phase-summary
+data-phone-input
 data-phone-mockup
 data-phone-mockup-chrome
 data-phone-mockup-viewport
+data-phone-value
 data-pill
 data-pill-dismiss
 data-playback-controls
 data-popover-surface
 data-popover-trigger
+data-presentation
 data-primary-overflow-item
 data-product-feature
 data-product-feature-actions
@@ -1366,6 +1405,7 @@ data-review-actions
 data-review-author
 data-review-body
 data-review-content
+data-saved-value
 data-scroll-area
 data-search-select
 data-search-select-surface
@@ -1375,6 +1415,9 @@ data-section-heading-title
 data-segment-fill
 data-segmented
 data-selected
+data-settings-row
+data-settings-row-actions
+data-settings-row-control
 data-shape
 data-shopping-cart
 data-side
@@ -1486,6 +1529,7 @@ days
 dd
 debug
 decagon
+decide
 decided
 decides
 deciding
@@ -1502,6 +1546,7 @@ decrement
 deeper
 default
 defaultChecked
+defaultCountry
 defaultEditing
 defaultPressed
 defaultPrevented
@@ -1517,6 +1562,9 @@ degraded
 delay
 delayDuration
 delays
+deleteContentBackward
+deleteContentForward
+deletion
 deliberately
 denied
 dense
@@ -1531,6 +1579,7 @@ descendant
 describedBy
 describes
 description
+description/error
 descriptionList
 descriptions
 desktop
@@ -1540,6 +1589,7 @@ destroy
 destructive
 detail
 details
+detection
 determinate
 deterministic
 dev
@@ -1552,6 +1602,8 @@ dialogs
 diamond
 diff
 different
+digit
+digitPosition
 digits
 dimension
 dimensions
@@ -1567,6 +1619,7 @@ disabled
 disabled:cursor-not-allowed
 disabled:opacity-50
 disabled:pointer-events-none
+disagree
 discards
 disclosure
 disclosures
@@ -1581,6 +1634,7 @@ dispatching
 displace
 display
 display-only
+displayed
 dispose
 disposed
 distance
@@ -1611,6 +1665,7 @@ down
 download
 draft
 draftRef
+drafts
 drag
 dragged
 dragging
@@ -1642,6 +1697,7 @@ edge-anchored
 edges
 edit
 editLabel
+editVisibility
 editable
 editable-lg
 editable-md
@@ -1649,6 +1705,7 @@ editable-sm
 edited
 editing
 editor
+edits
 effects
 either
 element
@@ -1666,6 +1723,7 @@ emitted
 emitting
 emphasis
 empty
+empty/national
 emptyLabel
 emptyState
 emptyText
@@ -1705,6 +1763,7 @@ establishes
 estimate
 even
 event
+events
 ever
 every
 everything
@@ -1780,6 +1839,7 @@ fetched
 few
 field
 field-group
+fieldAssociation
 fieldClass
 fieldError
 fields
@@ -1818,6 +1878,7 @@ fixed
 fixed-aspect
 fixed-position
 fixedWeeks
+flag
 flat
 flatten
 flex
@@ -1899,6 +1960,7 @@ form
 format
 formatValue
 formatted
+formatter
 formatting
 former
 formerly
@@ -1916,12 +1978,14 @@ framework-neutral
 frameworks
 free
 from
+fromContent
 fromId
 fulfilment
 full
 full-height
 full-strength
 full-weight
+full-width
 fullWidth
 function
 functions
@@ -1945,6 +2009,7 @@ gates
 generated
 generation
 genuinely
+geographic
 geometry
 get
 gets
@@ -1974,6 +2039,7 @@ grid-cols-[auto_1fr]
 grid-cols-[auto_minmax(0,1fr)]
 grid-cols-[auto_minmax(0,1fr)_auto]
 grid-cols-[calc(var(--reddb-spatial-control-height-md)*2)_minmax(0,1fr)]
+grid-cols-[minmax(0,14ch)_minmax(0,1fr)]
 grid-cols-[minmax(0,1fr)]
 grid-cols-[minmax(0,1fr)_0]
 grid-cols-[minmax(0,1fr)_auto]
@@ -1995,11 +2061,14 @@ group
 group-aria-expanded:rotate-180
 group-data-[highlighted]:text-foreground
 group-disabled/fieldset:text-ink-muted
+group-focus-within/inline-edit:opacity-100
 group-has-[:is(input,select,textarea,button):disabled]/field:cursor-not-allowed
 group-has-[:is(input,select,textarea,button):disabled]/field:text-ink-muted
+group-hover/inline-edit:opacity-100
 group-last:after:hidden
 group/field
 group/fieldset
+group/inline-edit
 grouped
 groups
 grow
@@ -2046,8 +2115,10 @@ has-checked:hover:bg-foreground/10
 has-disabled:cursor-not-allowed
 has-disabled:opacity-50
 has-disabled:text-ink-muted
+hasAccessibleName
 hasActions
 hasBody
+hasExtension
 hasFooterSlot
 hasHeader
 hasHeaderSlot
@@ -2106,6 +2177,7 @@ host
 hour
 hours
 hover
+hover/focus.
 hover:bg-control-edge
 hover:bg-feedback-danger-fill-active
 hover:bg-feedback-danger-surface
@@ -2160,9 +2232,11 @@ imageClass
 imagery
 img
 implementation
+implicit
 implied
 import
 important
+imported
 importing
 imports
 in
@@ -2186,6 +2260,7 @@ index
 indicator
 individual
 inert
+infer
 inferred
 info
 information
@@ -2211,7 +2286,10 @@ innerWidth
 innermost
 input
 inputClass
+inputIcon
 inputMode
+inputStyle
+inputType
 inputValue
 inset
 inset-0
@@ -2224,6 +2302,7 @@ installs
 instanceof
 instead
 integer
+integration
 intended
 intent
 intentionally
@@ -2234,6 +2313,7 @@ interactive
 intercept
 interface
 intermediate
+international
 interpolate
 interval
 into
@@ -2241,6 +2321,7 @@ intrinsic
 intrinsically
 introduces
 invalid
+invalidMessage
 invalidated
 invent
 invents
@@ -2256,8 +2337,10 @@ isDateDisabled
 isDateUnavailable
 isDeterminate
 isDropdownMenuGroup
+isEventFromModal
 isNavigationMenuSection
 island
+iso
 isolate
 issue
 it
@@ -2310,7 +2393,9 @@ known
 knows
 label
 labelHidden
+labelId
 labelled
+labelledBy
 labels
 laid
 laid-out
@@ -2322,6 +2407,7 @@ large
 larger
 largest
 last
+last:border-b-0
 last:border-e-0
 last:pb-0
 last:rounded-e-md
@@ -2371,6 +2457,7 @@ level
 level-1
 lg
 li
+libphonenumber-js/min
 licence
 licensed
 lie
@@ -2406,10 +2493,13 @@ live
 lives
 loading
 loadingIndicator
+loads
 local
 localStorage
 locale
 locales
+localized
+localized/English
 location
 lock
 locked
@@ -2456,6 +2546,7 @@ marketing
 marking
 marks
 markup
+masked
 masthead
 match
 matchMedia
@@ -2543,6 +2634,7 @@ measured
 measurement
 measures
 mechanical
+mechanics
 media
 media/content
 mediaClass
@@ -2555,6 +2647,7 @@ menuId
 menuLabel
 menubar
 menus
+merely
 merged
 merger
 message
@@ -2580,6 +2673,7 @@ min-w-48
 min-w-5
 min-w-64
 min-w-[5ch]
+min-w-[min(32ch,calc(100vw-var(--reddb-spatial-inset-lg)*2))]
 min-w-[var(--reddb-spatial-control-height-sm)]
 min-w-[var(--reddb-spatial-icon-size-md)]
 min-w-max
@@ -2673,6 +2767,7 @@ narrowed
 narrower
 narrowest
 narrows
+national-number
 native
 naturalWidth
 nav
@@ -2694,6 +2789,7 @@ needs
 negative
 neither
 nested
+network
 neutral
 never
 new
@@ -2709,6 +2805,7 @@ noSubscription
 nobody
 node
 nodeBadge
+nodeType
 nodes
 non-HTTP
 non-colour
@@ -2783,10 +2880,12 @@ on
 on-feedback
 on-fill
 on-primary
+onBlur
 onChange
 onCheckedChange
 onClick
 onConfirm
+onCountryChange
 onError
 onFocus
 onInput
@@ -2835,6 +2934,7 @@ operational
 opposite
 opt-out
 option
+optionCache
 optionClass
 optionId
 optional
@@ -2847,12 +2947,15 @@ order-last
 orderHistory
 orderSummary
 ordered
+ordering/names
 orders
 ordinary
 org
+organization
 orientation
 origin
 original
+originating
 origins
 orphan
 other
@@ -2883,6 +2986,7 @@ overflowing
 overflows
 overlay
 overview
+overwritten
 own
 owned
 owner
@@ -2922,6 +3026,7 @@ paragraphs
 parent
 parse
 parseCalendarDate
+parseIncompletePhoneNumber
 parsed
 parses
 partial
@@ -2929,7 +3034,9 @@ parts
 pass
 passed
 passes
+password
 past
+paste
 patched
 path
 pathLength
@@ -2988,6 +3095,7 @@ persists
 person
 phase
 phone
+phoneInput
 phoneMockup
 phrase
 physics
@@ -3038,12 +3146,14 @@ positive
 possible
 possibleDate
 pr-[var(--reddb-spatial-control-height-md)]
+pragmatic
 pre
 precedence
 precedes
 preference
 prefers-reduced-motion
 prefix
+prepend
 prerendered
 presence
 present
@@ -3072,6 +3182,7 @@ primary
 primary-active
 printed
 priority
+problem
 produces
 product
 productFeature
@@ -3093,9 +3204,11 @@ proportions
 props
 prose
 protocol
+provenance
 provided
 provides
 ps-0
+ps-[var(--reddb-spatial-control-height-md)]
 ps-[var(--reddb-spatial-gap-sm)]
 ps-[var(--reddb-spatial-inset-md)]
 ps-[var(--reddb-spatial-layout-gap-md)]
@@ -3106,6 +3219,7 @@ publish
 published
 publishes
 pull
+punctuation
 purchase
 pure
 purpose
@@ -3148,6 +3262,7 @@ quota
 quotation
 quote
 quoteText
+quoted
 radialProgress
 radio
 radioGroup
@@ -3188,6 +3303,7 @@ reactive
 read
 readOnly
 readRow
+readText
 readable
 reader
 reading
@@ -3199,10 +3315,12 @@ real
 reason
 reasons
 reassigns
+receive
 received
 receives
 receiving
 recipe
+recipes
 recolor
 recoloring
 recolors
@@ -3216,6 +3334,7 @@ reduced
 reducedMotion
 redundant
 ref
+referenced
 refs
 refusal
 refuses
@@ -3251,6 +3370,7 @@ rename
 render
 rendered
 renderer
+renderers
 rendering
 renders
 rendersMain
@@ -3261,6 +3381,7 @@ repeated
 replace
 replacement
 replaces
+replacing
 replay
 report
 reports
@@ -3396,6 +3517,8 @@ sanitization
 satisfies
 saveErrorMessage
 saveLabel
+saved
+savedLabel
 saving
 say
 says
@@ -3412,6 +3535,7 @@ scopes
 score
 screen
 screen-reader
+screen-reader-only
 screens
 script
 scroll
@@ -3456,6 +3580,8 @@ selectedIndex
 selectedOptions
 selecting
 selection
+selectionEnd
+selectionStart
 selections
 selector
 selectors
@@ -3498,6 +3624,7 @@ setHovered
 setInvalid
 setLocal
 setLocalEditing
+setLocalized
 setMoreOpen
 setNames
 setOpen
@@ -3515,10 +3642,15 @@ setShown
 setStart
 setState
 setText
+setValue
 setVisible
 sets
+setting
+settings
+settingsRow
 settled
 several
+shadow
 shadow-elevation-overlay
 shadow-elevation-raised
 shadow-elevation-sunken
@@ -3538,6 +3670,7 @@ ships
 shoppingCart
 short
 shortcut
+shortcuts
 should
 show
 showClose
@@ -3553,6 +3686,7 @@ shrink
 shrink-0
 shrink-to-fit
 shrinking
+sibling
 side
 side-by-side
 sideOffset
@@ -3600,6 +3734,7 @@ skip-link
 skipDelayDuration
 skipLink
 skipped
+skipping
 skips
 slam
 slide
@@ -3749,6 +3884,7 @@ supplemental
 supplied
 supplies
 supply
+supported
 supporting
 supports
 surface
@@ -3802,6 +3938,8 @@ taskList
 tasks
 technology
 tel
+tel-national
+telephone
 tell
 tenth
 term
@@ -3855,6 +3993,7 @@ text-sm
 text-start
 text-title
 text-xs
+textContent
 textarea
 than
 that
@@ -3964,6 +4103,7 @@ translate-x-1/2
 translate-y-1/2
 translating
 translation
+translations
 transparent
 trap-focus
 trapScopeTab
@@ -4021,6 +4161,7 @@ unknown
 unlabelled
 unless
 unlike
+unmasked
 unmodified
 unnamed
 unordered
@@ -4028,6 +4169,7 @@ unpressed
 unreachable
 unread
 unrecognised
+unrestricted
 unscaled
 unsized
 until
@@ -4042,6 +4184,7 @@ upstream
 url
 usable
 use
+useAccessibleControl
 useBinaryChoice
 useControllableValue
 useGrouping
@@ -4074,6 +4217,7 @@ variants
 vendorable
 verification
 verified
+versions
 vertical
 very
 view
@@ -4119,6 +4263,8 @@ w-px
 wait
 waited
 wants
+warn
+warnA11y
 warnDeprecated
 warned
 warning
@@ -4127,6 +4273,7 @@ was
 wasOpen
 wave
 way
+ways
 wears
 week
 week-edge
@@ -4164,11 +4311,13 @@ width
 widths
 will
 will-change-[opacity,transform]
+willValidate
 win
 window
 windowMockup
 wins
 with
+withIcon
 within
 without
 word
@@ -4200,6 +4349,7 @@ xs
 year
 yearFormat
 years
+yield
 you
 z-10
 z-20

@@ -54,6 +54,7 @@ import { PhaseSummary } from "./PhaseSummary.js";
 import {
   PlaybackControls
 } from "./PlaybackControls.js";
+import { SettingsRow } from "./SettingsRow.js";
 export {
   ActionPanel,
   ActivityFeed,
@@ -86,6 +87,7 @@ export {
   ProductQuickview,
   PropertyPanel,
   Review,
+  SettingsRow,
   ShoppingCart,
   SidebarLayout,
   SidebarNavigation,

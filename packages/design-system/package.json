@@ -133,6 +133,10 @@
       "types": "./types/kits/app/react/src/Review.d.ts",
       "default": "./client/kits/app/react/src/Review.js"
     },
+    "./app/SettingsRow": {
+      "types": "./types/kits/app/react/src/SettingsRow.d.ts",
+      "default": "./client/kits/app/react/src/SettingsRow.js"
+    },
     "./app/ShoppingCart": {
       "types": "./types/kits/app/react/src/ShoppingCart.d.ts",
       "default": "./client/kits/app/react/src/ShoppingCart.js"
@@ -180,6 +184,10 @@
     "./app/Toolbar": {
       "types": "./types/kits/app/react/src/Toolbar.d.ts",
       "default": "./client/kits/app/react/src/Toolbar.js"
+    },
+    "./app/recipes": {
+      "types": "./types/kits/app/src/recipes.d.ts",
+      "default": "./client/kits/app/src/recipes.js"
     },
     "./base": {
       "types": "./types/kits/base/react/src/index.d.ts",
@@ -437,6 +445,10 @@
       "types": "./types/kits/base/react/src/Pagination.d.ts",
       "default": "./client/kits/base/react/src/Pagination.js"
     },
+    "./base/PhoneInput": {
+      "types": "./types/kits/base/react/src/PhoneInput.d.ts",
+      "default": "./client/kits/base/react/src/PhoneInput.js"
+    },
     "./base/PhoneMockup": {
       "types": "./types/kits/base/react/src/PhoneMockup.d.ts",
       "default": "./client/kits/base/react/src/PhoneMockup.js"
@@ -593,6 +605,14 @@
       "types": "./types/kits/base/react/src/WindowMockup.d.ts",
       "default": "./client/kits/base/react/src/WindowMockup.js"
     },
+    "./base/interaction": {
+      "types": "./types/kits/base/src/interaction.d.ts",
+      "default": "./client/kits/base/src/interaction.js"
+    },
+    "./base/recipes": {
+      "types": "./types/kits/base/src/recipes.d.ts",
+      "default": "./client/kits/base/src/recipes.js"
+    },
     "./color": "./layers/color/src/index.ts",
     "./styles.css": "./styles/all.css",
     "./styles/all.css": "./styles/all.css",
@@ -657,6 +677,10 @@
     "./contracts/product-feature": {
       "types": "./types/kits/app/src/composites/product-feature.variants.d.ts",
       "default": "./client/kits/app/src/composites/product-feature.variants.js"
+    },
+    "./contracts/settings-row": {
+      "types": "./types/kits/app/src/composites/settings-row.variants.d.ts",
+      "default": "./client/kits/app/src/composites/settings-row.variants.js"
     },
     "./contracts/product-quickview": {
       "types": "./types/kits/app/src/composites/product-quickview.variants.d.ts",
@@ -766,6 +790,7 @@
   "dependencies": {
     "@base-ui/react": "1.9.0",
     "@internationalized/date": "^3.12.4",
+    "libphonenumber-js": "1.13.15",
     "tailwind-variants": "^3.1.1"
   },
   "peerDependencies": {

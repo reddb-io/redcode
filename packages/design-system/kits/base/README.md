@@ -1405,3 +1405,78 @@ semantic value or announce intermediate numbers. `Transfer` takes `fromId`,
 `toId` and a changing `trigger` after the application has committed state. Both
 anchors remain application-owned; the decorative clone is inert, interruptible
 and removed under reduced motion, navigation, cancellation or unmount.
+
+### Saved values and explicit editing
+
+Use `InlineEdit` with `presentation="input"` for a committed value loaded from
+an API, file or other application-owned source. The read view is selectable HTML text, without a textbox, border or input focus stop.
+Only activating Edit mounts the native input. `sourceLabel` describes
+provenance; `savedLabel` defaults to `Saved`. Neither infers network state.
+
+`editVisibility="hover"` is optional: focus also reveals Edit, and touch always
+shows it. Save validates and awaits `onconfirm` (Svelte) or `onConfirm` (React)
+before committing. A rejected save retains the draft and announces the error;
+Escape or Cancel restores the committed value and returns focus to Edit.
+Pass an optional `icon` glyph (for example Phone) and `inputType="tel"` for a saved
+telephone number. The glyph stays decorative in both states; passwords remain
+masked in the read view.
+InlineEdit owns its edit form; do not nest it inside another form.
+
+```svelte
+<InlineEdit label="Project name" presentation="input" sourceLabel="Configuration API"
+  bind:value={projectName} onconfirm={saveProjectName} />
+```
+
+```tsx
+<InlineEdit label="Project name" presentation="input" sourceLabel="Configuration API"
+  value={projectName} onValueChange={setProjectName} onConfirm={saveProjectName} />
+```
+
+### Renderer-free extension seams
+
+Import visual recipes from `@reddb-io/design-system/base/recipes`, never from a
+component barrel when implementing portable styling. This seam has no React,
+Svelte, behavior adapter or chart-engine dependency. Each other Kit exposes its
+own `/recipes` seam as well; Sync preserves it in source and compiled delivery.
+
+A host shell that handles Escape must yield events from a modal:
+
+```ts
+import { isEventFromModal } from "@reddb-io/design-system/base/interaction";
+function onKeyDown(event: KeyboardEvent) {
+  if (event.defaultPrevented || isEventFromModal(event)) return;
+  if (event.key === "Escape") closeHost();
+}
+```
+
+Pass `event.nativeEvent` from a React event handler. This permits managed popups
+to consume Escape before the Dialog, and the Dialog before the host. The modal
+retains native focus containment and restores its trigger on close.
+
+## International phone entry
+
+`PhoneInput` uses country metadata to format national numbers while editing.
+The country picker shows flags and calling codes, and searches localized names,
+English names, ISO codes and DDIs. `locale` controls country names; it never
+infers location. Set `defaultCountry` explicitly (the fallback is `US`) and
+optionally restrict `countries`. International paste infers the actual country;
+a pasted number outside the allowlist is retained but blocks submission.
+
+`value`, `defaultValue`, `onvaluechange` (Svelte), `onValueChange` (React) and
+the single named `FormData` entry use an **unmasked international string**,
+for example `+5511999991234`. The plus sign is retained; spaces, parentheses,
+hyphens and national trunk prefixes are removed. Draft values can be incomplete;
+native form validation blocks incomplete/unsupported numbers, and `required`
+blocks empty values. Length/structure checks do not verify number ownership.
+`help`, `error`, `disabled`, `form`, reset and `controlSize` retain native field
+semantics. Disabled values are omitted.
+
+Use `presentation="text"` and optional `sourceLabel` for selectable saved HTML
+text. The application owns Edit/Save/Cancel and persistence, switching to
+`presentation="input"` for a draft. See `/kit/phone-input` and
+`/examples/phone-forms` for both flavors and actual form payloads.
+
+Import `PhoneInput` from the canonical Base Kit. Its pinned
+`libphonenumber-js/min` engine and metadata are component-scoped; unrelated
+components retain their tree-shaking boundary. Flags need no image bundle or
+external requests. Sync selects `framework: "react"` or `"svelte"`.

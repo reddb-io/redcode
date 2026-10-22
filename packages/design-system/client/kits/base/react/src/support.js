@@ -1,4 +1,5 @@
 import { warnDeprecated } from "../../src/deprecation.js";
+import { warnA11y } from "../../src/core/a11y.js";
 import { typeRoleMerge } from "../../src/type-roles.js";
 import { SCHEMA_ORG, absoluteUrl, isAbsoluteUrl, jsonLdScript, serializeJsonLd, breadcrumbList } from "../../src/structured-data.js";
 import { card } from "../../src/card.variants.js";
@@ -39,5 +40,6 @@ export {
   useNativeFormReset,
   useNavigation,
   usePortalAppearance,
+  warnA11y,
   warnDeprecated
 };

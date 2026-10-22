@@ -10,12 +10,12 @@ export declare function searchSelectOptions(options: readonly SearchSelectOption
 export declare const searchSelect: import("tailwind-variants").TVReturnType<{
     [key: string]: {
         [key: string]: import("tailwind-variants").ClassValue | {
-            clear?: import("tailwind-variants").ClassValue;
-            content?: import("tailwind-variants").ClassValue;
-            root?: import("tailwind-variants").ClassValue;
             option?: import("tailwind-variants").ClassValue;
             search?: import("tailwind-variants").ClassValue;
             summary?: import("tailwind-variants").ClassValue;
+            clear?: import("tailwind-variants").ClassValue;
+            content?: import("tailwind-variants").ClassValue;
+            root?: import("tailwind-variants").ClassValue;
             list?: import("tailwind-variants").ClassValue;
             row?: import("tailwind-variants").ClassValue;
             placeholder?: import("tailwind-variants").ClassValue;
@@ -30,12 +30,12 @@ export declare const searchSelect: import("tailwind-variants").TVReturnType<{
 } | {
     [x: string]: {
         [x: string]: import("tailwind-variants").ClassValue | {
-            clear?: import("tailwind-variants").ClassValue;
-            content?: import("tailwind-variants").ClassValue;
-            root?: import("tailwind-variants").ClassValue;
             option?: import("tailwind-variants").ClassValue;
             search?: import("tailwind-variants").ClassValue;
             summary?: import("tailwind-variants").ClassValue;
+            clear?: import("tailwind-variants").ClassValue;
+            content?: import("tailwind-variants").ClassValue;
+            root?: import("tailwind-variants").ClassValue;
             list?: import("tailwind-variants").ClassValue;
             row?: import("tailwind-variants").ClassValue;
             placeholder?: import("tailwind-variants").ClassValue;
@@ -66,12 +66,12 @@ export declare const searchSelect: import("tailwind-variants").TVReturnType<{
 }, undefined, {
     [key: string]: {
         [key: string]: import("tailwind-variants").ClassValue | {
-            clear?: import("tailwind-variants").ClassValue;
-            content?: import("tailwind-variants").ClassValue;
-            root?: import("tailwind-variants").ClassValue;
             option?: import("tailwind-variants").ClassValue;
             search?: import("tailwind-variants").ClassValue;
             summary?: import("tailwind-variants").ClassValue;
+            clear?: import("tailwind-variants").ClassValue;
+            content?: import("tailwind-variants").ClassValue;
+            root?: import("tailwind-variants").ClassValue;
             list?: import("tailwind-variants").ClassValue;
             row?: import("tailwind-variants").ClassValue;
             placeholder?: import("tailwind-variants").ClassValue;

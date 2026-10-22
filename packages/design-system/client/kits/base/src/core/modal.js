@@ -1,4 +1,12 @@
 const locks = /* @__PURE__ */ new WeakMap();
+function isEventFromModal(event) {
+  const path = event.composedPath();
+  const targets = path.length ? path : [event.target];
+  return targets.some((target) => {
+    const element = target;
+    return element?.nodeType === 1 && typeof element.closest === "function" && element.closest('dialog[open], [role="dialog"][aria-modal="true"], [role="alertdialog"][aria-modal="true"]') !== null;
+  });
+}
 const modalFocusable = 'button:not([disabled]),a[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
 function createModalController(dialog, options) {
   const document = dialog.ownerDocument;
@@ -90,5 +98,6 @@ function createModalController(dialog, options) {
 }
 export {
   createModalController,
+  isEventFromModal,
   modalFocusable
 };

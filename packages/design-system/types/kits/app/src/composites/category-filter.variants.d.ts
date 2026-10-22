@@ -12,16 +12,16 @@ export interface CategoryFilterOption {
 export declare const categoryFilter: import("tailwind-variants").TVReturnType<{
     [key: string]: {
         [key: string]: import("tailwind-variants").ClassValue | {
-            root?: import("tailwind-variants").ClassValue;
             option?: import("tailwind-variants").ClassValue;
+            root?: import("tailwind-variants").ClassValue;
             list?: import("tailwind-variants").ClassValue;
         };
     };
 } | {
     [x: string]: {
         [x: string]: import("tailwind-variants").ClassValue | {
-            root?: import("tailwind-variants").ClassValue;
             option?: import("tailwind-variants").ClassValue;
+            root?: import("tailwind-variants").ClassValue;
             list?: import("tailwind-variants").ClassValue;
         };
     };
@@ -32,8 +32,8 @@ export declare const categoryFilter: import("tailwind-variants").TVReturnType<{
 }, undefined, {
     [key: string]: {
         [key: string]: import("tailwind-variants").ClassValue | {
-            root?: import("tailwind-variants").ClassValue;
             option?: import("tailwind-variants").ClassValue;
+            root?: import("tailwind-variants").ClassValue;
             list?: import("tailwind-variants").ClassValue;
         };
     };

@@ -1,6 +1,9 @@
 import { type Ref } from "react";
+import { type IconGlyph } from "./Icon";
 import { type InlineEditContract } from "../../src/core/inline-edit";
 export interface InlineEditProps extends Omit<InlineEditContract, "maxlength"> {
+    /** Optional decorative glyph, rendered through Icon in both the read view and editor. */
+    icon?: IconGlyph;
     /** Reports a committed value after validation and persistence succeed. */
     onValueChange?: (value: string) => void;
     /** Reports a request to enter or exit editing. */
@@ -14,4 +17,4 @@ export interface InlineEditProps extends Omit<InlineEditContract, "maxlength"> {
     /** Native field-group ref. */
     ref?: Ref<HTMLDivElement>;
 }
-export declare function InlineEdit({ label, value, editing, defaultEditing, onValueChange, onEditingChange, validate, onConfirm, disabled, required, maxLength, emptyLabel, editLabel, saveLabel, cancelLabel, requiredMessage, saveErrorMessage, className, ref }: InlineEditProps): import("react").JSX.Element;
+export declare function InlineEdit({ label, icon, presentation, editVisibility, sourceLabel, savedLabel, inputType, value, editing, defaultEditing, onValueChange, onEditingChange, validate, onConfirm, disabled, required, maxLength, emptyLabel, editLabel, saveLabel, cancelLabel, requiredMessage, saveErrorMessage, className, ref }: InlineEditProps): import("react").JSX.Element;

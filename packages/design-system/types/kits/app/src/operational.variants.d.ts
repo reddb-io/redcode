@@ -3,8 +3,8 @@ export declare const operational: import("tailwind-variants").TVReturnType<{
         [key: string]: import("tailwind-variants").ClassValue | {
             title?: import("tailwind-variants").ClassValue;
             body?: import("tailwind-variants").ClassValue;
-            root?: import("tailwind-variants").ClassValue;
             header?: import("tailwind-variants").ClassValue;
+            root?: import("tailwind-variants").ClassValue;
             list?: import("tailwind-variants").ClassValue;
             row?: import("tailwind-variants").ClassValue;
             description?: import("tailwind-variants").ClassValue;
@@ -21,8 +21,8 @@ export declare const operational: import("tailwind-variants").TVReturnType<{
         [x: string]: import("tailwind-variants").ClassValue | {
             title?: import("tailwind-variants").ClassValue;
             body?: import("tailwind-variants").ClassValue;
-            root?: import("tailwind-variants").ClassValue;
             header?: import("tailwind-variants").ClassValue;
+            root?: import("tailwind-variants").ClassValue;
             list?: import("tailwind-variants").ClassValue;
             row?: import("tailwind-variants").ClassValue;
             description?: import("tailwind-variants").ClassValue;
@@ -53,8 +53,8 @@ export declare const operational: import("tailwind-variants").TVReturnType<{
         [key: string]: import("tailwind-variants").ClassValue | {
             title?: import("tailwind-variants").ClassValue;
             body?: import("tailwind-variants").ClassValue;
-            root?: import("tailwind-variants").ClassValue;
             header?: import("tailwind-variants").ClassValue;
+            root?: import("tailwind-variants").ClassValue;
             list?: import("tailwind-variants").ClassValue;
             row?: import("tailwind-variants").ClassValue;
             description?: import("tailwind-variants").ClassValue;

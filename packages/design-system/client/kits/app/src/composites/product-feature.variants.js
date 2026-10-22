@@ -1,4 +1,4 @@
-import { mediaObject } from "@reddb-io/design-system/base";
+import { mediaObject } from "@reddb-io/design-system/base/recipes";
 import { tv } from "tailwind-variants";
 const ROOT = mediaObject({ gap: "lg" }).root({
   class: "@container/product-feature w-full flex-wrap gap-[var(--reddb-spatial-layout-gap-md)]"

@@ -1,4 +1,4 @@
-import { popover } from "@reddb-io/design-system/base";
+import { popover } from "@reddb-io/design-system/base/recipes";
 import { tv } from "tailwind-variants";
 const speedDial = tv({
   slots: {

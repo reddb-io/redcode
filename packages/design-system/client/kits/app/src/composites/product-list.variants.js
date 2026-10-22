@@ -1,4 +1,4 @@
-import { gridList, list } from "@reddb-io/design-system/base";
+import { gridList, list } from "@reddb-io/design-system/base/recipes";
 import { tv } from "tailwind-variants";
 const ROOT = list({
   gap: "md",
