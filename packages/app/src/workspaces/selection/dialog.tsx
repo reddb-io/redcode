@@ -1,10 +1,12 @@
 import "@pierre/trees/web-components"
 import { FileTree } from "@pierre/trees"
-import { Dialog, DialogBody, DialogFooter, DialogHeader, DialogTitle } from "@opencode/ui/dialog"
-import { Button } from "@opencode/ui/button"
-import { TextInput } from "@opencode/ui/text-input"
-import { useDialog } from "@opencode/ui/context/dialog"
-import { createEffect, createMemo, createResource, createSignal, For, onCleanup, onMount, Show } from "solid-js"
+import { createEffect, createMemo, createResource, onCleanup } from "solid-js"
+import { createStore } from "solid-js/store"
+import { useNativeDialog } from "@/runtime/react/dialog"
+import { sharedLanguage } from "@/runtime/react/language"
+import { sharedSource } from "@/runtime/react/source"
+import { ReactView } from "@/runtime/react/view"
+import { DirectoryPickerView } from "./dialog.react"
 import { useGlobal } from "@/runtime/server/runtime"
 import { useLanguage } from "@/runtime/i18n/language"
 import { ServerConnection } from "@/runtime/server/registry"
@@ -31,7 +33,6 @@ import {
   pickerAbsolutePath,
 } from "./domain"
 import "./dialog.css"
-import { Divider } from "@opencode/ui/divider"
 
 interface DirectoryPickerDialogProps {
   title?: string
@@ -43,10 +44,12 @@ interface DirectoryPickerDialogProps {
   start?: string
 }
 
-export function DirectoryPickerDialog(props: DirectoryPickerDialogProps) {
+export function createDirectoryPickerServices(props: DirectoryPickerDialogProps) {
   const global = useGlobal()
-  const { sync, sdk } = global.ensureServerCtx(props.server)
-  const dialog = useDialog()
+  const context = global.ensureServerCtx(props.server)
+  const sync = context.sync
+  const sdk = context.sdk
+  const modal = useNativeDialog()
   const language = useLanguage()
   const policy = pickerMode(props.mode ?? "directory", props.start)
 
@@ -55,20 +58,21 @@ export function DirectoryPickerDialog(props: DirectoryPickerDialogProps) {
     directory: language.t("dialog.directory.action.selectFolder"),
   }
 
-  const [root, setRoot] = createSignal("")
-  const [input, setInput] = createSignal("")
-  const [selected, setSelected] = createSignal("")
-  const [suggestionsOpen, setSuggestionsOpen] = createSignal(false)
-  const [activeSuggestion, setActiveSuggestion] = createSignal(-1)
-  const [loading, setLoading] = createSignal(false)
-  const [error, setError] = createSignal(false)
-  const [rootValid, setRootValid] = createSignal(false)
+  const [state, setState] = createStore({
+    root: "",
+    input: "",
+    selected: "",
+    suggestionsOpen: false,
+    activeSuggestion: -1,
+    loading: false,
+    error: false,
+    rootValid: false,
+    mounted: false,
+  })
   const listings = new Map<string, Promise<Array<{ name: string; type: "file" | "directory" }> | undefined>>()
   const loads = createPriorityTaskQueue<Array<{ name: string; type: "file" | "directory" }> | undefined>(3)
   const advanced = new Set<string>()
   let tree: FileTree | undefined
-  let container: HTMLDivElement | undefined
-  let pathArea: HTMLDivElement | undefined
   let navigation = 0
 
   const [fallbackPath] = createResource(
@@ -94,51 +98,54 @@ export function DirectoryPickerDialog(props: DirectoryPickerDialogProps) {
       fallbackPath.latest?.directory,
   )
 
-  const search = createDirectorySearch({ sdk, home, location, base: () => root() || start() })
+  const search = createDirectorySearch({ sdk, home, location, base: () => state.root || start() })
 
-  const [suggestions] = createResource(input, async (value) => {
-    const cleaned = cleanPickerInput(value)
-    const typed = cleaned.replace(/\/+$/, "")
-    const current = displayPickerPath(root(), value, home()).replace(/\/+$/, "")
+  const [suggestions] = createResource(
+    () => state.input,
+    async (value) => {
+      const cleaned = cleanPickerInput(value)
+      const typed = cleaned.replace(/\/+$/, "")
+      const current = displayPickerPath(state.root, value, home()).replace(/\/+$/, "")
 
-    if (!cleaned || (root() && typed === current)) return { query: value, items: [] }
-    const directories = (await search(value)).map((absolute) => ({ absolute, type: "directory" as const }))
+      if (!cleaned || (state.root && typed === current)) return { query: value, items: [] }
+      const directories = (await search(value)).map((absolute) => ({ absolute, type: "directory" as const }))
 
-    if (!policy.includeFiles) return { query: value, items: directories.slice(0, 5) }
-    const base = location()?.directory
+      if (!policy.includeFiles) return { query: value, items: directories.slice(0, 5) }
+      const base = location()?.directory
 
-    if (!base) return { query: value, items: directories.slice(0, 5) }
-    const query = pickerRelativePath(base, pickerAbsoluteInput(cleaned, home(), root() || base))
+      if (!base) return { query: value, items: directories.slice(0, 5) }
+      const query = pickerRelativePath(base, pickerAbsoluteInput(cleaned, home(), state.root || base))
 
-    if (query === undefined) return { query: value, items: directories.slice(0, 5) }
+      if (query === undefined) return { query: value, items: directories.slice(0, 5) }
 
-    const files = await sdk.api.file
-      .find({
-        location: location(),
-        query,
-        type: "file",
-        limit: 20,
-      })
-      .then((result) => result.data)
-      .catch(() => [])
+      const files = await sdk.api.file
+        .find({
+          location: location(),
+          query,
+          type: "file",
+          limit: 20,
+        })
+        .then((result) => result.data)
+        .catch(() => [])
 
-    const results = [
-      ...directories,
-      ...files.map((entry) => ({ absolute: pickerAbsolutePath(entry.path, base), type: "file" as const })),
-    ]
+      const results = [
+        ...directories,
+        ...files.map((entry) => ({ absolute: pickerAbsolutePath(entry.path, base), type: "file" as const })),
+      ]
 
-    return {
-      query: value,
-      items: Array.from(new Map(results.map((result) => [result.absolute, result])).values()).slice(0, 8),
-    }
-  })
+      return {
+        query: value,
+        items: Array.from(new Map(results.map((result) => [result.absolute, result])).values()).slice(0, 8),
+      }
+    },
+  )
 
-  const currentSuggestions = createMemo(() => currentPickerSuggestions(suggestions.latest, input()))
+  const currentSuggestions = createMemo(() => currentPickerSuggestions(suggestions.latest, state.input))
 
   async function load(path: string, generation: number, eager = false) {
     const key = path.replace(/\/+$/, "")
-    setError(false)
-    const absolute = absoluteTreePath(root(), key)
+    setState("error", false)
+    const absolute = absoluteTreePath(state.root, key)
     const existing = listings.get(key)
 
     if (existing && !eager) loads.promote(`${generation}:${key}`)
@@ -162,7 +169,7 @@ export function DirectoryPickerDialog(props: DirectoryPickerDialogProps) {
     if (!nodes) {
       listings.delete(key)
 
-      if (!key) setError(true)
+      if (!key) setState("error", true)
 
       return false
     }
@@ -177,39 +184,44 @@ export function DirectoryPickerDialog(props: DirectoryPickerDialogProps) {
   }
 
   async function navigate(path: string) {
-    const value = policy.navigation(pickerAbsoluteInput(cleanPickerInput(path), home(), root() || start() || home()))
+    const value = policy.navigation(
+      pickerAbsoluteInput(cleanPickerInput(path), home(), state.root || start() || home()),
+    )
 
     if (!value) return
     const token = ++navigation
-    setLoading(true)
-    setRootValid(false)
-    setSelected("")
-    setSuggestionsOpen(false)
-    setActiveSuggestion(-1)
-    setRoot(value)
-    setInput(displayPickerPath(value, value, home()))
+    setState("loading", true)
+    setState("rootValid", false)
+    setState("selected", "")
+    setState("suggestionsOpen", false)
+    setState("activeSuggestion", -1)
+    setState("root", value)
+    setState("input", displayPickerPath(value, value, home()))
     listings.clear()
     advanced.clear()
     tree?.resetPaths([])
     const valid = await load("", token)
 
     if (!activeTreeNavigation(token, navigation)) return
-    setRootValid(valid)
-    setLoading(false)
+    setState("rootValid", valid)
+    setState("loading", false)
   }
 
   function complete() {
     const items = currentSuggestions()
-    const match = items[activeSuggestion()] ?? items[0]
+    const match = items[state.activeSuggestion] ?? items[0]
 
     if (!match) return
-    const value = displayPickerPath(match.absolute, input(), home())
-    setInput(match.type === "directory" && !value.endsWith("/") ? value + "/" : value)
+    const value = displayPickerPath(match.absolute, state.input, home())
+    setState("input", match.type === "directory" && !value.endsWith("/") ? value + "/" : value)
 
     if (match.type === "file") {
-      setSelected(policy.selection(root(), pickerFileSearchQuery(root(), match.absolute, home())) ?? "")
-      setSuggestionsOpen(false)
-      setActiveSuggestion(-1)
+      setState(
+        "selected",
+        policy.selection(state.root, pickerFileSearchQuery(state.root, match.absolute, home())) ?? "",
+      )
+      setState("suggestionsOpen", false)
+      setState("activeSuggestion", -1)
     }
   }
 
@@ -220,21 +232,24 @@ export function DirectoryPickerDialog(props: DirectoryPickerDialogProps) {
       return
     }
 
-    setInput(displayPickerPath(suggestion.absolute, input(), home()))
-    setSelected(policy.selection(root(), pickerFileSearchQuery(root(), suggestion.absolute, home())) ?? "")
-    setSuggestionsOpen(false)
-    setActiveSuggestion(-1)
+    setState("input", displayPickerPath(suggestion.absolute, state.input, home()))
+    setState(
+      "selected",
+      policy.selection(state.root, pickerFileSearchQuery(state.root, suggestion.absolute, home())) ?? "",
+    )
+    setState("suggestionsOpen", false)
+    setState("activeSuggestion", -1)
   }
 
   function moveSuggestion(delta: -1 | 1) {
-    setSuggestionsOpen(true)
-    setActiveSuggestion((current) => nextSuggestionIndex(current, delta, currentSuggestions().length))
+    setState("suggestionsOpen", true)
+    setState("activeSuggestion", (current) => nextSuggestionIndex(current, delta, currentSuggestions().length))
   }
 
   function activeSuggestionValue() {
     const items = currentSuggestions()
 
-    return items[activeSuggestion()] ?? items[0]
+    return items[state.activeSuggestion] ?? items[0]
   }
 
   const keyActions = new Map([
@@ -247,7 +262,7 @@ export function DirectoryPickerDialog(props: DirectoryPickerDialogProps) {
 
         if (suggestion) chooseSuggestion(suggestion)
 
-        if (!suggestion) void navigate(input())
+        if (!suggestion) void navigate(state.input)
       },
     ],
     ["Tab", complete],
@@ -264,22 +279,14 @@ export function DirectoryPickerDialog(props: DirectoryPickerDialogProps) {
   }
 
   function resolve() {
-    const path = policy.result(root(), selected(), rootValid())
+    const path = policy.result(state.root, state.selected, state.rootValid)
 
     if (!path) return
     props.onSelect(props.multiple ? [path] : path)
-    dialog.close()
+    modal.close()
   }
 
-  onMount(() => {
-    const closeSuggestions = (event: PointerEvent) => {
-      if (event.target instanceof Node && pathArea?.contains(event.target)) return
-      setSuggestionsOpen(false)
-      setActiveSuggestion(-1)
-    }
-
-    document.addEventListener("pointerdown", closeSuggestions)
-    onCleanup(() => document.removeEventListener("pointerdown", closeSuggestions))
+  const mountTree = (container: HTMLDivElement) => {
     tree = new FileTree({
       paths: [],
       flattenEmptyDirectories: false,
@@ -307,127 +314,70 @@ export function DirectoryPickerDialog(props: DirectoryPickerDialogProps) {
       },
       onSelectionChange(paths) {
         const path = paths.at(-1)
-        setSelected(path ? (policy.selection(root(), path) ?? "") : "")
+        setState("selected", path ? (policy.selection(state.root, path) ?? "") : "")
       },
     })
 
-    if (!container) return
     tree.render({ containerWrapper: container })
     tree.getFileTreeContainer()?.classList.add("directory-picker-tree")
-  })
+    setState("mounted", true)
+    return () => {
+      tree?.cleanUp()
+      tree = undefined
+      setState("mounted", false)
+    }
+  }
 
   createEffect(() => {
     const path = start()
 
-    if (!path || !location() || root()) return
+    if (!state.mounted || !path || !location() || state.root) return
     void navigate(path)
   })
 
   onCleanup(() => tree?.cleanUp())
 
-  return (
-    <Dialog size="large" class="directory-picker">
-      <DialogHeader>
-        <DialogTitle>{props.title ?? language.t("command.project.open")}</DialogTitle>
-      </DialogHeader>
-      <Divider />
-      <DialogBody class="directory-picker-body pt-4!">
-        <div class="directory-picker-path" ref={pathArea}>
-          <TextInput
-            value={input()}
-            autofocus
-            autocomplete="off"
-            spellcheck={false}
-            class="!w-full"
-            onInput={(event) => {
-              setInput(cleanPickerInput(event.currentTarget.value))
-              setSelected("")
-              setSuggestionsOpen(true)
-              setActiveSuggestion(-1)
-            }}
-            role="combobox"
-            aria-autocomplete="list"
-            aria-expanded={suggestionsOpen()}
-            aria-controls="directory-picker-suggestions"
-            aria-activedescendant={
-              activeSuggestion() >= 0 ? `directory-picker-suggestion-${activeSuggestion()}` : undefined
-            }
-            onKeyDown={handleInputKey}
-          />
-          <div class="directory-picker-actions">
-            <Button size="small" variant="ghost" onClick={() => void navigate(home())}>
-              ~
-            </Button>
-            <Button size="small" variant="ghost" onClick={() => void navigate(pickerRoot(root()) || root())}>
-              {language.t("dialog.directory.root")}
-            </Button>
-            <Button size="small" variant="ghost" onClick={() => void navigate(pickerParent(root()))}>
-              {language.t("dialog.directory.parent")}
-            </Button>
-          </div>
-          <Show when={suggestionsOpen() && currentSuggestions().length > 0}>
-            <div id="directory-picker-suggestions" role="listbox" class="directory-picker-suggestions">
-              <For each={currentSuggestions()}>
-                {(suggestion, index) => (
-                  <button
-                    id={`directory-picker-suggestion-${index()}`}
-                    data-directory-path={suggestion.absolute}
-                    role="option"
-                    aria-selected={index() === activeSuggestion()}
-                    data-active={index() === activeSuggestion() ? "" : undefined}
-                    onPointerMove={() => setActiveSuggestion(index())}
-                    onClick={() => chooseSuggestion(suggestion)}
-                  >
-                    {displayPickerPath(suggestion.absolute, input(), home())}
-                    {suggestion.type === "directory" ? "/" : ""}
-                  </button>
-                )}
-              </For>
-            </div>
-          </Show>
-        </div>
-        <div
-          class="directory-picker-browser"
-          ref={container}
-          // The modal's scroll lock sees only the shadow host, not the tree's inner scroller.
-          on:touchmove={(event) => event.stopPropagation()}
-          onWheel={(event) => {
-            const scroller = tree
-              ?.getFileTreeContainer()
-              ?.shadowRoot?.querySelector<HTMLElement>("[data-file-tree-virtualized-scroll]")
+  return {
+    snapshot: sharedSource(() => ({
+      language: sharedLanguage(language),
+      open: modal.open(),
+      title: props.title ?? language.t("command.project.open"),
+      action: action[policy.action],
+      state: { ...state },
+      result: policy.result(state.root, state.selected, state.rootValid),
+      suggestions: currentSuggestions().map((suggestion) => ({
+        ...suggestion,
+        label:
+          displayPickerPath(suggestion.absolute, state.input, home()) + (suggestion.type === "directory" ? "/" : ""),
+      })),
+    })),
+    input: (value: string) =>
+      setState({ input: cleanPickerInput(value), selected: "", suggestionsOpen: true, activeSuggestion: -1 }),
+    active: (index: number) => setState("activeSuggestion", index),
+    hideSuggestions: () => setState({ suggestionsOpen: false, activeSuggestion: -1 }),
+    home: () => void navigate(home()),
+    root: () => void navigate(pickerRoot(state.root) || state.root),
+    parent: () => void navigate(pickerParent(state.root)),
+    handleInputKey,
+    chooseSuggestion,
+    mountTree,
+    scrollTree: (deltaY: number) => {
+      const scroller = tree
+        ?.getFileTreeContainer()
+        ?.shadowRoot?.querySelector<HTMLElement>("[data-file-tree-virtualized-scroll]")
+      if (!scroller) return false
+      const next = nextTreeScrollTop(scroller.scrollTop, deltaY, scroller.scrollHeight, scroller.clientHeight)
+      if (next === scroller.scrollTop) return false
+      scroller.scrollTop = next
+      scroller.dispatchEvent(new Event("scroll"))
+      return true
+    },
+    resolve,
+    close: modal.close,
+  }
+}
 
-            if (!scroller) return
-
-            const next = nextTreeScrollTop(
-              scroller.scrollTop,
-              event.deltaY,
-              scroller.scrollHeight,
-              scroller.clientHeight,
-            )
-
-            if (next === scroller.scrollTop) return
-            event.preventDefault()
-            scroller.scrollTop = next
-            scroller.dispatchEvent(new Event("scroll"))
-          }}
-        >
-          <Show when={loading()}>
-            <div class="directory-picker-state">{language.t("common.loading")}</div>
-          </Show>
-          <Show when={!loading() && error()}>
-            <div class="directory-picker-state">{language.t("dialog.directory.readError")}</div>
-          </Show>
-        </div>
-        <div class="directory-picker-selection">{policy.result(root(), selected(), rootValid())}</div>
-      </DialogBody>
-      <DialogFooter>
-        <Button variant="neutral" onClick={() => dialog.close()}>
-          {language.t("common.cancel")}
-        </Button>
-        <Button variant="contrast" disabled={!policy.result(root(), selected(), rootValid())} onClick={resolve}>
-          {action[policy.action]}
-        </Button>
-      </DialogFooter>
-    </Dialog>
-  )
+export function DirectoryPickerDialog(props: DirectoryPickerDialogProps) {
+  const services = createDirectoryPickerServices(props)
+  return <ReactView component={DirectoryPickerView} props={{ services }} />
 }

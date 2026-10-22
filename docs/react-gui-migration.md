@@ -48,10 +48,9 @@ Panel paint containment keeps scrolling inside the page across shared renderer
 scopes. Search retains ranking, keyboard navigation, grapheme-safe empty text,
 result focus, reveal highlights and scroll restoration.
 
-Shared Solid connection dialogs retain their existing controls. Their select
-popups declare the Kobalte top layer so the parent dialog does not hide a popup
-portal from assistive technology. The HTTPS keeper reproduced this failure
-before the fix, with visible options under an `aria-hidden` ancestor.
+Native connection dialogs and their popups own focus containment and dismissal.
+The retained Solid hosts pass existing service scopes to those renderers without
+mounting a second modal or focus trap.
 
 The surrounding frame, desktop navigation rail, project/session sidemenu, mobile
 dock and command palette now render in React as well. The frame uses the canonical
@@ -111,8 +110,20 @@ its persistent trigger before the selected row disappears.
 
 Connection services retain account activation, serial credential operations,
 two-step deletion, API-check evidence, explicit relay consent and scoped MCP
-requests. Provider sign-in and model selection still have separate Solid views;
-moving their saved-connections pane does not migrate those workflows.
+requests. Provider sign-in now uses native DS Dialog, Field, Input, RadioGroup,
+LoadingIndicator and ListRow. Its picker retains connection ordering, search and
+keyboard navigation. The existing controller still owns Location capture, OAuth
+polling/cancellation, command login, conditional answers and catalog refresh.
+React owns field drafts, numeric validation and custom choices. First-connection
+model selection uses native radios and hands the selected model to the existing
+draft or caller. The general model selector remains a separate next surface.
+
+The directory and file picker also uses a native dialog, path input, suggestions
+and actions. Its existing search, navigation generations, preload queue and
+file-selection policy remain service-owned. React owns the imperative FileTree
+mount and its wheel/touch listeners. The virtual tree remains the existing
+renderer-independent widget, including lazy directory loading and its shadow
+root; the DS does not expose that virtualization contract.
 
 The initial sign-in screen and add/edit server forms also render in React with
 native DS inputs, actions and Logo. Their existing health checks, pairing-token
@@ -389,3 +400,32 @@ part of the shipped application.
 This slice does not establish session-rendering latency parity. The earlier
 performance comparison remains unresolved, and the required production baseline
 must precede changes to session or timeline rendering.
+
+Provider authentication and directory-picker verification on 2026-10-22:
+
+- Seven focused development browser cases passed together: conditional answers,
+  hidden defaults, custom-answer retention, integer/key validation and recovery,
+  first-model handoff, command cancellation, OAuth code retry, Console device-code
+  fallback/cancellation on mobile, directory loading with older browser APIs,
+  project addition, server re-pairing and password replacement.
+- The Home server keepers now open the current Projects dropdown before acting
+  on a remote server. Their previous locators waited for a hidden retired panel.
+- An optimized browser run passed 61 cases across Settings, search and desktop
+  model pickers. Four mobile-model cases still reject the legacy row's 12px
+  vertical inset, expecting 16px; this pre-existing model-selector boundary is
+  the next migration surface. The run is not counted as a fully passing suite.
+- The authenticated production preview displayed the actual provider inventory
+  and OpenAI-compatible form. No credentials were submitted or sign-in started.
+  Visual inspection caught a duplicated title and native dialog auto-height
+  stretching; the native header now retains one visible title and fit-content
+  sizing for forms.
+- Before changing session/composer rendering, the current production reference
+  completed all 24 entry/tab-switch benchmark runs (eight scenarios, three
+  repetitions, one worker). Raw metrics and the reference build were retained.
+  This establishes the next comparison baseline, not performance parity.
+
+The final provider/directory slice passed root `bun run check` (27 package
+checks, zero lint warnings/errors), browser-test typing, Web and Desktop
+production builds, and all 14 focused optimized Chromium cases together without
+retries. The focused run includes the real synthetic-camera lifecycle check.
+The four outstanding mobile-model inset cases remain recorded above.

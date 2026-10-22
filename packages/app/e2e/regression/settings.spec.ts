@@ -5,6 +5,7 @@ import { mockAgentTools, mockOpenCodeServer, mockUsageReporter } from "../utils/
 import { mockRemoteServer, mockWorkspace, openSettings, type WorkspaceInput } from "../utils/workspace"
 import { mockHttpsAccess } from "../utils/https-fixture"
 import { mockConnectionEdits } from "../utils/credential-fixture"
+import { openProviderAuthentication } from "../utils/provider-auth-fixture"
 
 const directory = "C:/Projects/settings-demo"
 
@@ -1440,3 +1441,127 @@ for (const viewport of [
     }
   })
 }
+
+test("provider authentication keeps conditional answers, validates keys and starts with the selected first model", async ({
+  page,
+}) => {
+  const fixture = await openProviderAuthentication(page)
+  const settings = page.getByTestId("settings-screen")
+  await settings.getByRole("tab", { name: "Providers", exact: true }).click()
+  await settings.getByRole("button", { name: "Show more providers", exact: true }).click()
+  const picker = page.getByRole("dialog", { name: "Connect provider", exact: true })
+  const search = picker.getByRole("searchbox", { name: "Search providers", exact: true })
+  await expect(search).toBeFocused()
+  await expect(picker.getByRole("button", { name: /Environment only/ })).toBeDisabled()
+  await expect(picker.getByText("MCP fixture", { exact: true })).toHaveCount(0)
+  await search.fill("no-provider-match")
+  await expect(picker.getByRole("status")).toHaveText("No providers found")
+  await search.fill("RedRouter")
+  await search.press("ArrowDown")
+  await page.keyboard.press("Enter")
+  const connect = page.getByRole("dialog", { name: "Connect RedRouter", exact: true })
+  await expect(connect.getByRole("heading", { name: "Use a custom endpoint?", exact: true })).toBeVisible()
+  const no = connect.getByRole("button", { name: "No", exact: true })
+  await expect(no).toBeFocused()
+  await no.press("ArrowDown")
+  await page.keyboard.press("Enter")
+  await connect.getByRole("radio", { name: "Type your own answer", exact: true }).check()
+  const custom = connect.getByRole("textbox", { name: "Type your own answer", exact: true })
+  await expect(custom).toBeFocused()
+  await custom.fill("custom-region")
+  await connect.getByRole("radio", { name: "West", exact: true }).check()
+  await connect.getByRole("radio", { name: "Type your own answer", exact: true }).check()
+  await expect(custom).toHaveValue("custom-region")
+  await connect.getByRole("button", { name: "Continue", exact: true }).click()
+  const port = connect.getByRole("textbox", { name: "Port", exact: true })
+  await connect.getByRole("button", { name: "Continue", exact: true }).click()
+  await expect(port).toHaveAttribute("aria-invalid", "true")
+  await expect(connect.getByRole("alert")).toHaveText("An answer is required")
+  await port.fill("3.5")
+  await port.press("Enter")
+  await expect(connect.getByRole("alert")).toHaveText("Enter a whole number")
+  await port.fill("4096")
+  await port.press("Enter")
+  const key = connect.getByRole("textbox", { name: "RedRouter API key", exact: true })
+  await expect(key).toBeFocused()
+  await key.press("Enter")
+  await expect(connect.getByRole("alert")).toHaveText("API key is required")
+  await key.fill("fixture-key")
+  await key.press("Enter")
+  await expect(connect.getByRole("alert")).toContainText("Fixture key rejected")
+  await expect(key).toHaveValue("fixture-key")
+  await key.press("Enter")
+  const models = page.getByRole("dialog", { name: "Connected to RedRouter", exact: true })
+  await expect(models.getByRole("radio", { name: "Fixture First", exact: true })).toBeChecked()
+  await models.getByRole("radio", { name: "Fixture Second", exact: true }).check()
+  await models.getByRole("button", { name: "Continue", exact: true }).click()
+  await expect(models).toBeHidden()
+  await expect(
+    page.locator('[data-component="composer"]').getByRole("button", { name: "Fixture Second", exact: true }),
+  ).toBeVisible()
+  expect(fixture.keys).toEqual(
+    Array.from({ length: 2 }, () => ({
+      key: "fixture-key",
+      answer: { hidden: "retained", custom: true, region: "custom-region", port: 4096 },
+    })),
+  )
+})
+
+test("provider authentication cancels a login command and recovers an OAuth code without losing the attempt", async ({
+  page,
+}) => {
+  const fixture = await openProviderAuthentication(page)
+  const settings = page.getByTestId("settings-screen")
+  await settings.getByRole("tab", { name: "Providers", exact: true }).click()
+  const row = settings.locator(".settings-provider-row").filter({ hasText: "Anthropic" })
+  const opener = row.getByRole("button", { name: "Connect", exact: true })
+  await opener.click()
+  const connect = page.getByRole("dialog", { name: "Connect Anthropic", exact: true })
+  await connect.getByRole("button", { name: "CLI login", exact: true }).click()
+  await expect(connect.getByText("fixture-provider login", { exact: true })).toBeVisible()
+  await expect(connect.locator('[data-component="provider-command-output"]')).toHaveText(
+    "Fixture CLI waiting for authorization",
+  )
+  await connect.getByRole("button", { name: "Navigate back", exact: true }).click()
+  await expect(connect.getByRole("button", { name: /Browser login/ })).toBeVisible()
+  await expect.poll(() => fixture.cancellations).toEqual(["command:con_fixture_command"])
+  await connect.getByRole("button", { name: /Browser login/ }).click()
+  const code = connect.getByRole("textbox", { name: "Browser login (browser) authorization code", exact: true })
+  await expect(code).toBeFocused()
+  await code.press("Enter")
+  await expect(connect.getByRole("alert")).toHaveText("Authorization code is required")
+  await code.fill("fixture-code")
+  await code.press("Enter")
+  await expect(connect.getByRole("alert")).toContainText("Fixture code rejected")
+  await expect(code).toHaveValue("fixture-code")
+  await code.press("Enter")
+  await expect(connect).toBeHidden()
+  await expect(opener).toBeFocused()
+  expect(fixture.codes).toEqual([{ code: "fixture-code" }, { code: "fixture-code" }])
+  expect(fixture.attempts).toEqual(["command", "oauth"])
+})
+
+test("Console authentication retains device code, key fallback and Escape cancellation on mobile", async ({ page }) => {
+  const fixture = await openProviderAuthentication(page)
+  fixture.state.mode = "auto"
+  const settings = page.getByTestId("settings-screen")
+  await settings.getByRole("tab", { name: "Providers", exact: true }).click()
+  const opener = settings
+    .locator(".settings-provider-row")
+    .filter({ hasText: "OpenCode Console" })
+    .getByRole("button", { name: "Connect", exact: true })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await opener.click()
+  const connect = page.getByRole("dialog", { name: "Connecting to OpenCode Console", exact: true })
+  await expect(connect.getByRole("group", { name: "Device code: ABCD-EFGH", exact: true })).toBeVisible()
+  await expect(connect.getByRole("button", { name: "Copy sign-in link", exact: true })).toBeEnabled()
+  await connect.getByRole("button", { name: "Use API key", exact: true }).click()
+  await expect(connect.getByRole("textbox", { name: "OpenCode Console API key", exact: true })).toBeFocused()
+  await expect.poll(() => fixture.cancellations).toEqual(["oauth:con_fixture_oauth"])
+  await connect.getByRole("button", { name: "Navigate back", exact: true }).click()
+  await expect(connect.getByRole("group", { name: "Device code: ABCD-EFGH", exact: true })).toBeVisible()
+  await connect.press("Escape")
+  await expect(connect).toBeHidden()
+  await expect(opener).toBeFocused()
+  await expect.poll(() => fixture.cancellations).toEqual(["oauth:con_fixture_oauth", "oauth:con_fixture_oauth"])
+})

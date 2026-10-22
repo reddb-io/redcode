@@ -150,6 +150,7 @@ test("adding a project to a signed-out server re-pairs it, then continues at the
     pairing: { code: "one-time-code", token: "session-token" },
   })
   await openHome(page, { fileList: () => [] })
+  await page.getByRole("main").getByRole("button", { name: "Projects", exact: true }).click()
   const remote = page.locator("[data-home-row]").filter({ hasText: "Remote" })
   await expect(page.getByRole("button", { name: "Authenticate", exact: true })).toBeVisible()
 
@@ -185,6 +186,7 @@ test("a server whose saved password changes works with the new password", async 
     },
   })
   await openHome(page, { fileList: () => [] })
+  await page.getByRole("main").getByRole("button", { name: "Projects", exact: true }).click()
   const remote = page.locator("[data-home-row]").filter({ hasText: "Remote" })
   const picker = page.getByRole("dialog").filter({ has: page.getByRole("button", { name: "Select folder" }) })
 
@@ -194,6 +196,7 @@ test("a server whose saved password changes works with the new password", async 
   await picker.getByRole("button", { name: "Cancel", exact: true }).click()
   await expect(picker).toHaveCount(0)
 
+  await page.getByRole("main").getByRole("button", { name: "Projects", exact: true }).click()
   await remote.getByRole("button", { name: "More options", exact: true }).click()
   await page.getByRole("menuitem", { name: "Edit", exact: true }).click()
   const editor = page.getByRole("dialog", { name: "Edit server" })
@@ -204,6 +207,7 @@ test("a server whose saved password changes works with the new password", async 
   await expect(editor).toHaveCount(0)
 
   // The picker reads the folder through the server's controller, which must use the saved password now.
+  await page.getByRole("main").getByRole("button", { name: "Projects", exact: true }).click()
   await remote.getByRole("button", { name: "Add project", exact: true }).click()
   await expect(picker.getByRole("button", { name: "Select folder", exact: true })).toBeEnabled()
   await expect(picker.getByText("Unable to read this folder")).toHaveCount(0)
