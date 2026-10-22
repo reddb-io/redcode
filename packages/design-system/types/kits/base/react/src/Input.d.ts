@@ -12,4 +12,4 @@ export interface InputProps<Type extends HTMLInputTypeAttribute = "text"> extend
     onValueChange?: (value: InputValue<Type>) => void;
 }
 /** Controlled value/onValueChange or native uncontrolled defaultValue. */
-export declare function Input<Type extends HTMLInputTypeAttribute = "text">({ controlSize, type, value, className, onChange, onValueChange, ...rest }: InputProps<Type>): import("react").JSX.Element;
+export declare function Input<Type extends HTMLInputTypeAttribute = "text">({ controlSize, type, value, className, onChange, onValueChange, ref, ...rest }: InputProps<Type>): import("react").JSX.Element;

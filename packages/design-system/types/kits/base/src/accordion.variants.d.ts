@@ -7,10 +7,10 @@ export interface AccordionItem {
 export declare const accordion: import("tailwind-variants").TVReturnType<{
     [key: string]: {
         [key: string]: import("tailwind-variants").ClassValue | {
-            content?: import("tailwind-variants").ClassValue;
-            root?: import("tailwind-variants").ClassValue;
             header?: import("tailwind-variants").ClassValue;
             label?: import("tailwind-variants").ClassValue;
+            content?: import("tailwind-variants").ClassValue;
+            root?: import("tailwind-variants").ClassValue;
             item?: import("tailwind-variants").ClassValue;
             indicator?: import("tailwind-variants").ClassValue;
             trigger?: import("tailwind-variants").ClassValue;
@@ -19,10 +19,10 @@ export declare const accordion: import("tailwind-variants").TVReturnType<{
 } | {
     [x: string]: {
         [x: string]: import("tailwind-variants").ClassValue | {
-            content?: import("tailwind-variants").ClassValue;
-            root?: import("tailwind-variants").ClassValue;
             header?: import("tailwind-variants").ClassValue;
             label?: import("tailwind-variants").ClassValue;
+            content?: import("tailwind-variants").ClassValue;
+            root?: import("tailwind-variants").ClassValue;
             item?: import("tailwind-variants").ClassValue;
             indicator?: import("tailwind-variants").ClassValue;
             trigger?: import("tailwind-variants").ClassValue;
@@ -39,10 +39,10 @@ export declare const accordion: import("tailwind-variants").TVReturnType<{
 }, undefined, {
     [key: string]: {
         [key: string]: import("tailwind-variants").ClassValue | {
-            content?: import("tailwind-variants").ClassValue;
-            root?: import("tailwind-variants").ClassValue;
             header?: import("tailwind-variants").ClassValue;
             label?: import("tailwind-variants").ClassValue;
+            content?: import("tailwind-variants").ClassValue;
+            root?: import("tailwind-variants").ClassValue;
             item?: import("tailwind-variants").ClassValue;
             indicator?: import("tailwind-variants").ClassValue;
             trigger?: import("tailwind-variants").ClassValue;

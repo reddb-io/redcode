@@ -1,4 +1,4 @@
-import { TONES } from "@reddb-io/design-system/base";
+import { TONES } from "@reddb-io/design-system/base/recipes";
 import { tv } from "tailwind-variants";
 const PILL_VARIANTS = ["tinted", "filled", "outline"];
 const PILL_TONES = TONES;

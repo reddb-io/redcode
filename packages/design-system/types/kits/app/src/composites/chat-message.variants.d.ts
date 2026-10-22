@@ -4,10 +4,10 @@ export declare const chatMessage: import("tailwind-variants").TVReturnType<{
     [key: string]: {
         [key: string]: import("tailwind-variants").ClassValue | {
             body?: import("tailwind-variants").ClassValue;
-            content?: import("tailwind-variants").ClassValue;
-            root?: import("tailwind-variants").ClassValue;
             header?: import("tailwind-variants").ClassValue;
             time?: import("tailwind-variants").ClassValue;
+            content?: import("tailwind-variants").ClassValue;
+            root?: import("tailwind-variants").ClassValue;
             actions?: import("tailwind-variants").ClassValue;
             author?: import("tailwind-variants").ClassValue;
         };
@@ -16,10 +16,10 @@ export declare const chatMessage: import("tailwind-variants").TVReturnType<{
     [x: string]: {
         [x: string]: import("tailwind-variants").ClassValue | {
             body?: import("tailwind-variants").ClassValue;
-            content?: import("tailwind-variants").ClassValue;
-            root?: import("tailwind-variants").ClassValue;
             header?: import("tailwind-variants").ClassValue;
             time?: import("tailwind-variants").ClassValue;
+            content?: import("tailwind-variants").ClassValue;
+            root?: import("tailwind-variants").ClassValue;
             actions?: import("tailwind-variants").ClassValue;
             author?: import("tailwind-variants").ClassValue;
         };
@@ -36,10 +36,10 @@ export declare const chatMessage: import("tailwind-variants").TVReturnType<{
     [key: string]: {
         [key: string]: import("tailwind-variants").ClassValue | {
             body?: import("tailwind-variants").ClassValue;
-            content?: import("tailwind-variants").ClassValue;
-            root?: import("tailwind-variants").ClassValue;
             header?: import("tailwind-variants").ClassValue;
             time?: import("tailwind-variants").ClassValue;
+            content?: import("tailwind-variants").ClassValue;
+            root?: import("tailwind-variants").ClassValue;
             actions?: import("tailwind-variants").ClassValue;
             author?: import("tailwind-variants").ClassValue;
         };

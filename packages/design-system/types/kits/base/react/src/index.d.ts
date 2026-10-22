@@ -113,3 +113,5 @@ export { REDUCED_MOTION_QUERY, useReducedMotion } from "./reduced-motion";
 export { NavigationDisclosureContext, createNavigationDisclosures, useNavigationDisclosure, } from "./navigation-disclosures";
 export { Transfer, type TransferProps } from "./Transfer";
 export { observeActivity } from "../../src/core/operational-motion";
+export { PhoneInput, type PhoneInputProps } from "./PhoneInput";
+export type { PhoneCountry } from "../../src/core/contracts/phoneinput";

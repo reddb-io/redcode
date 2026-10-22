@@ -47,3 +47,4 @@ export { PropertyPanel, type PropertyPanelProps } from "./PropertyPanel";
 export { PhaseSummary, type PhaseSummaryProps } from "./PhaseSummary";
 export { PlaybackControls, type PlaybackControlsProps, } from "./PlaybackControls";
 export type { PropertyItem, PhaseGate } from "../../src/core/operational";
+export { SettingsRow, type SettingsRowProps } from "./SettingsRow";

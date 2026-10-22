@@ -1,4 +1,4 @@
-import { type Tone } from "@reddb-io/design-system/base";
+import { type Tone } from "@reddb-io/design-system/base/recipes";
 import { type VariantProps } from "tailwind-variants";
 /** How strongly a Pill's tone is drawn — its emphasis axis. */
 export declare const PILL_VARIANTS: readonly ["tinted", "filled", "outline"];

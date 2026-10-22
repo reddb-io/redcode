@@ -22,5 +22,5 @@ export type ButtonProps = ButtonAppearance & ((Omit<ComponentPropsWithRef<"butto
     href: string;
 }));
 /** A native button or link using the canonical Button appearance recipe. */
-export declare function Button({ variant, tone, size, loading, block, disabled, children, className, ...rest }: ButtonProps): import("react").JSX.Element;
+export declare function Button({ variant, tone, size, loading, block, disabled, children, className, ref, ...rest }: ButtonProps): import("react").JSX.Element;
 export {};

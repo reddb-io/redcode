@@ -1,55 +1,106 @@
 export declare const inlineEdit: import("tailwind-variants").TVReturnType<{
-    [key: string]: {
-        [key: string]: import("tailwind-variants").ClassValue | {
-            root?: import("tailwind-variants").ClassValue;
-            input?: import("tailwind-variants").ClassValue;
-            label?: import("tailwind-variants").ClassValue;
-            value?: import("tailwind-variants").ClassValue;
-            row?: import("tailwind-variants").ClassValue;
-            error?: import("tailwind-variants").ClassValue;
+    presentation: {
+        text: {
+            value: string;
+        };
+        input: {
+            value: string;
         };
     };
-} | {
-    [x: string]: {
-        [x: string]: import("tailwind-variants").ClassValue | {
-            root?: import("tailwind-variants").ClassValue;
-            input?: import("tailwind-variants").ClassValue;
-            label?: import("tailwind-variants").ClassValue;
-            value?: import("tailwind-variants").ClassValue;
-            row?: import("tailwind-variants").ClassValue;
-            error?: import("tailwind-variants").ClassValue;
+    withIcon: {
+        true: {
+            input: string;
         };
     };
-} | {}, {
+    editVisibility: {
+        always: {
+            edit: string;
+        };
+        hover: {
+            edit: string;
+        };
+    };
+}, {
     root: string;
     label: string;
     row: string;
     value: string;
+    field: string;
     input: string;
+    icon: string;
+    inputIcon: string;
+    readText: string;
+    status: string;
+    edit: string;
     error: string;
 }, undefined, {
-    [key: string]: {
-        [key: string]: import("tailwind-variants").ClassValue | {
-            root?: import("tailwind-variants").ClassValue;
-            input?: import("tailwind-variants").ClassValue;
-            label?: import("tailwind-variants").ClassValue;
-            value?: import("tailwind-variants").ClassValue;
-            row?: import("tailwind-variants").ClassValue;
-            error?: import("tailwind-variants").ClassValue;
+    presentation: {
+        text: {
+            value: string;
+        };
+        input: {
+            value: string;
         };
     };
-} | {}, {
+    withIcon: {
+        true: {
+            input: string;
+        };
+    };
+    editVisibility: {
+        always: {
+            edit: string;
+        };
+        hover: {
+            edit: string;
+        };
+    };
+}, {
     root: string;
     label: string;
     row: string;
     value: string;
+    field: string;
     input: string;
+    icon: string;
+    inputIcon: string;
+    readText: string;
+    status: string;
+    edit: string;
     error: string;
-}, import("tailwind-variants").TVReturnType<unknown, {
+}, import("tailwind-variants").TVReturnType<{
+    presentation: {
+        text: {
+            value: string;
+        };
+        input: {
+            value: string;
+        };
+    };
+    withIcon: {
+        true: {
+            input: string;
+        };
+    };
+    editVisibility: {
+        always: {
+            edit: string;
+        };
+        hover: {
+            edit: string;
+        };
+    };
+}, {
     root: string;
     label: string;
     row: string;
     value: string;
+    field: string;
     input: string;
+    icon: string;
+    inputIcon: string;
+    readText: string;
+    status: string;
+    edit: string;
     error: string;
 }, undefined, unknown, unknown, undefined>>;

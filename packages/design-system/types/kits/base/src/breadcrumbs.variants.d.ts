@@ -2,8 +2,8 @@ import { type VariantProps } from "tailwind-variants";
 export declare const breadcrumbs: import("tailwind-variants").TVReturnType<{
     [key: string]: {
         [key: string]: import("tailwind-variants").ClassValue | {
-            root?: import("tailwind-variants").ClassValue;
             link?: import("tailwind-variants").ClassValue;
+            root?: import("tailwind-variants").ClassValue;
             list?: import("tailwind-variants").ClassValue;
             separator?: import("tailwind-variants").ClassValue;
             item?: import("tailwind-variants").ClassValue;
@@ -13,8 +13,8 @@ export declare const breadcrumbs: import("tailwind-variants").TVReturnType<{
 } | {
     [x: string]: {
         [x: string]: import("tailwind-variants").ClassValue | {
-            root?: import("tailwind-variants").ClassValue;
             link?: import("tailwind-variants").ClassValue;
+            root?: import("tailwind-variants").ClassValue;
             list?: import("tailwind-variants").ClassValue;
             separator?: import("tailwind-variants").ClassValue;
             item?: import("tailwind-variants").ClassValue;
@@ -31,8 +31,8 @@ export declare const breadcrumbs: import("tailwind-variants").TVReturnType<{
 }, undefined, {
     [key: string]: {
         [key: string]: import("tailwind-variants").ClassValue | {
-            root?: import("tailwind-variants").ClassValue;
             link?: import("tailwind-variants").ClassValue;
+            root?: import("tailwind-variants").ClassValue;
             list?: import("tailwind-variants").ClassValue;
             separator?: import("tailwind-variants").ClassValue;
             item?: import("tailwind-variants").ClassValue;

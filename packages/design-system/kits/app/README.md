@@ -539,3 +539,35 @@ runs in the component. Missing callbacks disable the corresponding controls.
 All visual recipes and portable contracts are shared by the native Svelte and
 React adapters. The four `/examples/labs-*` references compose these capabilities
 with Data visualizations; App itself imports no Data components.
+
+### SettingsRow: field names and actions
+
+SettingsRow places a setting name and description beside a native control or
+independently named actions. `children` receives the field's native id,
+requirement and help/error association. Help is rendered outside the label.
+`actions` receives no naming overrides: an Install app action keeps that name
+instead of inheriting the setting title. A self-labelled Switch also fits here.
+Both flavors share the same association logic and Density-responsive recipe.
+
+```svelte
+<SettingsRow label="Signing secret" description="Use at least 16 characters.">
+  {#snippet children(control)}<Input {...control} type="password" />{/snippet}
+</SettingsRow>
+<SettingsRow label="HTTPS and mobile access" description="Connect another device.">
+  {#snippet actions()}<Button onclick={configureHttps}>Configure HTTPS</Button>{/snippet}
+</SettingsRow>
+```
+
+```tsx
+<SettingsRow label="Signing secret" description="Use at least 16 characters.">
+  {control => <Input {...control} type="password" />}
+</SettingsRow>
+<SettingsRow label="HTTPS and mobile access" description="Connect another device."
+  actions={<Button onClick={configureHttps}>Configure HTTPS</Button>} />
+```
+
+`/examples/settings-composition` exercises full native React and Svelte panels,
+including saved API values, async save rejection/retry, named scroll regions and
+Escape/focus restoration across nested menus and dialogs. Layout constraints
+remain owned by the Product Surface. Do not loosen accessible-name assertions
+to hide a naming regression.

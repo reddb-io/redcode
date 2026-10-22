@@ -56,6 +56,9 @@ before the fix, with visible options under an `aria-hidden` ancestor.
 ## Distribution and builds
 
 `design-system.manifest.json` selects React and the official compiled distribution.
+The current pin is `v2026.10.28`. Its `PhoneInput` formatting dependency,
+`libphonenumber-js@1.13.15`, is available to both the pinned compiler and the
+vendored runtime package.
 The pinned producer supplies browser ESM, declarations and Tailwind candidates.
 This keeps the Solid and React JSX compilers from interpreting each other's
 components. Application React source uses the `.react.tsx` suffix and its React
@@ -72,8 +75,9 @@ The Sync wrapper retains the legacy `contracts/*`, `logo/*` and platform icon
 exports for surfaces still using Solid. It preserves the canonical React exports
 and runtime dependencies, and records its package adaptation and file hashes in
 the receipt. Remove these compatibility seams after their final consumer moves.
-The shared Vite resolver directs portable App recipes to `contracts/base`, a
-renderer-free Base seam, so those recipes do not load the React component barrel.
+The current release exposes renderer-free `/base/recipes` and `/app/recipes`;
+its portable recipes use those canonical exports without loading a component
+barrel. The older `contracts/base` seam remains available for compatibility.
 
 ## Remaining surfaces
 
@@ -129,3 +133,14 @@ Validated on 2026-10-22:
 WSL/SSH lifecycle and destructive provider/project/worktree operations were
 exercised with the existing fixtures. Live checks used navigation and local
 browser preferences, preserving the installed server and its configuration.
+
+The `v2026.10.28` vendor refresh pins producer revision
+`1d4293988aca514e59269e856e41539b1903c03c`. All 909 receipt file hashes matched,
+the delivery contained no Svelte renderer files, and the new canonical
+`PhoneInput`, `SettingsRow`, recipe and interaction exports resolved from the
+consumer. Root checks, Web/Desktop builds and the same 61 production keepers
+passed without retries. Six focused development keepers passed together; the
+mobile navigation keeper passed on isolated recheck after an initial navigation
+timeout. Authenticated live desktop/mobile and light/dark checks found no
+runtime errors or horizontal overflow. Embedded brand assets stayed identical;
+their generated header records the new producer version.

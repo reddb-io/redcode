@@ -42,6 +42,10 @@ function createInlineEditSession(value, changed) {
     }
   };
 }
+function inlineEditReadValue(value, inputType, emptyLabel) {
+  return value ? inputType === "password" ? "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022" : value : emptyLabel;
+}
 export {
-  createInlineEditSession
+  createInlineEditSession,
+  inlineEditReadValue
 };

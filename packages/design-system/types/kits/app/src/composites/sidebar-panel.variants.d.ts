@@ -2,9 +2,9 @@ export declare const sidebarPanel: import("tailwind-variants").TVReturnType<{
     [key: string]: {
         [key: string]: import("tailwind-variants").ClassValue | {
             body?: import("tailwind-variants").ClassValue;
-            root?: import("tailwind-variants").ClassValue;
             footer?: import("tailwind-variants").ClassValue;
             header?: import("tailwind-variants").ClassValue;
+            root?: import("tailwind-variants").ClassValue;
             toolbar?: import("tailwind-variants").ClassValue;
             actions?: import("tailwind-variants").ClassValue;
             controls?: import("tailwind-variants").ClassValue;
@@ -14,9 +14,9 @@ export declare const sidebarPanel: import("tailwind-variants").TVReturnType<{
     [x: string]: {
         [x: string]: import("tailwind-variants").ClassValue | {
             body?: import("tailwind-variants").ClassValue;
-            root?: import("tailwind-variants").ClassValue;
             footer?: import("tailwind-variants").ClassValue;
             header?: import("tailwind-variants").ClassValue;
+            root?: import("tailwind-variants").ClassValue;
             toolbar?: import("tailwind-variants").ClassValue;
             actions?: import("tailwind-variants").ClassValue;
             controls?: import("tailwind-variants").ClassValue;
@@ -34,9 +34,9 @@ export declare const sidebarPanel: import("tailwind-variants").TVReturnType<{
     [key: string]: {
         [key: string]: import("tailwind-variants").ClassValue | {
             body?: import("tailwind-variants").ClassValue;
-            root?: import("tailwind-variants").ClassValue;
             footer?: import("tailwind-variants").ClassValue;
             header?: import("tailwind-variants").ClassValue;
+            root?: import("tailwind-variants").ClassValue;
             toolbar?: import("tailwind-variants").ClassValue;
             actions?: import("tailwind-variants").ClassValue;
             controls?: import("tailwind-variants").ClassValue;

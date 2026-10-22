@@ -337,6 +337,7 @@
       "dependencies": {
         "@base-ui/react": "1.9.0",
         "@internationalized/date": "^3.12.4",
+        "libphonenumber-js": "1.13.15",
         "tailwind-variants": "^3.1.1",
       },
       "peerDependencies": {
@@ -358,6 +359,7 @@
         "@types/react": "19.2.17",
         "@types/react-dom": "19.2.3",
         "esbuild": "0.28.1",
+        "libphonenumber-js": "1.13.15",
         "lucide-react": "1.52.0",
         "magic-string": "0.30.21",
         "react": "19.2.8",
@@ -3291,6 +3293,8 @@
     "legacy-javascript": ["legacy-javascript@0.0.1", "", {}, "sha512-lPyntS4/aS7jpuvOlitZDFifBCb4W8L/3QU0PLbUTUj+zYah8rfVjYic88yG7ZKTxhS5h9iz7duT8oUXKszLhg=="],
 
     "leven": ["leven@3.1.0", "", {}, "sha512-qsda+H8jTaUaN/x5vzW2rzc+8Rw4TAQ/4KjB46IwK5VH+IlVeeeje/EoZRpiXvIqjFgK84QffqPztGI3VBLG1A=="],
+
+    "libphonenumber-js": ["libphonenumber-js@1.13.15", "", {}, "sha512-AHdhEQeDFEJ4GKDAQ9AwxChy+v2kUILUB3TGQRpkXMkWePjXTU/WQEzWVQoIx/Gz8fE73Wr5SEuZCy2vk8jrMQ=="],
 
     "lighthouse": ["lighthouse@13.4.1", "", { "dependencies": { "@paulirish/trace_engine": "0.0.65", "@sentry/node": "^10.0.0", "axe-core": "^4.12.1", "chrome-launcher": "^1.2.1", "configstore": "^7.0.0", "csp_evaluator": "1.1.8", "devtools-protocol": "0.0.1663043", "enquirer": "^2.3.6", "http-link-header": "^1.1.1", "intl-messageformat": "^10.5.3", "jpeg-js": "^0.4.4", "js-library-detector": "^6.7.0", "lighthouse-logger": "^2.0.2", "lighthouse-stack-packs": "1.12.3", "lodash-es": "^4.17.21", "lookup-closest-locale": "6.2.0", "open": "^8.4.0", "puppeteer-core": "^25.3.0", "robots-parser": "^3.0.1", "speedline-core": "^1.4.3", "third-party-web": "^0.29.2", "tldts-icann": "^7.4.9", "web-features": "^3.34.0", "ws": "^7.0.0", "yargs": "^17.3.1", "yargs-parser": "^21.0.0" }, "bin": { "lighthouse": "cli/index.js", "smokehouse": "cli/test/smokehouse/frontends/smokehouse-bin.js", "chrome-debug": "core/scripts/manual-chrome-launcher.js" } }, "sha512-fDu8lt3QLK/lTqIxtp1HkzQNJ32rsFHhbadYOepcMZFLgA8oINhxutMbMv8XXnpTOvZ0TXCo4JCk1LDTWaRLnA=="],
 

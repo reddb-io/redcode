@@ -1,14 +1,14 @@
 "use client";
 import { jsx, jsxs } from "react/jsx-runtime";
-import { useEffect, useImperativeHandle, useRef } from "react";
+import { useEffect, useRef } from "react";
+import { useAccessibleControl } from "./use-accessible-control.js";
 import { select } from "../../src/select.variants.js";
 import { writeSelectValue } from "../../src/core/choices.js";
 import { afterFormReset } from "../../src/core/native-controls.js";
 function Select({ options = [], value, controlSize = "md", className, children, onChange, onValueChange, ref, ...rest }) {
-  const element = useRef(null);
+  const element = useAccessibleControl("Select", ref);
   const supplied = useRef(value);
   supplied.current = value;
-  useImperativeHandle(ref, () => element.current, []);
   useEffect(() => {
     if (element.current && value !== void 0) writeSelectValue(element.current, value);
   }, [value, options, children, rest.multiple]);

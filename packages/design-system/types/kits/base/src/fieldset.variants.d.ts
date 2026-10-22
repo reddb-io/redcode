@@ -3,8 +3,8 @@ export type { FieldsetControlProps } from "./core/fieldset";
 export declare const fieldset: import("tailwind-variants").TVReturnType<{
     [key: string]: {
         [key: string]: import("tailwind-variants").ClassValue | {
-            root?: import("tailwind-variants").ClassValue;
             legend?: import("tailwind-variants").ClassValue;
+            root?: import("tailwind-variants").ClassValue;
             help?: import("tailwind-variants").ClassValue;
             error?: import("tailwind-variants").ClassValue;
         };
@@ -12,8 +12,8 @@ export declare const fieldset: import("tailwind-variants").TVReturnType<{
 } | {
     [x: string]: {
         [x: string]: import("tailwind-variants").ClassValue | {
-            root?: import("tailwind-variants").ClassValue;
             legend?: import("tailwind-variants").ClassValue;
+            root?: import("tailwind-variants").ClassValue;
             help?: import("tailwind-variants").ClassValue;
             error?: import("tailwind-variants").ClassValue;
         };
@@ -26,8 +26,8 @@ export declare const fieldset: import("tailwind-variants").TVReturnType<{
 }, undefined, {
     [key: string]: {
         [key: string]: import("tailwind-variants").ClassValue | {
-            root?: import("tailwind-variants").ClassValue;
             legend?: import("tailwind-variants").ClassValue;
+            root?: import("tailwind-variants").ClassValue;
             help?: import("tailwind-variants").ClassValue;
             error?: import("tailwind-variants").ClassValue;
         };

@@ -1,4 +1,4 @@
-import { mediaObject } from "@reddb-io/design-system/base";
+import { mediaObject } from "@reddb-io/design-system/base/recipes";
 import { tv } from "tailwind-variants";
 const ROOT = mediaObject({ align: "start", gap: "md" }).root({
   class: "isolate w-full min-w-0"

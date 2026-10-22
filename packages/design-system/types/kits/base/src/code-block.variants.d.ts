@@ -2,9 +2,9 @@ import { type VariantProps } from "tailwind-variants";
 export declare const codeBlock: import("tailwind-variants").TVReturnType<{
     [key: string]: {
         [key: string]: import("tailwind-variants").ClassValue | {
-            root?: import("tailwind-variants").ClassValue;
             code?: import("tailwind-variants").ClassValue;
             pre?: import("tailwind-variants").ClassValue;
+            root?: import("tailwind-variants").ClassValue;
             toolbar?: import("tailwind-variants").ClassValue;
             language?: import("tailwind-variants").ClassValue;
         };
@@ -12,9 +12,9 @@ export declare const codeBlock: import("tailwind-variants").TVReturnType<{
 } | {
     [x: string]: {
         [x: string]: import("tailwind-variants").ClassValue | {
-            root?: import("tailwind-variants").ClassValue;
             code?: import("tailwind-variants").ClassValue;
             pre?: import("tailwind-variants").ClassValue;
+            root?: import("tailwind-variants").ClassValue;
             toolbar?: import("tailwind-variants").ClassValue;
             language?: import("tailwind-variants").ClassValue;
         };
@@ -28,9 +28,9 @@ export declare const codeBlock: import("tailwind-variants").TVReturnType<{
 }, undefined, {
     [key: string]: {
         [key: string]: import("tailwind-variants").ClassValue | {
-            root?: import("tailwind-variants").ClassValue;
             code?: import("tailwind-variants").ClassValue;
             pre?: import("tailwind-variants").ClassValue;
+            root?: import("tailwind-variants").ClassValue;
             toolbar?: import("tailwind-variants").ClassValue;
             language?: import("tailwind-variants").ClassValue;
         };

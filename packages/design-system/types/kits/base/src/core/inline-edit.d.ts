@@ -2,6 +2,16 @@
 export interface InlineEditContract {
     /** Visible field name, also used to name its edit and input controls. */
     label: string;
+    /** Read layout: compact text by default, or a full-width saved value that becomes an input only while editing. */
+    presentation?: "text" | "input";
+    /** Whether the edit action is always visible or revealed by hover/focus. Touch always shows it. */
+    editVisibility?: "always" | "hover";
+    /** Caller-supplied provenance, such as API, imported file or organization defaults. Never inferred. */
+    sourceLabel?: string;
+    /** Visible committed-state label in input presentation. Defaults to Saved. */
+    savedLabel?: string;
+    /** Native string input type while editing. Password values are masked in the read view. Defaults to text. */
+    inputType?: "text" | "password" | "email" | "url" | "tel";
     /** Committed text. Draft keystrokes never change this value. */
     value: string;
     /** Whether the draft editor is open; caller-owned in controlled React use. */
@@ -55,3 +65,5 @@ export declare function createInlineEditSession(value: string, changed: (state: 
     change(draft: string): void;
     save(options: InlineEditSaveOptions): Promise<InlineEditResult>;
 };
+/** Read mode is selectable text; password values never enter the read DOM. */
+export declare function inlineEditReadValue(value: string, inputType: InlineEditContract["inputType"], emptyLabel: string): string;

@@ -1,4 +1,4 @@
-import { type DropdownMenuSize } from "@reddb-io/design-system/base";
+import { type DropdownMenuSize } from "@reddb-io/design-system/base/recipes";
 import { type VariantProps } from "tailwind-variants";
 export declare const contextMenu: import("tailwind-variants").TVReturnType<{
     [key: string]: {

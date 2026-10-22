@@ -2,9 +2,9 @@ import { type VariantProps } from "tailwind-variants";
 export declare const calendar: import("tailwind-variants").TVReturnType<{
     [key: string]: {
         [key: string]: import("tailwind-variants").ClassValue | {
+            header?: import("tailwind-variants").ClassValue;
             heading?: import("tailwind-variants").ClassValue;
             root?: import("tailwind-variants").ClassValue;
-            header?: import("tailwind-variants").ClassValue;
             cell?: import("tailwind-variants").ClassValue;
             grid?: import("tailwind-variants").ClassValue;
             navigation?: import("tailwind-variants").ClassValue;
@@ -18,9 +18,9 @@ export declare const calendar: import("tailwind-variants").TVReturnType<{
 } | {
     [x: string]: {
         [x: string]: import("tailwind-variants").ClassValue | {
+            header?: import("tailwind-variants").ClassValue;
             heading?: import("tailwind-variants").ClassValue;
             root?: import("tailwind-variants").ClassValue;
-            header?: import("tailwind-variants").ClassValue;
             cell?: import("tailwind-variants").ClassValue;
             grid?: import("tailwind-variants").ClassValue;
             navigation?: import("tailwind-variants").ClassValue;
@@ -46,9 +46,9 @@ export declare const calendar: import("tailwind-variants").TVReturnType<{
 }, undefined, {
     [key: string]: {
         [key: string]: import("tailwind-variants").ClassValue | {
+            header?: import("tailwind-variants").ClassValue;
             heading?: import("tailwind-variants").ClassValue;
             root?: import("tailwind-variants").ClassValue;
-            header?: import("tailwind-variants").ClassValue;
             cell?: import("tailwind-variants").ClassValue;
             grid?: import("tailwind-variants").ClassValue;
             navigation?: import("tailwind-variants").ClassValue;
