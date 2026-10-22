@@ -11,6 +11,11 @@ test("desktop models retain favorites, find fuzzy matches and refresh the catalo
     current: provider(
       { id: "alpha", name: "Alpha", cost: { input: 1, output: 1 } },
       { id: "beta", name: "Beta", cost: { input: 1, output: 1 } },
+      ...Array.from({ length: 20 }, (_, index) => ({
+        id: `filler-${index}`,
+        name: `Filler ${String(index).padStart(2, "0")}`,
+        cost: { input: 1, output: 1 },
+      })),
     ),
   }
   await openDraft(page, {
@@ -28,6 +33,16 @@ test("desktop models retain favorites, find fuzzy matches and refresh the catalo
   await trigger.click()
   const search = page.getByPlaceholder("Search models", { exact: true })
   await expect(search).toBeFocused()
+  const popup = page.getByRole("dialog", { name: "Select model", exact: true })
+  await expect(popup).toBeInViewport({ ratio: 1 })
+  await expect(popup.getByRole("menuitem", { name: "Manage models", exact: true })).toBeInViewport({ ratio: 1 })
+  const list = popup.locator('[data-slot="model-selector-scroll"]')
+  await expect.poll(() => list.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true)
+  await list.evaluate((element) => {
+    element.scrollTop = element.scrollHeight
+  })
+  // The last catalog row follows release ordering, which need not match its name.
+  await expect(popup.getByRole("menuitemradio").last()).toBeInViewport({ ratio: 1 })
   await search.press("ControlOrMeta+f")
   await expect(page.getByText("Favorites", { exact: true })).toBeVisible()
   await expect(page.getByRole("button", { name: "Remove from favorites", exact: true })).toHaveAttribute(
@@ -46,6 +61,23 @@ test("desktop models retain favorites, find fuzzy matches and refresh the catalo
   await expect(page.getByRole("menuitemradio", { name: /Gamma/ })).toBeVisible()
   await expect(page.getByRole("menuitemradio", { name: /Beta/ })).toHaveCount(0)
   await expect(page.getByRole("menuitemradio", { name: /Alpha/ })).toBeVisible()
+})
+
+test("desktop free models retain selection and hand off to provider search", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await openPickerSession(page, "ltr", false)
+  const model = page.locator('[data-component="composer"]').locator('[data-action="composer-model"]')
+  await model.click()
+  const chooser = page.getByRole("dialog", { name: "Select model", exact: true })
+  await chooser.getByRole("button", { name: /Mobile Model B/ }).click()
+  await expect(chooser).toBeHidden()
+  await expect(model).toHaveText("Mobile Model B")
+  await model.click()
+  await chooser.getByRole("button", { name: "See 70+ more providers", exact: true }).click()
+  await expect(chooser).toBeHidden()
+  const providers = page.getByRole("dialog", { name: "Connect provider", exact: true })
+  await expect(providers.getByRole("searchbox", { name: "Search providers", exact: true })).toBeFocused()
+  await expect(page.getByRole("dialog")).toHaveCount(1)
 })
 
 for (const direction of ["ltr", "rtl"] as const) {
@@ -93,7 +125,7 @@ for (const direction of ["ltr", "rtl"] as const) {
         .poll(() =>
           models.evaluate((element) => {
             const drawer = element.getBoundingClientRect()
-            const search = element.querySelector('[data-component="text-input-v2"]')!.getBoundingClientRect()
+            const search = element.querySelector('input[type="search"]')!.getBoundingClientRect()
             const row = element.querySelector('[data-component="settings-row"]')!.getBoundingClientRect()
             const searchClip = element.querySelector('[data-slot="mobile-panel-content"]')!.getBoundingClientRect()
             const rowClip = element.querySelector(".settings-models")!.getBoundingClientRect()

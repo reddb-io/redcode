@@ -182,7 +182,7 @@ test("the dark new session panel exposes no lighter background at its rounded co
   const screenshot = await page.screenshot()
 
   // Sample the four corner pixels, which lie outside the rounded panel.
-  const corners = await page.evaluate(
+  const pixels = await page.evaluate(
     async ({ source, points }) => {
       const image = new Image()
       image.src = source
@@ -193,7 +193,15 @@ test("the dark new session panel exposes no lighter background at its rounded co
       const context = canvas.getContext("2d")!
       context.drawImage(image, 0, 0)
 
-      return points.map((point) => Array.from(context.getImageData(point.x, point.y, 1, 1).data))
+      const corners = points.map((point) => Array.from(context.getImageData(point.x, point.y, 1, 1).data))
+      const probe = document.createElement("span")
+      probe.hidden = true
+      probe.style.color = "var(--v2-background-bg-deep)"
+      document.body.append(probe)
+      context.fillStyle = getComputedStyle(probe).color
+      probe.remove()
+      context.fillRect(0, 0, 1, 1)
+      return { corners, ground: Array.from(context.getImageData(0, 0, 1, 1).data) }
     },
     {
       source: `data:image/png;base64,${screenshot.toString("base64")}`,
@@ -206,7 +214,11 @@ test("the dark new session panel exposes no lighter background at its rounded co
     },
   )
 
-  expect(corners.filter(([red, green, blue, alpha]) => red > 8 || green > 8 || blue > 8 || alpha !== 255)).toEqual([])
+  expect(
+    pixels.corners.filter(
+      (pixel) => pixel.slice(0, 3).some((channel, index) => channel > pixels.ground[index]) || pixel[3] !== 255,
+    ),
+  ).toEqual([])
 })
 
 test("a pending worktree session shows immediately, keeps its draft, and hands off to the created session", async ({
@@ -540,14 +552,14 @@ const accentRoot = "C:/OpenCode/WorkspaceAccent"
 const accentWorkspace = `${accentRoot}/.worktrees/feature`
 
 for (const row of [
-  { name: "a managed worktree", directory: accentWorkspace, accent: true },
+  { name: "a managed worktree", directory: accentWorkspace, managed: true },
   {
     name: "the main root written with Windows case and separators",
     directory: "c:\\OPENCODE\\workspaceaccent\\",
-    accent: false,
+    managed: false,
   },
 ]) {
-  test(`workspace accent colors the user message only for ${row.name}`, async ({ page }) => {
+  test(`worktree inventory preserves prompt and semantic action colors for ${row.name}`, async ({ page }) => {
     const inventory: WorktreeDirectory[] = [{ directory: accentRoot }, { directory: accentWorkspace, strategy: "git" }]
 
     const listed = page.waitForResponse(
@@ -585,18 +597,20 @@ for (const row of [
     await expect(composer.locator('[data-action="composer-model"]')).toHaveText("Accent Model")
     await view.editor.fill("Inspect this fixture workspace.")
     await expect(send).toBeEnabled()
-    await expectBackground(send, "icon-button-contrast")
+    await expectToken(send, "background-color", "--v2-background-bg-accent")
     await send.hover()
-    await expectBackground(send, "icon-button-contrast")
-    await composer.locator('[data-action="composer-model"]').press("Tab")
+    await expectToken(send, "background-color", "--surface-brand-hover")
+    await page.mouse.move(0, 0)
+    await send.focus()
     await expect(send).toBeFocused()
-    await expectBackground(send, "icon-button-contrast")
+    await expectToken(send, "background-color", "--v2-background-bg-accent")
     const message = page.locator('[data-slot="user-message-text"]')
     await expect(message).toHaveText("Check this fixture workspace.")
-    await expectToken(message, "background-color", row.accent ? "--v2-background-bg-accent" : "--v2-blue-100")
-    await expectToken(message, "color", row.accent ? "--v2-text-text-contrast" : "--v2-blue-700")
+    await expect(message).toHaveCSS("background-color", "rgba(0, 0, 0, 0)")
+    await expectToken(message, "color", "--reddb-color-foreground")
+    await expectToken(page.locator('[data-slot="user-message-caret"]'), "color", "--reddb-color-primary")
 
-    if (!row.accent) return
+    if (!row.managed) return
 
     const url = page.url()
 
@@ -615,7 +629,7 @@ for (const row of [
     expect((await refreshed).ok()).toBe(true)
     await expect(page).toHaveURL(url)
     await expect(view.editor).toHaveText("Inspect this fixture workspace.")
-    await expectBackground(send, "icon-button-contrast")
+    await expectToken(send, "background-color", "--v2-background-bg-accent")
     await view.push([
       {
         id: "evt_accent_running",
@@ -628,7 +642,7 @@ for (const row of [
     await view.editor.fill("")
     const stop = composer.getByRole("button", { name: "Stop", exact: true })
     await expect(stop).toBeEnabled()
-    await expectBackground(stop, "icon-button-contrast")
+    await expectToken(stop, "background-color", "--v2-background-bg-accent")
   })
 }
 
@@ -681,22 +695,6 @@ async function submitPending(page: Page, mock: Awaited<ReturnType<typeof openWor
   expect(mock.prompts).toEqual([])
 
   return { url, sessionID, messageID, message, shimmer }
-}
-
-// Resolves semantic colors through the browser, without reproducing the button's gradient.
-async function expectBackground(element: Locator, token: string) {
-  const color = await element.evaluate((element, token) => {
-    const probe = document.createElement("span")
-    probe.hidden = true
-    probe.style.backgroundColor = `var(--v2-background-bg-${token})`
-    element.append(probe)
-    const color = getComputedStyle(probe).backgroundColor
-    probe.remove()
-
-    return color
-  }, token)
-
-  await expect(element).toHaveCSS("background-image", new RegExp(color.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")))
 }
 
 async function expectToken(element: Locator, property: string, token: string) {

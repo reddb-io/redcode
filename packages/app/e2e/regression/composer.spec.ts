@@ -351,6 +351,8 @@ test("lists slash commands in their built-in order", async ({ page }) => {
   await expect(page.locator('[data-component="composer-suggestions"] [data-suggestion-id] bdi')).toHaveText([
     "/init",
     "/review",
+    "/reasoning",
+    "/intelligence",
     "/new",
     "/undo",
     "/compact",
@@ -361,7 +363,10 @@ test("lists slash commands in their built-in order", async ({ page }) => {
     "/mcp",
     "/model",
     "/connect",
+    "/agent",
     "/btw",
+    "/design-review",
+    "/import",
   ])
 })
 
@@ -394,9 +399,9 @@ for (const row of [
     })
 
     const scroll = page.locator('[data-component="composer-scroll"]')
-    await expect(scroll).toHaveText(row.copy)
+    await expect(scroll.getByText(row.copy, { exact: true })).toBeVisible()
     await editor.pressSequentially("!")
-    await expect(scroll).toHaveText("Enter shell command… git status")
+    await expect(scroll.getByText("Enter shell command… git status", { exact: true })).toBeVisible()
   })
 }
 

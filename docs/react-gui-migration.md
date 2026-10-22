@@ -116,7 +116,16 @@ keyboard navigation. The existing controller still owns Location capture, OAuth
 polling/cancellation, command login, conditional answers and catalog refresh.
 React owns field drafts, numeric validation and custom choices. First-connection
 model selection uses native radios and hands the selected model to the existing
-draft or caller. The general model selector remains a separate next surface.
+draft or caller.
+
+Model selection now uses native DS Popover, Dialog, Input, ListRow, Badge,
+Tooltip and Button. React owns search, keyboard selection, favorites, router-offer
+expansion and the desktop/mobile trigger content. Existing model controllers keep
+catalog refresh, persistence, route presentation and variant preferences. Closed
+pickers defer projecting their complete catalog until opened. Mobile keeps the
+existing swipe, force-mount and final-focus drawer while its body and controls
+render in React. The desktop list has its own bounded scroller so the real
+provider catalog cannot push its search or actions outside the viewport.
 
 The directory and file picker also uses a native dialog, path input, suggestions
 and actions. Its existing search, navigation generations, preload queue and
@@ -162,7 +171,7 @@ barrel. The older `contracts/base` seam remains available for compatibility.
 - Shared application providers, routing, server subscriptions and desktop startup.
 - Sortable tab strip, previews/context menus, recently-closed menu, mobile tabs drawer,
   Windows/Linux app menu, notification/upload hosts and GUI extension SDK/renderers.
-- Provider sign-in and model selection, and directory selection.
+- Home project selection and session-list surfaces.
 - Agents workspace bodies beyond their migrated scope selectors.
 - Composer, session timeline, diff/review, document and terminal integrations.
 - Remaining generic primitives, followed by removal of the Solid GUI dependencies
@@ -429,3 +438,55 @@ checks, zero lint warnings/errors), browser-test typing, Web and Desktop
 production builds, and all 14 focused optimized Chromium cases together without
 retries. The focused run includes the real synthetic-camera lifecycle check.
 The four outstanding mobile-model inset cases remain recorded above.
+
+Model-selection performance verification on 2026-10-22:
+
+The immutable prior build and the initial native picker each completed 24 serial
+production benchmark runs (eight scenarios, three repetitions). Median first
+correct/stable observations, in milliseconds, were:
+
+| Scenario                   |   Prior build | Initial native picker |
+| -------------------------- | ------------: | --------------------: |
+| New session from Home      | 230.9 / 297.7 |         348.1 / 444.0 |
+| New session from a session |  92.8 / 142.1 |         408.1 / 415.8 |
+| Cold session from Home     | 634.8 / 705.6 |         948.0 / 952.9 |
+| Cold tab, review closed    | 270.9 / 310.3 |         336.6 / 378.4 |
+| Cold tab, review open      | 294.4 / 306.9 |         459.5 / 486.1 |
+| Warm tab, review closed    |  82.7 / 159.5 |         104.7 / 167.1 |
+| Warm tab, review open      |  93.3 / 149.0 |         131.3 / 193.6 |
+| Warm tab, review resized   | 111.4 / 150.9 |         163.7 / 225.3 |
+
+These observations were slower. The picker now defers its complete catalog
+projection while closed and renders its trigger content directly in React.
+All 24 scenarios completed after that change, but unrelated Rust/Vitest work
+raised host load above 19 and CPU pressure above 50% during the run. That run
+cannot establish whether the change recovered latency. Performance parity,
+including the earlier shell/titlebar concern, remains unresolved.
+
+All three runs observed zero wrong destinations and zero replaced review file
+hosts. They did observe transient blank samples (78, 83 and 163 respectively)
+and temporarily absent review file hosts during switching (39, 43 and 50).
+Passing completion assertions must not be described as blank-free transitions.
+Raw samples and the immutable reference build were retained outside the checkout.
+
+The final model-selection slice passed root checks (27 package type checks,
+zero lint warnings/errors), browser-test typing and Web/Desktop production builds.
+All 42 optimized Chromium cases across model pickers, composer and new-session
+keepers passed together without retries. Four focused development cases passed
+together after the trigger/projection refinement: desktop favorites/search/refresh,
+free-model handoff, mobile paid-model/variant selection and desktop model/variant
+menus. The formerly failing four mobile inset cases are included in the passing
+production suite.
+
+The authenticated preview loaded the real RedRouter catalog in the final native
+picker. Its desktop surface measured 340 by 502 pixels; the local list was 320
+pixels high against 1277 pixels of content, with search/actions visible and no
+horizontal overflow or browser script errors. No model was changed, provider
+refreshed, prompt sent or credentials submitted. Earlier light/dark and mobile
+checks retained the same catalog and mobile swipe boundary.
+
+The long-catalog keeper now checks the last rendered row instead of assuming
+alphabetical names determine release ordering. Existing composer/new-session
+expectations follow the current slash order, neutral prompt text, semantic Brand
+actions and dark panel ground; the retired expectations were independently
+reproduced on the immutable prior build before replacement.
