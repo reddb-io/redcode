@@ -1,0 +1,57 @@
+/** Portable field semantics shared by the native InlineEdit adapters. */
+export interface InlineEditContract {
+    /** Visible field name, also used to name its edit and input controls. */
+    label: string;
+    /** Committed text. Draft keystrokes never change this value. */
+    value: string;
+    /** Whether the draft editor is open; caller-owned in controlled React use. */
+    editing?: boolean;
+    /** Initial uncontrolled editor state; later changes do not replace the user's choice. */
+    defaultEditing?: boolean;
+    /** Optional application validation; return an error to retain the draft. */
+    validate?: (value: string) => string | undefined;
+    /** Prevents opening or submitting the editor. */
+    disabled?: boolean;
+    /** Requires at least one non-whitespace character. Defaults to true. */
+    required?: boolean;
+    /** Optional maximum number of characters accepted by the native input. */
+    maxlength?: number;
+    /** Visible text when the committed value is empty. */
+    emptyLabel?: string;
+    /** Label of the action that opens the editor. */
+    editLabel?: string;
+    /** Label of the action that persists the draft. */
+    saveLabel?: string;
+    /** Label of the action that discards the draft. */
+    cancelLabel?: string;
+    /** Validation message for a required empty draft. */
+    requiredMessage?: string;
+    /** Message announced when persistence rejects. */
+    saveErrorMessage?: string;
+}
+export interface InlineEditState {
+    draft: string;
+    error: string;
+    saving: boolean;
+}
+export interface InlineEditSaveOptions {
+    required: boolean;
+    requiredMessage: string;
+    saveErrorMessage: string;
+    validate?: (value: string) => string | undefined;
+    confirm?: (value: string) => void | Promise<void>;
+}
+export type InlineEditResult = {
+    status: "committed";
+    value: string;
+} | {
+    status: "invalid" | "failed" | "busy" | "stale";
+};
+/** A draft transaction; invalidated confirmations cannot commit a later editing session. */
+export declare function createInlineEditSession(value: string, changed: (state: InlineEditState) => void): {
+    readonly state: InlineEditState;
+    invalidate(): void;
+    reset(value: string): void;
+    change(draft: string): void;
+    save(options: InlineEditSaveOptions): Promise<InlineEditResult>;
+};

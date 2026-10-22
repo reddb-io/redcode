@@ -653,6 +653,25 @@
   justify-content: flex-end;
 }
 
+/* The DS supplies the native control; the row supplies its visible label and description. */
+.settings-react-switch > label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+[data-slot="settings-row-control"] > select {
+  max-width: 100%;
+}
+
+.settings-notices-dialog {
+  max-height: calc(100dvh - 2 * var(--reddb-spatial-inset-lg));
+  text-align: start;
+}
+
 [data-slot="settings-row-control"] > div:has([data-component="switch"]),
 [data-slot="settings-row-control"] > [data-component="switch"] {
   display: inline-flex;

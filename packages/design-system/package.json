@@ -5,54 +5,777 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./app": {
+      "types": "./types/kits/app/react/src/index.d.ts",
+      "default": "./client/kits/app/react/src/index.js"
+    },
+    "./app/ActionPanel": {
+      "types": "./types/kits/app/react/src/ActionPanel.d.ts",
+      "default": "./client/kits/app/react/src/ActionPanel.js"
+    },
+    "./app/ActivityFeed": {
+      "types": "./types/kits/app/react/src/ActivityFeed.d.ts",
+      "default": "./client/kits/app/react/src/ActivityFeed.js"
+    },
+    "./app/ApplicationShell": {
+      "types": "./types/kits/app/react/src/ApplicationShell.d.ts",
+      "default": "./client/kits/app/react/src/ApplicationShell.js"
+    },
+    "./app/BottomNavigation": {
+      "types": "./types/kits/app/react/src/BottomNavigation.d.ts",
+      "default": "./client/kits/app/react/src/BottomNavigation.js"
+    },
+    "./app/CardHeading": {
+      "types": "./types/kits/app/react/src/CardHeading.d.ts",
+      "default": "./client/kits/app/react/src/CardHeading.js"
+    },
+    "./app/CategoryFilter": {
+      "types": "./types/kits/app/react/src/CategoryFilter.d.ts",
+      "default": "./client/kits/app/react/src/CategoryFilter.js"
+    },
+    "./app/CategoryPreview": {
+      "types": "./types/kits/app/react/src/CategoryPreview.d.ts",
+      "default": "./client/kits/app/react/src/CategoryPreview.js"
+    },
+    "./app/ChatMessage": {
+      "types": "./types/kits/app/react/src/ChatMessage.d.ts",
+      "default": "./client/kits/app/react/src/ChatMessage.js"
+    },
+    "./app/CheckoutForm": {
+      "types": "./types/kits/app/react/src/CheckoutForm.d.ts",
+      "default": "./client/kits/app/react/src/CheckoutForm.js"
+    },
+    "./app/CommandPalette": {
+      "types": "./types/kits/app/react/src/CommandPalette.d.ts",
+      "default": "./client/kits/app/react/src/CommandPalette.js"
+    },
+    "./app/ContextMenu": {
+      "types": "./types/kits/app/react/src/ContextMenu.d.ts",
+      "default": "./client/kits/app/react/src/ContextMenu.js"
+    },
+    "./app/Diff": {
+      "types": "./types/kits/app/react/src/Diff.d.ts",
+      "default": "./client/kits/app/react/src/Diff.js"
+    },
+    "./app/Filter": {
+      "types": "./types/kits/app/react/src/Filter.d.ts",
+      "default": "./client/kits/app/react/src/Filter.js"
+    },
+    "./app/Incentive": {
+      "types": "./types/kits/app/react/src/Incentive.d.ts",
+      "default": "./client/kits/app/react/src/Incentive.js"
+    },
+    "./app/ListRow": {
+      "types": "./types/kits/app/react/src/ListRow.d.ts",
+      "default": "./client/kits/app/react/src/ListRow.js"
+    },
+    "./app/Menubar": {
+      "types": "./types/kits/app/react/src/Menubar.d.ts",
+      "default": "./client/kits/app/react/src/Menubar.js"
+    },
+    "./app/MultiColumnLayout": {
+      "types": "./types/kits/app/react/src/MultiColumnLayout.d.ts",
+      "default": "./client/kits/app/react/src/MultiColumnLayout.js"
+    },
+    "./app/NavItem": {
+      "types": "./types/kits/app/react/src/NavItem.d.ts",
+      "default": "./client/kits/app/react/src/NavItem.js"
+    },
+    "./app/NodeBadge": {
+      "types": "./types/kits/app/react/src/NodeBadge.d.ts",
+      "default": "./client/kits/app/react/src/NodeBadge.js"
+    },
+    "./app/OrderHistory": {
+      "types": "./types/kits/app/react/src/OrderHistory.d.ts",
+      "default": "./client/kits/app/react/src/OrderHistory.js"
+    },
+    "./app/OrderSummary": {
+      "types": "./types/kits/app/react/src/OrderSummary.d.ts",
+      "default": "./client/kits/app/react/src/OrderSummary.js"
+    },
+    "./app/PageHeading": {
+      "types": "./types/kits/app/react/src/PageHeading.d.ts",
+      "default": "./client/kits/app/react/src/PageHeading.js"
+    },
+    "./app/PhaseSummary": {
+      "types": "./types/kits/app/react/src/PhaseSummary.d.ts",
+      "default": "./client/kits/app/react/src/PhaseSummary.js"
+    },
+    "./app/Pill": {
+      "types": "./types/kits/app/react/src/Pill.d.ts",
+      "default": "./client/kits/app/react/src/Pill.js"
+    },
+    "./app/PlaybackControls": {
+      "types": "./types/kits/app/react/src/PlaybackControls.d.ts",
+      "default": "./client/kits/app/react/src/PlaybackControls.js"
+    },
+    "./app/ProductFeature": {
+      "types": "./types/kits/app/react/src/ProductFeature.d.ts",
+      "default": "./client/kits/app/react/src/ProductFeature.js"
+    },
+    "./app/ProductList": {
+      "types": "./types/kits/app/react/src/ProductList.d.ts",
+      "default": "./client/kits/app/react/src/ProductList.js"
+    },
+    "./app/ProductOverview": {
+      "types": "./types/kits/app/react/src/ProductOverview.d.ts",
+      "default": "./client/kits/app/react/src/ProductOverview.js"
+    },
+    "./app/ProductQuickview": {
+      "types": "./types/kits/app/react/src/ProductQuickview.d.ts",
+      "default": "./client/kits/app/react/src/ProductQuickview.js"
+    },
+    "./app/PropertyPanel": {
+      "types": "./types/kits/app/react/src/PropertyPanel.d.ts",
+      "default": "./client/kits/app/react/src/PropertyPanel.js"
+    },
+    "./app/Review": {
+      "types": "./types/kits/app/react/src/Review.d.ts",
+      "default": "./client/kits/app/react/src/Review.js"
+    },
+    "./app/ShoppingCart": {
+      "types": "./types/kits/app/react/src/ShoppingCart.d.ts",
+      "default": "./client/kits/app/react/src/ShoppingCart.js"
+    },
+    "./app/SidebarLayout": {
+      "types": "./types/kits/app/react/src/SidebarLayout.d.ts",
+      "default": "./client/kits/app/react/src/SidebarLayout.js"
+    },
+    "./app/SidebarNavigation": {
+      "types": "./types/kits/app/react/src/SidebarNavigation.d.ts",
+      "default": "./client/kits/app/react/src/SidebarNavigation.js"
+    },
+    "./app/SidebarPanel": {
+      "types": "./types/kits/app/react/src/SidebarPanel.d.ts",
+      "default": "./client/kits/app/react/src/SidebarPanel.js"
+    },
+    "./app/SidebarRail": {
+      "types": "./types/kits/app/react/src/SidebarRail.d.ts",
+      "default": "./client/kits/app/react/src/SidebarRail.js"
+    },
+    "./app/SpeedDial": {
+      "types": "./types/kits/app/react/src/SpeedDial.d.ts",
+      "default": "./client/kits/app/react/src/SpeedDial.js"
+    },
+    "./app/SplitView": {
+      "types": "./types/kits/app/react/src/SplitView.d.ts",
+      "default": "./client/kits/app/react/src/SplitView.js"
+    },
+    "./app/StoreNavigation": {
+      "types": "./types/kits/app/react/src/StoreNavigation.d.ts",
+      "default": "./client/kits/app/react/src/StoreNavigation.js"
+    },
+    "./app/TaskCard": {
+      "types": "./types/kits/app/react/src/TaskCard.d.ts",
+      "default": "./client/kits/app/react/src/TaskCard.js"
+    },
+    "./app/TaskList": {
+      "types": "./types/kits/app/react/src/TaskList.d.ts",
+      "default": "./client/kits/app/react/src/TaskList.js"
+    },
+    "./app/TelemetryRow": {
+      "types": "./types/kits/app/react/src/TelemetryRow.d.ts",
+      "default": "./client/kits/app/react/src/TelemetryRow.js"
+    },
+    "./app/Toolbar": {
+      "types": "./types/kits/app/react/src/Toolbar.d.ts",
+      "default": "./client/kits/app/react/src/Toolbar.js"
+    },
+    "./base": {
+      "types": "./types/kits/base/react/src/index.d.ts",
+      "default": "./client/kits/base/react/src/index.js"
+    },
+    "./base/Accordion": {
+      "types": "./types/kits/base/react/src/Accordion.d.ts",
+      "default": "./client/kits/base/react/src/Accordion.js"
+    },
+    "./base/Alert": {
+      "types": "./types/kits/base/react/src/Alert.d.ts",
+      "default": "./client/kits/base/react/src/Alert.js"
+    },
+    "./base/AlertDialog": {
+      "types": "./types/kits/base/react/src/AlertDialog.d.ts",
+      "default": "./client/kits/base/react/src/AlertDialog.js"
+    },
+    "./base/AppearanceSwitch": {
+      "types": "./types/kits/base/react/src/AppearanceSwitch.d.ts",
+      "default": "./client/kits/base/react/src/AppearanceSwitch.js"
+    },
+    "./base/AspectRatio": {
+      "types": "./types/kits/base/react/src/AspectRatio.d.ts",
+      "default": "./client/kits/base/react/src/AspectRatio.js"
+    },
+    "./base/Avatar": {
+      "types": "./types/kits/base/react/src/Avatar.d.ts",
+      "default": "./client/kits/base/react/src/Avatar.js"
+    },
+    "./base/Badge": {
+      "types": "./types/kits/base/react/src/Badge.d.ts",
+      "default": "./client/kits/base/react/src/Badge.js"
+    },
+    "./base/Breadcrumbs": {
+      "types": "./types/kits/base/react/src/Breadcrumbs.d.ts",
+      "default": "./client/kits/base/react/src/Breadcrumbs.js"
+    },
+    "./base/BrowserMockup": {
+      "types": "./types/kits/base/react/src/BrowserMockup.d.ts",
+      "default": "./client/kits/base/react/src/BrowserMockup.js"
+    },
+    "./base/BulletsSlide": {
+      "types": "./types/kits/base/react/src/BulletsSlide.d.ts",
+      "default": "./client/kits/base/react/src/BulletsSlide.js"
+    },
+    "./base/Button": {
+      "types": "./types/kits/base/react/src/Button.d.ts",
+      "default": "./client/kits/base/react/src/Button.js"
+    },
+    "./base/Calendar": {
+      "types": "./types/kits/base/react/src/Calendar.d.ts",
+      "default": "./client/kits/base/react/src/Calendar.js"
+    },
+    "./base/Card": {
+      "types": "./types/kits/base/react/src/Card.d.ts",
+      "default": "./client/kits/base/react/src/Card.js"
+    },
+    "./base/Carousel": {
+      "types": "./types/kits/base/react/src/Carousel.d.ts",
+      "default": "./client/kits/base/react/src/Carousel.js"
+    },
+    "./base/Checkbox": {
+      "types": "./types/kits/base/react/src/Checkbox.d.ts",
+      "default": "./client/kits/base/react/src/Checkbox.js"
+    },
+    "./base/CodeBlock": {
+      "types": "./types/kits/base/react/src/CodeBlock.d.ts",
+      "default": "./client/kits/base/react/src/CodeBlock.js"
+    },
+    "./base/Combobox": {
+      "types": "./types/kits/base/react/src/Combobox.d.ts",
+      "default": "./client/kits/base/react/src/Combobox.js"
+    },
+    "./base/Container": {
+      "types": "./types/kits/base/react/src/Container.d.ts",
+      "default": "./client/kits/base/react/src/Container.js"
+    },
+    "./base/ContentMask": {
+      "types": "./types/kits/base/react/src/ContentMask.d.ts",
+      "default": "./client/kits/base/react/src/ContentMask.js"
+    },
+    "./base/ControlGroup": {
+      "types": "./types/kits/base/react/src/ControlGroup.d.ts",
+      "default": "./client/kits/base/react/src/ControlGroup.js"
+    },
+    "./base/Countdown": {
+      "types": "./types/kits/base/react/src/Countdown.d.ts",
+      "default": "./client/kits/base/react/src/Countdown.js"
+    },
+    "./base/DateField": {
+      "types": "./types/kits/base/react/src/DateField.d.ts",
+      "default": "./client/kits/base/react/src/DateField.js"
+    },
+    "./base/DatePicker": {
+      "types": "./types/kits/base/react/src/DatePicker.d.ts",
+      "default": "./client/kits/base/react/src/DatePicker.js"
+    },
+    "./base/DateRangeField": {
+      "types": "./types/kits/base/react/src/DateRangeField.d.ts",
+      "default": "./client/kits/base/react/src/DateRangeField.js"
+    },
+    "./base/DateRangePicker": {
+      "types": "./types/kits/base/react/src/DateRangePicker.d.ts",
+      "default": "./client/kits/base/react/src/DateRangePicker.js"
+    },
+    "./base/Deck": {
+      "types": "./types/kits/base/react/src/Deck.d.ts",
+      "default": "./client/kits/base/react/src/Deck.js"
+    },
+    "./base/DescriptionList": {
+      "types": "./types/kits/base/react/src/DescriptionList.d.ts",
+      "default": "./client/kits/base/react/src/DescriptionList.js"
+    },
+    "./base/Dialog": {
+      "types": "./types/kits/base/react/src/Dialog.d.ts",
+      "default": "./client/kits/base/react/src/Dialog.js"
+    },
+    "./base/Disclosure": {
+      "types": "./types/kits/base/react/src/Disclosure.d.ts",
+      "default": "./client/kits/base/react/src/Disclosure.js"
+    },
+    "./base/Divider": {
+      "types": "./types/kits/base/react/src/Divider.d.ts",
+      "default": "./client/kits/base/react/src/Divider.js"
+    },
+    "./base/Drawer": {
+      "types": "./types/kits/base/react/src/Drawer.d.ts",
+      "default": "./client/kits/base/react/src/Drawer.js"
+    },
+    "./base/DropdownMenu": {
+      "types": "./types/kits/base/react/src/DropdownMenu.d.ts",
+      "default": "./client/kits/base/react/src/DropdownMenu.js"
+    },
+    "./base/EmptyState": {
+      "types": "./types/kits/base/react/src/EmptyState.d.ts",
+      "default": "./client/kits/base/react/src/EmptyState.js"
+    },
+    "./base/Eyebrow": {
+      "types": "./types/kits/base/react/src/Eyebrow.d.ts",
+      "default": "./client/kits/base/react/src/Eyebrow.js"
+    },
+    "./base/Field": {
+      "types": "./types/kits/base/react/src/Field.d.ts",
+      "default": "./client/kits/base/react/src/Field.js"
+    },
+    "./base/Fieldset": {
+      "types": "./types/kits/base/react/src/Fieldset.d.ts",
+      "default": "./client/kits/base/react/src/Fieldset.js"
+    },
+    "./base/FigureSlide": {
+      "types": "./types/kits/base/react/src/FigureSlide.d.ts",
+      "default": "./client/kits/base/react/src/FigureSlide.js"
+    },
+    "./base/FileInput": {
+      "types": "./types/kits/base/react/src/FileInput.d.ts",
+      "default": "./client/kits/base/react/src/FileInput.js"
+    },
+    "./base/Form": {
+      "types": "./types/kits/base/react/src/Form.d.ts",
+      "default": "./client/kits/base/react/src/Form.js"
+    },
+    "./base/GridList": {
+      "types": "./types/kits/base/react/src/GridList.d.ts",
+      "default": "./client/kits/base/react/src/GridList.js"
+    },
+    "./base/Heading": {
+      "types": "./types/kits/base/react/src/Heading.d.ts",
+      "default": "./client/kits/base/react/src/Heading.js"
+    },
+    "./base/Icon": {
+      "types": "./types/kits/base/react/src/Icon.d.ts",
+      "default": "./client/kits/base/react/src/Icon.js"
+    },
+    "./base/Image": {
+      "types": "./types/kits/base/react/src/Image.d.ts",
+      "default": "./client/kits/base/react/src/Image.js"
+    },
+    "./base/Indicator": {
+      "types": "./types/kits/base/react/src/Indicator.d.ts",
+      "default": "./client/kits/base/react/src/Indicator.js"
+    },
+    "./base/InlineEdit": {
+      "types": "./types/kits/base/react/src/InlineEdit.d.ts",
+      "default": "./client/kits/base/react/src/InlineEdit.js"
+    },
+    "./base/Input": {
+      "types": "./types/kits/base/react/src/Input.d.ts",
+      "default": "./client/kits/base/react/src/Input.js"
+    },
+    "./base/Kbd": {
+      "types": "./types/kits/base/react/src/Kbd.d.ts",
+      "default": "./client/kits/base/react/src/Kbd.js"
+    },
+    "./base/Label": {
+      "types": "./types/kits/base/react/src/Label.d.ts",
+      "default": "./client/kits/base/react/src/Label.js"
+    },
+    "./base/Link": {
+      "types": "./types/kits/base/react/src/Link.d.ts",
+      "default": "./client/kits/base/react/src/Link.js"
+    },
+    "./base/LinkPreview": {
+      "types": "./types/kits/base/react/src/LinkPreview.d.ts",
+      "default": "./client/kits/base/react/src/LinkPreview.js"
+    },
+    "./base/List": {
+      "types": "./types/kits/base/react/src/List.d.ts",
+      "default": "./client/kits/base/react/src/List.js"
+    },
+    "./base/ListContainer": {
+      "types": "./types/kits/base/react/src/ListContainer.d.ts",
+      "default": "./client/kits/base/react/src/ListContainer.js"
+    },
+    "./base/LoadingIndicator": {
+      "types": "./types/kits/base/react/src/LoadingIndicator.d.ts",
+      "default": "./client/kits/base/react/src/LoadingIndicator.js"
+    },
+    "./base/Logo": {
+      "types": "./types/kits/base/react/src/Logo.d.ts",
+      "default": "./client/kits/base/react/src/Logo.js"
+    },
+    "./base/MediaObject": {
+      "types": "./types/kits/base/react/src/MediaObject.d.ts",
+      "default": "./client/kits/base/react/src/MediaObject.js"
+    },
+    "./base/Meter": {
+      "types": "./types/kits/base/react/src/Meter.d.ts",
+      "default": "./client/kits/base/react/src/Meter.js"
+    },
+    "./base/Navbar": {
+      "types": "./types/kits/base/react/src/Navbar.d.ts",
+      "default": "./client/kits/base/react/src/Navbar.js"
+    },
+    "./base/NavigationMenu": {
+      "types": "./types/kits/base/react/src/NavigationMenu.d.ts",
+      "default": "./client/kits/base/react/src/NavigationMenu.js"
+    },
+    "./base/NavigationScope": {
+      "types": "./types/kits/base/react/src/NavigationScope.d.ts",
+      "default": "./client/kits/base/react/src/NavigationScope.js"
+    },
+    "./base/Notification": {
+      "types": "./types/kits/base/react/src/Notification.d.ts",
+      "default": "./client/kits/base/react/src/Notification.js"
+    },
+    "./base/NumberField": {
+      "types": "./types/kits/base/react/src/NumberField.d.ts",
+      "default": "./client/kits/base/react/src/NumberField.js"
+    },
+    "./base/OneTimeCodeInput": {
+      "types": "./types/kits/base/react/src/OneTimeCodeInput.d.ts",
+      "default": "./client/kits/base/react/src/OneTimeCodeInput.js"
+    },
+    "./base/Pagination": {
+      "types": "./types/kits/base/react/src/Pagination.d.ts",
+      "default": "./client/kits/base/react/src/Pagination.js"
+    },
+    "./base/PhoneMockup": {
+      "types": "./types/kits/base/react/src/PhoneMockup.d.ts",
+      "default": "./client/kits/base/react/src/PhoneMockup.js"
+    },
+    "./base/Popover": {
+      "types": "./types/kits/base/react/src/Popover.d.ts",
+      "default": "./client/kits/base/react/src/Popover.js"
+    },
+    "./base/Progress": {
+      "types": "./types/kits/base/react/src/Progress.d.ts",
+      "default": "./client/kits/base/react/src/Progress.js"
+    },
+    "./base/Prose": {
+      "types": "./types/kits/base/react/src/Prose.d.ts",
+      "default": "./client/kits/base/react/src/Prose.js"
+    },
+    "./base/QuoteSlide": {
+      "types": "./types/kits/base/react/src/QuoteSlide.d.ts",
+      "default": "./client/kits/base/react/src/QuoteSlide.js"
+    },
+    "./base/RadialProgress": {
+      "types": "./types/kits/base/react/src/RadialProgress.d.ts",
+      "default": "./client/kits/base/react/src/RadialProgress.js"
+    },
+    "./base/RadioGroup": {
+      "types": "./types/kits/base/react/src/RadioGroup.d.ts",
+      "default": "./client/kits/base/react/src/RadioGroup.js"
+    },
+    "./base/RangeCalendar": {
+      "types": "./types/kits/base/react/src/RangeCalendar.d.ts",
+      "default": "./client/kits/base/react/src/RangeCalendar.js"
+    },
+    "./base/Rating": {
+      "types": "./types/kits/base/react/src/Rating.d.ts",
+      "default": "./client/kits/base/react/src/Rating.js"
+    },
+    "./base/Reveal": {
+      "types": "./types/kits/base/react/src/Reveal.d.ts",
+      "default": "./client/kits/base/react/src/Reveal.js"
+    },
+    "./base/ScrollArea": {
+      "types": "./types/kits/base/react/src/ScrollArea.d.ts",
+      "default": "./client/kits/base/react/src/ScrollArea.js"
+    },
+    "./base/SearchSelect": {
+      "types": "./types/kits/base/react/src/SearchSelect.d.ts",
+      "default": "./client/kits/base/react/src/SearchSelect.js"
+    },
+    "./base/SectionHeading": {
+      "types": "./types/kits/base/react/src/SectionHeading.d.ts",
+      "default": "./client/kits/base/react/src/SectionHeading.js"
+    },
+    "./base/SectionSlide": {
+      "types": "./types/kits/base/react/src/SectionSlide.d.ts",
+      "default": "./client/kits/base/react/src/SectionSlide.js"
+    },
+    "./base/Select": {
+      "types": "./types/kits/base/react/src/Select.d.ts",
+      "default": "./client/kits/base/react/src/Select.js"
+    },
+    "./base/Skeleton": {
+      "types": "./types/kits/base/react/src/Skeleton.d.ts",
+      "default": "./client/kits/base/react/src/Skeleton.js"
+    },
+    "./base/SkipLink": {
+      "types": "./types/kits/base/react/src/SkipLink.d.ts",
+      "default": "./client/kits/base/react/src/SkipLink.js"
+    },
+    "./base/SlideFrame": {
+      "types": "./types/kits/base/react/src/SlideFrame.d.ts",
+      "default": "./client/kits/base/react/src/SlideFrame.js"
+    },
+    "./base/Slider": {
+      "types": "./types/kits/base/react/src/Slider.d.ts",
+      "default": "./client/kits/base/react/src/Slider.js"
+    },
+    "./base/Stack": {
+      "types": "./types/kits/base/react/src/Stack.d.ts",
+      "default": "./client/kits/base/react/src/Stack.js"
+    },
+    "./base/Statistic": {
+      "types": "./types/kits/base/react/src/Statistic.d.ts",
+      "default": "./client/kits/base/react/src/Statistic.js"
+    },
+    "./base/StatusIndicator": {
+      "types": "./types/kits/base/react/src/StatusIndicator.d.ts",
+      "default": "./client/kits/base/react/src/StatusIndicator.js"
+    },
+    "./base/Steps": {
+      "types": "./types/kits/base/react/src/Steps.d.ts",
+      "default": "./client/kits/base/react/src/Steps.js"
+    },
+    "./base/Swap": {
+      "types": "./types/kits/base/react/src/Swap.d.ts",
+      "default": "./client/kits/base/react/src/Swap.js"
+    },
+    "./base/Switch": {
+      "types": "./types/kits/base/react/src/Switch.d.ts",
+      "default": "./client/kits/base/react/src/Switch.js"
+    },
+    "./base/Table": {
+      "types": "./types/kits/base/react/src/Table.d.ts",
+      "default": "./client/kits/base/react/src/Table.js"
+    },
+    "./base/Tabs": {
+      "types": "./types/kits/base/react/src/Tabs.d.ts",
+      "default": "./client/kits/base/react/src/Tabs.js"
+    },
+    "./base/Text": {
+      "types": "./types/kits/base/react/src/Text.d.ts",
+      "default": "./client/kits/base/react/src/Text.js"
+    },
+    "./base/Textarea": {
+      "types": "./types/kits/base/react/src/Textarea.d.ts",
+      "default": "./client/kits/base/react/src/Textarea.js"
+    },
+    "./base/TimeField": {
+      "types": "./types/kits/base/react/src/TimeField.d.ts",
+      "default": "./client/kits/base/react/src/TimeField.js"
+    },
+    "./base/TimeRangeField": {
+      "types": "./types/kits/base/react/src/TimeRangeField.d.ts",
+      "default": "./client/kits/base/react/src/TimeRangeField.js"
+    },
+    "./base/Timeline": {
+      "types": "./types/kits/base/react/src/Timeline.d.ts",
+      "default": "./client/kits/base/react/src/Timeline.js"
+    },
+    "./base/TitleSlide": {
+      "types": "./types/kits/base/react/src/TitleSlide.d.ts",
+      "default": "./client/kits/base/react/src/TitleSlide.js"
+    },
+    "./base/ToggleButton": {
+      "types": "./types/kits/base/react/src/ToggleButton.d.ts",
+      "default": "./client/kits/base/react/src/ToggleButton.js"
+    },
+    "./base/ToggleGroup": {
+      "types": "./types/kits/base/react/src/ToggleGroup.d.ts",
+      "default": "./client/kits/base/react/src/ToggleGroup.js"
+    },
+    "./base/Tooltip": {
+      "types": "./types/kits/base/react/src/Tooltip.d.ts",
+      "default": "./client/kits/base/react/src/Tooltip.js"
+    },
+    "./base/Transfer": {
+      "types": "./types/kits/base/react/src/Transfer.d.ts",
+      "default": "./client/kits/base/react/src/Transfer.js"
+    },
+    "./base/TwoColumnSlide": {
+      "types": "./types/kits/base/react/src/TwoColumnSlide.d.ts",
+      "default": "./client/kits/base/react/src/TwoColumnSlide.js"
+    },
+    "./base/WindowMockup": {
+      "types": "./types/kits/base/react/src/WindowMockup.d.ts",
+      "default": "./client/kits/base/react/src/WindowMockup.js"
+    },
     "./color": "./layers/color/src/index.ts",
-    "./base": "./solid-base.ts",
+    "./styles.css": "./styles/all.css",
+    "./styles/all.css": "./styles/all.css",
     "./styles/application.css": "./styles/application.css",
-    "./contracts/*": "./kits/base/src/*.variants.ts",
-    "./contracts/list-row": "./kits/app/src/primitives/list-row.variants.ts",
-    "./contracts/nav-item": "./kits/app/src/primitives/nav-item.variants.ts",
-    "./contracts/node-badge": "./kits/app/src/primitives/node-badge.variants.ts",
-    "./contracts/pill": "./kits/app/src/primitives/pill.variants.ts",
-    "./contracts/split-view": "./kits/app/src/primitives/split-view.variants.ts",
-    "./contracts/action-panel": "./kits/app/src/composites/action-panel.variants.ts",
-    "./contracts/activity-feed": "./kits/app/src/composites/activity-feed.variants.ts",
-    "./contracts/application-shell": "./kits/app/src/composites/application-shell.variants.ts",
-    "./contracts/bottom-navigation": "./kits/app/src/composites/bottom-navigation.variants.ts",
-    "./contracts/card-heading": "./kits/app/src/composites/card-heading.variants.ts",
-    "./contracts/category-filter": "./kits/app/src/composites/category-filter.variants.ts",
-    "./contracts/category-preview": "./kits/app/src/composites/category-preview.variants.ts",
-    "./contracts/chat-message": "./kits/app/src/composites/chat-message.variants.ts",
-    "./contracts/checkout-form": "./kits/app/src/composites/checkout-form.variants.ts",
-    "./contracts/command-palette": "./kits/app/src/composites/command-palette.variants.ts",
-    "./contracts/context-menu": "./kits/app/src/composites/context-menu.variants.ts",
-    "./contracts/diff": "./kits/app/src/composites/diff.variants.ts",
-    "./contracts/filter": "./kits/app/src/composites/filter.variants.ts",
-    "./contracts/incentive": "./kits/app/src/composites/incentive.variants.ts",
-    "./contracts/menubar": "./kits/app/src/composites/menubar.variants.ts",
-    "./contracts/multi-column-layout": "./kits/app/src/composites/multi-column-layout.variants.ts",
-    "./contracts/order-history": "./kits/app/src/composites/order-history.variants.ts",
-    "./contracts/order-summary": "./kits/app/src/composites/order-summary.variants.ts",
-    "./contracts/page-heading": "./kits/app/src/composites/page-heading.variants.ts",
-    "./contracts/product-feature": "./kits/app/src/composites/product-feature.variants.ts",
-    "./contracts/product-list": "./kits/app/src/composites/product-list.variants.ts",
-    "./contracts/product-overview": "./kits/app/src/composites/product-overview.variants.ts",
-    "./contracts/product-quickview": "./kits/app/src/composites/product-quickview.variants.ts",
-    "./contracts/review": "./kits/app/src/composites/review.variants.ts",
-    "./contracts/shopping-cart": "./kits/app/src/composites/shopping-cart.variants.ts",
-    "./contracts/sidebar-layout": "./kits/app/src/composites/sidebar-layout.variants.ts",
-    "./contracts/sidebar-navigation": "./kits/app/src/composites/sidebar-navigation.variants.ts",
-    "./contracts/sidebar-panel": "./kits/app/src/composites/sidebar-panel.variants.ts",
-    "./contracts/sidebar-rail": "./kits/app/src/composites/sidebar-rail.variants.ts",
-    "./contracts/speed-dial": "./kits/app/src/composites/speed-dial.variants.ts",
-    "./contracts/store-navigation": "./kits/app/src/composites/store-navigation.variants.ts",
-    "./contracts/toolbar": "./kits/app/src/composites/toolbar.variants.ts",
-    "./logo/*": "./kits/base/src/logo.*.ts",
+    "./styles/base.css": "./styles/base.css",
+    "./contracts/base": {
+      "types": "./recipe-base.d.ts",
+      "default": "./recipe-base.js"
+    },
+    "./contracts/*": {
+      "types": "./types/kits/base/src/*.variants.d.ts",
+      "default": "./client/kits/base/src/*.variants.js"
+    },
+    "./contracts/operational": {
+      "types": "./types/kits/app/src/operational.variants.d.ts",
+      "default": "./client/kits/app/src/operational.variants.js"
+    },
+    "./contracts/split-view": {
+      "types": "./types/kits/app/src/primitives/split-view.variants.d.ts",
+      "default": "./client/kits/app/src/primitives/split-view.variants.js"
+    },
+    "./contracts/node-badge": {
+      "types": "./types/kits/app/src/primitives/node-badge.variants.d.ts",
+      "default": "./client/kits/app/src/primitives/node-badge.variants.js"
+    },
+    "./contracts/list-row": {
+      "types": "./types/kits/app/src/primitives/list-row.variants.d.ts",
+      "default": "./client/kits/app/src/primitives/list-row.variants.js"
+    },
+    "./contracts/pill": {
+      "types": "./types/kits/app/src/primitives/pill.variants.d.ts",
+      "default": "./client/kits/app/src/primitives/pill.variants.js"
+    },
+    "./contracts/nav-item": {
+      "types": "./types/kits/app/src/primitives/nav-item.variants.d.ts",
+      "default": "./client/kits/app/src/primitives/nav-item.variants.js"
+    },
+    "./contracts/sidebar-panel": {
+      "types": "./types/kits/app/src/composites/sidebar-panel.variants.d.ts",
+      "default": "./client/kits/app/src/composites/sidebar-panel.variants.js"
+    },
+    "./contracts/review": {
+      "types": "./types/kits/app/src/composites/review.variants.d.ts",
+      "default": "./client/kits/app/src/composites/review.variants.js"
+    },
+    "./contracts/chat-message": {
+      "types": "./types/kits/app/src/composites/chat-message.variants.d.ts",
+      "default": "./client/kits/app/src/composites/chat-message.variants.js"
+    },
+    "./contracts/task-list": {
+      "types": "./types/kits/app/src/composites/task-list.variants.d.ts",
+      "default": "./client/kits/app/src/composites/task-list.variants.js"
+    },
+    "./contracts/incentive": {
+      "types": "./types/kits/app/src/composites/incentive.variants.d.ts",
+      "default": "./client/kits/app/src/composites/incentive.variants.js"
+    },
+    "./contracts/store-navigation": {
+      "types": "./types/kits/app/src/composites/store-navigation.variants.d.ts",
+      "default": "./client/kits/app/src/composites/store-navigation.variants.js"
+    },
+    "./contracts/product-feature": {
+      "types": "./types/kits/app/src/composites/product-feature.variants.d.ts",
+      "default": "./client/kits/app/src/composites/product-feature.variants.js"
+    },
+    "./contracts/product-quickview": {
+      "types": "./types/kits/app/src/composites/product-quickview.variants.d.ts",
+      "default": "./client/kits/app/src/composites/product-quickview.variants.js"
+    },
+    "./contracts/context-menu": {
+      "types": "./types/kits/app/src/composites/context-menu.variants.d.ts",
+      "default": "./client/kits/app/src/composites/context-menu.variants.js"
+    },
+    "./contracts/category-filter": {
+      "types": "./types/kits/app/src/composites/category-filter.variants.d.ts",
+      "default": "./client/kits/app/src/composites/category-filter.variants.js"
+    },
+    "./contracts/menubar": {
+      "types": "./types/kits/app/src/composites/menubar.variants.d.ts",
+      "default": "./client/kits/app/src/composites/menubar.variants.js"
+    },
+    "./contracts/order-history": {
+      "types": "./types/kits/app/src/composites/order-history.variants.d.ts",
+      "default": "./client/kits/app/src/composites/order-history.variants.js"
+    },
+    "./contracts/speed-dial": {
+      "types": "./types/kits/app/src/composites/speed-dial.variants.d.ts",
+      "default": "./client/kits/app/src/composites/speed-dial.variants.js"
+    },
+    "./contracts/action-panel": {
+      "types": "./types/kits/app/src/composites/action-panel.variants.d.ts",
+      "default": "./client/kits/app/src/composites/action-panel.variants.js"
+    },
+    "./contracts/category-preview": {
+      "types": "./types/kits/app/src/composites/category-preview.variants.d.ts",
+      "default": "./client/kits/app/src/composites/category-preview.variants.js"
+    },
+    "./contracts/product-overview": {
+      "types": "./types/kits/app/src/composites/product-overview.variants.d.ts",
+      "default": "./client/kits/app/src/composites/product-overview.variants.js"
+    },
+    "./contracts/activity-feed": {
+      "types": "./types/kits/app/src/composites/activity-feed.variants.d.ts",
+      "default": "./client/kits/app/src/composites/activity-feed.variants.js"
+    },
+    "./contracts/sidebar-navigation": {
+      "types": "./types/kits/app/src/composites/sidebar-navigation.variants.d.ts",
+      "default": "./client/kits/app/src/composites/sidebar-navigation.variants.js"
+    },
+    "./contracts/page-heading": {
+      "types": "./types/kits/app/src/composites/page-heading.variants.d.ts",
+      "default": "./client/kits/app/src/composites/page-heading.variants.js"
+    },
+    "./contracts/card-heading": {
+      "types": "./types/kits/app/src/composites/card-heading.variants.d.ts",
+      "default": "./client/kits/app/src/composites/card-heading.variants.js"
+    },
+    "./contracts/order-summary": {
+      "types": "./types/kits/app/src/composites/order-summary.variants.d.ts",
+      "default": "./client/kits/app/src/composites/order-summary.variants.js"
+    },
+    "./contracts/multi-column-layout": {
+      "types": "./types/kits/app/src/composites/multi-column-layout.variants.d.ts",
+      "default": "./client/kits/app/src/composites/multi-column-layout.variants.js"
+    },
+    "./contracts/sidebar-rail": {
+      "types": "./types/kits/app/src/composites/sidebar-rail.variants.d.ts",
+      "default": "./client/kits/app/src/composites/sidebar-rail.variants.js"
+    },
+    "./contracts/diff": {
+      "types": "./types/kits/app/src/composites/diff.variants.d.ts",
+      "default": "./client/kits/app/src/composites/diff.variants.js"
+    },
+    "./contracts/filter": {
+      "types": "./types/kits/app/src/composites/filter.variants.d.ts",
+      "default": "./client/kits/app/src/composites/filter.variants.js"
+    },
+    "./contracts/command-palette": {
+      "types": "./types/kits/app/src/composites/command-palette.variants.d.ts",
+      "default": "./client/kits/app/src/composites/command-palette.variants.js"
+    },
+    "./contracts/product-list": {
+      "types": "./types/kits/app/src/composites/product-list.variants.d.ts",
+      "default": "./client/kits/app/src/composites/product-list.variants.js"
+    },
+    "./contracts/bottom-navigation": {
+      "types": "./types/kits/app/src/composites/bottom-navigation.variants.d.ts",
+      "default": "./client/kits/app/src/composites/bottom-navigation.variants.js"
+    },
+    "./contracts/toolbar": {
+      "types": "./types/kits/app/src/composites/toolbar.variants.d.ts",
+      "default": "./client/kits/app/src/composites/toolbar.variants.js"
+    },
+    "./contracts/application-shell": {
+      "types": "./types/kits/app/src/composites/application-shell.variants.d.ts",
+      "default": "./client/kits/app/src/composites/application-shell.variants.js"
+    },
+    "./contracts/sidebar-layout": {
+      "types": "./types/kits/app/src/composites/sidebar-layout.variants.d.ts",
+      "default": "./client/kits/app/src/composites/sidebar-layout.variants.js"
+    },
+    "./logo/*": {
+      "types": "./types/kits/base/src/logo.*.d.ts",
+      "default": "./client/kits/base/src/logo.*.js"
+    },
     "./platform/*": "./platform/*"
   },
   "sideEffects": [
     "./styles/**/*.css"
   ],
   "dependencies": {
+    "@base-ui/react": "1.9.0",
+    "@internationalized/date": "^3.12.4",
     "tailwind-variants": "^3.1.1"
+  },
+  "peerDependencies": {
+    "lucide-react": "^1.52.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "lucide-react": {
+      "optional": true
+    }
   }
 }

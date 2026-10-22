@@ -195,6 +195,8 @@ export function SettingsScreen() {
       tabIndex={-1}
       onKeyDown={(event) => {
         if (event.key !== "Escape" || event.defaultPrevented || dialog.active) return
+        // Native DS dialogs handle Escape after this ancestor handler; keep their owning page open.
+        if (event.target instanceof Element && event.target.closest("dialog[open]")) return
         event.preventDefault()
 
         if (surface.view().type !== "root" && surface.search.back()) return

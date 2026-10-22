@@ -6,9 +6,10 @@
 // the release as the `@reddb-io/design-system` workspace package, which every Redcode surface consumes:
 // - the GUI imports its contracts, Logo modules, Color Layer, styles and platform icons;
 // - the core design app gets one shadow-root stylesheet, the favicon and the Brand's faces, generated into its brand.gen.ts.
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { createHash } from "node:crypto"
 import { join, resolve } from "node:path"
+import { tmpdir } from "node:os"
 
 const root = resolve(import.meta.dir, "..")
 const source = resolve(process.argv[2] ?? join(root, "../design-system"))
@@ -19,14 +20,20 @@ const manifest = JSON.parse(readFileSync(join(root, "design-system.manifest.json
 }
 const dest = join(root, manifest.dest)
 
-// The producer that runs is the checkout's, so it must be the pinned release's own.
+// Run the pinned producer without moving the adjacent checkout or its active worktrees.
 const pinned = (await Bun.$`git -C ${source} rev-parse ${manifest.version}^{commit}`.text()).trim()
-if ((await Bun.$`git -C ${source} rev-parse HEAD`.text()).trim() !== pinned)
-  throw new Error(`Check out ${manifest.version} in ${source} before synchronizing`)
+using producer = {
+  path: mkdtempSync(join(tmpdir(), "redcode-ds-producer-")),
+  [Symbol.dispose]() {
+    rmSync(this.path, { recursive: true, force: true })
+  },
+}
+await Bun.$`git -C ${source} archive ${pinned} | tar -xf - -C ${producer.path}`
+symlinkSync(join(root, "packages/design-system-tools/node_modules"), join(producer.path, "node_modules"), "dir")
 
 // The receipt hashes bytes. Keep the producer's temporary clone canonical on Windows too.
 const gitConfigCount = Number(process.env.GIT_CONFIG_COUNT ?? 0)
-await Bun.$`bun ${join(source, "scripts/producer/src/cli.ts")}`.cwd(root).env({
+await Bun.$`bun ${join(producer.path, "scripts/producer/src/cli.ts")}`.cwd(root).env({
   ...process.env,
   GIT_CONFIG_COUNT: String(gitConfigCount + 1),
   [`GIT_CONFIG_KEY_${gitConfigCount}`]: "core.autocrlf",
@@ -47,28 +54,35 @@ for (const icon of platform.icons)
     ),
   )
 
-// Local Divergence: the Kits are Svelte and Redcode renders with Solid, so the package exports their framework-free
-// modules and depends only on what those import. Re-applied after every Sync, which rewrites package.json.
+// Preserve recipe imports for the Solid surfaces while React pages consume the canonical Kit exports.
 const contracts = (kit: string) =>
-  Array.from(new Bun.Glob("**/*.variants.ts").scanSync(join(dest, "kits", kit, "src"))).map((file) => ({
-    name: file.split(/[\\/]/).at(-1)!.replace(".variants.ts", ""),
-    path: `./kits/${kit}/src/${file.replaceAll("\\", "/")}`,
+  Array.from(new Bun.Glob("**/*.variants.js").scanSync(join(dest, "client/kits", kit, "src"))).map((file) => ({
+    name: file.split(/[\\/]/).at(-1)!.replace(".variants.js", ""),
+    path: {
+      types: `./types/kits/${kit}/src/${file.replaceAll("\\", "/").replace(/\.js$/, ".d.ts")}`,
+      default: `./client/kits/${kit}/src/${file.replaceAll("\\", "/")}`,
+    },
   }))
 const pkg = JSON.parse(readFileSync(join(dest, "package.json"), "utf8"))
-// App appearance contracts import Base vocabulary through the public package seam.
-// Keep that seam framework-free instead of exposing the upstream Svelte barrel.
+rmSync(join(dest, "solid-base.ts"), { force: true })
+// Portable App recipes need Base vocabulary, not its React component barrel. Keep this seam
+// separate so the remaining Solid surfaces do not load the entire React catalogue in development.
+const recipes = [
+  "tone",
+  "card.variants",
+  "dropdown-menu.variants",
+  "popover.variants",
+  "media-object.variants",
+  "grid-list.variants",
+  "list.variants",
+]
 writeFileSync(
-  join(dest, "solid-base.ts"),
-  [
-    'export { TONES, FEEDBACK_TONES, isTone, type Tone, type FeedbackTone } from "./kits/base/src/tone"',
-    'export { card } from "./kits/base/src/card.variants"',
-    'export { dropdownMenu, type DropdownMenuSize } from "./kits/base/src/dropdown-menu.variants"',
-    'export { popover } from "./kits/base/src/popover.variants"',
-    'export { mediaObject } from "./kits/base/src/media-object.variants"',
-    'export { gridList, type GridListColumn } from "./kits/base/src/grid-list.variants"',
-    'export { list } from "./kits/base/src/list.variants"',
-    "",
-  ].join("\n"),
+  join(dest, "recipe-base.js"),
+  recipes.map((file) => `export * from "./client/kits/base/src/${file}.js"\n`).join(""),
+)
+writeFileSync(
+  join(dest, "recipe-base.d.ts"),
+  recipes.map((file) => `export * from "./types/kits/base/src/${file}"\n`).join(""),
 )
 writeFileSync(
   join(dest, "package.json"),
@@ -76,38 +90,44 @@ writeFileSync(
     {
       ...pkg,
       exports: {
-        "./color": pkg.exports["./color"],
-        "./base": "./solid-base.ts",
-        "./styles/application.css": pkg.exports["./styles/application.css"],
-        "./contracts/*": "./kits/base/src/*.variants.ts",
+        ...pkg.exports,
+        "./contracts/base": {
+          types: "./recipe-base.d.ts",
+          default: "./recipe-base.js",
+        },
+        "./contracts/*": {
+          types: "./types/kits/base/src/*.variants.d.ts",
+          default: "./client/kits/base/src/*.variants.js",
+        },
         ...Object.fromEntries(contracts("app").map((contract) => [`./contracts/${contract.name}`, contract.path])),
-        "./logo/*": "./kits/base/src/logo.*.ts",
+        "./logo/*": {
+          types: "./types/kits/base/src/logo.*.d.ts",
+          default: "./client/kits/base/src/logo.*.js",
+        },
         "./platform/*": "./platform/*",
       },
-      dependencies: { "tailwind-variants": pkg.dependencies["tailwind-variants"] },
-      peerDependencies: undefined,
-      peerDependenciesMeta: undefined,
     },
     null,
     2,
   ) + "\n",
 )
 
-// Keep the producer's provenance and record the Solid export adaptation explicitly. The file hashes
+// Keep the producer's provenance and record the compatibility exports explicitly. The file hashes
 // describe the delivered package, including the platform icons that this wrapper adds after Sync.
 const receiptPath = join(dest, "design-system.receipt.json")
 const receipt = JSON.parse(readFileSync(receiptPath, "utf8"))
 const upstreamPackageSha256 = receipt.files["package.json"]
 for (const file of [
   "package.json",
-  "solid-base.ts",
+  "recipe-base.js",
+  "recipe-base.d.ts",
   "platform/platform-manifest.json",
   ...platform.icons.map((icon) => `platform/${icon.file}`),
 ])
   receipt.files[file] = createHash("sha256")
     .update(readFileSync(join(dest, file)))
     .digest("hex")
-receipt.consumer = { name: manifest.consumer, framework: "solid", upstreamPackageSha256 }
+receipt.consumer = { name: manifest.consumer, framework: "react", upstreamPackageSha256 }
 writeFileSync(receiptPath, JSON.stringify(receipt, null, 2) + "\n")
 
 // The design app injects its UI into a shadow root, so it takes the Application direction, both Color Schemes and
