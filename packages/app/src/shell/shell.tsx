@@ -1,10 +1,4 @@
-import { createMemo, Show, Suspense, type ParentProps } from "solid-js"
-import { createStore } from "solid-js/store"
-import { makeEventListener } from "@solid-primitives/event-listener"
-import { ResizeHandle } from "@opencode/ui/resize-handle"
-import { IconButton } from "@opencode/ui/icon-button"
-import { Icon } from "@opencode/ui/icon"
-import { sidebarLayout } from "@reddb-io/design-system/contracts/sidebar-layout"
+import { Suspense, type ParentProps } from "solid-js"
 import { Titlebar } from "@/shell/titlebar/titlebar"
 import { usePlatform } from "@/runtime/platform/platform"
 import { ToastRegion } from "@/shell/notifications/toast"
@@ -14,173 +8,60 @@ import { useSettingsSurface } from "@/settings/surface"
 import { useSettings } from "@/settings/model"
 import { ExtensionServerCover } from "@/runtime/extension/server-shell"
 import { ExtensionSlot } from "@/runtime/extension/render"
-import { useLanguage } from "@/runtime/i18n/language"
+import { useProjectMenuItems } from "@/runtime/extension/projects"
 import { useNavigation } from "@/shell/navigation/controller"
+import { useCommand } from "@/shell/commands/command"
 import { AgentsMenu } from "@/shell/navigation/agents-menu"
-import { NavigationRail, MobileNavigationDock } from "@/shell/navigation/rail"
-import { NavigationSidemenu } from "@/shell/navigation/sidemenu"
-import {
-  NAVIGATION_MAX_WIDTH,
-  NAVIGATION_MIN_WIDTH,
-  NAVIGATION_PANEL_ID,
-  NAVIGATION_BROWSE_ID,
-} from "@/shell/navigation/model"
+import { navigationView } from "@/shell/navigation/view"
+import { sharedSource } from "@/runtime/react/source"
+import { sharedMount } from "@/runtime/react/mount"
+import { ReactView } from "@/runtime/react/view"
+import { Shell } from "./shell.react"
 
 export default function Layout(props: ParentProps) {
+  return (
+    <TitlebarRightProvider>
+      <ShellHost>{props.children}</ShellHost>
+    </TitlebarRightProvider>
+  )
+}
+
+/** Application services and contributed renderers retain their current scopes during migration. */
+function ShellHost(props: ParentProps) {
   const platform = usePlatform()
   const settings = useSettingsSurface()
   const preferences = useSettings()
-  const language = useLanguage()
   const navigation = useNavigation()
-  const [state, setState] = createStore({ resizing: false })
-  const mobile = navigation.mobile
-  const bottomTitlebar = () => mobile() && preferences.general.mobileTitlebarPosition() === "bottom"
-  const opened = () => navigation.panel.opened()
-  const frame = createMemo(() => sidebarLayout({ rail: true, railOpen: !mobile(), panelOpen: opened() }))
-  const dismissPanel = () => {
-    navigation.panel.close()
-    if (mobile()) document.getElementById(NAVIGATION_BROWSE_ID)?.focus()
-  }
-
-  // The DS drawer closes on Escape; the window listener runs after dialogs and menus took theirs.
-  makeEventListener(window, "keydown", (event) => {
-    if (event.key !== "Escape" || event.defaultPrevented || !mobile() || !opened()) return
-    dismissPanel()
-  })
-
-  return (
-    <TitlebarRightProvider>
-      <div
-        class="relative bg-v2-background-bg-deep flex-1 min-h-0 min-w-0 flex flex-col select-none [&_input]:select-text [&_textarea]:select-text [&_[contenteditable]]:select-text"
-        style={{
-          // Mobile panels only need clearance for their outer border.
-          "--shell-inline-inset": mobile() ? "1px" : "8px",
-          // A bottom mobile titlebar leaves main's top edge to the safe area. Native Windows chrome supplies the gap;
-          // retain outer-outline clearance.
-          "--shell-top-inset": bottomTitlebar()
-            ? "0px"
-            : platform.platform === "desktop" && platform.os === "windows"
-              ? "1px"
-              : "8px",
-          "--shell-bottom-inset": mobile()
-            ? "8px"
-            : "max(0px, calc(8px - var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))))",
-        }}
-      >
-        <Titlebar />
-        <div
-          data-sidebar-layout
-          data-sidebar-layout-mode="rail-panel"
-          data-panel-open={opened()}
-          class={frame().root({ class: "min-h-0 flex-1 grid-rows-[minmax(0,1fr)]" })}
-          style={{
-            // The DS frame is page chrome sized to the viewport; here it fills the space under the titlebar.
-            "min-height": "0",
-            // The sidemenu keeps the width the user dragged it to rather than the frame's 1 : 3 split.
-            "grid-template-columns":
-              !mobile() && opened() ? `max-content ${navigation.panel.width()}px minmax(0, 1fr)` : undefined,
-            transition: state.resizing ? "none" : undefined,
-          }}
-        >
-          <div
-            class={frame().railRegion({ class: "max-md:hidden" })}
-            style={{ "min-height": "0" }}
-            data-sidebar-layout-region="rail"
-          >
-            <NavigationRail navigation={navigation} panelID={NAVIGATION_PANEL_ID} />
-          </div>
-          <Show when={mobile() && opened()}>
-            <button
-              type="button"
-              aria-label={language.t("navigation.close")}
-              data-sidebar-drawer-backdrop
-              class="fixed inset-0 z-30 bg-foreground/20 md:hidden"
-              onClick={dismissPanel}
-            />
-          </Show>
-          <aside
-            id={NAVIGATION_PANEL_ID}
-            tabIndex={-1}
-            aria-label={language.t(navigation.route.agents() ? "agents.title" : "sidebar.nav.projectsAndSessions")}
-            data-sidebar-layout-region="sidebar"
-            data-mobile-presentation="drawer"
-            data-state={opened() ? "open" : "closed"}
-            inert={!opened()}
-            class={frame().panel({
-              // Mobile hides the rail, so its drawer can use the whole viewport without a rail-width fallback.
-              class: "relative flex min-h-0 flex-col max-md:p-0 max-md:w-[min(20rem,100dvw)]",
-            })}
-            classList={{ "max-md:invisible md:border-e-0": !opened() }}
-          >
-            <Show when={mobile()}>
-              <div class="flex shrink-0 items-center justify-between gap-2 p-2">
-                <span class="text-13-medium">
-                  {language.t(navigation.route.agents() ? "agents.title" : "sidebar.nav.projectsAndSessions")}
-                </span>
-                <IconButton
-                  variant="ghost-muted"
-                  size="large"
-                  icon={<Icon name="close" />}
-                  aria-label={language.t("navigation.close")}
-                  onClick={dismissPanel}
-                />
-              </div>
-            </Show>
-            <Show when={navigation.route.agents()} fallback={<NavigationSidemenu navigation={navigation} />}>
-              <AgentsMenu />
-            </Show>
-            <Show when={!mobile() && opened()}>
-              <div
-                class="contents"
-                onPointerDown={() => {
-                  setState("resizing", true)
-                  window.addEventListener("pointerup", () => setState("resizing", false), { once: true })
-                }}
-              >
-                <ResizeHandle
-                  class="-end-1"
-                  direction="horizontal"
-                  size={navigation.panel.width()}
-                  min={NAVIGATION_MIN_WIDTH}
-                  max={NAVIGATION_MAX_WIDTH}
-                  collapseThreshold={NAVIGATION_MIN_WIDTH - 60}
-                  onCollapse={navigation.panel.close}
-                  onResize={navigation.panel.resize}
-                />
-              </div>
-            </Show>
-          </aside>
-          {/* Size containment collapses percentage-height descendants in WebKit. */}
-          <main
-            class={frame().main({
-              class: "min-h-0 min-w-0 overflow-x-hidden flex flex-col items-start contain-content",
-            })}
-            data-sidebar-layout-region="main"
-            style={{
-              "padding-top": bottomTitlebar() ? "env(safe-area-inset-top, 0px)" : "0px",
-              "padding-bottom":
-                mobile() || settings.active()
-                  ? "0px"
-                  : "var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))",
-              "--settings-bottom-inset": bottomTitlebar()
-                ? "40px"
-                : mobile()
-                  ? "0px"
-                  : "var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))",
-            }}
-          >
-            <ExtensionServerCover>
-              <Suspense>{props.children}</Suspense>
-            </ExtensionServerCover>
-          </main>
-        </div>
-        <ExtensionSlot at="window.bottom" input={{}} />
-        <Show when={mobile()}>
-          <MobileNavigationDock safeArea={!bottomTitlebar()} />
-        </Show>
+  const command = useCommand()
+  const contributions = useProjectMenuItems()
+  const source = sharedSource(() => ({
+    navigation: navigationView(navigation, command, contributions, platform, preferences.general.navigationLabels()),
+    bottomTitlebar: navigation.mobile() && preferences.general.mobileTitlebarPosition() === "bottom",
+    windows: platform.platform === "desktop" && platform.os === "windows",
+    settings: settings.active(),
+  }))
+  const slots = {
+    titlebar: sharedMount(() => <Titlebar />),
+    agents: sharedMount(() => <AgentsMenu />),
+    content: sharedMount(() => (
+      <ExtensionServerCover>
+        <Suspense>{props.children}</Suspense>
+      </ExtensionServerCover>
+    )),
+    bottom: sharedMount(() => <ExtensionSlot at="window.bottom" input={{}} />),
+    notifications: sharedMount(() => (
+      <>
         <ToastRegion />
         <UploadToastHost />
-      </div>
-    </TitlebarRightProvider>
-  )
+      </>
+    )),
+  }
+  return <ReactView component={Shell} props={{ source, navigation, slots }} />
+}
+
+export type ShellSnapshot = {
+  navigation: ReturnType<typeof navigationView>
+  bottomTitlebar: boolean
+  windows: boolean
+  settings: boolean
 }

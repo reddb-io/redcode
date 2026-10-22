@@ -2,10 +2,10 @@ import { describe, expect, test } from "bun:test"
 import type { Project } from "@/runtime/server/types"
 import type { SessionInfo } from "@opencode/client/promise"
 import { createRoot } from "solid-js"
-import { createServerSessionEntries } from "@/shell/commands/palette"
+import { createServerSessionEntries } from "@/shell/commands/session-entries"
 import type { LocalProject } from "@/shell/state/layout"
-import { ServerConnection } from "@/runtime/server/registry"
-import { getProjectAvatarSource } from "@opencode/ui/project-avatar"
+import { ServerKey } from "@/runtime/server/persistence"
+import { getProjectAvatarSource } from "@opencode/ui/project-avatar-data"
 
 const stored: Project = {
   id: "project-1",
@@ -29,7 +29,7 @@ const session: SessionInfo = {
 
 describe("command palette sessions", () => {
   test("uses the home project avatar and cancels superseded searches", async () => {
-    const server = ServerConnection.Key.make("selected-server")
+    const server = ServerKey.make("selected-server")
 
     const opened: LocalProject = {
       ...stored,
@@ -96,7 +96,7 @@ describe("command palette sessions", () => {
       (resolve, reject) => {
         createRoot((dispose) => {
           const search = createServerSessionEntries({
-            server: ServerConnection.Key.make("selected-server"),
+            server: ServerKey.make("selected-server"),
             opened: () => [],
             stored: () => [stored],
             load: async () => ({ data: [] }),

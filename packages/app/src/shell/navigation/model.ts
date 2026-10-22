@@ -1,7 +1,7 @@
 import type { SessionInfo } from "@opencode/client/promise"
 import { homeProjectForSession } from "@/home/sessions/records"
 import { compareSessionTime } from "@/shell/layout/helpers"
-import { displayName } from "@opencode/ui/project-avatar"
+import { displayName } from "@opencode/ui/project-avatar-data"
 import { sessionLabel } from "@/session/title"
 import { pathKey } from "@/workspaces/path-key"
 

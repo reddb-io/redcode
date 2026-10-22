@@ -53,6 +53,31 @@ popups declare the Kobalte top layer so the parent dialog does not hide a popup
 portal from assistive technology. The HTTPS keeper reproduced this failure
 before the fix, with visible options under an `aria-hidden` ancestor.
 
+The surrounding frame, desktop navigation rail, project/session sidemenu, mobile
+dock and command palette now render in React as well. The frame uses the canonical
+App recipes, and menus, tooltips, inputs, scrolling and the palette dialog use
+native Base components. Redcode artwork, status roles, route selection, background
+session opening, pins, filters, section expansion and saved panel width are
+preserved. The resize separator supports both pointer dragging and keyboard input.
+Extension project-menu contributions are projected as ordered actions into the
+native menu, preserving their existing server/directory invocation contract.
+
+Navigation-owned transient state uses the same renderer-independent external
+store as Settings. The application service adapter still derives the tree and
+status from Solid-owned server, routing and persistence services. Command search
+retains its cancellation and independently published asynchronous sources;
+React owns active-row selection and reads local query state through the shared
+store. The portable palette entries, server-session loader, file-icon lookup,
+project artwork, language snapshot and keyboard legends have explicit shared
+owners. The server-session loader's existing test rejected removing its archive
+filter after the move.
+
+The shell's stable shared slots keep the titlebar/tab strip, Agents menu, route
+content, extension surfaces and notification/upload hosts under their original
+providers. Palette session avatars also retain their existing subscriptions in
+shared slots. This preserves extension and server ownership without claiming
+that those remaining renderers or the global providers have migrated.
+
 ## Distribution and builds
 
 `design-system.manifest.json` selects React and the official compiled distribution.
@@ -82,7 +107,7 @@ barrel. The older `contracts/base` seam remains available for compatibility.
 ## Remaining surfaces
 
 - Shared application providers, routing, server subscriptions and desktop startup.
-- Application shell and GUI extension SDK/renderers.
+- Titlebar/tab strip, Agents menu, notification/upload hosts and GUI extension SDK/renderers.
 - Composer, session timeline, diff/review, document and terminal integrations.
 - Remaining generic primitives, followed by removal of the Solid GUI dependencies
   and `ReactView`.
@@ -144,3 +169,58 @@ mobile navigation keeper passed on isolated recheck after an initial navigation
 timeout. Authenticated live desktop/mobile and light/dark checks found no
 runtime errors or horizontal overflow. Embedded brand assets stayed identical;
 their generated header records the new producer version.
+
+Shell/navigation verification on 2026-10-22:
+
+- Root checks passed all 27 package type checks with no lint warnings/errors;
+  the app's browser-test types also passed. Web and Desktop production builds passed.
+- Navigation model and palette search/session-loading unit tests: 22 passed,
+  with 78 assertions. The moved archive-filter contract rejected its mutation.
+  File-icon lookup rules remained byte-for-byte identical after extraction.
+- Chromium production: 88 cases passed together without retries across navigation,
+  command palette, all mobile-session keepers, Settings/search/WSL/SSH and shell
+  spacing in LTR and RTL. The native menu's Settings destination also keeps its
+  current-page indication on the mobile dock.
+- The final dock current-page refinement passed the same eight focused cases in
+  an optimized production build.
+- Eight focused development keepers passed without retries, including extension
+  import, asynchronous palette selection, mobile focus and current-page indication,
+  persisted navigation state and Settings history/geometry.
+- Browser recording stalled during teardown even after the isolated tests had
+  completed every interaction/assertion. A temporary runner override disabled
+  video; the same isolated cases passed in 10.5 seconds. This override is not a
+  production flag or a committed runner change.
+- Three Home-suite failures were reproduced on the pre-migration production
+  build: the context-menu expectation omits Pin, Ctrl+B is expected to open Home
+  rather than toggle the sidebar, and the signed-out pairing case fails while
+  waiting for its Authenticate button. They are not counted as passing coverage.
+- Authenticated browser checks loaded real sessions and the native palette,
+  drawer and light/dark surfaces while preserving the elected server. The 390px
+  viewport had no horizontal overflow. Chrome Unstable reported two startup
+  `UnknownError: Internal error` rejections; their cause remains unverified, so
+  this is not a claim of an error-free live run.
+
+Production benchmarks recorded 24 passing runs before the migration and 24 after
+it (eight scenarios, three repetitions, one worker, Chromium, video/trace off).
+The after-run overlapped unrelated DS builds/checks: load exceeded 16 on eight
+CPUs, with CPU pressure above 50%. A separate immutable build of the prior
+revision succeeded, but its comparison run and a later attempt on the new build
+hit browser crashes/timeouts. These interrupted runs are not passing evidence.
+
+Observed median stable render times in milliseconds:
+
+| Scenario                         | Initial baseline | After, under contention |
+| -------------------------------- | ---------------: | ----------------------: |
+| entry: new session from home     |              267 |                   505.4 |
+| entry: new session from session  |            198.1 |                   331.2 |
+| entry: cold session from Home    |            735.6 |                  1735.8 |
+| tab switch: cold, review closed  |            284.1 |                   820.3 |
+| tab switch: cold, review open    |            307.2 |                   771.1 |
+| tab switch: warm, review closed  |            150.7 |                   253.1 |
+| tab switch: warm, review open    |            115.5 |                   342.6 |
+| tab switch: warm, review resized |            123.8 |                   436.8 |
+
+The recorded after-times are slower. The changing load and browser failures
+prevent attributing that difference to the framework change or ruling out a
+regression. Controlled latency verification remains pending; the passing
+benchmark assertions establish rendering correctness, not performance parity.

@@ -2,7 +2,8 @@ import type { SessionInfo } from "@opencode/client/promise"
 import { createMediaQuery } from "@solid-primitives/media"
 import { createEffect, createMemo, startTransition, untrack } from "solid-js"
 import { createSimpleContext } from "@opencode/ui/context"
-import { createStore, reconcile } from "solid-js/store"
+import { sharedState } from "@/runtime/react/state"
+import { observeShared } from "@/runtime/react/source"
 import { useNavigate } from "@solidjs/router"
 import { addProjects } from "@/home/projects/add"
 import { useProjectActions } from "@/home/projects/actions"
@@ -47,11 +48,13 @@ export function createNavigationController() {
   const pickDirectory = useDirectoryPicker()
   const actions = useProjectActions()
   const mobile = createMediaQuery("(max-width: 767px)")
-  const [state, setState] = createStore({
+  const store = sharedState({
     query: "",
     showAll: {} as Record<string, boolean>,
     since: {} as Record<string, number>,
   })
+
+  const state = observeShared(store)
 
   const conn = createMemo<ServerConnection.Any | undefined>(
     () =>
@@ -110,17 +113,17 @@ export function createNavigationController() {
   createEffect(() => {
     const active = ctx()?.data.session.active() ?? []
     const now = Date.now()
-    const since = untrack(() => state.since)
-    setState("since", reconcile(Object.fromEntries(active.map((id) => [id, since[id] ?? now]))))
+    const since = untrack(() => state().since)
+    store.update({ since: Object.fromEntries(active.map((id) => [id, since[id] ?? now])) })
   })
   const tree = createMemo(() =>
     buildNavigationTree({
       projects: ctx()?.projects.list() ?? [],
       sessions: index.sessions(),
       pinned: pinned(),
-      query: state.query,
+      query: state().query,
       expanded: layout.navigation.expanded,
-      showAll: (key) => !!state.showAll[key],
+      showAll: (key) => !!state().showAll[key],
       status,
     }),
   )
@@ -281,9 +284,9 @@ export function createNavigationController() {
       close: () => (mobile() ? layout.mobileSidebar.hide() : layout.navigation.setOpened(false)),
     },
     filter: {
-      value: () => state.query,
-      set: (value: string) => setState("query", value),
-      clear: () => setState("query", ""),
+      value: () => state().query,
+      set: (value: string) => store.update({ query: value }),
+      clear: () => store.update({ query: "" }),
     },
     section: {
       open: layout.navigation.sectionOpen,
@@ -292,8 +295,8 @@ export function createNavigationController() {
     project: {
       expanded: (key: string) => tree().projects.find((project) => project.key === key)?.expanded ?? true,
       toggle: (key: string) => layout.navigation.setExpanded(key, !layout.navigation.expanded(key)),
-      showAll: (key: string, value: boolean) => setState("showAll", key, value),
-      showingAll: (key: string) => !!state.showAll[key],
+      showAll: (key: string, value: boolean) => store.update({ showAll: { ...state().showAll, [key]: value } }),
+      showingAll: (key: string) => !!state().showAll[key],
       newSession: (project: LocalProject) => {
         const current = conn()
         if (!current) return
@@ -320,7 +323,7 @@ export function createNavigationController() {
       open: openSession,
       status,
       /** When this client first saw the session's current execution running. */
-      since: (sessionID: string) => state.since[sessionID] as number | undefined,
+      since: (sessionID: string) => state().since[sessionID] as number | undefined,
       unread,
       markRead: (sessionID: string) => ctx()?.notification.session.markViewed(sessionID),
       pinned: (sessionID: string) => {
