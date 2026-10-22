@@ -194,10 +194,25 @@ test("appearance options remain reachable in a short viewport", async ({ page })
   await page.screenshot({ path: test.info().outputPath("short-viewport-theme-options.png"), animations: "disabled" })
 })
 
-test("React settings keep fonts, color scheme, notifications and sounds across navigation and reload", async ({
+test("React settings keep preferences, fonts, color scheme, notifications and sounds across navigation and reload", async ({
   page,
 }) => {
   const { settings } = await open(page)
+  const detail = settings.getByRole("slider", { name: "Timeline detail", exact: true })
+  await detail.focus()
+  await detail.press("ArrowRight")
+  await expect(detail).toHaveValue("3")
+  await settings.getByRole("button", { name: "Advanced", exact: true }).click()
+  const grouped = settings.getByRole("switch", { name: "Shell grouped", exact: true })
+  await grouped.setChecked(false)
+  const visibility = settings.getByRole("button", { name: "Shell visibility", exact: true })
+  await visibility.click()
+  await expect(visibility).toHaveAttribute("aria-pressed", "false")
+  await expect(grouped).toHaveCount(0)
+  await visibility.click()
+  await expect(grouped).not.toBeChecked()
+  const collapsed = settings.getByRole("switch", { name: "Shell collapsed", exact: true })
+  await collapsed.setChecked(true)
   await settings.getByRole("tab", { name: "Appearance", exact: true }).click()
   await settings.getByRole("combobox", { name: "Color scheme", exact: true }).selectOption("light")
   await expect(page.locator("html")).toHaveAttribute("data-color-scheme", "light")
@@ -217,6 +232,10 @@ test("React settings keep fonts, color scheme, notifications and sounds across n
   await expect(settings.getByRole("combobox", { name: "Color scheme", exact: true })).toHaveValue("light")
   await expect(settings.getByRole("textbox", { name: "UI Font", exact: true })).toHaveValue("monospace")
   await expect(settings.getByRole("textbox", { name: "Terminal Font", exact: true })).toHaveValue("monospace")
+  await settings.getByRole("tab", { name: "Preferences", exact: true }).click()
+  await expect(grouped).not.toBeChecked()
+  await expect(visibility).toHaveAttribute("aria-pressed", "true")
+  await expect(collapsed).toBeChecked()
   await settings.getByRole("tab", { name: "Notifications", exact: true }).click()
   await expect(agent).not.toBeChecked()
   await expect(settings.getByRole("combobox", { name: "Agent", exact: true })).toHaveValue("none")
@@ -348,7 +367,7 @@ test("single-server settings expose scoped pages without a server picker", async
   await expect(settings.getByRole("tab", { name: "Server", exact: true })).toBeVisible()
   await expect(settings.getByRole("tab", { name: "Servers", exact: true })).toHaveCount(0)
 
-  for (const name of ["Projects", "Worktrees", "Providers", "Models", "Extensions"]) {
+  for (const name of ["Projects", "Worktrees", "Providers", "Models", "Agent extensions"]) {
     await settings.getByRole("tab", { name, exact: true }).click()
     await expect(settings.getByRole("tab", { name, exact: true })).toHaveAttribute("aria-selected", "true")
     await expect(settings.locator('[data-action="settings-server-select"]')).toHaveCount(0)
@@ -356,13 +375,12 @@ test("single-server settings expose scoped pages without a server picker", async
 
   await settings.getByRole("tab", { name: "Server", exact: true }).click()
   await expect(settings.getByText("Terminal shell", { exact: true })).toBeVisible()
-  await settings.getByText("zsh", { exact: true }).click()
 
   const updated = page.waitForRequest(
     (request) => request.method() === "PATCH" && new URL(request.url()).pathname === "/api/experimental/config",
   )
 
-  await page.getByRole("option", { name: "bash", exact: true }).click()
+  await settings.getByRole("combobox", { name: "Terminal shell", exact: true }).selectOption("bash")
   expect((await updated).postDataJSON()).toEqual({ shell: "bash" })
 })
 
@@ -452,7 +470,7 @@ test("project settings open as a nested view that keeps its route", async ({ pag
   const { settings } = await open(page)
   await openProject(page)
   await expect(settings.getByRole("tab", { name: "General", exact: true })).toBeVisible()
-  await expect(settings.getByRole("tab", { name: "Extensions", exact: true })).toBeVisible()
+  await expect(settings.getByRole("tab", { name: "Agent extensions", exact: true })).toBeVisible()
   await expect(settings.getByRole("tab", { name: "Scripts", exact: true })).toHaveCount(0)
   const menu = page.getByRole("menu")
   await settings.locator(".settings-tab-header").getByRole("button", { name: "More options", exact: true }).click()
@@ -632,9 +650,9 @@ test.describe("pages open before slow data", () => {
   test("extensions", async ({ page }) => {
     const { settings } = await open(page, { mcp: [{ name: "demo-mcp", status: { status: "connected" } }] })
     const mcp = await holdRoute(page, (url) => url.pathname === "/api/mcp")
-    await settings.getByRole("tab", { name: "Extensions", exact: true }).click()
+    await settings.getByRole("tab", { name: "Agent extensions", exact: true }).click()
     await mcp.arrived
-    await expect(settings.getByRole("heading", { name: "Extensions", exact: true })).toBeVisible()
+    await expect(settings.getByRole("heading", { name: "Agent extensions", exact: true })).toBeVisible()
     await expect(settings.getByRole("button", { name: "Back to app" })).toBeVisible()
     mcp.release()
     await settings.getByRole("tab", { name: "MCPs", exact: true }).click()
@@ -866,7 +884,7 @@ for (const row of ["configured", "disabled", "failure"] as const) {
   test(`project LSPs: ${row}`, async ({ page }) => {
     const { settings } = await open(page)
     await openProject(page)
-    await settings.getByRole("tab", { name: "Extensions", exact: true }).click()
+    await settings.getByRole("tab", { name: "Agent extensions", exact: true }).click()
     const state = { fail: row === "failure" }
     const gate = Promise.withResolvers<void>()
     await page.route(
@@ -913,7 +931,10 @@ for (const row of [
   {
     name: "a stored Zen API key keeps the Console sign-in",
     paid: true,
-    connections: [{ type: "credential", id: "cred_v1", label: "API key", method: "key" }],
+    connections: [
+      { type: "credential", id: "cred_v1", label: "API key", method: "key" },
+      { type: "credential", id: "cred_backup", label: "Backup", method: "key" },
+    ],
     console: true,
   },
   {
@@ -924,6 +945,7 @@ for (const row of [
   },
 ]) {
   test(`providers: ${row.name}`, async ({ page }) => {
+    const connections = [...row.connections]
     const { settings } = await open(page, {
       provider: {
         all: [
@@ -950,7 +972,7 @@ for (const row of [
             { id: "device", type: "oauth", label: "OpenCode Console account" },
             { type: "key", label: "API key (service account)" },
           ],
-          connections: row.connections,
+          connections,
         },
         { id: "opencode-go", name: "OpenCode Go", methods: [{ type: "key" }], connections: [] },
         { id: "red-router", name: "RedRouter", methods: [{ type: "key" }], connections: [] },
@@ -971,6 +993,78 @@ for (const row of [
     await expect(recommended).toHaveCount(1)
     await expect(recommended).toContainText("RedRouter")
     await expect(settings.getByText("OpenCode Console", { exact: true })).toHaveCount(row.console ? 1 : 0)
+    if (connections.length < 2) return
+    const operations: string[] = []
+    await page.route("**/api/credential/cred_backup/activate", async (route) => {
+      expect(route.request().method()).toBe("POST")
+      operations.push("activate")
+      const index = connections.findIndex((account) => account.id === "cred_backup")
+      connections.unshift(...connections.splice(index, 1))
+      await route.fulfill({ status: 204 })
+    })
+    await page.route("**/api/credential/cred_backup", async (route) => {
+      expect(route.request().method()).toBe("DELETE")
+      operations.push("remove")
+      connections.splice(
+        connections.findIndex((account) => account.id === "cred_backup"),
+        1,
+      )
+      await route.fulfill({ status: 204 })
+    })
+    const account = connected.getByRole("combobox", { name: "Manage OpenCode Zen accounts", exact: true })
+    await expect(account).toHaveValue("cred_v1")
+    await account.selectOption("cred_backup")
+    await expect(account).toHaveValue("cred_backup")
+    await expect(account).toBeEnabled()
+    await connected.getByRole("button", { name: "Manage OpenCode Zen accounts", exact: true }).click()
+    await page.getByRole("menuitem", { name: "Backup", exact: true }).click()
+    await expect(account).toHaveValue("cred_v1")
+    await expect(account.getByRole("option")).toHaveCount(1)
+    expect(operations).toEqual(["activate", "remove"])
+
+    const removals: boolean[] = []
+    await page.route("**/api/experimental/provider/opencode/remove", async (route) => {
+      const request = route.request().postDataJSON()
+      removals.push(request.dryRun)
+      if (!request.dryRun && removals.filter((value) => !value).length === 1) {
+        await route.fulfill({ status: 500, json: { message: "Temporary removal failure" } })
+        return
+      }
+      if (!request.dryRun) connections.splice(0)
+      await route.fulfill({
+        json: {
+          location: { directory, project: { id: projectID, directory, canonical: directory } },
+          data: {
+            providerID: "opencode",
+            dryRun: request.dryRun,
+            removed: { credentials: 1, config: false, references: [], learnedLimits: 0, hidden: false },
+            configPath: "/home/test/.config/opencode/opencode.jsonc",
+            referencingFiles: [],
+            envVariables: [],
+          },
+        },
+      })
+    })
+    await connected.getByRole("button", { name: "Manage OpenCode Zen accounts", exact: true }).click()
+    await page.getByRole("menuitem", { name: "Remove provider…", exact: true }).click()
+    const removal = page.getByRole("dialog", { name: "Remove OpenCode Zen", exact: true })
+    await expect(removal).toContainText("1 saved credential")
+    await removal.press("Escape")
+    await expect(removal).toBeHidden()
+    await expect(settings).toBeVisible()
+    expect(removals).toEqual([true])
+    await expect(connected.getByRole("button", { name: "Manage OpenCode Zen accounts", exact: true })).toBeFocused()
+    await connected.getByRole("button", { name: "Manage OpenCode Zen accounts", exact: true }).click()
+    await page.getByRole("menuitem", { name: "Remove provider…", exact: true }).click()
+    const remove = removal.getByRole("button", { name: "Remove", exact: true })
+    await remove.click()
+    await expect.poll(() => removals.filter((value) => !value).length).toBe(1)
+    await expect(remove).toBeEnabled()
+    await expect(removal).toBeVisible()
+    await remove.click()
+    await expect(removal).toBeHidden()
+    await expect(account).toHaveCount(0)
+    expect(removals).toEqual([true, true, false, false])
   })
 }
 
@@ -1112,22 +1206,6 @@ test("navigation labels preserve rail and panel geometry and survive reload", as
   await page.screenshot({ path: test.info().outputPath("labelled-navigation.png"), animations: "disabled" })
 })
 
-test("the tab layout preference switches to vertical tabs and survives reload", async ({ page }) => {
-  const { settings } = await open(page)
-  const layout = settings.locator('[data-action="settings-tab-layout"]')
-  await expect(layout).toContainText("Horizontal")
-  await layout.click()
-  await page.getByRole("option", { name: "Vertical" }).click()
-  await expect(layout).toContainText("Vertical")
-  await expect(page.locator('[data-slot="vertical-tabs-sidebar"]')).toBeVisible()
-  await expect(page.locator('[data-slot="titlebar-tabs"]')).toHaveCount(0)
-
-  await page.reload()
-  await expect(layout).toContainText("Vertical")
-  await expect(page.locator('[data-slot="vertical-tabs-sidebar"]')).toBeVisible()
-  await expect(page.locator('[data-slot="titlebar-tabs"]')).toHaveCount(0)
-})
-
 for (const viewport of [
   { name: "desktop", width: 1280, height: 720, bottom: false },
   { name: "mobile", width: 390, height: 844, bottom: true },
@@ -1138,13 +1216,13 @@ for (const viewport of [
     )
     const { settings } = await open(page)
     await page.setViewportSize(viewport)
-    const panel = settings.locator(".settings-content > .settings-panel:visible")
+    const panel = settings.locator(".settings-content .settings-panel:visible")
     const main = page.getByRole("main")
 
     if (viewport.bottom) {
-      const toggle = settings.locator('[data-action="settings-mobile-titlebar-bottom"]')
-      await toggle.locator('[data-slot="switch-control"]').click()
-      await expect(toggle.getByRole("switch")).toBeChecked()
+      const toggle = settings.getByRole("switch", { name: "Bottom navigation", exact: true })
+      await toggle.check()
+      await expect(toggle).toBeChecked()
     }
 
     // Use the far outer gutter; the near edge belongs to the sidebar's resize handle.
@@ -1170,8 +1248,9 @@ for (const viewport of [
       if (viewport.width >= 816) await settings.getByRole("tab", { name, exact: true }).click()
 
       if (viewport.width < 816) {
-        await settings.getByRole("button", { name: pages[Math.max(0, index - 1)], exact: true }).click()
-        await page.getByRole("menuitemradio", { name, exact: true }).click()
+        await settings
+          .getByRole("combobox", { name: pages[Math.max(0, index - 1)], exact: true })
+          .selectOption({ label: name })
       }
 
       if (name === "About") await expect(panel.getByText("Released under the MIT License")).toBeVisible()

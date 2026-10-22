@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { createRoot } from "solid-js"
-import { createKeybindSettingsController } from "../src/settings/keybinds/keybinds"
+import { createKeybindSettingsController } from "../src/settings/keybinds/controller"
 
 function setup(overrides: Record<string, string> = {}) {
   const changes: [string, string][] = []
@@ -9,46 +8,44 @@ function setup(overrides: Record<string, string> = {}) {
   let resets = 0
   let controller: ReturnType<typeof createKeybindSettingsController>
 
-  const dispose = createRoot((dispose) => {
-    controller = createKeybindSettingsController(
-      {
-        command: {
-          catalog: [
-            { id: "session.alpha", title: "Alpha", keybind: "mod+a" },
-            { id: "session.beta", title: "Beta", keybind: "mod+b" },
-          ],
-          options: [],
-          keybinds: (enabled) => suppression.push(enabled),
-        },
-        settings: {
-          current: { keybinds: overrides },
-          keybinds: {
-            get: (id) => overrides[id],
-            set: (id, value) => {
-              overrides[id] = value
-              changes.push([id, value])
-            },
-            resetAll: () => {
-              resets++
-            },
+  controller = createKeybindSettingsController(
+    {
+      command: {
+        catalog: [
+          { id: "session.alpha", title: "Alpha", keybind: "mod+a" },
+          { id: "session.beta", title: "Beta", keybind: "mod+b" },
+        ],
+        options: [],
+        keybinds: (enabled) => suppression.push(enabled),
+      },
+      settings: {
+        current: { keybinds: overrides },
+        keybinds: {
+          get: (id) => overrides[id],
+          set: (id, value) => {
+            overrides[id] = value
+            changes.push([id, value])
+          },
+          resetAll: () => {
+            resets++
           },
         },
-        notify: (toast) => notifications.push(toast),
       },
-      {
-        locale: () => "en",
-        t: (key, params) => {
-          if (params) return `${key}:${Object.values(params).join("|")}`
+      notify: (toast) => notifications.push(toast),
+    },
+    {
+      locale: () => "en",
+      t: (key, params) => {
+        if (params) return `${key}:${Object.values(params).join("|")}`
 
-          if (key === "common.key.alt") return "Alt"
+        if (key === "common.key.alt") return "Alt"
 
-          return String(key)
-        },
+        return String(key)
       },
-    )
+    },
+  )
 
-    return dispose
-  })
+  const dispose = controller.listen()
 
   return {
     controller: controller!,

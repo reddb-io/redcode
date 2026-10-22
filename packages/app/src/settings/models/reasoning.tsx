@@ -1,72 +1,44 @@
-import type { IntelligenceEvaluator, IntelligenceStatus } from "@opencode/client"
-import { Button } from "@opencode/ui/button"
-import { Select } from "@opencode/ui/select"
-import { TextField } from "@opencode/ui/text-field"
-import { firstConnectionFailure, type ConnectionFailure } from "@opencode/util/connection-failure"
-import { createMemo, Show } from "solid-js"
-import { createStore } from "solid-js/store"
-import { useIntegrations } from "@/providers/catalog/integrations"
+import type { IntelligenceStatus } from "@opencode/client"
 import { useModels } from "@/providers/models/models"
+import { useIntegrations } from "@/providers/catalog/integrations"
 import { useLanguage } from "@/runtime/i18n/language"
 import { useServerSDK } from "@/runtime/server/client"
 import { useIntelligenceSettings } from "@/runtime/server/intelligence"
-import { SettingsList } from "@/settings/list"
-import { SettingsRow } from "@/settings/row"
 import { showToast } from "@/shell/notifications/toast"
+import { sharedSource, type SharedSource } from "@/runtime/react/source"
+import { settingsLanguage, type SettingsLanguage } from "../shared.react"
 
-const sourceLabels = {
-  session: "settings.models.reasoning.source.session",
-  flag: "settings.models.reasoning.source.flag",
-  config: "settings.models.reasoning.source.config",
-  default: "settings.models.reasoning.source.default",
-} as const
-
-const failureRoles = {
-  principal: "settings.models.reasoning.failure.principal",
-  fast: "settings.models.reasoning.failure.fast",
-  evaluator: "settings.models.reasoning.failure.evaluator",
-} as const
-
-const failureReasons = {
-  credential: "settings.models.reasoning.failure.credential",
-  status: "settings.models.reasoning.failure.status",
-  timeout: "settings.models.reasoning.failure.timeout",
-  unreachable: "settings.models.reasoning.failure.unreachable",
-  unknown: "settings.models.reasoning.failure.unknown",
-} as const
-
-type Draft = {
-  reasoning?: "single" | "dual" | "observe"
-  principal?: string
-  // An empty key reuses the principal for bounded transformations.
-  fast?: string
-  evaluator?: string
-  evaluatorModel?: string
-  checking: boolean
-  failure?: { role: keyof typeof failureRoles; failure: ConnectionFailure }
+export type ReasoningServices = {
+  snapshot: SharedSource<{
+    language: SettingsLanguage
+    api: ReturnType<typeof useServerSDK>["api"]
+    current?: IntelligenceStatus
+    error: boolean
+    models: { key: string; ref: { providerID: string; id: string }; label: string }[]
+    connected: string[]
+  }>
+  refetch: () => Promise<void>
+  notify: (toast: Parameters<typeof showToast>[0]) => void
 }
-
-type EvaluatorChoice = { key: string; label: string; evaluator: IntelligenceEvaluator }
-
-/**
- * The System Two and System One roles and the reasoning mode, edited like the terminal's `/setup`: every
- * selected connection is checked before saving, and a failed check shows why with a Retry.
- */
-export function SettingsReasoningRoles() {
+export function createReasoningServices(): ReasoningServices {
   const language = useLanguage()
   const models = useModels()
   const integrations = useIntegrations(() => undefined)
   const server = useServerSDK()
-  const api = server.api["server.intelligence"]
   const status = useIntelligenceSettings()
-  const refetch = status.refetch
-  const [draft, setDraft] = createStore<Draft>({ checking: false })
-  // Reading an unresolved resource would suspend the settings page, so only settled values are read.
-  const current = status.status
-  const modelKey = (ref: { providerID: string; id: string } | undefined) =>
-    ref ? `${ref.providerID}/${ref.id}` : undefined
-  const modelOptions = createMemo(() =>
-    models
+  const snapshot: SharedSource<{
+    language: SettingsLanguage
+    api: ReturnType<typeof useServerSDK>["api"]
+    current?: IntelligenceStatus
+    error: boolean
+    models: { key: string; ref: { providerID: string; id: string }; label: string }[]
+    connected: string[]
+  }> = sharedSource(() => ({
+    language: settingsLanguage(language),
+    api: server.api,
+    current: status.status(),
+    error: !!status.error(),
+    models: models
       .list()
       .filter((model) => !/(^|\/)jev(?:$|[-.])/i.test(model.id))
       .map((model) => ({
@@ -75,285 +47,16 @@ export function SettingsReasoningRoles() {
         label: `${model.provider.name} · ${model.name}`,
       }))
       .toSorted((a, b) => a.label.localeCompare(b.label)),
-  )
-  const fastOptions = createMemo(() => [
-    { key: "", ref: undefined, label: language.t("settings.models.reasoning.fast.reuse") },
-    ...modelOptions(),
-  ])
-  const connected = createMemo(
-    () =>
-      new Set(
-        integrations
-          .list()
-          .filter((integration) => integration.connections.length > 0)
-          .map((integration) => integration.id),
-      ),
-  )
-  const evaluatorOptions = (value: IntelligenceStatus): EvaluatorChoice[] => {
-    const choices = [
-      ...(value.settings.evaluator
-        ? [{ label: language.t("settings.models.reasoning.evaluator.current"), evaluator: value.settings.evaluator }]
-        : []),
-      ...(value.router?.evaluator ? [{ label: "RedRouter", evaluator: value.router.evaluator }] : []),
-      // Only services with an active connection are offered; the connection's own credential does the evaluating.
-      ...value.evaluators
-        .filter((option) => option.evaluator.transport !== "red-router" || !value.router?.evaluator)
-        .filter((option) => connected().has(option.evaluator.transport))
-        .map((option) => ({ label: option.name, evaluator: option.evaluator })),
-    ].map((choice) => ({
-      key: `${choice.evaluator.transport} ${choice.evaluator.baseURL} ${choice.evaluator.model}`,
-      label: `${choice.label} · ${choice.evaluator.model}`,
-      evaluator: choice.evaluator,
-    }))
-    return choices.filter((choice, index) => choices.findIndex((item) => item.key === choice.key) === index)
+    connected: integrations
+      .list()
+      .filter((item) => item.connections.length > 0)
+      .map((item) => item.id),
+  }))
+  return {
+    snapshot,
+    async refetch() {
+      await status.refetch()
+    },
+    notify: (toast: Parameters<typeof showToast>[0]) => showToast(toast),
   }
-  const reasoning = (value: IntelligenceStatus) =>
-    draft.reasoning ?? value.settings.reasoning ?? value.effective.reasoning
-  const principal = (value: IntelligenceStatus) =>
-    modelOptions().find((option) => option.key === (draft.principal ?? modelKey(value.settings.principal)))
-  const fast = (value: IntelligenceStatus) =>
-    fastOptions().find((option) => option.key === (draft.fast ?? modelKey(value.settings.fast) ?? "")) ??
-    fastOptions()[0]
-  const evaluator = (value: IntelligenceStatus) => {
-    const options = evaluatorOptions(value)
-    return options.find((option) => option.key === draft.evaluator) ?? options[0]
-  }
-  const evaluatorModel = (value: IntelligenceStatus) => draft.evaluatorModel ?? evaluator(value)?.evaluator.model ?? ""
-
-  const save = async (value: IntelligenceStatus) => {
-    const selected = principal(value)
-    if (!selected || draft.checking) return
-    const transformation = fast(value).ref
-    const dual = reasoning(value) !== "single"
-    const chosen = evaluator(value)
-    const s1 =
-      dual && chosen && evaluatorModel(value).trim()
-        ? { ...chosen.evaluator, model: evaluatorModel(value).trim() }
-        : undefined
-    if (dual && !s1) return
-    setDraft({ checking: true, failure: undefined })
-    const failed = await firstConnectionFailure([
-      {
-        role: "principal" as const,
-        run: () =>
-          server.api.generate.text(
-            { prompt: "Reply with OK.", model: selected.ref },
-            { signal: AbortSignal.timeout(30_000) },
-          ),
-      },
-      ...(transformation && modelKey(transformation) !== selected.key
-        ? [
-            {
-              role: "fast" as const,
-              run: () =>
-                server.api.generate.text(
-                  { prompt: "Reply with OK.", model: transformation },
-                  { signal: AbortSignal.timeout(30_000) },
-                ),
-            },
-          ]
-        : []),
-      ...(s1
-        ? [
-            {
-              role: "evaluator" as const,
-              run: () =>
-                api.probe({ evaluator: s1 }, { signal: AbortSignal.timeout(30_000) }).then((check) => {
-                  if (!check.ok) throw new Error(check.message)
-                }),
-            },
-          ]
-        : []),
-    ])
-    if (failed) {
-      setDraft({ checking: false, failure: failed })
-      return
-    }
-    const saved = await api
-      .save({
-        settings: {
-          ...value.settings,
-          enabled: true,
-          reasoning: reasoning(value),
-          onboarding: "completed",
-          principal: selected.ref,
-          fast: transformation && modelKey(transformation) !== selected.key ? transformation : undefined,
-          ...(s1 ? { evaluator: s1 } : {}),
-        },
-      })
-      .then(
-        () => true,
-        (error: unknown) => {
-          showToast({
-            title: language.t("common.requestFailed"),
-            description: error instanceof Error ? error.message : undefined,
-          })
-          return false
-        },
-      )
-    setDraft({ checking: false })
-    if (!saved) return
-    setDraft({
-      reasoning: undefined,
-      principal: undefined,
-      fast: undefined,
-      evaluator: undefined,
-      evaluatorModel: undefined,
-    })
-    showToast({ variant: "success", icon: "circle-check", title: language.t("settings.models.reasoning.saved") })
-    void refetch()
-  }
-
-  return (
-    <section class="settings-section" aria-label={language.t("settings.models.reasoning.title")}>
-      <h3 class="settings-section-title">{language.t("settings.models.reasoning.title")}</h3>
-      <Show
-        when={current()}
-        fallback={
-          <div class="settings-models-status">
-            {status.error()
-              ? language.t("settings.models.reasoning.unavailable")
-              : `${language.t("common.loading")}${language.t("common.loading.ellipsis")}`}
-          </div>
-        }
-      >
-        {(value) => (
-          <SettingsList>
-            <SettingsRow
-              title={language.t("settings.models.reasoning.mode")}
-              description={language.t(sourceLabels[value().effective.source])}
-            >
-              <Select
-                data-action="settings-reasoning-mode"
-                options={["single" as const, "dual" as const, "observe" as const]}
-                current={reasoning(value())}
-                value={(mode) => mode}
-                label={(mode) =>
-                  language.t(
-                    mode === "observe"
-                      ? "settings.models.reasoning.mode.observe"
-                      : mode === "dual"
-                        ? "settings.models.reasoning.mode.dual"
-                        : "settings.models.reasoning.mode.single",
-                  )
-                }
-                placement="bottom-end"
-                gutter={6}
-                onSelect={(mode) => mode && setDraft({ reasoning: mode, failure: undefined })}
-              />
-            </SettingsRow>
-            <SettingsRow
-              title={language.t("settings.models.reasoning.principal")}
-              description={language.t("settings.models.reasoning.principal.description")}
-            >
-              <Select
-                data-action="settings-reasoning-principal"
-                options={modelOptions()}
-                current={principal(value())}
-                placeholder={language.t("settings.models.reasoning.unset")}
-                value={(option) => option.key}
-                label={(option) => option.label}
-                placement="bottom-end"
-                gutter={6}
-                onSelect={(option) => option && setDraft({ principal: option.key, failure: undefined })}
-              />
-            </SettingsRow>
-            <SettingsRow
-              title={language.t("settings.models.reasoning.fast")}
-              description={language.t("settings.models.reasoning.fast.description")}
-            >
-              <Select
-                data-action="settings-reasoning-fast"
-                options={fastOptions()}
-                current={fast(value())}
-                value={(option) => option.key}
-                label={(option) => option.label}
-                placement="bottom-end"
-                gutter={6}
-                onSelect={(option) => option && setDraft({ fast: option.key, failure: undefined })}
-              />
-            </SettingsRow>
-            <Show when={reasoning(value()) !== "single"}>
-              <SettingsRow
-                title={language.t("settings.models.reasoning.evaluator")}
-                description={language.t("settings.models.reasoning.evaluator.description")}
-              >
-                <Select
-                  data-action="settings-reasoning-evaluator"
-                  options={evaluatorOptions(value())}
-                  current={evaluator(value())}
-                  placeholder={language.t("settings.models.reasoning.unset")}
-                  value={(option) => option.key}
-                  label={(option) => option.label}
-                  placement="bottom-end"
-                  gutter={6}
-                  onSelect={(option) =>
-                    option && setDraft({ evaluator: option.key, evaluatorModel: undefined, failure: undefined })
-                  }
-                />
-              </SettingsRow>
-              <SettingsRow
-                title={language.t("settings.models.reasoning.evaluator.model")}
-                description={evaluator(value())?.evaluator.transport ?? ""}
-              >
-                <TextField
-                  hideLabel
-                  label={language.t("settings.models.reasoning.evaluator.model")}
-                  value={evaluatorModel(value())}
-                  onChange={(model) => setDraft({ evaluatorModel: model, failure: undefined })}
-                />
-              </SettingsRow>
-            </Show>
-            <SettingsRow
-              title={language.t("settings.models.reasoning.save.title")}
-              description={
-                draft.checking
-                  ? language.t("settings.models.reasoning.checking")
-                  : language.t("settings.models.reasoning.save.description")
-              }
-            >
-              <Button
-                data-action="settings-reasoning-save"
-                size="normal"
-                variant="neutral"
-                disabled={draft.checking || !principal(value())}
-                onClick={() => void save(value())}
-              >
-                {language.t("settings.models.reasoning.save")}
-              </Button>
-            </SettingsRow>
-            <Show when={draft.failure}>
-              {(failed) => (
-                <SettingsRow
-                  title={language.t(failureRoles[failed().role])}
-                  description={[
-                    language.t(failureReasons[failed().failure.kind], {
-                      status: String(failed().failure.status ?? ""),
-                    }),
-                    failed().failure.detail,
-                    language.t("settings.models.reasoning.failure.kept"),
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
-                >
-                  <Button
-                    data-action="settings-reasoning-retry"
-                    size="normal"
-                    variant="neutral"
-                    disabled={draft.checking}
-                    onClick={() => void save(value())}
-                  >
-                    {language.t("common.retry")}
-                  </Button>
-                </SettingsRow>
-              )}
-            </Show>
-          </SettingsList>
-        )}
-      </Show>
-      <Show when={current() && current()?.settings.onboarding !== "completed"}>
-        <div class="text-12-regular text-ink-muted">{language.t("settings.models.reasoning.pending")}</div>
-      </Show>
-    </section>
-  )
 }

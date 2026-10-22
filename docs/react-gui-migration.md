@@ -7,21 +7,51 @@ settings storage, accessibility and platform behavior.
 
 ## Current boundary
 
-Appearance, Notifications and About render in React, including the third-party
-notices dialog. They use the official DS Input, Select, Switch, Logo, Button and
-Dialog components through canonical `@reddb-io/design-system/base/*` imports.
-Selects use native browser popups and keyboard navigation. Selecting a sound
-continues to preview it through the existing sound controller.
+The Settings screen, navigation, search, panels and built-in pages render in
+React: Preferences, Appearance, Notifications, Shortcuts, Projects, Worktrees,
+Providers, Models and reasoning roles, Usage reporting, Agent tools, Agent
+extensions, Server and About, including project-specific settings and dialogs.
+Controls use the official DS Input, Textarea, Select, Switch, Checkbox, Badge,
+Button, Dialog, DropdownMenu, Disclosure, Tabs, Tooltip and Logo through canonical
+`@reddb-io/design-system/base/*` imports. Redcode's product glyphs and project
+artwork retain their existing assets and semantic colors.
 
-The existing settings controllers still own persistence, async loading and
-theme application. Their Solid hosts forward typed snapshots and actions through
-`ReactView`; React owns the DOM below each mount and unmounts with its host.
-Locale and dictionary updates invalidate the snapshot. This mount boundary is
-temporary and should disappear when the surrounding application is React.
+Settings-owned state and controllers are React hooks or renderer-independent
+external stores. Font and settings-schema data and keyboard helpers are shared
+without loading a renderer. Navigation/search share one controller with the surrounding
+application, preserving the public `useSettingsSurface` interface. Shortcut
+capture releases the global command handler when its page unmounts. Project
+edits keep the existing serial autosave queue, including reverting a value while
+an earlier write is pending. Worktree deletion captures its server context,
+checks sessions and working changes again before removing a directory, and
+keeps bulk deletion sequential. Reporting keeps its secret write-only and shows
+controlled errors.
 
-Native DS dialogs own their Escape key and focus restoration. The settings host
-must not consume Escape from an open native dialog before its controller can
-handle it.
+Global application services still use Solid: the router, localization, theme and
+settings persistence, server subscriptions, query cache, provider connection
+workflows and GUI extension runtime. The `.tsx` page hosts assemble those
+services and project typed snapshots with `sharedSource`; React subscribes with
+`useSyncExternalStore`. `SharedSlot` retains application service scopes and
+existing contributed UI under its original Solid owner. These adapters do not
+implement a second Settings controller or change the extension SDK. They are
+temporary until the surrounding application providers migrate.
+
+Shared sources and slots dispose with their originating Solid owner, before
+React finishes its deferred teardown. Slot content remains reactive, including
+navigation actions replaced when extension availability changes. Cached actions
+retain the navigation owner instead of the snapshot observer's transient scope.
+
+Native selects own their popups and keyboard navigation, including the mobile
+page picker and provider account selector. Native dialogs own Escape and focus
+restoration; Settings must leave an open dialog's Escape event to its controller.
+Panel paint containment keeps scrolling inside the page across shared renderer
+scopes. Search retains ranking, keyboard navigation, grapheme-safe empty text,
+result focus, reveal highlights and scroll restoration.
+
+Shared Solid connection dialogs retain their existing controls. Their select
+popups declare the Kobalte top layer so the parent dialog does not hide a popup
+portal from assistive technology. The HTTPS keeper reproduced this failure
+before the fix, with visible options under an `aria-hidden` ancestor.
 
 ## Distribution and builds
 
@@ -47,7 +77,6 @@ renderer-free Base seam, so those recipes do not load the React component barrel
 
 ## Remaining surfaces
 
-- Preferences, settings navigation/search and the server/project/extension pages.
 - Shared application providers, routing, server subscriptions and desktop startup.
 - Application shell and GUI extension SDK/renderers.
 - Composer, session timeline, diff/review, document and terminal integrations.
@@ -60,25 +89,43 @@ to use OpenTUI/Solid; web DS components do not render terminal UI.
 
 ## Verification
 
-The owning browser suites are `packages/app/e2e/regression/settings.spec.ts` and
-`settings-search.spec.ts`. They cover settings routes, persistence across reloads,
-keyboard operation, native controls, dialog focus restoration, search targets and
-narrow/short layouts. Run `bun run check` at the repository root and build both
-Web and Desktop renderers when changing the shared Vite configuration.
+The owning browser suites are `packages/app/e2e/regression/settings.spec.ts`,
+`settings-search.spec.ts` and `settings-wsl.spec.ts`. The mobile Settings keeper
+in `mobile-session.spec.ts` verifies the native page picker above the panel.
+They cover routes, server/project scope, persistence, keyboard operation,
+autosave ordering, deletion checks, provider account switching/removal,
+reporting secrets, dialog focus, search and narrow/short layouts.
 
-Verified on October 21, 2026:
+The obsolete vertical-tab-layout browser case was removed: the schema already
+retires that preference. `settings/model.test.ts` owns decoding retired values;
+`navigation labels preserve rail and panel geometry and survive reload` owns
+the current navigation preference in the browser.
 
-- `bun run check`: lint and all 27 package type checks passed.
-- Web production build and Electron production build passed.
-- Nine production-browser keeper cases passed, covering the migrated pages,
-  settings search and desktop/mobile layouts. Eight focused controller/theme
-  unit cases passed.
-- Four development-browser keeper cases passed after isolating the portable DS
-  recipes from the React component barrel, including opening and refreshing the
-  settings route.
-- The pages were also exercised against the existing authenticated local server,
-  including light/dark modes, mobile layout and notices-dialog focus restoration.
-- The broad Bun unit command still fails when it imports legacy Solid JSX:
-  `Export named 'jsxDEV' not found`. Importing the unchanged
-  `packages/ui/src/context/helper.tsx` from the app directory reproduces this
-  loader limitation independently of the migrated pages.
+Run `bun run check` at the repository root, `bun run typecheck:e2e` in
+`packages/app`, and Web and Desktop production builds. Browser keepers must
+exercise both an optimized production build and development startup. Build with
+`VITE_OPENCODE_TEST_FIXTURES=1` to include the existing WSL fixture entry points
+in a production browser run. Live validation uses a task-owned local preview
+connected to the elected authenticated server; do not restart that server.
+
+Validated on 2026-10-22:
+
+- Root `bun run check`: no lint warnings/errors and all 27 package type checks passed.
+- App `bun run typecheck:e2e`: passed.
+- Focused Settings unit tests: 45 passed across seven files, with 131 assertions.
+  The moved schema test also rejected a temporary font-size-default mutation.
+- Web production build with fixture entry points and Desktop production build: passed.
+- Optimized Chromium: all 61 Settings, search, WSL/SSH and mobile-navigation
+  keepers passed together without retries after the lifecycle and popup fixes.
+- Development: 16 distinct keepers passed across WSL/SSH, mobile navigation,
+  search, refresh, preferences/sounds, provider accounts/removal and dialog flows.
+  The SSH reconnection keeper waits for the replacement controller's event
+  stream before sending new input.
+- Live browser validation against the elected authenticated server loaded real
+  sessions, providers and models. Light, dark, mobile and shared connection-dialog
+  views rendered without runtime errors. Desktop scrolling stayed inside the
+  Settings panel; the 390px viewport had no horizontal overflow.
+
+WSL/SSH lifecycle and destructive provider/project/worktree operations were
+exercised with the existing fixtures. Live checks used navigation and local
+browser preferences, preserving the installed server and its configuration.

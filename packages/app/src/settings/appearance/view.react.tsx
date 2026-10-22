@@ -2,7 +2,20 @@
 import { Input } from "@reddb-io/design-system/base/Input"
 import { Select } from "@reddb-io/design-system/base/Select"
 import { SettingsHeader, SettingsList, SettingsRow, type SettingsLanguage } from "../shared.react"
-import type { AppearanceSettingsController } from "../general/controllers"
+import { useEffect, useSyncExternalStore } from "react"
+import type { ColorScheme } from "@opencode/ui/theme/context"
+import type { SharedSource } from "@/runtime/react/source"
+import {
+  sansInput,
+  sansFontFamily,
+  sansDefault,
+  monoInput,
+  monoFontFamily,
+  monoDefault,
+  terminalInput,
+  terminalFontFamily,
+  terminalDefault,
+} from "../model-data"
 
 const fontSettings = {
   ui: {
@@ -24,8 +37,8 @@ const fontSettings = {
 
 export function Appearance(props: {
   language: SettingsLanguage
-  scheme: ReturnType<AppearanceSettingsController["scheme"]["current"]>
-  onSchemeChange: AppearanceSettingsController["scheme"]["select"]
+  scheme: ColorScheme
+  onSchemeChange: (value: ColorScheme) => void
   themes: { value: string; label: string }[]
   theme: string
   onThemeChange: (id: string) => void
@@ -123,5 +136,58 @@ export function Appearance(props: {
         </div>
       </div>
     </>
+  )
+}
+
+export function AppearanceSettings(props: {
+  services: {
+    snapshot: SharedSource<{
+      language: SettingsLanguage
+      scheme: ColorScheme
+      theme: string
+      themes: { value: string; label: string }[]
+      fonts: Record<"ui" | "code" | "terminal", string>
+    }>
+    loadThemes: () => Promise<unknown>
+    setScheme: (value: ColorScheme) => void
+    setTheme: (id: string) => void
+    fonts: Record<"ui" | "code" | "terminal", (value: string) => void>
+  }
+}) {
+  const state = useSyncExternalStore(props.services.snapshot.subscribe, props.services.snapshot.getSnapshot)
+  useEffect(() => {
+    void props.services.loadThemes()
+  }, [props.services])
+  return (
+    <Appearance
+      language={state.language}
+      scheme={state.scheme}
+      onSchemeChange={props.services.setScheme}
+      themes={state.themes}
+      theme={state.theme}
+      onThemeChange={props.services.setTheme}
+      fonts={(
+        [
+          {
+            kind: "ui",
+            value: sansInput(state.fonts.ui),
+            family: sansFontFamily(state.fonts.ui),
+            placeholder: sansDefault,
+          },
+          {
+            kind: "code",
+            value: monoInput(state.fonts.code),
+            family: monoFontFamily(state.fonts.code),
+            placeholder: monoDefault,
+          },
+          {
+            kind: "terminal",
+            value: terminalInput(state.fonts.terminal),
+            family: terminalFontFamily(state.fonts.terminal),
+            placeholder: terminalDefault,
+          },
+        ] as const
+      ).map((font) => ({ ...font, onChange: props.services.fonts[font.kind] }))}
+    />
   )
 }

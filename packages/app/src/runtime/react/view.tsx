@@ -10,7 +10,8 @@ export function ReactView<Props extends object>(props: { component: ComponentTyp
     const root = createRoot(element)
     // React owns this subtree; Solid only forwards snapshots of the existing controllers.
     createRenderEffect(() => root.render(createElement(props.component, props.props)))
-    onCleanup(() => root.unmount())
+    // A shared service slot can dispose this child during its parent React commit.
+    onCleanup(() => queueMicrotask(() => root.unmount()))
   })
 
   return <div ref={element} class="contents" />

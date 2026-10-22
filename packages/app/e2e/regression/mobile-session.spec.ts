@@ -456,24 +456,23 @@ test.describe("touch", () => {
   test("mobile settings section menu stays above a full-width panel", async ({ page }) => {
     await navigateFromMenu(page, "Settings")
     const settings = page.getByTestId("settings-screen")
-    const menu = settings.getByRole("button", { name: "Preferences", exact: true })
+    const menu = settings.getByRole("combobox", { name: "Preferences", exact: true })
     const panel = settings.getByRole("tabpanel")
     await expect(settings.getByRole("heading", { name: "General", exact: true })).toBeVisible()
     await expect(page).toHaveURL("/settings")
     await expect(menu).toBeVisible()
     await menu.click()
-    await expect(page.getByRole("menuitemradio", { name: "Preferences", exact: true })).toBeChecked()
+    await expect(menu).toHaveValue("general")
     await page.keyboard.press("Escape")
-    await expect(page.getByRole("menuitemradio", { name: "Preferences", exact: true })).toBeHidden()
+    await expect(menu).toHaveValue("general")
     await expect(settings).toBeVisible()
-    await menu.click()
-    await page.getByRole("menuitemradio", { name: "Models", exact: true }).click()
+    await menu.selectOption("models")
     await expect(settings.getByRole("heading", { name: "Models", exact: true })).toBeVisible()
-    await expect(settings.getByRole("button", { name: "Models", exact: true })).toBeVisible()
+    await expect(settings.getByRole("combobox", { name: "Models", exact: true })).toBeVisible()
     await expect(settings.getByRole("switch", { name: "Claude Opus 4.6", exact: true })).toBeAttached()
     await expect
       .poll(async () => {
-        const navigation = await settings.getByRole("button", { name: "Models", exact: true }).boundingBox()
+        const navigation = await settings.getByRole("combobox", { name: "Models", exact: true }).boundingBox()
         const content = await panel.boundingBox()
 
         return !!navigation && !!content && navigation.y + navigation.height <= content.y

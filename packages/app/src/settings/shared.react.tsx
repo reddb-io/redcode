@@ -8,6 +8,8 @@ export function settingsLanguage(language: ReturnType<typeof useLanguage>) {
     // Track the asynchronously loaded dictionary in the Solid host as well as the selected locale.
     close: language.t("common.close"),
     t: language.t,
+    rich: language.rich,
+    tDynamic: language.tDynamic,
     plural: language.plural,
     list: (items: readonly string[]) => language.list(items).join(""),
   }
@@ -28,12 +30,16 @@ export function SettingsHeader(props: { title: string; description: string }) {
   )
 }
 
-export function SettingsList(props: { children: ReactNode }) {
-  return <div data-component="settings-list">{props.children}</div>
+export function SettingsList(props: { children: ReactNode; variant?: "catalog" }) {
+  return (
+    <div data-component="settings-list" data-variant={props.variant}>
+      {props.children}
+    </div>
+  )
 }
 
 export function SettingsRow(props: {
-  title: string
+  title: ReactNode
   description: ReactNode
   children: (association: { "aria-labelledby": string; "aria-describedby": string }) => ReactNode
 }) {

@@ -2,7 +2,7 @@ import { base64Encode } from "@opencode/util/encode"
 import { expect, test } from "@playwright/test"
 import { NO_PROVIDER, REMOTE_SERVER, SERVER, project, provider, session } from "../utils/app"
 import { mockOpenCodeServer, mockServers } from "../utils/mock-server"
-import { expectSessionTitle } from "../utils/waits"
+import { expectAppVisible, expectSessionTitle } from "../utils/waits"
 
 test.use({ viewport: { width: 1280, height: 900 } })
 
@@ -17,6 +17,7 @@ for (const mode of ["failed", "stopped", "ready"] as const) {
     })
     await page.goto(`/e2e/utils/settings-wsl.html?${new URLSearchParams({ server: SERVER, mode })}`)
     const settings = page.getByTestId("settings-screen")
+    await expectAppVisible(settings)
     await expect(settings.getByRole("tab", { name: "Local Server", exact: true })).toBeEnabled()
     const ubuntu = settings.getByRole("tab", { name: "Ubuntu", exact: true })
     await expect(ubuntu).toHaveCount(1)
@@ -32,9 +33,9 @@ for (const mode of ["failed", "stopped", "ready"] as const) {
     }
 
     await expect(settings.getByRole("tab", { name: "Projects", exact: true })).toBeEnabled()
-    await connection.getByRole("button", { name: "Update OpenCode", exact: true }).click()
+    await connection.getByRole("button", { name: "Update Redcode", exact: true }).click()
     await expect(page.getByLabel("WSL actions")).toContainText("update:Ubuntu")
-    await expect(connection.getByRole("button", { name: "Update OpenCode", exact: true })).toHaveCount(0)
+    await expect(connection.getByRole("button", { name: "Update Redcode", exact: true })).toHaveCount(0)
 
     await connection.getByRole("button", { name: "More options", exact: true }).click()
     await page.getByRole("menuitem", { name: "Remove", exact: true }).click()
@@ -61,7 +62,7 @@ test("adding a WSL server while the WSL extension is down shows that WSL is unav
   await page.getByRole("menuitem", { name: "Add WSL server", exact: true }).click()
   const dialog = page.getByRole("dialog")
   await expect(dialog.getByRole("heading", { name: "WSL unavailable", exact: true })).toBeVisible()
-  await expect(dialog.getByText("OpenCode could not verify WSL on this machine.", { exact: true })).toBeVisible()
+  await expect(dialog.getByText("Redcode could not verify WSL on this machine.", { exact: true })).toBeVisible()
   await expect(dialog.getByText("WSL is unavailable", { exact: true })).toBeVisible()
 })
 
@@ -118,8 +119,8 @@ test("an open session's terminal follows its WSL server to the endpoint it resta
   const settings = page.getByTestId("settings-screen")
   await settings.getByRole("tab", { name: "Ubuntu", exact: true }).click()
   const connection = settings.locator('[data-component="settings-server-connection"]')
-  await connection.getByRole("button", { name: "Update OpenCode", exact: true }).click()
-  await expect(connection.getByRole("button", { name: "Update OpenCode", exact: true })).toHaveCount(0)
+  await connection.getByRole("button", { name: "Update Redcode", exact: true }).click()
+  await expect(connection.getByRole("button", { name: "Update Redcode", exact: true })).toHaveCount(0)
   await settings.getByRole("button", { name: "Back to settings" }).click()
   await settings.getByRole("button", { name: "Back to app" }).click()
   await expectSessionTitle(page, wsl.title)
@@ -148,7 +149,10 @@ test("WSL session and draft tabs outlive the extension going away until the serv
     `/e2e/utils/settings-wsl.html?${new URLSearchParams({ server: SERVER, mode: "ready", wsl: REMOTE_SERVER, path: href })}`,
   )
   await expectSessionTitle(page, wsl.title)
-  await page.getByRole("button", { name: "New session", exact: true }).click()
+  await page
+    .getByRole("navigation", { name: "Navigation", exact: true })
+    .getByRole("button", { name: "New session", exact: true })
+    .click()
   await expect(page.getByRole("heading", { name: wsl.title })).toHaveCount(0)
   const editor = page.locator('[data-component="composer-editor"]')
   await editor.fill("keep this draft")
@@ -218,7 +222,10 @@ test("an SSH host that asks for sign-in again opens the dialog once per selected
 
   // Another tab selected and this one selected again is a new selection, even while the host was ready.
   const tabs = page.locator("a[data-titlebar-tab-link]")
-  await page.getByRole("button", { name: "New session", exact: true }).click()
+  await page
+    .getByRole("navigation", { name: "Navigation", exact: true })
+    .getByRole("button", { name: "New session", exact: true })
+    .click()
   await expect(tabs).toHaveCount(2)
   await expect(tabs.nth(1)).toHaveAttribute("href", /^\/new-session\?draftId=/)
   await expect(page.getByRole("heading", { name: box.title })).toHaveCount(0)
@@ -277,6 +284,9 @@ test("an open session moves to the controller a new SSH sign-in creates", async 
 
   await page.getByRole("button", { name: "Drop SSH tunnel" }).click()
   await page.getByRole("button", { name: "Reconnect", exact: true }).click()
+  await expect
+    .poll(() => servers[REMOTE_SERVER]!.transport.connections().then((items) => items.map((item) => !!item.endedBy)))
+    .toEqual([true, false])
   await expectSessionTitle(page, box.title)
   const editor = page.locator('[data-component="composer-editor"]')
   await editor.fill("after sign-in")

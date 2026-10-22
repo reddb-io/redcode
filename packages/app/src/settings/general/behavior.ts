@@ -1,5 +1,3 @@
-import { onCleanup } from "solid-js"
-
 export type ShellOption = {
   path: string
   name: string
@@ -73,8 +71,6 @@ export function createSoundPreviewController(player: (id: string | undefined) =>
       })
     }, 100)
   }
-
-  onCleanup(stop)
 
   return { play, stop }
 }

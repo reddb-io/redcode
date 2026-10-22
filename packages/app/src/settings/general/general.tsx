@@ -1,381 +1,51 @@
-import { Component, Show, createMemo, createResource } from "solid-js"
-import { createMediaQuery } from "@solid-primitives/media"
-import { Select } from "@opencode/ui/select"
-import { Switch } from "@opencode/ui/switch"
-import { Button } from "@opencode/ui/button"
 import { useDialog } from "@opencode/ui/context/dialog"
-import { DialogHttpsAccess } from "@/servers/connect/https-dialog"
-import { TimelineDetailControl } from "@/settings/timeline-detail"
 import { useLanguage } from "@/runtime/i18n/language"
 import { usePlatform } from "@/runtime/platform/platform"
+import { ReactView } from "@/runtime/react/view"
+import { sharedSource } from "@/runtime/react/source"
+import { sharedMount } from "@/runtime/react/mount"
 import { ExtensionSettingsSections } from "@/runtime/extension/settings-page-view"
-import {
-  type FollowUpBehavior,
-  type TerminalPlacement,
-  type WorkspaceDefaultDestination,
-  useSettings,
-} from "@/settings/model"
-import { formatKeybind } from "@/shell/commands/command"
-import { SettingsList } from "@/settings/list"
-import { SettingsRow } from "@/settings/row"
-import { createShellOptions, type ShellSettingsController } from "./controllers"
-import "@/settings/settings.css"
+import { DialogHttpsAccess } from "@/servers/connect/https-dialog"
+import { useSettings } from "../model"
+import { settingsLanguage } from "../shared.react"
+import { General } from "./view.react"
 
-const installationDescriptions = {
-  available: "settings.general.install.description",
-  installed: "settings.general.install.installedDescription",
-  insecure: "settings.general.install.insecure",
-  manual: "settings.general.install.manual",
-} as const
-
-const AutoApprovePermissionsSetting: Component = () => {
-  const language = useLanguage()
-  const settings = useSettings()
-
-  return (
-    <SettingsRow
-      title={language.t("command.permissions.autoaccept.enable")}
-      description={language.t("toast.permissions.autoaccept.on.description")}
-    >
-      <div data-action="settings-auto-accept-permissions">
-        <Switch
-          checked={settings.permissions.autoApprove()}
-          onChange={(checked) => settings.permissions.setAutoApprove(checked)}
-        />
-      </div>
-    </SettingsRow>
-  )
-}
-
-const WorkspaceDestinationSetting: Component = () => {
-  const language = useLanguage()
-  const settings = useSettings()
-
-  const options = createMemo((): { value: WorkspaceDefaultDestination; label: string }[] => [
-    { value: "last-used", label: language.t("settings.workspaces.default.lastUsed") },
-    { value: "local", label: language.t("settings.workspaces.default.local") },
-    { value: "new", label: language.t("settings.workspaces.default.new") },
-  ])
-
-  return (
-    <SettingsRow
-      title={language.t("settings.workspaces.default.title")}
-      description={language.t("settings.workspaces.default.description")}
-    >
-      <Select
-        data-action="settings-workspace-destination"
-        options={options()}
-        current={options().find((option) => option.value === settings.workspaces.defaultDestination())}
-        value={(option) => option.value}
-        label={(option) => option.label}
-        placement="bottom-end"
-        gutter={6}
-        onSelect={(option) => option && settings.workspaces.setDefaultDestination(option.value)}
-      />
-    </SettingsRow>
-  )
-}
-
-export const ShellSetting: Component<{ controller: ShellSettingsController }> = (props) => {
-  const language = useLanguage()
-
-  const options = createMemo(() =>
-    createShellOptions({
-      shells: props.controller.shells(),
-      current: props.controller.current(),
-    }),
-  )
-
-  return (
-    <SettingsRow
-      title={language.t("settings.general.row.shell.title")}
-      description={language.t("settings.general.row.shell.description")}
-    >
-      <Select
-        data-action="settings-shell"
-        options={options()}
-        current={options().find((option) => option.value === props.controller.current()) ?? options()[0]}
-        placement="bottom-end"
-        gutter={6}
-        value={(option) => option.id}
-        label={(option) => {
-          if (option.id === "auto") return language.t("settings.general.row.shell.autoDefault")
-
-          if (!option.terminalOnly) return option.name
-
-          return `${option.name} (${language.t("settings.general.row.shell.terminalOnly")})`
-        }}
-        onSelect={(option) => option && props.controller.select(option.value)}
-      />
-    </SettingsRow>
-  )
-}
-
-const TerminalPlacementSetting: Component = () => {
-  const language = useLanguage()
-  const settings = useSettings()
-
-  const options = createMemo((): { value: TerminalPlacement; label: string }[] => [
-    { value: "side", label: language.t("settings.general.row.terminalPlacement.side") },
-    { value: "bottom", label: language.t("settings.general.row.terminalPlacement.bottom") },
-  ])
-
-  return (
-    <SettingsRow
-      title={language.t("settings.general.row.terminalPlacement.title")}
-      description={language.t("settings.general.row.terminalPlacement.description")}
-    >
-      <Select
-        data-action="settings-terminal-placement"
-        options={options()}
-        current={options().find((option) => option.value === settings.general.terminalPlacement())}
-        value={(option) => option.value}
-        label={(option) => option.label}
-        placement="bottom-end"
-        gutter={6}
-        onSelect={(option) => option && settings.general.setTerminalPlacement(option.value)}
-      />
-    </SettingsRow>
-  )
-}
-
-const FollowUpBehaviorSetting: Component = () => {
-  const language = useLanguage()
-  const settings = useSettings()
-
-  const options = createMemo((): { value: FollowUpBehavior; label: string }[] => [
-    { value: "queue", label: language.t("settings.general.row.followUpBehavior.queue") },
-    { value: "steer", label: language.t("settings.general.row.followUpBehavior.steer") },
-  ])
-
-  return (
-    <SettingsRow
-      title={language.t("settings.general.row.followUpBehavior.title")}
-      description={language.t("settings.general.row.followUpBehavior.description", {
-        keybind: formatKeybind("mod+enter", language.t),
-      })}
-    >
-      <Select
-        data-action="settings-follow-up-behavior"
-        options={options()}
-        current={options().find((option) => option.value === settings.general.followUpBehavior())}
-        value={(option) => option.value}
-        label={(option) => option.label}
-        placement="bottom-end"
-        gutter={6}
-        onSelect={(option) => option && settings.general.setFollowUpBehavior(option.value)}
-      />
-    </SettingsRow>
-  )
-}
-
-const LanguageSetting = () => {
-  const language = useLanguage()
-
-  const options = createMemo(() =>
-    language.locales.map((locale) => ({
-      value: locale,
-      label: language.label(locale),
-    })),
-  )
-
-  return (
-    <SettingsRow
-      title={language.t("settings.general.row.language.title")}
-      description={language.t("settings.general.row.language.description")}
-    >
-      <Select
-        data-action="settings-language"
-        options={options()}
-        placement="bottom-end"
-        gutter={6}
-        current={options().find((option) => option.value === language.locale())}
-        value={(option) => option.value}
-        label={(option) => option.label}
-        onSelect={(option) => option && language.setLocale(option.value)}
-      />
-    </SettingsRow>
-  )
-}
-
-const NavigationControlsSetting = () => {
-  const language = useLanguage()
-  const settings = useSettings()
-
-  return (
-    <SettingsRow
-      title={language.t("settings.general.row.showNavigation.title")}
-      description={language.t("settings.general.row.showNavigation.description")}
-    >
-      <div data-action="settings-show-navigation">
-        <Switch
-          checked={settings.general.showNavigation()}
-          onChange={(checked) => settings.general.setShowNavigation(checked)}
-        />
-      </div>
-    </SettingsRow>
-  )
-}
-
-export const SettingsGeneral: Component = () => {
-  const dialog = useDialog()
+export function SettingsGeneral() {
   const language = useLanguage()
   const platform = usePlatform()
   const settings = useSettings()
-  const mobile = createMediaQuery("(max-width: 767px)")
-  const desktop = createMemo(() => platform.platform === "desktop")
-
-  const [pinchZoom, { mutate: setPinchZoom }] = createResource(
-    () => desktop() && "getPinchZoomEnabled" in platform,
-    () => Promise.resolve(platform.getPinchZoomEnabled?.() ?? false).catch(() => false),
-    { initialValue: false },
-  )
-
-  const onPinchZoomChange = (checked: boolean) => {
-    setPinchZoom(checked)
-    const update = platform.setPinchZoomEnabled?.(checked)
-
-    if (!update) return
-    void update.catch(() => setPinchZoom(!checked))
+  const dialog = useDialog()
+  const services = {
+    snapshot: sharedSource(() => ({
+      language: settingsLanguage(language),
+      locales: language.locales.map((value) => ({ value, label: language.label(value) })),
+      values: {
+        showNavigation: settings.general.showNavigation(),
+        navigationLabels: settings.general.navigationLabels(),
+        workspaceDestination: settings.workspaces.defaultDestination(),
+        autoApprove: settings.permissions.autoApprove(),
+        showAgent: settings.general.showAgent(),
+        terminalPlacement: settings.general.terminalPlacement(),
+        followUpBehavior: settings.general.followUpBehavior(),
+        mobileTitlebarPosition: settings.general.mobileTitlebarPosition(),
+        timelineDetail: Object.fromEntries(
+          Object.entries(settings.general.timelineDetail()).map(([key, value]) => [key, { ...value }]),
+        ) as ReturnType<typeof settings.general.timelineDetail>,
+      },
+      installation: platform.installation
+        ? {
+            status: platform.installation.status(),
+            failed: platform.installation.failed(),
+            pending: platform.installation.pending(),
+          }
+        : undefined,
+    })),
+    settings,
+    platform,
+    setLocale: language.setLocale,
+    https: () => void dialog.push(() => <DialogHttpsAccess />),
+    generalSections: sharedMount(() => <ExtensionSettingsSections page="general" section="general" />),
+    sections: sharedMount(() => <ExtensionSettingsSections page="general" />),
   }
-
-  const GeneralSection = () => (
-    <div class="settings-section">
-      <h3 class="settings-section-title">{language.t("settings.general.section.general")}</h3>
-      <SettingsList>
-        <LanguageSetting />
-        <SettingsRow title={language.t("https.title")} description={language.t("https.description")}>
-          <div data-action="settings-https-access">
-            <Button variant="outline" onClick={() => void dialog.push(() => <DialogHttpsAccess />)}>
-              {language.t("https.configure")}
-            </Button>
-          </div>
-        </SettingsRow>
-        <Show when={platform.installation}>
-          {(installation) => (
-            <SettingsRow
-              title={language.t("settings.general.install.title")}
-              description={language.t(
-                installation().failed()
-                  ? "settings.general.install.failed"
-                  : installationDescriptions[installation().status()],
-              )}
-            >
-              <div data-action="settings-install-app" aria-live="polite">
-                <Show when={installation().status() === "insecure"}>
-                  <Button variant="outline" onClick={() => void dialog.push(() => <DialogHttpsAccess />)}>
-                    {language.t("https.secureConnection")}
-                  </Button>
-                </Show>
-                <Show when={installation().status() === "available" || installation().pending()}>
-                  <Button
-                    variant="outline"
-                    disabled={installation().pending()}
-                    onClick={() => installation().install()}
-                  >
-                    {language.t(
-                      installation().pending() ? "settings.general.install.pending" : "settings.general.install.action",
-                    )}
-                  </Button>
-                </Show>
-                <Show when={installation().status() === "installed"}>
-                  <span>{language.t("settings.general.install.installed")}</span>
-                </Show>
-              </div>
-            </SettingsRow>
-          )}
-        </Show>
-        <NavigationControlsSetting />
-        <Show when={!mobile()}>
-          <SettingsRow
-            title={language.t("settings.general.row.navigationLabels.title")}
-            description={language.t("settings.general.row.navigationLabels.description")}
-          >
-            <Switch
-              hideLabel
-              checked={settings.general.navigationLabels()}
-              onChange={settings.general.setNavigationLabels}
-            >
-              {language.t("settings.general.row.navigationLabels.title")}
-            </Switch>
-          </SettingsRow>
-        </Show>
-
-        <WorkspaceDestinationSetting />
-        <AutoApprovePermissionsSetting />
-
-        <SettingsRow
-          title={language.t("settings.general.row.showCustomAgents.title")}
-          description={language.t("settings.general.row.showCustomAgents.description")}
-        >
-          <div data-action="settings-show-custom-agents">
-            <Switch
-              checked={settings.general.showAgent()}
-              onChange={(checked) => settings.general.setShowAgent(checked)}
-            />
-          </div>
-        </SettingsRow>
-
-        <TerminalPlacementSetting />
-        <FollowUpBehaviorSetting />
-
-        <Show when={desktop()}>
-          <SettingsRow
-            title={language.t("settings.general.row.pinchZoom.title")}
-            description={language.t("settings.general.row.pinchZoom.description")}
-          >
-            <div data-action="settings-pinch-zoom">
-              <Switch checked={pinchZoom.latest} onChange={onPinchZoomChange} />
-            </div>
-          </SettingsRow>
-        </Show>
-
-        <ExtensionSettingsSections page="general" section="general" />
-
-        <Show when={mobile()}>
-          <SettingsRow
-            title={language.t("settings.general.row.mobileTitlebarBottom.title")}
-            description={language.t("settings.general.row.mobileTitlebarBottom.description")}
-          >
-            <div data-action="settings-mobile-titlebar-bottom">
-              <Switch
-                checked={settings.general.mobileTitlebarPosition() === "bottom"}
-                onChange={(checked) => settings.general.setMobileTitlebarPosition(checked ? "bottom" : "top")}
-              />
-            </div>
-          </SettingsRow>
-        </Show>
-      </SettingsList>
-    </div>
-  )
-
-  return (
-    <>
-      <div class="settings-tab-header">
-        <div class="settings-tab-header-row">
-          <div class="flex flex-col gap-1">
-            <h2 class="settings-tab-title">{language.t("settings.tab.preferences")}</h2>
-            <span class="text-11-regular text-ink-muted">{language.t("settings.preferences.description")}</span>
-          </div>
-        </div>
-      </div>
-      <div class="settings-tab-body settings-tab-body--sectioned">
-        <GeneralSection />
-
-        <section class="settings-section" aria-label={language.t("settings.timeline.title")}>
-          <h3 class="settings-section-title">{language.t("settings.timeline.title")}</h3>
-          <SettingsList>
-            <div class="py-5">
-              <TimelineDetailControl
-                value={settings.general.timelineDetail()}
-                onChange={settings.general.setTimelineDetail}
-              />
-            </div>
-          </SettingsList>
-        </section>
-
-        <ExtensionSettingsSections page="general" />
-      </div>
-    </>
-  )
+  return <ReactView component={General} props={{ services }} />
 }

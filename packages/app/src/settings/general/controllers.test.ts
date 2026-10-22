@@ -1,5 +1,4 @@
 import { describe, expect, test, vi } from "bun:test"
-import { createRoot } from "solid-js"
 import { createShellOptions, createSoundPreviewController } from "./behavior"
 
 describe("settings controllers", () => {
@@ -22,32 +21,29 @@ describe("settings controllers", () => {
     ])
   })
 
-  test("debounces previews and stops owned audio on disposal", async () => {
+  test("debounces previews and stops audio when its owner releases the preview", async () => {
     vi.useFakeTimers()
 
     try {
       const played: string[] = []
       const stopped: string[] = []
 
-      const owned = createRoot((dispose) => ({
-        dispose,
-        preview: createSoundPreviewController(async (id) => {
-          played.push(id ?? "")
+      const preview = createSoundPreviewController(async (id) => {
+        played.push(id ?? "")
 
-          return () => stopped.push(id ?? "")
-        }),
-      }))
+        return () => stopped.push(id ?? "")
+      })
 
-      owned.preview.play("first")
+      preview.play("first")
       vi.advanceTimersByTime(99)
       expect(played).toEqual([])
 
-      owned.preview.play("second")
+      preview.play("second")
       vi.advanceTimersByTime(100)
       await Promise.resolve()
       expect(played).toEqual(["second"])
 
-      owned.dispose()
+      preview.stop()
       expect(stopped).toEqual(["second"])
     } finally {
       vi.useRealTimers()

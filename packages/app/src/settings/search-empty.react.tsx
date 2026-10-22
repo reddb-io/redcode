@@ -1,16 +1,17 @@
-import { createEffect, onMount } from "solid-js"
-import { createStore } from "solid-js/store"
-import { createResizeObserver } from "@solid-primitives/resize-observer"
-import { useLanguage } from "@/runtime/i18n/language"
+/** @jsxImportSource react */
+import { useLayoutEffect, useRef, useState } from "react"
+import type { SettingsLanguage } from "./shared.react"
 
-export function SettingsSearchEmpty(props: { query: string }) {
-  const language = useLanguage()
-  const [state, setState] = createStore({ query: props.query })
-  let container: HTMLDivElement | undefined
-  let measure: HTMLSpanElement | undefined
+export function SettingsSearchEmpty(props: { query: string; language: SettingsLanguage }) {
+  const language = props.language
+  const [query, setQuery] = useState(props.query)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const measureRef = useRef<HTMLSpanElement>(null)
   const text = (query: string) => language.t("settings.search.empty.query", { query })
 
   const update = () => {
+    const container = containerRef.current
+    const measure = measureRef.current
     if (!container || !measure) return
     const style = getComputedStyle(container)
     measure.textContent = language.t("settings.search.empty", { query: "" })
@@ -29,7 +30,7 @@ export function SettingsSearchEmpty(props: { query: string }) {
     }
 
     if (fits(props.query)) {
-      setState("query", props.query)
+      setQuery(props.query)
 
       return
     }
@@ -53,34 +54,35 @@ export function SettingsSearchEmpty(props: { query: string }) {
       end = middle - 1
     }
 
-    setState("query", `${characters.slice(0, start).join("").trimEnd()}…`)
+    setQuery(`${characters.slice(0, start).join("").trimEnd()}…`)
   }
 
-  createEffect(update)
-  onMount(() => {
-    if (!container || !measure) return
-    // The measuring text also observes font changes that do not resize the available space.
-    createResizeObserver([container, measure], update)
-  })
+  useLayoutEffect(() => {
+    update()
+    const observer = new ResizeObserver(update)
+    if (containerRef.current) observer.observe(containerRef.current)
+    if (measureRef.current) observer.observe(measureRef.current)
+    return () => observer.disconnect()
+  }, [props.query, language])
 
   return (
     <>
       <div
-        ref={container}
-        class="settings-search-empty"
+        ref={containerRef}
+        className="settings-search-empty"
         role="status"
         aria-label={language.t("settings.search.empty", { query: text(props.query) })}
       >
         {language.rich("settings.search.empty", {
           query: (
-            <span class="settings-search-empty-quoted">
-              <bdi dir="auto">{text(state.query)}</bdi>
+            <span key="query" className="settings-search-empty-quoted">
+              <bdi dir="auto">{text(query)}</bdi>
             </span>
           ),
         })}
       </div>
-      <span class="settings-search-empty-measure" aria-hidden="true">
-        <span ref={measure} dir="auto" />
+      <span className="settings-search-empty-measure" aria-hidden="true">
+        <span ref={measureRef} dir="auto" />
       </span>
     </>
   )
