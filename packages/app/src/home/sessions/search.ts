@@ -168,7 +168,11 @@ export function createHomeSessionSearchController(home: HomeController, sessions
     },
     element: {
       setRoot: (element: HTMLDivElement) => (root = element),
-      setInput: (element: HTMLInputElement) => (input = element),
+      setInput: (element: HTMLInputElement) => {
+        input = element
+        // A route shortcut can request focus before the native view mounts.
+        if (state.focused) element.focus()
+      },
       setList: (element: HTMLDivElement) => (list = element),
     },
   }

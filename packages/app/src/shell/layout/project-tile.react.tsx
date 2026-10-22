@@ -7,15 +7,16 @@ import "@/shell/layout/project-tile.css"
 export function ProjectTile(props: {
   project: ProjectTileProject
   unread?: boolean
+  outline?: boolean
   size?: "sm" | "md" | "lg" | "xl"
   className?: string
 }) {
-  const src = getProjectAvatarSource(props.project.id, props.project.icon)
+  const src = props.outline ? undefined : getProjectAvatarSource(props.project.id, props.project.icon)
   return (
     <span
       data-component="project-tile"
       data-size={props.size ?? "sm"}
-      data-tone={projectTileTone(props.project)}
+      data-tone={props.outline ? "outline" : projectTileTone(props.project)}
       data-has-image={src ? "" : undefined}
       className={props.className}
       aria-hidden="true"

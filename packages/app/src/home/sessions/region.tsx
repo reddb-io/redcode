@@ -33,17 +33,13 @@ export function HomeSessions(props: {
           isOpenTab={props.sessions.tab.isOpen}
           onCreateSession={props.sessions.session.create}
           onOpenSession={props.sessions.session.open}
-          onArchiveSession={props.sessions.session.archive}
           onRenameSession={props.sessions.session.rename}
           onExportSession={props.sessions.session.export}
           onDeleteSession={props.sessions.session.showDelete}
           isPinned={props.sessions.session.pinned}
           onTogglePin={props.sessions.session.togglePin}
-          onSetHoverTarget={props.scroll.viewport.setHoverTarget}
-          onSetThumbTrack={props.scroll.viewport.setThumbTrack}
           onSetContent={props.scroll.header.setContent}
           onSetHeader={props.scroll.header.setHeader}
-          onWheel={props.scroll.viewport.containWheel}
           onSetSearchRoot={props.search.element.setRoot}
           onSetSearchInput={props.search.element.setInput}
           onSetSearchList={props.search.element.setList}

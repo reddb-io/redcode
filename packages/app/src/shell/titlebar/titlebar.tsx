@@ -344,8 +344,8 @@ export function Titlebar() {
       category: language.t("command.category.view"),
       keybind: windows() ? "alt+home" : "mod+shift+h",
       hidden: true,
-      onSelect: () => {
-        if (layout.route().type !== "home") layout.home.searchFocus.request()
+      onSelect: (source) => {
+        if (source === "keybind" && layout.route().type !== "home") layout.home.searchFocus.request()
         toggleHome()
       },
     },

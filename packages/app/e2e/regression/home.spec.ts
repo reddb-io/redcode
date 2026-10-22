@@ -35,12 +35,20 @@ test("the session context menu renames, exports, and deletes a Home session", as
   const box = await target.boundingBox()
   await target.click({ button: "right", position: { x: 48, y: 12 } })
   await expect(page).toHaveURL("/")
-  await expect(page.getByRole("menuitem")).toHaveText(["Rename", "Export…", "Delete…"])
-  const menu = await page.locator('[data-component="menu-v2-content"]').boundingBox()
+  await expect(page.getByRole("menuitem")).toHaveText(["Pin", "Rename", "Export…", "Delete…"])
+  const menu = await page.locator("[data-context-menu-surface]").boundingBox()
   expect(Math.abs((menu?.x ?? 0) - (box?.x ?? 0) - 48)).toBeLessThan(4)
 
   await page.getByRole("menuitem", { name: "Rename" }).click()
   const title = page.locator('[data-component="home-session-rename"]')
+  await expect(title).toBeFocused()
+  await expect(title).toHaveValue(fixture.expected.targetTitle)
+  await title.fill("Discard this draft")
+  await title.press("Escape")
+  await expect(target).toBeFocused()
+  await expect(target).toContainText(fixture.expected.targetTitle)
+  await target.press("Shift+F10")
+  await page.getByRole("menuitem", { name: "Rename", exact: true }).click()
   await expect(title).toBeFocused()
   await expect(title).toHaveValue(fixture.expected.targetTitle)
   await title.fill("Renamed from Home")
@@ -56,7 +64,7 @@ test("the session context menu renames, exports, and deletes a Home session", as
   await renamedRow.click()
   await expect(page).toHaveURL(new RegExp(`/session/${fixture.targetID}$`))
   await expect(page.locator('[data-slot="titlebar-tabs"] a').filter({ hasText: "Renamed from Home" })).toBeVisible()
-  await page.getByRole("button", { name: "Home" }).click()
+  await page.getByRole("button", { name: "Home", exact: true }).click()
   await expect(page).toHaveURL("/")
 
   await renamedRow.click({ button: "right" })
@@ -90,14 +98,14 @@ test("the Home shortcut focuses session search, and the Home button leaves focus
   await expect(editor).toBeEditable({ timeout: APP_READY_TIMEOUT })
   await editor.click()
 
-  await page.keyboard.press("ControlOrMeta+b")
+  await page.keyboard.press("ControlOrMeta+Shift+h")
   const search = page.getByRole("textbox", { name: /Search sessions/ })
   await expect(search).toBeFocused()
   await page.keyboard.type("jump")
   await expect(page.getByRole("option")).toHaveCount(1)
   await expect(page.getByRole("option")).toContainText(fixture.expected.targetTitle)
 
-  await page.keyboard.press("ControlOrMeta+b")
+  await page.keyboard.press("ControlOrMeta+Shift+h")
   await expectPath(page, sessionHref(fixture.sourceID))
 
   await page.getByRole("button", { name: "Home", exact: true }).click()
@@ -110,6 +118,82 @@ test("Home shows loaded sessions before the location request resolves", async ({
   await openHome(page)
   await expectAppVisible(row(page, fixture.expected.sourceTitle))
   location.release()
+})
+
+for (const pointer of ["mouse", "touch"] as const) {
+  test(`Home project order survives ${pointer} dragging and reopening the picker`, async ({ page }) => {
+    const projects = ["SortOne", "SortTwo", "SortThree"].map((name, index) =>
+      project({ id: `proj_sort_${index}`, name, directory: `/workspace/${name}` }),
+    )
+    await mockStressTimeline(page, { projects })
+    await seed(page, {
+      projects: { local: projects.map((item) => ({ worktree: item.worktree, expanded: true })) },
+      lastProject: { local: projects[0].worktree },
+    })
+    await page.goto("/")
+    const trigger = page.getByRole("main").getByRole("button", { name: /^Projects:/ })
+    await trigger.click()
+    const rows = page.locator('[data-component="home-project-row"]')
+    const labels = rows.locator('[data-slot="home-row-label"]')
+    await expect(labels).toHaveText(["SortOne", "SortTwo", "SortThree"])
+    const source = rows.filter({ hasText: "SortOne" })
+    const target = rows.filter({ hasText: "SortThree" })
+    const from = await source.boundingBox()
+    const to = await target.boundingBox()
+    if (!from || !to) throw new Error("Project rows are not laid out")
+    const start = { x: from.x + 40, y: from.y + from.height / 2 }
+    const end = { x: to.x + 40, y: to.y + to.height / 2 }
+    if (pointer === "mouse") {
+      await page.mouse.move(start.x, start.y)
+      await page.mouse.down()
+      await page.mouse.move(end.x, end.y, { steps: 10 })
+      await page.mouse.up()
+    }
+    if (pointer === "touch") {
+      const client = await page.context().newCDPSession(page)
+      await client.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ ...start, id: 1 }] })
+      await expect.poll(() => page.locator('[data-home-row][data-dragging="true"]').count()).toBeGreaterThan(0)
+      await client.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ ...end, id: 1 }] })
+      await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] })
+      await client.detach()
+    }
+    await expect(labels).toHaveText(["SortTwo", "SortThree", "SortOne"])
+    await page.keyboard.press("Escape")
+    await expect(trigger).toBeFocused()
+    await trigger.click()
+    await expect(labels).toHaveText(["SortTwo", "SortThree", "SortOne"])
+  })
+}
+
+test("Home keeps project identity scoped to its server when directories match", async ({ page }) => {
+  await mockRemoteServer(page, {
+    name: "Remote",
+    directory: fixture.directory,
+    project: project({ id: "proj_remote_scope", directory: fixture.directory, name: "Remote workspace" }),
+  })
+  await mockStressTimeline(page)
+  await seed(page, {
+    projects: {
+      local: [{ worktree: fixture.directory, expanded: true }],
+      [REMOTE_SERVER]: [{ worktree: fixture.directory, expanded: true }],
+    },
+  })
+  await page.goto("/")
+  const picker = page.getByRole("main").getByRole("button", { name: /^Projects:/ })
+  await picker.click()
+  await page
+    .getByRole("dialog", { name: "Projects", exact: true })
+    .getByRole("button", { name: "Remote workspace", exact: true })
+    .click()
+  await expect(picker).toHaveAccessibleName("Projects: Remote workspace (Remote)")
+  await expect(picker).toContainText("Remote workspace")
+  await picker.click()
+  await page
+    .getByRole("dialog", { name: "Projects", exact: true })
+    .getByRole("button", { name: fixture.project.name, exact: true })
+    .click()
+  await expect(picker).toContainText(fixture.project.name)
+  await expect(picker).not.toContainText("Remote workspace")
 })
 
 test("Home and the directory picker load without newer browser APIs", async ({ page }) => {
@@ -126,11 +210,21 @@ test("Home and the directory picker load without newer browser APIs", async ({ p
   const target = row(page, fixture.expected.targetTitle)
   await expect(target).toBeVisible()
 
-  await page.getByRole("button", { name: "Add project", exact: true }).click()
-  const dialog = page.getByRole("dialog")
+  await page
+    .getByRole("main")
+    .getByRole("button", { name: /^Projects:/ })
+    .click()
+  await page
+    .getByRole("dialog", { name: "Projects", exact: true })
+    .getByRole("button", { name: "Add project", exact: true })
+    .click()
+  const dialog = page
+    .getByRole("dialog")
+    .filter({ has: page.getByRole("button", { name: "Select folder", exact: true }) })
   await expect(dialog.getByRole("button", { name: "Select folder", exact: true })).toBeEnabled()
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click()
   await expect(dialog).toBeHidden()
+  await expect(page.getByRole("main").getByRole("button", { name: /^Projects:/ })).toBeFocused()
   await expect(target).toBeVisible()
 })
 
@@ -150,7 +244,10 @@ test("adding a project to a signed-out server re-pairs it, then continues at the
     pairing: { code: "one-time-code", token: "session-token" },
   })
   await openHome(page, { fileList: () => [] })
-  await page.getByRole("main").getByRole("button", { name: "Projects", exact: true }).click()
+  await page
+    .getByRole("main")
+    .getByRole("button", { name: /^Projects:/ })
+    .click()
   const remote = page.locator("[data-home-row]").filter({ hasText: "Remote" })
   await expect(page.getByRole("button", { name: "Authenticate", exact: true })).toBeVisible()
 
@@ -186,7 +283,10 @@ test("a server whose saved password changes works with the new password", async 
     },
   })
   await openHome(page, { fileList: () => [] })
-  await page.getByRole("main").getByRole("button", { name: "Projects", exact: true }).click()
+  await page
+    .getByRole("main")
+    .getByRole("button", { name: /^Projects:/ })
+    .click()
   const remote = page.locator("[data-home-row]").filter({ hasText: "Remote" })
   const picker = page.getByRole("dialog").filter({ has: page.getByRole("button", { name: "Select folder" }) })
 
@@ -196,18 +296,24 @@ test("a server whose saved password changes works with the new password", async 
   await picker.getByRole("button", { name: "Cancel", exact: true }).click()
   await expect(picker).toHaveCount(0)
 
-  await page.getByRole("main").getByRole("button", { name: "Projects", exact: true }).click()
+  await page
+    .getByRole("main")
+    .getByRole("button", { name: /^Projects:/ })
+    .click()
   await remote.getByRole("button", { name: "More options", exact: true }).click()
   await page.getByRole("menuitem", { name: "Edit", exact: true }).click()
   const editor = page.getByRole("dialog", { name: "Edit server" })
-  await editor.getByPlaceholder("password").fill("new-password")
   // The server now rejects the old password, as after `opencode service set password`.
   accepted.password = "new-password"
+  await editor.getByPlaceholder("password").fill("new-password")
   await editor.getByRole("button", { name: "Save", exact: true }).click()
   await expect(editor).toHaveCount(0)
 
   // The picker reads the folder through the server's controller, which must use the saved password now.
-  await page.getByRole("main").getByRole("button", { name: "Projects", exact: true }).click()
+  await page
+    .getByRole("main")
+    .getByRole("button", { name: /^Projects:/ })
+    .click()
   await remote.getByRole("button", { name: "Add project", exact: true }).click()
   await expect(picker.getByRole("button", { name: "Select folder", exact: true })).toBeEnabled()
   await expect(picker.getByText("Unable to read this folder")).toHaveCount(0)
@@ -254,11 +360,18 @@ for (const state of [
 
     if (state.recovery === "closed") {
       await page.goto("/")
+      await page
+        .getByRole("main")
+        .getByRole("button", { name: /^Projects:/ })
+        .click()
       const project = page.locator('[data-component="home-project-row"]').filter({ hasText: name })
       await project.locator("..").getByRole("button", { name: "More options", exact: true }).click()
       await page.getByRole("menuitem", { name: "Close", exact: true }).click()
       await expect(project).toHaveCount(0)
+      await page.keyboard.press("Escape")
       await page.locator(`[data-titlebar-tab-link][href="${sessionHref(fixture.targetID)}"]`).click()
+      await expect(page.locator('[data-component="session-tab-popover"]')).toBeVisible()
+      await expect(page.locator('[data-component="session-tab-popover"]')).toHaveCSS("pointer-events", "none")
     }
 
     if (state.recovery !== "closed") await page.goto(sessionHref(fixture.targetID))
@@ -269,7 +382,7 @@ for (const state of [
     const projectItem = menu.getByRole("menuitem", { name, exact: true })
     const pathItem = menu.getByRole("menuitem", { name: state.directory, exact: true })
     const settings = page.getByTestId("settings-screen")
-    await expect(header.getByRole("heading")).toHaveText(fixture.expected.targetTitle)
+    await expect(header.getByRole("heading")).toHaveText(fixture.expected.targetTitle, { timeout: APP_READY_TIMEOUT })
 
     for (const loaded of state.recovery ? [false, true] : [true]) {
       if (state.recovery && loaded) {
@@ -306,8 +419,13 @@ for (const state of [
     await trigger.click()
     await projectItem.click()
     await expect(page).toHaveURL(new URL("/", page.url()).href)
+    const picker = page.getByRole("main").getByRole("button", { name: /^Projects:/ })
+    await expect(picker).toContainText(name)
+    await expect(picker).toHaveAccessibleName(`Projects: ${name}`)
+    await picker.click()
     const project = page.locator('[data-component="home-project-row"]').filter({ hasText: name })
     await expect(project).toHaveAttribute("data-selected", "")
+    await page.keyboard.press("Escape")
     await expect(
       page.locator(`[data-component="home-session-row-container"][data-session-id="${fixture.targetID}"]`),
     ).toBeVisible()
