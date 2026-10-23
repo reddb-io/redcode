@@ -90,6 +90,9 @@ Use `/agent-tools` or `redcode tools` to configure the host's optional browser, 
 snapshot capabilities. [Agent tools](docs/agent-tools.md).
 The npm package includes the coding engine and Design; Desktop uses the full distribution above.
 
+Use `redcode stats --cost --models` to inspect costs and token usage. Estimates, incomplete subtotals
+and records without cost provenance are marked in the report. [Statistics](docs/clients.md#cli).
+
 [Installation and platforms](docs/installation.md) · [Client commands and history imports](docs/clients.md)
 
 ## Session modes
