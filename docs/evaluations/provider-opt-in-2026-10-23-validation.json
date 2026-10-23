@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-23",
+  "recordedAtUTC": "2026-10-23T23:01:47.529943+00:00",
+  "baselineCommit": "32db466ab5fbab1c82ff1f692166d99f9523b3fd",
+  "testedPackagesTree": "7e5ef8d3d1b0d1961519f761406a17e494f9f986",
+  "branch": "main",
+  "published": false,
+  "completeParity": false,
+  "requirement": "Environment presence alone must not create a model-provider connection, activate a provider, discover remote models, fill its settings, or override a saved account or credential. Preserve explicit choices.",
+  "checks": [
+    {
+      "name": "policy regressions before implementation",
+      "cwd": "packages/core",
+      "command": "bun test test/integration.test.ts test/plugin/provider-amazon-bedrock.test.ts test/plugin/provider-cloudflare-ai-gateway.test.ts --test-name-pattern 'without discovering ambient|despite ambient|does not fill region|keeps missing region'",
+      "exitCode": 1,
+      "passed": 0,
+      "failed": 4,
+      "filteredOut": 29,
+      "assertions": 4,
+      "log": "policyNegative"
+    },
+    {
+      "name": "explicit Cloudflare template preservation during implementation",
+      "cwd": "packages/core",
+      "command": "bun test test/model-resolver.test.ts --test-name-pattern 'catalog placeholders from explicit account'",
+      "exitCode": 1,
+      "passed": 0,
+      "failed": 2,
+      "filteredOut": 52,
+      "log": "explicitParameterNegative",
+      "note": "Removing ambient interpolation exposed missing mapping for explicitly supplied account settings. The final implementation maps locally known parameter names from explicit settings."
+    },
+    {
+      "name": "final behavior and compatibility verification",
+      "cwd": "packages/core",
+      "command": "bun test --only-failures test/integration.test.ts test/model-resolver.test.ts test/model-connection.test.ts test/integration-check.test.ts test/session-error.test.ts test/config/config.test.ts test/config/provider.test.ts test/config/provider-options.test.ts test/plugin/models-dev.test.ts test/plugin/provider-amazon-bedrock.test.ts test/plugin/provider-google-vertex.test.ts test/plugin/provider-cloudflare-ai-gateway.test.ts test/plugin/provider-cloudflare-workers-ai.test.ts test/plugin/provider-azure.test.ts test/plugin/provider-opencode.test.ts test/plugin/provider-red-router.test.ts test/plugin/provider-snowflake-cortex.test.ts test/plugin/provider-gitlab.test.ts test/plugin/provider-sap-ai-core.test.ts test/plugin/provider-ollama.test.ts test/plugin/provider-vllm.test.ts test/plugin/provider-lmstudio.test.ts",
+      "exitCode": 0,
+      "passed": 344,
+      "failed": 0,
+      "files": 22,
+      "assertions": 1456,
+      "log": "finalCore"
+    },
+    {
+      "name": "canonical lint and types",
+      "cwd": ".",
+      "command": "bun run check",
+      "exitCode": 0,
+      "successfulTasks": 27,
+      "totalTasks": 27,
+      "cachedTasks": 21,
+      "log": "canonical"
+    }
+  ],
+  "logs": {
+    "policyNegative": {
+      "path": "/var/tmp/redcode-provider-opt-in-before.log",
+      "sha256": "f03743ae244fbe770768398e9d30f40335b8e848ba783ac7bf0f425d086afe49",
+      "bytes": 11236
+    },
+    "explicitParameterNegative": {
+      "path": "/var/tmp/redcode-provider-opt-in-cf-before.log",
+      "sha256": "142d33bcf217d92879d734e436c3b93af8a72f898ad24194c37b506c03bca120",
+      "bytes": 7058
+    },
+    "finalCore": {
+      "path": "/var/tmp/redcode-provider-opt-in-final.log",
+      "sha256": "1b7fa23180bc6431765e4e91f018c45d36a4483679274d398955f13e64548fb4",
+      "bytes": 108
+    },
+    "canonical": {
+      "path": "/var/tmp/redcode-provider-opt-in-check.log",
+      "sha256": "af5e6f5dda52160ccdbe9150d0929d5ab7d44fd40ddb39ebdbd559bf4fd15247",
+      "bytes": 4396
+    }
+  },
+  "coveredContracts": [
+    "Saved credentials are the only automatically projected integration connections; ambient key names remain catalog metadata.",
+    "Ambient keys do not make an auto provider available. Explicitly saving a credential makes it available. Removing the last saved choice does not fall back to ambient keys.",
+    "Explicit selected environment bindings resolve only names declared by the integration; an unrelated exported name is rejected.",
+    "User-written {env:VARIABLE} provider configuration still loads through the actual configuration-file loader.",
+    "Explicit provider/model/credential region and account choices continue to resolve native Bedrock and Cloudflare catalog templates.",
+    "Ambient parameters do not bypass Azure or Cloudflare forms, activate Vertex or infer a Bedrock region.",
+    "Saved Snowflake account/token and OAuth refresh behavior win over ambient tokens.",
+    "GitLab, OpenCode, Modal and router provider paths no longer borrow ambient credentials or endpoints for setup/discovery.",
+    "SAP explicit destination options and legacy explicit serviceKey choices remain supported; missing explicit auth is rejected without choosing ambient bindings or deployment fields.",
+    "Local Ollama, vLLM and LM Studio compatibility suites continue to pass."
+  ],
+  "environmentUseRetained": [
+    "User-declared configuration substitutions and deliberately pinned, declared connection bindings.",
+    "GitLab OAuth application client configuration, consumed during the user-selected OAuth flow.",
+    "Paths to local gcloud configuration files used to offer explicit form choices, not to activate or fill provider settings.",
+    "The legacy SAP bridge writes an explicitly configured serviceKey to its SDK process variable; it does not select an ambient key. Concurrent SDK instances still share that existing process variable."
+  ],
+  "sdkContractReference": {
+    "package": "@jerome-benoit/sap-ai-provider-v2",
+    "version": "5.0.3",
+    "url": "https://registry.npmjs.org/@jerome-benoit/sap-ai-provider-v2/-/sap-ai-provider-v2-5.0.3.tgz",
+    "evidence": "Public declaration of SAPAIProviderSettings.destination and explicit deployment/resource-group options inspected; no package upgrade or source copying."
+  },
+  "limits": [
+    "Core discovery/configuration policy; this change does not sandbox third-party SDKs or change the operating system environment.",
+    "Environment-only setups need an explicit saved connection or configuration reference. No installed user files or credential records were rewritten or deleted.",
+    "No live cloud inference, paid provider call, browser claim, installed-service restart, push or publication.",
+    "No public Protocol/HttpApi schema change; generated Client files were not edited. The model catalog remains exclusively V2.",
+    "The earlier Bedrock native environment/default region fallbacks are superseded. Its historical validation artifact remains pinned to its earlier package tree."
+  ]
+}

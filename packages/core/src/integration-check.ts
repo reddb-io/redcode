@@ -16,7 +16,7 @@ export const check = Effect.fn("IntegrationCheck.check")(function* (integrationI
     const integrations = yield* Integration.Service
     const integration = yield* integrations.get(integrationID)
     const active = yield* integrations.connection.active(integrationID)
-    if (!integration || !active) return yield* Effect.fail(new Error("No saved or environment connection is available"))
+    if (!integration || !active) return yield* Effect.fail(new Error("No saved connection is available"))
     if (integration.metadata?.source === "mcp")
       return yield* Effect.fail(
         new Error(
@@ -36,7 +36,7 @@ export const check = Effect.fn("IntegrationCheck.check")(function* (integrationI
                 ? value.configuration.baseURL
                 : typeof value?.metadata?.baseURL === "string"
                   ? value.metadata.baseURL
-                  : (process.env.NINE_ROUTER_BASE_URL ?? "http://127.0.0.1:20128/v1"),
+                  : "http://127.0.0.1:20128/v1",
             )
       if (!key || !baseURL)
         return yield* Effect.fail(new Error("The connection has no valid API key or HTTP(S) base URL"))

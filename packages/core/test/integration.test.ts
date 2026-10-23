@@ -31,7 +31,10 @@ const failingCredentialNode = makeGlobalNode({
   deps: [],
 })
 const failingIt = testEffect(
-  AppNodeBuilder.build(LayerNode.group([Integration.node, Bus.node]), [Credential.node.replace(failingCredentialNode), location]),
+  AppNodeBuilder.build(LayerNode.group([Integration.node, Bus.node]), [
+    Credential.node.replace(failingCredentialNode),
+    location,
+  ]),
 )
 
 function eventually<A, E, R>(
@@ -255,7 +258,11 @@ describe("Integration", () => {
       ).toBe("The endpoint rejected the API key")
       expect(yield* credentials.all()).toEqual([])
 
-      yield* integrations.connection.key({ integrationID: wizard, key: "secret", answer: { providerID: "my-endpoint" } })
+      yield* integrations.connection.key({
+        integrationID: wizard,
+        key: "secret",
+        answer: { providerID: "my-endpoint" },
+      })
 
       expect(yield* credentials.list(wizard)).toEqual([])
       expect(yield* credentials.list(target)).toEqual([
@@ -611,7 +618,7 @@ describe("Integration", () => {
     }),
   )
 
-  it.effect("projects credential and env connections", () => {
+  it.effect("projects saved connections without discovering ambient credentials", () => {
     const integrationID = Integration.ID.make("acme")
     return Effect.acquireUseRelease(
       Effect.sync(() => {
@@ -649,7 +656,7 @@ describe("Integration", () => {
             value: Credential.Key.make({ type: "key", key: "b" }),
           })
 
-          // Stored credentials and detected env vars appear as connections.
+          // Only saved choices appear as connections, even when advertised environment keys exist.
           expect((yield* integrations.get(integrationID))?.connections).toEqual([
             {
               type: "credential",
@@ -669,7 +676,6 @@ describe("Integration", () => {
               id: archived.id,
               label: "Archived",
             },
-            { type: "env", name: "INTEGRATION_TEST_ACME_KEY" },
           ])
           expect(yield* integrations.connection.active(integrationID)).toEqual({
             type: "credential",
@@ -693,7 +699,6 @@ describe("Integration", () => {
             "credential",
             "credential",
             "credential",
-            "env",
           ])
           expect(events).toEqual([
             { type: Credential.Event.Switched.type, data: { credentialID: work.id, integrationID } },
@@ -713,10 +718,8 @@ describe("Integration", () => {
             label: "Personal",
           })
           yield* integrations.connection.remove(personal.id)
-          expect(yield* integrations.connection.active(integrationID)).toEqual({
-            type: "env",
-            name: "INTEGRATION_TEST_ACME_KEY",
-          })
+          expect(yield* integrations.connection.active(integrationID)).toBeUndefined()
+          expect((yield* integrations.get(integrationID))?.connections).toEqual([])
           expect(events).toEqual([
             { type: Credential.Event.Switched.type, data: { credentialID: work.id, integrationID } },
             { type: Credential.Event.Updated.type, data: {} },

@@ -70,6 +70,10 @@ redcode desktop
 Or download a **full native archive** from [Releases](https://github.com/reddb-io/redcode/releases).
 Open your project and use **Connect provider** to add a model.
 
+Model providers require a saved connection or explicit configuration. Environment variables alone
+do not activate or configure them. User-declared references such as `{env:MY_API_KEY}` remain
+supported. [Provider configuration](docs/provider-configuration.md).
+
 <details>
 <summary>See the Desktop / web workspace</summary>
 

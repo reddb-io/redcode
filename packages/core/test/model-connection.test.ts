@@ -25,6 +25,70 @@ import { SessionProviderContext } from "@opencode/core/session/provider-context"
 
 const it = testEffect(ModelResolver.layer.pipe(Layer.provideMerge(PluginTestLayer)))
 
+it.effect("requires a saved choice or an explicit environment binding without discovering ambient providers", () =>
+  withEnv({ EXPLICIT_PROVIDER_KEY: "ambient-key", OTHER_PROVIDER_KEY: "other-key" }, () =>
+    Effect.gen(function* () {
+      const providers = yield* Provider.Service
+      const integrations = yield* Integration.Service
+      const credentials = yield* Credential.Service
+      const resolver = yield* ModelResolver.Service
+      const providerID = Provider.ID.make("explicit-choice")
+      const integrationID = Integration.ID.make(providerID)
+      const selected = Model.Info.make({
+        ...Model.Info.default(providerID, Model.ID.make("chat")),
+        package: "@opencode/ai/providers/openai/chat",
+      })
+      yield* providers.transform((editor) =>
+        editor.update(providerID, (provider) => {
+          provider.package = selected.package!
+        }),
+      )
+      yield* integrations.transform((editor) =>
+        editor.method.update({
+          integrationID,
+          method: { type: "env", names: ["EXPLICIT_PROVIDER_KEY"] },
+        }),
+      )
+      expect(yield* integrations.connection.active(integrationID)).toBeUndefined()
+      expect((yield* providers.available()).map((provider) => provider.id)).not.toContain(providerID)
+      const explicit = yield* resolver.resolveModel(selected, undefined, { type: "env", name: "EXPLICIT_PROVIDER_KEY" })
+      const explicitHeaders = yield* explicit.model.route.auth.apply({
+        request: LLM.request({ model: explicit.model, prompt: "Hello" }),
+        method: "POST",
+        url: explicit.model.route.endpoint.baseURL ?? "",
+        body: "{}",
+        headers: Headers.empty,
+      })
+      expect(explicitHeaders.authorization).toBe("Bearer ambient-key")
+      expect(yield* integrations.connection.active(integrationID)).toBeUndefined()
+      expect(
+        yield* resolver
+          .resolveModel(selected, undefined, { type: "env", name: "OTHER_PROVIDER_KEY" })
+          .pipe(Effect.flip),
+      ).toMatchObject({
+        _tag: "SessionRunnerModel.ModelConfigurationError",
+      })
+      const saved = yield* credentials.create({
+        integrationID,
+        value: Credential.Key.make({ type: "key", key: "saved-key" }),
+      })
+      expect((yield* providers.available()).map((provider) => provider.id)).toContain(providerID)
+      const resolved = yield* resolver.resolveModel(selected)
+      const headers = yield* resolved.model.route.auth.apply({
+        request: LLM.request({ model: resolved.model, prompt: "Hello" }),
+        method: "POST",
+        url: resolved.model.route.endpoint.baseURL ?? "",
+        body: "{}",
+        headers: Headers.empty,
+      })
+      expect(headers.authorization).toBe("Bearer saved-key")
+      yield* integrations.connection.remove(saved.id)
+      expect(yield* integrations.connection.active(integrationID)).toBeUndefined()
+      expect((yield* providers.available()).map((provider) => provider.id)).not.toContain(providerID)
+    }),
+  ),
+)
+
 /** A models catalog that knows only these models. */
 const catalogOf = (
   ...models: Array<{ provider: string; id: string; context: number; output: number }>

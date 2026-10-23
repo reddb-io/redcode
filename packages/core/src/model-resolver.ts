@@ -86,7 +86,7 @@ export class UnresolvedProviderVariablesError extends Schema.TaggedError<Unresol
   },
 ) {
   override get message() {
-    return `Cannot initialize ${this.providerID}/${this.modelID}: ${this.variables.join(", ")} ${this.variables.length === 1 ? "is" : "are"} required to resolve the provider endpoint`
+    return `Cannot initialize ${this.providerID}/${this.modelID}: configure the endpoint explicitly; unresolved placeholders: ${this.variables.join(", ")}`
   }
 }
 
@@ -304,30 +304,29 @@ function prepareProviderURL(
   settings: Readonly<Record<string, unknown>>,
 ): Effect.Effect<string, UnresolvedProviderVariablesError> {
   if (!baseURL.includes("${")) return Effect.succeed(baseURL)
-  return Effect.gen(function* () {
-    const specifier = Provider.packageName(model.package)
-    const region =
-      baseURL.includes("${AWS_REGION}") &&
-      (specifier === "@opencode/ai/providers/amazon-bedrock" ||
-        specifier?.startsWith("@opencode/ai/providers/amazon-bedrock/"))
-        ? yield* Effect.promise(async () => {
-            const { BedrockAuth } = await import("@opencode/ai/protocols/utils/bedrock-auth")
-            return BedrockAuth.resolveRegion({
-              region: typeof settings.region === "string" ? settings.region : undefined,
-              credentials: Option.getOrUndefined(
-                Schema.decodeUnknownOption(Schema.Struct({ region: Schema.String }))(settings.credentials),
-              ),
-            })
-          })
-        : undefined
-    const prepared = baseURL.replace(
-      /\$\{([^}]+)\}/g,
-      (placeholder, name: string) => (name === "AWS_REGION" ? region : undefined) ?? process.env[name] ?? placeholder,
-    )
-    const failure = unresolvedProviderVariables(model, prepared)
-    if (failure) return yield* failure
-    return prepared
+  const specifier = Provider.packageName(model.package)
+  const bindings: Readonly<Record<string, unknown>> =
+    specifier === "@opencode/ai/providers/amazon-bedrock" ||
+    specifier?.startsWith("@opencode/ai/providers/amazon-bedrock/")
+      ? {
+          AWS_REGION:
+            typeof settings.region === "string"
+              ? settings.region
+              : Option.getOrUndefined(
+                  Schema.decodeUnknownOption(Schema.Struct({ region: Schema.String }))(settings.credentials),
+                )?.region,
+        }
+      : specifier === "@opencode/ai/providers/cloudflare-workers-ai"
+        ? { CLOUDFLARE_ACCOUNT_ID: settings.accountId }
+        : specifier === "@opencode/ai/providers/cloudflare-ai-gateway"
+          ? { CLOUDFLARE_ACCOUNT_ID: settings.accountId, CLOUDFLARE_GATEWAY_ID: settings.gatewayId ?? settings.gateway }
+          : {}
+  const prepared = baseURL.replace(/\$\{([^}]+)\}/g, (placeholder, name: string) => {
+    const configured = bindings[name]
+    return typeof configured === "string" ? configured : placeholder
   })
+  const failure = unresolvedProviderVariables(model, prepared)
+  return failure ? Effect.fail(failure) : Effect.succeed(prepared)
 }
 
 function unresolvedProviderVariables(model: RuntimeInfo, baseURL: string) {
@@ -442,10 +441,15 @@ export const layer = Layer.effect(
     ) {
       const provider = yield* providers.get(selected.providerID)
       const integrationID = provider?.integrationID ?? Integration.ID.make(selected.providerID)
+      const integration = pinned ? yield* integrations.get(integrationID) : undefined
       const connection = pinned
-        ? (yield* integrations.get(integrationID))?.connections.find(
-            (connection) => IntegrationConnection.key(connection) === IntegrationConnection.key(pinned),
-          )
+        ? pinned.type === "env"
+          ? integration?.methods.some((method) => method.type === "env" && method.names.includes(pinned.name))
+            ? pinned
+            : undefined
+          : integration?.connections.find(
+              (connection) => IntegrationConnection.key(connection) === IntegrationConnection.key(pinned),
+            )
         : yield* integrations.connection.active(integrationID)
       if (pinned && !connection)
         return yield* new ModelConfigurationError({

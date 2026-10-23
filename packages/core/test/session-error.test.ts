@@ -149,7 +149,7 @@ describe("toSessionError", () => {
     expect(toSessionError(error)).toEqual({
       type: "provider.no-route",
       message:
-        "Cannot initialize cloudflare-workers-ai/model: CLOUDFLARE_ACCOUNT_ID is required to resolve the provider endpoint",
+        "Cannot initialize cloudflare-workers-ai/model: configure the endpoint explicitly; unresolved placeholders: CLOUDFLARE_ACCOUNT_ID",
     })
   })
 

@@ -739,7 +739,7 @@
       "upstream_head": "a6c3d9e7766a8bc1b076bdc7cebb0e907efbb66d",
       "status": "validated",
       "local_path": "packages/core/src/model-resolver.ts",
-      "evidence_or_next_step": "Native implementation resolves endpoint templates after provider, model and credential overlays, reusing native Bedrock region policy. Six failing cases reproduced before the fix; 129 tests and all 27 canonical checks pass. See evaluations/bedrock-region-2026-10-23-validation.json. No paid provider calls or publication."
+      "evidence_or_next_step": "Resolve endpoint templates after explicit provider/model/credential overlays. The earlier environment/default fallbacks were removed to honor the explicit-setup policy. See evaluations/provider-opt-in-2026-10-23-validation.json; old Bedrock evidence remains historical."
     }
   ],
   "nativeWork": [
@@ -821,7 +821,13 @@
       "id": "bedrock-merged-region",
       "status": "validated",
       "path": "packages/core/src/model-resolver.ts",
-      "evidence": "Keeps endpoint templates intact during AISDK normalization; resolves the final configured or default region only after overlays. Tests cover provider inheritance, credential configuration and metadata, static credentials, environment defaults, custom provider IDs, unrelated adapters and remaining unresolved variables. See evaluations/bedrock-region-2026-10-23-validation.json."
+      "evidence": "Keep templates intact until explicit settings are merged. Ambient region/default inference was removed by the explicit-provider policy. See evaluations/provider-opt-in-2026-10-23-validation.json."
+    },
+    {
+      "id": "explicit-provider-configuration",
+      "status": "validated",
+      "path": "packages/core/src/integration.ts",
+      "evidence": "Four policy regressions failed before the fix. Final verification: 344 tests across 22 files, 1456 assertions, zero failures; all 27 canonical lint/type tasks pass. Explicit config references, declared selected bindings and saved credentials remain supported. See evaluations/provider-opt-in-2026-10-23-validation.json. No installed user configuration was rewritten and no service was restarted."
     }
   ],
   "remaining": [

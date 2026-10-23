@@ -1,6 +1,6 @@
 import { AISDK } from "@opencode/core/aisdk"
 import { describe, expect } from "bun:test"
-import { Effect } from "effect"
+import { Cause, Effect, Exit } from "effect"
 import { Model } from "@opencode/core/model"
 import { Plugin } from "@opencode/core/plugin"
 import { PluginHost } from "@opencode/core/plugin/host"
@@ -36,30 +36,60 @@ function model(providerID: string) {
 }
 
 describe("SapAICorePlugin", () => {
-  it.effect("copies serviceKey option into AICORE_SERVICE_KEY but keeps SDK options to deployment metadata", () =>
+  it.effect("forwards explicit destination and deployment options without changing the environment", () =>
     withEnv(
-      { AICORE_SERVICE_KEY: undefined, AICORE_DEPLOYMENT_ID: "deployment", AICORE_RESOURCE_GROUP: "resource-group" },
+      {
+        AICORE_SERVICE_KEY: "ambient-key",
+        AICORE_DEPLOYMENT_ID: "ambient-deployment",
+        AICORE_RESOURCE_GROUP: "ambient-group",
+      },
       () =>
         Effect.gen(function* () {
           const aisdk = yield* AISDK.Service
           yield* addPlugin()
-          const sdk = yield* aisdk.runSDK({
-            model: model("sap-ai-core"),
-            package: fixtureProvider,
-            options: { name: "sap-ai-core", serviceKey: "service-key" },
-          })
-          expect(process.env.AICORE_SERVICE_KEY).toBe("service-key")
-          expect(sdk.sdk.options).toEqual({ deploymentId: "deployment", resourceGroup: "resource-group" })
+          const options = {
+            name: "sap-ai-core",
+            destination: { url: "https://sap.example", authentication: "NoAuthentication" },
+            deploymentId: "chosen-deployment",
+            resourceGroup: "chosen-group",
+          }
+          const sdk = yield* aisdk.runSDK({ model: model("sap-ai-core"), package: fixtureProvider, options })
+          expect(sdk.sdk.options).toEqual(options)
+          expect(process.env.AICORE_SERVICE_KEY).toBe("ambient-key")
         }),
     ),
   )
 
-  it.effect("preserves existing AICORE_SERVICE_KEY over serviceKey option", () =>
+  it.effect("requires an explicit authentication choice instead of ambient service bindings", () =>
     withEnv(
       {
-        AICORE_SERVICE_KEY: "env-service-key",
-        AICORE_DEPLOYMENT_ID: "deployment",
-        AICORE_RESOURCE_GROUP: "resource-group",
+        AICORE_SERVICE_KEY: "ambient-key",
+        AICORE_DEPLOYMENT_ID: "ambient-deployment",
+        AICORE_RESOURCE_GROUP: "ambient-group",
+      },
+      () =>
+        Effect.gen(function* () {
+          const aisdk = yield* AISDK.Service
+          yield* addPlugin()
+          const failure = yield* aisdk
+            .runSDK({ model: model("sap-ai-core"), package: fixtureProvider, options: { name: "sap-ai-core" } })
+            .pipe(Effect.exit)
+          expect(Exit.isFailure(failure)).toBe(true)
+          if (Exit.isFailure(failure))
+            expect(Cause.squash(failure.cause)).toMatchObject({
+              message: "Configure an explicit SAP AI Core destination or serviceKey before using this provider",
+            })
+          expect(process.env.AICORE_SERVICE_KEY).toBe("ambient-key")
+        }),
+    ),
+  )
+
+  it.effect("preserves an explicit serviceKey choice without borrowing ambient deployment settings", () =>
+    withEnv(
+      {
+        AICORE_SERVICE_KEY: "ambient-key",
+        AICORE_DEPLOYMENT_ID: "ambient-deployment",
+        AICORE_RESOURCE_GROUP: "ambient-group",
       },
       () =>
         Effect.gen(function* () {
@@ -68,28 +98,10 @@ describe("SapAICorePlugin", () => {
           const sdk = yield* aisdk.runSDK({
             model: model("sap-ai-core"),
             package: fixtureProvider,
-            options: { name: "sap-ai-core", serviceKey: "option-service-key" },
+            options: { serviceKey: "chosen-key", deploymentId: "chosen-deployment" },
           })
-          expect(process.env.AICORE_SERVICE_KEY).toBe("env-service-key")
-          expect(sdk.sdk.options).toEqual({ deploymentId: "deployment", resourceGroup: "resource-group" })
-        }),
-    ),
-  )
-
-  it.effect("omits deployment and resourceGroup SDK options when no service key is available", () =>
-    withEnv(
-      { AICORE_SERVICE_KEY: undefined, AICORE_DEPLOYMENT_ID: "deployment", AICORE_RESOURCE_GROUP: "resource-group" },
-      () =>
-        Effect.gen(function* () {
-          const aisdk = yield* AISDK.Service
-          yield* addPlugin()
-          const sdk = yield* aisdk.runSDK({
-            model: model("sap-ai-core"),
-            package: fixtureProvider,
-            options: { name: "sap-ai-core" },
-          })
-          expect(process.env.AICORE_SERVICE_KEY).toBeUndefined()
-          expect(sdk.sdk.options).toEqual({})
+          expect(process.env.AICORE_SERVICE_KEY).toBe("chosen-key")
+          expect(sdk.sdk.options).toEqual({ serviceKey: "chosen-key", deploymentId: "chosen-deployment" })
         }),
     ),
   )

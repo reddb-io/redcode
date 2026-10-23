@@ -194,20 +194,16 @@ describe("ModelResolver", () => {
     }),
   )
 
-  it.effect("resolves environment templates before native providers inspect endpoints", () =>
+  it.effect("rejects ambient endpoint inference before native providers inspect endpoints", () =>
     withEnv({ AZURE_HOST: "resource.openai.azure.com" }, () =>
       Effect.gen(function* () {
-        const resolved = yield* ModelResolver.fromCatalogModel(
+        const failure = yield* ModelResolver.fromCatalogModel(
           model(Provider.aisdk("@ai-sdk/azure"), {
             providerID: Provider.ID.azure,
             settings: { baseURL: "https://${AZURE_HOST}/openai" },
           }),
-        )
-
-        expect(resolved.route.endpoint).toMatchObject({
-          baseURL: "https://resource.openai.azure.com/openai/v1",
-          query: { "api-version": "v1" },
-        })
+        ).pipe(Effect.flip)
+        expect(failure).toMatchObject({ variables: ["AZURE_HOST"] })
       }),
     ),
   )
@@ -314,20 +310,6 @@ describe("ModelResolver", () => {
       credential: undefined,
       expected: "eu-west-1",
     },
-    {
-      name: "the AWS default region",
-      environment: { AWS_REGION: undefined, AWS_DEFAULT_REGION: "eu-central-1" },
-      settings: {},
-      credential: Credential.Key.make({ type: "key", key: "fixture" }),
-      expected: "eu-central-1",
-    },
-    {
-      name: "the native Bedrock default without region variables",
-      environment: { AWS_REGION: undefined, AWS_DEFAULT_REGION: undefined },
-      settings: {},
-      credential: Credential.Key.make({ type: "key", key: "fixture" }),
-      expected: "us-east-1",
-    },
   ].forEach((row) =>
     it.effect("resolves Mantle endpoint templates using " + row.name, () =>
       withEnv(row.environment, () =>
@@ -346,16 +328,59 @@ describe("ModelResolver", () => {
     ),
   )
 
-  it.effect("leaves AWS_REGION interpolation on other adapters controlled by the environment", () =>
+  it.effect("does not configure another adapter from an ambient AWS region", () =>
     withEnv({ AWS_REGION: "us-east-1" }, () =>
       Effect.gen(function* () {
-        const resolved = yield* ModelResolver.fromCatalogModel(
+        const failure = yield* ModelResolver.fromCatalogModel(
           model("@opencode/ai/providers/openai-compatible", {
             settings: { region: "us-west-2", baseURL: "https://${AWS_REGION}.example/v1", apiKey: "fixture" },
           }),
-        )
-        expect(resolved.route.endpoint.baseURL).toBe("https://us-east-1.example/v1")
+        ).pipe(Effect.flip)
+        expect(failure).toMatchObject({ variables: ["AWS_REGION"] })
       }),
+    ),
+  )
+
+  it.effect("requires an explicit Bedrock region even when ambient region defaults exist", () =>
+    withEnv({ AWS_REGION: "us-east-1", AWS_DEFAULT_REGION: "eu-west-1" }, () =>
+      Effect.gen(function* () {
+        const failure = yield* ModelResolver.fromCatalogModel(
+          model("@opencode/ai/providers/amazon-bedrock/mantle/responses", {
+            settings: { baseURL: "https://bedrock-mantle.${AWS_REGION}.api.aws/openai/v1", apiKey: "fixture" },
+          }),
+        ).pipe(Effect.flip)
+        expect(failure).toMatchObject({ variables: ["AWS_REGION"] })
+      }),
+    ),
+  )
+  ;[
+    {
+      name: "cloudflare-workers-ai",
+      template: "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/v1",
+      expected: "https://api.cloudflare.com/client/v4/accounts/chosen-account/ai/v1",
+    },
+    {
+      name: "cloudflare-ai-gateway",
+      template: "https://gateway.ai.cloudflare.com/v1/${CLOUDFLARE_ACCOUNT_ID}/${CLOUDFLARE_GATEWAY_ID}",
+      expected: "https://gateway.ai.cloudflare.com/v1/chosen-account/chosen-gateway",
+    },
+  ].forEach((row) =>
+    it.effect("resolves " + row.name + " catalog placeholders from explicit account settings", () =>
+      withEnv({ CLOUDFLARE_ACCOUNT_ID: "ambient-account", CLOUDFLARE_GATEWAY_ID: "ambient-gateway" }, () =>
+        Effect.gen(function* () {
+          const resolved = yield* ModelResolver.fromCatalogModel(
+            model("@opencode/ai/providers/" + row.name, {
+              settings: {
+                accountId: "chosen-account",
+                gatewayId: "chosen-gateway",
+                apiKey: "fixture",
+                baseURL: row.template,
+              },
+            }),
+          )
+          expect(resolved.route.endpoint.baseURL).toBe(row.expected)
+        }),
+      ),
     ),
   )
 
@@ -626,15 +651,14 @@ describe("ModelResolver", () => {
     }),
   )
 
-  it.effect("resolves provider URLs from environment without mutating the catalog model", () =>
+  it.effect("rejects ambient provider URLs without mutating the catalog model", () =>
     withEnv({ ACME_HOST: "api.acme.test" }, () =>
       Effect.gen(function* () {
         const catalog = model(Provider.aisdk("@ai-sdk/openai-compatible"), {
           settings: { baseURL: "https://${ACME_HOST}/v1" },
         })
-        const resolved = yield* ModelResolver.fromCatalogModel(catalog)
-
-        expect(resolved.route.endpoint.baseURL).toBe("https://api.acme.test/v1")
+        const failure = yield* ModelResolver.fromCatalogModel(catalog).pipe(Effect.flip)
+        expect(failure).toMatchObject({ variables: ["ACME_HOST"] })
         expect(catalog.settings?.baseURL).toBe("https://${ACME_HOST}/v1")
       }),
     ),
@@ -656,7 +680,7 @@ describe("ModelResolver", () => {
           variables: ["REQUIRED_HOST", "REQUIRED_PATH"],
         })
         expect(failure.message).toBe(
-          "Cannot initialize test-provider/test-model: REQUIRED_HOST, REQUIRED_PATH are required to resolve the provider endpoint",
+          "Cannot initialize test-provider/test-model: configure the endpoint explicitly; unresolved placeholders: REQUIRED_HOST, REQUIRED_PATH",
         )
       }),
     ),
@@ -1503,7 +1527,7 @@ describe("ModelResolver", () => {
 
         expect(failure).toMatchObject({
           _tag: "SessionRunnerModel.UnresolvedProviderVariablesError",
-          variables: ["MISSING_HOST"],
+          variables: ["PROVIDER_HOST"],
         })
       }),
     ),

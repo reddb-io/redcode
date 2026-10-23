@@ -1304,6 +1304,13 @@ describe("Config", () => {
                     `{
                       // Ignored reference: {file:missing.txt}
                       "username": "user-{env:OPENCODE_TEST_MISSING}",
+                      "providers": {
+                        "chosen": {
+                          "package": "@opencode/ai/providers/openai/chat",
+                          "settings": { "apiKey": "{env:OPENCODE_TEST_MCP_TOKEN}" },
+                          "models": { "chat": {} }
+                        }
+                      },
                       "mcp": {
                         "servers": {
                           "remote": {
@@ -1325,6 +1332,7 @@ describe("Config", () => {
                 const config = yield* Config.Service
                 const document = (yield* config.entries()).find((entry) => entry.type === "document")
                 expect(document?.info.username).toBe("user-")
+                expect(document?.info.providers?.chosen?.settings?.apiKey).toBe("secret")
                 const remote = document?.info.mcp?.servers?.remote
                 expect(remote?.type).toBe("remote")
                 if (remote?.type !== "remote") return

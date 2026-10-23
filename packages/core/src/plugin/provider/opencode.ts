@@ -286,7 +286,7 @@ export const OpencodePlugin = define<HttpClient.HttpClient | Bus.Service | Manag
 
       const item = providers.get(Provider.ID.opencode)
       if (!item) return
-      const hasKey = Boolean(process.env.OPENCODE_API_KEY || snapshot.connection || item.provider.settings?.apiKey)
+      const hasKey = Boolean(snapshot.connection || item.provider.settings?.apiKey)
       if (hasKey) return
       // OpenCode Zen is opt-in. Without a key it stays inactive, so it never becomes the implicit default
       // on a fresh install. A `providers.opencode` configuration entry activates it later in the fold,
@@ -299,9 +299,7 @@ export const OpencodePlugin = define<HttpClient.HttpClient | Bus.Service | Manag
       const item = models.provider.get(Provider.ID.opencode)
       if (!item) return
       const hasKey = Boolean(
-        process.env.OPENCODE_API_KEY ||
-          snapshot.connection ||
-          (item.provider.settings?.apiKey && item.provider.settings.apiKey !== "public"),
+        snapshot.connection || (item.provider.settings?.apiKey && item.provider.settings.apiKey !== "public"),
       )
       if (hasKey) return
       for (const model of models.list(item.provider.id)) {

@@ -50,8 +50,8 @@ const seed = Effect.fn(function* (fn: (provider: Provider.MutableInfo) => void) 
 })
 
 describe("CloudflareWorkersAIPlugin", () => {
-  it.effect("registers an account form when the environment does not provide one", () =>
-    withEnv({ CLOUDFLARE_ACCOUNT_ID: undefined }, () =>
+  it.effect("requires an account choice despite an ambient account ID", () =>
+    withEnv({ CLOUDFLARE_ACCOUNT_ID: "ambient-account" }, () =>
       Effect.gen(function* () {
         yield* addPlugin()
         const integrations = yield* Integration.Service
@@ -77,6 +77,7 @@ describe("CloudflareWorkersAIPlugin", () => {
       Effect.gen(function* () {
         const catalog = yield* seed((provider) => {
           provider.package = "@opencode/ai/providers/cloudflare-workers-ai"
+          provider.settings = { accountId: "acct" }
         })
         yield* addPlugin()
         const integrations = yield* Integration.Service
@@ -84,9 +85,7 @@ describe("CloudflareWorkersAIPlugin", () => {
           type: "key",
           label: "API key",
         })
-        expect(required(yield* catalog.get(providerID)).package).toBe(
-          "@opencode/ai/providers/cloudflare-workers-ai",
-        )
+        expect(required(yield* catalog.get(providerID)).package).toBe("@opencode/ai/providers/cloudflare-workers-ai")
       }),
     ),
   )
@@ -96,6 +95,7 @@ describe("CloudflareWorkersAIPlugin", () => {
       Effect.gen(function* () {
         const catalog = yield* seed((provider) => {
           provider.package = "@opencode/ai/providers/cloudflare-workers-ai"
+          provider.settings = { accountId: "acct" }
         })
         yield* addPlugin()
         expect(required(yield* catalog.get(providerID)).settings).toEqual({ accountId: "acct" })
@@ -119,7 +119,7 @@ describe("CloudflareWorkersAIPlugin", () => {
     ),
   )
 
-  it.effect("uses env account ID over configured account ID", () =>
+  it.effect("keeps the configured account ID despite an ambient account ID", () =>
     withEnv({ CLOUDFLARE_ACCOUNT_ID: "env-acct" }, () =>
       Effect.gen(function* () {
         const catalog = yield* seed((provider) => {
@@ -129,7 +129,7 @@ describe("CloudflareWorkersAIPlugin", () => {
         yield* addPlugin()
         expect(required(yield* catalog.get(providerID))).toMatchObject({
           package: "aisdk:test-provider",
-          settings: { baseURL: "https://api.cloudflare.com/client/v4/accounts/env-acct/ai/v1" },
+          settings: { baseURL: "https://api.cloudflare.com/client/v4/accounts/configured-acct/ai/v1" },
         })
       }),
     ),

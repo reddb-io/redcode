@@ -297,11 +297,8 @@ export const GitLabPlugin = define({
         const mod = yield* Effect.promise(() => import("gitlab-ai-provider"))
         evt.sdk = mod.createGitLab({
           ...evt.options,
-          instanceUrl:
-            typeof evt.options.instanceUrl === "string"
-              ? evt.options.instanceUrl
-              : (process.env.GITLAB_INSTANCE_URL ?? "https://gitlab.com"),
-          apiKey: typeof evt.options.apiKey === "string" ? evt.options.apiKey : process.env.GITLAB_TOKEN,
+          instanceUrl: typeof evt.options.instanceUrl === "string" ? evt.options.instanceUrl : "https://gitlab.com",
+          apiKey: typeof evt.options.apiKey === "string" ? evt.options.apiKey : undefined,
           aiGatewayHeaders: {
             "User-Agent": `${App.useragent(ctx.app)} gitlab-ai-provider/${mod.VERSION} (${os.platform()} ${os.release()}; ${os.arch()})`,
             "anthropic-beta": "context-1m-2025-08-07",
@@ -348,7 +345,7 @@ export const GitLabPlugin = define({
 } satisfies PluginInternal.InternalPlugin)
 
 function resolveDefaultInstanceUrl() {
-  return process.env.GITLAB_INSTANCE_URL ?? "https://gitlab.com"
+  return "https://gitlab.com"
 }
 
 function credentialInstanceUrl(metadata: Readonly<Record<string, unknown>> | undefined) {

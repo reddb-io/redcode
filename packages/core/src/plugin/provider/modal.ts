@@ -27,7 +27,7 @@ export const ModalPlugin = define({
       const credential = connection
         ? yield* ctx.integration.connection.resolve(connection).pipe(Effect.orElseSucceed(() => undefined))
         : undefined
-      const apiKey = credential?.type === "key" ? credential.key : process.env.MODAL_PROXY_TOKEN
+      const apiKey = credential?.type === "key" ? credential.key : undefined
       const provider = yield* providers.get(providerID)
       const baseURL = typeof provider?.settings?.baseURL === "string" ? provider.settings.baseURL : undefined
       if (!apiKey || !baseURL) {

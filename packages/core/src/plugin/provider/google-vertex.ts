@@ -14,26 +14,12 @@ const decodeADCFile = Schema.decodeUnknownOption(
   Schema.fromJsonString(Schema.Struct({ quota_project_id: Schema.optional(Schema.String) })),
 )
 
-function resolveProject(options: Record<string, any>) {
-  // models.dev advertises GOOGLE_VERTEX_PROJECT for Vertex, while Google SDKs
-  // and ADC examples commonly use the broader Google Cloud project aliases.
-  return (
-    options.project ??
-    process.env.GOOGLE_VERTEX_PROJECT ??
-    process.env.GOOGLE_CLOUD_PROJECT ??
-    process.env.GCP_PROJECT ??
-    process.env.GCLOUD_PROJECT
-  )
+function resolveProject(options: Record<string, unknown>) {
+  return typeof options.project === "string" && options.project.trim() ? options.project : undefined
 }
 
-function resolveLocation(options: Record<string, any>) {
-  return (
-    options.location ??
-    process.env.GOOGLE_VERTEX_LOCATION ??
-    process.env.GOOGLE_CLOUD_LOCATION ??
-    process.env.VERTEX_LOCATION ??
-    "us-central1"
-  )
+function resolveLocation(options: Record<string, unknown>) {
+  return typeof options.location === "string" && options.location.trim() ? options.location : "us-central1"
 }
 
 function vertexEndpoint(location: string) {
@@ -43,7 +29,7 @@ function vertexEndpoint(location: string) {
 
 function replaceVertexVars(value: string, project: string | undefined, location: string) {
   // Vertex OpenAI-compatible endpoints are stored as templates in the catalog;
-  // expand them after provider config/env project and location have been resolved.
+  // expand them after the explicitly configured project and location have been resolved.
   return value
     .replaceAll("${GOOGLE_VERTEX_PROJECT}", project ?? "${GOOGLE_VERTEX_PROJECT}")
     .replaceAll("${GOOGLE_VERTEX_LOCATION}", location)
@@ -160,6 +146,7 @@ export const GoogleVertexPlugin = define({
         )
           continue
         const project = resolveProject(settingsFor(item.provider))
+        if (!project) continue
         const location = String(resolveLocation(settingsFor(item.provider)))
         evt.update(item.provider.id, (provider) => {
           // Vertex authenticates through ADC rather than a key credential, so a

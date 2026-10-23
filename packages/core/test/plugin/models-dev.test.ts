@@ -1005,11 +1005,7 @@ describe("ModelsDevPlugin", () => {
       yield* withEnv({ CLOUDFLARE_ACCOUNT_ID: "account", CLOUDFLARE_API_KEY: "token" }, () =>
         integrations.connection
           .active(Integration.ID.make("cloudflare-workers-ai"))
-          .pipe(
-            Effect.tap((connection) =>
-              Effect.sync(() => expect(connection).toEqual({ type: "env", name: "CLOUDFLARE_API_KEY" })),
-            ),
-          ),
+          .pipe(Effect.tap((connection) => Effect.sync(() => expect(connection).toBeUndefined()))),
       )
     }),
   )
@@ -1357,7 +1353,7 @@ for (const [plugin, providerID, hostVariable, tokenVariable] of [
   [NeonPlugin, "neon", "NEON_AI_GATEWAY_BASE_URL", "NEON_AI_GATEWAY_TOKEN"],
   [DatabricksPlugin, "databricks", "DATABRICKS_HOST", "DATABRICKS_TOKEN"],
 ] as const) {
-  it.effect(`${providerID} only activates with a credential token, not its host variable`, () =>
+  it.effect(`${providerID} does not activate from either ambient token or host variables`, () =>
     Effect.gen(function* () {
       const integrations = yield* Integration.Service
       yield* plugin.effect(host({ integration: integrationHost(integrations) }))
@@ -1372,11 +1368,7 @@ for (const [plugin, providerID, hostVariable, tokenVariable] of [
       yield* withEnv({ [hostVariable]: "https://gateway.example", [tokenVariable]: "fixture-token" }, () =>
         integrations.connection
           .active(Integration.ID.make(providerID))
-          .pipe(
-            Effect.tap((connection) =>
-              Effect.sync(() => expect(connection).toEqual({ type: "env", name: tokenVariable })),
-            ),
-          ),
+          .pipe(Effect.tap((connection) => Effect.sync(() => expect(connection).toBeUndefined()))),
       )
     }),
   )

@@ -22,16 +22,10 @@ export const AmazonBedrockPlugin = define({
         if (!isBedrock(item.provider)) continue
         evt.update(item.provider.id, (provider) => {
           const settings = provider.settings ?? {}
-          // Bedrock is opt-in: AWS credentials in the environment or ~/.aws are often there for other
-          // tools, so they never activate it alone. A Bedrock key (saved or AWS_BEARER_TOKEN_BEDROCK),
-          // a `providers.amazon-bedrock` configuration entry, or a configured profile does.
+          // A saved connection, explicit provider configuration or configured profile is required.
           if (typeof settings.profile === "string" && provider.activation === "auto") provider.activation = "enabled"
-          // Same default the native package uses, made explicit here so catalog
-          // `${AWS_REGION}` URLs resolve without any region configured.
-          const region = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION ?? "us-east-1"
           provider.settings = {
             ...settings,
-            ...(typeof settings.region !== "string" ? { region } : {}),
             // Users configure Bedrock private/VPC endpoints as `endpoint`; move it
             // into the catalog base URL once.
             ...(typeof settings.baseURL !== "string" && typeof settings.endpoint === "string"

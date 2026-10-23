@@ -13,11 +13,8 @@ export const CloudflareAIGatewayPlugin = define({
     const configured = yield* configuredSettings(providerID)
     const form = iife(() => {
       if (typeof configured?.baseURL === "string") return
-      const accountId = process.env.CLOUDFLARE_ACCOUNT_ID || stringOption(configured ?? {}, "accountId")
-      const gatewayId =
-        process.env.CLOUDFLARE_GATEWAY_ID ||
-        stringOption(configured ?? {}, "gatewayId") ||
-        stringOption(configured ?? {}, "gateway")
+      const accountId = stringOption(configured ?? {}, "accountId")
+      const gatewayId = stringOption(configured ?? {}, "gatewayId") || stringOption(configured ?? {}, "gateway")
       if (accountId && gatewayId) return
       const accountIdForm = Form.StringField.make({
         type: "string",

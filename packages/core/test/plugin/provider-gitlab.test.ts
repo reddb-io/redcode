@@ -174,7 +174,7 @@ describe("GitLabPlugin", () => {
     ),
   )
 
-  it.effect("discovers with a stored login without replacing configured model definitions", () =>
+  it.effect("discovers with a stored login without borrowing an ambient instance or replacing model definitions", () =>
     withEnv({ GITLAB_TOKEN: undefined, GITLAB_INSTANCE_URL: "https://env.gitlab.example" }, () =>
       Effect.gen(function* () {
         const fixture = yield* discoveryFixture
@@ -188,7 +188,7 @@ describe("GitLabPlugin", () => {
         discoverWorkflowModels.mockResolvedValue(discovered)
         yield* addPlugin()
         yield* drain
-        expect(discoverWorkflowModels.mock.calls[0]![0].instanceUrl).toBe("https://env.gitlab.example")
+        expect(discoverWorkflowModels.mock.calls[0]![0].instanceUrl).toBe("https://gitlab.com")
         expect(discoverWorkflowModels.mock.calls[0]![0].getHeaders()).toEqual({ "PRIVATE-TOKEN": "stored-token" })
         expect(yield* fixture.models.get(providerID, Model.ID.make("duo-workflow-new-model"))).toMatchObject({
           name: "Configured model",
@@ -272,7 +272,7 @@ describe("GitLabPlugin", () => {
     ),
   )
 
-  it.effect("creates SDKs with legacy default instance URL, token env, headers, and feature flags", () =>
+  it.effect("creates SDKs with explicit defaults, headers and feature flags without an ambient token", () =>
     withEnv(
       {
         GITLAB_INSTANCE_URL: undefined,
@@ -294,7 +294,7 @@ describe("GitLabPlugin", () => {
           })
           expect(gitlabSDKOptions).toHaveLength(1)
           expect(gitlabSDKOptions[0].instanceUrl).toBe("https://gitlab.com")
-          expect(gitlabSDKOptions[0].apiKey).toBe("env-token")
+          expect(gitlabSDKOptions[0].apiKey).toBeUndefined()
           expect(gitlabSDKOptions[0].aiGatewayHeaders).toMatchObject({
             "anthropic-beta": "context-1m-2025-08-07",
           })
@@ -309,7 +309,7 @@ describe("GitLabPlugin", () => {
     ),
   )
 
-  it.effect("uses GITLAB_INSTANCE_URL when instanceUrl is not configured", () =>
+  it.effect("ignores GITLAB_INSTANCE_URL when instanceUrl is not configured", () =>
     withEnv(
       {
         GITLAB_INSTANCE_URL: "https://env.gitlab.example",
@@ -329,7 +329,7 @@ describe("GitLabPlugin", () => {
             package: "gitlab-ai-provider",
             options: { name: "gitlab" },
           })
-          expect(gitlabSDKOptions[0].instanceUrl).toBe("https://env.gitlab.example")
+          expect(gitlabSDKOptions[0].instanceUrl).toBe("https://gitlab.com")
         }),
     ),
   )

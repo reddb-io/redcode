@@ -97,8 +97,7 @@ export const SnowflakeCortexPlugin = define({
           label: "Login with Snowflake (External Browser)",
           form: [...accountForm, { type: "string", key: "role", title: "Snowflake role (optional)" }],
         },
-        // An environment-token override must work even when the saved OAuth login has expired.
-        refresh: (value) => (envToken() ? Effect.succeed(value) : refresh(value)),
+        refresh,
         label: (value) => normalizeAccount(value.metadata?.account),
         authorize: (answer) =>
           Effect.gen(function* () {
@@ -173,11 +172,9 @@ export const SnowflakeCortexPlugin = define({
     const load = Effect.gen(function* () {
       const value = (yield* saved)?.value
       account.value = normalizeAccount(
-        process.env.SNOWFLAKE_ACCOUNT ??
-          (value?.type === "key"
-            ? (value.configuration?.account ?? value.metadata?.account)
-            : value?.metadata?.account) ??
-          configured?.account,
+        (value?.type === "key"
+          ? (value.configuration?.account ?? value.metadata?.account)
+          : value?.metadata?.account) ?? configured?.account,
       )
     })
     yield* load
@@ -212,8 +209,6 @@ export const SnowflakeCortexPlugin = define({
       (event) =>
         Effect.sync(() => {
           // Model resolution already supplies and refreshes stored credentials on each attempt.
-          const token = envToken()
-          if (token) event.request.headers.set("authorization", `Bearer ${token}`)
           event.request.headers.set("user-agent", App.useragent(ctx.app))
         }),
       { providerID },
@@ -236,7 +231,7 @@ export const SnowflakeCortexPlugin = define({
     yield* ctx.session.hook(
       "retry",
       Effect.fn(function* (event) {
-        if (event.error.status !== 401 || event.attempt !== 2 || envToken()) return
+        if (event.error.status !== 401 || event.attempt !== 2) return
         const current = yield* saved
         if (current?.value.type !== "oauth" || current.value.methodID !== methodID) return
         yield* credentials.update(current.id, { value: yield* refresh(current.value).pipe(Effect.orDie) })
@@ -263,8 +258,4 @@ function issuer(account: string) {
 function endpoint(value: unknown, account: string) {
   const baseURL = typeof value === "string" ? value : `${issuer("${SNOWFLAKE_ACCOUNT}")}/api/v2/cortex/v1`
   return account ? baseURL.replaceAll("${SNOWFLAKE_ACCOUNT}", account) : baseURL
-}
-
-function envToken() {
-  return process.env.SNOWFLAKE_CORTEX_TOKEN ?? process.env.SNOWFLAKE_CORTEX_PAT
 }

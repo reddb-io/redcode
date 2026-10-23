@@ -619,7 +619,7 @@ describe("RedRouterPlugin", () => {
               title: "RedRouter API URL",
               description: "The OpenAI-compatible API endpoint, usually ending in /v1.",
               placeholder: "http://127.0.0.1:25050/v1",
-              default: "https://router.example/v1",
+              default: "http://127.0.0.1:25050/v1",
               format: "uri",
               required: true,
             },
