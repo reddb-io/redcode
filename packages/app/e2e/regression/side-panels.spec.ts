@@ -4,7 +4,7 @@ import { fileDiff, openSession } from "../utils/workspace"
 import { expectSessionTitle } from "../utils/waits"
 
 test("review and terminal follow the session tab and stay mounted", async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.setViewportSize({ width: 1800, height: 900 })
   const a = { id: "ses_side_a", title: "Alpha session" }
   const b = { id: "ses_side_b", title: "Beta session" }
 
@@ -239,7 +239,7 @@ for (const direction of ["ltr", "rtl"] as const) {
     await page.locator("html").evaluate((element, dir) => element.setAttribute("dir", dir), direction)
 
     const toggle = page.getByRole("button", { name: "Toggle review", exact: true })
-    await expect(toggle).toHaveAttribute("aria-expanded", "false")
+    await expect(toggle).toHaveAttribute("aria-pressed", "false")
     await page.keyboard.press("Control+Backquote")
     const terminal = page.getByRole("region", { name: "Terminal", exact: true })
     await expect(terminal.getByRole("tab", { name: "Terminal 1", exact: true })).toHaveAttribute(
@@ -255,22 +255,14 @@ for (const direction of ["ltr", "rtl"] as const) {
       )
     }
 
-    await expect
-      .poll(async () => {
-        const tabs = (await terminal.getByRole("tablist").boundingBox())!
-        const button = (await toggle.boundingBox())!
-
-        return direction === "rtl" ? tabs.x >= button.x + button.width : tabs.x + tabs.width <= button.x
-      })
-      .toBe(true)
-    await expectTerminalControlsAligned(terminal, toggle)
+    await expectPanelControlsSeparated(terminal, toggle)
     await terminal
       .locator('[data-slot="tabs-trigger-wrapper"][data-value="pty_review_4"]')
       .getByRole("button", { name: "Close terminal", exact: true })
       .click()
     await expect(terminal.getByRole("tab")).toHaveText(["Terminal 1", "Terminal 2", "Terminal 3"])
     expect(pty.removed).toEqual(["pty_review_4"])
-    await expect(toggle).toHaveAttribute("aria-expanded", "false")
+    await expect(toggle).toHaveAttribute("aria-pressed", "false")
 
     // The client names a new terminal with the lowest free number.
     await terminal.getByRole("button", { name: "New terminal", exact: true }).click()
@@ -279,25 +271,25 @@ for (const direction of ["ltr", "rtl"] as const) {
       "true",
     )
     await expect(terminal.locator('[data-slot="tabs-trigger-wrapper"][data-value="pty_review_5"]')).toHaveCount(1)
-    await expect(toggle).toHaveAttribute("aria-expanded", "false")
+    await expect(toggle).toHaveAttribute("aria-pressed", "false")
     const position = await toggle.boundingBox()
     await toggle.click()
-    await expect(toggle).toHaveAttribute("aria-expanded", "true")
+    await expect(toggle).toHaveAttribute("aria-pressed", "true")
     await expect(page.locator("#review-panel")).toHaveAttribute("aria-hidden", "false")
     await expect.poll(() => toggle.boundingBox()).toEqual(position)
     await expect
       .poll(async () => {
-        const actions = (await page.locator('[data-slot="session-side-panel-actions"]').boundingBox())!
+        const actions = (await page.locator('[data-slot="session-panel-toggles"]').boundingBox())!
         const button = (await toggle.boundingBox())!
 
         return actions.y + actions.height / 2 - (button.y + button.height / 2)
       })
       .toBe(0)
     await toggle.press("Enter")
-    await expect(toggle).toHaveAttribute("aria-expanded", "false")
+    await expect(toggle).toHaveAttribute("aria-pressed", "false")
     await expect(toggle).toBeFocused()
     await expect.poll(() => toggle.boundingBox()).toEqual(position)
-    await expectTerminalControlsAligned(terminal, toggle)
+    await expectPanelControlsSeparated(terminal, toggle)
   })
 }
 
@@ -408,22 +400,25 @@ function sideContentOffset(page: Page, direction: "ltr" | "rtl") {
   }, direction)
 }
 
-async function expectTerminalControlsAligned(terminal: Locator, toggle: Locator) {
+// Panel controls live in the session header; terminal tabs and actions own their separate bar.
+async function expectPanelControlsSeparated(terminal: Locator, toggle: Locator) {
   await expect
     .poll(async () => {
-      const centers = await Promise.all(
-        [terminal.getByRole("button", { name: "New terminal", exact: true }), toggle].map((button) =>
-          button.locator("svg").evaluate((element) => {
-            const svg = element as SVGSVGElement
-            const path = svg.getBBox()
-
-            return new DOMPoint(path.x + path.width / 2, path.y + path.height / 2).matrixTransform(svg.getScreenCTM()!)
-              .y
-          }),
+      const button = await toggle.boundingBox()
+      const controls = await Promise.all(
+        [terminal.getByRole("tablist"), terminal.getByRole("button", { name: "New terminal", exact: true })].map(
+          (control) => control.boundingBox(),
         ),
       )
-
-      return centers[0]! - centers[1]!
+      if (!button || controls.some((control) => !control)) return false
+      return controls.every(
+        (control) =>
+          control &&
+          (control.x + control.width <= button.x ||
+            button.x + button.width <= control.x ||
+            control.y + control.height <= button.y ||
+            button.y + button.height <= control.y),
+      )
     })
-    .toBeCloseTo(0, 1)
+    .toBe(true)
 }
