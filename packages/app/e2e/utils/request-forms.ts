@@ -2,6 +2,50 @@ import type { FormInfo } from "@opencode/client/promise"
 import { Form } from "@opencode/schema/form"
 import { Vault } from "@opencode/schema/vault"
 
+export function questionRequestForm(sessionID: string) {
+  return {
+    id: Form.ID.create("frm_question_request"),
+    sessionID,
+    title: "Questions",
+    metadata: { kind: "question" },
+    fields: [
+      {
+        key: "q0",
+        type: "string",
+        title: "Implementation",
+        description: "Which implementation should be used?",
+        options: [
+          { value: "minimal", label: "Minimal", description: "Use the smallest correct change" },
+          { value: "extended", label: "Extended", description: "Include additional behavior" },
+        ],
+        custom: true,
+      },
+      {
+        key: "q1",
+        type: "multiselect",
+        title: "Coverage",
+        description: "Which checks should run?",
+        options: [
+          { value: "unit", label: "Unit tests" },
+          { value: "browser", label: "Browser checks" },
+        ],
+        custom: true,
+      },
+      {
+        key: "q2",
+        type: "string",
+        title: "Delivery",
+        description: "How should it be delivered?",
+        options: [
+          { value: "manual", label: "Manual review" },
+          { value: "automatic", label: "Automatic delivery" },
+        ],
+        custom: true,
+      },
+    ],
+  } satisfies FormInfo
+}
+
 export function vaultRequestForm(sessionID: string) {
   return {
     id: Form.ID.create("frm_vault_request"),

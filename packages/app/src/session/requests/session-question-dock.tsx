@@ -1,20 +1,17 @@
-import { For, Show, createEffect, createMemo, onCleanup, onMount, type Component } from "solid-js"
+import { createMemo, onCleanup } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useMutation } from "@tanstack/solid-query"
-import { Button } from "@opencode/ui/button"
-import { IconButton } from "@opencode/ui/icon-button"
-import { Tooltip } from "@opencode/ui/tooltip"
-import { DockPrompt } from "@opencode/session-ui/dock-prompt"
-import { Icon } from "@opencode/ui/icon"
 import { useSpring } from "@opencode/ui/motion-spring"
 import { showToast } from "@/shell/notifications/toast"
 import type { FormAnswer, FormInfo, FormMultiselectField, FormStringField } from "@opencode/client/promise"
 import { useLanguage } from "@/runtime/i18n/language"
-import { makeEventListener } from "@solid-primitives/event-listener"
-import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { useServerSDK } from "@/runtime/server/client"
 import { ScopedKey } from "@/runtime/server/scope"
 import { useCommand } from "@/shell/commands/command"
+import { sharedLanguage } from "@/runtime/react/language"
+import { sharedSource } from "@/runtime/react/source"
+import { ReactView } from "@/runtime/react/view"
+import { SessionQuestionDockView } from "./session-question-dock.react"
 
 const cache = new Map<string, { tab: number; answers: string[][]; custom: string[]; customOn: boolean[] }>()
 
@@ -26,59 +23,14 @@ function questionField(field: FormInfo["fields"][number]): field is QuestionFiel
   return field.type === "string" || field.type === "multiselect"
 }
 
-function Mark(props: { multi: boolean; picked: boolean; onClick?: (event: MouseEvent) => void }) {
-  return (
-    <span data-slot="question-option-check" aria-hidden="true" onClick={props.onClick}>
-      <span data-slot="question-option-box" data-type={props.multi ? "checkbox" : "radio"} data-picked={props.picked}>
-        <Show when={props.multi} fallback={<span data-slot="question-option-radio-dot" />}>
-          <Icon name="check-small" size="small" />
-        </Show>
-      </span>
-    </span>
-  )
-}
-
-function Option(props: {
-  multi: boolean
-  picked: boolean
-  label: string
-  description?: string
-  disabled: boolean
-  ref?: (el: HTMLButtonElement) => void
-  onFocus?: VoidFunction
-  onClick: VoidFunction
-}) {
-  return (
-    <button
-      type="button"
-      ref={props.ref}
-      data-slot="question-option"
-      data-picked={props.picked}
-      role={props.multi ? "checkbox" : "radio"}
-      aria-checked={props.picked}
-      disabled={props.disabled}
-      onFocus={props.onFocus}
-      onClick={props.onClick}
-    >
-      <Mark multi={props.multi} picked={props.picked} />
-      <span data-slot="question-option-main">
-        <span data-slot="option-label">{props.label}</span>
-        <Show when={props.description}>
-          <span data-slot="option-description">{props.description}</span>
-        </Show>
-      </span>
-    </button>
-  )
-}
-
-export const SessionQuestionDock: Component<{
+export function createSessionQuestionServices(props: {
   request: FormInfo
   onSubmit: () => void
   onReply?: (answer: FormAnswer) => Promise<void>
   onCancel?: () => Promise<void>
   cacheScope?: string
   disabled?: boolean
-}> = (props) => {
+}) {
   const serverSDK = useServerSDK()
   const language = useLanguage()
   const command = useCommand()
@@ -107,16 +59,12 @@ export const SessionQuestionDock: Component<{
     customOn: cached?.customOn ?? ([] as boolean[]),
     editing: false,
     focus: 0,
+    focusRequest: 0,
     minimized: false,
     optionsHeight: 180,
   })
 
-  let root: HTMLDivElement | undefined
-  let optionsRef: HTMLDivElement | undefined
-  let customRef: HTMLButtonElement | undefined
-  let optsRef: HTMLButtonElement[] = []
   let replied = false
-  let focusFrame: number | undefined
 
   const question = createMemo(() => questions()[store.tab])
   const options = createMemo(() => question()?.options ?? [])
@@ -164,32 +112,6 @@ export const SessionQuestionDock: Component<{
     setStore("answers", store.tab, next ? [next] : [])
   }
 
-  const measure = () => {
-    if (!root) return
-
-    const scroller = document.querySelector(".scroll-view__viewport")
-    const head = scroller instanceof HTMLElement ? scroller.firstElementChild : undefined
-
-    const top =
-      head instanceof HTMLElement && head.classList.contains("sticky") ? head.getBoundingClientRect().bottom : 0
-
-    if (!top) {
-      root.style.removeProperty("--question-prompt-max-height")
-
-      return
-    }
-
-    const dock = root.closest('[data-component="session-composer-dock"]')
-
-    if (!(dock instanceof HTMLElement)) return
-
-    const dockBottom = dock.getBoundingClientRect().bottom
-    const below = Math.max(0, dockBottom - root.getBoundingClientRect().bottom)
-    const gap = 8
-    const max = Math.max(240, Math.floor(dockBottom - top - gap - below))
-    root.style.setProperty("--question-prompt-max-height", `${max}px`)
-  }
-
   const clamp = (i: number) => Math.max(0, Math.min(count() - 1, i))
 
   const pickFocus = (tab: number = store.tab) => {
@@ -203,58 +125,13 @@ export const SessionQuestionDock: Component<{
     )
   }
 
+  // Native options receive focus only after React commits the requested view.
   const focus = (i: number) => {
-    const next = clamp(i)
-    setStore("focus", next)
-
-    if (store.editing) return
-
-    if (focusFrame !== undefined) cancelAnimationFrame(focusFrame)
-    focusFrame = requestAnimationFrame(() => {
-      focusFrame = undefined
-      const el = next === options().length ? customRef : optsRef[next]
-      el?.focus()
-    })
+    setStore("focus", clamp(i))
+    if (!store.editing) setStore("focusRequest", (request) => request + 1)
   }
 
-  onMount(() => {
-    let raf: number | undefined
-
-    const update = () => {
-      if (raf !== undefined) cancelAnimationFrame(raf)
-      raf = requestAnimationFrame(() => {
-        raf = undefined
-        measure()
-      })
-    }
-
-    update()
-
-    makeEventListener(window, "resize", update)
-
-    const dock = root?.closest('[data-component="session-composer-dock"]')
-    const scroller = document.querySelector(".scroll-view__viewport")
-    createResizeObserver([dock, scroller], update)
-
-    onCleanup(() => {
-      if (raf !== undefined) cancelAnimationFrame(raf)
-    })
-
-    focus(pickFocus())
-  })
-
-  createEffect(() => {
-    const el = optionsRef
-
-    if (!el) return
-    const update = () => setStore("optionsHeight", (height) => Math.max(height, el.scrollHeight))
-    update()
-    createResizeObserver(el, update)
-  })
-
   onCleanup(() => {
-    if (focusFrame !== undefined) cancelAnimationFrame(focusFrame)
-
     if (replied) return
     cache.set(cacheKey, {
       tab: store.tab,
@@ -490,24 +367,6 @@ export const SessionQuestionDock: Component<{
     focus(options().length)
   }
 
-  const resizeInput = (el: HTMLTextAreaElement) => {
-    el.style.height = "0px"
-    el.style.height = `${el.scrollHeight}px`
-  }
-
-  const focusCustom = (el: HTMLTextAreaElement) => {
-    setTimeout(() => {
-      el.focus()
-      resizeInput(el)
-    }, 0)
-  }
-
-  const toggleCustomMark = (event: MouseEvent) => {
-    event.preventDefault()
-    event.stopPropagation()
-    customToggle()
-  }
-
   const next = () => {
     if (sending()) return
 
@@ -570,214 +429,59 @@ export const SessionQuestionDock: Component<{
     focus(pickFocus())
   }
 
-  return (
-    <div data-component="session-question-dock">
-      <DockPrompt
-        kind="question"
-        ref={(el) => (root = el)}
-        onKeyDown={nav}
-        header={
-          <>
-            <div data-slot="question-header-title">{summary()}</div>
-            <div data-slot="question-header-actions">
-              <Show when={total() > 1}>
-                <div data-slot="question-progress">
-                  <For each={questions()}>
-                    {(_, i) => (
-                      <button
-                        type="button"
-                        data-slot="question-progress-segment"
-                        data-active={i() === store.tab}
-                        data-answered={answered(i())}
-                        disabled={sending()}
-                        onClick={() => jump(i())}
-                        aria-label={language.t("ui.tool.questions.numbered", { number: i() + 1 })}
-                      />
-                    )}
-                  </For>
-                </div>
-              </Show>
-              <IconButton
-                icon={<Icon name="chevron-down" size="small" />}
-                variant="ghost"
-                disabled={sending()}
-                style={{ transform: `rotate(${hidden() * 180}deg)` }}
-                onClick={store.minimized ? restore : minimize}
-                aria-label={language.t(store.minimized ? "session.question.restore" : "session.question.minimize")}
-              />
-            </div>
-          </>
-        }
-        footer={
-          <>
-            <Button variant="ghost" size="large" disabled={sending()} onClick={reject} aria-keyshortcuts="Escape">
-              {language.t("ui.common.dismiss")}
-            </Button>
-            <div data-slot="question-footer-actions">
-              <Show when={store.tab > 0}>
-                <Tooltip
-                  placement="top"
-                  value={
-                    <>
-                      {language.t("ui.common.back")}
-                      <span class="opacity-60">{backShortcut()}</span>
-                    </>
-                  }
-                >
-                  <Button
-                    variant="neutral"
-                    size="large"
-                    disabled={sending()}
-                    onClick={back}
-                    aria-keyshortcuts={IS_MAC ? "Meta+[" : "Alt+ArrowLeft"}
-                  >
-                    {language.t("ui.common.back")}
-                  </Button>
-                </Tooltip>
-              </Show>
-              <Button
-                variant={last() ? "submit" : "neutral"}
-                size="large"
-                disabled={sending()}
-                onClick={next}
-                aria-keyshortcuts="Meta+Enter Control+Enter"
-              >
-                {last() ? language.t("ui.common.submit") : language.t("ui.common.next")}
-                <span data-slot="question-submit-shortcut" aria-hidden="true" class="text-11-medium opacity-60">
-                  {submitShortcut()}
-                </span>
-              </Button>
-            </div>
-          </>
-        }
-      >
-        <div
-          data-slot="question-text"
-          style={{
-            display: store.minimized ? "-webkit-box" : undefined,
-            "-webkit-line-clamp": store.minimized ? "3" : undefined,
-            "-webkit-box-orient": store.minimized ? "vertical" : undefined,
-            overflow: store.minimized ? "hidden" : undefined,
-          }}
-        >
-          {question()?.question}
-        </div>
-        <Show when={!store.minimized}>
-          <Show when={multi()} fallback={<div data-slot="question-hint">{language.t("ui.question.singleHint")}</div>}>
-            <div data-slot="question-hint">{language.t("ui.question.multiHint")}</div>
-          </Show>
-        </Show>
-        <div
-          ref={(el) => (optionsRef = el)}
-          data-slot="question-options"
-          aria-hidden={store.minimized || optionsOff() ? "true" : undefined}
-          classList={{ "pointer-events-none": hidden() > 0.1 }}
-          style={{
-            "max-height": `${Math.max(0, store.optionsHeight * (1 - hidden()))}px`,
-            opacity: `${Math.max(0, Math.min(1, 1 - hidden()))}`,
-            visibility: optionsOff() ? "hidden" : "visible",
-          }}
-        >
-          <For each={options()}>
-            {(opt, i) => (
-              <Option
-                multi={multi()}
-                picked={picked(opt.value)}
-                label={opt.label}
-                description={opt.description}
-                disabled={sending()}
-                ref={(el) => (optsRef[i()] = el)}
-                onFocus={() => setStore("focus", i())}
-                onClick={() => selectOption(i())}
-              />
-            )}
-          </For>
+  focus(pickFocus())
 
-          <Show
-            when={store.editing}
-            fallback={
-              <button
-                type="button"
-                ref={customRef}
-                data-slot="question-option"
-                data-custom="true"
-                data-picked={on()}
-                role={multi() ? "checkbox" : "radio"}
-                aria-checked={on()}
-                disabled={sending()}
-                onFocus={() => setStore("focus", options().length)}
-                onClick={customOpen}
-              >
-                <Mark multi={multi()} picked={on()} onClick={toggleCustomMark} />
-                <span data-slot="question-option-main">
-                  <span data-slot="option-label">{customLabel()}</span>
-                  <span data-slot="option-description" dir="auto">
-                    {input() || customPlaceholder()}
-                  </span>
-                </span>
-              </button>
-            }
-          >
-            <form
-              data-slot="question-option"
-              data-custom="true"
-              data-picked={on()}
-              role={multi() ? "checkbox" : "radio"}
-              aria-checked={on()}
-              onMouseDown={(e) => {
-                if (sending()) {
-                  e.preventDefault()
+  return {
+    snapshot: sharedSource(() => ({
+      language: sharedLanguage(language),
+      summary: summary(),
+      question: question()?.question,
+      progress: questions().map((_, index) => ({
+        label: language.t("ui.tool.questions.numbered", { number: index + 1 }),
+        answered: answered(index),
+      })),
+      options: options().map((option) => ({ ...option, picked: picked(option.value) })),
+      tab: store.tab,
+      multiple: multi(),
+      input: input(),
+      custom: on(),
+      customLabel: customLabel(),
+      customPlaceholder: customPlaceholder(),
+      editing: store.editing,
+      minimized: store.minimized,
+      hidden: hidden(),
+      optionsOff: optionsOff(),
+      optionsHeight: store.optionsHeight,
+      focus: store.focus,
+      focusRequest: store.focusRequest,
+      sending: sending(),
+      last: last(),
+      submitShortcut: submitShortcut(),
+      backShortcut: backShortcut(),
+      backKeys: IS_MAC ? "Meta+[" : "Alt+ArrowLeft",
+    })),
+    nav,
+    next,
+    back,
+    jump,
+    reject,
+    minimize,
+    restore,
+    selectOption,
+    customOpen,
+    customToggle,
+    customUpdate,
+    commitCustom,
+    focused: (index: number) => setStore("focus", index),
+    measureOptions: (height: number) => setStore("optionsHeight", (previous) => Math.max(previous, height)),
+    cancelCustom: () => {
+      setStore("editing", false)
+      focus(options().length)
+    },
+  }
+}
 
-                  return
-                }
-
-                if (e.target instanceof HTMLTextAreaElement) return
-                const input = e.currentTarget.querySelector('[data-slot="question-custom-input"]')
-
-                if (input instanceof HTMLTextAreaElement) input.focus()
-              }}
-              onSubmit={(e) => {
-                e.preventDefault()
-                commitCustom()
-              }}
-            >
-              <Mark multi={multi()} picked={on()} onClick={toggleCustomMark} />
-              <span data-slot="question-option-main">
-                <span data-slot="option-label">{customLabel()}</span>
-                <textarea
-                  ref={focusCustom}
-                  data-slot="question-custom-input"
-                  dir="auto"
-                  placeholder={customPlaceholder()}
-                  value={input()}
-                  rows={1}
-                  disabled={sending()}
-                  style={{ "unicode-bidi": "plaintext", "text-align": "start" }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Escape") {
-                      e.preventDefault()
-                      setStore("editing", false)
-                      focus(options().length)
-
-                      return
-                    }
-
-                    if ((e.metaKey || e.ctrlKey) && !e.altKey) return
-
-                    if (e.key !== "Enter" || e.shiftKey) return
-                    e.preventDefault()
-                    commitCustom()
-                  }}
-                  onInput={(e) => {
-                    customUpdate(e.currentTarget.value)
-                    resizeInput(e.currentTarget)
-                  }}
-                />
-              </span>
-            </form>
-          </Show>
-        </div>
-      </DockPrompt>
-    </div>
-  )
+export function SessionQuestionDock(props: Parameters<typeof createSessionQuestionServices>[0]) {
+  const services = createSessionQuestionServices(props)
+  return <ReactView component={SessionQuestionDockView} props={{ services }} />
 }

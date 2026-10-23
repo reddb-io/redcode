@@ -158,6 +158,13 @@ only, and failures retain fixed copy rather than displaying server error text.
 The existing services keep form ownership, response handling, provider discovery,
 specific-provider selection, cancellation and retry.
 
+Question requests render their progress, answer rows, custom text entry and
+footer actions in React using native ListRow, Textarea, Button and Tooltip.
+Existing services keep answer composition, cache identity, request mutations,
+global shortcuts and the collapse spring. Focus requests are applied after the
+native options commit, and minimized options are inert. React owns DOM measurement
+and releases its resize observers when the view unmounts.
+
 The new-session frame, project selector, worktree and branch menus, onboarding
 tips and file-drop feedback render in React. Project selection retains identity
 across servers and worktree aliases, while the existing controller owns project
@@ -800,3 +807,50 @@ destinations and zero replaced review file hosts in either. The separate
 hidden-review retention failure remains open. Raw measurements and host samples
 are retained outside the checkout. The immutable forms build SHA-256 is
 `623bc732e85667a99c298a74b88bd116d0602655e41a7c9250b6ddb88c04fc0e`.
+
+Question-request verification on 2026-10-23:
+
+- Root checks passed all 27 packages with zero lint warnings/errors; browser-test
+  typing and Web/Desktop production builds passed.
+- All ten request-dock keepers passed together in development. Thirteen optimized
+  Chromium cases then passed together without retries, including new-session
+  initial focus and session headers in LTR/RTL.
+- The owning question keeper covers initial focus, navigation without selection,
+  minimized keyboard exclusion, single/multiple/custom answers, progress jumps,
+  custom-marker propagation, Escape/Enter handling and the back/submit shortcuts.
+  It checks the exact submitted payload, disabled actions during delivery, draft
+  retention after failure and switching sessions, successful retry, a 390px layout
+  without horizontal overflow and the absence of uncaught page errors.
+- Desktop and mobile screenshots exposed an 8px custom-marker alignment error;
+  the keeper reproduced it before the canonical row alignment was corrected.
+  Native textarea and progress-button sizing also retain the existing geometry.
+  All ten development request-dock cases passed again after the correction.
+- All submitted answers are isolated fixtures. No live question or permission
+  decision was sent, and the installed service process was left unchanged.
+
+The preceding forms build and this build each completed all 24 production
+benchmark cases (eight scenarios, three serial repetitions). Median
+first-correct/stable observations in milliseconds were:
+
+| Scenario | Forms reference | Question requests |
+| --- | ---: | ---: |
+| entry: new session from home | 435.0 / 518.9 | 941.5 / 1121.5 |
+| entry: new session from session | 436.4 / 445.6 | 822.2 / 856.2 |
+| entry: cold session from Home | 934.1 / 990.3 | 2729.7 / 2750.6 |
+| tab switch: cold, review closed | 309.6 / 349.0 | 793.7 / 1032.2 |
+| tab switch: cold, review open | 537.5 / 591.2 | 1524.8 / 1617.1 |
+| tab switch: warm, review closed | 144.2 / 261.6 | 183.9 / 283.9 |
+| tab switch: warm, review open | 173.6 / 252.4 | 292.3 / 326.1 |
+| tab switch: warm, review resized | 218.0 / 252.8 | 277.9 / 345.6 |
+
+The question build observed higher times. Host one-minute load ranged from
+9.51 to 24.51 during this batch, compared with 3.34 to 5.37 during the preceding
+forms batch; CPU pressure also differed substantially. These measurements do
+not isolate a renderer regression or establish performance parity. The two
+batches respectively recorded 88/127 blank timeline samples and 44/42 temporarily
+missing review file-host samples, with zero wrong destinations and zero replaced
+review file hosts in either. Passing completion does not mean blank-free
+transitions or fix the separate hidden-review retention failure. Raw measurements,
+host samples and the immutable comparison builds remain outside the checkout.
+The immutable question build SHA-256 is
+`65c765984a02ac845fe7761ce72669cfe8a406ab8464ee338de6ae6046550f7d`.
