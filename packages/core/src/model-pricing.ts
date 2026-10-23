@@ -1,21 +1,14 @@
 export * as ModelPricing from "./model-pricing.js"
 
 import { Option, Schema } from "effect"
-import type { LLMRequest } from "@opencode/ai"
+import type { LLMRequest, Usage, UsageMeter } from "@opencode/ai"
 import type { Model } from "@opencode/schema/model"
 import { Money } from "@opencode/schema/money"
 import type { TokenUsage } from "@opencode/schema/token-usage"
 
 type Scalar = string | number | boolean
 export type Facts = Readonly<Record<string, Scalar | readonly Scalar[] | undefined>>
-export type Meter = {
-  readonly modality: string
-  readonly direction: "input" | "output" | "search"
-  readonly unit: string
-  readonly quantity: number
-  readonly component?: "price" | "reasoning" | "cache.read" | "cache.write" | "cache.storage"
-  readonly cacheTTL?: string
-}
+export type Meter = UsageMeter
 export type Quote = { readonly amount: Money.USD } | { readonly reason: string }
 
 const json = Schema.Record(Schema.String, Schema.Json)
@@ -119,8 +112,9 @@ function evaluate(pricing: typeof Pricing.Type, meters: readonly Meter[], facts:
       if (unit !== meter.unit) return { reason: `unit-mismatch:${unit}:${meter.unit}` }
       const resolved = resolve(base, facts)
       if ("reason" in resolved) return resolved
+      const cache = meter.cacheMode === "explicit" ? (resolved.cache?.explicit ?? resolved.cache) : resolved.cache
       if (
-        (resolved.cache?.storage ?? 0) > 0 &&
+        (cache?.storage ?? 0) > 0 &&
         !meters.some(
           (entry) =>
             entry.modality === meter.modality &&
@@ -129,7 +123,7 @@ function evaluate(pricing: typeof Pricing.Type, meters: readonly Meter[], facts:
         )
       )
         return { reason: "unmetered-cache-storage" }
-      if (meter.component?.startsWith("cache.") && resolved.cache?.explicit)
+      if (meter.component?.startsWith("cache.") && resolved.cache?.explicit && !meter.cacheMode)
         return { reason: "cache-mode-not-reported" }
       const component = meter.component ?? "price"
       const value =
@@ -138,22 +132,24 @@ function evaluate(pricing: typeof Pricing.Type, meters: readonly Meter[], facts:
           : component === "reasoning"
             ? (resolved.reasoning ?? resolved.price)
             : component === "cache.read"
-              ? resolved.cache?.read
+              ? cache?.read
               : component === "cache.storage"
-                ? resolved.cache?.storage
-                : typeof resolved.cache?.write === "number"
-                  ? resolved.cache.write
+                ? cache?.storage
+                : typeof cache?.write === "number"
+                  ? cache.write
                   : meter.cacheTTL
-                    ? resolved.cache?.write?.[meter.cacheTTL]
+                    ? cache?.write?.[meter.cacheTTL]
                     : undefined
       if (value === undefined) return { reason: `missing-price:${component}` }
       const path = [
         meter.modality,
         ...(meter.direction === "search" ? [] : [meter.direction]),
-        ...(component === "reasoning" && resolved.reasoning === undefined ? ["price"] : component.split(".")),
-        ...(component === "cache.write" && typeof resolved.cache?.write === "object" && meter.cacheTTL
-          ? [meter.cacheTTL]
-          : []),
+        ...(component.startsWith("cache.") && meter.cacheMode === "explicit" && resolved.cache?.explicit
+          ? ["cache", "explicit", ...component.split(".").slice(1)]
+          : component === "reasoning" && resolved.reasoning === undefined
+            ? ["price"]
+            : component.split(".")),
+        ...(component === "cache.write" && typeof cache?.write === "object" && meter.cacheTTL ? [meter.cacheTTL] : []),
       ]
       const factors = (pricing.multipliers ?? []).map((rule) => {
         const match = when(rule.when, facts)
@@ -190,6 +186,48 @@ export function tokens(catalog: Model.Catalog, usage: TokenUsage.Info, facts: Fa
     ],
     { ...facts, context: usage.input + usage.cache.read + usage.cache.write },
   )
+}
+
+/** A detailed token breakdown must reconcile with the normalized inclusive usage before it can replace it. */
+export function usage(catalog: Model.Catalog, record: Usage, facts: Facts = {}): Quote {
+  if (!record.meters)
+    return tokens(
+      catalog,
+      {
+        input: record.nonCachedInputTokens ?? 0,
+        output: record.visibleOutputTokens,
+        reasoning: record.reasoningTokens ?? 0,
+        cache: { read: record.cacheReadInputTokens ?? 0, write: record.cacheWriteInputTokens ?? 0 },
+      },
+      facts,
+    )
+  const expected = [
+    { direction: "input", component: "price", quantity: record.nonCachedInputTokens ?? 0 },
+    { direction: "input", component: "cache.read", quantity: record.cacheReadInputTokens ?? 0 },
+    { direction: "input", component: "cache.write", quantity: record.cacheWriteInputTokens ?? 0 },
+    { direction: "output", component: "price", quantity: record.visibleOutputTokens },
+    { direction: "output", component: "reasoning", quantity: record.reasoningTokens ?? 0 },
+  ]
+  if (
+    expected.some(
+      (entry) =>
+        entry.quantity !==
+        record
+          .meters!.filter(
+            (meter) =>
+              meter.unit === "token" &&
+              meter.direction === entry.direction &&
+              (meter.component ?? "price") === entry.component,
+          )
+          .reduce((sum, meter) => sum + meter.quantity, 0),
+    )
+  )
+    return { reason: "incomplete-token-meters" }
+  return quote(catalog.pricing, record.meters, {
+    ...facts,
+    context:
+      (record.nonCachedInputTokens ?? 0) + (record.cacheReadInputTokens ?? 0) + (record.cacheWriteInputTokens ?? 0),
+  })
 }
 
 /** Request options are observed before provider lowering. Absent facts remain unknown. */

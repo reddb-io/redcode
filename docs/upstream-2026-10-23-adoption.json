@@ -43,7 +43,7 @@
       "upstream_head": "5d3eb1aae1631ca6aad883a79c273caea9be1234",
       "status": "partial",
       "local_path": "packages/core/src/models-dev/catalog.ts",
-      "evidence_or_next_step": "Native V1/V2 normalization preserves per-API declarations, capabilities and detailed unit prices. Adapter execution for media/decision/rerank, full conditional price evaluation and default V2 cutover remain separate work. See model catalog validation."
+      "evidence_or_next_step": "Native V1/V2 normalization preserves per-API declarations, capabilities and detailed unit prices. Conditional price evaluation and validated default V2 cutover are implemented. Specialized adapter execution for media/decision/rerank remains separate work. See model catalog validation."
     },
     {
       "repository": "anomalyco/models.dev",
@@ -55,7 +55,7 @@
       "upstream_head": "a5f15deac613e3a87aa3c9f78045bd1a0787e21c",
       "status": "partial",
       "local_path": "packages/core/src/models-dev/catalog.ts",
-      "evidence_or_next_step": "Native V1/V2 normalization preserves per-API declarations, capabilities and detailed unit prices. Adapter execution for media/decision/rerank, full conditional price evaluation and default V2 cutover remain separate work. See model catalog validation."
+      "evidence_or_next_step": "Native V1/V2 normalization preserves per-API declarations, capabilities and detailed unit prices. Conditional price evaluation and validated default V2 cutover are implemented. Specialized adapter execution for media/decision/rerank remains separate work. See model catalog validation."
     },
     {
       "repository": "anomalyco/models.dev",
@@ -79,7 +79,7 @@
       "upstream_head": "621b612f8d93adb59a8455694ba5f969ed16d517",
       "status": "partial",
       "local_path": "packages/core/src/model-pricing.ts",
-      "evidence_or_next_step": "Native conditional/unit-aware evaluator and runtime cost provenance implemented. Automatic detailed media/cache metering, remaining client projections and default V2 cutover remain pending."
+      "evidence_or_next_step": "Native conditional/unit-aware evaluator and runtime cost provenance implemented. Default V2 cutover, client projections and observed Anthropic/OpenAI Chat/Gemini meters are implemented. Unobserved native-tool fees and other protocol-specific meters remain unknown; see catalog-metering validation."
     },
     {
       "repository": "anomalyco/models.dev",
@@ -103,7 +103,7 @@
       "upstream_head": "7addb8a623196c62b199ee8dc408dab03c2a6387",
       "status": "partial",
       "local_path": "packages/core/src/model-pricing.ts",
-      "evidence_or_next_step": "Native conditional/unit-aware evaluator and runtime cost provenance implemented. Automatic detailed media/cache metering, remaining client projections and default V2 cutover remain pending."
+      "evidence_or_next_step": "Native conditional/unit-aware evaluator and runtime cost provenance implemented. Default V2 cutover, client projections and observed Anthropic/OpenAI Chat/Gemini meters are implemented. Unobserved native-tool fees and other protocol-specific meters remain unknown; see catalog-metering validation."
     },
     {
       "repository": "anomalyco/models.dev",
@@ -115,7 +115,7 @@
       "upstream_head": "3d14a3138b992330659101c11b6714fc30104bfe",
       "status": "partial",
       "local_path": "packages/core/src/model-pricing.ts",
-      "evidence_or_next_step": "Native conditional/unit-aware evaluator and runtime cost provenance implemented. Automatic detailed media/cache metering, remaining client projections and default V2 cutover remain pending."
+      "evidence_or_next_step": "Native conditional/unit-aware evaluator and runtime cost provenance implemented. Default V2 cutover, client projections and observed Anthropic/OpenAI Chat/Gemini meters are implemented. Unobserved native-tool fees and other protocol-specific meters remain unknown; see catalog-metering validation."
     },
     {
       "repository": "anomalyco/models.dev",
@@ -127,7 +127,7 @@
       "upstream_head": "dcd2aa23601444e691effd24cd1e7d00ded87ccb",
       "status": "partial",
       "local_path": "packages/core/src/models-dev/catalog.ts",
-      "evidence_or_next_step": "Native V1/V2 normalization preserves per-API declarations, capabilities and detailed unit prices. Adapter execution for media/decision/rerank, full conditional price evaluation and default V2 cutover remain separate work. See model catalog validation."
+      "evidence_or_next_step": "Native V1/V2 normalization preserves per-API declarations, capabilities and detailed unit prices. Conditional price evaluation and validated default V2 cutover are implemented. Specialized adapter execution for media/decision/rerank remains separate work. See model catalog validation."
     },
     {
       "repository": "anomalyco/models.dev",
@@ -742,13 +742,14 @@
       "status": "validated",
       "path": "packages/core/src/models-dev/snapshot.meta.json",
       "snapshot": {
-        "source": "https://models.dev/api.json?type=all",
-        "sha256": "9fbe38b62dfdb0d302e4bbcc2ec80298eac642559280f9d109b7814b84446c5d",
-        "providers": 230,
-        "models": 8909,
-        "decisionModels": 62
+        "source": "archived response",
+        "sha256": "7e703b9040cf8028a025b76c7b0d922b7dff7d91785c422d8792808ed142a28b",
+        "providers": 228,
+        "models": 9199,
+        "decisionModels": 71,
+        "format": 2
       },
-      "evidence": "update-models-snapshot --check; V1 consumption. V2 remains pending."
+      "evidence": "Pinned V2 snapshot with separate legacy compatibility identities. update-models-snapshot --check and the previous-catalog regression comparison pass; see evaluations/catalog-metering-2026-10-23-validation.json."
     },
     {
       "id": "task-aware-candidate-application",
@@ -760,7 +761,7 @@
       "id": "versioned-model-catalog",
       "status": "validated",
       "path": "packages/core/src/models-dev/catalog.ts",
-      "evidence": "149 Core and 20 Schema presentation tests; canonical bun run check passed all 27 tasks. The published V2 response normalized 228 providers and 9,313 entries with public-schema round trips in isolated storage. V2 remains opt-in through configured sources; see evaluations/model-catalog-2026-10-23-validation.json."
+      "evidence": "149 Core and 20 Schema presentation tests; canonical bun run check passed all 27 tasks. The published V2 response normalized 228 providers and 9,313 entries with public-schema round trips in isolated storage. This earlier batch kept V2 opt-in; see evaluations/model-catalog-2026-10-23-validation.json. The later catalog-metering batch adopts a pinned V2 default while retaining configured-source priority, V1 fallback and fixed legacy identities."
     },
     {
       "id": "conditional-cost-assessment",
@@ -784,12 +785,18 @@
       "id": "mini-step-cost-provenance",
       "status": "validated",
       "path": "packages/tui/src/mini/stream-v2.transport.ts",
-      "evidence": "Last-step accounting preserved in live completion/failure events, initial hydration, reconnect, resize and idle settlement. Reported zero, unknown, partial, estimated, legacy and missing amounts render in production Mini components. Canonical lint/typecheck passed all 27 tasks; expanded suite: 224 passed, 2 skipped, 7 menu/shortcut failures also reproduced on the baseline. See evaluations/mini-cost-2026-10-23-validation.json. No live provider or publication."
+      "evidence": "Last-step accounting preserved in live completion/failure events, initial hydration, reconnect, resize and idle settlement. Reported zero, unknown, partial, estimated, legacy and missing amounts render in production Mini components. Canonical lint/typecheck passed all 27 tasks; expanded suite: 224 passed, 2 skipped, 7 menu/shortcut failures also reproduced on the baseline. See evaluations/mini-cost-2026-10-23-validation.json. No live provider or publication. Follow-up resolves all seven failures; 233 expanded Mini tests pass with two existing skips in catalog-metering validation."
+    },
+    {
+      "id": "default-catalog-and-observed-meters",
+      "status": "validated",
+      "path": "packages/core/src/session/usage.ts",
+      "evidence": "V2 is the default bundled and public source; partial capabilities inherit correctly, trusted legacy adapters and stable identities are preserved. HTTP/SSE fixtures exercise observed Anthropic cache TTLs, OpenAI Chat audio and Gemini modality/cache usage through pricing. Missing observations remain unknown. See evaluations/catalog-metering-2026-10-23-validation.json for checks and limits."
     }
   ],
   "remaining": [
     "Agents surface for task-aware application, explicit recovery of ambiguous applications and cross-host coordination",
-    "Detailed provider media/cache meters and validated V2 default cutover",
+    "Additional protocol-specific billing meters, independently attributable cache storage and native-tool fees",
     "Agents DS React by goal, grouped completion, versioned shared context and remote graph",
     "Reusable workflows, routines, webhooks, resources and external message connectors",
     "Memory/skills, evaluation and media adapters, voice, paired push and native mobile scope",

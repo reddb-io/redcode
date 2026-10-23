@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { Schema } from "effect"
+import { ModelsDevCatalog } from "../src/models-dev/catalog.js"
 
 // Builds consume these committed bytes, never a live catalog. --file can replay
 // an archived response; --check verifies the same snapshot without network access.
@@ -7,7 +8,7 @@ const target = new URL("../src/models-dev/snapshot.txt", import.meta.url)
 const manifest = new URL("../src/models-dev/snapshot.meta.json", import.meta.url)
 const file = process.argv.find((arg) => arg.startsWith("--file="))?.slice("--file=".length)
 const source = new URL(
-  process.env.REDCODE_MODELS_URL || process.env.OPENCODE_MODELS_URL || "https://models.dev/api.json?type=all",
+  process.env.REDCODE_MODELS_URL || process.env.OPENCODE_MODELS_URL || "https://models.dev/experimental/v2.0/api.json",
 )
 if (!source.pathname.endsWith(".json")) source.pathname = `${source.pathname.replace(/\/+$/, "")}/api.json`
 if (!source.searchParams.has("type")) source.searchParams.set("type", "all")
@@ -16,27 +17,7 @@ const checking = process.argv.includes("--check")
 const response = checking || file ? undefined : await fetch(source, { signal: AbortSignal.timeout(30_000) })
 if (response && !response.ok) throw new Error(`Catalog request failed: HTTP ${response.status}`)
 const text = checking ? await Bun.file(target).text() : file ? await Bun.file(file).text() : await response!.text()
-const catalog = Schema.decodeUnknownSync(
-  Schema.fromJsonString(
-    Schema.Record(
-      Schema.String,
-      Schema.Struct({
-        id: Schema.String,
-        name: Schema.String,
-        env: Schema.Array(Schema.String),
-        models: Schema.Record(
-          Schema.String,
-          Schema.Struct({
-            id: Schema.String,
-            name: Schema.String,
-            type: Schema.optional(Schema.String),
-            limit: Schema.Struct({ context: Schema.Finite, output: Schema.Finite }),
-          }),
-        ),
-      }),
-    ),
-  ),
-)(text)
+const catalog = Schema.decodeUnknownSync(Schema.fromJsonString(ModelsDevCatalog.Document))(text)
 const models = Object.values(catalog).flatMap((provider) => Object.values(provider.models))
 const counts = {
   providers: Object.keys(catalog).length,
@@ -66,6 +47,24 @@ if (checking) {
     metadata.decisionModels !== counts.decisionModels
   )
     throw new Error("Snapshot bytes or catalog counts do not match snapshot.meta.json; run update-models-snapshot")
+  const compatibilityText = await Bun.file(new URL("../src/models-dev/compatibility.txt", import.meta.url)).text()
+  const compatibility = Schema.decodeUnknownSync(Schema.fromJsonString(ModelsDevCatalog.Document))(compatibilityText)
+  const compatibilityMetadata = Schema.decodeUnknownSync(
+    Schema.fromJsonString(
+      Schema.Struct({
+        sha256: Schema.String,
+        providers: Schema.Int,
+        models: Schema.Int,
+      }),
+    ),
+  )(await Bun.file(new URL("../src/models-dev/compatibility.meta.json", import.meta.url)).text())
+  if (
+    compatibilityMetadata.sha256 !== new Bun.CryptoHasher("sha256").update(compatibilityText).digest("hex") ||
+    compatibilityMetadata.providers !== Object.keys(compatibility).length ||
+    compatibilityMetadata.models !==
+      Object.values(compatibility).flatMap((provider) => Object.values(provider.models)).length
+  )
+    throw new Error("Pinned compatibility catalog does not match compatibility.meta.json")
   console.log(`Verified committed models snapshot: ${counts.models} models, ${counts.decisionModels} decision models`)
   process.exit(0)
 }

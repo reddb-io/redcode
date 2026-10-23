@@ -361,7 +361,7 @@ describe("ModelsDev Service", () => {
       yield* ModelsDev.Service.use((service) => service.get()).pipe(
         Effect.provide(buildLayer(state, cache, { url: "", fetch: true, snapshot: false })),
       )
-      expect((yield* Ref.get(state)).calls[0]?.url).toBe("https://models.opencode.ai/api.json?type=all")
+      expect((yield* Ref.get(state)).calls[0]?.url).toBe("https://models.dev/experimental/v2.0/api.json")
     }),
   )
 
@@ -616,6 +616,7 @@ describe("ModelsDev catalog sources", () => {
     expect(ModelsDev.sources(["https://cdn.example/catalog.json", "https://models.dev"])).toEqual([
       "https://cdn.example/catalog.json",
       "https://models.dev/api.json?type=all",
+      "https://models.dev/experimental/v2.0/api.json",
       "https://models.opencode.ai/api.json?type=all",
     ])
   })
@@ -674,9 +675,9 @@ describe("ModelsDev catalog sources", () => {
       )
       const result = yield* ModelsDev.Service.use((service) => service.get()).pipe(Effect.provide(layer))
       expect(result).toEqual(fixture2Snapshot)
-      expect(calls).toEqual(["https://blocked.example/api.json", "https://models.opencode.ai/api.json?type=all"])
+      expect(calls).toEqual(["https://blocked.example/api.json", "https://models.dev/experimental/v2.0/api.json"])
       const state = ModelsDev.decodeState(cache.values.get("models-dev:sources"))
-      expect(state.source).toBe("https://models.opencode.ai/api.json?type=all")
+      expect(state.source).toBe("https://models.dev/experimental/v2.0/api.json")
       expect(state.sources["https://blocked.example/api.json"]).toMatchObject({ failures: 1, reason: "HTTP 403" })
     }),
   )

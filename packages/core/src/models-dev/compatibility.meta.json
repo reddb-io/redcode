@@ -1,0 +1,7 @@
+{
+  "sourceCommit": "433707d7b4",
+  "reason": "Preserve previously bundled provider and model identities absent from the V2 catalog at cutover. This pinned data cannot authorize new remotely named SDKs.",
+  "sha256": "3aba8ec540da8acc0f3150c70979a97899bbea49d0c50cd77fe63847a0b71880",
+  "providers": 3,
+  "models": 113
+}

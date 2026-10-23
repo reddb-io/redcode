@@ -17,6 +17,18 @@ import { Media } from "../media.js"
 export const FinishReason = LLM.FinishReason
 export type FinishReason = Schema.Schema.Type<typeof FinishReason>
 
+/** Non-overlapping billing quantities observed by the protocol, not inferred from attachments. */
+export const UsageMeter = Schema.Struct({
+  modality: Schema.String,
+  direction: Schema.Literals(["input", "output", "search"]),
+  unit: Schema.String,
+  quantity: Schema.Number,
+  component: Schema.optional(Schema.Literals(["price", "reasoning", "cache.read", "cache.write", "cache.storage"])),
+  cacheTTL: Schema.optional(Schema.String),
+  cacheMode: Schema.optional(Schema.Literals(["implicit", "explicit"])),
+}).annotate({ identifier: "AI.UsageMeter" })
+export type UsageMeter = Schema.Schema.Type<typeof UsageMeter>
+
 /**
  * Token usage reported by an LLM provider.
  *
@@ -74,6 +86,8 @@ export class Usage extends Schema.Class<Usage>("AI.Usage")({
   totalTokens: Schema.optional(Schema.Number),
   /** Provider-reported USD cost for this physical request; zero is authoritative. */
   cost: Schema.optional(Schema.Number),
+  /** Complete token breakdown when reported, plus independently metered search or storage. */
+  meters: Schema.optional(Schema.Array(UsageMeter)),
   providerMetadata: Schema.optional(ProviderMetadata),
 }) {
   /**

@@ -100,11 +100,21 @@ A interface Agents por objetivo e a integração entre hosts permanecem pendente
 
 ## Catálogo V1/V2 compatível
 
-O consumidor reconhece o formato publicado em
-`https://models.dev/experimental/v2.0/api.json`, além do V1. Para experimentar V2,
-configure a fonte pelo `REDCODE_MODELS_URL` ou pelo campo global `models.sources`.
-A lista pública padrão e o snapshot empacotado continuam V1; não há mudança
-silenciosa de fonte nem promessa de disponibilidade por conta/credencial.
+O catálogo empacotado e a primeira fonte pública agora usam
+`https://models.dev/experimental/v2.0/api.json`. `REDCODE_MODELS_URL` e
+`models.sources` continuam tendo precedência; os dois endpoints V1 permanecem
+como fallback. O snapshot fixo conserva os bytes e SHA-256 da resposta validada,
+sem depender de rede durante o build. Isso não comprova disponibilidade por conta
+ou credencial.
+
+Overrides de capacidades podem omitir `supported` e herdar o valor da oferta.
+GitLab, SAP AI Core e Watsonx mantêm apenas seus adapters legados conhecidos
+localmente; um nome de SDK vindo do catálogo não autoriza carregar código novo.
+Identidades antigas ausentes na resposta V2 ficam em um conjunto fixo de
+compatibilidade, aplicado ao catálogo público padrão. Arquivos e fontes próprias
+não recebem esses acréscimos. O script `evaluate-catalog-cutover.ts` compara uma
+resposta arquivada com o catálogo anterior e falha se perder uma rota de chat
+anterior com limites utilizáveis.
 
 `Model.Info.catalog` conserva a versão do formato e o SHA-256 dos bytes recebidos,
 as APIs declaradas com os SDKs e as capacidades efetivas de cada protocolo, os
@@ -178,10 +188,19 @@ tabela o distingue. A passagem de medidas explícitas não constitui descoberta
 automática de consumo de mídia ou ferramentas nativas.
 
 As chamadas da sessão usam os tokens normalizados e os fatos observáveis da
-requisição. Chamadas V2 com mídia ou declarações de ferramentas nativas permanecem
-sem estimativa completa quando não há USD informado pelo provedor. Armazenamento
+requisição. Anthropic conserva as escritas observadas de cache de 5 minutos e
+1 hora, inclusive quando o delta final omite o breakdown do início. OpenAI Chat
+separa tokens de áudio de texto; Gemini conserva os arrays de tokens por modalidade
+e suas parcelas de leitura de cache. Essas medidas precisam reconciliar com cada
+total normalizado antes de substituir a estimativa por tokens.
+
+Uma modalidade sem tarifa, áudio em cache sem separação observada, armazenamento
 de cache, modo explícito/implícito sem distinção no usage, TTL não observado,
-unidades incompatíveis e fatos de preço ausentes não viram tarifas zero.
+unidades incompatíveis e fatos de preço ausentes continuam desconhecidos. As
+medidas não são inferidas a partir da contagem ou tamanho dos anexos. Declarações
+de ferramentas nativas ainda impedem apresentar uma estimativa como completa sem
+cobertura de suas tarifas. Preços locais apenas por token não cobrem mídia
+silenciosamente. USD válido informado pelo provedor continua tendo precedência.
 
 Os eventos novos `session.step.ended`, `session.step.failed` e
 `session.usage.recorded` conservam `costAssessment`. Mensagens assistant projetam
@@ -218,9 +237,10 @@ resolvidos, esse limite não garante um teto sobre cobranças externas.
 A validação cobre o runner com transporte LLM simulado e o caminho real de
 admissão/execução/projeção, além do banco e do Bus persistidos para mensagens,
 estatísticas e orçamento. O [registro deste lote](evaluations/conditional-pricing-2026-10-23-validation.json)
-conserva os resultados. Não houve conciliação de fatura nem publicação. Consumo
-de mídia/cache detalhado pelos adapters e adoção da cobertura nos demais clientes
-continuam pendentes antes do cutover padrão do catálogo.
+conserva os resultados desse lote. A integração posterior dos meters e a troca
+padrão do catálogo têm suas verificações em
+[evaluations/catalog-metering-2026-10-23-validation.json](evaluations/catalog-metering-2026-10-23-validation.json).
+Não houve conciliação de fatura nem publicação.
 
 ### Cobertura no relatório da CLI e nos eventos do SDK
 
@@ -295,8 +315,9 @@ O [registro de validação](evaluations/family-cost-2026-10-23-validation.json)
 inclui banco/Bus reais, projeções do SDK, ACP pelo protocolo, componentes TUI,
 GUI em build de produção com dados HTTP de teste e uma comparação limitada da
 entrada de sessão antes/depois. Não houve inferência paga, conciliação de invoice
-nem publicação. Medidores detalhados de mídia/cache e a adoção padrão do V2
-continuam pendentes. O custo por step do Mini é descrito abaixo.
+nem publicação nesse lote. O catálogo padrão e os meters observados foram
+integrados posteriormente, conforme descrito acima. O custo por step do Mini é
+descrito abaixo.
 
 ## Custo do último step no Mini
 
@@ -320,7 +341,10 @@ cujo atalho continua disponível. Este indicador não soma a família da sessão
 
 A validação e as falhas preexistentes da suíte ampliada estão registradas em
 [evaluations/mini-cost-2026-10-23-validation.json](evaluations/mini-cost-2026-10-23-validation.json).
-Não houve chamada a provedor nem validação contra o serviço instalado.
+Não houve chamada a provedor nem validação contra o serviço instalado. A revisão
+seguinte preserva o rascunho ao desfazer um prompt pendente e fecha o painel após
+excluir seu último item. A suíte ampliada do Mini passou com 233 casos e dois já
+desativados; as sete falhas mencionadas no registro anterior foram resolvidas.
 
 ## Verificação e limites
 
@@ -367,8 +391,9 @@ merge; isso não constitui um ensaio de morte real de processo com Git/hooks ór
 
 1. Expor o fluxo de preparo, validação e aplicação no Agents; ampliar a recuperação
    explícita de aplicações ambíguas e a coordenação entre hosts.
-2. Conectar os meters de mídia/cache dos providers e a cobertura de custos aos
-   demais clientes, e validar o cutover padrão do catálogo para V2.
+2. Ampliar as medidas observáveis de outros protocolos, armazenamento de cache e
+   tarifas de ferramentas nativas. Falta de medição continua explícita; o V2 já é
+   a fonte padrão e os clientes conservam a classificação de custos.
 3. Completar Agents DS React por objetivo, contexto comum versionado, agrupamento
    de conclusões e exposição do grafo em workers e harnesses.
 4. Implementar workflows reutilizáveis, rotinas, webhooks e conectores pelos

@@ -1731,6 +1731,27 @@ describe("Anthropic Messages route", () => {
         cacheWriteInputTokens: undefined,
         totalTokens: 6,
         providerMetadata: { anthropic: { input_tokens: 5, output_tokens: 1 } },
+        meters: [
+          { modality: "text", direction: "input", unit: "token", quantity: 5 },
+          {
+            modality: "text",
+            direction: "input",
+            unit: "token",
+            component: "cache.read",
+            cacheMode: "explicit",
+            quantity: 0,
+          },
+          {
+            modality: "text",
+            direction: "input",
+            unit: "token",
+            component: "cache.write",
+            cacheMode: "explicit",
+            quantity: 0,
+          },
+          { modality: "text", direction: "output", unit: "token", quantity: 1 },
+          { modality: "text", direction: "output", unit: "token", component: "reasoning", quantity: 0 },
+        ],
       })
 
       expect(response.toolCalls).toEqual([

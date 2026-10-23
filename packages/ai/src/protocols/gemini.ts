@@ -216,7 +216,11 @@ const GeminiBodyFields = {
 const GeminiBody = Schema.Struct(GeminiBodyFields)
 export type GeminiBody = Schema.Schema.Type<typeof GeminiBody>
 
+const TokenDetails = Schema.Array(Schema.Struct({ modality: Schema.String, tokenCount: Schema.Number }))
 const GeminiUsage = Schema.Struct({
+  promptTokensDetails: Schema.optional(TokenDetails),
+  cacheTokensDetails: Schema.optional(TokenDetails),
+  candidatesTokensDetails: Schema.optional(TokenDetails),
   cachedContentTokenCount: optionalNull(Schema.Number),
   thoughtsTokenCount: optionalNull(Schema.Number),
   promptTokenCount: optionalNull(Schema.Number),
@@ -518,6 +522,35 @@ const mapUsage = (usage: GeminiUsage | undefined, metadataKey: string) => {
     cacheReadInputTokens: cached,
     reasoningTokens: thoughts,
     totalTokens: ProviderShared.totalTokens(promptTokens, outputTokens, usage.totalTokenCount ?? undefined),
+    meters:
+      usage.promptTokensDetails || usage.candidatesTokensDetails
+        ? [
+            ...(usage.promptTokensDetails ?? []).map((item) => ({
+              modality: item.modality.toLowerCase(),
+              direction: "input" as const,
+              unit: "token",
+              quantity:
+                item.tokenCount -
+                (usage.cacheTokensDetails
+                  ?.filter((cache) => cache.modality === item.modality)
+                  .reduce((sum, cache) => sum + cache.tokenCount, 0) ?? 0),
+            })),
+            ...(usage.cacheTokensDetails ?? []).map((item) => ({
+              modality: item.modality.toLowerCase(),
+              direction: "input" as const,
+              unit: "token",
+              component: "cache.read" as const,
+              quantity: item.tokenCount,
+            })),
+            ...(usage.candidatesTokensDetails ?? []).map((item) => ({
+              modality: item.modality.toLowerCase(),
+              direction: "output" as const,
+              unit: "token",
+              quantity: item.tokenCount,
+            })),
+            { modality: "text", direction: "output", unit: "token", component: "reasoning", quantity: thoughts ?? 0 },
+          ]
+        : undefined,
     providerMetadata: providerMetadata(metadataKey, usage),
   })
 }

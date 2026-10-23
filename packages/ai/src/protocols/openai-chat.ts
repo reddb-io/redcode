@@ -220,6 +220,7 @@ export const OpenAIChatUsage = Schema.StructWithRest(
       Schema.StructWithRest(
         Schema.Struct({
           cached_tokens: optionalNull(Schema.Number),
+          audio_tokens: optionalNull(Schema.Number),
           cache_write_tokens: optionalNull(Schema.Number),
         }),
         [Schema.Record(Schema.String, Schema.Unknown)],
@@ -229,6 +230,7 @@ export const OpenAIChatUsage = Schema.StructWithRest(
       Schema.StructWithRest(
         Schema.Struct({
           reasoning_tokens: optionalNull(Schema.Number),
+          audio_tokens: optionalNull(Schema.Number),
           accepted_prediction_tokens: optionalNull(Schema.Number),
           rejected_prediction_tokens: optionalNull(Schema.Number),
         }),
@@ -922,6 +924,52 @@ const mapUsage = (usage: OpenAIChatEvent["usage"], providerMetadataKey: string):
     reasoningTokens: reasoning,
     totalTokens: ProviderShared.totalTokens(input, output, usage.total_tokens ?? undefined),
     cost: typeof usage.cost === "number" ? usage.cost : undefined,
+    meters:
+      usage.prompt_tokens_details?.audio_tokens !== undefined ||
+      usage.completion_tokens_details?.audio_tokens !== undefined
+        ? [
+            {
+              modality: "text",
+              direction: "input",
+              unit: "token",
+              quantity: (nonCached ?? 0) - (usage.prompt_tokens_details?.audio_tokens ?? 0),
+            },
+            {
+              modality: "audio",
+              direction: "input",
+              unit: "token",
+              quantity: usage.prompt_tokens_details?.audio_tokens ?? 0,
+            },
+            {
+              modality:
+                cached && (usage.prompt_tokens_details?.audio_tokens ?? 0) > 0 ? "unresolved-audio-cache" : "text",
+              direction: "input",
+              unit: "token",
+              component: "cache.read",
+              quantity: cached ?? 0,
+            },
+            {
+              modality: "text",
+              direction: "input",
+              unit: "token",
+              component: "cache.write",
+              quantity: cacheWrite ?? 0,
+            },
+            {
+              modality: "text",
+              direction: "output",
+              unit: "token",
+              quantity: (output ?? 0) - (reasoning ?? 0) - (usage.completion_tokens_details?.audio_tokens ?? 0),
+            },
+            {
+              modality: "audio",
+              direction: "output",
+              unit: "token",
+              quantity: usage.completion_tokens_details?.audio_tokens ?? 0,
+            },
+            { modality: "text", direction: "output", unit: "token", component: "reasoning", quantity: reasoning ?? 0 },
+          ]
+        : undefined,
     providerMetadata: { [providerMetadataKey]: usage },
   })
 }

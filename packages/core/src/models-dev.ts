@@ -14,6 +14,7 @@ import { Provider } from "./provider.js"
 import { Variant } from "./variant.js"
 import { KV } from "./kv.js"
 import { ModelsDevCatalog } from "./models-dev/catalog.js"
+import compatibilityText from "./models-dev/compatibility.txt" with { type: "text" }
 import snapshotText from "./models-dev/snapshot.txt" with { type: "text" }
 
 export const CatalogModelStatus = Schema.Literals(["alpha", "beta", "deprecated"])
@@ -21,6 +22,10 @@ export type CatalogModelStatus = typeof CatalogModelStatus.Type
 
 type SourceModel = ModelsDevCatalog.SourceModel
 type SourceProvider = ModelsDevCatalog.SourceProvider
+
+const compatibilityCatalog = Schema.decodeUnknownSync(Schema.fromJsonString(ModelsDevCatalog.Document))(
+  compatibilityText,
+)
 
 export type Snapshot = {
   readonly info: Provider.Info
@@ -33,7 +38,11 @@ function nativePackage(provider: SourceProvider, model?: SourceModel) {
   return AISDKNative.native(npm, { providerID: provider.id, modelID: model?.id }) ?? Provider.aisdk(npm)
 }
 
-function normalize(input: typeof ModelsDevCatalog.Document.Type, digest: string): readonly Snapshot[] {
+export function normalize(
+  input: typeof ModelsDevCatalog.Document.Type,
+  digest: string,
+  retainLegacy = false,
+): readonly Snapshot[] {
   const providers: Snapshot[] = []
   for (const item of Object.values(input)) {
     if (!("npm" in item)) {
@@ -78,6 +87,21 @@ function normalize(input: typeof ModelsDevCatalog.Document.Type, digest: string)
       }
     }
     providers.push({ info, models, environment: [...item.env] })
+  }
+  if (!retainLegacy || Object.values(input).every((provider) => "npm" in provider)) return providers
+  // Keep stable identities from the pinned pre-cutover catalog without trusting remote SDK names.
+  for (const legacy of normalize(compatibilityCatalog, bodyDigest(compatibilityText))) {
+    const current = providers.find((provider) => provider.info.id === legacy.info.id)
+    if (!current) {
+      providers.push(legacy)
+      continue
+    }
+    const ids = new Set(current.models.map((model) => model.id))
+    const index = providers.indexOf(current)
+    providers[index] = {
+      ...current,
+      models: [...current.models, ...legacy.models.filter((model) => !ids.has(model.id))],
+    }
   }
   return providers
 }
@@ -256,6 +280,7 @@ const CACHE_KEY = "models-dev:catalog"
 const STATE_KEY = "models-dev:sources"
 /** Public catalogs, tried after `REDCODE_MODELS_URL` and the `models.sources` configuration. */
 export const DEFAULT_SOURCES = [
+  "https://models.dev/experimental/v2.0/api.json",
   "https://models.opencode.ai/api.json?type=all",
   "https://models.dev/api.json?type=all",
 ] as const
@@ -367,7 +392,7 @@ const bundledSnapshot = Effect.suspend(() =>
     ? Effect.succeed(bundledCache)
     : decodeCatalog(snapshotText).pipe(
         Effect.map((catalog) => {
-          bundledCache = normalize(catalog, bodyDigest(snapshotText))
+          bundledCache = normalize(catalog, bodyDigest(snapshotText), true)
           return bundledCache
         }),
       ),
@@ -396,6 +421,12 @@ export const layer = (options?: Options) =>
         }),
       )
 
+      const normalizeCatalog = (catalog: typeof ModelsDevCatalog.Document.Type, digest: string) =>
+        normalize(
+          catalog,
+          digest,
+          !options?.file && !options?.url?.trim() && !options?.sources?.some((source) => source.trim()),
+        )
       const list = sources([options?.url, ...(options?.sources ?? [])])
       const fetch = options?.fetch ?? true
       const userAgent = App.useragent(app)
@@ -500,7 +531,7 @@ export const layer = (options?: Options) =>
       const loadFromFile = options?.file
         ? fs.readFileString(options.file).pipe(
             Effect.flatMap((text) =>
-              decodeCatalog(text).pipe(Effect.map((catalog) => normalize(catalog, bodyDigest(text)))),
+              decodeCatalog(text).pipe(Effect.map((catalog) => normalizeCatalog(catalog, bodyDigest(text)))),
             ),
             Effect.orElseSucceed(() => undefined),
           )
@@ -537,7 +568,7 @@ export const layer = (options?: Options) =>
         const fromFile = yield* loadFromFile
         if (fromFile) return fromFile
         const cached = options?.file ? undefined : yield* loadFromCache()
-        if (cached) return normalize(cached.catalog, cached.bodyDigest)
+        if (cached) return normalizeCatalog(cached.catalog, cached.bodyDigest)
         const bundled = yield* loadSnapshot
         if (bundled) return bundled
         if (!fetch) return []
@@ -548,7 +579,7 @@ export const layer = (options?: Options) =>
             return yield* fetchAndWrite()
           }),
         )
-        return normalize(catalog.catalog, catalog.bodyDigest)
+        return normalizeCatalog(catalog.catalog, catalog.bodyDigest)
       }).pipe(Effect.withSpan("ModelsDev.populate"), Effect.orDie)
 
       const [cachedGet, invalidate] = yield* Effect.cachedInvalidateWithTTL(populate, Duration.infinity)
