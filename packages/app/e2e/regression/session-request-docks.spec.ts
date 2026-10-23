@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test"
-import { SERVER, sessionHref } from "../utils/app"
+import { holdRoute, SERVER, sessionHref } from "../utils/app"
 import { installSseTransport } from "../utils/sse-transport"
 import { expectSessionTitle } from "../utils/waits"
 import { mockWorkspace, type WorkspaceInput } from "../utils/workspace"
@@ -83,44 +83,62 @@ test("shows a pending question dock", async ({ page }) => {
   expect((await reply).postDataJSON()).toEqual({ answer: { q0: "minimal" } })
 })
 
-test("shows a pending permission dock", async ({ page }) => {
-  const replies: { sessionID: string; permissionID: string; body: unknown }[] = []
-  await mockServer(page, {
-    onPermissionReply: (reply) => replies.push(reply),
-    sessionPermissions: {
-      [sessionID]: [
-        {
-          id: "permission-request",
-          sessionID,
-          permission: "shell",
-          patterns: ["git status", "git diff"],
-          metadata: {},
-          always: [],
-        },
-      ],
-    },
+for (const decision of [
+  { label: "Allow once", value: "once" },
+  { label: "Allow always", value: "always" },
+  { label: "Deny", value: "reject" },
+] as const) {
+  test(`a pending permission dock sends ${decision.value} and disables its actions while sending`, async ({ page }) => {
+    const replies: { sessionID: string; permissionID: string; body: unknown }[] = []
+    await mockServer(page, {
+      onPermissionReply: (reply) => replies.push(reply),
+      sessionPermissions: {
+        [sessionID]: [
+          {
+            id: "permission-request",
+            sessionID,
+            permission: "shell",
+            patterns: ["git status", "git diff"],
+            metadata: {},
+            always: [],
+          },
+        ],
+      },
+    })
+
+    const held = await holdRoute(page, (url) => url.pathname.endsWith("/permission/permission-request/reply"), {
+      method: "POST",
+    })
+    await page.goto(sessionHref(sessionID))
+    await expectSessionTitle(page, title)
+
+    const permission = page.locator('[data-component="dock-prompt"][data-kind="permission"]')
+    await expect(permission).toBeVisible()
+    await expect(permission.getByText("git status")).toBeVisible()
+    await expect(permission.getByText("git diff")).toBeVisible()
+    await expect(permission.locator('[data-slot="permission-footer-actions"] button')).toHaveCount(3)
+    await expect(page.locator('[data-component="composer"]')).toHaveCount(0)
+
+    const reply = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname === `/api/session/${sessionID}/permission/permission-request/reply`,
+    )
+    await permission.getByRole("button", { name: decision.label }).click()
+    await held.arrived
+    for (const label of ["Deny", "Allow always", "Allow once"])
+      await expect(permission.getByRole("button", { name: label, exact: true })).toBeDisabled()
+    expect(held.requests).toHaveLength(1)
+    held.release()
+    const response = await reply
+    expect(new URL(response.url()).pathname).toBe(`/api/session/${sessionID}/permission/permission-request/reply`)
+    expect(response.request().postDataJSON()).toEqual({ decision: decision.value })
+    expect(response.status()).toBe(204)
+    expect(replies).toEqual([{ sessionID, permissionID: "permission-request", body: { decision: decision.value } }])
+    await expect(permission).toHaveCount(0)
+    await expect(page.locator('[data-component="composer"]')).toBeVisible()
   })
-
-  await page.goto(sessionHref(sessionID))
-  await expectSessionTitle(page, title)
-
-  const permission = page.locator('[data-component="dock-prompt"][data-kind="permission"]')
-  await expect(permission).toBeVisible()
-  await expect(permission.getByText("git status")).toBeVisible()
-  await expect(permission.getByText("git diff")).toBeVisible()
-  await expect(permission.locator('[data-slot="permission-footer-actions"] button')).toHaveCount(3)
-  await expect(page.locator('[data-component="composer"]')).toHaveCount(0)
-
-  const reply = page.waitForResponse((response) => response.request().method() === "POST")
-  await permission.getByRole("button", { name: "Allow once" }).click()
-  const response = await reply
-  expect(new URL(response.url()).pathname).toBe(`/api/session/${sessionID}/permission/permission-request/reply`)
-  expect(response.request().postDataJSON()).toEqual({ decision: "once" })
-  expect(response.status()).toBe(204)
-  expect(replies).toEqual([{ sessionID, permissionID: "permission-request", body: { decision: "once" } }])
-  await expect(permission).toHaveCount(0)
-  await expect(page.locator('[data-component="composer"]')).toBeVisible()
-})
+}
 
 test("restores the draft caret before typing after a request dock closes", async ({ page }) => {
   const transport = await installSseTransport(page, { server: SERVER, retry: 20 })

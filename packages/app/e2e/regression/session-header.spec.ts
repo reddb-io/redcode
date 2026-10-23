@@ -79,10 +79,10 @@ for (const direction of ["ltr", "rtl"] as const) {
     await expect(header.getByRole("heading")).toHaveText(fixture.expected.targetTitle)
 
     await review.click()
-    await expect(review).toHaveAttribute("aria-expanded", "true")
+    await expect(review).toHaveAttribute("aria-pressed", "true")
     await expect(page.locator("#review-panel")).toBeVisible()
     await review.click()
-    await expect(review).toHaveAttribute("aria-expanded", "false")
+    await expect(review).toHaveAttribute("aria-pressed", "false")
 
     await more.click()
     const options = page.getByRole("menu")
@@ -118,20 +118,28 @@ for (const direction of ["ltr", "rtl"] as const) {
           )
         }),
       )
-      .toBeCloseTo(32, 0)
+      .toBeCloseTo(34, 0)
     await expect
       .poll(() =>
         options.evaluate((element) => {
           const menu = element.getBoundingClientRect()
+          const style = getComputedStyle(element)
+          const border = { left: parseFloat(style.borderLeftWidth), right: parseFloat(style.borderRightWidth) }
+          const inset = {
+            left: border.left + parseFloat(style.paddingLeft),
+            right: border.right + parseFloat(style.paddingRight),
+          }
           const divider = element.querySelector('[data-slot="menu-v2-separator"]')?.getBoundingClientRect()
           const rows = Array.from(element.querySelectorAll('[role="menuitem"]'), (row) => row.getBoundingClientRect())
 
           return (
             !!divider &&
-            Math.abs(divider.left - menu.left) <= 0.5 &&
-            Math.abs(divider.right - menu.right) <= 0.5 &&
+            Math.abs(divider.left - menu.left - border.left) <= 0.5 &&
+            Math.abs(menu.right - divider.right - border.right) <= 0.5 &&
             rows.every(
-              (row) => Math.abs(row.left - menu.left - 2) <= 0.5 && Math.abs(menu.right - row.right - 2) <= 0.5,
+              (row) =>
+                Math.abs(row.left - menu.left - inset.left) <= 0.5 &&
+                Math.abs(menu.right - row.right - inset.right) <= 0.5,
             )
           )
         }),

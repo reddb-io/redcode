@@ -146,6 +146,11 @@ the composer and command palette with radio semantics and keyboard navigation.
 Existing services still own session overrides, the mode applied before admitting
 a draft's first prompt, scoped status/history requests and evaluator feedback.
 
+Session panel controls and permission requests now render in React with native
+Button and Tooltip components. Existing services retain panel commands, browser
+selection, visibility persistence and permission decisions. The request dock keeps
+its resource descriptions, one primary action and disabled state while replying.
+
 The new-session frame, project selector, worktree and branch menus, onboarding
 tips and file-drop feedback render in React. Project selection retains identity
 across servers and worktree aliases, while the existing controller owns project
@@ -702,3 +707,48 @@ The earlier shell/titlebar latency concern remains open. Raw results, host sampl
 the failed-focus build and both immutable comparison builds remain outside the
 checkout. The focused native archive SHA-256 is
 `df864acfead3b24573c2fa9e87e00f10f92307608454b2ded3159ce2b44d85cf`.
+
+Session controls and permission-dock verification on 2026-10-23:
+
+- Root checks passed all 27 packages with zero lint warnings/errors; browser-test
+  typing and Web/Desktop production builds passed.
+- Eight optimized Chromium keepers passed together without retries: all three
+  permission decisions and busy-state receipts, caret restoration after a dock,
+  header grouping/details in LTR/RTL and terminal controls in LTR/RTL. The corrected
+  header keeper also passed on the immutable registry reference.
+- Earlier runs exposed pre-existing keeper assumptions, independently reproduced
+  on that reference: panel buttons expose `aria-pressed`; menus include their
+  border and density padding; terminal actions and panel actions occupy different
+  bars. The keeper now checks their actual separation and alignment. The saved
+  width scenario uses a viewport large enough to avoid its intended clamp.
+- That scenario still fails its existing DOM-retention assertion when switching
+  to a tab with review closed, on both the immutable reference and the native
+  build. This is a pre-existing review lifecycle concern, not passing coverage;
+  its assertion remains intact for the review/runtime slice.
+- A fresh authenticated preview loaded the real session and native panel buttons
+  without horizontal overflow or script errors. No terminal, browser task,
+  permission decision, model or prompt was started against the live service.
+
+Both the preceding selection build and this build completed all 24 production
+benchmark cases (eight scenarios, three serial repetitions). Median
+first-correct/stable observations in milliseconds were:
+
+| Scenario | Selection reference | Session controls |
+| --- | ---: | ---: |
+| entry: new session from home | 1140.9 / 1323.0 | 993.6 / 1133.3 |
+| entry: new session from session | 1037.8 / 1094.1 | 704.1 / 745.5 |
+| entry: cold session from Home | 2512.3 / 2525.1 | 2301.5 / 2315.7 |
+| tab switch: cold, review closed | 1116.1 / 1360.3 | 554.3 / 604.6 |
+| tab switch: cold, review open | 859.3 / 949.3 | 1165.0 / 1220.3 |
+| tab switch: warm, review closed | 251.9 / 432.0 | 198.6 / 338.7 |
+| tab switch: warm, review open | 446.6 / 488.1 | 688.7 / 889.5 |
+| tab switch: warm, review resized | 374.7 / 482.2 | 442.4 / 537.6 |
+
+Results are mixed and host contention differed between runs; performance parity
+remains unresolved. The two batches respectively recorded 128/130 blank timeline
+samples and 42/51 temporarily missing review file-host samples, with zero wrong
+destinations and zero replaced review file hosts in either. Completion assertions
+do not prove blank-free rendering or fix the separate hidden-review retention
+failure above. Raw measurements and host samples remain outside the checkout.
+The immutable session-controls build SHA-256 is
+`d0cce18e9ff401e8825ce87ff5fed2806571cfbbd133260cd3acffdf8f3d1947`.
