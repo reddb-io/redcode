@@ -26,6 +26,7 @@ import type { Location } from "@opencode/schema/location"
 import type { Model } from "@opencode/schema/model"
 import type { Plugin } from "@opencode/schema/plugin"
 import type { Session } from "@opencode/schema/session"
+import type { SessionBudget } from "@opencode/schema/session-budget"
 import type { SessionMessage } from "@opencode/schema/session-message"
 import type { TokenUsage } from "@opencode/schema/token-usage"
 import type { BunRequest } from "bun"
@@ -593,6 +594,7 @@ function startServer(options: WireOptions, changed: () => void) {
     requests,
     catalog,
     sessions: new Map<string, SessionInfo>(),
+    budgets: new Map<string, typeof SessionBudget.View.Encoded>(),
     messages: new Map<string, SessionMessageInfo[]>(),
     submissions,
     get prompts() {
@@ -754,6 +756,25 @@ function startServer(options: WireOptions, changed: () => void) {
         DELETE: route((req) =>
           fake.sessions.delete(req.params.sessionID) ? noContent() : notFound(req.params.sessionID),
         ),
+      },
+      "/api/session/:sessionID/budget": {
+        GET: route((req) => {
+          const session = fake.sessions.get(req.params.sessionID)
+          if (!session) return notFound(req.params.sessionID)
+          return Response.json({
+            data:
+              fake.budgets.get(session.id) ??
+              ({
+                limits: {},
+                override: {},
+                spent: { cost: session.cost, tokens: 0, unpriced: 0 },
+                costAssessment: { status: "legacy" },
+                exceeded: false,
+                unknown: false,
+                reason: "",
+              } satisfies typeof SessionBudget.View.Encoded),
+          })
+        }),
       },
       "/api/session/:sessionID/fork": {
         POST: route((req) => {
