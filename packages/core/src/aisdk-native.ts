@@ -196,9 +196,8 @@ function bedrockSettings(settings: Legacy, converse: boolean) {
   const baseURL = settings.baseURL ?? settings.endpoint
   return {
     ...Struct.omit(settings, converse ? [...BEDROCK_KEYS, ...CONVERSE_KEYS] : BEDROCK_KEYS),
-    ...(baseURL === undefined
-      ? {}
-      : { baseURL: region === undefined ? baseURL : baseURL.replaceAll("${AWS_REGION}", region) }),
+    // Resolve templates only after ModelResolver merges provider, model and credential settings.
+    ...(baseURL === undefined ? {} : { baseURL }),
     ...(settings.apiKey === undefined && settings.bearerToken !== undefined ? { apiKey: settings.bearerToken } : {}),
     ...(credentials.accessKeyId === undefined || credentials.secretAccessKey === undefined
       ? {}

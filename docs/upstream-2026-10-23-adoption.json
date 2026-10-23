@@ -728,6 +728,18 @@
       "status": "pending",
       "local_path": null,
       "evidence_or_next_step": "Adopt through native contracts; confirm availability and applicability before implementation"
+    },
+    {
+      "repository": "anomalyco/opencode",
+      "number": 58531,
+      "url": "https://github.com/anomalyco/opencode/pull/58531",
+      "title": "fix(core): resolve Bedrock endpoint region from provider settings",
+      "upstream_state_observed": "open",
+      "upstream_merged_observed": false,
+      "upstream_head": "a6c3d9e7766a8bc1b076bdc7cebb0e907efbb66d",
+      "status": "validated",
+      "local_path": "packages/core/src/model-resolver.ts",
+      "evidence_or_next_step": "Native implementation resolves endpoint templates after provider, model and credential overlays, reusing native Bedrock region policy. Six failing cases reproduced before the fix; 129 tests and all 27 canonical checks pass. See evaluations/bedrock-region-2026-10-23-validation.json. No paid provider calls or publication."
     }
   ],
   "nativeWork": [
@@ -804,6 +816,12 @@
       "status": "validated",
       "path": "packages/app/src/shell/navigation/agents-tasks.tsx",
       "evidence": "Eight HTTP/Git tests pass; canonical lint/types pass all 27 tasks and E2E types pass. Expanded browser run: 38/40; one unscoped worker assertion was corrected, and a reload failure during asset rebuilding was rechecked on a stable build. Final focused run: 5/5, covering both failures and new task flows. See evaluations/agent-tasks-2026-10-23-validation.json. No full-suite rerun after the final checks, paid inference, installed-service restart or publication."
+    },
+    {
+      "id": "bedrock-merged-region",
+      "status": "validated",
+      "path": "packages/core/src/model-resolver.ts",
+      "evidence": "Keeps endpoint templates intact during AISDK normalization; resolves the final configured or default region only after overlays. Tests cover provider inheritance, credential configuration and metadata, static credentials, environment defaults, custom provider IDs, unrelated adapters and remaining unresolved variables. See evaluations/bedrock-region-2026-10-23-validation.json."
     }
   ],
   "remaining": [

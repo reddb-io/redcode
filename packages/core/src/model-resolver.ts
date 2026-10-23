@@ -293,7 +293,7 @@ function prepareProviderSettings(
 ): Effect.Effect<Readonly<Record<string, unknown>>, UnresolvedProviderVariablesError> {
   const baseURL = settings.baseURL
   if (typeof baseURL !== "string") return Effect.succeed(settings)
-  return prepareProviderURL(model, baseURL).pipe(
+  return prepareProviderURL(model, baseURL, settings).pipe(
     Effect.map((prepared) => (prepared === baseURL ? settings : { ...settings, baseURL: prepared })),
   )
 }
@@ -301,11 +301,33 @@ function prepareProviderSettings(
 function prepareProviderURL(
   model: RuntimeInfo,
   baseURL: string,
+  settings: Readonly<Record<string, unknown>>,
 ): Effect.Effect<string, UnresolvedProviderVariablesError> {
   if (!baseURL.includes("${")) return Effect.succeed(baseURL)
-  const prepared = baseURL.replace(/\$\{([^}]+)\}/g, (placeholder, name: string) => process.env[name] ?? placeholder)
-  const failure = unresolvedProviderVariables(model, prepared)
-  return failure ? Effect.fail(failure) : Effect.succeed(prepared)
+  return Effect.gen(function* () {
+    const specifier = Provider.packageName(model.package)
+    const region =
+      baseURL.includes("${AWS_REGION}") &&
+      (specifier === "@opencode/ai/providers/amazon-bedrock" ||
+        specifier?.startsWith("@opencode/ai/providers/amazon-bedrock/"))
+        ? yield* Effect.promise(async () => {
+            const { BedrockAuth } = await import("@opencode/ai/protocols/utils/bedrock-auth")
+            return BedrockAuth.resolveRegion({
+              region: typeof settings.region === "string" ? settings.region : undefined,
+              credentials: Option.getOrUndefined(
+                Schema.decodeUnknownOption(Schema.Struct({ region: Schema.String }))(settings.credentials),
+              ),
+            })
+          })
+        : undefined
+    const prepared = baseURL.replace(
+      /\$\{([^}]+)\}/g,
+      (placeholder, name: string) => (name === "AWS_REGION" ? region : undefined) ?? process.env[name] ?? placeholder,
+    )
+    const failure = unresolvedProviderVariables(model, prepared)
+    if (failure) return yield* failure
+    return prepared
+  })
 }
 
 function unresolvedProviderVariables(model: RuntimeInfo, baseURL: string) {

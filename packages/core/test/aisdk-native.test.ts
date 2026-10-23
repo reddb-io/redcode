@@ -334,7 +334,7 @@ describe("AISDKNative", () => {
         },
         "openai.gpt-5.5",
       ),
-    ).toMatchObject({ settings: { baseURL: "https://bedrock-mantle.us-west-2.api.aws/openai/v1" } })
+    ).toMatchObject({ settings: { baseURL: "https://bedrock-mantle.${AWS_REGION}.api.aws/openai/v1" } })
   })
 
   test("maps static Bedrock Mantle credentials without leaking connection options", () => {
@@ -363,7 +363,7 @@ describe("AISDKNative", () => {
           sessionToken: "session",
           region: "eu-west-1",
         },
-        baseURL: "https://bedrock-mantle.eu-west-1.api.aws/v1",
+        baseURL: "https://bedrock-mantle.${AWS_REGION}.api.aws/v1",
         store: false,
       },
     })

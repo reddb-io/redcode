@@ -258,7 +258,7 @@ describe("ModelResolver", () => {
           id: "bedrock-mantle-responses",
           endpoint: { baseURL: "https://bedrock-mantle.us-west-2.api.aws/openai/v1" },
         })
-        expect(catalog.settings?.baseURL).toBe("https://bedrock-mantle.us-west-2.api.aws/openai/v1")
+        expect(catalog.settings?.baseURL).toBe("https://bedrock-mantle.${AWS_REGION}.api.aws/openai/v1")
       }),
     ),
   )
@@ -277,6 +277,100 @@ describe("ModelResolver", () => {
         )
 
         expect(resolved.route.endpoint.baseURL).toBe("https://bedrock-mantle.us-west-2.api.aws/openai/v1")
+      }),
+    ),
+  )
+  ;[
+    {
+      name: "credential metadata without AWS_REGION",
+      environment: { AWS_REGION: undefined, AWS_DEFAULT_REGION: undefined },
+      settings: {},
+      credential: Credential.Key.make({ type: "key", key: "fixture", metadata: { region: "us-west-2" } }),
+      expected: "us-west-2",
+    },
+    {
+      name: "credential metadata before the ambient region",
+      environment: { AWS_REGION: "us-east-1", AWS_DEFAULT_REGION: undefined },
+      settings: {},
+      credential: Credential.Key.make({ type: "key", key: "fixture", metadata: { region: "us-west-2" } }),
+      expected: "us-west-2",
+    },
+    {
+      name: "credential configuration after model and metadata regions",
+      environment: { AWS_REGION: "us-east-1", AWS_DEFAULT_REGION: undefined },
+      settings: { region: "us-east-2" },
+      credential: Credential.Key.make({
+        type: "key",
+        key: "fixture",
+        metadata: { region: "us-west-2" },
+        configuration: { region: "eu-west-1" },
+      }),
+      expected: "eu-west-1",
+    },
+    {
+      name: "the static credential region before the environment",
+      environment: { AWS_REGION: "us-east-1", AWS_DEFAULT_REGION: undefined },
+      settings: { credentials: { region: "eu-west-1", accessKeyId: "fixture", secretAccessKey: "fixture" } },
+      credential: undefined,
+      expected: "eu-west-1",
+    },
+    {
+      name: "the AWS default region",
+      environment: { AWS_REGION: undefined, AWS_DEFAULT_REGION: "eu-central-1" },
+      settings: {},
+      credential: Credential.Key.make({ type: "key", key: "fixture" }),
+      expected: "eu-central-1",
+    },
+    {
+      name: "the native Bedrock default without region variables",
+      environment: { AWS_REGION: undefined, AWS_DEFAULT_REGION: undefined },
+      settings: {},
+      credential: Credential.Key.make({ type: "key", key: "fixture" }),
+      expected: "us-east-1",
+    },
+  ].forEach((row) =>
+    it.effect("resolves Mantle endpoint templates using " + row.name, () =>
+      withEnv(row.environment, () =>
+        Effect.gen(function* () {
+          const resolved = yield* ModelResolver.fromCatalogModel(
+            model("@opencode/ai/providers/amazon-bedrock/mantle/responses", {
+              providerID: Provider.ID.make("regional-bedrock"),
+              modelID: "openai.gpt-5.5",
+              settings: { baseURL: "https://bedrock-mantle.${AWS_REGION}.api.aws/openai/v1", ...row.settings },
+            }),
+            row.credential,
+          )
+          expect(resolved.route.endpoint.baseURL).toBe("https://bedrock-mantle." + row.expected + ".api.aws/openai/v1")
+        }),
+      ),
+    ),
+  )
+
+  it.effect("leaves AWS_REGION interpolation on other adapters controlled by the environment", () =>
+    withEnv({ AWS_REGION: "us-east-1" }, () =>
+      Effect.gen(function* () {
+        const resolved = yield* ModelResolver.fromCatalogModel(
+          model("@opencode/ai/providers/openai-compatible", {
+            settings: { region: "us-west-2", baseURL: "https://${AWS_REGION}.example/v1", apiKey: "fixture" },
+          }),
+        )
+        expect(resolved.route.endpoint.baseURL).toBe("https://us-east-1.example/v1")
+      }),
+    ),
+  )
+
+  it.effect("still rejects unresolved Bedrock endpoint variables after resolving the region", () =>
+    withEnv({ AWS_REGION: undefined, REQUIRED_BEDROCK_HOST: undefined }, () =>
+      Effect.gen(function* () {
+        const failure = yield* ModelResolver.fromCatalogModel(
+          model("@opencode/ai/providers/amazon-bedrock/mantle/responses", {
+            settings: { region: "us-west-2", baseURL: "https://${REQUIRED_BEDROCK_HOST}/${AWS_REGION}" },
+          }),
+        ).pipe(Effect.flip)
+        expect(failure).toMatchObject({
+          _tag: "SessionRunnerModel.UnresolvedProviderVariablesError",
+          variables: ["REQUIRED_BEDROCK_HOST"],
+        })
       }),
     ),
   )

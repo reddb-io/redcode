@@ -415,6 +415,24 @@ build final estável. A suíte inteira não foi repetida depois disso. O
 resultados separados, hashes dos logs e capturas em 1440/390 pixels. Não houve
 publicação, chamada paga ou reinício de serviço instalado.
 
+## Endpoints Bedrock com região configurada
+
+A falha do estudo OpenCode #58531 foi reproduzida no fluxo real de configuração:
+o provider definia uma região, mas o template do modelo ainda exigia a variável
+de ambiente. A normalização também congelava o endpoint antes de uma credencial
+poder escolher outra região.
+
+`ModelResolver` agora resolve o template após a mesclagem completa, usando a
+política de região do adapter nativo. `AISDKNative` conserva a URL parametrizada
+até essa fronteira. A configuração da credencial pode prevalecer sobre a do
+modelo; outros adapters e variáveis continuam com sua política anterior.
+
+Os seis casos que falhavam antes passaram após a correção, e a suíte ampliada
+passou com 129 testes e 540 asserções. A
+[avaliação do lote](evaluations/bedrock-region-2026-10-23.md) registra o caso,
+a precedência e os limites da validação local. V2 continua sendo o único formato
+de catálogo; nenhuma chamada paga ou publicação foi feita.
+
 ## Trabalho que permanece
 
 1. Ampliar a recuperação de aplicações ambíguas além dos recibos atuais, o fluxo

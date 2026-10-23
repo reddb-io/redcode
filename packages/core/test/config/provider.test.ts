@@ -37,6 +37,37 @@ function required<T>(value: T | undefined): T {
 const decode = Schema.decodeUnknownSync(Info)
 
 describe("ConfigProviderPlugin.Plugin", () => {
+  it.effect("resolves a Mantle catalog URL using the configured provider region", () =>
+    withEnv({ AWS_REGION: undefined, AWS_DEFAULT_REGION: undefined }, () =>
+      Effect.gen(function* () {
+        const models = yield* Model.Service
+        yield* addPlugin([
+          new Document({
+            type: "document",
+            info: decode({
+              providers: {
+                regional: {
+                  package: "@opencode/ai/providers/amazon-bedrock/mantle/responses",
+                  settings: { region: "us-west-2", apiKey: "fixture" },
+                  models: {
+                    "openai.gpt-5.5": {
+                      settings: { baseURL: "https://bedrock-mantle.${AWS_REGION}.api.aws/openai/v1" },
+                    },
+                  },
+                },
+              },
+            }),
+          }),
+        ])
+        const selected = required(yield* models.get(Provider.ID.make("regional"), Model.ID.make("openai.gpt-5.5")))
+        const resolved = yield* Effect.gen(function* () {
+          const resolver = yield* ModelResolver.Service
+          return yield* resolver.resolveModel(selected)
+        }).pipe(Effect.provide(ModelResolver.layer))
+        expect(resolved.model.route.endpoint.baseURL).toBe("https://bedrock-mantle.us-west-2.api.aws/openai/v1")
+      }),
+    ),
+  )
   it.effect("applies migrated release date and status to the model catalog", () =>
     Effect.gen(function* () {
       const models = yield* Model.Service
