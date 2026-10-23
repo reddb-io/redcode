@@ -1,13 +1,9 @@
 import { Plugin } from "@opencode/plugin/tui"
-import { createMemo, createSignal, Match, Show, Switch } from "solid-js"
+import { createEffect, createMemo, createSignal, Match, Show, Switch } from "solid-js"
 import { contextUsage, formatContextUsage } from "../../util/session"
 import { useTerminalDimensions } from "@opentui/solid"
 import { stringWidth } from "../../util/string-width"
-
-const money = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-})
+import { formatCost } from "../../util/cost"
 
 export function PromptFooter(props: {
   context: Plugin.Context
@@ -16,6 +12,9 @@ export function PromptFooter(props: {
   showDetails: boolean
 }) {
   const dimensions = useTerminalDimensions()
+  createEffect(() => {
+    if (props.sessionID) void props.context.data.session.spend.sync(props.sessionID).catch(() => undefined)
+  })
   const [liveHovered, setLiveHovered] = createSignal(false)
   const subagents = createMemo(() => {
     if (!props.sessionID) return 0
@@ -40,19 +39,40 @@ export function PromptFooter(props: {
       props.context.data.location.model.list(session.location),
       session.revert?.messageID,
     )
-    const cost = props.context.data.session.cost(props.sessionID)
+    const spend = props.context.data.session.spend.get(props.sessionID)
     return [
       usage ? formatContextUsage(usage.tokens, usage.percent, usage.limit) : undefined,
-      cost > 0 ? money.format(cost) : undefined,
+      !spend ||
+      spend.spent.cost > 0 ||
+      spend.costAssessment?.status === "unknown" ||
+      spend.costAssessment?.status === "legacy"
+        ? formatCost(spend?.spent.cost, spend?.costAssessment)
+        : undefined,
     ].filter((item): item is string => Boolean(item))
   })
-  const live = createMemo(() => Boolean(subagents() || shells()))
+  const activity = createMemo(() =>
+    [subagents(), dimensions().width >= 68 || !subagents() ? shells() : undefined]
+      .filter((item): item is string => typeof item === "string")
+      .join(" · "),
+  )
+  const live = createMemo(() => Boolean(activity()))
   const shortcut = (id: string) => props.context.keymap.shortcuts(id)[0]
   const newSession = () => shortcut("session.new") || "/new"
   const layout = createMemo(() => {
     const command = shortcut("command.palette.show")
     return promptFooterLayout({
-      width: Math.max(0, dimensions().width - 8 - stringWidth(`New session ${newSession()}`) - 2),
+      width: Math.max(
+        0,
+        dimensions().width -
+          8 -
+          stringWidth(`New session ${newSession()}`) -
+          2 -
+          (live()
+            ? stringWidth(
+                `${shortcut("session.child.first") ? `${shortcut("session.child.first")} ` : ""}${activity()}`,
+              ) + 3
+            : 0),
+      ),
       usage: status(),
       shortcuts: command ? [`${command} commands`] : [],
     })
@@ -78,9 +98,7 @@ export function PromptFooter(props: {
                     <Show when={shortcut("session.child.first")}>
                       {(value) => <span style={{ fg: props.context.theme.text.base }}>{value()} </span>}
                     </Show>
-                    <Show when={subagents()}>{(value) => <>{value()}</>}</Show>
-                    <Show when={subagents() && shells()}> · </Show>
-                    <Show when={shells()}>{(value) => <>{value()}</>}</Show>
+                    {activity()}
                   </text>
                 </box>
               </Show>

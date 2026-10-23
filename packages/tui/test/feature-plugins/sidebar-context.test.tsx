@@ -4,8 +4,14 @@ import { RGBA } from "@opentui/core"
 import { testRender } from "@opentui/solid"
 import type { Context } from "@opencode/plugin/tui/context"
 import { SidebarContext } from "../../src/feature-plugins/sidebar/context"
+import type { CostAssessment } from "@opencode/schema/cost-assessment"
 
-function context(options?: { cost?: number; tokens?: number; limit?: number }) {
+function context(options?: {
+  cost?: number
+  tokens?: number
+  limit?: number
+  status?: CostAssessment.Summary["status"]
+}) {
   const color = RGBA.fromInts(200, 200, 200)
   return {
     theme: { text: { base: color, muted: color } },
@@ -17,6 +23,18 @@ function context(options?: { cost?: number; tokens?: number; limit?: number }) {
           tokens: { input: options?.tokens ?? 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
         }),
         cost: () => options?.cost ?? 0,
+        spend: {
+          get: () => ({
+            spent: {
+              cost: options?.cost ?? 0,
+              tokens: options?.tokens ?? 0,
+              unpriced: options?.status === "unknown" ? 1 : 0,
+            },
+            costAssessment: { status: options?.status ?? "empty" },
+            limits: {},
+          }),
+          sync: async () => {},
+        },
         message: {
           list: () =>
             options?.tokens
@@ -77,6 +95,25 @@ test("sidebar preserves the empty Redcode context summary", async () => {
     expect(app.captureCharFrame()).toContain("0% used")
     expect(app.captureCharFrame()).toContain("$0.00 spent")
     expect(app.captureCharFrame()).not.toContain("Not measured")
+  } finally {
+    app.renderer.destroy()
+  }
+})
+
+test.each([
+  { status: "unknown", cost: 0, text: "cost unknown" },
+  { status: "unknown", cost: 0.5, text: "$0.50+" },
+  { status: "estimated", cost: 0.5, text: "~$0.50 spent" },
+  { status: "legacy", cost: 0.5, text: "$0.50* spent" },
+] as const)("sidebar qualifies $status spending", async (row) => {
+  const app = await testRender(() => <SidebarContext context={context(row)} sessionID="session" />, {
+    width: 42,
+    height: 10,
+  })
+  try {
+    await app.renderOnce()
+    expect(app.captureCharFrame()).toContain(row.text)
+    if (row.status === "unknown") expect(app.captureCharFrame()).not.toContain("$0.00 spent")
   } finally {
     app.renderer.destroy()
   }

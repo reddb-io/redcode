@@ -6,6 +6,7 @@ import type {
   IntelligenceStatus,
   OpenCodeEvent,
   SessionMessageInfo,
+  SessionBudgetView,
 } from "@opencode/client/promise"
 import { Permission } from "@opencode/schema/permission"
 import { Worktree } from "@opencode/schema/worktree"
@@ -138,6 +139,7 @@ export type MockFileContent =
   | undefined
 
 export interface MockServerConfig {
+  budget?: (sessionID: string) => SessionBudgetView
   attention?: Resolvable<AttentionSnapshot>
   resources?: Resolvable<HostResourcesSnapshot>
   server?: string
@@ -1356,13 +1358,14 @@ function mockHandlers(
               (item) => Predicate.isObject(item) && item.sessionID === ctx.params.sessionID,
             ),
           })),
-        // No session has a budget or a goal.
-        sessionBudget: () =>
+        // Most fixtures have no recorded spending or configured limit.
+        sessionBudget: (ctx) =>
           Effect.succeed({
-            data: {
+            data: config.budget?.(ctx.params.sessionID) ?? {
               limits: {},
               override: {},
               spent: { cost: 0, tokens: 0, unpriced: 0 },
+              costAssessment: { status: "empty" },
               exceeded: false,
               unknown: false,
               reason: "",

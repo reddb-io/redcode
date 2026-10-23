@@ -330,14 +330,27 @@ export const make = Effect.fnUntraced(function* (input: {
       const catalog = yield* input.catalog.get(attached.cwd)
       const model = findModel(catalog.models, currentModel(catalog, yield* Ref.get(attached.selection)))
       if (!model?.limit.context) return
-      const info = yield* input.client.session.get({ sessionID: attached.id }).pipe(Effect.catch(ACPClient.classify))
+      const spending = yield* input.client.session.budget
+        .get({ sessionID: attached.id })
+        .pipe(Effect.catch(ACPClient.classify))
+      const status = spending.costAssessment?.status ?? "legacy"
       yield* input.connection.sessionUpdate({
         sessionId: attached.id,
         update: {
           sessionUpdate: "usage_update",
           used,
           size: model.limit.context,
-          cost: { amount: info.cost, currency: "USD" },
+          ...(status === "reported" || status === "estimated" || status === "empty"
+            ? { cost: { amount: spending.spent.cost, currency: "USD" } }
+            : {}),
+          _meta: {
+            "reddb.io/cost": {
+              knownSubtotal: spending.spent.cost,
+              currency: "USD",
+              status,
+              scope: "session-and-descendants",
+            },
+          },
         },
       })
     },

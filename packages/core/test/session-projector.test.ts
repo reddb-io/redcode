@@ -226,6 +226,11 @@ describe("SessionProjector", () => {
         tokens_cache_write: 1,
       })
       // A committed revert resets the fold cache so the next boundary establishes a new epoch.
+      const budgets = yield* SessionBudget.Service
+      expect(yield* budgets.view(sessionID)).toMatchObject({
+        spent: { cost: 1.25 },
+        costAssessment: { status: "legacy" },
+      })
       expect(yield* db.select().from(InstructionStateTable).get().pipe(Effect.orDie)).toBeUndefined()
     }),
   )
@@ -858,6 +863,7 @@ it.effect("persists cost provenance and derives incomplete coverage without recl
     expect(spent.cost).toBeCloseTo(1.500804)
     expect(yield* budgets.totals(sessionID)).toEqual(spent)
     expect(yield* budgets.view(sessionID)).toMatchObject({ unknown: true, exceeded: false })
+    expect((yield* budgets.view(sessionID)).costAssessment).toEqual({ status: "unknown" })
   }),
 )
 
@@ -903,6 +909,8 @@ it.effect(
       yield* bus.publish(SessionEvent.UsageRecorded, { sessionID: otherID, source: "title", ...record })
       expect(yield* budgets.totals(sessionID)).toEqual({ cost: 0, tokens: 5, unpriced: 1 })
       expect(yield* budgets.totals(childID)).toEqual({ cost: 0, tokens: 5, unpriced: 1 })
+      expect((yield* budgets.view(sessionID)).costAssessment).toEqual({ status: "unknown" })
+      expect((yield* budgets.view(otherID)).costAssessment).toEqual({ status: "unknown" })
       expect(yield* budgets.totals(sessionID)).toEqual({ cost: 0, tokens: 5, unpriced: 1 })
       const store = yield* SessionStore.Service
       expect((yield* store.messages({ sessionID: childID }))[0]).toMatchObject({
@@ -912,4 +920,45 @@ it.effect(
         costAssessment: { status: "unknown" },
       })
     }),
+)
+
+it.effect("classifies the full spending ledger without inferring prices from visible messages", () =>
+  Effect.gen(function* () {
+    yield* seedSession()
+    const db = (yield* Database.Service).db
+    const bus = yield* Bus.Service
+    const budgets = yield* SessionBudget.Service
+    const tokens = { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } }
+    expect((yield* budgets.view(sessionID)).costAssessment).toEqual({ status: "empty" })
+    yield* bus.publish(SessionEvent.UsageRecorded, {
+      sessionID,
+      source: "title",
+      cost: Money.USD.zero,
+      tokens,
+      costAssessment: { status: "reported" },
+    })
+    expect((yield* budgets.view(sessionID)).costAssessment).toEqual({ status: "reported" })
+    yield* bus.publish(SessionEvent.UsageRecorded, {
+      sessionID,
+      source: "compaction",
+      cost: Money.USD.make(0.1),
+      tokens,
+      costAssessment: { status: "estimated" },
+    })
+    expect((yield* budgets.view(sessionID)).costAssessment).toEqual({ status: "estimated" })
+    // Imported or older amounts can exist without a corresponding usage event.
+    yield* db.update(SessionTable).set({ cost: 0.6 }).where(eq(SessionTable.id, sessionID)).run()
+    expect((yield* budgets.view(sessionID)).costAssessment).toEqual({ status: "legacy" })
+    yield* bus.publish(SessionEvent.UsageRecorded, {
+      sessionID,
+      source: "title",
+      cost: Money.USD.zero,
+      tokens,
+      costAssessment: { status: "unknown" },
+    })
+    expect(yield* budgets.view(sessionID)).toMatchObject({
+      spent: { cost: 0.6, tokens: 0, unpriced: 1 },
+      costAssessment: { status: "unknown" },
+    })
+  }),
 )

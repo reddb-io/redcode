@@ -1,4 +1,4 @@
-import type { SessionMessageInfo } from "@opencode/client/promise"
+import type { SessionMessageInfo, SessionBudgetView } from "@opencode/client/promise"
 import { expect, test, type Page } from "@playwright/test"
 import { seed, sessionHref } from "../utils/app"
 import { fixture, mockStressTimeline } from "../utils/session-fixture"
@@ -14,6 +14,61 @@ test("context usage includes reasoning and cache tokens in the model's window", 
   const tooltip = page.getByRole("tooltip")
   await expect(tooltip).toContainText("10K / 200K (5%)")
   await expect(tooltip).toContainText("10,000")
+})
+
+test("cost indicators use full spending and refresh zero-valued child usage", async ({ page }, testInfo) => {
+  const state: { budget: SessionBudgetView } = {
+    budget: {
+      limits: {},
+      override: {},
+      spent: { cost: 0, tokens: 0, unpriced: 1 },
+      costAssessment: { status: "unknown" },
+      exceeded: false,
+      unknown: false,
+      reason: "",
+    },
+  }
+  const workspace = await openSession(page, { name: "CostProvenance", budget: () => state.budget })
+  const indicator = page.getByRole("button", { name: "View context usage", exact: true })
+  await expect(indicator).toContainText("Cost unknown")
+  await expect(indicator).not.toContainText("$0.00")
+  await indicator.click()
+  const panel = page.locator('[data-slot="session-usage-content"]')
+  await expect(panel.getByText("Total Cost", { exact: true })).toBeVisible()
+  await expect(panel.getByText("Cost unknown", { exact: true })).toBeVisible()
+
+  for (const row of [
+    { status: "unknown", amount: 2.5, text: "$2.50+", note: "+ Known subtotal; some costs are unknown" },
+    { status: "estimated", amount: 3, text: "~$3.00", note: "~ Includes estimated costs" },
+    { status: "legacy", amount: 3, text: "$3.00*", note: "* Cost provenance unavailable" },
+    { status: "reported", amount: 0, text: "$0.00", note: undefined },
+  ] as const) {
+    state.budget = {
+      ...state.budget,
+      spent: { cost: row.amount, tokens: 0, unpriced: row.status === "unknown" ? 1 : 0 },
+      costAssessment: { status: row.status },
+    }
+    workspace.push([
+      {
+        type: "session.usage.updated",
+        data: {
+          sessionID: "ses_unloaded_cost_child",
+          cost: 0,
+          tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+        },
+      },
+    ])
+    await expect(indicator).toContainText(row.text)
+    await expect(panel.getByText(row.text, { exact: true })).toBeVisible()
+    if (row.note) await expect(panel.getByText(row.note, { exact: true })).toBeVisible()
+    if (row.status === "unknown") await expect(panel.getByText("Known subtotal", { exact: true })).toBeVisible()
+    if (row.status === "unknown") {
+      await panel.getByText("Known subtotal", { exact: true }).scrollIntoViewIfNeeded()
+      await page.screenshot({ path: testInfo.outputPath("cost-spending.png") })
+    }
+  }
+  await expect(panel.getByText("Total Cost", { exact: true })).toBeVisible()
+  await expect(panel.getByText("* Cost provenance unavailable", { exact: true })).toHaveCount(0)
 })
 
 const tabs = (page: Page) => page.locator('[data-slot="titlebar-tabs"] a')

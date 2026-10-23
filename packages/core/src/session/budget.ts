@@ -103,9 +103,17 @@ const make = Effect.gen(function* () {
   const guards = yield* SessionGuardLog.Service
 
   // Older S1 rows have no pricing. Keep them unknown while summing newly reported charges.
-  const totals = Effect.fn("SessionBudget.totals")(function* (sessionID: SessionSchema.ID) {
+  const read = Effect.fn("SessionBudget.read")(function* (sessionID: SessionSchema.ID) {
     const rows = yield* database.db
-      .all<SessionBudget.Totals>(
+      .all<
+        SessionBudget.Totals & {
+          reported: number
+          estimated: number
+          legacy: number
+          untrackedCost: number
+          untrackedTokens: number
+        }
+      >(
         sql`
         WITH RECURSIVE descendants(id) AS (
           SELECT ${sessionID}
@@ -121,18 +129,30 @@ const make = Effect.gen(function* () {
             ${SessionTable.tokens_reasoning} +
             ${SessionTable.tokens_cache_read} +
             ${SessionTable.tokens_cache_write} AS tokens,
-            0 AS unpriced
+            0 AS unpriced, 0 AS reported, 0 AS estimated, 0 AS legacy,
+            ${SessionTable.cost} AS untrackedCost,
+            ${SessionTable.tokens_input} + ${SessionTable.tokens_output} + ${SessionTable.tokens_reasoning} +
+              ${SessionTable.tokens_cache_read} + ${SessionTable.tokens_cache_write} AS untrackedTokens
           FROM ${SessionTable}
           JOIN descendants ON descendants.id = ${SessionTable.id}
           UNION ALL
-          SELECT 0 AS cost, 0 AS tokens, 1 AS unpriced
+          SELECT 0 AS cost, 0 AS tokens,
+            CASE WHEN json_extract(${EventTable.data}, '$.costAssessment.status') = 'unknown' THEN 1 ELSE 0 END AS unpriced,
+            CASE WHEN json_extract(${EventTable.data}, '$.costAssessment.status') = 'reported' THEN 1 ELSE 0 END AS reported,
+            CASE WHEN json_extract(${EventTable.data}, '$.costAssessment.status') = 'estimated' THEN 1 ELSE 0 END AS estimated,
+            CASE WHEN json_extract(${EventTable.data}, '$.costAssessment.status') IS NULL THEN 1 ELSE 0 END AS legacy,
+            -json_extract(${EventTable.data}, '$.cost') AS untrackedCost,
+            -(json_extract(${EventTable.data}, '$.tokens.input') + json_extract(${EventTable.data}, '$.tokens.output') +
+              json_extract(${EventTable.data}, '$.tokens.reasoning') + json_extract(${EventTable.data}, '$.tokens.cache.read') +
+              json_extract(${EventTable.data}, '$.tokens.cache.write')) AS untrackedTokens
           FROM ${EventTable}
           JOIN descendants ON descendants.id = ${EventTable.aggregate_id}
           WHERE ${EventTable.type} IN (
             ${Event.versionedType(SessionEvent.Step.Ended.type, SessionEvent.Step.Ended.durable.version)},
             ${Event.versionedType(SessionEvent.Step.Failed.type, SessionEvent.Step.Failed.durable.version)},
             ${Event.versionedType(SessionEvent.UsageRecorded.type, SessionEvent.UsageRecorded.durable.version)}
-          ) AND json_extract(${EventTable.data}, '$.costAssessment.status') = 'unknown'
+          ) AND json_extract(${EventTable.data}, '$.cost') IS NOT NULL
+            AND json_extract(${EventTable.data}, '$.tokens') IS NOT NULL
           UNION ALL
           SELECT
             coalesce(${IntelligenceEvaluationTable.cost}, 0) AS cost,
@@ -140,19 +160,46 @@ const make = Effect.gen(function* () {
             CASE WHEN ${IntelligenceEvaluationTable.unpriced_cost} > 0 THEN 1
               WHEN ${IntelligenceEvaluationTable.cost} IS NULL AND
                 ${IntelligenceEvaluationTable.input_tokens} + ${IntelligenceEvaluationTable.output_tokens} > 0
-              THEN 1 ELSE 0 END AS unpriced
+              THEN 1 ELSE 0 END AS unpriced,
+            0 AS reported, 0 AS estimated, 1 AS legacy, 0 AS untrackedCost, 0 AS untrackedTokens
           FROM ${IntelligenceEvaluationTable}
           JOIN descendants ON descendants.id = ${IntelligenceEvaluationTable.session_id}
         )
         SELECT
           coalesce(sum(cost), 0) AS cost,
           coalesce(sum(tokens), 0) AS tokens,
-          coalesce(sum(unpriced), 0) AS unpriced
+          coalesce(sum(unpriced), 0) AS unpriced,
+          coalesce(sum(reported), 0) AS reported,
+          coalesce(sum(estimated), 0) AS estimated,
+          coalesce(sum(legacy), 0) AS legacy,
+          coalesce(sum(untrackedCost), 0) AS untrackedCost,
+          coalesce(sum(untrackedTokens), 0) AS untrackedTokens
         FROM spend
       `,
       )
       .pipe(Effect.orDie)
-    return rows[0] ?? ZERO
+    const row = rows[0]!
+    // Transfers can import totals without usage events; allow floating-point fold residue, not missing provenance.
+    const status =
+      row.unpriced > 0
+        ? "unknown"
+        : row.legacy > 0 ||
+            row.untrackedTokens !== 0 ||
+            Math.abs(row.untrackedCost) > Math.max(1, Math.abs(row.cost)) * 1e-9
+          ? "legacy"
+          : row.estimated > 0
+            ? "estimated"
+            : row.reported > 0
+              ? "reported"
+              : "empty"
+    return {
+      spent: { cost: row.cost, tokens: row.tokens, unpriced: row.unpriced },
+      costAssessment: { status },
+    } satisfies Pick<SessionBudget.View, "spent" | "costAssessment">
+  })
+
+  const totals = Effect.fn("SessionBudget.totals")(function* (sessionID: SessionSchema.ID) {
+    return (yield* read(sessionID)).spent
   })
 
   const view = Effect.fn("SessionBudget.view")(function* (sessionID: SessionSchema.ID) {
@@ -167,12 +214,12 @@ const make = Effect.gen(function* () {
         reason: "",
       })
     const limits = limitsOf(session.metadata?.budget)
-    const spent = yield* totals(sessionID)
-    const status = check(limits, spent)
+    const usage = yield* read(sessionID)
+    const status = check(limits, usage.spent)
     return SessionBudget.View.make({
       limits,
       override: limits,
-      spent,
+      ...usage,
       exceeded: hasLimits(limits) && status.exceeded,
       unknown: status.unknown,
       reason: status.reason,

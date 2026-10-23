@@ -35,6 +35,7 @@ import { InstructionEntry } from "@opencode/core/session/instruction-entry"
 import { SessionEvent } from "@opencode/core/session/event"
 import { SessionTable } from "@opencode/core/session/sql"
 import { SessionStore } from "@opencode/core/session/store"
+import { SessionBudget } from "@opencode/core/session/budget"
 import { SessionTransfer } from "@opencode/core/session/transfer"
 import { Workspace } from "@opencode/core/workspace"
 import { Expected } from "./lib/session-message"
@@ -52,6 +53,7 @@ const it = testEffect(
       Bus.node,
       SessionProjector.node,
       SessionStore.node,
+      SessionBudget.node,
       Session.node,
       SessionTransfer.node,
       InstructionEntry.node,
@@ -880,6 +882,12 @@ describe("Session.create", () => {
         data: { boundary: { type: "before", messageID: second.id } },
       })
       expect(forked).toMatchObject({ cost: 0, tokens: { input: 0, output: 0, reasoning: 0 } })
+      const budgets = yield* SessionBudget.Service
+      expect((yield* budgets.view(parent.id)).costAssessment).toEqual({ status: "legacy" })
+      expect(yield* budgets.view(complete.id)).toMatchObject({
+        spent: { cost: 0, tokens: 0, unpriced: 0 },
+        costAssessment: { status: "empty" },
+      })
       expect(yield* session.context(beforeFirst.id)).toEqual([])
       expect(beforeFirst).toMatchObject({ cost: 0, tokens: { input: 0, output: 0, reasoning: 0 } })
       expect(yield* session.context(complete.id)).toMatchObject([

@@ -352,6 +352,8 @@ export type SessionBudgetTotals = { cost: number; tokens: number; unpriced: numb
 
 export type SessionGoalCommandAction = "set" | "pause" | "resume" | "drop" | "budget" | "status"
 
+export type CostAssessmentSummary = { status: "empty" | "reported" | "estimated" | "unknown" | "legacy" }
+
 export type DesignFeedEvent =
   | {
       seq: number
@@ -1482,6 +1484,7 @@ export type SessionBudgetView = {
   limits: SessionBudgetLimits
   override: SessionBudgetLimits
   spent: SessionBudgetTotals
+  costAssessment?: CostAssessmentSummary
   exceeded: boolean
   unknown: boolean
   reason: string

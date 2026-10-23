@@ -16,6 +16,7 @@ import { createKeyed, createLatest, useExtension, type MountedSession } from "..
 import { catalogModel, readContext, syncCatalog } from "./catalog"
 import { fetchSessionExport, sessionExportFilename } from "./export"
 import { createSessionContextFormatter } from "./format"
+import { createSessionSpending, formatCost } from "./spending"
 
 function Stat(props: { label: string; value: JSX.Element }) {
   return (
@@ -88,6 +89,7 @@ export default function SessionContextTab(props: { session: MountedSession }) {
   const i18n = useI18n()
   const data = () => props.session.server.data
   syncCatalog(() => props.session)
+  const spend = createSessionSpending(() => props.session)
 
   const info = createMemo(() => (props.session.id ? data().session.get(props.session.id) : undefined))
 
@@ -131,37 +133,33 @@ export default function SessionContextTab(props: { session: MountedSession }) {
   )
 
   // The whole session family's spend, subagents included, as the TUI sidebar shows it.
-  const spent = createMemo(() => (props.session.id ? data().session.cost(props.session.id) : 0))
-  const cost = createMemo(() => usd().format(spent()))
+  const cost = createMemo(() => formatCost(spend()?.spent.cost, spend()?.costAssessment, usd().format, ctx.t))
 
   // The budgets count subagents too; asked again when the family's spend moves.
   const target = createMemo(
-    () => (props.session.id ? { sessionID: props.session.id, spent: spent() } : undefined),
+    () => (props.session.id ? { sessionID: props.session.id, spent: JSON.stringify(spend()) } : undefined),
     undefined,
     { equals: (a, b) => a?.sessionID === b?.sessionID && a?.spent === b?.spent },
   )
   const budgets = createLatest(target, (input, signal) =>
-    Promise.all([
-      props.session.server.client.session.budget.get({ sessionID: input.sessionID }, { signal }),
-      props.session.server.client.session.goal.get({ sessionID: input.sessionID }, { signal }),
-    ]).then(([view, goal]) => ({ view, goal })),
+    props.session.server.client.session.goal.get({ sessionID: input.sessionID }, { signal }),
   )
   const budgetLines = createMemo(() => {
-    const current = budgets.latest
+    const current = spend()
 
     if (!current) return []
-    const goal = current.goal
+    const goal = budgets.latest
     const active = goal?.budget && ["active", "waiting", "paused"].includes(goal.status)
 
     return [
-      ...(hasLimits(current.view.limits)
-        ? [{ label: "stats.budget", lines: describeBudget(current.view.limits, current.view.spent) }]
+      ...(hasLimits(current.limits)
+        ? [{ label: "stats.budget", lines: describeBudget(current.limits, current.spent) }]
         : []),
       ...(active && goal.budget
         ? [
             {
               label: "stats.goalBudget",
-              lines: describeBudget(goal.budget, spentSince(current.view.spent, goal.spendStart)),
+              lines: describeBudget(goal.budget, spentSince(current.spent, goal.spendStart)),
             },
           ]
         : []),
@@ -207,10 +205,10 @@ export default function SessionContextTab(props: { session: MountedSession }) {
   })
 
   const systemPrompt = createMemo(() => {
-    const system = messages().findLast((message) => message.type === "system")?.text
+    const text = messages().findLast((message) => message.type === "system")?.text
 
-    if (!system) return
-    const trimmed = system.trim()
+    if (!text) return
+    const trimmed = text.trim()
 
     if (!trimmed) return
 
@@ -283,7 +281,29 @@ export default function SessionContextTab(props: { session: MountedSession }) {
     },
     { label: "stats.userMessages", value: () => counts().user.toLocaleString(i18n.locale()) },
     { label: "stats.assistantMessages", value: () => counts().assistant.toLocaleString(i18n.locale()) },
-    { label: "stats.totalCost", value: cost },
+    {
+      get label() {
+        return spend()?.costAssessment?.status === "unknown" && spend()!.spent.cost > 0
+          ? "stats.knownSubtotal"
+          : "stats.totalCost"
+      },
+      value: () => (
+        <>
+          <span>{cost()}</span>
+          <Show when={spend()?.costAssessment?.status === "unknown" && spend()!.spent.cost > 0}>
+            <div class="whitespace-normal font-sans text-[11px] leading-4 text-ink-muted">{ctx.t("cost.partial")}</div>
+          </Show>
+          <Show when={spend() && (!spend()?.costAssessment || spend()?.costAssessment?.status === "legacy")}>
+            <div class="whitespace-normal font-sans text-[11px] leading-4 text-ink-muted">{ctx.t("cost.legacy")}</div>
+          </Show>
+          <Show when={spend()?.costAssessment?.status === "estimated"}>
+            <div class="whitespace-normal font-sans text-[11px] leading-4 text-ink-muted">
+              {ctx.t("cost.estimated")}
+            </div>
+          </Show>
+        </>
+      ),
+    },
     { label: "stats.sessionCreated", value: () => formatter().time(info()?.time.created) },
     { label: "stats.lastActivity", value: () => formatter().time(context()?.message.time.created) },
   ] satisfies { label: string; value: () => JSX.Element }[]
@@ -294,14 +314,14 @@ export default function SessionContextTab(props: { session: MountedSession }) {
     if (!sessionID) return
 
     try {
-      const data = await fetchSessionExport({
+      const exported = await fetchSessionExport({
         sessionID,
         api: props.session.server.client,
       })
 
-      const filename = sessionExportFilename(data.info)
+      const filename = sessionExportFilename(exported.info)
 
-      if (!(await system.save({ name: filename, content: JSON.stringify(data, null, 2) }))) return
+      if (!(await system.save({ name: filename, content: JSON.stringify(exported, null, 2) }))) return
       showToast({
         variant: "success",
         // Solid resolves JSX accessors under the toast's render owner, not this imperative call site.

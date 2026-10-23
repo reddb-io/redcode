@@ -6,9 +6,10 @@ import type { Context } from "@opencode/plugin/tui/context"
 import { createSignal } from "solid-js"
 import { PromptFooter } from "../../src/feature-plugins/prompt/footer"
 
-test("prompt footer separates simultaneous subagent, shell, and usage status", async () => {
+test.each([44, 120])("prompt footer separates live work and spending at %i columns", async (width) => {
   const color = RGBA.fromInts(200, 200, 200)
   const subdued = RGBA.fromInts(100, 100, 100)
+  const [unpriced, setUnpriced] = createSignal(false)
   const dispatched: string[] = []
   const context = {
     location: { directory: "/workspace" },
@@ -36,6 +37,10 @@ test("prompt footer separates simultaneous subagent, shell, and usage status", a
         status: (id: string) => (id === "child" ? "running" : "idle"),
         get: () => ({ id: "session", location: { directory: "/workspace" } }),
         cost: () => 1,
+        spend: {
+          get: () => ({ spent: { cost: 1 }, costAssessment: { status: unpriced() ? "unknown" : "reported" } }),
+          sync: async () => {},
+        },
         message: { list: () => [] },
       },
       shell: {
@@ -53,16 +58,21 @@ test("prompt footer separates simultaneous subagent, shell, and usage status", a
       </box>
     ),
     {
-      width: 120,
+      width,
       height: 2,
     },
   )
 
   try {
     await app.renderOnce()
-    expect(app.captureCharFrame()).toContain("ctrl+j 1 subagent · 1 shell · $1.00")
-    expect(app.captureCharFrame()).toContain("ctrl+p commands")
-    expect(app.captureCharFrame()).toContain("New session ctrl+x n")
+    expect(app.captureCharFrame()).toContain("ctrl+j 1 subagent")
+    expect(app.captureCharFrame()).toContain("New session")
+    if (width === 120) {
+      expect(app.captureCharFrame()).toContain("$1.00")
+      expect(app.captureCharFrame()).toContain("1 subagent · 1 shell")
+      expect(app.captureCharFrame()).toContain("ctrl+p commands")
+      expect(app.captureCharFrame()).toContain("New session ctrl+x n")
+    }
 
     await app.mockMouse.moveTo(2, 0)
     const live = app.renderer.root.getChildren()[0]?.getChildren()[0]?.getChildren()[0]?.getChildren()[0]
@@ -71,6 +81,10 @@ test("prompt footer separates simultaneous subagent, shell, and usage status", a
 
     await app.mockMouse.click(2, 0)
     expect(dispatched).toEqual(["session.child.first"])
+    setUnpriced(true)
+    await app.renderOnce()
+    if (width === 120) expect(app.captureCharFrame()).toContain("1 shell · $1.00+")
+    if (width === 44) expect(app.captureCharFrame()).not.toContain("$1.00+")
   } finally {
     app.renderer.destroy()
   }
@@ -100,6 +114,7 @@ test("prompt footer can hide details", async () => {
         status: () => "running",
         get: () => ({ id: "session", location: { directory: "/workspace" } }),
         cost: () => 1,
+        spend: { get: () => ({ spent: { cost: 1 }, costAssessment: { status: "reported" } }), sync: async () => {} },
         message: {
           list: () => [
             {

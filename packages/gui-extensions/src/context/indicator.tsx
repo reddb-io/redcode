@@ -7,6 +7,7 @@ import { ContextUsage } from "@opencode/util/context-usage"
 import { GenerationTiming } from "@opencode/util/generation-timing"
 import { useExtension, type MountedSession } from "../sdk"
 import { readContext, syncCatalog } from "./catalog"
+import { createSessionSpending, formatCost } from "./spending"
 
 function ContextTooltipRow(props: { name: JSX.Element; value: JSX.Element }) {
   return (
@@ -26,6 +27,7 @@ export function SessionContextUsage(props: {
   const layout = ctx.layout
   const i18n = useI18n()
   syncCatalog(() => props.session)
+  const spend = createSessionSpending(() => props.session)
 
   const variant = createMemo(() => props.variant ?? "button")
 
@@ -59,9 +61,7 @@ export function SessionContextUsage(props: {
     () => new Intl.NumberFormat(i18n.locale(), { notation: "compact", maximumFractionDigits: 1 }),
   )
   // The whole session family's spend, subagents included, as the TUI footer shows it.
-  const cost = createMemo(() =>
-    usd().format(props.session.id ? props.session.server.data.session.cost(props.session.id) : 0),
-  )
+  const cost = createMemo(() => formatCost(spend()?.spent.cost, spend()?.costAssessment, usd().format, ctx.t))
   // The header's status line: context use (or tokens when the model's window is unknown) and the session cost.
   const status = createMemo(() => {
     const value = context()
@@ -107,6 +107,15 @@ export function SessionContextUsage(props: {
   const tooltipValue = () => (
     <div class="flex w-[200px] flex-col gap-2">
       <ContextTooltipRow name={ctx.t("usage.cost")} value={cost()} />
+      <Show when={spend() && (!spend()?.costAssessment || spend()?.costAssessment?.status === "legacy")}>
+        <div class="text-ink-muted">{ctx.t("cost.legacy")}</div>
+      </Show>
+      <Show when={spend()?.costAssessment?.status === "unknown" && spend()!.spent.cost > 0}>
+        <div class="text-ink-muted">{ctx.t("cost.partial")}</div>
+      </Show>
+      <Show when={spend()?.costAssessment?.status === "estimated"}>
+        <div class="text-ink-muted">{ctx.t("cost.estimated")}</div>
+      </Show>
       <ContextTooltipRow
         name={ctx.t("usage.usage")}
         value={
