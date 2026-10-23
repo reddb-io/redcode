@@ -1,26 +1,22 @@
 import { useDialog } from "@opencode/ui/context/dialog"
-import { Tooltip } from "@opencode/ui/tooltip"
-import { Icon } from "@opencode/ui/icon"
-import { Show, createMemo, createSignal } from "solid-js"
+import { createMemo } from "solid-js"
 import { Schema } from "effect"
-import createPresence from "solid-presence"
 import { Composer } from "@/composer/composer"
-import { ComposerDropzone } from "@/composer/dropzone"
+import { createDropzoneServices } from "@/composer/dropzone"
 import type { ComposerModel } from "@/composer/model"
-import { PromptGitStatus, PromptWorkspaceSelector } from "@/new-session/workspace/selector"
-import {
-  PromptProjectAddButton,
-  PromptProjectSelector,
-  type PromptProjectController,
-} from "@/new-session/project/selector"
+import { createGitStatusSource, createWorkspaceSelectorServices } from "@/new-session/workspace/selector"
+import { createProjectSelectorServices, type PromptProjectController } from "@/new-session/project/selector"
 import { useLanguage } from "@/runtime/i18n/language"
+import { sharedLanguage } from "@/runtime/react/language"
+import { sharedSource } from "@/runtime/react/source"
+import { sharedMount } from "@/runtime/react/mount"
+import { ReactView } from "@/runtime/react/view"
 import { useWorkspaceLocation } from "@/workspaces/location"
 import { useProviders } from "@/providers/catalog/providers"
-import { NEW_SESSION_CONTENT_WIDTH } from "@/new-session/layout"
 import { Persist, persisted } from "@/runtime/persistence/storage"
 import { Persistence } from "@/runtime/persistence/schema"
 import type { NewSessionWorkspaceController } from "./workspace/controller"
-import { Logo } from "@opencode/ui/logo"
+import { NewSessionNativeView } from "./view.react"
 
 const providerTipDismissalDuration = 30 * 24 * 60 * 60 * 1000
 
@@ -34,7 +30,7 @@ export const ProviderTipSchema = Persistence.struct({
 
 export const WorkspaceTipSchema = ProviderTipSchema
 
-export function NewSessionView(props: {
+export function createNewSessionViewServices(props: {
   composer: ComposerModel
   project: PromptProjectController
   workspace: NewSessionWorkspaceController
@@ -51,75 +47,80 @@ export function NewSessionView(props: {
     if (value !== "main") setOnboarding("used", true)
   }
 
-  return (
-    <div class="@container relative flex flex-col min-h-0 h-full flex-1">
-      <div
-        data-component="new-session"
-        class="relative flex-1 min-h-0 overflow-hidden rounded-lg bg-v2-background-bg-base shadow-[var(--v2-elevation-raised)]"
-      >
-        <ComposerDropzone
-          active={props.composer.state.drag === "active"}
-          input={props.composer.model.selection.current()?.capabilities.input}
-        />
-        <div class="absolute inset-x-0 top-[25.375%] flex justify-center px-6">
-          <div class={NEW_SESSION_CONTENT_WIDTH}>
-            <div class="flex justify-center">
-              <Logo size={40} />
-            </div>
-            <div class="mt-8 flex flex-col gap-8">
-              <Composer model={props.composer} />
-              <Show when={props.project.empty()}>
-                <PromptProjectAddButton controller={props.project} />
-              </Show>
-              <Show when={props.project.selected()}>
-                <div class="flex min-h-7 min-w-0 flex-row flex-wrap items-center justify-center gap-0 text-ink-muted">
-                  <PromptProjectSelector controller={props.project} placement="bottom" />
-                  <Show
-                    when={props.workspace.bar.visible()}
-                    fallback={
-                      <PromptGitStatus
-                        branch={props.workspace.bar.branch()}
-                        noGit={!props.workspace.project.git()}
-                        class="ms-1"
-                      />
-                    }
-                  >
-                    <PromptWorkspaceSelector
-                      value={props.workspace.selection.value()}
-                      projectRoot={props.workspace.project.root()}
-                      workspaces={props.workspace.project.workspaces()}
-                      branches={props.workspace.project.branches()}
-                      branch={props.workspace.bar.branch()}
-                      onboarding={onboardingReady() && !onboarding.used}
-                      onChange={select}
-                      onCreate={props.workspace.selection.create}
-                      onSearch={props.workspace.project.searchBranches}
-                      onDone={props.composer.restoreFocus}
-                      onViewAll={props.workspace.project.openAll}
-                    />
-                  </Show>
-                </div>
-              </Show>
-            </div>
-          </div>
-        </div>
-        <NewSessionTips
-          selection={props.composer.model.selection}
-          onDone={props.composer.restoreFocus}
-          workspaceEligible={
-            !!props.project.selected() &&
-            props.workspace.bar.visible() &&
-            props.workspace.selection.value() !== "create" &&
-            props.workspace.project.managed() === 0
-          }
-          onWorkspace={() => select("create")}
-        />
-      </div>
-    </div>
-  )
+  return {
+    snapshot: sharedSource(() => ({
+      empty: props.project.empty(),
+      project: !!props.project.selected(),
+      workspace: props.workspace.bar.visible(),
+    })),
+    composer: sharedMount(() => <Composer model={props.composer} />),
+    dropzone: createDropzoneServices({
+      get active() {
+        return props.composer.state.drag === "active"
+      },
+      get input() {
+        return props.composer.model.selection.current()?.capabilities.input
+      },
+    }),
+    project: createProjectSelectorServices({ controller: props.project, placement: "bottom" }),
+    workspace: createWorkspaceSelectorServices({
+      get value() {
+        return props.workspace.selection.value()
+      },
+      get projectRoot() {
+        return props.workspace.project.root()
+      },
+      get workspaces() {
+        return props.workspace.project.workspaces()
+      },
+      get branches() {
+        return props.workspace.project.branches()
+      },
+      get branch() {
+        return props.workspace.bar.branch()
+      },
+      get onboarding() {
+        return onboardingReady() && !onboarding.used
+      },
+      onChange: select,
+      onCreate: props.workspace.selection.create,
+      onSearch: props.workspace.project.searchBranches,
+      onDone: props.composer.restoreFocus,
+      onViewAll: props.workspace.project.openAll,
+    }),
+    git: createGitStatusSource({
+      get branch() {
+        return props.workspace.bar.branch()
+      },
+      get noGit() {
+        return !props.workspace.project.git()
+      },
+      class: "ms-1",
+    }),
+    tips: createNewSessionTipsServices({
+      get selection() {
+        return props.composer.model.selection
+      },
+      onDone: props.composer.restoreFocus,
+      get workspaceEligible() {
+        return (
+          !!props.project.selected() &&
+          props.workspace.bar.visible() &&
+          props.workspace.selection.value() !== "create" &&
+          props.workspace.project.managed() === 0
+        )
+      },
+      onWorkspace: () => select("create"),
+    }),
+  }
 }
 
-function NewSessionTips(props: {
+export function NewSessionView(props: Parameters<typeof createNewSessionViewServices>[0]) {
+  const services = createNewSessionViewServices(props)
+  return <ReactView component={NewSessionNativeView} props={{ services }} />
+}
+
+export function createNewSessionTipsServices(props: {
   selection: ComposerModel["model"]["selection"]
   onDone: () => void
   workspaceEligible: boolean
@@ -162,14 +163,6 @@ function NewSessionTips(props: {
     if (workspaceVisible()) return "workspace"
   })
 
-  const displayed = createMemo<"workspace" | "provider" | undefined>((previous) => tip() ?? previous)
-  const [ref, setRef] = createSignal<HTMLDivElement>()
-
-  const presence = createPresence({
-    show: () => tip() !== undefined,
-    element: () => ref() ?? null,
-  })
-
   const open = () => {
     const current = tip()
 
@@ -182,11 +175,14 @@ function NewSessionTips(props: {
       return
     }
 
-    void import("@/providers/connect/dialog").then(({ DialogConnectProvider }) => {
-      void dialog.show(() => (
-        <DialogConnectProvider directory={sdk().directory} selection={props.selection} onDone={props.onDone} />
-      ))
-    })
+    void connect()
+  }
+
+  async function connect() {
+    const { DialogConnectProvider } = await import("@/providers/connect/dialog")
+    void dialog.show(() => (
+      <DialogConnectProvider directory={sdk().directory} selection={props.selection} onDone={props.onDone} />
+    ))
   }
 
   const dismiss = () => {
@@ -203,45 +199,13 @@ function NewSessionTips(props: {
     setProviderState("dismissedAt", Date.now())
   }
 
-  return (
-    <Show when={presence.present()}>
-      <div class="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center px-10">
-        <div
-          ref={setRef}
-          data-component="new-session-tip"
-          data-visible={tip() !== undefined}
-          class="group/new-session-tip pointer-events-auto relative flex h-6 max-w-full items-center transition-[opacity,transform] duration-[250ms] ease-[cubic-bezier(0.215,0.61,0.355,1)] motion-reduce:transition-none"
-          classList={{ "data-[visible=false]:animate-out fade-out slide-out-to-bottom-4": true }}
-        >
-          <button
-            type="button"
-            class="flex h-6 min-w-0 items-center rounded-sm pl-1.5 text-[13px] leading-text-compact text-ink-muted transition-[background-color,color] duration-150 ease-in-out hover:bg-foreground/8 hover:text-ink-muted focus-visible:bg-foreground/10 focus-visible:text-ink-muted focus-visible:outline-none"
-            onClick={open}
-          >
-            <span class="truncate">
-              {language.t(displayed() === "workspace" ? "home.workspaceTip" : "home.providerTip")}
-            </span>
-            <span class="flex size-6 shrink-0 items-center justify-center" aria-hidden="true">
-              <Icon name="chevron-down" size="small" class="-rotate-90" />
-            </span>
-          </button>
-          <Tooltip
-            class="hover-reveal absolute left-full top-0 flex h-6 w-7 items-center justify-end delay-0 duration-0 group-hover/new-session-tip:delay-[250ms] group-hover/new-session-tip:duration-150 group-hover/new-session-tip:opacity-100 focus-within:delay-0 focus-within:duration-0 focus-within:opacity-100"
-            placement="top"
-            openDelay={1000}
-            value={language.t("common.dismiss")}
-          >
-            <button
-              type="button"
-              class="flex size-6 items-center justify-center rounded-sm text-ink-muted transition-[background-color,color] duration-150 ease-in-out hover:bg-foreground/8 hover:text-foreground focus-visible:bg-foreground/10 focus-visible:text-foreground focus-visible:outline-none"
-              aria-label={language.t("common.dismiss")}
-              onClick={dismiss}
-            >
-              <Icon name="xmark-small" />
-            </button>
-          </Tooltip>
-        </div>
-      </div>
-    </Show>
-  )
+  return {
+    snapshot: sharedSource(() => ({
+      language: sharedLanguage(language),
+      visible: tip() !== undefined,
+      workspace: tip() === "workspace",
+    })),
+    open,
+    dismiss,
+  }
 }

@@ -1,9 +1,17 @@
 import { expect, test, type Locator, type Page } from "@playwright/test"
 import type { OpenCodeEvent, WorktreeDirectory } from "@opencode/client/promise"
-import { draftHref, expectPath, provider, sessionHref, T0 } from "../utils/app"
+import { draftHref, expectPath, project, provider, REMOTE_SERVER, sessionHref, T0 } from "../utils/app"
 import type { IntelligenceStatus } from "@opencode/client/promise"
 import type { MockAnswer } from "../utils/mock-server"
-import { openDraft, openSession, openWorktreeDraft, type WorkspaceInput } from "../utils/workspace"
+import {
+  mockRemoteServer,
+  mockWorkspace,
+  openDraft,
+  openSession,
+  openWorktreeDraft,
+  type WorkspaceInput,
+} from "../utils/workspace"
+import { APP_READY_TIMEOUT } from "../utils/waits"
 
 const directory = "C:/OpenCode/WorkspacePending"
 
@@ -47,9 +55,133 @@ test.use({
   permissions: ["clipboard-read", "clipboard-write"],
 })
 
-test("the new session screen does not show session details", async ({ page }) => {
-  await openDraft(page, { name: "Summary" })
+test("a new session from Home focuses its prompt without showing session details", async ({ page }) => {
+  await mockWorkspace(page, { name: "Summary", sessions: [] })
+  await page.goto("/")
+  await page.locator('[data-action="home-new-session"]').click()
+  await expect(editor(page)).toBeFocused({ timeout: APP_READY_TIMEOUT })
+  await page.keyboard.type("Start this draft")
+  await expect(editor(page)).toHaveText("Start this draft")
   await expect(page.getByRole("button", { name: "Session details", exact: true })).toHaveCount(0)
+})
+
+test("project search changes the draft's project without losing its prompt", async ({ page }) => {
+  const first = "C:/OpenCode/ProjectSelection"
+  const next = "C:/OpenCode/NextProject"
+  const remoteReads: string[] = []
+  await mockRemoteServer(page, {
+    name: "Remote",
+    directory: next,
+    project: project({ id: "proj_remote_selection", directory: next, name: "Remote matching path" }),
+    fileList: (path) => {
+      remoteReads.push(path)
+      return []
+    },
+  })
+  const { editor } = await openDraft(page, {
+    name: "ProjectSelection",
+    projects: [
+      project({ id: "proj_projectselection", directory: first, name: "First project" }),
+      project({ id: "proj_nextproject", directory: next, name: "Next project" }),
+    ],
+    seed: {
+      projects: {
+        local: [
+          { worktree: first, expanded: true },
+          { worktree: next, expanded: true },
+        ],
+        [REMOTE_SERVER]: [{ worktree: next, expanded: true }],
+      },
+    },
+  })
+  await editor.fill("Keep this project draft")
+  const trigger = page.locator('[data-action="prompt-project"]')
+  await expect(trigger).toHaveAccessibleName("First project")
+  await trigger.click()
+  const menu = page.getByRole("dialog", { name: "Search projects", exact: true })
+  const search = menu.getByRole("searchbox", { name: "Search projects", exact: true })
+  await expect(search).toBeFocused()
+  await search.fill("Next")
+  await expect(menu.getByRole("menuitemradio")).toHaveCount(1)
+  await expect(menu.getByRole("menuitemradio", { name: "Next project", exact: true })).toBeVisible()
+  await search.press("Enter")
+  await expect(menu).toBeHidden()
+  await expect(trigger).toHaveAccessibleName("Next project")
+  await expect(editor).toHaveText("Keep this project draft")
+  await expect(editor).toBeFocused()
+  await trigger.click()
+  await expect(menu.getByRole("menuitemradio", { name: "Next project", exact: true })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  )
+  await expect(menu.getByRole("menuitemradio", { name: "Remote matching path", exact: true })).toHaveAttribute(
+    "aria-checked",
+    "false",
+  )
+  await search.fill("No matching project")
+  await search.press("Tab")
+  await page.keyboard.press("ArrowRight")
+  const add = page.getByRole("dialog", { name: "Add project", exact: true })
+  await expect(add.getByRole("menuitem", { name: "Remote", exact: true })).toBeVisible()
+  await add.getByRole("menuitem", { name: "Remote", exact: true }).press("ArrowUp")
+  await expect(add.getByRole("menuitem", { name: "Remote", exact: true })).not.toBeFocused()
+  await page.keyboard.press("ArrowDown")
+  await expect(add.getByRole("menuitem", { name: "Remote", exact: true })).toBeFocused()
+  await page.keyboard.press("ArrowLeft")
+  await expect(add).toBeHidden()
+  await page.keyboard.press("Enter")
+  await add.getByRole("menuitem", { name: "Remote", exact: true }).click()
+  const directory = page.getByRole("dialog", { name: "Open project", exact: true })
+  await expect(directory.getByRole("combobox", { name: "Open project", exact: true })).toHaveValue(
+    "C:\\OpenCode\\NextProject",
+  )
+  await expect.poll(() => remoteReads).not.toEqual([])
+  await directory.getByRole("button", { name: "Cancel", exact: true }).click()
+  await expect(directory).toBeHidden()
+  await expect(trigger).toHaveAccessibleName("Next project")
+  await expect(editor).toHaveText("Keep this project draft")
+})
+
+test("worktree and branch searches retain the draft and hand off to Worktrees settings", async ({ page }) => {
+  const root = "C:/OpenCode/WorktreeSelection"
+  const worktrees = Array.from({ length: 12 }, (_, index) => `${root}/.worktrees/feature-${index}`)
+  const { editor } = await openDraft(page, {
+    name: "WorktreeSelection",
+    project: { vcs: "git", sandboxes: worktrees },
+    worktrees: [{ directory: root }, ...worktrees.map((directory) => ({ directory, strategy: "git" }))],
+    branches: ["main", "release/next", "feature/search"],
+  })
+  await editor.fill("Keep this worktree draft")
+  await page.getByRole("button", { name: "Local", exact: true }).click()
+  await page.getByRole("menuitem", { name: "New worktree", exact: true }).click()
+  await expect(page.getByRole("button", { name: "New worktree", exact: true })).toBeVisible()
+  await page.getByRole("button", { name: "from main", exact: true }).click()
+  const branches = page.getByRole("dialog", { name: "Search branches", exact: true })
+  const search = branches.getByRole("searchbox", { name: "Search branches", exact: true })
+  await expect(search).toBeFocused()
+  await search.fill("release")
+  await expect(branches.getByRole("menuitemradio")).toHaveCount(1)
+  await branches.getByRole("menuitemradio", { name: "release/next", exact: true }).click()
+  await expect(branches).toBeHidden()
+  await expect(page.getByRole("button", { name: "from release/next", exact: true })).toBeVisible()
+  await page.getByRole("button", { name: "New worktree", exact: true }).click()
+  await page.getByRole("button", { name: "Worktree", exact: true }).press("ArrowRight")
+  const existing = page.getByRole("dialog", { name: "Worktree", exact: true })
+  const worktreeSearch = existing.getByRole("searchbox", { name: "Search worktrees", exact: true })
+  await expect(worktreeSearch).toBeFocused()
+  await worktreeSearch.fill("feature-11")
+  await expect(existing.getByRole("menuitem", { name: "feature-11", exact: true })).toBeVisible()
+  await existing.getByRole("menuitem", { name: "feature-11", exact: true }).click()
+  await expect(existing).toBeHidden()
+  await expect(page.getByRole("button", { name: "feature-11", exact: true })).toBeVisible()
+  await expect(editor).toHaveText("Keep this worktree draft")
+  await expect(editor).toBeFocused()
+  await page.getByRole("button", { name: "feature-11", exact: true }).click()
+  await page.getByRole("button", { name: "Worktree", exact: true }).click()
+  await page.getByRole("menuitem", { name: "View all", exact: true }).click()
+  await expect(
+    page.getByTestId("settings-screen").getByRole("tab", { name: "Worktrees", exact: true }),
+  ).toHaveAttribute("aria-selected", "true")
 })
 
 test("new sessions retain the saved reasoning models across navigation and host settings updates", async ({ page }) => {
@@ -100,7 +232,7 @@ test("new sessions retain the saved reasoning models across navigation and host 
     onPrompt: ({ body }) => prompts.push(body),
   })
   const picker = page.locator('[data-action="composer-model"]')
-  await expect.poll(() => reads.length).toBe(1)
+  await expect.poll(() => reads.length, { timeout: APP_READY_TIMEOUT }).toBe(1)
   await expect(page.getByText("Catalog First", { exact: true })).toHaveCount(0)
   ready.resolve()
   const workspace = await opening
@@ -123,11 +255,12 @@ test("new sessions retain the saved reasoning models across navigation and host 
       },
     },
   })
+  await expect(page.getByRole("button", { name: "Reasoning mode", exact: true })).toHaveText("Dual · saved-s1")
   intelligence.settings.principal = { providerID: "red-router", id: "next-s2" }
   await workspace.push([
     { id: "evt_intelligence_settings_changed", created: T0 + 1, type: "intelligence.settings.updated", data: {} },
   ])
-  await expect.poll(() => reads.filter((id) => id === undefined).length).toBe(2)
+  await expect.poll(() => reads.filter((id) => id === undefined).length, { timeout: APP_READY_TIMEOUT }).toBe(2)
   await expect(picker).toHaveText("Saved S2")
   await page
     .getByRole("navigation", { name: "Navigation", exact: true })

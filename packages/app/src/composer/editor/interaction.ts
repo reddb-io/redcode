@@ -77,6 +77,7 @@ export function createComposerEditor(input: {
 }) {
   let editor: HTMLElement | undefined
   let fileInput: HTMLInputElement | undefined
+  const focus = { cursor: undefined as number | undefined }
   const draft = createComposerEditorActions(input.store)
   const [state, setState] = input.state ?? createComposerEditorState(draft.state.mode)
 
@@ -319,9 +320,13 @@ export function createComposerEditor(input: {
   })
 
   const restoreFocus = (cursor = draft.state.cursor ?? promptLength(draft.state.prompt)) => {
+    // A native frame can request focus before its service-owned editor mounts.
+    focus.cursor = cursor
     requestAnimationFrame(() => {
-      editor?.focus()
-      setEditorCursor(editor, cursor)
+      if (!editor?.isConnected || focus.cursor === undefined) return
+      editor.focus()
+      setEditorCursor(editor, focus.cursor)
+      focus.cursor = undefined
     })
   }
 
@@ -445,6 +450,7 @@ export function createComposerEditor(input: {
     setEditor(element: HTMLElement) {
       editor = element
       input.onEditor?.(element)
+      if (focus.cursor !== undefined) restoreFocus(focus.cursor)
     },
     restoreFocus,
     onInput(value: string, prompt?: ComposerPersistedState["prompt"], cursor?: number) {
