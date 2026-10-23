@@ -1,0 +1,175 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-23",
+  "recordedAtUTC": "2026-10-23T11:53:30.127391+00:00",
+  "baselineCommit": "3dcadb048f48bb026210dbff5203005b8b87cf7e",
+  "implementationCommit": "3b7f6ea1db1f24ba8d14599bdcafbbf55c668b8f",
+  "packagesTree": "051b05b6625eef6480335f425097ccfed2ffde43",
+  "branch": "main",
+  "published": false,
+  "completeParity": false,
+  "platform": {
+    "os": "Linux",
+    "arch": "x86_64",
+    "bun": "1.4.4"
+  },
+  "checks": [
+    {
+      "name": "catalog, cache, plugin draft ownership, native adapters, RedRouter, OpenCode, usage and model materialization",
+      "cwd": "packages/core",
+      "command": "bun test test/models.test.ts test/plugin/models-dev.test.ts test/plugin/provider-red-router.test.ts test/plugin/provider-opencode.test.ts test/session-usage.test.ts test/aisdk-native.test.ts test/catalog.test.ts",
+      "passed": 149,
+      "failed": 0,
+      "files": 7,
+      "exitCode": 0,
+      "log": "core"
+    },
+    {
+      "name": "shared model presentation",
+      "cwd": "packages/schema",
+      "command": "bun test test/model-presentation.test.ts",
+      "passed": 20,
+      "failed": 0,
+      "files": 1,
+      "exitCode": 0,
+      "log": "schema"
+    },
+    {
+      "name": "canonical final lint and types",
+      "cwd": ".",
+      "command": "bun run check",
+      "successfulTasks": 27,
+      "totalTasks": 27,
+      "cachedTasks": 21,
+      "exitCode": 0,
+      "log": "check"
+    },
+    {
+      "name": "Client regeneration",
+      "cwd": "packages/client",
+      "command": "bun run generate",
+      "exitCode": 0,
+      "log": "generate"
+    },
+    {
+      "name": "committed generated Client stability",
+      "cwd": "packages/client",
+      "command": "bun run check:generated",
+      "exitCode": 0,
+      "log": "generated",
+      "note": "Executed after the implementation commit; left the checkout clean."
+    },
+    {
+      "name": "existing bundled V1 snapshot integrity",
+      "cwd": "packages/core",
+      "command": "bun run script/update-models-snapshot.ts --check",
+      "exitCode": 0,
+      "log": "snapshot"
+    }
+  ],
+  "publishedV2Response": {
+    "url": "https://models.dev/experimental/v2.0/api.json",
+    "archive": "/var/tmp/redcode-models-v2-current.json",
+    "sha256": "a7dbd58e1c539dd46e86c2b063ae8d7f4cced41cd0cc8b8bd308d662438dc1ae",
+    "bytes": 9803048,
+    "providers": 228,
+    "offerings": 9189,
+    "types": {
+      "chat": 8336,
+      "decision": 71,
+      "image": 282,
+      "video": 116,
+      "transcription": 91,
+      "speech": 103,
+      "embedding": 126,
+      "reranking": 32,
+      "realtime": 32
+    },
+    "schemaReferenceHeadObserved": "496819aa7bd198b24d2d112b32ff43328a2c346e",
+    "note": "Repository HEAD is a schema reference observed separately; it is not asserted as the build revision of the live HTTP payload."
+  },
+  "evaluation": {
+    "cwd": "packages/core",
+    "inputOptions": {
+      "file": "/var/tmp/redcode-models-v2-current.json",
+      "fetch": false,
+      "snapshot": false
+    },
+    "storage": "Global.node replaced with tempGlobalLayer; temporary database and filesystem disposed with the runtime scope",
+    "result": {
+      "providers": 228,
+      "models": 9313,
+      "eligibleChatModels": 8353,
+      "selectedProtocols": {
+        "chat-completions": 6511,
+        "messages": 342,
+        "responses": 1362,
+        "generate-content": 74,
+        "cohere-chat": 17,
+        "converse": 181,
+        "interactions": 2
+      },
+      "knownTokenCosts": 7006,
+      "digest": "a7dbd58e1c539dd46e86c2b063ae8d7f4cced41cd0cc8b8bd308d662438dc1ae",
+      "schemaRoundTrips": 9313
+    },
+    "log": "live",
+    "note": "Real service normalization and public Model.Info schema encode/decode. Eligible routes have a declared locally registered adapter and limits; no credentials, inference, pricing invoice or deployed browser validation were used.",
+    "command": "bun -e '\nimport { Effect, Schema } from \"effect\"\nimport { AppNodeBuilder } from \"./src/effect/app-node-builder\"\nimport { ModelsDev } from \"./src/models-dev\"\nimport { Model } from \"./src/model\"\nimport { Global } from \"@opencode/util/global\"\nimport { tempGlobalLayer } from \"./test/fixture/global\"\nconst layer = AppNodeBuilder.build(ModelsDev.configured({ file: \"/var/tmp/redcode-models-v2-current.json\", fetch: false, snapshot: false }), [Global.node.replace(tempGlobalLayer)])\nawait Effect.runPromise(Effect.gen(function* () {\n const catalog = yield* ModelsDev.Service\n const providers = yield* catalog.get()\n const models = providers.flatMap((provider) => provider.models)\n for (const model of models) Schema.decodeUnknownSync(Model.Info)(Schema.encodeSync(Model.Info)(model))\n console.log(JSON.stringify({ providers: providers.length, models: models.length, eligibleChatModels: models.filter((model) => model.enabled).length, selectedProtocols: Object.fromEntries([...new Set(models.map((model) => model.catalog?.protocol).filter(Boolean))].map((protocol) => [protocol, models.filter((model) => model.catalog?.protocol === protocol).length])), knownTokenCosts: models.filter((model) => model.cost.length).length, digest: models[0]?.catalog?.digest, schemaRoundTrips: models.length }))\n}).pipe(Effect.scoped, Effect.provide(layer)))\n' > /var/tmp/redcode-catalog-live-v2-evaluation-complete.log 2>&1"
+  },
+  "bundledV1": {
+    "source": "https://models.dev/api.json?type=all",
+    "sha256": "9fbe38b62dfdb0d302e4bbcc2ec80298eac642559280f9d109b7814b84446c5d",
+    "providers": 230,
+    "models": 8909,
+    "decisionModels": 62
+  },
+  "behaviorCovered": [
+    "Valid V1 cache behavior and byte-identical refresh suppression remain intact; legacy caches without a digest still upgrade.",
+    "Configured V2 sources keep exact model IDs and separate canonical identities, payload digest and format.",
+    "Per-API capabilities preserve true, false and unknown values; disabling tools or reasoning clears inherited controls.",
+    "Remote SDK declarations and specialized APIs do not authorize executable chat adapters.",
+    "Prices retain modality, unit, currency, denominator, cache TTLs, reasoning rates, overrides and multipliers.",
+    "Missing or nonrepresentable token estimates remain absent; free requires known zero input/output/cache and no declared auxiliary charges.",
+    "Structurally invalid catalogs, negative base prices and invalid consumed capability types cannot replace a valid cache.",
+    "Positive effort declarations do not enable cache optimization; replay_reasoning is not converted to requireReasoning.",
+    "Recursive catalog JSON arrays remain editable in owned plugin drafts without changing shared source data or sibling Locations."
+  ],
+  "limits": [
+    "Default sources and bundled snapshot remain V1; V2 is available through configured sources.",
+    "Only unconditional token rates supported by the legacy estimator are projected to Model.Info.cost. Conditional/media evaluation and historical numeric cost projections remain migration work.",
+    "Unknown or unsupported estimates must not be interpreted as zero billing; no invoice or provider availability verification occurred.",
+    "Models without a local declared chat adapter or usable published limits are not eligible chat routes. Media, evaluation, decision and reranking invocation remain separate integration work.",
+    "The 20 Schema tests are the presentation subset. Existing broad contract-hygiene debt is recorded in task-integration-application-2026-10-23-validation.json and was not fixed in this batch."
+  ],
+  "logs": {
+    "core": {
+      "path": "/var/tmp/redcode-catalog-core-tests-complete.log",
+      "sha256": "f88d802647f7b24cb0981eb616e137cb3c6628d32684a4349a61dfcd9b17b71c"
+    },
+    "schema": {
+      "path": "/var/tmp/redcode-catalog-schema-tests.log",
+      "sha256": "734419bab0ddf95b98da18c7c13056c9f7050e2e8db52c0eac11b46f35ad4995"
+    },
+    "check": {
+      "path": "/var/tmp/redcode-catalog-check-complete.log",
+      "sha256": "c480a111808d59a236c0e9a6bafccea79e4b7d5288cca1ed188be5e964657b12"
+    },
+    "generate": {
+      "path": "/var/tmp/redcode-catalog-generate.log",
+      "sha256": "669f6f21dd85b213958bef91fe6ac15f2851f309f5f3eda8197ee0a85a2643b8"
+    },
+    "generated": {
+      "path": "/var/tmp/redcode-catalog-generated-check.log",
+      "sha256": "2650c77b0592cdd0c6d59af0c2090bde6b22503e039643b7226f02ebc545e022"
+    },
+    "snapshot": {
+      "path": "/var/tmp/redcode-catalog-snapshot-check.log",
+      "sha256": "6c9ae658dd364e45f11d9367ba24d62ed3d4d6d308ce9c73ffbce5a511ae86c9"
+    },
+    "live": {
+      "path": "/var/tmp/redcode-catalog-live-v2-evaluation-complete.log",
+      "sha256": "e16304d051be528f53ace95ef5d0d831114d1bd45ae2ef199300486dd89c45c4"
+    }
+  }
+}
