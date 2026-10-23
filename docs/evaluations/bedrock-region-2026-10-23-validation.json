@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-23",
+  "recordedAtUTC": "2026-10-23T22:02:17.737216+00:00",
+  "baselineCommit": "2a093f69198b685353ed116200307bf5571a09f9",
+  "testedPackagesTree": "f91c6fa0202f59fcf70d0d3b898c4027cd708a1d",
+  "branch": "main",
+  "published": false,
+  "completeParity": false,
+  "source": {
+    "repository": "anomalyco/opencode",
+    "number": 58531,
+    "url": "https://github.com/anomalyco/opencode/pull/58531",
+    "stateObserved": "open",
+    "mergedObserved": false,
+    "head": "a6c3d9e7766a8bc1b076bdc7cebb0e907efbb66d",
+    "base": "09e6ddf630b5f2466addf6044b79a60bd48bac03"
+  },
+  "problem": "Bedrock model endpoint interpolation read only process.env after provider and credential settings were merged; earlier normalization could freeze a model region before credential overrides.",
+  "implementation": [
+    "Keep templates during AISDKNative settings normalization.",
+    "Resolve Bedrock AWS_REGION from final overlays using the native adapter region policy.",
+    "Load the Bedrock auth helper only for a native Bedrock endpoint with that placeholder.",
+    "Keep unrelated adapters environment-driven and reject other unresolved variables."
+  ],
+  "checks": [
+    {
+      "name": "pre-fix negative control",
+      "cwd": "packages/core",
+      "command": "bun test test/model-resolver.test.ts test/config/provider.test.ts --test-name-pattern 'Mantle endpoint templates|Mantle catalog URL|other adapters controlled'",
+      "exitCode": 1,
+      "passed": 1,
+      "failed": 6,
+      "filteredOut": 85,
+      "assertions": 3,
+      "log": "before"
+    },
+    {
+      "name": "same focused cases after fix",
+      "cwd": "packages/core",
+      "command": "bun test test/model-resolver.test.ts test/config/provider.test.ts --test-name-pattern 'Mantle endpoint templates|Mantle catalog URL|other adapters controlled'",
+      "exitCode": 0,
+      "passed": 7,
+      "failed": 0,
+      "filteredOut": 85,
+      "assertions": 7,
+      "log": "after"
+    },
+    {
+      "name": "expanded Core verification including additional static-credential and unresolved-variable cases",
+      "cwd": "packages/core",
+      "command": "bun test test/model-resolver.test.ts test/aisdk-native.test.ts test/config/provider.test.ts test/plugin/provider-amazon-bedrock.test.ts",
+      "exitCode": 0,
+      "passed": 129,
+      "failed": 0,
+      "assertions": 540,
+      "log": "core"
+    },
+    {
+      "name": "canonical lint and type checks",
+      "cwd": ".",
+      "command": "bun run check",
+      "exitCode": 0,
+      "successfulTasks": 27,
+      "totalTasks": 27,
+      "cachedTasks": 21,
+      "log": "check"
+    }
+  ],
+  "logs": {
+    "before": {
+      "path": "/var/tmp/redcode-bedrock-region-before.log",
+      "sha256": "d0ec50f613e40f3495fe82e30147c6eec22d23b0d8a3699f4edde5c14d01bba8",
+      "bytes": 17852
+    },
+    "after": {
+      "path": "/var/tmp/redcode-bedrock-region-after.log",
+      "sha256": "b1970a5e38426963ae151bc32a42cb239e5ac2bd5a6f9490c1126fd838764c23",
+      "bytes": 988
+    },
+    "core": {
+      "path": "/var/tmp/redcode-bedrock-region-core.log",
+      "sha256": "d00490ef6e05340f179fa102bb58807bc672b3cf7ab8437a823d8d971753552f",
+      "bytes": 13256
+    },
+    "check": {
+      "path": "/var/tmp/redcode-bedrock-region-check.log",
+      "sha256": "c5be33ed53cd8f6432d2b0034d5c7518559da42e1e86e41b9fefb139c0ecc434",
+      "bytes": 4396
+    }
+  },
+  "coveredContracts": [
+    "Actual ConfigProviderPlugin and ModelResolver service path inherits provider region without AWS_REGION.",
+    "Credential metadata wins over ambient region.",
+    "Credential configuration overrides model and credential metadata regions after normalization.",
+    "Static credential region and native environment/default precedence.",
+    "Native adapter identity works for custom provider IDs.",
+    "Other adapters do not reinterpret their region setting as AWS_REGION.",
+    "Unresolved non-region variables still fail explicitly.",
+    "Normalized catalog entries retain their unresolved template without request-time mutation."
+  ],
+  "limits": [
+    "No paid inference or live Bedrock API request. No assertion of provider access or availability.",
+    "No browser/UI change in this batch; tests exercise model construction and configuration resolution.",
+    "No installed service restart, push or publication.",
+    "No public Protocol/HttpApi surface change; generated Client files were not edited.",
+    "The catalog remains exclusively V2. No catalog snapshot or V1 reader was introduced."
+  ]
+}
