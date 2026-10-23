@@ -10,72 +10,6 @@ import type { Snapshot } from "../models-dev.js"
 const json = Schema.Record(Schema.String, Schema.Json)
 const price = Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))
 const optional = Schema.optional
-const tokenPrice = Money.USDPerMillionTokens.check(Schema.isGreaterThanOrEqualTo(0))
-const Cost = Schema.Struct({
-  input: tokenPrice,
-  output: tokenPrice,
-  cache_read: optional(tokenPrice),
-  cache_write: optional(tokenPrice),
-})
-const Tier = Schema.Struct({ type: Schema.Literal("context"), size: Schema.Finite })
-const LegacyCost = Schema.Struct({
-  ...Cost.fields,
-  tiers: optional(Schema.Array(Schema.Struct({ ...Cost.fields, tier: Tier }))),
-  context_over_200k: optional(Cost),
-})
-const ReasoningOption = Schema.Union([
-  Schema.Struct({
-    type: Schema.Literal("effort"),
-    values: optional(Schema.Array(Schema.Union([Schema.String, Schema.Null]))),
-  }),
-  Schema.Struct({ type: Schema.Literal("toggle") }),
-  Schema.Struct({ type: Schema.Literal("budget_tokens"), min: optional(Schema.Finite), max: optional(Schema.Finite) }),
-])
-export const SourceModel = Schema.Struct({
-  id: Schema.String,
-  type: optional(Schema.String),
-  canonical_model_id: optional(Schema.String),
-  name: Schema.String,
-  family: optional(Schema.String),
-  release_date: Schema.String,
-  attachment: Schema.Boolean,
-  reasoning: Schema.Boolean,
-  reasoning_options: optional(Schema.Array(ReasoningOption)),
-  temperature: optional(Schema.Boolean),
-  tool_call: Schema.Boolean,
-  interleaved: optional(Schema.Json),
-  cost: optional(LegacyCost),
-  limit: Schema.Struct({ context: Schema.Finite, input: optional(Schema.Finite), output: Schema.Finite }),
-  modalities: optional(Schema.Struct({ input: Schema.Array(Schema.String), output: Schema.Array(Schema.String) })),
-  experimental: optional(
-    Schema.Struct({
-      modes: optional(
-        Schema.Record(
-          Schema.String,
-          Schema.Struct({
-            cost: optional(LegacyCost),
-            provider: optional(
-              Schema.Struct({ body: optional(json), headers: optional(Schema.Record(Schema.String, Schema.String)) }),
-            ),
-          }),
-        ),
-      ),
-    }),
-  ),
-  status: optional(Schema.Literals(["alpha", "beta", "deprecated"])),
-  provider: optional(Schema.Struct({ npm: optional(Schema.String), api: optional(Schema.String) })),
-})
-export type SourceModel = typeof SourceModel.Type
-export const SourceProvider = Schema.Struct({
-  id: Schema.String,
-  name: Schema.String,
-  env: Schema.Array(Schema.String),
-  npm: Schema.String,
-  api: optional(Schema.String),
-  models: Schema.Record(Schema.String, SourceModel),
-})
-export type SourceProvider = typeof SourceProvider.Type
-
 const Reasoning = Schema.StructWithRest(
   Schema.Struct({
     supported: Schema.Boolean,
@@ -181,13 +115,20 @@ const Offering = Schema.Struct({
     }),
   ),
 })
-const ProviderRecord = Schema.Struct({
-  id: Schema.String,
-  name: Schema.String,
-  env: Schema.Array(Schema.String),
-  models: Schema.Record(Schema.String, Offering),
-})
-export const Document = Schema.Record(Schema.String, Schema.Union([SourceProvider, ProviderRecord]))
+const ProviderRecord = Schema.StructWithRest(
+  Schema.Struct({
+    id: Schema.String,
+    name: Schema.String,
+    env: Schema.Array(Schema.String),
+    models: Schema.Record(Schema.String, Offering),
+  }),
+  [json],
+).check(
+  Schema.makeFilter((provider) =>
+    provider.npm === undefined ? undefined : "Only models.dev V2 catalogs are supported",
+  ),
+)
+export const Document = Schema.Record(Schema.String, ProviderRecord)
 
 /** Protocol preference is local policy. Unrecognized declarations remain descriptive. */
 const protocols = [
@@ -201,9 +142,9 @@ const protocols = [
   "workers-ai-run",
 ]
 
-// Existing non-native integrations stay executable only through these locally trusted adapters.
+// Non-native integrations are executable only through these locally trusted adapters.
 // A catalog SDK declaration alone never authorizes loading an arbitrary package.
-const legacyAdapters: Readonly<Record<string, string>> = {
+const trustedAdapters: Readonly<Record<string, string>> = {
   gitlab: "gitlab-ai-provider",
   "sap-ai-core": "@jerome-benoit/sap-ai-provider-v2",
   watsonx: "watsonx-ai-provider",
@@ -232,7 +173,7 @@ export function normalize(provider: typeof ProviderRecord.Type, digest: string):
       protocols.flatMap((protocol) => {
         const entry = apis[protocol]
         const pkg = entry?.sdk?.aisdk
-        return pkg && pkg === legacyAdapters[provider.id] ? [{ protocol, entry, pkg: Provider.aisdk(pkg) }] : []
+        return pkg && pkg === trustedAdapters[provider.id] ? [{ protocol, entry, pkg: Provider.aisdk(pkg) }] : []
       })[0]
     const modes = [
       { id: offering.id, name: offering.name, mode: undefined },

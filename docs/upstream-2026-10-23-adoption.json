@@ -43,7 +43,7 @@
       "upstream_head": "5d3eb1aae1631ca6aad883a79c273caea9be1234",
       "status": "partial",
       "local_path": "packages/core/src/models-dev/catalog.ts",
-      "evidence_or_next_step": "Native V1/V2 normalization preserves per-API declarations, capabilities and detailed unit prices. Conditional price evaluation and validated default V2 cutover are implemented. Specialized adapter execution for media/decision/rerank remains separate work. See model catalog validation."
+      "evidence_or_next_step": "Native V2-only normalization preserves per-API declarations, capabilities and detailed unit prices. Conditional price evaluation and validated default V2 cutover are implemented. Specialized adapter execution for media/decision/rerank remains separate work. See model catalog validation."
     },
     {
       "repository": "anomalyco/models.dev",
@@ -55,7 +55,7 @@
       "upstream_head": "a5f15deac613e3a87aa3c9f78045bd1a0787e21c",
       "status": "partial",
       "local_path": "packages/core/src/models-dev/catalog.ts",
-      "evidence_or_next_step": "Native V1/V2 normalization preserves per-API declarations, capabilities and detailed unit prices. Conditional price evaluation and validated default V2 cutover are implemented. Specialized adapter execution for media/decision/rerank remains separate work. See model catalog validation."
+      "evidence_or_next_step": "Native V2-only normalization preserves per-API declarations, capabilities and detailed unit prices. Conditional price evaluation and validated default V2 cutover are implemented. Specialized adapter execution for media/decision/rerank remains separate work. See model catalog validation."
     },
     {
       "repository": "anomalyco/models.dev",
@@ -127,7 +127,7 @@
       "upstream_head": "dcd2aa23601444e691effd24cd1e7d00ded87ccb",
       "status": "partial",
       "local_path": "packages/core/src/models-dev/catalog.ts",
-      "evidence_or_next_step": "Native V1/V2 normalization preserves per-API declarations, capabilities and detailed unit prices. Conditional price evaluation and validated default V2 cutover are implemented. Specialized adapter execution for media/decision/rerank remains separate work. See model catalog validation."
+      "evidence_or_next_step": "Native V2-only normalization preserves per-API declarations, capabilities and detailed unit prices. Conditional price evaluation and validated default V2 cutover are implemented. Specialized adapter execution for media/decision/rerank remains separate work. See model catalog validation."
     },
     {
       "repository": "anomalyco/models.dev",
@@ -749,7 +749,7 @@
         "decisionModels": 71,
         "format": 2
       },
-      "evidence": "Pinned V2 snapshot with separate legacy compatibility identities. update-models-snapshot --check and the previous-catalog regression comparison pass; see evaluations/catalog-metering-2026-10-23-validation.json."
+      "evidence": "Exclusively V2 snapshot. V1 normalization, fallback sources and compatibility aliases were removed; see evaluations/v2-only-catalog-2026-10-23-validation.json."
     },
     {
       "id": "task-aware-candidate-application",
@@ -761,7 +761,7 @@
       "id": "versioned-model-catalog",
       "status": "validated",
       "path": "packages/core/src/models-dev/catalog.ts",
-      "evidence": "149 Core and 20 Schema presentation tests; canonical bun run check passed all 27 tasks. The published V2 response normalized 228 providers and 9,313 entries with public-schema round trips in isolated storage. This earlier batch kept V2 opt-in; see evaluations/model-catalog-2026-10-23-validation.json. The later catalog-metering batch adopts a pinned V2 default while retaining configured-source priority, V1 fallback and fixed legacy identities."
+      "evidence": "The current catalog boundary is exclusively V2 across files, cache, network, snapshot and public metadata; see evaluations/v2-only-catalog-2026-10-23-validation.json. Earlier validation remains archived in model-catalog and catalog-metering records."
     },
     {
       "id": "conditional-cost-assessment",
@@ -791,7 +791,13 @@
       "id": "default-catalog-and-observed-meters",
       "status": "validated",
       "path": "packages/core/src/session/usage.ts",
-      "evidence": "V2 is the default bundled and public source; partial capabilities inherit correctly, trusted legacy adapters and stable identities are preserved. HTTP/SSE fixtures exercise observed Anthropic cache TTLs, OpenAI Chat audio and Gemini modality/cache usage through pricing. Missing observations remain unknown. See evaluations/catalog-metering-2026-10-23-validation.json for checks and limits."
+      "evidence": "V2 is the only catalog format and the sole public source; partial capabilities inherit correctly and execution uses locally trusted adapters. HTTP/SSE fixtures exercise observed Anthropic cache TTLs, OpenAI Chat audio and Gemini modality/cache usage through pricing. Missing observations remain unknown. See catalog-metering and v2-only-catalog validation."
+    },
+    {
+      "id": "mandatory-v2-catalog",
+      "status": "validated",
+      "path": "packages/core/src/models-dev.ts",
+      "evidence": "Only V2 is accepted for files, HTTP, caches, committed snapshots and public metadata. Removed V1 normalization and public fallbacks, compatibility aliases and format-1 metadata. Tests cover rejection of V1/mixed documents, stale-cache discard, explicit-file errors and keeping a good V2 cache after incompatible refresh. See evaluations/v2-only-catalog-2026-10-23-validation.json."
     }
   ],
   "remaining": [

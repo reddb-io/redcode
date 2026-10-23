@@ -18,7 +18,7 @@ conserva os PRs selecionados e as pendências.
 | Snapshot Git    | Sockets e outros arquivos especiais não abortam a captura de arquivos regulares. Um caminho antes rastreado conserva a entrada anterior no índice; links simbólicos legítimos continuam capturados.                                                                                        |
 | Credenciais     | `credential.update` aceita `value`, `label` ou ambos. Rotacionar mantém ID e label quando omitido; alterar só o label mantém o segredo. O Client foi regenerado.                                                                                                                           |
 | Recovery        | O dono da execução distingue shutdown de cancelamento humano. Shutdown conserva os registros de recuperação e não publica resultado cancelado nem grava a atividade como cancelada.                                                                                                        |
-| Catálogo        | Snapshot V1 atualizado: 230 provedores, 8.909 ofertas, 62 de decisão. Refresh publica um evento global para atualizar os catálogos de outros Locations.                                                                                                                                    |
+| Catálogo        | Catálogo exclusivamente V2: 228 provedores, 9.199 ofertas na fonte e 71 de decisão. Refresh publica um evento global para atualizar os catálogos de outros Locations.                                                                                                                                    |
 | Integração      | O shell emite recibo de validação ligado à sessão, tarefa, contrato, SHA, árvore, checkout, comando e horários observados. O aceite da tarefa exige um recibo compatível com o candidato atual.                                                                                            |
 
 Solicitações MCP globais sem Session continuam uma superfície distinta; este
@@ -98,23 +98,27 @@ O objetivo recusa conclusão enquanto houver aplicações pendentes, inclusive d
 tarefas canceladas, ou candidatos aceitos sem recibo de aplicação correspondente.
 A interface Agents por objetivo e a integração entre hosts permanecem pendentes.
 
-## Catálogo V1/V2 compatível
+## Catálogo exclusivamente V2
 
-O catálogo empacotado e a primeira fonte pública agora usam
-`https://models.dev/experimental/v2.0/api.json`. `REDCODE_MODELS_URL` e
-`models.sources` continuam tendo precedência; os dois endpoints V1 permanecem
-como fallback. O snapshot fixo conserva os bytes e SHA-256 da resposta validada,
-sem depender de rede durante o build. Isso não comprova disponibilidade por conta
-ou credencial.
+Arquivo, rede, cache, snapshot e metadados públicos aceitam somente V2. A única
+fonte pública é `https://models.dev/experimental/v2.0/api.json`.
+`REDCODE_MODELS_URL` e `models.sources` continuam tendo precedência, com a mesma
+exigência de formato. Cache incompatível é descartado. Um arquivo explicitamente
+configurado que não seja V2 falha, sem cair silenciosamente no catálogo empacotado.
+O snapshot fixo conserva os bytes e SHA-256 da resposta validada e dispensa rede
+durante o build.
+
+O parser V1, seus preços/opções e os dados de compatibilidade foram removidos.
+Não há fallback público V1 nem injeção de aliases históricos. A fonte atual define
+os provedores e IDs disponíveis. `Model.Catalog.format` e o Client gerado aceitam
+somente o literal `2`; isso não recalcula os valores históricos de uso.
 
 Overrides de capacidades podem omitir `supported` e herdar o valor da oferta.
-GitLab, SAP AI Core e Watsonx mantêm apenas seus adapters legados conhecidos
-localmente; um nome de SDK vindo do catálogo não autoriza carregar código novo.
-Identidades antigas ausentes na resposta V2 ficam em um conjunto fixo de
-compatibilidade, aplicado ao catálogo público padrão. Arquivos e fontes próprias
-não recebem esses acréscimos. O script `evaluate-catalog-cutover.ts` compara uma
-resposta arquivada com o catálogo anterior e falha se perder uma rota de chat
-anterior com limites utilizáveis.
+GitLab, SAP AI Core e Watsonx usam apenas seus adapters conhecidos localmente;
+um nome de SDK vindo do catálogo não autoriza carregar código novo. Isso é uma
+política de execução dos SDKs declarados no V2. O script
+`evaluate-catalog-cutover.ts` compara duas respostas V2 arquivadas e falha se
+perder uma rota anterior de chat com limites utilizáveis.
 
 `Model.Info.catalog` conserva a versão do formato e o SHA-256 dos bytes recebidos,
 as APIs declaradas com os SDKs e as capacidades efetivas de cada protocolo, os
@@ -146,8 +150,7 @@ Uma lista `cost` vazia representa preço ausente ou estimativa não representáv
 O classificador compartilhado de gratuidade exige entrada, saída e cache conhecidos
 como zero, além de ausência de cobranças adicionais declaradas. O consumo e a
 contabilidade histórica continuam numéricos: isso ainda não constitui cálculo
-completo de tarifas condicionais/mídia nem comprova cobrança real. As projeções
-históricas V1 e os demais consumidores de custos continuam uma etapa de migração.
+completo de tarifas condicionais/mídia nem comprova cobrança real. Os históricos de uso conservam os valores registrados, sem reprecificação.
 
 As entradas de arquivo, rede e cache passam por validação estrutural. Uma resposta
 HTTP 200 com JSON inválido para o catálogo, preço base negativo ou capacidade

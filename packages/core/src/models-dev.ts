@@ -1,7 +1,6 @@
 import { Cause, Context, Duration, Effect, Layer, Option, Schedule, Schema, Semaphore } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import { ModelsDev } from "@opencode/schema/models-dev"
-import { Money } from "@opencode/schema/money"
 import { App } from "./app.js"
 import { Hash } from "@opencode/util/hash"
 import { FSUtil } from "@opencode/util/fs-util"
@@ -9,23 +8,13 @@ import { Bus } from "./bus.js"
 import { makeGlobalNode } from "@opencode/util/effect/app-node"
 import { httpClient } from "@opencode/util/effect/app-node-platform"
 import { Model } from "./model.js"
-import { AISDKNative } from "./aisdk-native.js"
 import { Provider } from "./provider.js"
-import { Variant } from "./variant.js"
 import { KV } from "./kv.js"
 import { ModelsDevCatalog } from "./models-dev/catalog.js"
-import compatibilityText from "./models-dev/compatibility.txt" with { type: "text" }
 import snapshotText from "./models-dev/snapshot.txt" with { type: "text" }
 
 export const CatalogModelStatus = Schema.Literals(["alpha", "beta", "deprecated"])
 export type CatalogModelStatus = typeof CatalogModelStatus.Type
-
-type SourceModel = ModelsDevCatalog.SourceModel
-type SourceProvider = ModelsDevCatalog.SourceProvider
-
-const compatibilityCatalog = Schema.decodeUnknownSync(Schema.fromJsonString(ModelsDevCatalog.Document))(
-  compatibilityText,
-)
 
 export type Snapshot = {
   readonly info: Provider.Info
@@ -33,218 +22,8 @@ export type Snapshot = {
   readonly environment: readonly string[]
 }
 
-function nativePackage(provider: SourceProvider, model?: SourceModel) {
-  const npm = model?.provider?.npm ?? provider.npm
-  return AISDKNative.native(npm, { providerID: provider.id, modelID: model?.id }) ?? Provider.aisdk(npm)
-}
-
-export function normalize(
-  input: typeof ModelsDevCatalog.Document.Type,
-  digest: string,
-  retainLegacy = false,
-): readonly Snapshot[] {
-  const providers: Snapshot[] = []
-  for (const item of Object.values(input)) {
-    if (!("npm" in item)) {
-      providers.push(...ModelsDevCatalog.normalize(item, digest))
-      continue
-    }
-    const providerID = Provider.ID.make(item.id)
-    const packageName = nativePackage(item)
-    const info = {
-      id: providerID,
-      name: item.name,
-      activation: "auto",
-      package: packageName,
-      ...(item.api && packageName !== "@opencode/ai/providers/cloudflare-workers-ai"
-        ? { settings: { baseURL: item.api } }
-        : {}),
-    } satisfies Provider.Info
-    const models: Model.Info[] = []
-    for (const model of Object.values(item.models)) {
-      const baseCost = cost(model.cost)
-      const id = Model.ID.make(model.id)
-      const base = modelInfo(item, id, model, { cost: baseCost, digest })
-      const variants = model.reasoning
-        ? Variant.resolve({ ...base, package: nativePackage(item, model) }, supports(model))
-        : []
-      models.push({
-        ...base,
-        variants,
-        ...(variants.length ? { reasoningVariantIDs: variants.map((variant) => variant.id) } : {}),
-      })
-      for (const [mode, options] of Object.entries(model.experimental?.modes ?? {})) {
-        const modeID = Model.ID.make(`${model.id}-${mode}`)
-        models.push(
-          modelInfo(item, modeID, model, {
-            name: modeName(model, mode),
-            digest,
-            cost: mergeCost(baseCost, options.cost),
-            request: options.provider,
-            variants,
-          }),
-        )
-      }
-    }
-    providers.push({ info, models, environment: [...item.env] })
-  }
-  if (!retainLegacy || Object.values(input).every((provider) => "npm" in provider)) return providers
-  // Keep stable identities from the pinned pre-cutover catalog without trusting remote SDK names.
-  for (const legacy of normalize(compatibilityCatalog, bodyDigest(compatibilityText))) {
-    const current = providers.find((provider) => provider.info.id === legacy.info.id)
-    if (!current) {
-      providers.push(legacy)
-      continue
-    }
-    const ids = new Set(current.models.map((model) => model.id))
-    const index = providers.indexOf(current)
-    providers[index] = {
-      ...current,
-      models: [...current.models, ...legacy.models.filter((model) => !ids.has(model.id))],
-    }
-  }
-  return providers
-}
-
-function released(date: string) {
-  const time = Date.parse(date)
-  return Number.isFinite(time) ? time : 0
-}
-
-function cost(input: SourceModel["cost"]): Model.Info["cost"] {
-  if (!input) return []
-  const base = {
-    input: input?.input ?? Money.USDPerMillionTokens.zero,
-    output: input?.output ?? Money.USDPerMillionTokens.zero,
-    cache: {
-      read: input?.cache_read ?? Money.USDPerMillionTokens.zero,
-      write: input?.cache_write ?? Money.USDPerMillionTokens.zero,
-    },
-  }
-  return [
-    base,
-    ...(input?.tiers?.map((item) => ({
-      tier: item.tier,
-      input: item.input,
-      output: item.output,
-      cache: {
-        read: item.cache_read ?? Money.USDPerMillionTokens.zero,
-        write: item.cache_write ?? Money.USDPerMillionTokens.zero,
-      },
-    })) ?? []),
-    ...(input?.context_over_200k
-      ? [
-          {
-            tier: { type: "context" as const, size: 200_000 },
-            input: input.context_over_200k.input,
-            output: input.context_over_200k.output,
-            cache: {
-              read: input.context_over_200k.cache_read ?? Money.USDPerMillionTokens.zero,
-              write: input.context_over_200k.cache_write ?? Money.USDPerMillionTokens.zero,
-            },
-          },
-        ]
-      : []),
-  ]
-}
-
-function mergeCost(base: Model.Info["cost"], override: SourceModel["cost"] | undefined) {
-  if (!override) return base
-  const next = cost(override)
-  const [baseDefault, ...baseTiers] = base
-  const [nextDefault, ...nextTiers] = next
-  const tierKey = (item: Model.Info["cost"][number]) => `${item.tier?.type ?? "base"}:${item.tier?.size ?? 0}`
-  const merge = (left: Model.Info["cost"][number], right: Model.Info["cost"][number]) => ({
-    ...left,
-    ...right,
-    tier: right.tier ?? left.tier,
-    cache: { ...left.cache, ...right.cache },
-  })
-  const tiers = new Map(baseTiers.map((item) => [tierKey(item), item]))
-  for (const item of nextTiers) {
-    const current = tiers.get(tierKey(item))
-    tiers.set(tierKey(item), current ? merge(current, item) : item)
-  }
-  return [
-    merge(
-      baseDefault ?? {
-        input: Money.USDPerMillionTokens.zero,
-        output: Money.USDPerMillionTokens.zero,
-        cache: { read: Money.USDPerMillionTokens.zero, write: Money.USDPerMillionTokens.zero },
-      },
-      nextDefault,
-    ),
-    ...tiers.values(),
-  ]
-}
-
-function modeName(model: SourceModel, mode: string) {
-  return `${model.name} ${mode.charAt(0).toUpperCase()}${mode.slice(1)}`
-}
-
-function supports(model: SourceModel): readonly Variant.Support[] {
-  return (model.reasoning_options ?? []).map((option) =>
-    option.type === "effort"
-      ? {
-          type: "effort",
-          values: (option.values ?? []).filter((value): value is string => value !== null && value !== "null"),
-        }
-      : option,
-  )
-}
-
-function modelInfo(
-  provider: SourceProvider,
-  id: Model.ID,
-  model: SourceModel,
-  input: {
-    readonly digest: string
-    readonly name?: string
-    readonly cost?: Model.Info["cost"]
-    readonly request?: NonNullable<NonNullable<SourceModel["experimental"]>["modes"]>[string]["provider"]
-    readonly variants?: NonNullable<Model.Info["variants"]>
-  },
-): Model.Info {
-  const providerID = Provider.ID.make(provider.id)
-  const pkg = model.provider?.npm ? nativePackage(provider, model) : undefined
-  // Per model, so it never merges into a model that overrides to a different package.
-  const settings = {
-    ...(model.provider?.api ? { baseURL: model.provider.api } : {}),
-    ...(nativePackage(provider, model) === "@opencode/ai/providers/openai-compatible" ? { provider: providerID } : {}),
-  }
-  return {
-    id,
-    modelID: Model.ID.make(model.id),
-    providerID,
-    ...(model.type === undefined ? {} : { type: model.type }),
-    ...(model.canonical_model_id === undefined ? {} : { canonicalModelID: Model.ID.make(model.canonical_model_id) }),
-    name: input.name ?? model.name,
-    catalog: { format: 1, digest: input.digest, apis: {}, rates: [] },
-    compatibility: Model.compatibility(model.interleaved),
-    family: model.family ? Model.Family.make(model.family) : undefined,
-    package: pkg,
-    settings: Object.keys(settings).length === 0 ? undefined : settings,
-    capabilities: {
-      tools: model.tool_call,
-      ...(model.temperature === undefined ? {} : { temperature: model.temperature }),
-      reasoning: model.reasoning,
-      input: [...(model.modalities?.input ?? [])],
-      output: [...(model.modalities?.output ?? [])],
-    },
-    variants: [...(input.variants ?? [])],
-    ...(input.variants?.length ? { reasoningVariantIDs: input.variants.map((variant) => variant.id) } : {}),
-    time: { released: released(model.release_date) },
-    cost: (input.cost ?? cost(model.cost)).map((item) => ({
-      ...item,
-      tier: item.tier && { ...item.tier },
-      cache: { ...item.cache },
-    })),
-    status: model.status ?? "active",
-    enabled: true,
-    limit: { context: model.limit.context, input: model.limit.input, output: model.limit.output },
-    headers: input.request?.headers ? { ...input.request.headers } : undefined,
-    body: input.request?.body ? { ...input.request.body } : undefined,
-  }
+export function normalize(input: typeof ModelsDevCatalog.Document.Type, digest: string): readonly Snapshot[] {
+  return Object.values(input).flatMap((provider) => ModelsDevCatalog.normalize(provider, digest))
 }
 
 export { Event } from "@opencode/schema/models-dev"
@@ -279,24 +58,15 @@ const Cache = Schema.Struct({
 const CACHE_KEY = "models-dev:catalog"
 const STATE_KEY = "models-dev:sources"
 /** Public catalogs, tried after `REDCODE_MODELS_URL` and the `models.sources` configuration. */
-export const DEFAULT_SOURCES = [
-  "https://models.dev/experimental/v2.0/api.json",
-  "https://models.opencode.ai/api.json?type=all",
-  "https://models.dev/api.json?type=all",
-] as const
+export const DEFAULT_SOURCES = ["https://models.dev/experimental/v2.0/api.json"] as const
 
 /** Catalog URLs in the order they are tried: a URL without a `.json` path gets `/api.json`, duplicates go. */
 export function sources(configured: readonly (string | undefined)[]) {
   const urls = [...configured, ...DEFAULT_SOURCES].flatMap((value) => {
     const url = value?.trim() ? URL.parse(value.trim()) : null
     if (!url) return []
+    if (url.hostname === "models.dev" && url.pathname === "/") url.pathname = "/experimental/v2.0/api.json"
     if (!url.pathname.endsWith(".json")) url.pathname = `${url.pathname.replace(/\/+$/, "")}/api.json`
-    if (
-      ["models.opencode.ai", "models.dev"].includes(url.hostname) &&
-      url.pathname === "/api.json" &&
-      !url.searchParams.has("type")
-    )
-      url.searchParams.set("type", "all")
     return [url.toString()]
   })
   return [...new Set(urls)]
@@ -392,7 +162,7 @@ const bundledSnapshot = Effect.suspend(() =>
     ? Effect.succeed(bundledCache)
     : decodeCatalog(snapshotText).pipe(
         Effect.map((catalog) => {
-          bundledCache = normalize(catalog, bodyDigest(snapshotText), true)
+          bundledCache = normalize(catalog, bodyDigest(snapshotText))
           return bundledCache
         }),
       ),
@@ -421,12 +191,6 @@ export const layer = (options?: Options) =>
         }),
       )
 
-      const normalizeCatalog = (catalog: typeof ModelsDevCatalog.Document.Type, digest: string) =>
-        normalize(
-          catalog,
-          digest,
-          !options?.file && !options?.url?.trim() && !options?.sources?.some((source) => source.trim()),
-        )
       const list = sources([options?.url, ...(options?.sources ?? [])])
       const fetch = options?.fetch ?? true
       const userAgent = App.useragent(app)
@@ -529,12 +293,13 @@ export const layer = (options?: Options) =>
       })
 
       const loadFromFile = options?.file
-        ? fs.readFileString(options.file).pipe(
-            Effect.flatMap((text) =>
-              decodeCatalog(text).pipe(Effect.map((catalog) => normalizeCatalog(catalog, bodyDigest(text)))),
-            ),
-            Effect.orElseSucceed(() => undefined),
-          )
+        ? fs
+            .readFileString(options.file)
+            .pipe(
+              Effect.flatMap((text) =>
+                decodeCatalog(text).pipe(Effect.map((catalog) => normalize(catalog, bodyDigest(text)))),
+              ),
+            )
         : Effect.undefined
 
       // The bundled snapshot is the boot-time floor for the catalog; the
@@ -568,7 +333,7 @@ export const layer = (options?: Options) =>
         const fromFile = yield* loadFromFile
         if (fromFile) return fromFile
         const cached = options?.file ? undefined : yield* loadFromCache()
-        if (cached) return normalizeCatalog(cached.catalog, cached.bodyDigest)
+        if (cached) return normalize(cached.catalog, cached.bodyDigest)
         const bundled = yield* loadSnapshot
         if (bundled) return bundled
         if (!fetch) return []
@@ -579,7 +344,7 @@ export const layer = (options?: Options) =>
             return yield* fetchAndWrite()
           }),
         )
-        return normalizeCatalog(catalog.catalog, catalog.bodyDigest)
+        return normalize(catalog.catalog, catalog.bodyDigest)
       }).pipe(Effect.withSpan("ModelsDev.populate"), Effect.orDie)
 
       const [cachedGet, invalidate] = yield* Effect.cachedInvalidateWithTTL(populate, Duration.infinity)

@@ -47,24 +47,6 @@ if (checking) {
     metadata.decisionModels !== counts.decisionModels
   )
     throw new Error("Snapshot bytes or catalog counts do not match snapshot.meta.json; run update-models-snapshot")
-  const compatibilityText = await Bun.file(new URL("../src/models-dev/compatibility.txt", import.meta.url)).text()
-  const compatibility = Schema.decodeUnknownSync(Schema.fromJsonString(ModelsDevCatalog.Document))(compatibilityText)
-  const compatibilityMetadata = Schema.decodeUnknownSync(
-    Schema.fromJsonString(
-      Schema.Struct({
-        sha256: Schema.String,
-        providers: Schema.Int,
-        models: Schema.Int,
-      }),
-    ),
-  )(await Bun.file(new URL("../src/models-dev/compatibility.meta.json", import.meta.url)).text())
-  if (
-    compatibilityMetadata.sha256 !== new Bun.CryptoHasher("sha256").update(compatibilityText).digest("hex") ||
-    compatibilityMetadata.providers !== Object.keys(compatibility).length ||
-    compatibilityMetadata.models !==
-      Object.values(compatibility).flatMap((provider) => Object.values(provider.models)).length
-  )
-    throw new Error("Pinned compatibility catalog does not match compatibility.meta.json")
   console.log(`Verified committed models snapshot: ${counts.models} models, ${counts.decisionModels} decision models`)
   process.exit(0)
 }

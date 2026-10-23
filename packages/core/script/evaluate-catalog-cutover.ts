@@ -9,8 +9,8 @@ if (!file) throw new Error("Pass --file=<archived V2 catalog>")
 const text = await Bun.file(file).text()
 const document = Schema.decodeUnknownSync(Schema.fromJsonString(ModelsDevCatalog.Document))(text)
 const baselineFile = process.argv.find((arg) => arg.startsWith("--baseline="))?.slice("--baseline=".length)
-if (!baselineFile) throw new Error("Pass --baseline=<archived previous catalog>")
-const candidates = ModelsDev.normalize(document, ModelsDev.bodyDigest(text), true)
+if (!baselineFile) throw new Error("Pass --baseline=<archived previous V2 catalog>")
+const candidates = ModelsDev.normalize(document, ModelsDev.bodyDigest(text))
 const baselineText = await Bun.file(baselineFile).text()
 const baseline = ModelsDev.normalize(
   Schema.decodeUnknownSync(Schema.fromJsonString(ModelsDevCatalog.Document))(baselineText),

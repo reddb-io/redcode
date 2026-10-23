@@ -48,7 +48,7 @@ test.each([
   ["gitlab", "gitlab-ai-provider"],
   ["sap-ai-core", "@jerome-benoit/sap-ai-provider-v2"],
   ["watsonx", "watsonx-ai-provider"],
-])("retains the locally trusted %s adapter while remote SDK names stay descriptive", (id, sdk) => {
+])("uses the locally trusted %s adapter while remote SDK names stay descriptive", (id, sdk) => {
   const model = ModelsDev.normalize(document(id, sdk), "fixture")[0]!.models[0]!
   expect(model.enabled).toBe(true)
   expect(model.package).toBe(Provider.aisdk(sdk))
@@ -56,28 +56,23 @@ test.each([
   expect(ModelsDev.normalize(document(id, "unregistered-provider"), "fixture")[0]!.models[0]!.package).toBeUndefined()
 })
 
-test("applies pinned compatibility identities only when explicitly selected for the public catalog", () => {
-  const own = ModelsDev.normalize(document("fixture"), "fixture")
-  expect(own.map((provider) => provider.info.id)).toEqual([Provider.ID.make("fixture")])
-  const publicCatalog = ModelsDev.normalize(document("fixture"), "fixture", true)
-  expect(publicCatalog.some((provider) => provider.info.id === "azure-cognitive-services")).toBe(true)
-  expect(publicCatalog.some((provider) => provider.info.id === "google-vertex-anthropic")).toBe(true)
+test("normalizes only the providers present in a V2 document", () => {
+  expect(ModelsDev.normalize(document("fixture"), "fixture").map((provider) => provider.info.id)).toEqual([
+    Provider.ID.make("fixture"),
+  ])
 })
 
-test("committed default catalog retains stable legacy identities and round-trips every model", async () => {
+test("committed catalog is exclusively V2 and round-trips every model", async () => {
   const snapshots = await Effect.runPromise(ModelsDev.bundled)
   const encode = Schema.encodeSync(Model.Info)
   const decode = Schema.decodeUnknownSync(Model.Info)
   const models = snapshots.flatMap((provider) => provider.models)
-  expect(models.filter((model) => model.catalog?.format === 2).length).toBeGreaterThan(9000)
-  expect(models.some((model) => model.providerID === "azure-cognitive-services" && model.id === "gpt-4-turbo")).toBe(
-    true,
-  )
-  expect(
-    models.some((model) => model.providerID === "google-vertex-anthropic" && model.id === "claude-sonnet-4-5@20250929"),
-  ).toBe(true)
+  expect(models.length).toBeGreaterThan(9000)
+  expect(models.every((model) => model.catalog?.format === 2)).toBe(true)
+  expect(snapshots.some((provider) => provider.info.id === "azure-cognitive-services")).toBe(false)
+  expect(snapshots.some((provider) => provider.info.id === "google-vertex-anthropic")).toBe(false)
   models.forEach((model) => expect(decode(encode(model)).id).toBe(model.id))
-  expect(ModelsDev.DEFAULT_SOURCES[0]).toBe("https://models.dev/experimental/v2.0/api.json")
+  expect(ModelsDev.DEFAULT_SOURCES).toEqual(["https://models.dev/experimental/v2.0/api.json"])
 })
 
 test.each(["openai", "anthropic", "google", "openrouter", "deepseek", "xai", "groq", "cohere", "alibaba"])(

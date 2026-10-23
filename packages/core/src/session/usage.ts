@@ -77,7 +77,7 @@ export function estimate(
 ): Recorded {
   const costs = "cost" in model ? model.cost : model
   const catalog = "cost" in model ? model.catalog : undefined
-  const rich = catalog?.format === 2 && !costs.length
+  const rich = catalog !== undefined && !costs.length
   const digest = rich ? { catalogDigest: catalog.digest } : {}
   const priced = costs.length
     ? { amount: calculateCost(costs, normalized) }
@@ -100,7 +100,7 @@ export function estimate(
               (meter.modality !== "text" || meter.unit !== "token" || meter.component === "cache.storage"),
           )
         ? "token-prices-do-not-cover-meters"
-        : catalog?.format === 2 &&
+        : catalog !== undefined &&
             request &&
             (nativeTools(request.tools) ||
               (!observed?.meters &&

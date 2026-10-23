@@ -2938,7 +2938,7 @@ export type ProjectEnvironmentInfo = {
 export type ModelRef = { id: string; providerID: string; variant?: string; connection?: ConnectionRef }
 
 export type ModelCatalog = {
-  format: 1 | 2
+  format: 2
   digest: string
   protocol?: string
   apis: { [x: string]: ModelCatalogApi }
