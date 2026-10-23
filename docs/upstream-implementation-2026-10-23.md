@@ -68,10 +68,18 @@ permissões, Vault, web search e MCP. Os testes de shell verificam também falha
 comando, alteração de fonte e mudança de HEAD. Os de recovery usam processos
 separados e o estado SQLite persistido, incluindo atribuições de tarefa.
 
-A entrada fria de sessão foi medida com uma amostra por revisão: a observação
-estável foi aproximadamente 1.837 ms antes e 1.788 ms na comparação inicial após
-a mudança. Houve trabalho concorrente na máquina. Isso é evidência de execução
-do cenário, não uma estimativa estatística de melhoria ou um teste de longa duração.
+A entrada fria de sessão teve uma amostra inicial de aproximadamente 1.837 ms.
+As comparações após a mudança registraram 1.788 ms e 5.828 ms, a última sob
+compilação concorrente. Três repetições sem compiladores concorrentes ficaram em
+1.064, 1.379 e 1.340 ms, sem sessão incorreta. A variação sob carga não foi
+reproduzida nessa repetição, mas a amostra não estabelece ganho estatístico de
+velocidade ou garantia de desempenho contínuo.
+
+A validação consolidada terminou com 382 testes de Core passando, 42 pulados por
+plataforma, cinco testes HTTP passando e 11 casos de navegador no build de
+produção. `bun run check` passou em seus 27 tasks de lint/tipos; os tipos dos
+fixtures E2E e `check:generated` também passaram. O [registro de validação](evaluations/upstream-adoption-2026-10-23-validation.json)
+fixa o commit, a árvore de pacotes, os resultados e os hashes dos logs locais.
 
 Os registros de execução ficam em `/var/tmp/redcode-upstream-*.log` e as imagens
 nos resultados Playwright locais. Testes locais não comprovam publicação ou
