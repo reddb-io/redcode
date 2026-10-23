@@ -23,7 +23,14 @@ Use `--standalone` for a private server instead.
 | `redcode service status`                                    | Inspect the local background server.                  |
 | `redcode service start` / `stop` / `restart`                | Manage that server.                                   |
 | `redcode session list`                                      | List sessions for the current project.                |
+| `redcode stats --cost --models`                             | Inspect costs, token usage and model coverage.        |
 | `redcode --help`                                            | Inspect the complete command tree.                    |
+
+`redcode stats` produces a shareable activity report without monetary details. Add `--cost` or
+`--models` to inspect spending: `~` includes estimates, `+` marks a known subtotal with unknown costs,
+and `*` marks unavailable cost provenance. A zero contribution with unresolved costs appears as
+`unknown`; provider-reported zero remains `$0.00`. Cost coverage counts accounting records, not
+requests or invoices. `--json` preserves the API's numeric amounts and coverage metadata.
 
 **Slash commands belong in a TUI conversation**, not in your shell or Console:
 

@@ -196,9 +196,19 @@ function renderActivity(
 function renderCost(stats: SessionStatsInfo) {
   const input = stats.tokens.input + stats.tokens.cache.read + stats.tokens.cache.write
   const cached = input === 0 ? 0 : (stats.tokens.cache.read / input) * 100
+  const cost = costDisplay(stats.cost, stats.costCoverage)
   return [
     "COST & TOKENS",
-    row("cost", `$${stats.cost.toFixed(2)}`),
+    row(stats.cost > 0 && stats.costCoverage?.unknown ? "known subtotal" : "cost", cost.value),
+    ...(cost.note ? [`  ${cost.note}`] : []),
+    ...(stats.costCoverage
+      ? [
+          row("reported records", formatNumber(stats.costCoverage.reported)),
+          row("estimated records", formatNumber(stats.costCoverage.estimated)),
+          row("unknown records", formatNumber(stats.costCoverage.unknown)),
+          row("legacy records", formatNumber(stats.costCoverage.legacy)),
+        ]
+      : []),
     row("input", formatNumber(stats.tokens.input)),
     row("output", formatNumber(stats.tokens.output)),
     row("reasoning", formatNumber(stats.tokens.reasoning)),
@@ -210,8 +220,11 @@ function renderCost(stats: SessionStatsInfo) {
 
 function renderModels(stats: SessionStatsInfo, limit: number, width: number) {
   if (stats.models.length === 0) return ["MODELS", "  no model usage"]
-  const models = stats.models.slice(0, limit)
+  const models = stats.models
+    .slice(0, limit)
+    .map((item) => ({ ...item, price: costDisplay(item.cost, item.costCoverage) }))
   const more = stats.models.length - models.length
+  const notes = [...new Set(models.flatMap((item) => (item.price.note ? [`  ${item.price.note}`] : [])))]
   if (width < 68)
     return [
       "MODELS",
@@ -220,8 +233,9 @@ function renderModels(stats: SessionStatsInfo, limit: number, width: number) {
           `${item.model.providerID}/${item.model.id}${item.model.variant ? `#${item.model.variant}` : ""}`,
           width,
         ),
-        `  ${formatNumber(TokenUsage.total(item.tokens))} tokens · ${formatNumber(item.steps)} steps · $${item.cost.toFixed(2)}`,
+        `  ${formatNumber(TokenUsage.total(item.tokens))} tokens · ${formatNumber(item.steps)} steps · ${item.price.value}`,
       ]),
+      ...notes,
       ...(more > 0 ? ["", `+${more.toLocaleString("en-US")} more model${more === 1 ? "" : "s"}`] : []),
     ]
   return [
@@ -232,11 +246,20 @@ function renderModels(stats: SessionStatsInfo, limit: number, width: number) {
         `${item.model.providerID}/${item.model.id}${item.model.variant ? `#${item.model.variant}` : ""}`,
         formatNumber(TokenUsage.total(item.tokens)),
         formatNumber(item.steps),
-        `$${item.cost.toFixed(2)}`,
+        item.price.value,
       ),
     ),
+    ...notes,
     ...(more > 0 ? ["", `+${more.toLocaleString("en-US")} more model${more === 1 ? "" : "s"}`] : []),
   ]
+}
+
+function costDisplay(amount: number, coverage: SessionStatsInfo["costCoverage"]) {
+  if (coverage?.unknown)
+    return { value: amount === 0 ? "unknown" : `$${amount.toFixed(2)}+`, note: "+ excludes unknown costs" }
+  if (!coverage || coverage.legacy) return { value: `$${amount.toFixed(2)}*`, note: "* cost provenance unavailable" }
+  if (coverage.estimated) return { value: `~$${amount.toFixed(2)}`, note: "~ includes estimated costs" }
+  return { value: `$${amount.toFixed(2)}`, note: undefined }
 }
 
 function renderTools(stats: SessionStatsInfo, limit: number, width: number) {

@@ -1160,6 +1160,74 @@ function modelInfo(name: string): ModelInfo {
   }
 }
 
+test.each(["reported", "estimated", "unknown", "legacy"] as const)(
+  "projects live %s cost provenance on successful and failed steps",
+  (status) => {
+    const setup = activityFixture(() => Response.json({ data: {} }))
+    const costAssessment = status === "legacy" ? undefined : { status, catalogDigest: "catalog-source" }
+    const tokens = { input: 10, output: 5, reasoning: 0, cache: { read: 0, write: 0 } }
+    const started: Extract<OpenCodeEvent, { type: "session.step.started" }> = {
+      id: "evt_start_success",
+      created: 1,
+      type: "session.step.started",
+      durable: { aggregateID: "ses_refresh", seq: 1, version: 1 },
+      data: {
+        sessionID: "ses_refresh",
+        assistantMessageID: "msg_success",
+        agent: "build",
+        model: { providerID: "provider", id: "model" },
+        started: 1,
+      },
+    }
+    try {
+      setup.emit(started)
+      setup.emit({
+        id: "evt_success",
+        created: 2,
+        type: "session.step.ended",
+        durable: { aggregateID: "ses_refresh", seq: 2, version: 1 },
+        data: {
+          sessionID: "ses_refresh",
+          assistantMessageID: "msg_success",
+          finish: "stop",
+          cost: 0,
+          tokens,
+          costAssessment,
+        },
+      })
+      setup.emit({
+        ...started,
+        id: "evt_start_failure",
+        created: 3,
+        durable: { ...started.durable, seq: 3 },
+        data: { ...started.data, assistantMessageID: "msg_failure", started: 3 },
+      })
+      setup.emit({
+        id: "evt_failure",
+        created: 4,
+        type: "session.step.failed",
+        durable: { aggregateID: "ses_refresh", seq: 4, version: 1 },
+        data: {
+          sessionID: "ses_refresh",
+          assistantMessageID: "msg_failure",
+          error: { type: "provider.no-route", message: "No route" },
+          cost: 0,
+          tokens,
+          costAssessment,
+        },
+      })
+      expect(setup.data.session.message.list("ses_refresh")).toHaveLength(2)
+      ;["msg_success", "msg_failure"].forEach((id) => {
+        const message = setup.data.session.message.get("ses_refresh", id)
+        expect(message).toMatchObject({ cost: 0, tokens })
+        expect(message?.type === "assistant" ? message.costAssessment : undefined).toEqual(costAssessment)
+      })
+    } finally {
+      setup.dispose()
+    }
+  },
+)
+
 function activityFixture(read: () => Response | Promise<Response>) {
   const listeners = new Set<Parameters<CreateDataInput["event"]["listen"]>[0]>()
   const api = OpenCode.make({

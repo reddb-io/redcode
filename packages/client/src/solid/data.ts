@@ -893,6 +893,7 @@ export function createData(config: CreateDataInput) {
           assistant.finish = event.data.finish
           assistant.rawFinish = event.data.rawFinish
           assistant.providerState = event.data.providerState
+          assistant.costAssessment = event.data.costAssessment
           assistant.cost = event.data.cost
           assistant.tokens = event.data.tokens
           if (event.data.snapshot) assistant.snapshot = { ...assistant.snapshot, end: event.data.snapshot }
@@ -908,6 +909,7 @@ export function createData(config: CreateDataInput) {
           assistant.error = event.data.error
           assistant.retry = undefined
           if (event.data.cost !== undefined && event.data.tokens !== undefined) {
+            assistant.costAssessment = event.data.costAssessment
             assistant.cost = event.data.cost
             assistant.tokens = event.data.tokens
           }

@@ -222,6 +222,36 @@ conserva os resultados. Não houve conciliação de fatura nem publicação. Con
 de mídia/cache detalhado pelos adapters e adoção da cobertura nos demais clientes
 continuam pendentes antes do cutover padrão do catálogo.
 
+### Cobertura no relatório da CLI e nos eventos do SDK
+
+`stats --cost` mostra as contagens de registros informados, estimados,
+desconhecidos e legados. São as contagens da API, sem atribuir valores em USD a
+cada classe. Valores com estimativas recebem `~`; subtotais positivos com custos
+pendentes recebem `+` e o rótulo `known subtotal`. Uma contribuição zero com
+custos desconhecidos aparece como `unknown`, enquanto um zero informado pelo
+provedor continua aparecendo como `$0.00`. Registros legados e respostas sem
+metadados de cobertura conservam seus valores e recebem `*`, com explicação de
+proveniência indisponível. As marcas são acompanhadas de texto.
+
+`stats --models` aplica a classificação de cada modelo, sem copiar a cobertura
+geral para todos eles. As notas consideram somente as linhas exibidas pelo
+limite solicitado. O relatório compartilhável padrão continua sem valores
+monetários; o poster `/stats` da TUI mantém esse mesmo escopo. `--json` conserva a
+resposta da API, incluindo a cobertura, sem trocar números por texto.
+
+A projeção Solid do SDK agora conserva `costAssessment` nos eventos de conclusão
+e falha de steps. Antes, a classificação aparecia no histórico recarregado, mas
+se perdia durante a projeção ao vivo. A correção não cria novos contratos nem
+reclassifica mensagens antigas.
+
+A validação inclui o comando real da CLI em subprocessos, conectado a um
+servidor HTTP local com respostas de teste, além das projeções e dos layouts
+de texto em 48 e 80 colunas. O [registro deste lote](evaluations/cost-display-2026-10-23-validation.json)
+conserva os resultados. Não houve inferência paga nem validação de interface
+gráfica. A cobertura do total da família de sessões nos indicadores TUI/GUI e no
+ACP continua pendente; uma janela paginada de mensagens não basta para
+classificar esse total, que também inclui chamadas auxiliares e descendentes.
+
 ## Verificação e limites
 
 As regressões de startup MCP, callback OAuth, buffer de compactação, socket em
