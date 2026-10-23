@@ -609,6 +609,13 @@ export type ModelCapabilities = {
   output: Array<string>
 }
 
+export type ModelCatalogApi = {
+  baseURL: string
+  sdk?: { aisdk?: string; opencodeai?: string }
+  capabilities: { [x: string]: JsonValue }
+  compatibility?: { [x: string]: JsonValue }
+}
+
 export type MoneyUSDPerMillionTokens = number
 
 export type ModelStatus = "alpha" | "beta" | "deprecated" | "active"
@@ -1178,6 +1185,16 @@ export type WorktreeReview = {
 }
 
 export type ConnectionRef = { type: "credential"; id: string } | ConnectionEnvInfo
+
+export type ModelCatalogRate = {
+  modality: string
+  direction: "input" | "output" | "search"
+  currency: "USD"
+  unit: string
+  per: number
+  price: MoneyUSD
+  details: { [x: string]: JsonValue }
+}
 
 export type SessionInboxMovePayload1 = { location: LocationRef; projectID: string; subpath?: string }
 
@@ -2901,6 +2918,16 @@ export type ProjectEnvironmentInfo = {
 
 export type ModelRef = { id: string; providerID: string; variant?: string; connection?: ConnectionRef }
 
+export type ModelCatalog = {
+  format: 1 | 2
+  digest: string
+  protocol?: string
+  apis: { [x: string]: ModelCatalogApi }
+  modalities?: { input: Array<string>; output: Array<string> }
+  rates: Array<ModelCatalogRate>
+  pricing?: { [x: string]: JsonValue }
+}
+
 export type PermissionRuleset = Array<PermissionRule>
 
 export type SessionRevertStaged = {
@@ -3698,6 +3725,7 @@ export type ModelInfo = {
   headers?: { [x: string]: string }
   body?: { [x: string]: any }
   capabilities: ModelCapabilities
+  catalog?: ModelCatalog
   variants: Array<ModelVariant>
   reasoningVariantIDs?: Array<string>
   time: { released: number }

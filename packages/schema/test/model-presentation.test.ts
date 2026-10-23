@@ -194,3 +194,20 @@ describe("preferences", () => {
     expect(ModelPresentation.cycleModel([], list[0], 1)).toBeUndefined()
   })
 })
+
+test("free pricing requires known zero input, output, cache and declared auxiliary charges", () => {
+  expect(ModelPresentation.free({ cost: [] })).toBe(false)
+  expect(ModelPresentation.free({ cost: [{ input: 0 }] })).toBe(false)
+  expect(ModelPresentation.free({ cost: [{ input: 0, output: 0 }] })).toBe(true)
+  expect(ModelPresentation.free({ cost: [{ input: 0, output: 1 }] })).toBe(false)
+  expect(ModelPresentation.free({ cost: [{ input: 0, output: 0, cache: { read: 0, write: 1 } }] })).toBe(false)
+  expect(
+    ModelPresentation.free({
+      cost: [
+        { input: 0, output: 0 },
+        { input: 1, output: 0 },
+      ],
+    }),
+  ).toBe(false)
+  expect(ModelPresentation.free({ cost: [{ input: 0, output: 0 }], catalog: { rates: [{ price: 10 }] } })).toBe(false)
+})

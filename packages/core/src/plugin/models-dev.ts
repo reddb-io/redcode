@@ -93,7 +93,10 @@ function snapshots(data: readonly ModelsDev.Snapshot[]) {
   const result = data
     .filter(
       // These deprecated aliases are replaced by the canonical Azure and Google Vertex providers.
-      (provider) => provider.info.id !== "azure-cognitive-services" && provider.info.id !== "google-vertex-anthropic",
+      (provider) =>
+        (provider.info.package !== "" || provider.models.length === 0) &&
+        provider.info.id !== "azure-cognitive-services" &&
+        provider.info.id !== "google-vertex-anthropic",
     )
     .map((provider) => ({
       ...provider,

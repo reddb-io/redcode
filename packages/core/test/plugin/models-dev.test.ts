@@ -101,6 +101,13 @@ const richSnapshot = (name = "Acme") => {
               body: { max_tokens: 1024 },
             },
           ],
+          catalog: {
+            format: 2,
+            digest: "fixture",
+            apis: { responses: { baseURL: "https://api.acme.test", capabilities: { values: ["base"] } } },
+            rates: [],
+            pricing: { multipliers: [{ factor: { text: 2 } }] },
+          },
           time: { released: Date.parse("2026-01-01") },
           cost: [
             {
@@ -219,6 +226,17 @@ describe("ModelsDevPlugin", () => {
             required(model.cost[0]).cache.read = Money.USDPerMillionTokens.make(9)
             required(required(model.cost[1]).tier).size = 1
             required(model.cost[1]).input = Money.USDPerMillionTokens.make(42)
+            const values = required(model.catalog).apis.responses!.capabilities.values
+            if (Array.isArray(values)) values.push("local")
+            required(model.catalog).rates.push({
+              modality: "text",
+              direction: "input",
+              currency: "USD",
+              unit: "token",
+              per: 1000000,
+              price: Money.USD.make(3),
+              details: { markers: ["local"] },
+            })
             model.limit.context = 1
             model.time.released = 5
           })
@@ -255,6 +273,8 @@ describe("ModelsDevPlugin", () => {
       expect(mutated.capabilities.input).toEqual(["text", "image"])
       expect(mutated.cost[0]?.cache.read).toBe(Money.USDPerMillionTokens.make(9))
       expect(mutated.cost[1]).toMatchObject({ tier: { type: "context", size: 1 }, input: 42 })
+      expect(mutated.catalog?.apis.responses?.capabilities.values).toEqual(["base", "local"])
+      expect(mutated.catalog?.rates[0]?.price).toBe(Money.USD.make(3))
       expect(mutated.limit.context).toBe(1)
       expect(mutated.time.released).toBe(5)
 
@@ -275,6 +295,7 @@ describe("ModelsDevPlugin", () => {
       expect(sibling.variants).toEqual(snapshot[0].models[0].variants)
       expect(sibling.capabilities.input).toEqual(["text"])
       expect(sibling.cost).toEqual(snapshot[0].models[0].cost)
+      expect(sibling.catalog).toEqual(snapshot[0].models[0].catalog)
       expect(sibling.limit).toEqual(snapshot[0].models[0].limit)
       expect(sibling.time).toEqual(snapshot[0].models[0].time)
       expect(required(yield* second.providers.get(providerID)).settings).toEqual(snapshot[0].info.settings)

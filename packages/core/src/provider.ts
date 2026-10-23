@@ -64,6 +64,7 @@ const builtins = new Map<string, () => Promise<unknown>>([
   ["@opencode/ai/providers/alibaba/chat", () => import("@opencode/ai/providers/alibaba/chat")],
   ["@opencode/ai/providers/alibaba/messages", () => import("@opencode/ai/providers/alibaba/messages")],
   ["@opencode/ai/providers/alibaba/responses", () => import("@opencode/ai/providers/alibaba/responses")],
+  ["@opencode/ai/providers/anthropic-compatible", () => import("@opencode/ai/providers/anthropic-compatible")],
   ["@opencode/ai/providers/anthropic", () => import("@opencode/ai/providers/anthropic")],
   ["@opencode/ai/providers/azure", () => import("@opencode/ai/providers/azure")],
   ["@opencode/ai/providers/azure/chat", () => import("@opencode/ai/providers/azure/chat")],
@@ -100,6 +101,10 @@ const builtins = new Map<string, () => Promise<unknown>>([
     "@opencode/ai/providers/openai-compatible-responses",
     () => import("@opencode/ai/providers/openai-compatible-responses"),
   ],
+  [
+    "@opencode/ai/providers/openai-compatible/responses",
+    () => import("@opencode/ai/providers/openai-compatible/responses"),
+  ],
   ["@opencode/ai/providers/openrouter", () => import("@opencode/ai/providers/openrouter")],
   ["@opencode/ai/providers/togetherai", () => import("@opencode/ai/providers/togetherai")],
   ["@opencode/ai/providers/xai", () => import("@opencode/ai/providers/xai")],
@@ -111,6 +116,11 @@ const builtins = new Map<string, () => Promise<unknown>>([
     () => import("@opencode/ai/providers/zai-coding-plan/responses"),
   ],
 ])
+
+/** Only locally registered adapters may be selected by a remote catalog. */
+export function builtin(specifier: string) {
+  return builtins.has(specifier)
+}
 
 export const loadPackage = Effect.fn("Provider.loadPackage")(function* (input: string, npm?: Npm.Interface) {
   const specifier = packageName(input)

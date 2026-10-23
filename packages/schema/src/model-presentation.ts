@@ -126,9 +126,19 @@ export function catalogUpdateMessage(update: { name: string; added: number; remo
   return `${update.name} catalog updated: +${update.added}/−${update.removed} models${renamed}`
 }
 
-/** True when every price tier of a model costs nothing for input. */
-export function free(model: { cost: ReadonlyArray<{ input: number }> }) {
-  return model.cost.length > 0 && model.cost.every((cost) => cost.input === 0)
+/** Free requires known zero input/output prices, including every tier and declared cache charge. */
+export function free(model: {
+  cost: ReadonlyArray<{ input: number; output?: number; cache?: { read: number; write: number } }>
+  catalog?: { rates: ReadonlyArray<{ price: number }> }
+}) {
+  return (
+    model.cost.length > 0 &&
+    (!model.catalog || model.catalog.rates.every((rate) => rate.price === 0)) &&
+    model.cost.every(
+      (cost) =>
+        cost.input === 0 && cost.output === 0 && (!cost.cache || (cost.cache.read === 0 && cost.cache.write === 0)),
+    )
+  )
 }
 
 export function preferenceKey(model: ModelRef) {
