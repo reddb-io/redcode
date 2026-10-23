@@ -1,0 +1,280 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-23",
+  "recordedAtUTC": "2026-10-23T10:51:37.642552+00:00",
+  "implementationCommit": "fb8fdd85e58c52d41cb0a545c2a51352c60a8822",
+  "packagesTree": "e05fe1fd986640477d2d08c80ef8592cf13480fe",
+  "published": false,
+  "checks": [
+    {
+      "name": "affected Core contracts",
+      "cwd": "packages/core",
+      "exitCode": 0,
+      "files": 15,
+      "passed": 382,
+      "skipped": 42,
+      "failed": 0,
+      "log": "core-final",
+      "note": "Platform-specific shell cases remain skipped; this is not the full repository test suite."
+    },
+    {
+      "name": "credential rotation HTTP",
+      "cwd": "packages/server",
+      "command": "bun test test/credential.test.ts",
+      "exitCode": 0,
+      "passed": 1,
+      "log": "credential"
+    },
+    {
+      "name": "task integration HTTP and provenance",
+      "cwd": "packages/server",
+      "command": "bun test test/task-integration.test.ts",
+      "exitCode": 0,
+      "passed": 4,
+      "log": "verification-server"
+    },
+    {
+      "name": "request dock production keeper",
+      "cwd": "packages/app",
+      "command": "PLAYWRIGHT_PORT=4468 PLAYWRIGHT_BUILD=1 bun x playwright test e2e/regression/session-request-docks.spec.ts --workers=1 --retries=0",
+      "exitCode": 0,
+      "passed": 11,
+      "log": "browser-final"
+    },
+    {
+      "name": "canonical full lint and types",
+      "cwd": ".",
+      "command": "bun run check",
+      "exitCode": 0,
+      "successfulTasks": 27,
+      "lintErrors": 0,
+      "lintWarnings": 0,
+      "log": "check-complete"
+    },
+    {
+      "name": "browser fixture types",
+      "cwd": "packages/app",
+      "command": "bun run typecheck:e2e",
+      "exitCode": 0,
+      "log": "e2e-types-final"
+    },
+    {
+      "name": "generated Client idempotence after implementation commit",
+      "cwd": "packages/client",
+      "command": "bun run check:generated",
+      "exitCode": 0,
+      "log": "generated-check"
+    },
+    {
+      "name": "catalog snapshot",
+      "cwd": "packages/core",
+      "command": "bun run update-models-snapshot --check",
+      "exitCode": 0,
+      "snapshot": {
+        "source": "https://models.dev/api.json?type=all",
+        "sha256": "9fbe38b62dfdb0d302e4bbcc2ec80298eac642559280f9d109b7814b84446c5d",
+        "providers": 230,
+        "models": 8909,
+        "decisionModels": 62
+      }
+    }
+  ],
+  "mcpLongRequestProbe": {
+    "loopbackOnly": true,
+    "bunVersion": "1.4.4",
+    "results": [
+      {
+        "name": "MCP fetch without implicit idle timeout",
+        "elapsedMs": 310065,
+        "status": 200,
+        "body": "completed"
+      },
+      {
+        "name": "Bun default fetch control",
+        "elapsedMs": 310055,
+        "status": 200,
+        "body": "completed"
+      },
+      {
+        "name": "MCP explicit abort remains active",
+        "elapsedMs": 61,
+        "error": "TimeoutError: The operation timed out."
+      }
+    ],
+    "interpretation": "The MCP transport completed a 310-second silent request and retained explicit abort. The default Bun control also completed; this did not reproduce a default idle-timeout failure."
+  },
+  "sessionEntryBenchmark": {
+    "scenario": "entry: cold session from Home",
+    "productionBuild": true,
+    "baseline": {
+      "revision": "7362b918be9238be5092d2563405fe15f3b3aa2f",
+      "samples": 1,
+      "firstCorrectObservedMs": 1733.6,
+      "stableObservedMs": 1836.8,
+      "source": "Initial tool output; no standalone raw baseline log retained"
+    },
+    "initialFollowUp": [
+      {
+        "runID": "2026-10-23T10-30-21-682Z-4075420",
+        "context": {
+          "project": "chromium",
+          "platform": "linux",
+          "entry": "home",
+          "data": "cold paginated fixture",
+          "inputEvent": "mousedown"
+        },
+        "firstCorrectObservedMs": 1781,
+        "stableObservedMs": 1788.1000000238419,
+        "wrongDestinationSamples": 0,
+        "unknownSamples": 0
+      }
+    ],
+    "underConcurrentTypecheck": [
+      {
+        "runID": "2026-10-23T10-43-48-727Z-4163631",
+        "context": {
+          "project": "chromium",
+          "platform": "linux",
+          "entry": "home",
+          "data": "cold paginated fixture",
+          "inputEvent": "mousedown"
+        },
+        "firstCorrectObservedMs": 5807.800000011921,
+        "stableObservedMs": 5828,
+        "wrongDestinationSamples": 0,
+        "unknownSamples": 0
+      }
+    ],
+    "withoutConcurrentCompilers": [
+      {
+        "runID": "2026-10-23T10-46-42-247Z-4182559",
+        "context": {
+          "project": "chromium",
+          "platform": "linux",
+          "entry": "home",
+          "data": "cold paginated fixture",
+          "inputEvent": "mousedown"
+        },
+        "firstCorrectObservedMs": 1058.8999999761581,
+        "stableObservedMs": 1063.699999988079,
+        "wrongDestinationSamples": 0,
+        "unknownSamples": 0
+      },
+      {
+        "runID": "2026-10-23T10-46-42-247Z-4182559",
+        "context": {
+          "project": "chromium",
+          "platform": "linux",
+          "entry": "home",
+          "data": "cold paginated fixture",
+          "inputEvent": "mousedown"
+        },
+        "firstCorrectObservedMs": 1303.1000000238419,
+        "stableObservedMs": 1379.300000011921,
+        "wrongDestinationSamples": 0,
+        "unknownSamples": 0
+      },
+      {
+        "runID": "2026-10-23T10-46-42-247Z-4182559",
+        "context": {
+          "project": "chromium",
+          "platform": "linux",
+          "entry": "home",
+          "data": "cold paginated fixture",
+          "inputEvent": "mousedown"
+        },
+        "firstCorrectObservedMs": 1279.4000000357628,
+        "stableObservedMs": 1340.4000000357628,
+        "wrongDestinationSamples": 0,
+        "unknownSamples": 0
+      }
+    ],
+    "interpretation": "Small unmatched samples on a shared workstation. The 5.828-second outlier was not reproduced in three isolated repeats (1.064 to 1.379 seconds); this does not establish a statistical speedup or a continuous performance guarantee."
+  },
+  "regressionBeforeFix": [
+    "MCP queued startup duplicated or revived connections after explicit lifecycle operations",
+    "OAuth callback probe settled the authorization before its valid redirect",
+    "Compaction buffer at least as large as model context left no prompt budget",
+    "Tracked socket aborted Git capture",
+    "Credential value-only PATCH was rejected",
+    "Shutdown consumed recoverable background child markers",
+    "Shutdown marked a task-bound child cancelled",
+    "Catalog refresh did not reach another Location",
+    "Removing the MCP selector made the new browser keeper fail"
+  ],
+  "limitations": [
+    "No release, remote CI or deployment validation performed.",
+    "No paid providers or upstream exploit scripts executed.",
+    "MCP forms without a Session remain a separate surface.",
+    "Receipts observe local checkout identity/cleanliness before and after a command, not continuous filesystem immutability or semantic test coverage.",
+    "Task-aware application, catalog V2 and the remaining orchestration/product families remain pending in the adoption ledger."
+  ],
+  "logs": [
+    {
+      "name": "core-final",
+      "path": "/var/tmp/redcode-upstream-core-final.log",
+      "sha256": "9785e03f5cddb62a8082dd90d23e3dccf042b225f668eb1ee0082e3f297ed881",
+      "bytes": 87125
+    },
+    {
+      "name": "credential",
+      "path": "/var/tmp/redcode-upstream-credential.log",
+      "sha256": "a2ec428bf4c58eeb876e366154d4d3d184b3c5b21af1b8001c74e34868fa71fe",
+      "bytes": 237
+    },
+    {
+      "name": "verification-server",
+      "path": "/var/tmp/redcode-upstream-verification-server.log",
+      "sha256": "58b7ec653b34ebeed3c58cbe0151c60a61106e7819392a8abe24bc972220d5d0",
+      "bytes": 526
+    },
+    {
+      "name": "browser-final",
+      "path": "/var/tmp/redcode-upstream-browser-final.log",
+      "sha256": "03a4d82bc72b6ec937021eac2caa6d89a110b51328bea30c0e42a154e4d6a6df",
+      "bytes": 9644
+    },
+    {
+      "name": "check-complete",
+      "path": "/var/tmp/redcode-upstream-check-complete.log",
+      "sha256": "c1ccb4c9361e60839b6ad4afbe2d451c2690af84f78ca1de0e2f8b9c828b07ff",
+      "bytes": 4356
+    },
+    {
+      "name": "e2e-types-final",
+      "path": "/var/tmp/redcode-upstream-e2e-types-final.log",
+      "sha256": "639662b16a8949b8806db38c87e0b25e79ca257224fe15c2194472352dc57577",
+      "bytes": 28
+    },
+    {
+      "name": "generated-check",
+      "path": "/var/tmp/redcode-upstream-generated-check.log",
+      "sha256": "2650c77b0592cdd0c6d59af0c2090bde6b22503e039643b7226f02ebc545e022",
+      "bytes": 130
+    },
+    {
+      "name": "idle-probe",
+      "path": "/var/tmp/redcode-upstream-idle-probe.log",
+      "sha256": "f89a3425c0ca006f8b3be7e721455309263676b362f6b7baa1340b1b632a3173",
+      "bytes": 301
+    },
+    {
+      "name": "benchmark-after",
+      "path": "/var/tmp/redcode-upstream-benchmark-after.log",
+      "sha256": "1f82879e710815dc9ba1cf35f4dac86001fec093c1cd781f454e52b719f17d4c",
+      "bytes": 13905
+    },
+    {
+      "name": "benchmark-final",
+      "path": "/var/tmp/redcode-upstream-benchmark-final.log",
+      "sha256": "0be57c9c0603f4b02377a8c07d32c974a5df815818b77bf897eadb706e7e1e3b",
+      "bytes": 25660
+    },
+    {
+      "name": "benchmark-isolated",
+      "path": "/var/tmp/redcode-upstream-benchmark-isolated.log",
+      "sha256": "6c28c27cfeecfff2bd67c681972e8b5c82b9a66855adf24db2e279e9e2b1bfc7",
+      "bytes": 28678
+    }
+  ]
+}
