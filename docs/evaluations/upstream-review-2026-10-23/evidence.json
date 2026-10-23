@@ -1,0 +1,1847 @@
+{
+  "schema_version": 1,
+  "study_date": "2026-10-23",
+  "commit_window_start_utc": "2026-09-25T00:00:00Z",
+  "previous_adoption_cutoff_utc": "2026-10-12T17:03:03Z",
+  "local_head": "7362b918be9238be5092d2563405fe15f3b3aa2f",
+  "collected_at_different_times": true,
+  "initial_observation_utc": "2026-10-23T09:29:32Z",
+  "artifact_generation_utc": "2026-10-23T09:54:54.162589+00:00",
+  "repositories": [
+    {
+      "repository": "anomalyco/models.dev",
+      "branch": "dev",
+      "head": "9ebbfc58e9c0b393a698aa6c022ecef4fe324b33",
+      "commits_in_window": 2647,
+      "commits_after_previous_cutoff": 1322,
+      "open_prs_enumerated": 228,
+      "open_issues_enumerated": 183,
+      "inventory_sha256": "46efb14f91195435dec15304c40074b997dfdb2f1545c49455d736be400980e2"
+    },
+    {
+      "repository": "anomalyco/opencode",
+      "branch": "dev",
+      "head": "74f8d4860f49c563909e6b039b0cc8b454ebce72",
+      "commits_in_window": 1177,
+      "commits_after_previous_cutoff": 489,
+      "open_prs_enumerated": 1239,
+      "open_issues_enumerated": 2432,
+      "inventory_sha256": "07e0bc71e2cd4996cf648396cb31f980769dfa0ef433a045c814ec01f4cb1ef2"
+    },
+    {
+      "repository": "nightly-labs/openbot",
+      "branch": "main",
+      "head": "41444f7b2037410b6c6ae7ecad52058f5ebd4f51",
+      "commits_in_window": 1256,
+      "commits_after_previous_cutoff": 530,
+      "open_prs_enumerated": 33,
+      "open_issues_enumerated": 102,
+      "inventory_sha256": "fea6203dcc9fc3a17fc92ea8796e526595d670eb3195d8d9d718d4737b7f9f0e"
+    }
+  ],
+  "opencode_v2": {
+    "head": "4617210822bdbb31e5749751afbfb4584ccedac8",
+    "head_date_utc": "2026-10-10",
+    "commits_in_window": 560,
+    "all_in_dev_inventory": true,
+    "counted_separately": false
+  },
+  "pr_details_retrieved": 60,
+  "issue_discussions_retrieved": 22,
+  "scope": "Four weeks of default-branch commits plus enumeration of all open PRs and issues, including older ones. Selected diffs, discussions and source compared statically to Redcode.",
+  "limitations": [
+    "Enumeration is not deep review of every item or commit.",
+    "REST pagination is not transactional. PR states in selected-prs.json were retrieved after the open-item enumeration and may differ.",
+    "Some initial commit pages used a branch name; inventories retain the observed head and deduplicate SHAs. This is an observed API inventory, not an independently cloned reachability proof.",
+    "Original pages.json covered only the first batch. This manifest covers all saved raw/source/detail files; exact request time or URL is absent for some legacy page files.",
+    "Local filesystem mtime describes persistence time, not GitHub state time.",
+    "No providers, upstream scripts, exploits, browser flows, paid calls or runtime tests executed in this research.",
+    "No complete feature parity, readiness or deployment claim."
+  ],
+  "raw_root": "/var/tmp/redcode-upstream-study-20261023",
+  "raw_artifacts": [
+    {
+      "file": "raw/anomalyco--models.dev-all-open-2.json",
+      "bytes": 488586,
+      "sha256": "a93f86431d396d602c373794c784881e3a029befd6d5c0051af7977bf33d344f"
+    },
+    {
+      "file": "raw/anomalyco--models.dev-all-open-3.json",
+      "bytes": 517702,
+      "sha256": "d1ed67ff4dcfb10221119132b6d29bbc22edc72649f9a7ddf9b8b4e61492c20b"
+    },
+    {
+      "file": "raw/anomalyco--models.dev-all-open-4.json",
+      "bytes": 318658,
+      "sha256": "ec6502ab2771c316703f4058d7e94fcd67f7f42b9415e141308e9fae848aafcd"
+    },
+    {
+      "file": "raw/anomalyco--models.dev-all-open-5.json",
+      "bytes": 33300,
+      "sha256": "7b7942ce2fa2be898fb388024946b4a97cd3ffcc38076850b7541bcd5c06d7ee"
+    },
+    {
+      "file": "raw/anomalyco--models.dev-commits-001.json",
+      "bytes": 484287,
+      "sha256": "aa1e45a20249778934d3d563de280349889f715cf76c9a2282850bc0cf8361f6",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/models.dev/commits?sha=dev&since=2026-09-25T00:00:00Z&per_page=100&page=1",
+        "file": "raw/anomalyco--models.dev-commits-001.json",
+        "fetchedAt": "2026-10-23T09:33:18.349Z",
+        "bytes": 484286
+      }
+    },
+    {
+      "file": "raw/anomalyco--models.dev-commits-002.json",
+      "bytes": 476968,
+      "sha256": "04196111068f55fe0ea0c48bfeb51267d1836ae000302d108edc15496b7654f7",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/models.dev/commits?sha=9ebbfc58e9c0b393a698aa6c022ecef4fe324b33&since=2026-09-25T00:00:00Z&per_page=100&page=2",
+        "file": "raw/anomalyco--models.dev-commits-002.json",
+        "fetchedAt": "2026-10-23T09:33:24.277Z",
+        "bytes": 476955
+      }
+    },
+    {
+      "file": "raw/anomalyco--models.dev-commits-003.json",
+      "bytes": 543302,
+      "sha256": "82124e186f83377209ae0225c12afde4a796f9ed2f1f0d090c3d04907ea3be9f",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/models.dev/commits?sha=9ebbfc58e9c0b393a698aa6c022ecef4fe324b33&since=2026-09-25T00:00:00Z&per_page=100&page=3",
+        "file": "raw/anomalyco--models.dev-commits-003.json",
+        "fetchedAt": "2026-10-23T09:33:27.594Z",
+        "bytes": 543301
+      }
+    },
+    {
+      "file": "raw/anomalyco--models.dev-commits-004.json",
+      "bytes": 527969,
+      "sha256": "5a7b6a2a0dcfa6a263d2f9d795550869d8f710da975478710e11c76807400efb",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/models.dev/commits?sha=9ebbfc58e9c0b393a698aa6c022ecef4fe324b33&since=2026-09-25T00:00:00Z&per_page=100&page=4",
+        "file": "raw/anomalyco--models.dev-commits-004.json",
+        "fetchedAt": "2026-10-23T09:33:30.419Z",
+        "bytes": 527966
+      }
+    },
+    {
+      "file": "raw/anomalyco--models.dev-commits-005.json",
+      "bytes": 507685,
+      "sha256": "61d7dd3581ea1fef867b7f44779a01937ea86a0e2ce762146bf0e064aac6b8ac",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/models.dev/commits?sha=9ebbfc58e9c0b393a698aa6c022ecef4fe324b33&since=2026-09-25T00:00:00Z&per_page=100&page=5",
+        "file": "raw/anomalyco--models.dev-commits-005.json",
+        "fetchedAt": "2026-10-23T09:33:31.802Z",
+        "bytes": 507684
+      }
+    },
+    {
+      "file": "raw/anomalyco--models.dev-commits-006.json",
+      "bytes": 494886,
+      "sha256": "1b616f6dc71ab47f1f1bb21b178307cf2661ef83039dd1abf23270510c26a03d",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/models.dev/commits?sha=9ebbfc58e9c0b393a698aa6c022ecef4fe324b33&since=2026-09-25T00:00:00Z&per_page=100&page=6",
+        "file": "raw/anomalyco--models.dev-commits-006.json",
+        "fetchedAt": "2026-10-23T09:33:33.372Z",
+        "bytes": 494883
+      }
+    },
+    {
+      "file": "raw/anomalyco--models.dev-commits-007.json",
+      "bytes": 480992,
+      "sha256": "3c796dedc7fd57cbfe165a1d99ebfe4372f4afb9d4201ea94a42fd0d142642f9",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/models.dev/commits?sha=9ebbfc58e9c0b393a698aa6c022ecef4fe324b33&since=2026-09-25T00:00:00Z&per_page=100&page=7",
+        "file": "raw/anomalyco--models.dev-commits-007.json",
+        "fetchedAt": "2026-10-23T09:33:34.660Z",
+        "bytes": 480991
+      }
+    },
+    {
+      "file": "raw/anomalyco--models.dev-commits-008.json",
+      "bytes": 487221,
+      "sha256": "f4cfdbc810f14097f647a9dd5c28055c9f98258fc47153a5945431b013e3f433",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/models.dev/commits?sha=9ebbfc58e9c0b393a698aa6c022ecef4fe324b33&since=2026-09-25T00:00:00Z&per_page=100&page=8",
+        "file": "raw/anomalyco--models.dev-commits-008.json",
+        "fetchedAt": "2026-10-23T09:33:36.592Z",
+        "bytes": 487220
+      }
+    },
+    {
+      "file": "raw/anomalyco--models.dev-commits-009.json",
+      "bytes": 474365,
+      "sha256": "b75ef7c688e2089c6b38cf41f56688ff3cadc4db1800b3d1e1fb313e904a9afb",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/models.dev/commits?sha=9ebbfc58e9c0b393a698aa6c022ecef4fe324b33&since=2026-09-25T00:00:00Z&per_page=100&page=9",
+        "file": "raw/anomalyco--models.dev-commits-009.json",
+        "fetchedAt": "2026-10-23T09:33:38.056Z",
+        "bytes": 474364
+      }
+    },
+    {
+      "file": "raw/anomalyco--models.dev-commits-010.json",
+      "bytes": 478618,
+      "sha256": "368bc40cd31c136525185006c1958233438cc21d04efb0448524e29d778b6be6",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/models.dev/commits?sha=9ebbfc58e9c0b393a698aa6c022ecef4fe324b33&since=2026-09-25T00:00:00Z&per_page=100&page=10",
+        "file": "raw/anomalyco--models.dev-commits-010.json",
+        "fetchedAt": "2026-10-23T09:33:39.492Z",
+        "bytes": 478613
+      }
+    },
+    {
+      "file": "raw/anomalyco--models.dev-commits-011.json",
+      "bytes": 470335,
+      "sha256": "665e3e338764a4d215306249755af7cf92606df69ec9ce7994a57d828d80ee75",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/models.dev/commits?sha=9ebbfc58e9c0b393a698aa6c022ecef4fe324b33&since=2026-09-25T00:00:00Z&per_page=100&page=11",
+        "file": "raw/anomalyco--models.dev-commits-011.json",
+        "fetchedAt": "2026-10-23T09:33:40.968Z",
+        "bytes": 470332
+      }
+    },
+    {
+      "file": "raw/anomalyco--models.dev-commits-012.json",
+      "bytes": 478839,
+      "sha256": "6d0ba2651259ea369a085ed3443dda6dfa03dc528eb1e8227f458c818d064e2f",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/models.dev/commits?sha=9ebbfc58e9c0b393a698aa6c022ecef4fe324b33&since=2026-09-25T00:00:00Z&per_page=100&page=12",
+        "file": "raw/anomalyco--models.dev-commits-012.json",
+        "fetchedAt": "2026-10-23T09:33:42.413Z",
+        "bytes": 478838
+      }
+    },
+    {
+      "file": "raw/anomalyco--models.dev-commits-013.json",
+      "bytes": 578387,
+      "sha256": "1d851257b89656113a07f44c5b1f01237180395696d57b3e0c4a8fb02b699336",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/models.dev/commits?sha=9ebbfc58e9c0b393a698aa6c022ecef4fe324b33&since=2026-09-25T00:00:00Z&per_page=100&page=13",
+        "file": "raw/anomalyco--models.dev-commits-013.json",
+        "fetchedAt": "2026-10-23T09:33:43.973Z",
+        "bytes": 578024
+      }
+    },
+    {
+      "file": "raw/anomalyco--models.dev-commits-014.json",
+      "bytes": 469859,
+      "sha256": "014603e10bbc9c20d960dfbb693c9586aa26fda1adbac78c477a8dfac80b2af7",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/models.dev/commits?sha=9ebbfc58e9c0b393a698aa6c022ecef4fe324b33&since=2026-09-25T00:00:00Z&per_page=100&page=14",
+        "file": "raw/anomalyco--models.dev-commits-014.json",
+        "fetchedAt": "2026-10-23T09:33:45.770Z",
+        "bytes": 469858
+      }
+    },
+    {
+      "file": "raw/anomalyco--models.dev-commits-015.json",
+      "bytes": 482769,
+      "sha256": "2fbd48ffd4a2a52d5c1a493d9a60ba81c948ab7daaf217fb362c25cd0fc0ee01",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/models.dev/commits?sha=9ebbfc58e9c0b393a698aa6c022ecef4fe324b33&since=2026-09-25T00:00:00Z&per_page=100&page=15",
+        "file": "raw/anomalyco--models.dev-commits-015.json",
+        "fetchedAt": "2026-10-23T09:33:46.947Z",
+        "bytes": 482768
+      }
+    },
+    {
+      "file": "raw/anomalyco--models.dev-commits-016.json",
+      "bytes": 478713,
+      "sha256": "74dd947f9edb15877e96d549f56a5ccc86bf2d71363ddac00aecbd7e31bab49f",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/models.dev/commits?sha=9ebbfc58e9c0b393a698aa6c022ecef4fe324b33&since=2026-09-25T00:00:00Z&per_page=100&page=16",
+        "file": "raw/anomalyco--models.dev-commits-016.json",
+        "fetchedAt": "2026-10-23T09:33:47.950Z",
+        "bytes": 478712
+      }
+    },
+    {
+      "file": "raw/anomalyco--models.dev-commits-017.json",
+      "bytes": 476087,
+      "sha256": "8bfefc439ec08e1c2555b9ac5a49ddaf0a425b789f18e3c4e426add0e9aa106d",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/models.dev/commits?sha=9ebbfc58e9c0b393a698aa6c022ecef4fe324b33&since=2026-09-25T00:00:00Z&per_page=100&page=17",
+        "file": "raw/anomalyco--models.dev-commits-017.json",
+        "fetchedAt": "2026-10-23T09:33:49.052Z",
+        "bytes": 476086
+      }
+    },
+    {
+      "file": "raw/anomalyco--models.dev-commits-018.json",
+      "bytes": 479784,
+      "sha256": "199f2e0da1afdafbfe1b0768f441b4da237207c725ccc88dceea589b384688eb",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/models.dev/commits?sha=9ebbfc58e9c0b393a698aa6c022ecef4fe324b33&since=2026-09-25T00:00:00Z&per_page=100&page=18",
+        "file": "raw/anomalyco--models.dev-commits-018.json",
+        "fetchedAt": "2026-10-23T09:33:50.800Z",
+        "bytes": 479783
+      }
+    },
+    {
+      "file": "raw/anomalyco--models.dev-commits-019.json",
+      "bytes": 478141,
+      "sha256": "302042e7080686091f1ed8768a44b8695d33e031c3e8a62ff6ba31988a3829bf",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/models.dev/commits?sha=9ebbfc58e9c0b393a698aa6c022ecef4fe324b33&since=2026-09-25T00:00:00Z&per_page=100&page=19",
+        "file": "raw/anomalyco--models.dev-commits-019.json",
+        "fetchedAt": "2026-10-23T09:33:52.175Z",
+        "bytes": 478140
+      }
+    },
+    {
+      "file": "raw/anomalyco--models.dev-commits-020.json",
+      "bytes": 479440,
+      "sha256": "be7f9d991a74157fa9737d51b71d69e4274261055345bde4e42ef7a00ff0f93f",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/models.dev/commits?sha=9ebbfc58e9c0b393a698aa6c022ecef4fe324b33&since=2026-09-25T00:00:00Z&per_page=100&page=20",
+        "file": "raw/anomalyco--models.dev-commits-020.json",
+        "fetchedAt": "2026-10-23T09:33:53.403Z",
+        "bytes": 479439
+      }
+    },
+    {
+      "file": "raw/anomalyco--models.dev-commits-021.json",
+      "bytes": 479270,
+      "sha256": "fa95391489d1c1fef0fbf18c4323cb51b295293a6b4a3ea404bc1832f36f5ac3",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/models.dev/commits?sha=9ebbfc58e9c0b393a698aa6c022ecef4fe324b33&since=2026-09-25T00:00:00Z&per_page=100&page=21",
+        "file": "raw/anomalyco--models.dev-commits-021.json",
+        "fetchedAt": "2026-10-23T09:33:54.730Z",
+        "bytes": 479269
+      }
+    },
+    {
+      "file": "raw/anomalyco--models.dev-commits-022.json",
+      "bytes": 478559,
+      "sha256": "f887d20d4f2a6dacee96ca5e85fb5e1bfa633f00e91ea76042df26d34beb8f02",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/models.dev/commits?sha=9ebbfc58e9c0b393a698aa6c022ecef4fe324b33&since=2026-09-25T00:00:00Z&per_page=100&page=22",
+        "file": "raw/anomalyco--models.dev-commits-022.json",
+        "fetchedAt": "2026-10-23T09:33:55.995Z",
+        "bytes": 478558
+      }
+    },
+    {
+      "file": "raw/anomalyco--models.dev-commits-023.json",
+      "bytes": 478476,
+      "sha256": "276f9aa0359943ff717d8d7a6cd91afa04c497abed06ff47ab6412d5059dc03b",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/models.dev/commits?sha=9ebbfc58e9c0b393a698aa6c022ecef4fe324b33&since=2026-09-25T00:00:00Z&per_page=100&page=23",
+        "file": "raw/anomalyco--models.dev-commits-023.json",
+        "fetchedAt": "2026-10-23T09:33:57.503Z",
+        "bytes": 478475
+      }
+    },
+    {
+      "file": "raw/anomalyco--models.dev-commits-024.json",
+      "bytes": 484145,
+      "sha256": "943f2d3d7b7a941a9b648c723af8cb730eae91bce87d3784745ab5af8e2aa9bb",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/models.dev/commits?sha=9ebbfc58e9c0b393a698aa6c022ecef4fe324b33&since=2026-09-25T00:00:00Z&per_page=100&page=24",
+        "file": "raw/anomalyco--models.dev-commits-024.json",
+        "fetchedAt": "2026-10-23T09:33:59.054Z",
+        "bytes": 484144
+      }
+    },
+    {
+      "file": "raw/anomalyco--models.dev-commits-025.json",
+      "bytes": 478581,
+      "sha256": "1ef4322d454e73af2792548649b236f31dc2386f09a3cbc29a1cfa60fb461071",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/models.dev/commits?sha=9ebbfc58e9c0b393a698aa6c022ecef4fe324b33&since=2026-09-25T00:00:00Z&per_page=100&page=25",
+        "file": "raw/anomalyco--models.dev-commits-025.json",
+        "fetchedAt": "2026-10-23T09:34:00.932Z",
+        "bytes": 478566
+      }
+    },
+    {
+      "file": "raw/anomalyco--models.dev-commits-026.json",
+      "bytes": 484936,
+      "sha256": "6b9870c5e49d0e7fa314f6830dbf425119f0f897d91bec9baccd0769d421fc50",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/models.dev/commits?sha=9ebbfc58e9c0b393a698aa6c022ecef4fe324b33&since=2026-09-25T00:00:00Z&per_page=100&page=26",
+        "file": "raw/anomalyco--models.dev-commits-026.json",
+        "fetchedAt": "2026-10-23T09:34:02.212Z",
+        "bytes": 484933
+      }
+    },
+    {
+      "file": "raw/anomalyco--models.dev-commits-027.json",
+      "bytes": 225725,
+      "sha256": "b630045fcdd818711e968372564e9264735e2d8305feb272c00ce62f817cab62",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/models.dev/commits?sha=9ebbfc58e9c0b393a698aa6c022ecef4fe324b33&since=2026-09-25T00:00:00Z&per_page=100&page=27",
+        "file": "raw/anomalyco--models.dev-commits-027.json",
+        "fetchedAt": "2026-10-23T09:34:03.687Z",
+        "bytes": 225724
+      }
+    },
+    {
+      "file": "raw/anomalyco--models.dev-open-items-001.json",
+      "bytes": 569205,
+      "sha256": "ab6def1e8077bceedeb026723609ae8a8012645b6d348d70cd057c5b5d058d87",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/models.dev/issues?state=open&since=2026-09-25T00:00:00Z&sort=updated&direction=desc&per_page=100&page=1",
+        "file": "raw/anomalyco--models.dev-open-items-001.json",
+        "fetchedAt": "2026-10-23T09:33:21.132Z",
+        "bytes": 568755
+      }
+    },
+    {
+      "file": "raw/anomalyco--models.dev-open-items-002.json",
+      "bytes": 488586,
+      "sha256": "a93f86431d396d602c373794c784881e3a029befd6d5c0051af7977bf33d344f",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/models.dev/issues?state=open&since=2026-09-25T00:00:00Z&sort=updated&direction=desc&per_page=100&page=2",
+        "file": "raw/anomalyco--models.dev-open-items-002.json",
+        "fetchedAt": "2026-10-23T09:33:25.347Z",
+        "bytes": 488001
+      }
+    },
+    {
+      "file": "raw/anomalyco--models.dev-open-items-003.json",
+      "bytes": 234223,
+      "sha256": "7929c69019472e6534a79d553f4f2c6550b457a705fbc10ee2a253588ea3c3a4",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/models.dev/issues?state=open&since=2026-09-25T00:00:00Z&sort=updated&direction=desc&per_page=100&page=3",
+        "file": "raw/anomalyco--models.dev-open-items-003.json",
+        "fetchedAt": "2026-10-23T09:33:28.861Z",
+        "bytes": 233928
+      }
+    },
+    {
+      "file": "raw/anomalyco--models.dev-repo.json",
+      "bytes": 6400,
+      "sha256": "ea5cee5b8a987656a27faca91ea65717f37324e35b956d1aa6c5ba69cc0095d7",
+      "url": "https://api.github.com/repos/anomalyco/models.dev"
+    },
+    {
+      "file": "raw/anomalyco--models.dev-tree.json",
+      "bytes": 3199056,
+      "sha256": "0aa68e195b69771880eb0cf298edbd1a65c197d1613d2caa6d5c0b22ba3c61fb",
+      "url": "https://api.github.com/repos/anomalyco/models.dev/git/trees/9ebbfc58e9c0b393a698aa6c022ecef4fe324b33"
+    },
+    {
+      "file": "raw/anomalyco--opencode-all-open-30.json",
+      "bytes": 634766,
+      "sha256": "2ac7ef9b433a362ec3c841f856229fa1de2c311b35a858b9fd428a05a600d29b"
+    },
+    {
+      "file": "raw/anomalyco--opencode-all-open-31.json",
+      "bytes": 548988,
+      "sha256": "413300ee73bb9b10060677c56aec529fc6bde728b097c2bf773e61927d309f86"
+    },
+    {
+      "file": "raw/anomalyco--opencode-all-open-32.json",
+      "bytes": 594052,
+      "sha256": "6d52af9bba13228641f36699bdd737b00173102641b2ed4efa96e953e3fc850b"
+    },
+    {
+      "file": "raw/anomalyco--opencode-all-open-33.json",
+      "bytes": 518402,
+      "sha256": "a9c78fa6641fc0eb4017f76e0b6f6aa0e1a006a636d94e2b4ccf5e792ee746c9"
+    },
+    {
+      "file": "raw/anomalyco--opencode-all-open-34.json",
+      "bytes": 653393,
+      "sha256": "b5c38d25b32c49315b83724ed9dd1683ddb3d0cb79022cb2ae280e130d89b51f"
+    },
+    {
+      "file": "raw/anomalyco--opencode-all-open-35.json",
+      "bytes": 647988,
+      "sha256": "6ad89dfdd8f81f10d03a0d237e440fffd2a826b88cb1fa145c2f9507f39487d3"
+    },
+    {
+      "file": "raw/anomalyco--opencode-all-open-36.json",
+      "bytes": 639874,
+      "sha256": "f1e857605ba559a785c6d1300b292c006e98dcda94bf2fc2602e80869370ce0b"
+    },
+    {
+      "file": "raw/anomalyco--opencode-all-open-37.json",
+      "bytes": 447983,
+      "sha256": "77f909962a81f854891aba538f4e5ac0440b054495309d24fb125c3f7d9a4a2c"
+    },
+    {
+      "file": "raw/anomalyco--opencode-commits-001.json",
+      "bytes": 439488,
+      "sha256": "245b24a5fc4a00fa88af8e2c6a262f8fc7614c65b0a5c6219e8abd15141c5b19",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/opencode/commits?sha=dev&since=2026-09-25T00:00:00Z&per_page=100&page=1",
+        "file": "raw/anomalyco--opencode-commits-001.json",
+        "fetchedAt": "2026-10-23T09:33:17.336Z",
+        "bytes": 439487
+      }
+    },
+    {
+      "file": "raw/anomalyco--opencode-commits-002.json",
+      "bytes": 432426,
+      "sha256": "b26b3ddd072112881e826578b1642b29f2adbafc1119f0514d66c841e190d42f",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/opencode/commits?sha=74f8d4860f49c563909e6b039b0cc8b454ebce72&since=2026-09-25T00:00:00Z&per_page=100&page=2",
+        "file": "raw/anomalyco--opencode-commits-002.json",
+        "fetchedAt": "2026-10-23T09:33:22.979Z",
+        "bytes": 432425
+      }
+    },
+    {
+      "file": "raw/anomalyco--opencode-commits-003.json",
+      "bytes": 435385,
+      "sha256": "03b05e10b76c98de629b5886240865daaad43a884746bc33003d3eb449a1b804",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/opencode/commits?sha=74f8d4860f49c563909e6b039b0cc8b454ebce72&since=2026-09-25T00:00:00Z&per_page=100&page=3",
+        "file": "raw/anomalyco--opencode-commits-003.json",
+        "fetchedAt": "2026-10-23T09:33:26.691Z",
+        "bytes": 435378
+      }
+    },
+    {
+      "file": "raw/anomalyco--opencode-commits-004.json",
+      "bytes": 439728,
+      "sha256": "eacc231acdbeedfb2a3a262db13e303be560312e6641133e4cad4a235e1b7f6e",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/opencode/commits?sha=74f8d4860f49c563909e6b039b0cc8b454ebce72&since=2026-09-25T00:00:00Z&per_page=100&page=4",
+        "file": "raw/anomalyco--opencode-commits-004.json",
+        "fetchedAt": "2026-10-23T09:33:30.369Z",
+        "bytes": 439727
+      }
+    },
+    {
+      "file": "raw/anomalyco--opencode-commits-005.json",
+      "bytes": 442654,
+      "sha256": "ad43e3ae69600c9274b83710c2965ef388ae3fa89f7e37914ab3fc85b6dc6ef4",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/opencode/commits?sha=74f8d4860f49c563909e6b039b0cc8b454ebce72&since=2026-09-25T00:00:00Z&per_page=100&page=5",
+        "file": "raw/anomalyco--opencode-commits-005.json",
+        "fetchedAt": "2026-10-23T09:33:31.749Z",
+        "bytes": 442635
+      }
+    },
+    {
+      "file": "raw/anomalyco--opencode-commits-006.json",
+      "bytes": 423508,
+      "sha256": "9cbbe9293ce417457a56fd39d789a86222f036fb48ff891262ac0f06c2155512",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/opencode/commits?sha=74f8d4860f49c563909e6b039b0cc8b454ebce72&since=2026-09-25T00:00:00Z&per_page=100&page=6",
+        "file": "raw/anomalyco--opencode-commits-006.json",
+        "fetchedAt": "2026-10-23T09:33:33.435Z",
+        "bytes": 423507
+      }
+    },
+    {
+      "file": "raw/anomalyco--opencode-commits-007.json",
+      "bytes": 422122,
+      "sha256": "cfac529844830c6c954f37b1747e00e00142da810f2916f38d381596d09c691c",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/opencode/commits?sha=74f8d4860f49c563909e6b039b0cc8b454ebce72&since=2026-09-25T00:00:00Z&per_page=100&page=7",
+        "file": "raw/anomalyco--opencode-commits-007.json",
+        "fetchedAt": "2026-10-23T09:33:34.719Z",
+        "bytes": 422121
+      }
+    },
+    {
+      "file": "raw/anomalyco--opencode-commits-008.json",
+      "bytes": 436595,
+      "sha256": "235bf26efb997bcfc6d227e94a7135b03d3729287315b6736df92f7549a73b27",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/opencode/commits?sha=74f8d4860f49c563909e6b039b0cc8b454ebce72&since=2026-09-25T00:00:00Z&per_page=100&page=8",
+        "file": "raw/anomalyco--opencode-commits-008.json",
+        "fetchedAt": "2026-10-23T09:33:36.525Z",
+        "bytes": 436594
+      }
+    },
+    {
+      "file": "raw/anomalyco--opencode-commits-009.json",
+      "bytes": 436521,
+      "sha256": "02f02e1014bf6b4f0936a16d86d7b87c47cc48cbb0c35c6d58d540f16daaa4ed",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/opencode/commits?sha=74f8d4860f49c563909e6b039b0cc8b454ebce72&since=2026-09-25T00:00:00Z&per_page=100&page=9",
+        "file": "raw/anomalyco--opencode-commits-009.json",
+        "fetchedAt": "2026-10-23T09:33:37.984Z",
+        "bytes": 436508
+      }
+    },
+    {
+      "file": "raw/anomalyco--opencode-commits-010.json",
+      "bytes": 437395,
+      "sha256": "254ccd0946e316892cdc177d371c548f36fd8cde01e457807c9389fbc51f5ee9",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/opencode/commits?sha=74f8d4860f49c563909e6b039b0cc8b454ebce72&since=2026-09-25T00:00:00Z&per_page=100&page=10",
+        "file": "raw/anomalyco--opencode-commits-010.json",
+        "fetchedAt": "2026-10-23T09:33:39.419Z",
+        "bytes": 437388
+      }
+    },
+    {
+      "file": "raw/anomalyco--opencode-commits-011.json",
+      "bytes": 420457,
+      "sha256": "b9fa8a11edbd800a732a5197f56b1d6b28d8dd61f687b7deed6b5096dcd5ce47",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/opencode/commits?sha=74f8d4860f49c563909e6b039b0cc8b454ebce72&since=2026-09-25T00:00:00Z&per_page=100&page=11",
+        "file": "raw/anomalyco--opencode-commits-011.json",
+        "fetchedAt": "2026-10-23T09:33:40.871Z",
+        "bytes": 420456
+      }
+    },
+    {
+      "file": "raw/anomalyco--opencode-commits-012.json",
+      "bytes": 333409,
+      "sha256": "23e1620f2b08968c3d387746fa690f35d330218d24e5090da4a7643570ada42a",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/opencode/commits?sha=74f8d4860f49c563909e6b039b0cc8b454ebce72&since=2026-09-25T00:00:00Z&per_page=100&page=12",
+        "file": "raw/anomalyco--opencode-commits-012.json",
+        "fetchedAt": "2026-10-23T09:33:42.306Z",
+        "bytes": 333404
+      }
+    },
+    {
+      "file": "raw/anomalyco--opencode-open-items-001.json",
+      "bytes": 513583,
+      "sha256": "9f32aba28753b90708aac6e2a7e22b1569105dacabc0ff785e80ff78592c7218",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/opencode/issues?state=open&since=2026-09-25T00:00:00Z&sort=updated&direction=desc&per_page=100&page=1",
+        "file": "raw/anomalyco--opencode-open-items-001.json",
+        "fetchedAt": "2026-10-23T09:33:20.314Z",
+        "bytes": 513205
+      }
+    },
+    {
+      "file": "raw/anomalyco--opencode-open-items-002.json",
+      "bytes": 495975,
+      "sha256": "7ac9ac1450fc0e95eae0016e97ced74963596f37e6e1cf86b90bcd56cd51ca26",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/opencode/issues?state=open&since=2026-09-25T00:00:00Z&sort=updated&direction=desc&per_page=100&page=2",
+        "file": "raw/anomalyco--opencode-open-items-002.json",
+        "fetchedAt": "2026-10-23T09:33:24.353Z",
+        "bytes": 494930
+      }
+    },
+    {
+      "file": "raw/anomalyco--opencode-open-items-003.json",
+      "bytes": 516901,
+      "sha256": "c59c25606fd7ad8363e0746e5234615da9b4d241e2eb20cf4d154ee797fcd270",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/opencode/issues?state=open&since=2026-09-25T00:00:00Z&sort=updated&direction=desc&per_page=100&page=3",
+        "file": "raw/anomalyco--opencode-open-items-003.json",
+        "fetchedAt": "2026-10-23T09:33:27.700Z",
+        "bytes": 515988
+      }
+    },
+    {
+      "file": "raw/anomalyco--opencode-open-items-004.json",
+      "bytes": 539763,
+      "sha256": "c7c981a8d8a00739380be456c9fc2aa1494fe25d3c6a3e37c69fa787b6601e5d",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/opencode/issues?state=open&since=2026-09-25T00:00:00Z&sort=updated&direction=desc&per_page=100&page=4",
+        "file": "raw/anomalyco--opencode-open-items-004.json",
+        "fetchedAt": "2026-10-23T09:33:30.517Z",
+        "bytes": 538235
+      }
+    },
+    {
+      "file": "raw/anomalyco--opencode-open-items-005.json",
+      "bytes": 471992,
+      "sha256": "f1799b011eb3ef6388c1694e063cd5aa4917b1eb975f54a1d8050faafa5548ec",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/opencode/issues?state=open&since=2026-09-25T00:00:00Z&sort=updated&direction=desc&per_page=100&page=5",
+        "file": "raw/anomalyco--opencode-open-items-005.json",
+        "fetchedAt": "2026-10-23T09:33:31.911Z",
+        "bytes": 471374
+      }
+    },
+    {
+      "file": "raw/anomalyco--opencode-open-items-006.json",
+      "bytes": 541337,
+      "sha256": "14aac11482d62cbee608b226e21f9fff733264d3c32f49d887044c8744007d0f",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/opencode/issues?state=open&since=2026-09-25T00:00:00Z&sort=updated&direction=desc&per_page=100&page=6",
+        "file": "raw/anomalyco--opencode-open-items-006.json",
+        "fetchedAt": "2026-10-23T09:33:33.565Z",
+        "bytes": 540602
+      }
+    },
+    {
+      "file": "raw/anomalyco--opencode-open-items-007.json",
+      "bytes": 535638,
+      "sha256": "00705f1e0672ec2cfaf9d46dfa68951234ea387ace89e081f3e86aed1a479de8",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/opencode/issues?state=open&since=2026-09-25T00:00:00Z&sort=updated&direction=desc&per_page=100&page=7",
+        "file": "raw/anomalyco--opencode-open-items-007.json",
+        "fetchedAt": "2026-10-23T09:33:34.795Z",
+        "bytes": 535085
+      }
+    },
+    {
+      "file": "raw/anomalyco--opencode-open-items-008.json",
+      "bytes": 531886,
+      "sha256": "f17881f97a6b698abd74af5702e48ce41f1e6189b9981ab19e53dbea288659ac",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/opencode/issues?state=open&since=2026-09-25T00:00:00Z&sort=updated&direction=desc&per_page=100&page=8",
+        "file": "raw/anomalyco--opencode-open-items-008.json",
+        "fetchedAt": "2026-10-23T09:33:36.749Z",
+        "bytes": 531167
+      }
+    },
+    {
+      "file": "raw/anomalyco--opencode-open-items-009.json",
+      "bytes": 529482,
+      "sha256": "da3b4233d75acf2d673337c83adbb58dac7d2f0c3ffd5f32d19b45067e1f6e0a",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/opencode/issues?state=open&since=2026-09-25T00:00:00Z&sort=updated&direction=desc&per_page=100&page=9",
+        "file": "raw/anomalyco--opencode-open-items-009.json",
+        "fetchedAt": "2026-10-23T09:33:38.142Z",
+        "bytes": 528604
+      }
+    },
+    {
+      "file": "raw/anomalyco--opencode-open-items-010.json",
+      "bytes": 562990,
+      "sha256": "981fb617b605545bab1e9984063a85e3dc66051a80d4d8568b5372acd55a44cf",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/opencode/issues?state=open&since=2026-09-25T00:00:00Z&sort=updated&direction=desc&per_page=100&page=10",
+        "file": "raw/anomalyco--opencode-open-items-010.json",
+        "fetchedAt": "2026-10-23T09:33:39.662Z",
+        "bytes": 559157
+      }
+    },
+    {
+      "file": "raw/anomalyco--opencode-open-items-011.json",
+      "bytes": 496615,
+      "sha256": "520f678c9439f3896a9784f31bb2e8cb8e85fe2a4125f754d14caddc67e3b203",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/opencode/issues?state=open&since=2026-09-25T00:00:00Z&sort=updated&direction=desc&per_page=100&page=11",
+        "file": "raw/anomalyco--opencode-open-items-011.json",
+        "fetchedAt": "2026-10-23T09:33:41.065Z",
+        "bytes": 495886
+      }
+    },
+    {
+      "file": "raw/anomalyco--opencode-open-items-012.json",
+      "bytes": 583769,
+      "sha256": "d4140b35fb09a6349617acd68b6b067207f07f94f0f8b0ca7785e0693cab7484",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/opencode/issues?state=open&since=2026-09-25T00:00:00Z&sort=updated&direction=desc&per_page=100&page=12",
+        "file": "raw/anomalyco--opencode-open-items-012.json",
+        "fetchedAt": "2026-10-23T09:33:42.609Z",
+        "bytes": 582985
+      }
+    },
+    {
+      "file": "raw/anomalyco--opencode-open-items-013.json",
+      "bytes": 505528,
+      "sha256": "ae11a6a56048a31cac1b2c634cfb746acc7f6d42928839782f316f9096264109",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/opencode/issues?state=open&since=2026-09-25T00:00:00Z&sort=updated&direction=desc&per_page=100&page=13",
+        "file": "raw/anomalyco--opencode-open-items-013.json",
+        "fetchedAt": "2026-10-23T09:33:44.074Z",
+        "bytes": 503771
+      }
+    },
+    {
+      "file": "raw/anomalyco--opencode-open-items-014.json",
+      "bytes": 494653,
+      "sha256": "383a161a03c51782aa28c03e7fbe377d5f257831a1ef98c5fb6ac144b6d802e3",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/opencode/issues?state=open&since=2026-09-25T00:00:00Z&sort=updated&direction=desc&per_page=100&page=14",
+        "file": "raw/anomalyco--opencode-open-items-014.json",
+        "fetchedAt": "2026-10-23T09:33:45.870Z",
+        "bytes": 493346
+      }
+    },
+    {
+      "file": "raw/anomalyco--opencode-open-items-015.json",
+      "bytes": 494697,
+      "sha256": "a143f9d5d1681a24ad7cc8f09829443fdf6c7e2910874fb8470a2bc6856bf04e",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/opencode/issues?state=open&since=2026-09-25T00:00:00Z&sort=updated&direction=desc&per_page=100&page=15",
+        "file": "raw/anomalyco--opencode-open-items-015.json",
+        "fetchedAt": "2026-10-23T09:33:47.094Z",
+        "bytes": 493883
+      }
+    },
+    {
+      "file": "raw/anomalyco--opencode-open-items-016.json",
+      "bytes": 522749,
+      "sha256": "b4aa7c98bdd4f8a6ba632897ea3319216861dca1e6805d407c69f581f91f55a8",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/opencode/issues?state=open&since=2026-09-25T00:00:00Z&sort=updated&direction=desc&per_page=100&page=16",
+        "file": "raw/anomalyco--opencode-open-items-016.json",
+        "fetchedAt": "2026-10-23T09:33:48.910Z",
+        "bytes": 522251
+      }
+    },
+    {
+      "file": "raw/anomalyco--opencode-open-items-017.json",
+      "bytes": 514101,
+      "sha256": "a3e4aba801acfee3103efeb078f0d64540be3251d01f1dceb805e6dfb79173c8",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/opencode/issues?state=open&since=2026-09-25T00:00:00Z&sort=updated&direction=desc&per_page=100&page=17",
+        "file": "raw/anomalyco--opencode-open-items-017.json",
+        "fetchedAt": "2026-10-23T09:33:50.919Z",
+        "bytes": 513628
+      }
+    },
+    {
+      "file": "raw/anomalyco--opencode-open-items-018.json",
+      "bytes": 559761,
+      "sha256": "faeb9a2901cb7c256bbcd9ecc41e7964eeb797b037d9e28771d71a0ec27e17dd",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/opencode/issues?state=open&since=2026-09-25T00:00:00Z&sort=updated&direction=desc&per_page=100&page=18",
+        "file": "raw/anomalyco--opencode-open-items-018.json",
+        "fetchedAt": "2026-10-23T09:33:52.285Z",
+        "bytes": 558505
+      }
+    },
+    {
+      "file": "raw/anomalyco--opencode-open-items-019.json",
+      "bytes": 500025,
+      "sha256": "5cfa21d1b4b3d517568ea8a9fcdc95f7e2cf4a5ff1dd40080fd85d72cefd8b85",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/opencode/issues?state=open&since=2026-09-25T00:00:00Z&sort=updated&direction=desc&per_page=100&page=19",
+        "file": "raw/anomalyco--opencode-open-items-019.json",
+        "fetchedAt": "2026-10-23T09:33:53.523Z",
+        "bytes": 498454
+      }
+    },
+    {
+      "file": "raw/anomalyco--opencode-open-items-020.json",
+      "bytes": 484540,
+      "sha256": "67be67c5485bd966667780faae6f0d5268a1a70bee8b03bab694dd766fefc091",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/opencode/issues?state=open&since=2026-09-25T00:00:00Z&sort=updated&direction=desc&per_page=100&page=20",
+        "file": "raw/anomalyco--opencode-open-items-020.json",
+        "fetchedAt": "2026-10-23T09:33:54.873Z",
+        "bytes": 484125
+      }
+    },
+    {
+      "file": "raw/anomalyco--opencode-open-items-021.json",
+      "bytes": 466270,
+      "sha256": "4d55d8efdbc2196e530e2005ce1fdf20c85dcefd22336b714f8eb8776c54b984",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/opencode/issues?state=open&since=2026-09-25T00:00:00Z&sort=updated&direction=desc&per_page=100&page=21",
+        "file": "raw/anomalyco--opencode-open-items-021.json",
+        "fetchedAt": "2026-10-23T09:33:56.104Z",
+        "bytes": 463759
+      }
+    },
+    {
+      "file": "raw/anomalyco--opencode-open-items-022.json",
+      "bytes": 479533,
+      "sha256": "07093ef1a6aa26bbce7711cb0517d8e24c725ecad114233f0bb12d34b7f71db6",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/opencode/issues?state=open&since=2026-09-25T00:00:00Z&sort=updated&direction=desc&per_page=100&page=22",
+        "file": "raw/anomalyco--opencode-open-items-022.json",
+        "fetchedAt": "2026-10-23T09:33:57.692Z",
+        "bytes": 479040
+      }
+    },
+    {
+      "file": "raw/anomalyco--opencode-open-items-023.json",
+      "bytes": 518698,
+      "sha256": "6b69993dd0ef31929d3beedf8bd9c5f6ba901444e8dffae2e51899fc8159bc96",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/opencode/issues?state=open&since=2026-09-25T00:00:00Z&sort=updated&direction=desc&per_page=100&page=23",
+        "file": "raw/anomalyco--opencode-open-items-023.json",
+        "fetchedAt": "2026-10-23T09:34:00.800Z",
+        "bytes": 518371
+      }
+    },
+    {
+      "file": "raw/anomalyco--opencode-open-items-024.json",
+      "bytes": 489158,
+      "sha256": "303ebb239741341f17b28a44b73446c98a254b2ed2f2eff631d3df40b053984c",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/opencode/issues?state=open&since=2026-09-25T00:00:00Z&sort=updated&direction=desc&per_page=100&page=24",
+        "file": "raw/anomalyco--opencode-open-items-024.json",
+        "fetchedAt": "2026-10-23T09:34:02.342Z",
+        "bytes": 488132
+      }
+    },
+    {
+      "file": "raw/anomalyco--opencode-open-items-025.json",
+      "bytes": 602964,
+      "sha256": "5884af169b53544caac94124bc0793faaa7f82bb7c7e2d4d974afbdb567b6dc3",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/opencode/issues?state=open&since=2026-09-25T00:00:00Z&sort=updated&direction=desc&per_page=100&page=25",
+        "file": "raw/anomalyco--opencode-open-items-025.json",
+        "fetchedAt": "2026-10-23T09:34:03.915Z",
+        "bytes": 601942
+      }
+    },
+    {
+      "file": "raw/anomalyco--opencode-open-items-026.json",
+      "bytes": 624240,
+      "sha256": "d9e2c492f8694c7b75989dd1b53e9fbbf6e248a4872d4918c3bfa48d7844b8ff",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/opencode/issues?state=open&since=2026-09-25T00:00:00Z&sort=updated&direction=desc&per_page=100&page=26",
+        "file": "raw/anomalyco--opencode-open-items-026.json",
+        "fetchedAt": "2026-10-23T09:34:05.264Z",
+        "bytes": 620903
+      }
+    },
+    {
+      "file": "raw/anomalyco--opencode-open-items-027.json",
+      "bytes": 631552,
+      "sha256": "f6d90090cb1fe5ca263d5e1bb04156c69856de01242813651e061e3d46821313",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/opencode/issues?state=open&since=2026-09-25T00:00:00Z&sort=updated&direction=desc&per_page=100&page=27",
+        "file": "raw/anomalyco--opencode-open-items-027.json",
+        "fetchedAt": "2026-10-23T09:34:06.512Z",
+        "bytes": 630722
+      }
+    },
+    {
+      "file": "raw/anomalyco--opencode-open-items-028.json",
+      "bytes": 623882,
+      "sha256": "135c8765c6374feff9e66a3f2dd65fac77e5b2c9d3df77531b84edc93fbb5be4",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/opencode/issues?state=open&since=2026-09-25T00:00:00Z&sort=updated&direction=desc&per_page=100&page=28",
+        "file": "raw/anomalyco--opencode-open-items-028.json",
+        "fetchedAt": "2026-10-23T09:34:08.181Z",
+        "bytes": 621953
+      }
+    },
+    {
+      "file": "raw/anomalyco--opencode-open-items-029.json",
+      "bytes": 621419,
+      "sha256": "d920fd9dc52293d0f8c0117119b6c126e4e9527aa14ad88566b483a6d58a2560",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/opencode/issues?state=open&since=2026-09-25T00:00:00Z&sort=updated&direction=desc&per_page=100&page=29",
+        "file": "raw/anomalyco--opencode-open-items-029.json",
+        "fetchedAt": "2026-10-23T09:34:10.428Z",
+        "bytes": 620791
+      }
+    },
+    {
+      "file": "raw/anomalyco--opencode-open-items-030.json",
+      "bytes": 634766,
+      "sha256": "2ac7ef9b433a362ec3c841f856229fa1de2c311b35a858b9fd428a05a600d29b",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/opencode/issues?state=open&since=2026-09-25T00:00:00Z&sort=updated&direction=desc&per_page=100&page=30",
+        "file": "raw/anomalyco--opencode-open-items-030.json",
+        "fetchedAt": "2026-10-23T09:34:11.721Z",
+        "bytes": 633718
+      }
+    },
+    {
+      "file": "raw/anomalyco--opencode-open-items-031.json",
+      "bytes": 384398,
+      "sha256": "f946943dc71758643b6b8a8dad51f07b1d29c79a47463b936f597c7f622e3b2e",
+      "request": {
+        "url": "https://api.github.com/repos/anomalyco/opencode/issues?state=open&since=2026-09-25T00:00:00Z&sort=updated&direction=desc&per_page=100&page=31",
+        "file": "raw/anomalyco--opencode-open-items-031.json",
+        "fetchedAt": "2026-10-23T09:34:13.358Z",
+        "bytes": 383600
+      }
+    },
+    {
+      "file": "raw/anomalyco--opencode-repo.json",
+      "bytes": 6319,
+      "sha256": "655e68c20b923fdc98e5cf0aacdc962aafcd6024716a536addbf4408238a9925",
+      "url": "https://api.github.com/repos/anomalyco/opencode"
+    },
+    {
+      "file": "raw/anomalyco--opencode-tree.json",
+      "bytes": 2426368,
+      "sha256": "f7658abd0668e4ff0da4c80c11c82408dacb3a815ccfb51fa434beabb5521a89",
+      "url": "https://api.github.com/repos/anomalyco/opencode/git/trees/74f8d4860f49c563909e6b039b0cc8b454ebce72"
+    },
+    {
+      "file": "raw/models-dev-releases-final.json",
+      "bytes": 645,
+      "sha256": "463bfa9d77807b4ac444e1d3608773e72b4c6f168db7bfab88867e169aff6143",
+      "url": "https://api.github.com/repos/anomalyco/models.dev/releases?per_page=10",
+      "fetched_at": "2026-10-23T09:52:26.150Z"
+    },
+    {
+      "file": "raw/nightly-labs--openbot-all-open-1.json",
+      "bytes": 692053,
+      "sha256": "951dc67bd1bed1a0ad14f3b8ce59525d6639fafe9477e0ceff2a5aff3183b9f6"
+    },
+    {
+      "file": "raw/nightly-labs--openbot-all-open-2.json",
+      "bytes": 221296,
+      "sha256": "29cc5acacc89ca44b20779758da35450f0f6dd4f34052c39d3edcc0a89f70106"
+    },
+    {
+      "file": "raw/nightly-labs--openbot-commits-001.json",
+      "bytes": 751076,
+      "sha256": "fe9e49723e17418898e4f0a82ea0b4553ecfda95043b337c2ae68dc99c2ec524",
+      "request": {
+        "url": "https://api.github.com/repos/nightly-labs/openbot/commits?sha=main&since=2026-09-25T00:00:00Z&per_page=100&page=1",
+        "file": "raw/nightly-labs--openbot-commits-001.json",
+        "fetchedAt": "2026-10-23T09:33:18.383Z",
+        "bytes": 750991
+      }
+    },
+    {
+      "file": "raw/nightly-labs--openbot-commits-002.json",
+      "bytes": 693244,
+      "sha256": "d7b0ac1b86ef2becd2dced278a2bedce78647763eac5bee4c92571182957c055",
+      "request": {
+        "url": "https://api.github.com/repos/nightly-labs/openbot/commits?sha=41444f7b2037410b6c6ae7ecad52058f5ebd4f51&since=2026-09-25T00:00:00Z&per_page=100&page=2",
+        "file": "raw/nightly-labs--openbot-commits-002.json",
+        "fetchedAt": "2026-10-23T09:33:24.311Z",
+        "bytes": 693115
+      }
+    },
+    {
+      "file": "raw/nightly-labs--openbot-commits-003.json",
+      "bytes": 735697,
+      "sha256": "763fb6ad45185f14df3223fc9d922c2937ceadb1b8d887a6aa72185d94d45503",
+      "request": {
+        "url": "https://api.github.com/repos/nightly-labs/openbot/commits?sha=41444f7b2037410b6c6ae7ecad52058f5ebd4f51&since=2026-09-25T00:00:00Z&per_page=100&page=3",
+        "file": "raw/nightly-labs--openbot-commits-003.json",
+        "fetchedAt": "2026-10-23T09:33:27.642Z",
+        "bytes": 735646
+      }
+    },
+    {
+      "file": "raw/nightly-labs--openbot-commits-004.json",
+      "bytes": 680182,
+      "sha256": "afd855f5a7401233275798c3149c89f867f6463ae0bc357c47107949b954c39b",
+      "request": {
+        "url": "https://api.github.com/repos/nightly-labs/openbot/commits?sha=41444f7b2037410b6c6ae7ecad52058f5ebd4f51&since=2026-09-25T00:00:00Z&per_page=100&page=4",
+        "file": "raw/nightly-labs--openbot-commits-004.json",
+        "fetchedAt": "2026-10-23T09:33:30.468Z",
+        "bytes": 680085
+      }
+    },
+    {
+      "file": "raw/nightly-labs--openbot-commits-005.json",
+      "bytes": 668986,
+      "sha256": "180f499922fe2b4789b2c98803ddae2bcc409f2477a42ab7ac1abbb4e96b0512",
+      "request": {
+        "url": "https://api.github.com/repos/nightly-labs/openbot/commits?sha=41444f7b2037410b6c6ae7ecad52058f5ebd4f51&since=2026-09-25T00:00:00Z&per_page=100&page=5",
+        "file": "raw/nightly-labs--openbot-commits-005.json",
+        "fetchedAt": "2026-10-23T09:33:31.861Z",
+        "bytes": 668895
+      }
+    },
+    {
+      "file": "raw/nightly-labs--openbot-commits-006.json",
+      "bytes": 708940,
+      "sha256": "d7663121e9a6518b883b7a5214a4e94efa174d5baa8141744fc0d16c40b15e8a",
+      "request": {
+        "url": "https://api.github.com/repos/nightly-labs/openbot/commits?sha=41444f7b2037410b6c6ae7ecad52058f5ebd4f51&since=2026-09-25T00:00:00Z&per_page=100&page=6",
+        "file": "raw/nightly-labs--openbot-commits-006.json",
+        "fetchedAt": "2026-10-23T09:33:33.506Z",
+        "bytes": 708861
+      }
+    },
+    {
+      "file": "raw/nightly-labs--openbot-commits-007.json",
+      "bytes": 574522,
+      "sha256": "e17941d59684be0e0c6228a55ae68b9d2df2c072f65176edaf1968cc664eddf2",
+      "request": {
+        "url": "https://api.github.com/repos/nightly-labs/openbot/commits?sha=41444f7b2037410b6c6ae7ecad52058f5ebd4f51&since=2026-09-25T00:00:00Z&per_page=100&page=7",
+        "file": "raw/nightly-labs--openbot-commits-007.json",
+        "fetchedAt": "2026-10-23T09:33:34.864Z",
+        "bytes": 574473
+      }
+    },
+    {
+      "file": "raw/nightly-labs--openbot-commits-008.json",
+      "bytes": 660486,
+      "sha256": "95cad1e2f73ca031f4759d198fc91fe759addcd41a8118cb5dcc6c23e78903fe",
+      "request": {
+        "url": "https://api.github.com/repos/nightly-labs/openbot/commits?sha=41444f7b2037410b6c6ae7ecad52058f5ebd4f51&since=2026-09-25T00:00:00Z&per_page=100&page=8",
+        "file": "raw/nightly-labs--openbot-commits-008.json",
+        "fetchedAt": "2026-10-23T09:33:36.671Z",
+        "bytes": 660051
+      }
+    },
+    {
+      "file": "raw/nightly-labs--openbot-commits-009.json",
+      "bytes": 714636,
+      "sha256": "26b11b5764abf5f23beb209e0903177a5d34d1f5f89bfce99ac04b69a45e9f9b",
+      "request": {
+        "url": "https://api.github.com/repos/nightly-labs/openbot/commits?sha=41444f7b2037410b6c6ae7ecad52058f5ebd4f51&since=2026-09-25T00:00:00Z&per_page=100&page=9",
+        "file": "raw/nightly-labs--openbot-commits-009.json",
+        "fetchedAt": "2026-10-23T09:33:38.233Z",
+        "bytes": 714585
+      }
+    },
+    {
+      "file": "raw/nightly-labs--openbot-commits-010.json",
+      "bytes": 694625,
+      "sha256": "a8ae272da5a7f620b53756ffad87a87ea0487a6a5408dd4642955acb39d92fff",
+      "request": {
+        "url": "https://api.github.com/repos/nightly-labs/openbot/commits?sha=41444f7b2037410b6c6ae7ecad52058f5ebd4f51&since=2026-09-25T00:00:00Z&per_page=100&page=10",
+        "file": "raw/nightly-labs--openbot-commits-010.json",
+        "fetchedAt": "2026-10-23T09:33:39.574Z",
+        "bytes": 694532
+      }
+    },
+    {
+      "file": "raw/nightly-labs--openbot-commits-011.json",
+      "bytes": 681431,
+      "sha256": "128bb478289c4c13ae379b854a8892c8401eebf39cd72f62f4faecd2a104373a",
+      "request": {
+        "url": "https://api.github.com/repos/nightly-labs/openbot/commits?sha=41444f7b2037410b6c6ae7ecad52058f5ebd4f51&since=2026-09-25T00:00:00Z&per_page=100&page=11",
+        "file": "raw/nightly-labs--openbot-commits-011.json",
+        "fetchedAt": "2026-10-23T09:33:41.155Z",
+        "bytes": 681320
+      }
+    },
+    {
+      "file": "raw/nightly-labs--openbot-commits-012.json",
+      "bytes": 587982,
+      "sha256": "91e75fc6e8ed09353305e36039b3b6708f8b6bce741b6e2df4daac6bf223f07a",
+      "request": {
+        "url": "https://api.github.com/repos/nightly-labs/openbot/commits?sha=41444f7b2037410b6c6ae7ecad52058f5ebd4f51&since=2026-09-25T00:00:00Z&per_page=100&page=12",
+        "file": "raw/nightly-labs--openbot-commits-012.json",
+        "fetchedAt": "2026-10-23T09:33:42.499Z",
+        "bytes": 587949
+      }
+    },
+    {
+      "file": "raw/nightly-labs--openbot-commits-013.json",
+      "bytes": 343904,
+      "sha256": "413e4e78947355891e30fbc2b805261f8bedfac149cb1445e74b5c96c0d592bf",
+      "request": {
+        "url": "https://api.github.com/repos/nightly-labs/openbot/commits?sha=41444f7b2037410b6c6ae7ecad52058f5ebd4f51&since=2026-09-25T00:00:00Z&per_page=100&page=13",
+        "file": "raw/nightly-labs--openbot-commits-013.json",
+        "fetchedAt": "2026-10-23T09:33:43.876Z",
+        "bytes": 343881
+      }
+    },
+    {
+      "file": "raw/nightly-labs--openbot-open-items-001.json",
+      "bytes": 692053,
+      "sha256": "a740f099528e483d3d13e7485c9f3b9e18eb3b914dbee99813e2e18a5828cc9b",
+      "request": {
+        "url": "https://api.github.com/repos/nightly-labs/openbot/issues?state=open&since=2026-09-25T00:00:00Z&sort=updated&direction=desc&per_page=100&page=1",
+        "file": "raw/nightly-labs--openbot-open-items-001.json",
+        "fetchedAt": "2026-10-23T09:33:22.954Z",
+        "bytes": 691574
+      }
+    },
+    {
+      "file": "raw/nightly-labs--openbot-open-items-002.json",
+      "bytes": 203285,
+      "sha256": "54824895973769bb7e36f32865283644bacc455053fe2b5b6d71fd630a4079b3",
+      "request": {
+        "url": "https://api.github.com/repos/nightly-labs/openbot/issues?state=open&since=2026-09-25T00:00:00Z&sort=updated&direction=desc&per_page=100&page=2",
+        "file": "raw/nightly-labs--openbot-open-items-002.json",
+        "fetchedAt": "2026-10-23T09:33:26.668Z",
+        "bytes": 203166
+      }
+    },
+    {
+      "file": "raw/nightly-labs--openbot-repo.json",
+      "bytes": 6639,
+      "sha256": "4e4bd14a229247a024252d01c2f91575a278d7d2f40d4b87d12e0426f1af0e68",
+      "url": "https://api.github.com/repos/nightly-labs/openbot"
+    },
+    {
+      "file": "raw/nightly-labs--openbot-tree.json",
+      "bytes": 1595088,
+      "sha256": "efe9159bb871cef5612328ee81f85f5a256c5ddffda4285dde5d15684966cc32",
+      "url": "https://api.github.com/repos/nightly-labs/openbot/git/trees/41444f7b2037410b6c6ae7ecad52058f5ebd4f51"
+    },
+    {
+      "file": "raw/openbot-releases-final.json",
+      "bytes": 609884,
+      "sha256": "95be224b8248ee11b78f7eadbad7ed286adec6491ac3881722e21997b402eab1",
+      "url": "https://api.github.com/repos/nightly-labs/openbot/releases?per_page=5",
+      "fetched_at": "2026-10-23T09:52:26.312Z"
+    },
+    {
+      "file": "raw/opencode-readme-final.json",
+      "bytes": 10504,
+      "sha256": "9320dd0d069ab6aae7567f735fc5e3fe94a6d0f1fe8c045a5c23501c7cfff51b",
+      "url": "https://raw.githubusercontent.com/anomalyco/opencode/74f8d4860f49c563909e6b039b0cc8b454ebce72/README.md",
+      "fetched_at": "2026-10-23T09:52:26.690Z"
+    },
+    {
+      "file": "raw/opencode-releases-final.json",
+      "bytes": 4138837,
+      "sha256": "fcabf910d5704970858e1856acd70f53a36d36ff52e0bcecd3556435221b7738",
+      "url": "https://api.github.com/repos/anomalyco/opencode/releases?per_page=30",
+      "fetched_at": "2026-10-23T09:52:27.335Z"
+    },
+    {
+      "file": "raw/opencode-v2-commits-2.json",
+      "bytes": 440471,
+      "sha256": "8cf1b2818b9794f16224727704d4b4a0ed20c1d42daa45bdb33f372a9a6a6f15"
+    },
+    {
+      "file": "raw/opencode-v2-commits-3.json",
+      "bytes": 437143,
+      "sha256": "198ba29e12d03d7c4a9fcd216e68722eeded054d8b8d4f77b090494657911c87"
+    },
+    {
+      "file": "raw/opencode-v2-commits-4.json",
+      "bytes": 439070,
+      "sha256": "a89a08a7d83a819d6bea0dcda5f0b638f9d2862271da736bd9daa88d340f1c15"
+    },
+    {
+      "file": "raw/opencode-v2-commits-5.json",
+      "bytes": 434851,
+      "sha256": "9ea0f069987f2d140ef3b260a48a80945c9356688b2dd463b78d522bd6a958a3"
+    },
+    {
+      "file": "raw/opencode-v2-commits-6.json",
+      "bytes": 259105,
+      "sha256": "de8cff147ab602543a00490c6ef47430d667d384879c57739534b607fec11831"
+    },
+    {
+      "file": "raw/opencode-v2-commits.json",
+      "bytes": 424468,
+      "sha256": "17d0cfbda52ad36fcdc3f9f4e2c977174d3ec43cb3718645abb2cd056993585a"
+    },
+    {
+      "file": "raw/opencode-v2-ref-final.json",
+      "bytes": 9227,
+      "sha256": "e0eddb02796e56391c7a7984622caac39f3cca986464798520034e6302a6c594",
+      "url": "https://api.github.com/repos/anomalyco/opencode/branches/v2",
+      "fetched_at": "2026-10-23T09:52:25.939Z"
+    },
+    {
+      "file": "source/anomalyco--models.dev/README.md",
+      "bytes": 11802,
+      "sha256": "19e58a16d3d48fb164d85040e961d56679afb1b3e1e6c003d99f13c661ed0415"
+    },
+    {
+      "file": "source/anomalyco--models.dev/packages/core/src/generate-v2.ts",
+      "bytes": 21717,
+      "sha256": "63b11e77d05bf406efbf1210693c08bad6dba184daab4983907aacd8d046b260"
+    },
+    {
+      "file": "source/anomalyco--models.dev/packages/core/src/model-file-v2.ts",
+      "bytes": 20298,
+      "sha256": "8aa2f382b54cd2bd69518ffd8ed74406cf29502e5e8e5ba2bed1770691c913d1"
+    },
+    {
+      "file": "source/anomalyco--models.dev/packages/core/src/schema-v2.ts",
+      "bytes": 25857,
+      "sha256": "d5fe81f8ef753c6a5db15633b9715aadd021fee42c3cacda1879386412f297ec"
+    },
+    {
+      "file": "source/anomalyco--models.dev/packages/core/src/schema.ts",
+      "bytes": 12055,
+      "sha256": "8ad76349f50b60731303edd69ce3baed0ed2af33a8398431f015b14ac840b557"
+    },
+    {
+      "file": "source/anomalyco--opencode/SECURITY.md",
+      "bytes": 2662,
+      "sha256": "21b1cd3da5c5a9dd2958414a822c1453b45be7e1ab727c8646158c174bb1f484"
+    },
+    {
+      "file": "source/anomalyco--opencode/packages/core/src/models-dev.ts",
+      "bytes": 16558,
+      "sha256": "2f56025a54e278e8404b59332fda39c4b9016ed8b9cdb00cf3ce6071435ac2d3"
+    },
+    {
+      "file": "source/anomalyco--opencode/packages/schema/src/models-dev.ts",
+      "bytes": 247,
+      "sha256": "473a81d3b3f5d4d4362a2df973f1279974cd5580dce14b81f6a9368da4d6cae1"
+    },
+    {
+      "file": "source/nightly-labs--openbot/LICENSE",
+      "bytes": 4733,
+      "sha256": "a6b9f7b305939bedb078e0d80740e5c3526978e725e7cd1e9fa248e6ab73b589"
+    },
+    {
+      "file": "source/nightly-labs--openbot/README.md",
+      "bytes": 55521,
+      "sha256": "3bc04f9311d61f485cbc71acefedecaa32afa6f5b7b537e4d5bc1ffe882b9af0"
+    },
+    {
+      "file": "source/nightly-labs--openbot/SECURITY.md",
+      "bytes": 2024,
+      "sha256": "e5ac7ba405400c0cfdb47e1ff60fcedae3f6767818f9479ed6312996d710ee17"
+    },
+    {
+      "file": "source/nightly-labs--openbot/docs/architecture/agents.md",
+      "bytes": 45917,
+      "sha256": "b1be0f8815f38b87f6984396558353cd4f4675cb2162d4779811d547a4548bac"
+    },
+    {
+      "file": "source/nightly-labs--openbot/docs/architecture/channels-and-messaging.md",
+      "bytes": 39384,
+      "sha256": "45eea412a252741fa6057062642f1ab910616443f29f4d4a2b0e02898a7138a6"
+    },
+    {
+      "file": "source/nightly-labs--openbot/docs/automation.md",
+      "bytes": 14494,
+      "sha256": "950b988e06d225bf583774287809ba7c583fd5b3e793e57690ae5910329feb69"
+    },
+    {
+      "file": "source/nightly-labs--openbot/src/main/webhook-security.ts",
+      "bytes": 3471,
+      "sha256": "cd4996cf0d3599cee97e8b4c7c32c8b1e613835702168e96cf4d8742ea3624ca"
+    },
+    {
+      "file": "details/anomalyco--models.dev-issue-10336-comments.json",
+      "bytes": 1343,
+      "sha256": "559ec96030739fb90fcaaf3ad553f1414676858d099c07e636e33f103902a4e7",
+      "fetched_at": "2026-10-23T09:50:13.868Z"
+    },
+    {
+      "file": "details/anomalyco--models.dev-issue-11172-comments.json",
+      "bytes": 1886,
+      "sha256": "d21b7dbafdb87093d6228a04da1749ac8bafa4a8c5ef97e4ef404582596890a3",
+      "fetched_at": "2026-10-23T09:50:14.571Z"
+    },
+    {
+      "file": "details/anomalyco--models.dev-issue-2949-comments.json",
+      "bytes": 6590,
+      "sha256": "ac43ed43d69307d7921dc3c0324bd81fd578eb875884b272b5b16f6efe5f15d6",
+      "fetched_at": "2026-10-23T09:50:13.945Z"
+    },
+    {
+      "file": "details/anomalyco--models.dev-issue-5792-comments.json",
+      "bytes": 1991,
+      "sha256": "1f40f12f8de76918ce4a8e2be8c78fa5d8324313050cd88a055b57bb9555101d",
+      "fetched_at": "2026-10-23T09:50:13.919Z"
+    },
+    {
+      "file": "details/anomalyco--models.dev-issue-6073-comments.json",
+      "bytes": 37431,
+      "sha256": "da0eacb295aa8a25aef4696562f18e6f213cb2de6b687ecf8aec10133104db59",
+      "fetched_at": "2026-10-23T09:50:13.938Z"
+    },
+    {
+      "file": "details/anomalyco--models.dev-issue-9268-comments.json",
+      "bytes": 439,
+      "sha256": "73ae46f8a2dec9785323312b559c05d12de58ea1dba995a06abbad286558d72e",
+      "fetched_at": "2026-10-23T09:50:13.786Z"
+    },
+    {
+      "file": "details/anomalyco--models.dev-issue-9767-comments.json",
+      "bytes": 1232,
+      "sha256": "80936a06c026d3d38f939aab3495fc9d6683d1f419b2d842f06ff8f947f4c0c2",
+      "fetched_at": "2026-10-23T09:50:13.860Z"
+    },
+    {
+      "file": "details/anomalyco--models.dev-pr-10633.json",
+      "bytes": 52646,
+      "sha256": "e8a9cbc31c9b34e04273fdc3506885b8b6637f8e1f1113cee805f9d5bb555660",
+      "url": "https://github.com/anomalyco/models.dev/pull/10633"
+    },
+    {
+      "file": "details/anomalyco--models.dev-pr-10818.json",
+      "bytes": 58955,
+      "sha256": "31db1889bd83543915b242ff649fbcb45445852e6a96313ad4c9dd9e482b9793",
+      "url": "https://github.com/anomalyco/models.dev/pull/10818"
+    },
+    {
+      "file": "details/anomalyco--models.dev-pr-10895.json",
+      "bytes": 92832,
+      "sha256": "97628b0e84f9683fb3aa87b68119909b840cebc28e6b90ef7d75ec2edb80f59d",
+      "url": "https://github.com/anomalyco/models.dev/pull/10895"
+    },
+    {
+      "file": "details/anomalyco--models.dev-pr-10975.json",
+      "bytes": 49253,
+      "sha256": "22a4ff34eb3028eb016028ab3a18d44c1c6287cb389b67234a35cb303690f7f5",
+      "url": "https://github.com/anomalyco/models.dev/pull/10975"
+    },
+    {
+      "file": "details/anomalyco--models.dev-pr-10987.json",
+      "bytes": 40250,
+      "sha256": "718eb1f38264a9eb7c1f64f44b034ee22967d9a7b00451ce55bfab0ac478c21b",
+      "url": "https://github.com/anomalyco/models.dev/pull/10987"
+    },
+    {
+      "file": "details/anomalyco--models.dev-pr-11059.json",
+      "bytes": 53802,
+      "sha256": "3667f16e6a4ac89dfb48a8a414af91ac7108fe54a140a43a5360626e4eed3bbb",
+      "url": "https://github.com/anomalyco/models.dev/pull/11059"
+    },
+    {
+      "file": "details/anomalyco--models.dev-pr-11134.json",
+      "bytes": 17156,
+      "sha256": "1f4bc983e868f418f8d5bba68eca6b12013d3624b1a3216a7fe281934fbbe54c",
+      "url": "https://github.com/anomalyco/models.dev/pull/11134"
+    },
+    {
+      "file": "details/anomalyco--models.dev-pr-11135.json",
+      "bytes": 364932,
+      "sha256": "bdc58ccec246fba1fe65235674ec1f3289df53db886556140bcbfddecf382a0f",
+      "url": "https://github.com/anomalyco/models.dev/pull/11135"
+    },
+    {
+      "file": "details/anomalyco--models.dev-pr-11136.json",
+      "bytes": 450946,
+      "sha256": "df17d400baa70c3bdf76019e38b14b3b463664fdbf6f9a57cecf0a6f4be0c276",
+      "url": "https://github.com/anomalyco/models.dev/pull/11136"
+    },
+    {
+      "file": "details/anomalyco--models.dev-pr-11153.json",
+      "bytes": 11530,
+      "sha256": "59b99be42df81ea780e6ebaf37186b9847c9909a4e5558449ee7ea20f08e3986",
+      "url": "https://github.com/anomalyco/models.dev/pull/11153"
+    },
+    {
+      "file": "details/anomalyco--models.dev-pr-11171.json",
+      "bytes": 55363,
+      "sha256": "791a40c26ca9f964dcdf4614bfb5f6f5dfe123ed26a4ea277838115d4466ec5c",
+      "url": "https://github.com/anomalyco/models.dev/pull/11171"
+    },
+    {
+      "file": "details/anomalyco--models.dev-pr-11175.json",
+      "bytes": 21875,
+      "sha256": "8e2827f3712a3b7b6e3805330c47097bc387e4b0c3862453f3f3b4ea29163caf",
+      "url": "https://github.com/anomalyco/models.dev/pull/11175"
+    },
+    {
+      "file": "details/anomalyco--models.dev-pr-7977.json",
+      "bytes": 6468,
+      "sha256": "5cbec80aadeaf314319547f3ff13788412c812ee96fee5add4dbb2eb7947cd75",
+      "url": "https://github.com/anomalyco/models.dev/pull/7977"
+    },
+    {
+      "file": "details/anomalyco--opencode-issue-50652-comments.json",
+      "bytes": 10050,
+      "sha256": "c7e2107562e1735e12cb1ee4637bf6fca43b516b656c4f43f320d20107221e64",
+      "fetched_at": "2026-10-23T09:50:13.997Z"
+    },
+    {
+      "file": "details/anomalyco--opencode-issue-50904-comments.json",
+      "bytes": 6272,
+      "sha256": "16ebb83ac19357e8465aff4d3ded264b1665987e17b918338964fe598a3ab229",
+      "fetched_at": "2026-10-23T09:50:13.843Z"
+    },
+    {
+      "file": "details/anomalyco--opencode-issue-52083-comments.json",
+      "bytes": 38845,
+      "sha256": "0bf51ffaefcfe9e63cb7dc31c59d2e704764ab6297f62c659b4a712a042f43d8",
+      "fetched_at": "2026-10-23T09:50:14.124Z"
+    },
+    {
+      "file": "details/anomalyco--opencode-issue-57582-comments.json",
+      "bytes": 8071,
+      "sha256": "ceca1ebc781a4bdc182ad9359fab6cd54fe47d87710c80adf52fbcb17676be94",
+      "fetched_at": "2026-10-23T09:50:13.946Z"
+    },
+    {
+      "file": "details/anomalyco--opencode-issue-57985-comments.json",
+      "bytes": 17546,
+      "sha256": "78a3aeb7800a410f40a147cc3a3b25ee026b083ae193de4b7bd5ec63549fc582",
+      "fetched_at": "2026-10-23T09:50:13.995Z"
+    },
+    {
+      "file": "details/anomalyco--opencode-issue-58193-comments.json",
+      "bytes": 6757,
+      "sha256": "4d600d19eb350901d47d873d3b8437acc3b078a7ef60eec3b75ff36a5cd6db89",
+      "fetched_at": "2026-10-23T09:50:13.953Z"
+    },
+    {
+      "file": "details/anomalyco--opencode-issue-58386-comments.json",
+      "bytes": 21190,
+      "sha256": "c90ea08a0afb28fa028508b9b53a0a5b8e5838bf1c0f1a3b3291240aff79b3c2",
+      "fetched_at": "2026-10-23T09:50:13.841Z"
+    },
+    {
+      "file": "details/anomalyco--opencode-issue-58394-comments.json",
+      "bytes": 8010,
+      "sha256": "efeed5e4748dca8a00821d6e995801cca56916d9177826074bb81299c4a85c96",
+      "fetched_at": "2026-10-23T09:50:13.869Z"
+    },
+    {
+      "file": "details/anomalyco--opencode-pr-55496.json",
+      "bytes": 264006,
+      "sha256": "0e81a14154b3e580339bba5a4971c19d5ac160656dfbb5a7ce19944410bb0a17",
+      "url": "https://github.com/anomalyco/opencode/pull/55496"
+    },
+    {
+      "file": "details/anomalyco--opencode-pr-56767.json",
+      "bytes": 164937,
+      "sha256": "3ff10c52e6f1db600b8ac9ae2fa13fbcaa8e31590b59c11c0e755cabeee07e40",
+      "url": "https://github.com/anomalyco/opencode/pull/56767"
+    },
+    {
+      "file": "details/anomalyco--opencode-pr-56947.json",
+      "bytes": 110885,
+      "sha256": "afa1646ac8fc1b107b4acb4a68aa8d105a0e1cdae3af03ab9bdfbb0736053a17",
+      "url": "https://github.com/anomalyco/opencode/pull/56947"
+    },
+    {
+      "file": "details/anomalyco--opencode-pr-57148.json",
+      "bytes": 13114,
+      "sha256": "46116da5e71ce0218def6fdf5156ba1752eac1ef65a7e5d10ab7e4016b646cec",
+      "url": "https://github.com/anomalyco/opencode/pull/57148"
+    },
+    {
+      "file": "details/anomalyco--opencode-pr-57260.json",
+      "bytes": 718894,
+      "sha256": "fb0f303288e5f2cfa92769b3eede4d6a0a5328ef87637eb42f9ea311b39f2aed",
+      "url": "https://github.com/anomalyco/opencode/pull/57260"
+    },
+    {
+      "file": "details/anomalyco--opencode-pr-57416.json",
+      "bytes": 69012,
+      "sha256": "a2586beb53641dc492c58dde01c970a5f945d11bec8b8e4b74f3f2b17dd61538",
+      "url": "https://github.com/anomalyco/opencode/pull/57416"
+    },
+    {
+      "file": "details/anomalyco--opencode-pr-57418.json",
+      "bytes": 53146,
+      "sha256": "8fc75fcb934c98a30345a68574ee38b966d9367a404d0bb6b0fb8da0f749371b",
+      "url": "https://github.com/anomalyco/opencode/pull/57418"
+    },
+    {
+      "file": "details/anomalyco--opencode-pr-57555.json",
+      "bytes": 30669,
+      "sha256": "030ac7503ea54f5cef5e97609ff9c2372410a774d14d06dc17dd23dc528c0814",
+      "url": "https://github.com/anomalyco/opencode/pull/57555"
+    },
+    {
+      "file": "details/anomalyco--opencode-pr-57626.json",
+      "bytes": 30399,
+      "sha256": "b71f83a91c8506a972fb90ebd61de478584f4f055a43e5ce909d73fd84b6140b",
+      "url": "https://github.com/anomalyco/opencode/pull/57626"
+    },
+    {
+      "file": "details/anomalyco--opencode-pr-57827-files.json",
+      "bytes": 7606,
+      "sha256": "be0179cb85de92b90f371837182d416d7bcc31bae23d27dd4b2f99eff546bf70",
+      "fetched_at": "2026-10-23T09:50:36.858Z"
+    },
+    {
+      "file": "details/anomalyco--opencode-pr-57827.json",
+      "bytes": 11165,
+      "sha256": "efb3ea4fb86752d9766ac13cbf300c9ad5b73b6bc0daeec590edca33afd517ef",
+      "url": "https://github.com/anomalyco/opencode/pull/57827"
+    },
+    {
+      "file": "details/anomalyco--opencode-pr-58047.json",
+      "bytes": 22997,
+      "sha256": "ab62eb090e02e886e964786c7234d62142a53ef1938f76c55c1c221862400fef",
+      "url": "https://github.com/anomalyco/opencode/pull/58047"
+    },
+    {
+      "file": "details/anomalyco--opencode-pr-58066-files.json",
+      "bytes": 29408,
+      "sha256": "48b703557d4c7b7944002bf3e3eaa2751774ec14cd4152e8696578561b9ee254",
+      "fetched_at": "2026-10-23T09:50:37.106Z"
+    },
+    {
+      "file": "details/anomalyco--opencode-pr-58066.json",
+      "bytes": 46575,
+      "sha256": "0f39ecc21db648bb219d8333866a8b842e8ae39208ff3becce9904ab9d81a531",
+      "url": "https://github.com/anomalyco/opencode/pull/58066"
+    },
+    {
+      "file": "details/anomalyco--opencode-pr-58158.json",
+      "bytes": 8409,
+      "sha256": "4883679786950e0d24791e3996f67b50975f5cb703ce8bc6118bce37311c4cc0",
+      "url": "https://github.com/anomalyco/opencode/pull/58158"
+    },
+    {
+      "file": "details/anomalyco--opencode-pr-58162.json",
+      "bytes": 80621,
+      "sha256": "1c76343041956973a60a7a938be5665910fdee55ec1b299f7a18056062649038",
+      "url": "https://github.com/anomalyco/opencode/pull/58162"
+    },
+    {
+      "file": "details/anomalyco--opencode-pr-58194.json",
+      "bytes": 39959,
+      "sha256": "fb828023e9cc830c77bbea1c4fdd33b9a1dbefc29606db1fe088092ee066a70a",
+      "url": "https://github.com/anomalyco/opencode/pull/58194"
+    },
+    {
+      "file": "details/anomalyco--opencode-pr-58260.json",
+      "bytes": 110378,
+      "sha256": "87ff700bda856ed74bbec3df322c407a77cba8063fcd7f8c35ba52de53b8090c",
+      "url": "https://github.com/anomalyco/opencode/pull/58260"
+    },
+    {
+      "file": "details/anomalyco--opencode-pr-58261-files.json",
+      "bytes": 38208,
+      "sha256": "bd893d14fbe52d28e9a4994ef8cd9e1a191288df32967ad69f8f4f665275ac41",
+      "fetched_at": "2026-10-23T09:50:36.899Z"
+    },
+    {
+      "file": "details/anomalyco--opencode-pr-58261.json",
+      "bytes": 32114,
+      "sha256": "0f06221b4b14761134aa69ad6b35bc626b3f6939ab3b0e73a1526c199487694c",
+      "url": "https://github.com/anomalyco/opencode/pull/58261"
+    },
+    {
+      "file": "details/anomalyco--opencode-pr-58293.json",
+      "bytes": 89974,
+      "sha256": "8e2428858e95e7925b3e52925a5fdbb1faf5a274bf7a0a5d517dddca615c61e3",
+      "url": "https://github.com/anomalyco/opencode/pull/58293"
+    },
+    {
+      "file": "details/anomalyco--opencode-pr-58294.json",
+      "bytes": 28158,
+      "sha256": "dee22d7d997d15bdc2bf57d5e6610e9d56948f8f115900c4da73f9db0e3527d4",
+      "url": "https://github.com/anomalyco/opencode/pull/58294"
+    },
+    {
+      "file": "details/anomalyco--opencode-pr-58305.json",
+      "bytes": 60413,
+      "sha256": "015ff1edfb903ba54bcfd3ef5c9bbea59cd6ce78b23270aadf4bb3777185bc11",
+      "url": "https://github.com/anomalyco/opencode/pull/58305"
+    },
+    {
+      "file": "details/anomalyco--opencode-pr-58313-files.json",
+      "bytes": 9268,
+      "sha256": "d101979d7f39c56412cf646d426f06c9b228361f94e26e35624c019ffcc2a462",
+      "fetched_at": "2026-10-23T09:50:36.848Z"
+    },
+    {
+      "file": "details/anomalyco--opencode-pr-58313.json",
+      "bytes": 26778,
+      "sha256": "63ce0c8c7264ba9743b5a4bef12795dda4240c5273b1a7a2bed8ded798d6a91b",
+      "url": "https://github.com/anomalyco/opencode/pull/58313"
+    },
+    {
+      "file": "details/anomalyco--opencode-pr-58341-files.json",
+      "bytes": 6846,
+      "sha256": "04e923bf78b8f1d11c80604b4938c9aaa861187993d967a8a7d379ce70c325fc",
+      "fetched_at": "2026-10-23T09:50:36.946Z"
+    },
+    {
+      "file": "details/anomalyco--opencode-pr-58341.json",
+      "bytes": 22513,
+      "sha256": "7e7b180731efe0de863d32d415226f5e10a7b486bf57014081fe9a1d97f7b376",
+      "url": "https://github.com/anomalyco/opencode/pull/58341"
+    },
+    {
+      "file": "details/anomalyco--opencode-pr-58342-files.json",
+      "bytes": 9632,
+      "sha256": "75b12c3d360712a2e6c6e4be0a19b482aacdfee036cf0634fac425c1ee2836c5",
+      "fetched_at": "2026-10-23T09:50:36.900Z"
+    },
+    {
+      "file": "details/anomalyco--opencode-pr-58342.json",
+      "bytes": 14851,
+      "sha256": "c702d870aed563c0ca4f71fe0164e4c272ed3be7bb666c1a85308dd7783e98c5",
+      "url": "https://github.com/anomalyco/opencode/pull/58342"
+    },
+    {
+      "file": "details/anomalyco--opencode-pr-58349-files.json",
+      "bytes": 9798,
+      "sha256": "e8b03a8491ffafb883e92f90504b97b85a53aec06423f4baad711e1c102ab065",
+      "fetched_at": "2026-10-23T09:50:36.933Z"
+    },
+    {
+      "file": "details/anomalyco--opencode-pr-58349.json",
+      "bytes": 13740,
+      "sha256": "27310a37896546072804d9a797c5091e2da3b2706143459cab5774c78e7287fd",
+      "url": "https://github.com/anomalyco/opencode/pull/58349"
+    },
+    {
+      "file": "details/anomalyco--opencode-pr-58351.json",
+      "bytes": 18170,
+      "sha256": "cb31cec9d1a0ba574451a52e1c4f6f21c5a8791a21991453653ad3f6b380b00b",
+      "url": "https://github.com/anomalyco/opencode/pull/58351"
+    },
+    {
+      "file": "details/anomalyco--opencode-pr-58379.json",
+      "bytes": 49149,
+      "sha256": "f2b993fb72e9fa58607e69c786aa89cc0c229315d0605cc922ac5bc4282e1477",
+      "url": "https://github.com/anomalyco/opencode/pull/58379"
+    },
+    {
+      "file": "details/anomalyco--opencode-pr-58381.json",
+      "bytes": 57002,
+      "sha256": "840316b561f282f8d93fbc1478536c71f9a9654a04f38177908e64f923ffe89e",
+      "url": "https://github.com/anomalyco/opencode/pull/58381"
+    },
+    {
+      "file": "details/anomalyco--opencode-pr-58382.json",
+      "bytes": 60615,
+      "sha256": "aa8b9bcff631fc3db90b82ff9f6600510352bcc80ee974dbba504f6d4a2c5782",
+      "url": "https://github.com/anomalyco/opencode/pull/58382"
+    },
+    {
+      "file": "details/anomalyco--opencode-pr-58383.json",
+      "bytes": 76102,
+      "sha256": "706757da5bf2fb6d154bfb5b7c98434b7a2fcc38e46a57435ffc6994358ca8f2",
+      "url": "https://github.com/anomalyco/opencode/pull/58383"
+    },
+    {
+      "file": "details/anomalyco--opencode-pr-58385.json",
+      "bytes": 119102,
+      "sha256": "82f48dafa976a3f681ccb7051beb497a11f6d94b09bf9d5b3b08484433a5a878",
+      "url": "https://github.com/anomalyco/opencode/pull/58385"
+    },
+    {
+      "file": "details/anomalyco--opencode-pr-58387.json",
+      "bytes": 113519,
+      "sha256": "de7b0df7ebc427534eba94325a7488a03dcd2b8a5712ea3f8b0a00a6f791a3f7",
+      "url": "https://github.com/anomalyco/opencode/pull/58387"
+    },
+    {
+      "file": "details/anomalyco--opencode-pr-58391.json",
+      "bytes": 159300,
+      "sha256": "3ada62fa34c3c5c1c5165b1072e4b0e686154c131a44e5fc2c4c374a7d8bf2ed",
+      "url": "https://github.com/anomalyco/opencode/pull/58391"
+    },
+    {
+      "file": "details/anomalyco--opencode-pr-58396-files.json",
+      "bytes": 16386,
+      "sha256": "08bce90e4699494e902354bc19aac6460f437d8dcc8eb2579cc6ac106c2d45a8",
+      "fetched_at": "2026-10-23T09:50:36.871Z"
+    },
+    {
+      "file": "details/anomalyco--opencode-pr-58396.json",
+      "bytes": 49156,
+      "sha256": "d29cb24d12b3543685381a7d9d6a030a70508669c9a83c4cdca7ef7dc8f71cbc",
+      "url": "https://github.com/anomalyco/opencode/pull/58396"
+    },
+    {
+      "file": "details/anomalyco--opencode-pr-58399.json",
+      "bytes": 47923,
+      "sha256": "effd4e41f6e72cd26a260ce55d6c4c1e8caa685c5d512ed7c82d79ef7a9163df",
+      "url": "https://github.com/anomalyco/opencode/pull/58399"
+    },
+    {
+      "file": "details/anomalyco--opencode-pr-58400.json",
+      "bytes": 289806,
+      "sha256": "e3dd399966ed2d52f494cd42f1b7133df370c3a4a2e4b097352c6f04d1b5aa2a",
+      "url": "https://github.com/anomalyco/opencode/pull/58400"
+    },
+    {
+      "file": "details/nightly-labs--openbot-issue-1357-comments.json",
+      "bytes": 439,
+      "sha256": "f4eef4344dc1ae31005e99485f6ebafa2fb9bb0751a78766ccba81ac4371e92f",
+      "fetched_at": "2026-10-23T09:50:13.904Z"
+    },
+    {
+      "file": "details/nightly-labs--openbot-issue-1920-comments.json",
+      "bytes": 1562,
+      "sha256": "4899d3d2794d4de5637f6aa1298ef16d89bb12efa5a53513b6c1ccbbba0db159",
+      "fetched_at": "2026-10-23T09:50:14.009Z"
+    },
+    {
+      "file": "details/nightly-labs--openbot-issue-1967-comments.json",
+      "bytes": 5349,
+      "sha256": "dd3e58728ae2ab098cccc4479daa700974f505f1df3d348d02e20476e45dea0d",
+      "fetched_at": "2026-10-23T09:50:14.310Z"
+    },
+    {
+      "file": "details/nightly-labs--openbot-issue-2804-comments.json",
+      "bytes": 439,
+      "sha256": "71046ac1420ee161fe6ee5f66f5ff3b391aa6c9d4cd6f4c6e451ea164bada5e3",
+      "fetched_at": "2026-10-23T09:50:13.857Z"
+    },
+    {
+      "file": "details/nightly-labs--openbot-issue-2819-comments.json",
+      "bytes": 4614,
+      "sha256": "271abae12e6055b03f7fab1a008fce42796286659a9d6f2f112939a3424a3a58",
+      "fetched_at": "2026-10-23T09:50:13.825Z"
+    },
+    {
+      "file": "details/nightly-labs--openbot-issue-2845-comments.json",
+      "bytes": 439,
+      "sha256": "a4e610926e2533719512b94407658ea6d43b9ea8f5b807fe3e8a4a7cecc01714",
+      "fetched_at": "2026-10-23T09:50:14.095Z"
+    },
+    {
+      "file": "details/nightly-labs--openbot-issue-86-comments.json",
+      "bytes": 7248,
+      "sha256": "61fdd23a11d49d200cd33f0b9cc268899a80e6345c169e43948ba0168237495a",
+      "fetched_at": "2026-10-23T09:50:14.182Z"
+    },
+    {
+      "file": "details/nightly-labs--openbot-pr-1582.json",
+      "bytes": 738153,
+      "sha256": "0d5d549799dfa21c9b68f266eea99821b3d1e12bfac3b5ab41ee95a420cb7670",
+      "url": "https://github.com/nightly-labs/openbot/pull/1582"
+    },
+    {
+      "file": "details/nightly-labs--openbot-pr-2186.json",
+      "bytes": 191588,
+      "sha256": "ca1a73bdd2dd3583dd6c05620c5883eeaf3496bfae712db2c5d650fc455b7cd9",
+      "url": "https://github.com/nightly-labs/openbot/pull/2186"
+    },
+    {
+      "file": "details/nightly-labs--openbot-pr-2821.json",
+      "bytes": 19059,
+      "sha256": "8bc7585a245ca2811268f0f4f351617d8bf1f395e35077796f18b7c0a1cb3c5e",
+      "url": "https://github.com/nightly-labs/openbot/pull/2821"
+    },
+    {
+      "file": "details/nightly-labs--openbot-pr-2852.json",
+      "bytes": 12727,
+      "sha256": "3f5587972801400a1dd8d5123f772d7b6d6498748d78be0aeaf5b7d49d97744d",
+      "url": "https://github.com/nightly-labs/openbot/pull/2852"
+    },
+    {
+      "file": "details/nightly-labs--openbot-pr-2860.json",
+      "bytes": 19098,
+      "sha256": "b424fef1d3ccabb4e1eee4a1945d2221444e08624a7684681a28acf8030ef596",
+      "url": "https://github.com/nightly-labs/openbot/pull/2860"
+    },
+    {
+      "file": "details/nightly-labs--openbot-pr-2865.json",
+      "bytes": 233725,
+      "sha256": "bcfefbcc0ecdc0a19b7631ced3fc14953b595bc7172ba42527e63d272bd5b2c5",
+      "url": "https://github.com/nightly-labs/openbot/pull/2865"
+    },
+    {
+      "file": "details/nightly-labs--openbot-pr-2870.json",
+      "bytes": 123844,
+      "sha256": "b374e8d4f594199f7d86d101352f9b5d6477fb099e4299a62348a114fef43e71",
+      "url": "https://github.com/nightly-labs/openbot/pull/2870"
+    },
+    {
+      "file": "details/nightly-labs--openbot-pr-2874.json",
+      "bytes": 173257,
+      "sha256": "08c083e901af97e01d15a2289a14903f66f150d050536d499977e50940b88fa8",
+      "url": "https://github.com/nightly-labs/openbot/pull/2874"
+    },
+    {
+      "file": "details/nightly-labs--openbot-pr-2881.json",
+      "bytes": 77337,
+      "sha256": "c31efba3f7d1e7a219c6430cf12f2345b60250ad9c4f9bbba9f1a3c8c0bc0a40",
+      "url": "https://github.com/nightly-labs/openbot/pull/2881"
+    },
+    {
+      "file": "details/nightly-labs--openbot-pr-2883.json",
+      "bytes": 113817,
+      "sha256": "9927d7c2c829aaf6e50294df4c89a86cf254f455ecb0f5f8bb08c9bfa11e277e",
+      "url": "https://github.com/nightly-labs/openbot/pull/2883"
+    },
+    {
+      "file": "details/nightly-labs--openbot-pr-2885.json",
+      "bytes": 234831,
+      "sha256": "b64b4bc8d1ab6c32839d15780971cf645743fb9297d3ffe5e8c44c85a79568dc",
+      "url": "https://github.com/nightly-labs/openbot/pull/2885"
+    },
+    {
+      "file": "details/nightly-labs--openbot-pr-2886.json",
+      "bytes": 43551,
+      "sha256": "93d1892eda45b5e440620c01cd0b1283a3cd18afc3cca299cf7388267d7aa03b",
+      "url": "https://github.com/nightly-labs/openbot/pull/2886"
+    }
+  ],
+  "repository_artifacts": [
+    {
+      "file": "docs/evaluations/upstream-review-2026-10-23.md",
+      "bytes": 59019,
+      "sha256": "5868f6e8f911714088c847a8e70c01e17a33e0bb3bfcc936d90d3c7c21bd51e3"
+    },
+    {
+      "file": "docs/evaluations/upstream-review-2026-10-23/commits.tsv",
+      "bytes": 1160231,
+      "sha256": "a9b6e097299a3b0a67202231fe4cc34e7f3f4a36495cc32040ca58ab9f6ebd5a"
+    },
+    {
+      "file": "docs/evaluations/upstream-review-2026-10-23/open-items.tsv",
+      "bytes": 830117,
+      "sha256": "26349a7fd81970e85ae47f37a6aa0d1148c06bb16549517701eed20bfd08aee6"
+    },
+    {
+      "file": "docs/evaluations/upstream-review-2026-10-23/selected-prs.json",
+      "bytes": 50221,
+      "sha256": "70a8e9d5be0491b507837bde9fbddc035864ada5a9e06cee64240df50d44adbd"
+    },
+    {
+      "file": "docs/upstream-adoption.md",
+      "bytes": 35715,
+      "sha256": "bcfc0973b958787b51116105aca66a351f935b7fbbd51fa9022b1d372c794bc6"
+    }
+  ],
+  "validated_utc": "2026-10-23T10:01:09.268523+00:00",
+  "repository_artifacts_note": "Repository artifact hashes record the study delivery before implementation. Living adoption documentation can change afterward; raw source and inventory hashes remain the study evidence."
+}
