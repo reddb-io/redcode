@@ -56,6 +56,7 @@ export function proof(task: SessionTodo.Info) {
     source: task.source,
     evidence: task.evidence,
     inputs: task.inputs,
+    integration: task.integration,
   })
 }
 

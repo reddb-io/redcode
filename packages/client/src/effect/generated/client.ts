@@ -70,6 +70,8 @@ import type {
   SessionTodoListOutput,
   SessionTodoReconcileInput,
   SessionTodoReconcileOutput,
+  SessionTodoPrepareIntegrationInput,
+  SessionTodoPrepareIntegrationOutput,
   SessionGoalGetInput,
   SessionGoalGetOutput,
   SessionGoalStartInput,
@@ -849,6 +851,18 @@ const EndpointSessionTodoReconcile = (raw: RawClient["server.session"]) => (inpu
     ),
   )
 
+const EndpointSessionTodoPrepareIntegration =
+  (raw: RawClient["server.session"]) => (input: SessionTodoPrepareIntegrationInput) =>
+    preserveEffect<SessionTodoPrepareIntegrationOutput>()(
+      raw["session.todo.prepareIntegration"]({
+        params: { sessionID: input["sessionID"], taskID: input["taskID"] },
+        payload: { revision: input["revision"], target: input["target"], targetHead: input["targetHead"] },
+      }).pipe(
+        Effect.mapError(mapClientError),
+        Effect.map((value) => value.data),
+      ),
+    )
+
 const EndpointSessionGoalGet = (raw: RawClient["server.session"]) => (input: SessionGoalGetInput) =>
   preserveEffect<SessionGoalGetOutput>()(
     raw["session.goal.get"]({ params: { sessionID: input["sessionID"] } }).pipe(
@@ -1426,7 +1440,11 @@ const adaptGroupSession = (raw: RawClient["server.session"]) => ({
     get: EndpointSessionMonitorGet(raw),
     cancel: EndpointSessionMonitorCancel(raw),
   },
-  todo: { list: EndpointSessionTodoList(raw), reconcile: EndpointSessionTodoReconcile(raw) },
+  todo: {
+    list: EndpointSessionTodoList(raw),
+    reconcile: EndpointSessionTodoReconcile(raw),
+    prepareIntegration: EndpointSessionTodoPrepareIntegration(raw),
+  },
   goal: {
     get: EndpointSessionGoalGet(raw),
     start: EndpointSessionGoalStart(raw),

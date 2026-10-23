@@ -12,6 +12,7 @@ import { SessionStore } from "./store.js"
 import { SessionTaskAssignments } from "./task-assignments.js"
 import { SessionTaskFacts } from "./task-facts.js"
 import { SessionTaskGraph } from "./task-graph.js"
+import { SessionTaskIntegration } from "./task-integration.js"
 import { SessionTodoEvidence } from "./todo-evidence.js"
 import { SessionTodoStore } from "./todo-store.js"
 
@@ -45,7 +46,8 @@ const make = Effect.gen(function* () {
           if (task.status !== "completed") return false
           if (
             SessionTaskGraph.stale(tasks, task) ||
-            SessionTaskAssignments.completionError(delegated, task, observed.results)
+            SessionTaskAssignments.completionError(delegated, task, observed.results) ||
+            SessionTaskIntegration.completionError(task, tasks, delegated, observed.results)
           )
             return true
           if (!task.evidence) return true
@@ -209,6 +211,7 @@ const make = Effect.gen(function* () {
         .flatMap((input) => (input.task.id ? [input.task.id] : []))
       return taskIDs.length > 1 ? [{ path, taskIDs }] : []
     })
+    const integrationIssues = SessionTaskIntegration.issues(task, tasks, delegated)
     return {
       sessionID,
       task,
@@ -221,6 +224,15 @@ const make = Effect.gen(function* () {
       ),
       acceptanceReady: inputs.every((input) => input.acceptance === "accepted"),
       inputs,
+      ...(task.integration
+        ? {
+            integration: {
+              binding: task.integration,
+              contractCurrent: integrationIssues.length === 0,
+              issues: integrationIssues,
+            },
+          }
+        : {}),
       overlaps,
     } satisfies SessionTodo.Reconciliation
   })

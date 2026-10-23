@@ -64,6 +64,8 @@ import type {
   SessionTodoListOutput,
   SessionTodoReconcileInput,
   SessionTodoReconcileOutput,
+  SessionTodoPrepareIntegrationInput,
+  SessionTodoPrepareIntegrationOutput,
   SessionGoalGetInput,
   SessionGoalGetOutput,
   SessionGoalStartInput,
@@ -1314,6 +1316,18 @@ export function make(options: ClientOptions) {
               method: "GET",
               path: `/api/session/${encodeURIComponent(input.sessionID)}/todo/${encodeURIComponent(input.taskID)}/reconciliation`,
               query: { revision: input["revision"] },
+              successStatus: 200,
+              declaredStatuses: [400, 401, 403, 404, 409, 500],
+              empty: false,
+            },
+            requestOptions,
+          ).then((value) => value.data),
+        prepareIntegration: (input: SessionTodoPrepareIntegrationInput, requestOptions?: RequestOptions) =>
+          request<{ readonly data: SessionTodoPrepareIntegrationOutput }>(
+            {
+              method: "POST",
+              path: `/api/session/${encodeURIComponent(input.sessionID)}/todo/${encodeURIComponent(input.taskID)}/integration`,
+              body: { revision: input["revision"], target: input["target"], targetHead: input["targetHead"] },
               successStatus: 200,
               declaredStatuses: [400, 401, 403, 404, 409, 500],
               empty: false,

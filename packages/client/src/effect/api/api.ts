@@ -17,6 +17,7 @@ import type { Permission } from "@opencode/schema/permission"
 import type { SessionMessage } from "@opencode/schema/session-message"
 import type { SessionObservation } from "@opencode/schema/session-observation"
 import type { Credential } from "@opencode/schema/credential"
+import type { Worktree } from "@opencode/schema/worktree"
 import type { Event } from "@opencode/schema/event"
 import type { Schema } from "effect"
 import type { SessionInbox } from "@opencode/schema/session-inbox"
@@ -38,7 +39,6 @@ import type { OpenCodeEvent } from "@opencode/protocol/groups/event"
 import type { Pty } from "@opencode/schema/pty"
 import type { PtyTicket } from "@opencode/schema/pty-ticket"
 import type { Reference } from "@opencode/schema/reference"
-import type { Worktree } from "@opencode/schema/worktree"
 import type { Vcs } from "@opencode/schema/vcs"
 import type { WebSearch } from "@opencode/schema/websearch"
 import type { Config } from "@opencode/schema/config"
@@ -682,6 +682,26 @@ export type SessionTodoListOutput = ReadonlyArray<{
     | undefined
   readonly dependencies?: ReadonlyArray<string> | undefined
   readonly inputs?: ReadonlyArray<{ readonly id: string; readonly hash: string }> | undefined
+  readonly integration?:
+    | {
+        readonly fingerprint: string
+        readonly preparedAt: number
+        readonly target: AbsolutePath
+        readonly targetHead: string
+        readonly head: string
+        readonly tree: string
+        readonly sources: ReadonlyArray<{
+          readonly taskID: string
+          readonly taskRevision: number
+          readonly fingerprint: string
+          readonly sessionID: Session.ID
+          readonly promptID: string
+          readonly sessionDirectory: AbsolutePath
+          readonly directory: AbsolutePath
+          readonly head: string
+        }>
+      }
+    | undefined
   readonly scopeChange?:
     | {
         readonly messageID: string
@@ -736,6 +756,26 @@ export type SessionTodoReconcileOutput = {
       | undefined
     readonly dependencies?: ReadonlyArray<string> | undefined
     readonly inputs?: ReadonlyArray<{ readonly id: string; readonly hash: string }> | undefined
+    readonly integration?:
+      | {
+          readonly fingerprint: string
+          readonly preparedAt: number
+          readonly target: AbsolutePath
+          readonly targetHead: string
+          readonly head: string
+          readonly tree: string
+          readonly sources: ReadonlyArray<{
+            readonly taskID: string
+            readonly taskRevision: number
+            readonly fingerprint: string
+            readonly sessionID: Session.ID
+            readonly promptID: string
+            readonly sessionDirectory: AbsolutePath
+            readonly directory: AbsolutePath
+            readonly head: string
+          }>
+        }
+      | undefined
     readonly scopeChange?:
       | {
           readonly messageID: string
@@ -784,6 +824,26 @@ export type SessionTodoReconcileOutput = {
         | undefined
       readonly dependencies?: ReadonlyArray<string> | undefined
       readonly inputs?: ReadonlyArray<{ readonly id: string; readonly hash: string }> | undefined
+      readonly integration?:
+        | {
+            readonly fingerprint: string
+            readonly preparedAt: number
+            readonly target: AbsolutePath
+            readonly targetHead: string
+            readonly head: string
+            readonly tree: string
+            readonly sources: ReadonlyArray<{
+              readonly taskID: string
+              readonly taskRevision: number
+              readonly fingerprint: string
+              readonly sessionID: Session.ID
+              readonly promptID: string
+              readonly sessionDirectory: AbsolutePath
+              readonly directory: AbsolutePath
+              readonly head: string
+            }>
+          }
+        | undefined
       readonly scopeChange?:
         | {
             readonly messageID: string
@@ -852,11 +912,112 @@ export type SessionTodoReconcileOutput = {
     }>
     readonly issues: ReadonlyArray<string>
   }>
+  readonly integration?:
+    | {
+        readonly binding: {
+          readonly fingerprint: string
+          readonly preparedAt: number
+          readonly target: AbsolutePath
+          readonly targetHead: string
+          readonly head: string
+          readonly tree: string
+          readonly sources: ReadonlyArray<{
+            readonly taskID: string
+            readonly taskRevision: number
+            readonly fingerprint: string
+            readonly sessionID: Session.ID
+            readonly promptID: string
+            readonly sessionDirectory: AbsolutePath
+            readonly directory: AbsolutePath
+            readonly head: string
+          }>
+        }
+        readonly contractCurrent: boolean
+        readonly issues: ReadonlyArray<string>
+      }
+    | undefined
   readonly overlaps: ReadonlyArray<{ readonly path: string; readonly taskIDs: ReadonlyArray<string> }>
 }
 export type SessionTodoReconcileOperation<E = never> = (
   input: SessionTodoReconcileInput,
 ) => Effect.Effect<SessionTodoReconcileOutput, E>
+
+export type SessionTodoPrepareIntegrationInput = {
+  readonly sessionID: Session.ID
+  readonly taskID: string
+  readonly revision: number
+  readonly target: AbsolutePath
+  readonly targetHead: string
+}
+export type SessionTodoPrepareIntegrationOutput = {
+  readonly task: {
+    readonly id?: string | undefined
+    readonly revision?: number | undefined
+    readonly reason?: string | undefined
+    readonly title?: string | undefined
+    readonly phase?: "build" | "design" | "plan" | undefined
+    readonly legacyStatus?: string | undefined
+    readonly source?:
+      | {
+          readonly type: "request" | "plan"
+          readonly id: string
+          readonly quote: string
+          readonly created: number
+          readonly key?: string | undefined
+          readonly paraphrase?: string | undefined
+        }
+      | undefined
+    readonly criterion?: string | undefined
+    readonly evidence?:
+      | {
+          readonly callID: string
+          readonly messageID: string
+          readonly explanation: string
+          readonly tool: string
+          readonly hash: string
+          readonly observed: number
+        }
+      | undefined
+    readonly dependencies?: ReadonlyArray<string> | undefined
+    readonly inputs?: ReadonlyArray<{ readonly id: string; readonly hash: string }> | undefined
+    readonly integration?:
+      | {
+          readonly fingerprint: string
+          readonly preparedAt: number
+          readonly target: AbsolutePath
+          readonly targetHead: string
+          readonly head: string
+          readonly tree: string
+          readonly sources: ReadonlyArray<{
+            readonly taskID: string
+            readonly taskRevision: number
+            readonly fingerprint: string
+            readonly sessionID: Session.ID
+            readonly promptID: string
+            readonly sessionDirectory: AbsolutePath
+            readonly directory: AbsolutePath
+            readonly head: string
+          }>
+        }
+      | undefined
+    readonly scopeChange?:
+      | {
+          readonly messageID: string
+          readonly quote: string
+          readonly created?: number | undefined
+          readonly paraphrase?: string | undefined
+        }
+      | undefined
+    readonly content: string
+    readonly status: string
+    readonly priority: string
+    readonly closedAt?: number | undefined
+  }
+  readonly candidate: Worktree.IntegrationCandidate
+}
+export type SessionTodoPrepareIntegrationOperation<E = never> = (
+  input: SessionTodoPrepareIntegrationInput,
+) => Effect.Effect<SessionTodoPrepareIntegrationOutput, E>
 
 export type SessionGoalGetInput = { readonly sessionID: Session.ID }
 export type SessionGoalGetOutput = {
@@ -4093,7 +4254,11 @@ export interface SessionApi<E = never> {
     readonly get: SessionMonitorGetOperation<E>
     readonly cancel: SessionMonitorCancelOperation<E>
   }
-  readonly todo: { readonly list: SessionTodoListOperation<E>; readonly reconcile: SessionTodoReconcileOperation<E> }
+  readonly todo: {
+    readonly list: SessionTodoListOperation<E>
+    readonly reconcile: SessionTodoReconcileOperation<E>
+    readonly prepareIntegration: SessionTodoPrepareIntegrationOperation<E>
+  }
   readonly goal: {
     readonly get: SessionGoalGetOperation<E>
     readonly start: SessionGoalStartOperation<E>

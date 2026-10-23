@@ -14,13 +14,13 @@ async function fixture() {
   const target = AbsolutePath.make(path.join(tmp.path, "target"))
   await fs.mkdir(target)
   await initRepo(target)
-  const sources = await Promise.all(
-    ["first", "second", "third"].map(async (name) => {
-      const directory = AbsolutePath.make(path.join(tmp.path, name))
-      await $`git worktree add --detach ${directory} HEAD`.cwd(target).quiet()
-      return { directory, head: (await $`git rev-parse HEAD`.cwd(directory).quiet()).text().trim() }
-    }),
-  )
+  const sources: { directory: AbsolutePath; head: string }[] = []
+  // Git's worktree registration shares repository metadata even for distinct checkout paths.
+  for (const name of ["first", "second", "third"]) {
+    const directory = AbsolutePath.make(path.join(tmp.path, name))
+    await $`git worktree add --detach ${directory} HEAD`.cwd(target).quiet()
+    sources.push({ directory, head: (await $`git rev-parse HEAD`.cwd(directory).quiet()).text().trim() })
+  }
   const input = {
     projectID: Project.ID.make("project_combined"),
     target,

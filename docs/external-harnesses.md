@@ -163,6 +163,21 @@ lifecycle operations. They do not fetch remote worker repositories, schedule age
 commands from other processes. The coordinator associates the selected source sessions with its
 task reconciliation report and verifies the combined delivery against the shared objective.
 
+For an integration task with accepted prerequisites, use
+`POST /api/session/:sessionID/todo/:taskID/integration` with `{ revision, target, targetHead }` to select
+those sources automatically. Every prerequisite needs a current successful tracked contribution in a
+managed local Git checkout. The host resolves nested session directories to their recorded checkout
+roots and deduplicates shared roots while retaining each task's provenance. It saves a complete
+candidate with task/session/prompt identities and commit IDs in the existing Todo row and history;
+conflicts save no new binding. Retrying the same candidate with the current task revision retains its
+original preparation timestamp and revision.
+
+Reconciliation exposes `integration.binding`, `integration.contractCurrent` and its issues. That
+freshness applies to task contracts and delegations; applying the candidate still repeats the Git
+checks through `worktreeLifecycle.applyIntegration`. Task completion refuses an obsolete binding or
+verification older than its preparation. A fresh successful check still needs to cover the combined
+criterion: this provenance record is not a validation receipt tied to the candidate SHA.
+
 Protocol references: [Codex app-server](https://developers.openai.com/codex/app-server) and
 [Claude Code programmatic execution](https://code.claude.com/docs/en/headless).
 
