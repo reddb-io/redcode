@@ -237,6 +237,17 @@ away. The agent may claim completion with `goal_complete`, but the next judgemen
 rather than trusting it. `Ctrl+C` pauses a goal, and so does a new process: a loop never restarts itself.
 `/goal-pause`, `/goal-resume` and `/goal-drop` do what they say.
 
+For multi-step work, tasks carry acceptance criteria and may depend on verified prerequisites. Approved
+plans preserve those relationships when they enter Build. Independent tasks can run in parallel; a
+cancelled prerequisite does not release its dependents. The agent can inspect which tasks are ready,
+which are waiting, and which child sessions are assigned to them.
+
+A subagent can be linked to a task with `taskID`. It receives the task contract and accepted prerequisite
+results alongside the inherited objective. Its response goes back to the coordinator for reconciliation:
+the coordinator must run a fresh verification after delegated work settles before completing the task.
+Changed contracts require an updated delegation, and later edits or changed prerequisite evidence reopen
+affected completed tasks. An objective cannot finish while tracked delegated work or unfinished tasks remain.
+
 ## Design mode
 
 <img src="features/design-flow.svg" alt="How design mode works: describe, prototype, preview, review, send to the agent, revise until settled, design_exit writes the plan, build implements it" width="100%" />

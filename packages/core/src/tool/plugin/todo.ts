@@ -4,6 +4,8 @@ import { ToolFailure } from "@opencode/ai"
 import type { Context } from "@opencode/plugin/effect/plugin"
 import { Effect, Schema } from "effect"
 import { Permission } from "../../permission.js"
+import { SessionTaskAssignments } from "../../session/task-assignments.js"
+import { SessionTaskGraph } from "../../session/task-graph.js"
 import { SessionTaskFacts } from "../../session/task-facts.js"
 import { SessionTodo } from "../../session/todo.js"
 import { SessionTodoStore } from "../../session/todo-store.js"
@@ -14,6 +16,7 @@ export const Plugin = {
   id: "opencode.tool.todo",
   effect: Effect.fn("TodoTool.Plugin")(function* (ctx: Context) {
     const todos = yield* SessionTodoStore.Service
+    const assignments = yield* SessionTaskAssignments.Service
     const facts = yield* SessionTaskFacts.Service
     const permission = yield* Permission.Service
 
@@ -59,6 +62,8 @@ export const Plugin = {
               ]
               const output = JSON.stringify({
                 todos: SessionTodo.forAgent(written.todos, context.agent),
+                graph: SessionTaskGraph.snapshot(SessionTodo.forAgent(written.todos, context.agent)),
+                assignments: yield* assignments.snapshot(context.sessionID, written.todos),
                 ...(notes.length ? { notes } : {}),
                 ...(input.todos.length ? {} : { availableEvidence: yield* facts.available(context.sessionID) }),
               })

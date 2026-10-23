@@ -93,6 +93,7 @@ export const PlanTask = Schema.Struct({
   content: Schema.String.check(Schema.isMinLength(1)),
   criterion: Schema.String.check(Schema.isMinLength(1)),
   quote: Schema.String.check(Schema.isMinLength(1)),
+  dependencies: optional(Schema.Array(Schema.String.check(Schema.isMinLength(1)))),
 }).annotate({ identifier: "Todo.PlanTask" })
 export type PlanTask = typeof PlanTask.Type
 
@@ -116,6 +117,12 @@ const tracking = {
 
 export const Input = Schema.Struct({
   ...tracking,
+  dependencies: optional(
+    Schema.Array(Schema.String.check(Schema.isMinLength(1))).annotate({
+      description:
+        "Task IDs that must be completed with current evidence before this task starts or completes. An empty array clears dependencies; omission preserves them.",
+    }),
+  ),
   planKey: optional(Schema.String),
   requirement: optional(
     Schema.String.annotate({
@@ -191,6 +198,8 @@ export const Info = Schema.Struct({
   source: optional(Source),
   criterion: optional(Schema.String),
   evidence: optional(Evidence),
+  dependencies: optional(Schema.Array(Schema.String)),
+  inputs: optional(Schema.Array(Schema.Struct({ id: Schema.String, hash: Schema.String }))),
   scopeChange: optional(
     Schema.Struct({
       messageID: Schema.String,

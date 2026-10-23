@@ -10,6 +10,8 @@ import { IntelligenceEvaluation } from "../intelligence/evaluation.js"
 import { makeGlobalNode } from "@opencode/util/effect/app-node"
 import { SessionSchema } from "./schema.js"
 import { SessionTaskFacts } from "./task-facts.js"
+import { SessionTaskAssignments } from "./task-assignments.js"
+import { SessionTaskGraph } from "./task-graph.js"
 import {
   quotes,
   storedStatus,
@@ -44,6 +46,7 @@ export interface Commit {
 const make = Effect.gen(function* () {
   const database = yield* Database.Service
   const db = database.db
+  const assignments = yield* SessionTaskAssignments.Service
   const facts = yield* SessionTaskFacts.Service
   const intelligence = yield* Intelligence.Service
   // Keep publication ordered when callers opt into a shared mutation boundary.
@@ -178,12 +181,20 @@ const make = Effect.gen(function* () {
           // With no request to attach at all, the requirement still says what the task must show.
           (requirement && !before?.source && (paraphrased || !source) ? requirement : undefined) ||
           (source ? content : undefined)
+        const dependencies = item.dependencies ?? before?.dependencies
         // Evidence is a claim only when it cites a result; an explanation on its own asks for the
         // newest verification to be selected and says what it shows.
         const claim = item.evidence?.callID ? { ...item.evidence, callID: item.evidence.callID } : undefined
         // A task that is already complete keeps its stored evidence when re-sent without new
         // evidence; review() is what reopens it when later edits made that evidence stale.
-        const kept = before?.status === "completed" && !claim ? before.evidence : undefined
+        const kept =
+          before?.status === "completed" &&
+          !claim &&
+          content === before.content &&
+          criterion === before.criterion &&
+          SessionTaskFacts.hash(dependencies) === SessionTaskFacts.hash(before.dependencies)
+            ? before.evidence
+            : undefined
         // Design tasks get fresh design evidence attached and are never blocked by refusals.
         const design = (before?.phase ?? input.phase) === "design"
         const resolved =
@@ -265,6 +276,8 @@ const make = Effect.gen(function* () {
           priority,
           ...(source ? { source } : {}),
           ...(criterion ? { criterion } : {}),
+          ...(dependencies !== undefined ? { dependencies } : {}),
+          ...(kept && before?.inputs ? { inputs: before.inputs } : {}),
           ...(status === "completed" && kept ? { evidence: kept } : {}),
           ...(status === "completed" && proof
             ? {
@@ -305,9 +318,21 @@ const make = Effect.gen(function* () {
         }
       }),
     )
-    const merged = previous
-      .map((task) => changes.find((item) => item.id === task.id) ?? task)
-      .concat(changes.filter((task) => !previous.some((item) => item.id === task.id)))
+    const planned =
+      input.origin?.type === "plan"
+        ? changes.map((task) => ({
+            ...task,
+            dependencies: task.dependencies?.map(
+              (key) =>
+                [...previous, ...changes].find(
+                  (entry) => entry.source?.id === input.origin?.id && entry.source?.key === key,
+                )?.id ?? key,
+            ),
+          }))
+        : changes
+    const combined = previous
+      .map((task) => planned.find((item) => item.id === task.id) ?? task)
+      .concat(planned.filter((task) => !previous.some((item) => item.id === task.id)))
       .map((task) =>
         input.acceptDesign && input.origin?.type === "plan" && task.phase === "design" && task.status !== "cancelled"
           ? {
@@ -319,13 +344,49 @@ const make = Effect.gen(function* () {
             }
           : task,
       )
-    // Updating one task never removes another. The first actionable task advances automatically.
+    const problem = SessionTaskGraph.validate(combined)
+    if (problem) return yield* new SessionTodo.Error({ message: problem })
+    const invalid = SessionTaskGraph.invalidated(
+      combined,
+      combined
+        .filter((task) => task.status === "completed" && task.inputs && SessionTaskGraph.stale(combined, task))
+        .map((task) => task.id),
+    )
+    const merged = SessionTaskGraph.capture(
+      combined.map((task) =>
+        invalid.has(task.id)
+          ? { ...task, status: "pending", evidence: undefined, inputs: undefined, closedAt: undefined }
+          : task,
+      ),
+    )
+    for (const task of planned) {
+      const waiting = SessionTaskGraph.waiting(merged, task)
+      if (
+        waiting.length &&
+        (task.status === "completed" || incoming.some((item) => item.id === task.id && item.status === "in_progress"))
+      )
+        return yield* new SessionTodo.Error({
+          message: `Task ${task.id} waits for verified dependencies: ${waiting.join(", ")}`,
+        })
+    }
+    const current = [...new Set(merged.map((task) => task.phase ?? "build"))].flatMap((phase) => {
+      const available = merged.filter(
+        (task) => (task.phase ?? "build") === phase && !SessionTaskGraph.waiting(merged, task).length,
+      )
+      const requested = available.filter((task) =>
+        incoming.some((item) => item.id === task.id && item.status === "in_progress"),
+      )
+      const running = available.filter((task) => task.status === "in_progress")
+      return (
+        requested.length || running.length
+          ? [...requested, ...running]
+          : available.filter((task) => task.status === "pending").slice(0, 1)
+      ).map((task) => task.id)
+    })
+    // Explicitly started independent tasks may run together; automatic promotion chooses one ready task.
     const result = merged.map((task) => {
-      const current =
-        changes.find((item) => (item.phase ?? "build") === (task.phase ?? "build") && item.status === "in_progress") ??
-        merged.find((item) => (item.phase ?? "build") === (task.phase ?? "build") && item.status === "in_progress") ??
-        merged.find((item) => (item.phase ?? "build") === (task.phase ?? "build") && item.status === "pending")
-      const status = task.id === current?.id ? "in_progress" : task.status === "in_progress" ? "pending" : task.status
+      const status = current.includes(task.id) ? "in_progress" : task.status === "in_progress" ? "pending" : task.status
+      const inputs = status === "completed" ? task.inputs : undefined
       const before = previous.find((item) => item.id === task.id)
       const unchanged =
         before &&
@@ -335,12 +396,14 @@ const make = Effect.gen(function* () {
         before.status === status &&
         before.priority === task.priority &&
         before.reason === task.reason &&
+        SessionTaskFacts.hash(before.dependencies) === SessionTaskFacts.hash(task.dependencies) &&
+        SessionTaskFacts.hash(before.inputs) === SessionTaskFacts.hash(inputs) &&
         SessionTaskFacts.hash(before.source) === SessionTaskFacts.hash(task.source) &&
         SessionTaskFacts.hash(before.criterion) === SessionTaskFacts.hash(task.criterion) &&
         SessionTaskFacts.hash(before.evidence) === SessionTaskFacts.hash(task.evidence) &&
         SessionTaskFacts.hash(before.scopeChange) === SessionTaskFacts.hash(task.scopeChange) &&
         before.closedAt === task.closedAt
-      return unchanged ? before : { ...task, status, revision: before ? before.revision + 1 : 1 }
+      return unchanged ? before : { ...task, inputs, status, revision: before ? before.revision + 1 : 1 }
     })
     // Compare against the reconciled state, including automatic promotion, for exact retries.
     yield* Effect.forEach(incoming, (item) =>
@@ -561,8 +624,14 @@ const make = Effect.gen(function* () {
         return yield* new SessionTodo.Error({
           message: "Tasks changed during this update; retry with current revisions",
         })
-      if (!proven.size) return
+      const delegated = yield* assignments.snapshot(input.sessionID, result)
       const fresh = yield* facts.load(input.sessionID)
+      const unaccepted = result
+        .filter((task) => task.status === "completed")
+        .map((task) => SessionTaskAssignments.completionError(delegated, task, fresh.results))
+        .find((error) => error !== undefined)
+      if (unaccepted) return yield* new SessionTodo.Error({ message: unaccepted })
+      if (!proven.size) return
       const broken = [...proven.values()]
         .flat()
         .map((proof) => recheck(fresh.results, proof, input.messageID))
@@ -577,59 +646,40 @@ const make = Effect.gen(function* () {
       )
     if (commit) yield* commit.before
     // Recheck the baseline inside the write transaction.
-    return yield* db
-      .transaction((tx) =>
-        Effect.gen(function* () {
-          const persisted = (yield* tx
-            .select()
-            .from(TodoTable)
-            .where(eq(TodoTable.session_id, input.sessionID))
-            .orderBy(asc(TodoTable.position))
-            .all()
-            .pipe(Effect.orDie)).map(read)
-          yield* settle(persisted)
-          yield* Effect.forEach(result, (task, position) =>
-            Effect.gen(function* () {
-              const before = previous.find((item) => item.id === task.id)
-              for (const entry of before ? [before, task] : [task]) {
+    return yield* assignments.withMutation(
+      db
+        .transaction((tx) =>
+          Effect.gen(function* () {
+            const persisted = (yield* tx
+              .select()
+              .from(TodoTable)
+              .where(eq(TodoTable.session_id, input.sessionID))
+              .orderBy(asc(TodoTable.position))
+              .all()
+              .pipe(Effect.orDie)).map(read)
+            yield* settle(persisted)
+            yield* Effect.forEach(result, (task, position) =>
+              Effect.gen(function* () {
+                const before = previous.find((item) => item.id === task.id)
+                for (const entry of before ? [before, task] : [task]) {
+                  yield* tx
+                    .insert(TodoHistoryTable)
+                    .values({
+                      session_id: input.sessionID,
+                      task_id: entry.id,
+                      revision: entry.revision,
+                      data: entry,
+                      created: Date.now(),
+                    })
+                    .onConflictDoNothing()
+                    .run()
+                    .pipe(Effect.orDie)
+                }
                 yield* tx
-                  .insert(TodoHistoryTable)
+                  .insert(TodoTable)
                   .values({
                     session_id: input.sessionID,
-                    task_id: entry.id,
-                    revision: entry.revision,
-                    data: entry,
-                    created: Date.now(),
-                  })
-                  .onConflictDoNothing()
-                  .run()
-                  .pipe(Effect.orDie)
-              }
-              yield* tx
-                .insert(TodoTable)
-                .values({
-                  session_id: input.sessionID,
-                  position,
-                  task_id: task.id,
-                  revision: task.revision,
-                  content: task.content,
-                  status: task.status,
-                  priority: task.priority,
-                  reason: task.reason ?? null,
-                  legacy_status: task.legacyStatus ?? null,
-                  details: {
-                    title: task.title,
-                    phase: task.phase,
-                    source: task.source,
-                    criterion: task.criterion,
-                    evidence: task.evidence,
-                    scopeChange: task.scopeChange,
-                    closedAt: task.closedAt,
-                  },
-                })
-                .onConflictDoUpdate({
-                  target: [TodoTable.session_id, TodoTable.position],
-                  set: {
+                    position,
                     task_id: task.id,
                     revision: task.revision,
                     content: task.content,
@@ -645,18 +695,43 @@ const make = Effect.gen(function* () {
                       evidence: task.evidence,
                       scopeChange: task.scopeChange,
                       closedAt: task.closedAt,
+                      dependencies: task.dependencies,
+                      inputs: task.inputs,
                     },
-                  },
-                })
-                .run()
-                .pipe(Effect.orDie)
-            }),
-          )
-          if (commit) yield* commit.write
-          return { todos: result, notes: [...attached, ...notes] }
-        }),
-      )
-      .pipe(Effect.catchTag("SqlError", Effect.die))
+                  })
+                  .onConflictDoUpdate({
+                    target: [TodoTable.session_id, TodoTable.position],
+                    set: {
+                      task_id: task.id,
+                      revision: task.revision,
+                      content: task.content,
+                      status: task.status,
+                      priority: task.priority,
+                      reason: task.reason ?? null,
+                      legacy_status: task.legacyStatus ?? null,
+                      details: {
+                        title: task.title,
+                        phase: task.phase,
+                        source: task.source,
+                        criterion: task.criterion,
+                        evidence: task.evidence,
+                        scopeChange: task.scopeChange,
+                        closedAt: task.closedAt,
+                        dependencies: task.dependencies,
+                        inputs: task.inputs,
+                      },
+                    },
+                  })
+                  .run()
+                  .pipe(Effect.orDie)
+              }),
+            )
+            if (commit) yield* commit.write
+            return { todos: result, notes: [...attached, ...notes] }
+          }),
+        )
+        .pipe(Effect.catchTag("SqlError", Effect.die)),
+    )
   })
   // A refusal reaches the model as a tool error and the person only as a folded row. The log keeps
   // its kind, the tasks it named and the first line of the reason, never prompts, commands or output.
@@ -693,8 +768,15 @@ const make = Effect.gen(function* () {
     const current = yield* get(sessionID)
     if (!current.some((task) => task.status === "completed" && task.evidence)) return current
     const observed = yield* facts.load(sessionID)
+    const delegated = yield* assignments.snapshot(sessionID, current)
     const stale = current.filter((task) => {
-      if (task.status !== "completed" || !task.evidence) return false
+      if (task.status !== "completed") return false
+      if (
+        SessionTaskGraph.stale(current, task) ||
+        SessionTaskAssignments.completionError(delegated, task, observed.results)
+      )
+        return true
+      if (!task.evidence) return false
       const proof = observed.results.find(
         (entry) => entry.callID === task.evidence?.callID && entry.messageID === task.evidence.messageID,
       )
@@ -705,14 +787,20 @@ const make = Effect.gen(function* () {
       return invalidating(observed.results, proof) !== undefined
     })
     if (!stale.length) return current
+    const invalid = SessionTaskGraph.invalidated(
+      current,
+      stale.map((task) => task.id!),
+    )
     return yield* update({
       sessionID,
-      todos: stale.map((task) => ({
-        ...task,
-        status: "pending",
-        priority: Schema.is(SessionTodo.Priority)(task.priority) ? task.priority : "medium",
-        reason: "Evidence changed or newer edits require verification",
-      })),
+      todos: current
+        .filter((task) => task.status === "completed" && task.id && invalid.has(task.id))
+        .map((task) => ({
+          ...task,
+          status: "pending",
+          priority: Schema.is(SessionTodo.Priority)(task.priority) ? task.priority : "medium",
+          reason: "Evidence changed or newer edits require verification",
+        })),
     })
   })
   return { get, update, write, block, review, withMutation: lock.withPermits(1) }
@@ -722,5 +810,5 @@ export class Service extends Context.Service<Service, Effect.Success<typeof make
 export const node = makeGlobalNode({
   service: Service,
   layer: Layer.effect(Service, make),
-  deps: [Database.node, SessionTaskFacts.node, Intelligence.node],
+  deps: [Database.node, SessionTaskFacts.node, SessionTaskAssignments.node, Intelligence.node],
 })

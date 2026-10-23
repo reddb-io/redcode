@@ -67,3 +67,20 @@ describe("SessionTodo.ModelInput", () => {
     expect(decode({ id: "todo_1", status: "completed" })).toEqual({ id: "todo_1", status: "completed" })
   })
 })
+
+describe("SessionTodo dependencies", () => {
+  test("preserves explicit clearing and omits undefined dependencies on the wire", () => {
+    const encode = Schema.encodeSync(SessionTodo.Input)
+    expect(encode({ id: "todo_a", dependencies: undefined })).toEqual({ id: "todo_a" })
+    expect(encode({ id: "todo_a", dependencies: [] })).toEqual({ id: "todo_a", dependencies: [] })
+    expect(
+      Schema.decodeUnknownSync(SessionTodo.PlanTask)({
+        key: "verify",
+        content: "Verify checkout",
+        criterion: "Tests pass",
+        quote: "Verify checkout",
+        dependencies: ["implement"],
+      }).dependencies,
+    ).toEqual(["implement"])
+  })
+})

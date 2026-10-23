@@ -16,6 +16,7 @@ import { SessionGoal } from "./goal.js"
 import { SessionSchema } from "./schema.js"
 import { SessionInbox } from "./inbox.js"
 import { SessionTodo } from "./todo.js"
+import { SessionTaskAssignments } from "./task-assignments.js"
 import { SessionTodoStore } from "./todo-store.js"
 
 interface Candidate {
@@ -28,6 +29,7 @@ interface Candidate {
 const make = Effect.gen(function* () {
   const goals = yield* SessionGoal.Service
   const todos = yield* SessionTodoStore.Service
+  const assignments = yield* SessionTaskAssignments.Service
   const monitors = yield* MonitorRuntime.Service
   const access = yield* FileAccess.Service
   const intelligence = yield* Intelligence.Service
@@ -36,7 +38,10 @@ const make = Effect.gen(function* () {
   const candidates = new Map<SessionSchema.ID, Candidate>()
 
   const check = Effect.fn("SessionGoalCompletion.check")(function* (sessionID: SessionSchema.ID) {
-    if (SessionTodo.active(yield* todos.review(sessionID)).length)
+    const tasks = yield* todos.review(sessionID)
+    if ((yield* assignments.snapshot(sessionID, tasks)).some((entry) => entry.state !== "settled"))
+      return yield* new SessionGoal.Error({ message: "Reconcile unsettled delegated work before completing the goal" })
+    if (SessionTodo.active(tasks).length)
       return yield* new SessionGoal.Error({ message: "Resolve unfinished tasks before completing the goal" })
     if ((yield* monitors.list(sessionID)).some(Monitor.parks))
       return yield* new SessionGoal.Error({ message: "A monitor is still waiting for work to finish" })
@@ -125,6 +130,7 @@ export const node = makeLocationNode({
   deps: [
     SessionGoal.node,
     SessionTodoStore.node,
+    SessionTaskAssignments.node,
     MonitorRuntime.node,
     FileAccess.node,
     Intelligence.node,

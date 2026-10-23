@@ -18,6 +18,9 @@ import { Permission } from "../../permission.js"
 import { Session } from "../../session.js"
 import { SessionMessage } from "../../session/message.js"
 import { SessionSchema } from "../../session/schema.js"
+import { SessionTaskAssignments } from "../../session/task-assignments.js"
+import { SessionTaskGraph } from "../../session/task-graph.js"
+import { SessionTodoStore } from "../../session/todo-store.js"
 import { SessionStopLoss } from "../../session/stop-loss.js"
 import { SubagentCompletion } from "../../session/subagent-completion.js"
 import { SubagentJob } from "../../session/subagent-job.js"
@@ -36,6 +39,10 @@ const backgroundResult = (sessionID: SessionSchema.ID, note?: string) => ({
 })
 
 export const Input = Schema.Struct({
+  taskID: Schema.optionalKey(Schema.String).annotate({
+    description:
+      "Bind this delegation to an existing task from todowrite. Dependencies must be verified first. The parent must verify the result before completing the task.",
+  }),
   agent: Schema.String.annotate({
     description:
       "The type of specialized agent to use for this task. If the user asks for a subagent by a name that is not one of the available subagents, they most likely mean a model: pick a suitable agent and pass the name through the model parameter instead.",
@@ -142,6 +149,8 @@ export const Plugin = {
   id: "opencode.tool.subagent",
   effect: Effect.fn("SubagentTool.Plugin")(function* (ctx: Context) {
     const sessions = yield* Session.Service
+    const todos = yield* SessionTodoStore.Service
+    const assignments = yield* SessionTaskAssignments.Service
     const jobs = yield* Job.Service
     const agents = yield* Agent.Service
     const config = yield* Config.Service
@@ -512,35 +521,122 @@ export const Plugin = {
                 }
 
                 const model = override ?? agent.model ?? parent.model
-                const child =
-                  existing ??
-                  (yield* sessions
-                    .create({
-                      parentID: context.sessionID,
-                      title: input.description,
-                      agent: Agent.ID.make(input.agent),
-                      model,
-                      metadata: SubagentReview.write(parent.metadata, {
-                        prompt: input.prompt,
-                        agent: agent.id,
-                        scope: input.scope ?? [],
-                        criteria: input.done_criteria ?? [],
-                        ...(input.return_format?.trim() ? { returnFormat: input.return_format.trim() } : {}),
-                        writeCapable,
-                        parentSessionID: parent.id,
-                        verdict: brief?.verdict ?? "skipped",
-                        issues: brief?.issues ?? [],
-                        ...(brief?.evaluationID ? { evaluationID: brief.evaluationID } : {}),
-                        created: started,
-                      }),
-                    })
-                    .pipe(
-                      Effect.mapError(
-                        (error) =>
-                          new ToolFailure({ message: `Parent session not found: ${context.sessionID}`, error }),
-                      ),
-                    ))
+                if (input.taskID || SubagentReview.read(existing?.metadata)?.task)
+                  yield* todos
+                    .review(parent.id)
+                    .pipe(Effect.mapError((error) => new ToolFailure({ message: error.message, error })))
+                const admittedTask = yield* assignments
+                  .withMutation(
+                    Effect.gen(function* () {
+                      const taskID = input.taskID ?? SubagentReview.read(existing?.metadata)?.task?.id
+                      const tasks = taskID ? yield* todos.get(parent.id) : []
+                      const task = taskID ? tasks.find((entry) => entry.id === taskID) : undefined
+                      if (taskID && (!task || !task.id || !task.revision))
+                        return yield* new ToolFailure({
+                          message: `Unknown tracked task: ${taskID}. Inspect todowrite first.`,
+                        })
+                      if (task && !["pending", "in_progress"].includes(task.status))
+                        return yield* new ToolFailure({
+                          message: `Task ${taskID} is ${task.status}; reopen it before delegating.`,
+                        })
+                      if (task && SessionTaskGraph.waiting(tasks, task).length)
+                        return yield* new ToolFailure({
+                          message: `Task ${taskID} waits for verified dependencies: ${SessionTaskGraph.waiting(tasks, task).join(", ")}`,
+                        })
+                      const bound = SubagentReview.read(existing?.metadata)?.task
+                      if (bound && bound.id !== taskID)
+                        return yield* new ToolFailure({
+                          message: `This child is already bound to task ${bound.id}; start a new child for ${taskID}.`,
+                        })
+                      if (task) {
+                        if (joining)
+                          return yield* new ToolFailure({
+                            message: `Task ${taskID} is still running; wait for its completion before continuing.`,
+                          })
+                        const delegated = yield* assignments.snapshot(parent.id, tasks)
+                        const own = delegated.find((entry) => entry.sessionID === existing?.id)
+                        if (own?.busy || own?.admission === "pending")
+                          return yield* new ToolFailure({
+                            message: `Task ${taskID} is still running; wait for its completion before continuing.`,
+                          })
+                        if (
+                          delegated.some(
+                            (entry) =>
+                              entry.taskID === taskID &&
+                              entry.state !== "settled" &&
+                              (entry.sessionID !== existing?.id || joining),
+                          )
+                        )
+                          return yield* new ToolFailure({
+                            message: `Task ${taskID} already has unsettled delegated work; wait for its completion.`,
+                          })
+                      }
+                      const binding =
+                        task && task.id && task.revision
+                          ? {
+                              id: task.id,
+                              revision: task.revision,
+                              fingerprint: SessionTaskGraph.fingerprint(task, tasks),
+                              promptID: SessionMessage.ID.create(),
+                              assigned: Date.now(),
+                            }
+                          : undefined
+                      const child =
+                        existing ??
+                        (yield* sessions
+                          .create({
+                            parentID: context.sessionID,
+                            title: input.description,
+                            agent: Agent.ID.make(input.agent),
+                            model,
+                            metadata: SubagentReview.write(parent.metadata, {
+                              prompt: input.prompt,
+                              agent: agent.id,
+                              scope: input.scope ?? [],
+                              criteria: input.done_criteria ?? (task?.criterion ? [task.criterion] : []),
+                              ...(input.return_format?.trim() || task
+                                ? {
+                                    returnFormat:
+                                      input.return_format?.trim() ||
+                                      "Return findings, changed files and verification evidence for the parent to reconcile.",
+                                  }
+                                : {}),
+                              writeCapable,
+                              parentSessionID: parent.id,
+                              verdict: brief?.verdict ?? "skipped",
+                              issues: brief?.issues ?? [],
+                              ...(brief?.evaluationID ? { evaluationID: brief.evaluationID } : {}),
+                              created: started,
+                              ...(binding ? { task: binding } : {}),
+                            }),
+                          })
+                          .pipe(
+                            Effect.mapError(
+                              (error) =>
+                                new ToolFailure({ message: `Parent session not found: ${context.sessionID}`, error }),
+                            ),
+                          ))
 
+                      if (existing && binding) {
+                        const previous = SubagentReview.read(existing.metadata)
+                        if (!previous) return yield* new ToolFailure({ message: "Tracked child brief is missing" })
+                        yield* sessions.setMetadata({
+                          sessionID: child.id,
+                          metadata: SubagentReview.write(child.metadata, {
+                            ...previous,
+                            prompt: input.prompt,
+                            scope: input.scope ?? previous.scope,
+                            criteria: input.done_criteria ?? (task?.criterion ? [task.criterion] : previous.criteria),
+                            task: binding,
+                            result: undefined,
+                          }),
+                        })
+                      }
+                      return { child, binding, task, tasks }
+                    }),
+                  )
+                  .pipe(Effect.mapError((error) => new ToolFailure({ message: error.message, error })))
+                const child = admittedTask.child
                 const start = yield* hooks.run({
                   event: "SubagentStart",
                   matcher: input.agent,
@@ -556,7 +652,26 @@ export const Plugin = {
                         returnFormat: input.return_format,
                       })
                     : undefined
-                const prompt = [input.prompt, instructions, start.additionalContext].filter(Boolean).join("\n\n")
+                const contract = admittedTask.task
+                  ? JSON.stringify({
+                      taskID: admittedTask.task.id,
+                      content: admittedTask.task.content,
+                      criterion: admittedTask.task.criterion,
+                      prerequisites: (admittedTask.task.dependencies ?? []).map((id) =>
+                        admittedTask.tasks.find((task) => task.id === id),
+                      ),
+                    })
+                  : undefined
+                const prompt = [
+                  input.prompt,
+                  contract
+                    ? `Tracked task contract (return evidence for parent reconciliation):\n${contract}`
+                    : undefined,
+                  instructions,
+                  start.additionalContext,
+                ]
+                  .filter(Boolean)
+                  .join("\n\n")
                 yield* context.progress({ sessionID: child.id, status: "running" })
 
                 const run = Effect.gen(function* () {
@@ -565,6 +680,7 @@ export const Plugin = {
                   const admitted = yield* sessions
                     .prompt({
                       sessionID: child.id,
+                      ...(admittedTask.binding ? { id: SessionMessage.ID.make(admittedTask.binding.promptID) } : {}),
                       text:
                         existing === undefined
                           ? ["You are a subagent spawned by another session.", prompt].join("\n")

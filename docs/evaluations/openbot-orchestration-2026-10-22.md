@@ -538,3 +538,22 @@ identificam os donos atuais dos contratos no Redcode.
 [rc-tools]: ../agent-tools.md
 [rc-voice]: ../voice-input.md
 [rc-codemode]: ../../packages/core/src/codemode/catalog.ts
+
+## Primeira entrega implementada — 23/10/2026
+
+A primeira fatia usa as tarefas e sessões nativas como fonte de verdade:
+
+- `plan_exit.tasks[].dependencies` referencia chaves da mesma revisão aprovada. O handoff converte essas chaves nos IDs duráveis das tarefas.
+- `todowrite.todos[].dependencies` referencia IDs existentes da mesma fase. Ciclos, referências inexistentes e arestas repetidas são recusados antes da gravação. Omissão preserva as dependências; `[]` as remove.
+- Tarefas independentes podem ser explicitamente iniciadas em paralelo. A promoção automática escolhe uma tarefa pronta; pré-requisitos cancelados ou sem evidência não liberam sucessores.
+- `subagent.taskID` vincula a sessão filha à identidade e ao contrato da tarefa, incluindo os resultados aceitos dos pré-requisitos. O filho recebe esse contrato no prompt e continua recebendo o objetivo comum pelo mecanismo de herança existente.
+- A inspeção `todowrite` com `todos: []` inclui `graph` (dependências, esperas e prontidão) e `assignments` (sessão, revisão, contrato atual, atividade e revisão do resultado).
+- Uma delegação em andamento impede uma segunda delegação concorrente da mesma tarefa. Continuar uma sessão já vinculada preserva a identidade da tarefa; ela não pode ser reutilizada para outra atividade.
+- O retorno do filho não conclui a tarefa. O coordenador precisa executar uma verificação depois que a atividade delegada e seus descendentes terminarem. O vínculo antigo precisa ser atualizado por uma continuação se o contrato mudar.
+- As edições dos filhos vinculados e seus descendentes invalidam evidências do pai. Mudanças na evidência de um pré-requisito reabrem todos os sucessores concluídos, preservando o histórico de revisões.
+- `goal_complete` recusa a conclusão enquanto houver tarefas abertas ou trabalho delegado pendente. A revisão de resultado continua distinguindo verificado e não verificado; uma verificação mecânica no modo single não se torna uma aprovação semântica.
+
+Essa entrega cobre dependências e reconciliação local pelo coordenador. A visão no Agents com o DS React, agrupamento das notificações, integração de revisões isoladas com conflitos, artefatos compartilhados, workers remotos e rotinas reutilizáveis continuam nas etapas seguintes. Não há promessa de execução distribuída ou efeitos exatamente uma vez. O estudo foi uma referência funcional; nenhum código do OpenBot foi copiado.
+
+
+Validação local: `bun run check` aprovado nos 27 pacotes com verificação de tipos; geração dos clientes executada em `packages/client`; 62 testes aprovados entre Core e Schema. O teste integrado usa o runner real com TestLLM, persistência de sessões e jobs: cobre lançamentos concorrentes para a mesma tarefa, dependências, atualização do contrato na continuação, descendentes pendentes, verificação pelo pai e invalidação após edição do filho. Essa evidência cobre o runtime local; não representa validação visual do Agents ou de workers remotos para esse novo fluxo.

@@ -10,6 +10,7 @@ import { Database } from "../database/database.js"
 import { IntelligenceEvaluation } from "../intelligence/evaluation.js"
 import { SessionSchema } from "./schema.js"
 import { SessionPlanTable } from "./redcode.sql.js"
+import { SessionTaskGraph } from "./task-graph.js"
 
 const make = Effect.gen(function* () {
   const db = (yield* Database.Service).db
@@ -44,15 +45,21 @@ const make = Effect.gen(function* () {
             .get())?.data
           if (existing?.tasks?.length && input.tasks && JSON.stringify(existing.tasks) !== JSON.stringify(input.tasks))
             return yield* new SessionPlan.Error({
-              message: "Task decomposition is frozen for this plan revision. Revise the plan before changing its tasks.",
+              message:
+                "Task decomposition is frozen for this plan revision. Revise the plan before changing its tasks.",
             })
-          if (existing?.status === "approved" || (existing?.status === input.status && (existing.tasks?.length || !input.tasks?.length)))
+          if (
+            existing?.status === "approved" ||
+            (existing?.status === input.status && (existing.tasks?.length || !input.tasks?.length))
+          )
             return existing
           if (existing) {
             yield* tx
               .update(SessionPlanTable)
               .set({ data: input, created: input.created })
-              .where(and(eq(SessionPlanTable.session_id, input.sessionID), eq(SessionPlanTable.revision, input.revision)))
+              .where(
+                and(eq(SessionPlanTable.session_id, input.sessionID), eq(SessionPlanTable.revision, input.revision)),
+              )
               .run()
               .pipe(Effect.orDie)
             return input
@@ -83,17 +90,25 @@ export function guidance(plans: ReadonlyArray<SessionPlan.Info>) {
 export function validationError(input: Pick<SessionPlan.Info, "content" | "tasks">) {
   if (!input.content.trim()) return "The plan is empty"
   const tasks = input.tasks ?? []
-  if (tasks.some((task) =>
-    !task.key.trim() ||
-    !task.content.trim() ||
-    !task.criterion.trim() ||
-    !task.quote.trim() ||
-    !input.content.includes(task.quote)
-  ))
+  if (
+    tasks.some(
+      (task) =>
+        !task.key.trim() ||
+        !task.content.trim() ||
+        !task.criterion.trim() ||
+        !task.quote.trim() ||
+        !input.content.includes(task.quote),
+    )
+  )
     return "Each plan task needs a key, content, acceptance criterion and exact quote from the plan"
-  if (new Set(tasks.map((task) => task.key)).size !== tasks.length ||
-      new Set(tasks.map((task) => task.content.trim())).size !== tasks.length)
+  if (
+    new Set(tasks.map((task) => task.key)).size !== tasks.length ||
+    new Set(tasks.map((task) => task.content.trim())).size !== tasks.length
+  )
     return "Plan task keys and contents must be unique"
+  return SessionTaskGraph.validate(
+    tasks.map((task) => ({ ...task, id: task.key, status: "pending", priority: "high" })),
+  )
 }
 
 export function review(input: {
@@ -119,7 +134,8 @@ export function review(input: {
     },
     questions: IntelligenceEvaluation.questions({
       coverage: "Does the plan omit an applicable request or its verification? Treat omitted evidence as unknown.",
-      decomposition: "Do the tasks omit a plan deliverable or verification, contradict the plan, or lack an observable criterion? If tasks are absent for a Plan-only goal, evaluate only the plan itself.",
+      decomposition:
+        "Do the tasks omit a plan deliverable or verification, contradict the plan, or lack an observable criterion? If tasks are absent for a Plan-only goal, evaluate only the plan itself.",
       requirements: "Does the plan contradict an applicable request or later correction?",
     }),
   }
@@ -130,8 +146,7 @@ export function verdict(
   record: Intelligence.Evaluation | undefined,
   history: ReadonlyArray<Intelligence.Evaluation> = [],
 ) {
-  if (IntelligenceEvaluation.mode(settings) !== "dual")
-    return "System One plan review: not enabled (single reasoning)."
+  if (IntelligenceEvaluation.mode(settings) !== "dual") return "System One plan review: not enabled (single reasoning)."
   if (!record) return "System One plan review: unavailable; approval remains your decision."
   if (record.decision === "unavailable")
     return `System One plan review: unavailable (${IntelligenceEvaluation.issueSummary(record)}); approval remains your decision.`

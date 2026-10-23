@@ -1365,6 +1365,8 @@ export type Todo = {
   source?: TodoSource
   criterion?: string
   evidence?: TodoEvidence
+  dependencies?: Array<string>
+  inputs?: Array<{ id: string; hash: string }>
   scopeChange?: { messageID: string; quote: string; created?: number; paraphrase?: string }
   content: string
   status: string
