@@ -1342,6 +1342,34 @@ test.each(["queue", "steer"] as const)("direct footer toggles and deletes pendin
   }
 })
 
+test.each([true, false])(
+  "deleting the last pending prompt follows its acknowledgement before SSE refresh (success=%s)",
+  async (success) => {
+    const statuses: string[] = []
+    const app = await renderFooter({
+      queuedPrompts: [{ messageID: "m-last", prompt: { text: "pending", parts: [] }, delivery: "queue" }],
+      onQueuedPromptAction: async () => {
+        if (!success) throw new Error("cancel failed")
+      },
+      onStatus: (status) => statuses.push(status),
+    })
+    try {
+      await app.renderOnce()
+      app.mockInput.pressKey("x", { ctrl: true })
+      app.mockInput.pressKey("q")
+      await app.renderOnce()
+      expect(app.captureCharFrame()).toContain("Pending prompts")
+      app.mockInput.pressKey("d", { ctrl: true })
+      await Bun.sleep(0)
+      await app.renderOnce()
+      expect(app.captureCharFrame().includes("Pending prompts")).toBe(!success)
+      if (!success) expect(statuses.at(-1)).toContain("cancel failed")
+    } finally {
+      app.cleanup()
+    }
+  },
+)
+
 test("undo appends a pending prompt to the draft", async () => {
   const actions: string[] = []
   const submitted: RunPrompt[] = []
@@ -1465,9 +1493,10 @@ test("undo retains mentioned files when the prompt is sent again", async () => {
   }
 })
 
-test("direct footer steers the oldest queued prompt from an empty composer", async () => {
+test("direct footer steers the most recently queued prompt from an empty composer", async () => {
   const steered: string[] = []
   const app = await renderFooter({
+    state: { phase: "running" },
     queuedPrompts: [
       { messageID: "m-steering", prompt: { text: "already steering", parts: [] }, delivery: "steer" },
       { messageID: "m-1", prompt: { text: "first", parts: [] }, delivery: "queue" },
@@ -1486,11 +1515,11 @@ test("direct footer steers the oldest queued prompt from an empty composer", asy
     expect(steered).toEqual([])
     app.mockInput.pressEnter()
     await Bun.sleep(0)
-    expect(steered).toEqual(["m-1"])
+    expect(steered).toEqual(["m-2"])
     app.setQueuedPrompts((prompts) => prompts.filter((prompt) => prompt.delivery === "steer"))
     app.mockInput.pressEnter()
     await Bun.sleep(0)
-    expect(steered).toEqual(["m-1"])
+    expect(steered).toEqual(["m-2"])
   } finally {
     app.cleanup()
   }
@@ -1556,6 +1585,7 @@ test("direct footer rejects local commands submitted with the queue shortcut", a
   const submitted: RunPrompt[] = []
   const statuses: string[] = []
   const app = await renderFooter({
+    state: { phase: "running" },
     onSubmit: (prompt) => {
       submitted.push(prompt)
       return true

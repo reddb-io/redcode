@@ -259,7 +259,10 @@ test.each([false, true])("command menu uses its full height on first open (mono=
     expect(frame).toContain("Show status")
     expect(frame).toContain("Compact session")
     expect(frame).toContain("New session")
-    expect(frame).toContain("Variant cycle")
+    expect(frame).toContain("View pending prompts")
+    await app.mockInput.typeText("variant")
+    await app.renderOnce()
+    expect(app.captureCharFrame()).toContain("Variant cycle")
   } finally {
     app.footer.destroy()
     app.renderer.destroy()
