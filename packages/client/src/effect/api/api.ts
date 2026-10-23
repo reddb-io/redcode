@@ -680,6 +680,8 @@ export type SessionTodoListOutput = ReadonlyArray<{
         readonly observed: number
       }
     | undefined
+  readonly dependencies?: ReadonlyArray<string> | undefined
+  readonly inputs?: ReadonlyArray<{ readonly id: string; readonly hash: string }> | undefined
   readonly scopeChange?:
     | {
         readonly messageID: string

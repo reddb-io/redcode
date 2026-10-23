@@ -1,5 +1,6 @@
 export * as SessionTaskFacts from "./task-facts.js"
 
+import { SubagentReview } from "@opencode/schema/subagent-review"
 import { createHash } from "node:crypto"
 import path from "node:path"
 import { asc, eq } from "drizzle-orm"
@@ -7,6 +8,7 @@ import { Context, DateTime, Effect, Layer } from "effect"
 import { makeGlobalNode } from "@opencode/util/effect/app-node"
 import { Database } from "../database/database.js"
 import { IntelligenceEvaluation } from "../intelligence/evaluation.js"
+import type { MessageDecodeError } from "./error.js"
 import { SessionMessage } from "./message.js"
 import { SessionHistory } from "./history.js"
 import { SessionInbox } from "./inbox.js"
@@ -481,6 +483,37 @@ export function evidence(results: ReadonlyArray<Result>, limit = 16) {
 const make = Effect.gen(function* () {
   const { db } = yield* Database.Service
 
+  // Foreign results can invalidate parent proofs, but never prove parent completion.
+  const delegatedEdits = Effect.fn("SessionTaskFacts.delegatedEdits")(function* (
+    sessionID: SessionSchema.ID,
+    tracked = false,
+  ): Effect.fn.Return<Result[], MessageDecodeError> {
+    const children = yield* db
+      .select()
+      .from(SessionTable)
+      .where(eq(SessionTable.parent_id, sessionID))
+      .all()
+      .pipe(Effect.orDie)
+    return (yield* Effect.forEach(children, (child) =>
+      Effect.gen(function* () {
+        const include = tracked || SubagentReview.read(child.metadata ?? undefined)?.task !== undefined
+        if (!include) return []
+        const rows = yield* db
+          .select()
+          .from(SessionMessageTable)
+          .where(eq(SessionMessageTable.session_id, child.id))
+          .orderBy(asc(SessionMessageTable.seq))
+          .all()
+          .pipe(Effect.orDie)
+        const messages = yield* Effect.forEach(rows, SessionHistory.decodeMessageRow)
+        return [
+          ...project(messages, child.directory).filter((result) => result.kind === "edit"),
+          ...(yield* delegatedEdits(child.id, true)),
+        ]
+      }),
+    )).flat()
+  })
+
   const load = Effect.fn("SessionTaskFacts.load")(function* (sessionID: SessionSchema.ID) {
     const directory = (yield* db
       .select({ directory: SessionTable.directory })
@@ -514,7 +547,9 @@ const make = Effect.gen(function* () {
       ),
       ...pending,
     ]
-    const results = project(messages, directory)
+    const results = [...project(messages, directory), ...(yield* delegatedEdits(sessionID))].toSorted(
+      (a, b) => a.completed - b.completed,
+    )
     return { requests, results }
   })
 

@@ -1,7 +1,7 @@
 export * as SubagentReview from "./subagent-review.js"
 
 import { Option, Schema } from "effect"
-import { optional } from "./schema.js"
+import { optional, PositiveInt } from "./schema.js"
 
 /**
  * The child session metadata key holding the brief a subagent was launched under, how its parent
@@ -67,6 +67,15 @@ export const Brief = Schema.Struct({
   /** Whether the subagent may change files or run commands. */
   writeCapable: Schema.Boolean,
   parentSessionID: Schema.String,
+  task: optional(
+    Schema.Struct({
+      id: Schema.String,
+      revision: PositiveInt,
+      fingerprint: Schema.String,
+      promptID: Schema.String,
+      assigned: Schema.Finite,
+    }),
+  ),
   verdict: BriefVerdict,
   issues: Schema.Array(Schema.String),
   evaluationID: Schema.String.pipe(optional),

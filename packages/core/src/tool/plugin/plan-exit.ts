@@ -42,7 +42,7 @@ export const Plugin = {
           name: "plan_exit",
           options: { codemode: false },
           description:
-            "Record the finished plan and request approval to execute it in Build. Supply the complete plan as content, or its path when it was written to a file. For implementation, supply tasks covering every deliverable and verification, each with key, a short title for the task list, content holding the full task, criterion and an exact quote from the plan. A Plan-only goal records a ready revision and stays in Plan. System One review is advisory and visible with the approval question. The approved revision and tasks survive compaction.",
+            "Record the finished plan and request approval to execute it in Build. Supply the complete plan as content, or its path when it was written to a file. For implementation, supply tasks covering every deliverable and verification, each with key, a short title for the task list, content holding the full task, criterion and an exact quote from the plan; optional dependencies name prerequisite task keys in the same plan. A Plan-only goal records a ready revision and stays in Plan. System One review is advisory and visible with the approval question. The approved revision and tasks survive compaction.",
           input: Schema.Struct({
             content: Schema.optionalKey(Schema.String),
             path: Schema.optionalKey(Schema.String),
@@ -129,7 +129,7 @@ export const Plugin = {
                     {
                       key: "choice",
                       title: "Execute this plan?",
-                      description: `${source.path}, revision ${source.hash}\n\n${source.content}\n\nExecution tasks:\n${ready.tasks.map((task) => `- ${task.key}: ${task.content} — ${task.criterion}`).join("\n")}\n\n${review}`,
+                      description: `${source.path}, revision ${source.hash}\n\n${source.content}\n\nExecution tasks:\n${ready.tasks.map((task) => `- ${task.key}: ${task.content} — ${task.criterion}${task.dependencies?.length ? ` (after: ${task.dependencies.join(", ")})` : ""}`).join("\n")}\n\n${review}`,
                       type: "string",
                       options: [
                         {
@@ -171,6 +171,7 @@ export const Plugin = {
                   origin: { type: "plan", id: ready.revision, quote: ready.content, created: ready.created },
                   todos: ready.tasks.map((task) => ({
                     planKey: task.key,
+                    dependencies: task.dependencies,
                     ...(task.title ? { title: task.title } : {}),
                     content: task.content,
                     criterion: task.criterion,

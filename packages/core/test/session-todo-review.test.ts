@@ -20,6 +20,24 @@ import { evaluation } from "./intelligence/fixtures"
 import { testEffect } from "./lib/effect"
 
 // What System One was asked, how many requests were open at once, and how it answers a question.
+const observedResults: SessionTaskFacts.Result[] = []
+const checkResult = (callID: string): SessionTaskFacts.Result => ({
+  callID,
+  messageID: "msg_verification",
+  tool: "shell",
+  hash: callID,
+  completed: 100,
+  successful: true,
+  errored: false,
+  kind: "verification",
+  paths: [],
+  settled: true,
+  abandoned: false,
+  error: "",
+  exit: 0,
+  input: { command: "bun test checkout.test.ts" },
+  summary: "Checkout tests: all assertions passed",
+})
 const asked: EvaluationInput[] = []
 const flight = { open: 0, most: 0 }
 const answers: { noul: (id: string, input: EvaluationInput) => number; unavailable: boolean } = {
@@ -28,6 +46,7 @@ const answers: { noul: (id: string, input: EvaluationInput) => number; unavailab
 }
 
 const reset = () => {
+  observedResults.length = 0
   asked.length = 0
   flight.open = 0
   flight.most = 0
@@ -87,7 +106,7 @@ const it = testEffect(
         load: () =>
           Effect.succeed({
             requests: [{ id: "msg_checkout", text: "Build the checkout flow with fifteen steps", created: 1 }],
-            results: [],
+            results: observedResults,
           }),
       }),
     ),
@@ -213,6 +232,113 @@ describe("SessionTodoStore System One review", () => {
             `${task.id}: Unverified: System One review unavailable (evaluation_1): System One did not answer. The update was applied without review.`,
         ),
       )
+    }),
+  )
+})
+
+describe("SessionTodoStore dependency graph", () => {
+  it.live("preserves parallel independent work and refuses invalid graph mutations atomically", () =>
+    Effect.gen(function* () {
+      reset()
+      const todos = yield* SessionTodoStore.Service
+      const sessionID = yield* session("todo_dependencies_atomic")
+      const created = (yield* todos.write({ sessionID, todos: steps(3) })).todos
+      const parallel = (yield* todos.write({ sessionID, todos: [{ id: created[1]!.id, status: "in_progress" }] })).todos
+      expect(parallel.filter((task) => task.status === "in_progress")).toHaveLength(2)
+      const linked = (yield* todos.write({
+        sessionID,
+        todos: [{ id: created[2]!.id, dependencies: [created[1]!.id!] }],
+      })).todos
+      expect(
+        (yield* todos.write({ sessionID, todos: [{ id: created[2]!.id, status: "in_progress" }] }).pipe(Effect.flip))
+          .message,
+      ).toContain("waits for verified dependencies")
+      expect(
+        (yield* todos
+          .write({ sessionID, todos: [{ id: created[1]!.id, dependencies: [created[2]!.id!] }] })
+          .pipe(Effect.flip)).message,
+      ).toContain("cycle")
+      expect(
+        (yield* todos
+          .write({ sessionID, todos: [{ id: created[0]!.id, dependencies: ["missing"] }] })
+          .pipe(Effect.flip)).message,
+      ).toContain("Unknown dependency")
+      expect(
+        (yield* todos
+          .write({ sessionID, todos: [{ id: created[2]!.id, dependencies: [created[1]!.id!, created[1]!.id!] }] })
+          .pipe(Effect.flip)).message,
+      ).toContain("Duplicate dependencies")
+      expect(yield* todos.get(sessionID)).toEqual(linked)
+    }),
+  )
+
+  it.live("maps approved plan keys to task identities and keeps exact handoff retries stable", () =>
+    Effect.gen(function* () {
+      reset()
+      const todos = yield* SessionTodoStore.Service
+      const sessionID = yield* session("todo_dependencies_plan")
+      const input = {
+        sessionID,
+        origin: { type: "plan" as const, id: "approved-plan:1", quote: "Build the checkout flow", created: 1 },
+        todos: [
+          {
+            content: "Implement checkout",
+            planKey: "implementation",
+            criterion: "Checkout submits",
+            priority: "high" as const,
+          },
+          {
+            content: "Verify checkout",
+            planKey: "verification",
+            criterion: "Checkout tests pass",
+            priority: "high" as const,
+            dependencies: ["implementation"],
+          },
+        ],
+      }
+      const first = (yield* todos.write(input)).todos
+      expect(first[1]!.dependencies).toEqual([first[0]!.id!])
+      expect(first[1]!.status).toBe("pending")
+      expect((yield* todos.write(input)).todos).toEqual(first)
+    }),
+  )
+
+  it.live("captures a chain in dependency order and reopens every successor when a proof changes", () =>
+    Effect.gen(function* () {
+      reset()
+      const todos = yield* SessionTodoStore.Service
+      const sessionID = yield* session("todo_dependencies_reconcile")
+      const created = (yield* todos.write({ sessionID, todos: steps(3) })).todos
+      yield* todos.write({
+        sessionID,
+        todos: [
+          { id: created[1]!.id, dependencies: [created[0]!.id!] },
+          { id: created[2]!.id, dependencies: [created[1]!.id!] },
+        ],
+      })
+      observedResults.push(...created.map((task) => checkResult(`check_${task.id}`)))
+      const completed = (yield* todos.write({
+        sessionID,
+        todos: created.toReversed().map((task) => ({
+          id: task.id,
+          status: "completed",
+          evidence: {
+            callID: `check_${task.id}`,
+            explanation: "The checkout validation suite exercises every required input and all assertions pass",
+          },
+        })),
+      })).todos
+      expect(completed.every((task) => task.status === "completed")).toBe(true)
+      expect(yield* todos.review(sessionID)).toEqual(completed)
+      const retry = (yield* todos.write({ sessionID, todos: [{ id: completed[2]!.id, status: "completed" }] })).todos
+      expect(retry).toEqual(completed)
+      observedResults[0] = { ...observedResults[0]!, hash: "changed-proof" }
+      const reopened = yield* todos.review(sessionID)
+      expect(reopened.every((task) => task.status !== "completed")).toBe(true)
+      expect(reopened.every((task) => !task.inputs && !task.evidence)).toBe(true)
+      expect(reopened[0]!.status).toBe("in_progress")
+      expect(reopened[1]!.status).toBe("pending")
+      expect(reopened[2]!.status).toBe("pending")
     }),
   )
 })
