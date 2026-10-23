@@ -1,0 +1,186 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-23",
+  "recordedAtUTC": "2026-10-23T12:53:59.917685+00:00",
+  "baselineCommit": "df499bd276419c9c5b306845438a49b8aca275a1",
+  "implementationCommit": "886ee9003a18cc84c32638b6445749d0fa8f6163",
+  "packagesTree": "581a204c8649a633b1d5f84ce7566744341d010f",
+  "branch": "main",
+  "published": false,
+  "completeParity": false,
+  "platform": {
+    "os": "Linux",
+    "arch": "x86_64",
+    "bun": "1.4.4"
+  },
+  "checks": [
+    {
+      "name": "core",
+      "cwd": "packages/core",
+      "command": "bun test test/model-pricing.test.ts test/session-usage.test.ts test/session-budget.test.ts test/session-stats.test.ts test/session-projector.test.ts test/session-title.test.ts test/session-compaction.test.ts test/session-native-compaction.test.ts test/model-resolver.test.ts",
+      "passed": 151,
+      "failed": 0,
+      "assertions": 809,
+      "exitCode": 0,
+      "log": "core"
+    },
+    {
+      "name": "runner",
+      "cwd": "packages/core",
+      "command": "bun test test/session-runner.test.ts --test-name-pattern 'cost|usage|budget|content-filter|conditional catalog'",
+      "passed": 7,
+      "failed": 0,
+      "assertions": 31,
+      "exitCode": 0,
+      "log": "runner"
+    },
+    {
+      "name": "schema",
+      "cwd": "packages/schema",
+      "command": "bun test test/cost-assessment.test.ts test/event-manifest.test.ts test/token-usage.test.ts",
+      "passed": 13,
+      "failed": 0,
+      "assertions": 125,
+      "exitCode": 0,
+      "log": "schema"
+    },
+    {
+      "name": "client",
+      "cwd": "packages/client",
+      "command": "bun test test/contract-identity.test.ts test/import-boundaries.test.ts",
+      "passed": 5,
+      "failed": 0,
+      "assertions": 43,
+      "exitCode": 0,
+      "log": "client"
+    },
+    {
+      "name": "canonical lint and types",
+      "cwd": ".",
+      "command": "bun run check",
+      "successfulTasks": 27,
+      "totalTasks": 27,
+      "cachedTasks": 0,
+      "exitCode": 0,
+      "log": "check"
+    },
+    {
+      "name": "Client regeneration",
+      "cwd": "packages/client",
+      "command": "bun run generate",
+      "exitCode": 0,
+      "log": "generate"
+    },
+    {
+      "name": "committed generated Client stability",
+      "cwd": "packages/client",
+      "command": "bun run check:generated",
+      "exitCode": 0,
+      "log": "generated",
+      "note": "Executed after the implementation commit; generated files unchanged."
+    }
+  ],
+  "catalogReplay": {
+    "source": "https://models.dev/experimental/v2.0/api.json",
+    "archive": "/var/tmp/redcode-models-v2-current.json",
+    "sha256": "a7dbd58e1c539dd46e86c2b063ae8d7f4cced41cd0cc8b8bd308d662438dc1ae",
+    "result": {
+      "source": "archived published V2 response",
+      "model": "openai/gpt-5.4",
+      "syntheticMeters": [
+        {
+          "modality": "text",
+          "direction": "input",
+          "unit": "token",
+          "quantity": 300000
+        },
+        {
+          "modality": "text",
+          "direction": "output",
+          "unit": "token",
+          "quantity": 100
+        },
+        {
+          "modality": "text",
+          "direction": "output",
+          "unit": "token",
+          "quantity": 20,
+          "component": "reasoning"
+        }
+      ],
+      "facts": {
+        "context": 300000,
+        "service_tier": "priority"
+      },
+      "known": {
+        "amount": 3.0054000000000003
+      },
+      "missingServiceTier": {
+        "reason": "unresolved-multiplier"
+      },
+      "liveInference": false,
+      "invoiceVerification": false
+    },
+    "log": "replay",
+    "reproduce": {
+      "cwd": "packages/core",
+      "entrypoint": "ModelPricing.quote from ./src/model-pricing",
+      "pricing": "archive.openai.models[\"gpt-5.4\"].cost",
+      "metersAndFacts": "See result.syntheticMeters and result.facts; omit service_tier for the unresolved quote.",
+      "toleranceUSD": 1e-10
+    },
+    "note": "Published price payload with synthetic consumption; no inference, credentials, network request or invoice verification."
+  },
+  "behaviorCovered": [
+    "Ordered conditional overrides and deep cache/TTL merges precede all matching nested price multipliers.",
+    "Explicit token, character, image, megapixel, second, minute and search meters preserve their units; unsupported pricing fields do not silently become USD.",
+    "Reasoning uses its own rate or the appropriately multiplied output rate; missing TTLs, cache modes, storage meters and required condition facts stay unresolved.",
+    "Provider-reported nonnegative USD including zero wins; configured token rates retain precedence over rich catalog estimates.",
+    "New step settlements and auxiliary usage records retain reported, estimated or unknown assessment. Historical numeric amounts and unclassified legacy records remain unchanged.",
+    "Actual runner admission, execution and projection with TestLLM records a conditional estimate and a later unresolved estimate without losing the known subtotal.",
+    "Persisted Bus/database projections preserve assessments; stats derive coverage and budgets count unknown usage across descendants without duplicating numeric charges or compaction summaries.",
+    "Schema metadata omits absent fields; coverage rejects negative or fractional counts and Client exports retain canonical Schema identities."
+  ],
+  "limits": [
+    "No frontend rendering changes, deployed browser validation, live inference, billing reconciliation, push, remote CI or publication.",
+    "V1 remains the default/bundled catalog; V2 rich estimates apply to configured V2 sources when no explicit token cost projection exists.",
+    "Automatic detailed media/native-tool/cache metering and remaining client cost-coverage presentations are pending. V2 media/native-tool requests without provider-reported USD remain unresolved.",
+    "Unknown charges contribute numeric zero for compatibility and retain explicit unknown assessment; they do not imply free usage or guarantee an external dollar cap.",
+    "Stats coverage follows existing accounting scopes: per-model assistant records and overall compaction records; title usage remains excluded there but included in budgets.",
+    "Tests are the focused subsets listed above, not the entire repository suite. Existing broad Schema contract-hygiene debt remains outside this batch."
+  ],
+  "logs": {
+    "core": {
+      "path": "/var/tmp/redcode-pricing-regressions-complete.log",
+      "sha256": "94689fa506b899992b6be52c9f7d85b30bc9c84806b745133286debdc802a8d4"
+    },
+    "runner": {
+      "path": "/var/tmp/redcode-pricing-runner-tests-final.log",
+      "sha256": "b1e8484c02fa458cd9adc521b047dcce8ca8b1e27b6249d1a56c12e7d243f600"
+    },
+    "schema": {
+      "path": "/var/tmp/redcode-pricing-schema-tests.log",
+      "sha256": "4b81f7bfc78d4e2b64245f43ba602bc44c0f82b2d31ef8c98d1c52a5a8e6d185"
+    },
+    "client": {
+      "path": "/var/tmp/redcode-pricing-client-tests.log",
+      "sha256": "f384fbb7204a74e6afbb30f2ab3447025d3c2187f06d81b8f2c841d11887fa8a"
+    },
+    "check": {
+      "path": "/var/tmp/redcode-pricing-check-complete.log",
+      "sha256": "ead54474754309b362b834c245608d8b58f5adefd27b83db7bc88d61be937737"
+    },
+    "generate": {
+      "path": "/var/tmp/redcode-pricing-generate.log",
+      "sha256": "669f6f21dd85b213958bef91fe6ac15f2851f309f5f3eda8197ee0a85a2643b8"
+    },
+    "generated": {
+      "path": "/var/tmp/redcode-pricing-generated-check.log",
+      "sha256": "2650c77b0592cdd0c6d59af0c2090bde6b22503e039643b7226f02ebc545e022"
+    },
+    "replay": {
+      "path": "/var/tmp/redcode-pricing-catalog-replay.log",
+      "sha256": "f3501337f8c9911cfb03e8172a2037dda3cf93dd3b8161da7ac6d534ca45624b"
+    }
+  }
+}
