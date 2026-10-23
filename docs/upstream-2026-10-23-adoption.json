@@ -779,11 +779,17 @@
       "status": "validated",
       "path": "packages/core/src/session/budget.ts",
       "evidence": "178 focused tests and 3 production-build browser tests passed; canonical lint/typecheck passed all 27 tasks. TUI rendering covers 44 and 120 columns; ACP is exercised over its wire protocol. Zero-valued unloaded-child refresh has a failing negative control. A limited three-sample browser entry comparison is recorded alongside results in evaluations/family-cost-2026-10-23-validation.json."
+    },
+    {
+      "id": "mini-step-cost-provenance",
+      "status": "validated",
+      "path": "packages/tui/src/mini/stream-v2.transport.ts",
+      "evidence": "Last-step accounting preserved in live completion/failure events, initial hydration, reconnect, resize and idle settlement. Reported zero, unknown, partial, estimated, legacy and missing amounts render in production Mini components. Canonical lint/typecheck passed all 27 tasks; expanded suite: 224 passed, 2 skipped, 7 menu/shortcut failures also reproduced on the baseline. See evaluations/mini-cost-2026-10-23-validation.json. No live provider or publication."
     }
   ],
   "remaining": [
     "Agents surface for task-aware application, explicit recovery of ambiguous applications and cross-host coordination",
-    "Mini per-step cost provenance, detailed provider media/cache meters and validated V2 default cutover",
+    "Detailed provider media/cache meters and validated V2 default cutover",
     "Agents DS React by goal, grouped completion, versioned shared context and remote graph",
     "Reusable workflows, routines, webhooks, resources and external message connectors",
     "Memory/skills, evaluation and media adapters, voice, paired push and native mobile scope",

@@ -32,6 +32,12 @@ and `*` marks unavailable cost provenance. A zero contribution with unresolved c
 `unknown`; provider-reported zero remains `$0.00`. Cost coverage counts accounting records, not
 requests or invoices. `--json` preserves the API's numeric amounts and coverage metadata.
 
+Mini shows the last settled step's cost, including after reconnecting or resizing; it does not show
+family spending. Reported zero stays `$0.00`, estimates use `~`, known partial amounts use `+`, and
+older amounts without provenance use `*`. `cost unknown` and `cost unavailable` distinguish unresolved
+pricing from missing accounting. **Menu → Show status** explains the markers and scope even when
+routine footer details are hidden or cannot fit. These amounts are not reconciled invoices.
+
 **Slash commands belong in a TUI conversation**, not in your shell or Console:
 
 | TUI command                                 | Purpose                                                     |

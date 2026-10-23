@@ -2021,7 +2021,9 @@ test("identity and context precede the provider and a non-fitting provider block
   try {
     await app.renderOnce()
     const statusline = footerStatusline(app.renderer.root)
-    expect(app.captureCharFrame().split("\n")[statusline.y].trimEnd()).toBe("Build · GPT-5 [high] · 12.0K (10%)")
+    expect(app.captureCharFrame().split("\n")[statusline.y].trimEnd()).toBe(
+      "Build · GPT-5 [high] · 12.0K (10%) · cost unavailable",
+    )
   } finally {
     app.cleanup()
   }
@@ -2039,7 +2041,7 @@ test("direct footer keeps compact work, model detail, and context ahead of cost 
     state: {
       phase: "running",
       model: "a-model-name-long-enough-to-force-responsive-truncation",
-      usage: { tokens: 159600, percent: 16, cost: 4.23 },
+      usage: { tokens: 159600, percent: 16, cost: 4.23, costAssessment: { status: "reported" } },
     },
     width: 80,
   })
@@ -2230,7 +2232,7 @@ test("direct footer omits interrupt key hint when interrupt is unbound", async (
 
 test("direct footer shows full usage metadata when room is available", async () => {
   const app = await renderFooter({
-    state: { usage: { tokens: 159600, percent: 16, cost: 4.23 } },
+    state: { usage: { tokens: 159600, percent: 16, cost: 4.23, costAssessment: { status: "reported" } } },
   })
 
   try {
@@ -2243,9 +2245,76 @@ test("direct footer shows full usage metadata when room is available", async () 
   }
 })
 
+const stepCosts: { label: string; usage: NonNullable<FooterState["usage"]>; display: string; explanation?: string }[] =
+  [
+    { label: "reported zero", usage: { tokens: 0, cost: 0, costAssessment: { status: "reported" } }, display: "$0.00" },
+    {
+      label: "estimate",
+      usage: { tokens: 0, cost: 0.12, costAssessment: { status: "estimated" } },
+      display: "~$0.12",
+      explanation: "~ estimated cost",
+    },
+    {
+      label: "unknown zero",
+      usage: { tokens: 0, cost: 0, costAssessment: { status: "unknown" } },
+      display: "cost unknown",
+    },
+    {
+      label: "partial",
+      usage: { tokens: 0, cost: 0.04, costAssessment: { status: "unknown" } },
+      display: "$0.04+",
+      explanation: "+ known subtotal; some cost unknown",
+    },
+    {
+      label: "legacy",
+      usage: { tokens: 0, cost: 0.03 },
+      display: "$0.03*",
+      explanation: "* cost provenance unavailable",
+    },
+    {
+      label: "legacy zero",
+      usage: { tokens: 0, cost: 0 },
+      display: "$0.00*",
+      explanation: "* cost provenance unavailable",
+    },
+    { label: "unavailable", usage: { tokens: 0 }, display: "cost unavailable" },
+  ]
+
+test.each(stepCosts)(
+  "direct footer distinguishes $label and explains it through Show status when narrow and hidden",
+  async (cost) => {
+    let status = ""
+    const app = await renderFooter({
+      state: { usage: cost.usage },
+      mono: true,
+      width: 100,
+      onStatus: (value) => (status = value),
+    })
+    try {
+      await app.renderOnce()
+      expect(app.captureCharFrame()).toContain(cost.display)
+      app.resize(40, 8)
+      app.setMiniSettings((settings) => ({ ...settings, footer: "hide" }))
+      await app.renderOnce()
+      expect(app.captureCharFrame()).toContain("ctrl+p menu")
+      expect(app.captureCharFrame()).not.toContain(cost.display)
+      app.mockInput.pressKey("p", { ctrl: true })
+      await app.renderOnce()
+      await app.mockInput.typeText("status")
+      app.mockInput.pressEnter()
+      expect(status).toContain(`last step: ${cost.display}`)
+      if (cost.explanation) expect(status).toContain(cost.explanation)
+    } finally {
+      app.cleanup()
+    }
+  },
+)
+
 test("direct footer shows the context window beside the usage when it is known", async () => {
   const app = await renderFooter({
-    state: { usage: { tokens: 321000, percent: 279, limit: 115200, cost: 4.23 } },
+    state: {
+      usage: { tokens: 321000, percent: 279, limit: 115200, cost: 4.23, costAssessment: { status: "reported" } },
+    },
   })
 
   try {
@@ -2258,7 +2327,11 @@ test("direct footer shows the context window beside the usage when it is known",
 
 test("direct footer keeps model, variant, and usage before the menu and rich stop label", async () => {
   const app = await renderFooter({
-    state: { phase: "running", model: "GPT-5.6 SoL", usage: { tokens: 8400, percent: 1, cost: 0.01 } },
+    state: {
+      phase: "running",
+      model: "GPT-5.6 SoL",
+      usage: { tokens: 8400, percent: 1, cost: 0.01, costAssessment: { status: "reported" } },
+    },
     currentVariant: "high",
     mono: true,
     width: 66,
@@ -2278,7 +2351,7 @@ test("direct footer keeps model, variant, and usage before the menu and rich sto
 test("direct footer hides routine activity and shows explicit notices", async () => {
   let status = ""
   const app = await renderFooter({
-    state: { usage: { tokens: 159600, percent: 16, cost: 4.23 } },
+    state: { usage: { tokens: 159600, percent: 16, cost: 4.23, costAssessment: { status: "reported" } } },
     currentAgent: "Plan",
     miniSettings: {
       thinking: "hide",
@@ -2319,7 +2392,7 @@ test("direct footer hides routine activity and shows explicit notices", async ()
     await app.renderOnce()
     await app.mockInput.typeText("status")
     app.mockInput.pressEnter()
-    expect(status).toBe("running - agent Plan - gpt-5 - 159.6K (16%) - $4.23")
+    expect(status).toBe("running - agent Plan - gpt-5 - 159.6K (16%) - last step: $4.23")
 
     app.setState((state) => ({ ...state, notice: "variant high" }))
     await app.renderOnce()

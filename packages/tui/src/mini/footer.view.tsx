@@ -39,6 +39,7 @@ import { modelInfo } from "./variant.shared"
 import { monoShortcut } from "./mono"
 import { stringWidth } from "../util/string-width"
 import { formatContextUsage } from "../util/session"
+import { formatCost } from "../util/cost"
 import { errorMessage } from "../util/error"
 import { createSingleFlight } from "../util/single-flight"
 
@@ -63,8 +64,6 @@ import type {
   RunTuiConfig,
 } from "./types"
 import type { RunTheme } from "./theme"
-
-const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" })
 
 const EMPTY_BORDER = {
   topLeft: "",
@@ -215,7 +214,10 @@ export function RunFooterView(props: RunFooterViewProps) {
     const current = usage()
     return current && current.tokens > 0 ? formatContextUsage(current.tokens, current.percent, current.limit) : ""
   })
-  const cost = createMemo(() => (usage()?.cost ? money.format(usage()!.cost!) : ""))
+  const cost = createMemo(() => {
+    const current = usage()
+    return current ? formatCost(current.cost, current.costAssessment) : ""
+  })
   const takeover = createMemo(() => exiting() || (busy() && armed()) || !!props.state().notice.trim())
   const footerDetails = createMemo(() => props.miniSettings().footer === "show" && !takeover())
   const interruptLabel = createMemo(() => {
@@ -242,7 +244,13 @@ export function RunFooterView(props: RunFooterViewProps) {
     const details = [busy() ? "running" : "idle", `agent ${props.currentAgent()}`]
     if (current) details.push(variant ? `${current} ${variant}` : current)
     if (contextUsage()) details.push(contextUsage())
-    if (cost()) details.push(cost())
+    if (cost()) {
+      details.push(`last step: ${cost()}`)
+      if (usage()?.costAssessment?.status === "estimated") details.push("~ estimated cost")
+      if (usage()?.costAssessment?.status === "unknown" && (usage()?.cost ?? 0) > 0)
+        details.push("+ known subtotal; some cost unknown")
+      if (usage()?.cost !== undefined && !usage()?.costAssessment) details.push("* cost provenance unavailable")
+    }
     if (queuedPrompts().length > 0) details.push(`${queuedPrompts().length} pending`)
     if (activeTabs().length > 0) details.push(`${activeTabs().length} subagent${activeTabs().length === 1 ? "" : "s"}`)
     return details.join(props.mono ? " - " : " · ")

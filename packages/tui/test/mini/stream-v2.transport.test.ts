@@ -15,6 +15,7 @@ import {
 import { createSessionTransport } from "../../src/mini/stream-v2.transport"
 import { runPromptQueue } from "../../src/mini/runtime.queue"
 import { entryBody } from "../../src/mini/entry.body"
+import type { CostAssessment } from "@opencode/schema/cost-assessment"
 import type { StreamCommit } from "../../src/mini/types"
 import { createFooterApiFixture } from "./fixture/footer-api"
 import { canonicalToolPart } from "./fixture/tool-part"
@@ -613,7 +614,10 @@ describe("V2 mini transport", () => {
     })
 
     while (!ui.events.some((event) => event.type === "stream.patch" && event.patch.usage)) await Bun.sleep(0)
-    expect(ui.events).toContainEqual({ type: "stream.patch", patch: { usage: { tokens: 7_508, percent: 5 } } })
+    expect(ui.events).toContainEqual({
+      type: "stream.patch",
+      patch: { usage: { tokens: 7_508, percent: 5, limit: 160_000, cost: 0, costAssessment: undefined } },
+    })
 
     events.push({
       id: "evt_cost_only",
@@ -631,7 +635,271 @@ describe("V2 mini transport", () => {
     while (!ui.events.some((event) => event.type === "stream.patch" && event.patch.usage?.cost)) await Bun.sleep(0)
     expect(ui.events).toContainEqual({
       type: "stream.patch",
-      patch: { usage: { tokens: 0, percent: undefined, cost: 0.1234 } },
+      patch: { usage: { tokens: 0, percent: undefined, limit: undefined, cost: 0.1234, costAssessment: undefined } },
+    })
+    await transport.close()
+  })
+
+  const costs: { label: string; cost: number; costAssessment?: CostAssessment.Info }[] = [
+    { label: "reported zero", cost: 0, costAssessment: { status: "reported" } },
+    { label: "estimated", cost: 0.12, costAssessment: { status: "estimated", catalogDigest: "catalog-test" } },
+    { label: "unknown zero", cost: 0, costAssessment: { status: "unknown", reason: "price missing" } },
+    { label: "partial", cost: 0.04, costAssessment: { status: "unknown", reason: "media unmetered" } },
+    { label: "legacy", cost: 0.03 },
+  ]
+
+  for (const type of ["session.step.ended", "session.step.failed"] as const) {
+    test.each(costs)(`preserves $label accounting from ${type}`, async (cost) => {
+      const events = feed()
+      events.push(connected())
+      const applied = defer()
+      const ui = footer()
+      const transport = await createSessionTransport({
+        sdk: sdk({ streams: [events] }),
+        sessionID: "ses_1",
+        thinking: false,
+        footer: ui.api,
+        onSessionTitle: () => applied.resolve(),
+      })
+      const accounting = {
+        sessionID: "ses_1",
+        assistantMessageID: "msg_cost",
+        cost: cost.cost,
+        costAssessment: cost.costAssessment,
+        tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+      }
+      events.push(
+        type === "session.step.ended"
+          ? { id: "evt_cost", created: 1, type, durable: durable("ses_1", 1), data: { ...accounting, finish: "stop" } }
+          : {
+              id: "evt_cost",
+              created: 1,
+              type,
+              durable: durable("ses_1", 1),
+              data: { ...accounting, error: { type: "provider.transport", message: "failed" } },
+            },
+      )
+      events.push({
+        id: "evt_done",
+        created: 2,
+        type: "session.renamed",
+        durable: durable("ses_1", 2),
+        data: { sessionID: "ses_1", title: "done" },
+      })
+      await applied.promise
+      expect(ui.events.filter((event) => event.type === "stream.patch" && "usage" in event.patch).at(-1)).toEqual({
+        type: "stream.patch",
+        patch: {
+          usage: {
+            tokens: 0,
+            cost: cost.cost,
+            costAssessment: cost.costAssessment,
+            limit: undefined,
+            percent: undefined,
+          },
+        },
+      })
+      await transport.close()
+    })
+  }
+
+  for (const replay of [true, false]) {
+    test.each(costs)(`hydrates $label accounting with replay=${replay}`, async (cost) => {
+      const events = feed()
+      events.push(connected())
+      const ui = footer()
+      const transport = await createSessionTransport({
+        sdk: sdk({
+          streams: [events],
+          messages: {
+            ses_1: [
+              {
+                id: "msg_cost",
+                type: "assistant",
+                agent: "build",
+                content: [],
+                model: { providerID: "test", id: "model" },
+                time: { created: 1, completed: 2 },
+                cost: cost.cost,
+                costAssessment: cost.costAssessment,
+                tokens: { input: 100, output: 10, reasoning: 0, cache: { read: 20, write: 0 } },
+              },
+            ],
+          },
+        }),
+        sessionID: "ses_1",
+        thinking: false,
+        replay,
+        footer: ui.api,
+        contextLimit: () => 1000,
+      })
+      expect(ui.events.filter((event) => event.type === "stream.patch" && "usage" in event.patch).at(-1)).toMatchObject(
+        {
+          patch: {
+            usage: { tokens: 130, percent: 13, limit: 1000, cost: cost.cost, costAssessment: cost.costAssessment },
+          },
+        },
+      )
+      await transport.close()
+    })
+  }
+
+  test("restores latest root accounting on resize and reconnect without regressing on redelivery", async () => {
+    const first = feed()
+    const second = feed()
+    first.push(connected())
+    second.push(connected("evt_reconnected"))
+    const ui = footer()
+    const client = sdk({ streams: [first, second], messages: { ses_1: [] } })
+    const resumed = defer()
+    const transport = await createSessionTransport({
+      sdk: client,
+      sessionID: "ses_1",
+      thinking: false,
+      footer: ui.api,
+      replay: true,
+      onSessionTitle: () => resumed.resolve(),
+    })
+    const assistant = {
+      type: "assistant" as const,
+      agent: "build",
+      content: [],
+      model: { providerID: "test", id: "model" },
+      time: { created: 1, completed: 2 },
+    }
+    spyOn(client.message, "list").mockImplementation(() =>
+      ok({
+        data: [
+          { ...assistant, id: "msg_active", time: { created: 5 } },
+          compaction("completed", "summary"),
+          { ...assistant, id: "msg_latest", cost: 0, costAssessment: { status: "reported" as const } },
+          { ...assistant, id: "msg_older", cost: 0.2, costAssessment: { status: "estimated" as const } },
+        ],
+        cursor: {},
+      }),
+    )
+    const resetting = defer()
+    const entered = defer()
+    const replay = transport.replayOnResize({
+      localRows: () => [],
+      reset: () => {
+        entered.resolve()
+        return resetting.promise
+      },
+    })
+    await entered.promise
+    first.push({
+      id: "evt_old_cost",
+      created: 2,
+      type: "session.step.ended",
+      durable: durable("ses_1", 1),
+      data: {
+        sessionID: "ses_1",
+        assistantMessageID: "msg_older",
+        finish: "stop",
+        cost: 0.2,
+        costAssessment: { status: "estimated" },
+        tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+      },
+    })
+    resetting.resolve()
+    await replay
+    second.push({
+      id: "evt_child_cost",
+      created: 3,
+      type: "session.step.ended",
+      durable: durable("ses_child", 1),
+      data: {
+        sessionID: "ses_child",
+        assistantMessageID: "msg_child",
+        finish: "stop",
+        cost: 99,
+        costAssessment: { status: "reported" },
+        tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+      },
+    })
+    second.push({
+      id: "evt_done",
+      created: 4,
+      type: "session.renamed",
+      durable: durable("ses_1", 2),
+      data: { sessionID: "ses_1", title: "done" },
+    })
+    first.close()
+    await resumed.promise
+    const usage = ui.events.filter((event) => event.type === "stream.patch" && event.patch.usage)
+    expect(usage.length).toBeGreaterThanOrEqual(2)
+    expect(
+      usage.every(
+        (event) =>
+          event.type === "stream.patch" &&
+          event.patch.usage?.cost === 0 &&
+          event.patch.usage.costAssessment?.status === "reported",
+      ),
+    ).toBe(true)
+    await transport.close()
+  })
+
+  test("settlement restores a failed step without accounting instead of retaining the previous cost", async () => {
+    const events = feed()
+    events.push(connected())
+    const ui = footer()
+    const failed = defer()
+    const messages: SessionMessages = [
+      {
+        id: "msg_prior",
+        type: "assistant",
+        agent: "build",
+        content: [],
+        model: { providerID: "test", id: "model" },
+        time: { created: 1, completed: 2 },
+        cost: 1,
+        costAssessment: { status: "reported" },
+      },
+    ]
+    const transport = await createSessionTransport({
+      sdk: sdk({ streams: [events], messages: { ses_1: messages } }),
+      sessionID: "ses_1",
+      thinking: false,
+      footer: ui.api,
+      onSessionTitle: () => failed.resolve(),
+    })
+    events.push({
+      id: "evt_failed",
+      created: 4,
+      type: "session.step.failed",
+      durable: durable("ses_1", 1),
+      data: {
+        sessionID: "ses_1",
+        assistantMessageID: "msg_failed",
+        error: { type: "provider.transport", message: "no usage" },
+      },
+    })
+    events.push({
+      id: "evt_done",
+      created: 5,
+      type: "session.renamed",
+      durable: durable("ses_1", 2),
+      data: { sessionID: "ses_1", title: "done" },
+    })
+    await failed.promise
+    expect(ui.events.filter((event) => event.type === "stream.patch" && "usage" in event.patch).at(-1)).toEqual({
+      type: "stream.patch",
+      patch: { usage: { tokens: 0, cost: undefined, costAssessment: undefined, limit: undefined, percent: undefined } },
+    })
+    messages.unshift({
+      id: "msg_failed",
+      type: "assistant",
+      agent: "build",
+      content: [],
+      model: { providerID: "test", id: "model" },
+      time: { created: 3, completed: 4 },
+      error: { type: "provider.transport", message: "no usage" },
+    })
+    await transport.waitForIdle()
+    expect(ui.events.filter((event) => event.type === "stream.patch" && "usage" in event.patch).at(-1)).toEqual({
+      type: "stream.patch",
+      patch: { usage: { tokens: 0, cost: undefined, costAssessment: undefined, limit: undefined, percent: undefined } },
     })
     await transport.close()
   })
@@ -713,9 +981,9 @@ describe("V2 mini transport", () => {
     })
 
     while (!ui.commits.some((commit) => commit.text === "Done.")) await Bun.sleep(0)
-    expect(ui.commits.filter((commit) => commit.kind === "assistant" || commit.kind === "tool").map((commit) => commit.text)).toEqual([
-      "Done.",
-    ])
+    expect(
+      ui.commits.filter((commit) => commit.kind === "assistant" || commit.kind === "tool").map((commit) => commit.text),
+    ).toEqual(["Done."])
     await transport.close()
   })
 
@@ -743,7 +1011,11 @@ describe("V2 mini transport", () => {
               model: { providerID: "test", id: "model" },
               content: [
                 { type: "text", text: "I'll check." },
-                canonicalToolPart("read", { status: "completed", input: {}, content: [{ type: "text", text: "file" }] }),
+                canonicalToolPart("read", {
+                  status: "completed",
+                  input: {},
+                  content: [{ type: "text", text: "file" }],
+                }),
               ],
               time: { created: 2, completed: 3 },
             },
@@ -760,7 +1032,9 @@ describe("V2 mini transport", () => {
 
     while (!ui.commits.some((commit) => commit.text === "Done.")) await Bun.sleep(0)
     expect(
-      ui.commits.filter((commit) => commit.kind === "user" || commit.kind === "assistant" || commit.kind === "tool").map((commit) => commit.text),
+      ui.commits
+        .filter((commit) => commit.kind === "user" || commit.kind === "assistant" || commit.kind === "tool")
+        .map((commit) => commit.text),
     ).toEqual(["what happened", "Done."])
     await transport.close()
   })
@@ -2930,10 +3204,7 @@ describe("V2 mini transport", () => {
       { sessionID: "ses_1", model: { providerID: "openai", id: "gpt-5", variant: "high" } },
       { signal: undefined },
     )
-    expect(defaultModel).toHaveBeenCalledWith(
-      { location: { directory: "/project" } },
-      { signal: undefined },
-    )
+    expect(defaultModel).toHaveBeenCalledWith({ location: { directory: "/project" } }, { signal: undefined })
     await transport.close()
   })
 

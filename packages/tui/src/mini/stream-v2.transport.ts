@@ -5,6 +5,7 @@ import type {
   OpenCodeClient,
   PermissionRequest,
   SessionMessageAssistantTool,
+  SessionMessageAssistant,
   SessionMessageInfo,
   SessionMessageUser,
   SessionInboxInfo,
@@ -135,6 +136,7 @@ type State = {
   globalForms: MiniFormRequest[]
   view: FooterView
   messageIDs: Set<string>
+  usageMessages: Set<string>
   // Delivery can arrive before the admission response supplies the user content.
   promotedMessages: Set<string>
   imageIDs: Set<string>
@@ -489,6 +491,7 @@ export async function createSessionTransport(input: StreamInput): Promise<Sessio
     globalForms: [],
     view: { type: "prompt" },
     messageIDs: new Set(),
+    usageMessages: new Set(),
     promotedMessages: new Set(),
     imageIDs: new Set(),
     fragments: createFragmentReconciler(),
@@ -906,9 +909,44 @@ export async function createSessionTransport(input: StreamInput): Promise<Sessio
       )
     ).data.toReversed()
 
+  const stepUsage = (
+    record: Pick<SessionMessageAssistant, "tokens" | "cost" | "costAssessment">,
+    model: RunInput["model"],
+  ) => {
+    const total = record.tokens
+      ? record.tokens.input +
+        record.tokens.output +
+        record.tokens.reasoning +
+        record.tokens.cache.read +
+        record.tokens.cache.write
+      : 0
+    const limit = record.tokens && model ? input.contextLimit?.(model) : undefined
+    return {
+      tokens: total,
+      percent: limit ? Math.round((total / limit) * 100) : undefined,
+      limit: limit || undefined,
+      cost: record.cost,
+      costAssessment: record.costAssessment,
+    }
+  }
+
+  const projectedUsage = (messages: SessionMessageInfo[]) => {
+    const settled = messages.filter(
+      (message): message is SessionMessageAssistant =>
+        message.type === "assistant" &&
+        (message.time.completed !== undefined || message.cost !== undefined || message.tokens !== undefined),
+    )
+    // Hydration already includes these settlements; buffered redelivery must not replace the latest price with an older one.
+    settled.forEach((message) => state.usageMessages.add(message.id))
+    const latest = settled.at(-1)
+    return latest ? stepUsage(latest, { providerID: latest.model.providerID, modelID: latest.model.id }) : undefined
+  }
+
   const settleSession = async (client: OpenCodeClient) => {
     await client.session.wait({ sessionID: input.sessionID }, { signal: controller.signal })
-    for (const message of await projectedMessages(client, controller.signal)) renderMessage(message, true)
+    const projected = await projectedMessages(client, controller.signal)
+    for (const message of projected) renderMessage(message, true)
+    write([], { usage: projectedUsage(projected) })
     paintIdle(blockerStatus(state.view))
     await input.footer.idle()
   }
@@ -998,6 +1036,7 @@ export async function createSessionTransport(input: StreamInput): Promise<Sessio
     write([], {
       phase: state.rootActive ? "running" : "idle",
       status: state.rootActive ? "assistant responding" : blockerStatus(state.view),
+      usage: projectedUsage(projected),
     })
     if (!state.rootActive && !next.reconnect) await input.footer.idle()
     if (!current(attempt)) return
@@ -1007,8 +1046,7 @@ export async function createSessionTransport(input: StreamInput): Promise<Sessio
     if (!current(attempt)) return
     const client = attempt.client
     if (catalogEvents.has(event.type)) {
-      if (input.location && event.location && event.location.directory !== input.location.directory)
-        return
+      if (input.location && event.location && event.location.directory !== input.location.directory) return
       void refreshCatalog(attempt)
       return
     }
@@ -1359,30 +1397,20 @@ export async function createSessionTransport(input: StreamInput): Promise<Sessio
       return
     }
     if (event.type === "session.step.ended") {
-      const total =
-        event.data.tokens.input +
-        event.data.tokens.output +
-        event.data.tokens.reasoning +
-        event.data.tokens.cache.read +
-        event.data.tokens.cache.write
-      const limit = state.stepModel ? input.contextLimit?.(state.stepModel) : undefined
+      if (state.usageMessages.has(event.data.assistantMessageID)) return
+      state.usageMessages.add(event.data.assistantMessageID)
+      const usage = stepUsage(event.data, state.stepModel)
       state.stepModel = undefined
       if (!showTools()) flushQuietText(event.data.assistantMessageID)
-      write([], {
-        usage:
-          total > 0 || event.data.cost
-            ? {
-                tokens: total,
-                percent: limit ? Math.round((total / limit) * 100) : undefined,
-                limit: limit || undefined,
-                cost: event.data.cost || undefined,
-              }
-            : undefined,
-      })
+      write([], { usage })
       return
     }
     if (event.type === "session.step.failed") {
-      state.stepModel = undefined
+      if (!state.usageMessages.has(event.data.assistantMessageID)) {
+        state.usageMessages.add(event.data.assistantMessageID)
+        write([], { usage: stepUsage(event.data, state.stepModel) })
+        state.stepModel = undefined
+      }
       if (!showTools()) flushQuietText(event.data.assistantMessageID)
       const rendered = state.errors.has(event.data.assistantMessageID)
       state.errors.add(event.data.assistantMessageID)
