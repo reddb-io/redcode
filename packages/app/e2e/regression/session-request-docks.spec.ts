@@ -1,14 +1,17 @@
 import { expect, test, type Page } from "@playwright/test"
 import { holdRoute, SERVER, sessionHref } from "../utils/app"
 import { installSseTransport } from "../utils/sse-transport"
-import { expectSessionTitle } from "../utils/waits"
+import { APP_READY_TIMEOUT, expectSessionTitle } from "../utils/waits"
 import { mockWorkspace, type WorkspaceInput } from "../utils/workspace"
+import { vaultRequestForm, webSearchRequestForm } from "../utils/request-forms"
 
 const directory = "C:/OpenCode/RequestDocks"
 
 const sessionID = "ses_request_docks"
 
 const title = "Request dock regression"
+
+test.use({ serviceWorkers: "block" })
 
 test("shows a pending question dock", async ({ page }) => {
   await mockServer(page, {
@@ -211,6 +214,196 @@ test("restores the draft caret before typing after a request dock closes", async
   await expect(editor).toHaveText(`${draft.slice(0, cursor)}x${draft.slice(cursor)}`)
 })
 
-function mockServer(page: Page, requests: Pick<WorkspaceInput, "sessionPermissions" | "onPermissionReply" | "forms">) {
+test("Vault masks and clears a failed value, keeps server errors private and accepts a fresh retry", async ({
+  page,
+}) => {
+  const form = vaultRequestForm(sessionID)
+  const forms = [form]
+  const replies: unknown[] = []
+  const value = "fixture-only-private-value"
+  const workspace = await mockServer(page, {
+    forms: () => forms,
+    onFormReply: (input) => {
+      replies.push(input.body)
+      if (replies.length === 1) return { status: 500, body: { message: value } }
+      forms.splice(0)
+    },
+  })
+  const held = await holdRoute(page, (url) => url.pathname.endsWith(`/form/${form.id}/reply`), { method: "POST" })
+  await page.goto(sessionHref(sessionID))
+  const dock = page.locator('[data-component="session-vault-dock"]')
+  const input = dock.getByLabel("Value for example-token", { exact: true })
+  await expect(input).toBeFocused({ timeout: APP_READY_TIMEOUT })
+  await expect(input).toHaveAttribute("type", "password")
+  await expect(input).toHaveAttribute("autocomplete", "off")
+  await input.fill(value)
+  await expect(page.getByRole("main")).not.toContainText(value)
+  await dock.getByRole("button", { name: "Store", exact: true }).click()
+  await held.arrived
+  await expect(input).toHaveValue("")
+  await expect(input).toBeDisabled()
+  await expect(dock.getByRole("button", { name: "Store", exact: true })).toBeDisabled()
+  await expect(dock.getByRole("button", { name: "Decline", exact: true })).toBeDisabled()
+  held.release()
+  await expect(page.getByText("Could not reach the vault. Please try again.", { exact: true })).toBeVisible()
+  await expect(page.locator("body")).not.toContainText(value)
+  await expect(input).toBeEnabled()
+  await expect(input).toHaveValue("")
+  await input.fill("fixture-retry-value")
+  const accepted = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" && new URL(response.url()).pathname.endsWith(`/form/${form.id}/reply`),
+  )
+  await dock.getByRole("button", { name: "Store", exact: true }).click()
+  expect((await accepted).status()).toBe(204)
+  expect(replies).toEqual([{ answer: { value } }, { answer: { value: "fixture-retry-value" } }])
+  await workspace.push([
+    {
+      id: "evt_vault_replied",
+      created: 1700000001000,
+      type: "form.replied",
+      location: { directory },
+      data: { sessionID, id: form.id, answer: {} },
+    },
+  ])
+  await expect(dock).toBeHidden()
+  await expect(page.locator('[data-component="composer"]')).toBeVisible()
+})
+
+for (const action of ["button", "Escape"] as const) {
+  test(`Vault clears and declines its masked value through ${action}`, async ({ page }) => {
+    const form = vaultRequestForm(sessionID)
+    const forms = [form]
+    const workspace = await mockServer(page, { forms: () => forms })
+    const held = await holdRoute(page, (url) => url.pathname.endsWith(`/form/${form.id}`), { method: "DELETE" })
+    await page.goto(sessionHref(sessionID))
+    const dock = page.locator('[data-component="session-vault-dock"]')
+    const input = dock.getByLabel("Value for example-token", { exact: true })
+    await expect(input).toBeFocused({ timeout: APP_READY_TIMEOUT })
+    await input.fill("fixture-declined-value")
+    const cancelled = page.waitForResponse(
+      (response) =>
+        response.request().method() === "DELETE" && new URL(response.url()).pathname.endsWith(`/form/${form.id}`),
+    )
+    if (action === "Escape") await input.press("Escape")
+    if (action === "button") await dock.getByRole("button", { name: "Decline", exact: true }).click()
+    await held.arrived
+    await expect(input).toHaveValue("")
+    await expect(input).toBeDisabled()
+    expect(held.requests).toHaveLength(1)
+    expect(held.requests[0]?.postData()).toBeNull()
+    held.release()
+    expect((await cancelled).status()).toBe(204)
+    forms.splice(0)
+    await workspace.push([
+      {
+        id: "evt_vault_cancelled",
+        created: 1700000001000,
+        type: "form.cancelled",
+        location: { directory },
+        data: { sessionID, id: form.id },
+      },
+    ])
+    await expect(dock).toBeHidden()
+  })
+}
+
+test("specific web-search selection survives a failed reply and submits the selected provider", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  const form = webSearchRequestForm(sessionID)
+  const forms = [form]
+  const replies: unknown[] = []
+  const workspace = await mockServer(page, {
+    forms: () => forms,
+    onFormReply: (input) => {
+      replies.push(input.body)
+      if (replies.length === 1) return { status: 500, body: { message: "Fixture reply failed" } }
+      forms.splice(0)
+    },
+  })
+  const held = await holdRoute(page, (url) => url.pathname.endsWith(`/form/${form.id}/reply`), { method: "POST" })
+  await page.goto(sessionHref(sessionID))
+  const dock = page.getByRole("region", { name: "Third-party web search", exact: true })
+  const select = dock.getByRole("combobox", { name: "Search provider", exact: true })
+  await expect(select).toHaveValue("alpha", { timeout: APP_READY_TIMEOUT })
+  await expect(select).toBeInViewport({ ratio: 1 })
+  await select.selectOption("beta")
+  await expect(dock.getByRole("button", { name: "Don’t use search", exact: true })).toHaveCount(0)
+  await dock.getByRole("button", { name: "Enable", exact: true }).click()
+  await held.arrived
+  await expect(select).toBeDisabled()
+  await expect(dock.getByRole("button", { name: "Enable", exact: true })).toBeDisabled()
+  held.release()
+  await expect(dock.getByText("Could not save your choice. Please try again.", { exact: true })).toBeVisible()
+  await expect(select).toHaveValue("beta")
+  await expect.poll(() => dock.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+  const accepted = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" && new URL(response.url()).pathname.endsWith(`/form/${form.id}/reply`),
+  )
+  await dock.getByRole("button", { name: "Enable", exact: true }).click()
+  expect((await accepted).status()).toBe(204)
+  expect(replies).toEqual([{ answer: { provider: "beta" } }, { answer: { provider: "beta" } }])
+  await workspace.push([
+    {
+      id: "evt_search_replied",
+      created: 1700000001000,
+      type: "form.replied",
+      location: { directory },
+      data: { sessionID, id: form.id, answer: { provider: "beta" } },
+    },
+  ])
+  await expect(dock).toBeHidden()
+})
+
+test("web-search provider loading retries and permits declining an empty catalog", async ({ page }) => {
+  const form = webSearchRequestForm(sessionID, false)
+  const forms = [form]
+  const reads = { count: 0 }
+  const workspace = await mockServer(page, {
+    forms: () => forms,
+    onWebsearchProviders: () => {
+      reads.count += 1
+      if (reads.count === 1) return { status: 500, body: { message: "Fixture catalog unavailable" } }
+    },
+  })
+  await page.goto(sessionHref(sessionID))
+  const dock = page.getByRole("region", { name: "Third-party web search", exact: true })
+  await expect(dock.getByText("Could not load search providers.", { exact: true })).toBeVisible({
+    timeout: APP_READY_TIMEOUT,
+  })
+  await expect(dock.getByRole("combobox", { name: "Search provider", exact: true })).toBeDisabled()
+  await dock.getByRole("button", { name: "Retry", exact: true }).click()
+  await expect(dock.getByText("No search providers available.", { exact: true })).toBeVisible()
+  await expect(dock.getByRole("button", { name: "Enable", exact: true })).toBeDisabled()
+  const declined = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" && new URL(response.url()).pathname.endsWith(`/form/${form.id}/reply`),
+  )
+  await dock.getByRole("button", { name: "Don’t use search", exact: true }).click()
+  const response = await declined
+  expect(response.status()).toBe(204)
+  expect(response.request().postDataJSON()).toEqual({ answer: { choice: "disable" } })
+  expect(reads.count).toBe(2)
+  forms.splice(0)
+  await workspace.push([
+    {
+      id: "evt_search_disabled",
+      created: 1700000001000,
+      type: "form.replied",
+      location: { directory },
+      data: { sessionID, id: form.id, answer: { choice: "disable" } },
+    },
+  ])
+  await expect(dock).toBeHidden()
+})
+
+function mockServer(
+  page: Page,
+  requests: Pick<
+    WorkspaceInput,
+    "sessionPermissions" | "onPermissionReply" | "forms" | "onFormReply" | "onWebsearchProviders"
+  >,
+) {
   return mockWorkspace(page, { name: "RequestDocks", directory, sessions: [{ id: sessionID, title }], ...requests })
 }

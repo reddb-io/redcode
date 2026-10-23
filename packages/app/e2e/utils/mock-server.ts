@@ -199,6 +199,9 @@ export interface MockServerConfig {
   // Without it, permission replies answer 501 MockUnsupported.
   onPermissionReply?: (input: { sessionID: string; permissionID: string; body: unknown }) => void
   forms?: unknown[] | (() => unknown[])
+  onFormReply?: (input: { sessionID: string; formID: string; body: unknown }) => void | MockAnswer
+  websearchProviders?: Resolvable<{ id: string; name: string }[]>
+  onWebsearchProviders?: () => void | MockAnswer
   // MCP servers. A list serves every workspace; a function receives the requested directory.
   mcp?: unknown[] | ((directory: string) => unknown[])
   // Connect/disconnect record the server's new status in that workspace (`connected`/`disabled`); the hook may return
@@ -871,6 +874,24 @@ function mockHandlers(
 
         return Effect.succeed(HttpServerResponse.text(retry + body, { contentType: "text/event-stream" }))
       })
+      .handleRaw("sessionFormReply", (ctx) =>
+        Effect.gen(function* () {
+          const body = yield* Effect.orDie(ctx.request.json)
+          const answer = config.onFormReply?.({ sessionID: ctx.params.sessionID, formID: ctx.params.formID, body })
+          if (answer) return HttpServerResponse.jsonUnsafe(answer.body, { status: answer.status })
+          return HttpServerResponse.empty({ status: 204 })
+        }),
+      )
+      .handleRaw("websearchProviders", () =>
+        Effect.sync(() => {
+          const answer = config.onWebsearchProviders?.()
+          if (answer) return HttpServerResponse.jsonUnsafe(answer.body, { status: answer.status })
+          return HttpServerResponse.jsonUnsafe({
+            location: location(config),
+            data: resolve(config.websearchProviders ?? []),
+          })
+        }),
+      )
       .handleRaw("fsRead", (ctx) =>
         Effect.gen(function* () {
           const path = decodeURIComponent(new URL(ctx.request.url, "http://localhost").pathname.slice(13))
@@ -1063,7 +1084,6 @@ function mockHandlers(
         configShells: () => Effect.succeed(config.shells ?? []),
         configUpdate: () => noContent,
         locationReload: () => Effect.sync(() => config.onLocationReload?.()).pipe(Effect.andThen(noContent)),
-        websearchProviders: () => Effect.succeed({ location: location(config), data: [] }),
         worktreeList: () =>
           Effect.sync(() => {
             if (config.worktrees) return resolve(config.worktrees)
@@ -1328,7 +1348,6 @@ function mockHandlers(
               (form) => Predicate.isObject(form) && form.sessionID === ctx.params.sessionID,
             ),
           }),
-        sessionFormReply: () => noContent,
         sessionFormCancel: () => noContent,
         sessionBackground: () => noContent,
         sessionInbox: (ctx) =>

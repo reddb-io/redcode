@@ -151,6 +151,13 @@ Button and Tooltip components. Existing services retain panel commands, browser
 selection, visibility persistence and permission decisions. The request dock keeps
 its resource descriptions, one primary action and disabled state while replying.
 
+Vault and web-search request forms also render in React with native Input,
+Select and Button controls. The masked Vault value stays in its DOM input and is
+cleared before submission or cancellation; service snapshots contain metadata
+only, and failures retain fixed copy rather than displaying server error text.
+The existing services keep form ownership, response handling, provider discovery,
+specific-provider selection, cancellation and retry.
+
 The new-session frame, project selector, worktree and branch menus, onboarding
 tips and file-drop feedback render in React. Project selection retains identity
 across servers and worktree aliases, while the existing controller owns project
@@ -752,3 +759,44 @@ do not prove blank-free rendering or fix the separate hidden-review retention
 failure above. Raw measurements and host samples remain outside the checkout.
 The immutable session-controls build SHA-256 is
 `d0cce18e9ff401e8825ce87ff5fed2806571cfbbd133260cd3acffdf8f3d1947`.
+
+Vault and web-search request verification on 2026-10-23:
+
+- Root checks passed all 27 packages with zero lint warnings/errors; browser-test
+  typing and Web/Desktop production builds passed.
+- All ten request-dock keepers passed together in development. Thirteen optimized
+  Chromium cases then passed together without retries, including the new-session
+  focus and LTR/RTL headers. The provider-selection case uses a 390px viewport and
+  checks that its native select remains fully visible without horizontal overflow.
+- After the final explicit service-worker isolation and app-ready guards, all ten
+  owning request-dock cases passed together again in the optimized build without
+  retries. Coverage includes masked focus, clearing before an in-flight reply,
+  fixed failure copy, fresh-value retry, button/Escape cancellation, provider
+  retention after failure and retry into an empty catalog with decline available.
+- The Vault failure/retry keeper independently passed on the immutable preceding
+  build. All entered values are synthetic fixtures; no real Vault value or live
+  permission was submitted. The installed service was left unchanged.
+
+The preceding controls build and this build each completed all 24 production
+benchmark cases (eight scenarios, three serial repetitions). Median
+first-correct/stable observations in milliseconds were:
+
+| Scenario | Controls reference | Vault and web-search forms |
+| --- | ---: | ---: |
+| entry: new session from home | 993.6 / 1133.3 | 435.0 / 518.9 |
+| entry: new session from session | 704.1 / 745.5 | 436.4 / 445.6 |
+| entry: cold session from Home | 2301.5 / 2315.7 | 934.1 / 990.3 |
+| tab switch: cold, review closed | 554.3 / 604.6 | 309.6 / 349.0 |
+| tab switch: cold, review open | 1165.0 / 1220.3 | 537.5 / 591.2 |
+| tab switch: warm, review closed | 198.6 / 338.7 | 144.2 / 261.6 |
+| tab switch: warm, review open | 688.7 / 889.5 | 173.6 / 252.4 |
+| tab switch: warm, review resized | 442.4 / 537.6 | 218.0 / 252.8 |
+
+This batch observed lower times while host contention changed again; these
+measurements do not attribute a speedup to the forms or establish full migration
+performance parity. The two batches respectively recorded 130/88 blank timeline
+samples and 51/44 temporarily missing review file-host samples, with zero wrong
+destinations and zero replaced review file hosts in either. The separate
+hidden-review retention failure remains open. Raw measurements and host samples
+are retained outside the checkout. The immutable forms build SHA-256 is
+`623bc732e85667a99c298a74b88bd116d0602655e41a7c9250b6ddb88c04fc0e`.
