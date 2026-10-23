@@ -7,8 +7,7 @@ evidências e integração numa execução acompanhável. O OpenBot oferece boas
 referências para essa experiência: canais com um responsável, contexto compartilhado,
 delegação explícita e convergência de resultados. O Redcode já possui várias das
 garantias necessárias para verificar o trabalho; elas precisam participar do mesmo
-fluxo. No ecossistema RedSkills/Redskilled já existe uma via de execução de tickets
-que deve ser integrada, preservando sua autoridade sobre workers e publicação.
+fluxo, sob os contratos, a persistência e os serviços do próprio Redcode.
 
 ## Revisões e alcance
 
@@ -16,7 +15,6 @@ que deve ser integrada, preservando sua autoridade sobre workers e publicação.
 | --- | --- | --- |
 | OpenBot | `99e6ac5c61e2ceba1f20f64759cb5d72fe1aacb1` | Documentação, contratos, serviços, ferramentas, superfícies e scripts de verificação |
 | Redcode | `d058b34b2aa2f0b1d6c95411b5cacdbd996c4745` | Objetivos, tarefas, subagentes, orçamento, workers, harnesses, revisão e ferramentas |
-| Redskilled | `59db3526253fd90ae249844241f1489031e5eade` | Recorte dos contratos de tickets, dependências, corpo do worker e autoridade do daemon |
 
 A última release pública consultada do OpenBot foi [v0.48.1][ob-release], publicada
 em 22 de outubro. O commit de `main` estudado está cinco commits à frente da
@@ -27,8 +25,8 @@ publicados. [ob-release-diff]
 
 Este é um estudo estático de produto e arquitetura. Os apps, provedores, integrações
 e scripts do OpenBot não foram executados; a existência de um teste não foi tratada
-como um resultado de teste desta análise. O recorte de Redskilled não equivale a uma
-auditoria de sua integração completa com Redcode.
+como um resultado de teste desta análise. A proposta de implementação usa somente
+as entidades e os serviços do Redcode, com o OpenBot como referência de produto.
 
 ## O que o OpenBot resolve no problema central
 
@@ -123,7 +121,7 @@ que se sobrepõem. Essas reservas são coordenação, não isolamento de process
    Esses limites precisam ser lidos nos contratos e implementações atuais.
    [ob-structure] [ob-sandbox]
 
-## O que já temos no Redcode e no ecossistema
+## O que já temos no Redcode
 
 | Base existente | Evidência atual | Lacuna que permanece |
 | --- | --- | --- |
@@ -137,12 +135,10 @@ que se sobrepõem. Essas reservas são coordenação, não isolamento de process
 | Artefatos e revisão de Git | Coleta de diff da execução com SHA-256; integração de worktree verifica os dois commits e aceita apenas fast-forward | Coletar patch não reconcilia várias entregas; branches paralelas divergentes não são integradas automaticamente |
 | Visibilidade e intervenção | Agents mostra sessões, subagentes, inbox, filas, motivos de espera, worker e controles de execução | Falta uma visão por objetivo atravessando essas superfícies; o relatório de batch não registra transições e duração |
 | Navegador, Computer Use, MCP e ferramentas sob demanda | Browser plugin nativo, Agent tools e Code Mode | Melhorar descoberta e coordenação; não reconstruir essas capacidades |
-| Tickets e execução governada no Redskilled | Contrato de ticket, dependências, orçamento e worker separado do daemon | Conectar referências e resultados ao trabalho do Redcode; não assumir que a integração já está entregue |
 
 Fontes: [rc-goal], [rc-goal-tool], [rc-subagent], [rc-review], [rc-todo],
 [rc-todo-proof], [rc-budget], [rc-completion], [rc-workers], [rc-worker-schema],
-[rc-pool], [rc-worktree], [rc-agents], [rc-browser], [rc-tools], [rc-codemode],
-[rs-worker], [rs-workflow], [rs-ticket] e [rs-dependencies].
+[rc-pool], [rc-worktree], [rc-agents], [rc-browser], [rc-tools] e [rc-codemode].
 
 S1 não é uma prova universal de correção. Em single não há a mesma revisão
 semântica; resultados inconclusivos ou indisponíveis continuam assim identificados.
@@ -153,10 +149,10 @@ automática como substituta de testes e revisão da integração.
 
 “Base” significa que existe uma capacidade correspondente, não paridade integral.
 “Ampliar” significa que uma parte existe; “Nova superfície” indica que não foi
-encontrado um equivalente nativo no recorte do Redcode. Recursos do ecossistema
-RedSkills/Redskilled são indicados separadamente. A prioridade é relativa ao pedido
-de orquestração: P0 primeiro, P1 depois do contrato principal, P2 expansão e P3
-produto adjacente.
+encontrado um equivalente nativo no recorte do Redcode. Cada oportunidade está
+organizada como evolução dos contratos ou como uma nova capacidade do próprio
+Redcode. A prioridade é relativa ao pedido de orquestração: P0 primeiro, P1 depois
+do contrato principal, P2 expansão e P3 produto adjacente.
 
 ### Agentes e execução
 
@@ -195,11 +191,11 @@ Fontes OpenBot: [ob-channels], [ob-channel-tools], [ob-channel-contract],
 
 | Funcionalidade no OpenBot | Situação e oportunidade para nós | Prioridade |
 | --- | --- | --- |
-| Memórias por agente, canal e conversa externa | Nova superfície no Redcode nativo; integrar Memory/Brain do ecossistema antes de criar outro repositório de conhecimento | P2 |
+| Memórias por agente, canal e conversa externa | Nova capacidade do Redcode, com escopo, origem, revisão e controle do usuário | P2 |
 | Memórias essenciais versus pesquisáveis, busca FTS e revisões | Contexto comum limitado, com origem e mudanças explícitas; memória não deve substituir o pedido atual | P1 |
 | Histórico pesquisável e leitura paginada de trechos e atividades | Base de histórico; facilitar recuperação de evidência sem injetar todos os transcripts | P1 |
 | Banco compartilhado com SQL, tabelas e autoria | Nova superfície para dados de trabalho; não usar tabelas editáveis por todos como autoridade do scheduler | P2 |
-| Biblioteca local de skills com revisões imutáveis e proteção de arquivos modificados | Base de skills e ecossistema RedSkills; aproximar a experiência de instalar/revisar sem duplicar o catálogo | P2 |
+| Biblioteca local de skills com revisões imutáveis e proteção de arquivos modificados | Ampliar descoberta e carregamento de skills do Redcode com biblioteca versionada e revisão das instalações | P2 |
 | Plugins com MCP, skills fixadas e links de compartilhamento | Base de MCP/extensões; estudar composição e instalação. A documentação ainda marca partes do catálogo/cache como design | P2 |
 | Templates de agente publicados por link e importação de agentes | Ampliar portabilidade de perfis, critérios e skills, sem copiar credenciais ou conceder permissões | P2 |
 | Transferência de instância com perfis, rotinas, memórias, arquivos e parte dos ajustes | Import/export de equipe é oportunidade; não equivale a migrar sessões nativas, histórico ou segredos | P3 |
@@ -211,7 +207,7 @@ Fontes OpenBot: [ob-agents], [ob-history], [ob-memory], [ob-data], [ob-skills],
 
 | Funcionalidade no OpenBot | Situação e oportunidade para nós | Prioridade |
 | --- | --- | --- |
-| Rotinas recorrentes e únicas, timezone, calendário e feed iCalendar local | Integrar execução governada do ecossistema; monitores do Redcode não são um calendário de rotinas | P2 |
+| Rotinas recorrentes e únicas, timezone, calendário e feed iCalendar local | Nova capacidade de agendamento no Server, admitindo trabalho pelo inbox existente; monitores não são um calendário de rotinas | P2 |
 | Webhooks com filtros, assinatura, histórico e deduplicação | Nova entrada para trabalho durável, reaproveitando admissão e autorizações | P2 |
 | Canvas de routine flows com divisão e convergência | Inspiração direta para o grafo; priorizar primeiro a execução por objetivo, depois a recorrência | P1 |
 | Sessão curta por rotina, digest limitado e execução silenciosa quando não há novidade | Evitar poluir contexto, notificações e custos de um agente de longa duração | P2 |
@@ -246,7 +242,7 @@ Fontes OpenBot: [ob-browser], [ob-computer], [ob-skills], [ob-tools], [ob-voice]
 | --- | --- | --- |
 | Aplicação desktop macOS/Windows/Linux e cliente web | Base existente; preservar a arquitetura cliente/servidor do Redcode | P1 |
 | App nativo iOS/Android, push e Live Activity no iPhone | Redcode possui web/PWA responsivo; cliente nativo é projeto separado | P3 |
-| Slack, Discord e Telegram, memória por conversa e publicações por ferramentas | Integrações de entrada/saída no ecossistema, sem criar execução paralela fora do grafo | P2 |
+| Slack, Discord e Telegram, memória por conversa e publicações por ferramentas | Novos adapters de entrada/saída do Redcode, vinculados ao mesmo objetivo e à admissão durável | P2 |
 | Conta opcional, convites, papéis, sessões e servidores compartilhados | Base de infraestrutura e autorização; conservar escopo de organização/projeto | P1 |
 | WebRTC com conexão direta/relay, capacidades opcionais e compatibilidade versionada | Ampliar transportes só por necessidade; não trocar a API atual por causa da referência | P3 |
 | Servidor self-hosted, Docker, ECS, Nix e hosts remotos | Base de servidores/workers/containers; separar distribuição de orquestração | P2 |
@@ -266,10 +262,11 @@ Fontes OpenBot: [ob-readme], [ob-channels], [ob-messaging], [ob-team], [ob-web],
 ### Uma composição das entidades existentes
 
 Usar `SessionGoal` como objetivo e contrato de conclusão; `SessionPlan` e
-`SessionTodo` como plano e atividades com critérios; sessões filhas, atribuições
-de worker ou tickets governados como execuções. O grafo relaciona essas identidades
-e revisões. Não deve existir uma tarefa da UI, outra tarefa do scheduler e uma
-terceira no histórico com donos e estados divergentes.
+`SessionTodo` como plano e atividades com critérios; sessões filhas e atribuições
+de worker como execuções. Harnesses externos entram por adapters explícitos das
+capacidades que realmente suportam. O grafo relaciona essas identidades e revisões.
+Não deve existir uma tarefa da UI, outra tarefa do scheduler e uma terceira no
+histórico com donos e estados divergentes.
 
 O objetivo comum precisa ficar legível para humanos e agentes: resultado desejado,
 critérios globais, restrições, decisões vigentes, orçamento autorizado e responsável
@@ -286,6 +283,26 @@ O nó deve representar uma atividade, não uma pessoa/modelo. O mesmo especialis
 pode receber atividades distintas de implementação e reparo. Dependências formam
 um grafo sem ciclos; nova rodada de correção é uma tentativa ou atividade explícita
 e limitada, mantendo o histórico de falhas.
+
+### Responsabilidades dentro do Redcode
+
+| Responsabilidade | Base atual | Evolução proposta |
+| --- | --- | --- |
+| Objetivo e conclusão | `SessionGoal` e `goal_complete` em Core | Relacionar critérios globais às atividades e verificar a entrega integrada |
+| Plano e atividades | `SessionPlan` e `SessionTodo` | Acrescentar dependências, atribuição, revisão de insumos e contrato de resultado |
+| Coordenação do grafo | Serviços de sessão, inbox e jobs | Regras persistentes de prontidão, convergência, correção e cancelamento, sem outro loop de modelo |
+| Execução local | `SessionExecution`, `SessionRunCoordinator` e subagentes | Executar atividades pela mesma admissão durável e retornar resultados à sessão responsável |
+| Execução remota | `WorkerPool` e reservas de checkout em Server | Admitir apenas atividades prontas e relacionar a atribuição à revisão do grafo |
+| Harnesses externos | Serviços e contratos `Harness` em Server/Schema | Adapters de resultado e controle, mantendo explícitas as diferenças de retomada e uso |
+| Verificação e integração | Revisão de subagentes, evidências de tarefas, coleta de patches e `worktree-review` | Aceite de resultados e etapa de integração de múltiplas contribuições, com nova verificação |
+| Contexto comum e memória | Instruções e histórico de sessão; memória de equipe é uma nova capacidade | Decisões versionadas, consulta limitada e referências às fontes dentro do Redcode |
+| Transparência e intervenção | Agents, inbox e APIs existentes | Visão por objetivo com lista/grafo, origem das evidências e controles do dono da execução |
+
+O objetivo pertence à sessão responsável. As regras do grafo pertencem ao domínio
+em Core; Server compõe os adapters de workers e harnesses, e os clientes exibem as
+projeções via Protocol. Prontidão e progresso são derivados dos fatos persistidos.
+Perguntas, permissões e efeitos continuam sob as políticas do runtime que os executa.
+Essas são extensões propostas, não capacidades já entregues do grafo.
 
 ### Fluxo de uma entrega
 
@@ -337,8 +354,8 @@ como concluído.
    Aproveitar a revisão dos dois commits e a integração fast-forward existentes
    quando aplicáveis. Ramos paralelos divergentes exigem um caminho explícito de
    integração e conflitos, com nova verificação; essa automação ainda precisa ser
-   desenhada. Na via de tickets, publicação e landing permanecem sob o controle
-   governado de Redskilled, não no worker ou no sintetizador.
+   desenhada nos serviços de integração do Redcode. O resultado deve identificar
+   a revisão candidata e as contribuições incorporadas antes de ser aceito.
 6. **Fechar pelo objetivo inteiro.** Executar os checks de integração, os critérios
    funcionais e a validação de runtime pertinente. Só o responsável pelo objetivo
    propõe sua conclusão. O relatório final mostra resultado integrado, evidências,
@@ -393,9 +410,9 @@ de coordenação, tokens e custo por objetivo aceito. [ob-commit] [ob-discovery]
 | --- | --- | --- | --- |
 | 1 — P0 | Contrato que liga objetivo, tarefa, dependências, execução e resultado | Uma solicitação de três partes pode ser acompanhada até evidência de cada requisito; não há tarefa órfã ou conclusão por texto | Alto |
 | 2 — P0 | Convergência e aceite dos resultados | Pai espera as entradas exigidas, recebe resultados juntos e não conclui com falha, revisão antiga ou prova invalidada | Alto |
-| 3 — P0 | Visão por objetivo no Agents, com DS React | Usuário vê responsável, atividade, espera, artefatos e resultado aceito; desktop/mobile e intervenção preservam identidade | Médio |
-| 4 — P1 | Adaptar o batch nativo ao grafo | Dependências controlam admissão; leases, slots e recuperação original continuam válidos; resultado coletado não vira aceite automático | Alto |
-| 5 — P1 | Integrar a via de tickets RedSkills/Redskilled | Ticket e objetivo mantêm referências cruzadas; daemon conserva admissão, orçamento e publicação; nenhum worker duplicado nasce no Redcode | Alto |
+| 3 — P0 | Integração de múltiplos resultados no Redcode | Artefatos e revisões de origem são conferidos; conflitos ficam explícitos e os checks validam uma revisão candidata do conjunto | Alto |
+| 4 — P0 | Visão por objetivo no Agents, com DS React | Usuário vê responsável, atividade, espera, artefatos e resultado aceito; desktop/mobile e intervenção preservam identidade | Médio |
+| 5 — P1 | Adaptar o batch nativo ao grafo | Dependências controlam admissão; leases, slots e recuperação original continuam válidos; resultado coletado não vira aceite automático | Alto |
 | 6 — P1 | Decisões e contexto compartilhados com revisão | Correção do usuário alcança próximas atividades e invalida só as entradas/resultados afetados | Médio |
 | 7 — P2 | Templates, memória e rotinas reutilizáveis | Equipe e workflow podem ser repetidos com novas identidades de execução e sem herdar credenciais/permissões | Médio/alto |
 | 8 — P2/P3 | Mais harnesses, mensageria, app móvel, voz e hosting | Implementar conforme demanda; nenhuma dessas expansões é requisito para validar o fluxo principal | Varia |
@@ -415,9 +432,10 @@ suas diferenças de steer, retomada, permissões e medição.
 - Manter `Session.prompt` e o inbox como admissão durável. A coordenação não cria
   um loop de ferramentas paralelo à execução da sessão, nem transforma o
   coordenador local em scheduler de sessões compartilhadas entre bancos.
-- Redskilled continua dono da existência/placement de seus workers e da autoridade
-  de publicação. O vínculo com Redcode é um contrato, não transferência implícita
-  de controle.
+- Server mantém a composição dos workers e harnesses do Redcode. As regras de
+  prontidão do grafo não substituem a reserva de checkout, a admissão por recursos
+  ou a autorização da execução. Core acessa essas capacidades por contratos,
+  preservando a direção das dependências.
 - Repetir observação é diferente de repetir efeito. Preservar IDs, revisões,
   credenciais no host e recuperação de resultados ambíguos. Nenhuma reserva de
   recurso deve ser apresentada como garantia de efeitos exatamente uma vez.
@@ -444,8 +462,11 @@ suas diferenças de steer, retomada, permissões e medição.
   são desconhecidas: o estado continua explícito e não vira aprovação nem custo zero.
 - Uma pessoa sem acesso ao projeto/tarefa não ganha acesso a dados só por estar no
   mesmo servidor ou na mesma interface de canal.
-- Na via de tickets, o worker termina, mas falta revisão/publicação/landing:
-  a interface mantém essas etapas pendentes e não relata entrega em produção.
+- O worker termina, mas falta revisão, integração ou verificação do conjunto:
+  a interface mantém essas etapas pendentes e não relata o objetivo como concluído.
+- Um objetivo percorre planejamento, execução local/remota, coleta, integração e
+  aceite usando apenas serviços e identidades do Redcode, com rastreabilidade de
+  cada critério até sua evidência.
 
 ## Licença e decisão de reaproveitamento
 
@@ -459,7 +480,7 @@ Nenhum código do OpenBot foi incorporado por este estudo. [ob-license] [ob-read
 ## Fontes
 
 Os links OpenBot abaixo estão fixados na revisão analisada; os links locais
-identificam os donos atuais dos contratos no Redcode e o recorte de Redskilled.
+identificam os donos atuais dos contratos no Redcode.
 
 [ob-release]: https://github.com/nightly-labs/openbot/releases/tag/v0.48.1
 [ob-release-diff]: https://github.com/nightly-labs/openbot/compare/v0.48.1...99e6ac5c61e2ceba1f20f64759cb5d72fe1aacb1
@@ -517,7 +538,3 @@ identificam os donos atuais dos contratos no Redcode e o recorte de Redskilled.
 [rc-tools]: ../agent-tools.md
 [rc-voice]: ../voice-input.md
 [rc-codemode]: ../../packages/core/src/codemode/catalog.ts
-[rs-worker]: ../../../redskilled/packages/worker/README.md
-[rs-workflow]: ../../../redskilled/apps/plugin-dev/src/core/development-workflow.ts
-[rs-ticket]: ../../../redskilled/packages/protocol-acp/ticket.ts
-[rs-dependencies]: ../../../redskilled/packages/worker/src/engine/state-transition.ts
