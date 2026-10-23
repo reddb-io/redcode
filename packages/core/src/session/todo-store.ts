@@ -1,7 +1,7 @@
 export * as SessionTodoStore from "./todo-store.js"
 
 import { createHash } from "node:crypto"
-import { asc, eq } from "drizzle-orm"
+import { and, asc, eq } from "drizzle-orm"
 import { Context, Effect, Layer, Schema, Semaphore } from "effect"
 import { SessionTodo } from "@opencode/schema/session-todo"
 import { Database } from "../database/database.js"
@@ -12,6 +12,7 @@ import { SessionSchema } from "./schema.js"
 import { SessionTaskFacts } from "./task-facts.js"
 import { SessionTaskAssignments } from "./task-assignments.js"
 import { SessionTaskGraph } from "./task-graph.js"
+import { SessionTaskIntegration } from "./task-integration.js"
 import {
   quotes,
   storedStatus,
@@ -277,6 +278,7 @@ const make = Effect.gen(function* () {
           ...(source ? { source } : {}),
           ...(criterion ? { criterion } : {}),
           ...(dependencies !== undefined ? { dependencies } : {}),
+          ...(before?.integration ? { integration: before.integration } : {}),
           ...(kept && before?.inputs ? { inputs: before.inputs } : {}),
           ...(status === "completed" && kept ? { evidence: kept } : {}),
           ...(status === "completed" && proof
@@ -628,7 +630,11 @@ const make = Effect.gen(function* () {
       const fresh = yield* facts.load(input.sessionID)
       const unaccepted = result
         .filter((task) => task.status === "completed")
-        .map((task) => SessionTaskAssignments.completionError(delegated, task, fresh.results))
+        .map(
+          (task) =>
+            SessionTaskAssignments.completionError(delegated, task, fresh.results) ??
+            SessionTaskIntegration.completionError(task, result, delegated, fresh.results),
+        )
         .find((error) => error !== undefined)
       if (unaccepted) return yield* new SessionTodo.Error({ message: unaccepted })
       if (!proven.size) return
@@ -697,6 +703,7 @@ const make = Effect.gen(function* () {
                       closedAt: task.closedAt,
                       dependencies: task.dependencies,
                       inputs: task.inputs,
+                      integration: task.integration,
                     },
                   })
                   .onConflictDoUpdate({
@@ -719,6 +726,7 @@ const make = Effect.gen(function* () {
                         closedAt: task.closedAt,
                         dependencies: task.dependencies,
                         inputs: task.inputs,
+                        integration: task.integration,
                       },
                     },
                   })
@@ -749,6 +757,82 @@ const make = Effect.gen(function* () {
   const update = (input: Parameters<typeof reconcile>[0], commit?: Commit) =>
     write(input, commit).pipe(Effect.map((written) => written.todos))
 
+  /** Host-produced provenance shares the task row and revision history; models cannot write it. */
+  const bindIntegration = Effect.fn("SessionTodoStore.bindIntegration")(function* (input: {
+    sessionID: SessionSchema.ID
+    taskID: string
+    revision: number
+    integration: SessionTodo.Integration
+  }) {
+    return yield* assignments
+      .withMutation(
+        db.transaction((tx) =>
+          Effect.gen(function* () {
+            const rows = yield* tx
+              .select()
+              .from(TodoTable)
+              .where(eq(TodoTable.session_id, input.sessionID))
+              .orderBy(asc(TodoTable.position))
+              .all()
+              .pipe(Effect.orDie)
+            const tasks = rows.map(read)
+            const position = tasks.findIndex((task) => task.id === input.taskID)
+            const before = tasks[position]
+            if (!before)
+              return yield* new SessionTodo.Error({ message: `Unknown task ${input.taskID} in this session` })
+            if (before.status !== "pending" && before.status !== "in_progress")
+              return yield* new SessionTodo.Error({
+                message: "Reopen the integration task before preparing a candidate",
+              })
+            if (before.revision !== input.revision)
+              return yield* new SessionTodo.Error({
+                message: `Task ${input.taskID} changed; inspect its current revision`,
+              })
+            const delegated = yield* assignments.snapshot(input.sessionID, tasks)
+            const issue = SessionTaskIntegration.issues(before, tasks, delegated, input.integration)[0]
+            if (issue) return yield* new SessionTodo.Error({ message: issue })
+            const waiting = SessionTaskGraph.waiting(tasks, before)
+            if (waiting.length)
+              return yield* new SessionTodo.Error({
+                message: `Task waits for verified dependencies: ${waiting.join(", ")}`,
+              })
+            if (
+              before.integration &&
+              SessionTaskFacts.hash({ ...before.integration, preparedAt: 0 }) ===
+                SessionTaskFacts.hash({ ...input.integration, preparedAt: 0 })
+            )
+              return before
+            const task = { ...before, integration: input.integration, revision: before.revision + 1 }
+            yield* Effect.forEach([before, task], (entry) =>
+              tx
+                .insert(TodoHistoryTable)
+                .values({
+                  session_id: input.sessionID,
+                  task_id: entry.id,
+                  revision: entry.revision,
+                  data: entry,
+                  created: Date.now(),
+                })
+                .onConflictDoNothing()
+                .run()
+                .pipe(Effect.orDie),
+            )
+            yield* tx
+              .update(TodoTable)
+              .set({
+                revision: task.revision,
+                details: { ...rows[position]!.details, integration: input.integration },
+              })
+              .where(and(eq(TodoTable.session_id, input.sessionID), eq(TodoTable.position, rows[position]!.position)))
+              .run()
+              .pipe(Effect.orDie)
+            return task
+          }),
+        ),
+      )
+      .pipe(Effect.catchTag("SqlError", Effect.die))
+  })
+
   const block = Effect.fn("SessionTodoStore.block")(function* (sessionID: SessionSchema.ID, reason: string) {
     return yield* update({
       sessionID,
@@ -773,7 +857,8 @@ const make = Effect.gen(function* () {
       if (task.status !== "completed") return false
       if (
         SessionTaskGraph.stale(current, task) ||
-        SessionTaskAssignments.completionError(delegated, task, observed.results)
+        SessionTaskAssignments.completionError(delegated, task, observed.results) ||
+        SessionTaskIntegration.completionError(task, current, delegated, observed.results)
       )
         return true
       if (!task.evidence) return false
@@ -803,7 +888,7 @@ const make = Effect.gen(function* () {
         })),
     })
   })
-  return { get, update, write, block, review, withMutation: lock.withPermits(1) }
+  return { get, update, write, block, review, bindIntegration, withMutation: lock.withPermits(1) }
 })
 
 export class Service extends Context.Service<Service, Effect.Success<typeof make>>()("@redcode/SessionTodoStore") {}

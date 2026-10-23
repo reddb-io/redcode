@@ -601,3 +601,36 @@ dois e três históricos divergentes, conflitos com caminhos preservados, entrad
 SHAs desatualizados, checkouts sujos e inventário incompatível. O fluxo de API cria um checkout do
 candidato, executa um teste que depende das duas contribuições e aplica o mesmo SHA no destino,
 repetindo a verificação depois. Não houve publicação nem validação visual nesta etapa.
+
+## Candidato vinculado à tarefa — quarta entrega
+
+`POST /api/session/:sessionID/todo/:taskID/integration` seleciona automaticamente a contribuição
+vinculada mais recente de cada pré-requisito aceito. Exige trabalho encerrado, resultado de execução
+bem-sucedido, contrato atual e worktree Git gerenciado do mesmo projeto e host. Resolve sessões em
+subdiretórios até o checkout registrado e elimina fontes Git repetidas, preservando a origem de cada tarefa.
+
+O candidato completo fica em `Todo.Info.integration`, no JSON da tarefa e em seu histórico de revisões.
+O vínculo guarda a impressão do contrato comum, tarefas e revisões de origem, sessões, prompts,
+diretórios e SHAs das fontes, destino e revisão conjunta. O input comum de `todowrite` não permite gravar
+essa proveniência. Conflitos preservam o estado anterior. Um candidato idêntico não troca seu timestamp
+nem incrementa novamente a revisão quando o cliente usa a revisão atual da tarefa.
+
+O relatório de reconciliação mostra o vínculo e a atualidade dos contratos, sem modificar tarefas.
+Critérios ou entradas aceitas diferentes, nova admissão da delegação e movimento de sessão tornam
+o vínculo obsoleto. A revisão e a conclusão de tarefas exigem novo preparo nesses casos, além de
+verificação posterior ao preparo; mudanças na proveniência entram no hash consumido por sucessores.
+O objetivo usa a revisão de tarefas existente, sem outro scheduler ou loop de execução.
+
+A proveniência ainda não é um recibo de teste vinculado ao SHA. A checagem do Git permanece na aplicação
+do candidato pela API nativa; um check genérico de shell continua sujeito ao critério e às regras de
+evidência existentes. Execução de validação com recibo próprio, aplicação orientada pela tarefa,
+integração entre hosts e a superfície no Agents continuam pendentes.
+
+Validação local: 76 testes únicos aprovados (35 Core, 22 Server e 19 Schema), clientes regenerados e
+`bun run check` aprovado nos 27 pacotes. A API usa sessões persistidas e Git reais para selecionar
+fontes, preparar e gravar o candidato, preservar histórico em repetições e atualizações, recusar
+evidência anterior ao preparo e reabrir uma conclusão após nova delegação. O teste executa o código
+conjunto em um checkout do candidato e registra o resultado observado. Também cobre subdiretórios,
+conflitos sem gravação, revisão incorreta, ausência de aceite e contribuição sem vínculo. A regressão
+de worktrees passou após tornar sequencial a criação dos checkouts no fixture, que disputava os
+metadados compartilhados do Git. Não houve publicação ou validação visual nesta entrega.

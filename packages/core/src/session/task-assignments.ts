@@ -55,6 +55,8 @@ const make = Effect.gen(function* () {
         return {
           taskID: brief.task.id,
           sessionID: child.id,
+          directory: child.location.directory,
+          workspaceID: child.location.workspaceID,
           revision: brief.task.revision,
           assigned: brief.task.assigned,
           promptID: brief.task.promptID,
@@ -74,9 +76,11 @@ const make = Effect.gen(function* () {
   return { snapshot, withMutation: lock.withPermits(1) }
 })
 
+export type Assignment = Effect.Success<ReturnType<Effect.Success<typeof make>["snapshot"]>>[number]
+
 /** Parent verification reconciles the current contract only after every delegated effect settles. */
 export function completionError(
-  assignments: ReadonlyArray<Effect.Success<ReturnType<Effect.Success<typeof make>["snapshot"]>>[number]>,
+  assignments: ReadonlyArray<Assignment>,
   task: SessionTodo.Info,
   results: ReadonlyArray<SessionTaskFacts.Result>,
 ) {

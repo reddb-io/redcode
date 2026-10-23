@@ -285,6 +285,17 @@ export type TodoEvidence = {
   observed: number
 }
 
+export type TodoIntegrationSource = {
+  taskID: string
+  taskRevision: number
+  fingerprint: string
+  sessionID: string
+  promptID: string
+  sessionDirectory: string
+  directory: string
+  head: string
+}
+
 export type SubagentReviewDecision = "verified" | "inconclusive" | "needs_revision" | "unverified"
 
 export type SubagentReviewCompletion = {
@@ -292,6 +303,24 @@ export type SubagentReviewCompletion = {
   status: "completed" | "error" | "cancelled"
   at: number
   error?: string
+}
+
+export type WorktreeIntegrationCandidate = {
+  projectID: string
+  target: string
+  targetHead: string
+  sources: Array<{ directory: string; head: string }>
+  status: "ready" | "conflicted"
+  head?: string
+  tree?: string
+  steps: Array<{
+    directory: string
+    head: string
+    status: "included" | "fast_forward" | "merged" | "conflicted"
+    conflicts: Array<string>
+  }>
+  diff: string
+  truncated: boolean
 }
 
 export type SessionGoalEvidence = { path: string; hash: string; bytes: number }
@@ -1135,24 +1164,6 @@ export type WorktreeReview = {
   managed: boolean
 }
 
-export type WorktreeIntegrationCandidate = {
-  projectID: string
-  target: string
-  targetHead: string
-  sources: Array<{ directory: string; head: string }>
-  status: "ready" | "conflicted"
-  head?: string
-  tree?: string
-  steps: Array<{
-    directory: string
-    head: string
-    status: "included" | "fast_forward" | "merged" | "conflicted"
-    conflicts: Array<string>
-  }>
-  diff: string
-  truncated: boolean
-}
-
 export type ConnectionRef = { type: "credential"; id: string } | ConnectionEnvInfo
 
 export type SessionInboxMovePayload1 = { location: LocationRef; projectID: string; subpath?: string }
@@ -1382,23 +1393,14 @@ export type MonitorEvidence = {
   error?: string | undefined
 }
 
-export type Todo = {
-  id?: string
-  revision?: number
-  reason?: string
-  title?: string
-  phase?: "build" | "design" | "plan"
-  legacyStatus?: string
-  source?: TodoSource
-  criterion?: string
-  evidence?: TodoEvidence
-  dependencies?: Array<string>
-  inputs?: Array<{ id: string; hash: string }>
-  scopeChange?: { messageID: string; quote: string; created?: number; paraphrase?: string }
-  content: string
-  status: string
-  priority: string
-  closedAt?: number
+export type TodoIntegration = {
+  fingerprint: string
+  preparedAt: number
+  target: string
+  targetHead: string
+  head: string
+  tree: string
+  sources: Array<TodoIntegrationSource>
 }
 
 export type SubagentReviewResult = {
@@ -3024,6 +3026,26 @@ export type MonitorProgress = {
   data: { sessionID: string; monitorID: string; updated: number; attempts: number; evidence: MonitorEvidence }
 }
 
+export type Todo = {
+  id?: string
+  revision?: number
+  reason?: string
+  title?: string
+  phase?: "build" | "design" | "plan"
+  legacyStatus?: string
+  source?: TodoSource
+  criterion?: string
+  evidence?: TodoEvidence
+  dependencies?: Array<string>
+  inputs?: Array<{ id: string; hash: string }>
+  integration?: TodoIntegration
+  scopeChange?: { messageID: string; quote: string; created?: number; paraphrase?: string }
+  content: string
+  status: string
+  priority: string
+  closedAt?: number
+}
+
 export type TodoContribution = {
   sessionID: string
   taskRevision: number
@@ -3715,6 +3737,8 @@ export type SessionMessageAssistantTool = {
   time: { created: number; ran?: number; completed?: number }
 }
 
+export type TodoIntegrationPreparation = { task: Todo; candidate: WorktreeIntegrationCandidate }
+
 export type TodoReconciliationInput = {
   task: Todo
   acceptance: "accepted" | "pending" | "blocked" | "cancelled" | "stale" | "unverified"
@@ -3886,6 +3910,7 @@ export type TodoReconciliation = {
   executionSettled: boolean
   acceptanceReady: boolean
   inputs: Array<TodoReconciliationInput>
+  integration?: { binding: TodoIntegration; contractCurrent: boolean; issues: Array<string> }
   overlaps: Array<{ path: string; taskIDs: Array<string> }>
 }
 
@@ -6143,6 +6168,16 @@ export type SessionTodoReconcileInput = {
 }
 
 export type SessionTodoReconcileOutput = { data: TodoReconciliation }["data"]
+
+export type SessionTodoPrepareIntegrationInput = {
+  readonly sessionID: { readonly sessionID: string; readonly taskID: string }["sessionID"]
+  readonly taskID: { readonly sessionID: string; readonly taskID: string }["taskID"]
+  readonly revision: { readonly revision: number; readonly target: string; readonly targetHead: string }["revision"]
+  readonly target: { readonly revision: number; readonly target: string; readonly targetHead: string }["target"]
+  readonly targetHead: { readonly revision: number; readonly target: string; readonly targetHead: string }["targetHead"]
+}
+
+export type SessionTodoPrepareIntegrationOutput = { data: TodoIntegrationPreparation }["data"]
 
 export type SessionGoalGetInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
 

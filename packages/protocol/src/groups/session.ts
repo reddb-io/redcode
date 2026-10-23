@@ -552,6 +552,21 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI ext
       ),
     )
     .add(
+      HttpApiEndpoint.post("session.todo.prepareIntegration", "/api/session/:sessionID/todo/:taskID/integration", {
+        params: { sessionID: Session.ID, taskID: Schema.String },
+        payload: SessionTodo.PrepareIntegrationInput,
+        success: Schema.Struct({ data: SessionTodo.IntegrationPreparation }),
+        error: [SessionNotFoundError, InvalidRequestError, UnknownError],
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "session.todo.prepareIntegration",
+          summary: "Prepare and bind accepted task results",
+          description:
+            "Select current accepted prerequisite contributions from local managed worktrees, prepare a joint Git revision and persist its task/session/prompt provenance. Conflicts do not bind a candidate; preparation never verifies or completes tasks.",
+        }),
+      ),
+    )
+    .add(
       HttpApiEndpoint.get("session.goal.get", "/api/experimental/session/:sessionID/goal", {
         params: { sessionID: Session.ID },
         success: Schema.Struct({ data: Schema.NullOr(SessionGoal.Info) }),

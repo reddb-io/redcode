@@ -2,6 +2,57 @@ import { describe, expect, test } from "bun:test"
 import { Schema } from "effect"
 import { SessionTodo } from "../src/session-todo.js"
 
+test("integration provenance is host-owned, bounded and absent from ordinary task writes", () => {
+  const integration = {
+    fingerprint: "task-contract",
+    preparedAt: 100,
+    target: "/repo",
+    targetHead: "a".repeat(40),
+    head: "b".repeat(40),
+    tree: "c".repeat(40),
+    sources: [
+      {
+        taskID: "todo_input",
+        taskRevision: 1,
+        fingerprint: "source-contract",
+        sessionID: "ses_child",
+        promptID: "msg_prompt",
+        sessionDirectory: "/worktree/src",
+        directory: "/worktree",
+        head: "d".repeat(40),
+      },
+    ],
+  }
+  expect(
+    Schema.encodeSync(SessionTodo.Integration)(Schema.decodeUnknownSync(SessionTodo.Integration)(integration)),
+  ).toEqual(integration)
+  expect(Schema.decodeUnknownSync(SessionTodo.Input)({ id: "todo_joint", integration })).not.toHaveProperty(
+    "integration",
+  )
+  expect(() => Schema.decodeUnknownSync(SessionTodo.Integration)({ ...integration, head: "HEAD" })).toThrow()
+  expect(() => Schema.decodeUnknownSync(SessionTodo.Integration)({ ...integration, sources: [] })).toThrow()
+  expect(() =>
+    Schema.decodeUnknownSync(SessionTodo.Integration)({
+      ...integration,
+      sources: Array.from({ length: 33 }, () => integration.sources[0]),
+    }),
+  ).toThrow()
+  expect(() =>
+    Schema.decodeUnknownSync(SessionTodo.PrepareIntegrationInput)({
+      revision: 0,
+      target: "/repo",
+      targetHead: "a".repeat(40),
+    }),
+  ).toThrow()
+  const task = Schema.decodeUnknownSync(SessionTodo.Info)({
+    id: "todo_joint",
+    content: "Integrate",
+    status: "pending",
+    priority: "high",
+  })
+  expect(Schema.encodeSync(SessionTodo.Info)({ ...task, integration: undefined })).not.toHaveProperty("integration")
+})
+
 const graphemes = (text: string) => Array.from(new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(text))
 
 describe("SessionTodo.label", () => {

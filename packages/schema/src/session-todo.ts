@@ -4,7 +4,8 @@ import { Schema, SchemaGetter } from "effect"
 import { SubagentReview } from "./subagent-review.js"
 import { ephemeral, inventory } from "./event.js"
 import { SessionID } from "./session-id.js"
-import { optional, PositiveInt, NonNegativeInt } from "./schema.js"
+import { AbsolutePath, optional, PositiveInt, NonNegativeInt } from "./schema.js"
+import { Worktree } from "./worktree.js"
 
 export const Status = Schema.Literals(["pending", "in_progress", "blocked", "completed", "cancelled"])
 export const Priority = Schema.Literals(["high", "medium", "low"])
@@ -190,6 +191,37 @@ export const ModelInput = Schema.Struct({
   }),
 )
 
+export const IntegrationSource = Schema.Struct({
+  taskID: Schema.String,
+  taskRevision: PositiveInt,
+  fingerprint: Schema.String,
+  sessionID: SessionID,
+  promptID: Schema.String,
+  sessionDirectory: AbsolutePath,
+  directory: AbsolutePath,
+  head: Worktree.PrepareIntegrationInput.fields.targetHead,
+}).annotate({ identifier: "Todo.IntegrationSource" })
+export interface IntegrationSource extends Schema.Schema.Type<typeof IntegrationSource> {}
+
+/** Host-observed provenance. A candidate binding is never a validation or acceptance receipt. */
+export const Integration = Schema.Struct({
+  fingerprint: Schema.String,
+  preparedAt: Schema.Finite,
+  target: AbsolutePath,
+  targetHead: Worktree.PrepareIntegrationInput.fields.targetHead,
+  head: Worktree.PrepareIntegrationInput.fields.targetHead,
+  tree: Worktree.PrepareIntegrationInput.fields.targetHead,
+  sources: Schema.Array(IntegrationSource).check(Schema.isMinLength(1), Schema.isMaxLength(32)),
+}).annotate({ identifier: "Todo.Integration" })
+export interface Integration extends Schema.Schema.Type<typeof Integration> {}
+
+export const PrepareIntegrationInput = Schema.Struct({
+  revision: PositiveInt,
+  target: AbsolutePath,
+  targetHead: Worktree.PrepareIntegrationInput.fields.targetHead,
+}).annotate({ identifier: "Todo.PrepareIntegrationInput" })
+export interface PrepareIntegrationInput extends Schema.Schema.Type<typeof PrepareIntegrationInput> {}
+
 export const Info = Schema.Struct({
   // Old tool results and event snapshots predate task identity and closed states.
   // Keep the read contract compatible; all new writes pass through Input.
@@ -201,6 +233,7 @@ export const Info = Schema.Struct({
   evidence: optional(Evidence),
   dependencies: optional(Schema.Array(Schema.String)),
   inputs: optional(Schema.Array(Schema.Struct({ id: Schema.String, hash: Schema.String }))),
+  integration: optional(Integration),
   scopeChange: optional(
     Schema.Struct({
       messageID: Schema.String,
@@ -222,6 +255,12 @@ export const Info = Schema.Struct({
   closedAt: optional(Schema.Finite),
 }).annotate({ identifier: "Todo" })
 export interface Info extends Schema.Schema.Type<typeof Info> {}
+
+export const IntegrationPreparation = Schema.Struct({
+  task: Info,
+  candidate: Worktree.IntegrationCandidate,
+}).annotate({ identifier: "Todo.IntegrationPreparation" })
+export interface IntegrationPreparation extends Schema.Schema.Type<typeof IntegrationPreparation> {}
 
 /** Observations from one delegated execution; summaries are data, never acceptance evidence. */
 export const Contribution = Schema.Struct({
@@ -281,6 +320,9 @@ export const Reconciliation = Schema.Struct({
   executionSettled: Schema.Boolean,
   acceptanceReady: Schema.Boolean,
   inputs: Schema.Array(ReconciliationInput),
+  integration: optional(
+    Schema.Struct({ binding: Integration, contractCurrent: Schema.Boolean, issues: Schema.Array(Schema.String) }),
+  ),
   overlaps: Schema.Array(Schema.Struct({ path: Schema.String, taskIDs: Schema.Array(Schema.String) })),
 }).annotate({ identifier: "Todo.Reconciliation" })
 export interface Reconciliation extends Schema.Schema.Type<typeof Reconciliation> {}

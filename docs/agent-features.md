@@ -270,6 +270,16 @@ then apply that exact commit to the clean, idle target. Source and target revisi
 on application. This host operation does not complete tasks or serve as their evidence; the coordinator
 still owns acceptance of the integrated result. See [combined results](external-harnesses.md#combine-several-results).
 
+Clients can call `POST /api/session/:sessionID/todo/:taskID/integration` with the task's `revision`,
+`target` checkout and reviewed `targetHead`. The host selects the latest successful tracked contribution
+of each accepted prerequisite, resolves its managed local checkout and prepares the joint commit.
+A successful preparation keeps source task revisions, session/prompt identities, contracts, paths and
+Git commit IDs in the task's `integration` field and revision history. Conflicts leave the task unchanged.
+`task_reconcile` includes that binding with `contractCurrent` and explicit issues. Changed criteria,
+accepted inputs, continued delegations or moved sessions require another preparation. Completion needs
+a successful verification newer than preparation; the binding itself cannot prove completion.
+Contract freshness does not attest current Git state or bind arbitrary shell checks to a commit.
+
 ## Design mode
 
 <img src="features/design-flow.svg" alt="How design mode works: describe, prototype, preview, review, send to the agent, revise until settled, design_exit writes the plan, build implements it" width="100%" />

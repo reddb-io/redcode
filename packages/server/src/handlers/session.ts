@@ -6,6 +6,8 @@ import { MonitorRuntime } from "@opencode/core/monitor"
 import { Monitor } from "@opencode/schema/monitor"
 import { SessionTaskReconciliation } from "@opencode/core/session/task-reconciliation"
 import { SessionTodoStore } from "@opencode/core/session/todo-store"
+import { SessionTodo } from "@opencode/schema/session-todo"
+import { TaskIntegration } from "../task-integration"
 import { SessionGoal } from "@opencode/core/session/goal"
 import { SessionBudget } from "@opencode/core/session/budget"
 import { Intelligence } from "@opencode/core/intelligence"
@@ -403,6 +405,27 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
               Effect.catchTag("Session.MessageDecodeError", failedMessageDecode),
             ),
           }
+        }),
+      )
+      .handle(
+        "session.todo.prepareIntegration",
+        Effect.fn(function* (ctx) {
+          const parent = yield* session
+            .get(ctx.params.sessionID)
+            .pipe(Effect.catchTag("Session.NotFoundError", missingSession))
+          const integration = yield* TaskIntegration.Service
+          const prepared = yield* integration.prepare(parent, ctx.params.taskID, ctx.payload).pipe(
+            Effect.catchTag(
+              "SessionTodo.Error",
+              (error) => new InvalidRequestError({ message: error.message, field: "taskID" }),
+            ),
+            Effect.catchTag("Session.MessageDecodeError", failedMessageDecode),
+          )
+          if (prepared.candidate.status === "ready") {
+            const todos = yield* SessionTodoStore.Service
+            yield* bus.publish(SessionTodo.Event.Updated, { sessionID: parent.id, todos: yield* todos.get(parent.id) })
+          }
+          return { data: prepared }
         }),
       )
       .handle(
