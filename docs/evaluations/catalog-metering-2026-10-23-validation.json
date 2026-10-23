@@ -1,0 +1,234 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-23",
+  "recordedAtUTC": "2026-10-23T17:58:15.941780+00:00",
+  "baselineCommit": "433707d7b4e1dd32ffb97fbb3309a133dfb42ca3",
+  "miniCommit": "6ac038fd58265cfb7192874b5146d5065f0e1a29",
+  "implementationCommit": "f715333e2f90ed26611bdeef9ee872cef85d3135",
+  "packagesTree": "9329f204dbbbb75594a0a377051c00ecd6a453a5",
+  "branch": "main",
+  "published": false,
+  "completeParity": false,
+  "platform": {
+    "os": "Linux",
+    "arch": "x86_64",
+    "bun": "1.4.4"
+  },
+  "totals": {
+    "focusedPassed": 659,
+    "focusedFailed": 0,
+    "focusedSkipped": 3,
+    "assertions": 53060
+  },
+  "checks": [
+    {
+      "name": "Core catalog, pricing, HTTP meters and durable Session regressions",
+      "cwd": "packages/core",
+      "command": "bun test --timeout 30000 test/models.test.ts test/catalog-cutover.test.ts test/plugin/models-dev.test.ts test/plugin/catalog-limits.test.ts test/model-pricing.test.ts test/session-usage.test.ts test/session-metering.test.ts test/session-budget.test.ts test/session-projector.test.ts test/session-stats.test.ts test/session-loop-guard.test.ts test/session-output-guard.test.ts test/session-create.test.ts",
+      "passed": 176,
+      "failed": 0,
+      "assertions": 10675,
+      "exitCode": 0,
+      "log": "core"
+    },
+    {
+      "name": "AI protocols, recorded cache fixtures and Schema",
+      "cwd": "packages/ai",
+      "command": "RECORD=false bun test test/provider/anthropic-messages.test.ts test/provider/openai-chat.test.ts test/provider/gemini.test.ts test/provider/anthropic-messages.recorded.test.ts test/provider/anthropic-messages-cache.recorded.test.ts test/provider/gemini-cache.recorded.test.ts test/schema.test.ts",
+      "passed": 230,
+      "failed": 0,
+      "skipped": 1,
+      "assertions": 569,
+      "exitCode": 0,
+      "log": "ai",
+      "note": "RECORD=false selects cassette replay. Missing recorded sad-path fixture remains skipped."
+    },
+    {
+      "name": "expanded Mini production rendering and transport",
+      "cwd": "packages/tui",
+      "command": "bun test --timeout 30000 test/mini/stream-v2.transport.test.ts test/mini/footer.view.test.tsx test/mini/footer.responsive.test.tsx test/mini/footer.test.ts test/mini/footer.width.test.ts test/mini/stream.test.ts",
+      "passed": 233,
+      "failed": 0,
+      "skipped": 2,
+      "assertions": 41783,
+      "exitCode": 0,
+      "log": "tui",
+      "note": "All seven prior failures are resolved. Includes cancellation acknowledgement preceding SSE refresh and failed cancellation retaining the pending panel."
+    },
+    {
+      "name": "model presentation",
+      "cwd": "packages/schema",
+      "command": "bun test test/model-presentation.test.ts",
+      "passed": 20,
+      "failed": 0,
+      "assertions": 33,
+      "exitCode": 0,
+      "log": "schema"
+    },
+    {
+      "name": "canonical lint and types",
+      "cwd": ".",
+      "command": "bun run check",
+      "successfulTasks": 27,
+      "totalTasks": 27,
+      "cachedTasks": 21,
+      "exitCode": 0,
+      "log": "canonical",
+      "note": "An earlier full rebuild passed all 27 tasks uncached; final check includes the last Mini acknowledgement test and monetary precision fixes."
+    },
+    {
+      "name": "committed Client generation stability",
+      "cwd": "packages/client",
+      "command": "bun run check:generated",
+      "exitCode": 0,
+      "log": "generated",
+      "note": "No public Protocol/HttpApi change; committed generation still leaves the checkout unchanged."
+    },
+    {
+      "name": "committed catalog and compatibility digests",
+      "cwd": "packages/core",
+      "command": "bun run script/update-models-snapshot.ts --check",
+      "exitCode": 0,
+      "log": "snapshot"
+    },
+    {
+      "name": "previous-catalog comparison and public Schema round trips",
+      "cwd": "packages/core",
+      "command": "bun run script/evaluate-catalog-cutover.ts --file=/var/tmp/redcode-models-v2-final.json --baseline=/var/tmp/redcode-models-before-cutover.json",
+      "exitCode": 0,
+      "log": "catalogComparison"
+    }
+  ],
+  "catalog": {
+    "sourceURL": "https://models.dev/experimental/v2.0/api.json",
+    "sourceSnapshot": {
+      "source": "archived response",
+      "sha256": "7e703b9040cf8028a025b76c7b0d922b7dff7d91785c422d8792808ed142a28b",
+      "providers": 228,
+      "models": 9199,
+      "decisionModels": 71
+    },
+    "sourceBytes": 9835467,
+    "normalized": {
+      "digest": "7e703b9040cf8028a025b76c7b0d922b7dff7d91785c422d8792808ed142a28b",
+      "providers": 230,
+      "models": 9443,
+      "enabled": 8565,
+      "providerActivation": 230,
+      "baselineModels": 9040,
+      "regressions": []
+    },
+    "compatibility": {
+      "sourceCommit": "433707d7b4",
+      "reason": "Preserve previously bundled provider and model identities absent from the V2 catalog at cutover. This pinned data cannot authorize new remotely named SDKs.",
+      "sha256": "3aba8ec540da8acc0f3150c70979a97899bbea49d0c50cd77fe63847a0b71880",
+      "providers": 3,
+      "models": 113
+    },
+    "baselineArchive": {
+      "path": "/var/tmp/redcode-models-before-cutover.json",
+      "sha256": "9fbe38b62dfdb0d302e4bbcc2ec80298eac642559280f9d109b7814b84446c5d"
+    },
+    "guardScope": "No previously enabled chat identity with positive context/output limits is lost or disabled. Entries whose earlier limits were already zero are excluded from usable-route regression checks; 21 such entries stay descriptive/unselectable. Counts are candidate definitions, not credential-verified availability.",
+    "routing": "Configured file/source priority is unchanged. Default V2 refresh uses pinned compatibility identities; V1 public sources remain fallbacks. Only three fixed, preexisting legacy SDK adapters may be selected in addition to registered native adapters. Unregistered remote SDKs remain descriptive.",
+    "providerCompilation": [
+      "openai",
+      "anthropic",
+      "google",
+      "openrouter",
+      "deepseek",
+      "xai",
+      "groq",
+      "cohere",
+      "alibaba"
+    ],
+    "providerCompilationLimit": "One representative native model per listed provider was constructed and its request compiled. No external inference request or login occurred."
+  },
+  "negativeControl": {
+    "mutation": "Temporarily removed only OpenAI Chat normalized meters while retaining provider totals and raw metadata.",
+    "cwd": "packages/core",
+    "command": "bun test test/session-metering.test.ts --test-name-pattern 'meters OpenAI audio separately'",
+    "expectedFailures": 1,
+    "observedFailures": 1,
+    "exitCode": 1,
+    "log": "negative",
+    "sourceRestoredExactly": true,
+    "positiveChecksAfterRestoration": [
+      "core",
+      "ai",
+      "canonical"
+    ],
+    "precisionCorrection": "The first negative control passed incorrectly because toBeCloseTo defaults to two decimal places. All sub-cent monetary assertions in the new HTTP meter suite now use precision 12; the same mutation then fails. The initial diagnostic is retained in negativeInitialPrecision."
+  },
+  "behaviorCovered": [
+    "Anthropic cache creation keeps observed 5m/1h quantities across partial streaming usage and reconciles them with total cache writes.",
+    "OpenAI Chat audio input/output tokens and Gemini modality/cache token arrays pass through real loopback HTTP/SSE decoding before conditional pricing.",
+    "Incomplete token meters, missing TTLs, unassigned cache writes and ambiguous cached audio cannot become complete estimates. Valid provider USD, including zero, remains authoritative.",
+    "Explicit and implicit cache rates are selected only with an observed mode; unobserved storage remains unknown. Token-only local overrides do not silently price non-text meters.",
+    "Unconditional legacy token price projections exclude media/search rates that they cannot express.",
+    "Partial API capability overrides inherit supported instead of invalidating a full current V2 response.",
+    "All normalized committed models round-trip through public Model.Info; catalog refresh and SDK boundaries retain their existing regressions.",
+    "Mini undo appends the pending prompt to the captured draft, deletion of the last pending item closes its panel after acknowledgement even before SSE refresh, and failed cancellation preserves the panel.",
+    "Keyboard regressions follow existing idle submission, latest-queued steering and searchable command-menu semantics."
+  ],
+  "sources": [
+    {
+      "url": "https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create",
+      "supports": "Chat Completions prompt_tokens_details.audio_tokens and completion_tokens_details.audio_tokens are documented breakdown fields. The official HTML page was fetched after documentation search; the documentation MCP markdown fetch returned 404."
+    }
+  ],
+  "limits": [
+    "No live provider inference, paid calls, invoice reconciliation, deployed server/TUI validation, service restart, remote CI, push or publication.",
+    "Meters cover the specific observed Anthropic, OpenAI Chat and Gemini LLM usage paths. Other protocol/media-route billing units, independently attributable cache storage and native-tool fee completeness remain separate work; absent observations remain unknown.",
+    "Conditional pricing still needs all applicable request facts. The default catalog switch does not make unknown conditions, missing quantities or prices free, and does not establish a provider-independent USD cap.",
+    "Mini components render through production OpenTUI fixture renderers. Cost integration tests use actual HTTP/SSE on loopback; recorded provider cache tests replay local cassettes with recording disabled.",
+    "Only the listed suites ran, not every test in the repository. Three preexisting tests remain skipped.",
+    "The whole upstream adoption inventory remains incomplete; this record closes the default-catalog/observed-metering tranche and the known Mini failures."
+  ],
+  "logs": {
+    "core": {
+      "path": "/var/tmp/redcode-final-cost-core.log",
+      "sha256": "262f06b666b4d8cf7e166300da02d46b2d9279b27fc4bf1ed60f9dd48bf5723e"
+    },
+    "ai": {
+      "path": "/var/tmp/redcode-final-cost-ai.log",
+      "sha256": "bac16e5a46e91e5e43807b6aab7630b9cadf40da22f71a8cfe35d64f322cc3e6"
+    },
+    "tui": {
+      "path": "/var/tmp/redcode-final-cost-tui.log",
+      "sha256": "9cb7f5973064506cadf8bf78a8b10fe254e301d5220a2f396e119e9d5ad12b4c"
+    },
+    "schema": {
+      "path": "/var/tmp/redcode-final-cost-schema.log",
+      "sha256": "88797cd4a63d7c833c08d901c497e24ac8170dec25edde43fa91b4ac7ee2a5bb"
+    },
+    "canonical": {
+      "path": "/var/tmp/redcode-final-cost-check-final.log",
+      "sha256": "c1700ffe0cb871017cf0e4dbee96a8af05e4e74c627fd9b2fe42b6b9440c569f"
+    },
+    "canonicalFullRebuild": {
+      "path": "/var/tmp/redcode-final-cost-check.log",
+      "sha256": "af0a5f8a3034e046f28a4840368f6cc88726adf7a75863bfc542f200d5962050"
+    },
+    "generated": {
+      "path": "/var/tmp/redcode-final-cost-generated-committed.log",
+      "sha256": "2650c77b0592cdd0c6d59af0c2090bde6b22503e039643b7226f02ebc545e022"
+    },
+    "snapshot": {
+      "path": "/var/tmp/redcode-final-catalog-snapshot-check.log",
+      "sha256": "7172c6dd17177fbd41518ba9689708f0e826370bc370d05e5a9c4dc0d6a8478b"
+    },
+    "catalogComparison": {
+      "path": "/var/tmp/redcode-final-catalog-audit.json",
+      "sha256": "4d42678e393e0075cf70f56024b794ca1153fe65451ce823bb9a6bcf4eed1a3f"
+    },
+    "negative": {
+      "path": "/var/tmp/redcode-final-cost-negative.log",
+      "sha256": "e6fbc7bb342fc805a4cef0eaaaa9ba048abbbd420f7fd9b2fa375414d300f1ce"
+    },
+    "negativeInitialPrecision": {
+      "path": "/var/tmp/redcode-final-cost-negative-initial.log",
+      "sha256": "59f506187128fa273503199009e19ac2da46eb869fd854d5c0324791e8da9128"
+    }
+  }
+}
