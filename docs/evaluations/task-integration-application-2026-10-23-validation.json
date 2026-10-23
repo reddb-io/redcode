@@ -1,0 +1,149 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-23",
+  "recordedAtUTC": "2026-10-23T11:13:35.588699+00:00",
+  "baselineCommit": "a0888a4c30d9e6788b832895301400ec69ad6e95",
+  "implementationCommit": "35776d82813c1e34f76a88120659f2e61fcc2c45",
+  "packagesTree": "e7897a7b50dc6f2247b8e7557efb960a2f6e1b0e",
+  "branch": "main",
+  "published": false,
+  "completeParity": false,
+  "platform": {
+    "os": "Linux",
+    "arch": "x86_64",
+    "bun": "1.4.4"
+  },
+  "checks": [
+    {
+      "name": "task acceptance, goal application policy and todo persistence",
+      "cwd": "packages/core",
+      "command": "bun test test/task-integration.test.ts test/session-todo-review.test.ts test/session-goal-judge.test.ts",
+      "passed": 15,
+      "failed": 0,
+      "files": 3,
+      "exitCode": 0,
+      "log": "core-tests"
+    },
+    {
+      "name": "task-aware application and worktree integration",
+      "cwd": "packages/server",
+      "command": "bun test test/task-integration.test.ts test/worktree-integration.test.ts",
+      "passed": 14,
+      "failed": 0,
+      "files": 2,
+      "exitCode": 0,
+      "log": "http-tests",
+      "note": "Request/Response handlers backed by persisted sessions and real temporary Git repositories; this is not a deployed-server or browser test."
+    },
+    {
+      "name": "task contracts and broad contract hygiene",
+      "cwd": "packages/schema",
+      "command": "bun test test/session-todo.test.ts test/contract-hygiene.test.ts",
+      "passed": 27,
+      "failed": 1,
+      "files": 2,
+      "exitCode": 1,
+      "log": "schema-tests",
+      "note": "Existing mutable public contracts fail the broad hygiene guard; unchanged files verified against the baseline commit."
+    },
+    {
+      "name": "canonical full lint and types",
+      "cwd": ".",
+      "command": "bun run check",
+      "exitCode": 0,
+      "successfulTasks": 27,
+      "totalTasks": 27,
+      "cachedTasks": 0,
+      "log": "check"
+    },
+    {
+      "name": "canonical final lint and types after last edits",
+      "cwd": ".",
+      "command": "bun run check",
+      "exitCode": 0,
+      "successfulTasks": 27,
+      "totalTasks": 27,
+      "cachedTasks": 25,
+      "log": "check-final"
+    },
+    {
+      "name": "Client regeneration",
+      "cwd": "packages/client",
+      "command": "bun run generate",
+      "exitCode": 0,
+      "log": "generate"
+    },
+    {
+      "name": "committed generated Client stability",
+      "cwd": "packages/client",
+      "command": "bun run check:generated",
+      "exitCode": 0,
+      "log": "generated-check",
+      "note": "Executed after the implementation commit; left the checkout clean."
+    }
+  ],
+  "knownBaselineFailure": {
+    "test": "contract hygiene > current source limits Any to reviewed boundaries and avoids mutable contract wrappers",
+    "reason": "Schema.mutable and Schema.mutableKey occur in unchanged public contracts. No hygiene guard was weakened or skipped.",
+    "files": [
+      {
+        "path": "packages/schema/src/model-suggestion.ts",
+        "unchangedFromBaseline": true,
+        "sha256": "9899b0cd492f578a50bb92671529c09142b1f50a4972cf6bb70f6b8bf3a01cfe",
+        "mutableOccurrences": 4
+      },
+      {
+        "path": "packages/schema/src/connection-check.ts",
+        "unchangedFromBaseline": true,
+        "sha256": "ddba5364cfee2447af3f78cbdb7f96979164a15568ae0e93dd48791d2f18faa9",
+        "mutableOccurrences": 5
+      }
+    ]
+  },
+  "recoveryCoverage": [
+    "Persisted pending admission before merge remains pending and does not execute Git on retry.",
+    "Persisted pending admission after merge becomes applied by observing the exact clean candidate HEAD without invoking a post-merge hook again.",
+    "Dirty destinations remain pending; new request identities cannot replace unresolved admission.",
+    "Applied request retries preserve the original receipt; changed request revision or SHA is rejected.",
+    "Application bookkeeping leaves the accepted task proof hash unchanged and survives ordinary task writes.",
+    "New applications reject clean but changed source and target SHAs before durable admission.",
+    "Goal policy requires matching applied receipts and blocks pending applications even on cancelled tasks."
+  ],
+  "limits": [
+    "Recovery tests construct persisted before/after-merge boundaries; they do not kill a real server while a Git child or hook remains alive.",
+    "Ambiguous admitted operations require explicit host reconciliation; no automatic abandon or replay is implemented.",
+    "Local per-project host locking and in-process assignment serialization do not fence external Git commands or coordinate across hosts.",
+    "No exactly-once claim is made for Git hooks or other external effects.",
+    "Agents UI, cross-host application and broader upstream feature parity remain pending."
+  ],
+  "logs": {
+    "core-tests": {
+      "path": "/var/tmp/redcode-integration-core-tests.log",
+      "sha256": "3fb174ee66ef49048a5e4590e76955b52e8e85a4c531bb5e8854b7bf9af34a77"
+    },
+    "http-tests": {
+      "path": "/var/tmp/redcode-integration-http-tests.log",
+      "sha256": "f182ab587cf2f2f589998dafdf0d933bc1a8af37e39bff3ab67270a2d4976511"
+    },
+    "schema-tests": {
+      "path": "/var/tmp/redcode-integration-schema-tests.log",
+      "sha256": "9fafbd152c890aa12de66212039f70af1516fc34d0e53e0aa12f15cf0f883b85"
+    },
+    "check": {
+      "path": "/var/tmp/redcode-integration-check.log",
+      "sha256": "f4c2944f0c2d2be8733ce9a033252010a7fe55d2b16d3eb71ad3df30acdada99"
+    },
+    "check-final": {
+      "path": "/var/tmp/redcode-integration-check-final.log",
+      "sha256": "0e855351d48a360636ae4779908f2226649b4cfc572baae7a99d53dff196fc9e"
+    },
+    "generate": {
+      "path": "/var/tmp/redcode-integration-generate.log",
+      "sha256": "669f6f21dd85b213958bef91fe6ac15f2851f309f5f3eda8197ee0a85a2643b8"
+    },
+    "generated-check": {
+      "path": "/var/tmp/redcode-integration-generated-check.log",
+      "sha256": "2650c77b0592cdd0c6d59af0c2090bde6b22503e039643b7226f02ebc545e022"
+    }
+  }
+}
