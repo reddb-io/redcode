@@ -50,6 +50,8 @@ test("cost indicators use full spending and refresh zero-valued child usage", as
     }
     workspace.push([
       {
+        id: "event-cost-" + row.status,
+        created: 1700000000000,
         type: "session.usage.updated",
         data: {
           sessionID: "ses_unloaded_cost_child",

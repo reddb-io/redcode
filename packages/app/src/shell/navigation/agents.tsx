@@ -21,6 +21,7 @@ import { agentSessionTrees, SESSION_STATUSES, rollupSessionStatus, sessionAwaits
 import { RemoteWorkers } from "./remote-workers"
 
 const AgentInbox = lazy(() => import("./agents-inbox"))
+const AgentTasks = lazy(() => import("./agents-tasks"))
 const AgentHosts = lazy(() => import("./agents-hosts"))
 const AgentHarnesses = lazy(() => import("./agents-harnesses"))
 const AgentMachines = lazy(() => import("./agents-machines"))
@@ -145,6 +146,9 @@ export default function Agents() {
                     </Match>
                     <Match when={scope.view() === "inbox"}>
                       <AgentInbox server={server} selection={selection} />
+                    </Match>
+                    <Match when={scope.view() === "tasks"}>
+                      <AgentTasks server={server} open={(session) => navigation.session.open(session, { server })} />
                     </Match>
                     <Match when={scope.view() === "hosts"}>
                       <AgentHosts server={server} />

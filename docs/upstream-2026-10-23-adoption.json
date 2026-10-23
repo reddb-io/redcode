@@ -798,15 +798,22 @@
       "status": "validated",
       "path": "packages/core/src/models-dev.ts",
       "evidence": "Only V2 is accepted for files, HTTP, caches, committed snapshots and public metadata. Removed V1 normalization and public fallbacks, compatibility aliases and format-1 metadata. Tests cover rejection of V1/mixed documents, stale-cache discard, explicit-file errors and keeping a good V2 cache after incompatible refresh. See evaluations/v2-only-catalog-2026-10-23-validation.json."
+    },
+    {
+      "id": "agents-task-reconciliation-react",
+      "status": "validated",
+      "path": "packages/app/src/shell/navigation/agents-tasks.tsx",
+      "evidence": "Eight HTTP/Git tests pass; canonical lint/types pass all 27 tasks and E2E types pass. Expanded browser run: 38/40; one unscoped worker assertion was corrected, and a reload failure during asset rebuilding was rechecked on a stable build. Final focused run: 5/5, covering both failures and new task flows. See evaluations/agent-tasks-2026-10-23-validation.json. No full-suite rerun after the final checks, paid inference, installed-service restart or publication."
     }
   ],
   "remaining": [
-    "Agents surface for task-aware application, explicit recovery of ambiguous applications and cross-host coordination",
+    "Guided candidate verification, recovery beyond existing application receipts, and cross-host coordination; Agents already exposes local task-aware preparation, evidence, review and explicit application",
     "Additional protocol-specific billing meters, independently attributable cache storage and native-tool fees",
-    "Agents DS React by goal, grouped completion, versioned shared context and remote graph",
+    "Grouped completion, versioned shared context, remote graph and full execution waterfall; Agents DS React already exposes a session objective with task contributions and integration",
     "Reusable workflows, routines, webhooks, resources and external message connectors",
     "Memory/skills, evaluation and media adapters, voice, paired push and native mobile scope",
     "Applicable security reports and platform artifacts, with benign verification before fixes"
   ],
-  "featureInventory": "evaluations/openbot-orchestration-2026-10-22.md#inventário-de-funcionalidades-e-oportunidades"
+  "featureInventory": "evaluations/openbot-orchestration-2026-10-22.md#inventário-de-funcionalidades-e-oportunidades",
+  "deltaStudy": "evaluations/upstream-review-2026-10-23/delta-study.md"
 }

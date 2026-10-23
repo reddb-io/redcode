@@ -295,3 +295,13 @@ dos arquivos recebidos e existência dos caminhos locais citados. Não foram
 executados testes de runtime, fluxos de navegador ou chamadas pagas. Os testes
 mencionados nos PRs são evidência relatada pelos upstreams, não resultados desta
 sessão. A entrega altera somente documentação e índices de pesquisa.
+
+## Atualização posterior e adoção no Agents
+
+A [amostra posterior dos três repositórios](upstream-review-2026-10-23/delta-study.md)
+registra mais 100 commits recentes, 83 PRs abertos e 105 issues abertas consultados,
+com limites explícitos de amostragem. O documento relaciona os relatos e propostas
+ao novo fluxo **Agents → Tasks**, que expõe objetivo, contribuições, reconciliação,
+preparo e aplicação de candidatos locais. Relatos de segurança e compatibilidade
+sem confirmação local permanecem classificados como investigação. O estudo
+original acima conserva o estado observado em sua própria coleta.

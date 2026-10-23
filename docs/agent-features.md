@@ -5,7 +5,7 @@ This guide describes coding-session features. Slash commands are entered in the 
 ## Agents workspace
 
 **Desktop / web app.** Open **Agents** in the siderail, or use `Ctrl+Shift+A` (`Cmd+Shift+A` on macOS).
-Its sidemenu groups **Sessions**, **Inbox**, **Harnesses** and **Remote workers** under
+Its sidemenu groups **Sessions**, **Tasks**, **Inbox**, **Harnesses** and **Remote workers** under
 **Execution**; project environments, isolated workspaces and worktrees under **Workspaces**;
 and **Machines** plus **Hosts and resources** under **Infrastructure**.
 Select one host or view all configured hosts. The selected
@@ -15,6 +15,16 @@ Changing sections keeps the selected host. **Browse** opens the sidemenu to chan
 
 - **Sessions** groups root sessions and subagents by status. Filter by session/project/worktree,
   send a steering or queued instruction, interrupt running work, or open its conversation.
+- **Tasks** selects a session on each host to follow its shared objective, task completion and
+  prerequisite acceptance. Inspect delegated execution status, response excerpts, observed checks,
+  stale contributions and files changed by multiple prerequisites. **Prepare combined candidate**
+  binds accepted local Git contributions to a target checkout selected explicitly. Preparation shows
+  the combined diff without updating checkout files or refs. Verification and acceptance belong to
+  the session; **Review bound candidate** then enables explicit application of that exact accepted
+  candidate. Changed task revisions require another review, and a truncated diff prevents confirmation.
+  An uncertain application retains its original request identity; retry it to reconcile an admitted
+  operation. Refresh also reloads recorded application receipts. Integration currently requires the
+  trusted host connection and local project worktrees; it does not combine checkouts across hosts.
 - **Inbox** lists permissions and forms from active runtimes without loading transcripts. Choose a
   request to answer it. Worker permissions and questions are answered through their coordinator,
   using its stored worker credential and recorded task assignment. Requests already answered or
