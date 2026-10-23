@@ -262,6 +262,14 @@ Clients can read the same projection with
 changed integration task. Background completion notices retain their existing delivery and recovery;
 the coordinator collects the required results after those notices rather than polling active children.
 
+When results live in separate Git worktrees on one host, the worktree lifecycle API can prepare an
+ordered set of pinned commits as one candidate, including divergent histories. Preparation leaves
+checkout files, indexes and branches in place and reports conflict paths without starting a checkout
+merge. A client can create a validation worktree from the candidate commit, run the combined checks,
+then apply that exact commit to the clean, idle target. Source and target revisions are checked again
+on application. This host operation does not complete tasks or serve as their evidence; the coordinator
+still owns acceptance of the integrated result. See [combined results](external-harnesses.md#combine-several-results).
+
 ## Design mode
 
 <img src="features/design-flow.svg" alt="How design mode works: describe, prototype, preview, review, send to the agent, revise until settled, design_exit writes the plan, build implements it" width="100%" />

@@ -67,6 +67,92 @@ it.live(
 )
 
 it.live(
+  "prepares joint results through the API, verifies the candidate checkout and applies its exact revision",
+  () =>
+    Effect.gen(function* () {
+      const tmp = yield* Effect.acquireDisposable(Effect.promise(() => tmpdir("redcode-joint-api-")))
+      const source = path.join(tmp.path, "repo")
+      yield* Effect.promise(async () => {
+        await fs.mkdir(source)
+        await initRepo(source)
+        await Bun.write(
+          path.join(source, "integration.test.ts"),
+          [
+            'import { expect, test } from "bun:test"',
+            'import { run } from "./run"',
+            'test("joint result", () => expect(run(2, 3)).toBe(10))',
+          ].join("\n"),
+        )
+        await $`git add integration.test.ts`.cwd(source).quiet()
+        await $`git commit -m acceptance-criterion`.cwd(source).quiet()
+      })
+      const server = yield* startServer(path.join(tmp.path, "config"))
+      const api = OpenCode.make({ baseUrl: server.base, headers: server.headers })
+      yield* Effect.promise(async () => {
+        const projectID = (await api.location.get({ location: { directory: source } })).project.id
+        const first = await api.worktree.create({ projectID, name: "sum-result" })
+        const second = await api.worktree.create({ projectID, name: "run-result" })
+        await Bun.write(path.join(first.directory, "sum.ts"), "export const sum = (a: number, b: number) => a + b\n")
+        await Bun.write(
+          path.join(second.directory, "run.ts"),
+          "import { sum } from './sum'; export const run = (a: number, b: number) => 2 * sum(a, b)\n",
+        )
+        const firstHead = await api.worktreeLifecycle.checkpoint({
+          projectID,
+          directory: first.directory,
+          message: "feat: sum",
+        })
+        const secondHead = await api.worktreeLifecycle.checkpoint({
+          projectID,
+          directory: second.directory,
+          message: "feat: run",
+        })
+        const targetHead = (await $`git rev-parse HEAD`.cwd(source).quiet()).text().trim()
+        const input = {
+          projectID,
+          target: source,
+          targetHead,
+          sources: [
+            { directory: first.directory, head: firstHead },
+            { directory: second.directory, head: secondHead },
+          ],
+        }
+        const denied = await fetch(`${server.base}/api/worktree/integration/prepare`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(input),
+        })
+        expect(denied.status).toBe(401)
+        const invalid = await fetch(`${server.base}/api/worktree/integration/prepare`, {
+          method: "POST",
+          headers: { ...server.headers, "content-type": "application/json" },
+          body: JSON.stringify({ ...input, targetHead: "HEAD" }),
+        })
+        expect(invalid.status).toBe(400)
+        const candidate = await api.worktreeLifecycle.prepareIntegration(input)
+        expect(candidate.status).toBe("ready")
+        expect(candidate.steps.map((step) => step.status)).toEqual(["fast_forward", "merged"])
+        const validation = await api.worktree.create({ projectID, name: "joint-validation", branch: candidate.head! })
+        await $`bun test integration.test.ts`.cwd(validation.directory).quiet()
+        expect((await $`git rev-parse HEAD`.cwd(source).quiet()).text().trim()).toBe(targetHead)
+        await expect(
+          api.worktreeLifecycle.applyIntegration({ ...input, candidateHead: firstHead }),
+        ).rejects.toMatchObject({
+          data: { message: expect.stringContaining("candidate changed") },
+        })
+        const applied = await api.worktreeLifecycle.applyIntegration({ ...input, candidateHead: candidate.head! })
+        expect(applied.head).toBe(candidate.head)
+        expect((await $`git rev-parse HEAD`.cwd(source).quiet()).text().trim()).toBe(candidate.head)
+        await $`bun test integration.test.ts`.cwd(source).quiet()
+        await api.worktree.remove({ projectID, directory: validation.directory, force: false })
+        await api.worktree.remove({ projectID, directory: first.directory, force: false })
+        await api.worktree.remove({ projectID, directory: second.directory, force: false })
+      })
+    }),
+  30_000,
+)
+
+it.live(
   "integration refuses stale reviews, dirty targets and divergent histories without changing the target",
   () =>
     Effect.gen(function* () {

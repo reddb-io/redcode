@@ -571,3 +571,33 @@ O desfecho terminal de uma delegação vinculada fica na metadata da sessão fil
 
 
 Validação da segunda entrega: 116 testes únicos aprovados entre Core, Schema e Server; `bun run check` aprovado nos 27 pacotes; clientes regenerados a partir de Protocol. Os testes exercitam o runner com TestLLM e a API autenticada com banco real: coleta conjunta, critérios ainda não aceitos, falhas preservadas após descarte do Job, recusa de recibo de prompt antigo, truncamento com referência, checks válidos e invalidados por edição, sobreposição de caminhos, entradas ausentes/bloqueadas/canceladas, revisão esperada e isolamento por sessão. Os três testes de ciclo de vida passaram isoladamente depois de timeouts sob carga da máquina. A validação permanece local; não houve publicação ou validação visual do Agents nesta etapa.
+
+## Integração de revisões isoladas — terceira entrega
+
+A API nativa de ciclo de vida dos worktrees ganhou `worktreeLifecycle.prepareIntegration` e
+`worktreeLifecycle.applyIntegration`. O domínio `Integration` existente trata conexões e credenciais;
+as operações Git continuam no serviço de worktrees do host, sem criar outro executor de agentes.
+
+O preparo recebe o destino e uma lista ordenada de até 32 fontes gerenciadas, com SHAs revisados.
+Confere inventário, repositório comum, limpeza e identidade das revisões. `git merge-tree` combina
+históricos divergentes sem alterar checkouts, índices ou branches. Cada passo registra inclusão,
+fast-forward, merge ou conflito; conflitos interrompem o conjunto e preservam os caminhos exatos.
+Um resultado completo identifica commit e árvore reproduzíveis, além do diff limitado contra o destino.
+
+O cliente pode criar um worktree de validação a partir desse commit pelo mecanismo já existente.
+A aplicação refaz as verificações e o preparo, exige o mesmo commit candidato e avança o destino com
+fast-forward. Mantém os bloqueios existentes para sessões nativas ativas e harnesses anexados. A revisão
+conjunta não aceita tarefas, não registra testes executados por suposição e não muda o fluxo de inbox.
+
+Esta etapa fornece a integração explícita no mesmo host. A ligação entre sessões de origem e o pacote
+de reconciliação ainda cabe ao coordenador. Seleção automática de artefatos por tarefa, recibos de
+validação vinculados ao SHA, resolução assistida de conflitos, fontes em hosts remotos e a experiência
+visual no Agents continuam pendentes. A preparação isolada não mantém um ref de arquivo: um checkout
+de validação ou o fluxo de archive existente deve preservar o candidato quando necessário.
+
+Validação local: 23 testes aprovados entre Server e Schema; `bun run check` aprovado nos 27 pacotes;
+clientes regenerados em `packages/client`. Os testes usam Git real e a API autenticada: combinação de
+dois e três históricos divergentes, conflitos com caminhos preservados, entradas já incluídas,
+SHAs desatualizados, checkouts sujos e inventário incompatível. O fluxo de API cria um checkout do
+candidato, executa um teste que depende das duas contribuições e aplica o mesmo SHA no destino,
+repetindo a verificação depois. Não houve publicação nem validação visual nesta etapa.

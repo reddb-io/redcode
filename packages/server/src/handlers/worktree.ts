@@ -12,6 +12,8 @@ import {
   checkpointWorktree,
   archiveWorktree,
   worktreeArchives,
+  prepareIntegration,
+  applyIntegration,
 } from "../worktree-review"
 import { ServerAccess } from "@opencode/protocol/server-access"
 import { Harnesses } from "../harness"
@@ -126,6 +128,20 @@ export const WorktreeLifecycleHandler = HttpApiBuilder.group(Api, "server.worktr
             return checkpointWorktree(ctx.payload, inventory)
           },
           [ctx.payload.directory],
+        ),
+      )
+      .handle("worktreeLifecycle.prepareIntegration", (ctx) =>
+        operation(ctx.payload.projectID, (inventory) => prepareIntegration(ctx.payload, inventory)),
+      )
+      .handle("worktreeLifecycle.applyIntegration", (ctx) =>
+        operation(
+          ctx.payload.projectID,
+          (inventory) => {
+            harnesses.assertCheckoutIdle(ctx.payload.target)
+            ctx.payload.sources.forEach((source) => harnesses.assertCheckoutIdle(source.directory))
+            return applyIntegration(ctx.payload, inventory)
+          },
+          [ctx.payload.target, ...ctx.payload.sources.map((source) => source.directory)],
         ),
       )
   }),

@@ -43,3 +43,38 @@ test("strategy failures can request force confirmation without Core or Git depen
     Schema.encodeSync(Worktree.OperationError)(new Worktree.OperationError({ message: "Failed" })),
   ).not.toHaveProperty("forceRequired")
 })
+
+test("integration pins commit IDs and bounds the ordered source set", () => {
+  const input = {
+    projectID: "project",
+    target: "/repo",
+    targetHead: "a".repeat(40),
+    sources: [{ directory: "/repo/agent", head: "b".repeat(40) }],
+  }
+  const decode = Schema.decodeUnknownSync(Worktree.PrepareIntegrationInput)
+  expect(Schema.encodeSync(Worktree.PrepareIntegrationInput)(decode(input))).toEqual(input)
+  expect(() => decode({ ...input, targetHead: "main" })).toThrow()
+  expect(() => decode({ ...input, sources: [{ ...input.sources[0], head: "HEAD" }] })).toThrow()
+  expect(() => decode({ ...input, sources: [] })).toThrow()
+  expect(() => decode({ ...input, sources: Array(33).fill(input.sources[0]) })).toThrow()
+  expect(() => Schema.decodeUnknownSync(Worktree.ApplyIntegrationInput)(input)).toThrow()
+  expect(
+    Schema.decodeUnknownSync(Worktree.PrepareIntegrationInput)({ ...input, targetHead: "a".repeat(64) }).targetHead,
+  ).toHaveLength(64)
+})
+
+test("conflict candidates omit unavailable commit and tree fields", () => {
+  const value = Schema.decodeUnknownSync(Worktree.IntegrationCandidate)({
+    projectID: "project",
+    target: "/repo",
+    targetHead: "a".repeat(40),
+    sources: [{ directory: "/repo/agent", head: "b".repeat(40) }],
+    status: "conflicted",
+    steps: [{ directory: "/repo/agent", head: "b".repeat(40), status: "conflicted", conflicts: ["shared.ts"] }],
+    diff: "",
+    truncated: false,
+  })
+  const encoded = Schema.encodeSync(Worktree.IntegrationCandidate)({ ...value, head: undefined, tree: undefined })
+  expect(encoded).not.toHaveProperty("head")
+  expect(encoded).not.toHaveProperty("tree")
+})

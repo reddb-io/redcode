@@ -6240,6 +6240,29 @@ export type WorktreeLifecycleIntegrateOperation<E = never> = (
   input: WorktreeLifecycleIntegrateInput,
 ) => Effect.Effect<WorktreeLifecycleIntegrateOutput, E>
 
+export type WorktreeLifecyclePrepareIntegrationInput = {
+  readonly projectID: Project.ID
+  readonly target: AbsolutePath
+  readonly targetHead: string
+  readonly sources: ReadonlyArray<{ readonly directory: AbsolutePath; readonly head: string }>
+}
+export type WorktreeLifecyclePrepareIntegrationOutput = Worktree.IntegrationCandidate
+export type WorktreeLifecyclePrepareIntegrationOperation<E = never> = (
+  input: WorktreeLifecyclePrepareIntegrationInput,
+) => Effect.Effect<WorktreeLifecyclePrepareIntegrationOutput, E>
+
+export type WorktreeLifecycleApplyIntegrationInput = {
+  readonly projectID: Project.ID
+  readonly target: AbsolutePath
+  readonly targetHead: string
+  readonly sources: ReadonlyArray<{ readonly directory: AbsolutePath; readonly head: string }>
+  readonly candidateHead: string
+}
+export type WorktreeLifecycleApplyIntegrationOutput = Worktree.IntegrationCandidate
+export type WorktreeLifecycleApplyIntegrationOperation<E = never> = (
+  input: WorktreeLifecycleApplyIntegrationInput,
+) => Effect.Effect<WorktreeLifecycleApplyIntegrationOutput, E>
+
 export type WorktreeLifecycleCheckpointInput = {
   readonly projectID: Project.ID
   readonly directory: AbsolutePath
@@ -6255,6 +6278,8 @@ export interface WorktreeLifecycleApi<E = never> {
   readonly archives: WorktreeLifecycleArchivesOperation<E>
   readonly inspect: WorktreeLifecycleInspectOperation<E>
   readonly integrate: WorktreeLifecycleIntegrateOperation<E>
+  readonly prepareIntegration: WorktreeLifecyclePrepareIntegrationOperation<E>
+  readonly applyIntegration: WorktreeLifecycleApplyIntegrationOperation<E>
   readonly checkpoint: WorktreeLifecycleCheckpointOperation<E>
 }
 
