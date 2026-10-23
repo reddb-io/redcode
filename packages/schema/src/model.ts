@@ -150,7 +150,7 @@ export const CatalogRate = Schema.Struct({
 export interface CatalogRate extends Schema.Schema.Type<typeof CatalogRate> {}
 
 export const Catalog = Schema.Struct({
-  format: Schema.Literals([1, 2]),
+  format: Schema.Literal(2),
   digest: Schema.String,
   protocol: Schema.String.pipe(optional),
   apis: Schema.Record(Schema.String, CatalogApi),

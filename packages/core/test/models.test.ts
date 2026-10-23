@@ -14,39 +14,61 @@ import { Model } from "@opencode/core/model"
 import { bodyDigest, ModelsDev } from "@opencode/core/models-dev"
 import { Provider } from "@opencode/core/provider"
 import { it } from "./lib/effect"
+import { tmpdir } from "./fixture/tmpdir"
+import { ModelsDevCatalog } from "@opencode/core/models-dev/catalog"
 import { location } from "./fixture/location"
 
 const cacheKey = "models-dev:catalog"
-
-test("normalizes permissive interleaved values to compatibility", () => {
-  expect(Model.compatibility("reasoning_text")).toEqual({ reasoningField: "reasoning_text" })
-  expect(Model.compatibility({ field: "vendor_reasoning" })).toEqual({ reasoningField: "vendor_reasoning" })
-  expect(Model.compatibility(true)).toBeUndefined()
-  expect(Model.compatibility(false)).toBeUndefined()
-})
 
 const fixture = {
   acme: {
     id: "acme",
     name: "Acme",
     env: ["ACME_API_KEY"],
-    npm: "@ai-sdk/openai-compatible",
     models: {
       "acme-1": {
         id: "acme-1",
         name: "Acme One",
+        type: "chat",
         release_date: "2026-01-01",
-        attachment: false,
-        reasoning: false,
-        temperature: true,
-        tool_call: true,
-        interleaved: { field: "vendor_reasoning" },
+        modalities: { input: ["text"], output: ["text"] },
+        capabilities: { tools: { supported: true }, reasoning: { supported: false }, temperature: true },
         limit: { context: 128000, output: 8192 },
+        api: {
+          "chat-completions": {
+            base_url: "https://api.acme.test/v1",
+            sdk: { opencodeai: "@opencode/ai/providers/openai-compatible" },
+            compatibility: { reasoning_field: "vendor_reasoning" },
+          },
+        },
       },
     },
   },
 }
-
+const fixture2 = {
+  beta: {
+    id: "beta",
+    name: "Beta",
+    env: ["BETA_API_KEY"],
+    models: {
+      "beta-1": {
+        id: "beta-1",
+        name: "Beta One",
+        type: "chat",
+        release_date: "2026-02-01",
+        modalities: { input: ["text"], output: ["text"] },
+        capabilities: { tools: { supported: false }, reasoning: { supported: true }, temperature: false },
+        limit: { context: 64000, output: 4096 },
+        api: {
+          "chat-completions": {
+            base_url: "https://api.beta.test/v1",
+            sdk: { opencodeai: "@opencode/ai/providers/openai-compatible" },
+          },
+        },
+      },
+    },
+  },
+}
 const fixtureSnapshot = [
   {
     info: {
@@ -62,46 +84,35 @@ const fixtureSnapshot = [
         providerID: Provider.ID.make("acme"),
         name: "Acme One",
         compatibility: { reasoningField: "vendor_reasoning" },
-        family: undefined,
-        package: undefined,
-        settings: { provider: "acme" },
-        capabilities: { tools: true, reasoning: false, temperature: true, input: [], output: [] },
+        package: "@opencode/ai/providers/openai-compatible",
+        settings: { baseURL: "https://api.acme.test/v1" },
+        capabilities: { tools: true, reasoning: false, temperature: true, input: ["text"], output: ["text"] },
         variants: [],
         time: { released: Date.parse("2026-01-01") },
         cost: [],
-        catalog: { format: 1, digest: bodyDigest(JSON.stringify(fixture)), apis: {}, rates: [] },
+        catalog: {
+          format: 2,
+          digest: bodyDigest(JSON.stringify(fixture)),
+          protocol: "chat-completions",
+          apis: {
+            "chat-completions": {
+              baseURL: "https://api.acme.test/v1",
+              sdk: { opencodeai: "@opencode/ai/providers/openai-compatible" },
+              capabilities: fixture.acme.models["acme-1"].capabilities,
+              compatibility: { reasoning_field: "vendor_reasoning" },
+            },
+          },
+          rates: [],
+          modalities: { input: ["text"], output: ["text"] },
+        },
         status: "active",
         enabled: true,
-        limit: { context: 128000, input: undefined, output: 8192 },
-        headers: undefined,
-        body: undefined,
+        limit: { context: 128000, output: 8192 },
       },
     ],
     environment: ["ACME_API_KEY"],
   },
 ] satisfies readonly ModelsDev.Snapshot[]
-
-const fixture2 = {
-  beta: {
-    id: "beta",
-    name: "Beta",
-    env: ["BETA_API_KEY"],
-    npm: "@ai-sdk/openai-compatible",
-    models: {
-      "beta-1": {
-        id: "beta-1",
-        name: "Beta One",
-        release_date: "2026-02-01",
-        attachment: false,
-        reasoning: true,
-        temperature: false,
-        tool_call: false,
-        limit: { context: 64000, output: 4096 },
-      },
-    },
-  },
-}
-
 const fixture2Snapshot = [
   {
     info: {
@@ -116,20 +127,30 @@ const fixture2Snapshot = [
         modelID: Model.ID.make("beta-1"),
         providerID: Provider.ID.make("beta"),
         name: "Beta One",
-        compatibility: undefined,
-        family: undefined,
-        package: undefined,
-        settings: { provider: "beta" },
-        capabilities: { tools: false, reasoning: true, temperature: false, input: [], output: [] },
+        compatibility: {},
+        package: "@opencode/ai/providers/openai-compatible",
+        settings: { baseURL: "https://api.beta.test/v1" },
+        capabilities: { tools: false, reasoning: true, temperature: false, input: ["text"], output: ["text"] },
         variants: [],
         time: { released: Date.parse("2026-02-01") },
         cost: [],
-        catalog: { format: 1, digest: bodyDigest(JSON.stringify(fixture2)), apis: {}, rates: [] },
+        catalog: {
+          format: 2,
+          digest: bodyDigest(JSON.stringify(fixture2)),
+          protocol: "chat-completions",
+          apis: {
+            "chat-completions": {
+              baseURL: "https://api.beta.test/v1",
+              sdk: { opencodeai: "@opencode/ai/providers/openai-compatible" },
+              capabilities: fixture2.beta.models["beta-1"].capabilities,
+            },
+          },
+          rates: [],
+          modalities: { input: ["text"], output: ["text"] },
+        },
         status: "active",
         enabled: true,
-        limit: { context: 64000, input: undefined, output: 4096 },
-        headers: undefined,
-        body: undefined,
+        limit: { context: 64000, output: 4096 },
       },
     ],
     environment: ["BETA_API_KEY"],
@@ -206,7 +227,60 @@ const initialState: MockState = {
   calls: [],
 }
 
+const unsupported = { obsolete: { id: "obsolete", name: "Obsolete", env: [], npm: "@ai-sdk/openai", models: {} } }
+
+test("rejects V1 and mixed catalog documents, including providers without models", () => {
+  expect(() => Schema.decodeUnknownSync(ModelsDevCatalog.Document)(unsupported)).toThrow("Only models.dev V2")
+  expect(() => Schema.decodeUnknownSync(ModelsDevCatalog.Document)({ ...fixture, ...unsupported })).toThrow(
+    "Only models.dev V2",
+  )
+})
+
+test("an explicitly configured non-V2 file fails instead of silently using the bundled catalog", async () => {
+  await using dir = await tmpdir()
+  const file = `${dir.path}/catalog.json`
+  await Bun.write(file, JSON.stringify(unsupported))
+  const state = await Effect.runPromise(Ref.make(initialState))
+  await expect(
+    Effect.runPromise(
+      ModelsDev.Service.use((service) => service.get()).pipe(
+        Effect.provide(buildLayer(state, makeCache(), { file, fetch: false })),
+      ),
+    ),
+  ).rejects.toThrow("Only models.dev V2")
+})
+
 describe("ModelsDev Service", () => {
+  it.live("discards a fresh V1 cache and loads only the bundled V2 catalog", () =>
+    Effect.gen(function* () {
+      const cache = makeCache()
+      writeCache(cache, unsupported)
+      const state = yield* Ref.make(initialState)
+      const result = yield* provided(
+        state,
+        cache,
+        ModelsDev.Service.use((service) => service.get()),
+      )
+      expect(result.length).toBeGreaterThan(100)
+      expect(result.flatMap((provider) => provider.models).every((model) => model.catalog?.format === 2)).toBe(true)
+      expect(cache.values.has(cacheKey)).toBe(false)
+      expect((yield* Ref.get(state)).calls).toEqual([])
+    }),
+  )
+
+  it.live("rejects a V1 HTTP response without caching it or trying a V1 public fallback", () =>
+    Effect.gen(function* () {
+      const cache = makeCache()
+      const state = yield* Ref.make({ ...initialState, body: JSON.stringify(unsupported) })
+      const result = yield* ModelsDev.Service.use((service) => service.get()).pipe(
+        Effect.provide(buildLayer(state, cache, { fetch: true, snapshot: false })),
+      )
+      expect(result).toEqual([])
+      expect(cache.values.has(cacheKey)).toBe(false)
+      expect((yield* Ref.get(state)).calls.map((call) => call.url)).toEqual([...ModelsDev.DEFAULT_SOURCES])
+    }),
+  )
+
   it.live("retains decision roles and canonical identity without changing executable aliases", () =>
     Effect.gen(function* () {
       const cache = makeCache()
@@ -218,7 +292,7 @@ describe("ModelsDev Service", () => {
               ...fixture.acme.models["acme-1"],
               id: "alias",
               type: "decision",
-              canonical_model_id: "typesafe/jev-latest",
+              canonical_id: "typesafe/jev-latest",
             },
           },
         },
@@ -250,41 +324,6 @@ describe("ModelsDev Service", () => {
       expect(result).toEqual(fixtureSnapshot)
       const final = yield* Ref.get(state)
       expect(final.calls).toEqual([])
-    }),
-  )
-
-  it.live("maps models.dev npm packages onto native packages", () =>
-    Effect.gen(function* () {
-      const cache = makeCache()
-      writeCache(cache, {
-        acme: {
-          ...fixture.acme,
-          models: {
-            "acme-1": {
-              ...fixture.acme.models["acme-1"],
-              provider: { npm: "@ai-sdk/openai" },
-            },
-          },
-        },
-        "cloudflare-workers-ai": {
-          id: "cloudflare-workers-ai",
-          name: "Cloudflare Workers AI",
-          env: ["CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_KEY"],
-          npm: "@ai-sdk/openai-compatible",
-          api: "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/v1",
-          models: {},
-        },
-      })
-      const state = yield* Ref.make(initialState)
-      const result = yield* provided(
-        state,
-        cache,
-        ModelsDev.Service.use((service) => service.get()),
-      )
-      expect(result[0]?.info.package).toBe("@opencode/ai/providers/openai-compatible")
-      expect(result[0]?.models[0]?.package).toBe("@opencode/ai/providers/openai")
-      expect(result[1]?.info.package).toBe("@opencode/ai/providers/cloudflare-workers-ai")
-      expect(result[1]?.info.settings).toBeUndefined()
     }),
   )
 
@@ -615,9 +654,7 @@ describe("ModelsDev catalog sources", () => {
     ).toEqual(["https://mirror.example/api.json", ...ModelsDev.DEFAULT_SOURCES])
     expect(ModelsDev.sources(["https://cdn.example/catalog.json", "https://models.dev"])).toEqual([
       "https://cdn.example/catalog.json",
-      "https://models.dev/api.json?type=all",
       "https://models.dev/experimental/v2.0/api.json",
-      "https://models.opencode.ai/api.json?type=all",
     ])
   })
 
@@ -813,20 +850,22 @@ describe("ModelsDev V2", () => {
       }),
   )
 
-  it.live("refreshes V1 to V2 and preserves the good cache after a structurally invalid JSON response", () =>
+  it.live("refreshes V2 and preserves the good cache after a structurally invalid JSON response", () =>
     Effect.gen(function* () {
       const cache = makeCache()
       writeCacheText(cache, JSON.stringify(fixture), 0)
       const state = yield* Ref.make<MockState>({ body: JSON.stringify(v2()), status: 200, calls: [] })
       yield* Effect.gen(function* () {
         const catalog = yield* ModelsDev.Service
-        expect((yield* catalog.get())[0]!.models[0]!.catalog?.format).toBe(1)
+        expect((yield* catalog.get())[0]!.models[0]!.catalog?.format).toBe(2)
         yield* catalog.refresh(true)
         expect((yield* catalog.get())[0]!.models[0]!.catalog?.format).toBe(2)
         const saved = cache.values.get(cacheKey)
         yield* Effect.forEach(
           [
             { not_a_provider: { models: {} } },
+            unsupported,
+            { ...v2(), ...unsupported },
             v2({ ...v2Offering, cost: { text: { input: { price: -1 } } } }),
             v2({
               ...v2Offering,

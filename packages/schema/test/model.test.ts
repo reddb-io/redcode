@@ -108,3 +108,14 @@ describe("Model.Settings", () => {
     })
   })
 })
+
+describe("Model.Catalog", () => {
+  test("accepts and encodes only V2 provenance", () => {
+    const catalog = Schema.decodeUnknownSync(Model.Catalog)({ format: 2, digest: "fixture", apis: {}, rates: [] })
+    expect(Schema.encodeSync(Model.Catalog)(catalog)).toEqual({ format: 2, digest: "fixture", apis: {}, rates: [] })
+  })
+
+  test.each([1, 0, 3, undefined])("rejects catalog format %s", (format) => {
+    expect(() => Schema.decodeUnknownSync(Model.Catalog)({ format, digest: "fixture", apis: {}, rates: [] })).toThrow()
+  })
+})
