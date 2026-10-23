@@ -1,0 +1,165 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-23",
+  "recordedAtUTC": "2026-10-23T16:54:53.969319+00:00",
+  "baselineCommit": "f72296b9833a5df4bcb8c65cad5df49310af2123",
+  "implementationCommit": "788025696c95fb5788da0226669f6beea66c5004",
+  "packagesTree": "9c673563aadd62775adb58f8f553529da1b12414",
+  "branch": "main",
+  "published": false,
+  "completeParity": false,
+  "platform": {
+    "os": "Linux",
+    "arch": "x86_64",
+    "bun": "1.4.4"
+  },
+  "checks": [
+    {
+      "name": "expanded Mini regression suite",
+      "cwd": "packages/tui",
+      "command": "bun test test/mini/stream-v2.transport.test.ts test/mini/footer.view.test.tsx test/mini/footer.responsive.test.tsx test/mini/footer.test.ts test/mini/footer.width.test.ts test/mini/stream.test.ts",
+      "passed": 224,
+      "failed": 7,
+      "skipped": 2,
+      "assertions": 41768,
+      "exitCode": 1,
+      "log": "expanded",
+      "note": "All seven failures were also reproduced with the three production files restored to the baseline; this suite is not green."
+    },
+    {
+      "name": "final transport suite",
+      "cwd": "packages/tui",
+      "command": "bun test test/mini/stream-v2.transport.test.ts",
+      "passed": 91,
+      "failed": 0,
+      "assertions": 214,
+      "exitCode": 0,
+      "log": "transportFinal"
+    },
+    {
+      "name": "final production footer cost fixtures",
+      "cwd": "packages/tui",
+      "command": "bun test test/mini/footer.view.test.tsx --test-name-pattern 'direct footer distinguishes'",
+      "passed": 7,
+      "failed": 0,
+      "assertions": 32,
+      "exitCode": 0,
+      "log": "renderFinal"
+    },
+    {
+      "name": "canonical lint and types",
+      "cwd": ".",
+      "command": "bun run check",
+      "successfulTasks": 27,
+      "totalTasks": 27,
+      "cachedTasks": 26,
+      "exitCode": 0,
+      "log": "check"
+    },
+    {
+      "name": "committed generated Client stability",
+      "cwd": "packages/client",
+      "command": "bun run check:generated",
+      "exitCode": 0,
+      "log": "generated",
+      "note": "No public Protocol or HttpApi changes in this batch; regeneration left the checkout unchanged."
+    }
+  ],
+  "baselineComparison": {
+    "method": "Temporarily restored only packages/tui/src/mini/footer.view.tsx, stream-v2.transport.ts and types.ts from the baseline. Existing menu, prompt shortcut, identity and exit tests used the same current test files. Saved candidate bytes were restored in a finally block and verified exactly. No worktree, branch or service restart.",
+    "cwd": "packages/tui",
+    "command": "bun test test/mini/footer.test.ts test/mini/footer.view.test.tsx test/mini/footer.responsive.test.tsx --test-name-pattern 'command menu uses its full height|direct footer toggles and deletes pending|undo appends a pending prompt|direct footer steers the oldest|direct footer rejects local commands|identity and context precede|production footer confirms exit'",
+    "passed": 3,
+    "failed": 7,
+    "assertions": 58,
+    "exitCode": 1,
+    "log": "baseline",
+    "candidateRestoredExactly": true,
+    "preexistingFailures": [
+      {
+        "test": "command menu uses its full height on first open (mono=%s)",
+        "cases": 2
+      },
+      {
+        "test": "direct footer toggles and deletes pending queue prompts",
+        "cases": 1
+      },
+      {
+        "test": "direct footer toggles and deletes pending steer prompts",
+        "cases": 1
+      },
+      {
+        "test": "undo appends a pending prompt to the draft",
+        "cases": 1
+      },
+      {
+        "test": "direct footer steers the oldest queued prompt from an empty composer",
+        "cases": 1
+      },
+      {
+        "test": "direct footer rejects local commands submitted with the queue shortcut",
+        "cases": 1
+      }
+    ]
+  },
+  "negativeControl": {
+    "method": "Temporarily restored only the production footer view from the baseline while retaining the new reported-zero rendering regression. The assertion failed because the former truthiness check hid $0.00. Candidate source restored byte for byte before final transport and footer suites.",
+    "cwd": "packages/tui",
+    "command": "bun test test/mini/footer.view.test.tsx --test-name-pattern 'direct footer distinguishes reported zero'",
+    "expectedFailures": 1,
+    "observedFailures": 1,
+    "exitCode": 1,
+    "log": "negative",
+    "candidateRestoredExactly": true
+  },
+  "behaviorCovered": [
+    "Live completed and failed steps retain numeric zero, accounting status, reason and catalog digest; zero tokens do not suppress cost metadata.",
+    "Initial hydration restores latest settled assistant accounting with or without transcript replay and computes context usage from the recorded model.",
+    "Resize and reconnect restore the latest root step, ignore active assistant and compaction records, and prevent already-projected older settlements or child accounting from replacing the root price.",
+    "A failed step without accounting clears the previous price both on the live event and on the authoritative idle read.",
+    "Real production footer renders reported zero, estimate, unknown zero, partial subtotal, legacy positive/zero and missing accounting in the terminal fixture.",
+    "At 100 columns the fixture displays all cost variants; after resize to 40 columns and hiding routine details, the real menu still exposes scope and marker explanations through Show status.",
+    "Existing responsive tests retain interrupt and exit behavior, identity/context priority, and reported cost layouts in mono and colored rendering."
+  ],
+  "limits": [
+    "The expanded suite retains seven baseline failures in menu height and prompt shortcuts; the entire repository test suite was not run.",
+    "Terminal component rendering uses the production OpenTUI components with fixture data. Transport tests use the generated SDK with stubbed methods. No live TUI service, HTTP/SSE server or provider invocation was validated in this batch.",
+    "Mini displays last settled root step accounting, not aggregate session-family spending or reconciled invoices. Detailed provider media/cache meters and validated V2 default cutover remain pending.",
+    "Existing responsive priority may hide the menu hint behind higher-priority identity, context or a longer unavailable-cost label; its configured shortcut and Show status remain available.",
+    "No paid inference, service restart, remote CI, push or publication."
+  ],
+  "logs": {
+    "expanded": {
+      "path": "/var/tmp/redcode-mini-cost-focused.log",
+      "sha256": "759cc7bd4de6613af6307c6a7f7356f255f5c535df37653950068ca334d6d76c"
+    },
+    "transportFinal": {
+      "path": "/var/tmp/redcode-mini-cost-transport-final.log",
+      "sha256": "445ab2d27edfb3b8bae4c77a17e96b4c5b02e387c6528d009a60faafd22e7f6a"
+    },
+    "renderFinal": {
+      "path": "/var/tmp/redcode-mini-cost-render-final.log",
+      "sha256": "7f3ef5524f4a3a71c29bb2e36994a5ae10e6ec185778ee4dc5a7a1510fb66e68"
+    },
+    "baseline": {
+      "path": "/var/tmp/redcode-mini-cost-baseline.log",
+      "sha256": "bd800d20a794b760c3c1895af7d7c5f935779f0e83f6807c1b2df17c0853302b"
+    },
+    "negative": {
+      "path": "/var/tmp/redcode-mini-cost-negative.log",
+      "sha256": "b68d689efbd36759dccc48b300a5c128c1af2c8738f0c75b867e17e38a150d58"
+    },
+    "check": {
+      "path": "/var/tmp/redcode-mini-cost-check.log",
+      "sha256": "96197e42e50c6509b287b906e5d4121959cf551616b4bcabd09cc997cb2259d2"
+    },
+    "generated": {
+      "path": "/var/tmp/redcode-mini-cost-generated.log",
+      "sha256": "2650c77b0592cdd0c6d59af0c2090bde6b22503e039643b7226f02ebc545e022"
+    },
+    "format": {
+      "path": "/var/tmp/redcode-mini-cost-format.log",
+      "sha256": "2a0e5ffc14a7f3832f223892504c3ea92aecba70809f3fd22b09d66ce5d8931b"
+    }
+  }
+}
