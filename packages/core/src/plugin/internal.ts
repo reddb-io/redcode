@@ -97,6 +97,8 @@ import { ReadToolFileSystem } from "../tool/read-filesystem.js"
 import { ReadTool } from "../tool/plugin/read.js"
 import { ShellTool } from "../tool/plugin/shell.js"
 import { SessionHistoryTool } from "../tool/plugin/session-history.js"
+import { SessionTaskReconciliation } from "../session/task-reconciliation.js"
+import { TaskReconcileTool } from "../tool/plugin/task-reconcile.js"
 import { TodoTool } from "../tool/plugin/todo.js"
 import { SkillTool } from "../tool/plugin/skill.js"
 import { SubagentTool } from "../tool/plugin/subagent.js"
@@ -200,6 +202,7 @@ const services = [
   SessionGoalCompletion.Service,
   SessionTaskFacts.Service,
   SessionTodoStore.Service,
+  SessionTaskReconciliation.Service,
   SessionTaskAssignments.Service,
   SessionCompaction.Service,
   SessionInstructions.Service,
@@ -273,6 +276,7 @@ export const requirements = LayerNode.group([
   SessionGoalCompletion.node,
   SessionTaskFacts.node,
   SessionTodoStore.node,
+  SessionTaskReconciliation.node,
   SessionTaskAssignments.node,
   SessionCompaction.node,
   SessionInstructions.node,
@@ -344,6 +348,7 @@ const pre = [
   ShellTool.Plugin,
   SessionHistoryTool.Plugin,
   TodoTool.Plugin,
+  TaskReconcileTool.Plugin,
   SkillTool.Plugin,
   SubagentTool.Plugin,
   WebFetchTool.Plugin,

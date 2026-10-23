@@ -557,3 +557,17 @@ Essa entrega cobre dependências e reconciliação local pelo coordenador. A vis
 
 
 Validação local: `bun run check` aprovado nos 27 pacotes com verificação de tipos; geração dos clientes executada em `packages/client`; 62 testes aprovados entre Core e Schema. O teste integrado usa o runner real com TestLLM, persistência de sessões e jobs: cobre lançamentos concorrentes para a mesma tarefa, dependências, atualização do contrato na continuação, descendentes pendentes, verificação pelo pai e invalidação após edição do filho. Essa evidência cobre o runtime local; não representa validação visual do Agents ou de workers remotos para esse novo fluxo.
+
+
+## Convergência dos resultados — segunda entrega
+
+O coordenador pode usar `task_reconcile` com o ID de uma tarefa que depende de outras atividades. O serviço de Core reúne o conjunto exigido por `dependencies`; o mesmo contrato tipado fica disponível em `GET /api/session/:sessionID/todo/:taskID/reconciliation` para clientes. A leitura não modifica tarefas, não aceita entradas e não serve como evidência de conclusão.
+
+O pacote distingue contribuições em execução, concluídas, falhas, interrompidas e de desfecho desconhecido; revisão do resultado; atualidade do contrato; e aceite do coordenador. Cada resposta limitada inclui referência à sessão e mensagem, hash do texto completo e indicação de truncamento. Os checks vêm do histórico de ferramentas observado. Arquivos alterados por mais de uma atividade aparecem como sobreposição observada, sem afirmar conflito de conteúdo. Escopos de escrita desconhecidos, inclusive comandos que podem modificar arquivos, e listas limitadas de caminhos permanecem explícitos.
+
+O desfecho terminal de uma delegação vinculada fica na metadata da sessão filha com o ID do prompt de origem. O estado sobrevive ao descarte do Job em memória. A recuperação associa o recibo ao prompt registrado no marcador durável; um resultado atrasado de um prompt antigo não substitui o recibo da delegação atual. Marcadores anteriores sem essa identidade continuam compatíveis e não ganham um recibo atribuído por suposição.
+
+`executionSettled` informa que as contribuições exigidas não estão em andamento; `acceptanceReady` exige evidência atual para cada pré-requisito. A integração continua sendo uma tarefa com critério e verificação próprios. As notificações individuais preservam a admissão e a recuperação existentes. Agrupamento de notificações, integração de revisões Git isoladas e a superfície visual no Agents continuam pendentes.
+
+
+Validação da segunda entrega: 116 testes únicos aprovados entre Core, Schema e Server; `bun run check` aprovado nos 27 pacotes; clientes regenerados a partir de Protocol. Os testes exercitam o runner com TestLLM e a API autenticada com banco real: coleta conjunta, critérios ainda não aceitos, falhas preservadas após descarte do Job, recusa de recibo de prompt antigo, truncamento com referência, checks válidos e invalidados por edição, sobreposição de caminhos, entradas ausentes/bloqueadas/canceladas, revisão esperada e isolamento por sessão. Os três testes de ciclo de vida passaram isoladamente depois de timeouts sob carga da máquina. A validação permanece local; não houve publicação ou validação visual do Agents nesta etapa.

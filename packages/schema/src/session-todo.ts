@@ -1,9 +1,10 @@
 export * as SessionTodo from "./session-todo.js"
 
 import { Schema, SchemaGetter } from "effect"
+import { SubagentReview } from "./subagent-review.js"
 import { ephemeral, inventory } from "./event.js"
 import { SessionID } from "./session-id.js"
-import { optional, PositiveInt } from "./schema.js"
+import { optional, PositiveInt, NonNegativeInt } from "./schema.js"
 
 export const Status = Schema.Literals(["pending", "in_progress", "blocked", "completed", "cancelled"])
 export const Priority = Schema.Literals(["high", "medium", "low"])
@@ -221,6 +222,68 @@ export const Info = Schema.Struct({
   closedAt: optional(Schema.Finite),
 }).annotate({ identifier: "Todo" })
 export interface Info extends Schema.Schema.Type<typeof Info> {}
+
+/** Observations from one delegated execution; summaries are data, never acceptance evidence. */
+export const Contribution = Schema.Struct({
+  sessionID: SessionID,
+  taskRevision: PositiveInt,
+  promptID: Schema.String,
+  fingerprint: Schema.String,
+  current: Schema.Boolean,
+  execution: Schema.Literals(["running", "succeeded", "failed", "interrupted", "unknown"]),
+  review: optional(SubagentReview.Result),
+  completion: optional(SubagentReview.Completion),
+  response: optional(
+    Schema.Struct({
+      messageID: Schema.String,
+      text: Schema.String,
+      hash: Schema.String,
+      bytes: NonNegativeInt,
+      truncated: Schema.Boolean,
+    }),
+  ),
+  checks: Schema.Array(
+    Schema.Struct({
+      callID: Schema.String,
+      messageID: Schema.String,
+      tool: Schema.String,
+      hash: Schema.String,
+      completed: Schema.Finite,
+      successful: Schema.Boolean,
+      settled: Schema.Boolean,
+      fresh: Schema.Boolean,
+      invalidatedBy: optional(
+        Schema.Struct({ sessionID: optional(SessionID), messageID: Schema.String, callID: Schema.String }),
+      ),
+    }),
+  ),
+  omittedChecks: NonNegativeInt,
+  changedPaths: Schema.Array(Schema.String),
+  omittedPaths: NonNegativeInt,
+  unknownWriteScope: Schema.Boolean,
+}).annotate({ identifier: "Todo.Contribution" })
+export interface Contribution extends Schema.Schema.Type<typeof Contribution> {}
+
+export const ReconciliationInput = Schema.Struct({
+  task: Info,
+  acceptance: Schema.Literals(["accepted", "pending", "blocked", "cancelled", "stale", "unverified"]),
+  contributions: Schema.Array(Contribution),
+  issues: Schema.Array(Schema.String),
+}).annotate({ identifier: "Todo.ReconciliationInput" })
+export interface ReconciliationInput extends Schema.Schema.Type<typeof ReconciliationInput> {}
+
+/** A derived read model for one task and its required inputs, not a persisted approval. */
+export const Reconciliation = Schema.Struct({
+  sessionID: SessionID,
+  task: Info,
+  fingerprint: Schema.String,
+  observedAt: Schema.Finite,
+  executionSettled: Schema.Boolean,
+  acceptanceReady: Schema.Boolean,
+  inputs: Schema.Array(ReconciliationInput),
+  overlaps: Schema.Array(Schema.Struct({ path: Schema.String, taskIDs: Schema.Array(Schema.String) })),
+}).annotate({ identifier: "Todo.Reconciliation" })
+export interface Reconciliation extends Schema.Schema.Type<typeof Reconciliation> {}
 
 export class Error extends Schema.TaggedError<Error>()("SessionTodo.Error", { message: Schema.String }) {}
 

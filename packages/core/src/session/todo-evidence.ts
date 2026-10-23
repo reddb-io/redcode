@@ -160,7 +160,8 @@ export function invalidating(
         (entry.settled ? entry.completed > proof.completed : entry.messageID !== messageID) &&
         SessionTaskFacts.overlaps(design ? entry.paths.map(designScope) : entry.paths, proof.paths),
     )
-    .toSorted((a, b) => b.completed - a.completed)[0]
+    .toSorted((a, b) => b.completed - a.completed)
+    .at(0)
 }
 
 /** A design's work directory, where Design edits its files: `.red/code/design/<id>/work/`. */
@@ -464,7 +465,11 @@ function mentions(text: string, file: string) {
  * Why `proof`, accepted before S1 evaluated the update, no longer holds against the facts that
  * landed meanwhile: its result changed or vanished, or a later edit overlapping its files settled.
  */
-export function recheck(results: ReadonlyArray<SessionTaskFacts.Result>, proof: SessionTaskFacts.Result, messageID?: string) {
+export function recheck(
+  results: ReadonlyArray<SessionTaskFacts.Result>,
+  proof: SessionTaskFacts.Result,
+  messageID?: string,
+) {
   const current = results.find((entry) => entry.callID === proof.callID && entry.messageID === proof.messageID)
   if (!current || current.hash !== proof.hash || !current.successful || current.abandoned)
     return `${REFUSED} Evidence callID "${proof.callID}" (${proof.tool}) changed while the update was evaluated. Run the check again and cite the new result.`

@@ -153,6 +153,13 @@ export const layer = (options?: Options) =>
         }
 
         const notify = Effect.fnUntraced(function* (result: Pick<Job.Background, "status" | "output" | "error">) {
+          if (result.status !== "running")
+            yield* SubagentCompletion.record(sessions, {
+              childSessionID: recovery.childSessionID,
+              promptID: recovery.promptID,
+              status: result.status,
+              error: result.error,
+            }).pipe(Effect.orDie)
           yield* SubagentCompletion.deliver(sessions, jobs, {
             ...result,
             recovery,

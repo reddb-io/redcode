@@ -285,6 +285,15 @@ export type TodoEvidence = {
   observed: number
 }
 
+export type SubagentReviewDecision = "verified" | "inconclusive" | "needs_revision" | "unverified"
+
+export type SubagentReviewCompletion = {
+  promptID: string
+  status: "completed" | "error" | "cancelled"
+  at: number
+  error?: string
+}
+
 export type SessionGoalEvidence = { path: string; hash: string; bytes: number }
 
 export type SessionBudgetLimits = { maxCostUsd?: number; maxTokens?: number }
@@ -1372,6 +1381,15 @@ export type Todo = {
   status: string
   priority: string
   closedAt?: number
+}
+
+export type SubagentReviewResult = {
+  decision: SubagentReviewDecision
+  issues: Array<string>
+  repaired: boolean
+  evaluationID?: string
+  unavailable?: string
+  at: number
 }
 
 export type SessionGoalInfo = {
@@ -2988,6 +3006,33 @@ export type MonitorProgress = {
   data: { sessionID: string; monitorID: string; updated: number; attempts: number; evidence: MonitorEvidence }
 }
 
+export type TodoContribution = {
+  sessionID: string
+  taskRevision: number
+  promptID: string
+  fingerprint: string
+  current: boolean
+  execution: "running" | "succeeded" | "failed" | "interrupted" | "unknown"
+  review?: SubagentReviewResult
+  completion?: SubagentReviewCompletion
+  response?: { messageID: string; text: string; hash: string; bytes: number; truncated: boolean }
+  checks: Array<{
+    callID: string
+    messageID: string
+    tool: string
+    hash: string
+    completed: number
+    successful: boolean
+    settled: boolean
+    fresh: boolean
+    invalidatedBy?: { sessionID?: string; messageID: string; callID: string }
+  }>
+  omittedChecks: number
+  changedPaths: Array<string>
+  omittedPaths: number
+  unknownWriteScope: boolean
+}
+
 export type DesignFeedbackItem = {
   target: string
   text: string
@@ -3652,6 +3697,13 @@ export type SessionMessageAssistantTool = {
   time: { created: number; ran?: number; completed?: number }
 }
 
+export type TodoReconciliationInput = {
+  task: Todo
+  acceptance: "accepted" | "pending" | "blocked" | "cancelled" | "stale" | "unverified"
+  contributions: Array<TodoContribution>
+  issues: Array<string>
+}
+
 export type DesignNote = {
   feedback: string
   index: number
@@ -3806,6 +3858,17 @@ export type SessionMessageAssistant = {
   tokens?: TokenUsageInfo
   error?: SessionStructuredError
   retry?: SessionMessageAssistantRetry
+}
+
+export type TodoReconciliation = {
+  sessionID: string
+  task: Todo
+  fingerprint: string
+  observedAt: number
+  executionSettled: boolean
+  acceptanceReady: boolean
+  inputs: Array<TodoReconciliationInput>
+  overlaps: Array<{ path: string; taskIDs: Array<string> }>
 }
 
 export type DesignInfo = {
@@ -6054,6 +6117,14 @@ export type SessionMonitorCancelOutput = { data: MonitorPublicInfo }["data"]
 export type SessionTodoListInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
 
 export type SessionTodoListOutput = { data: Array<Todo> }["data"]
+
+export type SessionTodoReconcileInput = {
+  readonly sessionID: { readonly sessionID: string; readonly taskID: string }["sessionID"]
+  readonly taskID: { readonly sessionID: string; readonly taskID: string }["taskID"]
+  readonly revision?: { readonly revision?: number | undefined }["revision"]
+}
+
+export type SessionTodoReconcileOutput = { data: TodoReconciliation }["data"]
 
 export type SessionGoalGetInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
 

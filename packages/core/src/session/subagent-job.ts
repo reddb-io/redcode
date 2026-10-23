@@ -1,6 +1,6 @@
 export * as SubagentJob from "./subagent-job.js"
 
-import { Context, Effect, Layer, Scope } from "effect"
+import { Cause, Context, Effect, Exit, Layer, Scope } from "effect"
 import { Node } from "@opencode/util/effect/app-node"
 import type { LayerNode } from "@opencode/util/effect/layer-node"
 import type { SqlError } from "effect/unstable/sql/SqlError"
@@ -59,7 +59,24 @@ const layer = Layer.effect(
             title: recovery.description,
             metadata: {},
             recovery,
-            run,
+            run: recovery.promptID
+              ? run.pipe(
+                  Effect.onExit((exit) =>
+                    SubagentCompletion.record(sessions, {
+                      childSessionID: recovery.childSessionID,
+                      promptID: recovery.promptID,
+                      status: Exit.isSuccess(exit)
+                        ? "completed"
+                        : Cause.hasInterruptsOnly(exit.cause)
+                          ? "cancelled"
+                          : "error",
+                      ...(Exit.isFailure(exit) && !Cause.hasInterruptsOnly(exit.cause)
+                        ? { error: Cause.pretty(exit.cause) }
+                        : {}),
+                    }).pipe(Effect.orDie),
+                  ),
+                )
+              : run,
           })
           .pipe(Effect.setContext(context)),
       background: Effect.fn("SubagentJob.background")(function* (recovery) {

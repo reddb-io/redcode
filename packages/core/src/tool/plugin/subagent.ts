@@ -629,6 +629,7 @@ export const Plugin = {
                             criteria: input.done_criteria ?? (task?.criterion ? [task.criterion] : previous.criteria),
                             task: binding,
                             result: undefined,
+                            completion: undefined,
                           }),
                         })
                       }
@@ -697,6 +698,9 @@ export const Plugin = {
                     kind: "subagent" as const,
                     parentSessionID: context.sessionID,
                     childSessionID: child.id,
+                    ...(admittedTask.binding
+                      ? { promptID: SessionMessage.ID.make(admittedTask.binding.promptID) }
+                      : {}),
                     agent: agent.name,
                     description: input.description,
                   }
