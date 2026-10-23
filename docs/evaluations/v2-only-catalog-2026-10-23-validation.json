@@ -1,0 +1,184 @@
+{
+  "schemaVersion": 1,
+  "catalogFormat": 2,
+  "date": "2026-10-23",
+  "recordedAtUTC": "2026-10-23T20:52:08.353767+00:00",
+  "baselineCommit": "3fdb02cab857520453b4268a09c3c8fdc4d1102a",
+  "implementationCommit": "8b0739f7b3698d7359ed0804799b2650f11d385f",
+  "packagesTree": "67778ff31392d0a54f488c1eaf1799df29f203c3",
+  "branch": "main",
+  "published": false,
+  "completeParity": false,
+  "requirement": "Model catalogs must be exclusively models.dev V2; no V1 normalization, public fallback, metadata variant or compatibility aliases.",
+  "totals": {
+    "focusedPassed": 236,
+    "focusedFailed": 0,
+    "focusedSkipped": 0,
+    "assertions": 10305
+  },
+  "checks": [
+    {
+      "name": "Core and provider configuration",
+      "cwd": "packages/core",
+      "command": "bun test --timeout 30000 test/models.test.ts test/catalog-cutover.test.ts test/plugin/models-dev.test.ts test/plugin/catalog-limits.test.ts test/config/provider.test.ts test/model-pricing.test.ts test/session-usage.test.ts test/session-metering.test.ts test/session-budget.test.ts test/session-projector.test.ts test/session-stats.test.ts",
+      "passed": 159,
+      "failed": 0,
+      "assertions": 9968,
+      "exitCode": 0,
+      "log": "core"
+    },
+    {
+      "name": "Client contracts and projections",
+      "cwd": "packages/client",
+      "command": "bun test test/contract-identity.test.ts test/import-boundaries.test.ts test/solid-data.test.ts test/solid-eviction.test.ts",
+      "passed": 43,
+      "failed": 0,
+      "assertions": 271,
+      "exitCode": 0,
+      "log": "client"
+    },
+    {
+      "name": "Schema model contract and presentation",
+      "cwd": "packages/schema",
+      "command": "bun test test/model.test.ts test/model-presentation.test.ts",
+      "passed": 34,
+      "failed": 0,
+      "assertions": 66,
+      "exitCode": 0,
+      "log": "schema"
+    },
+    {
+      "name": "canonical lint and types",
+      "cwd": ".",
+      "command": "bun run check",
+      "successfulTasks": 27,
+      "totalTasks": 27,
+      "cachedTasks": 0,
+      "exitCode": 0,
+      "log": "canonical"
+    },
+    {
+      "name": "public Client regeneration",
+      "cwd": "packages/client",
+      "command": "bun run generate",
+      "exitCode": 0,
+      "log": "generation",
+      "note": "Generated ModelCatalog.format changed from 1 | 2 to the literal 2; no generated files were edited directly."
+    },
+    {
+      "name": "committed generated Client stability",
+      "cwd": "packages/client",
+      "command": "bun run check:generated",
+      "exitCode": 0,
+      "log": "generatedStability",
+      "note": "Regeneration after implementation commit left the checkout unchanged."
+    },
+    {
+      "name": "committed V2 snapshot verification",
+      "cwd": "packages/core",
+      "command": "bun run script/update-models-snapshot.ts --check",
+      "exitCode": 0,
+      "log": "snapshot"
+    },
+    {
+      "name": "V2-only catalog comparison and public round trips",
+      "cwd": "packages/core",
+      "command": "bun run script/evaluate-catalog-cutover.ts --file=src/models-dev/snapshot.txt --baseline=/var/tmp/redcode-v2-only-baseline.json",
+      "exitCode": 0,
+      "log": "catalogComparison",
+      "note": "Both inputs are V2. The previous compatibility overlay is deliberately excluded and no V1 reader remains in this script."
+    }
+  ],
+  "catalog": {
+    "solePublicSource": "https://models.dev/experimental/v2.0/api.json",
+    "snapshot": {
+      "source": "archived response",
+      "sha256": "7e703b9040cf8028a025b76c7b0d922b7dff7d91785c422d8792808ed142a28b",
+      "providers": 228,
+      "models": 9199,
+      "decisionModels": 71
+    },
+    "normalized": {
+      "digest": "7e703b9040cf8028a025b76c7b0d922b7dff7d91785c422d8792808ed142a28b",
+      "providers": 228,
+      "models": 9323,
+      "enabled": 8445,
+      "providerActivation": 228,
+      "baselineModels": 9323,
+      "regressions": []
+    },
+    "baselineArchiveSHA256": "7e703b9040cf8028a025b76c7b0d922b7dff7d91785c422d8792808ed142a28b",
+    "intentionalRemoval": "The prior overlay added 120 normalized definitions, including two provider identities absent from the V2 source. Those aliases are removed by explicit requirement; counts now come only from the V2 source and its declared modes.",
+    "countsAre": "Catalog definitions and enabled candidates, not credential-verified provider availability."
+  },
+  "negativeControl": {
+    "mutation": "Temporarily removed only ProviderRecord.check, which rejects a provider-level npm declaration. This would otherwise admit an empty V1 provider through the extensible provider record.",
+    "cwd": "packages/core",
+    "command": "bun test test/models.test.ts --test-name-pattern 'rejects V1 and mixed'",
+    "expectedFailures": 1,
+    "observedFailures": 1,
+    "exitCode": 1,
+    "log": "negative",
+    "sourceRestoredExactly": true,
+    "restoredSourceSHA256": "09842e1ad47f044c6439d7208431505804de0af0d5d8c5cdb977181fdef0884b",
+    "positiveChecksAfterRestoration": [
+      "core",
+      "canonical"
+    ]
+  },
+  "behaviorCovered": [
+    "V1 and mixed documents are rejected, including a V1 provider with no models; actual V2 capability/API/pricing declarations remain accepted.",
+    "A fresh V1 cache is removed and replaced by the bundled V2 read, even when network fetching is disabled.",
+    "V1 HTTP responses are not cached and cannot cause an automatic public V1 fallback. A good V2 cache survives incompatible refresh responses.",
+    "An explicitly configured invalid file surfaces its decoding failure instead of silently returning the bundled catalog.",
+    "The sole public source and the official models.dev root resolve to V2; configured mirrors retain priority but must pass the same V2 schema.",
+    "Model.Catalog and the generated public Client accept only format 2. Every normalized bundled model passes the public Model.Info round trip.",
+    "Removed the V1 source schemas, normalization, cost and reasoning conversion helpers, compatibility text/manifest, fallback endpoints and format-dependent Session pricing branches.",
+    "Converted the active reasoning/provider catalog fixtures to V2 and retained their existing variant, URL-template and shared-state ownership regressions.",
+    "Pending Changesets and current product/adoption guides describe exclusive V2 support; earlier validation records remain historical evidence."
+  ],
+  "limits": [
+    "This requirement applies to model catalog format. Other domains with independently versioned protocols or historical accounting are outside this change; recorded spending was not repriced or deleted.",
+    "No live inference, provider login, paid calls, installed-service restart, deployed validation, remote CI, push or publication.",
+    "Only the listed focused suites ran, not all repository tests. Core metering integration uses loopback HTTP/SSE fixture responses.",
+    "Unobserved billing quantities, cache storage attribution, native-tool completeness and the remaining upstream feature inventory are unchanged."
+  ],
+  "logs": {
+    "core": {
+      "path": "/var/tmp/redcode-v2-only-core-final.log",
+      "sha256": "307dbedeb1192002d439e8d23ae307166a4a9a931543be77533efb36d5d7c071"
+    },
+    "client": {
+      "path": "/var/tmp/redcode-v2-only-client-tests.log",
+      "sha256": "d4f64c39d66b083890a18e21d8cf44fadec70fdb11ffc9a58ae79cf5a32c60b2"
+    },
+    "schema": {
+      "path": "/var/tmp/redcode-v2-only-schema.log",
+      "sha256": "40a25de198f3b8a36f33345c61f3976b20585919b57b3563a11c763a4f4282a8"
+    },
+    "canonical": {
+      "path": "/var/tmp/redcode-v2-only-check.log",
+      "sha256": "b8bb29b180ff5334cc20a490296bafe895093ee938eb47b0084ae314b6e55273"
+    },
+    "generation": {
+      "path": "/var/tmp/redcode-v2-only-generate.log",
+      "sha256": "669f6f21dd85b213958bef91fe6ac15f2851f309f5f3eda8197ee0a85a2643b8"
+    },
+    "generatedStability": {
+      "path": "/var/tmp/redcode-v2-only-generated-check.log",
+      "sha256": "2650c77b0592cdd0c6d59af0c2090bde6b22503e039643b7226f02ebc545e022"
+    },
+    "snapshot": {
+      "path": "/var/tmp/redcode-v2-only-snapshot-final.log",
+      "sha256": "7172c6dd17177fbd41518ba9689708f0e826370bc370d05e5a9c4dc0d6a8478b"
+    },
+    "catalogComparison": {
+      "path": "/var/tmp/redcode-v2-only-audit.json",
+      "sha256": "319b15989ad701471147d78ccf0fb17cffef2db5cdaa1bbf4279ccf2ad258fb2"
+    },
+    "negative": {
+      "path": "/var/tmp/redcode-v2-only-negative.log",
+      "sha256": "9c0c60ce96c073b43791e4148d72775b67e0d2419be48d2043672381dd39ae3b"
+    }
+  }
+}
