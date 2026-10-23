@@ -2,6 +2,7 @@ export * as SessionBudget from "./session-budget.js"
 
 import { Schema } from "effect"
 import { NonNegativeInt, PositiveInt, optional } from "./schema.js"
+import { CostAssessment } from "./cost-assessment.js"
 
 const Positive = Schema.Finite.check(Schema.isGreaterThan(0))
 
@@ -22,6 +23,7 @@ export const View = Schema.Struct({
   limits: Limits,
   override: Limits,
   spent: Totals,
+  costAssessment: CostAssessment.Summary.pipe(optional),
   exceeded: Schema.Boolean,
   unknown: Schema.Boolean,
   reason: Schema.String,

@@ -248,9 +248,55 @@ A validação inclui o comando real da CLI em subprocessos, conectado a um
 servidor HTTP local com respostas de teste, além das projeções e dos layouts
 de texto em 48 e 80 colunas. O [registro deste lote](evaluations/cost-display-2026-10-23-validation.json)
 conserva os resultados. Não houve inferência paga nem validação de interface
-gráfica. A cobertura do total da família de sessões nos indicadores TUI/GUI e no
-ACP continua pendente; uma janela paginada de mensagens não basta para
-classificar esse total, que também inclui chamadas auxiliares e descendentes.
+gráfica neste lote. A classificação do total da família de sessões, que não pode
+ser inferida de uma janela paginada de mensagens, foi incorporada na etapa abaixo.
+
+### Classificação do gasto da sessão e de seus descendentes
+
+A leitura de orçamento calcula `costAssessment` junto com `spent` na mesma
+consulta SQLite. Mantém as contribuições numéricas anteriores e considera
+settlements de steps, títulos, compactação, descendentes e avaliações S1. O
+resumo não é um novo evento durável nem exige migração de dados. A classificação
+prioriza `unknown`, depois `legacy`, `estimated`, `reported` e `empty`:
+
+- `unknown` indica ao menos um registro com custo pendente.
+- `legacy` indica proveniência ausente, inclusive S1 sem classificação ou totais
+  importados sem eventos correspondentes. Uma pequena tolerância numérica evita
+  interpretar resíduos da soma em ponto flutuante como histórico perdido.
+- `estimated` inclui ao menos uma estimativa, com proveniência disponível para
+  as demais contribuições.
+- `reported` tem apenas valores informados com proveniência disponível.
+- `empty` não tem consumo contabilizado, sem afirmar nada sobre faturas externas.
+
+Forks não passam a cobrar mensagens herdadas; reverter mensagens não apaga os
+gastos já contabilizados. Históricos não são reprecificados. A avaliação S1
+mantém sua classificação conservadora enquanto seu contrato não distingue USD
+informado de estimativa. A presença de custos pendentes continua sinalizando
+incompletude sem inventar cobranças nem garantir um teto externo de USD.
+
+O SDK oferece `session.spend`, uma leitura lazy compartilhada pelos componentes.
+Atualizações de consumo, criação e remoção de sessões, metadados, término de
+execução e reconexão invalidam a leitura. Eventos em rajada são agrupados; um
+filho ainda não carregado e um evento com todos os valores numéricos iguais a
+zero também provocam atualização. A classificação vem da API, sem carregar
+todo o histórico. Eviction remove a leitura e seu refresh pendente.
+
+Sidebar e footer da TUI, header e painel Context da GUI usam essa leitura,
+incluindo S1 e descendentes no mesmo escopo do orçamento. As marcas `~`, `+` e
+`*` têm explicações; custo indeterminado não aparece como grátis. O footer reserva
+espaço para a atividade e a ação de nova sessão em terminais estreitos.
+
+O ACP omite `cost` cumulativo quando o resumo está incompleto ou é legado. O
+campo `_meta["reddb.io/cost"]` conserva `knownSubtotal`, `currency`, `status` e
+`scope: "session-and-descendants"`. Clientes que ignoram essa extensão não
+recebem um subtotal incompleto como custo total.
+
+O [registro de validação](evaluations/family-cost-2026-10-23-validation.json)
+inclui banco/Bus reais, projeções do SDK, ACP pelo protocolo, componentes TUI,
+GUI em build de produção com dados HTTP de teste e uma comparação limitada da
+entrada de sessão antes/depois. Não houve inferência paga, conciliação de invoice
+nem publicação. Medidores detalhados de mídia/cache e a adoção padrão do V2
+continuam pendentes; o custo por step do Mini é uma apresentação separada.
 
 ## Verificação e limites
 

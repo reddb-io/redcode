@@ -29,6 +29,7 @@ import type {
   SessionMessageAssistantText,
   SessionMessageAssistantTool,
   SessionInfo,
+  SessionBudgetView,
   SessionInboxInfo,
   SessionInboxCompaction,
   ShellInfo,
@@ -112,6 +113,7 @@ type LocationData = {
 type Store = {
   session: {
     info: Record<string, SessionInfo>
+    spend: Record<string, SessionBudgetView>
     // Family index keyed by a family's root (or furthest-known-ancestor when the
     // true root is not yet loaded). The value is a flat deduplicated list of every
     // session ID in that family, including the key itself once its info arrives.
@@ -235,6 +237,7 @@ export function createData(config: CreateDataInput) {
   const [store, setStore] = createStore<Store>({
     session: {
       info: {},
+      spend: {},
       family: {},
       active: {},
       message: {},
@@ -257,6 +260,21 @@ export function createData(config: CreateDataInput) {
   )
   const messageIndex = new Map<string, Map<string, number>>()
   const sync = createSync()
+  const spending = new Set<string>()
+
+  function refreshSpending(sessionID?: string) {
+    const ancestors = new Set<string>()
+    let current = sessionID
+    while (current && !ancestors.has(current)) {
+      ancestors.add(current)
+      current = store.session.info[current]?.parentID
+    }
+    spending.forEach((id) => {
+      if (sessionID && store.session.info[sessionID] && !ancestors.has(id)) return
+      sync.invalidate(`session.spend:${id}`)
+      settle(`session.spend:${id}`, () => result.session.spend.sync(id))
+    })
+  }
   let activeUpdates: Map<string, DataSessionStatus | undefined> | undefined
   const pendingUpdates = new Map<string, Map<string, SessionInboxInfo | SessionInbox.Delivery | undefined>>()
 
@@ -547,6 +565,10 @@ export function createData(config: CreateDataInput) {
     if (sessionOutbox.has(sessionID)) return
     sync.invalidate(`session.pending:${sessionID}`)
     sync.invalidate(`session.message:${sessionID}`)
+    sync.invalidate(`session.spend:${sessionID}`)
+    spending.delete(sessionID)
+    clearTimeout(settling.get(`session.spend:${sessionID}`))
+    settling.delete(`session.spend:${sessionID}`)
     messageLoads.delete(sessionID)
     // Keep unacknowledged submissions until their echo or rollback settles them.
     const pending = store.session.pending[sessionID]?.filter((item) => outbox.has(item.id)) ?? []
@@ -560,6 +582,7 @@ export function createData(config: CreateDataInput) {
         delete draft.messageCursor[sessionID]
         delete draft.messageLoading[sessionID]
         delete draft.pending[sessionID]
+        delete draft.spend[sessionID]
         if (messages.length) draft.message[sessionID] = messages
         if (pending.length) draft.pending[sessionID] = pending
       }),
@@ -567,6 +590,11 @@ export function createData(config: CreateDataInput) {
   }
 
   function removeSession(sessionID: string) {
+    refreshSpending(sessionID)
+    spending.delete(sessionID)
+    sync.invalidate(`session.spend:${sessionID}`)
+    clearTimeout(settling.get(`session.spend:${sessionID}`))
+    settling.delete(`session.spend:${sessionID}`)
     activeUpdates?.set(sessionID, undefined)
     store.session.pending[sessionID]?.forEach((item) => outbox.delete(item.id))
     messageIndex.delete(sessionID)
@@ -580,6 +608,7 @@ export function createData(config: CreateDataInput) {
       "session",
       produce((draft) => {
         delete draft.info[sessionID]
+        delete draft.spend[sessionID]
         delete draft.active[sessionID]
         delete draft.message[sessionID]
         delete draft.messageCursor[sessionID]
@@ -599,6 +628,7 @@ export function createData(config: CreateDataInput) {
   function handleEvent(event: OpenCodeEvent) {
     switch (event.type) {
       case "server.connected": {
+        refreshSpending()
         const updates = new Map<string, DataSessionStatus | undefined>()
         activeUpdates = updates
         refresh(() =>
@@ -635,6 +665,7 @@ export function createData(config: CreateDataInput) {
         setStore("project", "info", event.data.id, reconcile(event.data))
         return
       case "session.created":
+        refreshSpending(event.data.sessionID)
         sessionOutbox.delete(event.data.sessionID)
         result.session.invalidate(event.data.sessionID)
         refresh(() => result.session.sync(event.data.sessionID))
@@ -649,6 +680,7 @@ export function createData(config: CreateDataInput) {
         removeSession(event.data.sessionID)
         return
       case "session.usage.updated":
+        refreshSpending(event.data.sessionID)
         if (store.session.info[event.data.sessionID])
           setStore("session", "info", event.data.sessionID, {
             cost: event.data.cost,
@@ -708,6 +740,7 @@ export function createData(config: CreateDataInput) {
           setStore("session", "info", event.data.sessionID, "permissions", event.data.permissions)
         return
       case "session.metadata.updated":
+        refreshSpending(event.data.sessionID)
         // Metadata is replaced whole, so keys the update dropped must not survive a merge.
         if (store.session.info[event.data.sessionID])
           setStore("session", "info", event.data.sessionID, "metadata", reconcile(event.data.metadata))
@@ -1042,6 +1075,7 @@ export function createData(config: CreateDataInput) {
       case "session.execution.succeeded":
       case "session.execution.failed":
       case "session.execution.interrupted":
+        refreshSpending(event.data.sessionID)
         setSessionActive(event.data.sessionID, "idle")
         message.update(event.data.sessionID, (draft) => {
           const currentAssistant = message.activeAssistant(draft)
@@ -1351,6 +1385,21 @@ export function createData(config: CreateDataInput) {
     on: config.event.on,
     listen: config.event.listen,
     session: {
+      /** Server-calculated spending includes descendants, auxiliary calls and S1, independent of loaded message pages. */
+      spend: {
+        get(sessionID: string) {
+          return store.session.spend[sessionID]
+        },
+        sync(sessionID: string) {
+          spending.add(sessionID)
+          return sync.run(`session.spend:${sessionID}`, async () => {
+            await creating.get(sessionID)
+            const view = await api().session.budget.get({ sessionID })
+            if (disposed || !spending.has(sessionID)) return
+            setStore("session", "spend", sessionID, reconcile(view))
+          })
+        },
+      },
       list() {
         return sessions()
       },

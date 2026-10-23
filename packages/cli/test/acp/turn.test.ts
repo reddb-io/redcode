@@ -8,6 +8,7 @@ import {
   ephemeralEvent,
   permissionAsked,
   startSession,
+  stepEnded,
   succeeded,
   textDelta,
   toolCalled,
@@ -19,6 +20,46 @@ import {
 const grandchild = {
   "opencode/child-session": { id: "ses_grandchild", parentID: "ses_child", depth: 2, title: "Deeper" },
 }
+
+test.each([
+  { status: "reported", amount: 0, complete: true },
+  { status: "estimated", amount: 0.125, complete: true },
+  { status: "unknown", amount: 0.25, complete: false },
+  { status: "legacy", amount: 0.5, complete: false },
+  { status: "empty", amount: 0, complete: true },
+  { status: undefined, amount: 0.5, complete: false },
+] as const)("ACP qualifies aggregate cost provenance: $status", async (row) => {
+  await using acp = await startSession({
+    fetch: (request) =>
+      request.path.endsWith("/budget")
+        ? Response.json({
+            data: {
+              limits: {},
+              override: {},
+              spent: { cost: row.amount, tokens: 3, unpriced: row.status === "unknown" ? 1 : 0 },
+              ...(row.status ? { costAssessment: { status: row.status } } : {}),
+              exceeded: false,
+              unknown: false,
+              reason: "",
+            },
+          })
+        : undefined,
+    onPrompt: ({ sessionID, id }) => turn(sessionID, id, stepEnded(sessionID, "msg_usage")),
+  })
+  expect((await acp.prompt(acp.sessionId, "Compute")).stopReason).toBe("end_turn")
+  const update = acp.updates.find((item) => item.update.sessionUpdate === "usage_update")?.update
+  expect(update?.sessionUpdate).toBe("usage_update")
+  if (update?.sessionUpdate !== "usage_update") throw new Error("Expected a usage update")
+  expect(update.cost).toEqual(row.complete ? { amount: row.amount, currency: "USD" } : undefined)
+  expect(update._meta).toEqual({
+    "reddb.io/cost": {
+      knownSubtotal: row.amount,
+      currency: "USD",
+      status: row.status ?? "legacy",
+      scope: "session-and-descendants",
+    },
+  })
+})
 
 describe("acp turn events over the wire", () => {
   test.each([

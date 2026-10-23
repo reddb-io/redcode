@@ -2,7 +2,14 @@ import { expect, test } from "bun:test"
 import { getEventListeners } from "node:events"
 import { createRoot } from "solid-js"
 import { createData, type CreateDataInput } from "../src/solid"
-import { OpenCode, type ModelInfo, type OpenCodeEvent, type Project, type SessionInfo } from "../src/promise"
+import {
+  OpenCode,
+  type ModelInfo,
+  type OpenCodeEvent,
+  type Project,
+  type SessionInfo,
+  type SessionBudgetView,
+} from "../src/promise"
 
 const session = (viewed: number): SessionInfo => ({
   id: "ses_refresh",
@@ -1257,6 +1264,79 @@ function activityFixture(read: () => Response | Promise<Response>) {
     dispose,
   }))
 }
+
+test("refreshes full spending for an unloaded child even when all numeric totals stay zero", async () => {
+  const first = Promise.withResolvers<void>()
+  const listeners = new Set<Parameters<CreateDataInput["event"]["listen"]>[0]>()
+  const state: { view: SessionBudgetView; requests: number } = {
+    view: {
+      limits: {},
+      override: {},
+      spent: { cost: 0, tokens: 0, unpriced: 0 },
+      costAssessment: { status: "reported" },
+      exceeded: false,
+      unknown: false,
+      reason: "",
+    },
+    requests: 0,
+  }
+  const api = OpenCode.make({
+    baseUrl: "http://opencode.local",
+    fetch: async () => {
+      const view = state.view
+      state.requests++
+      if (state.requests === 1) await first.promise
+      return Response.json({ data: view })
+    },
+  })
+  const setup = createRoot((dispose) => ({
+    data: createData({
+      api: () => api,
+      directory: "/project",
+      event: {
+        on: () => () => {},
+        listen(handler) {
+          listeners.add(handler)
+          return () => listeners.delete(handler)
+        },
+      },
+    }),
+    dispose,
+  }))
+  const emit = () => {
+    const event: OpenCodeEvent = {
+      type: "session.usage.updated",
+      data: { sessionID: "ses_unloaded_child", cost: 0, tokens: session(0).tokens },
+    }
+    listeners.forEach((listener) => listener({ name: event.type, details: event }))
+  }
+  try {
+    setup.data.session.remember(session(0))
+    const loading = setup.data.session.spend.sync("ses_refresh")
+    await wait(() => state.requests === 1)
+    state.view = { ...state.view, costAssessment: { status: "unknown" }, spent: { ...state.view.spent, unpriced: 1 } }
+    Array.from({ length: 20 }).forEach(emit)
+    first.resolve()
+    await loading
+    await wait(() => setup.data.session.spend.get("ses_refresh")?.costAssessment?.status === "unknown")
+    expect(state.requests).toBe(2)
+    expect(setup.data.session.message.list("ses_refresh")).toEqual([])
+    expect(setup.data.session.spend.get("ses_refresh")?.spent).toEqual({ cost: 0, tokens: 0, unpriced: 1 })
+    setup.data.session.evict("ses_refresh")
+    expect(setup.data.session.spend.get("ses_refresh")).toBeUndefined()
+    state.view = {
+      ...state.view,
+      costAssessment: { status: "estimated" },
+      spent: { cost: 0.25, tokens: 10, unpriced: 0 },
+    }
+    await setup.data.session.spend.sync("ses_refresh")
+    expect(state.requests).toBe(3)
+    expect(setup.data.session.spend.get("ses_refresh")?.spent.cost).toBe(0.25)
+  } finally {
+    first.resolve()
+    setup.dispose()
+  }
+})
 
 async function wait(check: () => boolean) {
   const started = Date.now()

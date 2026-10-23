@@ -772,12 +772,18 @@
       "id": "cli-cost-coverage-and-live-projection",
       "status": "validated",
       "path": "packages/cli/src/commands/handlers/stats.ts",
-      "evidence": "24 CLI and 66 Client tests passed; canonical lint/typecheck passed all 27 tasks. Real CLI subprocesses consumed local fixture HTTP responses in text and JSON, and the live-projection negative control detected all three missing assessments. See evaluations/cost-display-2026-10-23-validation.json; session-family TUI/GUI and ACP indicators remain pending."
+      "evidence": "24 CLI and 66 Client tests passed; canonical lint/typecheck passed all 27 tasks. Real CLI subprocesses consumed local fixture HTTP responses in text and JSON, and the live-projection negative control detected all three missing assessments. See evaluations/cost-display-2026-10-23-validation.json; session-family indicators are tracked separately."
+    },
+    {
+      "id": "session-family-cost-assessment",
+      "status": "validated",
+      "path": "packages/core/src/session/budget.ts",
+      "evidence": "178 focused tests and 3 production-build browser tests passed; canonical lint/typecheck passed all 27 tasks. TUI rendering covers 44 and 120 columns; ACP is exercised over its wire protocol. Zero-valued unloaded-child refresh has a failing negative control. A limited three-sample browser entry comparison is recorded alongside results in evaluations/family-cost-2026-10-23-validation.json."
     }
   ],
   "remaining": [
     "Agents surface for task-aware application, explicit recovery of ambiguous applications and cross-host coordination",
-    "Session-family cost provenance in TUI/GUI and ACP, detailed provider media/cache meters and validated V2 default cutover",
+    "Mini per-step cost provenance, detailed provider media/cache meters and validated V2 default cutover",
     "Agents DS React by goal, grouped completion, versioned shared context and remote graph",
     "Reusable workflows, routines, webhooks, resources and external message connectors",
     "Memory/skills, evaluation and media adapters, voice, paired push and native mobile scope",

@@ -115,6 +115,7 @@ export function createFetch(override?: FetchHandler, events?: ReturnType<typeof 
           limits: {},
           override: {},
           spent: { cost: 0, tokens: 0, unpriced: 0 },
+          costAssessment: { status: "empty" },
           exceeded: false,
           unknown: false,
           reason: "",

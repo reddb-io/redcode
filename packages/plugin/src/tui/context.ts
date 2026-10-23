@@ -17,6 +17,7 @@ import type {
   ProviderInfo,
   ReferenceInfo,
   SessionInfo,
+  SessionBudgetView,
   SessionMessageInfo,
   SessionInboxInfo,
   ShellInfo,
@@ -72,6 +73,13 @@ export interface Data {
     root(sessionID: string): string
     family(sessionID: string): string[]
     cost(sessionID: string): number
+    /** Cached server spending for this Session and its descendants, including auxiliary calls and S1. */
+    readonly spend: {
+      /** Undefined until the first successful sync; retains the last snapshot while refreshing. */
+      get(sessionID: string): SessionBudgetView | undefined
+      /** Loads the shared spending snapshot. Subsequent relevant events invalidate and refresh it. */
+      sync(sessionID: string): Promise<void>
+    }
     status(sessionID: string): "idle" | "running"
     readonly pending: {
       list(sessionID: string): SessionInboxInfo[]

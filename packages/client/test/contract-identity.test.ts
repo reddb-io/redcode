@@ -20,6 +20,7 @@ test("effect entrypoint exposes canonical Schema contracts", () => {
   expect(Client.Config).toBe(Config)
   expect(Client.CostAssessment.Info).toBe(CostAssessment.Info)
   expect(Client.CostAssessment.Coverage).toBe(CostAssessment.Coverage)
+  expect(Client.CostAssessment.Summary).toBe(CostAssessment.Summary)
   expect(Client.Model).toBe(Model)
   expect(Client.Session).toBe(Session)
   expect(Client.SessionObservation.Info).toBe(SessionObservation.Info)
@@ -33,6 +34,7 @@ test("promise entrypoint exposes canonical cost assessment contracts", async () 
   const client = await import("../src/promise")
   expect(client.CostAssessment.Info).toBe(CostAssessment.Info)
   expect(client.CostAssessment.Coverage).toBe(CostAssessment.Coverage)
+  expect(client.CostAssessment.Summary).toBe(CostAssessment.Summary)
 })
 
 test("generated Effect API names canonical and composed outputs", async () => {

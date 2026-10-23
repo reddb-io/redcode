@@ -103,6 +103,16 @@ The Desktop and web Context panel separates the selected session model and its l
 last request that reported token usage. After switching models, the previous request's usage
 remains attributed to the model that produced it.
 
+The Context panel, header and TUI spending indicators use the server's full spending ledger for
+the session and its descendants, including title, compaction and S1 calls. They mark estimates with
+`~`, incomplete known subtotals with `+`, and unavailable historical provenance with `*`. Unresolved
+zero contributions display as unknown; recorded provider-reported zero remains zero. These are
+recorded costs and estimates, not invoice reconciliation.
+
+ACP sends a cumulative `cost` only when its provenance is available. The `reddb.io/cost` entry in
+usage-update metadata retains the known subtotal, classification and session-and-descendants scope
+when a complete cost cannot be reported.
+
 ## Agent server
 
 For an explicit foreground server on a chosen port:

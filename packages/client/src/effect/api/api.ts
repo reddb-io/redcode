@@ -1226,6 +1226,7 @@ export type SessionBudgetGetOutput = {
   readonly limits: { readonly maxCostUsd?: number | undefined; readonly maxTokens?: number | undefined }
   readonly override: { readonly maxCostUsd?: number | undefined; readonly maxTokens?: number | undefined }
   readonly spent: { readonly cost: number; readonly tokens: number; readonly unpriced: number }
+  readonly costAssessment?: { readonly status: "empty" | "reported" | "estimated" | "unknown" | "legacy" } | undefined
   readonly exceeded: boolean
   readonly unknown: boolean
   readonly reason: string
@@ -1243,6 +1244,7 @@ export type SessionBudgetUpdateOutput = {
   readonly limits: { readonly maxCostUsd?: number | undefined; readonly maxTokens?: number | undefined }
   readonly override: { readonly maxCostUsd?: number | undefined; readonly maxTokens?: number | undefined }
   readonly spent: { readonly cost: number; readonly tokens: number; readonly unpriced: number }
+  readonly costAssessment?: { readonly status: "empty" | "reported" | "estimated" | "unknown" | "legacy" } | undefined
   readonly exceeded: boolean
   readonly unknown: boolean
   readonly reason: string

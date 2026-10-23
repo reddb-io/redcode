@@ -19,3 +19,9 @@ export const Coverage = Schema.Struct({
   legacy: NonNegativeInt,
 }).annotate({ identifier: "CostAssessment.Coverage" })
 export interface Coverage extends Schema.Schema.Type<typeof Coverage> {}
+
+/** Classification of an aggregate. Legacy means its full provenance is unavailable; empty means no usage was recorded. */
+export const Summary = Schema.Struct({
+  status: Schema.Literals(["empty", "reported", "estimated", "unknown", "legacy"]),
+}).annotate({ identifier: "CostAssessment.Summary" })
+export interface Summary extends Schema.Schema.Type<typeof Summary> {}
