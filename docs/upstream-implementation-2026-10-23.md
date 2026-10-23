@@ -98,6 +98,60 @@ O objetivo recusa conclusão enquanto houver aplicações pendentes, inclusive d
 tarefas canceladas, ou candidatos aceitos sem recibo de aplicação correspondente.
 A interface Agents por objetivo e a integração entre hosts permanecem pendentes.
 
+## Catálogo V1/V2 compatível
+
+O consumidor reconhece o formato publicado em
+`https://models.dev/experimental/v2.0/api.json`, além do V1. Para experimentar V2,
+configure a fonte pelo `REDCODE_MODELS_URL` ou pelo campo global `models.sources`.
+A lista pública padrão e o snapshot empacotado continuam V1; não há mudança
+silenciosa de fonte nem promessa de disponibilidade por conta/credencial.
+
+`Model.Info.catalog` conserva a versão do formato e o SHA-256 dos bytes recebidos,
+as APIs declaradas com os SDKs e as capacidades efetivas de cada protocolo, os
+MIME types originais e os preços com moeda, unidade e denominador. Os IDs usados
+para executar o modelo permanecem os do provedor; a identidade canônica fica em
+seu campo próprio. URLs de transporte e backoff continuam no estado das fontes;
+o digest identifica o conteúdo observado, sem expor credenciais de uma URL de mirror.
+
+Uma política local prefere responses, messages, generate-content, converse,
+cohere-chat, chat-completions, interactions e workers-ai-run, nessa ordem, entre
+os adapters declarados e registrados no Redcode. Nomes de SDK desconhecidos e
+APIs futuras permanecem descritivos. Modelos especializados e ofertas sem adapter
+local não viram rotas de chat. Limites omitidos ficam em zero, sem inventar uma
+janela utilizável. A elegibilidade local não comprova uma chamada de inferência
+remota. As flags de atualização de tools, system e effort são preservadas; uma
+flag positiva de effort não habilita por si só uma otimização de cache. A flag
+`replay_reasoning` não equivale a exigir campos vazios de raciocínio em todas as
+mensagens; conserva-se como declaração, sem essa conversão de comportamento.
+
+Preços por token e caractere carregam denominador de um milhão; imagem,
+megapixel, segundo e minuto conservam sua unidade. Web search usa mil buscas.
+Condições, multiplicadores, preço separado de reasoning e TTLs de cache permanecem
+em `catalog.pricing` e nos detalhes dos rates. Apenas tarifas de tokens
+incondicionais que cabem no estimador existente alimentam `Model.Info.cost`.
+Regras condicionais, cache explícito/TTL, reasoning cobrado de forma diferente e
+unidades não representáveis não são simplificados para uma tarifa inventada.
+
+Uma lista `cost` vazia representa preço ausente ou estimativa não representável.
+O classificador compartilhado de gratuidade exige entrada, saída e cache conhecidos
+como zero, além de ausência de cobranças adicionais declaradas. O consumo e a
+contabilidade histórica continuam numéricos: isso ainda não constitui cálculo
+completo de tarifas condicionais/mídia nem comprova cobrança real. As projeções
+históricas V1 e os demais consumidores de custos continuam uma etapa de migração.
+
+As entradas de arquivo, rede e cache passam por validação estrutural. Uma resposta
+HTTP 200 com JSON inválido para o catálogo, preço base negativo ou capacidade
+consumida de tipo incorreto não substitui o cache bom. O refresh conserva a publicação global, a
+supressão de bytes idênticos e a atualização de caches antigos sem digest. O teste
+de snapshots compartilhados também cobre mutação de arrays JSON em uma Location
+sem modificar as outras Locations ou a fonte original.
+
+A resposta V2 real observada foi normalizada pelo serviço com armazenamento
+temporário isolado. O [registro de validação](evaluations/model-catalog-2026-10-23-validation.json)
+fixa seu hash, contagens e limites. A validação local terminou com 149 testes de
+Core, 20 de apresentação e `bun run check` aprovado nos 27 tasks. Nenhum provedor
+recebeu uma chamada de inferência ou credencial durante essa avaliação.
+
 ## Verificação e limites
 
 As regressões de startup MCP, callback OAuth, buffer de compactação, socket em
@@ -143,8 +197,8 @@ merge; isso não constitui um ensaio de morte real de processo com Git/hooks ór
 
 1. Expor o fluxo de preparo, validação e aplicação no Agents; ampliar a recuperação
    explícita de aplicações ambíguas e a coordenação entre hosts.
-2. Migrar o consumo do catálogo para V2 com origem/versionamento, capacidades por
-   protocolo, custos desconhecidos e unidades de mídia, preservando V1 e RedRouter.
+2. Completar a avaliação de preços condicionais e mídia, as projeções legadas de
+   custos e o cutover padrão do catálogo para V2, preservando V1 e RedRouter.
 3. Completar Agents DS React por objetivo, contexto comum versionado, agrupamento
    de conclusões e exposição do grafo em workers e harnesses.
 4. Implementar workflows reutilizáveis, rotinas, webhooks e conectores pelos

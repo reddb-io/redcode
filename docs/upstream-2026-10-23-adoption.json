@@ -41,9 +41,9 @@
       "upstream_state_observed": "closed",
       "upstream_merged_observed": true,
       "upstream_head": "5d3eb1aae1631ca6aad883a79c273caea9be1234",
-      "status": "pending",
-      "local_path": null,
-      "evidence_or_next_step": "Adopt through native contracts; confirm availability and applicability before implementation"
+      "status": "partial",
+      "local_path": "packages/core/src/models-dev/catalog.ts",
+      "evidence_or_next_step": "Native V1/V2 normalization preserves per-API declarations, capabilities and detailed unit prices. Adapter execution for media/decision/rerank, full conditional price evaluation and default V2 cutover remain separate work. See model catalog validation."
     },
     {
       "repository": "anomalyco/models.dev",
@@ -53,9 +53,9 @@
       "upstream_state_observed": "closed",
       "upstream_merged_observed": true,
       "upstream_head": "a5f15deac613e3a87aa3c9f78045bd1a0787e21c",
-      "status": "pending",
-      "local_path": null,
-      "evidence_or_next_step": "Adopt through native contracts; confirm availability and applicability before implementation"
+      "status": "partial",
+      "local_path": "packages/core/src/models-dev/catalog.ts",
+      "evidence_or_next_step": "Native V1/V2 normalization preserves per-API declarations, capabilities and detailed unit prices. Adapter execution for media/decision/rerank, full conditional price evaluation and default V2 cutover remain separate work. See model catalog validation."
     },
     {
       "repository": "anomalyco/models.dev",
@@ -65,9 +65,9 @@
       "upstream_state_observed": "closed",
       "upstream_merged_observed": true,
       "upstream_head": "f0c5601cde01bd1a34cd46c0a4a649f1489dcb2e",
-      "status": "pending",
-      "local_path": null,
-      "evidence_or_next_step": "Adopt through native contracts; confirm availability and applicability before implementation"
+      "status": "validated",
+      "local_path": "packages/core/src/models-dev/catalog.ts",
+      "evidence_or_next_step": "Only declared locally registered adapters are executable. Missing SDKs stay absent; per-protocol tool/system/effort update flags survive normalization. Positive effort declarations do not enable cache optimizations by themselves."
     },
     {
       "repository": "anomalyco/models.dev",
@@ -77,9 +77,9 @@
       "upstream_state_observed": "closed",
       "upstream_merged_observed": true,
       "upstream_head": "621b612f8d93adb59a8455694ba5f969ed16d517",
-      "status": "pending",
-      "local_path": null,
-      "evidence_or_next_step": "Adopt through native contracts; confirm availability and applicability before implementation"
+      "status": "partial",
+      "local_path": "packages/core/src/models-dev/catalog.ts",
+      "evidence_or_next_step": "Native V1/V2 normalization preserves per-API declarations, capabilities and detailed unit prices. Adapter execution for media/decision/rerank, full conditional price evaluation and default V2 cutover remain separate work. See model catalog validation."
     },
     {
       "repository": "anomalyco/models.dev",
@@ -89,9 +89,9 @@
       "upstream_state_observed": "closed",
       "upstream_merged_observed": true,
       "upstream_head": "8a22b2816841beefe053fb7276adb511be3ab13a",
-      "status": "pending",
-      "local_path": null,
-      "evidence_or_next_step": "Adopt through native contracts; confirm availability and applicability before implementation"
+      "status": "validated",
+      "local_path": "packages/core/src/models-dev/catalog.ts",
+      "evidence_or_next_step": "Only declared locally registered adapters are executable. Missing SDKs stay absent; per-protocol tool/system/effort update flags survive normalization. Positive effort declarations do not enable cache optimizations by themselves."
     },
     {
       "repository": "anomalyco/models.dev",
@@ -101,9 +101,9 @@
       "upstream_state_observed": "closed",
       "upstream_merged_observed": true,
       "upstream_head": "7addb8a623196c62b199ee8dc408dab03c2a6387",
-      "status": "pending",
-      "local_path": null,
-      "evidence_or_next_step": "Adopt through native contracts; confirm availability and applicability before implementation"
+      "status": "partial",
+      "local_path": "packages/core/src/models-dev/catalog.ts",
+      "evidence_or_next_step": "Native V1/V2 normalization preserves per-API declarations, capabilities and detailed unit prices. Adapter execution for media/decision/rerank, full conditional price evaluation and default V2 cutover remain separate work. See model catalog validation."
     },
     {
       "repository": "anomalyco/models.dev",
@@ -113,9 +113,9 @@
       "upstream_state_observed": "closed",
       "upstream_merged_observed": true,
       "upstream_head": "3d14a3138b992330659101c11b6714fc30104bfe",
-      "status": "pending",
-      "local_path": null,
-      "evidence_or_next_step": "Adopt through native contracts; confirm availability and applicability before implementation"
+      "status": "partial",
+      "local_path": "packages/core/src/models-dev/catalog.ts",
+      "evidence_or_next_step": "Native V1/V2 normalization preserves per-API declarations, capabilities and detailed unit prices. Adapter execution for media/decision/rerank, full conditional price evaluation and default V2 cutover remain separate work. See model catalog validation."
     },
     {
       "repository": "anomalyco/models.dev",
@@ -125,9 +125,9 @@
       "upstream_state_observed": "open",
       "upstream_merged_observed": false,
       "upstream_head": "dcd2aa23601444e691effd24cd1e7d00ded87ccb",
-      "status": "pending",
-      "local_path": null,
-      "evidence_or_next_step": "Adopt through native contracts; confirm availability and applicability before implementation"
+      "status": "partial",
+      "local_path": "packages/core/src/models-dev/catalog.ts",
+      "evidence_or_next_step": "Native V1/V2 normalization preserves per-API declarations, capabilities and detailed unit prices. Adapter execution for media/decision/rerank, full conditional price evaluation and default V2 cutover remain separate work. See model catalog validation."
     },
     {
       "repository": "anomalyco/models.dev",
@@ -755,11 +755,17 @@
       "status": "validated",
       "path": "packages/server/src/task-integration.ts",
       "evidence": "14 HTTP/Git tests and 15 Core tests; canonical lint/typecheck passed. Original-request retries observe rather than replay. Ambiguous operations require explicit host reconciliation. See evaluations/task-integration-application-2026-10-23-validation.json; broader Schema hygiene has one pre-existing failure."
+    },
+    {
+      "id": "versioned-model-catalog",
+      "status": "validated",
+      "path": "packages/core/src/models-dev/catalog.ts",
+      "evidence": "149 Core and 20 Schema presentation tests; canonical bun run check passed all 27 tasks. The published V2 response normalized 228 providers and 9,313 entries with public-schema round trips in isolated storage. V2 remains opt-in through configured sources; see evaluations/model-catalog-2026-10-23-validation.json."
     }
   ],
   "remaining": [
     "Agents surface for task-aware application, explicit recovery of ambiguous applications and cross-host coordination",
-    "Versioned V2 catalog normalization, update flags and unknown/non-token prices",
+    "Conditional/media price evaluation, legacy cost projections and default catalog cutover to V2",
     "Agents DS React by goal, grouped completion, versioned shared context and remote graph",
     "Reusable workflows, routines, webhooks, resources and external message connectors",
     "Memory/skills, evaluation and media adapters, voice, paired push and native mobile scope",

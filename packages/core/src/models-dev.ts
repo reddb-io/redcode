@@ -13,67 +13,14 @@ import { AISDKNative } from "./aisdk-native.js"
 import { Provider } from "./provider.js"
 import { Variant } from "./variant.js"
 import { KV } from "./kv.js"
+import { ModelsDevCatalog } from "./models-dev/catalog.js"
 import snapshotText from "./models-dev/snapshot.txt" with { type: "text" }
 
 export const CatalogModelStatus = Schema.Literals(["alpha", "beta", "deprecated"])
 export type CatalogModelStatus = typeof CatalogModelStatus.Type
 
-type Cost = {
-  readonly input: Money.USDPerMillionTokens
-  readonly output: Money.USDPerMillionTokens
-  readonly cache_read?: Money.USDPerMillionTokens
-  readonly cache_write?: Money.USDPerMillionTokens
-  readonly tiers?: readonly (Cost & { readonly tier: { readonly type: "context"; readonly size: number } })[]
-  readonly context_over_200k?: Omit<Cost, "tiers" | "context_over_200k">
-}
-
-type Modality = "text" | "audio" | "image" | "video" | "pdf"
-
-type SourceModel = {
-  readonly id: string
-  readonly type?: string
-  readonly canonical_model_id?: string
-  readonly name: string
-  readonly family?: string
-  readonly release_date: string
-  readonly attachment: boolean
-  readonly reasoning: boolean
-  readonly reasoning_options?: readonly (
-    | { readonly type: "effort"; readonly values: readonly (string | null)[] }
-    | Exclude<Variant.Support, { type: "effort" }>
-  )[]
-  readonly temperature?: boolean
-  readonly tool_call: boolean
-  readonly interleaved?: boolean | string | { readonly field: string }
-  readonly cost?: Cost
-  readonly limit: { readonly context: number; readonly input?: number; readonly output: number }
-  readonly modalities?: { readonly input: readonly Modality[]; readonly output: readonly Modality[] }
-  readonly experimental?: {
-    readonly modes?: Readonly<
-      Record<
-        string,
-        {
-          readonly cost?: Cost
-          readonly provider?: {
-            readonly body?: Provider.Settings
-            readonly headers?: Readonly<Record<string, string>>
-          }
-        }
-      >
-    >
-  }
-  readonly status?: CatalogModelStatus
-  readonly provider?: { readonly npm?: string; readonly api?: string }
-}
-
-type SourceProvider = {
-  readonly api?: string
-  readonly name: string
-  readonly env: readonly string[]
-  readonly id: string
-  readonly npm: string
-  readonly models: Readonly<Record<string, SourceModel>>
-}
+type SourceModel = ModelsDevCatalog.SourceModel
+type SourceProvider = ModelsDevCatalog.SourceProvider
 
 export type Snapshot = {
   readonly info: Provider.Info
@@ -86,9 +33,13 @@ function nativePackage(provider: SourceProvider, model?: SourceModel) {
   return AISDKNative.native(npm, { providerID: provider.id, modelID: model?.id }) ?? Provider.aisdk(npm)
 }
 
-function normalize(input: Record<string, SourceProvider>): readonly Snapshot[] {
+function normalize(input: typeof ModelsDevCatalog.Document.Type, digest: string): readonly Snapshot[] {
   const providers: Snapshot[] = []
   for (const item of Object.values(input)) {
+    if (!("npm" in item)) {
+      providers.push(...ModelsDevCatalog.normalize(item, digest))
+      continue
+    }
     const providerID = Provider.ID.make(item.id)
     const packageName = nativePackage(item)
     const info = {
@@ -104,7 +55,7 @@ function normalize(input: Record<string, SourceProvider>): readonly Snapshot[] {
     for (const model of Object.values(item.models)) {
       const baseCost = cost(model.cost)
       const id = Model.ID.make(model.id)
-      const base = modelInfo(item, id, model, { cost: baseCost })
+      const base = modelInfo(item, id, model, { cost: baseCost, digest })
       const variants = model.reasoning
         ? Variant.resolve({ ...base, package: nativePackage(item, model) }, supports(model))
         : []
@@ -118,6 +69,7 @@ function normalize(input: Record<string, SourceProvider>): readonly Snapshot[] {
         models.push(
           modelInfo(item, modeID, model, {
             name: modeName(model, mode),
+            digest,
             cost: mergeCost(baseCost, options.cost),
             request: options.provider,
             variants,
@@ -136,6 +88,7 @@ function released(date: string) {
 }
 
 function cost(input: SourceModel["cost"]): Model.Info["cost"] {
+  if (!input) return []
   const base = {
     input: input?.input ?? Money.USDPerMillionTokens.zero,
     output: input?.output ?? Money.USDPerMillionTokens.zero,
@@ -208,7 +161,10 @@ function modeName(model: SourceModel, mode: string) {
 function supports(model: SourceModel): readonly Variant.Support[] {
   return (model.reasoning_options ?? []).map((option) =>
     option.type === "effort"
-      ? { type: "effort", values: option.values.filter((value): value is string => value !== null && value !== "null") }
+      ? {
+          type: "effort",
+          values: (option.values ?? []).filter((value): value is string => value !== null && value !== "null"),
+        }
       : option,
   )
 }
@@ -218,11 +174,12 @@ function modelInfo(
   id: Model.ID,
   model: SourceModel,
   input: {
+    readonly digest: string
     readonly name?: string
     readonly cost?: Model.Info["cost"]
     readonly request?: NonNullable<NonNullable<SourceModel["experimental"]>["modes"]>[string]["provider"]
     readonly variants?: NonNullable<Model.Info["variants"]>
-  } = {},
+  },
 ): Model.Info {
   const providerID = Provider.ID.make(provider.id)
   const pkg = model.provider?.npm ? nativePackage(provider, model) : undefined
@@ -238,6 +195,7 @@ function modelInfo(
     ...(model.type === undefined ? {} : { type: model.type }),
     ...(model.canonical_model_id === undefined ? {} : { canonicalModelID: Model.ID.make(model.canonical_model_id) }),
     name: input.name ?? model.name,
+    catalog: { format: 1, digest: input.digest, apis: {}, rates: [] },
     compatibility: Model.compatibility(model.interleaved),
     family: model.family ? Model.Family.make(model.family) : undefined,
     package: pkg,
@@ -285,15 +243,14 @@ export type Options = typeof Options.Type
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/ModelsDev") {}
 
-const CatalogJson = Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown))
-const decodeCatalog = (text: string) =>
-  Schema.decodeUnknownEffect(CatalogJson)(text).pipe(Effect.map((catalog) => catalog as Record<string, SourceProvider>))
+const CatalogJson = Schema.fromJsonString(ModelsDevCatalog.Document)
+const decodeCatalog = (text: string) => Schema.decodeUnknownEffect(CatalogJson)(text)
 const Cache = Schema.Struct({
   updatedAt: Schema.Number,
   // Digest of the raw body, persisted so refresh() can skip republishing a
   // byte-identical catalog. Optional for entries written before it existed.
   digest: Schema.optional(Schema.String),
-  body: CatalogJson,
+  body: Schema.String,
 })
 const CACHE_KEY = "models-dev:catalog"
 const STATE_KEY = "models-dev:sources"
@@ -410,7 +367,7 @@ const bundledSnapshot = Effect.suspend(() =>
     ? Effect.succeed(bundledCache)
     : decodeCatalog(snapshotText).pipe(
         Effect.map((catalog) => {
-          bundledCache = normalize(catalog)
+          bundledCache = normalize(catalog, bodyDigest(snapshotText))
           return bundledCache
         }),
       ),
@@ -448,11 +405,15 @@ export const layer = (options?: Options) =>
       const loadFromCache = Effect.fnUntraced(function* () {
         const value = yield* kv.get(CACHE_KEY)
         const cached = Schema.decodeUnknownOption(Cache)(value)
-        if (Option.isSome(cached))
+        const catalog = Option.isSome(cached)
+          ? Schema.decodeUnknownOption(CatalogJson)(cached.value.body)
+          : Option.none()
+        if (Option.isSome(cached) && Option.isSome(catalog))
           return {
-            catalog: cached.value.body as Record<string, SourceProvider>,
+            catalog: catalog.value,
             updatedAt: cached.value.updatedAt,
             digest: cached.value.digest,
+            bodyDigest: bodyDigest(cached.value.body),
           }
         if (value !== undefined) yield* kv.remove(CACHE_KEY)
       })
@@ -537,8 +498,10 @@ export const layer = (options?: Options) =>
       })
 
       const loadFromFile = options?.file
-        ? fs.readJson(options.file).pipe(
-            Effect.map((input) => input as Record<string, SourceProvider>),
+        ? fs.readFileString(options.file).pipe(
+            Effect.flatMap((text) =>
+              decodeCatalog(text).pipe(Effect.map((catalog) => normalize(catalog, bodyDigest(text)))),
+            ),
             Effect.orElseSucceed(() => undefined),
           )
         : Effect.undefined
@@ -563,29 +526,29 @@ export const layer = (options?: Options) =>
       const fetchAndWrite = Effect.fn("ModelsDev.fetchAndWrite")(function* () {
         const text = yield* fetchChain(false)
         // No source answered and there is no cache or bundled catalog: start empty; the refresh retries.
-        const empty: Record<string, SourceProvider> = {}
-        if (text === undefined) return empty
+        const empty: typeof ModelsDevCatalog.Document.Type = {}
+        if (text === undefined) return { catalog: empty, bodyDigest: bodyDigest("{}") }
         const catalog = yield* decodeCatalog(text)
         yield* writeCache(text)
-        return catalog
+        return { catalog, bodyDigest: bodyDigest(text) }
       })
 
       const populate = Effect.gen(function* () {
         const fromFile = yield* loadFromFile
-        if (fromFile) return normalize(fromFile)
+        if (fromFile) return fromFile
         const cached = options?.file ? undefined : yield* loadFromCache()
-        if (cached) return normalize(cached.catalog)
+        if (cached) return normalize(cached.catalog, cached.bodyDigest)
         const bundled = yield* loadSnapshot
         if (bundled) return bundled
         if (!fetch) return []
         const catalog = yield* lock.withPermit(
           Effect.gen(function* () {
             const stored = options?.file ? undefined : yield* loadFromCache()
-            if (stored) return stored.catalog
+            if (stored) return stored
             return yield* fetchAndWrite()
           }),
         )
-        return normalize(catalog)
+        return normalize(catalog.catalog, catalog.bodyDigest)
       }).pipe(Effect.withSpan("ModelsDev.populate"), Effect.orDie)
 
       const [cachedGet, invalidate] = yield* Effect.cachedInvalidateWithTTL(populate, Duration.infinity)
