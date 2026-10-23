@@ -24,6 +24,7 @@ import type {
 import type { Config } from "../config"
 import type { CliRenderer } from "@opentui/core"
 import type { SessionInbox } from "@opencode/schema/session-inbox"
+import type { CostAssessment } from "@opencode/schema/cost-assessment"
 
 export type RunFilePart = {
   type: "file"
@@ -177,8 +178,10 @@ export type FooterState = {
   status: string
   notice: string
   model: string
-  /** `limit` is the context window `percent` is of. */
-  usage: { tokens: number; percent?: number; limit?: number; cost?: number } | undefined
+  /** Last settled step, not family spending. `limit` is the context window `percent` is of. */
+  usage:
+    | { tokens: number; percent?: number; limit?: number; cost?: number; costAssessment?: CostAssessment.Info }
+    | undefined
   first: boolean
   interrupt: number
   exit: number

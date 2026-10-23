@@ -296,7 +296,31 @@ inclui banco/Bus reais, projeções do SDK, ACP pelo protocolo, componentes TUI,
 GUI em build de produção com dados HTTP de teste e uma comparação limitada da
 entrada de sessão antes/depois. Não houve inferência paga, conciliação de invoice
 nem publicação. Medidores detalhados de mídia/cache e a adoção padrão do V2
-continuam pendentes; o custo por step do Mini é uma apresentação separada.
+continuam pendentes. O custo por step do Mini é descrito abaixo.
+
+## Custo do último step no Mini
+
+O transporte conserva `costAssessment` junto ao valor numérico nas conclusões e
+falhas. Zero informado continua `$0.00`; zero indeterminado aparece como
+`cost unknown`, subtotal incompleto recebe `+`, estimativa recebe `~` e um valor
+antigo sem procedência recebe `*`. Ausência de contabilização aparece como
+`cost unavailable`, sem manter o preço do step anterior.
+
+A hidratação inicial, inclusive sem replay de texto, a reconexão, o resize e a
+barreira de conclusão restauram o último assistant concluído da sessão raiz.
+Mensagens ainda em execução e compactações não substituem essa leitura. Eventos
+de conclusão já incluídos no snapshot não podem devolver o rodapé a um preço
+anterior. Eventos de filhos continuam no escopo dos subagentes.
+
+O rodapé reutiliza a formatação dos demais clientes. **Menu → Show status**
+explicita `last step` e explica as marcas mesmo com detalhes ocultos ou sem espaço.
+A prioridade de interrupção, contexto e identidade permanece na política
+existente; uma informação de custo mais longa pode ocultar a dica visual do menu,
+cujo atalho continua disponível. Este indicador não soma a família da sessão.
+
+A validação e as falhas preexistentes da suíte ampliada estão registradas em
+[evaluations/mini-cost-2026-10-23-validation.json](evaluations/mini-cost-2026-10-23-validation.json).
+Não houve chamada a provedor nem validação contra o serviço instalado.
 
 ## Verificação e limites
 

@@ -75,13 +75,13 @@ async function setup(mono = false) {
   }
 }
 
-test.each([56, 160])("production footer confirms exit with a visible menu hint at %i columns", async (width) => {
+test.each([56, 160])("production footer confirms exit with unavailable cost at %i columns", async (width) => {
   const app = await setup()
   try {
     app.resize(width, 30)
     app.footer.event({ type: "stream.patch", patch: { phase: "running", usage: { tokens: 14100, percent: 1 } } })
     await app.settle()
-    expect(app.captureCharFrame()).toContain("ctrl+p menu")
+    expect(app.captureCharFrame()).toContain(width === 160 ? "ctrl+p menu" : "esc stop")
     app.footer.requestExit()
     await app.settle()
     expect(app.captureCharFrame()).toContain("Press ctrl+c again to exit")
@@ -112,7 +112,10 @@ test.each([false, true])(
         selection: { providerID: "opencode", modelID: "gpt-5.6-sol" },
       })
       app.footer.event({ type: "variants", variants: ["max"], current: "max" })
-      app.footer.event({ type: "stream.patch", patch: { usage: { tokens: 14100, percent: 1, cost: 0.04 } } })
+      app.footer.event({
+        type: "stream.patch",
+        patch: { usage: { tokens: 14100, percent: 1, cost: 0.04, costAssessment: { status: "reported" } } },
+      })
       await app.settle()
       const initial = app.captureCharFrame()
       for (const [width, height] of sizes) {
