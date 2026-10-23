@@ -810,11 +810,12 @@ export function RunFooterView(props: RunFooterViewProps) {
                               }
                               if (!(await queuedPromptAction("cancel", item.messageID, "undo"))) return
                               closePanel()
-                              const next = promptAppend(composer.current(), item.prompt)
+                              const next = promptAppend(current, item.prompt)
                               composer.replacePrompt(next, promptOffsetWidth(next.text))
                             }}
-                            onDelete={(item) => {
-                              void queuedPromptAction("cancel", item.messageID)
+                            onDelete={async (item) => {
+                              if (!(await queuedPromptAction("cancel", item.messageID))) return
+                              if (queuedPrompts().every((prompt) => prompt.messageID === item.messageID)) closePanel()
                             }}
                             onRows={setSubagentMenuRows}
                             mono={props.mono}
