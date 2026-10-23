@@ -70,6 +70,46 @@ export const IntegrateInput = Schema.Struct({
   targetHead: Schema.String,
 }).annotate({ identifier: "Worktree.IntegrateInput" })
 export interface IntegrateInput extends Schema.Schema.Type<typeof IntegrateInput> {}
+
+const CommitID = Schema.String.check(Schema.isPattern(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/))
+
+/** Ordered, pinned source checkouts; preparing only writes Git objects, never checkout files or refs. */
+export const PrepareIntegrationInput = Schema.Struct({
+  projectID: Project.ID,
+  target: AbsolutePath,
+  targetHead: CommitID,
+  sources: Schema.Array(Schema.Struct({ directory: AbsolutePath, head: CommitID })).check(
+    Schema.isMinLength(1),
+    Schema.isMaxLength(32),
+  ),
+}).annotate({ identifier: "Worktree.PrepareIntegrationInput" })
+export interface PrepareIntegrationInput extends Schema.Schema.Type<typeof PrepareIntegrationInput> {}
+
+export const IntegrationCandidate = Schema.Struct({
+  ...PrepareIntegrationInput.fields,
+  status: Schema.Literals(["ready", "conflicted"]),
+  /** Present only when every input merged. The candidate is not a test or acceptance receipt. */
+  head: optional(CommitID),
+  tree: optional(CommitID),
+  steps: Schema.Array(
+    Schema.Struct({
+      directory: AbsolutePath,
+      head: CommitID,
+      status: Schema.Literals(["included", "fast_forward", "merged", "conflicted"]),
+      conflicts: Schema.Array(Schema.String),
+    }),
+  ),
+  diff: Schema.String,
+  truncated: Schema.Boolean,
+}).annotate({ identifier: "Worktree.IntegrationCandidate" })
+export interface IntegrationCandidate extends Schema.Schema.Type<typeof IntegrationCandidate> {}
+
+export const ApplyIntegrationInput = Schema.Struct({
+  ...PrepareIntegrationInput.fields,
+  candidateHead: CommitID,
+}).annotate({ identifier: "Worktree.ApplyIntegrationInput" })
+export interface ApplyIntegrationInput extends Schema.Schema.Type<typeof ApplyIntegrationInput> {}
+
 export const CheckpointInput = Schema.Struct({
   projectID: Project.ID,
   directory: AbsolutePath,

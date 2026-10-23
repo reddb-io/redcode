@@ -505,6 +505,10 @@ import type {
   WorktreeLifecycleInspectOutput,
   WorktreeLifecycleIntegrateInput,
   WorktreeLifecycleIntegrateOutput,
+  WorktreeLifecyclePrepareIntegrationInput,
+  WorktreeLifecyclePrepareIntegrationOutput,
+  WorktreeLifecycleApplyIntegrationInput,
+  WorktreeLifecycleApplyIntegrationOutput,
   WorktreeLifecycleCheckpointInput,
   WorktreeLifecycleCheckpointOutput,
 } from "../api/api.js"
@@ -2970,6 +2974,33 @@ const EndpointWorktreeLifecycleIntegrate =
       }).pipe(Effect.mapError(mapClientError)),
     )
 
+const EndpointWorktreeLifecyclePrepareIntegration =
+  (raw: RawClient["server.worktreeLifecycle"]) => (input: WorktreeLifecyclePrepareIntegrationInput) =>
+    preserveEffect<WorktreeLifecyclePrepareIntegrationOutput>()(
+      raw["worktreeLifecycle.prepareIntegration"]({
+        payload: {
+          projectID: input["projectID"],
+          target: input["target"],
+          targetHead: input["targetHead"],
+          sources: input["sources"],
+        },
+      }).pipe(Effect.mapError(mapClientError)),
+    )
+
+const EndpointWorktreeLifecycleApplyIntegration =
+  (raw: RawClient["server.worktreeLifecycle"]) => (input: WorktreeLifecycleApplyIntegrationInput) =>
+    preserveEffect<WorktreeLifecycleApplyIntegrationOutput>()(
+      raw["worktreeLifecycle.applyIntegration"]({
+        payload: {
+          projectID: input["projectID"],
+          target: input["target"],
+          targetHead: input["targetHead"],
+          sources: input["sources"],
+          candidateHead: input["candidateHead"],
+        },
+      }).pipe(Effect.mapError(mapClientError)),
+    )
+
 const EndpointWorktreeLifecycleCheckpoint =
   (raw: RawClient["server.worktreeLifecycle"]) => (input: WorktreeLifecycleCheckpointInput) =>
     preserveEffect<WorktreeLifecycleCheckpointOutput>()(
@@ -2983,6 +3014,8 @@ const adaptGroupWorktreeLifecycle = (raw: RawClient["server.worktreeLifecycle"])
   archives: EndpointWorktreeLifecycleArchives(raw),
   inspect: EndpointWorktreeLifecycleInspect(raw),
   integrate: EndpointWorktreeLifecycleIntegrate(raw),
+  prepareIntegration: EndpointWorktreeLifecyclePrepareIntegration(raw),
+  applyIntegration: EndpointWorktreeLifecycleApplyIntegration(raw),
   checkpoint: EndpointWorktreeLifecycleCheckpoint(raw),
 })
 

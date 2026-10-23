@@ -503,6 +503,10 @@ import type {
   WorktreeLifecycleInspectOutput,
   WorktreeLifecycleIntegrateInput,
   WorktreeLifecycleIntegrateOutput,
+  WorktreeLifecyclePrepareIntegrationInput,
+  WorktreeLifecyclePrepareIntegrationOutput,
+  WorktreeLifecycleApplyIntegrationInput,
+  WorktreeLifecycleApplyIntegrationOutput,
   WorktreeLifecycleCheckpointInput,
   WorktreeLifecycleCheckpointOutput,
 } from "./types.js"
@@ -4107,6 +4111,41 @@ export function make(options: ClientOptions) {
               target: input["target"],
               head: input["head"],
               targetHead: input["targetHead"],
+            },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 404, 409],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      prepareIntegration: (input: WorktreeLifecyclePrepareIntegrationInput, requestOptions?: RequestOptions) =>
+        request<WorktreeLifecyclePrepareIntegrationOutput>(
+          {
+            method: "POST",
+            path: `/api/worktree/integration/prepare`,
+            body: {
+              projectID: input["projectID"],
+              target: input["target"],
+              targetHead: input["targetHead"],
+              sources: input["sources"],
+            },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 404, 409],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      applyIntegration: (input: WorktreeLifecycleApplyIntegrationInput, requestOptions?: RequestOptions) =>
+        request<WorktreeLifecycleApplyIntegrationOutput>(
+          {
+            method: "POST",
+            path: `/api/worktree/integration/apply`,
+            body: {
+              projectID: input["projectID"],
+              target: input["target"],
+              targetHead: input["targetHead"],
+              sources: input["sources"],
+              candidateHead: input["candidateHead"],
             },
             successStatus: 200,
             declaredStatuses: [400, 401, 403, 404, 409],

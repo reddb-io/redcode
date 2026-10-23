@@ -133,6 +133,36 @@ move any needed artifacts before confirming removal. Existing worktree safety ch
 Integration checks repository identity and recorded checkout ownership. This is not cross-host Git
 synchronization or coordinated multi-server execution ownership.
 
+### Combine several results
+
+The host API also supports preparing several managed Git worktrees together, even when their histories
+diverged. The existing single-worktree action in the UI keeps its fast-forward behavior.
+
+1. Call `worktreeLifecycle.prepareIntegration` (`POST /api/worktree/integration/prepare`) with the
+   `projectID`, recorded `target`, reviewed `targetHead`, and an ordered `sources` array of
+   `{ directory, head }` entries. Use full commit IDs and between 1 and 32 distinct managed sources
+   from the same Git repository. Every selected checkout must be clean.
+2. Preparation creates Git objects without changing checkout files, indexes or refs. The response
+   records each source as `included`, `fast_forward`, `merged` or `conflicted`. On conflict, it returns
+   exact paths and stops before later sources; no complete candidate `head` or `tree` is returned.
+   Resolve the conflicting source changes separately, commit them and review the new inputs.
+3. A `ready` response identifies the combined `head` and `tree`, plus a bounded diff against the
+   reviewed target. This is a merge result, not validation evidence. Use `worktree.create` with
+   `branch: candidate.head` to create a managed validation checkout, then run the integration task's
+   checks there. Such a checkout also keeps the candidate reachable; preparation alone creates no
+   archival reference. The same pinned inputs reconstruct the candidate while their commits remain
+   available. The host requires Git 2.38 or newer for `merge-tree --write-tree`.
+4. Call `worktreeLifecycle.applyIntegration` (`POST /api/worktree/integration/apply`) with the original
+   inputs and `candidateHead`. Application requires idle source and target checkouts, repeats the
+   clean/revision checks, reconstructs the candidate and compares its commit ID before fast-forwarding
+   the target. A changed input or candidate requires another review and verification. Sources stay in
+   place. The operation does not execute checks or accept any Todo task.
+
+These routes use the host's trusted connection and project inventory, like the other checkout
+lifecycle operations. They do not fetch remote worker repositories, schedule agents or lock out Git
+commands from other processes. The coordinator associates the selected source sessions with its
+task reconciliation report and verifies the combined delivery against the shared objective.
+
 Protocol references: [Codex app-server](https://developers.openai.com/codex/app-server) and
 [Claude Code programmatic execution](https://code.claude.com/docs/en/headless).
 

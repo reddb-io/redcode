@@ -1135,6 +1135,24 @@ export type WorktreeReview = {
   managed: boolean
 }
 
+export type WorktreeIntegrationCandidate = {
+  projectID: string
+  target: string
+  targetHead: string
+  sources: Array<{ directory: string; head: string }>
+  status: "ready" | "conflicted"
+  head?: string
+  tree?: string
+  steps: Array<{
+    directory: string
+    head: string
+    status: "included" | "fast_forward" | "merged" | "conflicted"
+    conflicts: Array<string>
+  }>
+  diff: string
+  truncated: boolean
+}
+
 export type ConnectionRef = { type: "credential"; id: string } | ConnectionEnvInfo
 
 export type SessionInboxMovePayload1 = { location: LocationRef; projectID: string; subpath?: string }
@@ -11936,6 +11954,75 @@ export type WorktreeLifecycleIntegrateInput = {
 }
 
 export type WorktreeLifecycleIntegrateOutput = WorktreeReview
+
+export type WorktreeLifecyclePrepareIntegrationInput = {
+  readonly projectID: {
+    readonly projectID: string
+    readonly target: string
+    readonly targetHead: string
+    readonly sources: ReadonlyArray<{ readonly directory: string; readonly head: string }>
+  }["projectID"]
+  readonly target: {
+    readonly projectID: string
+    readonly target: string
+    readonly targetHead: string
+    readonly sources: ReadonlyArray<{ readonly directory: string; readonly head: string }>
+  }["target"]
+  readonly targetHead: {
+    readonly projectID: string
+    readonly target: string
+    readonly targetHead: string
+    readonly sources: ReadonlyArray<{ readonly directory: string; readonly head: string }>
+  }["targetHead"]
+  readonly sources: {
+    readonly projectID: string
+    readonly target: string
+    readonly targetHead: string
+    readonly sources: ReadonlyArray<{ readonly directory: string; readonly head: string }>
+  }["sources"]
+}
+
+export type WorktreeLifecyclePrepareIntegrationOutput = WorktreeIntegrationCandidate
+
+export type WorktreeLifecycleApplyIntegrationInput = {
+  readonly projectID: {
+    readonly projectID: string
+    readonly target: string
+    readonly targetHead: string
+    readonly sources: ReadonlyArray<{ readonly directory: string; readonly head: string }>
+    readonly candidateHead: string
+  }["projectID"]
+  readonly target: {
+    readonly projectID: string
+    readonly target: string
+    readonly targetHead: string
+    readonly sources: ReadonlyArray<{ readonly directory: string; readonly head: string }>
+    readonly candidateHead: string
+  }["target"]
+  readonly targetHead: {
+    readonly projectID: string
+    readonly target: string
+    readonly targetHead: string
+    readonly sources: ReadonlyArray<{ readonly directory: string; readonly head: string }>
+    readonly candidateHead: string
+  }["targetHead"]
+  readonly sources: {
+    readonly projectID: string
+    readonly target: string
+    readonly targetHead: string
+    readonly sources: ReadonlyArray<{ readonly directory: string; readonly head: string }>
+    readonly candidateHead: string
+  }["sources"]
+  readonly candidateHead: {
+    readonly projectID: string
+    readonly target: string
+    readonly targetHead: string
+    readonly sources: ReadonlyArray<{ readonly directory: string; readonly head: string }>
+    readonly candidateHead: string
+  }["candidateHead"]
+}
+
+export type WorktreeLifecycleApplyIntegrationOutput = WorktreeIntegrationCandidate
 
 export type WorktreeLifecycleCheckpointInput = {
   readonly projectID: { readonly projectID: string; readonly directory: string; readonly message: string }["projectID"]

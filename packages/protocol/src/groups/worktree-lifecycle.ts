@@ -35,6 +35,34 @@ export const WorktreeLifecycleGroup = HttpApiGroup.make("server.worktreeLifecycl
     }).annotateMerge(OpenApi.annotations({ identifier: "worktreeLifecycle.integrate" })),
   )
   .add(
+    HttpApiEndpoint.post("worktreeLifecycle.prepareIntegration", `${root}/integration/prepare`, {
+      payload: Worktree.PrepareIntegrationInput,
+      success: Worktree.IntegrationCandidate,
+      error: [WorktreeError, ProjectNotFoundError],
+    }).annotateMerge(
+      OpenApi.annotations({
+        identifier: "worktreeLifecycle.prepareIntegration",
+        summary: "Prepare combined worktree results",
+        description:
+          "Merge ordered, pinned source revisions into a reproducible candidate without changing checkouts or refs. Returns conflicts explicitly. A ready candidate still requires verification and task acceptance.",
+      }),
+    ),
+  )
+  .add(
+    HttpApiEndpoint.post("worktreeLifecycle.applyIntegration", `${root}/integration/apply`, {
+      payload: Worktree.ApplyIntegrationInput,
+      success: Worktree.IntegrationCandidate,
+      error: [WorktreeError, ProjectNotFoundError],
+    }).annotateMerge(
+      OpenApi.annotations({
+        identifier: "worktreeLifecycle.applyIntegration",
+        summary: "Apply reviewed combined revision",
+        description:
+          "Rebuild and compare the candidate against its reviewed commit, then fast-forward the clean idle target. Does not run checks or accept tasks.",
+      }),
+    ),
+  )
+  .add(
     HttpApiEndpoint.post("worktreeLifecycle.checkpoint", `${root}/checkpoint`, {
       payload: Worktree.CheckpointInput,
       success: Schema.String,
