@@ -4,6 +4,7 @@ import { installSseTransport } from "../utils/sse-transport"
 import { APP_READY_TIMEOUT, expectSessionTitle } from "../utils/waits"
 import { mockWorkspace, type WorkspaceInput } from "../utils/workspace"
 import { questionRequestForm, vaultRequestForm, webSearchRequestForm } from "../utils/request-forms"
+import type { FormInfo } from "@opencode/client/promise"
 
 const directory = "C:/OpenCode/RequestDocks"
 
@@ -468,6 +469,117 @@ test("web-search provider loading retries and permits declining an empty catalog
     },
   ])
   await expect(dock).toBeHidden()
+})
+
+test("MCP input preserves typed answers on retry and requires acknowledgement for browser steps", async ({
+  page,
+}, testInfo) => {
+  const childID = "ses_mcp_child"
+  const otherID = "ses_mcp_other"
+  const form: FormInfo = {
+    id: "frm_mcp_input",
+    sessionID: childID,
+    title: "Fixture MCP input",
+    metadata: { kind: "mcp-elicitation", server: "Fixture MCP", message: "Configure the requested operation." },
+    fields: [
+      { key: "name", type: "string", title: "Name", required: true },
+      { key: "count", type: "integer", title: "Count", minimum: 1, maximum: 5, required: true },
+      { key: "ratio", type: "number", title: "Ratio", default: 0.5 },
+      { key: "enabled", type: "boolean", title: "Enabled", default: true, required: true },
+      { key: "mode", type: "string", title: "Mode", required: true, options: [{ value: "safe", label: "Safe" }] },
+      {
+        key: "checks",
+        type: "multiselect",
+        title: "Checks",
+        options: [
+          { value: "unit", label: "Unit" },
+          { value: "browser", label: "Browser" },
+        ],
+      },
+    ],
+  }
+  const forms: FormInfo[] = [form]
+  const replies: { sessionID: string; body: unknown }[] = []
+  const workspace = await mockServer(page, {
+    sessions: [
+      { id: sessionID, title },
+      { id: childID, parentID: sessionID, title: "MCP child" },
+      { id: otherID, title: "Other MCP session" },
+    ],
+    forms: () => forms,
+    onFormReply: (input) => {
+      replies.push({ sessionID: input.sessionID, body: input.body })
+      if (replies.length === 1) return { status: 500, body: { message: "Try again" } }
+      forms.splice(0)
+    },
+  })
+  await page.goto(sessionHref(sessionID))
+  const dock = page.getByRole("form", { name: "Fixture MCP is requesting input" })
+  await expect(dock).toBeVisible()
+  await expect(page.locator('[data-component="composer"]')).toHaveCount(0)
+  await dock.getByRole("textbox", { name: /^Name/ }).fill("example")
+  await dock.getByRole("spinbutton", { name: /^Count/ }).fill("3")
+  await dock.getByRole("checkbox", { name: /^Enabled/ }).uncheck()
+  await dock.getByRole("combobox", { name: /^Mode/ }).selectOption("safe")
+  await dock.getByRole("listbox", { name: /^Checks/ }).selectOption(["unit", "browser"])
+  await page.locator(`[data-titlebar-tab-link][href="${sessionHref(otherID)}"]`).click()
+  await expectSessionTitle(page, "Other MCP session")
+  await expect(dock).toBeHidden()
+  await page.locator(`[data-titlebar-tab-link][href="${sessionHref(sessionID)}"]`).click()
+  await expect(dock.getByRole("textbox", { name: /^Name/ })).toHaveValue("example")
+  await dock.getByRole("button", { name: "Submit", exact: true }).click()
+  await expect(dock.getByRole("alert")).toContainText("Your answers have been kept")
+  await expect(dock.getByRole("alert")).toBeVisible()
+  await expect(dock.getByRole("spinbutton", { name: /^Count/ })).toHaveValue("3")
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect.poll(() => dock.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+  await page.screenshot({ path: testInfo.outputPath("mcp-input-mobile.png") })
+  const accepted = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" && new URL(response.url()).pathname.endsWith(`/form/${form.id}/reply`),
+  )
+  await dock.getByRole("button", { name: "Submit", exact: true }).click()
+  expect((await accepted).status()).toBe(204)
+  const answer = { name: "example", count: 3, ratio: 0.5, enabled: false, mode: "safe", checks: ["unit", "browser"] }
+  expect(replies).toEqual([
+    { sessionID: childID, body: { answer } },
+    { sessionID: childID, body: { answer } },
+  ])
+  await workspace.push([
+    {
+      id: "evt_mcp_replied",
+      created: 1700000001000,
+      type: "form.replied",
+      location: { directory },
+      data: { sessionID: childID, id: form.id, answer },
+    },
+  ])
+  await expect(dock).toBeHidden()
+  const external = {
+    id: "frm_mcp_external",
+    sessionID,
+    title: "Browser step",
+    metadata: { kind: "mcp-elicitation", server: "Fixture MCP" },
+    fields: [{ key: "authorization", type: "external", url: "https://example.com/authorize" }],
+  } satisfies FormInfo
+  forms.push(external)
+  await workspace.push([
+    {
+      id: "evt_mcp_external",
+      created: 1700000002000,
+      type: "form.created",
+      location: { directory },
+      data: { form: external },
+    },
+  ])
+  await expect(dock).toBeVisible()
+  await expect(dock.getByRole("button", { name: "Open in browser" })).toBeVisible()
+  await dock.getByRole("button", { name: "Submit", exact: true }).click()
+  expect(replies).toHaveLength(2)
+  await dock.getByRole("checkbox", { name: /^I have completed/ }).check()
+  await dock.getByRole("button", { name: "Submit", exact: true }).click()
+  await expect.poll(() => replies.length).toBe(3)
+  expect(replies[2]).toEqual({ sessionID, body: { answer: { authorization: true } } })
 })
 
 function mockServer(

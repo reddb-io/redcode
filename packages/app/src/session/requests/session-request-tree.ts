@@ -70,5 +70,6 @@ export function sessionFormRequest(
 /** A form the session dock asks the user to answer, as opposed to other form kinds. */
 export const isSessionForm = (item: FormInfo) =>
   item.metadata?.kind === "question" ||
+  item.metadata?.kind === "mcp-elicitation" ||
   item.metadata?.kind === "websearch.provider" ||
   item.metadata?.kind === Vault.FORM_KIND

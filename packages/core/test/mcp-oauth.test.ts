@@ -142,6 +142,9 @@ describe("MCP OAuth", () => {
           const state = authorizationUrl.searchParams.get("state")
           if (!redirectValue || !state) throw new Error("Missing OAuth redirect parameters")
           const redirect = new URL(redirectValue)
+          // Browser probes must not settle the authorization before its actual redirect arrives.
+          expect((yield* Effect.promise(() => fetch(redirect, { method: "OPTIONS" }))).status).toBe(400)
+          expect((yield* Effect.promise(() => fetch(redirect))).status).toBe(400)
           redirect.searchParams.set("code", "accepted")
           redirect.searchParams.set("state", state)
           expect((yield* Effect.promise(() => fetch(redirect))).status).toBe(200)

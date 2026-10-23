@@ -4,16 +4,20 @@ import { ToolFailure } from "@opencode/ai"
 import type { Context } from "@opencode/plugin/effect/plugin"
 import type { SessionHooks } from "@opencode/plugin/effect/session"
 import type { Tool } from "@opencode/schema/tool"
+import { SessionTodo } from "@opencode/schema/session-todo"
 import { Deferred, Effect, Schema, Scope } from "effect"
 import { Config } from "../../config.js"
+import { Git } from "../../git.js"
 import { Environment } from "../../environment/index.js"
 import { Job } from "../../job.js"
 import { Location } from "../../location.js"
 import { FileAccess } from "../../file-access.js"
 import { Permission } from "../../permission.js"
-import { NonNegativeInt } from "../../schema.js"
+import { AbsolutePath, NonNegativeInt } from "../../schema.js"
 import { Session } from "../../session.js"
 import { SessionSchema } from "../../session/schema.js"
+import { SessionTodoStore } from "../../session/todo-store.js"
+import { SessionIntegrationVerification } from "../../session/integration-verification.js"
 import { Shell } from "../../shell.js"
 import { ShellGuard } from "../../shell/guard.js"
 import { ShellParse } from "../../shell/parse.js"
@@ -56,6 +60,10 @@ const description = (shell?: string) =>
 
 export const Input = Schema.Struct({
   command: Schema.String.annotate({ description: "Shell command string to execute" }),
+  integrationTaskID: Schema.optionalKey(Schema.String).annotate({
+    description:
+      "Validate this session's prepared integration task. Use a foreground command in a clean local checkout at the exact candidate SHA; the executor observes its revision before and after the check.",
+  }),
   workdir: Schema.optionalKey(Schema.String).annotate({
     description:
       "Working directory to execute the command in. Defaults to the current working directory. When possible, avoid changing directories in the command and set the working directory here instead.",
@@ -86,6 +94,8 @@ export const Input = Schema.Struct({
 export type Input = typeof Input.Type
 
 const StructuredOutput = Schema.Struct({
+  integrationVerification: Schema.optionalKey(SessionTodo.IntegrationVerification),
+  verificationError: Schema.optionalKey(Schema.String),
   exit: Schema.optionalKey(Schema.Number),
   signal: Schema.optionalKey(Schema.String),
   shellID: Schema.optionalKey(Schema.String),
@@ -103,7 +113,11 @@ type Output = typeof Output.Type
 
 const resultMessages = (output: Output) => {
   const notice = output.status === "running" ? BACKGROUND_INSTRUCTION : ShellResult.notice(output)
-  return [...(output.output ? [output.output] : []), ...(notice ? [notice] : [])]
+  return [
+    ...(output.output ? [output.output] : []),
+    ...(notice ? [notice] : []),
+    ...(output.verificationError ? [output.verificationError] : []),
+  ]
 }
 
 const toolResult = (output: Output) => {
@@ -112,6 +126,7 @@ const toolResult = (output: Output) => {
     content: resultMessages(output).map((text) => ({ type: "text" as const, text })),
     metadata: {
       status: output.status,
+      ...(output.integrationVerification ? { integrationVerification: output.integrationVerification } : {}),
       ...ShellResult.metadata(output),
       ...(output.shellID !== undefined ? { shellID: output.shellID } : {}),
     },
@@ -139,6 +154,8 @@ export const Plugin = {
     const compatibleShell = shellSelect.resolve({ priority: "compat" })
     const permission = yield* Permission.Service
     const config = yield* Config.Service
+    const git = yield* Git.Service
+    const todos = yield* SessionTodoStore.Service
 
     // `--yolo` reaches the server in the root Session's client environment; a subagent shares its root's mode.
     const yolo = Effect.fn("ShellTool.yolo")(function* (sessionID: SessionSchema.ID) {
@@ -306,6 +323,18 @@ export const Plugin = {
                 }),
               )
             return Effect.gen(function* () {
+              if (input.integrationTaskID && (input.background || location.workspaceID))
+                return yield* new ToolFailure({
+                  message: "Integration verification requires a foreground command in a local candidate checkout",
+                })
+              const candidate = input.integrationTaskID
+                ? (yield* todos.get(context.sessionID)).find((task) => task.id === input.integrationTaskID)?.integration
+                : undefined
+              if (input.integrationTaskID && !candidate)
+                return yield* new ToolFailure({
+                  message: "Prepare an integration candidate for this task before requesting verification",
+                })
+              const verification: { directory?: AbsolutePath; started: number } = { started: 0 }
               const timeout = input.background === true ? (input.timeout ?? 0) : (input.timeout ?? DEFAULT_TIMEOUT_MS)
               let finalTimeout = timeout
               // Values stay out of the command: approval and the stored input see the reference, and the shell reads
@@ -331,19 +360,32 @@ export const Plugin = {
                     finalTimeout = prepared.timeout
                     const destinations = VaultHosts.shell(prepared.segments)
                     hosts = "known" in destinations ? destinations.known.filter(VaultHosts.isHost) : []
-                    if (values.size === 0) return
-                    yield* VaultHosts.approve({
-                      permission,
-                      context,
-                      names: Array.from(values.keys()),
-                      destinations,
-                      detail: { command: input.command },
-                    })
-                    const bound = VaultShell.bind(invocation.command, invocation.shell, values)
-                    if ("failure" in bound) return yield* new ToolFailure({ message: bound.failure })
-                    invocation.command = bound.command
-                    invocation.script = bound.script
-                    invocation.env = { ...invocation.env, ...bound.env }
+                    if (values.size !== 0) {
+                      yield* VaultHosts.approve({
+                        permission,
+                        context,
+                        names: Array.from(values.keys()),
+                        destinations,
+                        detail: { command: input.command },
+                      })
+                      const bound = VaultShell.bind(invocation.command, invocation.shell, values)
+                      if ("failure" in bound) return yield* new ToolFailure({ message: bound.failure })
+                      invocation.command = bound.command
+                      invocation.script = bound.script
+                      invocation.env = { ...invocation.env, ...bound.env }
+                    }
+                    if (candidate) {
+                      verification.directory = yield* SessionIntegrationVerification.observe(
+                        git,
+                        AbsolutePath.make(invocation.cwd),
+                        candidate.head,
+                      )
+                      if (!verification.directory)
+                        return yield* new ToolFailure({
+                          message: "Run integration verification in a clean checkout at the prepared candidate SHA",
+                        })
+                      verification.started = Date.now()
+                    }
                   }),
               )
               yield* context.progress({ shellID: info.id })
@@ -358,8 +400,32 @@ export const Plugin = {
                   Effect.orDie,
                 )
                 const output = { ...shown, output: yield* vaultOutput(whole, shown, input.capture, hosts, binding) }
+                const checked =
+                  candidate && verification.directory
+                    ? yield* SessionIntegrationVerification.observe(git, verification.directory, candidate.head)
+                    : undefined
                 return {
                   ...output,
+                  ...(candidate && input.integrationTaskID
+                    ? checked && output.exit === 0 && !output.timeout
+                      ? {
+                          integrationVerification: {
+                            sessionID: context.sessionID,
+                            taskID: input.integrationTaskID,
+                            fingerprint: candidate.fingerprint,
+                            head: candidate.head,
+                            tree: candidate.tree,
+                            directory: checked,
+                            command: input.command,
+                            started: verification.started,
+                            completed: Date.now(),
+                          },
+                        }
+                      : {
+                          verificationError:
+                            "No integration verification receipt was recorded: the command failed, timed out, or changed the candidate checkout",
+                        }
+                    : {}),
                   output: output.timeout
                     ? `${output.output}\n\nCommand exceeded timeout of ${finalTimeout} ms. Retry with a larger timeout if the command is expected to take longer.`
                     : output.output,

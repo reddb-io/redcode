@@ -2,8 +2,9 @@ import fs from "fs/promises"
 import { realpathSync, watch } from "node:fs"
 import os from "os"
 import path from "path"
+import { $ } from "bun"
 import { describe, expect } from "bun:test"
-import { Cause, Deferred, Duration, Effect, Exit, Fiber, Layer, Queue, Scope, Stream } from "effect"
+import { Cause, Deferred, Duration, Effect, Exit, Fiber, Layer, Queue, Schema, Scope, Stream } from "effect"
 import { Money } from "@opencode/schema/money"
 import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
 import { LayerNode } from "@opencode/util/effect/layer-node"
@@ -23,6 +24,10 @@ import { Provider } from "@opencode/core/provider"
 import { AbsolutePath } from "@opencode/core/schema"
 import { Agent } from "@opencode/core/agent"
 import { Job } from "@opencode/core/job"
+import { Git } from "@opencode/core/git"
+import { SessionTodoStore } from "@opencode/core/session/todo-store"
+import { TodoTable } from "@opencode/core/session/redcode.sql"
+import { SessionTodo } from "@opencode/schema/session-todo"
 import { Session } from "@opencode/core/session"
 import { SessionEvent } from "@opencode/core/session/event"
 import { SessionExecution } from "@opencode/core/session/execution"
@@ -42,6 +47,7 @@ import { Vault } from "@opencode/core/vault/vault"
 import { Project } from "@opencode/schema/project"
 import { tmpdir, tmpdirScoped } from "./fixture/tmpdir"
 import { tempGlobalLayer } from "./fixture/global"
+import { initRepo } from "./fixture/git"
 import { offlineModels } from "./fixture/models"
 import { testEffect } from "./lib/effect"
 import { permissionLayer } from "./lib/permission"
@@ -139,6 +145,8 @@ const shellPluginSupervisor = makeLocationNode({
   layer: Layer.effectDiscard(registerToolPlugin(ShellTool.Plugin)),
   deps: [
     Config.node,
+    Git.node,
+    SessionTodoStore.node,
     Environment.node,
     FileAccess.node,
     Location.node,
@@ -802,35 +810,37 @@ describe("ShellTool ordinary shell syntax", () => {
       "Write-Output `\n  hello",
       "Write-Output @'\nhello\n'@",
     ]) {
-      test(`PowerShell ${portable ? "native" : "legacy"}: ordinary syntax reuses approvals: ${command}`, () =>
-        withScanner(
-          portable,
-          (registry, directory) =>
-            Effect.gen(function* () {
-              const saved = yield* PermissionSaved.Service
-              const location = yield* Location.Service
-              yield* saved.add({
-                projectID: location.project.id,
-                action: "shell",
-                resources: ["Write-Output *", "Show-Value *"],
-              })
-              const result = yield* runPermissionCommand(
-                registry,
-                command,
-                path.join(directory.active, "marker"),
-                [],
-                Duration.seconds(30),
-              )
-              expect(result.requests).toEqual([])
-              expect(result.exit).toMatchObject({
-                _tag: "Success",
-                value: { status: "completed", metadata: { exit: 0 } },
-              })
-              if (Exit.isSuccess(result.exit))
-                expect(result.exit.value.content?.[0]).toEqual(Expected.text(isWindows ? "hello\r\n" : "hello\n"))
-            }),
-          pwsh ?? "pwsh",
-        ),
+      test(
+        `PowerShell ${portable ? "native" : "legacy"}: ordinary syntax reuses approvals: ${command}`,
+        () =>
+          withScanner(
+            portable,
+            (registry, directory) =>
+              Effect.gen(function* () {
+                const saved = yield* PermissionSaved.Service
+                const location = yield* Location.Service
+                yield* saved.add({
+                  projectID: location.project.id,
+                  action: "shell",
+                  resources: ["Write-Output *", "Show-Value *"],
+                })
+                const result = yield* runPermissionCommand(
+                  registry,
+                  command,
+                  path.join(directory.active, "marker"),
+                  [],
+                  Duration.seconds(30),
+                )
+                expect(result.requests).toEqual([])
+                expect(result.exit).toMatchObject({
+                  _tag: "Success",
+                  value: { status: "completed", metadata: { exit: 0 } },
+                })
+                if (Exit.isSuccess(result.exit))
+                  expect(result.exit.value.content?.[0]).toEqual(Expected.text(isWindows ? "hello\r\n" : "hello\n"))
+              }),
+            pwsh ?? "pwsh",
+          ),
         30_000,
       )
     }
@@ -875,6 +885,76 @@ describe("ShellTool ordinary shell syntax", () => {
 })
 
 describe("ShellTool", () => {
+  for (const [title, command, valid] of [
+    ["an unchanged candidate", "git status --short", true],
+    ["a failed check", "git rev-parse --verify refs/heads/does-not-exist", false],
+    ["a check that changes source files", "git status --short > verification-output.txt", false],
+    ["a check that changes HEAD", "git -c commit.gpgsign=false commit --allow-empty -m changed", false],
+  ] as const)
+    it.live(`records integration verification only for a successful check of ${title}`, () =>
+      Effect.gen(function* () {
+        const tmp = yield* tmpdirScoped()
+        yield* Effect.promise(() => initRepo(tmp.path))
+        reset()
+        return yield* withSession(tmp.path, (registry) =>
+          Effect.gen(function* () {
+            const database = yield* Database.Service
+            const head = yield* Effect.promise(async () =>
+              (await $`git rev-parse HEAD`.cwd(tmp.path).quiet()).text().trim(),
+            )
+            const tree = yield* Effect.promise(async () =>
+              (await $`git rev-parse HEAD^{tree}`.cwd(tmp.path).quiet()).text().trim(),
+            )
+            const candidate = Schema.decodeUnknownSync(SessionTodo.Integration)({
+              fingerprint: "fixture-contract",
+              preparedAt: Date.now(),
+              target: tmp.path,
+              targetHead: head,
+              head,
+              tree,
+              sources: [
+                {
+                  taskID: "source",
+                  taskRevision: 1,
+                  fingerprint: "source-contract",
+                  sessionID,
+                  promptID: "source-prompt",
+                  sessionDirectory: tmp.path,
+                  directory: tmp.path,
+                  head,
+                },
+              ],
+            })
+            yield* database.db
+              .insert(TodoTable)
+              .values({
+                session_id: sessionID,
+                position: 0,
+                task_id: "integration",
+                content: "Verify candidate",
+                status: "in_progress",
+                priority: "high",
+                details: { integration: candidate },
+              })
+              .run()
+            const result = yield* executeTool(registry, call({ command, integrationTaskID: "integration" }))
+            expect(result.status).toBe("completed")
+            if (result.status !== "completed") throw new Error("Expected the check to return its outcome")
+            expect(result.metadata?.integrationVerification !== undefined).toBe(valid)
+            if (valid)
+              expect(result.metadata?.integrationVerification).toMatchObject({
+                sessionID,
+                taskID: "integration",
+                head,
+                tree,
+                fingerprint: "fixture-contract",
+                command,
+              })
+          }),
+        )
+      }),
+    )
+
   it.live("returns both parallel CodeMode shell results", () =>
     Effect.acquireUseRelease(
       Effect.promise(() => tmpdir()),
@@ -1337,9 +1417,7 @@ describe("ShellTool", () => {
               expect(settled.status).toBe("completed")
               expect(settled.metadata).toMatchObject({ exit: 7, truncated: false })
               expect(settled.content?.[0]).toEqual({ type: "text", text: "body" })
-              expect(settled.content?.[1]).toMatchObject(
-                Expected.text(expect.stringContaining("Exited with code 7")),
-              )
+              expect(settled.content?.[1]).toMatchObject(Expected.text(expect.stringContaining("Exited with code 7")))
             }),
           ),
         )
@@ -1366,9 +1444,7 @@ describe("ShellTool", () => {
                 if (!content || content.type !== "text") throw new Error("Expected text content")
                 expect(content.text.includes("output-start")).toBe(false)
                 expect(content.text.includes("output-end")).toBe(true)
-                expect(content).toMatchObject(
-                  Expected.text(expect.stringContaining("full output saved to ")),
-                )
+                expect(content).toMatchObject(Expected.text(expect.stringContaining("full output saved to ")))
               }),
             ),
           )
@@ -1717,60 +1793,62 @@ describe("ShellTool", () => {
     )
   }
 
-  it.live("backgrounds a foreground command when the session is signaled", () =>
-    Effect.acquireUseRelease(
-      Effect.promise(() => tmpdir()),
-      (tmp) => {
-        reset()
-        return withSession(tmp.path, (registry) =>
-          Effect.gen(function* () {
-            const jobs = yield* Job.Service
-            const scope = yield* Scope.Scope
-            const waiting = yield* executeTool(
-              registry,
-              call({ command: foregroundIdleCommand, timeout: 0 }, "call-background-signal"),
-            ).pipe(Effect.forkIn(scope, { startImmediately: true }))
+  it.live(
+    "backgrounds a foreground command when the session is signaled",
+    () =>
+      Effect.acquireUseRelease(
+        Effect.promise(() => tmpdir()),
+        (tmp) => {
+          reset()
+          return withSession(tmp.path, (registry) =>
+            Effect.gen(function* () {
+              const jobs = yield* Job.Service
+              const scope = yield* Scope.Scope
+              const waiting = yield* executeTool(
+                registry,
+                call({ command: foregroundIdleCommand, timeout: 0 }, "call-background-signal"),
+              ).pipe(Effect.forkIn(scope, { startImmediately: true }))
 
-            const backgroundWhenReady = (remaining = 1000): Effect.Effect<Job.Info[], Error> =>
-              Effect.gen(function* () {
-                const backgrounded = yield* jobs.backgroundAll({ sessionID })
-                if (backgrounded.length > 0) return backgrounded
-                if (remaining <= 0) return yield* Effect.fail(new Error("Timed out waiting for foreground shell job"))
-                yield* Effect.sleep(Duration.millis(10))
-                return yield* backgroundWhenReady(remaining - 1)
+              const backgroundWhenReady = (remaining = 1000): Effect.Effect<Job.Info[], Error> =>
+                Effect.gen(function* () {
+                  const backgrounded = yield* jobs.backgroundAll({ sessionID })
+                  if (backgrounded.length > 0) return backgrounded
+                  if (remaining <= 0) return yield* Effect.fail(new Error("Timed out waiting for foreground shell job"))
+                  yield* Effect.sleep(Duration.millis(10))
+                  return yield* backgroundWhenReady(remaining - 1)
+                })
+              const backgrounded = yield* backgroundWhenReady()
+              const settled = yield* Fiber.join(waiting)
+              const shellID = typeof settled.metadata?.shellID === "string" ? settled.metadata.shellID : undefined
+              expect(backgrounded).toMatchObject([{ id: shellID, type: "shell" }])
+              const location = yield* Location.Service
+              expect(yield* jobs.runningBackgroundShellLocations).toEqual([
+                Location.Ref.make({ directory: location.directory, workspaceID: location.workspaceID }),
+              ])
+              expect(settled.metadata).toMatchObject({ truncated: false })
+              expect(shellID).toStartWith("sh_")
+
+              const shell = yield* Shell.Service
+              if (!shellID) return
+              const id = ID.make(shellID)
+              const info = yield* shell.get(id)
+              expect(settled.content?.[0]).toEqual({
+                type: "text",
+                text: `Command moved to the background (shell ID: ${shellID}).\nOutput is streaming to: ${info.file}`,
               })
-            const backgrounded = yield* backgroundWhenReady()
-            const settled = yield* Fiber.join(waiting)
-            const shellID = typeof settled.metadata?.shellID === "string" ? settled.metadata.shellID : undefined
-            expect(backgrounded).toMatchObject([{ id: shellID, type: "shell" }])
-            const location = yield* Location.Service
-            expect(yield* jobs.runningBackgroundShellLocations).toEqual([
-              Location.Ref.make({ directory: location.directory, workspaceID: location.workspaceID }),
-            ])
-            expect(settled.metadata).toMatchObject({ truncated: false })
-            expect(shellID).toStartWith("sh_")
-
-            const shell = yield* Shell.Service
-            if (!shellID) return
-            const id = ID.make(shellID)
-            const info = yield* shell.get(id)
-            expect(settled.content?.[0]).toEqual({
-              type: "text",
-              text: `Command moved to the background (shell ID: ${shellID}).\nOutput is streaming to: ${info.file}`,
-            })
-            expect(settled.content?.[1]).toEqual({
-              type: "text",
-              text: "You will be notified automatically when the command finishes. The notification will include the command's output. Unless the user explicitly asks otherwise, DO NOT poll for completion, even if you need the final result to continue. Repeatedly sleeping and reading or searching the output file is polling, not useful work. You may read the current output if it lets you do useful work now, but do not repeatedly check it while waiting for the command to finish. Keep working on anything that does not depend on the result. If you have nothing else to do, end your response; you will be resumed automatically when the command finishes.",
-            })
-            yield* Effect.sleep(Duration.millis(100))
-            expect((yield* shell.get(id)).status).toBe("running")
-            expect((yield* shell.list()).map((info) => info.id)).toContain(id)
-            yield* shell.remove(id)
-          }),
-        )
-      },
-      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]().then(() => undefined)),
-    ),
+              expect(settled.content?.[1]).toEqual({
+                type: "text",
+                text: "You will be notified automatically when the command finishes. The notification will include the command's output. Unless the user explicitly asks otherwise, DO NOT poll for completion, even if you need the final result to continue. Repeatedly sleeping and reading or searching the output file is polling, not useful work. You may read the current output if it lets you do useful work now, but do not repeatedly check it while waiting for the command to finish. Keep working on anything that does not depend on the result. If you have nothing else to do, end your response; you will be resumed automatically when the command finishes.",
+              })
+              yield* Effect.sleep(Duration.millis(100))
+              expect((yield* shell.get(id)).status).toBe("running")
+              expect((yield* shell.list()).map((info) => info.id)).toContain(id)
+              yield* shell.remove(id)
+            }),
+          )
+        },
+        (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]().then(() => undefined)),
+      ),
     20_000,
   )
 })
@@ -1810,8 +1888,7 @@ describe("ShellTool vault references", () => {
         )
       },
       (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]().then(() => undefined)),
-    ),
-  )
+    ))
 
   test("fails an unknown reference before anything runs", () =>
     Effect.acquireUseRelease(
@@ -1835,8 +1912,7 @@ describe("ShellTool vault references", () => {
         )
       },
       (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]().then(() => undefined)),
-    ),
-  )
+    ))
 
   // A login response, assembled by the command so the token is never in its text.
   const parts = ["eyJ" + "hbGciOiJIUzI1NiJ9", "eyJ" + "zdWIiOiJtZSJ9", "c2lnbmF0dXJl" + "LXBhcnQ"]
@@ -1867,8 +1943,7 @@ describe("ShellTool vault references", () => {
         )
       },
       (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]().then(() => undefined)),
-    ),
-  )
+    ))
 
   test("captures an opaque value by JSON path and by pattern", () =>
     Effect.acquireUseRelease(
@@ -1912,8 +1987,7 @@ describe("ShellTool vault references", () => {
         })
       },
       (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]().then(() => undefined)),
-    ),
-  )
+    ))
 
   test("asks about an unknown destination without always, and runs nothing on a decline", () =>
     Effect.acquireUseRelease(
@@ -1944,8 +2018,7 @@ describe("ShellTool vault references", () => {
         )
       },
       (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]().then(() => undefined)),
-    ),
-  )
+    ))
 
   test("hands a value inside backticks to the shell through a variable set only for the child", () =>
     Effect.acquireUseRelease(
@@ -1960,17 +2033,14 @@ describe("ShellTool vault references", () => {
         ).pipe(
           Effect.andThen((settled) =>
             Effect.sync(() => {
-              expect(settled.status === "completed" ? settled.output.output.trim() : settled).toBe(
-                String(token.length),
-              )
+              expect(settled.status === "completed" ? settled.output.output.trim() : settled).toBe(String(token.length))
               expect(JSON.stringify([assertions, settled])).not.toContain(token)
             }),
           ),
         )
       },
       (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]().then(() => undefined)),
-    ),
-  )
+    ))
 
   test("skips a capture after a failed command and still shows a known secret only as its reference", () =>
     Effect.acquireUseRelease(
@@ -1994,8 +2064,7 @@ describe("ShellTool vault references", () => {
         )
       },
       (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]().then(() => undefined)),
-    ),
-  )
+    ))
 
   test("stores an unnamed capture under a generated name and explains an unknown capture source", () =>
     Effect.acquireUseRelease(
@@ -2029,6 +2098,5 @@ describe("ShellTool vault references", () => {
         })
       },
       (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]().then(() => undefined)),
-    ),
-  )
+    ))
 })

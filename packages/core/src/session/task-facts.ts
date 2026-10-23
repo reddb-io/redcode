@@ -1,10 +1,11 @@
 export * as SessionTaskFacts from "./task-facts.js"
 
 import { SubagentReview } from "@opencode/schema/subagent-review"
+import { SessionTodo } from "@opencode/schema/session-todo"
 import { createHash } from "node:crypto"
 import path from "node:path"
 import { asc, eq } from "drizzle-orm"
-import { Context, DateTime, Effect, Layer } from "effect"
+import { Context, DateTime, Effect, Layer, Option, Schema } from "effect"
 import { makeGlobalNode } from "@opencode/util/effect/app-node"
 import { Database } from "../database/database.js"
 import { IntelligenceEvaluation } from "../intelligence/evaluation.js"
@@ -43,6 +44,7 @@ export type Result = {
   error: string
   exit?: number
   input: unknown
+  integrationVerification?: SessionTodo.IntegrationVerification
   summary: string
 }
 /** A user request as the task gate reads it; `pending` when admitted to the inbox but not promoted. */
@@ -384,6 +386,8 @@ export function command(input: unknown, limit = 120) {
   return text.length > limit ? `${text.slice(0, limit)}…` : text
 }
 
+const decodeIntegrationVerification = Schema.decodeUnknownOption(SessionTodo.IntegrationVerification)
+
 /** Derive evidence from the ordered projection, including results outside the compacted model window. */
 export function project(
   messages: ReadonlyArray<SessionMessage.Info>,
@@ -403,6 +407,9 @@ export function project(
           return [
             {
               ...(sessionID ? { sessionID } : {}),
+              integrationVerification: Option.getOrUndefined(
+                decodeIntegrationVerification(metadata.integrationVerification),
+              ),
               callID: part.id,
               messageID: message.id,
               tool: part.name,

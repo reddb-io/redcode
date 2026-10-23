@@ -2333,7 +2333,7 @@ export function make(options: ClientOptions) {
           {
             method: "PATCH",
             path: `/api/credential/${encodeURIComponent(input.credentialID)}`,
-            body: { label: input["label"] },
+            body: { label: input["label"], value: input["value"] },
             successStatus: 204,
             declaredStatuses: [400, 401, 403, 409],
             empty: true,

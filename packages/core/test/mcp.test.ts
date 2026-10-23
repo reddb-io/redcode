@@ -2680,6 +2680,80 @@ shutdownIt.effect("discards in-flight and queued MCP notifications after its lay
   }),
 )
 
+describe.each(["connect", "disconnect"] as const)("%s during initial MCP startup", (operation) => {
+  shutdownIt.live("is not undone by the queued startup", () =>
+    Effect.gen(function* () {
+      const bus = yield* Bus.Service
+      const server = yield* resourceServer()
+      const entered = yield* Deferred.make<void>()
+      const release = yield* Deferred.make<void>()
+      const root = yield* Scope.make()
+      yield* Effect.addFinalizer(() =>
+        Deferred.succeed(release, undefined).pipe(Effect.andThen(State.shutdown(Scope.close(root, Exit.void)))),
+      )
+      const service = Context.get(yield* Layer.buildWithScope(Mcp.layer(), root), Mcp.Service)
+      // Hold reconciliation after entries exist and before their asynchronous startup is scheduled.
+      yield* Effect.acquireRelease(
+        bus.listen((event) =>
+          Effect.gen(function* () {
+            if (event.type !== McpEvent.StatusChanged.type) return
+            if (Schema.decodeUnknownSync(McpEvent.StatusChanged.data)(event.data).server !== "gate") return
+            yield* Deferred.succeed(entered, undefined)
+            yield* Deferred.await(release)
+          }),
+        ),
+        (unsubscribe) => unsubscribe,
+      )
+      const reconciling = yield* service
+        .transform((editor) => {
+          editor.set("gate", { type: "local", command: ["unused"], disabled: true })
+          editor.set("resources", { type: "remote", url: server.url, oauth: false })
+        })
+        .pipe(Scope.provide(root), Effect.forkChild({ startImmediately: true }))
+      yield* Deferred.await(entered)
+      yield* service[operation]("resources")
+      yield* Deferred.succeed(release, undefined)
+      yield* Fiber.join(reconciling)
+      yield* service.disconnect("resources")
+      expect(server.state.initializations).toBe(operation === "connect" ? 1 : 0)
+      expect((yield* service.servers()).find((item) => item.name === "resources")?.status).toEqual({
+        status: "disabled",
+      })
+    }),
+  )
+})
+
+shutdownIt.live("closes independent stdio servers together before escalating termination", () =>
+  Effect.gen(function* () {
+    const temporary = yield* tmpdirScoped()
+    const root = yield* Scope.make()
+    yield* Effect.addFinalizer(() => State.shutdown(Scope.close(root, Exit.void)))
+    const service = Context.get(yield* Layer.buildWithScope(Mcp.layer(), root), Mcp.Service)
+    yield* service
+      .transform((editor) => {
+        for (const [name, peer] of [
+          ["first", "second"],
+          ["second", "first"],
+        ])
+          editor.set(name!, {
+            type: "local",
+            command: [
+              process.execPath,
+              path.join(import.meta.dir, "fixture/mcp-shutdown.ts"),
+              temporary.path,
+              name!,
+              peer!,
+            ],
+          })
+      })
+      .pipe(Scope.provide(root))
+    for (const name of ["first", "second"]) expect((yield* settled(service, name))?.status).toBe("connected")
+    yield* State.shutdown(Scope.close(root, Exit.void))
+    for (const name of ["first", "second"])
+      expect(yield* Effect.promise(() => Bun.file(path.join(temporary.path, `${name}.clean`)).text())).toBe("clean")
+  }),
+)
+
 test("serializes concurrent MCP lifecycle operations", async () => {
   await Effect.runPromise(
     Effect.scoped(
