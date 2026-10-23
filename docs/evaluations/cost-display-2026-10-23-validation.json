@@ -1,0 +1,208 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-23",
+  "recordedAtUTC": "2026-10-23T13:07:28.112784+00:00",
+  "baselineCommit": "ab173e746fb7810055f6b1ee20958505e6bd1260",
+  "implementationCommit": "92fbac8f65c301bf663d473ee9b634d4a42b2308",
+  "packagesTree": "29a5e44f07605920e090a5afbe685f3d47cbacd0",
+  "branch": "main",
+  "published": false,
+  "completeParity": false,
+  "platform": {
+    "os": "Linux",
+    "arch": "x86_64",
+    "bun": "1.4.4"
+  },
+  "checks": [
+    {
+      "name": "cli",
+      "cwd": "packages/cli",
+      "command": "bun test test/stats.test.ts test/import-boundaries.test.ts",
+      "passed": 24,
+      "failed": 0,
+      "assertions": 106,
+      "exitCode": 0,
+      "log": "cli"
+    },
+    {
+      "name": "client",
+      "cwd": "packages/client",
+      "command": "bun test test/solid-data.test.ts test/solid-compaction.test.ts test/solid-eviction.test.ts test/solid-connection.test.ts test/import-boundaries.test.ts",
+      "passed": 66,
+      "failed": 0,
+      "assertions": 345,
+      "exitCode": 0,
+      "log": "client"
+    },
+    {
+      "name": "canonical lint and types",
+      "cwd": ".",
+      "command": "bun run check",
+      "successfulTasks": 27,
+      "totalTasks": 27,
+      "cachedTasks": 0,
+      "exitCode": 0,
+      "log": "check"
+    },
+    {
+      "name": "committed generated Client stability",
+      "cwd": "packages/client",
+      "command": "bun run check:generated",
+      "exitCode": 0,
+      "log": "generated",
+      "note": "No public Protocol or HttpApi change; regeneration after the implementation commit produced no file differences."
+    }
+  ],
+  "cliRuntime": {
+    "test": "stats command preserves HTTP cost coverage in text and JSON output",
+    "entrypoint": "packages/cli/src/index.ts",
+    "commands": [
+      "bun run src/index.ts stats --server <loopback-fixture-url> --cost --models",
+      "bun run src/index.ts stats --server <loopback-fixture-url> --json"
+    ],
+    "transport": "Bun HTTP server bound to 127.0.0.1 on an ephemeral port with fixture /api/info and /api/experimental/session/stats responses.",
+    "storage": "Temporary XDG data/config/cache/state directories removed after the subprocesses exit; no managed background service resolution.",
+    "verified": [
+      "Exit code zero and empty stderr.",
+      "Text output exposes the positive known subtotal, unknown record count and unresolved model zero as unknown.",
+      "JSON preserves numeric amounts and every cost-coverage field.",
+      "Text detail requests tools=none; JSON requests tools=detail."
+    ],
+    "log": "cli",
+    "note": "Real command parsing, explicit server connection, HTTP decoding and rendering; server payloads are synthetic, not provider billing."
+  },
+  "liveProjectionNegativeControl": {
+    "cwd": "packages/client",
+    "command": "bun test test/solid-data.test.ts --test-name-pattern \"projects live (reported|estimated|unknown) cost provenance\"",
+    "mutation": "Temporarily removed only the two assistant.costAssessment assignments in the Solid ended/failed step projection.",
+    "expectedFailingTests": 3,
+    "observedFailingTests": 3,
+    "exitCode": 1,
+    "restored": true,
+    "log": "negative",
+    "note": "Production file restored byte-for-byte before final canonical verification; positive Client regression run tested the same restored content."
+  },
+  "displayExamples": {
+    "entrypoint": "renderStats from packages/cli/src/commands/handlers/stats.ts",
+    "width": 80,
+    "synthetic": true,
+    "cases": [
+      {
+        "name": "reported-zero",
+        "input": {
+          "cost": 0,
+          "costCoverage": {
+            "reported": 1,
+            "estimated": 0,
+            "unknown": 0,
+            "legacy": 0
+          }
+        },
+        "output": "synthetic example \u00b7 fixture\n\nCOST & TOKENS\n  cost                $0.00\n  reported records    1\n  estimated records   0\n  unknown records     0\n  legacy records      0\n  input               1k\n  output              100\n  reasoning           0\n  cache read          0\n  cache write         0\n  cached input        0.00%"
+      },
+      {
+        "name": "estimated",
+        "input": {
+          "cost": 0.12,
+          "costCoverage": {
+            "reported": 0,
+            "estimated": 1,
+            "unknown": 0,
+            "legacy": 0
+          }
+        },
+        "output": "synthetic example \u00b7 fixture\n\nCOST & TOKENS\n  cost                ~$0.12\n  ~ includes estimated costs\n  reported records    0\n  estimated records   1\n  unknown records     0\n  legacy records      0\n  input               1k\n  output              100\n  reasoning           0\n  cache read          0\n  cache write         0\n  cached input        0.00%"
+      },
+      {
+        "name": "partial",
+        "input": {
+          "cost": 0.12,
+          "costCoverage": {
+            "reported": 1,
+            "estimated": 0,
+            "unknown": 1,
+            "legacy": 0
+          }
+        },
+        "output": "synthetic example \u00b7 fixture\n\nCOST & TOKENS\n  known subtotal      $0.12+\n  + excludes unknown costs\n  reported records    1\n  estimated records   0\n  unknown records     1\n  legacy records      0\n  input               1k\n  output              100\n  reasoning           0\n  cache read          0\n  cache write         0\n  cached input        0.00%"
+      },
+      {
+        "name": "unresolved",
+        "input": {
+          "cost": 0,
+          "costCoverage": {
+            "reported": 0,
+            "estimated": 0,
+            "unknown": 1,
+            "legacy": 0
+          }
+        },
+        "output": "synthetic example \u00b7 fixture\n\nCOST & TOKENS\n  cost                unknown\n  + excludes unknown costs\n  reported records    0\n  estimated records   0\n  unknown records     1\n  legacy records      0\n  input               1k\n  output              100\n  reasoning           0\n  cache read          0\n  cache write         0\n  cached input        0.00%"
+      },
+      {
+        "name": "legacy",
+        "input": {
+          "cost": 0.12,
+          "costCoverage": {
+            "reported": 0,
+            "estimated": 0,
+            "unknown": 0,
+            "legacy": 1
+          }
+        },
+        "output": "synthetic example \u00b7 fixture\n\nCOST & TOKENS\n  cost                $0.12*\n  * cost provenance unavailable\n  reported records    0\n  estimated records   0\n  unknown records     0\n  legacy records      1\n  input               1k\n  output              100\n  reasoning           0\n  cache read          0\n  cache write         0\n  cached input        0.00%"
+      },
+      {
+        "name": "old-server",
+        "input": {
+          "cost": 0.12
+        },
+        "output": "synthetic example \u00b7 fixture\n\nCOST & TOKENS\n  cost                $0.12*\n  * cost provenance unavailable\n  input               1k\n  output              100\n  reasoning           0\n  cache read          0\n  cache write         0\n  cached input        0.00%"
+      }
+    ],
+    "log": "samples",
+    "note": "Rendered by the actual production formatter. Automated text-layout checks cover 48 and 80 columns."
+  },
+  "behaviorCovered": [
+    "Reported zero remains $0.00; all-unresolved zero displays unknown, not free usage.",
+    "Positive incomplete costs display a known subtotal with +; estimates use ~ and unclassified or legacy provenance uses * with explanatory text.",
+    "Overall coverage reports accounting-record counts without fabricating per-status monetary amounts or absent historical counts.",
+    "Model qualifiers come from each displayed model, never from global coverage or hidden rows.",
+    "Default shareable CLI output and the unchanged TUI stats poster omit monetary details; JSON remains an unchanged API payload.",
+    "Solid client projection retains assessment on successful and failed step settlements, including historical events without metadata.",
+    "Client reconnect, compaction, eviction and package import-boundary regressions passed."
+  ],
+  "limits": [
+    "Session-family cost provenance in TUI/GUI indicators and ACP remains pending; paginated message coverage cannot classify totals that also include auxiliary calls and descendants.",
+    "Automatic detailed provider media/cache meters and validated V2 default cutover remain pending.",
+    "No graphical interface or browser changes, live inference, invoice reconciliation, remote CI, push or publication.",
+    "No changes to historical numeric cost values, public schemas, Protocol or HttpApi.",
+    "Only the focused suites listed here ran; this is not the complete repository test suite."
+  ],
+  "logs": {
+    "cli": {
+      "path": "/var/tmp/redcode-cost-display-cli-tests.log",
+      "sha256": "a76d76caa3bb05d09225f56a849374e9215245c17053f605355f2fee3ed67cb6"
+    },
+    "client": {
+      "path": "/var/tmp/redcode-cost-display-client-tests.log",
+      "sha256": "cc47d925585ce169738f15dfe12f1bcc35fab32bf98b1d343dcdd1bae6df67d1"
+    },
+    "negative": {
+      "path": "/var/tmp/redcode-cost-display-client-negative.log",
+      "sha256": "8d29df42c3b748fa0cbf340e1b04a605d51e8df7c7fd3bbf94762cf1d98202f6"
+    },
+    "check": {
+      "path": "/var/tmp/redcode-cost-display-check.log",
+      "sha256": "f89cccb7a12f943d1704f0647095b8d937fe721c50e06de05d06184961d2d878"
+    },
+    "generated": {
+      "path": "/var/tmp/redcode-cost-display-generated-check.log",
+      "sha256": "2650c77b0592cdd0c6d59af0c2090bde6b22503e039643b7226f02ebc545e022"
+    },
+    "samples": {
+      "path": "/var/tmp/redcode-cost-display-samples.json",
+      "sha256": "29a25d51aae295e9cdb8ae0da7b0f17f287ac9bc32244e6f546cfe6316b0e11a"
+    }
+  }
+}
