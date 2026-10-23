@@ -32,6 +32,17 @@ and `*` marks unavailable cost provenance. A zero contribution with unresolved c
 `unknown`; provider-reported zero remains `$0.00`. Cost coverage counts accounting records, not
 requests or invoices. `--json` preserves the API's numeric amounts and coverage metadata.
 
+The built-in model catalog and first public refresh source use models.dev V2. Configured sources retain
+priority, with V1 public sources available as fallbacks. Pinned compatibility entries retain existing
+provider/model IDs missing from V2. Unsupported media or decision APIs remain catalog metadata and do
+not become chat routes merely because the catalog names an SDK.
+
+Anthropic cache writes retain observed 5-minute and 1-hour quantities. OpenAI Chat audio usage and
+Gemini modality/cache detail arrays use separate billing meters. Estimates require those quantities to
+reconcile with reported totals; missing cache duration, ambiguous cached audio, cache storage, unknown
+rates and unmetered native-tool charges stay unknown. Provider-reported USD, including zero, takes
+precedence. Token-only local overrides cannot silently cover media charges.
+
 Mini shows the last settled step's cost, including after reconnecting or resizing; it does not show
 family spending. Reported zero stays `$0.00`, estimates use `~`, known partial amounts use `+`, and
 older amounts without provenance use `*`. `cost unknown` and `cost unavailable` distinguish unresolved

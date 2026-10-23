@@ -398,6 +398,12 @@ const AnthropicIterationUsage = Schema.StructWithRest(
     input_tokens: optionalNull(Schema.Number),
     output_tokens: Schema.optional(Schema.Number),
     cache_creation_input_tokens: optionalNull(Schema.Number),
+    cache_creation: optionalNull(
+      Schema.Struct({
+        ephemeral_5m_input_tokens: Schema.optional(Schema.Number),
+        ephemeral_1h_input_tokens: Schema.optional(Schema.Number),
+      }),
+    ),
     cache_read_input_tokens: optionalNull(Schema.Number),
     server_tool_use: optionalNull(
       Schema.StructWithRest(Schema.Struct({ web_search_requests: Schema.optional(Schema.Number) }), [
@@ -1163,6 +1169,71 @@ const mapUsage = (usage: AnthropicUsage | undefined, providerMetadataKey: string
     cacheWriteInputTokens: cacheWrite,
     reasoningTokens: ProviderShared.sumTokens(...iterations.map((item) => item.output_tokens_details?.thinking_tokens)),
     totalTokens: ProviderShared.totalTokens(inputTokens, outputTokens, undefined),
+    meters: iterations.flatMap((item) => [
+      { modality: "text", direction: "input" as const, unit: "token", quantity: item.input_tokens ?? 0 },
+      {
+        modality: "text",
+        direction: "input" as const,
+        unit: "token",
+        component: "cache.read" as const,
+        cacheMode: "explicit" as const,
+        quantity: item.cache_read_input_tokens ?? 0,
+      },
+      ...(item.cache_creation
+        ? [
+            {
+              modality: "text",
+              direction: "input" as const,
+              unit: "token",
+              component: "cache.write" as const,
+              cacheMode: "explicit" as const,
+              cacheTTL: "5m",
+              quantity: item.cache_creation.ephemeral_5m_input_tokens ?? 0,
+            },
+            {
+              modality: "text",
+              direction: "input" as const,
+              unit: "token",
+              component: "cache.write" as const,
+              cacheMode: "explicit" as const,
+              cacheTTL: "1h",
+              quantity: item.cache_creation.ephemeral_1h_input_tokens ?? 0,
+            },
+          ]
+        : [
+            {
+              modality: "text",
+              direction: "input" as const,
+              unit: "token",
+              component: "cache.write" as const,
+              cacheMode: "explicit" as const,
+              quantity: item.cache_creation_input_tokens ?? 0,
+            },
+          ]),
+      {
+        modality: "text",
+        direction: "output" as const,
+        unit: "token",
+        quantity: Math.max(0, (item.output_tokens ?? 0) - (item.output_tokens_details?.thinking_tokens ?? 0)),
+      },
+      {
+        modality: "text",
+        direction: "output" as const,
+        unit: "token",
+        component: "reasoning" as const,
+        quantity: item.output_tokens_details?.thinking_tokens ?? 0,
+      },
+      ...(item.server_tool_use?.web_search_requests !== undefined
+        ? [
+            {
+              modality: "web_search",
+              direction: "search" as const,
+              unit: "search",
+              quantity: item.server_tool_use.web_search_requests,
+            },
+          ]
+        : []),
+    ]),
     providerMetadata: { [providerMetadataKey]: usage },
   })
 }
@@ -1190,6 +1261,24 @@ const mergeUsage = (left: Usage | undefined, right: Usage | undefined, providerM
     cacheWriteInputTokens,
     reasoningTokens,
     totalTokens: ProviderShared.totalTokens(inputTokens, outputTokens, undefined),
+    // Streaming deltas may omit the input/cache breakdown sent at message_start.
+    meters: [
+      ...[
+        { direction: "input", component: "price", present: right.nonCachedInputTokens !== undefined },
+        { direction: "input", component: "cache.read", present: right.cacheReadInputTokens !== undefined },
+        { direction: "input", component: "cache.write", present: right.cacheWriteInputTokens !== undefined },
+        { direction: "output", component: "price", present: right.outputTokens !== undefined },
+        { direction: "output", component: "reasoning", present: right.reasoningTokens !== undefined },
+      ].flatMap(
+        (group) =>
+          (group.present ? right : left).meters?.filter(
+            (meter) => meter.direction === group.direction && (meter.component ?? "price") === group.component,
+          ) ?? [],
+      ),
+      ...((right.meters?.some((meter) => meter.direction === "search") ? right : left).meters?.filter(
+        (meter) => meter.direction === "search",
+      ) ?? []),
+    ],
     providerMetadata: {
       [providerMetadataKey]:
         mergeJsonRecords(left.providerMetadata?.[providerMetadataKey], right.providerMetadata?.[providerMetadataKey]) ??

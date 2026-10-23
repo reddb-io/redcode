@@ -65,7 +65,7 @@ export function record(
       usage.cacheReadInputTokens,
       usage.cacheWriteInputTokens,
     ].every((value) => value === undefined)
-  return estimate(normalized, model, request, missing)
+  return estimate(normalized, model, request, missing, usage)
 }
 
 export function estimate(
@@ -73,6 +73,7 @@ export function estimate(
   model: Model.Info["cost"] | PricingModel,
   request?: LLMRequest,
   missingUsage = false,
+  observed?: Usage,
 ): Recorded {
   const costs = "cost" in model ? model.cost : model
   const catalog = "cost" in model ? model.catalog : undefined
@@ -81,7 +82,9 @@ export function estimate(
   const priced = costs.length
     ? { amount: calculateCost(costs, normalized) }
     : rich
-      ? ModelPricing.tokens(catalog, normalized, request ? ModelPricing.request(request) : {})
+      ? observed
+        ? ModelPricing.usage(catalog, observed, request ? ModelPricing.request(request) : {})
+        : ModelPricing.tokens(catalog, normalized, request ? ModelPricing.request(request) : {})
       : { reason: "missing-pricing" }
   const reason = missingUsage
     ? "missing-usage"
@@ -90,24 +93,32 @@ export function estimate(
         model.model &&
         (request.model.id !== model.model.id || request.model.provider !== model.model.provider)
       ? "replaced-request-model"
-      : catalog?.format === 2 &&
-          request &&
-          (nativeTools(request.tools) ||
-            request.messages.some((message) =>
-              message.content.some(
-                (part) =>
-                  part.type === "media" ||
-                  (part.type === "tool-result" &&
-                    part.result.type === "content" &&
-                    part.result.value.some((content) => content.type !== "text")),
-              ),
-            ))
-        ? "unmetered-native-or-media-usage"
-        : "reason" in priced
-          ? priced.reason
-          : !Number.isFinite(priced.amount) || priced.amount < 0
-            ? "invalid-price-result"
-            : undefined
+      : costs.length &&
+          observed?.meters?.some(
+            (meter) =>
+              meter.quantity !== 0 &&
+              (meter.modality !== "text" || meter.unit !== "token" || meter.component === "cache.storage"),
+          )
+        ? "token-prices-do-not-cover-meters"
+        : catalog?.format === 2 &&
+            request &&
+            (nativeTools(request.tools) ||
+              (!observed?.meters &&
+                request.messages.some((message) =>
+                  message.content.some(
+                    (part) =>
+                      part.type === "media" ||
+                      (part.type === "tool-result" &&
+                        part.result.type === "content" &&
+                        part.result.value.some((content) => content.type !== "text")),
+                  ),
+                )))
+          ? "unmetered-native-or-media-usage"
+          : "reason" in priced
+            ? priced.reason
+            : !Number.isFinite(priced.amount) || priced.amount < 0
+              ? "invalid-price-result"
+              : undefined
   return {
     tokens: normalized,
     cost: reason || !("amount" in priced) ? Money.USD.zero : priced.amount,

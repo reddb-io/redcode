@@ -100,8 +100,12 @@ const Capabilities = Schema.StructWithRest(
 )
 const CapabilitiesOverride = Schema.StructWithRest(
   Schema.Struct({
-    tools: optional(Tools),
-    reasoning: optional(Reasoning),
+    tools: optional(
+      Schema.StructWithRest(Schema.Struct({ ...Tools.schema.fields, supported: optional(Schema.Boolean) }), [json]),
+    ),
+    reasoning: optional(
+      Schema.StructWithRest(Schema.Struct({ ...Reasoning.schema.fields, supported: optional(Schema.Boolean) }), [json]),
+    ),
     temperature: optional(Schema.Boolean),
     system_updates: optional(Schema.Boolean),
     effort_updates: optional(Schema.Boolean),
@@ -197,6 +201,14 @@ const protocols = [
   "workers-ai-run",
 ]
 
+// Existing non-native integrations stay executable only through these locally trusted adapters.
+// A catalog SDK declaration alone never authorizes loading an arbitrary package.
+const legacyAdapters: Readonly<Record<string, string>> = {
+  gitlab: "gitlab-ai-provider",
+  "sap-ai-core": "@jerome-benoit/sap-ai-provider-v2",
+  watsonx: "watsonx-ai-provider",
+}
+
 export function normalize(provider: typeof ProviderRecord.Type, digest: string): Snapshot[] {
   const models = Object.values(provider.models).flatMap((offering) => {
     const apis = Object.fromEntries(
@@ -215,6 +227,13 @@ export function normalize(provider: typeof ProviderRecord.Type, digest: string):
       const pkg = entry?.sdk?.opencodeai
       return pkg && Provider.builtin(pkg) ? [{ protocol, entry, pkg }] : []
     })[0]
+    const adapter =
+      selected ??
+      protocols.flatMap((protocol) => {
+        const entry = apis[protocol]
+        const pkg = entry?.sdk?.aisdk
+        return pkg && pkg === legacyAdapters[provider.id] ? [{ protocol, entry, pkg: Provider.aisdk(pkg) }] : []
+      })[0]
     const modes = [
       { id: offering.id, name: offering.name, mode: undefined },
       ...Object.entries(offering.experimental?.modes ?? {}).map(([name, mode]) => ({
@@ -225,7 +244,7 @@ export function normalize(provider: typeof ProviderRecord.Type, digest: string):
     ]
     return modes.map(({ id, name, mode }): Model.Info => {
       const capabilities = mergeCapabilities(
-        mergeCapabilities(offering.capabilities, selected?.entry.capabilities),
+        mergeCapabilities(offering.capabilities, adapter?.entry.capabilities),
         mode?.capabilities,
       )
       const rawPricing = mode?.cost
@@ -244,13 +263,13 @@ export function normalize(provider: typeof ProviderRecord.Type, digest: string):
       const catalog = {
         format: 2 as const,
         digest,
-        protocol: selected?.protocol,
+        protocol: adapter?.protocol,
         apis,
         modalities: offering.modalities,
         rates: rates(rawPricing),
         pricing: rawPricing,
       }
-      const compatibility = selected?.entry.compatibility
+      const compatibility = adapter?.entry.compatibility
       const released = Date.parse(offering.release_date)
       const base: Model.Info = {
         id: Model.ID.make(id),
@@ -260,9 +279,9 @@ export function normalize(provider: typeof ProviderRecord.Type, digest: string):
         ...(offering.canonical_id ? { canonicalModelID: Model.ID.make(offering.canonical_id) } : {}),
         ...(offering.family ? { family: Model.Family.make(offering.family) } : {}),
         // Only supported chat offerings enter the generative plugin. Media and future APIs remain in the snapshot.
-        ...(offering.type !== "chat" || !selected ? { type: offering.type } : {}),
-        package: selected?.pkg,
-        settings: selected ? { baseURL: selected.entry.baseURL } : undefined,
+        ...(offering.type !== "chat" || !adapter ? { type: offering.type } : {}),
+        package: adapter?.pkg,
+        settings: adapter ? { baseURL: adapter.entry.baseURL } : undefined,
         compatibility: {
           ...(typeof compatibility?.reasoning_field === "string"
             ? { reasoningField: compatibility.reasoning_field }
@@ -288,7 +307,7 @@ export function normalize(provider: typeof ProviderRecord.Type, digest: string):
         cost: mode?.service_tier && !mode.cost ? [] : tokenCosts(rawPricing),
         status: offering.status ?? "active",
         enabled:
-          selected !== undefined &&
+          adapter !== undefined &&
           offering.type === "chat" &&
           (offering.limit?.context ?? 0) > 0 &&
           (offering.limit?.output ?? 0) > 0,
@@ -339,9 +358,16 @@ function mergeCapabilities(base: typeof Capabilities.Type, override: typeof Capa
   return {
     ...base,
     ...override,
-    tools: override?.tools?.supported === false ? override.tools : { ...base.tools, ...override?.tools },
-    reasoning:
-      override?.reasoning?.supported === false ? override.reasoning : { ...base.reasoning, ...override?.reasoning },
+    tools: {
+      ...(override?.tools?.supported === false ? {} : base.tools),
+      ...override?.tools,
+      supported: override?.tools?.supported ?? base.tools.supported,
+    },
+    reasoning: {
+      ...(override?.reasoning?.supported === false ? {} : base.reasoning),
+      ...override?.reasoning,
+      supported: override?.reasoning?.supported ?? base.reasoning.supported,
+    },
   }
 }
 
@@ -401,6 +427,10 @@ function tokenCosts(cost: typeof Pricing.Type | undefined): Model.Info["cost"] {
   if (
     !input ||
     !output ||
+    cost?.image !== undefined ||
+    cost?.audio !== undefined ||
+    cost?.video !== undefined ||
+    cost?.web_search !== undefined ||
     (input.unit ?? "token") !== "token" ||
     (output.unit ?? "token") !== "token" ||
     input.overrides !== undefined ||

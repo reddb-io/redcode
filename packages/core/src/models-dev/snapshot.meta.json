@@ -1,7 +1,7 @@
 {
-  "source": "https://models.dev/api.json?type=all",
-  "sha256": "9fbe38b62dfdb0d302e4bbcc2ec80298eac642559280f9d109b7814b84446c5d",
-  "providers": 230,
-  "models": 8909,
-  "decisionModels": 62
+  "source": "archived response",
+  "sha256": "7e703b9040cf8028a025b76c7b0d922b7dff7d91785c422d8792808ed142a28b",
+  "providers": 228,
+  "models": 9199,
+  "decisionModels": 71
 }
