@@ -1,0 +1,325 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-23",
+  "recordedAtUTC": "2026-10-23T14:58:27.405825+00:00",
+  "baselineCommit": "7903e9f9241c0075327029eb99fa7ceacf2241bb",
+  "implementationCommit": "6573deaa5626723d805d1c836a34a9d7ebc8f155",
+  "packagesTree": "7211415bfc18274a0ff2412eac35d378863f8371",
+  "branch": "main",
+  "published": false,
+  "completeParity": false,
+  "platform": {
+    "os": "Linux",
+    "arch": "x86_64",
+    "bun": "1.4.4"
+  },
+  "checks": [
+    {
+      "name": "core",
+      "cwd": "packages/core",
+      "command": "bun test test/session-budget.test.ts test/session-projector.test.ts test/session-stats.test.ts test/session-loop-guard.test.ts test/session-output-guard.test.ts test/session-create.test.ts",
+      "passed": 81,
+      "failed": 0,
+      "assertions": 839,
+      "exitCode": 0,
+      "log": "core"
+    },
+    {
+      "name": "client",
+      "cwd": "packages/client",
+      "command": "bun test test/solid-data.test.ts test/solid-compaction.test.ts test/solid-eviction.test.ts test/contract-identity.test.ts test/import-boundaries.test.ts",
+      "passed": 65,
+      "failed": 0,
+      "assertions": 361,
+      "exitCode": 0,
+      "log": "client"
+    },
+    {
+      "name": "schema",
+      "cwd": "packages/schema",
+      "command": "bun test test/cost-assessment.test.ts test/event-manifest.test.ts",
+      "passed": 12,
+      "failed": 0,
+      "assertions": 130,
+      "exitCode": 0,
+      "log": "schema"
+    },
+    {
+      "name": "acp",
+      "cwd": "packages/cli",
+      "command": "bun test test/acp/turn.test.ts",
+      "passed": 9,
+      "failed": 0,
+      "assertions": 41,
+      "exitCode": 0,
+      "log": "acp"
+    },
+    {
+      "name": "tui",
+      "cwd": "packages/tui",
+      "command": "bun test test/feature-plugins/sidebar-context.test.tsx test/feature-plugins/prompt-footer.test.tsx test/stats.view.test.tsx",
+      "passed": 11,
+      "failed": 0,
+      "assertions": 50,
+      "exitCode": 0,
+      "log": "tui"
+    },
+    {
+      "name": "canonical lint and types",
+      "cwd": ".",
+      "command": "bun run check",
+      "successfulTasks": 27,
+      "totalTasks": 27,
+      "cachedTasks": 0,
+      "exitCode": 0,
+      "log": "check"
+    },
+    {
+      "name": "Client regeneration",
+      "cwd": "packages/client",
+      "command": "bun run generate",
+      "exitCode": 0,
+      "log": "generate"
+    },
+    {
+      "name": "committed generated Client stability",
+      "cwd": "packages/client",
+      "command": "bun run check:generated",
+      "exitCode": 0,
+      "log": "generated",
+      "note": "After the implementation commit; left generated files and checkout unchanged."
+    },
+    {
+      "name": "browser",
+      "cwd": "packages/app",
+      "command": "PLAYWRIGHT_BASE_URL=http://127.0.0.1:57505 PLAYWRIGHT_BUILD=1 bunx --no-install playwright test --config playwright.config.ts e2e/regression/session-header.spec.ts --grep \"cost indicators|context usage includes\" --workers=1 --retries=0 --reporter=line",
+      "passed": 2,
+      "failed": 0,
+      "exitCode": 0,
+      "log": "browser",
+      "note": "Production GUI and real extension host, with controlled HTTP fixture data; no live provider or deployed-server billing."
+    },
+    {
+      "name": "mobile",
+      "cwd": "packages/app",
+      "command": "PLAYWRIGHT_BASE_URL=http://127.0.0.1:57505 PLAYWRIGHT_BUILD=1 bunx --no-install playwright test --config playwright.config.ts e2e/regression/mobile-session.spec.ts --grep \"mobile navigation leaves\" --workers=1 --retries=0 --reporter=line",
+      "passed": 1,
+      "failed": 0,
+      "exitCode": 0,
+      "log": "mobile",
+      "note": "Production GUI and real extension host, with controlled HTTP fixture data; no live provider or deployed-server billing."
+    }
+  ],
+  "focusedUnitTests": 178,
+  "browserTests": 3,
+  "scopedGuiLint": {
+    "requestedCommand": "bun run lint:changed",
+    "requestedCommandAvailable": false,
+    "diagnosticLog": "unavailableGuiLintScript",
+    "alternativeCommand": "bunx --no-install oxlint --config /var/tmp/redcode-family-oxlint.json --max-warnings 0 packages/gui-extensions/src/context/spending.ts packages/gui-extensions/src/context/indicator.tsx packages/gui-extensions/src/context/tab.tsx packages/gui-extensions/src/context/i18n/en.ts",
+    "configuration": {
+      "categories": {
+        "correctness": "error",
+        "suspicious": "error"
+      }
+    },
+    "rules": 119,
+    "warnings": 0,
+    "errors": 0,
+    "exitCode": 0,
+    "log": "guiLint",
+    "note": "The AGENTS.md script is absent in this checkout. Used the canonical repository lint plus explicit scoped correctness/suspicious rules; no claim of unavailable custom lint coverage."
+  },
+  "negativeControl": {
+    "cwd": "packages/client",
+    "command": "bun test test/solid-data.test.ts --test-name-pattern \"refreshes full spending\"",
+    "mutation": "Temporarily removed only refreshSpending from session.usage.updated.",
+    "expectedFailures": 1,
+    "observedFailures": 1,
+    "exitCode": 1,
+    "productionSourceRestoredExactly": true,
+    "positiveSuiteAfterRestoration": "client",
+    "log": "negative",
+    "note": "The full canonical check had already passed on identical source bytes; the restored source then passed the final Client suite."
+  },
+  "browserArtifact": {
+    "path": "/var/tmp/redcode-family-cost-context.png",
+    "sha256": "d8b254604a45a5afc970d02a6b9be95e1e0766b6d1245dfc07a9fc0e7b2cf217",
+    "bytes": 75252,
+    "fixture": "CostProvenance",
+    "state": "Known subtotal $2.50+ with explanatory text and zero loaded messages",
+    "note": "Captured from the production build; synthetic costs, not observed charges."
+  },
+  "performance": {
+    "test": "entry: cold session from Home",
+    "cwd": "packages/app",
+    "command": "PLAYWRIGHT_BASE_URL=<preview-url> PLAYWRIGHT_BUILD=1 OPENCODE_PERFORMANCE_RUN_ID=<run-id> bunx --no-install playwright test --config e2e/performance/playwright.config.ts timeline/session-entry-benchmark.spec.ts --grep \"entry: cold session from Home\" --repeat-each=3 --workers=1 --retries=0 --reporter=line",
+    "baselineReconstruction": {
+      "commit": "7903e9f9241c0075327029eb99fa7ceacf2241bb",
+      "files": [
+        "packages/client/src/solid/data.ts",
+        "packages/gui-extensions/src/context/indicator.tsx",
+        "packages/gui-extensions/src/context/tab.tsx",
+        "packages/gui-extensions/src/context/i18n/en.ts"
+      ],
+      "method": "Temporarily restored the four existing frontend files from the baseline commit only for the before production build; current edits were saved and restored. Other additive candidate contracts were shared by both builds. No branch or worktree was created."
+    },
+    "builds": {
+      "before": {
+        "directory": "/var/tmp/redcode-family-app-before-zvlq6qbt",
+        "port": 39753,
+        "buildCommand": "VITE_OPENCODE_TEST_FIXTURES=1 VITE_OPENCODE_SERVER_HOST=127.0.0.1 VITE_OPENCODE_SERVER_PORT=39753 bun run build --outDir /var/tmp/redcode-family-app-before-zvlq6qbt"
+      },
+      "after": {
+        "directory": "/var/tmp/redcode-family-app-after-nxaykgd0",
+        "port": 57505,
+        "buildCommand": "VITE_OPENCODE_TEST_FIXTURES=1 VITE_OPENCODE_SERVER_HOST=127.0.0.1 VITE_OPENCODE_SERVER_PORT=57505 bun run build --outDir /var/tmp/redcode-family-app-after-nxaykgd0"
+      }
+    },
+    "results": {
+      "before": {
+        "samples": [
+          {
+            "firstCorrectObservedMs": 693.6999999880791,
+            "stableObservedMs": 765,
+            "wrongDestinationSamples": 0
+          },
+          {
+            "firstCorrectObservedMs": 661.5,
+            "stableObservedMs": 732.3999999761581,
+            "wrongDestinationSamples": 0
+          },
+          {
+            "firstCorrectObservedMs": 683.3000000119209,
+            "stableObservedMs": 730.2000000476837,
+            "wrongDestinationSamples": 0
+          }
+        ],
+        "medianStableMs": 732.3999999761581,
+        "medianFirstCorrectMs": 683.3000000119209
+      },
+      "after": {
+        "samples": [
+          {
+            "firstCorrectObservedMs": 669.3999999761581,
+            "stableObservedMs": 744.5999999642372,
+            "wrongDestinationSamples": 0
+          },
+          {
+            "firstCorrectObservedMs": 668.1999999880791,
+            "stableObservedMs": 706.5999999642372,
+            "wrongDestinationSamples": 0
+          },
+          {
+            "firstCorrectObservedMs": 662.4000000357628,
+            "stableObservedMs": 735.4000000357628,
+            "wrongDestinationSamples": 0
+          }
+        ],
+        "medianStableMs": 735.4000000357628,
+        "medianFirstCorrectMs": 668.1999999880791
+      }
+    },
+    "currentFrontendSha256": {
+      "packages/client/src/solid/data.ts": "f3aab1b99d3fa1b3f70359ec879f8a6a5f414b5601872cc430796b5e75dcb701",
+      "packages/gui-extensions/src/context/spending.ts": "c7b3acb59e2981e32df85a32ff3e23019cf6af038ac0724914ca22e0602deaea",
+      "packages/gui-extensions/src/context/tab.tsx": "e371a2ffdd15927a09c936ed7eeb3a23db7b71eeea0914d086a9ddad21de84c3",
+      "packages/gui-extensions/src/context/indicator.tsx": "1cae6c19d9a9c3dd8679108b58b397b5a76672778d9651084e8cf7dac9340ecc",
+      "packages/gui-extensions/src/context/i18n/en.ts": "00747ac7c0e8a114e958d4b339fd47a5000f9874c0de1690cb1dc779ac35e468"
+    },
+    "limits": "Three samples per build, synthetic HTTP latency and a local Chromium run. This is a limited regression observation, not statistical evidence of a speedup, a large-ledger SQL benchmark or a provider benchmark.",
+    "previewProcessesStopped": true
+  },
+  "behaviorCovered": [
+    "One SQL snapshot returns unchanged spending totals plus a derived aggregate assessment across descendants, settled steps, title/compaction usage and S1 rows.",
+    "Unknown pricing dominates legacy provenance, then estimates and reported costs; empty means no recorded usage, not an invoice assertion.",
+    "Imported totals without matching usage facts remain legacy; numeric fold residue has a small tolerance. Historical amounts are not repriced.",
+    "Actual fork tests keep inherited assistant history out of new spending, and committed revert retains prior recorded costs.",
+    "Shared SDK reads are lazy, coalesce bursts, refresh for zero-valued usage on an unloaded child, and clear their snapshots on eviction.",
+    "TUI production components render qualified costs at 44 and 120 columns; narrow live activity preserves the new-session action.",
+    "Production GUI header and Context panel update unknown, partial, estimated, legacy and provider-reported zero states through the real shared client and fixture transport.",
+    "ACP wire tests omit incomplete/legacy cumulative costs while retaining knownSubtotal, USD, status and scope in reddb.io/cost metadata.",
+    "Optional public metadata retains old response compatibility; generated Client outputs and canonical namespace identity are verified."
+  ],
+  "limits": [
+    "No paid inference, deployed browser/server validation, invoice reconciliation, remote CI, push or publication.",
+    "S1 currently lacks typed reported-versus-estimated provenance; available numeric S1 records are conservatively legacy, unresolved ones unknown.",
+    "Default/bundled catalog remains V1. Detailed provider media/cache meters, Mini step-cost presentation and validated V2 default cutover remain pending.",
+    "Unknown costs do not imply free usage and do not guarantee an external dollar cap; spending policy is unchanged.",
+    "Only the focused suites listed here ran, not the entire repository test suite. The requested GUI lint script is unavailable; its explicit replacement is recorded above."
+  ],
+  "logs": {
+    "core": {
+      "path": "/var/tmp/redcode-family-cost-core-tests.log",
+      "sha256": "99fcce2c16e443811d08473a6d4e32b7cf35df2922a4e1768b261e88b802d793"
+    },
+    "client": {
+      "path": "/var/tmp/redcode-family-cost-client-tests-final.log",
+      "sha256": "b5922eb8735813b1d51e3ef41d2815bcae8fe79dcb1ae8f3c63a178957b1fa69"
+    },
+    "schema": {
+      "path": "/var/tmp/redcode-family-cost-schema-tests.log",
+      "sha256": "ee0b7c09aab045d493b9f50feb37fb154a268103e21f954cd43b5f09ca091aa4"
+    },
+    "acp": {
+      "path": "/var/tmp/redcode-family-cost-acp-tests.log",
+      "sha256": "174e5bb54e7f9c6b6f737649af791800dd24e5fe879c36cc5e8a5a74fc4e43b8"
+    },
+    "tui": {
+      "path": "/var/tmp/redcode-family-cost-tui-tests.log",
+      "sha256": "6e222bd079047b9befad8814b27d8bf51e99a82e07b978bd1347ec3ad72df379"
+    },
+    "browser": {
+      "path": "/var/tmp/redcode-family-cost-browser-tests.log",
+      "sha256": "4e87b5c103ddfbcf54f0dab4f1e1ac84e5546420281732eced91deafc44bf4e5"
+    },
+    "mobile": {
+      "path": "/var/tmp/redcode-family-cost-mobile-tests.log",
+      "sha256": "2098a8b8c16cfbea759265da89813fd36a6c81c1bcb20b622871a9041133b4bf"
+    },
+    "check": {
+      "path": "/var/tmp/redcode-family-cost-check-final.log",
+      "sha256": "304076b6299264fd3a3633817333fd193ca55f28e4e6e7d7b643584dfa0f77e4"
+    },
+    "generate": {
+      "path": "/var/tmp/redcode-family-cost-generate.log",
+      "sha256": "669f6f21dd85b213958bef91fe6ac15f2851f309f5f3eda8197ee0a85a2643b8"
+    },
+    "generated": {
+      "path": "/var/tmp/redcode-family-cost-generated-check.log",
+      "sha256": "2650c77b0592cdd0c6d59af0c2090bde6b22503e039643b7226f02ebc545e022"
+    },
+    "format": {
+      "path": "/var/tmp/redcode-family-cost-format.log",
+      "sha256": "2941e4554b8ac9e56c55f1d561b10c95c3e93e99417bce694684d14adbe2df34"
+    },
+    "guiLint": {
+      "path": "/var/tmp/redcode-family-cost-gui-lint-strict.log",
+      "sha256": "df499b2e1070bfa2de4e16f0d472a04eb0c0db48fbb3d5aebe29a54ec71e2a53"
+    },
+    "unavailableGuiLintScript": {
+      "path": "/var/tmp/redcode-family-cost-gui-lint-script.log",
+      "sha256": "8d51213776433592a9e6ac48d14aa679cc4351e86d6eeb1b05a80ebb3dbe2573"
+    },
+    "negative": {
+      "path": "/var/tmp/redcode-family-cost-client-negative.log",
+      "sha256": "22b0d16b32ff9032fbeeecab59fdee902f6488386e14ec02796cef3794edd568"
+    },
+    "buildBefore": {
+      "path": "/var/tmp/redcode-family-cost-build-before.log",
+      "sha256": "3d866a9eaeaa1d1df8bbdc57a8cd3911b9e39878e7f3535f5587e9f1b2b0c60f"
+    },
+    "buildAfter": {
+      "path": "/var/tmp/redcode-family-cost-build-after.log",
+      "sha256": "18e4ee643755ffe66e306326d3821adf2334f7677017862746a712c3629db50d"
+    },
+    "benchmarkBefore": {
+      "path": "/var/tmp/redcode-family-cost-benchmark-before.log",
+      "sha256": "51bdd643602d25f3ebe7a2245167eddde12c6a83bcdf8c604d8f9faa10c06f23"
+    },
+    "benchmarkAfter": {
+      "path": "/var/tmp/redcode-family-cost-benchmark-after.log",
+      "sha256": "f95229b69192d45c81c3dd03ac7b583454667e092bf9771a0f9161348eea58ef"
+    }
+  }
+}
