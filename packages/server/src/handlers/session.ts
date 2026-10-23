@@ -429,6 +429,25 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
         }),
       )
       .handle(
+        "session.todo.applyIntegration",
+        Effect.fn(function* (ctx) {
+          const parent = yield* session
+            .get(ctx.params.sessionID)
+            .pipe(Effect.catchTag("Session.NotFoundError", missingSession))
+          const integration = yield* TaskIntegration.Service
+          const applied = yield* integration.apply(parent, ctx.params.taskID, ctx.payload).pipe(
+            Effect.catchTag(
+              "SessionTodo.Error",
+              (error) => new InvalidRequestError({ message: error.message, field: "taskID" }),
+            ),
+            Effect.catchTag("Session.MessageDecodeError", failedMessageDecode),
+          )
+          const todos = yield* SessionTodoStore.Service
+          yield* bus.publish(SessionTodo.Event.Updated, { sessionID: parent.id, todos: yield* todos.get(parent.id) })
+          return { data: applied }
+        }),
+      )
+      .handle(
         "session.goal.get",
         Effect.fn(function* (ctx) {
           return {

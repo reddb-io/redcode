@@ -735,7 +735,7 @@
       "id": "candidate-verification-receipts",
       "status": "validated",
       "path": "packages/core/src/session/integration-verification.ts",
-      "evidence": "Shell and task acceptance contracts; HTTP preparation/provenance suite. Task-aware application remains pending."
+      "evidence": "Shell and task acceptance contracts; HTTP preparation/provenance suite. Task-aware application is tracked separately below."
     },
     {
       "id": "catalog-snapshot",
@@ -749,10 +749,16 @@
         "decisionModels": 62
       },
       "evidence": "update-models-snapshot --check; V1 consumption. V2 remains pending."
+    },
+    {
+      "id": "task-aware-candidate-application",
+      "status": "validated",
+      "path": "packages/server/src/task-integration.ts",
+      "evidence": "14 HTTP/Git tests and 15 Core tests; canonical lint/typecheck passed. Original-request retries observe rather than replay. Ambiguous operations require explicit host reconciliation. See evaluations/task-integration-application-2026-10-23-validation.json; broader Schema hygiene has one pre-existing failure."
     }
   ],
   "remaining": [
-    "Task-aware candidate application and recovery receipts",
+    "Agents surface for task-aware application, explicit recovery of ambiguous applications and cross-host coordination",
     "Versioned V2 catalog normalization, update flags and unknown/non-token prices",
     "Agents DS React by goal, grouped completion, versioned shared context and remote graph",
     "Reusable workflows, routines, webhooks, resources and external message connectors",

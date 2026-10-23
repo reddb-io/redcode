@@ -71,3 +71,23 @@ export function completionError(
   )
     return `Task ${task.id} needs a successful verification receipt for its exact integration candidate SHA`
 }
+
+/** Goal completion requires an observed application, independently of candidate acceptance. */
+export function applicationError(tasks: ReadonlyArray<SessionTodo.Info>) {
+  if (tasks.some((task) => task.integrationApplication?.state === "pending"))
+    return "Reconcile pending integration applications before completing the goal"
+  if (
+    tasks.some(
+      (task) =>
+        task.status === "completed" &&
+        task.integration &&
+        (task.integrationApplication?.state !== "applied" ||
+          task.integrationApplication.head !== task.integration.head ||
+          task.integrationApplication.tree !== task.integration.tree ||
+          task.integrationApplication.fingerprint !== task.integration.fingerprint ||
+          task.integrationApplication.target !== task.integration.target ||
+          task.integrationApplication.targetHead !== task.integration.targetHead),
+    )
+  )
+    return "Apply accepted integration candidates before completing the goal"
+}

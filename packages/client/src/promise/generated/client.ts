@@ -66,6 +66,8 @@ import type {
   SessionTodoReconcileOutput,
   SessionTodoPrepareIntegrationInput,
   SessionTodoPrepareIntegrationOutput,
+  SessionTodoApplyIntegrationInput,
+  SessionTodoApplyIntegrationOutput,
   SessionGoalGetInput,
   SessionGoalGetOutput,
   SessionGoalStartInput,
@@ -1328,6 +1330,22 @@ export function make(options: ClientOptions) {
               method: "POST",
               path: `/api/session/${encodeURIComponent(input.sessionID)}/todo/${encodeURIComponent(input.taskID)}/integration`,
               body: { revision: input["revision"], target: input["target"], targetHead: input["targetHead"] },
+              successStatus: 200,
+              declaredStatuses: [400, 401, 403, 404, 409, 500],
+              empty: false,
+            },
+            requestOptions,
+          ).then((value) => value.data),
+        applyIntegration: (input: SessionTodoApplyIntegrationInput, requestOptions?: RequestOptions) =>
+          request<{ readonly data: SessionTodoApplyIntegrationOutput }>(
+            {
+              method: "POST",
+              path: `/api/session/${encodeURIComponent(input.sessionID)}/todo/${encodeURIComponent(input.taskID)}/integration/apply`,
+              body: {
+                requestID: input["requestID"],
+                revision: input["revision"],
+                candidateHead: input["candidateHead"],
+              },
               successStatus: 200,
               declaredStatuses: [400, 401, 403, 404, 409, 500],
               empty: false,

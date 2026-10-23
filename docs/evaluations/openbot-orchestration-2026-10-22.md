@@ -634,3 +634,15 @@ conjunto em um checkout do candidato e registra o resultado observado. Também c
 conflitos sem gravação, revisão incorreta, ausência de aceite e contribuição sem vínculo. A regressão
 de worktrees passou após tornar sequencial a criação dos checkouts no fixture, que disputava os
 metadados compartilhados do Git. Não houve publicação ou validação visual nesta entrega.
+
+
+## Aplicação aceita — quinta entrega
+
+O fluxo agora exige um recibo do executor para aceitar o candidato e expõe
+`session.todo.applyIntegration` para aplicá-lo. A admissão precede o avanço do destino; o
+registro de aplicação permanece separado do hash da prova aceita. As repetições
+da requisição original observam o destino sem repetir o merge, e o objetivo
+aguarda a aplicação das revisões aceitas. Operações ambíguas continuam pendentes
+para revisão explícita no host. A [documentação de execução](../upstream-implementation-2026-10-23.md#aplicar-o-candidato-aceito)
+descreve o contrato, os horários observados e os limites de recuperação. Agents
+por objetivo e coordenação entre hosts permanecem no inventário pendente.

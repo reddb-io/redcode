@@ -702,6 +702,20 @@ export type SessionTodoListOutput = ReadonlyArray<{
         }>
       }
     | undefined
+  readonly integrationApplication?:
+    | {
+        readonly requestID: string
+        readonly taskRevision: number
+        readonly fingerprint: string
+        readonly target: AbsolutePath
+        readonly targetHead: string
+        readonly head: string
+        readonly tree: string
+        readonly started: number
+        readonly completed?: number | undefined
+        readonly state: "pending" | "applied"
+      }
+    | undefined
   readonly scopeChange?:
     | {
         readonly messageID: string
@@ -776,6 +790,20 @@ export type SessionTodoReconcileOutput = {
           }>
         }
       | undefined
+    readonly integrationApplication?:
+      | {
+          readonly requestID: string
+          readonly taskRevision: number
+          readonly fingerprint: string
+          readonly target: AbsolutePath
+          readonly targetHead: string
+          readonly head: string
+          readonly tree: string
+          readonly started: number
+          readonly completed?: number | undefined
+          readonly state: "pending" | "applied"
+        }
+      | undefined
     readonly scopeChange?:
       | {
           readonly messageID: string
@@ -842,6 +870,20 @@ export type SessionTodoReconcileOutput = {
               readonly directory: AbsolutePath
               readonly head: string
             }>
+          }
+        | undefined
+      readonly integrationApplication?:
+        | {
+            readonly requestID: string
+            readonly taskRevision: number
+            readonly fingerprint: string
+            readonly target: AbsolutePath
+            readonly targetHead: string
+            readonly head: string
+            readonly tree: string
+            readonly started: number
+            readonly completed?: number | undefined
+            readonly state: "pending" | "applied"
           }
         | undefined
       readonly scopeChange?:
@@ -1000,6 +1042,20 @@ export type SessionTodoPrepareIntegrationOutput = {
           }>
         }
       | undefined
+    readonly integrationApplication?:
+      | {
+          readonly requestID: string
+          readonly taskRevision: number
+          readonly fingerprint: string
+          readonly target: AbsolutePath
+          readonly targetHead: string
+          readonly head: string
+          readonly tree: string
+          readonly started: number
+          readonly completed?: number | undefined
+          readonly state: "pending" | "applied"
+        }
+      | undefined
     readonly scopeChange?:
       | {
           readonly messageID: string
@@ -1018,6 +1074,29 @@ export type SessionTodoPrepareIntegrationOutput = {
 export type SessionTodoPrepareIntegrationOperation<E = never> = (
   input: SessionTodoPrepareIntegrationInput,
 ) => Effect.Effect<SessionTodoPrepareIntegrationOutput, E>
+
+export type SessionTodoApplyIntegrationInput = {
+  readonly sessionID: Session.ID
+  readonly taskID: string
+  readonly requestID: string
+  readonly revision: number
+  readonly candidateHead: string
+}
+export type SessionTodoApplyIntegrationOutput = {
+  readonly requestID: string
+  readonly taskRevision: number
+  readonly fingerprint: string
+  readonly target: AbsolutePath
+  readonly targetHead: string
+  readonly head: string
+  readonly tree: string
+  readonly started: number
+  readonly completed?: number | undefined
+  readonly state: "pending" | "applied"
+}
+export type SessionTodoApplyIntegrationOperation<E = never> = (
+  input: SessionTodoApplyIntegrationInput,
+) => Effect.Effect<SessionTodoApplyIntegrationOutput, E>
 
 export type SessionGoalGetInput = { readonly sessionID: Session.ID }
 export type SessionGoalGetOutput = {
@@ -4258,6 +4337,7 @@ export interface SessionApi<E = never> {
     readonly list: SessionTodoListOperation<E>
     readonly reconcile: SessionTodoReconcileOperation<E>
     readonly prepareIntegration: SessionTodoPrepareIntegrationOperation<E>
+    readonly applyIntegration: SessionTodoApplyIntegrationOperation<E>
   }
   readonly goal: {
     readonly get: SessionGoalGetOperation<E>

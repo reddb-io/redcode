@@ -567,6 +567,21 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI ext
       ),
     )
     .add(
+      HttpApiEndpoint.post("session.todo.applyIntegration", "/api/session/:sessionID/todo/:taskID/integration/apply", {
+        params: { sessionID: Session.ID, taskID: Schema.String },
+        payload: SessionTodo.ApplyIntegrationInput,
+        success: Schema.Struct({ data: SessionTodo.IntegrationApplication }),
+        error: [SessionNotFoundError, InvalidRequestError, UnknownError],
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "session.todo.applyIntegration",
+          summary: "Apply the accepted and verified task candidate",
+          description:
+            "Record admission before applying the exact candidate SHA to its clean original target. Retrying an admitted request observes Git without replaying the mutation; uncertain outcomes remain pending.",
+        }),
+      ),
+    )
+    .add(
       HttpApiEndpoint.get("session.goal.get", "/api/experimental/session/:sessionID/goal", {
         params: { sessionID: Session.ID },
         success: Schema.Struct({ data: Schema.NullOr(SessionGoal.Info) }),

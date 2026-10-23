@@ -1,5 +1,6 @@
 export * as SessionGoalCompletion from "./goal-completion.js"
 
+import { SessionTaskIntegration } from "./task-integration.js"
 import { Monitor } from "@opencode/schema/monitor"
 import { makeLocationNode } from "@opencode/util/effect/app-node"
 import { Context, Effect, Layer } from "effect"
@@ -43,6 +44,8 @@ const make = Effect.gen(function* () {
       return yield* new SessionGoal.Error({ message: "Reconcile unsettled delegated work before completing the goal" })
     if (SessionTodo.active(tasks).length)
       return yield* new SessionGoal.Error({ message: "Resolve unfinished tasks before completing the goal" })
+    const application = SessionTaskIntegration.applicationError(tasks)
+    if (application) return yield* new SessionGoal.Error({ message: application })
     if ((yield* monitors.list(sessionID)).some(Monitor.parks))
       return yield* new SessionGoal.Error({ message: "A monitor is still waiting for work to finish" })
     const goal = yield* goals.get(sessionID)
