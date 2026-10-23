@@ -2,6 +2,7 @@ import { Show, type JSX } from "solid-js"
 import { useLanguage } from "@/runtime/i18n/language"
 import { SessionPermissionDock } from "@/session/requests/session-permission-dock"
 import { SessionQuestionDock } from "@/session/requests/session-question-dock"
+import { SessionMcpDock } from "@/session/requests/session-mcp-dock"
 import { SessionVaultDock } from "@/session/requests/session-vault-dock"
 import { SessionWebSearchDock } from "@/session/requests/session-websearch-dock"
 import type { SessionComposerRegionController } from "./session-composer-region-controller"
@@ -9,6 +10,7 @@ import type { SessionComposerRegionController } from "./session-composer-region-
 type SessionComposerRegionState = Pick<
   SessionComposerRegionController["state"],
   | "questionRequest"
+  | "mcpRequest"
   | "vaultRequest"
   | "websearch"
   | "permissionRequest"
@@ -50,6 +52,9 @@ export function SessionComposerRegion(props: {
               <SessionQuestionDock request={request} onSubmit={controller.onResponseSubmit} />
             </div>
           )}
+        </Show>
+        <Show when={controller.state.mcpRequest()} keyed>
+          {(request) => <SessionMcpDock request={request} onSubmit={controller.onResponseSubmit} />}
         </Show>
         <Show when={controller.state.vaultRequest()} keyed>
           {(request) => (

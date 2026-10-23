@@ -7,10 +7,13 @@ import { LayerNodePlatform } from "@opencode/util/effect/app-node-platform"
 import { LayerNode } from "@opencode/util/effect/layer-node"
 import { Bus } from "@opencode/core/bus"
 import { KV } from "@opencode/core/kv"
+import { Location } from "@opencode/core/location"
+import { AbsolutePath } from "@opencode/core/schema"
 import { Model } from "@opencode/core/model"
 import { bodyDigest, ModelsDev } from "@opencode/core/models-dev"
 import { Provider } from "@opencode/core/provider"
 import { it } from "./lib/effect"
+import { location } from "./fixture/location"
 
 const cacheKey = "models-dev:catalog"
 
@@ -493,6 +496,44 @@ describe("ModelsDev Service", () => {
         body: JSON.stringify(fixture2),
         digest: bodyDigest(JSON.stringify(fixture2)),
       })
+    }),
+  )
+
+  it.live("refresh reaches model catalogs in other Locations", () =>
+    Effect.gen(function* () {
+      const cache = makeCache()
+      writeCache(cache, fixture, Date.now() - 10 * 60 * 1000)
+      const state = yield* Ref.make({ ...initialState, body: JSON.stringify(fixture2) })
+      yield* provided(
+        state,
+        cache,
+        Effect.gen(function* () {
+          const service = yield* ModelsDev.Service
+          const bus = yield* Bus.Service
+          const observed = yield* bus
+            .subscribe(ModelsDev.Event.Refreshed)
+            .pipe(
+              Stream.take(1),
+              Stream.runCollect,
+              Effect.provideService(
+                Location.Service,
+                Location.Service.of(location({ directory: AbsolutePath.make("/other") })),
+              ),
+              Effect.forkScoped({ startImmediately: true }),
+            )
+          yield* service
+            .refresh(true)
+            .pipe(
+              Effect.provideService(
+                Location.Service,
+                Location.Service.of(location({ directory: AbsolutePath.make("/first") })),
+              ),
+            )
+          const events = yield* Fiber.join(observed).pipe(Effect.timeout("1 second"))
+          expect(events).toHaveLength(1)
+          expect(events[0]?.location).toBeUndefined()
+        }),
+      )
     }),
   )
 

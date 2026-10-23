@@ -1,5 +1,23 @@
 # Upstream adoption: October 2026
 
+## October 23 native implementation
+
+The [implementation record](upstream-implementation-2026-10-23.md) and
+[adoption ledger](upstream-2026-10-23-adoption.json) track MCP lifecycle and React
+input forms, OAuth, compaction, snapshots, credential rotation, background child
+recovery, catalog refresh and candidate-bound verification receipts. The remaining
+catalog V2, task-aware application, Agents and automation work stays explicit.
+Local validation does not establish publication or complete parity.
+
+## October 23 study: proposed follow-up
+
+The [OpenCode, models.dev and OpenBot review](evaluations/upstream-review-2026-10-23.md)
+compares four weeks of activity and selected open proposals with the current
+Redcode implementation. Its linked inventories and evidence manifest distinguish
+enumeration, static applicability and pending validation. The proposed batches
+cover MCP reliability, catalog contracts, task integration and agent visibility;
+the study itself does not mark these changes as adopted or establish full parity.
+
 ## October 12 follow-up: runtime integration
 
 The source inventory covers September 28 through October 12, 2026, ending at
@@ -126,7 +144,7 @@ TUI menus. The tool registry suite is now part of the Redcode CI contracts.
 
 Builds consume the committed `packages/core/src/models-dev/snapshot.txt`.
 Its manifest records the source URL, SHA-256, provider count, model count and
-decision count. This snapshot contains **225 providers, 8,370 offerings and 11
+decision count. This snapshot contains **230 providers, 8,909 offerings and 62
 decision offerings**. Counts describe catalog entries; access still depends on
 the connected provider, credentials and adapter compatibility.
 

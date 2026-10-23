@@ -6,6 +6,8 @@ import { eq } from "drizzle-orm"
 import { Effect, Layer, Schema, Struct } from "effect"
 import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
 import { Database } from "@opencode/core/database/database"
+import { Git } from "@opencode/core/git"
+import { SessionIntegrationVerification } from "@opencode/core/session/integration-verification"
 import { SessionTodoStore } from "@opencode/core/session/todo-store"
 import { SessionTaskReconciliation } from "@opencode/core/session/task-reconciliation"
 import { SessionTaskGraph } from "@opencode/core/session/task-graph"
@@ -15,6 +17,7 @@ import { SessionMessageTable, SessionTable } from "@opencode/core/session/sql"
 import { Session } from "@opencode/schema/session"
 import { SessionMessage } from "@opencode/schema/session-message"
 import { SessionTodo } from "@opencode/schema/session-todo"
+import { AbsolutePath } from "@opencode/schema/schema"
 import { SubagentReview } from "@opencode/schema/subagent-review"
 import { Worktree } from "@opencode/schema/worktree"
 import { Global } from "@opencode/util/global"
@@ -28,7 +31,7 @@ import { ServerFetch } from "../src/fetch"
 
 const it = testEffect(
   AppNodeBuilder.build(
-    LayerNode.group([Database.node, Global.node, SessionTodoStore.node, SessionTaskReconciliation.node]),
+    LayerNode.group([Database.node, Global.node, Git.node, SessionTodoStore.node, SessionTaskReconciliation.node]),
     [Global.node.replace(tempGlobalLayer), offlineModels],
   ),
 )
@@ -53,11 +56,21 @@ const check = Effect.fnUntraced(function* (
   seq: number,
   file: string,
   command = ["git", "cat-file", "-e", `HEAD:${file}`],
+  integration?: SessionTodo.Integration,
 ) {
+  const git = yield* Git.Service
+  const before = integration
+    ? yield* SessionIntegrationVerification.observe(git, AbsolutePath.make(directory), integration.head)
+    : undefined
+  const started = Date.now()
   yield* Effect.promise(async () => {
     const process = Bun.spawn(command, { cwd: directory, stdout: "pipe", stderr: "pipe" })
     expect(await process.exited).toBe(0)
   })
+  const after = integration
+    ? yield* SessionIntegrationVerification.observe(git, AbsolutePath.make(directory), integration.head)
+    : undefined
+  if (integration) expect(after).toBe(before)
   const message = Schema.decodeUnknownSync(SessionMessage.Assistant)({
     id: SessionMessage.ID.create(),
     type: "assistant",
@@ -76,7 +89,24 @@ const check = Effect.fnUntraced(function* (
           status: "completed",
           input: { command: command.join(" "), workdir: directory },
           content: [{ type: "text", text: "Verification passed with exit 0" }],
-          metadata: { exit: 0 },
+          metadata: {
+            exit: 0,
+            ...(integration && before && after
+              ? {
+                  integrationVerification: {
+                    sessionID,
+                    taskID: "todo_joint",
+                    fingerprint: integration.fingerprint,
+                    head: integration.head,
+                    tree: integration.tree,
+                    directory: after,
+                    command: command.join(" "),
+                    started,
+                    completed: Date.now(),
+                  },
+                }
+              : {}),
+          },
         },
       },
     ],
@@ -345,11 +375,14 @@ it.live(
           .quiet(),
       )
       const validation = path.join(state.target, "..", "validation")
-      const proof = yield* check(state.parent.id, validation, 4, "run.ts", [
-        "bun",
-        "-e",
-        "import { run } from './run'; if (run(2,3) !== 10) process.exit(1)",
-      ])
+      const proof = yield* check(
+        state.parent.id,
+        validation,
+        4,
+        "run.ts",
+        ["bun", "-e", "import { run } from './run'; if (run(2,3) !== 10) process.exit(1)"],
+        prepared.task.integration,
+      )
       const completed = yield* todos.write({
         sessionID: state.parent.id,
         todos: [

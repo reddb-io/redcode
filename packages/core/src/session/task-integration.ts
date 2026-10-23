@@ -58,4 +58,16 @@ export function completionError(
   )
   if (!proof?.successful || proof.kind !== "verification" || proof.completed <= task.integration.preparedAt)
     return `Task ${task.id} needs a fresh verification after its integration candidate was prepared`
+  const receipt = proof.integrationVerification
+  if (
+    !receipt ||
+    receipt.taskID !== task.id ||
+    receipt.fingerprint !== task.integration.fingerprint ||
+    receipt.head !== task.integration.head ||
+    receipt.tree !== task.integration.tree ||
+    receipt.started < task.integration.preparedAt ||
+    receipt.completed < receipt.started ||
+    (proof.sessionID !== undefined && receipt.sessionID !== proof.sessionID)
+  )
+    return `Task ${task.id} needs a successful verification receipt for its exact integration candidate SHA`
 }

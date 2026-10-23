@@ -37,7 +37,7 @@ const refreshKey = (url: string | URL, init: RequestInit | undefined) => {
 
 // Bun's and Node's fetch types both apply here and the SDK's FetchLike wants Bun's Response, so the
 // overload is picked by annotation and clone() is pinned to the type it was called on.
-const base: FetchLike = fetch
+const base: FetchLike = (url, init) => fetch(url, { ...init, timeout: false })
 const share = (pending: ReturnType<FetchLike>) => pending.then((response) => response.clone() as typeof response)
 
 const send: FetchLike = (url, init) => {
@@ -373,8 +373,16 @@ export const authorize = (input: {
       }
       const error = url.searchParams.get("error_description") ?? url.searchParams.get("error")
       if (error) return fail(error, "authorization_error")
-      if (url.searchParams.get("state") !== state) return fail("OAuth state mismatch", "state_mismatch")
+      const returned = url.searchParams.get("state")
       const value = url.searchParams.get("code")
+      // Browsers may probe the callback before an authorization redirect. Keep waiting for that redirect.
+      if (returned === null && !value) {
+        response
+          .writeHead(400, { "Content-Type": "text/html" })
+          .end(OauthCallbackPage.error("Missing authorization code", { provider: input.name }))
+        return
+      }
+      if (returned !== state) return fail("OAuth state mismatch", "state_mismatch")
       if (!value) return fail("Missing authorization code", "missing_code")
       // The page waits for the token exchange so the browser never reports success for a rejected code.
       if (

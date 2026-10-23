@@ -334,6 +334,14 @@ it.effect("auto compaction estimates current content against the buffered prompt
     expect(yield* due(input(83_999, outputLimited))).toBe(false)
     expect(yield* due(input(84_000, outputLimited))).toBe(true)
 
+    yield* Effect.scoped(
+      Effect.gen(function* () {
+        yield* compaction.transform((editor) => editor.configure({ buffer: 100_000 }))
+        expect(yield* due(input(60_000, contextLimited))).toBe(false)
+        expect(yield* due(input(84_000, contextLimited))).toBe(true)
+      }),
+    )
+
     const assistant = input(89_000, contextLimited).messages[0]
     const tool = SessionMessage.AssistantTool.make({
       type: "tool",

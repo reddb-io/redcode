@@ -81,6 +81,7 @@ function fixture() {
     }),
   }
   const proof: SessionTaskFacts.Result = {
+    sessionID: Session.ID.make("ses_parent"),
     callID: "check-joint",
     messageID: "msg_joint",
     tool: "shell",
@@ -95,6 +96,17 @@ function fixture() {
     error: "",
     exit: 0,
     input: { command: "bun test" },
+    integrationVerification: {
+      sessionID: Session.ID.make("ses_parent"),
+      taskID: task.id!,
+      fingerprint: task.integration.fingerprint,
+      head: task.integration.head,
+      tree: task.integration.tree,
+      directory: AbsolutePath.make("/validation"),
+      command: "bun test",
+      started: 101,
+      completed: 199,
+    },
     summary: "Integration tests passed",
   }
   return { input, task, tasks: [input, task], assignment, proof }
@@ -138,6 +150,28 @@ test("invalidates the binding when criteria or accepted prerequisite evidence ch
   expect(SessionTaskIntegration.issues({ ...state.task, dependencies: [] }, state.tasks, [state.assignment])).toContain(
     "The candidate does not cover exactly the required tasks",
   )
+})
+
+test("rejects missing receipts and receipts for another candidate, contract, task or session", () => {
+  const state = fixture()
+  const receipt = state.proof.integrationVerification!
+  for (const integrationVerification of [
+    undefined,
+    { ...receipt, head: "e".repeat(40) },
+    { ...receipt, tree: "e".repeat(40) },
+    { ...receipt, fingerprint: "obsolete" },
+    { ...receipt, taskID: "other-task" },
+    { ...receipt, sessionID: Session.ID.make("ses_other") },
+    { ...receipt, started: 99 },
+  ])
+    expect(
+      SessionTaskIntegration.completionError(
+        state.task,
+        state.tasks,
+        [state.assignment],
+        [{ ...state.proof, integrationVerification }],
+      ),
+    ).toContain("exact integration candidate SHA")
 })
 
 test("invalidates continued, moved, missing, stale and busy source delegations", () => {

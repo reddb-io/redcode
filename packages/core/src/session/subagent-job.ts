@@ -62,18 +62,26 @@ const layer = Layer.effect(
             run: recovery.promptID
               ? run.pipe(
                   Effect.onExit((exit) =>
-                    SubagentCompletion.record(sessions, {
-                      childSessionID: recovery.childSessionID,
-                      promptID: recovery.promptID,
-                      status: Exit.isSuccess(exit)
-                        ? "completed"
-                        : Cause.hasInterruptsOnly(exit.cause)
-                          ? "cancelled"
-                          : "error",
-                      ...(Exit.isFailure(exit) && !Cause.hasInterruptsOnly(exit.cause)
-                        ? { error: Cause.pretty(exit.cause) }
-                        : {}),
-                    }).pipe(Effect.orDie),
+                    Effect.gen(function* () {
+                      if (
+                        Exit.isFailure(exit) &&
+                        Cause.hasInterruptsOnly(exit.cause) &&
+                        (yield* jobs.get(recovery.childSessionID))?.cancellationReason === "shutdown"
+                      )
+                        return
+                      yield* SubagentCompletion.record(sessions, {
+                        childSessionID: recovery.childSessionID,
+                        promptID: recovery.promptID,
+                        status: Exit.isSuccess(exit)
+                          ? "completed"
+                          : Cause.hasInterruptsOnly(exit.cause)
+                            ? "cancelled"
+                            : "error",
+                        ...(Exit.isFailure(exit) && !Cause.hasInterruptsOnly(exit.cause)
+                          ? { error: Cause.pretty(exit.cause) }
+                          : {}),
+                      }).pipe(Effect.orDie)
+                    }),
                   ),
                 )
               : run,

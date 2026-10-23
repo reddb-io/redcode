@@ -215,6 +215,20 @@ export const Integration = Schema.Struct({
 }).annotate({ identifier: "Todo.Integration" })
 export interface Integration extends Schema.Schema.Type<typeof Integration> {}
 
+/** Observed by the executor around a foreground check of an unchanged, clean candidate checkout. */
+export const IntegrationVerification = Schema.Struct({
+  sessionID: SessionID,
+  taskID: Schema.String,
+  fingerprint: Schema.String,
+  head: Integration.fields.head,
+  tree: Integration.fields.tree,
+  directory: AbsolutePath,
+  command: Schema.String,
+  started: Schema.Finite,
+  completed: Schema.Finite,
+}).annotate({ identifier: "Todo.IntegrationVerification" })
+export interface IntegrationVerification extends Schema.Schema.Type<typeof IntegrationVerification> {}
+
 export const PrepareIntegrationInput = Schema.Struct({
   revision: PositiveInt,
   target: AbsolutePath,

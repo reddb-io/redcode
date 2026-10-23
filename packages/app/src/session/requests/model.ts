@@ -81,6 +81,10 @@ export function createSessionRequestModel() {
 
     return form?.metadata?.kind === "question" ? form : undefined
   })
+  const mcpRequest = createMemo(() => {
+    const form = formRequest()
+    return form?.metadata?.kind === "mcp-elicitation" ? form : undefined
+  })
 
   const permissionRequest = createMemo((): PermissionRequest | undefined => {
     const request = sessionPermissionRequest(data.session.list(), data.session.permission.list, params.id)
@@ -93,7 +97,7 @@ export function createSessionRequestModel() {
     const id = params.id
 
     if (!id) return false
-    return !!permissionRequest() || !!questionRequest() || !!vaultRequest() || !!websearch.request()
+    return !!permissionRequest() || !!questionRequest() || !!mcpRequest() || !!vaultRequest() || !!websearch.request()
   })
 
   const primary = () => {
@@ -170,6 +174,7 @@ export function createSessionRequestModel() {
   return {
     blocked,
     questionRequest,
+    mcpRequest,
     vaultRequest,
     websearch,
     permissionRequest,

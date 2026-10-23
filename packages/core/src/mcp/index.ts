@@ -190,6 +190,8 @@ export const layer = (options?: Options) =>
       const credentials = yield* Credential.Service
       const root = yield* Effect.scope
       const fork = yield* FiberSet.makeRuntime<never, void, never>()
+      // Close connections together so slow stdio shutdowns do not exhaust the service's kill deadline.
+      const servers = yield* Scope.fork(root, "parallel")
 
       const entries = new Map<ServerName, ServerEntry>()
       const recoveries = yield* FiberMap.make<ServerName>()
@@ -487,7 +489,7 @@ export const layer = (options?: Options) =>
           // disabled/failed status for the duration of the connection attempt.
           entry.status = { status: "pending" }
           yield* bus.publish(McpEvent.StatusChanged, { server: name })
-          const scope = yield* Scope.fork(root)
+          const scope = yield* Scope.fork(servers)
           entry.scope = scope
           const authProvider = yield* connectProvider(entry)
           const { McpClient } = yield* Effect.promise(() => import("./client.js"))
@@ -619,7 +621,13 @@ export const layer = (options?: Options) =>
               yield* bus.publish(McpEvent.StatusChanged, { server: name })
               continue
             }
-            fork(startServer(name, entry).pipe(locks.withLock(name)))
+            fork(
+              Effect.gen(function* () {
+                // An explicit lifecycle operation may have settled this entry before startup acquired its lock.
+                if (entry.status.status !== "pending") return yield* entry.startup.open
+                yield* startServer(name, entry)
+              }).pipe(locks.withLock(name)),
+            )
           }
           return
         }
