@@ -67,7 +67,11 @@ async function openSubmitSession(page: Page, width: number, direction: "ltr" | "
   await mockOpenCodeServer(page, {
     directory: fixture.directory,
     project: fixture.project,
-    sessions: fixture.sessions,
+    sessions: fixture.sessions.map((session) => ({
+      ...session,
+      agent: "build",
+      model: { id: "claude-opus-4-6", providerID: "opencode" },
+    })),
     provider: fixture.provider,
     pageMessages: () => ({ items: [] }),
   })
@@ -76,4 +80,5 @@ async function openSubmitSession(page: Page, width: number, direction: "ltr" | "
     localStorage.setItem("settings.v3", JSON.stringify({ general: { mobileTitlebarPosition: "bottom" } }))
   })
   await openWithDirection(page, sessionHref(fixture.targetID), direction)
+  await expect(page.locator('[data-action="composer-model"]')).toHaveText("Claude Opus 4.6")
 }

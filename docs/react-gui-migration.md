@@ -36,6 +36,13 @@ existing contributed UI under its original Solid owner. These adapters do not
 implement a second Settings controller or change the extension SDK. They are
 temporary until the surrounding application providers migrate.
 
+The temporary React host waits for document adoption when a Solid portal mounts
+it while detached. This prevents native dialogs from calling `showModal()` before
+their host enters the document. Template content can belong to an inert document;
+the host observes the browsing document and creates its React root only after
+adoption. The ordinary connected-host path retains its
+existing scheduling; deferred root disposal is unchanged.
+
 Shared sources and slots dispose with their originating Solid owner, before
 React finishes its deferred teardown. Slot content remains reactive, including
 navigation actions replaced when extension availability changes. Cached actions
@@ -132,6 +139,27 @@ DropdownMenu, ScrollArea and search controls. Filtering temporarily expands
 groups while retaining their collapse preference. Provider-wide changes include
 models hidden by the filter. Existing services retain visibility preferences and
 the provider-connection handoff; Console workspace grouping remains unchanged.
+
+Composer reasoning modes and intelligence status render in React with native
+Popover, Dialog, ListRow, Button, Tooltip and ScrollArea. The same choices serve
+the composer and command palette with radio semantics and keyboard navigation.
+Existing services still own session overrides, the mode applied before admitting
+a draft's first prompt, scoped status/history requests and evaluator feedback.
+
+The new-session frame, project selector, worktree and branch menus, onboarding
+tips and file-drop feedback render in React. Project selection retains identity
+across servers and worktree aliases, while the existing controller owns project
+changes and completion focus. Native popovers own focus and dismissal; filtered
+menus retain keyboard selection and provider/server scope. Closed branch menus
+defer reading their resource-backed catalog. Worktree/branch selection and the
+Worktrees Settings handoff retain the existing draft and persistence services.
+The composer editor remains in one stable service-owned slot until its own slice
+migrates; the frame does not create a second editor or draft controller.
+Editor focus requests survive that slot's asynchronous mount and are consumed
+once, preserving the requested cursor without focusing ordinary metadata updates.
+File-drop feedback and onboarding tips measure exit animations after React
+commits their hidden state, retain their displayed content through that exit,
+and release the element when its animations finish or motion is reduced.
 
 Home now renders its project picker, server actions, session search/list, context
 menus, inline renaming and deletion confirmation in React with native DS controls.
@@ -574,3 +602,103 @@ menus, edit-dialog focus restoration, removal policies, builtin hide/show and
 extension add actions. The authenticated production preview's native connection
 menu displayed the expected Edit action without horizontal overflow or script
 errors; no live server settings were changed.
+
+Reasoning and new-session development verification on 2026-10-22:
+
+- Three reasoning keepers passed together: applying dual mode before the first
+  prompt, retaining a failed draft, and command-picker keyboard selection plus
+  evaluation details and Settings handoff.
+- Project search and worktree/branch search keepers passed together, preserving
+  the draft and completion focus through selection and Worktrees navigation.
+- The initial native dropzone retained its hidden element after upload because
+  the Solid presence service inspected styles before React committed the exit.
+  Presence now belongs to the native renderer; the dropzone and dialog-error
+  keepers passed together after that correction.
+- All four desktop/mobile/touch/RTL submit-focus keepers passed together. Their
+  old fixture omitted the session's agent/model, so no prompt could be admitted;
+  the immutable prior build independently reproduced that timeout. The fixture
+  now supplies the durable selection and waits for the selected model before
+  testing submission and focus.
+- The saved-reasoning-model keeper passed in development after waiting for the
+  scoped session composer before publishing an update, with the shared app-ready
+  timeout for cold-route startup. The initial optimized run also passed that
+  keeper; its complete run was not green because of the dropzone and stale
+  submit-focus fixture described above.
+- Direct Bun runs of the two existing new-session controller unit suites failed
+  before execution with the existing Solid `jsxDEV` import error. They are not
+  counted as passing coverage.
+
+The authenticated native intelligence view displayed actual S1/S2 roles and
+evaluation history, including duration, token use, cost and issue details. Its
+desktop/mobile dialog had no horizontal overflow. After the host-adoption fix,
+a fresh browser session opened it without script errors. No live reasoning mode,
+model, credentials or prompt was changed.
+
+The final host-adoption path passed five development keepers together, including
+failed, stopped and ready desktop WSL servers. Live desktop/mobile inspection of
+the real project, new-session frame, project picker and worktree menu also found
+no horizontal overflow or browser script errors. Preview-local navigation and
+draft tabs were the only changed browser state; the installed service process
+remained unchanged.
+
+All 154 optimized Chromium cases then passed together without retries across
+Home, navigation, mobile sessions, model pickers, Settings, WSL/SSH, composer,
+new-session flows, summary overlays and panel spacing. The owning browser suite
+also covers dropped-file cleanup and records uncaught errors during native
+reasoning dialogs. Root checks passed all 27 packages with zero lint warnings or
+errors, browser-test typing passed, and Web/Desktop production builds passed.
+
+Final menu refinements keep directional arrows inside project/worktree submenus
+and out of the document-level text-search handler. The project keeper now uses
+two servers with the same directory, verifies scoped selection, cycles server
+actions by keyboard and checks the remote directory-picker handoff without
+changing the draft. Both extended project/worktree keepers passed together in
+development after those refinements. Worktree action text also keeps start
+alignment in its full-width native trigger.
+
+The two extended selection keepers also passed together in the final optimized
+build without retries. Final root checks again passed all 27 packages with zero
+lint warnings/errors; browser-test typing and Web/Desktop builds passed.
+
+The production benchmark then exposed an initial-focus regression on navigation
+from Home: the native frame mounted the editor after its focus request had run.
+The new-session keeper now asserts focus before sending keyboard input; it failed
+on the immutable pre-fix build. The controller retains that one request until the
+editor binds, then consumes its cursor. Three development keepers passed together
+after the correction, followed by all 40 optimized composer, new-session and
+mobile-submit-focus cases together without retries. Root checks, browser-test
+typing and Web/Desktop production builds passed. An initial test batch built
+without the auxiliary mobile fixture pages was invalid and was replaced by this
+complete passing batch.
+
+The authenticated preview also confirmed initial editor focus on desktop and
+mobile, with no horizontal overflow or browser script errors. Its service worker
+initially served the previous build; verification released only the preview's
+registration and checked the current entry asset before continuing. No live prompt
+or backend settings were changed, and the installed service process stayed intact.
+
+The focused native selection build completed all 24 production benchmark cases
+(eight scenarios, three serial repetitions), after the registry reference also
+completed all 24. Median first-correct/stable observations in milliseconds were:
+
+| Scenario | Registry reference | Native new-session selection |
+| --- | ---: | ---: |
+| entry: new session from home | 428.3 / 515.0 | 1140.9 / 1323.0 |
+| entry: new session from session | 329.7 / 388.6 | 1037.8 / 1094.1 |
+| entry: cold session from Home | 1111.4 / 1172.1 | 2512.3 / 2525.1 |
+| tab switch: cold, review closed | 298.7 / 357.3 | 1116.1 / 1360.3 |
+| tab switch: cold, review open | 430.8 / 450.7 | 859.3 / 949.3 |
+| tab switch: warm, review closed | 105.3 / 152.8 | 251.9 / 432.0 |
+| tab switch: warm, review open | 119.0 / 187.5 | 446.6 / 488.1 |
+| tab switch: warm, review resized | 181.2 / 262.9 | 374.7 / 482.2 |
+
+The native batch was slower. Host CPU pressure changed substantially between
+batches and throughout the native run; these measurements do not establish
+performance parity or isolate a renderer regression. The two batches recorded
+84/128 blank timeline samples and 39/42 temporarily missing review file-host
+samples respectively, with zero wrong destinations and zero replaced review file
+hosts in either batch. Passing completion does not mean blank-free transitions.
+The earlier shell/titlebar latency concern remains open. Raw results, host samples,
+the failed-focus build and both immutable comparison builds remain outside the
+checkout. The focused native archive SHA-256 is
+`df864acfead3b24573c2fa9e87e00f10f92307608454b2ded3159ce2b44d85cf`.

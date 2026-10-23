@@ -175,6 +175,7 @@ export interface MockServerConfig {
     cursor?: string
   }
   vcs?: { current: string; default: string }
+  branches?: Resolvable<string[]>
   // Initializes the mock project's VCS; without a handler this mutation answers 501.
   onVcsInit?: (input: { directory: string; provider?: string }) => void
   vcsDiff?: unknown[] | ((input: { mode?: string }) => unknown[])
@@ -1121,7 +1122,13 @@ function mockHandlers(
           }).pipe(Effect.andThen(noContent))
         },
         vcsStatus: () => Effect.succeed({ location: location(config), data: [] }),
-        vcsBranches: () => Effect.succeed({ location: location(config), data: ["main"] }),
+        vcsBranches: (ctx) =>
+          Effect.sync(() => ({
+            location: location(config),
+            data: resolve(config.branches ?? ["main"]).filter((branch) =>
+              branch.toLowerCase().includes(ctx.query.search?.toLowerCase() ?? ""),
+            ),
+          })),
         vcsDiff: (ctx) =>
           Effect.sync(() => ({
             location: location(config),
