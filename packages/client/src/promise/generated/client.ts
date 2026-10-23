@@ -62,6 +62,8 @@ import type {
   SessionMonitorCancelOutput,
   SessionTodoListInput,
   SessionTodoListOutput,
+  SessionTodoReconcileInput,
+  SessionTodoReconcileOutput,
   SessionGoalGetInput,
   SessionGoalGetOutput,
   SessionGoalStartInput,
@@ -1298,6 +1300,18 @@ export function make(options: ClientOptions) {
               path: `/api/session/${encodeURIComponent(input.sessionID)}/todo`,
               successStatus: 200,
               declaredStatuses: [400, 401, 403, 404, 409],
+              empty: false,
+            },
+            requestOptions,
+          ).then((value) => value.data),
+        reconcile: (input: SessionTodoReconcileInput, requestOptions?: RequestOptions) =>
+          request<{ readonly data: SessionTodoReconcileOutput }>(
+            {
+              method: "GET",
+              path: `/api/session/${encodeURIComponent(input.sessionID)}/todo/${encodeURIComponent(input.taskID)}/reconciliation`,
+              query: { revision: input["revision"] },
+              successStatus: 200,
+              declaredStatuses: [400, 401, 403, 404, 409, 500],
               empty: false,
             },
             requestOptions,

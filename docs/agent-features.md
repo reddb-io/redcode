@@ -248,6 +248,20 @@ the coordinator must run a fresh verification after delegated work settles befor
 Changed contracts require an updated delegation, and later edits or changed prerequisite evidence reopen
 affected completed tasks. An objective cannot finish while tracked delegated work or unfinished tasks remain.
 
+For a task that integrates several prerequisites, `task_reconcile` collects their contributions in one
+report. Each entry identifies the originating session and prompt, execution outcome, result review,
+parent acceptance, recorded checks and observed changed paths. Long responses keep a bounded excerpt,
+full-content hash and source message reference. The report lists observed file overlaps and incomplete
+write coverage so the coordinator can inspect the source sessions and verify the combined changes.
+`executionSettled` describes whether the required work has stopped; `acceptanceReady` describes whether
+every prerequisite has current parent evidence. Failed, blocked, cancelled and stale inputs remain
+explicit. Reads preserve task state, and the report itself cannot prove completion.
+
+Clients can read the same projection with
+`GET /api/session/:sessionID/todo/:taskID/reconciliation`, optionally supplying `revision` to reject a
+changed integration task. Background completion notices retain their existing delivery and recovery;
+the coordinator collects the required results after those notices rather than polling active children.
+
 ## Design mode
 
 <img src="features/design-flow.svg" alt="How design mode works: describe, prototype, preview, review, send to the agent, revise until settled, design_exit writes the plan, build implements it" width="100%" />

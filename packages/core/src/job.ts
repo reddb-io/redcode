@@ -24,6 +24,7 @@ const Background = Schema.Struct({
       kind: Schema.Literal("subagent"),
       parentSessionID: SessionSchema.ID,
       childSessionID: SessionSchema.ID,
+      promptID: Schema.optionalKey(SessionMessage.ID),
       agent: Schema.String,
       description: Schema.String,
     }),

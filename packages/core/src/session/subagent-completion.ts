@@ -1,5 +1,7 @@
 export * as SubagentCompletion from "./subagent-completion.js"
 
+import { SubagentReview } from "@opencode/schema/subagent-review"
+import type { SessionSchema } from "./schema.js"
 import { Effect } from "effect"
 import type { Job } from "../job.js"
 import type { Session } from "../session.js"
@@ -43,4 +45,42 @@ export const deliver = Effect.fnUntraced(function* (
     metadata: { source: "subagent", childID: recovery.childSessionID, agent: recovery.agent, state: input.status },
   })
   if (input.notificationID) yield* jobs.completeBackground(input.notificationID)
+})
+
+/** Preserve terminal job outcomes separately from the Session's last execution and result review. */
+export const record = Effect.fnUntraced(function* (
+  sessions: Pick<Session.Interface, "get" | "setMetadata">,
+  input: {
+    childSessionID: SessionSchema.ID
+    promptID?: string
+    status: "completed" | "error" | "cancelled"
+    error?: string
+  },
+) {
+  if (!input.promptID) return
+  const child = yield* sessions
+    .get(input.childSessionID)
+    .pipe(Effect.catchTag("Session.NotFoundError", () => Effect.succeed(undefined)))
+  const brief = SubagentReview.read(child?.metadata)
+  if (!child || !brief?.task || brief.task.promptID !== input.promptID) return
+  if (
+    brief.completion?.promptID === brief.task.promptID &&
+    brief.completion.status === input.status &&
+    brief.completion.error === input.error?.slice(0, 2_000)
+  )
+    return
+  yield* sessions
+    .setMetadata({
+      sessionID: child.id,
+      metadata: SubagentReview.write(child.metadata, {
+        ...brief,
+        completion: {
+          promptID: brief.task.promptID,
+          status: input.status,
+          at: Date.now(),
+          ...(input.error ? { error: input.error.slice(0, 2_000) } : {}),
+        },
+      }),
+    })
+    .pipe(Effect.catchTag("Session.NotFoundError", () => Effect.void))
 })

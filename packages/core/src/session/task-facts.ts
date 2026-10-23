@@ -17,6 +17,7 @@ import { SessionMessageTable, SessionTable } from "./sql.js"
 
 export type Kind = "edit" | "verification" | "bookkeeping" | "other"
 export type Result = {
+  sessionID?: SessionSchema.ID
   callID: string
   messageID: string
   tool: string
@@ -66,7 +67,7 @@ const edits = new Set([
  * on the model's behalf, and they never invalidate earlier evidence.
  */
 const verifications = new Set(["bash", "shell", "design_preview", "design_export", "design_jobs"])
-const bookkeeping = new Set(["todowrite", "todoread", "plan_exit", "goal_status", "goal_complete"])
+const bookkeeping = new Set(["todowrite", "todoread", "task_reconcile", "plan_exit", "goal_status", "goal_complete"])
 export const kind = (tool: string): Kind =>
   edits.has(tool) ? "edit" : verifications.has(tool) ? "verification" : bookkeeping.has(tool) ? "bookkeeping" : "other"
 
@@ -384,7 +385,11 @@ export function command(input: unknown, limit = 120) {
 }
 
 /** Derive evidence from the ordered projection, including results outside the compacted model window. */
-export function project(messages: ReadonlyArray<SessionMessage.Info>, directory?: string): Result[] {
+export function project(
+  messages: ReadonlyArray<SessionMessage.Info>,
+  directory?: string,
+  sessionID?: SessionSchema.ID,
+): Result[] {
   return messages.flatMap((message) =>
     message.type === "assistant"
       ? message.content.flatMap((part) => {
@@ -397,6 +402,7 @@ export function project(messages: ReadonlyArray<SessionMessage.Info>, directory?
           const metadata = part.state.status === "completed" ? (part.state.metadata ?? {}) : {}
           return [
             {
+              ...(sessionID ? { sessionID } : {}),
               callID: part.id,
               messageID: message.id,
               tool: part.name,
@@ -507,14 +513,17 @@ const make = Effect.gen(function* () {
           .pipe(Effect.orDie)
         const messages = yield* Effect.forEach(rows, SessionHistory.decodeMessageRow)
         return [
-          ...project(messages, child.directory).filter((result) => result.kind === "edit"),
+          ...project(messages, child.directory, child.id).filter((result) => result.kind === "edit"),
           ...(yield* delegatedEdits(child.id, true)),
         ]
       }),
     )).flat()
   })
 
-  const load = Effect.fn("SessionTaskFacts.load")(function* (sessionID: SessionSchema.ID) {
+  const load = Effect.fn("SessionTaskFacts.load")(function* (
+    sessionID: SessionSchema.ID,
+    options?: { descendants?: boolean },
+  ) {
     const directory = (yield* db
       .select({ directory: SessionTable.directory })
       .from(SessionTable)
@@ -547,9 +556,10 @@ const make = Effect.gen(function* () {
       ),
       ...pending,
     ]
-    const results = [...project(messages, directory), ...(yield* delegatedEdits(sessionID))].toSorted(
-      (a, b) => a.completed - b.completed,
-    )
+    const results = [
+      ...project(messages, directory, sessionID),
+      ...(yield* delegatedEdits(sessionID, options?.descendants ?? false)),
+    ].toSorted((a, b) => a.completed - b.completed)
     return { requests, results }
   })
 

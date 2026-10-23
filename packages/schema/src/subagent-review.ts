@@ -58,6 +58,15 @@ export const Checkpoint = Schema.Struct({
 }).annotate({ identifier: "SubagentReview.Checkpoint" })
 export type Checkpoint = typeof Checkpoint.Type
 
+/** Latest terminal job outcome, distinct from the Session execution and semantic review. */
+export const Completion = Schema.Struct({
+  promptID: Schema.String,
+  status: Schema.Literals(["completed", "error", "cancelled"]),
+  at: Schema.Finite,
+  error: optional(Schema.String),
+}).annotate({ identifier: "SubagentReview.Completion" })
+export interface Completion extends Schema.Schema.Type<typeof Completion> {}
+
 export const Brief = Schema.Struct({
   prompt: Schema.String,
   agent: Schema.String,
@@ -81,6 +90,7 @@ export const Brief = Schema.Struct({
   evaluationID: Schema.String.pipe(optional),
   created: Schema.Finite,
   result: Result.pipe(optional),
+  completion: optional(Completion),
   checkpoints: Schema.Array(Checkpoint).pipe(optional),
 }).annotate({ identifier: "SubagentReview.Brief" })
 export type Brief = typeof Brief.Type

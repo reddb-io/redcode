@@ -4,6 +4,7 @@ import { SessionStore } from "@opencode/core/session/store"
 import { Bus } from "@opencode/core/bus"
 import { MonitorRuntime } from "@opencode/core/monitor"
 import { Monitor } from "@opencode/schema/monitor"
+import { SessionTaskReconciliation } from "@opencode/core/session/task-reconciliation"
 import { SessionTodoStore } from "@opencode/core/session/todo-store"
 import { SessionGoal } from "@opencode/core/session/goal"
 import { SessionBudget } from "@opencode/core/session/budget"
@@ -386,6 +387,22 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
           yield* session.get(ctx.params.sessionID).pipe(Effect.catchTag("Session.NotFoundError", missingSession))
           const todos = yield* SessionTodoStore.Service
           return { data: yield* todos.get(ctx.params.sessionID) }
+        }),
+      )
+      .handle(
+        "session.todo.reconcile",
+        Effect.fn(function* (ctx) {
+          yield* session.get(ctx.params.sessionID).pipe(Effect.catchTag("Session.NotFoundError", missingSession))
+          const reconciliation = yield* SessionTaskReconciliation.Service
+          return {
+            data: yield* reconciliation.inspect(ctx.params.sessionID, ctx.params.taskID, ctx.query.revision).pipe(
+              Effect.catchTag(
+                "SessionTodo.Error",
+                (error) => new InvalidRequestError({ message: error.message, field: "taskID" }),
+              ),
+              Effect.catchTag("Session.MessageDecodeError", failedMessageDecode),
+            ),
+          }
         }),
       )
       .handle(

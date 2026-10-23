@@ -1,6 +1,6 @@
 import { describe, expect } from "bun:test"
 import { Deferred, Effect, Fiber, Layer, Schema, Stream } from "effect"
-import { LanguageModel } from "@opencode/ai"
+import { AIError, InvalidRequestError, LanguageModel } from "@opencode/ai"
 import { OpenAIChat } from "@opencode/ai/protocols"
 import { TestLLM } from "@opencode/ai/testing"
 import path from "path"
@@ -25,6 +25,7 @@ import { Job } from "@opencode/core/job"
 import { KV } from "@opencode/core/kv"
 import { LocationServiceMap } from "@opencode/core/location-service-map"
 import { Session } from "@opencode/core/session"
+import { SubagentCompletion } from "@opencode/core/session/subagent-completion"
 import { SubagentJob } from "@opencode/core/session/subagent-job"
 import { SessionEvent } from "@opencode/core/session/event"
 import { SessionExecution } from "@opencode/core/session/execution"
@@ -34,6 +35,9 @@ import { SessionMessage } from "@opencode/core/session/message"
 import { SessionRunnerModel } from "@opencode/core/session/runner/model"
 import { SessionGoalCompletion } from "@opencode/core/session/goal-completion"
 import { SessionTaskFacts } from "@opencode/core/session/task-facts"
+import { SessionTaskReconciliation } from "@opencode/core/session/task-reconciliation"
+import { TaskReconcileTool } from "@opencode/core/tool/plugin/task-reconcile"
+import { SessionTodo } from "@opencode/schema/session-todo"
 import { SessionTaskAssignments } from "@opencode/core/session/task-assignments"
 import { SessionTodoStore } from "@opencode/core/session/todo-store"
 import { SessionStore } from "@opencode/core/session/store"
@@ -139,6 +143,7 @@ const subagentPluginSupervisor = makeLocationNode({
   layer: Layer.effectDiscard(
     Effect.gen(function* () {
       const hooks = yield* PluginHooks.Service
+      yield* registerToolPlugin(TaskReconcileTool.Plugin)
       yield* registerToolPlugin(SubagentTool.Plugin, {}, (name, callback) => hooks.register("tool", name, callback))
     }),
   ),
@@ -153,6 +158,7 @@ const subagentPluginSupervisor = makeLocationNode({
     Job.node,
     SubagentJob.node,
     SessionTodoStore.node,
+    SessionTaskReconciliation.node,
     SessionTaskAssignments.node,
     SessionGoalCompletion.node,
     Tool.node,
@@ -161,6 +167,7 @@ const subagentPluginSupervisor = makeLocationNode({
 })
 
 const nodes = LayerNode.group([
+  SessionTaskReconciliation.node,
   SessionGoalCompletion.node,
   SessionTodoStore.node,
   SessionTaskAssignments.node,
@@ -241,197 +248,428 @@ const withSubagent = (location: Location.Ref) =>
     ).pipe(Effect.provide(locations.get(location)))
   })
 
+const record = Effect.fnUntraced(function* (sessionID: Session.ID, name: string, id: string) {
+  const bus = yield* Bus.Service
+  const assistantMessageID = SessionMessage.ID.create()
+  yield* bus.publish(SessionEvent.Step.Started, {
+    sessionID,
+    assistantMessageID,
+    agent: Agent.ID.make("build"),
+    model: parentModel,
+    started: Date.now(),
+  })
+  yield* bus.publish(SessionEvent.Tool.Input.Started, { sessionID, assistantMessageID, id, name })
+  yield* bus.publish(SessionEvent.Tool.Called, {
+    sessionID,
+    assistantMessageID,
+    id,
+    input: name === "shell" ? { command: "bun -e 'if (2+2!==4) process.exit(1)'" } : { path: "checkout.ts" },
+    executed: true,
+  })
+  const process =
+    name === "shell"
+      ? Bun.spawn(["bun", "-e", "if (2+2!==4) process.exit(1)"], { stdout: "pipe", stderr: "pipe" })
+      : undefined
+  const exit = process ? yield* Effect.promise(() => process.exited) : 0
+  yield* bus.publish(SessionEvent.Tool.Success, {
+    sessionID,
+    assistantMessageID,
+    id,
+    content: [{ type: "text", text: "Verification completed" }],
+    metadata: { exit },
+    executed: true,
+  })
+  yield* bus.publish(SessionEvent.Step.Ended, {
+    sessionID,
+    assistantMessageID,
+    finish: "stop",
+    cost: Money.USD.zero,
+    tokens,
+  })
+})
+
 describe("SubagentTool", () => {
-  completionIt.live("reconciles a tracked child only after parent verification and invalidates dependent results", () =>
-    Effect.acquireRelease(
-      Effect.promise(() => tmpdir()),
-      (dir) => Effect.promise(() => dir[Symbol.asyncDispose]()),
-    ).pipe(
-      Effect.flatMap((dir) =>
-        Effect.gen(function* () {
-          const sessions = yield* Session.Service
-          const todos = yield* SessionTodoStore.Service
-          const assignments = yield* SessionTaskAssignments.Service
-          const jobs = yield* Job.Service
-          const llm = yield* TestLLM.Test
-          const bus = yield* Bus.Service
-          const parent = yield* sessions.create({
-            location: Location.Ref.make({ directory: AbsolutePath.make(dir.path) }),
-            model: parentModel,
-          })
-          yield* withSubagent(parent.location)
-          yield* sessions.prompt({
-            sessionID: parent.id,
-            text: "Implement checkout and verify integration",
-            resume: false,
-          })
-          yield* sessions.resume(parent.id)
-          const created = (yield* todos.write({
-            sessionID: parent.id,
-            todos: [
-              { content: "Implement checkout", criterion: "Checkout submits valid input", priority: "high" },
-              { content: "Verify integration", criterion: "Integration checks pass", priority: "high" },
-            ],
-          })).todos
-          yield* todos.write({ sessionID: parent.id, todos: [{ id: created[1]!.id, dependencies: [created[0]!.id!] }] })
-          const locations = yield* LocationServiceMap.Service
-          const registry = yield* Tool.Service.pipe(Effect.provide(locations.get(parent.location)))
-          const goalCompletion = yield* SessionGoalCompletion.Service
-          const launch = (taskID: string, id: string) =>
-            executeTool(registry, {
+  completionIt.live(
+    "reconciles a tracked child only after parent verification and invalidates dependent results",
+    () =>
+      Effect.acquireRelease(
+        Effect.promise(() => tmpdir()),
+        (dir) => Effect.promise(() => dir[Symbol.asyncDispose]()),
+      ).pipe(
+        Effect.flatMap((dir) =>
+          Effect.gen(function* () {
+            const sessions = yield* Session.Service
+            const todos = yield* SessionTodoStore.Service
+            const assignments = yield* SessionTaskAssignments.Service
+            const jobs = yield* Job.Service
+            const llm = yield* TestLLM.Test
+            const parent = yield* sessions.create({
+              location: Location.Ref.make({ directory: AbsolutePath.make(dir.path) }),
+              model: parentModel,
+            })
+            yield* withSubagent(parent.location)
+            yield* sessions.prompt({
+              sessionID: parent.id,
+              text: "Implement checkout and verify integration",
+              resume: false,
+            })
+            yield* sessions.resume(parent.id)
+            const created = (yield* todos.write({
+              sessionID: parent.id,
+              todos: [
+                { content: "Implement checkout", criterion: "Checkout submits valid input", priority: "high" },
+                { content: "Verify integration", criterion: "Integration checks pass", priority: "high" },
+              ],
+            })).todos
+            yield* todos.write({
+              sessionID: parent.id,
+              todos: [{ id: created[1]!.id, dependencies: [created[0]!.id!] }],
+            })
+            const locations = yield* LocationServiceMap.Service
+            const registry = yield* Tool.Service.pipe(Effect.provide(locations.get(parent.location)))
+            const goalCompletion = yield* SessionGoalCompletion.Service
+            const reconciliation = yield* SessionTaskReconciliation.Service
+            const readReconciliation = Effect.fnUntraced(function* () {
+              const result = yield* executeTool(registry, {
+                sessionID: parent.id,
+                ...toolIdentity,
+                call: {
+                  type: "tool-call",
+                  id: "collect-task-results",
+                  name: TaskReconcileTool.name,
+                  input: { taskID: created[1]!.id },
+                },
+              })
+              expect(result.status).toBe("completed")
+              return Schema.decodeUnknownSync(SessionTodo.Reconciliation)(result.output)
+            })
+            const launch = (taskID: string, id: string) =>
+              executeTool(registry, {
+                sessionID: parent.id,
+                ...toolIdentity,
+                call: {
+                  type: "tool-call",
+                  id,
+                  name: SubagentTool.name,
+                  input: {
+                    agent: "reviewer",
+                    description: "Checkout validation",
+                    prompt: "Inspect checkout; return findings without edits",
+                    taskID,
+                    background: true,
+                  },
+                },
+              })
+            expect((yield* launch(created[1]!.id!, "blocked-dependency")).status).toBe("error")
+            const gate = yield* Deferred.make<void>()
+            yield* llm.push(
+              Stream.unwrap(
+                Deferred.await(gate).pipe(Effect.as(Stream.fromIterable(TestLLM.text(childText, "tracked-result")))),
+              ),
+            )
+            const concurrent = yield* Effect.all(
+              [launch(created[0]!.id!, "tracked-launch"), launch(created[0]!.id!, "concurrent-launch")],
+              { concurrency: "unbounded" },
+            )
+            expect(concurrent.map((result) => result.status).toSorted()).toEqual(["completed", "error"])
+            const launched = concurrent.find((result) => result.status === "completed")!
+            const childID = outputSessionID(launched.metadata)
+            expect((yield* assignments.snapshot(parent.id, yield* todos.get(parent.id)))[0]).toMatchObject({
+              taskID: created[0]!.id,
+              sessionID: childID,
+              state: "running",
+              current: true,
+            })
+            expect((yield* launch(created[0]!.id!, "duplicate-launch")).status).toBe("error")
+            expect((yield* sessions.list({ parentID: parent.id })).data).toHaveLength(1)
+            expect((yield* goalCompletion.check(parent.id).pipe(Effect.flip)).message).toContain(
+              "unsettled delegated work",
+            )
+            yield* Deferred.succeed(gate, undefined)
+            yield* jobs.wait({ id: childID })
+            yield* sessions.wait(parent.id)
+            const settled = yield* assignments.snapshot(parent.id, yield* todos.get(parent.id))
+            expect(settled[0]).toMatchObject({ state: "settled", current: true, review: "unverified" })
+            const waiting = yield* readReconciliation()
+            expect(waiting).toMatchObject({ executionSettled: true, acceptanceReady: false })
+            expect(waiting.inputs[0]).toMatchObject({
+              acceptance: "pending",
+              contributions: [
+                { current: true, execution: "succeeded", response: { text: childText, truncated: false } },
+              ],
+            })
+            expect((yield* todos.get(parent.id))[0]!.status).not.toBe("completed")
+            const child = yield* sessions.get(childID)
+            expect(SubagentReview.read(child.metadata)?.task?.id).toBe(created[0]!.id)
+            expect(JSON.stringify(yield* sessions.context(childID))).toContain("Tracked task contract")
+            yield* todos.write({
+              sessionID: parent.id,
+              todos: [{ id: created[0]!.id, criterion: "Checkout also rejects malformed input" }],
+            })
+            expect((yield* assignments.snapshot(parent.id, yield* todos.get(parent.id)))[0]!.current).toBe(false)
+            expect((yield* readReconciliation()).inputs[0]!.contributions[0]!.current).toBe(false)
+            const continued = yield* executeTool(registry, {
               sessionID: parent.id,
               ...toolIdentity,
               call: {
                 type: "tool-call",
-                id,
+                id: "tracked-continuation",
                 name: SubagentTool.name,
                 input: {
                   agent: "reviewer",
-                  description: "Checkout validation",
-                  prompt: "Inspect checkout; return findings without edits",
-                  taskID,
-                  background: true,
+                  description: "Updated checkout review",
+                  prompt: "Inspect the updated acceptance criterion",
+                  sessionID: childID,
                 },
               },
             })
-          expect((yield* launch(created[1]!.id!, "blocked-dependency")).status).toBe("error")
-          const gate = yield* Deferred.make<void>()
-          yield* llm.push(
-            Stream.unwrap(
-              Deferred.await(gate).pipe(Effect.as(Stream.fromIterable(TestLLM.text(childText, "tracked-result")))),
-            ),
-          )
-          const concurrent = yield* Effect.all(
-            [launch(created[0]!.id!, "tracked-launch"), launch(created[0]!.id!, "concurrent-launch")],
-            { concurrency: "unbounded" },
-          )
-          expect(concurrent.map((result) => result.status).toSorted()).toEqual(["completed", "error"])
-          const launched = concurrent.find((result) => result.status === "completed")!
-          const childID = outputSessionID(launched.metadata)
-          expect((yield* assignments.snapshot(parent.id, yield* todos.get(parent.id)))[0]).toMatchObject({
-            taskID: created[0]!.id,
-            sessionID: childID,
-            state: "running",
-            current: true,
-          })
-          expect((yield* launch(created[0]!.id!, "duplicate-launch")).status).toBe("error")
-          expect((yield* sessions.list({ parentID: parent.id })).data).toHaveLength(1)
-          expect((yield* goalCompletion.check(parent.id).pipe(Effect.flip)).message).toContain(
-            "unsettled delegated work",
-          )
-          yield* Deferred.succeed(gate, undefined)
-          yield* jobs.wait({ id: childID })
-          yield* sessions.wait(parent.id)
-          const settled = yield* assignments.snapshot(parent.id, yield* todos.get(parent.id))
-          expect(settled[0]).toMatchObject({ state: "settled", current: true, review: "unverified" })
-          const child = yield* sessions.get(childID)
-          expect(SubagentReview.read(child.metadata)?.task?.id).toBe(created[0]!.id)
-          expect(JSON.stringify(yield* sessions.context(childID))).toContain("Tracked task contract")
-          yield* todos.write({
-            sessionID: parent.id,
-            todos: [{ id: created[0]!.id, criterion: "Checkout also rejects malformed input" }],
-          })
-          expect((yield* assignments.snapshot(parent.id, yield* todos.get(parent.id)))[0]!.current).toBe(false)
-          const continued = yield* executeTool(registry, {
-            sessionID: parent.id,
-            ...toolIdentity,
-            call: {
-              type: "tool-call",
-              id: "tracked-continuation",
-              name: SubagentTool.name,
-              input: {
-                agent: "reviewer",
-                description: "Updated checkout review",
-                prompt: "Inspect the updated acceptance criterion",
-                sessionID: childID,
-              },
-            },
-          })
-          expect(continued.status).toBe("completed")
-          expect((yield* assignments.snapshot(parent.id, yield* todos.get(parent.id)))[0]!.current).toBe(true)
-          expect(SubagentReview.read((yield* sessions.get(childID)).metadata)?.criteria).toEqual([
-            "Checkout also rejects malformed input",
-          ])
-          const descendant = yield* sessions.create({
-            parentID: childID,
-            title: "Nested verification",
-            model: childModel,
-          })
-          yield* sessions.prompt({ sessionID: descendant.id, text: "Inspect checkout once", resume: false })
-          expect((yield* assignments.snapshot(parent.id, yield* todos.get(parent.id)))[0]!.state).toBe("running")
-          expect((yield* goalCompletion.check(parent.id).pipe(Effect.flip)).message).toContain(
-            "unsettled delegated work",
-          )
-          yield* sessions.resume(descendant.id)
-
-          const record = Effect.fnUntraced(function* (sessionID: Session.ID, name: string, id: string) {
-            const assistantMessageID = SessionMessage.ID.create()
-            yield* bus.publish(SessionEvent.Step.Started, {
-              sessionID,
-              assistantMessageID,
-              agent: Agent.ID.make("build"),
-              model: parentModel,
-              started: Date.now(),
+            expect(continued.status).toBe("completed")
+            const refreshed = SubagentReview.read((yield* sessions.get(childID)).metadata)!
+            yield* SubagentCompletion.record(sessions, {
+              childSessionID: childID,
+              promptID: SubagentReview.read(child.metadata)!.task!.promptID,
+              status: "error",
+              error: "Late result from the previous prompt",
             })
-            yield* bus.publish(SessionEvent.Tool.Input.Started, { sessionID, assistantMessageID, id, name })
-            yield* bus.publish(SessionEvent.Tool.Called, {
-              sessionID,
-              assistantMessageID,
-              id,
-              input: name === "shell" ? { command: "bun -e 'if (2+2!==4) process.exit(1)'" } : { path: "checkout.ts" },
-              executed: true,
-            })
-            const process =
-              name === "shell"
-                ? Bun.spawn(["bun", "-e", "if (2+2!==4) process.exit(1)"], { stdout: "pipe", stderr: "pipe" })
-                : undefined
-            const exit = process ? yield* Effect.promise(() => process.exited) : 0
-            yield* bus.publish(SessionEvent.Tool.Success, {
-              sessionID,
-              assistantMessageID,
-              id,
-              content: [{ type: "text", text: "Verification completed" }],
-              metadata: { exit },
-              executed: true,
-            })
-            yield* bus.publish(SessionEvent.Step.Ended, {
-              sessionID,
-              assistantMessageID,
-              finish: "stop",
-              cost: Money.USD.zero,
-              tokens,
-            })
-          })
-          // A settled summary alone cannot finish the task: only a parent check can reconcile it.
-          expect(
-            SessionTaskAssignments.completionError(settled, { ...created[0]!, status: "completed" }, []),
-          ).toContain("needs parent verification")
-          yield* record(parent.id, "shell", "parent-verification")
-          const completed = (yield* todos.write({
-            sessionID: parent.id,
-            todos: created.map((task) => ({
-              id: task.id,
+            expect(SubagentReview.read((yield* sessions.get(childID)).metadata)?.completion).toEqual(
+              refreshed.completion,
+            )
+            yield* SubagentCompletion.record(sessions, {
+              childSessionID: childID,
+              promptID: refreshed.task!.promptID,
               status: "completed",
-              evidence: {
-                callID: "parent-verification",
-                explanation: "The parent integration check passed after the delegated inspection settled",
-              },
-            })),
-          })).todos
-          expect(completed.every((task) => task.status === "completed")).toBe(true)
-          yield* goalCompletion.check(parent.id)
-          yield* record(childID, "edit", "late-child-edit")
-          const facts = yield* SessionTaskFacts.Service
-          expect(
-            (yield* facts.load(parent.id)).results.some(
-              (entry) => entry.callID === "late-child-edit" && entry.kind === "edit",
-            ),
-          ).toBe(true)
-          const reopened = yield* todos.review(parent.id)
-          expect(reopened.every((task) => task.status !== "completed")).toBe(true)
-        }),
+            })
+            expect(SubagentReview.read((yield* sessions.get(childID)).metadata)?.completion).toEqual(
+              refreshed.completion,
+            )
+            expect((yield* assignments.snapshot(parent.id, yield* todos.get(parent.id)))[0]!.current).toBe(true)
+            expect(SubagentReview.read((yield* sessions.get(childID)).metadata)?.criteria).toEqual([
+              "Checkout also rejects malformed input",
+            ])
+            const descendant = yield* sessions.create({
+              parentID: childID,
+              title: "Nested verification",
+              model: childModel,
+            })
+            yield* sessions.prompt({ sessionID: descendant.id, text: "Inspect checkout once", resume: false })
+            expect((yield* assignments.snapshot(parent.id, yield* todos.get(parent.id)))[0]!.state).toBe("running")
+            expect((yield* goalCompletion.check(parent.id).pipe(Effect.flip)).message).toContain(
+              "unsettled delegated work",
+            )
+            yield* sessions.resume(descendant.id)
+
+            // A settled summary alone cannot finish the task: only a parent check can reconcile it.
+            expect(
+              SessionTaskAssignments.completionError(settled, { ...created[0]!, status: "completed" }, []),
+            ).toContain("needs parent verification")
+            yield* record(parent.id, "shell", "parent-verification")
+            const completed = (yield* todos.write({
+              sessionID: parent.id,
+              todos: created.map((task) => ({
+                id: task.id,
+                status: "completed",
+                evidence: {
+                  callID: "parent-verification",
+                  explanation: "The parent integration check passed after the delegated inspection settled",
+                },
+              })),
+            })).todos
+            expect(completed.every((task) => task.status === "completed")).toBe(true)
+            yield* goalCompletion.check(parent.id)
+            expect((yield* readReconciliation()).acceptanceReady).toBe(true)
+            yield* record(parent.id, TaskReconcileTool.name, "reconciliation-is-not-proof")
+            const rejectedProof = yield* todos
+              .write({
+                sessionID: parent.id,
+                todos: [
+                  {
+                    id: created[0]!.id,
+                    status: "completed",
+                    evidence: {
+                      callID: "reconciliation-is-not-proof",
+                      explanation: "This report summarizes the delegated work",
+                    },
+                  },
+                ],
+              })
+              .pipe(Effect.flip)
+            expect(rejectedProof.message).toContain("failed result")
+            yield* record(childID, "edit", "late-child-edit")
+            const stale = yield* readReconciliation()
+            expect(stale.acceptanceReady).toBe(false)
+            expect(stale.inputs[0]!.acceptance).toBe("stale")
+            expect(stale.inputs[0]!.contributions[0]!.changedPaths).toContain(path.join(dir.path, "checkout.ts"))
+            expect((yield* todos.get(parent.id))[0]!.status).toBe("completed")
+            expect(
+              (yield* reconciliation.inspect(parent.id, created[1]!.id!, 999).pipe(Effect.flip)).message,
+            ).toContain("changed")
+            const facts = yield* SessionTaskFacts.Service
+            expect(
+              (yield* facts.load(parent.id)).results.some(
+                (entry) => entry.callID === "late-child-edit" && entry.kind === "edit",
+              ),
+            ).toBe(true)
+            const reopened = yield* todos.review(parent.id)
+            expect(reopened.every((task) => task.status !== "completed")).toBe(true)
+          }),
+        ),
       ),
-    ),
+    30_000,
+  )
+
+  completionIt.live(
+    "collects required results with durable failures, bounded evidence and overlapping files",
+    () =>
+      Effect.acquireRelease(
+        Effect.promise(() => tmpdir()),
+        (dir) => Effect.promise(() => dir[Symbol.asyncDispose]()),
+      ).pipe(
+        Effect.flatMap((dir) =>
+          Effect.gen(function* () {
+            const sessions = yield* Session.Service
+            const todos = yield* SessionTodoStore.Service
+            const reconciliation = yield* SessionTaskReconciliation.Service
+            const jobs = yield* Job.Service
+            const llm = yield* TestLLM.Test
+            const parent = yield* sessions.create({
+              location: Location.Ref.make({ directory: AbsolutePath.make(dir.path) }),
+              model: parentModel,
+            })
+            yield* withSubagent(parent.location)
+            yield* sessions.prompt({
+              sessionID: parent.id,
+              text: "Implement the API and client, then integrate both",
+              resume: false,
+            })
+            yield* sessions.resume(parent.id)
+            const tasks = (yield* todos.write({
+              sessionID: parent.id,
+              todos: [
+                { content: "Implement API", criterion: "API checks pass", priority: "high" },
+                { content: "Implement client", criterion: "Client checks pass", priority: "high" },
+                { content: "Integrate delivery", criterion: "Integration checks pass", priority: "high" },
+              ],
+            })).todos
+            yield* todos.write({
+              sessionID: parent.id,
+              todos: [{ id: tasks[2]!.id, dependencies: [tasks[0]!.id!, tasks[1]!.id!] }],
+            })
+            const locations = yield* LocationServiceMap.Service
+            const registry = yield* Tool.Service.pipe(Effect.provide(locations.get(parent.location)))
+            const launch = (taskID: string, description: string) =>
+              executeTool(registry, {
+                sessionID: parent.id,
+                ...toolIdentity,
+                call: {
+                  type: "tool-call",
+                  id: description,
+                  name: SubagentTool.name,
+                  input: {
+                    agent: "reviewer",
+                    description,
+                    prompt: "Inspect this requirement and report evidence",
+                    taskID,
+                  },
+                },
+              })
+            yield* llm.push(
+              TestLLM.failAfter(
+                new AIError({ reason: new InvalidRequestError({ message: "Provider rejected the input" }) }),
+              ),
+            )
+            expect((yield* launch(tasks[0]!.id!, "failed-input")).status).toBe("error")
+            const failed = (yield* sessions.list({ parentID: parent.id })).data[0]!
+            expect(SubagentReview.read(failed.metadata)?.completion).toMatchObject({ status: "error" })
+            const fullText = "verified detail ".repeat(1_000)
+            yield* llm.push(TestLLM.text(fullText, "large-result"))
+            const completed = yield* launch(tasks[1]!.id!, "successful-input")
+            expect(completed.status).toBe("completed")
+            const childID = outputSessionID(completed.metadata)
+            yield* record(failed.id, "edit", "failed-shared-edit")
+            yield* record(childID, "edit", "successful-shared-edit")
+            yield* Effect.forEach(
+              Array.from({ length: SessionTaskReconciliation.LIMITS.checks + 1 }, (_, index) => index),
+              (index) => record(childID, "shell", `child-check-${index}`),
+            )
+            const beforeEdit = yield* reconciliation.inspect(parent.id, tasks[2]!.id!)
+            expect(beforeEdit.inputs[1]!.contributions[0]!.checks.every((check) => check.fresh)).toBe(true)
+            yield* record(childID, "edit", "post-check-edit")
+            const report = yield* reconciliation.inspect(parent.id, tasks[2]!.id!)
+            expect(report).toMatchObject({ executionSettled: true, acceptanceReady: false })
+            expect(report.inputs[0]!.contributions[0]).toMatchObject({
+              execution: "failed",
+              completion: { status: "error" },
+            })
+            expect(report.inputs[1]!.contributions[0]).toMatchObject({
+              execution: "succeeded",
+              response: { truncated: true, hash: SessionTaskFacts.hash(fullText) },
+              omittedChecks: 1,
+              unknownWriteScope: true,
+            })
+            expect(report.inputs[1]!.contributions[0]!.response!.text).toHaveLength(
+              SessionTaskReconciliation.LIMITS.response,
+            )
+            expect(report.inputs[1]!.contributions[0]!.checks).toHaveLength(SessionTaskReconciliation.LIMITS.checks)
+            expect(
+              report.inputs[1]!.contributions[0]!.checks.every(
+                (check) => !check.fresh && check.invalidatedBy?.callID === "post-check-edit",
+              ),
+            ).toBe(true)
+            expect(report.overlaps).toEqual([
+              { path: path.join(dir.path, "checkout.ts"), taskIDs: [tasks[0]!.id!, tasks[1]!.id!] },
+            ])
+            expect(report.inputs.every((input) => input.acceptance === "pending")).toBe(true)
+            yield* Effect.forEach(
+              Array.from({ length: 26 }, (_, index) => index),
+              (index) =>
+                Effect.gen(function* () {
+                  const job = yield* jobs.start({ id: `eviction-${index}`, type: "test", run: Effect.succeed("done") })
+                  yield* jobs.block({ id: job.id, sessionID: parent.id })
+                }),
+            )
+            expect(yield* jobs.get(failed.id)).toBeUndefined()
+            expect(
+              (yield* reconciliation.inspect(parent.id, tasks[2]!.id!)).inputs[0]!.contributions[0]!.execution,
+            ).toBe("failed")
+            const extended = (yield* todos.write({
+              sessionID: parent.id,
+              todos: [{ content: "Optional exploration", criterion: "Exploration reports findings", priority: "low" }],
+            })).todos
+            const optional = extended.at(-1)!
+            yield* todos.write({
+              sessionID: parent.id,
+              todos: [
+                { id: tasks[2]!.id, dependencies: [tasks[0]!.id!, tasks[1]!.id!, optional.id!] },
+                { id: tasks[1]!.id, status: "blocked", reason: "Integration fixture requires a missing service" },
+              ],
+            })
+            const incomplete = yield* reconciliation.inspect(parent.id, tasks[2]!.id!)
+            expect(incomplete.executionSettled).toBe(false)
+            expect(incomplete.inputs[1]!.acceptance).toBe("blocked")
+            expect(incomplete.inputs[2]!.contributions).toEqual([])
+            yield* sessions.prompt({ sessionID: parent.id, text: "Drop the optional exploration", resume: false })
+            yield* sessions.resume(parent.id)
+            yield* todos.write({
+              sessionID: parent.id,
+              todos: [
+                {
+                  id: optional.id,
+                  status: "cancelled",
+                  reason: "The user removed optional exploration",
+                  scopeChange: { quote: "Drop the optional exploration" },
+                },
+              ],
+            })
+            const cancelled = yield* reconciliation.inspect(parent.id, tasks[2]!.id!)
+            expect(cancelled.inputs[2]!.acceptance).toBe("cancelled")
+            expect(cancelled.acceptanceReady).toBe(false)
+            expect((yield* reconciliation.inspect(parent.id, "foreign-task").pipe(Effect.flip)).message).toContain(
+              "Unknown task",
+            )
+          }),
+        ),
+      ),
+    30_000,
   )
 
   completionIt.live("admits one durable completion across live delivery and restart replay", () =>

@@ -537,6 +537,21 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI ext
       ),
     )
     .add(
+      HttpApiEndpoint.get("session.todo.reconcile", "/api/session/:sessionID/todo/:taskID/reconciliation", {
+        params: { sessionID: Session.ID, taskID: Schema.String },
+        query: { revision: Schema.NumberFromString.pipe(Schema.decodeTo(PositiveInt), Schema.optional) },
+        success: Schema.Struct({ data: SessionTodo.Reconciliation }),
+        error: [SessionNotFoundError, InvalidRequestError, UnknownError],
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "session.todo.reconcile",
+          summary: "Inspect required task results together",
+          description:
+            "Derive execution outcomes, source references, checks, overlapping files and acceptance for a task's prerequisites. This read never accepts or completes work.",
+        }),
+      ),
+    )
+    .add(
       HttpApiEndpoint.get("session.goal.get", "/api/experimental/session/:sessionID/goal", {
         params: { sessionID: Session.ID },
         success: Schema.Struct({ data: Schema.NullOr(SessionGoal.Info) }),

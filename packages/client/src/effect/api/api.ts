@@ -699,6 +699,165 @@ export type SessionTodoListOperation<E = never> = (
   input: SessionTodoListInput,
 ) => Effect.Effect<SessionTodoListOutput, E>
 
+export type SessionTodoReconcileInput = {
+  readonly sessionID: Session.ID
+  readonly taskID: string
+  readonly revision?: number | undefined
+}
+export type SessionTodoReconcileOutput = {
+  readonly sessionID: Session.ID
+  readonly task: {
+    readonly id?: string | undefined
+    readonly revision?: number | undefined
+    readonly reason?: string | undefined
+    readonly title?: string | undefined
+    readonly phase?: "build" | "design" | "plan" | undefined
+    readonly legacyStatus?: string | undefined
+    readonly source?:
+      | {
+          readonly type: "request" | "plan"
+          readonly id: string
+          readonly quote: string
+          readonly created: number
+          readonly key?: string | undefined
+          readonly paraphrase?: string | undefined
+        }
+      | undefined
+    readonly criterion?: string | undefined
+    readonly evidence?:
+      | {
+          readonly callID: string
+          readonly messageID: string
+          readonly explanation: string
+          readonly tool: string
+          readonly hash: string
+          readonly observed: number
+        }
+      | undefined
+    readonly dependencies?: ReadonlyArray<string> | undefined
+    readonly inputs?: ReadonlyArray<{ readonly id: string; readonly hash: string }> | undefined
+    readonly scopeChange?:
+      | {
+          readonly messageID: string
+          readonly quote: string
+          readonly created?: number | undefined
+          readonly paraphrase?: string | undefined
+        }
+      | undefined
+    readonly content: string
+    readonly status: string
+    readonly priority: string
+    readonly closedAt?: number | undefined
+  }
+  readonly fingerprint: string
+  readonly observedAt: number
+  readonly executionSettled: boolean
+  readonly acceptanceReady: boolean
+  readonly inputs: ReadonlyArray<{
+    readonly task: {
+      readonly id?: string | undefined
+      readonly revision?: number | undefined
+      readonly reason?: string | undefined
+      readonly title?: string | undefined
+      readonly phase?: "build" | "design" | "plan" | undefined
+      readonly legacyStatus?: string | undefined
+      readonly source?:
+        | {
+            readonly type: "request" | "plan"
+            readonly id: string
+            readonly quote: string
+            readonly created: number
+            readonly key?: string | undefined
+            readonly paraphrase?: string | undefined
+          }
+        | undefined
+      readonly criterion?: string | undefined
+      readonly evidence?:
+        | {
+            readonly callID: string
+            readonly messageID: string
+            readonly explanation: string
+            readonly tool: string
+            readonly hash: string
+            readonly observed: number
+          }
+        | undefined
+      readonly dependencies?: ReadonlyArray<string> | undefined
+      readonly inputs?: ReadonlyArray<{ readonly id: string; readonly hash: string }> | undefined
+      readonly scopeChange?:
+        | {
+            readonly messageID: string
+            readonly quote: string
+            readonly created?: number | undefined
+            readonly paraphrase?: string | undefined
+          }
+        | undefined
+      readonly content: string
+      readonly status: string
+      readonly priority: string
+      readonly closedAt?: number | undefined
+    }
+    readonly acceptance: "accepted" | "pending" | "blocked" | "cancelled" | "stale" | "unverified"
+    readonly contributions: ReadonlyArray<{
+      readonly sessionID: Session.ID
+      readonly taskRevision: number
+      readonly promptID: string
+      readonly fingerprint: string
+      readonly current: boolean
+      readonly execution: "running" | "succeeded" | "failed" | "interrupted" | "unknown"
+      readonly review?:
+        | {
+            readonly decision: "verified" | "inconclusive" | "needs_revision" | "unverified"
+            readonly issues: ReadonlyArray<string>
+            readonly repaired: boolean
+            readonly evaluationID?: string | undefined
+            readonly unavailable?: string | undefined
+            readonly at: number
+          }
+        | undefined
+      readonly completion?:
+        | {
+            readonly promptID: string
+            readonly status: "completed" | "error" | "cancelled"
+            readonly at: number
+            readonly error?: string | undefined
+          }
+        | undefined
+      readonly response?:
+        | {
+            readonly messageID: string
+            readonly text: string
+            readonly hash: string
+            readonly bytes: number
+            readonly truncated: boolean
+          }
+        | undefined
+      readonly checks: ReadonlyArray<{
+        readonly callID: string
+        readonly messageID: string
+        readonly tool: string
+        readonly hash: string
+        readonly completed: number
+        readonly successful: boolean
+        readonly settled: boolean
+        readonly fresh: boolean
+        readonly invalidatedBy?:
+          | { readonly sessionID?: Session.ID | undefined; readonly messageID: string; readonly callID: string }
+          | undefined
+      }>
+      readonly omittedChecks: number
+      readonly changedPaths: ReadonlyArray<string>
+      readonly omittedPaths: number
+      readonly unknownWriteScope: boolean
+    }>
+    readonly issues: ReadonlyArray<string>
+  }>
+  readonly overlaps: ReadonlyArray<{ readonly path: string; readonly taskIDs: ReadonlyArray<string> }>
+}
+export type SessionTodoReconcileOperation<E = never> = (
+  input: SessionTodoReconcileInput,
+) => Effect.Effect<SessionTodoReconcileOutput, E>
+
 export type SessionGoalGetInput = { readonly sessionID: Session.ID }
 export type SessionGoalGetOutput = {
   readonly id: string
@@ -3934,7 +4093,7 @@ export interface SessionApi<E = never> {
     readonly get: SessionMonitorGetOperation<E>
     readonly cancel: SessionMonitorCancelOperation<E>
   }
-  readonly todo: { readonly list: SessionTodoListOperation<E> }
+  readonly todo: { readonly list: SessionTodoListOperation<E>; readonly reconcile: SessionTodoReconcileOperation<E> }
   readonly goal: {
     readonly get: SessionGoalGetOperation<E>
     readonly start: SessionGoalStartOperation<E>

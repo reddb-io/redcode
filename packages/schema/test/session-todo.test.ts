@@ -84,3 +84,32 @@ describe("SessionTodo dependencies", () => {
     ).toEqual(["implement"])
   })
 })
+
+describe("SessionTodo reconciliation contracts", () => {
+  const contribution = {
+    sessionID: "ses_contribution",
+    taskRevision: 1,
+    promptID: "msg_input",
+    fingerprint: "contract",
+    current: true,
+    execution: "unknown" as const,
+    checks: [],
+    omittedChecks: 0,
+    changedPaths: [],
+    omittedPaths: 0,
+    unknownWriteScope: true,
+  }
+  test("round-trips bounded contributions and omits absent response, review and completion", () => {
+    const decoded = Schema.decodeUnknownSync(SessionTodo.Contribution)(contribution)
+    expect(
+      Schema.encodeSync(SessionTodo.Contribution)({
+        ...decoded,
+        response: undefined,
+        review: undefined,
+        completion: undefined,
+      }),
+    ).toEqual(contribution)
+    expect(Schema.is(SessionTodo.Contribution)({ ...decoded, omittedChecks: -1 })).toBe(false)
+    expect(Schema.is(SessionTodo.Contribution)({ ...decoded, execution: "accepted" })).toBe(false)
+  })
+})
