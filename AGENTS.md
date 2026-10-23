@@ -5,6 +5,12 @@
 - The default and sole development branch of this fork is `main`. Keep V2 migration work on `main` and use `main` or `origin/main` for diffs.
 - Do not create topic branches, development worktrees, or pull requests for this migration unless the requester explicitly asks.
 
+## Provider Configuration
+
+- Never create a connection, activate a model provider, discover its remote models, or fill its configuration merely because environment variables exist.
+- Catalog environment names are metadata, not authorization. Use saved connections and explicit provider settings. An environment value may be used only through a user-declared configuration reference such as `{env:VARIABLE}` or an explicitly selected, declared connection binding; never select or fall back to it automatically.
+- Preserve saved credentials and user-selected accounts. Ambient tokens and endpoints must not replace their configured values. External credential sources require an explicit user choice.
+
 ## Product Documentation
 
 - Keep the README a cohesive product guide with a consistent tone. Describe capabilities in their corresponding Desktop, CLI, features, infrastructure or Console sections.

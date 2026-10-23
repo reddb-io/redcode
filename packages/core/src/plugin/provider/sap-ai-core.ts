@@ -12,20 +12,19 @@ export const SapAICorePlugin = define({
       "sdk",
       Effect.fn(function* (evt) {
         if (evt.model.providerID !== Provider.ID.make("sap-ai-core")) return
-        const serviceKey =
-          process.env.AICORE_SERVICE_KEY ??
-          (typeof evt.options.serviceKey === "string" ? evt.options.serviceKey : undefined)
-        if (serviceKey && !process.env.AICORE_SERVICE_KEY) process.env.AICORE_SERVICE_KEY = serviceKey
+        const serviceKey = typeof evt.options.serviceKey === "string" ? evt.options.serviceKey : undefined
+        // Keep the legacy explicit service-key bridge; never select ambient service bindings.
+        if (!evt.options.destination && !serviceKey)
+          return yield* Effect.die(
+            new Error("Configure an explicit SAP AI Core destination or serviceKey before using this provider"),
+          )
+        if (!evt.options.destination && serviceKey) process.env.AICORE_SERVICE_KEY = serviceKey
 
         const factory = yield* loadSDKFactory(npm, evt.package)
         if (typeof factory !== "function")
           return yield* Effect.die(new Error(`Package ${evt.package} provider factory export is not callable`))
 
-        evt.sdk = factory(
-          serviceKey
-            ? { deploymentId: process.env.AICORE_DEPLOYMENT_ID, resourceGroup: process.env.AICORE_RESOURCE_GROUP }
-            : {},
-        )
+        evt.sdk = factory(evt.options)
       }),
     )
     yield* ctx.aisdk.hook(

@@ -230,7 +230,7 @@ export const AzurePlugin = define({
 function resolveResourceName(settings: Readonly<Record<string, unknown>> | undefined, fallback?: string) {
   const configured = settings?.resourceName
   if (typeof configured === "string" && configured.trim() !== "") return configured
-  return fallback ?? process.env.AZURE_RESOURCE_NAME ?? process.env.AZURE_COGNITIVE_SERVICES_RESOURCE_NAME
+  return fallback
 }
 
 function expandResourceName(baseURL: string, resourceName: string) {

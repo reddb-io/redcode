@@ -406,8 +406,8 @@ const layer = Layer.effect(
       return yield* credentials.create({ ...input, label })
     })
 
-    const resolveConnections = (entry: Entry | undefined, saved: readonly Credential.Info[]) => {
-      const credentials = saved
+    const resolveConnections = (saved: readonly Credential.Info[]) =>
+      saved
         .map((credential) => ({
           type: "credential" as const,
           id: credential.id,
@@ -415,12 +415,6 @@ const layer = Layer.effect(
           method: credential.value.type,
         }))
         .toReversed()
-      const env = (entry?.methods ?? [])
-        .filter((method) => method.type === "env")
-        .flatMap((method) => method.names.filter((name) => process.env[name]))
-        .map((name) => ({ type: "env" as const, name }))
-      return [...credentials, ...env]
-    }
 
     const project = (entry: Entry, connections: IntegrationConnection.Info[]): Info =>
       Info.make({
@@ -717,18 +711,17 @@ const layer = Layer.effect(
       get: Effect.fn("Integration.get")(function* (id) {
         const entry = state.get().integrations.get(id)
         if (!entry) return undefined
-        return project(entry, resolveConnections(entry, yield* credentials.list(id)))
+        return project(entry, resolveConnections(yield* credentials.list(id)))
       }),
       list: Effect.fn("Integration.list")(function* () {
         const saved = Map.groupBy(yield* credentials.all(), (credential) => credential.integrationID)
         return Array.from(state.get().integrations.values(), (entry) =>
-          project(entry, resolveConnections(entry, saved.get(entry.ref.id) ?? [])),
+          project(entry, resolveConnections(saved.get(entry.ref.id) ?? [])),
         ).toSorted((a, b) => a.name.localeCompare(b.name))
       }),
       connection: {
         active: Effect.fn("Integration.connection.active")(function* (id) {
-          const entry = state.get().integrations.get(id)
-          return resolveConnections(entry, yield* credentials.list(id))[0]
+          return resolveConnections(yield* credentials.list(id))[0]
         }),
         resolve: Effect.fn("Integration.connection.resolve")(function* (connection) {
           if (connection.type === "env") {
@@ -763,15 +756,17 @@ const layer = Layer.effect(
           }
           const prepared = entry?.prepare ? yield* authorize(entry.prepare({ key: input.key, answer })) : undefined
           const configuration = prepared ? (prepared.configuration ?? {}) : answer
-          yield* authorize(createCredential({
-            integrationID: prepared?.integrationID ?? input.integrationID,
-            label: input.label ?? prepared?.label,
-            value: Credential.Key.make({
-              type: "key",
-              key: input.key,
-              ...(Object.keys(configuration).length > 0 ? { configuration } : {}),
+          yield* authorize(
+            createCredential({
+              integrationID: prepared?.integrationID ?? input.integrationID,
+              label: input.label ?? prepared?.label,
+              value: Credential.Key.make({
+                type: "key",
+                key: input.key,
+                ...(Object.keys(configuration).length > 0 ? { configuration } : {}),
+              }),
             }),
-          }))
+          )
         }),
         external: Effect.fn("Integration.connection.external")(function* (input) {
           const method = state

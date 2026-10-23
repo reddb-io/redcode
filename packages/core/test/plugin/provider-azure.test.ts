@@ -319,7 +319,7 @@ describe("AzurePlugin", () => {
     ),
   )
 
-  it.effect("resolves resourceName from env", () =>
+  it.effect("does not infer resourceName from ambient variables", () =>
     withEnv({ AZURE_RESOURCE_NAME: "from-env" }, () =>
       Effect.gen(function* () {
         const catalog = yield* Provider.Service
@@ -329,12 +329,12 @@ describe("AzurePlugin", () => {
           })
         })
         yield* addPlugin()
-        expect(required(yield* catalog.get(Provider.ID.azure)).settings?.resourceName).toBe("from-env")
+        expect(required(yield* catalog.get(Provider.ID.azure)).settings?.resourceName).toBeUndefined()
       }),
     ),
   )
 
-  it.effect("resolves resourceName from the legacy env", () =>
+  it.effect("does not infer resourceName from legacy ambient variables", () =>
     withEnv({ AZURE_RESOURCE_NAME: undefined, AZURE_COGNITIVE_SERVICES_RESOURCE_NAME: "legacy-resource" }, () =>
       Effect.gen(function* () {
         const catalog = yield* Provider.Service
@@ -344,7 +344,7 @@ describe("AzurePlugin", () => {
           })
         })
         yield* addPlugin()
-        expect(required(yield* catalog.get(Provider.ID.azure)).settings?.resourceName).toBe("legacy-resource")
+        expect(required(yield* catalog.get(Provider.ID.azure)).settings?.resourceName).toBeUndefined()
       }),
     ),
   )
@@ -359,6 +359,7 @@ describe("AzurePlugin", () => {
             provider.package = "@opencode/ai/providers/openai-compatible"
             provider.activation = "enabled"
             provider.settings = {
+              resourceName: "configured-resource",
               baseURL: "https://${AZURE_COGNITIVE_SERVICES_RESOURCE_NAME}.cognitiveservices.azure.com/openai",
             }
           })
@@ -373,8 +374,8 @@ describe("AzurePlugin", () => {
         yield* addPlugin()
 
         expect(required(yield* catalog.get(Provider.ID.azure)).settings).toMatchObject({
-          resourceName: "from-env",
-          baseURL: "https://from-env.cognitiveservices.azure.com/openai",
+          resourceName: "configured-resource",
+          baseURL: "https://configured-resource.cognitiveservices.azure.com/openai",
         })
         expect(required(yield* models.get(Provider.ID.azure, Model.ID.make("anthropic"))).settings).toMatchObject({
           resourceName: "model-resource",
@@ -402,7 +403,7 @@ describe("AzurePlugin", () => {
     ),
   )
 
-  it.effect("falls back to env when configured resourceName is blank", () =>
+  it.effect("does not replace a blank configured resourceName from the environment", () =>
     withEnv({ AZURE_RESOURCE_NAME: "from-env" }, () =>
       Effect.gen(function* () {
         const catalog = yield* Provider.Service
@@ -413,12 +414,12 @@ describe("AzurePlugin", () => {
           })
         })
         yield* addPlugin()
-        expect(required(yield* catalog.get(Provider.ID.azure)).settings?.resourceName).toBe("from-env")
+        expect(required(yield* catalog.get(Provider.ID.azure)).settings?.resourceName).toBe("")
       }),
     ),
   )
 
-  it.effect("falls back to env when configured resourceName is whitespace", () =>
+  it.effect("does not replace a whitespace resourceName from the environment", () =>
     withEnv({ AZURE_RESOURCE_NAME: "from-env" }, () =>
       Effect.gen(function* () {
         const catalog = yield* Provider.Service
@@ -429,7 +430,7 @@ describe("AzurePlugin", () => {
           })
         })
         yield* addPlugin()
-        expect(required(yield* catalog.get(Provider.ID.azure)).settings?.resourceName).toBe("from-env")
+        expect(required(yield* catalog.get(Provider.ID.azure)).settings?.resourceName).toBe("   ")
       }),
     ),
   )
@@ -473,7 +474,14 @@ describe("AzurePlugin", () => {
         yield* addPlugin()
 
         expect((yield* catalog.get(Provider.ID.azure))?.settings?.transport).toBe("websocket")
-        for (const modelID of [models.responses, models.chat, models.preview, models.deploymentURL, models.gateway, models.nonAzure]) {
+        for (const modelID of [
+          models.responses,
+          models.chat,
+          models.preview,
+          models.deploymentURL,
+          models.gateway,
+          models.nonAzure,
+        ]) {
           const model = required(yield* service.get(Provider.ID.azure, modelID))
           expect(model.settings?.transport).toBeUndefined()
         }

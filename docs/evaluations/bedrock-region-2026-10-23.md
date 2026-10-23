@@ -1,5 +1,11 @@
 # Região Bedrock após a mesclagem de configuração
 
+> Registro histórico do commit `32db466ab5`. A decisão de não configurar
+> providers por ambiente foi reafirmada depois desta entrega. Os fallbacks de
+> ambiente e de região descritos abaixo foram removidos pela
+> [política de configuração explícita](../provider-configuration.md).
+> A resolução após mesclar valores explícitos foi preservada.
+
 ## Fonte e falha confirmada
 
 O estudo de [OpenCode #58531](https://github.com/anomalyco/opencode/pull/58531)

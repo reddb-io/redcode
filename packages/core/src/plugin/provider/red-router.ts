@@ -236,12 +236,10 @@ function routerPlugin(options: {
             ? stored.value.key
             : stored?.value.type === "oauth"
               ? stored.value.access
-              : process.env[options.keyEnv]
+              : undefined
         if (!key) return
         const baseURL =
-          options.id === "red-router"
-            ? redRouterEndpoint(stored)
-            : routerEndpoint(stored, process.env[options.urlEnv] ?? options.defaultBaseURL)
+          options.id === "red-router" ? redRouterEndpoint(stored) : routerEndpoint(stored, options.defaultBaseURL)
         if (!baseURL) return
         return {
           baseURL,
@@ -450,7 +448,7 @@ function routerPlugin(options: {
                 title: `${options.name} API URL`,
                 description: "The OpenAI-compatible API endpoint, usually ending in /v1.",
                 placeholder: options.defaultBaseURL,
-                default: process.env[options.urlEnv] ?? options.defaultBaseURL,
+                default: options.defaultBaseURL,
                 format: "uri",
                 required: true,
               },
@@ -595,7 +593,7 @@ export const connectionModel = Effect.fn("RouterProvider.connectionModel")(funct
   const baseURL =
     providerID === "red-router"
       ? redRouterEndpoint(credential)
-      : routerEndpoint(credential, process.env.NINE_ROUTER_BASE_URL ?? "http://127.0.0.1:20128/v1")
+      : routerEndpoint(credential, "http://127.0.0.1:20128/v1")
   if (!baseURL || value.type === "external") return
   const key = value.type === "key" ? value.key : value.access
   const cacheKey = `${providerID}:models:${Hash.sha256(`${baseURL}\n${key}`)}`

@@ -99,7 +99,7 @@ describe("GoogleVertexPlugin", () => {
     }),
   )
 
-  it.effect("resolves project and location from env using legacy precedence", () =>
+  it.effect("does not configure project or location from ambient aliases", () =>
     withEnv(
       {
         GOOGLE_CLOUD_PROJECT: "google-cloud-project",
@@ -124,13 +124,14 @@ describe("GoogleVertexPlugin", () => {
           )
           yield* addPlugin()
           const provider = required(yield* catalog.get(Provider.ID.make("google-vertex")))
-          expect(provider.settings?.project).toBe("google-cloud-project")
-          expect(provider.settings?.location).toBe("google-vertex-location")
+          expect(provider.settings?.project).toBeUndefined()
+          expect(provider.settings?.location).toBeUndefined()
+          expect(provider.activation).toBe("auto")
           expect(provider).toMatchObject({
             package: "@opencode/ai/providers/google-vertex/chat",
             settings: {
               baseURL:
-                "https://google-vertex-location-aiplatform.googleapis.com/v1/projects/google-cloud-project/locations/google-vertex-location",
+                "https://${GOOGLE_VERTEX_ENDPOINT}/v1/projects/${GOOGLE_VERTEX_PROJECT}/locations/${GOOGLE_VERTEX_LOCATION}",
             },
           })
         }),
@@ -160,7 +161,7 @@ describe("GoogleVertexPlugin", () => {
     ),
   )
 
-  it.effect("enables the provider when a project resolves from env", () =>
+  it.effect("keeps the provider inactive when only an ambient project exists", () =>
     withEnv(
       {
         GOOGLE_VERTEX_PROJECT: undefined,
@@ -178,12 +179,12 @@ describe("GoogleVertexPlugin", () => {
           )
           yield* addPlugin()
 
-          expect(required(yield* catalog.get(Provider.ID.make("google-vertex"))).activation).toBe("enabled")
+          expect(required(yield* catalog.get(Provider.ID.make("google-vertex"))).activation).toBe("auto")
         }),
     ),
   )
 
-  it.effect("resolves the advertised GOOGLE_VERTEX_PROJECT env for provider updates and SDKs", () =>
+  it.effect("does not infer catalog parameters from advertised environment names", () =>
     withEnv(
       {
         GOOGLE_VERTEX_PROJECT: "vertex-project",
@@ -210,12 +211,13 @@ describe("GoogleVertexPlugin", () => {
           yield* addPlugin()
           const provider = required(yield* catalog.get(Provider.ID.make("google-vertex")))
 
-          expect(provider.settings?.project).toBe("vertex-project")
+          expect(provider.settings?.project).toBeUndefined()
+          expect(provider.activation).toBe("auto")
           expect(provider).toMatchObject({
             package: "@opencode/ai/providers/google-vertex/chat",
             settings: {
               baseURL:
-                "https://europe-west4-aiplatform.googleapis.com/v1/projects/vertex-project/locations/europe-west4",
+                "https://${GOOGLE_VERTEX_ENDPOINT}/v1/projects/${GOOGLE_VERTEX_PROJECT}/locations/${GOOGLE_VERTEX_LOCATION}",
             },
           })
         }),

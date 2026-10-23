@@ -422,16 +422,38 @@ o provider definia uma região, mas o template do modelo ainda exigia a variáve
 de ambiente. A normalização também congelava o endpoint antes de uma credencial
 poder escolher outra região.
 
-`ModelResolver` agora resolve o template após a mesclagem completa, usando a
-política de região do adapter nativo. `AISDKNative` conserva a URL parametrizada
-até essa fronteira. A configuração da credencial pode prevalecer sobre a do
-modelo; outros adapters e variáveis continuam com sua política anterior.
+`ModelResolver` resolve o template após a mesclagem completa. `AISDKNative`
+conserva a URL parametrizada até essa fronteira. A configuração da credencial
+pode prevalecer sobre a do modelo. A política posterior de configuração explícita
+removeu os fallbacks de ambiente e de região que haviam sido incluídos neste
+lote; apenas a resolução de valores explícitos foi preservada.
 
 Os seis casos que falhavam antes passaram após a correção, e a suíte ampliada
 passou com 129 testes e 540 asserções. A
 [avaliação do lote](evaluations/bedrock-region-2026-10-23.md) registra o caso,
 a precedência e os limites da validação local. V2 continua sendo o único formato
 de catálogo; nenhuma chamada paga ou publicação foi feita.
+
+## Providers exigem configuração explícita
+
+A presença de variáveis de ambiente não cria mais conexões nem ativa providers.
+O Core lista escolhas salvas e não escolhe uma chave ambiental quando a última
+credencial é removida. Os plugins deixaram de inferir contas, regiões, projetos,
+recursos, tokens e endpoints do ambiente; descoberta remota continua vinculada
+à conexão escolhida. Tokens ambientais também não substituem a conta ou a
+credencial Snowflake selecionada.
+
+Referências declaradas pelo usuário, como `{env:MINHA_CHAVE}`, permanecem no loader
+de configuração. Um binding nominal escolhido explicitamente só resolve um nome
+declarado pela integração. Os templates de catálogo Bedrock e Cloudflare vinculam
+seus parâmetros aos settings explícitos; placeholders pendentes falham com uma
+mensagem de configuração. SAP AI Core requer `destination` ou `serviceKey` explícito. O bridge legado
+para a chave escolhida foi preservado, sem inferir chaves ou deployment do ambiente.
+
+A regra está no [guia de configuração](provider-configuration.md) e em `AGENTS.md`.
+O [registro de validação](evaluations/provider-opt-in-2026-10-23-validation.json)
+conserva as regressões anteriores à correção e o resultado final. Arquivos de
+configuração, credenciais e serviços instalados do usuário não foram alterados.
 
 ## Trabalho que permanece
 

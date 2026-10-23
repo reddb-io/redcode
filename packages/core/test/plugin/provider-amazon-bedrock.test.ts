@@ -71,7 +71,7 @@ describe("AmazonBedrockPlugin", () => {
         yield* addPlugin()
         const result = required(yield* catalog.get(Provider.ID.amazonBedrock))
         expect(result.package).toBe("@opencode/ai/providers/amazon-bedrock")
-        expect(result.settings).toEqual({ baseURL: "https://bedrock.example", region: "us-east-1" })
+        expect(result.settings).toEqual({ baseURL: "https://bedrock.example" })
       }),
     ),
   )
@@ -83,7 +83,6 @@ describe("AmazonBedrockPlugin", () => {
         yield* addPlugin()
         expect(required(yield* catalog.get(Provider.ID.amazonBedrock)).settings).toEqual({
           baseURL: "https://base.example",
-          region: "us-east-1",
         })
       }),
     ),
@@ -141,7 +140,7 @@ describe("AmazonBedrockPlugin", () => {
         yield* addPlugin()
         const result = required(yield* catalog.get(Provider.ID.amazonBedrock))
         expect(result.activation).toBe("enabled")
-        expect(result.settings).toEqual({ profile: "work", region: "us-east-1" })
+        expect(result.settings).toEqual({ profile: "work" })
       }),
     ),
   )
@@ -163,14 +162,12 @@ describe("AmazonBedrockPlugin", () => {
     ),
   )
 
-  it.effect("fills region from AWS_REGION then AWS_DEFAULT_REGION without overriding config", () =>
+  it.effect("does not fill region from ambient variables or override explicit config", () =>
     withEnv({ ...noAmbientAWS, AWS_REGION: "eu-west-1", AWS_DEFAULT_REGION: "us-west-2" }, () =>
       Effect.gen(function* () {
         const catalog = yield* seedBedrock()
         yield* addPlugin()
-        expect(required(yield* catalog.get(Provider.ID.amazonBedrock)).settings).toEqual({
-          region: "eu-west-1",
-        })
+        expect(required(yield* catalog.get(Provider.ID.amazonBedrock)).settings).toEqual({})
 
         yield* catalog.transform((catalog) => {
           catalog.update(Provider.ID.amazonBedrock, (item) => {
@@ -184,19 +181,17 @@ describe("AmazonBedrockPlugin", () => {
     ),
   )
 
-  it.effect("falls back to AWS_DEFAULT_REGION then us-east-1", () =>
+  it.effect("keeps missing region unconfigured with or without ambient defaults", () =>
     withEnv({ ...noAmbientAWS, AWS_DEFAULT_REGION: "us-west-2" }, () =>
       Effect.gen(function* () {
         const catalog = yield* seedBedrock()
         yield* addPlugin()
-        expect(required(yield* catalog.get(Provider.ID.amazonBedrock)).settings).toEqual({
-          region: "us-west-2",
-        })
+        expect(required(yield* catalog.get(Provider.ID.amazonBedrock)).settings).toEqual({})
         const fallback = yield* Effect.gen(function* () {
           yield* catalog.reload()
           return required(yield* catalog.get(Provider.ID.amazonBedrock)).settings
         }).pipe((fx) => withEnv({ AWS_DEFAULT_REGION: undefined }, () => fx))
-        expect(fallback).toEqual({ region: "us-east-1" })
+        expect(fallback).toEqual({})
       }),
     ),
   )

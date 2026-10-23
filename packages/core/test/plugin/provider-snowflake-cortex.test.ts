@@ -215,57 +215,52 @@ it.live("rejects a mismatched callback state before token exchange", () =>
   ),
 )
 
-it.live("uses environment tokens rather than the account identifier and bypasses expired stored OAuth", () =>
+it.live("does not create an account or connection from ambient Snowflake values", () =>
   withEnv(
-    { ...env, SNOWFLAKE_ACCOUNT: `${endpoint}/`, SNOWFLAKE_CORTEX_TOKEN: "env-token", SNOWFLAKE_CORTEX_PAT: "env-pat" },
+    {
+      SNOWFLAKE_ACCOUNT: "ambient-account",
+      SNOWFLAKE_CORTEX_TOKEN: "ambient-token",
+      SNOWFLAKE_CORTEX_PAT: "ambient-pat",
+    },
     () =>
       Effect.gen(function* () {
         const test = yield* fixture()
-        expect(yield* test.integrations.connection.active(integrationID)).toEqual({
-          type: "env",
-          name: "SNOWFLAKE_CORTEX_TOKEN",
-        })
-        expect((yield* test.providers.get(providerID))?.package).toBe(
-          "@opencode/ai/providers/openai-compatible",
-        )
-        expect(yield* test.hooks.has("aisdk", "sdk", providerID)).toBe(false)
-
-        yield* test.stop
-        expect(test.requests[0].url).toBe(`${endpoint}/api/v2/cortex/v1/chat/completions`)
-        expect(test.requests[0].headers.get("authorization")).toBe("Bearer env-token")
-
-        const credentials = yield* Credential.Service
-        yield* credentials.create({
-          integrationID,
-          value: expiredOAuth("other-account", "revoked-refresh"),
-        })
-        yield* test.stop
-        expect(test.requests).toHaveLength(2)
-        expect(test.requests[1].url).toBe(`${endpoint}/api/v2/cortex/v1/chat/completions`)
-        expect(test.requests[1].headers.get("authorization")).toBe("Bearer env-token")
+        expect(yield* test.integrations.connection.active(integrationID)).toBeUndefined()
+        expect((yield* test.providers.get(providerID))?.settings?.baseURL).toContain("${SNOWFLAKE_ACCOUNT}")
+        expect(test.requests).toEqual([])
       }),
   ),
 )
 
-it.live("requires a token separately from the account and supports environment PATs", () =>
-  withEnv({ ...env, SNOWFLAKE_ACCOUNT: "myorg-myaccount" }, () =>
-    Effect.gen(function* () {
-      const test = yield* fixture()
-      expect(yield* test.integrations.connection.active(integrationID)).toBeUndefined()
-      yield* withEnv({ SNOWFLAKE_CORTEX_PAT: "env-pat" }, () =>
-        Effect.gen(function* () {
-          yield* test.stop
-          expect(test.requests[0].headers.get("authorization")).toBe("Bearer env-pat")
-          test.replies.push(Response.json({ message: "Invalid model" }, { status: 400 }))
-          expect((yield* test.send.pipe(Effect.exit))._tag).toBe("Failure")
-        }),
-      )
-    }),
+it.live("keeps the saved account and token despite ambient Snowflake values", () =>
+  withEnv(
+    {
+      SNOWFLAKE_ACCOUNT: "ambient-account",
+      SNOWFLAKE_CORTEX_TOKEN: "ambient-token",
+      SNOWFLAKE_CORTEX_PAT: "ambient-pat",
+    },
+    () =>
+      Effect.gen(function* () {
+        const credentials = yield* Credential.Service
+        yield* credentials.create({
+          integrationID,
+          value: Credential.Key.make({
+            type: "key",
+            key: "saved-token",
+            configuration: { account: "myorg-myaccount" },
+          }),
+        })
+        const test = yield* fixture()
+        yield* test.stop
+        expect(test.requests).toHaveLength(1)
+        expect(test.requests[0].url).toBe(`${endpoint}/api/v2/cortex/v1/chat/completions`)
+        expect(test.requests[0].headers.get("authorization")).toBe("Bearer saved-token")
+      }),
   ),
 )
 
 it.live("refreshes expired OAuth during native model resolution and persists rotated credentials", () =>
-  withEnv(env, () =>
+  withEnv({ ...env, SNOWFLAKE_CORTEX_TOKEN: "ambient-token" }, () =>
     Effect.gen(function* () {
       const credentials = yield* Credential.Service
       const saved = yield* credentials.create({

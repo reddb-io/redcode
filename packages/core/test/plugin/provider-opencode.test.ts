@@ -1539,7 +1539,7 @@ describe("OpencodePlugin", () => {
     ),
   )
 
-  it.effect("uses OPENCODE_API_KEY as credentials", () =>
+  it.effect("ignores an ambient OPENCODE_API_KEY without a saved choice", () =>
     withEnv({ OPENCODE_API_KEY: "secret" }, () =>
       Effect.gen(function* () {
         const catalog = yield* Provider.Service
@@ -1558,13 +1558,15 @@ describe("OpencodePlugin", () => {
           })
         })
         yield* addPlugin().pipe(Effect.provideService(HttpClient.HttpClient, noRemoteConfig))
-        expect(required(yield* catalog.get(Provider.ID.opencode)).settings?.apiKey).toBeUndefined()
-        expect(required(yield* models.get(Provider.ID.opencode, Model.ID.make("paid"))).enabled).toBe(true)
+        expect(required(yield* catalog.get(Provider.ID.opencode)).settings?.apiKey).toBe("public")
+        expect(yield* models.get(Provider.ID.opencode, Model.ID.make("paid"))).toBeUndefined()
+        expect(yield* integrations.connection.active(Integration.ID.make("opencode"))).toBeUndefined()
+        expect((yield* catalog.available()).map((provider) => provider.id)).not.toContain(Provider.ID.opencode)
       }),
     ),
   )
 
-  it.effect("uses configured provider env vars as credentials", () =>
+  it.effect("does not select advertised environment keys as connections", () =>
     withEnv({ OPENCODE_API_KEY: undefined, CUSTOM_OPENCODE_API_KEY: "secret" }, () =>
       Effect.gen(function* () {
         const catalog = yield* Provider.Service
@@ -1582,11 +1584,12 @@ describe("OpencodePlugin", () => {
             draft.cost = cost(1)
           })
         })
-        // An env credential has no server metadata, so the plugin would ask the
-        // default Console for remote config; answer 404 (no remote config) locally.
+        // Environment hints do not become active Console connections.
         yield* addPlugin().pipe(Effect.provideService(HttpClient.HttpClient, noRemoteConfig))
-        expect(required(yield* catalog.get(Provider.ID.opencode)).settings?.apiKey).toBeUndefined()
-        expect(required(yield* models.get(Provider.ID.opencode, Model.ID.make("paid"))).enabled).toBe(true)
+        expect(required(yield* catalog.get(Provider.ID.opencode)).settings?.apiKey).toBe("public")
+        expect(yield* models.get(Provider.ID.opencode, Model.ID.make("paid"))).toBeUndefined()
+        expect(yield* integrations.connection.active(Integration.ID.make("opencode"))).toBeUndefined()
+        expect((yield* catalog.available()).map((provider) => provider.id)).not.toContain(Provider.ID.opencode)
       }),
     ),
   )

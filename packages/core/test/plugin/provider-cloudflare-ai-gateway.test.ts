@@ -34,7 +34,7 @@ describe("CloudflareAIGatewayPlugin", () => {
     ),
   )
 
-  it.effect("uses environment account and gateway values without requesting form fields", () =>
+  it.effect("requires explicit account and gateway choices despite ambient values", () =>
     withEnv({ CLOUDFLARE_ACCOUNT_ID: "account", CLOUDFLARE_GATEWAY_ID: "gateway" }, () =>
       Effect.gen(function* () {
         yield* addPlugin()
@@ -42,6 +42,10 @@ describe("CloudflareAIGatewayPlugin", () => {
         expect((yield* integrations.get(Integration.ID.make("cloudflare-ai-gateway")))?.methods).toContainEqual({
           type: "key",
           label: "Gateway API token",
+          form: [
+            expect.objectContaining({ key: "accountId", required: true }),
+            expect.objectContaining({ key: "gatewayId", required: true }),
+          ],
         })
       }),
     ),
