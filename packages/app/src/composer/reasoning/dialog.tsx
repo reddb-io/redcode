@@ -1,17 +1,18 @@
-import type { IntelligenceEvaluation, IntelligenceStatus } from "@opencode/client"
-import { Button } from "@opencode/ui/button"
-import { useDialog } from "@opencode/ui/context/dialog"
-import { Dialog, DialogBody, DialogHeader, DialogTitle } from "@opencode/ui/dialog"
-import { List } from "@opencode/ui/list"
+import type { IntelligenceStatus } from "@opencode/client"
 import { IntelligenceLabel } from "@opencode/util/intelligence-label"
-import { createResource, For, Show, type JSX } from "solid-js"
+import { createResource } from "solid-js"
 import { useModels } from "@/providers/models/models"
 import type { ModelSelection } from "@/providers/models/selection"
 import { useLanguage } from "@/runtime/i18n/language"
+import { sharedLanguage } from "@/runtime/react/language"
+import { sharedSource } from "@/runtime/react/source"
+import { ReactView } from "@/runtime/react/view"
+import { useNativeDialog } from "@/runtime/react/dialog"
 import { useServerSDK } from "@/runtime/server/client"
 import { formatServerError } from "@/runtime/server/errors"
-import { reasoningChoiceKeys, reasoningChoices } from "./control"
+import { reasoningChoiceKeys, reasoningChoices } from "./options"
 import type { ComposerReasoning } from "./state"
+import { IntelligenceDialog, ReasoningModeDialog } from "./dialog.react"
 
 const modeKeys = {
   single: "settings.models.reasoning.mode.single",
@@ -26,45 +27,41 @@ const sourceKeys = {
   default: "settings.models.reasoning.source.default",
 } as const
 
-/** Picks the session's reasoning mode from the command palette, like the TUI's `/reasoning`. */
-export function DialogReasoningMode(props: { reasoning: ComposerReasoning }) {
-  const dialog = useDialog()
+export function createReasoningModeServices(props: { reasoning: ComposerReasoning }) {
+  const dialog = useNativeDialog()
   const language = useLanguage()
-  const items = reasoningChoices.map((choice) => ({ choice, title: language.t(reasoningChoiceKeys[choice]) }))
-
-  return (
-    <Dialog>
-      <DialogHeader>
-        <DialogTitle>{language.t("command.reasoning.mode")}</DialogTitle>
-      </DialogHeader>
-      <DialogBody>
-        <List
-          class="flex-1 px-3 min-h-0 [&_[data-slot=list-scroll]]:flex-1 [&_[data-slot=list-scroll]]:min-h-0"
-          key={(item) => item.choice}
-          items={items}
-          current={items.find((item) => item.choice === props.reasoning.override())}
-          activeIcon="check"
-          onSelect={(item) => {
-            if (!item) return
-            props.reasoning.set(item.choice)
-            dialog.close()
-          }}
-        >
-          {(item) => <span class="truncate text-left font-normal">{item.title}</span>}
-        </List>
-      </DialogBody>
-    </Dialog>
-  )
+  return {
+    snapshot: sharedSource(() => ({
+      language: sharedLanguage(language),
+      open: dialog.open(),
+      choice: props.reasoning.override(),
+      choices: reasoningChoices.map((choice) => ({ id: choice, label: language.t(reasoningChoiceKeys[choice]) })),
+    })),
+    select: (value: string) => {
+      const choice = reasoningChoices.find((item) => item === value)
+      if (!choice) return
+      props.reasoning.set(choice)
+      dialog.close()
+    },
+    close: dialog.close,
+  }
 }
 
-/**
- * The session's S1 / S2 roles and evaluations, like the TUI's `/intelligence`: the effective mode and where it comes
- * from, the S2 models, the S1 evaluator, and the session's latest evaluations.
- */
-export function DialogIntelligence(props: { sessionID?: string; model: ModelSelection; onSetup: () => void }) {
+/** The command palette and composer share the same reasoning choices. */
+export function DialogReasoningMode(props: Parameters<typeof createReasoningModeServices>[0]) {
+  const services = createReasoningModeServices(props)
+  return <ReactView component={ReasoningModeDialog} props={{ services }} />
+}
+
+export function createIntelligenceDialogServices(props: {
+  sessionID?: string
+  model: ModelSelection
+  onSetup: () => void
+}) {
   const language = useLanguage()
   const server = useServerSDK()
   const models = useModels()
+  const dialog = useNativeDialog()
   const api = server.api["server.intelligence"]
   const [status] = createResource(() => api.status({ sessionID: props.sessionID }))
   const [history] = createResource(async () =>
@@ -103,125 +100,63 @@ export function DialogIntelligence(props: { sessionID?: string; model: ModelSele
     return model ? `${model.provider.name} · ${model.name}` : language.t("settings.models.reasoning.unset")
   }
 
-  return (
-    <Dialog size="large">
-      <DialogHeader>
-        <DialogTitle>{language.t("composer.reasoning.dialog.title")}</DialogTitle>
-      </DialogHeader>
-      <DialogBody>
-        <div class="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-5 pb-5">
-          <Show
-            when={current()}
-            fallback={
-              <p class="text-body text-ink-muted">
-                {status.error
-                  ? formatServerError(status.error, language.t, language.t("settings.models.reasoning.unavailable"))
-                  : `${language.t("common.loading")}${language.t("common.loading.ellipsis")}`}
-              </p>
-            }
-          >
-            {(value) => (
-              <dl class="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-6 gap-y-2 text-body">
-                <IntelligenceRow
-                  name={language.t("settings.models.reasoning.mode")}
-                  value={`${language.t(modeKeys[value().effective.reasoning])} · ${source(value())}`}
-                />
-                <IntelligenceRow name={language.t("composer.reasoning.dialog.s2.current")} value={selected()} />
-                <IntelligenceRow
-                  name={language.t("settings.models.reasoning.principal")}
-                  value={describe(value().settings.principal)}
-                />
-                <IntelligenceRow
-                  name={language.t("settings.models.reasoning.fast")}
-                  value={
-                    value().settings.fast
-                      ? describe(value().settings.fast)
-                      : language.t("settings.models.reasoning.fast.reuse")
-                  }
-                />
-                <IntelligenceRow name={language.t("settings.models.reasoning.evaluator")} value={s1(value())} />
-              </dl>
-            )}
-          </Show>
-          <div>
-            <Button variant="outline" size="normal" onClick={props.onSetup}>
-              {language.t("composer.reasoning.dialog.configure")}
-            </Button>
-          </div>
-          <section class="flex flex-col gap-2" aria-label={language.t("composer.reasoning.dialog.evaluations")}>
-            <h3 class="text-[11px] font-medium uppercase tracking-[0.08em] text-ink-muted">
-              {language.t("composer.reasoning.dialog.evaluations")}
-            </h3>
-            <Show
-              when={evaluations()}
-              fallback={
-                <p class="text-body text-ink-muted">
-                  {history.error
-                    ? formatServerError(history.error, language.t, language.t("common.requestFailed"))
-                    : `${language.t("common.loading")}${language.t("common.loading.ellipsis")}`}
-                </p>
-              }
-            >
-              {(items) => (
-                <Show
-                  when={items().length > 0}
-                  fallback={<p class="text-body text-ink-muted">{language.t("composer.reasoning.dialog.empty")}</p>}
-                >
-                  <ul class="flex flex-col divide-y divide-elevation-base-border">
-                    <For each={items()}>{(evaluation) => <EvaluationRow evaluation={evaluation} />}</For>
-                  </ul>
-                </Show>
-              )}
-            </Show>
-          </section>
-        </div>
-      </DialogBody>
-    </Dialog>
-  )
-}
-
-function IntelligenceRow(props: { name: string; value: JSX.Element }) {
-  return (
-    <>
-      <dt class="text-ink-muted">{props.name}</dt>
-      <dd class="min-w-0 break-words text-foreground">{props.value}</dd>
-    </>
-  )
-}
-
-function EvaluationRow(props: { evaluation: IntelligenceEvaluation }) {
-  const language = useLanguage()
-  const tokens = () => props.evaluation.usage.input_tokens + props.evaluation.usage.output_tokens
-  const cost = () => {
-    const value = props.evaluation.usage.cost
-
-    if (value === undefined) return language.t("composer.reasoning.dialog.costUnknown")
-    const known = `$${value.toFixed(5)}`
-
-    return props.evaluation.usage.unpriced
-      ? language.t("composer.reasoning.dialog.costPartial", { cost: known })
-      : known
+  return {
+    snapshot: sharedSource(() => {
+      const value = current()
+      return {
+        language: sharedLanguage(language),
+        open: dialog.open(),
+        rows: value
+          ? [
+              {
+                name: language.t("settings.models.reasoning.mode"),
+                value: `${language.t(modeKeys[value.effective.reasoning])} · ${source(value)}`,
+              },
+              { name: language.t("composer.reasoning.dialog.s2.current"), value: selected() },
+              { name: language.t("settings.models.reasoning.principal"), value: describe(value.settings.principal) },
+              {
+                name: language.t("settings.models.reasoning.fast"),
+                value: value.settings.fast
+                  ? describe(value.settings.fast)
+                  : language.t("settings.models.reasoning.fast.reuse"),
+              },
+              { name: language.t("settings.models.reasoning.evaluator"), value: s1(value) },
+            ]
+          : undefined,
+        status: status.error
+          ? formatServerError(status.error, language.t, language.t("settings.models.reasoning.unavailable"))
+          : `${language.t("common.loading")}${language.t("common.loading.ellipsis")}`,
+        evaluations: evaluations()?.map((evaluation) => {
+          const cost = evaluation.usage.cost
+          const known = cost === undefined ? undefined : `$${cost.toFixed(5)}`
+          return {
+            operation: `${evaluation.operation} · ${evaluation.mode ?? "dual"} · ${evaluation.decision}`,
+            created: new Date(evaluation.created).toLocaleTimeString(language.intl(), { timeStyle: "short" }),
+            detail: language.t("composer.reasoning.dialog.evaluation", {
+              duration: Math.round(evaluation.duration).toLocaleString(language.intl()),
+              tokens: (evaluation.usage.input_tokens + evaluation.usage.output_tokens).toLocaleString(language.intl()),
+              cost:
+                known === undefined
+                  ? language.t("composer.reasoning.dialog.costUnknown")
+                  : evaluation.usage.unpriced
+                    ? language.t("composer.reasoning.dialog.costPartial", { cost: known })
+                    : known,
+              detail: evaluation.issues.join(" · ") || evaluation.model,
+            }),
+          }
+        }),
+        history: history.error
+          ? formatServerError(history.error, language.t, language.t("common.requestFailed"))
+          : `${language.t("common.loading")}${language.t("common.loading.ellipsis")}`,
+      }
+    }),
+    close: dialog.close,
+    setup: () => props.onSetup(),
   }
+}
 
-  return (
-    <li class="flex flex-col gap-0.5 py-2">
-      <div class="flex min-w-0 items-baseline gap-3">
-        {/* Operation, mode and decision are the server's identifiers, shown as the TUI shows them. */}
-        <span class="min-w-0 truncate font-mono text-[12px] text-foreground">
-          {`${props.evaluation.operation} · ${props.evaluation.mode ?? "dual"} · ${props.evaluation.decision}`}
-        </span>
-        <span class="ms-auto shrink-0 text-caption tabular-nums text-ink-muted">
-          {new Date(props.evaluation.created).toLocaleTimeString(language.intl(), { timeStyle: "short" })}
-        </span>
-      </div>
-      <div class="min-w-0 break-words text-caption text-ink-muted">
-        {language.t("composer.reasoning.dialog.evaluation", {
-          duration: Math.round(props.evaluation.duration).toLocaleString(language.intl()),
-          tokens: tokens().toLocaleString(language.intl()),
-          cost: cost(),
-          detail: props.evaluation.issues.join(" · ") || props.evaluation.model,
-        })}
-      </div>
-    </li>
-  )
+/** The existing service owns scoped requests; React owns the status and evaluation view. */
+export function DialogIntelligence(props: Parameters<typeof createIntelligenceDialogServices>[0]) {
+  const services = createIntelligenceDialogServices(props)
+  return <ReactView component={IntelligenceDialog} props={{ services }} />
 }
