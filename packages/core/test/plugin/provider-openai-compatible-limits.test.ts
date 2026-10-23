@@ -123,7 +123,11 @@ describe("OpenAI-compatible endpoints where the server runs the wizard", () => {
         expect((yield* loaded("reported")).limit).toEqual({ context: 64_000, output: 4_000 })
         expect((yield* loaded("glm-5.3-flash")).limit).toEqual(expected("glm-5.3-flash"))
         const bounded = yield* loaded("zai/glm-5.3-flash")
-        expect(bounded.limit).toEqual({ context: 1_048_576, input: 900_000, output: 128_000 })
+        expect(bounded.limit).toEqual({
+          context: expected("zai/glm-5.3-flash").context,
+          input: 900_000,
+          output: 128_000,
+        })
         const resolver = yield* ModelResolver.Service
         const resolved = yield* resolver.resolveModel(bounded)
         const result = yield* LLM.generate({ model: resolved.model, prompt: "Keep the selected model" }).pipe(

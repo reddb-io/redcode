@@ -65,6 +65,15 @@ describe("acp prompt turns over the wire", () => {
       value: "test/second-model",
     })
     acp.server.sessions.set(acp.sessionId, makeSession(acp.sessionId, { cost: 3.5 }))
+    acp.server.budgets.set(acp.sessionId, {
+      limits: {},
+      override: {},
+      spent: { cost: 4.75, tokens: 171, unpriced: 0 },
+      costAssessment: { status: "reported" },
+      exceeded: false,
+      unknown: false,
+      reason: "",
+    })
 
     const prompt = acp.prompt(acp.sessionId, "hi")
     const settled = { value: false }
@@ -156,7 +165,20 @@ describe("acp prompt turns over the wire", () => {
     })
     expect(await acp.waitForUpdate((item) => item.update.sessionUpdate === "usage_update")).toEqual({
       sessionId: sessionID,
-      update: { sessionUpdate: "usage_update", used: 171, size: 200_000, cost: { amount: 3.5, currency: "USD" } },
+      update: {
+        sessionUpdate: "usage_update",
+        used: 171,
+        size: 200_000,
+        cost: { amount: 4.75, currency: "USD" },
+        _meta: {
+          "reddb.io/cost": {
+            knownSubtotal: 4.75,
+            currency: "USD",
+            status: "reported",
+            scope: "session-and-descendants",
+          },
+        },
+      },
     })
   })
 

@@ -38,11 +38,19 @@ describe("connection-scoped System One discovery", () => {
     Effect.gen(function* () {
       const transport = yield* IntelligenceTransport.Service
       expect(yield* transport.discover({ evaluator: IntelligenceEvaluation.evaluatorPreset("vercel") })).toEqual({
-        models: [{ id: "typesafe-ai/jev", name: "Jev" }],
+        models: [
+          { id: "typesafe-ai/jev", name: "Jev" },
+          { id: "typesafe-ai/jev-1.14.0", name: "Jev 1.14.0" },
+          { id: "typesafe-ai/jev-1.13.0", name: "Jev 1.13.0" },
+        ],
         manual: false,
       })
       expect(yield* transport.discover({ evaluator: IntelligenceEvaluation.evaluatorPreset("openrouter") })).toEqual({
-        models: [{ id: "typesafe/jev-1.13", name: "typesafe/jev-1.13" }],
+        models: [
+          { id: "~typesafe/jev-latest", name: "Jev Latest" },
+          { id: "typesafe/jev-1.13", name: "Jev 1.13" },
+          { id: "typesafe/jev-1.14", name: "Jev 1.14" },
+        ],
         manual: false,
       })
     }),
