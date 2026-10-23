@@ -2,6 +2,7 @@ import type { Page } from "@playwright/test"
 import type {
   AttentionSnapshot,
   HostResourcesSnapshot,
+  IntelligenceEvaluation,
   IntelligenceStatus,
   OpenCodeEvent,
   SessionMessageInfo,
@@ -143,6 +144,7 @@ export interface MockServerConfig {
   provider: Resolvable<MockProviderCatalog>
   integrations?: unknown[]
   intelligence?: Resolvable<IntelligenceStatus>
+  intelligenceHistory?: Resolvable<IntelligenceEvaluation[]>
   beforeIntelligenceResponse?: () => Promise<void>
   onIntelligenceStatus?: (sessionID?: string) => void
   agents?: unknown[]
@@ -1348,7 +1350,7 @@ function mockHandlers(
             await config.beforeIntelligenceResponse?.()
             return resolve(config.intelligence ?? mockIntelligence)
           }),
-        intelligenceHistory: () => Effect.succeed([]),
+        intelligenceHistory: () => Effect.sync(() => resolve(config.intelligenceHistory ?? [])),
         intelligenceSessionMode: (ctx) =>
           Effect.tryPromise({
             try: async () => {

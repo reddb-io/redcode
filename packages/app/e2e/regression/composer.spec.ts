@@ -75,6 +75,59 @@ test("a reasoning failure keeps the draft and its prompt recoverable", async ({ 
   expect(requests).toEqual([{ reasoning: "dual" }, { reasoning: "dual" }])
 })
 
+test("reasoning dialogs preserve keyboard selection, evaluation details and Settings handoff", async ({ page }) => {
+  const errors: string[] = []
+  page.on("pageerror", (error) => errors.push(error.message))
+  const { editor } = await openSession(page, {
+    name: "ReasoningDialogs",
+    intelligenceHistory: [
+      {
+        id: "evaluation_dialog",
+        fingerprint: "dialog",
+        sessionID: "ses_reasoningdialogs",
+        operation: "response_quality",
+        policy: "review",
+        decision: "needs_revision",
+        model: "fixture-evaluator",
+        answers: {},
+        issues: ["Missing validation"],
+        created: T0,
+        duration: 125,
+        usage: { input_tokens: 100, output_tokens: 20, cost: 0.001, unpriced: 1 },
+      },
+    ],
+  })
+  await editor.fill("Preserve this draft")
+  await page.keyboard.press("ControlOrMeta+Shift+P")
+  const palette = page.getByRole("dialog", { name: "Search files, commands, and sessions", exact: true })
+  await palette.getByRole("textbox").fill("Reasoning mode")
+  await palette.getByRole("option", { name: /^Reasoning mode…/ }).click()
+  const mode = page.getByRole("dialog", { name: "Reasoning mode…", exact: true })
+  const current = mode.getByRole("menuitemradio", { name: "Use service default", exact: true })
+  await expect(current).toBeFocused()
+  await current.press("End")
+  await expect(mode.getByRole("menuitemradio", { name: "Dual · S1 evaluates S2", exact: true })).toBeFocused()
+  await page.keyboard.press("Escape")
+  await expect(mode).toBeHidden()
+  const trigger = page.getByRole("button", { name: "Reasoning mode", exact: true })
+  await trigger.click()
+  await page.getByRole("menuitem", { name: "Intelligence status", exact: true }).click()
+  const status = page.getByRole("dialog", { name: "S1 / S2 · Models and evaluations", exact: true })
+  await expect(status.getByText("Single (S2 only) · Default", { exact: true })).toBeVisible()
+  await expect(status.getByText("response_quality · dual · needs_revision", { exact: true })).toBeVisible()
+  await expect(
+    status.getByText("125 ms · 120 tokens · $0.00100 + unknown cost · Missing validation", { exact: true }),
+  ).toBeVisible()
+  await expect(editor).toHaveText("Preserve this draft")
+  await status.getByRole("button", { name: "Configure reasoning roles", exact: true }).click()
+  await expect(status).toBeHidden()
+  await expect(page.getByTestId("settings-screen").getByRole("tab", { name: "Models", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  )
+  expect(errors).toEqual([])
+})
+
 async function draft(page: Page) {
   const { editor } = await openDraft(page, { name: "ComposerDraft", provider: NO_PROVIDER })
   await editor.click()
