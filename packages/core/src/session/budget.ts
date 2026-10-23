@@ -9,6 +9,8 @@ import { Context, Effect, Layer } from "effect"
 import { Bus } from "../bus.js"
 import { Database } from "../database/database.js"
 import { IntelligenceEvaluationTable } from "../intelligence/sql.js"
+import { Event } from "@opencode/schema/event"
+import { EventTable } from "../event/sql.js"
 import { SessionEvent } from "./event.js"
 import { SessionGuardLog } from "./guard-log.js"
 import { SessionSchema } from "./schema.js"
@@ -122,6 +124,15 @@ const make = Effect.gen(function* () {
             0 AS unpriced
           FROM ${SessionTable}
           JOIN descendants ON descendants.id = ${SessionTable.id}
+          UNION ALL
+          SELECT 0 AS cost, 0 AS tokens, 1 AS unpriced
+          FROM ${EventTable}
+          JOIN descendants ON descendants.id = ${EventTable.aggregate_id}
+          WHERE ${EventTable.type} IN (
+            ${Event.versionedType(SessionEvent.Step.Ended.type, SessionEvent.Step.Ended.durable.version)},
+            ${Event.versionedType(SessionEvent.Step.Failed.type, SessionEvent.Step.Failed.durable.version)},
+            ${Event.versionedType(SessionEvent.UsageRecorded.type, SessionEvent.UsageRecorded.durable.version)}
+          ) AND json_extract(${EventTable.data}, '$.costAssessment.status') = 'unknown'
           UNION ALL
           SELECT
             coalesce(${IntelligenceEvaluationTable.cost}, 0) AS cost,

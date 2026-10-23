@@ -152,6 +152,76 @@ fixa seu hash, contagens e limites. A validação local terminou com 149 testes 
 Core, 20 de apresentação e `bun run check` aprovado nos 27 tasks. Nenhum provedor
 recebeu uma chamada de inferência ou credencial durante essa avaliação.
 
+## Estimativas condicionais e cobertura de custos
+
+O runtime conserva o catálogo resolvido e avalia as tarifas V2 condicionais quando
+a projeção de preços por token está vazia. Preços por token explicitamente
+fornecidos pelo modelo/configuração continuam tendo precedência. Um USD válido
+informado pelo provedor, inclusive zero, sempre prevalece sobre as estimativas;
+o recibo de RedRouter também mantém essa precedência.
+
+O avaliador aplica overrides na ordem publicada, com merge dos campos de cache e
+TTLs, e depois todos os multiplicadores correspondentes. Suporta condições
+numéricas, strings comparáveis, igualdade, listas, `min_items`, `all`, `any` e
+`not`. Uma condição com chave desconhecida é ignorada conforme o contrato do
+catálogo. Uma condição conhecida sem o fato necessário deixa a cotação
+indeterminada. Contexto vem dos tokens normalizados; service tier e outros fatos
+simples vêm das opções/defaults e do body da requisição preparada, sem inventar
+uma região ou tier padrão. Uma mudança de ID/provedor do modelo na requisição
+invalida a estimativa do catálogo original.
+
+`ModelPricing.quote` aceita medidas explícitas de tokens, caracteres, imagens,
+megapixels, segundos, minutos e buscas. Tokens/caracteres usam um milhão de
+unidades, buscas usam mil e as demais unidades usam uma unidade. Reasoning pode
+ter tarifa própria; um TTL de escrita de cache precisa ser informado quando a
+tabela o distingue. A passagem de medidas explícitas não constitui descoberta
+automática de consumo de mídia ou ferramentas nativas.
+
+As chamadas da sessão usam os tokens normalizados e os fatos observáveis da
+requisição. Chamadas V2 com mídia ou declarações de ferramentas nativas permanecem
+sem estimativa completa quando não há USD informado pelo provedor. Armazenamento
+de cache, modo explícito/implícito sem distinção no usage, TTL não observado,
+unidades incompatíveis e fatos de preço ausentes não viram tarifas zero.
+
+Os eventos novos `session.step.ended`, `session.step.failed` e
+`session.usage.recorded` conservam `costAssessment`. Mensagens assistant projetam
+a mesma informação. A classificação é:
+
+| Status | Significado |
+| --- | --- |
+| `reported` | USD informado pelo provedor/gateway; não é conciliação de invoice. |
+| `estimated` | Valor calculado com preços e medidas disponíveis. |
+| `unknown` | A cotação não foi resolvida; o número compatível não representa custo total. |
+
+O valor numérico `cost` continua compatível. Uma chamada sem cotação usa zero
+como contribuição numérica e traz status desconhecido. Uma soma com partes
+conhecidas e desconhecidas conserva o subtotal conhecido e marca a soma como
+incompleta. Históricos anteriores permanecem sem classificação, sem recalcular
+valores nem atribuir uma origem retroativa. O digest do catálogo é conservado
+quando a cotação utiliza suas regras V2; a avaliação por uma projeção local de
+preços não a atribui indevidamente ao catálogo original.
+
+As estatísticas retornam `costCoverage` com contagens `reported`, `estimated`,
+`unknown` e `legacy`. São registros contábeis nos mesmos escopos dos totais
+existentes, não contagens de requests ou de invoices. A cobertura por modelo
+acompanha suas mensagens; a cobertura geral inclui os registros de compactação
+que já participavam do total. Títulos mantêm o escopo anterior das estatísticas.
+
+O orçamento reutiliza `spent.unpriced`, derivado dos eventos novos e das
+avaliações S1 existentes, incluindo descendentes. As somas de compactação não
+são contadas novamente como novas chamadas. O indicador `unknown` e o texto
+`some cost unknown` aparecem no orçamento em USD quando houver pendências. A
+política anterior continua: um valor não resolvido sinaliza incompletude, sem
+inventar uma cobrança nem declarar o limite de USD atingido. Com custos não
+resolvidos, esse limite não garante um teto sobre cobranças externas.
+
+A validação cobre o runner com transporte LLM simulado e o caminho real de
+admissão/execução/projeção, além do banco e do Bus persistidos para mensagens,
+estatísticas e orçamento. O [registro deste lote](evaluations/conditional-pricing-2026-10-23-validation.json)
+conserva os resultados. Não houve conciliação de fatura nem publicação. Consumo
+de mídia/cache detalhado pelos adapters e adoção da cobertura nos demais clientes
+continuam pendentes antes do cutover padrão do catálogo.
+
 ## Verificação e limites
 
 As regressões de startup MCP, callback OAuth, buffer de compactação, socket em
@@ -197,8 +267,8 @@ merge; isso não constitui um ensaio de morte real de processo com Git/hooks ór
 
 1. Expor o fluxo de preparo, validação e aplicação no Agents; ampliar a recuperação
    explícita de aplicações ambíguas e a coordenação entre hosts.
-2. Completar a avaliação de preços condicionais e mídia, as projeções legadas de
-   custos e o cutover padrão do catálogo para V2, preservando V1 e RedRouter.
+2. Conectar os meters de mídia/cache dos providers e a cobertura de custos aos
+   demais clientes, e validar o cutover padrão do catálogo para V2.
 3. Completar Agents DS React por objetivo, contexto comum versionado, agrupamento
    de conclusões e exposição do grafo em workers e harnesses.
 4. Implementar workflows reutilizáveis, rotinas, webhooks e conectores pelos

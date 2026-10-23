@@ -43,6 +43,7 @@ type MessageRow = {
   cacheRead: number | null
   cacheWrite: number | null
   cost: number | null
+  costStatus: string | null
 }
 
 type ToolRow = {
@@ -63,6 +64,7 @@ type ModelAggregate = {
   steps: number
   tokens: Tokens
   cost: number
+  costCoverage: ReturnType<typeof emptyCoverage>
 }
 
 type ToolAggregate = {
@@ -115,6 +117,7 @@ export const get = Effect.fn("SessionStats.get")(function* (input: Input = {}) {
     steps: 0,
     tokens: emptyTokens(),
     cost: 0,
+    costCoverage: emptyCoverage(),
   }
   const toolTotals = { calls: 0, succeeded: 0, failed: 0, unfinished: 0 }
   const dateKey = makeDateKey(input.timezone)
@@ -138,7 +141,8 @@ export const get = Effect.fn("SessionStats.get")(function* (input: Input = {}) {
             json_extract(message.data, '$.tokens.reasoning') AS reasoning,
             json_extract(message.data, '$.tokens.cache.read') AS cacheRead,
             json_extract(message.data, '$.tokens.cache.write') AS cacheWrite,
-            json_extract(message.data, '$.cost') AS cost
+            json_extract(message.data, '$.cost') AS cost,
+            json_extract(message.data, '$.costAssessment.status') AS costStatus
           FROM ${SessionMessageTable} AS message
           JOIN ${SessionTable} AS session ON session.id = message.session_id
           WHERE message.type IN ('user', 'assistant')
@@ -164,6 +168,11 @@ export const get = Effect.fn("SessionStats.get")(function* (input: Input = {}) {
                 const tokens = rowTokens(row)
                 addTokens(totals.tokens, tokens)
                 totals.cost += row.cost ?? 0
+                const accounted =
+                  row.cost !== null ||
+                  Object.values(tokens.cache).reduce((a, b) => a + b, tokens.input + tokens.output + tokens.reasoning) >
+                    0
+                if (accounted) cover(totals.costCoverage, row.costStatus)
                 const day = dateKey(row.timeCreated)
                 activity.set(day, (activity.get(day) ?? 0) + 1)
                 if (!row.providerID || !row.modelID) return
@@ -177,10 +186,12 @@ export const get = Effect.fn("SessionStats.get")(function* (input: Input = {}) {
                   steps: 0,
                   tokens: emptyTokens(),
                   cost: 0,
+                  costCoverage: emptyCoverage(),
                 }
                 models.set(key, model)
                 model.steps++
                 model.cost += row.cost ?? 0
+                if (accounted) cover(model.costCoverage, row.costStatus)
                 addTokens(model.tokens, tokens)
               })
             }),
@@ -312,6 +323,7 @@ export const get = Effect.fn("SessionStats.get")(function* (input: Input = {}) {
     if (Option.isNone(decoded)) return
     addTokens(totals.tokens, decoded.value.tokens)
     totals.cost += decoded.value.cost
+    cover(totals.costCoverage, decoded.value.costAssessment?.status)
   })
 
   const days = [...activity.entries()].sort(([a], [b]) => a.localeCompare(b))
@@ -323,6 +335,7 @@ export const get = Effect.fn("SessionStats.get")(function* (input: Input = {}) {
     steps: totals.steps,
     tokens: totals.tokens,
     cost: Money.USD.make(totals.cost),
+    costCoverage: totals.costCoverage,
     tools:
       toolMode === "none"
         ? { mode: toolMode }
@@ -433,4 +446,15 @@ function median(values: number[]) {
   const sorted = values.toSorted((a, b) => a - b)
   const middle = Math.floor(sorted.length / 2)
   return sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle]
+}
+
+function emptyCoverage() {
+  return { reported: 0, estimated: 0, unknown: 0, legacy: 0 }
+}
+function cover(coverage: ReturnType<typeof emptyCoverage>, status: string | null | undefined) {
+  if (status === "reported" || status === "estimated" || status === "unknown") {
+    coverage[status]++
+    return
+  }
+  coverage.legacy++
 }

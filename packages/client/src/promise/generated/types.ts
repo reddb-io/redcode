@@ -107,6 +107,8 @@ export type PluginFeatures = { server?: true; tui?: true; rpc?: true }
 
 export type PluginState = { status: "active" } | { status: "failed"; error: string; ref?: string }
 
+export type CostAssessmentCoverage = { reported: number; estimated: number; unknown: number; legacy: number }
+
 export type SessionStatsToolTotals = { calls: number; succeeded: number; failed: number; unfinished: number }
 
 export type SessionStatsToolUsage = {
@@ -201,6 +203,12 @@ export type SessionStructuredError = {
   provider?: string
   model?: string
   url?: string
+}
+
+export type CostAssessmentInfo = {
+  status: "reported" | "estimated" | "unknown"
+  reason?: string
+  catalogDigest?: string
 }
 
 export type SessionMessageCompactionRunning = {
@@ -1813,7 +1821,13 @@ export type SessionUsageRecorded = {
   type: "session.usage.recorded"
   durable: { aggregateID: string; seq: number; version: 1 }
   location?: LocationRef
-  data: { sessionID: string; source: "title" | "compaction"; cost: MoneyUSD; tokens: TokenUsageInfo }
+  data: {
+    sessionID: string
+    source: "title" | "compaction"
+    cost: MoneyUSD
+    costAssessment?: CostAssessmentInfo
+    tokens: TokenUsageInfo
+  }
 }
 
 export type LocationShutdown = {
@@ -2340,6 +2354,7 @@ export type SessionStepEnded = {
     rawFinish?: string
     providerState?: SessionMessageProviderState1
     cost: MoneyUSD
+    costAssessment?: CostAssessmentInfo
     tokens: TokenUsageInfo
     snapshot?: string
     files?: Array<string>
@@ -2361,6 +2376,7 @@ export type SessionStepFailed = {
     rawFinish?: string
     providerState?: SessionMessageProviderState1
     cost?: MoneyUSD
+    costAssessment?: CostAssessmentInfo
     tokens?: TokenUsageInfo
     snapshot?: string
     files?: Array<string>
@@ -3359,7 +3375,13 @@ export type IntelligenceSettings = {
   evaluator?: IntelligenceEvaluator
 }
 
-export type SessionStatsModelUsage = { model: ModelRef; steps: number; tokens: TokenUsageInfo; cost: MoneyUSD }
+export type SessionStatsModelUsage = {
+  model: ModelRef
+  steps: number
+  tokens: TokenUsageInfo
+  cost: MoneyUSD
+  costCoverage?: CostAssessmentCoverage
+}
 
 export type SessionMessageModelSelected = {
   id: string
@@ -3886,6 +3908,7 @@ export type SessionStatsInfo = {
   steps: number
   tokens: TokenUsageInfo
   cost: MoneyUSD
+  costCoverage?: CostAssessmentCoverage
   tools: SessionStatsTools
   activeDays: number
   streak: number
@@ -3939,6 +3962,7 @@ export type SessionMessageAssistant = {
   rawFinish?: string
   providerState?: SessionMessageProviderState
   cost?: MoneyUSD
+  costAssessment?: CostAssessmentInfo
   tokens?: TokenUsageInfo
   error?: SessionStructuredError
   retry?: SessionMessageAssistantRetry
@@ -5176,6 +5200,11 @@ export type SessionImportInput = {
           readonly rawFinish?: string
           readonly providerState?: { readonly [x: string]: JsonValue }
           readonly cost?: number
+          readonly costAssessment?: {
+            readonly status: "reported" | "estimated" | "unknown"
+            readonly reason?: string
+            readonly catalogDigest?: string
+          }
           readonly tokens?: {
             readonly input: number
             readonly output: number
@@ -5576,6 +5605,11 @@ export type SessionImportInput = {
           readonly rawFinish?: string
           readonly providerState?: { readonly [x: string]: JsonValue }
           readonly cost?: number
+          readonly costAssessment?: {
+            readonly status: "reported" | "estimated" | "unknown"
+            readonly reason?: string
+            readonly catalogDigest?: string
+          }
           readonly tokens?: {
             readonly input: number
             readonly output: number
@@ -5976,6 +6010,11 @@ export type SessionImportInput = {
           readonly rawFinish?: string
           readonly providerState?: { readonly [x: string]: JsonValue }
           readonly cost?: number
+          readonly costAssessment?: {
+            readonly status: "reported" | "estimated" | "unknown"
+            readonly reason?: string
+            readonly catalogDigest?: string
+          }
           readonly tokens?: {
             readonly input: number
             readonly output: number

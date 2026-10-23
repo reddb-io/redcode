@@ -247,6 +247,9 @@ export type SessionStatsOutput = {
     readonly cache: { readonly read: number; readonly write: number }
   }
   readonly cost: number & Brand.Brand<"Money.USD">
+  readonly costCoverage?:
+    | { readonly reported: number; readonly estimated: number; readonly unknown: number; readonly legacy: number }
+    | undefined
   readonly tools:
     | { readonly mode: "none" }
     | {
@@ -288,6 +291,9 @@ export type SessionStatsOutput = {
       readonly cache: { readonly read: number; readonly write: number }
     }
     readonly cost: number & Brand.Brand<"Money.USD">
+    readonly costCoverage?:
+      | { readonly reported: number; readonly estimated: number; readonly unknown: number; readonly legacy: number }
+      | undefined
   }>
 }
 export type SessionStatsOperation<E = never> = (input?: SessionStatsInput) => Effect.Effect<SessionStatsOutput, E>
@@ -3722,6 +3728,13 @@ export type SessionLogOutput =
             readonly rawFinish?: string | undefined
             readonly providerState?: SessionMessage.ProviderState | undefined
             readonly cost: number & Brand.Brand<"Money.USD">
+            readonly costAssessment?:
+              | {
+                  readonly status: "reported" | "estimated" | "unknown"
+                  readonly reason?: string | undefined
+                  readonly catalogDigest?: string | undefined
+                }
+              | undefined
             readonly tokens: {
               readonly input: number
               readonly output: number
@@ -3760,6 +3773,13 @@ export type SessionLogOutput =
             readonly rawFinish?: string | undefined
             readonly providerState?: SessionMessage.ProviderState | undefined
             readonly cost?: (number & Brand.Brand<"Money.USD">) | undefined
+            readonly costAssessment?:
+              | {
+                  readonly status: "reported" | "estimated" | "unknown"
+                  readonly reason?: string | undefined
+                  readonly catalogDigest?: string | undefined
+                }
+              | undefined
             readonly tokens?:
               | {
                   readonly input: number
@@ -4187,6 +4207,13 @@ export type SessionLogOutput =
             readonly sessionID: Session.ID
             readonly source: "title" | "compaction"
             readonly cost: number & Brand.Brand<"Money.USD">
+            readonly costAssessment?:
+              | {
+                  readonly status: "reported" | "estimated" | "unknown"
+                  readonly reason?: string | undefined
+                  readonly catalogDigest?: string | undefined
+                }
+              | undefined
             readonly tokens: {
               readonly input: number
               readonly output: number

@@ -272,6 +272,7 @@ export function update(adapter: Adapter, event: SessionEvent.DurableEvent) {
           draft.finish = event.data.finish
           draft.rawFinish = event.data.rawFinish
           draft.providerState = castDraft(event.data.providerState)
+          draft.costAssessment = event.data.costAssessment
           draft.cost = event.data.cost
           draft.tokens = event.data.tokens
           // What served the step, e.g. RedRouter's report of the model it routed to.
@@ -288,6 +289,7 @@ export function update(adapter: Adapter, event: SessionEvent.DurableEvent) {
           draft.error = castDraft(event.data.error)
           draft.retry = undefined
           if (event.data.cost !== undefined && event.data.tokens !== undefined) {
+            draft.costAssessment = event.data.costAssessment
             draft.cost = event.data.cost
             draft.tokens = castDraft(event.data.tokens)
           }

@@ -1023,7 +1023,7 @@ export const layer = Layer.effect(
       }
 
       const toResult = (window: ReadonlyArray<Message>, usage: Usage | undefined) =>
-        spend(context.session.id, usage && SessionUsage.record(usage, context.model.cost)).pipe(
+        spend(context.session.id, usage && SessionUsage.record(usage, context.model, prepared.request)).pipe(
           Effect.as<Result>({
             text: "",
             recent: "",
@@ -1205,7 +1205,7 @@ export const layer = Layer.effect(
       })
     }
 
-    /** `background` streams a prepared summary: no deltas reach the timeline and its usage is billed but not tallied. */
+    /** `background` streams a prepared summary: no deltas reach the timeline and its usage is recorded but not tallied. */
     const stream = (
       context: SessionContext.Loaded,
       request: LLMRequest,
@@ -1237,7 +1237,7 @@ export const layer = Layer.effect(
             }
 
             if (LLMEvent.is.stepFinish(event)) {
-              const usage = SessionUsage.record(event.usage, context.model.cost)
+              const usage = SessionUsage.record(event.usage, context.model, request)
               return spend(sessionID, usage, background).pipe(
                 Effect.as({
                   ...streamed,
@@ -1309,10 +1309,7 @@ export const layer = Layer.effect(
 
     /** A request hook supplied the summary itself, so no model call happens. */
     const fromHook = (context: SessionContext.Loaded, supplied: SessionCompactionResult, recent: string) => {
-      const usage = supplied.tokens && {
-        tokens: supplied.tokens,
-        cost: SessionUsage.calculateCost(context.model.cost, supplied.tokens),
-      }
+      const usage = supplied.tokens && SessionUsage.estimate(supplied.tokens, context.model)
       return spend(context.session.id, usage).pipe(
         Effect.as<Result>({
           text: supplied.summary,
@@ -1324,7 +1321,7 @@ export const layer = Layer.effect(
     }
 
     /**
-     * Each model call is billed as soon as it finishes, so failed and interrupted compactions are billed too. The
+     * Each model call records usage as soon as it finishes, including failed and interrupted compactions. The
      * compaction's message shows the total across all of its calls. A session never runs two compactions at once.
      */
     const spent = new Map<SessionContext.Loaded["session"]["id"], SessionUsage.Recorded>()
@@ -1332,7 +1329,7 @@ export const layer = Layer.effect(
       const total = spent.get(sessionID)
       spent.set(sessionID, total ? SessionUsage.add(total, usage) : usage)
     }
-    /** A summary prepared in the background is billed at once but joins a compaction's total only when committed. */
+    /** Usage for a summary prepared in the background is recorded at once but joins a compaction's total only when committed. */
     const spend = (
       sessionID: SessionContext.Loaded["session"]["id"],
       usage: SessionUsage.Recorded | undefined,

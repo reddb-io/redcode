@@ -78,8 +78,8 @@
       "upstream_merged_observed": true,
       "upstream_head": "621b612f8d93adb59a8455694ba5f969ed16d517",
       "status": "partial",
-      "local_path": "packages/core/src/models-dev/catalog.ts",
-      "evidence_or_next_step": "Native V1/V2 normalization preserves per-API declarations, capabilities and detailed unit prices. Adapter execution for media/decision/rerank, full conditional price evaluation and default V2 cutover remain separate work. See model catalog validation."
+      "local_path": "packages/core/src/model-pricing.ts",
+      "evidence_or_next_step": "Native conditional/unit-aware evaluator and runtime cost provenance implemented. Automatic detailed media/cache metering, remaining client projections and default V2 cutover remain pending."
     },
     {
       "repository": "anomalyco/models.dev",
@@ -102,8 +102,8 @@
       "upstream_merged_observed": true,
       "upstream_head": "7addb8a623196c62b199ee8dc408dab03c2a6387",
       "status": "partial",
-      "local_path": "packages/core/src/models-dev/catalog.ts",
-      "evidence_or_next_step": "Native V1/V2 normalization preserves per-API declarations, capabilities and detailed unit prices. Adapter execution for media/decision/rerank, full conditional price evaluation and default V2 cutover remain separate work. See model catalog validation."
+      "local_path": "packages/core/src/model-pricing.ts",
+      "evidence_or_next_step": "Native conditional/unit-aware evaluator and runtime cost provenance implemented. Automatic detailed media/cache metering, remaining client projections and default V2 cutover remain pending."
     },
     {
       "repository": "anomalyco/models.dev",
@@ -114,8 +114,8 @@
       "upstream_merged_observed": true,
       "upstream_head": "3d14a3138b992330659101c11b6714fc30104bfe",
       "status": "partial",
-      "local_path": "packages/core/src/models-dev/catalog.ts",
-      "evidence_or_next_step": "Native V1/V2 normalization preserves per-API declarations, capabilities and detailed unit prices. Adapter execution for media/decision/rerank, full conditional price evaluation and default V2 cutover remain separate work. See model catalog validation."
+      "local_path": "packages/core/src/model-pricing.ts",
+      "evidence_or_next_step": "Native conditional/unit-aware evaluator and runtime cost provenance implemented. Automatic detailed media/cache metering, remaining client projections and default V2 cutover remain pending."
     },
     {
       "repository": "anomalyco/models.dev",
@@ -761,11 +761,17 @@
       "status": "validated",
       "path": "packages/core/src/models-dev/catalog.ts",
       "evidence": "149 Core and 20 Schema presentation tests; canonical bun run check passed all 27 tasks. The published V2 response normalized 228 providers and 9,313 entries with public-schema round trips in isolated storage. V2 remains opt-in through configured sources; see evaluations/model-catalog-2026-10-23-validation.json."
+    },
+    {
+      "id": "conditional-cost-assessment",
+      "status": "validated",
+      "path": "packages/core/src/model-pricing.ts",
+      "evidence": "151 Core regressions, 7 focused runner tests, 13 Schema tests and 5 Client tests passed; canonical lint/typecheck and generated SDK stability recorded in evaluations/conditional-pricing-2026-10-23-validation.json. Archived V2 prices replayed with synthetic meters. Conditional quotes, explicit meters, durable cost assessment and derived budget/statistics coverage preserve historical amounts. No live billing or publication."
     }
   ],
   "remaining": [
     "Agents surface for task-aware application, explicit recovery of ambiguous applications and cross-host coordination",
-    "Conditional/media price evaluation, legacy cost projections and default catalog cutover to V2",
+    "Provider media/cache meters, remaining client cost-coverage projections and validated V2 default cutover",
     "Agents DS React by goal, grouped completion, versioned shared context and remote graph",
     "Reusable workflows, routines, webhooks, resources and external message connectors",
     "Memory/skills, evaluation and media adapters, voice, paired push and native mobile scope",

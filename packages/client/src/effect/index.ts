@@ -62,3 +62,4 @@ export { Prompt } from "@opencode/schema/prompt"
 export { PromptInput } from "@opencode/schema/prompt-input"
 export type { OpenCodeEvent } from "@opencode/protocol/groups/event"
 export type OpenCodeClient = Effect.Success<ReturnType<typeof OpenCode.make>>
+export { CostAssessment } from "@opencode/schema/cost-assessment"

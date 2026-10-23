@@ -277,6 +277,7 @@ const makeRunnerState = (compaction?: SessionRunnerModel.Resolved["compaction"])
   return {
     runner: Deferred.makeUnsafe<SessionRunner.Interface>(),
     currentModel: model,
+    catalog: undefined as SessionRunnerModel.Resolved["catalog"],
     compaction,
     modelResolveHook: resolvesModel,
     systemBaseline: "Initial context",
@@ -396,6 +397,7 @@ const layer = Layer.unwrap(
             return SessionRunnerModel.resolved(selected, {
               capabilities: { tools: true, input: ["text", "image"], output: ["text"] },
               cost: [],
+              catalog: state.catalog,
               limit: modelLimits.get(String(selected.id)) ?? defaultModelLimit,
               variant: session.model?.variant,
               compaction: state.compaction,
@@ -8287,4 +8289,48 @@ describe("SessionRunnerLLM", () => {
     if (!(defect instanceof Error)) return
     expect(defect.message).toBe("Tool input delta before start: call-1")
   })
+})
+
+scenario("records conditional catalog usage and unresolved request facts through the real runner", function* (s) {
+  s.catalog = {
+    format: 2,
+    digest: "runner-pricing-source",
+    apis: {},
+    rates: [],
+    pricing: {
+      text: {
+        input: { price: 2, overrides: [{ when: { context: { gt: 100 } }, price: 4 }] },
+        output: { price: 8 },
+      },
+      multipliers: [{ when: { service_tier: { equals: "priority" } }, factor: 2 }],
+    },
+  }
+  s.currentModel = LanguageModel.update(s.currentModel, { defaults: { providerOptions: { serviceTier: "priority" } } })
+  yield* s.llm.push(TestLLM.complete(
+    { reason: { normalized: "stop" }, usage: { nonCachedInputTokens: 250, outputTokens: 10 } },
+    LLMEvent.textStart({ id: "priced" }),
+    LLMEvent.textDelta({ id: "priced", text: "Priced result" }),
+    LLMEvent.textEnd({ id: "priced" }),
+  ))
+  yield* s.runPrompt("Compute a result")
+  const priced = (yield* s.context).findLast((message) => message.type === "assistant")
+  expect(priced?.type).toBe("assistant")
+  if (priced?.type !== "assistant") throw new Error("Expected assistant accounting")
+  expect(priced.cost).toBeCloseTo(0.00216)
+  expect(priced.costAssessment).toEqual({ status: "estimated", catalogDigest: "runner-pricing-source" })
+
+  s.currentModel = LanguageModel.make({ id: s.currentModel.id, provider: s.currentModel.provider, route: OpenAIChat.route })
+  yield* s.llm.push(TestLLM.complete(
+    { reason: { normalized: "stop" }, usage: { nonCachedInputTokens: 250, outputTokens: 10 } },
+    LLMEvent.textStart({ id: "unpriced" }),
+    LLMEvent.textDelta({ id: "unpriced", text: "Result with an unresolved tier" }),
+    LLMEvent.textEnd({ id: "unpriced" }),
+  ))
+  yield* s.runPrompt("Compute another result")
+  const unpriced = (yield* s.context).findLast((message) => message.type === "assistant")
+  expect(unpriced?.type).toBe("assistant")
+  if (unpriced?.type !== "assistant") throw new Error("Expected assistant accounting")
+  expect(unpriced.cost).toBe(Money.USD.zero)
+  expect(unpriced.costAssessment).toEqual({ status: "unknown", reason: "unresolved-multiplier", catalogDigest: "runner-pricing-source" })
+  expect((yield* s.session.get(sessionID)).cost).toBeCloseTo(0.00216)
 })
