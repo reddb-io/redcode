@@ -190,3 +190,42 @@ test("invalidates continued, moved, missing, stale and busy source delegations",
     SessionTaskGraph.proof({ ...state.task, integration: { ...state.task.integration, head: "e".repeat(40) } }),
   ).not.toBe(SessionTaskGraph.proof(state.task))
 })
+
+test("goal completion waits for physical application without changing the accepted proof", () => {
+  const state = fixture()
+  const task = state.task
+  const binding = task.integration
+  expect(SessionTaskIntegration.applicationError([task])).toContain("Apply accepted")
+  const application: SessionTodo.IntegrationApplication = {
+    requestID: "apply-once",
+    taskRevision: task.revision!,
+    fingerprint: binding.fingerprint,
+    head: binding.head,
+    tree: binding.tree,
+    target: binding.target,
+    targetHead: binding.targetHead,
+    started: 300,
+    completed: 400,
+    state: "applied",
+  }
+  const applied = { ...task, integrationApplication: application }
+  expect(SessionTaskIntegration.applicationError([applied])).toBeUndefined()
+  expect(SessionTaskGraph.proof(applied)).toBe(SessionTaskGraph.proof(task))
+  expect(
+    SessionTaskIntegration.applicationError([
+      { ...applied, integrationApplication: { ...application, state: "pending" }, status: "cancelled" },
+    ]),
+  ).toContain("Reconcile pending")
+  for (const changed of [
+    { head: "e".repeat(40) },
+    { tree: "e".repeat(40) },
+    { fingerprint: "new-contract" },
+    { target: AbsolutePath.make("/other") },
+    { targetHead: "e".repeat(40) },
+  ]) {
+    expect(
+      SessionTaskIntegration.applicationError([{ ...applied, integrationApplication: { ...application, ...changed } }]),
+    ).toContain("Apply accepted")
+  }
+  expect(SessionTaskIntegration.applicationError([{ ...task, integration: undefined }])).toBeUndefined()
+})

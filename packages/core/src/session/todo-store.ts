@@ -279,6 +279,7 @@ const make = Effect.gen(function* () {
           ...(criterion ? { criterion } : {}),
           ...(dependencies !== undefined ? { dependencies } : {}),
           ...(before?.integration ? { integration: before.integration } : {}),
+          ...(before?.integrationApplication ? { integrationApplication: before.integrationApplication } : {}),
           ...(kept && before?.inputs ? { inputs: before.inputs } : {}),
           ...(status === "completed" && kept ? { evidence: kept } : {}),
           ...(status === "completed" && proof
@@ -704,6 +705,7 @@ const make = Effect.gen(function* () {
                       dependencies: task.dependencies,
                       inputs: task.inputs,
                       integration: task.integration,
+                      integrationApplication: task.integrationApplication,
                     },
                   })
                   .onConflictDoUpdate({
@@ -727,6 +729,7 @@ const make = Effect.gen(function* () {
                         dependencies: task.dependencies,
                         inputs: task.inputs,
                         integration: task.integration,
+                        integrationApplication: task.integrationApplication,
                       },
                     },
                   })
@@ -780,6 +783,10 @@ const make = Effect.gen(function* () {
             const before = tasks[position]
             if (!before)
               return yield* new SessionTodo.Error({ message: `Unknown task ${input.taskID} in this session` })
+            if (before.integrationApplication?.state === "pending")
+              return yield* new SessionTodo.Error({
+                message: "Reconcile the pending application before preparing another candidate",
+              })
             if (before.status !== "pending" && before.status !== "in_progress")
               return yield* new SessionTodo.Error({
                 message: "Reopen the integration task before preparing a candidate",
@@ -829,6 +836,70 @@ const make = Effect.gen(function* () {
             return task
           }),
         ),
+      )
+      .pipe(Effect.catchTag("SqlError", Effect.die))
+  })
+
+  const integrationApplication = Effect.fn("SessionTodoStore.integrationApplication")(function* (
+    sessionID: SessionSchema.ID,
+    taskID: string,
+    requestID: string,
+  ) {
+    const current = (yield* get(sessionID)).find((task) => task.id === taskID)?.integrationApplication
+    if (current?.requestID === requestID) return current
+    const history = yield* db
+      .select()
+      .from(TodoHistoryTable)
+      .where(and(eq(TodoHistoryTable.session_id, sessionID), eq(TodoHistoryTable.task_id, taskID)))
+      .orderBy(asc(TodoHistoryTable.revision))
+      .all()
+      .pipe(Effect.orDie)
+    return history.findLast((entry) => entry.data.integrationApplication?.requestID === requestID)?.data
+      .integrationApplication
+  })
+
+  /** Caller holds the assignment mutation boundary through admission, Git and recording. */
+  const recordIntegrationApplication = Effect.fn("SessionTodoStore.recordIntegrationApplication")(function* (input: {
+    sessionID: SessionSchema.ID
+    taskID: string
+    revision: number
+    application: SessionTodo.IntegrationApplication
+  }) {
+    return yield* db
+      .transaction((tx) =>
+        Effect.gen(function* () {
+          const row = yield* tx
+            .select()
+            .from(TodoTable)
+            .where(and(eq(TodoTable.session_id, input.sessionID), eq(TodoTable.task_id, input.taskID)))
+            .get()
+            .pipe(Effect.orDie)
+          if (!row || row.revision !== input.revision)
+            return yield* new SessionTodo.Error({ message: "Task changed while recording integration application" })
+          const before = read(row)
+          const task = { ...before, integrationApplication: input.application, revision: row.revision + 1 }
+          yield* Effect.forEach([before, task], (entry) =>
+            tx
+              .insert(TodoHistoryTable)
+              .values({
+                session_id: input.sessionID,
+                task_id: input.taskID,
+                revision: entry.revision!,
+                data: entry,
+                created: Date.now(),
+              })
+              .onConflictDoNothing()
+              .run()
+              .pipe(Effect.orDie),
+          )
+          yield* tx
+            .update(TodoTable)
+            .set({ revision: task.revision, details: { ...row.details, integrationApplication: input.application } })
+            .where(and(eq(TodoTable.session_id, input.sessionID), eq(TodoTable.position, row.position)))
+            .run()
+            .pipe(Effect.orDie)
+          return task
+        }),
       )
       .pipe(Effect.catchTag("SqlError", Effect.die))
   })
@@ -888,7 +959,17 @@ const make = Effect.gen(function* () {
         })),
     })
   })
-  return { get, update, write, block, review, bindIntegration, withMutation: lock.withPermits(1) }
+  return {
+    get,
+    update,
+    write,
+    block,
+    review,
+    bindIntegration,
+    integrationApplication,
+    recordIntegrationApplication,
+    withMutation: lock.withPermits(1),
+  }
 })
 
 export class Service extends Context.Service<Service, Effect.Success<typeof make>>()("@redcode/SessionTodoStore") {}

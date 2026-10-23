@@ -229,6 +229,28 @@ export const IntegrationVerification = Schema.Struct({
 }).annotate({ identifier: "Todo.IntegrationVerification" })
 export interface IntegrationVerification extends Schema.Schema.Type<typeof IntegrationVerification> {}
 
+/** Physical application is recorded separately from the accepted candidate proof. */
+export const IntegrationApplication = Schema.Struct({
+  requestID: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128)),
+  taskRevision: PositiveInt,
+  fingerprint: Schema.String,
+  target: AbsolutePath,
+  targetHead: Integration.fields.targetHead,
+  head: Integration.fields.head,
+  tree: Integration.fields.tree,
+  started: Schema.Finite,
+  completed: optional(Schema.Finite),
+  state: Schema.Literals(["pending", "applied"]),
+}).annotate({ identifier: "Todo.IntegrationApplication" })
+export interface IntegrationApplication extends Schema.Schema.Type<typeof IntegrationApplication> {}
+
+export const ApplyIntegrationInput = Schema.Struct({
+  requestID: IntegrationApplication.fields.requestID,
+  revision: PositiveInt,
+  candidateHead: Integration.fields.head,
+}).annotate({ identifier: "Todo.ApplyIntegrationInput" })
+export interface ApplyIntegrationInput extends Schema.Schema.Type<typeof ApplyIntegrationInput> {}
+
 export const PrepareIntegrationInput = Schema.Struct({
   revision: PositiveInt,
   target: AbsolutePath,
@@ -248,6 +270,7 @@ export const Info = Schema.Struct({
   dependencies: optional(Schema.Array(Schema.String)),
   inputs: optional(Schema.Array(Schema.Struct({ id: Schema.String, hash: Schema.String }))),
   integration: optional(Integration),
+  integrationApplication: optional(IntegrationApplication),
   scopeChange: optional(
     Schema.Struct({
       messageID: Schema.String,

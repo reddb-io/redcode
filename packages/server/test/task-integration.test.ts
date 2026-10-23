@@ -397,6 +397,56 @@ it.live(
         ],
       })
       expect(completed.todos[2]?.status).toBe("completed")
+      const applyURL = `${state.url}/apply`
+      const applyInput = {
+        requestID: "apply-accepted-joint",
+        revision: completed.todos[2]!.revision!,
+        candidateHead: prepared.candidate.head!,
+      }
+      const wrongSHA = yield* Effect.promise(() =>
+        state.request(applyURL, { ...applyInput, candidateHead: state.input.targetHead }),
+      )
+      expect(wrongSHA.status).toBe(400)
+      yield* Effect.promise(() => Bun.write(path.join(state.target, "untracked.txt"), "keep this file"))
+      const dirty = yield* Effect.promise(() => state.request(applyURL, applyInput))
+      expect(dirty.status).toBe(400)
+      expect((yield* todos.get(state.parent.id))[2]?.integrationApplication).toBeUndefined()
+      yield* Effect.promise(() => fs.unlink(path.join(state.target, "untracked.txt")))
+      const acceptedProof = SessionTaskGraph.proof(completed.todos[2]!)
+      const appliedResponse = yield* Effect.promise(() => state.request(applyURL, applyInput))
+      expect(appliedResponse.status).toBe(200)
+      const applied = Schema.decodeUnknownSync(Schema.Struct({ data: SessionTodo.IntegrationApplication }))(
+        yield* Effect.promise(() => appliedResponse.json()),
+      ).data
+      expect(applied).toMatchObject({
+        state: "applied",
+        head: prepared.candidate.head,
+        target: state.target,
+        requestID: applyInput.requestID,
+      })
+      expect(applied.completed!).toBeGreaterThanOrEqual(applied.started)
+      expect(
+        yield* Effect.promise(async () => (await $`git rev-parse HEAD`.cwd(state.target).quiet()).text().trim()),
+      ).toBe(prepared.candidate.head!)
+      expect(
+        yield* Effect.promise(async () => (await $`git status --porcelain`.cwd(state.target).quiet()).text().trim()),
+      ).toBe("")
+      expect(SessionTaskGraph.proof((yield* todos.get(state.parent.id))[2]!)).toBe(acceptedProof)
+      expect((yield* todos.review(state.parent.id))[2]?.status).toBe("completed")
+      const repeatedApply = yield* Effect.promise(() => state.request(applyURL, applyInput))
+      expect(repeatedApply.status).toBe(200)
+      expect(
+        Schema.decodeUnknownSync(Schema.Struct({ data: SessionTodo.IntegrationApplication }))(
+          yield* Effect.promise(() => repeatedApply.json()),
+        ).data,
+      ).toEqual(applied)
+      const reused = yield* Effect.promise(() =>
+        state.request(applyURL, { ...applyInput, revision: applyInput.revision + 1 }),
+      )
+      expect(reused.status).toBe(400)
+      // Host-owned receipt survives ordinary updates and remains separate from evidence.
+      yield* todos.write({ sessionID: state.parent.id, todos: [{ id: "todo_joint", priority: "medium" }] })
+      expect((yield* todos.get(state.parent.id))[2]?.integrationApplication).toEqual(applied)
       const changed = SubagentReview.read(state.children[0]!.metadata)!
       yield* state.database.db
         .update(SessionTable)
@@ -489,3 +539,181 @@ it.live(
     }),
   30_000,
 )
+
+const acceptedCandidate = Effect.fnUntraced(function* () {
+  const state = yield* fixture()
+  const response = yield* Effect.promise(() => state.request(state.url, state.input))
+  expect(response.status).toBe(200)
+  const prepared = Schema.decodeUnknownSync(Schema.Struct({ data: SessionTodo.IntegrationPreparation }))(
+    yield* Effect.promise(() => response.json()),
+  ).data
+  const todos = yield* SessionTodoStore.Service
+  const rejected = yield* Effect.promise(() =>
+    state.request(`${state.url}/apply`, {
+      requestID: "not-accepted",
+      revision: prepared.task.revision!,
+      candidateHead: prepared.candidate.head!,
+    }),
+  )
+  expect(rejected.status).toBe(400)
+  const directory = path.join(state.target, "..", "validation")
+  yield* Effect.promise(() =>
+    $`git worktree add --detach ${directory} ${prepared.candidate.head}`.cwd(state.target).quiet(),
+  )
+  const proof = yield* check(
+    state.parent.id,
+    directory,
+    4,
+    "run.ts",
+    ["bun", "-e", "import { run } from './run'; if (run(2,3) !== 10) process.exit(1)"],
+    prepared.task.integration,
+  )
+  const completed = yield* todos.write({
+    sessionID: state.parent.id,
+    todos: [
+      {
+        id: "todo_joint",
+        status: "completed",
+        evidence: { callID: proof.callID, explanation: "The combined checkout executes the required result" },
+      },
+    ],
+  })
+  return { ...state, prepared, task: completed.todos[2]! }
+})
+
+it.live(
+  "reconciles a persisted pending application after Git completed without replaying hooks",
+  () =>
+    Effect.gen(function* () {
+      const state = yield* acceptedCandidate()
+      const todos = yield* SessionTodoStore.Service
+      const binding = state.task.integration!
+      const application: SessionTodo.IntegrationApplication = {
+        requestID: "interrupted-apply",
+        taskRevision: state.task.revision!,
+        fingerprint: binding.fingerprint,
+        head: binding.head,
+        tree: binding.tree,
+        target: binding.target,
+        targetHead: binding.targetHead,
+        started: Date.now(),
+        state: "pending",
+      }
+      yield* todos.recordIntegrationApplication({
+        sessionID: state.parent.id,
+        taskID: state.task.id!,
+        revision: state.task.revision!,
+        application,
+      })
+      yield* Effect.promise(() => $`git merge --ff-only ${binding.head}`.cwd(state.target).quiet())
+      // A second merge would invoke this real post-merge hook, even when already up to date.
+      const marker = path.join(state.target, "hook-invoked")
+      yield* Effect.promise(async () => {
+        const hooks = path.join(state.target, ".git", "hooks")
+        await Bun.write(path.join(hooks, "post-merge"), `#!/bin/sh\ntouch '${marker}'\n`)
+        await fs.chmod(path.join(hooks, "post-merge"), 0o755)
+      })
+      const response = yield* Effect.promise(() =>
+        state.request(`${state.url}/apply`, {
+          requestID: application.requestID,
+          revision: application.taskRevision,
+          candidateHead: application.head,
+        }),
+      )
+      expect(response.status).toBe(200)
+      expect(
+        Schema.decodeUnknownSync(Schema.Struct({ data: SessionTodo.IntegrationApplication }))(
+          yield* Effect.promise(() => response.json()),
+        ).data.state,
+      ).toBe("applied")
+      expect(yield* Effect.promise(() => Bun.file(marker).exists())).toBe(false)
+    }),
+  30_000,
+)
+
+it.live(
+  "leaves interrupted admission pending at the old target and rejects replacement requests",
+  () =>
+    Effect.gen(function* () {
+      const state = yield* acceptedCandidate()
+      const todos = yield* SessionTodoStore.Service
+      const binding = state.task.integration!
+      const application: SessionTodo.IntegrationApplication = {
+        requestID: "admitted-only",
+        taskRevision: state.task.revision!,
+        fingerprint: binding.fingerprint,
+        head: binding.head,
+        tree: binding.tree,
+        target: binding.target,
+        targetHead: binding.targetHead,
+        started: Date.now(),
+        state: "pending",
+      }
+      yield* todos.recordIntegrationApplication({
+        sessionID: state.parent.id,
+        taskID: state.task.id!,
+        revision: state.task.revision!,
+        application,
+      })
+      const input = {
+        requestID: application.requestID,
+        revision: application.taskRevision,
+        candidateHead: application.head,
+      }
+      const response = yield* Effect.promise(() => state.request(`${state.url}/apply`, input))
+      expect(response.status).toBe(200)
+      expect(
+        Schema.decodeUnknownSync(Schema.Struct({ data: SessionTodo.IntegrationApplication }))(
+          yield* Effect.promise(() => response.json()),
+        ).data,
+      ).toEqual(application)
+      const current = (yield* todos.get(state.parent.id))[2]!
+      const replacement = yield* Effect.promise(() =>
+        state.request(`${state.url}/apply`, { ...input, requestID: "replacement", revision: current.revision! }),
+      )
+      expect(replacement.status).toBe(400)
+      expect(
+        yield* Effect.promise(async () => (await $`git rev-parse HEAD`.cwd(state.target).quiet()).text().trim()),
+      ).toBe(binding.targetHead)
+      // A dirty candidate target cannot be mistaken for a completed physical application.
+      yield* Effect.promise(async () => {
+        await $`git merge --ff-only ${binding.head}`.cwd(state.target).quiet()
+        await Bun.write(path.join(state.target, "untracked.txt"), "requires review")
+      })
+      const dirty = yield* Effect.promise(() => state.request(`${state.url}/apply`, input))
+      expect(
+        Schema.decodeUnknownSync(Schema.Struct({ data: SessionTodo.IntegrationApplication }))(
+          yield* Effect.promise(() => dirty.json()),
+        ).data.state,
+      ).toBe("pending")
+    }),
+  30_000,
+)
+
+for (const location of ["source", "target"]) {
+  it.live(
+    `refuses an accepted candidate after a ${location} SHA changes`,
+    () =>
+      Effect.gen(function* () {
+        const state = yield* acceptedCandidate()
+        const directory = location === "source" ? state.children[0]!.location.directory : state.target
+        yield* Effect.promise(async () => {
+          await Bun.write(path.join(directory, "later.txt"), "new contribution")
+          await $`git add --all`.cwd(directory).quiet()
+          await $`git commit -m later`.cwd(directory).quiet()
+        })
+        const response = yield* Effect.promise(() =>
+          state.request(`${state.url}/apply`, {
+            requestID: "stale-revision",
+            revision: state.task.revision!,
+            candidateHead: state.task.integration!.head,
+          }),
+        )
+        expect(response.status).toBe(400)
+        const todos = yield* SessionTodoStore.Service
+        expect((yield* todos.get(state.parent.id))[2]?.integrationApplication).toBeUndefined()
+        expect(yield* Effect.promise(() => Bun.file(path.join(state.target, "run.ts")).exists())).toBe(false)
+      }),
+    30_000,
+  )
+}

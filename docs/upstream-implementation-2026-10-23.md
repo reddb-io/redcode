@@ -23,7 +23,7 @@ conserva os PRs selecionados e as pendências.
 
 Solicitações MCP globais sem Session continuam uma superfície distinta; este
 lote não as atribui arbitrariamente a uma conversa. Também não implementa ainda
-o novo painel por objetivo ou a aplicação Git vinculada à tarefa.
+o novo painel por objetivo.
 
 ## Como validar um candidato
 
@@ -54,6 +54,49 @@ cobertura semântica do teste, a imutabilidade contínua do filesystem ou efeito
 externos exatamente uma vez. O aceite do resultado e a revisão continuam nos
 contratos Todo/S1 existentes. Preparar ou validar ainda não aplica Git nem conclui
 automaticamente o objetivo.
+
+## Aplicar o candidato aceito
+
+Depois de concluir a tarefa com o recibo de validação, use a conexão confiável do
+host para chamar `session.todo.applyIntegration`:
+
+```http
+POST /api/session/:sessionID/todo/:taskID/integration/apply
+Content-Type: application/json
+
+{
+  "requestID": "integration-request-1",
+  "revision": 4,
+  "candidateHead": "<SHA completo do candidato aceito>"
+}
+```
+
+A revisão deve ser a atual da tarefa aceita. O servidor confere novamente os
+aceites, a evidência e o contrato, os SHAs das fontes, o destino original limpo e
+a revisão conjunta determinística. A operação registra e publica `pending` antes
+de avançar o destino, e `applied` após observar o SHA esperado no destino limpo. Admissão e aplicação
+incrementam a revisão da tarefa e ficam no histórico. Esses recibos pertencem ao
+host, separados da prova aceita: não alteram o hash consumido pelas tarefas
+sucessoras. `started` é o horário da admissão; `completed` é o horário da
+observação da aplicação, inclusive quando ela ocorre durante uma recuperação.
+
+Conserve os três campos originais para repetir a requisição. Uma identidade já
+usada com outra revisão ou SHA é recusada. Um resultado aplicado retorna o mesmo
+recibo; uma admissão pendente somente observa o Git. Se HEAD corresponde ao
+candidato e o destino está limpo, registra a aplicação já encontrada. Outro SHA
+ou alterações locais mantêm `pending`, sem executar novamente o merge. Novas
+requisições e novo preparo não substituem uma admissão pendente.
+
+Uma queda antes do merge, uma execução Git com erro ou um destino alterado exigem
+reconciliação explícita no host. Examine o comando original e eventuais processos
+Git/hooks ainda ativos, preserve alterações locais e resolva o destino antes de
+repetir a requisição original. Não há abandono ou replay automático de operações
+ambíguas. O bloqueio local por projeto conserva o handler até seu Git terminar;
+não coordena comandos Git externos nem implementa fencing distribuído.
+
+O objetivo recusa conclusão enquanto houver aplicações pendentes, inclusive de
+tarefas canceladas, ou candidatos aceitos sem recibo de aplicação correspondente.
+A interface Agents por objetivo e a integração entre hosts permanecem pendentes.
 
 ## Verificação e limites
 
@@ -86,10 +129,20 @@ nos resultados Playwright locais. Testes locais não comprovam publicação ou
 comportamento de todos os provedores. As exceções de plataforma dos testes são
 mantidas explícitas; nenhum serviço do usuário foi reiniciado.
 
+A aplicação orientada pela tarefa passou em 14 testes HTTP/Git e 15 testes de
+Core, com `bun run check` aprovado nos 27 tasks. O teste adicional de higiene dos
+contratos encontrou um problema anterior:
+`model-suggestion.ts` e `connection-check.ts` usam `Schema.mutable`/`mutableKey`.
+Esses arquivos são idênticos aos do commit inicial deste lote; 27 dos 28 casos de
+Schema passaram. O [registro da aplicação](evaluations/task-integration-application-2026-10-23-validation.json)
+conserva os resultados e as observações dos limites de recuperação. A recuperação
+foi exercitada a partir de registros persistidos nas fronteiras antes/depois do
+merge; isso não constitui um ensaio de morte real de processo com Git/hooks órfãos.
+
 ## Trabalho que permanece
 
-1. Completar a aplicação do candidato vinculada à tarefa e sua recuperação sem
-   repetir efeitos ambíguos; preservar aceites, revisões e checagens de Git.
+1. Expor o fluxo de preparo, validação e aplicação no Agents; ampliar a recuperação
+   explícita de aplicações ambíguas e a coordenação entre hosts.
 2. Migrar o consumo do catálogo para V2 com origem/versionamento, capacidades por
    protocolo, custos desconhecidos e unidades de mídia, preservando V1 e RedRouter.
 3. Completar Agents DS React por objetivo, contexto comum versionado, agrupamento

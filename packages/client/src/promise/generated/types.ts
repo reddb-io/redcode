@@ -296,6 +296,19 @@ export type TodoIntegrationSource = {
   head: string
 }
 
+export type TodoIntegrationApplication = {
+  requestID: string
+  taskRevision: number
+  fingerprint: string
+  target: string
+  targetHead: string
+  head: string
+  tree: string
+  started: number
+  completed?: number
+  state: "pending" | "applied"
+}
+
 export type SubagentReviewDecision = "verified" | "inconclusive" | "needs_revision" | "unverified"
 
 export type SubagentReviewCompletion = {
@@ -3039,6 +3052,7 @@ export type Todo = {
   dependencies?: Array<string>
   inputs?: Array<{ id: string; hash: string }>
   integration?: TodoIntegration
+  integrationApplication?: TodoIntegrationApplication
   scopeChange?: { messageID: string; quote: string; created?: number; paraphrase?: string }
   content: string
   status: string
@@ -6178,6 +6192,28 @@ export type SessionTodoPrepareIntegrationInput = {
 }
 
 export type SessionTodoPrepareIntegrationOutput = { data: TodoIntegrationPreparation }["data"]
+
+export type SessionTodoApplyIntegrationInput = {
+  readonly sessionID: { readonly sessionID: string; readonly taskID: string }["sessionID"]
+  readonly taskID: { readonly sessionID: string; readonly taskID: string }["taskID"]
+  readonly requestID: {
+    readonly requestID: string
+    readonly revision: number
+    readonly candidateHead: string
+  }["requestID"]
+  readonly revision: {
+    readonly requestID: string
+    readonly revision: number
+    readonly candidateHead: string
+  }["revision"]
+  readonly candidateHead: {
+    readonly requestID: string
+    readonly revision: number
+    readonly candidateHead: string
+  }["candidateHead"]
+}
+
+export type SessionTodoApplyIntegrationOutput = { data: TodoIntegrationApplication }["data"]
 
 export type SessionGoalGetInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
 

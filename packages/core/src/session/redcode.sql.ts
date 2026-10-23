@@ -69,6 +69,7 @@ export const TodoTable = sqliteTable(
         | "dependencies"
         | "inputs"
         | "integration"
+        | "integrationApplication"
       >
     >(),
     ...Timestamps,

@@ -72,6 +72,8 @@ import type {
   SessionTodoReconcileOutput,
   SessionTodoPrepareIntegrationInput,
   SessionTodoPrepareIntegrationOutput,
+  SessionTodoApplyIntegrationInput,
+  SessionTodoApplyIntegrationOutput,
   SessionGoalGetInput,
   SessionGoalGetOutput,
   SessionGoalStartInput,
@@ -863,6 +865,18 @@ const EndpointSessionTodoPrepareIntegration =
       ),
     )
 
+const EndpointSessionTodoApplyIntegration =
+  (raw: RawClient["server.session"]) => (input: SessionTodoApplyIntegrationInput) =>
+    preserveEffect<SessionTodoApplyIntegrationOutput>()(
+      raw["session.todo.applyIntegration"]({
+        params: { sessionID: input["sessionID"], taskID: input["taskID"] },
+        payload: { requestID: input["requestID"], revision: input["revision"], candidateHead: input["candidateHead"] },
+      }).pipe(
+        Effect.mapError(mapClientError),
+        Effect.map((value) => value.data),
+      ),
+    )
+
 const EndpointSessionGoalGet = (raw: RawClient["server.session"]) => (input: SessionGoalGetInput) =>
   preserveEffect<SessionGoalGetOutput>()(
     raw["session.goal.get"]({ params: { sessionID: input["sessionID"] } }).pipe(
@@ -1444,6 +1458,7 @@ const adaptGroupSession = (raw: RawClient["server.session"]) => ({
     list: EndpointSessionTodoList(raw),
     reconcile: EndpointSessionTodoReconcile(raw),
     prepareIntegration: EndpointSessionTodoPrepareIntegration(raw),
+    applyIntegration: EndpointSessionTodoApplyIntegration(raw),
   },
   goal: {
     get: EndpointSessionGoalGet(raw),
