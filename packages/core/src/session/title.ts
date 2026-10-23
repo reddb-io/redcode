@@ -96,7 +96,7 @@ export const layer = Layer.effect(
           if (LLMEvent.is.providerError(event)) failed = true
           if (LLMEvent.is.textDelta(event)) chunks.push(event.text)
           if (LLMEvent.is.stepFinish(event)) {
-            const step = SessionUsage.record(event.usage, input.model.cost)
+            const step = SessionUsage.record(event.usage, input.model, prepared.request)
             usage = usage ? SessionUsage.add(usage, step) : step
           }
           return Effect.void
@@ -152,7 +152,10 @@ export const layer = Layer.effect(
         : said(firstUser)
       const selection = yield* context.selectTitle(session)
       if (!selection) return
-      const deadline = AuxDeadline.deadlineMs("title", Config.latestExperimental(yield* config.entries(), "aux_timeout"))
+      const deadline = AuxDeadline.deadlineMs(
+        "title",
+        Config.latestExperimental(yield* config.entries(), "aux_timeout"),
+      )
       const title = yield* Effect.gen(function* () {
         const preferred = yield* attempt({ session, agent: selection.agent, text, model: selection.selected })
         if (preferred) return preferred
@@ -199,5 +202,14 @@ export const layer = Layer.effect(
 export const node = makeLocationNode({
   service: Service,
   layer,
-  deps: [Bus.node, llmClient, SessionContext.node, SessionStore.node, Database.node, Config.node, Model.node, SessionGuardLog.node],
+  deps: [
+    Bus.node,
+    llmClient,
+    SessionContext.node,
+    SessionStore.node,
+    Database.node,
+    Config.node,
+    Model.node,
+    SessionGuardLog.node,
+  ],
 })

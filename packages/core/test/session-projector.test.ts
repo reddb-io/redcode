@@ -16,6 +16,10 @@ import { AbsolutePath, RelativePath } from "@opencode/core/schema"
 import { Session } from "@opencode/core/session"
 import { SessionEvent } from "@opencode/core/session/event"
 import { SessionMessage } from "@opencode/core/session/message"
+import { Usage } from "@opencode/ai"
+import { SessionUsage } from "@opencode/core/session/usage"
+import { SessionBudget } from "@opencode/core/session/budget"
+import { SessionStats } from "@opencode/core/session/stats"
 import { Money } from "@opencode/schema/money"
 import { SessionProjector } from "@opencode/core/session/projector"
 import { SessionExecution } from "@opencode/core/session/execution"
@@ -23,18 +27,20 @@ import { fromRow } from "@opencode/core/session/info"
 import { SessionInbox } from "@opencode/core/session/inbox"
 import { SessionStore } from "@opencode/core/session/store"
 import { Shell } from "@opencode/schema/shell"
-import {
-  InstructionStateTable,
-  SessionInboxTable,
-  SessionMessageTable,
-  SessionTable,
-} from "@opencode/core/session/sql"
+import { InstructionStateTable, SessionInboxTable, SessionMessageTable, SessionTable } from "@opencode/core/session/sql"
 import { testEffect } from "./lib/effect"
 import { Snapshot } from "@opencode/core/snapshot"
 
 const it = testEffect(
   AppNodeBuilder.build(
-    LayerNode.group([Database.node, Bus.node, SessionProjector.node, SessionInbox.node, SessionStore.node]),
+    LayerNode.group([
+      Database.node,
+      Bus.node,
+      SessionProjector.node,
+      SessionInbox.node,
+      SessionStore.node,
+      SessionBudget.node,
+    ]),
     [Bus.node.replace(Bus.configured({ persist: true }))],
   ),
 )
@@ -779,3 +785,131 @@ describe("SessionProjector", () => {
     }),
   )
 })
+
+it.effect("persists cost provenance and derives incomplete coverage without reclassifying historical costs", () =>
+  Effect.gen(function* () {
+    yield* seedSession({ metadata: { budget: { maxCostUsd: 10 } } })
+    const bus = yield* Bus.Service
+    const store = yield* SessionStore.Service
+    const budgets = yield* SessionBudget.Service
+    const legacyID = SessionMessage.ID.make("msg_legacy_cost")
+    yield* bus.publish(SessionEvent.Step.Started, {
+      sessionID,
+      assistantMessageID: legacyID,
+      agent: build,
+      model,
+      started: 0,
+    })
+    yield* bus.publish(SessionEvent.Step.Ended, {
+      sessionID,
+      assistantMessageID: legacyID,
+      finish: "stop",
+      cost: Money.USD.make(0.5),
+      tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+    })
+    const catalog: NonNullable<Model.Info["catalog"]> = {
+      format: 2,
+      digest: "integration-catalog",
+      apis: {},
+      rates: [],
+      pricing: {
+        text: {
+          input: { price: 2, overrides: [{ when: { context: { gt: 200000 } }, price: 4 }] },
+          output: { price: 8 },
+        },
+      },
+    }
+    const usage = [
+      SessionUsage.estimate(
+        { input: 250001, output: 100, reasoning: 0, cache: { read: 0, write: 0 } },
+        { cost: [], catalog },
+      ),
+      SessionUsage.record(new Usage({ nonCachedInputTokens: 10 }), []),
+      SessionUsage.record(new Usage({ cost: 0 }), []),
+    ]
+    yield* Effect.forEach(usage, (record, index) =>
+      Effect.gen(function* () {
+        const assistantMessageID = SessionMessage.ID.make(`msg_pricing_${index}`)
+        yield* bus.publish(SessionEvent.Step.Started, {
+          sessionID,
+          assistantMessageID,
+          agent: build,
+          model,
+          started: 0,
+        })
+        yield* bus.publish(SessionEvent.Step.Ended, { sessionID, assistantMessageID, finish: "stop", ...record })
+      }),
+    )
+    yield* bus.publish(SessionEvent.UsageRecorded, {
+      sessionID,
+      source: "compaction",
+      ...SessionUsage.record(new Usage({ nonCachedInputTokens: 2 }), []),
+    })
+    const messages = yield* store.messages({ sessionID, order: "asc" })
+    expect(
+      messages.filter((message) => message.type === "assistant").map((message) => message.costAssessment?.status),
+    ).toEqual([undefined, "estimated", "unknown", "reported"])
+    const stats = yield* SessionStats.get({ from: 0, to: 1000, tools: "none" })
+    expect(stats.cost).toBeCloseTo(1.500804)
+    expect(stats.costCoverage).toEqual({ reported: 1, estimated: 1, unknown: 2, legacy: 1 })
+    expect(stats.models[0]?.costCoverage).toEqual({ reported: 1, estimated: 1, unknown: 1, legacy: 1 })
+    const spent = yield* budgets.totals(sessionID)
+    expect(spent).toMatchObject({ unpriced: 2, tokens: 250113 })
+    expect(spent.cost).toBeCloseTo(1.500804)
+    expect(yield* budgets.totals(sessionID)).toEqual(spent)
+    expect(yield* budgets.view(sessionID)).toMatchObject({ unknown: true, exceeded: false })
+  }),
+)
+
+it.effect(
+  "includes unpriced failed child steps without charging unrelated sessions or counting a settlement twice",
+  () =>
+    Effect.gen(function* () {
+      yield* seedSession()
+      const db = (yield* Database.Service).db
+      const bus = yield* Bus.Service
+      const budgets = yield* SessionBudget.Service
+      const childID = Session.ID.make("ses_pricing_child")
+      const otherID = Session.ID.make("ses_pricing_other")
+      yield* db
+        .insert(SessionTable)
+        .values([
+          {
+            id: childID,
+            parent_id: sessionID,
+            project_id: Project.ID.global,
+            slug: "child",
+            directory: "/project",
+            version: "test",
+          },
+          { id: otherID, project_id: Project.ID.global, slug: "other", directory: "/project", version: "test" },
+        ])
+        .run()
+      const assistantMessageID = SessionMessage.ID.make("msg_pricing_failed")
+      const record = SessionUsage.record(new Usage({ nonCachedInputTokens: 5 }), [])
+      yield* bus.publish(SessionEvent.Step.Started, {
+        sessionID: childID,
+        assistantMessageID,
+        agent: build,
+        model,
+        started: 0,
+      })
+      yield* bus.publish(SessionEvent.Step.Failed, {
+        sessionID: childID,
+        assistantMessageID,
+        error: { type: "aborted", message: "Interrupted" },
+        ...record,
+      })
+      yield* bus.publish(SessionEvent.UsageRecorded, { sessionID: otherID, source: "title", ...record })
+      expect(yield* budgets.totals(sessionID)).toEqual({ cost: 0, tokens: 5, unpriced: 1 })
+      expect(yield* budgets.totals(childID)).toEqual({ cost: 0, tokens: 5, unpriced: 1 })
+      expect(yield* budgets.totals(sessionID)).toEqual({ cost: 0, tokens: 5, unpriced: 1 })
+      const store = yield* SessionStore.Service
+      expect((yield* store.messages({ sessionID: childID }))[0]).toMatchObject({
+        type: "assistant",
+        finish: "error",
+        cost: 0,
+        costAssessment: { status: "unknown" },
+      })
+    }),
+)

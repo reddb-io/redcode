@@ -1,5 +1,6 @@
 export * as SessionMessage from "./session-message.js"
 
+import { CostAssessment } from "./cost-assessment.js"
 import { Schema } from "effect"
 import { SessionProviderContext } from "./session-provider-context.js"
 import { optional } from "./schema.js"
@@ -224,6 +225,7 @@ export const Assistant = Schema.Struct({
   rawFinish: Schema.String.pipe(optional),
   providerState: ProviderState.pipe(optional),
   cost: Money.USD.pipe(optional),
+  costAssessment: CostAssessment.Info.pipe(optional),
   tokens: TokenUsage.Info.pipe(optional),
   error: SessionError.Error.pipe(optional),
   retry: AssistantRetry.pipe(optional),

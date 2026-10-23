@@ -64,6 +64,7 @@ export const resolved = (
     readonly capabilities: Model.Capabilities
     readonly variant?: Model.VariantID
     readonly cost: Model.Info["cost"]
+    readonly catalog?: Model.Info["catalog"]
     readonly limit: Model.Info["limit"]
     readonly compaction?: Provider.Compaction
     readonly transport?: Provider.Transport
@@ -77,6 +78,7 @@ export const resolved = (
   }),
   capabilities: options.capabilities,
   cost: options.cost,
+  ...(options.catalog ? { catalog: options.catalog } : {}),
   limit: options.limit,
   compaction: options.compaction,
   transport: options.transport,

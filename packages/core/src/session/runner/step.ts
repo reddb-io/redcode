@@ -390,7 +390,9 @@ export const make = Effect.gen(function* () {
         }
 
         const record = publisher.record()
-        const recordedUsage = record.finish ? SessionUsage.record(record.finish.usage, input.model.cost) : undefined
+        const recordedUsage = record.finish
+          ? SessionUsage.record(record.finish.usage, input.model, input.prepared.request)
+          : undefined
         if (input.goalID && recordedUsage)
           yield* goals.recordUsage(input.sessionID, input.goalID, TokenUsage.total(recordedUsage.tokens))
         if (record.finish || record.failure) {
@@ -409,7 +411,9 @@ export const make = Effect.gen(function* () {
           const usage = recordedUsage
             ? {
                 ...recordedUsage,
-                ...(routed?.costUSD === undefined ? {} : { cost: Money.USD.make(routed.costUSD) }),
+                ...(routed?.costUSD === undefined
+                  ? {}
+                  : { cost: Money.USD.make(routed.costUSD), costAssessment: { status: "reported" as const } }),
               }
             : undefined
           if (record.failure) yield* publisher.publishStepFailure({ ...usage, snapshot, files })

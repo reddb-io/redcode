@@ -1,5 +1,6 @@
 export * as SessionEvent from "./session-event.js"
 
+import { CostAssessment } from "./cost-assessment.js"
 import { Schema } from "effect"
 import { optional } from "./schema.js"
 import { Event } from "./event.js"
@@ -163,6 +164,7 @@ export const UsageRecorded = Event.durable({
     ...Base,
     source: Schema.Literals(["title", "compaction"]),
     cost: Money.USD,
+    costAssessment: CostAssessment.Info.pipe(optional),
     tokens: TokenUsage.Info,
   },
 })
@@ -366,6 +368,7 @@ export namespace Step {
       rawFinish: Schema.String.pipe(optional),
       providerState: SessionMessage.ProviderState.pipe(optional),
       cost: Money.USD,
+      costAssessment: CostAssessment.Info.pipe(optional),
       tokens: TokenUsage.Info,
       snapshot: Snapshot.ID.pipe(optional),
       files: Schema.Array(RelativePath).pipe(optional),
@@ -384,6 +387,7 @@ export namespace Step {
       rawFinish: Schema.String.pipe(optional),
       providerState: SessionMessage.ProviderState.pipe(optional),
       cost: Money.USD.pipe(optional),
+      costAssessment: CostAssessment.Info.pipe(optional),
       tokens: TokenUsage.Info.pipe(optional),
       snapshot: Snapshot.ID.pipe(optional),
       files: Schema.Array(RelativePath).pipe(optional),

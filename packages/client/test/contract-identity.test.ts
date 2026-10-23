@@ -2,6 +2,7 @@ import { expect, test } from "bun:test"
 import { Schema } from "effect"
 import { Agent } from "@opencode/schema/agent"
 import { Config } from "@opencode/schema/config"
+import { CostAssessment } from "@opencode/schema/cost-assessment"
 import { Model } from "@opencode/schema/model"
 import { Prompt } from "@opencode/schema/prompt"
 import { Session } from "@opencode/schema/session"
@@ -17,6 +18,8 @@ const Client = await import("../src/effect")
 test("effect entrypoint exposes canonical Schema contracts", () => {
   expect(Client.Agent).toBe(Agent)
   expect(Client.Config).toBe(Config)
+  expect(Client.CostAssessment.Info).toBe(CostAssessment.Info)
+  expect(Client.CostAssessment.Coverage).toBe(CostAssessment.Coverage)
   expect(Client.Model).toBe(Model)
   expect(Client.Session).toBe(Session)
   expect(Client.SessionObservation.Info).toBe(SessionObservation.Info)
@@ -24,6 +27,12 @@ test("effect entrypoint exposes canonical Schema contracts", () => {
   expect(Client.ProjectEnvironment.Recipe).toBe(ProjectEnvironment.Recipe)
   expect(Client.RemoteAccess.Status).toBe(RemoteAccess.Status)
   expect(Client.Vcs.Base).toBe(Vcs.Base)
+})
+
+test("promise entrypoint exposes canonical cost assessment contracts", async () => {
+  const client = await import("../src/promise")
+  expect(client.CostAssessment.Info).toBe(CostAssessment.Info)
+  expect(client.CostAssessment.Coverage).toBe(CostAssessment.Coverage)
 })
 
 test("generated Effect API names canonical and composed outputs", async () => {

@@ -1,5 +1,6 @@
 export * as SessionStats from "./session-stats.js"
 
+import { CostAssessment } from "./cost-assessment.js"
 import { Schema } from "effect"
 import { Model } from "./model.js"
 import { Money } from "./money.js"
@@ -17,6 +18,7 @@ export const ModelUsage = Schema.Struct({
   steps: NonNegativeInt,
   tokens: TokenUsage.Info,
   cost: Money.USD,
+  costCoverage: CostAssessment.Coverage.pipe(optional),
 }).annotate({ identifier: "SessionStats.ModelUsage" })
 export type ModelUsage = typeof ModelUsage.Type
 
@@ -59,6 +61,7 @@ export const Info = Schema.Struct({
   steps: NonNegativeInt,
   tokens: TokenUsage.Info,
   cost: Money.USD,
+  costCoverage: CostAssessment.Coverage.pipe(optional),
   tools: Tools,
   activeDays: NonNegativeInt,
   streak: NonNegativeInt,
