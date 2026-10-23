@@ -390,14 +390,40 @@ conserva os resultados e as observações dos limites de recuperação. A recupe
 foi exercitada a partir de registros persistidos nas fronteiras antes/depois do
 merge; isso não constitui um ensaio de morte real de processo com Git/hooks órfãos.
 
+## Transparência e reconciliação no Agents
+
+**Agents → Tasks** usa os componentes React do DS e os endpoints existentes de
+objetivo, tarefas e reconciliação. A seleção por sessão e host mantém a inspeção
+em metadados; contribuições mostram execução, checks, frescor e sobreposições.
+O usuário escolhe o checkout de destino, prepara e revisa o diff combinado. O
+executor da sessão continua responsável por verificar e aceitar o candidato
+exato. A aplicação exige revisão atual e confirmação explícita, com os gates
+finais preservados no servidor. Uma resposta perdida conserva a identidade
+original; um recibo pendente persistido também pode ser reconciliado.
+
+A [atualização das fontes](evaluations/upstream-review-2026-10-23/delta-study.md)
+documenta a amostra recente, relatos ainda sem confirmação local e a relação
+com esse fluxo. O catálogo permanece exclusivamente V2.
+
+Os oito testes HTTP/Git passaram, assim como lint/tipos nos 27 tasks e os tipos
+E2E. A suíte ampliada teve 38/40 passando: um teste de worker contava também a
+opção oculta do filtro; outro falhou após reload durante a reconstrução de assets.
+O seletor foi limitado aos status dos artigos. Os dois casos foram revalidados
+junto aos dois novos fluxos de Tasks e ao fixture de custo: 5/5 passaram sobre o
+build final estável. A suíte inteira não foi repetida depois disso. O
+[registro deste lote](evaluations/agent-tasks-2026-10-23-validation.json) conserva
+resultados separados, hashes dos logs e capturas em 1440/390 pixels. Não houve
+publicação, chamada paga ou reinício de serviço instalado.
+
 ## Trabalho que permanece
 
-1. Expor o fluxo de preparo, validação e aplicação no Agents; ampliar a recuperação
-   explícita de aplicações ambíguas e a coordenação entre hosts.
+1. Ampliar a recuperação de aplicações ambíguas além dos recibos atuais, o fluxo
+   guiado de verificação do candidato e a coordenação entre hosts. Tasks já expõe
+   preparo, evidência, revisão e aplicação explícita no Agents.
 2. Ampliar as medidas observáveis de outros protocolos, armazenamento de cache e
-   tarifas de ferramentas nativas. Falta de medição continua explícita; o V2 já é
-   a fonte padrão e os clientes conservam a classificação de custos.
-3. Completar Agents DS React por objetivo, contexto comum versionado, agrupamento
+   tarifas de ferramentas nativas. Falta de medição continua explícita; V2 é o
+   único formato de catálogo e os clientes conservam a classificação de custos.
+3. Ampliar Agents DS React por objetivo com contexto comum versionado, agrupamento
    de conclusões e exposição do grafo em workers e harnesses.
 4. Implementar workflows reutilizáveis, rotinas, webhooks e conectores pelos
    contratos de admissão durável e autorização do Redcode.

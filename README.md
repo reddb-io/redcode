@@ -37,6 +37,10 @@ Open **Agents** in the siderail to follow sessions across hosts, answer requests
 **Hosts and resources**, or manage **Remote workers**. This workspace shows agent metadata; opening a
 session loads its conversation. [Agents workspace](docs/agent-features.md#agents-workspace).
 
+**Tasks** follows a session's shared objective, prerequisite acceptance and delegated contributions.
+Inspect observed checks and overlapping changes, prepare a combined local Git candidate, then review
+and explicitly apply it after the session has verified and accepted that exact candidate.
+
 **Harnesses** runs installed Claude Code and Codex on the selected host. **Machines** guides remote
 connection, inspection and worker registration. **Worktrees** creates isolated checkouts, reviews and
 commits results, integrates a reviewed commit and archives/restores detached worktrees.

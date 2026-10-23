@@ -1,0 +1,176 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-23",
+  "recordedAtUTC": "2026-10-23T21:40:06.116795+00:00",
+  "baselineCommit": "c3640c7f2661edd99820253bccfaf7882edf1965",
+  "testedPackagesTree": "f79d6b441313b54230176135281050bd0ba2648e",
+  "branch": "main",
+  "published": false,
+  "completeParity": false,
+  "scope": "Agents task reconciliation and explicit local candidate preparation/review/application through the React Design System, over existing V2 APIs.",
+  "checks": [
+    {
+      "name": "production app build",
+      "cwd": "packages/app",
+      "command": "VITE_OPENCODE_TEST_FIXTURES=1 bun run build",
+      "exitCode": 0,
+      "log": "build"
+    },
+    {
+      "name": "canonical lint and types",
+      "cwd": ".",
+      "command": "bun run check",
+      "exitCode": 0,
+      "successfulTasks": 27,
+      "totalTasks": 27,
+      "cachedTasks": 26,
+      "log": "canonical"
+    },
+    {
+      "name": "E2E types",
+      "cwd": "packages/app",
+      "command": "bun run typecheck:e2e",
+      "exitCode": 0,
+      "log": "e2eTypes"
+    },
+    {
+      "name": "actual HTTP and Git integration gates",
+      "cwd": "packages/server",
+      "command": "bun test test/task-integration.test.ts",
+      "exitCode": 0,
+      "passed": 8,
+      "failed": 0,
+      "assertions": 91,
+      "log": "http"
+    },
+    {
+      "name": "expanded production browser run",
+      "cwd": "packages/app",
+      "command": "PLAYWRIGHT_BUILD=1 PLAYWRIGHT_PORT=3177 bun run test:e2e --config /var/tmp/redcode-agent-tasks-playwright.config.ts regression/agents.spec.ts regression/session-header.spec.ts --workers=1 --retries=0",
+      "exitCode": 1,
+      "passed": 38,
+      "failed": 2,
+      "log": "expandedBrowser"
+    },
+    {
+      "name": "final production browser revalidation",
+      "cwd": "packages/app",
+      "command": "PLAYWRIGHT_BUILD=1 PLAYWRIGHT_PORT=3177 bun run test:e2e --config /var/tmp/redcode-agent-tasks-playwright.config.ts regression/agents.spec.ts regression/session-header.spec.ts --grep 'reconciles task contributions|keeps task navigation|registers remote workers, sends|renames and closes|cost indicators' --workers=1 --retries=0",
+      "exitCode": 0,
+      "passed": 5,
+      "failed": 0,
+      "log": "finalBrowser"
+    }
+  ],
+  "logs": {
+    "build": {
+      "path": "/var/tmp/redcode-agent-tasks-build.log",
+      "bytes": 201103,
+      "sha256": "e79b56e281205b6a9efb1a99ff77c074b3cc9959adfe3e014ca5b352d80eaea4"
+    },
+    "canonical": {
+      "path": "/var/tmp/redcode-agent-tasks-check.log",
+      "bytes": 4412,
+      "sha256": "47c88b653bc780e3b7e475817a9d427ac037b663fae02cb2e0294a50c9b140a2"
+    },
+    "e2eTypes": {
+      "path": "/var/tmp/redcode-agent-tasks-e2e-types.log",
+      "bytes": 28,
+      "sha256": "639662b16a8949b8806db38c87e0b25e79ca257224fe15c2194472352dc57577"
+    },
+    "http": {
+      "path": "/var/tmp/redcode-agent-tasks-http.log",
+      "bytes": 891,
+      "sha256": "0b1504a566bc969414dcc0ead925f378fa04c4d2cacc1fe7c018ac043c8a1cf6"
+    },
+    "expandedBrowser": {
+      "path": "/var/tmp/redcode-agent-tasks-browser-expanded.log",
+      "bytes": 14853,
+      "sha256": "6a2971ba0649dbee77b550b2806126114d7259fe768d99c954f9a1350fb9633a"
+    },
+    "finalBrowser": {
+      "path": "/var/tmp/redcode-agent-tasks-browser.log",
+      "bytes": 2655,
+      "sha256": "f29ea277e878a5b09c7b54f8885b10dd31f08f50c77e516131d4f9372279ac5f"
+    },
+    "interruptedPreview": {
+      "path": "/var/tmp/redcode-agent-tasks-browser-preview-loss.log",
+      "bytes": 64270,
+      "sha256": "e6f2c06d7e1707a7540b41804fb30cbc7a8eabfd13fcda6715aa6791ff9cb8bd"
+    }
+  },
+  "screenshots": [
+    {
+      "path": "/home/cyber/Work/reddb.io/redcode/packages/app/e2e/test-results/regression-agents-reconcil-8c758-ertain-application-identity-chromium/agent-tasks-desktop.png",
+      "bytes": 120862,
+      "sha256": "1db7ed738a4d482f3fb88cb639fa54ab52bdb272cbc4709799521b599e156cbb"
+    },
+    {
+      "path": "/home/cyber/Work/reddb.io/redcode/packages/app/e2e/test-results/regression-agents-reconcil-8c758-ertain-application-identity-chromium/agent-tasks-mobile.png",
+      "bytes": 60286,
+      "sha256": "94e8b7c3de66bf7af6f926287b8e872bc434aefe9de48c3f5a1a88ce97a198a3"
+    }
+  ],
+  "browserSetup": {
+    "config": {
+      "path": "/var/tmp/redcode-agent-tasks-playwright.config.ts",
+      "bytes": 506,
+      "sha256": "215b4f5c7b5dfe87a21108bbb10443a44befed5b671d945c6ed699619c4916a7"
+    },
+    "note": "Imports the repository Playwright config and overrides only the preview lifecycle and absolute paths. Serves the already built artifact on an isolated loopback port; APIs are owned fixtures. No installed service is restarted."
+  },
+  "expandedFailures": [
+    {
+      "test": "registers remote workers, sends an independent task batch and downloads reviewed changes",
+      "observation": "Unscoped exact Completed text matched two task statuses plus a hidden filter option. The keeper now scopes to task articles.",
+      "finalRevalidation": "passed"
+    },
+    {
+      "test": "renames and closes the session tab from its context menu",
+      "observation": "Heading missing after reload during the period of asset rebuilding. No production rename change made; the same test passed against the final stable build. Cause not independently isolated.",
+      "finalRevalidation": "passed"
+    }
+  ],
+  "finalTaskContracts": [
+    "Shared objective and criteria, completion progress, current prerequisite acceptance and delegated checks",
+    "Overlapping file paths and explicit source-data truncation",
+    "Preparation does not accept or complete a task; accepted revision must be reviewed again",
+    "Historical applied receipt cannot stand for the current candidate and target",
+    "An uncertain application retains its original request identity for reconciliation",
+    "Reconciliation failure leaves session/task navigation usable; refresh restores the report"
+  ],
+  "supplementalInspection": {
+    "tool": "agent-browser via CDP in an owned fixture browser",
+    "viewports": [
+      [
+        1440,
+        900
+      ],
+      [
+        390,
+        844
+      ]
+    ],
+    "keyboard": "Focused a task and opened its detail with Enter; selected a target and inspected the prepared diff.",
+    "note": "Supplemental manual inspection preceded the final target-receipt comparison; the final focused keeper screenshots and tests above use the final build."
+  },
+  "upstreamRefresh": {
+    "index": "docs/evaluations/upstream-review-2026-10-23/delta-refresh.json",
+    "sha256": "f59fbcf4e99ead105fd7ad0353e88705dae4a1d8fa9996928133e2ccbd6aecf8",
+    "sample": {
+      "commits": 100,
+      "openPRs": 83,
+      "openIssues": 105
+    },
+    "exhaustive": false
+  },
+  "limits": [
+    "The full 40-case suite was not rerun after the final receipt guard and keeper correction; both failed cases and affected flows passed in the final five-case run.",
+    "An earlier external-preview run was interrupted by SIGTERM; the later preview was owned by Playwright.",
+    "No paid inference, live-provider validation, publication or installed-service restart.",
+    "No public Protocol/HttpApi change; generated client files were not edited.",
+    "Preparation, verification, acceptance and application remain separate; the UI does not synthesize verification receipts.",
+    "Local Git worktrees on the trusted host only; cross-host integration, full execution waterfall, versioned shared context, grouped completion, reusable workflows and connectors remain open.",
+    "No claim of complete upstream parity or confirmed local vulnerability from upstream issue reports."
+  ]
+}

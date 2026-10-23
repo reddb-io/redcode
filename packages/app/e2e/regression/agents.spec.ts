@@ -20,6 +20,7 @@ import {
 } from "../utils/agent-operation-fixture"
 import { SERVER, REMOTE_SERVER } from "../utils/app"
 import { chooseSearchOption } from "../utils/search-select"
+import { mockAgentTasks } from "../utils/agent-task-fixture"
 
 test.use({ viewport: { width: 1440, height: 900 } })
 
@@ -28,6 +29,98 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(crypto, "randomUUID", { configurable: true, value: undefined })
   })
+})
+
+test("reconciles task contributions through the DS and preserves an uncertain application identity", async ({
+  page,
+}) => {
+  await mockStressTimeline(page)
+  await installStressSessionTabs(page, { sessionIDs: [] })
+  const mock = await mockAgentTasks(page)
+  await page.goto("/agents?view=tasks")
+  const workspace = page.getByRole("region", { name: "Agents", exact: true })
+  await expect(
+    page.getByRole("navigation", { name: "Agents", exact: true }).getByRole("button", { name: "Tasks", exact: true }),
+  ).toHaveAttribute("aria-current", "page")
+  await expect(workspace.getByLabel("Session", { exact: true })).toBeEnabled()
+  await workspace.getByLabel("Session", { exact: true }).selectOption(mock.sessionID)
+  await expect(workspace.getByText("Deliver a verified task workflow", { exact: true })).toBeVisible()
+  await expect(workspace.getByRole("progressbar", { name: "Task completion" })).toHaveAttribute("aria-valuenow", "2")
+  await workspace.getByRole("button", { name: "Reconcile delegated results Pending", exact: true }).click()
+  const detail = workspace.getByRole("region", { name: "Task details", exact: true })
+  const contribution = detail.getByRole("article", { name: "Implement task API", exact: true })
+  await contribution.getByText(fixture.sessions[2].id + " · Succeeded", { exact: true }).click()
+  await expect(contribution.getByText("Delegated result for api", { exact: true })).toBeVisible()
+  await expect(contribution.getByText("bash · check-api · Succeeded", { exact: true })).toBeVisible()
+  await expect(detail.getByRole("heading", { name: "Files changed by multiple prerequisites" })).toBeVisible()
+  const integration = detail.getByRole("region", { name: "Reconcile results", exact: true })
+  await integration.getByLabel("Target checkout on this host", { exact: true }).selectOption(fixture.directory)
+  await expect(integration.getByRole("button", { name: "Prepare combined candidate", exact: true })).toBeEnabled()
+  await integration.getByRole("button", { name: "Prepare combined candidate", exact: true }).click()
+  await expect(integration.getByLabel("Combined candidate diff", { exact: true })).toContainText(
+    "+export const reconciled = true",
+  )
+  await expect(
+    integration.getByText(
+      "The session must verify and accept this exact candidate before application becomes available.",
+      { exact: true },
+    ),
+  ).toBeVisible()
+  await expect(integration.getByRole("button", { name: "Confirm application to target", exact: true })).toHaveCount(0)
+  expect(mock.operations).toEqual([
+    { action: "prepare", input: { revision: 3, target: fixture.directory, targetHead: "b".repeat(40) } },
+  ])
+  await page.screenshot({ path: test.info().outputPath("agent-tasks-desktop.png"), fullPage: true })
+  mock.accept()
+  await workspace.getByRole("button", { name: "Refresh", exact: true }).click()
+  await expect(detail.getByText("The combined candidate passed the project checks", { exact: true })).toBeVisible()
+  await expect(
+    integration.getByText("The task changed since this preview. Review the bound candidate again.", { exact: true }),
+  ).toBeVisible()
+  await expect(integration.getByRole("button", { name: "Confirm application to target", exact: true })).toHaveCount(0)
+  await integration.getByRole("button", { name: "Review bound candidate", exact: true }).click()
+  const apply = integration.getByRole("button", { name: "Confirm application to target", exact: true })
+  await expect(apply).toBeEnabled()
+  await page.setViewportSize({ width: 390, height: 844 })
+  await apply.scrollIntoViewIfNeeded()
+  await page.screenshot({ path: test.info().outputPath("agent-tasks-mobile.png"), fullPage: true })
+  await apply.click()
+  const retry = integration.getByRole("button", { name: "Retry original application request", exact: true })
+  await expect(retry).toBeEnabled()
+  await retry.click()
+  await expect(
+    integration.getByText("The accepted candidate was applied to its target checkout.", { exact: true }),
+  ).toBeVisible()
+  const applications = mock.operations.filter((item) => item.action === "apply")
+  expect(applications).toHaveLength(2)
+  expect(applications[0].input).toMatchObject({
+    revision: 5,
+    candidateHead: "c".repeat(40),
+    requestID: expect.any(String),
+  })
+  expect(applications[1].input).toEqual(applications[0].input)
+  expect(applications[0].input).not.toMatchObject({ requestID: "older-application" })
+})
+
+test("keeps task navigation usable when reconciliation fails and recovers on refresh", async ({ page }) => {
+  await mockStressTimeline(page)
+  await installStressSessionTabs(page, { sessionIDs: [] })
+  const mock = await mockAgentTasks(page)
+  mock.state.reportUnavailable = true
+  await page.goto("/agents?view=tasks")
+  const workspace = page.getByRole("region", { name: "Agents", exact: true })
+  await expect(workspace.getByLabel("Session", { exact: true })).toBeEnabled()
+  await workspace.getByLabel("Session", { exact: true }).selectOption(mock.sessionID)
+  await workspace.getByRole("button", { name: "Reconcile delegated results Pending", exact: true }).click()
+  await expect(workspace.getByRole("alert")).toHaveText("Task data could not be loaded. Refresh to try again.")
+  await expect(workspace.getByLabel("Session", { exact: true })).toBeEnabled()
+  await expect(workspace.getByRole("button", { name: "Implement task API Completed", exact: true })).toBeEnabled()
+  await expect(workspace.getByRole("button", { name: "Prepare combined candidate", exact: true })).toHaveCount(0)
+  mock.state.reportUnavailable = false
+  await workspace.getByRole("button", { name: "Refresh", exact: true }).click()
+  await expect(workspace.getByRole("alert")).toHaveCount(0)
+  await expect(workspace.getByRole("region", { name: "Reconcile results", exact: true })).toBeVisible()
+  expect(mock.operations).toHaveLength(0)
 })
 
 test("saves a project environment through the DS and requires review before running on its selected worktree", async ({
@@ -1498,7 +1591,12 @@ test.describe("Worker touch review", () => {
     await dialog.getByRole("button", { name: "Add to batch", exact: true }).click()
     await dialog.getByLabel("What should the worker do?", { exact: true }).fill("Run the test suite")
     await dialog.getByRole("button", { name: "Send batch", exact: true }).click()
-    await expect(dialog.getByText("Completed", { exact: true })).toHaveCount(2)
+    await expect(
+      dialog
+        .getByRole("tabpanel", { name: "Tasks", exact: true })
+        .getByRole("article")
+        .getByText("Completed", { exact: true }),
+    ).toHaveCount(2)
     expect(
       workers.requests.filter((request) => request.path === "/api/workers/batches").map((request) => request.body),
     ).toEqual([
