@@ -828,12 +828,18 @@
       "status": "validated",
       "path": "packages/core/src/integration.ts",
       "evidence": "Four policy regressions failed before the fix. Final verification: 344 tests across 22 files, 1456 assertions, zero failures; all 27 canonical lint/type tasks pass. Explicit config references, declared selected bindings and saved credentials remain supported. See evaluations/provider-opt-in-2026-10-23-validation.json. No installed user configuration was rewritten and no service was restarted."
+    },
+    {
+      "id": "task-graph-and-assignment-navigation",
+      "status": "validated",
+      "path": "packages/app/src/shell/navigation/agents-tasks.tsx",
+      "evidence": "Authenticated read-only V2 graph endpoint reuses canonical task dependencies and child-session assignments. Seventeen server HTTP/Git tests and fifteen subagent tests pass locally; two production-browser flows cover keyboard dependency navigation, recorded blockers, stale assignments, child navigation and error recovery. Canonical lint/typecheck and generated-client stability are recorded in evaluations/task-graph-2026-10-23-validation.json. Windows path expectations were aligned from CI evidence; no new Windows run is claimed."
     }
   ],
   "remaining": [
     "Guided candidate verification, recovery beyond existing application receipts, and cross-host coordination; Agents already exposes local task-aware preparation, evidence, review and explicit application",
     "Additional protocol-specific billing meters, independently attributable cache storage and native-tool fees",
-    "Grouped completion, versioned shared context, remote graph and full execution waterfall; Agents DS React already exposes a session objective with task contributions and integration",
+    "Grouped completion, versioned shared context, worker/harness assignment linkage and full execution waterfall; Agents DS React exposes the local session dependency graph and assigned child sessions",
     "Reusable workflows, routines, webhooks, resources and external message connectors",
     "Memory/skills, evaluation and media adapters, voice, paired push and native mobile scope",
     "Applicable security reports and platform artifacts, with benign verification before fixes"

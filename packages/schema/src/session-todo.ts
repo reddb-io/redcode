@@ -293,6 +293,36 @@ export const Info = Schema.Struct({
 }).annotate({ identifier: "Todo" })
 export interface Info extends Schema.Schema.Type<typeof Info> {}
 
+/** Derived scheduling observations, not a new task queue or an acceptance receipt. */
+export const GraphNode = Schema.Struct({
+  id: optional(Schema.String),
+  revision: optional(PositiveInt),
+  dependencies: Schema.Array(Schema.String),
+  waitingFor: Schema.Array(Schema.String),
+  ready: Schema.Boolean,
+}).annotate({ identifier: "Todo.GraphNode" })
+export interface GraphNode extends Schema.Schema.Type<typeof GraphNode> {}
+
+export const Assignment = Schema.Struct({
+  taskID: Schema.String,
+  sessionID: SessionID,
+  directory: AbsolutePath,
+  revision: PositiveInt,
+  current: Schema.Boolean,
+  state: Schema.Literals(["running", "settled"]),
+  outcome: optional(Schema.Literals(["succeeded", "failed", "interrupted"])),
+  review: SubagentReview.Decision,
+}).annotate({ identifier: "Todo.Assignment" })
+export interface Assignment extends Schema.Schema.Type<typeof Assignment> {}
+
+export const Graph = Schema.Struct({
+  sessionID: SessionID,
+  tasks: Schema.Array(Info),
+  nodes: Schema.Array(GraphNode),
+  assignments: Schema.Array(Assignment),
+}).annotate({ identifier: "Todo.Graph" })
+export interface Graph extends Schema.Schema.Type<typeof Graph> {}
+
 export const IntegrationPreparation = Schema.Struct({
   task: Info,
   candidate: Worktree.IntegrationCandidate,

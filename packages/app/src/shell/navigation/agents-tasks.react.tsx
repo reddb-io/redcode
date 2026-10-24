@@ -99,7 +99,7 @@ export function AgentTasksView(props: { services: ReturnType<typeof createAgentT
           </section>
           {!view.loading && view.tasks.length === 0 && <p role="status">{language.t("agentTasks.empty")}</p>}
           <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(180px,1fr)_minmax(0,2fr)]">
-            <ul aria-label={language.t("agentTasks.title")} className="min-w-0 space-y-1">
+            <ul aria-label={language.t("agentTasks.dependencies")} className="min-w-0 space-y-4">
               {view.tasks.map((item, index) => (
                 <li key={item.id ?? index}>
                   <Button
@@ -114,6 +114,66 @@ export function AgentTasksView(props: { services: ReturnType<typeof createAgentT
                       <span className="text-caption text-ink-muted">{status(item.status)}</span>
                     </span>
                   </Button>
+                  {item.reason && <p className="mt-1 whitespace-pre-wrap px-3 text-ink-muted">{item.reason}</p>}
+                  <div className="px-3 text-caption text-ink-muted">
+                    {(item.dependencies ?? []).length === 0 ? (
+                      <p>{language.t("agentTasks.noDependencies")}</p>
+                    ) : (
+                      <>
+                        <p>{language.t("agentTasks.requires")}</p>
+                        <ul className="mt-1 space-y-1">
+                          {(item.dependencies ?? []).map((id) => {
+                            const prerequisite = view.tasks.find((entry) => entry.id === id)
+                            const waiting = view.graph.find((entry) => entry.id === item.id)?.waitingFor.includes(id)
+                            return (
+                              <li key={id}>
+                                {prerequisite ? (
+                                  <Button
+                                    variant="ghost"
+                                    className="h-auto min-h-[var(--reddb-spatial-target-min)] w-full justify-start whitespace-normal text-start"
+                                    aria-label={language.t("agentTasks.inspectDependency", {
+                                      task: SessionTodo.label(prerequisite),
+                                    })}
+                                    disabled={view.busy}
+                                    onClick={() => services.selectTask(id)}
+                                  >
+                                    <span className="flex min-w-0 flex-col items-start gap-1">
+                                      <span>{SessionTodo.label(prerequisite)}</span>
+                                      <span className="text-caption text-ink-muted">
+                                        {language.t(waiting ? "agentTasks.waitingFor" : "agentTasks.dependencyMet")}
+                                      </span>
+                                    </span>
+                                  </Button>
+                                ) : (
+                                  <p>{language.t("agentTasks.missingDependency", { id })}</p>
+                                )}
+                              </li>
+                            )
+                          })}
+                        </ul>
+                      </>
+                    )}
+                    {view.assignments
+                      .filter((assignment) => assignment.taskID === item.id)
+                      .map((assignment) => (
+                        <div key={assignment.sessionID} className="mt-2">
+                          <p>{language.t("agentTasks.delegatedTo")}</p>
+                          <Button
+                            variant="ghost"
+                            className="h-auto min-h-[var(--reddb-spatial-target-min)] max-w-full whitespace-normal break-all text-start"
+                            aria-label={language.t("agentTasks.openContribution", { session: assignment.sessionID })}
+                            disabled={view.busy}
+                            onClick={() => services.openAssignment(assignment.sessionID)}
+                          >
+                            {assignment.sessionID}
+                          </Button>
+                          <p>{language.t("agentTasks.assignmentRevision", { revision: assignment.revision })}</p>
+                          <p>{status(assignment.state)}</p>
+                          {assignment.state === "settled" && assignment.outcome && <p>{status(assignment.outcome)}</p>}
+                          {!assignment.current && <Badge>{status("stale")}</Badge>}
+                        </div>
+                      ))}
+                  </div>
                 </li>
               ))}
             </ul>
@@ -369,6 +429,7 @@ const STATUSES = {
   stale: "agentTasks.status.stale",
   unverified: "agentTasks.status.unverified",
   running: "agentTasks.status.running",
+  settled: "agentTasks.status.settled",
   succeeded: "agentTasks.status.succeeded",
   failed: "agentTasks.status.failed",
   interrupted: "agentTasks.status.interrupted",

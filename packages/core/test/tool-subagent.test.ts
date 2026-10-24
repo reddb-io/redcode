@@ -54,6 +54,12 @@ import { offlineModels } from "./fixture/models"
 import { testEffect } from "./lib/effect"
 import { executeTool, registerToolPlugin, toolIdentity } from "./lib/tool"
 
+// Reconciliation exposes canonical paths, including case folding on Windows.
+const checkoutPath = (directory: string) =>
+  process.platform === "win32"
+    ? path.join(directory, "checkout.ts").replaceAll("\\", "/").toLowerCase()
+    : path.join(directory, "checkout.ts")
+
 const childText = "child final response"
 const completedOutput = (sessionID: Session.ID) =>
   `<subagent sessionID="${sessionID}" state="completed">\n${childText}\n</subagent>`
@@ -498,7 +504,7 @@ describe("SubagentTool", () => {
             const stale = yield* readReconciliation()
             expect(stale.acceptanceReady).toBe(false)
             expect(stale.inputs[0]!.acceptance).toBe("stale")
-            expect(stale.inputs[0]!.contributions[0]!.changedPaths).toContain(path.join(dir.path, "checkout.ts"))
+            expect(stale.inputs[0]!.contributions[0]!.changedPaths).toContain(checkoutPath(dir.path))
             expect((yield* todos.get(parent.id))[0]!.status).toBe("completed")
             expect(
               (yield* reconciliation.inspect(parent.id, created[1]!.id!, 999).pipe(Effect.flip)).message,
@@ -615,9 +621,7 @@ describe("SubagentTool", () => {
                 (check) => !check.fresh && check.invalidatedBy?.callID === "post-check-edit",
               ),
             ).toBe(true)
-            expect(report.overlaps).toEqual([
-              { path: path.join(dir.path, "checkout.ts"), taskIDs: [tasks[0]!.id!, tasks[1]!.id!] },
-            ])
+            expect(report.overlaps).toEqual([{ path: checkoutPath(dir.path), taskIDs: [tasks[0]!.id!, tasks[1]!.id!] }])
             expect(report.inputs.every((input) => input.acceptance === "pending")).toBe(true)
             yield* Effect.forEach(
               Array.from({ length: 26 }, (_, index) => index),

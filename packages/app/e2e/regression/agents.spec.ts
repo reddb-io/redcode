@@ -100,17 +100,44 @@ test("reconciles task contributions through the DS and preserves an uncertain ap
   })
   expect(applications[1].input).toEqual(applications[0].input)
   expect(applications[0].input).not.toMatchObject({ requestID: "older-application" })
+  const graph = workspace.getByRole("list", { name: "Task dependencies", exact: true })
+  await expect(graph.getByText("Delegated revision 2", { exact: true })).toBeVisible()
+  await graph.getByRole("button", { name: "Open delegated session: " + fixture.sessions[2].id, exact: true }).click()
+  await expect(page).toHaveURL(sessionHref(fixture.sessions[2].id))
 })
 
 test("keeps task navigation usable when reconciliation fails and recovers on refresh", async ({ page }) => {
   await mockStressTimeline(page)
   await installStressSessionTabs(page, { sessionIDs: [] })
   const mock = await mockAgentTasks(page)
+  mock.tasks[1] = {
+    ...mock.tasks[1],
+    status: "blocked",
+    evidence: undefined,
+    reason: "Verification needs a recorded check",
+  }
+  mock.nodes[2] = { ...mock.nodes[2], waitingFor: ["tests"], ready: false }
+  mock.assignments[0] = { ...mock.assignments[0], revision: 1, current: false, state: "running", outcome: undefined }
+  mock.state.executionSettled = false
+  mock.state.acceptanceReady = false
+  mock.state.inputAcceptance = ["stale", "blocked"]
   mock.state.reportUnavailable = true
   await page.goto("/agents?view=tasks")
   const workspace = page.getByRole("region", { name: "Agents", exact: true })
   await expect(workspace.getByLabel("Session", { exact: true })).toBeEnabled()
   await workspace.getByLabel("Session", { exact: true }).selectOption(mock.sessionID)
+  const graph = workspace.getByRole("list", { name: "Task dependencies", exact: true })
+  await expect(graph.getByText("Delegated revision 1", { exact: true })).toBeVisible()
+  await expect(graph.getByText("Stale", { exact: true })).toBeVisible()
+  await expect(graph.getByText("Verification needs a recorded check", { exact: true })).toBeVisible()
+  const dependency = graph.getByRole("button", { name: "Inspect prerequisite: Verify task API", exact: true })
+  await expect(dependency).toContainText("Awaiting acceptance")
+  await dependency.focus()
+  await page.keyboard.press("Enter")
+  await expect(graph.getByRole("button", { name: "Verify task API Blocked", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  )
   await workspace.getByRole("button", { name: "Reconcile delegated results Pending", exact: true }).click()
   await expect(workspace.getByRole("alert")).toHaveText("Task data could not be loaded. Refresh to try again.")
   await expect(workspace.getByLabel("Session", { exact: true })).toBeEnabled()
@@ -120,6 +147,23 @@ test("keeps task navigation usable when reconciliation fails and recovers on ref
   await workspace.getByRole("button", { name: "Refresh", exact: true }).click()
   await expect(workspace.getByRole("alert")).toHaveCount(0)
   await expect(workspace.getByRole("region", { name: "Reconcile results", exact: true })).toBeVisible()
+  mock.tasks[1] = { ...mock.tasks[1], status: "completed", reason: undefined }
+  await workspace.getByRole("button", { name: "Refresh", exact: true }).click()
+  await expect(dependency).toContainText("Awaiting acceptance")
+  mock.tasks[1] = {
+    ...mock.tasks[1],
+    evidence: { ...mock.tasks[0].evidence!, callID: "check-tests", messageID: "message-tests", hash: "proof-tests" },
+  }
+  mock.nodes[2] = { ...mock.nodes[2], waitingFor: [], ready: true }
+  await workspace.getByRole("button", { name: "Refresh", exact: true }).click()
+  await expect(dependency).toContainText("Completion recorded")
+  mock.state.graphUnavailable = true
+  await workspace.getByRole("button", { name: "Refresh", exact: true }).click()
+  await expect(workspace.getByRole("alert")).toHaveText("Task data could not be loaded. Refresh to try again.")
+  await expect(graph).toHaveCount(0)
+  mock.state.graphUnavailable = false
+  await workspace.getByRole("button", { name: "Refresh", exact: true }).click()
+  await expect(graph).toBeVisible()
   expect(mock.operations).toHaveLength(0)
 })
 

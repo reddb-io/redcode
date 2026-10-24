@@ -62,6 +62,8 @@ import type {
   SessionMonitorCancelOutput,
   SessionTodoListInput,
   SessionTodoListOutput,
+  SessionTodoGraphInput,
+  SessionTodoGraphOutput,
   SessionTodoReconcileInput,
   SessionTodoReconcileOutput,
   SessionTodoPrepareIntegrationInput,
@@ -1306,6 +1308,17 @@ export function make(options: ClientOptions) {
             {
               method: "GET",
               path: `/api/session/${encodeURIComponent(input.sessionID)}/todo`,
+              successStatus: 200,
+              declaredStatuses: [400, 401, 403, 404, 409],
+              empty: false,
+            },
+            requestOptions,
+          ).then((value) => value.data),
+        graph: (input: SessionTodoGraphInput, requestOptions?: RequestOptions) =>
+          request<{ readonly data: SessionTodoGraphOutput }>(
+            {
+              method: "GET",
+              path: `/api/session/${encodeURIComponent(input.sessionID)}/todo/graph`,
               successStatus: 200,
               declaredStatuses: [400, 401, 403, 404, 409],
               empty: false,

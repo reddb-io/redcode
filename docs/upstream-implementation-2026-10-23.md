@@ -18,7 +18,7 @@ conserva os PRs selecionados e as pendências.
 | Snapshot Git    | Sockets e outros arquivos especiais não abortam a captura de arquivos regulares. Um caminho antes rastreado conserva a entrada anterior no índice; links simbólicos legítimos continuam capturados.                                                                                        |
 | Credenciais     | `credential.update` aceita `value`, `label` ou ambos. Rotacionar mantém ID e label quando omitido; alterar só o label mantém o segredo. O Client foi regenerado.                                                                                                                           |
 | Recovery        | O dono da execução distingue shutdown de cancelamento humano. Shutdown conserva os registros de recuperação e não publica resultado cancelado nem grava a atividade como cancelada.                                                                                                        |
-| Catálogo        | Catálogo exclusivamente V2: 228 provedores, 9.199 ofertas na fonte e 71 de decisão. Refresh publica um evento global para atualizar os catálogos de outros Locations.                                                                                                                                    |
+| Catálogo        | Catálogo exclusivamente V2: 228 provedores, 9.199 ofertas na fonte e 71 de decisão. Refresh publica um evento global para atualizar os catálogos de outros Locations.                                                                                                                      |
 | Integração      | O shell emite recibo de validação ligado à sessão, tarefa, contrato, SHA, árvore, checkout, comando e horários observados. O aceite da tarefa exige um recibo compatível com o candidato atual.                                                                                            |
 
 Solicitações MCP globais sem Session continuam uma superfície distinta; este
@@ -209,11 +209,11 @@ Os eventos novos `session.step.ended`, `session.step.failed` e
 `session.usage.recorded` conservam `costAssessment`. Mensagens assistant projetam
 a mesma informação. A classificação é:
 
-| Status | Significado |
-| --- | --- |
-| `reported` | USD informado pelo provedor/gateway; não é conciliação de invoice. |
-| `estimated` | Valor calculado com preços e medidas disponíveis. |
-| `unknown` | A cotação não foi resolvida; o número compatível não representa custo total. |
+| Status      | Significado                                                                  |
+| ----------- | ---------------------------------------------------------------------------- |
+| `reported`  | USD informado pelo provedor/gateway; não é conciliação de invoice.           |
+| `estimated` | Valor calculado com preços e medidas disponíveis.                            |
+| `unknown`   | A cotação não foi resolvida; o número compatível não representa custo total. |
 
 O valor numérico `cost` continua compatível. Uma chamada sem cotação usa zero
 como contribuição numérica e traz status desconhecido. Uma soma com partes
@@ -455,6 +455,29 @@ O [registro de validação](evaluations/provider-opt-in-2026-10-23-validation.js
 conserva as regressões anteriores à correção e o resultado final. Arquivos de
 configuração, credenciais e serviços instalados do usuário não foram alterados.
 
+## Dependências e atribuições em Tasks
+
+O endpoint autenticado `GET /api/session/:sessionID/todo/graph` reúne tarefas,
+dependências, pré-requisitos ainda sem conclusão registrada com evidência e
+atribuições a sessões filhas. Usa `SessionTaskGraph` e `SessionTaskAssignments`,
+os mesmos domínios do executor. A leitura não inicia execução, altera tarefas,
+aceita resultados nem substitui a reconciliação de evidências atuais.
+
+Em **Agents → Tasks**, os pré-requisitos abrem seus próprios detalhes pelo mouse
+ou teclado. Motivos de bloqueio, revisão delegada, execução ainda não encerrada e
+contratos antigos ficam visíveis junto da tarefa. O link da atribuição abre a
+sessão filha no host correto. Uma falha de leitura oculta o grafo anterior até a
+atualização, enquanto falhas do relatório de reconciliação preservam a navegação
+pelas tarefas disponíveis.
+
+A validação cobre HTTP/Git e a interface de produção em 1440 e 390 pixels. O
+[registro deste incremento](evaluations/task-graph-2026-10-23-validation.json)
+separa a evidência local dos resultados de CI. Duas expectativas de caminhos dos
+testes de subagentes foram ajustadas ao formato canônico que o CI Windows já
+retornava; isso não altera a normalização do runtime nem representa uma nova
+execução Windows. Contexto compartilhado versionado e o vínculo com atribuições
+de workers e harnesses continuam pendentes.
+
 ## Trabalho que permanece
 
 1. Ampliar a recuperação de aplicações ambíguas além dos recibos atuais, o fluxo
@@ -464,7 +487,8 @@ configuração, credenciais e serviços instalados do usuário não foram altera
    tarifas de ferramentas nativas. Falta de medição continua explícita; V2 é o
    único formato de catálogo e os clientes conservam a classificação de custos.
 3. Ampliar Agents DS React por objetivo com contexto comum versionado, agrupamento
-   de conclusões e exposição do grafo em workers e harnesses.
+   de conclusões e vínculo do grafo com workers e harnesses. O grafo local e as
+   atribuições a sessões filhas já são expostos em Tasks.
 4. Implementar workflows reutilizáveis, rotinas, webhooks e conectores pelos
    contratos de admissão durável e autorização do Redcode.
 5. Ampliar memória/skills, adapters de avaliação e mídia, voz e push. Mobile nativo

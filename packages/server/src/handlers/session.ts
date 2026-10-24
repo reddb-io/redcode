@@ -5,6 +5,8 @@ import { Bus } from "@opencode/core/bus"
 import { MonitorRuntime } from "@opencode/core/monitor"
 import { Monitor } from "@opencode/schema/monitor"
 import { SessionTaskReconciliation } from "@opencode/core/session/task-reconciliation"
+import { SessionTaskGraph } from "@opencode/core/session/task-graph"
+import { SessionTaskAssignments } from "@opencode/core/session/task-assignments"
 import { SessionTodoStore } from "@opencode/core/session/todo-store"
 import { SessionTodo } from "@opencode/schema/session-todo"
 import { TaskIntegration } from "../task-integration"
@@ -389,6 +391,23 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
           yield* session.get(ctx.params.sessionID).pipe(Effect.catchTag("Session.NotFoundError", missingSession))
           const todos = yield* SessionTodoStore.Service
           return { data: yield* todos.get(ctx.params.sessionID) }
+        }),
+      )
+      .handle(
+        "session.todo.graph",
+        Effect.fn(function* (ctx) {
+          yield* session.get(ctx.params.sessionID).pipe(Effect.catchTag("Session.NotFoundError", missingSession))
+          const todos = yield* SessionTodoStore.Service
+          const assignments = yield* SessionTaskAssignments.Service
+          const tasks = yield* todos.get(ctx.params.sessionID)
+          return {
+            data: {
+              sessionID: ctx.params.sessionID,
+              tasks,
+              nodes: SessionTaskGraph.snapshot(tasks),
+              assignments: yield* assignments.snapshot(ctx.params.sessionID, tasks),
+            },
+          }
         }),
       )
       .handle(
