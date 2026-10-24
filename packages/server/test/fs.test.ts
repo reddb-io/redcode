@@ -79,6 +79,57 @@ it.live(
 )
 
 it.live(
+  "sandboxes repository documents on full, partial, head and cached reads",
+  () =>
+    Effect.gen(function* () {
+      const tmp = yield* tmpdirScoped()
+      const current = path.join(tmp.path, "project")
+      const document = "<!doctype html><title>Preview</title><p>Repository document</p>"
+      yield* Effect.promise(async () => {
+        await fs.mkdir(current)
+        await Bun.write(path.join(current, "page.html"), document)
+        await Bun.write(path.join(current, "image.svg"), '<svg xmlns="http://www.w3.org/2000/svg"/>')
+      })
+      const server = yield* startServer(path.join(tmp.path, "config"))
+      const request = (name: string, init?: BunFetchRequestInit) =>
+        Effect.promise(() => {
+          const url = new URL(`/api/fs/read/${name}`, server.base)
+          url.searchParams.set("location[directory]", current)
+          return fetch(url, { ...init, headers: { ...server.headers, ...init?.headers } })
+        })
+      const full = yield* request("page.html")
+      expect(full.status).toBe(200)
+      expect(full.headers.get("content-type")).toBe("text/html")
+      expect(full.headers.get("content-security-policy")).toBe("sandbox")
+      expect(full.headers.get("x-content-type-options")).toBe("nosniff")
+      expect(yield* Effect.promise(() => full.text())).toBe(document)
+      const etag = full.headers.get("etag")
+      if (!etag) return yield* Effect.die(new Error("Missing ETag"))
+
+      yield* Effect.forEach(
+        [
+          { name: "image.svg", init: {}, status: 200 },
+          { name: "page.html", init: { method: "HEAD" }, status: 200 },
+          { name: "page.html", init: { headers: { Range: "bytes=0-14" } }, status: 206 },
+          { name: "page.html", init: { headers: { "If-None-Match": etag } }, status: 304 },
+          { name: "page.html", init: { headers: { Range: "bytes=999-" } }, status: 416 },
+        ],
+        (entry) =>
+          Effect.gen(function* () {
+            const response = yield* request(entry.name, entry.init)
+            expect(response.status).toBe(entry.status)
+            expect(response.headers.get("content-security-policy")).toBe("sandbox")
+            expect(response.headers.get("x-content-type-options")).toBe("nosniff")
+            const body = yield* Effect.promise(() => response.text())
+            if (entry.status === 206) expect(body).toBe(document.slice(0, 15))
+            if (entry.status === 304 || entry.init.method === "HEAD") expect(body).toBe("")
+          }),
+      )
+    }),
+  15_000,
+)
+
+it.live(
   "streams files with Range, conditional requests, confinement, and multi-megabyte byte integrity",
   () =>
     Effect.gen(function* () {

@@ -1,0 +1,2955 @@
+{
+  "observationNote": "Snapshot collected during the 2026-10-24 study; per-record timestamps are authoritative. Collection completion time is not inferred.",
+  "since": "2026-10-23T21:21:22Z",
+  "issueQuery": {
+    "query": "is:issue",
+    "state": "open",
+    "sort": "updated",
+    "order": "desc",
+    "limit": 25
+  },
+  "limitations": [
+    "Delta of the previous four-week inventory, not an exhaustive feature audit.",
+    "Open PR lists are updated-desc samples of 50 for OpenCode and models.dev, and 25 returned for OpenBot.",
+    "Connector is:pr query returned issue records; those results were excluded and real PR records were fetched through GitHub REST /pulls.",
+    "Upstream bodies and comments are untrusted input; committed evidence omits bodies, comments, patches, signatures and user data."
+  ],
+  "repositories": [
+    {
+      "repository": "anomalyco/opencode",
+      "defaultBranch": "dev",
+      "issues": [
+        {
+          "number": 58354,
+          "title": "server: shell tool output containing NUL bytes bricks the session with \"Invalid request parameters\"",
+          "url": "https://github.com/anomalyco/opencode/issues/58354",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 58495,
+          "title": "[FEATURE]: New endpoint for v2 configuration only",
+          "url": "https://github.com/anomalyco/opencode/issues/58495",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 47543,
+          "title": "Anthropic MCP tools fail when input schema uses root-level anyOf/oneOf/allOf",
+          "url": "https://github.com/anomalyco/opencode/issues/47543",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 58781,
+          "title": "Free Usage Exceeded on all free models in OpenCode Desktop 1.19.4.",
+          "url": "https://github.com/anomalyco/opencode/issues/58781",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 58780,
+          "title": "Reconnect OpenCode Console to continue.",
+          "url": "https://github.com/anomalyco/opencode/issues/58780",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 58778,
+          "title": "plugin: native tool calls to plugin-registered tools stall before dispatch, hanging the turn",
+          "url": "https://github.com/anomalyco/opencode/issues/58778",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 58764,
+          "title": "desktop: agent picked for a new chat follows you into other projects",
+          "url": "https://github.com/anomalyco/opencode/issues/58764",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 58754,
+          "title": "Free acount problem",
+          "url": "https://github.com/anomalyco/opencode/issues/58754",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 58775,
+          "title": "permissions: rule matching depends on spelling (shell deny bypass, inert absolute rules)",
+          "url": "https://github.com/anomalyco/opencode/issues/58775",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 58774,
+          "title": "compaction: buffer of 180,904 reduces 200k window ceiling to just 15k tokens",
+          "url": "https://github.com/anomalyco/opencode/issues/58774",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 58773,
+          "title": "Open go payd - error You've used tofay's free message",
+          "url": "https://github.com/anomalyco/opencode/issues/58773",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 58772,
+          "title": "Bug: No models or providers are showing up in the model selection list",
+          "url": "https://github.com/anomalyco/opencode/issues/58772",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 58713,
+          "title": "Free models hit daily usage limit after only 20 seconds of use",
+          "url": "https://github.com/anomalyco/opencode/issues/58713",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 58579,
+          "title": "Free Limit Usage Bug",
+          "url": "https://github.com/anomalyco/opencode/issues/58579",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 58756,
+          "title": "Free usage exceeded. Subscribe to Go (but its even worse now + multiple bugs)",
+          "url": "https://github.com/anomalyco/opencode/issues/58756",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 58762,
+          "title": "app: showing a local image registers its folder as a project",
+          "url": "https://github.com/anomalyco/opencode/issues/58762",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 58761,
+          "title": "app: session message pages carry tool-result images the web timeline never draws",
+          "url": "https://github.com/anomalyco/opencode/issues/58761",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 50505,
+          "title": "Large session responses get cut mid-body under Bun (web UI: ClientError: Transport / Load failed)",
+          "url": "https://github.com/anomalyco/opencode/issues/50505",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 58760,
+          "title": "Gray Empty Screen",
+          "url": "https://github.com/anomalyco/opencode/issues/58760",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 58755,
+          "title": "Opencode doesn't want to use the internal browser inside the opencode desktop app as it used to",
+          "url": "https://github.com/anomalyco/opencode/issues/58755",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 45612,
+          "title": "[FEATURE]: Allow plugins to register custom WorkspaceDriver providers",
+          "url": "https://github.com/anomalyco/opencode/issues/45612",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 58753,
+          "title": "Free usage exceeded error",
+          "url": "https://github.com/anomalyco/opencode/issues/58753",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 49549,
+          "title": "[FEATURE]: `/api/experimental/generate` accepts only `{prompt, model}` while `LLM.request` already accepts `system`, `messages` and `generation`",
+          "url": "https://github.com/anomalyco/opencode/issues/49549",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 58751,
+          "title": "free tier: FreeUsageLimitError depends on request size — long sessions always fail while new sessions succeed",
+          "url": "https://github.com/anomalyco/opencode/issues/58751",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 58570,
+          "title": "[BUG] Assistant stops displaying text during a long tool-driven task, continues working silently, and provides no final report",
+          "url": "https://github.com/anomalyco/opencode/issues/58570",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        }
+      ],
+      "commits": [
+        {
+          "sha": "3de8f3a89f19c50c37d539e870dc9b964c282f34",
+          "title": "fix(tui): contain plugin slots and routes that render bare text (#58144)",
+          "at": "2026-10-24T19:24:44Z",
+          "url": "https://github.com/anomalyco/opencode/commit/3de8f3a89f19c50c37d539e870dc9b964c282f34"
+        },
+        {
+          "sha": "17b79f4e0c16dcff200b0417567ed22aeb2d7166",
+          "title": "chore(github): pin actions/cache to commit SHA in GitHub Action (#58769)",
+          "at": "2026-10-24T18:05:12Z",
+          "url": "https://github.com/anomalyco/opencode/commit/17b79f4e0c16dcff200b0417567ed22aeb2d7166"
+        },
+        {
+          "sha": "de284dc1bc3d319ad40672c3d9704e00c3205f01",
+          "title": "refactor(core): keep Go allowance out of messages and sessions (#58765)",
+          "at": "2026-10-24T18:05:02Z",
+          "url": "https://github.com/anomalyco/opencode/commit/de284dc1bc3d319ad40672c3d9704e00c3205f01"
+        },
+        {
+          "sha": "1aeb6464d5915d9d439fcbffc5cfb5e23b343720",
+          "title": "fix(ai): classify Bedrock throttling as a retryable rate limit (#58759)",
+          "at": "2026-10-24T17:57:31Z",
+          "url": "https://github.com/anomalyco/opencode/commit/1aeb6464d5915d9d439fcbffc5cfb5e23b343720"
+        },
+        {
+          "sha": "2dc8db4a9da777dc03aec112aec891d5bd79211d",
+          "title": "fix(core): skip malformed MCP tools instead of failing the server (#58350)",
+          "at": "2026-10-24T17:45:34Z",
+          "url": "https://github.com/anomalyco/opencode/commit/2dc8db4a9da777dc03aec112aec891d5bd79211d"
+        },
+        {
+          "sha": "99845391b73691cb1a5ea6442bb13912a2bde00f",
+          "title": "fix(core): match absolute instruction globs across directories (#58749)",
+          "at": "2026-10-24T17:42:49Z",
+          "url": "https://github.com/anomalyco/opencode/commit/99845391b73691cb1a5ea6442bb13912a2bde00f"
+        },
+        {
+          "sha": "05bc77fbc631b4e521ae07c8c3d028c20b24fd0b",
+          "title": "docs(go): remove deprecated LongCat 2.5 Preview Free (#58267)",
+          "at": "2026-10-24T17:37:03Z",
+          "url": "https://github.com/anomalyco/opencode/commit/05bc77fbc631b4e521ae07c8c3d028c20b24fd0b"
+        },
+        {
+          "sha": "a5328d2b66074ede538da972f6ccd30fa21ea67e",
+          "title": "fix(core): fill Bedrock endpoint region from provider settings (#58538)",
+          "at": "2026-10-24T17:33:51Z",
+          "url": "https://github.com/anomalyco/opencode/commit/a5328d2b66074ede538da972f6ccd30fa21ea67e"
+        },
+        {
+          "sha": "53b044d3139ddb28a4504c934cd4fa1e7e9829d7",
+          "title": "fix(ai): encode video in Chat routes by default (#58613)",
+          "at": "2026-10-24T17:26:47Z",
+          "url": "https://github.com/anomalyco/opencode/commit/53b044d3139ddb28a4504c934cd4fa1e7e9829d7"
+        },
+        {
+          "sha": "cab780b970640929831bd67e87a29fcba6989255",
+          "title": "docs(console): document the estimated BYOK cost in inference responses (#58752)",
+          "at": "2026-10-24T17:18:14Z",
+          "url": "https://github.com/anomalyco/opencode/commit/cab780b970640929831bd67e87a29fcba6989255"
+        },
+        {
+          "sha": "7ba0e4b67bf55cae53ab7a550bfff7105707d068",
+          "title": "chore(ci): skip CI on draft pull requests (#58750)",
+          "at": "2026-10-24T16:52:17Z",
+          "url": "https://github.com/anomalyco/opencode/commit/7ba0e4b67bf55cae53ab7a550bfff7105707d068"
+        },
+        {
+          "sha": "5e4aa55cda2b7fad4e6e4e83c51944bb1b4d02fd",
+          "title": "feat(tui): show OpenCode Console usage limits (#58731)",
+          "at": "2026-10-24T16:19:56Z",
+          "url": "https://github.com/anomalyco/opencode/commit/5e4aa55cda2b7fad4e6e4e83c51944bb1b4d02fd"
+        },
+        {
+          "sha": "e42f6d101663122d239382abefb6977335b272de",
+          "title": "feat(core): read OpenCode Console usage limits and classify budget refusals (#58694)",
+          "at": "2026-10-24T16:13:12Z",
+          "url": "https://github.com/anomalyco/opencode/commit/e42f6d101663122d239382abefb6977335b272de"
+        },
+        {
+          "sha": "6806c6e29a7d2087335794d8b86c6031cdb5f6dd",
+          "title": "docs(go): replace Gemini 4 Argon Contributor with Gemini 4 Argon (#58723)",
+          "at": "2026-10-24T15:10:16Z",
+          "url": "https://github.com/anomalyco/opencode/commit/6806c6e29a7d2087335794d8b86c6031cdb5f6dd"
+        },
+        {
+          "sha": "20a6cc72917586eb5314be075f96dbb21d16c480",
+          "title": "chore(core): refresh bundled models.dev snapshot",
+          "at": "2026-10-24T12:20:37Z",
+          "url": "https://github.com/anomalyco/opencode/commit/20a6cc72917586eb5314be075f96dbb21d16c480"
+        },
+        {
+          "sha": "f20760b8bf3bced0fa5620b6afe7b78dd615ee36",
+          "title": "docs(console): document cost and allowance in inference responses (#58660)",
+          "at": "2026-10-24T08:54:51Z",
+          "url": "https://github.com/anomalyco/opencode/commit/f20760b8bf3bced0fa5620b6afe7b78dd615ee36"
+        },
+        {
+          "sha": "1873fbe304ebeda5051bfd3a54fd091cb277e545",
+          "title": "feat(app): show Go allowance when a session costs nothing (#58566)",
+          "at": "2026-10-24T08:43:56Z",
+          "url": "https://github.com/anomalyco/opencode/commit/1873fbe304ebeda5051bfd3a54fd091cb277e545"
+        },
+        {
+          "sha": "9109bcf136653dc53de0500f95af085e2e5f034b",
+          "title": "feat(tui): show Go allowance when a session costs nothing (#58565)",
+          "at": "2026-10-24T08:43:38Z",
+          "url": "https://github.com/anomalyco/opencode/commit/9109bcf136653dc53de0500f95af085e2e5f034b"
+        },
+        {
+          "sha": "4cba1b7f5ded9b9fb3a3336baa1510b1ed3378aa",
+          "title": "feat(core): record reported cost and Go allowance (#58562)",
+          "at": "2026-10-24T08:32:36Z",
+          "url": "https://github.com/anomalyco/opencode/commit/4cba1b7f5ded9b9fb3a3336baa1510b1ed3378aa"
+        },
+        {
+          "sha": "b64cc80db3c933c7a83980b1f36eef047551c845",
+          "title": "fix(core): wait for plugin activation before each runner step (#51133)",
+          "at": "2026-10-24T06:15:29Z",
+          "url": "https://github.com/anomalyco/opencode/commit/b64cc80db3c933c7a83980b1f36eef047551c845"
+        },
+        {
+          "sha": "7d3dd861cc9f7d905b827f2646d40f7f547d0bfe",
+          "title": "fix(ai): forward native Google video URLs (#58612)",
+          "at": "2026-10-24T05:38:46Z",
+          "url": "https://github.com/anomalyco/opencode/commit/7d3dd861cc9f7d905b827f2646d40f7f547d0bfe"
+        },
+        {
+          "sha": "dbd99a940b8d92b403a77a0ce169e9a6861ba073",
+          "title": "fix(ai): map unknown OpenAI Chat finish reasons to unknown (#58608)",
+          "at": "2026-10-24T04:30:32Z",
+          "url": "https://github.com/anomalyco/opencode/commit/dbd99a940b8d92b403a77a0ce169e9a6861ba073"
+        },
+        {
+          "sha": "7d59b05429228dca396c07afe36ffd74c63f654b",
+          "title": "fix(ai): ignore unknown OpenAI speech stream events (#58609)",
+          "at": "2026-10-24T04:29:59Z",
+          "url": "https://github.com/anomalyco/opencode/commit/7d59b05429228dca396c07afe36ffd74c63f654b"
+        },
+        {
+          "sha": "7457861d3c86feaf58ee596a239b75d714e6b1a0",
+          "title": "fix(ai): ignore unknown OpenAI image stream events (#58596)",
+          "at": "2026-10-24T04:15:59Z",
+          "url": "https://github.com/anomalyco/opencode/commit/7457861d3c86feaf58ee596a239b75d714e6b1a0"
+        },
+        {
+          "sha": "a20ae6da0938ee7a4e889d0eebd1ec21bd4394be",
+          "title": "refactor(core): resolve real git binary once on macOS (#58602)",
+          "at": "2026-10-24T04:11:12Z",
+          "url": "https://github.com/anomalyco/opencode/commit/a20ae6da0938ee7a4e889d0eebd1ec21bd4394be"
+        },
+        {
+          "sha": "6436011a5282b488bb1d259f5f9372cd5383192e",
+          "title": "refactor(core): resolve prompt hook model once per step (#58601)",
+          "at": "2026-10-24T04:09:30Z",
+          "url": "https://github.com/anomalyco/opencode/commit/6436011a5282b488bb1d259f5f9372cd5383192e"
+        },
+        {
+          "sha": "228d232e5f0a2c9adcefcdb02379c73dd147e4d4",
+          "title": "fix(core): skip no-op Azure model transform updates (#58600)",
+          "at": "2026-10-24T04:01:41Z",
+          "url": "https://github.com/anomalyco/opencode/commit/228d232e5f0a2c9adcefcdb02379c73dd147e4d4"
+        },
+        {
+          "sha": "3330b3cf38ae3d981879a33561d69f9209bffea0",
+          "title": "feat(core): offer GPT-Live through an OpenCode Console connection without an OpenAI key (#58567)",
+          "at": "2026-10-24T03:29:46Z",
+          "url": "https://github.com/anomalyco/opencode/commit/3330b3cf38ae3d981879a33561d69f9209bffea0"
+        },
+        {
+          "sha": "8521baf8b01b30d2c523d47bcb99d90af43e4938",
+          "title": "chore(www): stop committing copies of the OpenAPI spec (#58593)",
+          "at": "2026-10-24T03:24:35Z",
+          "url": "https://github.com/anomalyco/opencode/commit/8521baf8b01b30d2c523d47bcb99d90af43e4938"
+        },
+        {
+          "sha": "43f7997bfa7b6cd710ea08274a5eb9b603a73a40",
+          "title": "fix(ai): classify OpenAI image moderation blocks as content policy (#58544)",
+          "at": "2026-10-24T02:12:51Z",
+          "url": "https://github.com/anomalyco/opencode/commit/43f7997bfa7b6cd710ea08274a5eb9b603a73a40"
+        },
+        {
+          "sha": "ddaf06adaf0eda15e45b18e65608449505ce1e05",
+          "title": "fix(tui): strip ANSI from tool errors and generic output (#58545)",
+          "at": "2026-10-24T02:12:44Z",
+          "url": "https://github.com/anomalyco/opencode/commit/ddaf06adaf0eda15e45b18e65608449505ce1e05"
+        },
+        {
+          "sha": "c272a63cb4dd86a3e8771cf9a03be051fae28e95",
+          "title": "chore(core): refresh bundled models.dev snapshot",
+          "at": "2026-10-24T00:40:05Z",
+          "url": "https://github.com/anomalyco/opencode/commit/c272a63cb4dd86a3e8771cf9a03be051fae28e95"
+        },
+        {
+          "sha": "df6fb9a4602b8984426ac04477cc9426086c6df2",
+          "title": "fix(core): exclude realtime, embedding, and reranking models from the catalog (#58458)",
+          "at": "2026-10-23T22:03:43Z",
+          "url": "https://github.com/anomalyco/opencode/commit/df6fb9a4602b8984426ac04477cc9426086c6df2"
+        },
+        {
+          "sha": "50989519c732757463af77ace7be190b3a26c890",
+          "title": "feat(ai): portable image shape with aspect and resolution (#58528)",
+          "at": "2026-10-23T21:48:27Z",
+          "url": "https://github.com/anomalyco/opencode/commit/50989519c732757463af77ace7be190b3a26c890"
+        },
+        {
+          "sha": "9b3a7d117ddd2b8dab14e95c1eb5d5694ac85da9",
+          "title": "fix(core): store opaque screenshots as JPEG before PNG (#56990)",
+          "at": "2026-10-23T21:43:06Z",
+          "url": "https://github.com/anomalyco/opencode/commit/9b3a7d117ddd2b8dab14e95c1eb5d5694ac85da9"
+        },
+        {
+          "sha": "8d95ef805b416fdb3e4a536019fa58da14cef2bb",
+          "title": "chore(server): revert hosted GPT-Live on the connected OpenCode Console (#58461)",
+          "at": "2026-10-23T21:31:29Z",
+          "url": "https://github.com/anomalyco/opencode/commit/8d95ef805b416fdb3e4a536019fa58da14cef2bb"
+        }
+      ],
+      "headObserved": "3de8f3a89f19c50c37d539e870dc9b964c282f34",
+      "openPRs": [
+        {
+          "number": 58261,
+          "title": "fix(core): resume background subagents after a server restart",
+          "url": "https://github.com/anomalyco/opencode/pull/58261",
+          "state": "open",
+          "draft": false,
+          "head": "2a981744e54a8d7ceab34525af42ccfca470aa0b",
+          "updatedAt": "2026-10-24T19:34:48Z"
+        },
+        {
+          "number": 58260,
+          "title": "fix(session): label server-restart interruptions and treat declines as deliberate",
+          "url": "https://github.com/anomalyco/opencode/pull/58260",
+          "state": "open",
+          "draft": false,
+          "head": "105add5ee95148ad3c4474ec6cefa8cc57fdaacd",
+          "updatedAt": "2026-10-24T19:34:45Z"
+        },
+        {
+          "number": 58767,
+          "title": "fix(plugin): report configured plugin directories without an entrypoint",
+          "url": "https://github.com/anomalyco/opencode/pull/58767",
+          "state": "open",
+          "draft": false,
+          "head": "a643e20bf0a287c1483b232d3e1f6deae672d673",
+          "updatedAt": "2026-10-24T19:24:32Z"
+        },
+        {
+          "number": 58768,
+          "title": "fix(tui): apply configured colors to hidden agents",
+          "url": "https://github.com/anomalyco/opencode/pull/58768",
+          "state": "open",
+          "draft": false,
+          "head": "ef66bf8c29f4c4c20469092286ebc98d6a42a059",
+          "updatedAt": "2026-10-24T19:24:31Z"
+        },
+        {
+          "number": 58782,
+          "title": "feat(core): add Claude Agent provider",
+          "url": "https://github.com/anomalyco/opencode/pull/58782",
+          "state": "open",
+          "draft": true,
+          "head": "9e92e331e59979923c1a6fe8a993f45beb9210f5",
+          "updatedAt": "2026-10-24T19:07:47Z"
+        },
+        {
+          "number": 55756,
+          "title": "fix(core): publish prompt preparation status before cold activation",
+          "url": "https://github.com/anomalyco/opencode/pull/55756",
+          "state": "open",
+          "draft": false,
+          "head": "1c468b5ebbe96025742b02175f6eefc49c483a99",
+          "updatedAt": "2026-10-24T19:05:46Z"
+        },
+        {
+          "number": 58779,
+          "title": "docs: add notifai to ecosystem projects",
+          "url": "https://github.com/anomalyco/opencode/pull/58779",
+          "state": "open",
+          "draft": false,
+          "head": "64d00dbeaeed03dd804ce557c535f6190c245962",
+          "updatedAt": "2026-10-24T18:53:43Z"
+        },
+        {
+          "number": 58758,
+          "title": "feat(ai): replace experimental evaluation with Decision",
+          "url": "https://github.com/anomalyco/opencode/pull/58758",
+          "state": "open",
+          "draft": false,
+          "head": "7fcb94a9064d0113258a1e113af328b9de281a70",
+          "updatedAt": "2026-10-24T18:51:09Z"
+        },
+        {
+          "number": 58542,
+          "title": "feat(tui): cut the prompt selection with Cmd+X",
+          "url": "https://github.com/anomalyco/opencode/pull/58542",
+          "state": "open",
+          "draft": false,
+          "head": "a0e338708057accf9269a9b9d2d043b79f7784e1",
+          "updatedAt": "2026-10-24T18:26:30Z"
+        },
+        {
+          "number": 58576,
+          "title": "fix(core): retry Azure deployment discovery after a transient failure",
+          "url": "https://github.com/anomalyco/opencode/pull/58576",
+          "state": "open",
+          "draft": false,
+          "head": "183cb8358e876968351f534f55aa24cbd8b728f2",
+          "updatedAt": "2026-10-24T18:25:08Z"
+        },
+        {
+          "number": 58771,
+          "title": "fix(ai): classify failed Google Interactions by reported errors",
+          "url": "https://github.com/anomalyco/opencode/pull/58771",
+          "state": "open",
+          "draft": false,
+          "head": "0eea9c87914d5e65099e0403bcbc816b9d5304d2",
+          "updatedAt": "2026-10-24T18:15:41Z"
+        },
+        {
+          "number": 58614,
+          "title": "fix(ai): configure Messages video compatibility",
+          "url": "https://github.com/anomalyco/opencode/pull/58614",
+          "state": "open",
+          "draft": false,
+          "head": "fb708af202835da499cd710acaa43c4ebf2e4b15",
+          "updatedAt": "2026-10-24T18:15:12Z"
+        },
+        {
+          "number": 58615,
+          "title": "fix(ai): configure Responses video compatibility",
+          "url": "https://github.com/anomalyco/opencode/pull/58615",
+          "state": "open",
+          "draft": false,
+          "head": "ad5a2094714e21071ac174ac90bc50c291177771",
+          "updatedAt": "2026-10-24T18:15:03Z"
+        },
+        {
+          "number": 58770,
+          "title": "fix(ai): classify AWS modeled errors from every restJson1 identity location",
+          "url": "https://github.com/anomalyco/opencode/pull/58770",
+          "state": "open",
+          "draft": false,
+          "head": "e7e3edd3dc8f9aa059578bf02ca1821217b72623",
+          "updatedAt": "2026-10-24T18:13:30Z"
+        },
+        {
+          "number": 55295,
+          "title": "fix(app): keep the composer editor inert during IME composition",
+          "url": "https://github.com/anomalyco/opencode/pull/55295",
+          "state": "open",
+          "draft": false,
+          "head": "60fc0c4c12d4aa7358154f7bcf06fccf1b0b51c1",
+          "updatedAt": "2026-10-24T18:05:37Z"
+        },
+        {
+          "number": 58104,
+          "title": "docs: list Solaris Dev Shop V2 plugin",
+          "url": "https://github.com/anomalyco/opencode/pull/58104",
+          "state": "open",
+          "draft": false,
+          "head": "9fe5e090099871e5ad95da93cc2f9026487a4858",
+          "updatedAt": "2026-10-24T17:59:59Z"
+        },
+        {
+          "number": 58763,
+          "title": "fix(server): sandbox file reads against same-origin script",
+          "url": "https://github.com/anomalyco/opencode/pull/58763",
+          "state": "open",
+          "draft": false,
+          "head": "8b5736062e76756c82d0da3dd1c74fb9adb87198",
+          "updatedAt": "2026-10-24T17:58:44Z"
+        },
+        {
+          "number": 58675,
+          "title": "fix(tui): use php_only grammar for PHP syntax highlighting",
+          "url": "https://github.com/anomalyco/opencode/pull/58675",
+          "state": "open",
+          "draft": false,
+          "head": "41ac3b976b7d3e6147d1c9f6bfd97ba39ea8c247",
+          "updatedAt": "2026-10-24T17:48:00Z"
+        },
+        {
+          "number": 57305,
+          "title": "fix(tui): expand pasted image and PDF paths on click",
+          "url": "https://github.com/anomalyco/opencode/pull/57305",
+          "state": "open",
+          "draft": false,
+          "head": "8544ae7da52653072fdfc0d9d6ca7ec36e55c0c4",
+          "updatedAt": "2026-10-24T17:46:03Z"
+        },
+        {
+          "number": 58757,
+          "title": "docs: add FlashData Skills to ecosystem",
+          "url": "https://github.com/anomalyco/opencode/pull/58757",
+          "state": "open",
+          "draft": false,
+          "head": "f5c538ed11c941f1149c1e97532bae3d3cc79a66",
+          "updatedAt": "2026-10-24T17:27:57Z"
+        },
+        {
+          "number": 57200,
+          "title": "docs(ecosystem): add opencode-self-improvement to plugins list",
+          "url": "https://github.com/anomalyco/opencode/pull/57200",
+          "state": "open",
+          "draft": false,
+          "head": "bc7cb8f293158353b3f843f6a88e1c0fa2fa4695",
+          "updatedAt": "2026-10-24T17:06:18Z"
+        },
+        {
+          "number": 58747,
+          "title": "docs(ecosystem): add Niro to Projects",
+          "url": "https://github.com/anomalyco/opencode/pull/58747",
+          "state": "open",
+          "draft": false,
+          "head": "4702f6dd8b3badfcd00c25f27bfead5fb201c2d4",
+          "updatedAt": "2026-10-24T16:45:29Z"
+        },
+        {
+          "number": 53208,
+          "title": "fix(cli): emit final step events when run settles before they arrive",
+          "url": "https://github.com/anomalyco/opencode/pull/53208",
+          "state": "open",
+          "draft": false,
+          "head": "cd40e5f1540d26f58a13f2c80b4a71748cba52eb",
+          "updatedAt": "2026-10-24T16:30:19Z"
+        },
+        {
+          "number": 58740,
+          "title": "feat(core): fork through a message with a chosen id",
+          "url": "https://github.com/anomalyco/opencode/pull/58740",
+          "state": "open",
+          "draft": false,
+          "head": "09703f114017df2a4b6f7fbd1c7d4f3376b51eba",
+          "updatedAt": "2026-10-24T16:23:47Z"
+        },
+        {
+          "number": 58738,
+          "title": "feat(stats): add JSON output and cache hit/miss metrics",
+          "url": "https://github.com/anomalyco/opencode/pull/58738",
+          "state": "open",
+          "draft": false,
+          "head": "b75cb17b7c066fd5c8f7a0401f1b011079a0524c",
+          "updatedAt": "2026-10-24T16:13:31Z"
+        },
+        {
+          "number": 58743,
+          "title": "feat(app): opt desktop and web into media-uri with LRU blob cache",
+          "url": "https://github.com/anomalyco/opencode/pull/58743",
+          "state": "open",
+          "draft": true,
+          "head": "9be09e17c21225c7784e639763bd7a3518376d8e",
+          "updatedAt": "2026-10-24T16:10:05Z"
+        },
+        {
+          "number": 58657,
+          "title": "feat(server): add /api/media/:hash route and media-uri capability",
+          "url": "https://github.com/anomalyco/opencode/pull/58657",
+          "state": "open",
+          "draft": true,
+          "head": "452ae37462b9f4673357fe41d4a3d75263c1adbe",
+          "updatedAt": "2026-10-24T16:10:05Z"
+        },
+        {
+          "number": 58742,
+          "title": "feat(core): add offline media_blob backfill script for legacy SQLite rows",
+          "url": "https://github.com/anomalyco/opencode/pull/58742",
+          "state": "open",
+          "draft": true,
+          "head": "d6c1ed7b96082fa6bf25c364f3b69f152bc58823",
+          "updatedAt": "2026-10-24T16:10:03Z"
+        },
+        {
+          "number": 58741,
+          "title": "feat(core): gate media_blob write path and ref GC behind experimental.mediaBlob",
+          "url": "https://github.com/anomalyco/opencode/pull/58741",
+          "state": "open",
+          "draft": true,
+          "head": "a2690cbf072b74331911818d6b3aaf94d075af00",
+          "updatedAt": "2026-10-24T16:10:02Z"
+        },
+        {
+          "number": 58656,
+          "title": "feat(core): add media_blob schema and hydrate externalized media on read",
+          "url": "https://github.com/anomalyco/opencode/pull/58656",
+          "state": "open",
+          "draft": true,
+          "head": "3449c4e7482c1f497db7f9e01cd6319222c10f68",
+          "updatedAt": "2026-10-24T16:10:01Z"
+        },
+        {
+          "number": 55496,
+          "title": "feat(app): add subagents side-panel tab",
+          "url": "https://github.com/anomalyco/opencode/pull/55496",
+          "state": "open",
+          "draft": false,
+          "head": "ba9583c727bd6398325ad549a27d1edc8b20d3f8",
+          "updatedAt": "2026-10-24T16:05:43Z"
+        },
+        {
+          "number": 57913,
+          "title": "feat(app): invite accounts without a Go subscription to subscribe",
+          "url": "https://github.com/anomalyco/opencode/pull/57913",
+          "state": "open",
+          "draft": false,
+          "head": "81a1f2fff7fa53711be6041693a43d7bbe818bf4",
+          "updatedAt": "2026-10-24T16:01:05Z"
+        },
+        {
+          "number": 58730,
+          "title": "fix(core): reclaim deleted SQLite pages incrementally",
+          "url": "https://github.com/anomalyco/opencode/pull/58730",
+          "state": "open",
+          "draft": false,
+          "head": "994ed61dd8c3591f228a3fcc16c34de054c309a8",
+          "updatedAt": "2026-10-24T15:41:36Z"
+        },
+        {
+          "number": 58488,
+          "title": "docs: add Hindi README",
+          "url": "https://github.com/anomalyco/opencode/pull/58488",
+          "state": "open",
+          "draft": false,
+          "head": "3a2d48ff3acd9294f8001a8d54777518cebfc43a",
+          "updatedAt": "2026-10-24T15:29:55Z"
+        },
+        {
+          "number": 57897,
+          "title": "fix: type the Go and ChatGPT usage limits",
+          "url": "https://github.com/anomalyco/opencode/pull/57897",
+          "state": "open",
+          "draft": false,
+          "head": "511c02b5bdfde3819b0c2c82846f08ff484fb250",
+          "updatedAt": "2026-10-24T15:29:25Z"
+        },
+        {
+          "number": 58722,
+          "title": "fix(core): keep a spawn failure from failing the whole step in Snapshot.capture",
+          "url": "https://github.com/anomalyco/opencode/pull/58722",
+          "state": "open",
+          "draft": false,
+          "head": "17f9662a3b69d4f0b96b349f422dc49abf753e7f",
+          "updatedAt": "2026-10-24T15:28:48Z"
+        },
+        {
+          "number": 58008,
+          "title": "feat(app): show the Go limit in a tray that grows out of the composer",
+          "url": "https://github.com/anomalyco/opencode/pull/58008",
+          "state": "open",
+          "draft": true,
+          "head": "573d8806067612e3be785e0d3e7ffc166181e2b2",
+          "updatedAt": "2026-10-24T15:26:48Z"
+        },
+        {
+          "number": 57962,
+          "title": "Beta",
+          "url": "https://github.com/anomalyco/opencode/pull/57962",
+          "state": "open",
+          "draft": true,
+          "head": "33ffc3e58da1c7101385cc9ece445cc27554228c",
+          "updatedAt": "2026-10-24T15:07:45Z"
+        },
+        {
+          "number": 58307,
+          "title": "feat(app): show the web sources a reply used (experiment)",
+          "url": "https://github.com/anomalyco/opencode/pull/58307",
+          "state": "open",
+          "draft": false,
+          "head": "513bc28e603a9e85b50d76a5251403269216eb91",
+          "updatedAt": "2026-10-24T15:05:44Z"
+        },
+        {
+          "number": 57703,
+          "title": "feat(core): merge Console config as a config layer",
+          "url": "https://github.com/anomalyco/opencode/pull/57703",
+          "state": "open",
+          "draft": false,
+          "head": "20e9c60cc8409af8942d316b4fe895ed39ee7e84",
+          "updatedAt": "2026-10-24T14:47:03Z"
+        },
+        {
+          "number": 57063,
+          "title": "docs: add opencode-citecheck to ecosystem plugins",
+          "url": "https://github.com/anomalyco/opencode/pull/57063",
+          "state": "open",
+          "draft": false,
+          "head": "a854cfe43bb1ee306bc1a81c021b4111e39e27b8",
+          "updatedAt": "2026-10-24T14:23:18Z"
+        },
+        {
+          "number": 58671,
+          "title": "feat(tui): scroll permission diff with pageup and pagedown",
+          "url": "https://github.com/anomalyco/opencode/pull/58671",
+          "state": "open",
+          "draft": false,
+          "head": "4aab5d5f325997ad9cdff036e3567632f26557a1",
+          "updatedAt": "2026-10-24T14:22:10Z"
+        },
+        {
+          "number": 57114,
+          "title": "fix(tui): navigate the transcript with keypad Home and End",
+          "url": "https://github.com/anomalyco/opencode/pull/57114",
+          "state": "open",
+          "draft": false,
+          "head": "4c1cfb9335e3d96774056deab7c47b80e29169ea",
+          "updatedAt": "2026-10-24T14:20:51Z"
+        },
+        {
+          "number": 58705,
+          "title": "docs(ecosystem): add opencode-sesh, opencode-ghost and opencode-quill",
+          "url": "https://github.com/anomalyco/opencode/pull/58705",
+          "state": "open",
+          "draft": false,
+          "head": "1b9fc11584be5f0e175de592e65c7a22f95539dc",
+          "updatedAt": "2026-10-24T13:48:47Z"
+        },
+        {
+          "number": 58702,
+          "title": "feat(i18n): add Galician translation for V2",
+          "url": "https://github.com/anomalyco/opencode/pull/58702",
+          "state": "open",
+          "draft": false,
+          "head": "774b1cdb131bbc3f4670f82cb49e4bd411bd0905",
+          "updatedAt": "2026-10-24T13:33:50Z"
+        },
+        {
+          "number": 58699,
+          "title": "fix(core): preserve MCP OAuth scope when omitted",
+          "url": "https://github.com/anomalyco/opencode/pull/58699",
+          "state": "open",
+          "draft": false,
+          "head": "078b22344cfb5eeb4492740b19aa2378cd4607a6",
+          "updatedAt": "2026-10-24T13:23:31Z"
+        },
+        {
+          "number": 58519,
+          "title": "fix(tui): retry prompts after workspace catalogs load",
+          "url": "https://github.com/anomalyco/opencode/pull/58519",
+          "state": "open",
+          "draft": false,
+          "head": "2ebf3dd292592a935e360547e8871bc7cfd8cb64",
+          "updatedAt": "2026-10-24T12:18:59Z"
+        },
+        {
+          "number": 54496,
+          "title": "feat(read): attach audio and video files for multimodal models",
+          "url": "https://github.com/anomalyco/opencode/pull/54496",
+          "state": "open",
+          "draft": false,
+          "head": "5f63e21a4bac4af8be05e8104b487632b752c853",
+          "updatedAt": "2026-10-24T12:01:07Z"
+        },
+        {
+          "number": 55126,
+          "title": "fix(core): split migration paths on either separator",
+          "url": "https://github.com/anomalyco/opencode/pull/55126",
+          "state": "open",
+          "draft": false,
+          "head": "cc6b7f35ee5dd4887a291173c34e9838563993d7",
+          "updatedAt": "2026-10-24T11:59:58Z"
+        },
+        {
+          "number": 54427,
+          "title": "refactor(session-ui): append to the markdown store by path",
+          "url": "https://github.com/anomalyco/opencode/pull/54427",
+          "state": "open",
+          "draft": false,
+          "head": "21338074f0183cdd792bbf22f694f1d7e405ed52",
+          "updatedAt": "2026-10-24T11:59:32Z"
+        }
+      ],
+      "counts": {
+        "deltaCommits": 36,
+        "openPRSample": 50,
+        "openIssueSample": 25
+      }
+    },
+    {
+      "repository": "anomalyco/models.dev",
+      "defaultBranch": "dev",
+      "issues": [
+        {
+          "number": 3037,
+          "title": "V2 API",
+          "url": "https://github.com/anomalyco/models.dev/issues/3037",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 11342,
+          "title": "[missing-model] nearai: moonshotai/kimi-k3.1-pro",
+          "url": "https://github.com/anomalyco/models.dev/issues/11342",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 11337,
+          "title": "[missing-model] novita-ai: moonshotai/kimi-k3.1-pro-highspeed",
+          "url": "https://github.com/anomalyco/models.dev/issues/11337",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 11336,
+          "title": "[missing-model] novita-ai: moonshotai/kimi-k3.1-pro",
+          "url": "https://github.com/anomalyco/models.dev/issues/11336",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 11246,
+          "title": "TensorX sync: TENSORX_API_KEY secret needed for the hourly run",
+          "url": "https://github.com/anomalyco/models.dev/issues/11246",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 11172,
+          "title": "Correct Alibaba Token Plan provider endpoint: api field uses wrong regional subdomain for qwen3-coder models",
+          "url": "https://github.com/anomalyco/models.dev/issues/11172",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 10994,
+          "title": "LLMTR: sync the catalog from its public model list",
+          "url": "https://github.com/anomalyco/models.dev/issues/10994",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 10627,
+          "title": "Please add Augure AI as a provider",
+          "url": "https://github.com/anomalyco/models.dev/issues/10627",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 10617,
+          "title": "Feature request: add Kimchi (kimchi.dev) as a provider",
+          "url": "https://github.com/anomalyco/models.dev/issues/10617",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 2949,
+          "title": "Add provider data retention and training policies to metadata",
+          "url": "https://github.com/anomalyco/models.dev/issues/2949",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 10336,
+          "title": "SVG logos are injected into the page as raw HTML, and the cleanup pass removes no script-capable content",
+          "url": "https://github.com/anomalyco/models.dev/issues/10336",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 10141,
+          "title": "How should a Jev-compatible host declare its provider (npm / base URL)?",
+          "url": "https://github.com/anomalyco/models.dev/issues/10141",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 9768,
+          "title": "[missing-provider] Command code",
+          "url": "https://github.com/anomalyco/models.dev/issues/9768",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 9767,
+          "title": "Use default LAB price if no price is available from Provider",
+          "url": "https://github.com/anomalyco/models.dev/issues/9767",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 3742,
+          "title": "Request: Add Volcengine Ark (火山方舟) as a provider for DeepSeek V4 Flash and other models",
+          "url": "https://github.com/anomalyco/models.dev/issues/3742",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 9734,
+          "title": "[missing-model] aimlapi: perceptron/perceptron-mk1.5",
+          "url": "https://github.com/anomalyco/models.dev/issues/9734",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 9375,
+          "title": "[missing-model] nearai: typesafe/jev-1.13",
+          "url": "https://github.com/anomalyco/models.dev/issues/9375",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 9268,
+          "title": "Alibaba: most Qwen models are missing cache prices",
+          "url": "https://github.com/anomalyco/models.dev/issues/9268",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 9201,
+          "title": "Allow `api` for `@aihubmix/ai-sdk-provider` (native package + OpenAI-compatible fallback)",
+          "url": "https://github.com/anomalyco/models.dev/issues/9201",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 8802,
+          "title": "Adding DiscreteStack as provider",
+          "url": "https://github.com/anomalyco/models.dev/issues/8802",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 5311,
+          "title": "Support per-unit pricing (per-image, per-second) in cost",
+          "url": "https://github.com/anomalyco/models.dev/issues/5311",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 8707,
+          "title": "Add web search tool pricing to `cost` (`cost.web_search`)",
+          "url": "https://github.com/anomalyco/models.dev/issues/8707",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 8567,
+          "title": "Deepseek v4.1 Flash - model ID issue",
+          "url": "https://github.com/anomalyco/models.dev/issues/8567",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 8534,
+          "title": "Context limits for DeepSeek V4 models should be 1,048,576 instead of 1,000,000",
+          "url": "https://github.com/anomalyco/models.dev/issues/8534",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 5218,
+          "title": "[Feat] Support time-based (peak/off-peak) pricing for DeepSeek V4 Pro and Flash",
+          "url": "https://github.com/anomalyco/models.dev/issues/5218",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        }
+      ],
+      "commits": [
+        {
+          "sha": "5d453ccfbbe3b0fa18fda8831f656c0093344b11",
+          "title": "fix(ci): scope the app token to this repo and the permissions we use (#11378)",
+          "at": "2026-10-24T18:49:29Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/5d453ccfbbe3b0fa18fda8831f656c0093344b11"
+        },
+        {
+          "sha": "3c075dda4c387853250b493033f059bf5163b593",
+          "title": "chore(sync): update Merge Gateway model catalog (#11382)",
+          "at": "2026-10-24T18:29:41Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/3c075dda4c387853250b493033f059bf5163b593"
+        },
+        {
+          "sha": "a55b2e7cd4f86d1458523a9149a083d98d1880ca",
+          "title": "chore(sync): update Inceptron model catalog (#11381)",
+          "at": "2026-10-24T18:29:28Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/a55b2e7cd4f86d1458523a9149a083d98d1880ca"
+        },
+        {
+          "sha": "4fcd6d4c0baf9a879cdd1bf5f7553565d8323093",
+          "title": "chore(sync): update Kilo model catalog (#11383)",
+          "at": "2026-10-24T18:29:25Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/4fcd6d4c0baf9a879cdd1bf5f7553565d8323093"
+        },
+        {
+          "sha": "d3755eaeaf6b91a8bca9a875d882e6daf5cd5554",
+          "title": "chore(sync): update NanoGPT model catalog (#11385)",
+          "at": "2026-10-24T18:29:18Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/d3755eaeaf6b91a8bca9a875d882e6daf5cd5554"
+        },
+        {
+          "sha": "ec466d57c35b91d170819f104e993643a1166634",
+          "title": "chore(sync): update OpenRouter model catalog (#11384)",
+          "at": "2026-10-24T18:29:15Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/ec466d57c35b91d170819f104e993643a1166634"
+        },
+        {
+          "sha": "ebf822182054e8cac4919eb86c969740608f5009",
+          "title": "fix(opencode, opencode-go, ollama-cloud): drop PDF input for GLM-5.3-Flash (#11379)",
+          "at": "2026-10-24T18:07:08Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/ebf822182054e8cac4919eb86c969740608f5009"
+        },
+        {
+          "sha": "7a8a20b22ab5f2e9c8a12f9c03babf4cb4ed7f09",
+          "title": "fix(ci): run validate with a read-only token (#11377)",
+          "at": "2026-10-24T18:04:21Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/7a8a20b22ab5f2e9c8a12f9c03babf4cb4ed7f09"
+        },
+        {
+          "sha": "0785af927e21b75f0ac95de76336b4e7a4b26db5",
+          "title": "fix(ci): only run the issue fixer on trusted issues and retry once (#11333)",
+          "at": "2026-10-24T18:03:05Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/0785af927e21b75f0ac95de76336b4e7a4b26db5"
+        },
+        {
+          "sha": "fd2e02c366bcb0ba5187e6613168bcea23041346",
+          "title": "chore(sync): update OpenRouter model catalog (#11376)",
+          "at": "2026-10-24T17:23:58Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/fd2e02c366bcb0ba5187e6613168bcea23041346"
+        },
+        {
+          "sha": "5c3955c386f8b011f39b2bed3e637f5485b13068",
+          "title": "chore(sync): update Kilo model catalog (#11375)",
+          "at": "2026-10-24T17:23:50Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/5c3955c386f8b011f39b2bed3e637f5485b13068"
+        },
+        {
+          "sha": "348c473c73c68e41f7ef882da40b622355fab7e1",
+          "title": "chore(sync): update NanoGPT model catalog (#11374)",
+          "at": "2026-10-24T17:23:32Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/348c473c73c68e41f7ef882da40b622355fab7e1"
+        },
+        {
+          "sha": "71e5bbbfed017b63bf9c1abf8570520263470202",
+          "title": "chore(sync): update Kilo model catalog (#11372)",
+          "at": "2026-10-24T16:26:59Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/71e5bbbfed017b63bf9c1abf8570520263470202"
+        },
+        {
+          "sha": "2aefc97ffaa41db503851d02791cb0783f047579",
+          "title": "chore(sync): update OpenRouter model catalog (#11371)",
+          "at": "2026-10-24T16:26:36Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/2aefc97ffaa41db503851d02791cb0783f047579"
+        },
+        {
+          "sha": "788295d88995ddae2ccbd5ed42cdc03f7de317b9",
+          "title": "chore(sync): update OpenRouter model catalog (#11370)",
+          "at": "2026-10-24T15:24:36Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/788295d88995ddae2ccbd5ed42cdc03f7de317b9"
+        },
+        {
+          "sha": "c09d37bb445ab12acd9f053b7ccfa7e79861a303",
+          "title": "chore(sync): update Kilo model catalog (#11369)",
+          "at": "2026-10-24T15:24:22Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/c09d37bb445ab12acd9f053b7ccfa7e79861a303"
+        },
+        {
+          "sha": "84a114d143988df98554e3dbaf384cb85d041a30",
+          "title": "Merge pull request #11368 from anomalyco/argon-go-swap",
+          "at": "2026-10-24T15:19:18Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/84a114d143988df98554e3dbaf384cb85d041a30"
+        },
+        {
+          "sha": "cb8c050e54680efa715510e065e590740ebae7ca",
+          "title": "feat(opencode-go): add Gemini 4 Argon, deprecate Gemini 4 Argon Contributor",
+          "at": "2026-10-24T15:03:12Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/cb8c050e54680efa715510e065e590740ebae7ca"
+        },
+        {
+          "sha": "d7912660d7e48dbb173254b0f2d0b86a9b0be273",
+          "title": "chore(sync): update Kilo model catalog (#11366)",
+          "at": "2026-10-24T14:25:36Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/d7912660d7e48dbb173254b0f2d0b86a9b0be273"
+        },
+        {
+          "sha": "0e46f60f9d8a9decd76e6cb85a40adaa0abca417",
+          "title": "chore(sync): update Charm Hyper model catalog (#11365)",
+          "at": "2026-10-24T14:25:09Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/0e46f60f9d8a9decd76e6cb85a40adaa0abca417"
+        },
+        {
+          "sha": "b24cb22b3f9b272a4749538541c08dbd68ce4926",
+          "title": "chore(sync): update OpenRouter model catalog (#11367)",
+          "at": "2026-10-24T14:24:54Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/b24cb22b3f9b272a4749538541c08dbd68ce4926"
+        },
+        {
+          "sha": "02089a472f1cdebfe4347cb1808942fe9b18c4da",
+          "title": "chore(sync): update OpenRouter model catalog (#11364)",
+          "at": "2026-10-24T13:25:46Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/02089a472f1cdebfe4347cb1808942fe9b18c4da"
+        },
+        {
+          "sha": "2f5416e989cdcc672e6b440d3a98ec079d3209b2",
+          "title": "chore(sync): update Kilo model catalog (#11363)",
+          "at": "2026-10-24T13:24:21Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/2f5416e989cdcc672e6b440d3a98ec079d3209b2"
+        },
+        {
+          "sha": "1824f6ad0fa6191b608221548d0a3efad97e6f58",
+          "title": "chore(sync): update OpenRouter model catalog (#11362)",
+          "at": "2026-10-24T12:33:39Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/1824f6ad0fa6191b608221548d0a3efad97e6f58"
+        },
+        {
+          "sha": "2bddafd28da4623589bae368fbb12b5d419ace86",
+          "title": "chore(sync): update Kilo model catalog (#11361)",
+          "at": "2026-10-24T12:33:26Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/2bddafd28da4623589bae368fbb12b5d419ace86"
+        },
+        {
+          "sha": "1bf42f94526d396abdc18036c8fcce684a469dbb",
+          "title": "chore(sync): update OpenRouter model catalog (#11359)",
+          "at": "2026-10-24T11:23:44Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/1bf42f94526d396abdc18036c8fcce684a469dbb"
+        },
+        {
+          "sha": "30518d9789400cb4ed115fd91a7458163e266690",
+          "title": "chore(sync): update Kilo model catalog (#11358)",
+          "at": "2026-10-24T11:23:37Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/30518d9789400cb4ed115fd91a7458163e266690"
+        },
+        {
+          "sha": "cfce703ba643d26c0b7cffdd384ddbbb7f96391e",
+          "title": "chore(sync): update Kilo model catalog (#11357)",
+          "at": "2026-10-24T10:25:40Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/cfce703ba643d26c0b7cffdd384ddbbb7f96391e"
+        },
+        {
+          "sha": "0927c8c7666aed23402621e3d540cd279663785b",
+          "title": "chore(sync): update OpenRouter model catalog (#11356)",
+          "at": "2026-10-24T10:25:35Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/0927c8c7666aed23402621e3d540cd279663785b"
+        },
+        {
+          "sha": "1f3fab88efaaa2b771bf7128d0f38111fa7c76d3",
+          "title": "chore(sync): update NanoGPT model catalog (#11352)",
+          "at": "2026-10-24T09:27:16Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/1f3fab88efaaa2b771bf7128d0f38111fa7c76d3"
+        },
+        {
+          "sha": "fe809d526bea86ad2cebb29080c1c07329eb19c7",
+          "title": "chore(sync): update Kilo model catalog (#11354)",
+          "at": "2026-10-24T09:27:04Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/fe809d526bea86ad2cebb29080c1c07329eb19c7"
+        },
+        {
+          "sha": "cb9bb194df3867d1adb1a274fbba046e54705766",
+          "title": "chore(sync): update OpenRouter model catalog (#11355)",
+          "at": "2026-10-24T09:26:53Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/cb9bb194df3867d1adb1a274fbba046e54705766"
+        },
+        {
+          "sha": "21085162f5c302cab7166bb67043425a02cfafca",
+          "title": "chore(sync): update LLM Gateway model catalog (#11353)",
+          "at": "2026-10-24T09:26:40Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/21085162f5c302cab7166bb67043425a02cfafca"
+        },
+        {
+          "sha": "345fe5f87ce20419505a3f42758cec01b54b83d5",
+          "title": "chore(sync): update DevPass (LLM Gateway) model catalog (#11351)",
+          "at": "2026-10-24T09:26:37Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/345fe5f87ce20419505a3f42758cec01b54b83d5"
+        },
+        {
+          "sha": "687a380239863081dc31621d01f1d46b9b4f636b",
+          "title": "chore(sync): update NanoGPT model catalog (#11348)",
+          "at": "2026-10-24T08:32:29Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/687a380239863081dc31621d01f1d46b9b4f636b"
+        },
+        {
+          "sha": "bfe3d5007252ded00ad26478ec476cccbd35ef1b",
+          "title": "chore(sync): update Kilo model catalog (#11350)",
+          "at": "2026-10-24T08:32:26Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/bfe3d5007252ded00ad26478ec476cccbd35ef1b"
+        },
+        {
+          "sha": "096bb4c4328481856990bef00835f31ae1580cd7",
+          "title": "chore(sync): update OpenRouter model catalog (#11349)",
+          "at": "2026-10-24T08:31:38Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/096bb4c4328481856990bef00835f31ae1580cd7"
+        },
+        {
+          "sha": "24570112d8e6b2681161f33a13984f379824f735",
+          "title": "chore(sync): update DevPass (LLM Gateway) model catalog (#11346)",
+          "at": "2026-10-24T07:29:38Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/24570112d8e6b2681161f33a13984f379824f735"
+        },
+        {
+          "sha": "45eea09aaae1cc77b0f4ce29f6849fb480c9bd88",
+          "title": "chore(sync): update LLM Gateway model catalog (#11347)",
+          "at": "2026-10-24T07:27:34Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/45eea09aaae1cc77b0f4ce29f6849fb480c9bd88"
+        },
+        {
+          "sha": "56000cc3cb7b9d2541e7c72ecf311a823bd9fb0a",
+          "title": "chore(sync): update OpenRouter model catalog (#11345)",
+          "at": "2026-10-24T07:26:52Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/56000cc3cb7b9d2541e7c72ecf311a823bd9fb0a"
+        },
+        {
+          "sha": "7802fa7d319c49cdf67333b2880109c658adca5d",
+          "title": "chore(sync): update OpenRouter model catalog (#11344)",
+          "at": "2026-10-24T06:38:34Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/7802fa7d319c49cdf67333b2880109c658adca5d"
+        },
+        {
+          "sha": "ac796a57e29b1223ac3aad648d18bdd28f267bc5",
+          "title": "chore(sync): update Kilo model catalog (#11343)",
+          "at": "2026-10-24T06:38:03Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/ac796a57e29b1223ac3aad648d18bdd28f267bc5"
+        },
+        {
+          "sha": "6cf3f4a58ecfafde297c198aa85ee9c7924d8b4b",
+          "title": "chore(sync): update OpenRouter model catalog (#11339)",
+          "at": "2026-10-24T05:26:59Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/6cf3f4a58ecfafde297c198aa85ee9c7924d8b4b"
+        },
+        {
+          "sha": "d2ac822407e46b5fad029e1c271917eb9f2dd327",
+          "title": "chore(sync): update Kilo model catalog (#11338)",
+          "at": "2026-10-24T05:26:52Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/d2ac822407e46b5fad029e1c271917eb9f2dd327"
+        },
+        {
+          "sha": "0cfc77929924a457de398cfbc406df6386513bd0",
+          "title": "fix(ci): block .git reads for the fixer and reviewer agents (#11331)",
+          "at": "2026-10-24T04:35:34Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/0cfc77929924a457de398cfbc406df6386513bd0"
+        },
+        {
+          "sha": "784e5246374f6035ad7e9ef31b00a3bd111ec0ad",
+          "title": "chore(sync): update OpenRouter model catalog (#11330)",
+          "at": "2026-10-24T04:29:44Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/784e5246374f6035ad7e9ef31b00a3bd111ec0ad"
+        },
+        {
+          "sha": "038569608dba48b2ca6312df3e09ff6a267a9982",
+          "title": "chore(sync): update Kilo model catalog (#11329)",
+          "at": "2026-10-24T04:29:33Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/038569608dba48b2ca6312df3e09ff6a267a9982"
+        },
+        {
+          "sha": "1dec1c9a2138761869b020198686a7be08f27d46",
+          "title": "fix(cloudflare-workers-ai): type Clairic as a v2-only extraction model (#11326)",
+          "at": "2026-10-24T04:13:39Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/1dec1c9a2138761869b020198686a7be08f27d46"
+        },
+        {
+          "sha": "858cb1224f213afa313fabf2150ab8898e31054e",
+          "title": "chore(anthropic): keep the Claude Mythos 5.1 lab file (#11328)",
+          "at": "2026-10-24T03:57:43Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/858cb1224f213afa313fabf2150ab8898e31054e"
+        },
+        {
+          "sha": "a86fa568885cf4b704bb7c597e04f3b1b208122d",
+          "title": "Revert \"fix: Missing model `claude-mythos-5-1`\" (#11327)",
+          "at": "2026-10-24T03:50:24Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/a86fa568885cf4b704bb7c597e04f3b1b208122d"
+        },
+        {
+          "sha": "1ace0bd47700dae44b348331ab11b6fde3020dcf",
+          "title": "chore(sync): update DigitalOcean model catalog (#11268)",
+          "at": "2026-10-24T03:46:18Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/1ace0bd47700dae44b348331ab11b6fde3020dcf"
+        },
+        {
+          "sha": "5e6fc0aedaff6b3fd7742baebfc19a2d68715e6a",
+          "title": "chore(sync): update Requesty model catalog (#11265)",
+          "at": "2026-10-24T03:46:13Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/5e6fc0aedaff6b3fd7742baebfc19a2d68715e6a"
+        },
+        {
+          "sha": "16e8e2175d3d063aecb13e482f0fabbe4c980e05",
+          "title": "fix: Missing model `claude-mythos-5-1` (#11062)",
+          "at": "2026-10-24T03:46:07Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/16e8e2175d3d063aecb13e482f0fabbe4c980e05"
+        },
+        {
+          "sha": "57fe3d6d25e1be5dc8f812481dd42fb46a2b449f",
+          "title": "chore(sync): update OpenRouter model catalog (#11324)",
+          "at": "2026-10-24T03:30:57Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/57fe3d6d25e1be5dc8f812481dd42fb46a2b449f"
+        },
+        {
+          "sha": "06ae0cd65cf17b4a3f608f5a0da543638d431ead",
+          "title": "chore(sync): update NanoGPT model catalog (#11325)",
+          "at": "2026-10-24T03:30:48Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/06ae0cd65cf17b4a3f608f5a0da543638d431ead"
+        },
+        {
+          "sha": "a9dc149daeb293e04bb234d59c6a22790411f255",
+          "title": "fix(v2): image_input for AMD and Ollama Cloud Clef models (#11323)",
+          "at": "2026-10-24T03:17:31Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/a9dc149daeb293e04bb234d59c6a22790411f255"
+        },
+        {
+          "sha": "6bec5e89c732f628bf9e2913953da0d329c8c305",
+          "title": "chore(sync): update Prime Inference model catalog (#11311)",
+          "at": "2026-10-24T03:11:45Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/6bec5e89c732f628bf9e2913953da0d329c8c305"
+        },
+        {
+          "sha": "944355a8279a8d725983ded831b68dbdd6be1385",
+          "title": "feat(validate): reject explicit false mid-conversation flags (#11307)",
+          "at": "2026-10-24T03:11:32Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/944355a8279a8d725983ded831b68dbdd6be1385"
+        },
+        {
+          "sha": "eea9608ac9f84ca4803b8cd5075986ad0db0f376",
+          "title": "feat(v2): add image_input for System One hosts and per-API compatibility checks (#11320)",
+          "at": "2026-10-24T03:10:53Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/eea9608ac9f84ca4803b8cd5075986ad0db0f376"
+        },
+        {
+          "sha": "e1a2c09d4f2d13dddffffddc19b35c7898c44d1b",
+          "title": "chore(v2): drop replay_reasoning; keep v1 interleaved via legacy_interleaved (#11306)",
+          "at": "2026-10-24T03:06:39Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/e1a2c09d4f2d13dddffffddc19b35c7898c44d1b"
+        },
+        {
+          "sha": "7b076e087ae90d2cd9305b1b1db9a671079bc045",
+          "title": "chore(sync): update Kilo model catalog (#11321)",
+          "at": "2026-10-24T02:36:02Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/7b076e087ae90d2cd9305b1b1db9a671079bc045"
+        },
+        {
+          "sha": "ab2c25ccecf57748d4c5a0be7fe6fca9a82979e0",
+          "title": "chore(sync): update OpenRouter model catalog (#11322)",
+          "at": "2026-10-24T02:34:22Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/ab2c25ccecf57748d4c5a0be7fe6fca9a82979e0"
+        },
+        {
+          "sha": "08a15026f1b0a65fd66a55d8681985d4e2200cda",
+          "title": "chore(sync): update Kilo model catalog (#11317)",
+          "at": "2026-10-24T01:34:48Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/08a15026f1b0a65fd66a55d8681985d4e2200cda"
+        },
+        {
+          "sha": "169ef0bd0e12274ae721e5e3fa38c1db142c3338",
+          "title": "chore(sync): update OpenRouter model catalog (#11318)",
+          "at": "2026-10-24T01:34:39Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/169ef0bd0e12274ae721e5e3fa38c1db142c3338"
+        },
+        {
+          "sha": "e3b4ad91c7c4f658b6836c4c812fdec0fc09640a",
+          "title": "chore(sync): update NanoGPT model catalog (#11319)",
+          "at": "2026-10-24T01:34:26Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/e3b4ad91c7c4f658b6836c4c812fdec0fc09640a"
+        },
+        {
+          "sha": "1cbfa01a52f9b2a24f547d45156647c4a0e3a81e",
+          "title": "chore(sync): update OpenRouter model catalog (#11316)",
+          "at": "2026-10-24T00:56:02Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/1cbfa01a52f9b2a24f547d45156647c4a0e3a81e"
+        },
+        {
+          "sha": "0a15c8dd4bca5a2e7cb0cb6b9f9069cbc4f926dc",
+          "title": "chore(sync): update LLM Gateway model catalog (#11312)",
+          "at": "2026-10-24T00:55:59Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/0a15c8dd4bca5a2e7cb0cb6b9f9069cbc4f926dc"
+        },
+        {
+          "sha": "a10ed32dc9f6a5c0262542842dcac3401de9172a",
+          "title": "chore(sync): update Friendli model catalog (#11315)",
+          "at": "2026-10-24T00:55:49Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/a10ed32dc9f6a5c0262542842dcac3401de9172a"
+        },
+        {
+          "sha": "a905b4e3b1d3eebc04f34d9b4a5f49a02d8808e4",
+          "title": "chore(sync): update Kilo model catalog (#11314)",
+          "at": "2026-10-24T00:55:39Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/a905b4e3b1d3eebc04f34d9b4a5f49a02d8808e4"
+        },
+        {
+          "sha": "4d596c62a577547ae65f2de4c0d38a0e2424c833",
+          "title": "chore(sync): update Charm Hyper model catalog (#11313)",
+          "at": "2026-10-24T00:55:33Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/4d596c62a577547ae65f2de4c0d38a0e2424c833"
+        },
+        {
+          "sha": "1bed2ca685f2b386978baf595f3ba2d16b73b67d",
+          "title": "chore(sync): update Kilo model catalog (#11310)",
+          "at": "2026-10-23T23:25:36Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/1bed2ca685f2b386978baf595f3ba2d16b73b67d"
+        },
+        {
+          "sha": "0567cce566a1d2c28a920479e817bbd7c550ba09",
+          "title": "chore(sync): update OpenRouter model catalog (#11308)",
+          "at": "2026-10-23T23:25:20Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/0567cce566a1d2c28a920479e817bbd7c550ba09"
+        },
+        {
+          "sha": "b3c4a053ccde46bf475fb12bdeea3ec61b4056fc",
+          "title": "chore(sync): update Kilo model catalog (#11309)",
+          "at": "2026-10-23T22:26:53Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/b3c4a053ccde46bf475fb12bdeea3ec61b4056fc"
+        },
+        {
+          "sha": "23affac1328e9e28297bef7da17afabceececbd5",
+          "title": "chore(openrouter (1/2), google, cloudflare-workers-ai, hyper, zai): drop explicit false mid-conversation flags (#11299)",
+          "at": "2026-10-23T22:19:10Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/23affac1328e9e28297bef7da17afabceececbd5"
+        },
+        {
+          "sha": "9c068769d88f60f08636f68f918a0f677991b99d",
+          "title": "chore(kilo (2/2), openai, mistral, fireworks-ai): drop explicit false mid-conversation flags (#11298)",
+          "at": "2026-10-23T22:19:05Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/9c068769d88f60f08636f68f918a0f677991b99d"
+        },
+        {
+          "sha": "2b963b9a5d03fea7c187caa473cd544d0033fe92",
+          "title": "chore(ofox): drop explicit false mid-conversation flags (#11305)",
+          "at": "2026-10-23T22:18:27Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/2b963b9a5d03fea7c187caa473cd544d0033fe92"
+        },
+        {
+          "sha": "f7cac037aa40bd135581f826d78590e29d386b68",
+          "title": "chore(edenai (2/2) and 19 smaller providers): drop explicit false mid-conversation flags (#11304)",
+          "at": "2026-10-23T22:18:22Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/f7cac037aa40bd135581f826d78590e29d386b68"
+        },
+        {
+          "sha": "5a42cbd3c2746ada152ad855c703cd3c01fd376a",
+          "title": "chore(edenai (1/2), venice): drop explicit false mid-conversation flags (#11303)",
+          "at": "2026-10-23T22:18:16Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/5a42cbd3c2746ada152ad855c703cd3c01fd376a"
+        },
+        {
+          "sha": "ec603d4c64a1ada8b168db0339fe0153682f2e4f",
+          "title": "chore(requesty, cohere, togetherai, pioneer, chutes, aiand, anthropic): drop explicit false mid-conversation flags (#11302)",
+          "at": "2026-10-23T22:18:12Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/ec603d4c64a1ada8b168db0339fe0153682f2e4f"
+        },
+        {
+          "sha": "1155783a4e6c57fdf699ba7d27cb2744975e01f1",
+          "title": "chore(amazon-bedrock, cortecs, moonshotai-cn): drop explicit false mid-conversation flags (#11301)",
+          "at": "2026-10-23T22:18:06Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/1155783a4e6c57fdf699ba7d27cb2744975e01f1"
+        },
+        {
+          "sha": "b6c7974bcac6d1bdf6df8de24ebc4e492c6f66d6",
+          "title": "chore(openrouter (2/2), wandb, alibaba-token-plan, zhipuai, baseten): drop explicit false mid-conversation flags (#11300)",
+          "at": "2026-10-23T22:18:00Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/b6c7974bcac6d1bdf6df8de24ebc4e492c6f66d6"
+        },
+        {
+          "sha": "c35719f532f22c9e612589b67dca3e31845fa8ee",
+          "title": "chore(merge-gateway, cloudflare-ai-gateway, azure): drop explicit false mid-conversation flags (#11297)",
+          "at": "2026-10-23T22:17:53Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/c35719f532f22c9e612589b67dca3e31845fa8ee"
+        },
+        {
+          "sha": "917fb43fd008bb93658f490edc3094e037d1d7e1",
+          "title": "chore(kilo (1/2), alibaba, deepinfra, inceptron): drop explicit false mid-conversation flags (#11296)",
+          "at": "2026-10-23T22:17:48Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/917fb43fd008bb93658f490edc3094e037d1d7e1"
+        },
+        {
+          "sha": "d2dbe1363e037d2ef793af3fd782e330acef9abc",
+          "title": "chore(llmgateway, digitalocean, databricks): drop explicit false mid-conversation flags (#11295)",
+          "at": "2026-10-23T22:16:44Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/d2dbe1363e037d2ef793af3fd782e330acef9abc"
+        },
+        {
+          "sha": "077197106e5cf9ad8ff4ca5292c1f6cd158881e1",
+          "title": "chore(nano-gpt (3/3), huggingface, deepseek): drop explicit false mid-conversation flags (#11294)",
+          "at": "2026-10-23T22:16:39Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/077197106e5cf9ad8ff4ca5292c1f6cd158881e1"
+        },
+        {
+          "sha": "3362845c06357380d6f03f241cb6d74f2e5f8a6a",
+          "title": "chore(nano-gpt (2/3), alibaba-cn, cerebras): drop explicit false mid-conversation flags (#11293)",
+          "at": "2026-10-23T22:16:34Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/3362845c06357380d6f03f241cb6d74f2e5f8a6a"
+        },
+        {
+          "sha": "68f40d35395a5c6e4aa65c64ba31c39664f5cfdc",
+          "title": "chore(nano-gpt (1/3), novita-ai): drop explicit false mid-conversation flags (#11292)",
+          "at": "2026-10-23T22:16:29Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/68f40d35395a5c6e4aa65c64ba31c39664f5cfdc"
+        },
+        {
+          "sha": "94d86d35483cf304a7928f639c49f268e2885b94",
+          "title": "chore(vercel, google-vertex, reflection): drop explicit false mid-conversation flags (#11291)",
+          "at": "2026-10-23T22:16:23Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/94d86d35483cf304a7928f639c49f268e2885b94"
+        },
+        {
+          "sha": "06add954ceb32a9df68c32b5a28758d7e5c36743",
+          "title": "fix(sync): stop writing false mid-conversation flags (#11290)",
+          "at": "2026-10-23T22:15:50Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/06add954ceb32a9df68c32b5a28758d7e5c36743"
+        },
+        {
+          "sha": "d8fccaabf3e900812a95d80522b19d5e2753a1d0",
+          "title": "feat(opencode): add GPT-Live 1 (#11205)",
+          "at": "2026-10-23T22:03:37Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/d8fccaabf3e900812a95d80522b19d5e2753a1d0"
+        },
+        {
+          "sha": "346c21daa79d5940412c83db39a5c3d2b2f1919a",
+          "title": "fix(deepinfra, baseten): no effort_updates from a top-level reasoning_effort change (#11289)",
+          "at": "2026-10-23T21:53:02Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/346c21daa79d5940412c83db39a5c3d2b2f1919a"
+        },
+        {
+          "sha": "8f293b7152699e13887c96fc55a237fb960e99b4",
+          "title": "fix(alibaba): explicit cache write prices go under explicit (#11288)",
+          "at": "2026-10-23T21:47:19Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/8f293b7152699e13887c96fc55a237fb960e99b4"
+        },
+        {
+          "sha": "e0213ef2698ab9bc16cb280840658df6abcfd7cb",
+          "title": "chore(sync): update Venice model catalog (#11287)",
+          "at": "2026-10-23T21:26:34Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/e0213ef2698ab9bc16cb280840658df6abcfd7cb"
+        },
+        {
+          "sha": "76baa91410899fe0895d167d039e2d5378e1dcda",
+          "title": "chore(sync): update OpenRouter model catalog (#11283)",
+          "at": "2026-10-23T21:26:26Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/76baa91410899fe0895d167d039e2d5378e1dcda"
+        },
+        {
+          "sha": "3fb1133c879772d2c0fe6f52b61bb41860318350",
+          "title": "chore(sync): update Prime Inference model catalog (#11286)",
+          "at": "2026-10-23T21:25:47Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/3fb1133c879772d2c0fe6f52b61bb41860318350"
+        },
+        {
+          "sha": "ecb51c0c679410850ae1df49c2dbf9e4b85daa34",
+          "title": "chore(sync): update Kilo model catalog (#11284)",
+          "at": "2026-10-23T21:25:41Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/ecb51c0c679410850ae1df49c2dbf9e4b85daa34"
+        },
+        {
+          "sha": "fe03751da6a2751ca155b2b5fe70e4f44e095c0d",
+          "title": "chore(sync): update NanoGPT model catalog (#11285)",
+          "at": "2026-10-23T21:25:36Z",
+          "url": "https://github.com/anomalyco/models.dev/commit/fe03751da6a2751ca155b2b5fe70e4f44e095c0d"
+        }
+      ],
+      "headObserved": "5d453ccfbbe3b0fa18fda8831f656c0093344b11",
+      "openPRs": [
+        {
+          "number": 9276,
+          "title": "Add Munito AI and Munito AI (EU)",
+          "url": "https://github.com/anomalyco/models.dev/pull/9276",
+          "state": "open",
+          "draft": false,
+          "head": "512c087a7988de816468a9dbffd273e74dbb8a06",
+          "updatedAt": "2026-10-24T19:22:24Z"
+        },
+        {
+          "number": 11387,
+          "title": "chore(sync): update Cortecs model catalog",
+          "url": "https://github.com/anomalyco/models.dev/pull/11387",
+          "state": "open",
+          "draft": false,
+          "head": "49c9fda795f98bcdc9afe06053653d71d5184381",
+          "updatedAt": "2026-10-24T19:21:05Z"
+        },
+        {
+          "number": 11386,
+          "title": "feat(v2): add a messages image_input for Baseten System One",
+          "url": "https://github.com/anomalyco/models.dev/pull/11386",
+          "state": "open",
+          "draft": false,
+          "head": "e45b8d596ba57a5e66c687789d50f5cdefe4394f",
+          "updatedAt": "2026-10-24T18:51:31Z"
+        },
+        {
+          "number": 11335,
+          "title": "fix(ci): pin opencode and block subagents in the fixer agents",
+          "url": "https://github.com/anomalyco/models.dev/pull/11335",
+          "state": "open",
+          "draft": false,
+          "head": "ebfaa801742149ac12439748b855551065990fcd",
+          "updatedAt": "2026-10-24T18:34:14Z"
+        },
+        {
+          "number": 11332,
+          "title": "fix(ci): run the issue fixer agent without a GitHub token",
+          "url": "https://github.com/anomalyco/models.dev/pull/11332",
+          "state": "open",
+          "draft": false,
+          "head": "832b7bf1e44fbf7783088635e42e95fda44c0c83",
+          "updatedAt": "2026-10-24T18:29:42Z"
+        },
+        {
+          "number": 11334,
+          "title": "fix(ci): run the CI fixer agent without a GitHub token",
+          "url": "https://github.com/anomalyco/models.dev/pull/11334",
+          "state": "open",
+          "draft": false,
+          "head": "eee561df4eaebd7179ab7dd04eca4461c199a23f",
+          "updatedAt": "2026-10-24T18:29:01Z"
+        },
+        {
+          "number": 10667,
+          "title": "feat(providers): add Runcrate provider",
+          "url": "https://github.com/anomalyco/models.dev/pull/10667",
+          "state": "open",
+          "draft": false,
+          "head": "9b80556ddaa7b6e165585c0294fcb6d68cf73f34",
+          "updatedAt": "2026-10-24T18:21:15Z"
+        },
+        {
+          "number": 11380,
+          "title": "Add Kunavo provider (schema 2)",
+          "url": "https://github.com/anomalyco/models.dev/pull/11380",
+          "state": "open",
+          "draft": false,
+          "head": "297ab3aceca86cede121a23efe3e10fe229fcf02",
+          "updatedAt": "2026-10-24T18:16:53Z"
+        },
+        {
+          "number": 11193,
+          "title": "feat(providers): add VoltageGPU",
+          "url": "https://github.com/anomalyco/models.dev/pull/11193",
+          "state": "open",
+          "draft": false,
+          "head": "3b22fb259890f3d113095b2999ab0eacba03f121",
+          "updatedAt": "2026-10-24T17:02:12Z"
+        },
+        {
+          "number": 11373,
+          "title": "feat(abliteration-ai): add abliterated-model-large-flash",
+          "url": "https://github.com/anomalyco/models.dev/pull/11373",
+          "state": "open",
+          "draft": false,
+          "head": "d58e3987ac2eaeaa72e6793cac63b31ddaa95374",
+          "updatedAt": "2026-10-24T16:54:12Z"
+        },
+        {
+          "number": 11360,
+          "title": "feat(nebius): add MiniMax-M3.1-Flash and DeepSeek-V4.1-Flash-1017",
+          "url": "https://github.com/anomalyco/models.dev/pull/11360",
+          "state": "open",
+          "draft": false,
+          "head": "ab0f6d3038abd6cd980eef64c621c9a801be626c",
+          "updatedAt": "2026-10-24T12:45:24Z"
+        },
+        {
+          "number": 10468,
+          "title": "Add Fikra API provider: OpenAI-compatible gateway for open-weight models",
+          "url": "https://github.com/anomalyco/models.dev/pull/10468",
+          "state": "open",
+          "draft": false,
+          "head": "c07d4e9d0766280a2531e91f52fdbaab091fefb2",
+          "updatedAt": "2026-10-24T08:37:40Z"
+        },
+        {
+          "number": 10604,
+          "title": "feat: add DotHoosh provider",
+          "url": "https://github.com/anomalyco/models.dev/pull/10604",
+          "state": "open",
+          "draft": false,
+          "head": "c101375602f7791477ac5486ba23a13063a50ee1",
+          "updatedAt": "2026-10-24T07:59:37Z"
+        },
+        {
+          "number": 10140,
+          "title": "feat(providers): add RuAPI provider",
+          "url": "https://github.com/anomalyco/models.dev/pull/10140",
+          "state": "open",
+          "draft": false,
+          "head": "fa2a1887c2569875f3bcd4269a101ea9abc47875",
+          "updatedAt": "2026-10-24T07:43:10Z"
+        },
+        {
+          "number": 11341,
+          "title": "fix: [missing-model] novita-ai: moonshotai/kimi-k3.1-pro-highspeed",
+          "url": "https://github.com/anomalyco/models.dev/pull/11341",
+          "state": "open",
+          "draft": false,
+          "head": "007a626d74937cc3ac411f9ced8aec47496ed3ef",
+          "updatedAt": "2026-10-24T05:27:39Z"
+        },
+        {
+          "number": 11340,
+          "title": "fix: [missing-model] novita-ai: moonshotai/kimi-k3.1-pro",
+          "url": "https://github.com/anomalyco/models.dev/pull/11340",
+          "state": "open",
+          "draft": false,
+          "head": "46b93742def27af4a0ce8a675d8aea68d6c27f88",
+          "updatedAt": "2026-10-24T05:27:32Z"
+        },
+        {
+          "number": 10818,
+          "title": "feat(decisionmodels): add Decision Models provider with ten decision models",
+          "url": "https://github.com/anomalyco/models.dev/pull/10818",
+          "state": "open",
+          "draft": false,
+          "head": "3b1ab2a267e7ca69a5b88bfc7cd6b55002dafeea",
+          "updatedAt": "2026-10-23T21:21:39Z"
+        },
+        {
+          "number": 11073,
+          "title": "feat(providers): add You.com",
+          "url": "https://github.com/anomalyco/models.dev/pull/11073",
+          "state": "open",
+          "draft": false,
+          "head": "f75fb20ced793ef1b857e92e23532986dd540bb3",
+          "updatedAt": "2026-10-23T21:02:18Z"
+        },
+        {
+          "number": 11269,
+          "title": "feat(providers): add CloudCode.ONE",
+          "url": "https://github.com/anomalyco/models.dev/pull/11269",
+          "state": "open",
+          "draft": false,
+          "head": "5550bc190bb35157ded69f694042bba2742bf71f",
+          "updatedAt": "2026-10-23T19:15:48Z"
+        },
+        {
+          "number": 11270,
+          "title": "feat(providers): add Obscurify.ai",
+          "url": "https://github.com/anomalyco/models.dev/pull/11270",
+          "state": "open",
+          "draft": false,
+          "head": "f30925ce6b9b88f659951668d63b0836cc47f2db",
+          "updatedAt": "2026-10-23T19:07:58Z"
+        },
+        {
+          "number": 9038,
+          "title": "feat: add Synap provider (2 self-hosted Qwen models)",
+          "url": "https://github.com/anomalyco/models.dev/pull/9038",
+          "state": "open",
+          "draft": false,
+          "head": "1d654ca17c9530a91b9fb60d302111ddf8025049",
+          "updatedAt": "2026-10-23T16:31:20Z"
+        },
+        {
+          "number": 11245,
+          "title": "feat(tensorx): add API sync for the TensorX provider",
+          "url": "https://github.com/anomalyco/models.dev/pull/11245",
+          "state": "open",
+          "draft": false,
+          "head": "5edeb75f2e1d8998eb7e8ff0fb9cdddf2ba89011",
+          "updatedAt": "2026-10-23T16:27:19Z"
+        },
+        {
+          "number": 11198,
+          "title": "crowllm: full catalog (166 ids) - follow-up to #9000",
+          "url": "https://github.com/anomalyco/models.dev/pull/11198",
+          "state": "open",
+          "draft": true,
+          "head": "4b4eb77ac8a7387345465b886bd43c160f94e99f",
+          "updatedAt": "2026-10-23T12:52:23Z"
+        },
+        {
+          "number": 4626,
+          "title": "feat(saygm): add saygm provider",
+          "url": "https://github.com/anomalyco/models.dev/pull/4626",
+          "state": "open",
+          "draft": false,
+          "head": "39828c40c5fb752a8a42905dc48139de5198cf48",
+          "updatedAt": "2026-10-23T12:12:57Z"
+        },
+        {
+          "number": 9000,
+          "title": "feat(crowllm): add CrowLLM as a provider",
+          "url": "https://github.com/anomalyco/models.dev/pull/9000",
+          "state": "open",
+          "draft": false,
+          "head": "6248d9c85f604e3817c1c268986378e01353b843",
+          "updatedAt": "2026-10-23T11:59:51Z"
+        },
+        {
+          "number": 10633,
+          "title": "feat(verathos): add Verathos provider with four decision models",
+          "url": "https://github.com/anomalyco/models.dev/pull/10633",
+          "state": "open",
+          "draft": false,
+          "head": "1ec4b9b48dd52a5905a9e29e072ca31a20d279fb",
+          "updatedAt": "2026-10-23T09:58:03Z"
+        },
+        {
+          "number": 10666,
+          "title": "feat(verathos): add Verathos sync module",
+          "url": "https://github.com/anomalyco/models.dev/pull/10666",
+          "state": "open",
+          "draft": true,
+          "head": "c0a744e335c857b6de0adf643f5da16034f9e211",
+          "updatedAt": "2026-10-23T09:56:03Z"
+        },
+        {
+          "number": 10825,
+          "title": "feat(green-compute): add Green Compute provider with two Qwen models",
+          "url": "https://github.com/anomalyco/models.dev/pull/10825",
+          "state": "open",
+          "draft": true,
+          "head": "d6eefea7810dfb3fe2db801ebfa3ca48485fd256",
+          "updatedAt": "2026-10-23T09:56:00Z"
+        },
+        {
+          "number": 10443,
+          "title": "feat: add AI Stupid Level provider",
+          "url": "https://github.com/anomalyco/models.dev/pull/10443",
+          "state": "open",
+          "draft": false,
+          "head": "4e5182ed44457d1676f89f532a63d7acfa854437",
+          "updatedAt": "2026-10-23T09:55:20Z"
+        },
+        {
+          "number": 10219,
+          "title": "Add AICraft provider",
+          "url": "https://github.com/anomalyco/models.dev/pull/10219",
+          "state": "open",
+          "draft": false,
+          "head": "aa7c2a28a94186da71b62460a6c9d177de95cdfa",
+          "updatedAt": "2026-10-23T09:09:20Z"
+        },
+        {
+          "number": 11159,
+          "title": "feat: add Zro provider",
+          "url": "https://github.com/anomalyco/models.dev/pull/11159",
+          "state": "open",
+          "draft": false,
+          "head": "0378e685ad868b7426df6c0e545e718a5d2dd607",
+          "updatedAt": "2026-10-23T07:46:20Z"
+        },
+        {
+          "number": 9364,
+          "title": "feat(providers): add XHuoAPI",
+          "url": "https://github.com/anomalyco/models.dev/pull/9364",
+          "state": "open",
+          "draft": false,
+          "head": "dd1c94d983f20b93e49414825dc82a2ab5804a9d",
+          "updatedAt": "2026-10-23T06:13:15Z"
+        },
+        {
+          "number": 9429,
+          "title": "feat(sync): add Neuralwatt catalog sync",
+          "url": "https://github.com/anomalyco/models.dev/pull/9429",
+          "state": "open",
+          "draft": false,
+          "head": "dd8e4dbb47b32b150b2d27e8505b8a06b529afc2",
+          "updatedAt": "2026-10-23T06:07:02Z"
+        },
+        {
+          "number": 9215,
+          "title": "Add fastrouter models",
+          "url": "https://github.com/anomalyco/models.dev/pull/9215",
+          "state": "open",
+          "draft": true,
+          "head": "c5be9ace30be8b5bda56cb59cf3f4bc3d37f494d",
+          "updatedAt": "2026-10-23T05:27:00Z"
+        },
+        {
+          "number": 11031,
+          "title": "feat(providers): add SOKKAN Router",
+          "url": "https://github.com/anomalyco/models.dev/pull/11031",
+          "state": "open",
+          "draft": false,
+          "head": "ec60ec802cbc7a774c01e1ff0838b142a9e31893",
+          "updatedAt": "2026-10-23T04:44:41Z"
+        },
+        {
+          "number": 10954,
+          "title": "feat(providers): add InferAll",
+          "url": "https://github.com/anomalyco/models.dev/pull/10954",
+          "state": "open",
+          "draft": false,
+          "head": "dd0c71c780ebb36d12dbbaa3436606ea77dc6dd2",
+          "updatedAt": "2026-10-23T03:54:10Z"
+        },
+        {
+          "number": 11099,
+          "title": "Add humans& (Ampersand v0.1)",
+          "url": "https://github.com/anomalyco/models.dev/pull/11099",
+          "state": "open",
+          "draft": false,
+          "head": "f720e4615aaadea780d2379dcf3f3733d3a03d11",
+          "updatedAt": "2026-10-23T03:04:55Z"
+        },
+        {
+          "number": 10069,
+          "title": "feat(topxai): add TopxAI provider",
+          "url": "https://github.com/anomalyco/models.dev/pull/10069",
+          "state": "open",
+          "draft": false,
+          "head": "cfe76817eba1bbfc34b3c324307817faca3e8f9c",
+          "updatedAt": "2026-10-23T03:16:40Z"
+        },
+        {
+          "number": 8631,
+          "title": "feat(flexai): add FlexAI provider",
+          "url": "https://github.com/anomalyco/models.dev/pull/8631",
+          "state": "open",
+          "draft": false,
+          "head": "72f96fbd16fc4b3b6ecb7444d84615a61a3d9589",
+          "updatedAt": "2026-10-23T02:07:38Z"
+        },
+        {
+          "number": 11020,
+          "title": "feat(iteracompute): add 19 chat models and refresh catalog",
+          "url": "https://github.com/anomalyco/models.dev/pull/11020",
+          "state": "open",
+          "draft": false,
+          "head": "d59c68e4b1f6ed8a573657cfe3092b0099029729",
+          "updatedAt": "2026-10-23T01:53:23Z"
+        },
+        {
+          "number": 8641,
+          "title": "feat(kenari): rebase onto schema 2 and add the 51 ids kenari serves today",
+          "url": "https://github.com/anomalyco/models.dev/pull/8641",
+          "state": "open",
+          "draft": false,
+          "head": "d0f16fb9a3a507eafe62a11b223633ebf4264788",
+          "updatedAt": "2026-10-23T01:18:26Z"
+        },
+        {
+          "number": 11081,
+          "title": "feat(hanzo): add Hanzo provider and Enso / Zen models",
+          "url": "https://github.com/anomalyco/models.dev/pull/11081",
+          "state": "open",
+          "draft": false,
+          "head": "3d6a41977172c0b65012fcbad93fa876e0749c36",
+          "updatedAt": "2026-10-22T22:52:51Z"
+        },
+        {
+          "number": 10019,
+          "title": "feat: add recent open-weight lab models (Oct 2026 batch) + small lab additions",
+          "url": "https://github.com/anomalyco/models.dev/pull/10019",
+          "state": "open",
+          "draft": false,
+          "head": "71b7a5e0246aae82ac41cd0f9912d718e35dac74",
+          "updatedAt": "2026-10-22T22:13:50Z"
+        },
+        {
+          "number": 10906,
+          "title": "feat: add GraphN provider",
+          "url": "https://github.com/anomalyco/models.dev/pull/10906",
+          "state": "open",
+          "draft": false,
+          "head": "2d043b009d3d954bd89727f9d0e15277ecbc2680",
+          "updatedAt": "2026-10-22T21:24:13Z"
+        },
+        {
+          "number": 10076,
+          "title": "feat(models): add canonical Respan Span-01 and Span-02",
+          "url": "https://github.com/anomalyco/models.dev/pull/10076",
+          "state": "open",
+          "draft": false,
+          "head": "91906ee0db596208213fbe12662df8d06715026f",
+          "updatedAt": "2026-10-22T10:17:08Z"
+        },
+        {
+          "number": 8894,
+          "title": "Add Hostinger Router provider",
+          "url": "https://github.com/anomalyco/models.dev/pull/8894",
+          "state": "open",
+          "draft": false,
+          "head": "c155bd504e94aa099a5e7bb95ac0678d3df31cbb",
+          "updatedAt": "2026-10-22T09:01:24Z"
+        },
+        {
+          "number": 10812,
+          "title": "feat: add lyceum provider",
+          "url": "https://github.com/anomalyco/models.dev/pull/10812",
+          "state": "open",
+          "draft": false,
+          "head": "b80a87ae4e5760952b6fad9155915de0d2e4379e",
+          "updatedAt": "2026-10-22T07:53:36Z"
+        },
+        {
+          "number": 10999,
+          "title": "feat(scx-ai): add GLM-5.2 Turbo, GLM-5.3, Kimi-K2.7-Code and Kimi-K3; update USD pricing",
+          "url": "https://github.com/anomalyco/models.dev/pull/10999",
+          "state": "open",
+          "draft": false,
+          "head": "a1c8e6d1dc8b03dd87e48ff95fa69600a00ed940",
+          "updatedAt": "2026-10-22T07:02:21Z"
+        },
+        {
+          "number": 10995,
+          "title": "feat(sync): add LLMTR catalog sync",
+          "url": "https://github.com/anomalyco/models.dev/pull/10995",
+          "state": "open",
+          "draft": false,
+          "head": "cce8268f1630174fea99f1cb265a66093aae172e",
+          "updatedAt": "2026-10-22T06:02:08Z"
+        },
+        {
+          "number": 10990,
+          "title": "feat(sync): add SiliconFlow and SiliconFlow (China) availability sync",
+          "url": "https://github.com/anomalyco/models.dev/pull/10990",
+          "state": "open",
+          "draft": false,
+          "head": "0cbe297057f4651863011081e765d068f48c61cb",
+          "updatedAt": "2026-10-22T04:56:24Z"
+        }
+      ],
+      "counts": {
+        "deltaCommits": 97,
+        "openPRSample": 50,
+        "openIssueSample": 25
+      }
+    },
+    {
+      "repository": "nightly-labs/openbot",
+      "defaultBranch": "main",
+      "issues": [
+        {
+          "number": 3050,
+          "title": "[Feature]: Add \"Archive\" option for agents",
+          "url": "https://github.com/nightly-labs/openbot/issues/3050",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 1907,
+          "title": "Raise or make configurable the 100 agent cap for local and private-server installs",
+          "url": "https://github.com/nightly-labs/openbot/issues/1907",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 2855,
+          "title": "[Feature]: Apple Watch companion: agent status and approvals from the watch",
+          "url": "https://github.com/nightly-labs/openbot/issues/2855",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 3048,
+          "title": "Bitwarden on this computer disconnects after a restart or an update",
+          "url": "https://github.com/nightly-labs/openbot/issues/3048",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 2963,
+          "title": "[Bug]: Grok usage-limit banner appears in every chat and does not clear on its own",
+          "url": "https://github.com/nightly-labs/openbot/issues/2963",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 3041,
+          "title": "[Bug]: After a channel lead timeout, the Coordinator assigns every later independent task to the one busy member",
+          "url": "https://github.com/nightly-labs/openbot/issues/3041",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 3046,
+          "title": "[Feature]: Add a Shopify MCP server",
+          "url": "https://github.com/nightly-labs/openbot/issues/3046",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 2463,
+          "title": "[Feature]: Option to turn off built-in agent memory (injection and remember tools)",
+          "url": "https://github.com/nightly-labs/openbot/issues/2463",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 3044,
+          "title": "[Feature]: Let chat bubbles use the full width on Android and phone apps",
+          "url": "https://github.com/nightly-labs/openbot/issues/3044",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 2499,
+          "title": "[Feature]: Opt-in learning from completed tasks into agent memory, inspired by Hermes",
+          "url": "https://github.com/nightly-labs/openbot/issues/2499",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 3043,
+          "title": "[Feature]: Show a working indicator on a busy channel in the left sidebar",
+          "url": "https://github.com/nightly-labs/openbot/issues/3043",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 2970,
+          "title": "[Bug]: ChatGPT/Codex image generation fails with 404 Route not found and a failed 1024 image card",
+          "url": "https://github.com/nightly-labs/openbot/issues/2970",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 3042,
+          "title": "[Feature]: Small model mark next to the bot avatar, short model+effort in lists, hover tooltip with model, effort, skills, MCP",
+          "url": "https://github.com/nightly-labs/openbot/issues/3042",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 3040,
+          "title": "[Feature]: Choose a specific browser for links opened by OpenBot",
+          "url": "https://github.com/nightly-labs/openbot/issues/3040",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 3039,
+          "title": "[Feature]: Allow creating and managing agent channels directly from chat",
+          "url": "https://github.com/nightly-labs/openbot/issues/3039",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 3034,
+          "title": "[Bug]: Routines canvas marks Coordinator Done and omits Researcher while a delegated run is still open",
+          "url": "https://github.com/nightly-labs/openbot/issues/3034",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 2871,
+          "title": "Live per-step run status for all providers, and provider/model on web and mobile errors",
+          "url": "https://github.com/nightly-labs/openbot/issues/2871",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 2775,
+          "title": "[Feature]: Supported Hindsight integration for automatic retain and recall in signed desktop builds",
+          "url": "https://github.com/nightly-labs/openbot/issues/2775",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 2214,
+          "title": "[Bug]: A turn that fails before any output stays running forever and blocks the agent's queue (survives restart)",
+          "url": "https://github.com/nightly-labs/openbot/issues/2214",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 3014,
+          "title": "[Feature]: Setting to send only OpenBot's runtime protocol, without the built-in behavior and style instructions",
+          "url": "https://github.com/nightly-labs/openbot/issues/3014",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 2991,
+          "title": "MCP setup sign-in card is not shown in the mobile app (desktop only)",
+          "url": "https://github.com/nightly-labs/openbot/issues/2991",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 3009,
+          "title": "Mobile: long press should open message quick actions; emoji reactions render as black glyphs",
+          "url": "https://github.com/nightly-labs/openbot/issues/3009",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 2982,
+          "title": "[Bug]: Grok grok-4.6 interactive turn ends with \"stopped responding\" (turnStalled) while the agent is working",
+          "url": "https://github.com/nightly-labs/openbot/issues/2982",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 2981,
+          "title": "OpenBot agent stops with an error after adding an OpenCode API key; restart does not fix it",
+          "url": "https://github.com/nightly-labs/openbot/issues/2981",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        },
+        {
+          "number": 2819,
+          "title": "Channel routing fails after update: messages reach only one agent unless routed manually",
+          "url": "https://github.com/nightly-labs/openbot/issues/2819",
+          "state": null,
+          "created_at": null,
+          "updated_at": null
+        }
+      ],
+      "commits": [
+        {
+          "sha": "702ec4d371921c4ce61126faf730180ab3cfabd9",
+          "title": "Add a Vault for saved logins, cards and contact info (#3047)",
+          "at": "2026-10-24T19:08:42Z",
+          "url": "https://github.com/nightly-labs/openbot/commit/702ec4d371921c4ce61126faf730180ab3cfabd9"
+        },
+        {
+          "sha": "7ff90ccd1c096c7f6cebb784a834e1278f838199",
+          "title": "Show the cards above the message box as one card (#3045)",
+          "at": "2026-10-24T17:02:33Z",
+          "url": "https://github.com/nightly-labs/openbot/commit/7ff90ccd1c096c7f6cebb784a834e1278f838199"
+        },
+        {
+          "sha": "05efdcfc0d6494d149cdc3a0d563b8a9717e8826",
+          "title": "Keep the notification stack open under the pointer (#3038)",
+          "at": "2026-10-24T15:27:33Z",
+          "url": "https://github.com/nightly-labs/openbot/commit/05efdcfc0d6494d149cdc3a0d563b8a9717e8826"
+        },
+        {
+          "sha": "4eb15224f68aba12486cdf7aa316cfd1b46805f1",
+          "title": "Show a new provider account in the page rail when its sign-in ends (#3037)",
+          "at": "2026-10-24T15:25:31Z",
+          "url": "https://github.com/nightly-labs/openbot/commit/4eb15224f68aba12486cdf7aa316cfd1b46805f1"
+        },
+        {
+          "sha": "e83cd6d75a422b71fb382e7211f07dc86235c1a6",
+          "title": "Keep the Claude prompt cache and send channel members only unread messages (#3035)",
+          "at": "2026-10-24T15:17:33Z",
+          "url": "https://github.com/nightly-labs/openbot/commit/e83cd6d75a422b71fb382e7211f07dc86235c1a6"
+        },
+        {
+          "sha": "387606e56aa2fee6eb9bc1d2e144c9ec9aa9e18b",
+          "title": "Show plan usage for custom ACP agents (#3036)",
+          "at": "2026-10-24T15:08:24Z",
+          "url": "https://github.com/nightly-labs/openbot/commit/387606e56aa2fee6eb9bc1d2e144c9ec9aa9e18b"
+        },
+        {
+          "sha": "60d1775a90e75c7e51f35e0d88dd248e0ca0d1a3",
+          "title": "Add the Korean interface language (#3032)",
+          "at": "2026-10-24T14:38:04Z",
+          "url": "https://github.com/nightly-labs/openbot/commit/60d1775a90e75c7e51f35e0d88dd248e0ca0d1a3"
+        },
+        {
+          "sha": "01c321f1424fa6883a06a4c7d4059a59e4279ea3",
+          "title": "Let user instruction files set agent style and delegation (#3033)",
+          "at": "2026-10-24T14:33:06Z",
+          "url": "https://github.com/nightly-labs/openbot/commit/01c321f1424fa6883a06a4c7d4059a59e4279ea3"
+        },
+        {
+          "sha": "75a5f18d5727a88e21bbf403f3a9d92705e31ebb",
+          "title": "Show the names of working agents in the channel activity row (#3027)",
+          "at": "2026-10-24T14:13:03Z",
+          "url": "https://github.com/nightly-labs/openbot/commit/75a5f18d5727a88e21bbf403f3a9d92705e31ebb"
+        },
+        {
+          "sha": "5be8f9b79f69def48fd555b1b70f894040a5de08",
+          "title": "Show the Claude and GPT models of Antigravity in the Gemini menu (#3026)",
+          "at": "2026-10-24T14:11:11Z",
+          "url": "https://github.com/nightly-labs/openbot/commit/5be8f9b79f69def48fd555b1b70f894040a5de08"
+        },
+        {
+          "sha": "26749a3b17d68a9818422a997e609b6041697833",
+          "title": "Keep the Claude prompt cache for 1 hour and set it on the Claude provider page (#3031)",
+          "at": "2026-10-24T14:10:58Z",
+          "url": "https://github.com/nightly-labs/openbot/commit/26749a3b17d68a9818422a997e609b6041697833"
+        },
+        {
+          "sha": "c2bb7d92bc6ce833b4411733c2ab444f576e52d9",
+          "title": "Allow mixed-case usernames in server setup and update scripts (#3029)",
+          "at": "2026-10-24T14:01:22Z",
+          "url": "https://github.com/nightly-labs/openbot/commit/c2bb7d92bc6ce833b4411733c2ab444f576e52d9"
+        },
+        {
+          "sha": "c14dc7dd799dd40d730cdd399d505cf91ac21378",
+          "title": "Rebuild the home page app demo with a mixed-provider agent team (#3024)",
+          "at": "2026-10-24T13:25:12Z",
+          "url": "https://github.com/nightly-labs/openbot/commit/c14dc7dd799dd40d730cdd399d505cf91ac21378"
+        },
+        {
+          "sha": "8519c1a011754f530debf92a599d778f81a9ed59",
+          "title": "Remove the presence dot from person avatars (#3025)",
+          "at": "2026-10-24T13:16:05Z",
+          "url": "https://github.com/nightly-labs/openbot/commit/8519c1a011754f530debf92a599d778f81a9ed59"
+        },
+        {
+          "sha": "33694cfa874a7ad60a7864d483fd1d7dc5f62660",
+          "title": "Let one server have a custom member limit (#3023)",
+          "at": "2026-10-24T12:54:25Z",
+          "url": "https://github.com/nightly-labs/openbot/commit/33694cfa874a7ad60a7864d483fd1d7dc5f62660"
+        },
+        {
+          "sha": "7a66e837d65bc4dfbf2b4251906bd099b00ae8ea",
+          "title": "Add Settings › Agents with defaults for the agents on this computer (#3021)",
+          "at": "2026-10-24T11:30:23Z",
+          "url": "https://github.com/nightly-labs/openbot/commit/7a66e837d65bc4dfbf2b4251906bd099b00ae8ea"
+        },
+        {
+          "sha": "38579330d87b335e42ab6eeefe5537e2e02f3299",
+          "title": "Steer a running Grok turn with x.ai/interject (#3020)",
+          "at": "2026-10-24T11:18:11Z",
+          "url": "https://github.com/nightly-labs/openbot/commit/38579330d87b335e42ab6eeefe5537e2e02f3299"
+        },
+        {
+          "sha": "f871232ad7dfd164b14e28298b4fd7e2898ab815",
+          "title": "Show a toast when a provider in use cannot turn off (#3019)",
+          "at": "2026-10-24T11:14:10Z",
+          "url": "https://github.com/nightly-labs/openbot/commit/f871232ad7dfd164b14e28298b4fd7e2898ab815"
+        },
+        {
+          "sha": "44e7549844d80467064bd28f606fa3363b27aec3",
+          "title": "Let Gemini hold more than one Google account (#3015)",
+          "at": "2026-10-24T10:38:57Z",
+          "url": "https://github.com/nightly-labs/openbot/commit/44e7549844d80467064bd28f606fa3363b27aec3"
+        },
+        {
+          "sha": "dcfcb5d8e251c99cf2f3155fbb1e6f391df77d66",
+          "title": "ci(release): keep the Nix PR step going when a run list fails (#3018)",
+          "at": "2026-10-24T10:33:23Z",
+          "url": "https://github.com/nightly-labs/openbot/commit/dcfcb5d8e251c99cf2f3155fbb1e6f391df77d66"
+        },
+        {
+          "sha": "7e3262b3ce446916b7de6923c26d52cf60b7abb5",
+          "title": "Show the text of a message between agents in the chat (#3016)",
+          "at": "2026-10-24T10:26:06Z",
+          "url": "https://github.com/nightly-labs/openbot/commit/7e3262b3ce446916b7de6923c26d52cf60b7abb5"
+        },
+        {
+          "sha": "8c1e24aa1ac7361aabf65e8cad263c028974dc6e",
+          "title": "Center the chat in a 1440 px column on very wide windows (#3017)",
+          "at": "2026-10-24T10:24:28Z",
+          "url": "https://github.com/nightly-labs/openbot/commit/8c1e24aa1ac7361aabf65e8cad263c028974dc6e"
+        },
+        {
+          "sha": "fc542f1098254989aa631b27de9d96ef7c001929",
+          "title": "ci(release): merge the Nix sources PR when its checks pass (#3011)",
+          "at": "2026-10-24T10:12:45Z",
+          "url": "https://github.com/nightly-labs/openbot/commit/fc542f1098254989aa631b27de9d96ef7c001929"
+        },
+        {
+          "sha": "6471f314aa4d52b404fcb024adf087ee9334ec7e",
+          "title": "Open a chat in a window of its own (#3012)",
+          "at": "2026-10-24T10:07:42Z",
+          "url": "https://github.com/nightly-labs/openbot/commit/6471f314aa4d52b404fcb024adf087ee9334ec7e"
+        },
+        {
+          "sha": "be33f411e08abfe3b38074a56250aa2b8961959a",
+          "title": "Count each Gemini turn's tokens once (#3013)",
+          "at": "2026-10-24T09:55:47Z",
+          "url": "https://github.com/nightly-labs/openbot/commit/be33f411e08abfe3b38074a56250aa2b8961959a"
+        },
+        {
+          "sha": "d234b7651b167af2863857137a28b5ed56f0fbbf",
+          "title": "Show when an agent that was asked waits for the user (#3010)",
+          "at": "2026-10-24T09:43:35Z",
+          "url": "https://github.com/nightly-labs/openbot/commit/d234b7651b167af2863857137a28b5ed56f0fbbf"
+        },
+        {
+          "sha": "5fa1c82d7082dd8ccf5ec7c56de809464c324413",
+          "title": "build(nix): install OpenBot 0.49.0 (#3008)",
+          "at": "2026-10-24T09:41:18Z",
+          "url": "https://github.com/nightly-labs/openbot/commit/5fa1c82d7082dd8ccf5ec7c56de809464c324413"
+        },
+        {
+          "sha": "d094c66e65283804a7c4f8b67faa729751c938d9",
+          "title": "Show a green Connected button on a suggested app after you connect it (#3007)",
+          "at": "2026-10-24T09:29:56Z",
+          "url": "https://github.com/nightly-labs/openbot/commit/d094c66e65283804a7c4f8b67faa729751c938d9"
+        },
+        {
+          "sha": "117691d2122ff4b3f858e3f6a2c6324472ae6e05",
+          "title": "Relay the sign-in of a second provider account to the client (#3005)",
+          "at": "2026-10-24T09:10:02Z",
+          "url": "https://github.com/nightly-labs/openbot/commit/117691d2122ff4b3f858e3f6a2c6324472ae6e05"
+        },
+        {
+          "sha": "e9daba5176ba6c1117f9fff775f1657e8061350d",
+          "title": "Show when an agent waits for its provider (#3004)",
+          "at": "2026-10-24T09:09:24Z",
+          "url": "https://github.com/nightly-labs/openbot/commit/e9daba5176ba6c1117f9fff775f1657e8061350d"
+        },
+        {
+          "sha": "0c1c544134f291700c18974efdd24cf79511b9ff",
+          "title": "Show Grok's reason when a turn fails after it used tokens (#3003)",
+          "at": "2026-10-24T08:57:17Z",
+          "url": "https://github.com/nightly-labs/openbot/commit/0c1c544134f291700c18974efdd24cf79511b9ff"
+        },
+        {
+          "sha": "65f1f8000924b171c07422d88956b7d7a5596135",
+          "title": "Add the last two fixes to the 0.49.0 notes (#3002)",
+          "at": "2026-10-24T08:55:36Z",
+          "url": "https://github.com/nightly-labs/openbot/commit/65f1f8000924b171c07422d88956b7d7a5596135"
+        },
+        {
+          "sha": "a95bd029e4e41980852b36d9a62a15aa5e8623c7",
+          "title": "Show a storage card in the sidebar when the disk is almost full (#3000)",
+          "at": "2026-10-24T08:55:05Z",
+          "url": "https://github.com/nightly-labs/openbot/commit/a95bd029e4e41980852b36d9a62a15aa5e8623c7"
+        },
+        {
+          "sha": "aba75be0f68d067f1e75044bb0828a3fb68e7294",
+          "title": "Make the Linux remote desktop runtime start on Ubuntu 26.04 (#3001)",
+          "at": "2026-10-24T08:53:14Z",
+          "url": "https://github.com/nightly-labs/openbot/commit/aba75be0f68d067f1e75044bb0828a3fb68e7294"
+        },
+        {
+          "sha": "95a77efe81f0ae8dab9cc45c9be4800b7831589f",
+          "title": "Continue a channel request when a lead is set, and name the lead (#2999)",
+          "at": "2026-10-24T08:49:27Z",
+          "url": "https://github.com/nightly-labs/openbot/commit/95a77efe81f0ae8dab9cc45c9be4800b7831589f"
+        },
+        {
+          "sha": "bcfb127cc3e1a05e2b7c1f7a01388b59cc9a3a53",
+          "title": "Prepare OpenBot v0.49.0 (#2996)",
+          "at": "2026-10-24T08:49:15Z",
+          "url": "https://github.com/nightly-labs/openbot/commit/bcfb127cc3e1a05e2b7c1f7a01388b59cc9a3a53"
+        },
+        {
+          "sha": "7d5b6837df10bbc3e96d7b80c026cc93230cf8e8",
+          "title": "Open the browser takeover page from a channel (#2998)",
+          "at": "2026-10-24T08:47:07Z",
+          "url": "https://github.com/nightly-labs/openbot/commit/7d5b6837df10bbc3e96d7b80c026cc93230cf8e8"
+        },
+        {
+          "sha": "0b4e0103fc8051cb886e48cdaec7acf918a5478e",
+          "title": "Replace a stale relayed peer in seconds after a return to the foreground (#2994)",
+          "at": "2026-10-24T08:45:16Z",
+          "url": "https://github.com/nightly-labs/openbot/commit/0b4e0103fc8051cb886e48cdaec7acf918a5478e"
+        },
+        {
+          "sha": "6a2f3bf4eb8cf6aa02590adcda36851c7a34feab",
+          "title": "Switch to a backup model when a provider is overloaded or down (#2997)",
+          "at": "2026-10-24T08:45:03Z",
+          "url": "https://github.com/nightly-labs/openbot/commit/6a2f3bf4eb8cf6aa02590adcda36851c7a34feab"
+        },
+        {
+          "sha": "5e1945a794f6846ae8bcdc69a9a9a396d5916ea1",
+          "title": "Add a setting that keeps this computer awake for routines (#2995)",
+          "at": "2026-10-24T08:39:18Z",
+          "url": "https://github.com/nightly-labs/openbot/commit/5e1945a794f6846ae8bcdc69a9a9a396d5916ea1"
+        },
+        {
+          "sha": "e87113cd8bfe0cc20dec1a29d45e0bf775575706",
+          "title": "Keep the Gemini sign-in in a file so Workspace only can use it (#2993)",
+          "at": "2026-10-24T08:25:01Z",
+          "url": "https://github.com/nightly-labs/openbot/commit/e87113cd8bfe0cc20dec1a29d45e0bf775575706"
+        },
+        {
+          "sha": "51dc391589ea9c319c1bc419114064ae9165da9f",
+          "title": "Make stories and prototypes start from the real app (#2992)",
+          "at": "2026-10-24T08:10:21Z",
+          "url": "https://github.com/nightly-labs/openbot/commit/51dc391589ea9c319c1bc419114064ae9165da9f"
+        },
+        {
+          "sha": "8482c8408992eaa042108ef351ab33e0bd1ce7c7",
+          "title": "Add Back and Forward arrows for chats in the sidebar top bar (#2990)",
+          "at": "2026-10-24T08:04:47Z",
+          "url": "https://github.com/nightly-labs/openbot/commit/8482c8408992eaa042108ef351ab33e0bd1ce7c7"
+        }
+      ],
+      "headObserved": "702ec4d371921c4ce61126faf730180ab3cfabd9",
+      "openPRs": [
+        {
+          "number": 3051,
+          "title": "Bump the compatible-updates group across 1 directory with 60 updates",
+          "url": "https://github.com/nightly-labs/openbot/pull/3051",
+          "state": "open",
+          "draft": false,
+          "head": "69570f93bced9031419d7bf1b92ecef785ccd395",
+          "updatedAt": "2026-10-24T19:21:13Z"
+        },
+        {
+          "number": 3049,
+          "title": "Keep a Bitwarden session key across a restart",
+          "url": "https://github.com/nightly-labs/openbot/pull/3049",
+          "state": "open",
+          "draft": false,
+          "head": "044c14a6f5cd3d2b5ff994d43b5eee1092c80eb5",
+          "updatedAt": "2026-10-24T18:21:26Z"
+        },
+        {
+          "number": 3022,
+          "title": "Let agents use iPhone Calendar, Reminders, Contacts and Location",
+          "url": "https://github.com/nightly-labs/openbot/pull/3022",
+          "state": "open",
+          "draft": false,
+          "head": "9e04400bb5e44976e773a35c3a8cef7936ecafeb",
+          "updatedAt": "2026-10-24T13:27:13Z"
+        },
+        {
+          "number": 2947,
+          "title": "Add the Pricing page and sell its license prices",
+          "url": "https://github.com/nightly-labs/openbot/pull/2947",
+          "state": "open",
+          "draft": false,
+          "head": "53255ae6ca4b4f65f4eda2567bcd4c1b8d7feeaa",
+          "updatedAt": "2026-10-23T18:37:24Z"
+        },
+        {
+          "number": 2948,
+          "title": "Make chats and the sidebar faster on Android",
+          "url": "https://github.com/nightly-labs/openbot/pull/2948",
+          "state": "open",
+          "draft": false,
+          "head": "5d75ad58e68dca125aa075a315d42e197265c25b",
+          "updatedAt": "2026-10-23T17:12:34Z"
+        },
+        {
+          "number": 1933,
+          "title": "Fix macOS Sunshine pairing crash by disabling its system tray",
+          "url": "https://github.com/nightly-labs/openbot/pull/1933",
+          "state": "open",
+          "draft": false,
+          "head": "0f7497284fe3335f08037c982c50b0b26fc9afaa",
+          "updatedAt": "2026-10-23T09:44:36Z"
+        },
+        {
+          "number": 2877,
+          "title": "Support Ubuntu 26.04 LTS: docs and Linux remote desktop runtime",
+          "url": "https://github.com/nightly-labs/openbot/pull/2877",
+          "state": "open",
+          "draft": false,
+          "head": "56a4f7dff92b4b8b6bdf60d78c0fbb4502dcec43",
+          "updatedAt": "2026-10-23T09:37:07Z"
+        },
+        {
+          "number": 2370,
+          "title": "Add Simplified Chinese to the interface languages",
+          "url": "https://github.com/nightly-labs/openbot/pull/2370",
+          "state": "open",
+          "draft": false,
+          "head": "ff9ccb52c5954a9b9b15362a95cd05b7a83d448d",
+          "updatedAt": "2026-10-23T08:18:55Z"
+        },
+        {
+          "number": 2860,
+          "title": "Restart closes turn rows that stay running",
+          "url": "https://github.com/nightly-labs/openbot/pull/2860",
+          "state": "open",
+          "draft": false,
+          "head": "d063b7fe6e0797656abe9e5d71925536d8295fe4",
+          "updatedAt": "2026-10-23T07:23:41Z"
+        },
+        {
+          "number": 2821,
+          "title": "Ask Google for a refresh token at an MCP sign-in",
+          "url": "https://github.com/nightly-labs/openbot/pull/2821",
+          "state": "open",
+          "draft": false,
+          "head": "bbdd7d4d09ac3db4ba419da00bc697558c541ed3",
+          "updatedAt": "2026-10-22T20:22:18Z"
+        },
+        {
+          "number": 2803,
+          "title": "Add Supabase to the Apps catalog",
+          "url": "https://github.com/nightly-labs/openbot/pull/2803",
+          "state": "open",
+          "draft": false,
+          "head": "a444a745f62d912fa372b43eb7635468add8c490",
+          "updatedAt": "2026-10-22T18:16:24Z"
+        },
+        {
+          "number": 2808,
+          "title": "Add Cloudflare to the Apps catalog",
+          "url": "https://github.com/nightly-labs/openbot/pull/2808",
+          "state": "open",
+          "draft": false,
+          "head": "58696797d8e8461c4e14fc1503a6c70064f46969",
+          "updatedAt": "2026-10-22T18:14:50Z"
+        },
+        {
+          "number": 2807,
+          "title": "Add Neon to the Apps catalog",
+          "url": "https://github.com/nightly-labs/openbot/pull/2807",
+          "state": "open",
+          "draft": false,
+          "head": "e1e18b7d307dc707fb95e032f511902f27aa536d",
+          "updatedAt": "2026-10-22T18:14:45Z"
+        },
+        {
+          "number": 2730,
+          "title": "Stop false provider errors for completed Codex credential fallback",
+          "url": "https://github.com/nightly-labs/openbot/pull/2730",
+          "state": "open",
+          "draft": false,
+          "head": "e4e96355245568a97dd73d3539a0eead1beee79c",
+          "updatedAt": "2026-10-21T18:54:27Z"
+        },
+        {
+          "number": 2012,
+          "title": "Add Cafecito Beans to Marketplace Apps",
+          "url": "https://github.com/nightly-labs/openbot/pull/2012",
+          "state": "open",
+          "draft": false,
+          "head": "314f41ce6e786ffce24f8c95346fe3aab8b5dade",
+          "updatedAt": "2026-10-21T17:52:40Z"
+        },
+        {
+          "number": 2678,
+          "title": "Let a completed MCP sign-in replace an unread saved session",
+          "url": "https://github.com/nightly-labs/openbot/pull/2678",
+          "state": "open",
+          "draft": false,
+          "head": "09d8c14e861959bb56a36efd44b3a03dd7e6ba14",
+          "updatedAt": "2026-10-21T13:11:24Z"
+        },
+        {
+          "number": 2577,
+          "title": "Read inline triple-backtick code as text in Live Activities",
+          "url": "https://github.com/nightly-labs/openbot/pull/2577",
+          "state": "open",
+          "draft": false,
+          "head": "b846a4e6f67a1f9c07ad6c6bb2c4cd1af8068be4",
+          "updatedAt": "2026-10-20T14:56:13Z"
+        },
+        {
+          "number": 2576,
+          "title": "Keep emoji whole when a Live Activity cuts a code span",
+          "url": "https://github.com/nightly-labs/openbot/pull/2576",
+          "state": "open",
+          "draft": false,
+          "head": "ce05c716f08fca8d9ff8416589659020f85761dc",
+          "updatedAt": "2026-10-20T14:54:33Z"
+        },
+        {
+          "number": 2428,
+          "title": "Keep phonetic hints out of spreadsheet cell text",
+          "url": "https://github.com/nightly-labs/openbot/pull/2428",
+          "state": "open",
+          "draft": false,
+          "head": "eb6c8d08218bfde192cc49a132827c7c6ac8b7b2",
+          "updatedAt": "2026-10-17T14:48:53Z"
+        },
+        {
+          "number": 2427,
+          "title": "Include .markdown files in the Documents filter",
+          "url": "https://github.com/nightly-labs/openbot/pull/2427",
+          "state": "open",
+          "draft": false,
+          "head": "ca6fb2bbd8e8490f0cfa75ce54da6c60022ef2af",
+          "updatedAt": "2026-10-17T14:20:41Z"
+        },
+        {
+          "number": 2355,
+          "title": "Keep reasoning effort after usage-limit fallback",
+          "url": "https://github.com/nightly-labs/openbot/pull/2355",
+          "state": "open",
+          "draft": false,
+          "head": "0236869f6f1d9fd72ca4d6bddee156315bec6725",
+          "updatedAt": "2026-10-16T21:28:28Z"
+        },
+        {
+          "number": 2186,
+          "title": "Add a loop guard for tool calls that fail the same way",
+          "url": "https://github.com/nightly-labs/openbot/pull/2186",
+          "state": "open",
+          "draft": false,
+          "head": "d72c61a9e3e4ef89f3281c630989117777be2b69",
+          "updatedAt": "2026-10-15T16:56:39Z"
+        },
+        {
+          "number": 1691,
+          "title": "Add Electron release UI tests for local and host workflows",
+          "url": "https://github.com/nightly-labs/openbot/pull/1691",
+          "state": "open",
+          "draft": true,
+          "head": "792ead921a21f59be9af49a88e8e05a6aba26cf5",
+          "updatedAt": "2026-10-12T13:31:43Z"
+        },
+        {
+          "number": 1254,
+          "title": "Bump msys2/setup-msys2 from 2.31.1 to 2.33.0",
+          "url": "https://github.com/nightly-labs/openbot/pull/1254",
+          "state": "open",
+          "draft": false,
+          "head": "fd5ef6b9d8a3166502d71ab27a7d22d6b41bac0e",
+          "updatedAt": "2026-10-01T20:13:42Z"
+        },
+        {
+          "number": 981,
+          "title": "Add the promo video renderer and two videos",
+          "url": "https://github.com/nightly-labs/openbot/pull/981",
+          "state": "open",
+          "draft": false,
+          "head": "719ce3d1039cbcd76a8d72026ddf013402df1ba1",
+          "updatedAt": "2026-09-27T16:40:51Z"
+        }
+      ],
+      "counts": {
+        "deltaCommits": 43,
+        "openPRSample": 25,
+        "openIssueSample": 25
+      }
+    }
+  ],
+  "selectedPRs": [
+    {
+      "repository": "anomalyco/opencode",
+      "number": 58350,
+      "title": "fix(core): skip malformed MCP tools instead of failing the server",
+      "url": "https://github.com/anomalyco/opencode/pull/58350",
+      "state": "closed",
+      "merged": true,
+      "draft": false,
+      "head": "d630cff6b798bcc65d8dd597d5072338de7a5a88",
+      "mergeCommit": "2dc8db4a9da777dc03aec112aec891d5bd79211d",
+      "updatedAt": "2026-10-24T17:45:38Z",
+      "mergedAt": "2026-10-24T17:45:35Z"
+    },
+    {
+      "repository": "anomalyco/opencode",
+      "number": 58763,
+      "title": "fix(server): sandbox file reads against same-origin script",
+      "url": "https://github.com/anomalyco/opencode/pull/58763",
+      "state": "open",
+      "merged": false,
+      "draft": false,
+      "head": "8b5736062e76756c82d0da3dd1c74fb9adb87198",
+      "mergeCommit": "e1e6872481bc92dc0dfd93a806010ccba7cb25cd",
+      "updatedAt": "2026-10-24T17:58:44Z",
+      "mergedAt": null
+    },
+    {
+      "repository": "anomalyco/opencode",
+      "number": 58261,
+      "title": "fix(core): resume background subagents after a server restart",
+      "url": "https://github.com/anomalyco/opencode/pull/58261",
+      "state": "open",
+      "merged": false,
+      "draft": false,
+      "head": "2a981744e54a8d7ceab34525af42ccfca470aa0b",
+      "mergeCommit": "365d382319ae9647c90ade89b3700db316e9862e",
+      "updatedAt": "2026-10-24T19:34:48Z",
+      "mergedAt": null
+    },
+    {
+      "repository": "anomalyco/models.dev",
+      "number": 11335,
+      "title": "fix(ci): pin opencode and block subagents in the fixer agents",
+      "url": "https://github.com/anomalyco/models.dev/pull/11335",
+      "state": "open",
+      "merged": false,
+      "draft": false,
+      "head": "ebfaa801742149ac12439748b855551065990fcd",
+      "mergeCommit": "c971acf7c4355382814430347e466f108d87244a",
+      "updatedAt": "2026-10-24T18:34:14Z",
+      "mergedAt": null
+    },
+    {
+      "repository": "anomalyco/models.dev",
+      "number": 11386,
+      "title": "feat(v2): add a messages image_input for Baseten System One",
+      "url": "https://github.com/anomalyco/models.dev/pull/11386",
+      "state": "open",
+      "merged": false,
+      "draft": false,
+      "head": "e45b8d596ba57a5e66c687789d50f5cdefe4394f",
+      "mergeCommit": "c741bb46a30b9256c1b770d6e079862cbc5e5ab7",
+      "updatedAt": "2026-10-24T18:51:31Z",
+      "mergedAt": null
+    },
+    {
+      "repository": "nightly-labs/openbot",
+      "number": 3033,
+      "title": "Let user instruction files set agent style and delegation",
+      "url": "https://github.com/nightly-labs/openbot/pull/3033",
+      "state": "closed",
+      "merged": true,
+      "draft": false,
+      "head": "80b7d55d7702838c02e048022d6ca9a262500219",
+      "mergeCommit": "01c321f1424fa6883a06a4c7d4059a59e4279ea3",
+      "updatedAt": "2026-10-24T14:33:09Z",
+      "mergedAt": "2026-10-24T14:33:07Z"
+    },
+    {
+      "repository": "nightly-labs/openbot",
+      "number": 3035,
+      "title": "Keep the Claude prompt cache and send channel members only unread messages",
+      "url": "https://github.com/nightly-labs/openbot/pull/3035",
+      "state": "closed",
+      "merged": true,
+      "draft": false,
+      "head": "6e5357f3fea2c354333794c4f9549c98092a30f9",
+      "mergeCommit": "e83cd6d75a422b71fb382e7211f07dc86235c1a6",
+      "updatedAt": "2026-10-24T15:17:37Z",
+      "mergedAt": "2026-10-24T15:17:34Z"
+    },
+    {
+      "repository": "nightly-labs/openbot",
+      "number": 2860,
+      "title": "Restart closes turn rows that stay running",
+      "url": "https://github.com/nightly-labs/openbot/pull/2860",
+      "state": "open",
+      "merged": false,
+      "draft": false,
+      "head": "d063b7fe6e0797656abe9e5d71925536d8295fe4",
+      "mergeCommit": "ac07bdad073dca4ff0992f996ce477973d6eb61b",
+      "updatedAt": "2026-10-23T07:23:41Z",
+      "mergedAt": null
+    }
+  ],
+  "studyDate": "2026-10-24"
+}

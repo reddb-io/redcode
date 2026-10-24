@@ -1,0 +1,126 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-24",
+  "baseline": "e53bd46ee392bb1ab8071333445bce9f42c1510f",
+  "branch": "main",
+  "scope": "MCP tool definition isolation and inert repository file responses, plus a three-repository study refresh.",
+  "sources": {
+    "packages/core/src/mcp/client.ts": "6319b382c6e4d2f727102b197b01c443130fa4da0fd1089bc14923bfcb3829d5",
+    "packages/core/test/mcp.test.ts": "81ec805630ed5d4905166ebf6f34edeac6f49dab13bf546044026c2220ed36e9",
+    "packages/server/src/handlers/fs.ts": "a0118a8db4bd20c610fc9b401753554a20a32007305f1fb916e5b0d23eae6bce",
+    "packages/server/test/fs.test.ts": "5f6a22cf9acb5cd22436606f7ea7dcbea55dcb59d143cd15cbb051dcfeb7b0ec"
+  },
+  "study": {
+    "report": "upstream-review-2026-10-24.md",
+    "index": "upstream-review-2026-10-24.json",
+    "deltaCommits": 176,
+    "openPRSample": 125,
+    "openIssueSample": 75,
+    "exhaustiveFeatureParity": false
+  },
+  "negativeControls": [
+    {
+      "cwd": "packages/core",
+      "command": "bun run test test/mcp.test.ts --test-name-pattern 'negotiated SDK|entire tools page|page metadata'",
+      "before": {
+        "passed": 2,
+        "failed": 4,
+        "assertions": 4
+      },
+      "after": {
+        "passed": 6,
+        "failed": 0,
+        "assertions": 14
+      },
+      "failure": "The SDK rejected the whole tools/list result when one tool had a non-object inputSchema; valid tools and later pages were unavailable."
+    },
+    {
+      "cwd": "packages/server",
+      "command": "bun run test test/fs.test.ts --test-name-pattern 'sandboxes repository documents'",
+      "before": {
+        "passed": 0,
+        "failed": 1,
+        "assertions": 3
+      },
+      "failure": "Expected content-security-policy sandbox on an inert HTML file; received null."
+    }
+  ],
+  "checks": [
+    {
+      "cwd": "packages/core",
+      "command": "bun run test test/mcp.test.ts test/mcp-oauth.test.ts test/mcp-vault.test.ts test/mcp-instructions.test.ts test/mcp-import-boundary.test.ts test/plugin/mcp-codemode-defaults.test.ts",
+      "passed": 145,
+      "failed": 0,
+      "assertions": 644,
+      "exitCode": 0
+    },
+    {
+      "cwd": "packages/server",
+      "command": "bun run test test/fs.test.ts",
+      "passed": 4,
+      "failed": 0,
+      "assertions": 230,
+      "exitCode": 0
+    },
+    {
+      "cwd": ".",
+      "command": "bun run check",
+      "exitCode": 0,
+      "typecheckTasks": 27,
+      "successfulTasks": 27,
+      "cachedTasks": 21
+    },
+    {
+      "cwd": ".",
+      "command": "git diff --check",
+      "exitCode": 0
+    }
+  ],
+  "coverage": [
+    "Negotiated MCP-era validation retains every definition the SDK accepts, including era-specific differences.",
+    "A valid tool remains callable after malformed definitions are removed.",
+    "An entirely invalid page retains its cursor so the following valid page is loaded.",
+    "Invalid page metadata still fails instead of being silently repaired.",
+    "File sandbox/nosniff headers cover HTML/SVG, HEAD, 200, 206, 304 and 416.",
+    "Existing file tests preserve MIME, validators, confinement, MCP Location reuse, and multi-megabyte full/range byte integrity."
+  ],
+  "limits": [
+    "Local Linux verification; no native Windows run is inferred.",
+    "HTTP headers checked using inert documents; no browser exploit, visual browser test or third-party execution.",
+    "No paid provider calls, ambient provider activation, installed configuration edits or service restarts.",
+    "No public Protocol or HttpApi schema changed; generated client surfaces are unchanged.",
+    "Changeset recorded for the existing main release workflow; no release publication requested or performed.",
+    "OpenBot remains a functional reference; none of its source was incorporated.",
+    "Shared context versioning, grouped completions, cross-host graph linkage and other tracked feature gaps remain pending."
+  ],
+  "ci": {
+    "status": "not_observed_at_commit",
+    "note": "Native Linux/Windows and other remote checks must be read from the workflow for the pushed commit."
+  },
+  "localLogs": {
+    "mcp-before.log": {
+      "sha256": "82bfe2666cf78eaf2cecf168850a5cfa8cd13547bf2eff6abc0fd5cd75f4a0dd",
+      "committed": false
+    },
+    "mcp-after.log": {
+      "sha256": "1063dfead453ecb9fd01d5553728e3f17b3c70204f8a398e410866f8fcc4d9c4",
+      "committed": false
+    },
+    "mcp-suite.log": {
+      "sha256": "9b2b8a9b6343d67c546fdb8c1a0c902c93fda1656afeb258ce79d6c4131fbe37",
+      "committed": false
+    },
+    "fs-before.log": {
+      "sha256": "a60302afd3b0c808f15f4ff64cb5674fd5b00a4e0863a59f5f38d41a823e0b0c",
+      "committed": false
+    },
+    "fs-suite.log": {
+      "sha256": "4eaeb759eb7b242d5cf0fbe2a00cb6fe7ffcc96ed404fda4571c956901725398",
+      "committed": false
+    },
+    "check.log": {
+      "sha256": "2ffa7bd434554c8762dd2b2f43396779750535b4e5a77de967eea26c53f1fc1a",
+      "committed": false
+    }
+  }
+}

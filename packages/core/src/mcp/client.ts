@@ -11,6 +11,7 @@ import {
   StreamableHTTPClientTransport,
   UnauthorizedError,
   UnsupportedProtocolVersionError,
+  isJSONRPCResultResponse,
   type CallToolResult as SdkCallToolResult,
   type ElicitRequestFormParams,
   type ElicitRequestParams,
@@ -73,6 +74,13 @@ export const isTransient = (error: unknown) =>
 
 export type { GetPromptResult, Prompt, ReadResourceResult, Resource, Tool }
 export type ResourceTemplate = ResourceTemplateType
+
+// Use the SDK's negotiated-era schema so filtering never imposes a different protocol contract.
+class ToolCheckingClient extends Client {
+  checkToolsList(result: unknown) {
+    return this._wireCodec().validateResult("tools/list", result)
+  }
+}
 
 export class NeedsAuthError extends Schema.TaggedError<NeedsAuthError>()("MCP.NeedsAuthError", {
   server: Schema.String,
@@ -214,7 +222,7 @@ export const connect = Effect.fnUntraced(function* (
   const initialize = Effect.fnUntraced(function* (transport: Transport) {
     lastError = undefined
     const runFork = Effect.runForkWith(yield* Effect.context())
-    const client = new Client(clientInfo, {
+    const client = new ToolCheckingClient(clientInfo, {
       capabilities: {
         ...(elicitation ? { elicitation: { form: { applyDefaults: true }, url: {} } } : {}),
         // Legacy era only: roots are deprecated as of 2026-07-28 and modern servers cannot request them.
@@ -255,6 +263,30 @@ export const connect = Effect.fnUntraced(function* (
       client.setNotificationHandler("notifications/elicitation/complete", (notification) =>
         Effect.runPromise(elicitation.complete({ server, elicitationID: notification.params.elicitationId })),
       )
+    }
+
+    // The SDK invokes a pre-connect transport handler before validating and caching the same message.
+    // Drop only invalid tools; malformed page metadata must still fail through the SDK.
+    const onmessage = transport.onmessage
+    transport.onmessage = (message, extra) => {
+      if (
+        isJSONRPCResultResponse(message) &&
+        Array.isArray(message.result.tools) &&
+        client.checkToolsList({ ...message.result, tools: [] }).ok
+      )
+        message.result.tools = message.result.tools.filter((tool: unknown) => {
+          const outcome = client.checkToolsList({ ...message.result, tools: [tool] })
+          if (outcome.ok) return true
+          runFork(
+            Effect.logWarning("skipping invalid MCP tool", {
+              server,
+              tool: typeof tool === "object" && tool !== null && "name" in tool ? tool.name : undefined,
+              error: outcome.reason === "invalid" ? outcome.message : outcome.reason,
+            }),
+          )
+          return false
+        })
+      onmessage?.(message, extra)
     }
 
     yield* Effect.tryPromise({

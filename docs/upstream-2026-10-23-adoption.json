@@ -740,6 +740,30 @@
       "status": "validated",
       "local_path": "packages/core/src/model-resolver.ts",
       "evidence_or_next_step": "Resolve endpoint templates after explicit provider/model/credential overlays. The earlier environment/default fallbacks were removed to honor the explicit-setup policy. See evaluations/provider-opt-in-2026-10-23-validation.json; old Bedrock evidence remains historical."
+    },
+    {
+      "repository": "anomalyco/opencode",
+      "number": 58350,
+      "url": "https://github.com/anomalyco/opencode/pull/58350",
+      "title": "fix(core): skip malformed MCP tools instead of failing the server",
+      "upstream_state_observed": "closed",
+      "upstream_merged_observed": true,
+      "upstream_head": "d630cff6b798bcc65d8dd597d5072338de7a5a88",
+      "status": "validated",
+      "local_path": "packages/core/src/mcp/client.ts",
+      "evidence_or_next_step": "Four negative controls failed before the fix; all six focused cases and 145 expanded MCP tests pass. Exact negotiated SDK codec preserves era-specific acceptance, pagination and page validation. See evaluations/upstream-reliability-2026-10-24-validation.json."
+    },
+    {
+      "repository": "anomalyco/opencode",
+      "number": 58763,
+      "url": "https://github.com/anomalyco/opencode/pull/58763",
+      "title": "fix(server): sandbox file reads against same-origin script",
+      "upstream_state_observed": "open",
+      "upstream_merged_observed": false,
+      "upstream_head": "8b5736062e76756c82d0da3dd1c74fb9adb87198",
+      "status": "validated",
+      "local_path": "packages/server/src/handlers/fs.ts",
+      "evidence_or_next_step": "Local HTTP regression failed without CSP. Sandbox and nosniff now cover full/HEAD/206/304/416 reads; four file-serving tests pass including confinement and large byte integrity. Inert documents only; no browser exploit or upstream execution. See evaluations/upstream-reliability-2026-10-24-validation.json."
     }
   ],
   "nativeWork": [
@@ -845,5 +869,7 @@
     "Applicable security reports and platform artifacts, with benign verification before fixes"
   ],
   "featureInventory": "evaluations/openbot-orchestration-2026-10-22.md#inventário-de-funcionalidades-e-oportunidades",
-  "deltaStudy": "evaluations/upstream-review-2026-10-23/delta-study.md"
+  "deltaStudy": "evaluations/upstream-review-2026-10-23/delta-study.md",
+  "latestStudy": "evaluations/upstream-review-2026-10-24.md",
+  "latestRefresh": "2026-10-24"
 }

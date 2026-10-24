@@ -77,7 +77,13 @@ function serveFile(request: HttpServerRequest.HttpServerRequest, file: FileSyste
     etag,
     ...(lastModified === undefined ? {} : { "last-modified": lastModified }),
   }
-  if (isNotModified(request, etag, lastModified)) return HttpServerResponse.empty({ status: 304, headers: validators })
+  // Repository documents share the API origin. Keep HTML/SVG opaque and inert, including cached bodies.
+  const documentHeaders = {
+    "content-security-policy": "sandbox",
+    "x-content-type-options": "nosniff",
+  }
+  if (isNotModified(request, etag, lastModified))
+    return HttpServerResponse.empty({ status: 304, headers: { ...validators, ...documentHeaders } })
 
   const rangeHeader = request.method === "GET" ? request.headers["range"] : undefined
   const range =
@@ -87,7 +93,7 @@ function serveFile(request: HttpServerRequest.HttpServerRequest, file: FileSyste
   if (range === "unsatisfiable")
     return HttpServerResponse.empty({
       status: 416,
-      headers: { "accept-ranges": "bytes", "content-range": `bytes */${file.size}` },
+      headers: { ...documentHeaders, "accept-ranges": "bytes", "content-range": `bytes */${file.size}` },
     })
 
   const offset = range?.start ?? 0
@@ -97,6 +103,7 @@ function serveFile(request: HttpServerRequest.HttpServerRequest, file: FileSyste
     contentLength: length,
     headers: {
       ...validators,
+      ...documentHeaders,
       "accept-ranges": "bytes",
       "content-type": file.mime,
       ...(range === undefined ? {} : { "content-range": `bytes ${range.start}-${range.end}/${file.size}` }),

@@ -478,6 +478,31 @@ retornava; isso não altera a normalização do runtime nem representa uma nova
 execução Windows. Contexto compartilhado versionado e o vínculo com atribuições
 de workers e harnesses continuam pendentes.
 
+## Atualização de 24 de outubro: MCP e isolamento de arquivos
+
+O [novo delta do estudo](evaluations/upstream-review-2026-10-24.md) registra 176
+commits adicionais nos três projetos, amostras de 125 PRs e 75 issues abertas,
+revisões consultadas e decisões de adoção. Relatos upstream não são tratados como
+defeitos confirmados do Redcode.
+
+Ferramentas MCP malformadas agora são isoladas pelo codec da versão negociada:
+as válidas continuam disponíveis e podem ser chamadas. Cursores de paginação são
+preservados e metadados inválidos continuam falhando. Respostas de arquivos do
+projeto recebem sandbox e `nosniff`, inclusive HEAD, ranges e cache 304, para
+isolar documentos HTML/SVG da origem da API. O endpoint de leitura conserva o
+conteúdo; previews que precisam de scripts devem usar seu servidor próprio.
+
+Os controles negativos reproduziram ambos os problemas. A suíte ampliada passou
+145 testes MCP e quatro testes HTTP de arquivos. O
+[registro de validação](evaluations/upstream-reliability-2026-10-24-validation.json)
+separa esses resultados da checagem canônica, da validação Windows e da entrega.
+
+O próximo contrato de contexto comum precisa de identidade semântica por objetivo,
+distinta das revisões de uso/estado. Trocar de objetivo não pode reabrir tarefas
+aceitas de um objetivo anterior. Fatos produzidos pelos agentes não devem adquirir
+autoridade de instruções. A sequência de contexto, convergência e transparência
+está detalhada no novo estudo; continua pendente de implementação.
+
 ## Trabalho que permanece
 
 1. Ampliar a recuperação de aplicações ambíguas além dos recibos atuais, o fluxo

@@ -123,6 +123,7 @@ function resourceServer(
         missing: [] as string[],
         templateLists: 0,
         toolLists: 0,
+        toolPages: undefined as Record<string, { tools: McpClient.Tool[]; nextCursor?: string }> | undefined,
         toolCalls: [] as Array<{
           name: string
           arguments: Record<string, unknown> | undefined
@@ -147,8 +148,10 @@ function resourceServer(
             instructions: "Use the resources tools.",
           },
         )
-        protocol.setRequestHandler("tools/list", () => {
+        protocol.setRequestHandler("tools/list", (request) => {
           state.toolLists += 1
+          const page = state.toolPages?.[request.params?.cursor ?? "initial"]
+          if (page) return Promise.resolve(page)
           return Promise.resolve({
             tools: input.emptyElicitation
               ? [{ name: "empty-elicitation", inputSchema: { type: "object" as const, properties: {} } }]
@@ -1545,6 +1548,91 @@ describe.each([
   ["legacy", undefined],
   ["modern", "2026-07-28"],
 ] as const)("MCP connection over the %s protocol", (era, protocol) => {
+  test("skips tools rejected by the negotiated SDK schema and keeps valid tools callable", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const server = yield* resourceServer({ modern: era === "modern", resources: false })
+          server.state.toolPages = {
+            initial: {
+              tools: [
+                // A real server can send arbitrary JSON, including schema-invalid tool definitions.
+                { name: "malformed", inputSchema: { type: "string" } } as unknown as McpClient.Tool,
+                {
+                  name: "modern-only",
+                  inputSchema: { type: "object", required: "text" },
+                } as unknown as McpClient.Tool,
+                { name: "echo", inputSchema: { type: "object", properties: {} } },
+              ],
+            },
+          }
+          const connection = yield* connect(
+            "malformed",
+            new ConfigMCP.Remote({ type: "remote", url: server.url, oauth: false, protocol }),
+            import.meta.dir,
+          )
+
+          expect((yield* connection.tools()).map((tool) => tool.name)).toEqual(
+            era === "modern" ? ["modern-only", "echo"] : ["echo"],
+          )
+          yield* connection.callTool({ name: "echo", args: { text: "hi" } })
+          expect(server.state.toolCalls.at(-1)).toMatchObject({ name: "echo", arguments: { text: "hi" } })
+        }),
+      ),
+    )
+  })
+
+  test("keeps pagination when an entire tools page is malformed", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const server = yield* resourceServer({ modern: era === "modern", resources: false })
+          server.state.toolPages = {
+            initial: {
+              tools: [{ name: "malformed", inputSchema: { type: "string" } } as unknown as McpClient.Tool],
+              nextCursor: "valid-tools",
+            },
+            "valid-tools": { tools: [{ name: "echo", inputSchema: { type: "object", properties: {} } }] },
+          }
+          const connection = yield* connect(
+            "paginated",
+            new ConfigMCP.Remote({ type: "remote", url: server.url, oauth: false, protocol }),
+            import.meta.dir,
+          )
+
+          expect((yield* connection.tools()).map((tool) => tool.name)).toEqual(["echo"])
+          yield* connection.callTool({ name: "echo" })
+          expect(server.state.toolCalls.at(-1)?.name).toBe("echo")
+          expect(server.state.toolLists).toBe(2)
+        }),
+      ),
+    )
+  })
+
+  test("still rejects malformed tools page metadata", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const server = yield* resourceServer({ modern: era === "modern", resources: false })
+          server.state.toolPages = {
+            initial: {
+              tools: [{ name: "malformed", inputSchema: { type: "string" } } as unknown as McpClient.Tool],
+              nextCursor: 42 as unknown as string,
+            },
+          }
+          const connection = yield* connect(
+            "invalid-page",
+            new ConfigMCP.Remote({ type: "remote", url: server.url, oauth: false, protocol }),
+            import.meta.dir,
+          )
+
+          expect(Exit.isFailure(yield* connection.tools().pipe(Effect.exit))).toBe(true)
+          expect(server.state.toolLists).toBe(1)
+        }),
+      ),
+    )
+  })
+
   test("exposes every connection operation", async () => {
     await Effect.runPromise(
       Effect.scoped(
