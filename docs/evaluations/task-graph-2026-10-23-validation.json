@@ -1,0 +1,177 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-23",
+  "recordedAtUTC": "2026-10-24T00:13:10.509098+00:00",
+  "baselineCommit": "bb9de79a514e764da9807f43ba13e5c4a0bfebb3",
+  "testedPackagesTree": "9e7aaaf903da60095ce04565c645c3aa6dbe0d0c",
+  "branch": "main",
+  "published": false,
+  "completeParity": false,
+  "behavior": "Expose canonical stored task dependencies and child-session assignments through the authenticated read-only V2 session.todo.graph API and the existing DS React Tasks surface.",
+  "checks": [
+    {
+      "name": "HTTP regression before endpoint",
+      "cwd": "packages/server",
+      "command": "bun test --only-failures test/session-tasks.test.ts --test-name-pattern 'collects scoped'",
+      "passed": 0,
+      "failed": 1,
+      "log": "negativeHTTP",
+      "note": "Expected authenticated route behavior; endpoint did not exist and returned 404."
+    },
+    {
+      "name": "HTTP, session ownership and Git integration",
+      "cwd": "packages/server",
+      "command": "bun test --only-failures test/session-tasks.test.ts test/session-owner.test.ts test/task-integration.test.ts test/worktree-integration.test.ts",
+      "exitCode": 0,
+      "passed": 17,
+      "failed": 0,
+      "assertions": 210,
+      "log": "serverFinal"
+    },
+    {
+      "name": "subagent task and reconciliation contracts",
+      "cwd": "packages/core",
+      "command": "bun test --only-failures test/tool-subagent.test.ts",
+      "exitCode": 0,
+      "passed": 15,
+      "failed": 0,
+      "assertions": 117,
+      "log": "subagents"
+    },
+    {
+      "name": "canonical lint and types",
+      "cwd": ".",
+      "command": "bun run check",
+      "exitCode": 0,
+      "successfulTasks": 27,
+      "totalTasks": 27,
+      "cachedTasks": 20,
+      "log": "canonical"
+    },
+    {
+      "name": "production app build",
+      "cwd": "packages/app",
+      "command": "VITE_OPENCODE_TEST_FIXTURES=1 VITE_OPENCODE_SERVER_HOST=127.0.0.1 VITE_OPENCODE_SERVER_PORT=4550 SENTRY_AUTH_TOKEN= SENTRY_ORG= SENTRY_PROJECT= bun run build",
+      "exitCode": 0,
+      "log": "build"
+    },
+    {
+      "name": "production browser task flows",
+      "cwd": "packages/app",
+      "command": "PLAYWRIGHT_BUILD=1 PLAYWRIGHT_BASE_URL=http://127.0.0.1:4550 PLAYWRIGHT_PORT=4550 PLAYWRIGHT_WORKERS=1 bun run test:e2e regression/agents.spec.ts --grep 'reconciles task contributions|keeps task navigation' --retries=0 --workers=1",
+      "exitCode": 0,
+      "passed": 2,
+      "failed": 0,
+      "log": "browser"
+    },
+    {
+      "name": "generated clients",
+      "cwd": "packages/client",
+      "command": "bun run generate",
+      "exitCode": 0,
+      "stableRegeneration": true,
+      "sha256": {
+        "src/effect/api/api.ts": "2972ed37ab6e6d9819573ea57f0d39a0148282eb0c8b2cef51e30378a5323c0f",
+        "src/effect/generated/client.ts": "a465c5fe95690dfea18eddb189d5907a8ad2b82ddf22b2bb516686b3eacc2fa0",
+        "src/promise/generated/client.ts": "f661fe086285c25ea5083a2e7b13648fe63671c5ec13e65e700afacf8b08d1e1",
+        "src/promise/generated/types.ts": "b8241751bcf3ee517c27e0c1e41a0b4b3d58b813867b71792408455b82bb3f48"
+      }
+    },
+    {
+      "name": "browser fixture types",
+      "cwd": "packages/app",
+      "command": "bun run typecheck:e2e",
+      "exitCode": 0,
+      "log": "e2eTypes"
+    }
+  ],
+  "browserEvidence": {
+    "tool": "agent-browser attached through CDP to an owned Chromium process",
+    "surface": "production app served on 127.0.0.1:4550 with local HTTP fixtures",
+    "viewports": [
+      [1440, 900],
+      [390, 844]
+    ],
+    "manualActions": [
+      "Inspect a prerequisite and observe selected task details",
+      "Open the delegated child session on its scoped host"
+    ],
+    "mobileWidths": {
+      "viewport": 390,
+      "document": 390,
+      "body": 390
+    },
+    "pageErrorsAtEntry": [],
+    "screenshots": ["desktop", "mobile", "mobileDetails"]
+  },
+  "windowsFollowup": {
+    "run": "https://github.com/reddb-io/redcode/actions/runs/40041225353",
+    "observedConclusion": "failure",
+    "cause": "Two subagent-test expectations used raw Windows paths while the existing runtime returned lower-case forward-slash canonical paths.",
+    "change": "Align only the two expected paths; retain runtime normalization. Local Linux suite passed; a new Windows CI result is not claimed."
+  },
+  "limits": [
+    "Graph readiness observes stored task status and recorded evidence; current acceptance still belongs to reconciliation and executor gates.",
+    "A graph read does not enqueue prompts, start agents, accept tasks or apply a candidate.",
+    "Child ownership is scoped to the selected session and host. Worker/harness assignment linkage, cross-host integration, grouped completion and versioned shared context remain pending.",
+    "Browser checks render production components with local fixtures; backend HTTP/Git contracts are tested separately with real services and temporary Git fixtures. No deployed or installed-app runtime claim.",
+    "No paid inference, installed-service restart, user credential/configuration rewrite or upstream OpenBot source incorporation."
+  ],
+  "artifacts": {
+    "negativeHTTP": {
+      "path": "/var/tmp/redcode-task-graph-before.log",
+      "sha256": "be1b453c906109ea21d98e5b7f265a5be68140e5b67a15aeabfbf3ee86e06cc2",
+      "bytes": 2063
+    },
+    "serverFinal": {
+      "path": "/var/tmp/redcode-task-graph-server-final.log",
+      "sha256": "a8045186f70c1f415c81358ffa78c40c67e4203f3676a9ae39d390e5fd18f537",
+      "bytes": 104
+    },
+    "subagents": {
+      "path": "/var/tmp/redcode-task-graph-subagent.log",
+      "sha256": "50a57e7c016d0d802e9a6927e29343b4ff2d9d6bbe3a74bdbc3426ca92d33565",
+      "bytes": 2075
+    },
+    "canonical": {
+      "path": "/var/tmp/redcode-task-graph-final-check.log",
+      "sha256": "ecb274833fe55a1758fb7df90afd73ca75e5e5c81a0024d5f45c3b62fdb9cf1e",
+      "bytes": 4392
+    },
+    "browser": {
+      "path": "/var/tmp/redcode-task-graph-e2e.log",
+      "sha256": "766716571e16f68b6d38f1c026bd97dfce3bd43f00bc291631c3708149202908",
+      "bytes": 1173
+    },
+    "build": {
+      "path": "/var/tmp/redcode-task-graph-build.log",
+      "sha256": "aab0b0e8ff1399486d1610110985e18cfd041460d88acab7c93586f2f94b7af5",
+      "bytes": 200696
+    },
+    "e2eTypes": {
+      "path": "/var/tmp/redcode-task-graph-e2e-types.log",
+      "sha256": "639662b16a8949b8806db38c87e0b25e79ca257224fe15c2194472352dc57577",
+      "bytes": 28
+    },
+    "windowsCI": {
+      "path": "/var/tmp/redcode-main-windows-failed.log",
+      "sha256": "cfde3973c0266d460c0724a61c6ffc3b3163aa01779de0167679a0fc486d55fe",
+      "bytes": 887689
+    },
+    "desktop": {
+      "path": "/var/tmp/redcode-task-graph-desktop.png",
+      "sha256": "ea22978e6106bb0ee3e9fbef73134a10c93bf86bcd2967611f4bcdcd655bc2c2",
+      "bytes": 143511
+    },
+    "mobile": {
+      "path": "/var/tmp/redcode-task-graph-mobile.png",
+      "sha256": "bfb403244b4b3041b066d83f26a642aa934a6b4d695c874cc461afc4a4073639",
+      "bytes": 56925
+    },
+    "mobileDetails": {
+      "path": "/var/tmp/redcode-task-graph-mobile-detail.png",
+      "sha256": "4d4c8d0ddde575c156f149495697d037ed374675f80cad71591fda6a33682675",
+      "bytes": 55560
+    }
+  }
+}

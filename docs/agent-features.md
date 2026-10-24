@@ -16,7 +16,11 @@ Changing sections keeps the selected host. **Browse** opens the sidemenu to chan
 - **Sessions** groups root sessions and subagents by status. Filter by session/project/worktree,
   send a steering or queued instruction, interrupt running work, or open its conversation.
 - **Tasks** selects a session on each host to follow its shared objective, task completion and
-  prerequisite acceptance. Inspect delegated execution status, response excerpts, observed checks,
+  prerequisite acceptance. Its dependency list links prerequisites to their task details, shows
+  recorded blockers and opens the assigned child sessions. Delegated revisions, unsettled work and
+  outdated contracts remain distinct from completion evidence. The read-only `session.todo.graph`
+  API exposes the same task graph and assignments used by the executor; reading it does not start
+  work or accept results. Inspect delegated execution status, response excerpts, observed checks,
   stale contributions and files changed by multiple prerequisites. **Prepare combined candidate**
   binds accepted local Git contributions to a target checkout selected explicitly. Preparation shows
   the combined diff without updating checkout files or refs. Verification and acceptance belong to

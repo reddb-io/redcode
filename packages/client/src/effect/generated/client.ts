@@ -68,6 +68,8 @@ import type {
   SessionMonitorCancelOutput,
   SessionTodoListInput,
   SessionTodoListOutput,
+  SessionTodoGraphInput,
+  SessionTodoGraphOutput,
   SessionTodoReconcileInput,
   SessionTodoReconcileOutput,
   SessionTodoPrepareIntegrationInput,
@@ -842,6 +844,14 @@ const EndpointSessionTodoList = (raw: RawClient["server.session"]) => (input: Se
     ),
   )
 
+const EndpointSessionTodoGraph = (raw: RawClient["server.session"]) => (input: SessionTodoGraphInput) =>
+  preserveEffect<SessionTodoGraphOutput>()(
+    raw["session.todo.graph"]({ params: { sessionID: input["sessionID"] } }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
 const EndpointSessionTodoReconcile = (raw: RawClient["server.session"]) => (input: SessionTodoReconcileInput) =>
   preserveEffect<SessionTodoReconcileOutput>()(
     raw["session.todo.reconcile"]({
@@ -1456,6 +1466,7 @@ const adaptGroupSession = (raw: RawClient["server.session"]) => ({
   },
   todo: {
     list: EndpointSessionTodoList(raw),
+    graph: EndpointSessionTodoGraph(raw),
     reconcile: EndpointSessionTodoReconcile(raw),
     prepareIntegration: EndpointSessionTodoPrepareIntegration(raw),
     applyIntegration: EndpointSessionTodoApplyIntegration(raw),

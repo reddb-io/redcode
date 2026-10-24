@@ -58,9 +58,9 @@ export function createAgentTaskServices(props: { server: ServerConnection.Any; o
   }))
   const session = () => sessions.data?.find((item) => item.id === state.sessionID)
   const tasks = useQuery(() => ({
-    queryKey: ["agent-tasks", host, state.sessionID],
+    queryKey: ["agent-task-graph", host, state.sessionID],
     enabled: connected() && !!session(),
-    queryFn: ({ signal }) => api.session.todo.list({ sessionID: state.sessionID }, { signal }),
+    queryFn: ({ signal }) => api.session.todo.graph({ sessionID: state.sessionID }, { signal }),
     retry: false,
     refetchInterval: 5000,
   }))
@@ -71,7 +71,7 @@ export function createAgentTaskServices(props: { server: ServerConnection.Any; o
     retry: false,
     refetchInterval: 5000,
   }))
-  const task = () => tasks.data?.find((item) => item.id === state.taskID)
+  const task = () => tasks.data?.tasks.find((item) => item.id === state.taskID)
   const report = useQuery(() => ({
     queryKey: ["agent-task-reconciliation", host, state.sessionID, state.taskID, task()?.revision],
     enabled: connected() && !!task()?.id,
@@ -116,7 +116,9 @@ export function createAgentTaskServices(props: { server: ServerConnection.Any; o
       sessions: sessions.data ?? [],
       session: session(),
       sessionID: state.sessionID,
-      tasks: tasks.data ?? [],
+      tasks: tasks.data?.tasks ?? [],
+      graph: tasks.data?.nodes ?? [],
+      assignments: tasks.data?.assignments ?? [],
       task: task(),
       taskID: state.taskID,
       goal: goal.data,
@@ -152,6 +154,11 @@ export function createAgentTaskServices(props: { server: ServerConnection.Any; o
       const selected = session()
       if (selected) props.open(selected)
     },
+    openAssignment: (sessionID: string) =>
+      void run(async () => {
+        const child = await api.session.get({ sessionID })
+        if (lifetime.active) props.open(child)
+      }),
     refresh: () => void run(async () => {}),
     prepare: () =>
       void run(async () => {

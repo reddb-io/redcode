@@ -1,5 +1,11 @@
 import type { Page } from "@playwright/test"
-import type { Todo, TodoReconciliation, WorktreeIntegrationCandidate } from "@opencode/client/promise"
+import type {
+  Todo,
+  TodoGraphNode,
+  TodoAssignment,
+  TodoReconciliation,
+  WorktreeIntegrationCandidate,
+} from "@opencode/client/promise"
 import { Schema } from "effect"
 import { SessionTodo } from "@opencode/schema/session-todo"
 import { Worktree } from "@opencode/schema/worktree"
@@ -22,8 +28,21 @@ export async function mockAgentTasks(page: Page) {
     truncated: false,
   }
   const tasks: Todo[] = [
-    { id: "api", revision: 2, content: "Implement task API", status: "completed", priority: "high" },
-    { id: "tests", revision: 2, content: "Verify task API", status: "completed", priority: "high" },
+    ...["api", "tests"].map((id) => ({
+      id,
+      revision: 2,
+      content: id === "api" ? "Implement task API" : "Verify task API",
+      status: "completed",
+      priority: "high",
+      evidence: {
+        callID: "check-" + id,
+        messageID: "message-" + id,
+        explanation: "The task passed its checks",
+        tool: "bash",
+        hash: "proof-" + id,
+        observed: 1,
+      },
+    })),
     {
       id: "combine",
       revision: 3,
@@ -46,26 +65,52 @@ export async function mockAgentTasks(page: Page) {
       },
     },
   ]
-  const state = { accepted: false, reportUnavailable: false, applied: false }
-  const report = (): TodoReconciliation => ({
-    sessionID,
-    task: tasks[2],
-    fingerprint: "fixture-inputs",
-    observedAt: 1,
+  const nodes: TodoGraphNode[] = [
+    { id: "api", revision: 2, dependencies: [], waitingFor: [], ready: false },
+    { id: "tests", revision: 2, dependencies: [], waitingFor: [], ready: false },
+    { id: "combine", revision: 3, dependencies: ["api", "tests"], waitingFor: [], ready: true },
+  ]
+  const assignments: TodoAssignment[] = [
+    {
+      taskID: "api",
+      sessionID: fixture.sessions[2].id,
+      directory: sources[0].directory,
+      revision: 2,
+      current: true,
+      state: "settled",
+      outcome: "succeeded",
+      review: "unverified",
+    },
+  ]
+  const state = {
+    accepted: false,
+    graphUnavailable: false,
+    reportUnavailable: false,
+    applied: false,
     executionSettled: true,
     acceptanceReady: true,
-    inputs: tasks.slice(0, 2).map((task, index) => ({
+    inputAcceptance: ["accepted", "accepted"] as TodoReconciliation["inputs"][number]["acceptance"][],
+  }
+  const report = (taskID: string): TodoReconciliation => ({
+    sessionID,
+    task: tasks.find((task) => task.id === taskID)!,
+    fingerprint: "fixture-inputs",
+    observedAt: 1,
+    executionSettled: state.executionSettled,
+    acceptanceReady: state.acceptanceReady,
+    inputs: (taskID === "combine" ? tasks.slice(0, 2) : []).map((task, index) => ({
       task,
-      acceptance: "accepted",
+      acceptance: state.inputAcceptance[index],
       issues: [],
       contributions: [
         {
           sessionID: fixture.sessions[2].id,
-          taskRevision: task.revision!,
+          taskRevision: assignments.find((entry) => entry.taskID === task.id)?.revision ?? task.revision!,
           promptID: "prompt-" + task.id,
           fingerprint: "fingerprint-" + task.id,
-          current: true,
-          execution: "succeeded",
+          current: assignments.find((entry) => entry.taskID === task.id)?.current ?? true,
+          execution:
+            assignments.find((entry) => entry.taskID === task.id)?.state === "running" ? "running" : "succeeded",
           response: {
             messageID: "response-" + task.id,
             text: "Delegated result for " + task.id,
@@ -126,9 +171,13 @@ export async function mockAgentTasks(page: Page) {
     const request = route.request()
     const pathname = new URL(request.url()).pathname
     if (request.method() === "GET") {
+      if (pathname.endsWith("/graph")) {
+        if (state.graphUnavailable) return route.fulfill({ status: 500, json: { message: "Task graph unavailable" } })
+        return route.fulfill({ json: { data: { sessionID, tasks, nodes, assignments } } })
+      }
       if (pathname.endsWith("/reconciliation")) {
         if (state.reportUnavailable) return route.fulfill({ status: 500, json: { message: "Task report unavailable" } })
-        return route.fulfill({ json: { data: report() } })
+        return route.fulfill({ json: { data: report(pathname.split("/").at(-2)!) } })
       }
       return route.fulfill({ json: { data: tasks } })
     }
@@ -212,6 +261,9 @@ export async function mockAgentTasks(page: Page) {
   })
   return {
     sessionID,
+    tasks,
+    nodes,
+    assignments,
     operations,
     state,
     accept() {

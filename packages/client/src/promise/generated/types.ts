@@ -317,6 +317,14 @@ export type TodoIntegrationApplication = {
   state: "pending" | "applied"
 }
 
+export type TodoGraphNode = {
+  id?: string
+  revision?: number
+  dependencies: Array<string>
+  waitingFor: Array<string>
+  ready: boolean
+}
+
 export type SubagentReviewDecision = "verified" | "inconclusive" | "needs_revision" | "unverified"
 
 export type SubagentReviewCompletion = {
@@ -1441,6 +1449,17 @@ export type TodoIntegration = {
   head: string
   tree: string
   sources: Array<TodoIntegrationSource>
+}
+
+export type TodoAssignment = {
+  taskID: string
+  sessionID: string
+  directory: string
+  revision: number
+  current: boolean
+  state: "running" | "settled"
+  outcome?: "succeeded" | "failed" | "interrupted"
+  review: SubagentReviewDecision
 }
 
 export type SubagentReviewResult = {
@@ -3802,6 +3821,13 @@ export type SessionMessageAssistantTool = {
     | SessionMessageToolStateCompleted
     | SessionMessageToolStateError
   time: { created: number; ran?: number; completed?: number }
+}
+
+export type TodoGraph = {
+  sessionID: string
+  tasks: Array<Todo>
+  nodes: Array<TodoGraphNode>
+  assignments: Array<TodoAssignment>
 }
 
 export type TodoIntegrationPreparation = { task: Todo; candidate: WorktreeIntegrationCandidate }
@@ -6244,6 +6270,10 @@ export type SessionMonitorCancelOutput = { data: MonitorPublicInfo }["data"]
 export type SessionTodoListInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
 
 export type SessionTodoListOutput = { data: Array<Todo> }["data"]
+
+export type SessionTodoGraphInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
+
+export type SessionTodoGraphOutput = { data: TodoGraph }["data"]
 
 export type SessionTodoReconcileInput = {
   readonly sessionID: { readonly sessionID: string; readonly taskID: string }["sessionID"]

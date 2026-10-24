@@ -739,6 +739,108 @@ export type SessionTodoListOperation<E = never> = (
   input: SessionTodoListInput,
 ) => Effect.Effect<SessionTodoListOutput, E>
 
+export type SessionTodoGraphInput = { readonly sessionID: Session.ID }
+export type SessionTodoGraphOutput = {
+  readonly sessionID: Session.ID
+  readonly tasks: ReadonlyArray<{
+    readonly id?: string | undefined
+    readonly revision?: number | undefined
+    readonly reason?: string | undefined
+    readonly title?: string | undefined
+    readonly phase?: "build" | "design" | "plan" | undefined
+    readonly legacyStatus?: string | undefined
+    readonly source?:
+      | {
+          readonly type: "request" | "plan"
+          readonly id: string
+          readonly quote: string
+          readonly created: number
+          readonly key?: string | undefined
+          readonly paraphrase?: string | undefined
+        }
+      | undefined
+    readonly criterion?: string | undefined
+    readonly evidence?:
+      | {
+          readonly callID: string
+          readonly messageID: string
+          readonly explanation: string
+          readonly tool: string
+          readonly hash: string
+          readonly observed: number
+        }
+      | undefined
+    readonly dependencies?: ReadonlyArray<string> | undefined
+    readonly inputs?: ReadonlyArray<{ readonly id: string; readonly hash: string }> | undefined
+    readonly integration?:
+      | {
+          readonly fingerprint: string
+          readonly preparedAt: number
+          readonly target: AbsolutePath
+          readonly targetHead: string
+          readonly head: string
+          readonly tree: string
+          readonly sources: ReadonlyArray<{
+            readonly taskID: string
+            readonly taskRevision: number
+            readonly fingerprint: string
+            readonly sessionID: Session.ID
+            readonly promptID: string
+            readonly sessionDirectory: AbsolutePath
+            readonly directory: AbsolutePath
+            readonly head: string
+          }>
+        }
+      | undefined
+    readonly integrationApplication?:
+      | {
+          readonly requestID: string
+          readonly taskRevision: number
+          readonly fingerprint: string
+          readonly target: AbsolutePath
+          readonly targetHead: string
+          readonly head: string
+          readonly tree: string
+          readonly started: number
+          readonly completed?: number | undefined
+          readonly state: "pending" | "applied"
+        }
+      | undefined
+    readonly scopeChange?:
+      | {
+          readonly messageID: string
+          readonly quote: string
+          readonly created?: number | undefined
+          readonly paraphrase?: string | undefined
+        }
+      | undefined
+    readonly content: string
+    readonly status: string
+    readonly priority: string
+    readonly closedAt?: number | undefined
+  }>
+  readonly nodes: ReadonlyArray<{
+    readonly id?: string | undefined
+    readonly revision?: number | undefined
+    readonly dependencies: ReadonlyArray<string>
+    readonly waitingFor: ReadonlyArray<string>
+    readonly ready: boolean
+  }>
+  readonly assignments: ReadonlyArray<{
+    readonly taskID: string
+    readonly sessionID: Session.ID
+    readonly directory: AbsolutePath
+    readonly revision: number
+    readonly current: boolean
+    readonly state: "running" | "settled"
+    readonly outcome?: "succeeded" | "failed" | "interrupted" | undefined
+    readonly review: "verified" | "inconclusive" | "needs_revision" | "unverified"
+  }>
+}
+export type SessionTodoGraphOperation<E = never> = (
+  input: SessionTodoGraphInput,
+) => Effect.Effect<SessionTodoGraphOutput, E>
+
 export type SessionTodoReconcileInput = {
   readonly sessionID: Session.ID
   readonly taskID: string
@@ -4364,6 +4466,7 @@ export interface SessionApi<E = never> {
   }
   readonly todo: {
     readonly list: SessionTodoListOperation<E>
+    readonly graph: SessionTodoGraphOperation<E>
     readonly reconcile: SessionTodoReconcileOperation<E>
     readonly prepareIntegration: SessionTodoPrepareIntegrationOperation<E>
     readonly applyIntegration: SessionTodoApplyIntegrationOperation<E>

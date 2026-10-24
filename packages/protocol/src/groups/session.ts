@@ -537,6 +537,20 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI ext
       ),
     )
     .add(
+      HttpApiEndpoint.get("session.todo.graph", "/api/session/:sessionID/todo/graph", {
+        params: { sessionID: Session.ID },
+        success: Schema.Struct({ data: SessionTodo.Graph }),
+        error: SessionNotFoundError,
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "session.todo.graph",
+          summary: "Inspect task dependencies and delegated assignments",
+          description:
+            "Read persisted tasks with their derived prerequisites, waiting dependencies and child-session assignments. This observation never starts, accepts or completes work and does not replace candidate verification.",
+        }),
+      ),
+    )
+    .add(
       HttpApiEndpoint.get("session.todo.reconcile", "/api/session/:sessionID/todo/:taskID/reconciliation", {
         params: { sessionID: Session.ID, taskID: Schema.String },
         query: { revision: Schema.NumberFromString.pipe(Schema.decodeTo(PositiveInt), Schema.optional) },
