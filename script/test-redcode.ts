@@ -229,6 +229,8 @@ const suites = {
     "test/infrastructure.test.ts",
     "test/harness.test.ts",
     "test/worktree.test.ts",
+    "test/worktree-integration.test.ts",
+    "test/task-integration.test.ts",
     "test/pairing.test.ts",
     "test/remote-clients.test.ts",
     "test/workers.test.ts",

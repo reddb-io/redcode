@@ -158,6 +158,24 @@ test("refuses duplicate, unmanaged, identical and foreign source checkouts", asy
   ).rejects.toThrow("same Git repository")
 }, 30_000)
 
+test("resolves recorded checkout aliases without requiring unrelated missing inventory paths", async () => {
+  await using repo = await fixture()
+  const inventory = await Promise.all(
+    repo.inventory.map(async (entry, index) => {
+      const directory = AbsolutePath.make(path.join(repo.path, `recorded-${index}`))
+      await fs.symlink(entry.directory, directory, process.platform === "win32" ? "junction" : "dir")
+      return { ...entry, directory }
+    }),
+  )
+  const candidate = await prepareIntegration(repo.input, [
+    ...inventory,
+    { directory: AbsolutePath.make(path.join(repo.path, "missing")), strategy: "git" },
+  ])
+  expect(candidate.status).toBe("ready")
+  expect(candidate.target).toBe(repo.target)
+  expect(candidate.sources).toEqual(repo.input.sources)
+}, 30_000)
+
 test("keeps already included results and handles three divergent sources", async () => {
   await using repo = await fixture()
   repo.input.sources = await Promise.all(

@@ -26,14 +26,19 @@ async function git(directory: string, args: string[], env?: Record<string, strin
 
 /** Inventory, canonical paths and Git common-dir all have to agree before changing a checkout. */
 export async function inspectWorktree(input: Worktree.InspectInput, inventory: Worktree.List) {
-  const [directory, target] = await Promise.all([realpath(input.directory), realpath(input.target)])
-  const source = inventory.find((item) => sameDirectory(item.directory, directory))
-  if (!source || !inventory.some((item) => sameDirectory(item.directory, target)))
-    throw new Error("Select checkouts from this project's recorded inventory")
-  const common = await Promise.all([
-    git(directory, ["rev-parse", "--path-format=absolute", "--git-common-dir"]),
-    git(target, ["rev-parse", "--path-format=absolute", "--git-common-dir"]),
+  const [directory, target, recorded] = await Promise.all([
+    realpath(input.directory),
+    realpath(input.target),
+    resolveWorktreeInventory(inventory),
   ])
+  const source = recorded.find((item) => sameDirectory(item.directory, directory))
+  if (!source || !recorded.some((item) => sameDirectory(item.directory, target)))
+    throw new Error("Select checkouts from this project's recorded inventory")
+  const common = await Promise.all(
+    [directory, target].map(async (checkout) =>
+      realpath(await git(checkout, ["rev-parse", "--path-format=absolute", "--git-common-dir"])),
+    ),
+  )
   if (!sameDirectory(common[0]!, common[1]!)) throw new Error("Checkouts do not belong to the same Git repository")
   const [head, targetHead, branch, status, targetStatus] = await Promise.all([
     git(directory, ["rev-parse", "HEAD"]),
@@ -225,8 +230,8 @@ async function integrationSources(input: Worktree.PrepareIntegrationInput, inven
 }
 
 export async function checkpointWorktree(input: Worktree.CheckpointInput, inventory: Worktree.List) {
-  const directory = await realpath(input.directory)
-  if (!inventory.some((item) => sameDirectory(item.directory, directory) && item.strategy === "git"))
+  const [directory, recorded] = await Promise.all([realpath(input.directory), resolveWorktreeInventory(inventory)])
+  if (!recorded.some((item) => sameDirectory(item.directory, directory) && item.strategy === "git"))
     throw new Error("Only a recorded managed Git worktree can be checkpointed")
   if (!(await git(directory, ["status", "--porcelain=v1"]))) return git(directory, ["rev-parse", "HEAD"])
   await git(directory, ["add", "--all", "--", "."])
@@ -239,8 +244,8 @@ export async function archiveWorktree(
   input: Worktree.ArchiveInput,
   inventory: Worktree.List,
 ): Promise<Worktree.Archive> {
-  const directory = await realpath(input.directory)
-  if (!inventory.some((item) => sameDirectory(item.directory, directory) && item.strategy === "git"))
+  const [directory, recorded] = await Promise.all([realpath(input.directory), resolveWorktreeInventory(inventory)])
+  if (!recorded.some((item) => sameDirectory(item.directory, directory) && item.strategy === "git"))
     throw new Error("Only a managed Git worktree can be archived")
   const head = await git(directory, ["rev-parse", "HEAD"])
   if (head !== input.head) throw new Error("The reviewed revision changed. Review again before archive")
@@ -249,6 +254,19 @@ export async function archiveWorktree(
   const reference = `refs/redcode/archives/${stamp}-${crypto.randomUUID()}`
   await git(directory, ["update-ref", reference, head, ""])
   return { reference, head, createdAt: new Date(stamp).toISOString() }
+}
+
+/** Resolve both sides through the same API: Windows callback paths can contain short-name aliases. */
+export async function resolveWorktreeInventory(inventory: Worktree.List) {
+  return (
+    await Promise.all(
+      inventory.map(async (item) => {
+        // Saved inventory also contains unavailable checkouts; they cannot authorize an operation.
+        const directory = await realpath(item.directory).catch(() => undefined)
+        return directory === undefined ? undefined : { ...item, directory: AbsolutePath.make(directory) }
+      }),
+    )
+  ).filter((item) => item !== undefined)
 }
 
 export async function worktreeArchives(inventory: Worktree.List): Promise<Worktree.Archive[]> {

@@ -20,7 +20,7 @@ import { makeGlobalNode } from "@opencode/util/effect/app-node"
 import { Flock } from "@opencode/util/flock"
 import { Global } from "@opencode/util/global"
 import { Context, Effect, Layer } from "effect"
-import { applyIntegration, inspectWorktree, prepareIntegration } from "./worktree-review"
+import { applyIntegration, inspectWorktree, prepareIntegration, resolveWorktreeInventory } from "./worktree-review"
 
 const make = Effect.gen(function* () {
   const sessions = yield* SessionStore.Service
@@ -55,13 +55,14 @@ const make = Effect.gen(function* () {
       return yield* new SessionTodo.Error({
         message: "Task integration currently requires local worktrees on this host",
       })
-    const inventory = yield* worktrees
-      .list({ projectID: parent.projectID })
-      .pipe(
-        Effect.mapError(
-          () => new SessionTodo.Error({ message: "The session project has no recorded checkout inventory" }),
-        ),
-      )
+    const inventory = yield* worktrees.list({ projectID: parent.projectID }).pipe(
+      Effect.mapError(
+        () => new SessionTodo.Error({ message: "The session project has no recorded checkout inventory" }),
+      ),
+      Effect.flatMap((inventory) =>
+        Effect.tryPromise({ try: () => resolveWorktreeInventory(inventory), catch: failure }),
+      ),
+    )
     const sources = yield* Effect.forEach(report.inputs, (required) =>
       Effect.gen(function* () {
         const contribution = required.contributions.at(-1)

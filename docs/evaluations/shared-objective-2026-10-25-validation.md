@@ -100,6 +100,18 @@ e sem variáveis de providers; as 27 tarefas de check também passaram novamente
 O primeiro ensaio direto da CLI precisou receber o preload Solid usado pelo
 desenvolvimento normal para executar a partir do diretório isolado.
 
+A validação Windows identificou que normalizar caixa e separadores não bastava:
+o filesystem de callbacks usado pelo inventário pode emitir aliases curtos, como
+`RUNNER~1`, enquanto a API de promises retorna o nome completo. A revisão agora
+resolve também o inventário e o diretório Git compartilhado pelo mesmo filesystem
+de promises antes de autorizar operações; entradas indisponíveis não autorizam operações nem bloqueiam outras
+entradas. A seleção dos checkouts de tarefas usa esse mesmo inventário resolvido.
+Um teste com diretórios reais e aliases reproduziu a recusa no código anterior e
+passou após a correção. Os contratos de combinação Git e integração de tarefas
+também foram adicionados à lista de execução do CI Linux/Windows.
+Os 26 testes focados passaram novamente após resolver também o diretório Git
+compartilhado. A formatação e as 27 tarefas de check passaram.
+
 ## Alcance
 
 Este é o primeiro fluxo sobre o objetivo persistido, tarefas e recibos existentes.
