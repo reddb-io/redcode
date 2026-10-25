@@ -1,6 +1,7 @@
 export * as CodeModeTool from "./tool.js"
 
 import { CodeMode, Namespace, Tool, toolError } from "@opencode/codemode"
+import type { ToolDefinition } from "@opencode/ai"
 import type { ConfigExperimental } from "@opencode/schema/config/experimental"
 import type { Content, Context, Error, Info, Metadata, Namespace as ToolNamespace, Result } from "@opencode/schema/tool"
 import { Effect, Ref, Schema, Semaphore } from "effect"
@@ -50,6 +51,7 @@ type Tools = {
 
 export type Inventory = {
   readonly tools: ReadonlyMap<string, Info>
+  readonly definitions?: ReadonlyMap<string, ToolDefinition>
   readonly namespaces?: ReadonlyMap<string, ToolNamespace>
 }
 
@@ -258,7 +260,7 @@ function runtime(
   const root: ToolNode = { children: new Map() }
   for (const namespace of inventory.namespaces?.values() ?? []) getNode(root, namespace.name).namespace = namespace
   for (const [name, registration] of inventory.tools) {
-    const child = definition(registration)
+    const child = inventory.definitions?.get(name) ?? definition(registration)
     getNode(root, qualifiedName(registration)).tool = Tool.make({
       description: child.description,
       input: child.inputSchema,

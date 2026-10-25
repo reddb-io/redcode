@@ -15,6 +15,8 @@ type Command = {
   resource: string
   words: string[]
   rawWords: string[]
+  // Raw-token starts relative to resource, retained for source-shaped denial alternatives.
+  wordStarts?: number[]
   // Exclusive raw-token ends relative to resource, for source-shaped permission prefixes.
   wordEnds?: number[]
   statementHead?: true
@@ -31,11 +33,11 @@ const BASH_DECLARATIONS = new Set(["declare", "typeset", "export", "readonly", "
 const MAX_INPUT_LENGTH = 64 * 1024
 const MAX_SUBSTITUTION_DEPTH = 32
 
-export function scan(input: string): Result {
-  return scanBash(input, 0, { remaining: MAX_INPUT_LENGTH * MAX_SUBSTITUTION_DEPTH })
+export function scan(input: string, options?: { wordPositions?: boolean }): Result {
+  return scanBash(input, 0, { remaining: MAX_INPUT_LENGTH * MAX_SUBSTITUTION_DEPTH, ...options })
 }
 
-function scanBash(input: string, depth: number, budget: { remaining: number }): Result {
+function scanBash(input: string, depth: number, budget: { remaining: number; wordPositions?: boolean }): Result {
   // Bound both nesting and total source visited by expansion scans.
   budget.remaining -= input.length
   if (input.length > MAX_INPUT_LENGTH || budget.remaining < 0 || depth > MAX_SUBSTITUTION_DEPTH)
@@ -44,6 +46,7 @@ function scanBash(input: string, depth: number, budget: { remaining: number }): 
   const nestedCommands: Command[] = []
   const words: string[] = []
   const rawWords: string[] = []
+  const wordStarts: number[] = []
   const assignmentWords: boolean[] = []
   let word = ""
   let wordStarted = false
@@ -91,6 +94,7 @@ function scanBash(input: string, depth: number, budget: { remaining: number }): 
       words.push(word)
       // Unquoted trailing continuations are ignored syntax, not part of the raw token.
       rawWords.push(input.slice(wordStart, wordEnd))
+      if (budget.wordPositions) wordStarts.push(wordStart)
       assignmentWords.push(assignmentWord)
       commandEnd = wordEnd
     }
@@ -110,10 +114,12 @@ function scanBash(input: string, depth: number, budget: { remaining: number }): 
     if (name >= 0 && !words[name]) invalidStructure = true
     if (rawWords[name] === "}") invalidStructure = true
     if (resource && name >= 0 && !header()) {
+      const start = budget.wordPositions ? input.indexOf(resource, segment) : 0
       const command: Command = {
         resource,
         words: words.slice(name),
         rawWords: rawWords.slice(name),
+        ...(budget.wordPositions ? { wordStarts: wordStarts.slice(name).map((position) => position - start) } : {}),
         ...(name === 0 && BASH_DECLARATIONS.has(rawWords[0]) && resource.startsWith(rawWords[0])
           ? { declaration: true as const }
           : {}),
@@ -137,6 +143,7 @@ function scanBash(input: string, depth: number, budget: { remaining: number }): 
     if (!header() && (words.length > 0 || hasRedirect)) statement()
     words.length = 0
     rawWords.length = 0
+    wordStarts.length = 0
     assignmentWords.length = 0
     separated = true
     hasRedirect = false

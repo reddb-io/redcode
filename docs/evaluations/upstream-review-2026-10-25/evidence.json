@@ -1,0 +1,2872 @@
+{
+  "scope": {
+    "since": "2026-10-18T11:19:59Z",
+    "until": "2026-10-25T11:19:59Z",
+    "timeZone": "UTC",
+    "localWindow": "2026-10-18 08:19:59 a 2026-10-25 08:19:59 America/Sao_Paulo",
+    "commitEnumeration": "All commit metadata reachable from the pinned default-branch HEAD within the window, including merges; not a count of distinct features.",
+    "openItemSampling": "Up to 300 updated-desc /pulls and mixed /issues records, plus top 100 comments-desc searches per type and latest 100 ordinary issues; merged by repository and number. Bodies, comments, patches and user identities omitted from retained indexes.",
+    "searchQueries": "repo:<repository> is:<pr|issue> is:open updated:<since>..<until>; created counts add created:<since>..<until>; merged counts use is:pr is:merged merged:<since>..<until>.",
+    "consistency": "Live GitHub queries are not atomic. State can change during collection even when activity dates are bounded. Counts of active ordinary issues were refreshed; other counts reflect their respective query.",
+    "analysisDepth": "Metadata triage across all retained indexes; selected PR/issue scopes and 18 patch/commit resources inspected selectively. This is not an exhaustive code review, reproduction of all issues or a security audit."
+  },
+  "repositories": [
+    {
+      "repository": "anomalyco/opencode",
+      "defaultBranch": "dev",
+      "head": "b79dce4ce30954a437344beaa9fa7fe4b965f28b",
+      "license": "MIT",
+      "repo": "anomalyco/opencode",
+      "commits": 325,
+      "prsSample": 343,
+      "issuesSample": 265,
+      "prsOpenActive": 604,
+      "issuesOpenActive": 800,
+      "mergedPRs": 603,
+      "newOpenPRs": 436,
+      "newOpenIssues": 494,
+      "releases": [
+        {
+          "tag": "v1.19.4",
+          "url": "https://github.com/anomalyco/opencode/releases/tag/v1.19.4",
+          "publishedAt": "2026-10-22T13:03:41Z",
+          "prerelease": false
+        },
+        {
+          "tag": "v1.19.3",
+          "url": "https://github.com/anomalyco/opencode/releases/tag/v1.19.3",
+          "publishedAt": "2026-10-16T12:31:52Z",
+          "prerelease": false
+        },
+        {
+          "tag": "v1.19.2",
+          "url": "https://github.com/anomalyco/opencode/releases/tag/v1.19.2",
+          "publishedAt": "2026-10-16T02:30:38Z",
+          "prerelease": false
+        },
+        {
+          "tag": "v1.19.1",
+          "url": "https://github.com/anomalyco/opencode/releases/tag/v1.19.1",
+          "publishedAt": "2026-10-15T19:19:45Z",
+          "prerelease": false
+        },
+        {
+          "tag": "v1.19.0",
+          "url": "https://github.com/anomalyco/opencode/releases/tag/v1.19.0",
+          "publishedAt": "2026-10-11T01:39:22Z",
+          "prerelease": false
+        },
+        {
+          "tag": "v1.18.35",
+          "url": "https://github.com/anomalyco/opencode/releases/tag/v1.18.35",
+          "publishedAt": "2026-10-06T20:18:39Z",
+          "prerelease": false
+        },
+        {
+          "tag": "v1.18.34",
+          "url": "https://github.com/anomalyco/opencode/releases/tag/v1.18.34",
+          "publishedAt": "2026-09-30T22:39:45Z",
+          "prerelease": false
+        },
+        {
+          "tag": "v1.18.33",
+          "url": "https://github.com/anomalyco/opencode/releases/tag/v1.18.33",
+          "publishedAt": "2026-09-28T04:22:46Z",
+          "prerelease": false
+        },
+        {
+          "tag": "v1.18.32",
+          "url": "https://github.com/anomalyco/opencode/releases/tag/v1.18.32",
+          "publishedAt": "2026-09-21T22:51:20Z",
+          "prerelease": false
+        },
+        {
+          "tag": "v1.18.31",
+          "url": "https://github.com/anomalyco/opencode/releases/tag/v1.18.31",
+          "publishedAt": "2026-09-14T17:47:30Z",
+          "prerelease": false
+        }
+      ],
+      "selected": [
+        {
+          "kind": "pr",
+          "number": 57444,
+          "title": "feat(core): add experimental background compaction summaries",
+          "url": "https://github.com/anomalyco/opencode/pull/57444",
+          "state": "closed",
+          "createdAt": "2026-10-20T16:36:57Z",
+          "updatedAt": "2026-10-22T17:07:23Z",
+          "mergedAt": "2026-10-22T17:07:18Z",
+          "headSHA": "f3e4032ad6deaff655a5cbf94cb2bba591703fac",
+          "mergeSHA": "6a5973d2636936317de15726ab37e3681f678be3",
+          "baseBranch": "dev",
+          "changedFiles": 11,
+          "fileListComplete": true,
+          "files": [
+            {
+              "filename": "packages/client/src/promise/generated/types.ts",
+              "status": "modified",
+              "additions": 1,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/core/src/config/normalize.ts",
+              "status": "modified",
+              "additions": 9,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/core/src/config/plugin/compaction.ts",
+              "status": "modified",
+              "additions": 1,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/core/src/session/compaction.ts",
+              "status": "modified",
+              "additions": 236,
+              "deletions": 46
+            },
+            {
+              "filename": "packages/core/src/session/runner/llm.ts",
+              "status": "modified",
+              "additions": 9,
+              "deletions": 1
+            },
+            {
+              "filename": "packages/core/test/config/normalization.test.ts",
+              "status": "modified",
+              "additions": 2,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/core/test/session-compaction.test.ts",
+              "status": "modified",
+              "additions": 253,
+              "deletions": 18
+            },
+            {
+              "filename": "packages/protocol/openapi.json",
+              "status": "modified",
+              "additions": 3,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/schema/src/config/experimental.ts",
+              "status": "modified",
+              "additions": 4,
+              "deletions": 0
+            },
+            {
+              "filename": "services/www/openapi.json",
+              "status": "modified",
+              "additions": 3,
+              "deletions": 0
+            },
+            {
+              "filename": "services/www/public/openapi.json",
+              "status": "modified",
+              "additions": 3,
+              "deletions": 0
+            }
+          ]
+        },
+        {
+          "kind": "pr",
+          "number": 58811,
+          "title": "fix(schema): validate base64 attachments in linear time",
+          "url": "https://github.com/anomalyco/opencode/pull/58811",
+          "state": "closed",
+          "createdAt": "2026-10-24T22:11:29Z",
+          "updatedAt": "2026-10-24T23:13:45Z",
+          "mergedAt": "2026-10-24T23:13:42Z",
+          "headSHA": "2d2e1ff9e8a7454268576046f81acdd31ec1ad90",
+          "mergeSHA": "bd2ba0a6857ca5f807b75c603bec6e2c52cebdc5",
+          "baseBranch": "dev",
+          "changedFiles": 1,
+          "fileListComplete": true,
+          "files": [
+            {
+              "filename": "packages/schema/src/prompt.ts",
+              "status": "modified",
+              "additions": 5,
+              "deletions": 1
+            }
+          ]
+        },
+        {
+          "kind": "pr",
+          "number": 58313,
+          "title": "fix(core): ignore a compaction buffer that leaves the model no room",
+          "url": "https://github.com/anomalyco/opencode/pull/58313",
+          "state": "closed",
+          "createdAt": "2026-10-23T02:41:35Z",
+          "updatedAt": "2026-10-23T03:02:49Z",
+          "mergedAt": "2026-10-23T03:02:47Z",
+          "headSHA": "f73f17378c71228eba789dc2e023b2c567c7b374",
+          "mergeSHA": "33726e8fc190a8c634a186c3f9eed530e806e1e3",
+          "baseBranch": "dev",
+          "changedFiles": 3
+        },
+        {
+          "kind": "pr",
+          "number": 58261,
+          "title": "fix(core): resume background subagents after a server restart",
+          "url": "https://github.com/anomalyco/opencode/pull/58261",
+          "state": "open",
+          "createdAt": "2026-10-22T23:27:01Z",
+          "updatedAt": "2026-10-24T19:44:26Z",
+          "mergedAt": null,
+          "headSHA": "30ffe8ebcef397001fd3539e62ba974013832964",
+          "mergeSHA": "471fb003f474b9bde9986b1a0c2e51ba25120683",
+          "baseBranch": "restart-notice",
+          "changedFiles": 6
+        },
+        {
+          "kind": "pr",
+          "number": 58763,
+          "title": "fix(server): sandbox file reads against same-origin script",
+          "url": "https://github.com/anomalyco/opencode/pull/58763",
+          "state": "open",
+          "createdAt": "2026-10-24T17:51:14Z",
+          "updatedAt": "2026-10-25T06:55:03Z",
+          "mergedAt": null,
+          "headSHA": "8b5736062e76756c82d0da3dd1c74fb9adb87198",
+          "mergeSHA": "f4824003aca037e543245bff41671d378dbb8fa8",
+          "baseBranch": "dev",
+          "changedFiles": 2
+        },
+        {
+          "kind": "pr",
+          "number": 58410,
+          "title": "feat(ai): add secret shield for outbound credential redaction",
+          "url": "https://github.com/anomalyco/opencode/pull/58410",
+          "state": "open",
+          "createdAt": "2026-10-23T09:39:04Z",
+          "updatedAt": "2026-10-23T17:49:18Z",
+          "mergedAt": null,
+          "headSHA": "adbfd02c92c71c23afe3105deb330b8970142b56",
+          "mergeSHA": null,
+          "baseBranch": "dev",
+          "changedFiles": 5
+        },
+        {
+          "kind": "issue",
+          "number": 58934,
+          "title": "SchemaError: Expected a JSON-serializable value while compiling an OpenAI Responses request fatally kills the session",
+          "url": "https://github.com/anomalyco/opencode/issues/58934",
+          "state": "open",
+          "createdAt": "2026-10-25T09:28:53Z",
+          "updatedAt": "2026-10-25T11:07:09Z",
+          "mergedAt": null
+        },
+        {
+          "kind": "issue",
+          "number": 58775,
+          "title": "permissions: rule matching depends on spelling (shell deny bypass, inert absolute rules)",
+          "url": "https://github.com/anomalyco/opencode/issues/58775",
+          "state": "open",
+          "createdAt": "2026-10-24T18:24:30Z",
+          "updatedAt": "2026-10-24T18:39:17Z",
+          "mergedAt": null
+        },
+        {
+          "kind": "issue",
+          "number": 48826,
+          "title": "[BUG] V2: subagent with pending background work (task/shell, background: true) marked completed early — results never collected",
+          "url": "https://github.com/anomalyco/opencode/issues/48826",
+          "state": "open",
+          "createdAt": "2026-09-13T15:35:28Z",
+          "updatedAt": "2026-10-21T12:53:07Z",
+          "mergedAt": null
+        },
+        {
+          "kind": "pr",
+          "number": 58848,
+          "title": "refactor(core): convert tool schemas once at registration",
+          "url": "https://github.com/anomalyco/opencode/pull/58848",
+          "state": "closed",
+          "createdAt": "2026-10-25T02:48:58Z",
+          "updatedAt": "2026-10-25T03:22:38Z",
+          "mergedAt": "2026-10-25T03:22:36Z",
+          "headSHA": "fd0973599469b8d9da9eaae18e5f78814b366265",
+          "mergeSHA": "e0b6039e1f26b753c07d690f6ea0ba7035e72c9d",
+          "changedFiles": 7
+        },
+        {
+          "kind": "issue",
+          "number": 58907,
+          "title": "session: interrupted stream persists an invalid tool call, wedging the session with a provider 400",
+          "url": "https://github.com/anomalyco/opencode/issues/58907",
+          "state": "open",
+          "createdAt": "2026-10-25T06:23:44Z",
+          "updatedAt": "2026-10-25T06:24:41Z",
+          "mergedAt": null
+        }
+      ]
+    },
+    {
+      "repository": "pingdotgg/t3code",
+      "defaultBranch": "main",
+      "head": "375da0fb9a20dfdbd2eb2db99050341fc30f3a23",
+      "license": "MIT",
+      "repo": "pingdotgg/t3code",
+      "commits": 1457,
+      "prsSample": 377,
+      "issuesSample": 186,
+      "prsOpenActive": 2130,
+      "issuesOpenActive": 979,
+      "mergedPRs": 1461,
+      "newOpenPRs": 1610,
+      "newOpenIssues": 426,
+      "releases": [
+        {
+          "tag": "v0.1.3-nightly.20261025.3655",
+          "url": "https://github.com/pingdotgg/t3code/releases/tag/v0.1.3-nightly.20261025.3655",
+          "publishedAt": "2026-10-25T05:28:16Z",
+          "prerelease": true
+        },
+        {
+          "tag": "v0.1.3-nightly.20261024.3643",
+          "url": "https://github.com/pingdotgg/t3code/releases/tag/v0.1.3-nightly.20261024.3643",
+          "publishedAt": "2026-10-24T22:51:08Z",
+          "prerelease": true
+        },
+        {
+          "tag": "v0.1.3-nightly.20261024.3630",
+          "url": "https://github.com/pingdotgg/t3code/releases/tag/v0.1.3-nightly.20261024.3630",
+          "publishedAt": "2026-10-24T16:27:49Z",
+          "prerelease": true
+        },
+        {
+          "tag": "v0.1.3-nightly.20261024.3617",
+          "url": "https://github.com/pingdotgg/t3code/releases/tag/v0.1.3-nightly.20261024.3617",
+          "publishedAt": "2026-10-24T09:52:02Z",
+          "prerelease": true
+        },
+        {
+          "tag": "v0.1.3-nightly.20261024.3604",
+          "url": "https://github.com/pingdotgg/t3code/releases/tag/v0.1.3-nightly.20261024.3604",
+          "publishedAt": "2026-10-24T03:33:12Z",
+          "prerelease": true
+        },
+        {
+          "tag": "v0.1.3-nightly.20261023.3592",
+          "url": "https://github.com/pingdotgg/t3code/releases/tag/v0.1.3-nightly.20261023.3592",
+          "publishedAt": "2026-10-23T20:53:14Z",
+          "prerelease": true
+        },
+        {
+          "tag": "v0.1.3-nightly.20261023.3579",
+          "url": "https://github.com/pingdotgg/t3code/releases/tag/v0.1.3-nightly.20261023.3579",
+          "publishedAt": "2026-10-23T14:35:28Z",
+          "prerelease": true
+        },
+        {
+          "tag": "v0.1.3-nightly.20261023.3566",
+          "url": "https://github.com/pingdotgg/t3code/releases/tag/v0.1.3-nightly.20261023.3566",
+          "publishedAt": "2026-10-23T07:56:28Z",
+          "prerelease": true
+        },
+        {
+          "tag": "v0.1.3-nightly.20261023.3553",
+          "url": "https://github.com/pingdotgg/t3code/releases/tag/v0.1.3-nightly.20261023.3553",
+          "publishedAt": "2026-10-23T01:44:38Z",
+          "prerelease": true
+        },
+        {
+          "tag": "v0.1.2",
+          "url": "https://github.com/pingdotgg/t3code/releases/tag/v0.1.2",
+          "publishedAt": "2026-10-22T20:44:22Z",
+          "prerelease": false
+        }
+      ],
+      "selected": [
+        {
+          "kind": "pr",
+          "number": 24267,
+          "title": "perf(server): coalesce superseded streaming text updates",
+          "url": "https://github.com/pingdotgg/t3code/pull/24267",
+          "state": "closed",
+          "createdAt": "2026-10-23T23:33:26Z",
+          "updatedAt": "2026-10-24T09:17:27Z",
+          "mergedAt": "2026-10-24T09:17:24Z",
+          "headSHA": "73341ea19416873704b2783fac9c92f42b0c0f11",
+          "mergeSHA": "27e0c684c585f955252d65f06206dd11a143bff5",
+          "baseBranch": "main",
+          "changedFiles": 2,
+          "fileListComplete": true,
+          "files": [
+            {
+              "filename": "apps/server/src/orchestration-v2/ThreadLiveEventCoalescer.test.ts",
+              "status": "modified",
+              "additions": 303,
+              "deletions": 5
+            },
+            {
+              "filename": "apps/server/src/orchestration-v2/ThreadLiveEventCoalescer.ts",
+              "status": "modified",
+              "additions": 41,
+              "deletions": 45
+            }
+          ]
+        },
+        {
+          "kind": "pr",
+          "number": 23840,
+          "title": "fix(server): resume Codex parents after native children finish",
+          "url": "https://github.com/pingdotgg/t3code/pull/23840",
+          "state": "closed",
+          "createdAt": "2026-10-22T21:05:38Z",
+          "updatedAt": "2026-10-22T22:41:08Z",
+          "mergedAt": "2026-10-22T22:41:05Z",
+          "headSHA": "1fba4795e3342b9a4db956f25391bde81e0b0fab",
+          "mergeSHA": "11adcb0e25a04785f70d01c3f2a858889683007e",
+          "baseBranch": "main",
+          "changedFiles": 2,
+          "fileListComplete": true,
+          "files": [
+            {
+              "filename": "apps/server/src/orchestration-v2/Adapters/CodexAdapterV2.test.ts",
+              "status": "modified",
+              "additions": 332,
+              "deletions": 1
+            },
+            {
+              "filename": "apps/server/src/orchestration-v2/Adapters/CodexAdapterV2.ts",
+              "status": "modified",
+              "additions": 47,
+              "deletions": 0
+            }
+          ]
+        },
+        {
+          "kind": "pr",
+          "number": 22234,
+          "title": "feat(scheduled-tasks): replay dedupe and coalescing for webhook deliveries",
+          "url": "https://github.com/pingdotgg/t3code/pull/22234",
+          "state": "closed",
+          "createdAt": "2026-10-20T09:03:05Z",
+          "updatedAt": "2026-10-20T20:49:50Z",
+          "mergedAt": "2026-10-20T20:49:48Z",
+          "headSHA": "e2a5194959665f22d9efdbfe23f531bcfcc12857",
+          "mergeSHA": "2ebe280e5602f23fc2742297da3d3b6f2b1b8fca",
+          "baseBranch": "main",
+          "changedFiles": 20,
+          "fileListComplete": true,
+          "files": [
+            {
+              "filename": "apps/mobile/src/features/settings/SettingsScheduledTasksRouteScreen.tsx",
+              "status": "modified",
+              "additions": 42,
+              "deletions": 0
+            },
+            {
+              "filename": "apps/mobile/src/features/settings/scheduledTaskDraft.test.ts",
+              "status": "modified",
+              "additions": 43,
+              "deletions": 1
+            },
+            {
+              "filename": "apps/mobile/src/features/settings/scheduledTaskDraft.ts",
+              "status": "modified",
+              "additions": 38,
+              "deletions": 0
+            },
+            {
+              "filename": "apps/server/src/mcp/toolkits/orchestrator/tools.ts",
+              "status": "modified",
+              "additions": 2,
+              "deletions": 2
+            },
+            {
+              "filename": "apps/server/src/persistence/Migrations.ts",
+              "status": "modified",
+              "additions": 2,
+              "deletions": 0
+            },
+            {
+              "filename": "apps/server/src/persistence/Migrations/055_OrchestrationV2.test.ts",
+              "status": "modified",
+              "additions": 3,
+              "deletions": 1
+            },
+            {
+              "filename": "apps/server/src/persistence/Migrations/067_WebhookDedupe.ts",
+              "status": "added",
+              "additions": 29,
+              "deletions": 0
+            },
+            {
+              "filename": "apps/server/src/persistence/reconcileV2PreviewMigration.test.ts",
+              "status": "modified",
+              "additions": 2,
+              "deletions": 0
+            },
+            {
+              "filename": "apps/server/src/scheduledTasks/ScheduledTaskService.ts",
+              "status": "modified",
+              "additions": 581,
+              "deletions": 161
+            },
+            {
+              "filename": "apps/server/src/scheduledTasks/ScheduledTaskService.webhook.test.ts",
+              "status": "modified",
+              "additions": 1903,
+              "deletions": 125
+            },
+            {
+              "filename": "apps/server/src/scheduledTasks/webhookDedupe.ts",
+              "status": "added",
+              "additions": 128,
+              "deletions": 0
+            },
+            {
+              "filename": "apps/server/src/scheduledTasks/webhookRoute.test.ts",
+              "status": "modified",
+              "additions": 1,
+              "deletions": 0
+            },
+            {
+              "filename": "apps/server/src/scheduledTasks/webhookRoute.ts",
+              "status": "modified",
+              "additions": 1,
+              "deletions": 1
+            },
+            {
+              "filename": "apps/server/src/scheduledTasks/webhookTemplate.ts",
+              "status": "modified",
+              "additions": 3,
+              "deletions": 1
+            },
+            {
+              "filename": "apps/web/src/components/settings/ScheduledTasksSettings.tsx",
+              "status": "modified",
+              "additions": 87,
+              "deletions": 30
+            },
+            {
+              "filename": "apps/web/src/components/settings/scheduledTasksSettings.logic.test.ts",
+              "status": "modified",
+              "additions": 98,
+              "deletions": 0
+            },
+            {
+              "filename": "apps/web/src/components/settings/scheduledTasksSettings.logic.ts",
+              "status": "modified",
+              "additions": 73,
+              "deletions": 0
+            },
+            {
+              "filename": "docs/user/project-settings.md",
+              "status": "modified",
+              "additions": 14,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/contracts/src/scheduledTask.test.ts",
+              "status": "modified",
+              "additions": 47,
+              "deletions": 4
+            },
+            {
+              "filename": "packages/contracts/src/scheduledTask.ts",
+              "status": "modified",
+              "additions": 26,
+              "deletions": 0
+            }
+          ]
+        },
+        {
+          "kind": "pr",
+          "number": 24809,
+          "title": "feat(server): request_secret can save a CLI token to a private file",
+          "url": "https://github.com/pingdotgg/t3code/pull/24809",
+          "state": "closed",
+          "createdAt": "2026-10-25T09:00:16Z",
+          "updatedAt": "2026-10-25T09:28:10Z",
+          "mergedAt": "2026-10-25T09:28:07Z",
+          "headSHA": "431bb7e37a0842f4dc4ad8d51e5bad06f4dd4403",
+          "mergeSHA": "e0b194021b151cd28e718f4cecd10095134dee45",
+          "baseBranch": "main",
+          "changedFiles": 13
+        },
+        {
+          "kind": "pr",
+          "number": 16719,
+          "title": "feat(server): delegate_task to a linked environment",
+          "url": "https://github.com/pingdotgg/t3code/pull/16719",
+          "state": "open",
+          "createdAt": "2026-10-07T04:57:09Z",
+          "updatedAt": "2026-10-24T12:54:47Z",
+          "mergedAt": null,
+          "headSHA": "70a2a7bdd25d1c3729a864517727914fc3b01d2b",
+          "mergeSHA": "d44cab11629e94006ef99ac2e41283420de06a6d",
+          "baseBranch": "t3code/peer/links-ui",
+          "changedFiles": 63
+        },
+        {
+          "kind": "pr",
+          "number": 20145,
+          "title": "fix(approvals): command approvals show the command, not only the agent's description",
+          "url": "https://github.com/pingdotgg/t3code/pull/20145",
+          "state": "open",
+          "createdAt": "2026-10-16T04:09:05Z",
+          "updatedAt": "2026-10-25T01:26:58Z",
+          "mergedAt": null,
+          "headSHA": "6e8ad24cac13bf51d12bcc2270e18123c7313e54",
+          "mergeSHA": "62986a774e58a35a1b7f3d3bfae4a71f5cd340f1",
+          "baseBranch": "main",
+          "changedFiles": 19
+        },
+        {
+          "kind": "issue",
+          "number": 19112,
+          "title": "[Bug]: Cursor SDK retries replay a finished turn (re-running tool calls) when its checkpoint save fails",
+          "url": "https://github.com/pingdotgg/t3code/issues/19112",
+          "state": "open",
+          "createdAt": "2026-10-13T17:58:35Z",
+          "updatedAt": "2026-10-23T20:16:17Z",
+          "mergedAt": null
+        },
+        {
+          "kind": "issue",
+          "number": 21772,
+          "title": "[Bug]: Parent is never notified when a delegated child's provider-initiated run ends (e.g. after a background command finishes)",
+          "url": "https://github.com/pingdotgg/t3code/issues/21772",
+          "state": "open",
+          "createdAt": "2026-10-19T15:35:07Z",
+          "updatedAt": "2026-10-25T06:41:23Z",
+          "mergedAt": null
+        },
+        {
+          "kind": "pr",
+          "number": 24104,
+          "title": "feat: share a thread with a guest who watches live and sends messages you approve",
+          "url": "https://github.com/pingdotgg/t3code/pull/24104",
+          "state": "closed",
+          "createdAt": "2026-10-23T12:08:23Z",
+          "updatedAt": "2026-10-25T01:48:24Z",
+          "mergedAt": "2026-10-25T01:48:22Z",
+          "headSHA": "f03c1e8ef940176a09171a4da4d3ed80dea665f6",
+          "mergeSHA": "fb76594d7b9f38d27d8d093733a791d0005c921c",
+          "changedFiles": 109
+        },
+        {
+          "kind": "pr",
+          "number": 24343,
+          "title": "feat(search): Cmd+K finds the right thread first, with indexed message search",
+          "url": "https://github.com/pingdotgg/t3code/pull/24343",
+          "state": "closed",
+          "createdAt": "2026-10-24T05:29:42Z",
+          "updatedAt": "2026-10-24T11:05:49Z",
+          "mergedAt": "2026-10-24T11:05:46Z",
+          "headSHA": "6dc92b0ddf31f7de3a0fd0e9c7bd98a3074e513c",
+          "mergeSHA": "bb7783e295506ad423f527ed28a019836e331e8c",
+          "changedFiles": 69
+        },
+        {
+          "kind": "issue",
+          "number": 24486,
+          "title": "[Bug]: Codex shadow home splits each SQLite database from its WAL, corrupting shared state and disabling the default Codex instance",
+          "url": "https://github.com/pingdotgg/t3code/issues/24486",
+          "state": "open",
+          "createdAt": "2026-10-24T16:06:16Z",
+          "updatedAt": "2026-10-25T02:14:02Z",
+          "mergedAt": null
+        }
+      ]
+    },
+    {
+      "repository": "nightly-labs/openbot",
+      "defaultBranch": "main",
+      "head": "1242e4e53d053714aad9dcc096c3fda9b5859d90",
+      "license": "PolyForm-Noncommercial-1.0.0",
+      "repo": "nightly-labs/openbot",
+      "commits": 326,
+      "prsSample": 20,
+      "issuesSample": 75,
+      "prsOpenActive": 20,
+      "issuesOpenActive": 75,
+      "mergedPRs": 326,
+      "newOpenPRs": 17,
+      "newOpenIssues": 67,
+      "releases": [
+        {
+          "tag": "v0.49.0",
+          "url": "https://github.com/nightly-labs/openbot/releases/tag/v0.49.0",
+          "publishedAt": "2026-10-24T09:28:30Z",
+          "prerelease": false
+        },
+        {
+          "tag": "remote-desktop-runtime-6bfa627e04a26e6c53d0417d0b1e26f7396d9f069239d0b0d288fe869a77d101",
+          "url": "https://github.com/nightly-labs/openbot/releases/tag/remote-desktop-runtime-6bfa627e04a26e6c53d0417d0b1e26f7396d9f069239d0b0d288fe869a77d101",
+          "publishedAt": "2026-10-24T08:36:35Z",
+          "prerelease": true
+        },
+        {
+          "tag": "v0.48.2",
+          "url": "https://github.com/nightly-labs/openbot/releases/tag/v0.48.2",
+          "publishedAt": "2026-10-23T14:49:54Z",
+          "prerelease": false
+        },
+        {
+          "tag": "v0.48.1",
+          "url": "https://github.com/nightly-labs/openbot/releases/tag/v0.48.1",
+          "publishedAt": "2026-10-22T18:42:14Z",
+          "prerelease": false
+        },
+        {
+          "tag": "v0.48.0",
+          "url": "https://github.com/nightly-labs/openbot/releases/tag/v0.48.0",
+          "publishedAt": "2026-10-22T16:26:37Z",
+          "prerelease": false
+        },
+        {
+          "tag": "v0.47.1",
+          "url": "https://github.com/nightly-labs/openbot/releases/tag/v0.47.1",
+          "publishedAt": "2026-10-21T15:12:54Z",
+          "prerelease": false
+        },
+        {
+          "tag": "v0.47.0",
+          "url": "https://github.com/nightly-labs/openbot/releases/tag/v0.47.0",
+          "publishedAt": "2026-10-21T11:45:11Z",
+          "prerelease": false
+        },
+        {
+          "tag": "v0.46.0",
+          "url": "https://github.com/nightly-labs/openbot/releases/tag/v0.46.0",
+          "publishedAt": "2026-10-20T20:00:10Z",
+          "prerelease": false
+        },
+        {
+          "tag": "v0.45.0",
+          "url": "https://github.com/nightly-labs/openbot/releases/tag/v0.45.0",
+          "publishedAt": "2026-10-20T15:10:20Z",
+          "prerelease": false
+        },
+        {
+          "tag": "v0.44.3",
+          "url": "https://github.com/nightly-labs/openbot/releases/tag/v0.44.3",
+          "publishedAt": "2026-10-19T15:39:02Z",
+          "prerelease": false
+        }
+      ],
+      "selected": [
+        {
+          "kind": "pr",
+          "number": 3053,
+          "title": "Show a trace of each agent turn from its steps row",
+          "url": "https://github.com/nightly-labs/openbot/pull/3053",
+          "state": "closed",
+          "createdAt": "2026-10-24T19:48:37Z",
+          "updatedAt": "2026-10-24T21:12:53Z",
+          "mergedAt": "2026-10-24T21:12:52Z",
+          "headSHA": "82599d4173cdb3ef774c4be2194d29e3f0300767",
+          "mergeSHA": "54ee532f46ab1b6545c39508e9e3d2bb53f2a307",
+          "baseBranch": "main",
+          "changedFiles": 40,
+          "fileListComplete": true,
+          "files": [
+            {
+              "filename": "changelog.d/t3-trace-waterfall-steps-ui.md",
+              "status": "added",
+              "additions": 14,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/contracts/src/ipc-conversation-messages.ts",
+              "status": "modified",
+              "additions": 8,
+              "deletions": 1
+            },
+            {
+              "filename": "packages/contracts/src/ipc-conversation-trace.ts",
+              "status": "added",
+              "additions": 82,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/contracts/src/ipc.ts",
+              "status": "modified",
+              "additions": 1,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/de/chat.ts",
+              "status": "modified",
+              "additions": 33,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/en/chat.ts",
+              "status": "modified",
+              "additions": 33,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/es/chat.ts",
+              "status": "modified",
+              "additions": 33,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/fr/chat.ts",
+              "status": "modified",
+              "additions": 33,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/it/chat.ts",
+              "status": "modified",
+              "additions": 33,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/ja/chat.ts",
+              "status": "modified",
+              "additions": 33,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/ko/chat.ts",
+              "status": "modified",
+              "additions": 33,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/pl/chat.ts",
+              "status": "modified",
+              "additions": 38,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/pt/chat.ts",
+              "status": "modified",
+              "additions": 33,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/ru/chat.ts",
+              "status": "modified",
+              "additions": 38,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/tr/chat.ts",
+              "status": "modified",
+              "additions": 33,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/ui/package.json",
+              "status": "modified",
+              "additions": 1,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/ui/src/data.ts",
+              "status": "modified",
+              "additions": 6,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/ui/src/features/conversation/AgentSteps.tsx",
+              "status": "modified",
+              "additions": 133,
+              "deletions": 13
+            },
+            {
+              "filename": "packages/ui/src/features/conversation/Subagents.tsx",
+              "status": "modified",
+              "additions": 2,
+              "deletions": 1
+            },
+            {
+              "filename": "packages/ui/src/features/conversation/TraceWaterfall.tsx",
+              "status": "added",
+              "additions": 1187,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/ui/src/features/conversation/conversation.css",
+              "status": "modified",
+              "additions": 1,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/ui/src/features/conversation/styles/agent-steps.css",
+              "status": "modified",
+              "additions": 44,
+              "deletions": 8
+            },
+            {
+              "filename": "packages/ui/src/features/conversation/styles/trace-waterfall.css",
+              "status": "added",
+              "additions": 788,
+              "deletions": 0
+            },
+            {
+              "filename": "scripts/claude-usage-resume-e2e.ts",
+              "status": "modified",
+              "additions": 8,
+              "deletions": 5
+            },
+            {
+              "filename": "src/backend/agent/thread-items.ts",
+              "status": "modified",
+              "additions": 42,
+              "deletions": 2
+            },
+            {
+              "filename": "src/backend/agent/turn-lifecycle.ts",
+              "status": "modified",
+              "additions": 69,
+              "deletions": 0
+            },
+            {
+              "filename": "src/backend/agent/turn-traces.ts",
+              "status": "added",
+              "additions": 117,
+              "deletions": 0
+            },
+            {
+              "filename": "src/backend/agent/usage-collection.ts",
+              "status": "modified",
+              "additions": 4,
+              "deletions": 1
+            },
+            {
+              "filename": "src/backend/agent/usage-pricing.ts",
+              "status": "modified",
+              "additions": 44,
+              "deletions": 6
+            },
+            {
+              "filename": "src/backend/claude-client.ts",
+              "status": "modified",
+              "additions": 32,
+              "deletions": 3
+            },
+            {
+              "filename": "src/backend/database/agent-usage.ts",
+              "status": "modified",
+              "additions": 47,
+              "deletions": 12
+            },
+            {
+              "filename": "src/backend/database/legacy-conversation-message.ts",
+              "status": "modified",
+              "additions": 12,
+              "deletions": 2
+            },
+            {
+              "filename": "src/renderer/src/app-message-projection.ts",
+              "status": "modified",
+              "additions": 3,
+              "deletions": 0
+            },
+            {
+              "filename": "src/renderer/src/features/conversation/ConversationTimeline.tsx",
+              "status": "modified",
+              "additions": 37,
+              "deletions": 5
+            },
+            {
+              "filename": "src/renderer/src/features/conversation/conversation-scope.ts",
+              "status": "modified",
+              "additions": 2,
+              "deletions": 0
+            },
+            {
+              "filename": "src/renderer/src/features/conversation/stores/search-store.ts",
+              "status": "modified",
+              "additions": 2,
+              "deletions": 0
+            },
+            {
+              "filename": "src/renderer/src/features/conversation/turn-steps.ts",
+              "status": "modified",
+              "additions": 281,
+              "deletions": 12
+            },
+            {
+              "filename": "src/renderer/src/preview/mock-openbot.ts",
+              "status": "modified",
+              "additions": 45,
+              "deletions": 1
+            },
+            {
+              "filename": "src/renderer/stories/AgentSteps.stories.tsx",
+              "status": "modified",
+              "additions": 6,
+              "deletions": 2
+            },
+            {
+              "filename": "src/renderer/stories/TraceWaterfall.stories.tsx",
+              "status": "added",
+              "additions": 294,
+              "deletions": 0
+            }
+          ]
+        },
+        {
+          "kind": "pr",
+          "number": 3035,
+          "title": "Keep the Claude prompt cache and send channel members only unread messages",
+          "url": "https://github.com/nightly-labs/openbot/pull/3035",
+          "state": "closed",
+          "createdAt": "2026-10-24T14:50:54Z",
+          "updatedAt": "2026-10-24T15:17:37Z",
+          "mergedAt": "2026-10-24T15:17:34Z",
+          "headSHA": "6e5357f3fea2c354333794c4f9549c98092a30f9",
+          "mergeSHA": "e83cd6d75a422b71fb382e7211f07dc86235c1a6",
+          "baseBranch": "main",
+          "changedFiles": 14,
+          "fileListComplete": true,
+          "files": [
+            {
+              "filename": "changelog.d/t3-8c529032.md",
+              "status": "added",
+              "additions": 13,
+              "deletions": 0
+            },
+            {
+              "filename": "package.json",
+              "status": "modified",
+              "additions": 1,
+              "deletions": 0
+            },
+            {
+              "filename": "scripts/claude-cache-e2e.ts",
+              "status": "added",
+              "additions": 277,
+              "deletions": 0
+            },
+            {
+              "filename": "src/backend/agent-service.ts",
+              "status": "modified",
+              "additions": 8,
+              "deletions": 0
+            },
+            {
+              "filename": "src/backend/agent/context-compaction.ts",
+              "status": "modified",
+              "additions": 5,
+              "deletions": 0
+            },
+            {
+              "filename": "src/backend/agent/developer-instructions.ts",
+              "status": "modified",
+              "additions": 51,
+              "deletions": 6
+            },
+            {
+              "filename": "src/backend/agent/drain-scheduler.ts",
+              "status": "modified",
+              "additions": 22,
+              "deletions": 15
+            },
+            {
+              "filename": "src/backend/agent/thread-lifecycle.ts",
+              "status": "modified",
+              "additions": 8,
+              "deletions": 2
+            },
+            {
+              "filename": "src/backend/agent/tool-guidance.ts",
+              "status": "modified",
+              "additions": 2,
+              "deletions": 2
+            },
+            {
+              "filename": "src/backend/channel-history.ts",
+              "status": "modified",
+              "additions": 61,
+              "deletions": 38
+            },
+            {
+              "filename": "src/backend/channel-service.ts",
+              "status": "modified",
+              "additions": 128,
+              "deletions": 19
+            },
+            {
+              "filename": "src/backend/channel-store.ts",
+              "status": "modified",
+              "additions": 61,
+              "deletions": 3
+            },
+            {
+              "filename": "src/backend/claude-client.ts",
+              "status": "modified",
+              "additions": 70,
+              "deletions": 25
+            },
+            {
+              "filename": "src/backend/claude-history.ts",
+              "status": "modified",
+              "additions": 2,
+              "deletions": 2
+            }
+          ]
+        },
+        {
+          "kind": "pr",
+          "number": 2997,
+          "title": "Switch to a backup model when a provider is overloaded or down",
+          "url": "https://github.com/nightly-labs/openbot/pull/2997",
+          "state": "closed",
+          "createdAt": "2026-10-24T08:40:14Z",
+          "updatedAt": "2026-10-24T08:46:29Z",
+          "mergedAt": "2026-10-24T08:45:04Z",
+          "headSHA": "05803a098f33a694c4d111d3d809c43a7fa98067",
+          "mergeSHA": "6a2f3bf4eb8cf6aa02590adcda36851c7a34feab",
+          "baseBranch": "main",
+          "changedFiles": 3
+        },
+        {
+          "kind": "pr",
+          "number": 3062,
+          "title": "Add workflows: connect agents and steps on a canvas",
+          "url": "https://github.com/nightly-labs/openbot/pull/3062",
+          "state": "open",
+          "createdAt": "2026-10-25T03:27:48Z",
+          "updatedAt": "2026-10-25T10:45:53Z",
+          "mergedAt": null,
+          "headSHA": "6cedd0c7e9720490bd631248b2579f7cd14d446e",
+          "mergeSHA": "fe78f0172ecdc499b4946decaeef737e54b248ff",
+          "baseBranch": "main",
+          "changedFiles": 193,
+          "fileListComplete": false,
+          "files": [
+            {
+              "filename": ".storybook/main.ts",
+              "status": "modified",
+              "additions": 3,
+              "deletions": 0
+            },
+            {
+              "filename": "PRIVACY.md",
+              "status": "modified",
+              "additions": 33,
+              "deletions": 4
+            },
+            {
+              "filename": "changelog.d/t3-workflow-canvas-redesign.md",
+              "status": "added",
+              "additions": 9,
+              "deletions": 0
+            },
+            {
+              "filename": "docs/architecture/agents.md",
+              "status": "modified",
+              "additions": 44,
+              "deletions": 0
+            },
+            {
+              "filename": "docs/architecture/events.md",
+              "status": "modified",
+              "additions": 20,
+              "deletions": 2
+            },
+            {
+              "filename": "docs/architecture/servers.md",
+              "status": "modified",
+              "additions": 39,
+              "deletions": 0
+            },
+            {
+              "filename": "docs/glossary.md",
+              "status": "modified",
+              "additions": 8,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/contracts/package.json",
+              "status": "modified",
+              "additions": 1,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/contracts/src/input-limits.ts",
+              "status": "modified",
+              "additions": 17,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/contracts/src/ipc-agent-events.ts",
+              "status": "modified",
+              "additions": 4,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/contracts/src/ipc-endpoints.ts",
+              "status": "modified",
+              "additions": 50,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/contracts/src/ipc-workflows.ts",
+              "status": "added",
+              "additions": 572,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/contracts/src/ipc.ts",
+              "status": "modified",
+              "additions": 1,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/contracts/src/team-protocol/current.ts",
+              "status": "modified",
+              "additions": 7,
+              "deletions": 2
+            },
+            {
+              "filename": "packages/contracts/src/team-protocol/events-v1.ts",
+              "status": "modified",
+              "additions": 4,
+              "deletions": 2
+            },
+            {
+              "filename": "packages/contracts/src/team-protocol/optional-events.ts",
+              "status": "modified",
+              "additions": 5,
+              "deletions": 2
+            },
+            {
+              "filename": "packages/contracts/src/team-protocol/optional-routes.ts",
+              "status": "modified",
+              "additions": 2,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/contracts/src/team-protocol/workflows-v1.ts",
+              "status": "added",
+              "additions": 256,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/de/app.ts",
+              "status": "modified",
+              "additions": 1,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/de/error/workflow.ts",
+              "status": "added",
+              "additions": 42,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/de/index.ts",
+              "status": "modified",
+              "additions": 2,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/de/notification.ts",
+              "status": "modified",
+              "additions": 4,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/de/source.ts",
+              "status": "modified",
+              "additions": 2,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/de/workflow.ts",
+              "status": "added",
+              "additions": 329,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/en/app.ts",
+              "status": "modified",
+              "additions": 1,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/en/error/workflow.ts",
+              "status": "added",
+              "additions": 38,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/en/index.ts",
+              "status": "modified",
+              "additions": 2,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/en/notification.ts",
+              "status": "modified",
+              "additions": 4,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/en/source.ts",
+              "status": "modified",
+              "additions": 2,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/en/workflow.ts",
+              "status": "added",
+              "additions": 327,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/es/app.ts",
+              "status": "modified",
+              "additions": 1,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/es/error/workflow.ts",
+              "status": "added",
+              "additions": 43,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/es/index.ts",
+              "status": "modified",
+              "additions": 2,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/es/notification.ts",
+              "status": "modified",
+              "additions": 4,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/es/source.ts",
+              "status": "modified",
+              "additions": 2,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/es/workflow.ts",
+              "status": "added",
+              "additions": 330,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/fr/app.ts",
+              "status": "modified",
+              "additions": 1,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/fr/error/workflow.ts",
+              "status": "added",
+              "additions": 43,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/fr/index.ts",
+              "status": "modified",
+              "additions": 2,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/fr/notification.ts",
+              "status": "modified",
+              "additions": 4,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/fr/source.ts",
+              "status": "modified",
+              "additions": 2,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/fr/workflow.ts",
+              "status": "added",
+              "additions": 329,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/it/app.ts",
+              "status": "modified",
+              "additions": 1,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/it/error/workflow.ts",
+              "status": "added",
+              "additions": 40,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/it/index.ts",
+              "status": "modified",
+              "additions": 2,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/it/notification.ts",
+              "status": "modified",
+              "additions": 4,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/it/source.ts",
+              "status": "modified",
+              "additions": 2,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/it/workflow.ts",
+              "status": "added",
+              "additions": 330,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/ja/app.ts",
+              "status": "modified",
+              "additions": 1,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/ja/error/workflow.ts",
+              "status": "added",
+              "additions": 43,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/ja/index.ts",
+              "status": "modified",
+              "additions": 2,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/ja/notification.ts",
+              "status": "modified",
+              "additions": 4,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/ja/source.ts",
+              "status": "modified",
+              "additions": 2,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/ja/workflow.ts",
+              "status": "added",
+              "additions": 329,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/ko/error/workflow.ts",
+              "status": "added",
+              "additions": 39,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/ko/index.ts",
+              "status": "modified",
+              "additions": 2,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/ko/source.ts",
+              "status": "modified",
+              "additions": 2,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/ko/workflow.ts",
+              "status": "added",
+              "additions": 329,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/pl/app.ts",
+              "status": "modified",
+              "additions": 1,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/pl/error/workflow.ts",
+              "status": "added",
+              "additions": 40,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/pl/index.ts",
+              "status": "modified",
+              "additions": 2,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/pl/notification.ts",
+              "status": "modified",
+              "additions": 4,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/pl/source.ts",
+              "status": "modified",
+              "additions": 2,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/pl/workflow.ts",
+              "status": "added",
+              "additions": 343,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/pt/app.ts",
+              "status": "modified",
+              "additions": 1,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/pt/error/workflow.ts",
+              "status": "added",
+              "additions": 42,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/pt/index.ts",
+              "status": "modified",
+              "additions": 2,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/pt/notification.ts",
+              "status": "modified",
+              "additions": 4,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/pt/source.ts",
+              "status": "modified",
+              "additions": 2,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/pt/workflow.ts",
+              "status": "added",
+              "additions": 330,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/ru/app.ts",
+              "status": "modified",
+              "additions": 1,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/ru/error/workflow.ts",
+              "status": "added",
+              "additions": 42,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/ru/index.ts",
+              "status": "modified",
+              "additions": 2,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/ru/notification.ts",
+              "status": "modified",
+              "additions": 4,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/ru/source.ts",
+              "status": "modified",
+              "additions": 2,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/ru/workflow.ts",
+              "status": "added",
+              "additions": 344,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/tr/app.ts",
+              "status": "modified",
+              "additions": 1,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/tr/error/workflow.ts",
+              "status": "added",
+              "additions": 41,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/tr/index.ts",
+              "status": "modified",
+              "additions": 2,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/tr/notification.ts",
+              "status": "modified",
+              "additions": 4,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/tr/source.ts",
+              "status": "modified",
+              "additions": 2,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/i18n/src/messages/tr/workflow.ts",
+              "status": "added",
+              "additions": 329,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/ui/package.json",
+              "status": "modified",
+              "additions": 33,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/ui/src/features/window/PageRail.tsx",
+              "status": "modified",
+              "additions": 23,
+              "deletions": 1
+            },
+            {
+              "filename": "packages/ui/src/features/workflows/WorkflowAddMenu.tsx",
+              "status": "added",
+              "additions": 281,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/ui/src/features/workflows/WorkflowAgentNode.tsx",
+              "status": "added",
+              "additions": 189,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/ui/src/features/workflows/WorkflowApprovalNode.tsx",
+              "status": "added",
+              "additions": 98,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/ui/src/features/workflows/WorkflowAssetNode.tsx",
+              "status": "added",
+              "additions": 431,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/ui/src/features/workflows/WorkflowCanvas.tsx",
+              "status": "added",
+              "additions": 3124,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/ui/src/features/workflows/WorkflowCanvasHud.tsx",
+              "status": "added",
+              "additions": 362,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/ui/src/features/workflows/WorkflowConditionNode.tsx",
+              "status": "added",
+              "additions": 80,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/ui/src/features/workflows/WorkflowDeleteUndoToast.tsx",
+              "status": "added",
+              "additions": 76,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/ui/src/features/workflows/WorkflowImageNode.tsx",
+              "status": "added",
+              "additions": 320,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/ui/src/features/workflows/WorkflowLlmNode.tsx",
+              "status": "added",
+              "additions": 127,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/ui/src/features/workflows/WorkflowMinimap.tsx",
+              "status": "added",
+              "additions": 118,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/ui/src/features/workflows/WorkflowNoteNode.tsx",
+              "status": "added",
+              "additions": 190,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/ui/src/features/workflows/WorkflowOutputNode.tsx",
+              "status": "added",
+              "additions": 151,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/ui/src/features/workflows/WorkflowPicker.tsx",
+              "status": "added",
+              "additions": 248,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/ui/src/features/workflows/WorkflowPromptNode.tsx",
+              "status": "added",
+              "additions": 51,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/ui/src/features/workflows/WorkflowSearch.tsx",
+              "status": "added",
+              "additions": 82,
+              "deletions": 0
+            }
+          ]
+        },
+        {
+          "kind": "pr",
+          "number": 3060,
+          "title": "Apply a provider change from the next turn",
+          "url": "https://github.com/nightly-labs/openbot/pull/3060",
+          "state": "open",
+          "createdAt": "2026-10-24T23:04:00Z",
+          "updatedAt": "2026-10-24T23:04:15Z",
+          "mergedAt": null,
+          "headSHA": "696f1d84071090a333a5e677a19048544ee04746",
+          "mergeSHA": "3b3cdb2d236e2e20f000f16099167570602ac734",
+          "baseBranch": "main",
+          "changedFiles": 17
+        },
+        {
+          "kind": "issue",
+          "number": 3041,
+          "title": "[Bug]: After a channel lead timeout, the Coordinator assigns every later independent task to the one busy member",
+          "url": "https://github.com/nightly-labs/openbot/issues/3041",
+          "state": "open",
+          "createdAt": "2026-10-24T16:14:01Z",
+          "updatedAt": "2026-10-24T17:22:44Z",
+          "mergedAt": null
+        },
+        {
+          "kind": "issue",
+          "number": 3034,
+          "title": "[Bug]: Routines canvas marks Coordinator Done and omits Researcher while a delegated run is still open",
+          "url": "https://github.com/nightly-labs/openbot/issues/3034",
+          "state": "open",
+          "createdAt": "2026-10-24T14:50:43Z",
+          "updatedAt": "2026-10-24T15:43:17Z",
+          "mergedAt": null
+        }
+      ]
+    },
+    {
+      "repository": "can1357/oh-my-pi",
+      "defaultBranch": "main",
+      "head": "0b5c27ab24719c86a5986b95ee55f4e75bc1aaa0",
+      "license": "MIT",
+      "repo": "can1357/oh-my-pi",
+      "commits": 1286,
+      "prsSample": 363,
+      "issuesSample": 161,
+      "prsOpenActive": 598,
+      "issuesOpenActive": 257,
+      "mergedPRs": 244,
+      "newOpenPRs": 361,
+      "newOpenIssues": 182,
+      "releases": [
+        {
+          "tag": "v18.12.6",
+          "url": "https://github.com/can1357/oh-my-pi/releases/tag/v18.12.6",
+          "publishedAt": "2026-10-21T21:02:53Z",
+          "prerelease": false
+        },
+        {
+          "tag": "v18.12.5",
+          "url": "https://github.com/can1357/oh-my-pi/releases/tag/v18.12.5",
+          "publishedAt": "2026-10-21T02:31:29Z",
+          "prerelease": false
+        },
+        {
+          "tag": "v18.12.4",
+          "url": "https://github.com/can1357/oh-my-pi/releases/tag/v18.12.4",
+          "publishedAt": "2026-10-20T19:42:57Z",
+          "prerelease": false
+        },
+        {
+          "tag": "v18.12.3",
+          "url": "https://github.com/can1357/oh-my-pi/releases/tag/v18.12.3",
+          "publishedAt": "2026-10-19T18:41:25Z",
+          "prerelease": false
+        },
+        {
+          "tag": "v18.12.2",
+          "url": "https://github.com/can1357/oh-my-pi/releases/tag/v18.12.2",
+          "publishedAt": "2026-10-18T21:03:22Z",
+          "prerelease": false
+        },
+        {
+          "tag": "v18.12.1",
+          "url": "https://github.com/can1357/oh-my-pi/releases/tag/v18.12.1",
+          "publishedAt": "2026-10-17T23:14:21Z",
+          "prerelease": false
+        },
+        {
+          "tag": "v18.12.0",
+          "url": "https://github.com/can1357/oh-my-pi/releases/tag/v18.12.0",
+          "publishedAt": "2026-10-17T18:44:02Z",
+          "prerelease": false
+        },
+        {
+          "tag": "v18.11.3",
+          "url": "https://github.com/can1357/oh-my-pi/releases/tag/v18.11.3",
+          "publishedAt": "2026-10-16T21:45:36Z",
+          "prerelease": false
+        },
+        {
+          "tag": "v18.11.2",
+          "url": "https://github.com/can1357/oh-my-pi/releases/tag/v18.11.2",
+          "publishedAt": "2026-10-16T15:05:57Z",
+          "prerelease": false
+        },
+        {
+          "tag": "v18.11.1",
+          "url": "https://github.com/can1357/oh-my-pi/releases/tag/v18.11.1",
+          "publishedAt": "2026-10-15T15:02:20Z",
+          "prerelease": false
+        }
+      ],
+      "selected": [
+        {
+          "kind": "pr",
+          "number": 16682,
+          "title": "fix(collab): restore pending ask controls after host reconnect",
+          "url": "https://github.com/can1357/oh-my-pi/pull/16682",
+          "state": "closed",
+          "createdAt": "2026-10-21T15:31:34Z",
+          "updatedAt": "2026-10-22T09:43:25Z",
+          "mergedAt": "2026-10-22T09:43:24Z",
+          "headSHA": "07594f6a9102fc8c257059898e0fd5a9c952dd9a",
+          "mergeSHA": "702d45b015a125e3feeb83cbf64ef1d1f16afe9a",
+          "baseBranch": "main",
+          "changedFiles": 5,
+          "fileListComplete": true,
+          "files": [
+            {
+              "filename": "packages/coding-agent/CHANGELOG.md",
+              "status": "modified",
+              "additions": 1,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/coding-agent/src/collab/host.ts",
+              "status": "modified",
+              "additions": 28,
+              "deletions": 11
+            },
+            {
+              "filename": "packages/coding-agent/src/modes/controllers/extension-ui-controller.ts",
+              "status": "modified",
+              "additions": 2,
+              "deletions": 1
+            },
+            {
+              "filename": "packages/coding-agent/test/collab/guest-ui-request.test.ts",
+              "status": "modified",
+              "additions": 49,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/coding-agent/test/collab/host-registry.test.ts",
+              "status": "modified",
+              "additions": 28,
+              "deletions": 4
+            }
+          ]
+        },
+        {
+          "kind": "pr",
+          "number": 16681,
+          "title": "fix(memory): removed reasoning from stage-one rollouts",
+          "url": "https://github.com/can1357/oh-my-pi/pull/16681",
+          "state": "closed",
+          "createdAt": "2026-10-21T15:27:36Z",
+          "updatedAt": "2026-10-22T09:43:25Z",
+          "mergedAt": "2026-10-22T09:43:24Z",
+          "headSHA": "b0ad97c87521502e8cafde53300324d5aeee279f",
+          "mergeSHA": "ad5641b17d691ea75837a711c243c727a0131a0e",
+          "baseBranch": "main",
+          "changedFiles": 3,
+          "fileListComplete": true,
+          "files": [
+            {
+              "filename": "packages/coding-agent/CHANGELOG.md",
+              "status": "modified",
+              "additions": 1,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/coding-agent/src/memories/index.ts",
+              "status": "modified",
+              "additions": 11,
+              "deletions": 1
+            },
+            {
+              "filename": "packages/coding-agent/test/memories/stage1-input.test.ts",
+              "status": "modified",
+              "additions": 36,
+              "deletions": 0
+            }
+          ]
+        },
+        {
+          "kind": "pr",
+          "number": 16953,
+          "title": "fix(ai): coordinate Claude usage probes across sessions",
+          "url": "https://github.com/can1357/oh-my-pi/pull/16953",
+          "state": "open",
+          "createdAt": "2026-10-24T16:46:48Z",
+          "updatedAt": "2026-10-24T17:02:42Z",
+          "mergedAt": null,
+          "headSHA": "88234981d5f3c4b40eb41d32d417f90d4bab4421",
+          "mergeSHA": "de55878f95e1a137e84f8cc6ef7f36695458260e",
+          "baseBranch": "main",
+          "changedFiles": 14,
+          "fileListComplete": true,
+          "files": [
+            {
+              "filename": "packages/ai/CHANGELOG.md",
+              "status": "modified",
+              "additions": 1,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/ai/src/auth/sqlite-credential-store.ts",
+              "status": "modified",
+              "additions": 41,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/ai/src/auth/store.ts",
+              "status": "modified",
+              "additions": 6,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/ai/src/auth/usage-cache.ts",
+              "status": "modified",
+              "additions": 55,
+              "deletions": 2
+            },
+            {
+              "filename": "packages/ai/src/auth/usage.ts",
+              "status": "modified",
+              "additions": 118,
+              "deletions": 41
+            },
+            {
+              "filename": "packages/ai/src/usage.ts",
+              "status": "modified",
+              "additions": 2,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/ai/src/usage/claude.ts",
+              "status": "modified",
+              "additions": 1,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/ai/test/auth-storage-block-persistence.test.ts",
+              "status": "modified",
+              "additions": 34,
+              "deletions": 0
+            },
+            {
+              "filename": "packages/ai/test/auth-storage-claude-reset.test.ts",
+              "status": "modified",
+              "additions": 61,
+              "deletions": 7
+            },
+            {
+              "filename": "packages/ai/test/auth-storage-usage-cache.test.ts",
+              "status": "modified",
+              "additions": 130,
+              "deletions": 12
+            },
+            {
+              "filename": "packages/ai/test/claude-usage-retry.test.ts",
+              "status": "modified",
+              "additions": 7,
+              "deletions": 1
+            },
+            {
+              "filename": "packages/coding-agent/src/prompts/review-request.md",
+              "status": "modified",
+              "additions": 1,
+              "deletions": 1
+            },
+            {
+              "filename": "packages/coding-agent/src/prompts/tools/approval-folder.md",
+              "status": "modified",
+              "additions": 1,
+              "deletions": 1
+            },
+            {
+              "filename": "packages/coding-agent/src/prompts/tools/eval-agents.md",
+              "status": "modified",
+              "additions": 1,
+              "deletions": 1
+            }
+          ]
+        },
+        {
+          "kind": "pr",
+          "number": 16904,
+          "title": "fix(agent,coding-agent): stop repeated compaction on small context windows",
+          "url": "https://github.com/can1357/oh-my-pi/pull/16904",
+          "state": "open",
+          "createdAt": "2026-10-23T18:58:46Z",
+          "updatedAt": "2026-10-23T19:21:57Z",
+          "mergedAt": null,
+          "headSHA": "eb5e70650ce99693aad92ad14ec45f0b4178fd77",
+          "mergeSHA": "b99391c83a616b696ab1d3ced5187c8311569b26",
+          "baseBranch": "main",
+          "changedFiles": 10
+        },
+        {
+          "kind": "pr",
+          "number": 15393,
+          "title": "feat(coding-agent): load subdirectory context files on first touch",
+          "url": "https://github.com/can1357/oh-my-pi/pull/15393",
+          "state": "open",
+          "createdAt": "2026-10-11T17:02:01Z",
+          "updatedAt": "2026-10-19T18:28:33Z",
+          "mergedAt": null,
+          "headSHA": "5bd61f57ed378b96d264a28004e980c585596100",
+          "mergeSHA": null,
+          "baseBranch": "main",
+          "changedFiles": 26
+        },
+        {
+          "kind": "issue",
+          "number": 15586,
+          "title": "In-process grep drops SQLite POSIX locks on agent.db; peer exit unlinks WAL, stale checkpoint then corrupts credentials store",
+          "url": "https://github.com/can1357/oh-my-pi/issues/15586",
+          "state": "open",
+          "createdAt": "2026-10-13T07:03:34Z",
+          "updatedAt": "2026-10-25T08:04:04Z",
+          "mergedAt": null
+        },
+        {
+          "kind": "issue",
+          "number": 13694,
+          "title": "Default web_search chain sends every query to a third-party endpoint without credentials or opt-in",
+          "url": "https://github.com/can1357/oh-my-pi/issues/13694",
+          "state": "open",
+          "createdAt": "2026-09-29T00:40:20Z",
+          "updatedAt": "2026-10-18T21:38:47Z",
+          "mergedAt": null
+        },
+        {
+          "kind": "issue",
+          "number": 16868,
+          "title": "`omp --restore` relaunches subagents abandoned days earlier, with their original task",
+          "url": "https://github.com/can1357/oh-my-pi/issues/16868",
+          "state": "open",
+          "createdAt": "2026-10-23T13:27:29Z",
+          "updatedAt": "2026-10-23T13:47:45Z",
+          "mergedAt": null
+        }
+      ]
+    },
+    {
+      "repository": "NousResearch/hermes-agent",
+      "defaultBranch": "main",
+      "head": "e07a672e8275d62a49e59689d9d7ef73913efc76",
+      "license": "MIT",
+      "repo": "NousResearch/hermes-agent",
+      "commits": 2255,
+      "prsSample": 381,
+      "issuesSample": 209,
+      "prsOpenActive": 3388,
+      "issuesOpenActive": 1928,
+      "mergedPRs": 611,
+      "newOpenPRs": 1294,
+      "newOpenIssues": 1210,
+      "releases": [
+        {
+          "tag": "v0.22.5",
+          "url": "https://github.com/NousResearch/hermes-agent/releases/tag/v0.22.5",
+          "publishedAt": "2026-10-23T05:28:45Z",
+          "prerelease": false
+        },
+        {
+          "tag": "v0.22.4",
+          "url": "https://github.com/NousResearch/hermes-agent/releases/tag/v0.22.4",
+          "publishedAt": "2026-10-21T18:49:24Z",
+          "prerelease": false
+        },
+        {
+          "tag": "v0.22.3",
+          "url": "https://github.com/NousResearch/hermes-agent/releases/tag/v0.22.3",
+          "publishedAt": "2026-10-21T12:21:11Z",
+          "prerelease": false
+        },
+        {
+          "tag": "v0.22.2",
+          "url": "https://github.com/NousResearch/hermes-agent/releases/tag/v0.22.2",
+          "publishedAt": "2026-10-15T08:21:32Z",
+          "prerelease": false
+        },
+        {
+          "tag": "v0.22.1",
+          "url": "https://github.com/NousResearch/hermes-agent/releases/tag/v0.22.1",
+          "publishedAt": "2026-10-14T23:59:24Z",
+          "prerelease": false
+        },
+        {
+          "tag": "v0.22.0",
+          "url": "https://github.com/NousResearch/hermes-agent/releases/tag/v0.22.0",
+          "publishedAt": "2026-10-14T03:21:46Z",
+          "prerelease": false
+        },
+        {
+          "tag": "v0.21.7",
+          "url": "https://github.com/NousResearch/hermes-agent/releases/tag/v0.21.7",
+          "publishedAt": "2026-10-12T05:53:41Z",
+          "prerelease": false
+        },
+        {
+          "tag": "v0.21.6",
+          "url": "https://github.com/NousResearch/hermes-agent/releases/tag/v0.21.6",
+          "publishedAt": "2026-10-08T11:51:57Z",
+          "prerelease": false
+        },
+        {
+          "tag": "v2026.9.24",
+          "url": "https://github.com/NousResearch/hermes-agent/releases/tag/v2026.9.24",
+          "publishedAt": "2026-09-24T10:09:38Z",
+          "prerelease": false
+        },
+        {
+          "tag": "v2026.9.21",
+          "url": "https://github.com/NousResearch/hermes-agent/releases/tag/v2026.9.21",
+          "publishedAt": "2026-09-21T18:10:55Z",
+          "prerelease": false
+        }
+      ],
+      "selected": [
+        {
+          "kind": "pr",
+          "number": 144196,
+          "title": "feat(delegation): enable persistent subagents through plugins",
+          "url": "https://github.com/NousResearch/hermes-agent/pull/144196",
+          "state": "open",
+          "createdAt": "2026-10-24T23:48:38Z",
+          "updatedAt": "2026-10-25T08:25:02Z",
+          "mergedAt": null,
+          "headSHA": "9de1299c3ce71391b227928a78f025aaa6e321f5",
+          "mergeSHA": null,
+          "baseBranch": "main",
+          "changedFiles": 57,
+          "fileListComplete": true,
+          "files": [
+            {
+              "filename": "agent/background_review.py",
+              "status": "modified",
+              "additions": 14,
+              "deletions": 1
+            },
+            {
+              "filename": "agent/conversation_loop.py",
+              "status": "modified",
+              "additions": 3,
+              "deletions": 1
+            },
+            {
+              "filename": "agent/delegated_review.py",
+              "status": "added",
+              "additions": 187,
+              "deletions": 0
+            },
+            {
+              "filename": "agent/delegation_provider.py",
+              "status": "modified",
+              "additions": 1,
+              "deletions": 1
+            },
+            {
+              "filename": "agent/review_idle_queue.py",
+              "status": "modified",
+              "additions": 12,
+              "deletions": 0
+            },
+            {
+              "filename": "agent/subagent_context.py",
+              "status": "added",
+              "additions": 92,
+              "deletions": 0
+            },
+            {
+              "filename": "agent/subagent_extension.py",
+              "status": "added",
+              "additions": 75,
+              "deletions": 0
+            },
+            {
+              "filename": "agent/subagent_fork_validation.py",
+              "status": "added",
+              "additions": 49,
+              "deletions": 0
+            },
+            {
+              "filename": "agent/subagent_lifecycle.py",
+              "status": "modified",
+              "additions": 8,
+              "deletions": 2
+            },
+            {
+              "filename": "agent/subagent_sessions.py",
+              "status": "added",
+              "additions": 50,
+              "deletions": 0
+            },
+            {
+              "filename": "agent/tool_guardrails.py",
+              "status": "modified",
+              "additions": 2,
+              "deletions": 2
+            },
+            {
+              "filename": "agent/turn_context.py",
+              "status": "modified",
+              "additions": 9,
+              "deletions": 5
+            },
+            {
+              "filename": "agent/turn_tool_round.py",
+              "status": "modified",
+              "additions": 3,
+              "deletions": 1
+            },
+            {
+              "filename": "gateway/completion_targets.py",
+              "status": "added",
+              "additions": 74,
+              "deletions": 0
+            },
+            {
+              "filename": "gateway/run_notifications.py",
+              "status": "modified",
+              "additions": 26,
+              "deletions": 3
+            },
+            {
+              "filename": "gateway/run_notifications_ownership.py",
+              "status": "modified",
+              "additions": 9,
+              "deletions": 0
+            },
+            {
+              "filename": "hermes_cli/plugin_isolation.py",
+              "status": "modified",
+              "additions": 1,
+              "deletions": 0
+            },
+            {
+              "filename": "hermes_cli/plugin_validate_private_imports.py",
+              "status": "modified",
+              "additions": 1,
+              "deletions": 1
+            },
+            {
+              "filename": "hermes_cli/plugins.py",
+              "status": "modified",
+              "additions": 2,
+              "deletions": 8
+            },
+            {
+              "filename": "hermes_cli/plugins_subagents.py",
+              "status": "added",
+              "additions": 29,
+              "deletions": 0
+            },
+            {
+              "filename": "hermes_state_compression.py",
+              "status": "modified",
+              "additions": 3,
+              "deletions": 2
+            },
+            {
+              "filename": "run_agent.py",
+              "status": "modified",
+              "additions": 6,
+              "deletions": 0
+            },
+            {
+              "filename": "tests/agent/test_delegate_loop_caps.py",
+              "status": "added",
+              "additions": 53,
+              "deletions": 0
+            },
+            {
+              "filename": "tests/agent/test_delegated_review.py",
+              "status": "added",
+              "additions": 168,
+              "deletions": 0
+            },
+            {
+              "filename": "tests/agent/test_subagent_context.py",
+              "status": "added",
+              "additions": 166,
+              "deletions": 0
+            },
+            {
+              "filename": "tests/gateway/test_delegate_notification_route.py",
+              "status": "added",
+              "additions": 183,
+              "deletions": 0
+            },
+            {
+              "filename": "tests/gateway/test_unviewed_completion_notes.py",
+              "status": "modified",
+              "additions": 6,
+              "deletions": 2
+            },
+            {
+              "filename": "tests/hermes_cli/test_plugin_validate_private_imports.py",
+              "status": "modified",
+              "additions": 9,
+              "deletions": 0
+            },
+            {
+              "filename": "tests/hermes_state/test_compression_lineage_guard.py",
+              "status": "modified",
+              "additions": 18,
+              "deletions": 0
+            },
+            {
+              "filename": "tests/plugins/test_subagent_extension.py",
+              "status": "added",
+              "additions": 83,
+              "deletions": 0
+            },
+            {
+              "filename": "tests/plugins/test_subagent_fork_policy.py",
+              "status": "added",
+              "additions": 101,
+              "deletions": 0
+            },
+            {
+              "filename": "tests/tools/test_delegate_completion_model.py",
+              "status": "modified",
+              "additions": 17,
+              "deletions": 8
+            },
+            {
+              "filename": "tests/tools/test_delegate_extension_background.py",
+              "status": "added",
+              "additions": 98,
+              "deletions": 0
+            },
+            {
+              "filename": "tests/tools/test_delegate_observation.py",
+              "status": "added",
+              "additions": 114,
+              "deletions": 0
+            },
+            {
+              "filename": "tests/tools/test_delegate_session_cleanup.py",
+              "status": "added",
+              "additions": 139,
+              "deletions": 0
+            },
+            {
+              "filename": "tests/tools/test_delegate_session_routes.py",
+              "status": "added",
+              "additions": 84,
+              "deletions": 0
+            },
+            {
+              "filename": "tests/tools/test_delegate_session_store.py",
+              "status": "added",
+              "additions": 299,
+              "deletions": 0
+            },
+            {
+              "filename": "tests/tools/test_skill_review_stale_writes.py",
+              "status": "added",
+              "additions": 123,
+              "deletions": 0
+            },
+            {
+              "filename": "tools/delegate_observation.py",
+              "status": "added",
+              "additions": 72,
+              "deletions": 0
+            },
+            {
+              "filename": "tools/delegate_session_routes.py",
+              "status": "added",
+              "additions": 99,
+              "deletions": 0
+            },
+            {
+              "filename": "tools/delegate_session_store.py",
+              "status": "added",
+              "additions": 325,
+              "deletions": 0
+            },
+            {
+              "filename": "tools/delegate_sessions.py",
+              "status": "added",
+              "additions": 184,
+              "deletions": 0
+            },
+            {
+              "filename": "tools/delegate_tool.py",
+              "status": "modified",
+              "additions": 91,
+              "deletions": 22
+            },
+            {
+              "filename": "tools/delegate_tool_child_run.py",
+              "status": "modified",
+              "additions": 38,
+              "deletions": 11
+            },
+            {
+              "filename": "tools/delegate_tool_dispatch.py",
+              "status": "modified",
+              "additions": 94,
+              "deletions": 24
+            },
+            {
+              "filename": "tools/delegate_tool_progress.py",
+              "status": "modified",
+              "additions": 4,
+              "deletions": 1
+            },
+            {
+              "filename": "tools/delegate_tool_results.py",
+              "status": "modified",
+              "additions": 17,
+              "deletions": 0
+            },
+            {
+              "filename": "tools/file_tools.py",
+              "status": "modified",
+              "additions": 1,
+              "deletions": 1
+            },
+            {
+              "filename": "tools/mcp_tool_agent.py",
+              "status": "modified",
+              "additions": 2,
+              "deletions": 0
+            },
+            {
+              "filename": "tools/process_registry.py",
+              "status": "modified",
+              "additions": 5,
+              "deletions": 36
+            },
+            {
+              "filename": "tools/process_registry_handoff.py",
+              "status": "added",
+              "additions": 43,
+              "deletions": 0
+            },
+            {
+              "filename": "tools/skill_manager_guards.py",
+              "status": "modified",
+              "additions": 57,
+              "deletions": 7
+            },
+            {
+              "filename": "tools/skill_manager_tool.py",
+              "status": "modified",
+              "additions": 7,
+              "deletions": 0
+            },
+            {
+              "filename": "tools/skills_tool.py",
+              "status": "modified",
+              "additions": 1,
+              "deletions": 1
+            },
+            {
+              "filename": "tools/skills_tool_plugin.py",
+              "status": "modified",
+              "additions": 4,
+              "deletions": 4
+            },
+            {
+              "filename": "website/docs/developer-guide/subagent-lifecycle-api.md",
+              "status": "modified",
+              "additions": 145,
+              "deletions": 3
+            },
+            {
+              "filename": "website/docs/user-guide/features/delegation.md",
+              "status": "modified",
+              "additions": 19,
+              "deletions": 0
+            }
+          ]
+        },
+        {
+          "kind": "pr",
+          "number": 136708,
+          "title": "feat(gateway): busy_result_mode carries mid-turn subagent and background-process results into the running turn",
+          "url": "https://github.com/NousResearch/hermes-agent/pull/136708",
+          "state": "open",
+          "createdAt": "2026-10-11T17:10:41Z",
+          "updatedAt": "2026-10-25T08:26:53Z",
+          "mergedAt": null,
+          "headSHA": "86c9cd0b1d2238ad4608a0e60529da84e2d20e58",
+          "mergeSHA": "8357f620dd93592b81e3e1afb907bff928cc948a",
+          "baseBranch": "main",
+          "changedFiles": 14,
+          "fileListComplete": true,
+          "files": [
+            {
+              "filename": "agent/background_results.py",
+              "status": "added",
+              "additions": 157,
+              "deletions": 0
+            },
+            {
+              "filename": "agent/tool_executor.py",
+              "status": "modified",
+              "additions": 7,
+              "deletions": 0
+            },
+            {
+              "filename": "cli-config.yaml.example",
+              "status": "modified",
+              "additions": 6,
+              "deletions": 0
+            },
+            {
+              "filename": "gateway/run_notifications.py",
+              "status": "modified",
+              "additions": 111,
+              "deletions": 14
+            },
+            {
+              "filename": "gateway/run_notifications_busy_result.py",
+              "status": "added",
+              "additions": 72,
+              "deletions": 0
+            },
+            {
+              "filename": "gateway/run_turn.py",
+              "status": "modified",
+              "additions": 2,
+              "deletions": 2
+            },
+            {
+              "filename": "hermes_cli/config_defaults.py",
+              "status": "modified",
+              "additions": 5,
+              "deletions": 5
+            },
+            {
+              "filename": "hermes_cli/web_server_config.py",
+              "status": "modified",
+              "additions": 6,
+              "deletions": 0
+            },
+            {
+              "filename": "tests/agent/test_background_results.py",
+              "status": "added",
+              "additions": 135,
+              "deletions": 0
+            },
+            {
+              "filename": "tests/gateway/test_delegation_busy_result_steer.py",
+              "status": "added",
+              "additions": 93,
+              "deletions": 0
+            },
+            {
+              "filename": "tests/gateway/test_process_busy_result_steer.py",
+              "status": "added",
+              "additions": 84,
+              "deletions": 0
+            },
+            {
+              "filename": "website/docs/developer-guide/gateway-internals.md",
+              "status": "modified",
+              "additions": 5,
+              "deletions": 0
+            },
+            {
+              "filename": "website/docs/user-guide/features/delegation.md",
+              "status": "modified",
+              "additions": 16,
+              "deletions": 0
+            },
+            {
+              "filename": "website/docs/user-guide/features/tools.md",
+              "status": "modified",
+              "additions": 18,
+              "deletions": 0
+            }
+          ]
+        },
+        {
+          "kind": "pr",
+          "number": 144363,
+          "title": "fix(approval): gate PowerShell deletes behind a pipeline and with abbreviated switches",
+          "url": "https://github.com/NousResearch/hermes-agent/pull/144363",
+          "state": "open",
+          "createdAt": "2026-10-25T08:40:07Z",
+          "updatedAt": "2026-10-25T08:46:34Z",
+          "mergedAt": null,
+          "headSHA": "11d8726b587f75788d0d2dfac900d110ad03b5da",
+          "mergeSHA": "d8b298673cf2214b369bb764f4f6bc4f355aa4a3",
+          "baseBranch": "main",
+          "changedFiles": 2
+        },
+        {
+          "kind": "pr",
+          "number": 125000,
+          "title": "fix(redact): mask secrets when reading well-known credential files",
+          "url": "https://github.com/NousResearch/hermes-agent/pull/125000",
+          "state": "open",
+          "createdAt": "2026-09-27T09:03:32Z",
+          "updatedAt": "2026-10-21T15:36:07Z",
+          "mergedAt": null,
+          "headSHA": "a8a74b0144e04e64f1f231a190c1a13e7f529acc",
+          "mergeSHA": null,
+          "baseBranch": "main",
+          "changedFiles": 16,
+          "fileListComplete": true,
+          "files": [
+            {
+              "filename": "agent/file_safety.py",
+              "status": "modified",
+              "additions": 7,
+              "deletions": 1
+            },
+            {
+              "filename": "agent/redact.py",
+              "status": "modified",
+              "additions": 238,
+              "deletions": 18
+            },
+            {
+              "filename": "agent/redact_credential_stores.py",
+              "status": "added",
+              "additions": 493,
+              "deletions": 0
+            },
+            {
+              "filename": "gateway/run_notifications.py",
+              "status": "modified",
+              "additions": 5,
+              "deletions": 4
+            },
+            {
+              "filename": "tests/agent/test_redact.py",
+              "status": "modified",
+              "additions": 244,
+              "deletions": 38
+            },
+            {
+              "filename": "tests/tools/test_credential_store_output_sources.py",
+              "status": "added",
+              "additions": 219,
+              "deletions": 0
+            },
+            {
+              "filename": "tests/tools/test_file_tools.py",
+              "status": "modified",
+              "additions": 22,
+              "deletions": 0
+            },
+            {
+              "filename": "tests/tools/test_terminal_error_redaction.py",
+              "status": "modified",
+              "additions": 1,
+              "deletions": 1
+            },
+            {
+              "filename": "tools/environments/local.py",
+              "status": "modified",
+              "additions": 4,
+              "deletions": 0
+            },
+            {
+              "filename": "tools/file_tools.py",
+              "status": "modified",
+              "additions": 4,
+              "deletions": 4
+            },
+            {
+              "filename": "tools/process_registry.py",
+              "status": "modified",
+              "additions": 9,
+              "deletions": 14
+            },
+            {
+              "filename": "tools/process_registry_results.py",
+              "status": "modified",
+              "additions": 5,
+              "deletions": 1
+            },
+            {
+              "filename": "tools/terminal_tool.py",
+              "status": "modified",
+              "additions": 5,
+              "deletions": 1
+            },
+            {
+              "filename": "tools/terminal_tool_result.py",
+              "status": "modified",
+              "additions": 28,
+              "deletions": 6
+            },
+            {
+              "filename": "tools/tool_output_truncate.py",
+              "status": "modified",
+              "additions": 5,
+              "deletions": 0
+            },
+            {
+              "filename": "website/docs/user-guide/configuration.md",
+              "status": "modified",
+              "additions": 1,
+              "deletions": 1
+            }
+          ]
+        },
+        {
+          "kind": "pr",
+          "number": 144425,
+          "title": "feat(delegation): list a recovered fan-out's unfinished tasks for re-dispatch",
+          "url": "https://github.com/NousResearch/hermes-agent/pull/144425",
+          "state": "open",
+          "createdAt": "2026-10-25T10:57:00Z",
+          "updatedAt": "2026-10-25T11:01:22Z",
+          "mergedAt": null,
+          "headSHA": "c9a0b6dd02071a64536db6f4c608cf9e08400c18",
+          "mergeSHA": "016f6daa89764bf8700b3ea295e338a4ea2e55cd",
+          "baseBranch": "main",
+          "changedFiles": 3,
+          "fileListComplete": true,
+          "files": [
+            {
+              "filename": "tests/tools/test_async_delegation_unfinished_tasks.py",
+              "status": "added",
+              "additions": 38,
+              "deletions": 0
+            },
+            {
+              "filename": "tools/async_delegation.py",
+              "status": "modified",
+              "additions": 5,
+              "deletions": 0
+            },
+            {
+              "filename": "tools/process_registry_notifications.py",
+              "status": "modified",
+              "additions": 4,
+              "deletions": 0
+            }
+          ]
+        },
+        {
+          "kind": "issue",
+          "number": 141346,
+          "title": "Smart approval auto-approved osascript commands that closed the user's unsaved PowerPoint deck and deleted its export (unrecoverable data loss)",
+          "url": "https://github.com/NousResearch/hermes-agent/issues/141346",
+          "state": "open",
+          "createdAt": "2026-10-19T02:29:45Z",
+          "updatedAt": "2026-10-23T15:21:44Z",
+          "mergedAt": null
+        },
+        {
+          "kind": "issue",
+          "number": 59293,
+          "title": "hermes config set bypasses the system-config write protection — the CLI can disable the approval layer un-gated",
+          "url": "https://github.com/NousResearch/hermes-agent/issues/59293",
+          "state": "open",
+          "createdAt": "2026-07-06T01:51:13Z",
+          "updatedAt": "2026-10-19T03:04:24Z",
+          "mergedAt": null
+        },
+        {
+          "kind": "issue",
+          "number": 139135,
+          "title": "[Bug]: Discord async child completes but durable result stays pending and parent does not resume",
+          "url": "https://github.com/NousResearch/hermes-agent/issues/139135",
+          "state": "open",
+          "createdAt": "2026-10-15T13:17:23Z",
+          "updatedAt": "2026-10-23T07:31:41Z",
+          "mergedAt": null
+        },
+        {
+          "kind": "issue",
+          "number": 144380,
+          "title": "MCP trust gate uses a cached readOnlyHint before acquiring the connection; a write-capable tool can run without consent after a reconnect",
+          "url": "https://github.com/NousResearch/hermes-agent/issues/144380",
+          "state": "open",
+          "createdAt": "2026-10-25T09:28:35Z",
+          "updatedAt": "2026-10-25T09:55:53Z",
+          "mergedAt": null
+        }
+      ]
+    }
+  ],
+  "additionalCommits": [
+    {
+      "repository": "NousResearch/hermes-agent",
+      "sha": "919322f6c3aa2bad568a3312eb3cfbffa21db0a0",
+      "title": "feat(delegation): pluggable delegation providers",
+      "url": "https://github.com/NousResearch/hermes-agent/commit/919322f6c3aa2bad568a3312eb3cfbffa21db0a0",
+      "date": "2026-10-22T21:37:10Z"
+    },
+    {
+      "repository": "NousResearch/hermes-agent",
+      "sha": "4baddd2606d0e30ef9f971aa16838c6cd550b0e3",
+      "title": "feat(mcp): declared per-tool costs and a per-chat spend limit for MCP servers",
+      "url": "https://github.com/NousResearch/hermes-agent/commit/4baddd2606d0e30ef9f971aa16838c6cd550b0e3",
+      "date": "2026-10-21T11:12:11Z"
+    },
+    {
+      "repository": "NousResearch/hermes-agent",
+      "sha": "4ff28461102fe4caaa9666eb47de797c4f52326b",
+      "title": "feat(desktop): gate preview scripts behind a declared capability and per-origin consent",
+      "url": "https://github.com/NousResearch/hermes-agent/commit/4ff28461102fe4caaa9666eb47de797c4f52326b",
+      "date": "2026-10-23T22:42:04Z"
+    }
+  ],
+  "limitations": [
+    "OpenBot workflow PR #3062 changes 193 files; only the first 100 file records and the feature scope were inspected.",
+    "OpenCode GitHub releases list includes the legacy 1.19 series; it is not evidence that the current code architecture should be downgraded. Study uses current dev and Redcode's sole runtime structure.",
+    "No provider connections, services, runtime code or tests were changed/run by this study; previous security patch remains untouched."
+  ]
+}

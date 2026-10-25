@@ -17,6 +17,7 @@ import { SessionTable } from "@opencode/core/session/sql"
 import { SessionStore } from "@opencode/core/session/store"
 import { ShellParse } from "@opencode/core/shell/parse"
 import { eq } from "drizzle-orm"
+import path from "node:path"
 import { location } from "./fixture/location"
 import { testEffect } from "./lib/effect"
 
@@ -30,6 +31,145 @@ const it = testEffect(
     [Location.node.replace(current)],
   ),
 )
+
+for (const portable of [false, true]) {
+  for (const command of [
+    "sh -c true",
+    "/bin/sh -c true",
+    "env sh -c true",
+    "env -- sh -c true",
+    "env -u UNUSED sh -c true",
+    "env -uUNUSED sh -c true",
+    "env -C/tmp sh -c true",
+    "env -- FOO=bar /bin/sh -c true",
+    "env -i -- FOO=bar /bin/sh -c true",
+    "command sh -c true",
+    "command -p -p /bin/sh -c true",
+    "FOO=1 /bin/sh -c true",
+    's"h" -c true',
+    "s\\h -c true",
+  ])
+    it.live(
+      `configured executable deny covers literal spelling (${portable ? "portable" : "legacy"}): ${command}`,
+      () =>
+        Effect.gen(function* () {
+          yield* setup([
+            { action: "shell", resource: "*", effect: "allow" },
+            { action: "shell", resource: "sh *", effect: "deny" },
+          ])
+          const service = yield* Permission.Service
+          const parsed = yield* ShellParse.scan(command, "bash", "/project", { portable })
+          const resources = parsed.commands.map((item) => item.resource)
+          const result = yield* service.ask(
+            assertion({
+              action: "shell",
+              resources,
+              denyResources: yield* ShellParse.denyResources(resources, "bash"),
+            }),
+          )
+          expect(result.effect).toBe("deny")
+          expect(resources).toContain(command)
+          expect(yield* service.list()).toEqual([])
+        }),
+    )
+}
+
+for (const portable of [false, true])
+  it.live(
+    `literal deny alternatives preserve redirection and argument spelling (${portable ? "portable" : "legacy"})`,
+    () =>
+      Effect.gen(function* () {
+        yield* setup([
+          { action: "shell", resource: "*", effect: "allow" },
+          { action: "shell", resource: "sh -c true > *", effect: "deny" },
+        ])
+        const service = yield* Permission.Service
+        const parsed = yield* ShellParse.scan("FOO=bar env -- /bin/sh -c true > marker", "bash", "/project", {
+          portable,
+        })
+        const resources = parsed.commands.map((item) => item.resource)
+        expect(
+          (yield* service.ask(
+            assertion({
+              action: "shell",
+              resources,
+              denyResources: yield* ShellParse.denyResources(resources, "bash"),
+            }),
+          )).effect,
+        ).toBe("deny")
+        expect(yield* ShellParse.denyResources(['env /bin/sh  -c "printf harmless" > marker'], "bash")).toMatchObject({
+          'env /bin/sh  -c "printf harmless" > marker': ['sh  -c "printf harmless" > marker'],
+        })
+      }),
+  )
+
+it.live("literal denial aliases preserve rule ordering and do not expand saved grants", () =>
+  Effect.gen(function* () {
+    const service = yield* Permission.Service
+    const saved = yield* PermissionSaved.Service
+    const rules: Permission.Ruleset = [
+      { action: "shell", resource: "*", effect: "allow" },
+      { action: "shell", resource: "sh *", effect: "deny" },
+      { action: "shell", resource: "/bin/sh -c true", effect: "allow" },
+    ]
+    yield* setup(rules)
+    const resources = ["/bin/sh -c true"]
+    const input = assertion({
+      action: "shell",
+      resources,
+      denyResources: yield* ShellParse.denyResources(resources, "bash"),
+    })
+    expect((yield* service.ask(input)).effect).toBe("allow")
+    yield* setup([...rules, { action: "shell", resource: "sh *", effect: "deny" }])
+    expect((yield* service.ask(input)).effect).toBe("deny")
+    yield* setup([])
+    yield* saved.add({ projectID: Project.ID.global, action: "shell", resources: ["sh *"] })
+    const requested = yield* service.ask(input)
+    expect(requested.effect).toBe("ask")
+    expect((yield* service.list())[0]?.resources).toEqual(resources)
+    if (requested.effect === "ask") yield* service.reply({ requestID: requested.id, reply: "reject" })
+  }),
+)
+
+it.live("literal deny aliases do not mistake command lookup for execution", () =>
+  Effect.gen(function* () {
+    yield* setup([
+      { action: "shell", resource: "*", effect: "allow" },
+      { action: "shell", resource: "sh *", effect: "deny" },
+    ])
+    const service = yield* Permission.Service
+    for (const resource of ["command -v sh", "command -V /bin/sh", "printf harmless"])
+      expect(
+        (yield* service.ask(
+          assertion({
+            action: "shell",
+            resources: [resource],
+            denyResources: yield* ShellParse.denyResources([resource], "bash"),
+          }),
+        )).effect,
+      ).toBe("allow")
+    expect(yield* ShellParse.denyResources(["Write-Output harmless"], "pwsh")).toEqual({})
+  }),
+)
+
+for (const action of ["read", "edit"])
+  it.live(`absolute configured ${action} denies cover Location-relative resources`, () =>
+    Effect.gen(function* () {
+      const resource = "src/private.txt"
+      const absolute = path.resolve("/project", resource).replaceAll("\\", "/")
+      yield* setup([
+        { action, resource: "*", effect: "allow" },
+        { action, resource: absolute, effect: "deny" },
+      ])
+      const service = yield* Permission.Service
+      expect((yield* service.ask(assertion({ action, resources: [resource] }))).effect).toBe("deny")
+      yield* setup([
+        { action, resource: absolute, effect: "deny" },
+        { action, resource, effect: "allow" },
+      ])
+      expect((yield* service.ask(assertion({ action, resources: [resource] }))).effect).toBe("allow")
+    }),
+  )
 
 function setup(rules: Permission.Ruleset = [], sessionID = Session.ID.make("ses_test")) {
   return Effect.gen(function* () {

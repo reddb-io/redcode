@@ -81,6 +81,54 @@ const transform = (service: Tool.Interface, tools: Readonly<Record<string, Info>
   )
 
 describe("Tool", () => {
+  it.effect("converts schemas only at registration for direct tools and Code Mode", () =>
+    Effect.gen(function* () {
+      const service = yield* Tool.Service
+      const builds: string[] = []
+      const portable = {
+        "~standard": {
+          version: 1,
+          vendor: "fixture",
+          validate: (value: unknown) => ({ value }),
+          jsonSchema: {
+            input: () => {
+              builds.push("input")
+              return { type: "object", properties: { text: { type: "string" } }, required: ["text"] }
+            },
+            output: () => {
+              builds.push("output")
+              return { type: "object", properties: { text: { type: "string" } }, required: ["text"] }
+            },
+          },
+        },
+      } as const
+      yield* service.transform((editor) => {
+        editor.add({ ...make(), name: "native", input: portable, output: portable, options: { codemode: false } })
+        editor.add({ ...make(), name: "hidden", input: portable, output: portable })
+      })
+      const registered = [...builds]
+      const first = yield* service.snapshot()
+      const second = yield* service.snapshot()
+      expect(builds).toEqual(registered)
+      expect(second.definitions[0]).toBe(first.definitions[0])
+      expect(second.definitions[1]).toBe(first.definitions[1])
+      const result = yield* first.execute({
+        ...call("execute"),
+        call: {
+          type: "tool-call",
+          id: "cache",
+          name: "execute",
+          input: { code: 'return await tools.hidden({ text: "value" })' },
+        },
+      })
+      expect(JSON.stringify(result.content)).toContain("value")
+      expect(builds).toEqual(registered)
+      yield* service.reload()
+      expect(builds.length).toBe(registered.length * 2)
+      expect((yield* service.snapshot()).definitions[0]).not.toBe(first.definitions[0])
+    }),
+  )
+
   it.effect("reads the current editor tools by effective name", () =>
     Effect.gen(function* () {
       const service = yield* Tool.Service

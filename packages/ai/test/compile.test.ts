@@ -4,6 +4,7 @@ import { HttpClientRequest, HttpClientResponse } from "effect/unstable/http"
 import {
   LLM,
   LLMRequest,
+  Media,
   Message,
   ToolCallPart,
   ToolDefinition,
@@ -20,6 +21,28 @@ import { sseEvents } from "./lib/sse.js"
 
 const TargetJson = Schema.fromJsonString(Schema.Unknown)
 const decodeJson = Schema.decodeUnknownSync(TargetJson)
+
+for (const protocol of [
+  { name: "OpenAI Chat", route: OpenAIChat.route },
+  { name: "OpenAI Responses", route: OpenAIResponses.route },
+  { name: "Anthropic Messages", route: AnthropicMessages.route },
+])
+  for (const count of [1, 7])
+    it.effect(`compiles ${count} large inline images through ${protocol.name}`, () =>
+      Effect.gen(function* () {
+        const encoded = Buffer.alloc(count === 1 ? 5 * 1024 * 1024 : 200 * 1024, 255).toString("base64")
+        const request = LLM.request({
+          model: protocol.route.model({ id: "image-fixture" }),
+          messages: [
+            Message.user(Array.from({ length: count }, () => Message.media(Media.base64(encoded, "image/png")))),
+          ],
+        })
+        const compiled = yield* compileRequest(request)
+        const json = JSON.stringify(compiled.body)
+        expect(json.split(encoded)).toHaveLength(count + 1)
+        expect(json).not.toContain("undefined")
+      }),
+    )
 
 describe("request option precedence", () => {
   test("deep-merges provider option records and replaces arrays, primitives, and null", () => {

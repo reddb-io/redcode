@@ -302,8 +302,11 @@ export const layer = Layer.effect(
       }
       // Remember which tool each definition object came from. Hooks rename a tool by moving
       // its definition to a new key, so after the hook we find the tool by object identity.
+      // Nested hook edits belong to this request, not to the registration or another Session.
       const given = new Map(
-        tools.definitions.map((t) => [{ description: t.description, input: { ...t.inputSchema } }, t] as const),
+        tools.definitions.map(
+          (t) => [{ description: t.description, input: structuredClone(t.inputSchema) }, t] as const,
+        ),
       )
       // Hooks see the default output limit and may change or remove it. Titles and generate keep the provider default,
       // because their reasoning is hard to budget.

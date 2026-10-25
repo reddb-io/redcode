@@ -14,6 +14,7 @@ import { Wildcard } from "./util/wildcard.js"
 import { PermissionSaved } from "./permission/saved.js"
 import { HookRuntime } from "./hook.js"
 import { PluginHooks } from "./plugin/hooks.js"
+import path from "node:path"
 
 const PermissionEffect = Permission.Effect
 export { PermissionEffect as Effect }
@@ -45,6 +46,8 @@ export const AssertInput = Schema.Struct({
   id: ID.pipe(Schema.optional),
   ...RequestFields,
   agent: Agent.ID.pipe(Schema.optional),
+  /** Parser-owned literal spellings checked only by configured deny rules. Never saved as grants. */
+  denyResources: Schema.Record(Schema.String, Schema.Array(Schema.String)).pipe(Schema.optional),
   /** Ask on this invocation even if a broad saved allow rule exists. */
   force: Schema.Boolean.pipe(Schema.optional),
 }).annotate({ identifier: "Permission.AssertInput" })
@@ -196,8 +199,22 @@ const layer = Layer.effect(
       return merge(missingAgentPermissions, session.permissions ?? [])
     })
 
-    function denied(input: Pick<Request, "action" | "resources">, rules: Permission.Ruleset) {
-      return input.resources.some((resource) => evaluate(input.action, resource, rules).effect === "deny")
+    function denied(input: AssertInput, rules: Permission.Ruleset) {
+      return input.resources.some((resource) => {
+        const alternatives =
+          input.action === "read" || input.action === "edit"
+            ? [path.resolve(location.directory, resource).replaceAll("\\", "/")]
+            : (input.denyResources?.[resource] ?? [])
+        // One ordered match preserves a later explicit raw allow, without widening any allow rule.
+        return (
+          rules.findLast(
+            (rule) =>
+              Wildcard.match(input.action, rule.action) &&
+              (Wildcard.match(resource, rule.resource) ||
+                (rule.effect === "deny" && alternatives.some((value) => Wildcard.match(value, rule.resource)))),
+          )?.effect === "deny"
+        )
+      })
     }
 
     function relevant(input: AssertInput, rules: Permission.Ruleset) {

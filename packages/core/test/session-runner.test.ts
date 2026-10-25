@@ -7703,6 +7703,17 @@ describe("SessionRunnerLLM", () => {
 
     yield* s.llm.push(TestLLM.stop())
     yield* s.runPrompt("Continue")
+    expect(s.executions).toEqual([])
+    expect(s.requests[1]?.messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "assistant",
+          content: expect.arrayContaining([
+            expect.objectContaining({ type: "tool-call", id: "call-malformed", name: "echo", input: {} }),
+          ]),
+        }),
+      ]),
+    )
 
     expect(yield* recordedStepSettlementEvents(sessionID, assistant.id)).toMatchObject([
       { type: "session.step.started.1" },

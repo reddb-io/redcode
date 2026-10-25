@@ -1,4 +1,5 @@
 import { describe, expect } from "bun:test"
+import { ToolDefinition } from "@opencode/ai"
 import { OpenAIChat } from "@opencode/ai/protocols"
 import { OpenAICompatible } from "@opencode/ai/providers"
 import { Agent } from "@opencode/schema/agent"
@@ -41,6 +42,52 @@ const transport = SessionModelTransport.Service.of({
 })
 
 describe("SessionModelRequest HTTP hooks", () => {
+  it.effect("isolates nested tool schema edits across requests and sessions", () =>
+    Effect.gen(function* () {
+      const hooks = yield* PluginHooks.Service
+      yield* hooks.register("session", "context", (event) =>
+        Effect.sync(() => {
+          const input = event.tools.lookup!.input as {
+            required: string[]
+            properties: { id: { enum: string[] } }
+          }
+          input.required.push("extra")
+          input.properties.id.enum.push("hook")
+        }),
+      )
+      const requests = yield* SessionModelRequest.Service.pipe(Effect.provide(SessionModelRequest.layer))
+      const inputSchema = {
+        type: "object",
+        properties: { id: { type: "string", enum: ["original"] } },
+        required: ["id"],
+      }
+      const tools = {
+        definitions: [new ToolDefinition({ name: "lookup", description: "Lookup", inputSchema })],
+        execute: () => Effect.die("unused tool execution"),
+      }
+      const prepared = yield* Effect.forEach([session.id, Session.ID.make("ses_hook_other"), session.id], (id) =>
+        requests.primary({
+          session: Session.Info.make({ ...session, id }),
+          agent: Agent.ID.make("build"),
+          model,
+          system: [],
+          messages: [],
+          tools,
+        }),
+      )
+      for (const item of prepared) {
+        const tool = item.request.tools[0]
+        expect(tool?.type === "tool" && tool.inputSchema).toEqual({
+          ...inputSchema,
+          required: ["id", "extra"],
+          properties: { id: { type: "string", enum: ["original", "hook"] } },
+        })
+      }
+      expect(inputSchema.required).toEqual(["id"])
+      expect(inputSchema.properties.id.enum).toEqual(["original"])
+    }).pipe(Effect.provideService(SessionModelTransport.Service, transport)),
+  )
+
   it.effect("enforces the selected gateway model after HTTP hooks for every session request kind", () =>
     Effect.gen(function* () {
       const hooks = yield* PluginHooks.Service

@@ -19,7 +19,12 @@ export const FileSource = Schema.Union([
 export type FileSource = typeof FileSource.Type
 
 export const Base64 = Schema.String.check(
-  Schema.isPattern(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/),
+  // Keep the public pattern while avoiding repeated-group backtracking on large attachments.
+  Schema.makeFilter(
+    // Strict end-of-input also rejects line breaks that would otherwise satisfy the length check.
+    (value: string) => value.length % 4 === 0 && /^[A-Za-z0-9+/]*={0,2}(?![\s\S])/.test(value),
+    Schema.isPattern(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/).annotations,
+  ),
 ).annotate({ identifier: "Prompt.Base64" })
 export type Base64 = typeof Base64.Type
 

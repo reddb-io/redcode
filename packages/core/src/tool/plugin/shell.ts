@@ -216,6 +216,10 @@ export const Plugin = {
         yield* permission.assert({
           action: name,
           resources: parsed.commands.map((command) => command.resource),
+          denyResources: yield* ShellParse.denyResources(
+            parsed.commands.map((command) => command.resource),
+            invocation.shell,
+          ),
           save: parsed.commands.map((command) => command.save),
           sessionID: context.sessionID,
           agent: context.agent,

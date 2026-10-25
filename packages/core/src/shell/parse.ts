@@ -265,6 +265,63 @@ export const scanPortable = Effect.fnUntraced(function* (command: string, shell:
   return output
 })
 
+/** Literal executable alternatives are for denials; approvals keep their original command spelling. */
+export const denyResources = Effect.fnUntraced(function* (resources: readonly string[], shell: string) {
+  if (ShellSelect.ps(shell)) return {}
+  const { ShellScan } = yield* Effect.promise(() => import("./scan.js"))
+  return Object.fromEntries(
+    resources.flatMap((resource) => {
+      const scanned = ShellScan.scan(resource, { wordPositions: true })
+      if (scanned.kind !== "scanned") return []
+      const command = scanned.commands.find((item) => item.resource === resource)
+      if (!command || command.declaration || !command.wordStarts) return []
+      const alternatives: string[] = []
+      let index = 0
+      while (index < command.words.length) {
+        const executable = command.words[index]
+        // Expansions do not establish a literal executable identity.
+        if (!executable || /[$`*?\[\]{}]/.test(executable)) break
+        const name = path.posix.basename(executable)
+        alternatives.push(name + resource.slice(command.wordStarts[index] + command.rawWords[index].length))
+        index++
+        if (name === "command") {
+          if (["-v", "-V"].includes(command.words[index] ?? "")) break
+          while (/^-p+$/.test(command.words[index] ?? "")) index++
+          if (command.words[index] === "--") index++
+          if (command.words[index]?.startsWith("-")) break
+          continue
+        }
+        if (name !== "env") break
+        while (index < command.words.length) {
+          const option = command.words[index]
+          if (option === "--") {
+            index++
+            break
+          }
+          if (["-i", "--ignore-environment", "-"].includes(option) || /^[A-Za-z_][A-Za-z0-9_]*=/.test(option)) {
+            index++
+            continue
+          }
+          if (["-u", "--unset", "-C", "--chdir"].includes(option)) {
+            index += 2
+            continue
+          }
+          if (/^--(?:unset|chdir)=/.test(option) || /^-[uC].+/.test(option)) {
+            index++
+            continue
+          }
+          break
+        }
+        // env still consumes assignments after its end-of-options marker.
+        while (/^[A-Za-z_][A-Za-z0-9_]*=/.test(command.words[index] ?? "")) index++
+        if (command.words[index]?.startsWith("-")) break
+      }
+      const values = [...new Set(alternatives)].filter((value) => value !== resource)
+      return values.length ? [[resource, values] as const] : []
+    }),
+  )
+})
+
 function parts(node: Node) {
   return Array.from({ length: node.childCount }).flatMap((_, index): Part[] => {
     const child = node.child(index)

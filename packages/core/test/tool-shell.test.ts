@@ -312,6 +312,34 @@ describe("ShellTool scanner permissions", () => {
   for (const portable of [false, true]) {
     const scanner = portable ? "native" : "legacy"
 
+    test(`${scanner}: an executable deny stops an env-wrapped shell before it writes`, () =>
+      withScanner(portable, (registry, fixture) =>
+        Effect.gen(function* () {
+          const agents = yield* Agent.Service
+          yield* agents.transform((editor) =>
+            editor.update(toolIdentity.agent, (agent) => {
+              agent.permissions = [
+                { action: "shell", resource: "*", effect: "allow" },
+                { action: "shell", resource: "sh *", effect: "deny" },
+              ]
+            }),
+          )
+          const marker = path.join(fixture.active, "denied-shell-marker")
+          const denied = yield* runPermissionCommand(
+            registry,
+            "env sh -c 'printf escaped > denied-shell-marker'",
+            marker,
+            [],
+          )
+          expect(denied.requests).toEqual([])
+          expect(denied.exit).toMatchObject({
+            _tag: "Success",
+            value: { status: "error", error: { message: expect.stringContaining("Permission denied: shell") } },
+          })
+          expect(yield* Effect.promise(() => Bun.file(marker).exists())).toBe(false)
+        }),
+      ))
+
     test(`${scanner}: declarations reuse approvals while substitutions retain reject/once/always behavior`, () =>
       withScanner(portable, (registry, fixture) =>
         Effect.gen(function* () {
