@@ -1,5 +1,100 @@
 # @reddb-io/redcode
 
+## 0.85.0
+
+### Minor Changes
+
+- Add an Agents Tasks view using the React Design System to follow shared objectives, prerequisite acceptance, delegated execution progress, observed checks and overlapping changes. Prepare and review combined local Git candidates, then explicitly apply a verified, accepted candidate while retaining the original application request identity for uncertain outcomes.
+- Prepare an ordered set of pinned worktree results as a combined Git revision through the host API. Preview divergent histories without changing checkout files or refs, report conflicting paths, and apply only the exact reviewed candidate to a clean, idle target. Candidate preparation does not verify the work or accept tasks; clients can create a validation checkout from its commit before applying it.
+- Calculate conditional model-catalog estimates using observed request facts, ordered context overrides, nested multipliers, separate reasoning rates and explicit measurement units. Preserve cache write TTLs and refuse estimates when required price facts or usage meters are missing. Explicit local token-price overrides retain precedence and provider-reported USD, including zero, remains authoritative.
+
+  Persist reported, estimated or unknown cost provenance on new step settlements and auxiliary usage records. Preserve old numeric totals and leave historical records unclassified. Session statistics now expose cost coverage, and the existing budget view includes unknown-cost steps and auxiliary usage across descendants without counting compaction summaries twice.
+
+- Use the current configuration structure directly and require explicit conversion for older documents. Add migration inspection and conversion commands that preserve source files and refuse to overwrite an existing output. Stop converting terminal preferences during normal reads and updates.
+
+  Preserve historical Redcode home directories instead of renaming them at startup. Remove generation labels from CLI help and built-in guidance; `usage path --database` selects the session database path.
+
+  Load configuration and LSP status from the current location APIs. Archive settled session trees through one durable API shared by clients, reject new work until restoration, and keep archived descendants visible to internal accounting and recovery.
+
+- Require explicit provider configuration and saved connection choices instead of detecting credentials, regions, accounts or endpoints from ambient environment variables. Removing a saved credential no longer falls back to an environment key. Preserve user-declared configuration references and explicitly selected, declared bindings. Catalog endpoint placeholders require explicit settings. SAP AI Core requires an explicit destination or serviceKey and preserves its legacy bridge only for an explicitly configured key.
+- Add native task dependencies and tracked subagent delegation. Plans preserve prerequisite relationships, independent tasks can run in parallel, and task inspection reports readiness and linked executions. Delegated results require fresh parent verification; later edits or changed prerequisite evidence reopen dependent work and prevent premature goal completion.
+- Require models.dev V2 for model catalogs and public catalog metadata. Remove V1 normalization, public V1 fallbacks and pinned compatibility aliases. Discard incompatible caches and reject explicitly configured files that do not contain a valid V2 catalog.
+- Bind tracked delegations to a durable snapshot of their shared objective and acceptance criteria. Detect outdated objective versions during reconciliation and integration while preserving validity across execution accounting and pause/resume changes.
+
+  Show received context versions and the required-results acceptance barrier in Agents, using the existing task graph, verification receipts and integration workflow.
+
+- Apply accepted integration tasks through `session.todo.applyIntegration`. The host requires current prerequisite acceptance, an exact candidate verification receipt, and unchanged clean source and target revisions. It broadcasts and records admission before changing the target checkout and preserves application provenance separately from the accepted task proof.
+
+  Retrying the original request returns the recorded result or observes the original target without replaying Git. Uncertain outcomes remain pending for explicit host reconciliation. Goals cannot complete while applications are pending or accepted candidates have no matching application receipt.
+
+- Prepare a task's combined Git candidate directly from its accepted prerequisite sessions and keep source task revisions, prompt identities, checkout paths and commit IDs with the task. Reconciliation exposes contract freshness; changed contracts or delegations require a new candidate, and task completion requires fresh verification after preparation. Candidate provenance remains separate from test evidence and task acceptance.
+- Expose session task dependencies and delegated assignments through the V2 API and Agents Tasks. Follow prerequisites with keyboard-accessible controls, inspect recorded blockers and delegated contract revisions, and open the responsible child session. Waiting prerequisites and stale assignments remain visible without starting work or accepting results.
+- Add task_reconcile and a session API for collecting a task's required contributions together. Reports separate execution outcomes from parent acceptance, preserve source references for bounded responses and checks, and identify observed file overlaps and incomplete write coverage. Persist tracked delegation outcomes across job eviction and recovery, bound to their original prompt.
+- Show MCP input requests in the React session interface, including typed answers, retries, cancellation and browser-step confirmation. Prevent duplicate MCP startup, close independent servers together, preserve long remote requests and keep OAuth login waiting after browser probes.
+
+  Preserve background subagents and their task status across server shutdown, tolerate special files during Git snapshots, and ignore compaction buffers that leave no prompt budget. Allow stored credentials to rotate in place through the API without changing their labels or identities.
+
+  Refresh the bundled model catalog and broadcast catalog updates across projects. Prepared integration tasks now require an executor-observed verification receipt for their candidate SHA. Run a foreground shell check with `integrationTaskID` in a clean local checkout at that revision; the executor observes the checkout before and after the command and records a receipt only on success.
+
+- Read models.dev V2 catalogs and expose the payload digest, format, declared APIs, effective protocol capabilities, MIME types and unit-aware prices on model metadata. Select executable chat routes only from locally registered adapters while preserving the provider's model ID and canonical identity separately.
+
+  Preserve cache TTLs, conditional prices, reasoning prices, media units and search prices without coercing them into an unconditional token tariff. Missing or unsupported token estimates remain absent; known zero input alone no longer labels a model free. Invalid catalog JSON cannot replace the previous good cache. Require V2 for the bundled snapshot, configured sources, caches and public metadata.
+
+  Keep catalog JSON arrays editable through both Effect and Promise plugin drafts without mutating the shared source snapshot.
+
+### Patch Changes
+
+- Resolve Bedrock catalog endpoint templates after merging provider, model and credential settings. Configured regions now take precedence over ambient AWS variables, and endpoint resolution uses the native adapter's region defaults. Preserve templates during normalization so later credential configuration can select the correct region.
+- Qualify CLI statistics with reported, estimated, unknown and legacy cost coverage. Incomplete model totals show a known subtotal, unresolved zero contributions show unknown instead of free usage, and older records retain their values with an explicit provenance notice. The shareable default output continues to omit monetary details.
+
+  Preserve cost assessment metadata when the shared Solid client projects successful and failed step events, so clients receive the same provenance before and after reloading session history.
+
+- Use the validated models.dev V2 snapshot and public source as the sole supported catalog format while retaining configured source priority. Accept partial API capability overrides, preserve locally trusted non-native adapters, and keep unregistered SDK names descriptive.
+- Estimate observed Anthropic cache TTLs, OpenAI Chat audio tokens and Gemini modality/cache token splits using the conditional pricing catalog. Require detailed token quantities to reconcile with reported totals, preserve reported USD precedence, and keep incomplete media or cache accounting unknown.
+- Keep System One credentials and endpoints scoped to saved connections or explicitly supplied settings. Ignore ambient provider tokens, RedRouter endpoints and Cloudflare account settings, and prevent self-hosted Console credentials from inheriting the hosted OpenCode Zen endpoint.
+- Classify complete session-family spending from the server ledger, including descendants, title and compaction calls, and S1 evaluations. Preserve historical amounts and flag legacy or untracked provenance rather than inferring prices from paginated messages.
+
+  Share lazy, event-refreshed spending snapshots between terminal and graphical clients. Indicators distinguish estimates, incomplete known subtotals, unavailable provenance and unresolved zero contributions. ACP omits incomplete cumulative costs and exposes their known subtotal and classification through namespaced metadata.
+
+  Keep live activity from crowding the new-session action in narrow terminals.
+
+- Keep valid MCP tools available when a server lists malformed definitions. Validate each tool with the negotiated MCP schema, report skipped definitions, and preserve pagination and page-level validation.
+
+  Sandbox repository file responses and disable MIME sniffing so HTML and SVG previews cannot execute as API-origin documents. Preserve those protections on cached, partial, HEAD and unsatisfiable-range responses.
+
+- Preserve the existing Mini draft when undoing a pending prompt and close the pending panel after deleting its last item. Align Mini keyboard regressions with idle submission and latest-queued steering semantics.
+- Preserve Mini's last-step cost assessment through live completions, failures, history replay, reconnection and resize. Distinguish reported zero, estimated and unknown costs, qualify legacy amounts, and explain the last-step scope through Show status.
+- Use native React Design System controls for composer reasoning modes and intelligence status, preserving draft admission, session overrides, evaluator feedback and Settings navigation. Wait for modal hosts to enter the document before opening native dialogs.
+- Adopt native React Design System controls for Agents navigation and searchable host, project, harness and task selectors, preserving selected scopes and drafts through metadata refreshes.
+
+  Move server sign-in, connection forms, pairing, HTTPS setup, saved provider connections, MCP management and ChatGPT notices to native Design System controls and dialogs. Preserve nested dialog state, explicit relay consent, connection recovery and focus restoration, including dialogs opened from menus. The React QR reader releases its camera stream when dismissed.
+
+- Use native React Design System controls for Home project selection, server actions, session search, context menus, renaming and deletion while preserving project sorting, extension actions and session status. Preserve shortcut focus and prevent tab previews from intercepting controls underneath them.
+- Use native React Design System controls for model search, favorites, router offers, free-model choices and variant selection across desktop and mobile while retaining the mobile drawer gestures and model preferences.
+- Use native React Design System controls for model visibility, grouped provider actions and connection handoff from the model manager.
+- Use native React Design System controls for new-session projects, worktrees, branch search and onboarding tips, preserving project identity, draft contents, worktree creation and Settings navigation. Render file-drop feedback in React and retain the initial editor focus request until the editor mounts.
+- Adopt native React Design System controls for provider authentication, conditional connection forms, first-model selection, usage notices, and the directory/file picker while preserving existing connection and filesystem services.
+- Use native React Design System menus and connection indicators in server settings while preserving extension actions and server management policies.
+- Use native React Design System buttons and tooltips for session panel controls and permission requests, preserving panel state, keyboard shortcuts and permission decisions.
+- Render session questions with native React Design System rows, buttons and text entry while preserving multi-step answers, custom choices, keyboard navigation, retry and cached drafts. Apply focus after the options mount and keep minimized options out of keyboard navigation.
+- Render Vault and web-search requests with native React Design System controls, keeping secret values out of reactive state and preserving masked entry, cancellation, provider selection, retry and unavailable states.
+- Complete the React Settings interface with native Design System controls, navigation and search. Preserve scoped provider and project workflows, queued project autosave, worktree deletion checks, keyboard capture, reporting secrets, localization and shared GUI extension contributions.
+
+  Keep shared connection-dialog select popups available to assistive technology while their parent dialog is open.
+
+- Begin the Web and Desktop GUI migration to React with the official RedDB Design System. Appearance, Notifications and About now use native React components, including font inputs, theme and sound selectors, switches, brand artwork and the third-party notices dialog, while retaining existing settings storage and localization.
+- Migrate the application frame, project and session navigation, mobile dock and command palette to React Design System controls while preserving routes, shortcuts, saved navigation state and extension actions.
+- Render the Web and Desktop titlebar frame, history controls, channel indicator and extension actions with React and native Design System controls, preserving platform clearance, mobile safe areas and shared tab services.
+
+  Keep product SVG click targets mounted while tooltips update so pressing an icon reliably activates its control.
+
+  Preserve a 44px touch target for the mobile navigation More menu.
+
+- Update the vendored React Design System to v2026.10.28, including accessible control diagnostics, renderer-independent recipe exports, and the SettingsRow and PhoneInput components.
+- Validate large Base64 attachments without repeated-group backtracking, reuse tool schemas for each registry revision, and isolate nested schema changes made by session hooks.
+
+  Apply configured shell denials to literal executable paths, assignment prefixes and supported env/command wrappers without broadening saved approvals. Honor configured absolute read/edit denials while preserving explicit rule ordering.
+
 ## 0.84.4
 
 ### Patch Changes
