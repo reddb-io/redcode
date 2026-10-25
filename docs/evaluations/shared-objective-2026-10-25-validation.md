@@ -89,6 +89,17 @@ checkouts limpos continuam obrigatórias. A correção é registrada em Changese
 a tentativa seguinte seleciona 0.85.1. Os 25 testes de worktree, combinação Git e
 integração de tarefas passaram pelo runner isolado do Core após essa correção.
 
+Na primeira tentativa da 0.85.1, todos os Desktop e sidecars passaram. O smoke da
+CLI compilada encontrou campos antigos no `.opencode/opencode.jsonc` versionado.
+Esse arquivo, os dois agentes internos e o comando de commit foram convertidos
+explicitamente para o formato atual, preservando modelos, permissões e conteúdo.
+A configuração foi revisada com o conversor oficial e validada pelos schemas do
+runtime. A CLI de desenvolvimento carregou os quatro agentes públicos e os dois
+internos a partir de uma cópia dos arquivos versionados, em HOME/XDG temporários
+e sem variáveis de providers; as 27 tarefas de check também passaram novamente.
+O primeiro ensaio direto da CLI precisou receber o preload Solid usado pelo
+desenvolvimento normal para executar a partir do diretório isolado.
+
 ## Alcance
 
 Este é o primeiro fluxo sobre o objetivo persistido, tarefas e recibos existentes.

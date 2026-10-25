@@ -1,7 +1,9 @@
 ---
 description: git commit and push
-model: opencode/kimi-k2.5
-subtask: true
+model:
+  providerID: opencode
+  model: kimi-k2.5
+subagent: true
 ---
 
 commit and push

@@ -1,7 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "provider": {},
-  "permission": {},
+  "providers": {},
   "references": {
     "effect": {
       "repository": "github.com/Effect-TS/effect-smol",
@@ -16,8 +15,8 @@
   "worktree": {
     "auto": false,
   },
-  "tools": {
-    "github-triage": false,
-    "github-pr-search": false,
-  },
+  "permissions": [
+    { "action": "github-triage", "resource": "*", "effect": "deny" },
+    { "action": "github-pr-search", "resource": "*", "effect": "deny" },
+  ],
 }
