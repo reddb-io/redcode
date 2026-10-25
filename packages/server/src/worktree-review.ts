@@ -1,6 +1,7 @@
 import { realpath } from "node:fs/promises"
 import { Worktree } from "@opencode/schema/worktree"
 import { AbsolutePath } from "@opencode/schema/schema"
+import { sameDirectory } from "@opencode/util/path"
 
 const limits = { diff: 512_000 }
 async function runGit(directory: string, args: string[], env?: Record<string, string>) {
@@ -26,14 +27,14 @@ async function git(directory: string, args: string[], env?: Record<string, strin
 /** Inventory, canonical paths and Git common-dir all have to agree before changing a checkout. */
 export async function inspectWorktree(input: Worktree.InspectInput, inventory: Worktree.List) {
   const [directory, target] = await Promise.all([realpath(input.directory), realpath(input.target)])
-  const source = inventory.find((item) => item.directory === directory)
-  if (!source || !inventory.some((item) => item.directory === target))
+  const source = inventory.find((item) => sameDirectory(item.directory, directory))
+  if (!source || !inventory.some((item) => sameDirectory(item.directory, target)))
     throw new Error("Select checkouts from this project's recorded inventory")
   const common = await Promise.all([
     git(directory, ["rev-parse", "--path-format=absolute", "--git-common-dir"]),
     git(target, ["rev-parse", "--path-format=absolute", "--git-common-dir"]),
   ])
-  if (common[0] !== common[1]) throw new Error("Checkouts do not belong to the same Git repository")
+  if (!sameDirectory(common[0]!, common[1]!)) throw new Error("Checkouts do not belong to the same Git repository")
   const [head, targetHead, branch, status, targetStatus] = await Promise.all([
     git(directory, ["rev-parse", "HEAD"]),
     git(target, ["rev-parse", "HEAD"]),
@@ -60,7 +61,7 @@ export async function inspectWorktree(input: Worktree.InspectInput, inventory: W
 
 export async function integrateWorktree(input: Worktree.IntegrateInput, inventory: Worktree.List) {
   const review = await inspectWorktree(input, inventory)
-  if (!review.managed || review.directory === review.target)
+  if (!review.managed || sameDirectory(review.directory, review.target))
     throw new Error("Select a managed source worktree and a different integration target")
   if (review.dirty || review.targetDirty)
     throw new Error("Commit source changes and clean the integration target before integrating")
@@ -208,7 +209,7 @@ async function integrationSources(input: Worktree.PrepareIntegrationInput, inven
       ),
     ),
   )
-  if (sources.some((source) => !source.managed || source.directory === source.target))
+  if (sources.some((source) => !source.managed || sameDirectory(source.directory, source.target)))
     throw new Error("Select managed source worktrees and a different integration target")
   if (new Set(sources.map((source) => source.directory)).size !== sources.length)
     throw new Error("Select each source worktree only once")
@@ -225,7 +226,7 @@ async function integrationSources(input: Worktree.PrepareIntegrationInput, inven
 
 export async function checkpointWorktree(input: Worktree.CheckpointInput, inventory: Worktree.List) {
   const directory = await realpath(input.directory)
-  if (!inventory.some((item) => item.directory === directory && item.strategy === "git"))
+  if (!inventory.some((item) => sameDirectory(item.directory, directory) && item.strategy === "git"))
     throw new Error("Only a recorded managed Git worktree can be checkpointed")
   if (!(await git(directory, ["status", "--porcelain=v1"]))) return git(directory, ["rev-parse", "HEAD"])
   await git(directory, ["add", "--all", "--", "."])
@@ -239,7 +240,7 @@ export async function archiveWorktree(
   inventory: Worktree.List,
 ): Promise<Worktree.Archive> {
   const directory = await realpath(input.directory)
-  if (!inventory.some((item) => item.directory === directory && item.strategy === "git"))
+  if (!inventory.some((item) => sameDirectory(item.directory, directory) && item.strategy === "git"))
     throw new Error("Only a managed Git worktree can be archived")
   const head = await git(directory, ["rev-parse", "HEAD"])
   if (head !== input.head) throw new Error("The reviewed revision changed. Review again before archive")

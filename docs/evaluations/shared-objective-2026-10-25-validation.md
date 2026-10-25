@@ -80,6 +80,15 @@ de navegador. Após a correção, o build Desktop Linux e as 27 tarefas de
 `bun run check` passaram; a confirmação Windows pertence à nova execução nativa
 da release.
 
+Na mesma execução, três cenários HTTP de worktree falharam no Windows porque
+comparavam literalmente o caminho nativo de `realpath` com o inventário. A revisão,
+checkpoint e arquivo agora usam a comparação de diretórios existente, preservando
+a distinção entre caminhos Unix e reconhecendo separadores e caixa equivalentes
+no Windows. As verificações de inventário, repositório Git, revisões fixadas e
+checkouts limpos continuam obrigatórias. A correção é registrada em Changeset;
+a tentativa seguinte seleciona 0.85.1. Os 25 testes de worktree, combinação Git e
+integração de tarefas passaram pelo runner isolado do Core após essa correção.
+
 ## Alcance
 
 Este é o primeiro fluxo sobre o objetivo persistido, tarefas e recibos existentes.
