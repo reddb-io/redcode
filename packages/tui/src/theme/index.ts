@@ -1,16 +1,10 @@
-import {
-  migrateV1,
-  parseThemeDocument,
-  resolveThemeDocument,
-  type ThemeDocument,
-  type ModeDefinition,
-} from "@opencode/theme/tui"
-import { resolveThemeColors } from "./resolve"
-import { DEFAULT_THEMES, type Theme, type ThemeV1Json } from "./v1"
-import redcode from "./assets/v2/redcode.json" with { type: "json" }
-import opencode from "./assets/v2/opencode.json" with { type: "json" }
+import { parseThemeDocument, resolveThemeDocument, type ThemeDocument, type ModeDefinition } from "@opencode/theme/tui"
+import { DEFAULT_THEMES } from "./builtin"
+import redcode from "./assets/builtin/redcode.json" with { type: "json" }
+import opencode from "./assets/builtin/opencode.json" with { type: "json" }
 
-export { DEFAULT_THEMES, generateSyntax, selectedForeground, type Theme, type ThemeV1Json } from "./v1"
+export { DEFAULT_THEMES } from "./builtin"
+export { generateSyntax, selectedForeground, type Theme } from "./syntax"
 export { resolveThemeDocument, type ThemeDocument }
 
 export const DEFAULT_THEME = "redcode"
@@ -69,7 +63,9 @@ export function parseTheme(source: ThemeDocumentSource, name = "theme") {
   const cached = parsed.get(source)
   if (cached) return cached
 
-  const document = "theme" in source ? migrateV1(source as ThemeV1Json) : parseThemeDocument(source, name)
+  if ("theme" in source)
+    throw new Error("This theme requires explicit conversion. Use redcode migrate inspect --kind theme.")
+  const document = parseThemeDocument(source, name)
 
   parsed.set(source, document)
   return document
@@ -116,13 +112,4 @@ export function upsertTheme(name: string, theme: unknown) {
   }
   syncThemes()
   return true
-}
-
-export function resolveTheme(theme: ThemeV1Json, mode: "dark" | "light"): Theme {
-  const resolved = resolveThemeColors(theme, mode)
-  return {
-    ...resolved.theme,
-    _hasSelectedListItemText: resolved.hasSelectedListItemText,
-    thinkingOpacity: resolved.thinkingOpacity,
-  }
 }

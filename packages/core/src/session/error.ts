@@ -78,6 +78,7 @@ export class CompactionConflictError extends Schema.TaggedError<CompactionConfli
 
 export class BusyError extends Schema.TaggedError<BusyError>()("Session.BusyError", {
   sessionID: SessionSchema.ID,
+  reason: Schema.optional(Schema.String),
 }) {}
 
 export class InboxConflictError extends Schema.TaggedError<InboxConflictError>()("Session.InboxConflictError", {

@@ -1619,6 +1619,16 @@ export type SessionRenamed = {
   data: { sessionID: string; title: string }
 }
 
+export type SessionArchived = {
+  id: string
+  created: number
+  metadata?: { [x: string]: any }
+  type: "session.archived"
+  durable: { aggregateID: string; seq: number; version: 1 }
+  location?: LocationRef
+  data: { sessionID: string; archived: boolean }
+}
+
 export type SessionViewed = {
   id: string
   created: number
@@ -4148,6 +4158,7 @@ export type SessionEventDurable =
   | SessionModelSelected
   | SessionMoved
   | SessionRenamed
+  | SessionArchived
   | SessionMetadataUpdated
   | SessionPermissions
   | SessionViewed
@@ -4204,6 +4215,7 @@ export type V2Event =
   | SessionModelSelected
   | SessionMoved
   | SessionRenamed
+  | SessionArchived
   | SessionMetadataUpdated
   | SessionPermissions
   | SessionViewed
@@ -4356,10 +4368,6 @@ export type AgentNotFoundError = {
 export const isAgentNotFoundError = (value: unknown): value is AgentNotFoundError =>
   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "AgentNotFoundError"
 
-export type InvalidCursorError = { readonly _tag: "InvalidCursorError"; readonly message: string }
-export const isInvalidCursorError = (value: unknown): value is InvalidCursorError =>
-  typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "InvalidCursorError"
-
 export type SessionNotFoundError = {
   readonly _tag: "SessionNotFoundError"
   readonly sessionID: string
@@ -4367,6 +4375,18 @@ export type SessionNotFoundError = {
 }
 export const isSessionNotFoundError = (value: unknown): value is SessionNotFoundError =>
   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "SessionNotFoundError"
+
+export type SessionBusyError = {
+  readonly _tag: "SessionBusyError"
+  readonly sessionID: string
+  readonly message: string
+}
+export const isSessionBusyError = (value: unknown): value is SessionBusyError =>
+  typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "SessionBusyError"
+
+export type InvalidCursorError = { readonly _tag: "InvalidCursorError"; readonly message: string }
+export const isInvalidCursorError = (value: unknown): value is InvalidCursorError =>
+  typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "InvalidCursorError"
 
 export type UnknownError = {
   readonly _tag: "UnknownError"
@@ -4383,14 +4403,6 @@ export type MonitorNotFoundError = {
 }
 export const isMonitorNotFoundError = (value: unknown): value is MonitorNotFoundError =>
   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "MonitorNotFoundError"
-
-export type SessionBusyError = {
-  readonly _tag: "SessionBusyError"
-  readonly sessionID: string
-  readonly message: string
-}
-export const isSessionBusyError = (value: unknown): value is SessionBusyError =>
-  typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "SessionBusyError"
 
 export type DesignNotFoundError = {
   readonly _tag: "DesignNotFoundError"
@@ -4642,6 +4654,13 @@ export type PluginUpdateInput = {
 
 export type PluginUpdateOutput = void
 
+export type SessionArchiveInput = {
+  readonly sessionID: { readonly sessionID: string }["sessionID"]
+  readonly archived: { readonly archived: boolean }["archived"]
+}
+
+export type SessionArchiveOutput = void
+
 export type SessionDesignConversationsInput = { readonly directory: { readonly directory: string }["directory"] }
 
 export type SessionDesignConversationsOutput = Array<{
@@ -4656,6 +4675,7 @@ export type SessionListInput = {
     readonly limit?: number | undefined
     readonly order?: "asc" | "desc" | undefined
     readonly search?: string | undefined
+    readonly archived?: "exclude" | "include" | "only" | undefined
     readonly parentID?: string | null | undefined
     readonly directory?: string | undefined
     readonly project?: string | undefined
@@ -4666,6 +4686,7 @@ export type SessionListInput = {
     readonly limit?: number | undefined
     readonly order?: "asc" | "desc" | undefined
     readonly search?: string | undefined
+    readonly archived?: "exclude" | "include" | "only" | undefined
     readonly parentID?: string | null | undefined
     readonly directory?: string | undefined
     readonly project?: string | undefined
@@ -4676,16 +4697,29 @@ export type SessionListInput = {
     readonly limit?: number | undefined
     readonly order?: "asc" | "desc" | undefined
     readonly search?: string | undefined
+    readonly archived?: "exclude" | "include" | "only" | undefined
     readonly parentID?: string | null | undefined
     readonly directory?: string | undefined
     readonly project?: string | undefined
     readonly subpath?: string | undefined
     readonly cursor?: string | undefined
   }["search"]
+  readonly archived?: {
+    readonly limit?: number | undefined
+    readonly order?: "asc" | "desc" | undefined
+    readonly search?: string | undefined
+    readonly archived?: "exclude" | "include" | "only" | undefined
+    readonly parentID?: string | null | undefined
+    readonly directory?: string | undefined
+    readonly project?: string | undefined
+    readonly subpath?: string | undefined
+    readonly cursor?: string | undefined
+  }["archived"]
   readonly parentID?: {
     readonly limit?: number | undefined
     readonly order?: "asc" | "desc" | undefined
     readonly search?: string | undefined
+    readonly archived?: "exclude" | "include" | "only" | undefined
     readonly parentID?: string | null | undefined
     readonly directory?: string | undefined
     readonly project?: string | undefined
@@ -4696,6 +4730,7 @@ export type SessionListInput = {
     readonly limit?: number | undefined
     readonly order?: "asc" | "desc" | undefined
     readonly search?: string | undefined
+    readonly archived?: "exclude" | "include" | "only" | undefined
     readonly parentID?: string | null | undefined
     readonly directory?: string | undefined
     readonly project?: string | undefined
@@ -4706,6 +4741,7 @@ export type SessionListInput = {
     readonly limit?: number | undefined
     readonly order?: "asc" | "desc" | undefined
     readonly search?: string | undefined
+    readonly archived?: "exclude" | "include" | "only" | undefined
     readonly parentID?: string | null | undefined
     readonly directory?: string | undefined
     readonly project?: string | undefined
@@ -4716,6 +4752,7 @@ export type SessionListInput = {
     readonly limit?: number | undefined
     readonly order?: "asc" | "desc" | undefined
     readonly search?: string | undefined
+    readonly archived?: "exclude" | "include" | "only" | undefined
     readonly parentID?: string | null | undefined
     readonly directory?: string | undefined
     readonly project?: string | undefined
@@ -4726,6 +4763,7 @@ export type SessionListInput = {
     readonly limit?: number | undefined
     readonly order?: "asc" | "desc" | undefined
     readonly search?: string | undefined
+    readonly archived?: "exclude" | "include" | "only" | undefined
     readonly parentID?: string | null | undefined
     readonly directory?: string | undefined
     readonly project?: string | undefined
@@ -10961,11 +10999,6 @@ export type DebugLocationEvictInput = {
 }
 
 export type DebugLocationEvictOutput = void
-
-export type MigrationV1StatusOutput =
-  | { status: "required" | "completed" }
-  | { status: "running"; progress: { label: string; numerator?: number | undefined; denominator?: number | undefined } }
-  | { status: "error"; error: string }
 
 export type WebsearchProvidersInput = {
   readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]

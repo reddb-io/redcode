@@ -43,7 +43,6 @@ export type {
 } from "./types.js"
 export { rgbToOklch } from "./color.js"
 export { expandTheme } from "./expand.js"
-export { migrateV1 } from "./v1-migrate.js"
 export { parseThemeDocument, resolveTheme, resolveThemeDocument, themeDecodeError } from "./resolve.js"
 export { selectTheme, selectThemeMode, supportsThemeMode, themeModes } from "./select.js"
 export { generateSyntax } from "./syntax.js"

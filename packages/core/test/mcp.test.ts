@@ -2705,6 +2705,7 @@ const shutdownIt = testEffect(
         ),
       ),
       Environment.node.replace(hostEnvironmentLayer),
+      Config.node.replace(Config.testLayer([])),
     ],
   ),
 )

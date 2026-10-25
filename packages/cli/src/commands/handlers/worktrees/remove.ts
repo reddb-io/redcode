@@ -15,18 +15,22 @@ export default Runtime.handler(
     const result = yield* inventory()
     const targets = new Set([
       yield* Effect.promise(() => WorktreeInventory.canonical(path.resolve(args.target))),
-      ...(result.root ? [yield* Effect.promise(() => WorktreeInventory.canonical(path.resolve(result.root, args.target)))] : []),
+      ...(result.root
+        ? [yield* Effect.promise(() => WorktreeInventory.canonical(path.resolve(result.root, args.target)))]
+        : []),
     ])
-    const matches = result.worktrees.filter((entry) =>
-      targets.has(entry.path) || entry.branch === args.target || path.basename(entry.path) === args.target,
+    const matches = result.worktrees.filter(
+      (entry) => targets.has(entry.path) || entry.branch === args.target || path.basename(entry.path) === args.target,
     )
     if (matches.length === 0) return yield* Effect.fail(new Error(`No worktree matches ${args.target}`))
-    if (matches.length > 1) return yield* Effect.fail(new Error(`More than one worktree matches ${args.target}; use its full path`))
+    if (matches.length > 1)
+      return yield* Effect.fail(new Error(`More than one worktree matches ${args.target}; use its full path`))
     const entry = matches[0]!
     if (entry.primary) return yield* Effect.fail(new Error(`Cannot remove the primary checkout: ${entry.path}`))
-    if (entry.current) return yield* Effect.fail(new Error(`Cannot remove a worktree with a recent session: ${entry.path}`))
+    if (entry.current)
+      return yield* Effect.fail(new Error(`Cannot remove a worktree with a recent session: ${entry.path}`))
     if (!entry.registered || !entry.strategy)
-      return yield* Effect.fail(new Error(`Worktree is not managed by V2: ${entry.path}`))
+      return yield* Effect.fail(new Error(`Worktree is not managed by this server: ${entry.path}`))
     if (entry.strategy === "git" && entry.changes === undefined)
       return yield* Effect.fail(new Error(`Cannot verify Git changes in ${entry.path}`))
     if (entry.changes && entry.changes.tracked + entry.changes.untracked > 0 && !args.force)
@@ -35,14 +39,19 @@ export default Runtime.handler(
     const root = result.root
     if (args.deleteBranch && (!branch || entry.merged !== true || !root))
       return yield* Effect.fail(new Error(`Cannot verify that ${entry.branch ?? entry.path} is merged`))
-    yield* Effect.promise(() => context.client.worktree.remove({
-      projectID: context.projectID,
-      directory: entry.path,
-      force: args.force,
-    }))
+    yield* Effect.promise(() =>
+      context.client.worktree.remove({
+        projectID: context.projectID,
+        directory: entry.path,
+        force: args.force,
+      }),
+    )
     if (args.deleteBranch && branch && root) {
       const deleted = yield* Effect.promise(() => WorktreeInventory.git(root, ["branch", "-D", branch], true))
-      if (deleted.exit !== 0) return yield* Effect.fail(new Error(`Removed ${entry.path}, but could not delete ${branch}: ${deleted.error.trim()}`))
+      if (deleted.exit !== 0)
+        return yield* Effect.fail(
+          new Error(`Removed ${entry.path}, but could not delete ${branch}: ${deleted.error.trim()}`),
+        )
     }
     process.stdout.write(`Removed ${entry.path}${args.deleteBranch ? ` and branch ${entry.branch}` : ""}${EOL}`)
   }),

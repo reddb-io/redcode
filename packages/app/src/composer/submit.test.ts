@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { unwrap } from "solid-js/store"
 import type { ModelSelection } from "@/providers/models/selection"
 import type { SessionMessageUser } from "@opencode/client/promise"
 import { Skill } from "@opencode/schema/skill"
@@ -377,7 +378,7 @@ describe("Composer submission", () => {
     expect(new Set(attempts).size).toBe(1)
     expect(statuses).toEqual(["running", "idle", "running", "idle"])
     expect(state.current()).toEqual(prompt)
-    expect(state.context.items()).toMatchObject([
+    expect(unwrap(state.context.items())).toMatchObject([
       { type: "file", path: "notes.md", description: "the failing version" },
     ])
     // The caret returns after the mention text; attachments take no caret positions.
@@ -416,8 +417,10 @@ describe("Composer submission", () => {
     ).submit(new Event("submit"))
     await failed.promise
 
-    expect(promoted.current()).toMatchObject([{ type: "text", content: "first prompt" }])
-    expect(promoted.context.items()).toMatchObject([{ type: "file", path: "src/app.ts", comment: "Keep this comment" }])
+    expect(unwrap(promoted.current())).toMatchObject([{ type: "text", content: "first prompt" }])
+    expect(unwrap(promoted.context.items())).toMatchObject([
+      { type: "file", path: "src/app.ts", comment: "Keep this comment" },
+    ])
     expect(promoted.mode.current()).toBe("shell")
   })
 

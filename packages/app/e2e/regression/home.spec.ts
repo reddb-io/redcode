@@ -35,7 +35,7 @@ test("the session context menu renames, exports, and deletes a Home session", as
   const box = await target.boundingBox()
   await target.click({ button: "right", position: { x: 48, y: 12 } })
   await expect(page).toHaveURL("/")
-  await expect(page.getByRole("menuitem")).toHaveText(["Pin", "Rename", "Export…", "Delete…"])
+  await expect(page.getByRole("menuitem")).toHaveText(["Pin", "Rename", "Archive", "Export…", "Delete…"])
   const menu = await page.locator("[data-context-menu-surface]").boundingBox()
   expect(Math.abs((menu?.x ?? 0) - (box?.x ?? 0) - 48)).toBeLessThan(4)
 
@@ -84,6 +84,33 @@ test("the session context menu renames, exports, and deletes a Home session", as
   await dialog.getByRole("button", { name: "Delete session" }).click()
   await removed
   await expect(renamedRow).toBeHidden()
+})
+
+test("Home archives a session, keeps its transcript available, and restores it to active sessions", async ({
+  page,
+}) => {
+  await openHome(page)
+  const target = row(page, fixture.expected.targetTitle)
+  await expect(target).toBeVisible()
+  await target.click({ button: "right" })
+  await page.getByRole("menuitem", { name: "Archive", exact: true }).click()
+  await expect(target).toBeHidden()
+  await expect(
+    page.locator('[data-slot="titlebar-tabs"] a').filter({ hasText: fixture.expected.targetTitle }),
+  ).toHaveCount(0)
+  await page.getByRole("button", { name: "Archived sessions", exact: true }).click()
+  await expect(target).toBeVisible()
+  await expect(row(page, fixture.expected.sourceTitle)).toBeHidden()
+  await target.click({ button: "right" })
+  await page.getByRole("menuitem", { name: "Restore session", exact: true }).click()
+  await expect(target).toBeHidden()
+  await page.getByRole("button", { name: "Active sessions", exact: true }).click()
+  await expect(target).toBeVisible()
+  await target.click()
+  await expect(page).toHaveURL(new RegExp(`/session/${fixture.targetID}$`))
+  await expect(
+    page.locator(`[data-timeline-row="UserMessage"][data-message-id="${fixture.expected.targetMessageIDs.at(-1)}"]`),
+  ).toBeVisible()
 })
 
 test("the Home shortcut focuses session search, and the Home button leaves focus alone", async ({ page }) => {
@@ -485,4 +512,31 @@ test("the project menu imports from another coding agent, starting in the projec
   await dialog.getByRole("button", { name: "Show all folders", exact: true }).click()
   await expect(dialog.getByText("No Pi sessions found", { exact: true })).toBeVisible()
   expect(listed.at(-1)?.searchParams.has("directory")).toBe(false)
+})
+
+test("live server: Home archive and restore use the current backend", async ({ page, request }) => {
+  test.skip(process.env.REDCODE_E2E_LIVE !== "1", "Requires the isolated backend fixture")
+  const response = await request.get("/__fixture")
+  expect(response.ok()).toBe(true)
+  const fixture: { sessionID: string; title: string; directory: string } = await response.json()
+  await seed(page, {
+    projects: { local: [{ worktree: fixture.directory, expanded: true }] },
+    lastProject: { local: fixture.directory },
+  })
+  await page.goto("/")
+  const target = row(page, fixture.title)
+  await expect(target).toBeVisible()
+  await target.click({ button: "right" })
+  await page.getByRole("menuitem", { name: "Archive", exact: true }).click()
+  await expect(target).toBeHidden()
+  await page.reload()
+  await expect(page.getByRole("button", { name: "Archived sessions", exact: true })).toBeVisible()
+  await expect(target).toBeHidden()
+  await page.getByRole("button", { name: "Archived sessions", exact: true }).click()
+  await expect(target).toBeVisible()
+  await target.click({ button: "right" })
+  await page.getByRole("menuitem", { name: "Restore session", exact: true }).click()
+  await expect(target).toBeHidden()
+  await page.getByRole("button", { name: "Active sessions", exact: true }).click()
+  await expect(target).toBeVisible()
 })

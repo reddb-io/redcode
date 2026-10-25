@@ -29,7 +29,7 @@ import { InstructionEntry } from "./instruction-entry.js"
 import { VaultInstructions } from "../vault/instructions.js"
 import { SessionMessage } from "./message.js"
 import { SessionModelRequest } from "./model-request.js"
-import { RedcodeLegacyInstructions } from "./redcode-legacy-instructions.js"
+import { SessionImportedContext } from "./imported-context.js"
 import { SessionRunnerModel } from "./runner/model.js"
 import { SessionSchema } from "./schema.js"
 import { SessionStore } from "./store.js"
@@ -167,7 +167,7 @@ const layer = Layer.effect(
               .pipe(Effect.orElseSucceed(() => [])))[0]
           : undefined
       const preferred = IntelligenceClassification.toolNamespace(classified)
-      const legacy = yield* RedcodeLegacyInstructions.load(db, sessionID)
+      const legacy = yield* SessionImportedContext.load(db, sessionID)
       if (legacy?.phase === "baseline")
         return { session, agent: { ...agent, info: agent.info }, instructions: legacy.instructions, tools }
       const loaded = yield* Effect.all(

@@ -28,7 +28,7 @@ export async function migrateToRedDB(source: string, target: string, token?: str
   const database = await connect(target, token ? { auth: { token } } : undefined)
   try {
     if ((await database.exists("session")) && !(await database.exists("session_v2")))
-      throw new Error("Target RedDB contains V1 sessions; use a new target for the V2 database")
+      throw new Error("Target RedDB contains historical sessions; use a new target for the current database")
     const tables = orderedTables(sqlite)
     await database.query(`
       CREATE TABLE IF NOT EXISTS redcode_migration_manifest (
@@ -169,14 +169,13 @@ function rows(database: Database, table: Table) {
 async function readTarget(database: RedDB, table: Table) {
   const order = table.order.length > 0 ? table.order : table.columns
   const result = await database.query(
-      `SELECT ${table.columns.map(identifier).join(", ")} FROM ${identifier(table.name)}${
-        order.length ? ` ORDER BY ${order.map(identifier).join(", ")}` : ""
-      }`,
-    )
-  return result.rows.map((row) => Object.fromEntries(table.columns.map((column) => [column, row[column] ?? null]))) as Record<
-    string,
-    QueryParam
-  >[]
+    `SELECT ${table.columns.map(identifier).join(", ")} FROM ${identifier(table.name)}${
+      order.length ? ` ORDER BY ${order.map(identifier).join(", ")}` : ""
+    }`,
+  )
+  return result.rows.map((row) =>
+    Object.fromEntries(table.columns.map((column) => [column, row[column] ?? null])),
+  ) as Record<string, QueryParam>[]
 }
 
 async function insertRows(tx: RedDBTransaction, table: Table, input: Record<string, QueryParam>[]) {

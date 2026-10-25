@@ -1345,3 +1345,39 @@ async function wait(check: () => boolean) {
     await Bun.sleep(10)
   }
 }
+
+test("archive refreshes a cached session after the server accepts its state", async () => {
+  const stored = session(1)
+  const requests: string[] = []
+  const api = OpenCode.make({
+    baseUrl: "http://opencode.local",
+    fetch: async (input, init) => {
+      const request = input instanceof Request ? input : new Request(input, init)
+      requests.push(`${request.method} ${new URL(request.url).pathname}`)
+      if (request.method === "POST") {
+        stored.time.archived = (await request.json()).archived ? 10 : undefined
+        return new Response(null, { status: 204 })
+      }
+      return Response.json({ data: stored })
+    },
+  })
+  const setup = createRoot((dispose) => ({
+    dispose,
+    data: createData({ api: () => api, directory: "/project", event: { listen: () => () => {}, on: () => () => {} } }),
+  }))
+  try {
+    setup.data.session.remember(session(1))
+    await setup.data.session.archive(stored.id, true)
+    expect(setup.data.session.get(stored.id)?.time.archived).toBe(10)
+    await setup.data.session.archive(stored.id, false)
+    expect(setup.data.session.get(stored.id)?.time.archived).toBeUndefined()
+    expect(requests).toEqual([
+      "POST /api/session/ses_refresh/archive",
+      "GET /api/session/ses_refresh",
+      "POST /api/session/ses_refresh/archive",
+      "GET /api/session/ses_refresh",
+    ])
+  } finally {
+    setup.dispose()
+  }
+})

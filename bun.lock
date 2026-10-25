@@ -136,6 +136,7 @@
         "@opencode/plugin": "workspace:*",
         "@opencode/schema": "workspace:*",
         "@opencode/server": "workspace:*",
+        "@opencode/theme": "workspace:*",
         "@opencode/tui": "workspace:*",
         "@opencode/util": "workspace:*",
         "@opentui/core": "catalog:",

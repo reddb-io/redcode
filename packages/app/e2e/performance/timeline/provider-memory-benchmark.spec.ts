@@ -16,7 +16,10 @@ benchmark("measures retained renderer memory with a large model catalog", async 
   const mock = await mockOpenCodeServer(page, {
     directory: fixture.directory,
     project: fixture.project,
-    sessions: fixture.sessions,
+    sessions: fixture.sessions.map((session) => ({
+      ...session,
+      model: { providerID: provider.id, id: selected.id },
+    })),
     pageMessages,
     provider: {
       ...fixture.provider,

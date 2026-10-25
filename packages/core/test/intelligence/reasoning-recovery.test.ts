@@ -192,10 +192,13 @@ test("HTTP receipts retain output limits and final tool choice without leaking m
 })
 
 test("recovery dry-run enumerates eighteen fixed-candidate executions without models or credentials", async () => {
-  const child = Bun.spawn([process.execPath, "script/reasoning-eval/recovery-run.ts", "--dry-run"], {
-    stdout: "pipe",
-    stderr: "pipe",
-  })
+  const child = Bun.spawn(
+    [process.execPath, path.resolve(import.meta.dir, "../../script/reasoning-eval/recovery-run.ts"), "--dry-run"],
+    {
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+  )
   const [stdout, stderr, exit] = await Promise.all([
     new Response(child.stdout).text(),
     new Response(child.stderr).text(),

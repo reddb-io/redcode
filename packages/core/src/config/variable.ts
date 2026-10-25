@@ -4,7 +4,7 @@ import os from "os"
 import path from "path"
 import { Effect } from "effect"
 import { FSUtil } from "@opencode/util/fs-util"
-import { InvalidError } from "../v1/config/error.js"
+import { InvalidError } from "./error.js"
 
 type ParseSource =
   | {

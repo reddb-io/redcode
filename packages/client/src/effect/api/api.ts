@@ -6,8 +6,8 @@ import type { Attention } from "@opencode/schema/attention"
 import type { Location } from "@opencode/schema/location"
 import type { Agent } from "@opencode/schema/agent"
 import type { Plugin } from "@opencode/schema/plugin"
-import type { AbsolutePath } from "@opencode/schema/schema"
 import type { Session } from "@opencode/schema/session"
+import type { AbsolutePath } from "@opencode/schema/schema"
 import type { Brand } from "effect"
 import type { Project } from "@opencode/schema/project"
 import type { RelativePath } from "@opencode/schema/schema"
@@ -191,6 +191,10 @@ export interface PluginApi<E = never> {
   readonly update: PluginUpdateOperation<E>
 }
 
+export type SessionArchiveInput = { readonly sessionID: Session.ID; readonly archived: boolean }
+export type SessionArchiveOutput = void
+export type SessionArchiveOperation<E = never> = (input: SessionArchiveInput) => Effect.Effect<SessionArchiveOutput, E>
+
 export type SessionDesignConversationsInput = { readonly directory: AbsolutePath }
 export type SessionDesignConversationsOutput = ReadonlyArray<{
   readonly sessionID: Session.ID
@@ -212,6 +216,7 @@ export type SessionListInput = {
   readonly limit?: number | undefined
   readonly order?: "asc" | "desc" | undefined
   readonly search?: string | undefined
+  readonly archived?: "exclude" | "include" | "only" | undefined
   readonly parentID?: Session.ID | null | undefined
   readonly directory?: AbsolutePath | undefined
   readonly project?: Project.ID | undefined
@@ -3477,6 +3482,20 @@ export type SessionLogOutput =
           readonly id: Event.ID
           readonly created: number
           readonly metadata?: { readonly [x: string]: unknown } | undefined
+          readonly type: "session.archived"
+          readonly durable: { readonly aggregateID: string; readonly seq: Event.Seq; readonly version: Event.Version }
+          readonly location?:
+            | {
+                readonly directory: AbsolutePath
+                readonly workspaceID?: (string & Brand.Brand<"Workspace.ID">) | undefined
+              }
+            | undefined
+          readonly data: { readonly sessionID: Session.ID; readonly archived: boolean }
+        }
+      | {
+          readonly id: Event.ID
+          readonly created: number
+          readonly metadata?: { readonly [x: string]: unknown } | undefined
           readonly type: "session.metadata.updated"
           readonly durable: { readonly aggregateID: string; readonly seq: Event.Seq; readonly version: Event.Version }
           readonly location?:
@@ -4426,6 +4445,7 @@ export type SessionViewOutput = void
 export type SessionViewOperation<E = never> = (input: SessionViewInput) => Effect.Effect<SessionViewOutput, E>
 
 export interface SessionApi<E = never> {
+  readonly archive: SessionArchiveOperation<E>
   readonly design: {
     readonly conversations: SessionDesignConversationsOperation<E>
     readonly feed: SessionDesignFeedOperation<E>
@@ -5589,23 +5609,6 @@ export interface DebugApi<E = never> {
   readonly location: { readonly list: DebugLocationListOperation<E>; readonly evict: DebugLocationEvictOperation<E> }
 }
 
-export type MigrationV1StatusOutput =
-  | { readonly status: "required" | "completed" }
-  | {
-      readonly status: "running"
-      readonly progress: {
-        readonly label: string
-        readonly numerator?: number | undefined
-        readonly denominator?: number | undefined
-      }
-    }
-  | { readonly status: "error"; readonly error: string }
-export type MigrationV1StatusOperation<E = never> = () => Effect.Effect<MigrationV1StatusOutput, E>
-
-export interface MigrationApi<E = never> {
-  readonly v1: { readonly status: MigrationV1StatusOperation<E> }
-}
-
 export type WebsearchProvidersInput = { readonly location?: { readonly directory?: string | undefined } | undefined }
 export type WebsearchProvidersOutput = {
   readonly location: Location.PublicRef
@@ -6692,7 +6695,6 @@ export interface AppApi<E = never> {
   readonly worktree: WorktreeApi<E>
   readonly vcs: VcsApi<E>
   readonly debug: DebugApi<E>
-  readonly migration: MigrationApi<E>
   readonly websearch: WebsearchApi<E>
   readonly config: ConfigApi<E>
   readonly hook: HookApi<E>

@@ -96,6 +96,27 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
     model: Flag.string("model").pipe(Flag.withDescription("Model for a new session"), Flag.optional),
   },
   commands: [
+    Spec.make("migrate", {
+      description: "Inspect and explicitly convert older Redcode files without changing the source",
+      commands: [
+        Spec.make("inspect", {
+          description: "Inspect conversion compatibility without writing files",
+          params: {
+            source: Argument.string("source"),
+            kind: Flag.choice("kind", ["config", "history", "theme", "display"]),
+            json: Flag.boolean("json").pipe(Flag.withDefault(false)),
+          },
+        }),
+        Spec.make("convert", {
+          description: "Convert an older file to a new destination; existing files are never overwritten",
+          params: {
+            source: Argument.string("source"),
+            kind: Flag.choice("kind", ["config", "history", "theme", "display"]),
+            output: Flag.string("output"),
+          },
+        }),
+      ],
+    }),
     Spec.make("tools", {
       description: "Configure optional agent tools on the connected host",
       params: {
@@ -778,16 +799,16 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
       description: "Manage the local usage sidecar",
       commands: [
         Spec.make("path", {
-          description: "Print the usage sidecar path, or the V2 database path with --v2",
+          description: "Print the usage sidecar path, or the session database path with --database",
           params: {
-            v2: Flag.boolean("v2").pipe(
-              Flag.withDescription("Print the V2 session database path"),
+            database: Flag.boolean("database").pipe(
+              Flag.withDescription("Print the session database path"),
               Flag.withDefault(false),
             ),
           },
         }),
         Spec.make("backfill", {
-          description: "Copy existing V2 usage into the local usage sidecar",
+          description: "Copy existing session usage into the local usage sidecar",
           params: {
             ...ServerParams,
             json: Flag.boolean("json").pipe(Flag.withDescription("Print the result as JSON"), Flag.withDefault(false)),
@@ -814,7 +835,7 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
           },
         }),
         Spec.make("export-redcode", {
-          description: "Export a V1 RedDB database to a SQLite file for V2 import",
+          description: "Export a historical RedDB database to a new SQLite file for explicit history conversion",
           params: {
             to: Flag.string("to").pipe(Flag.withDescription("New SQLite file path")),
           },
@@ -959,12 +980,6 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
     Spec.make("session", {
       description: "Manage sessions",
       commands: [
-        Spec.make("import-redcode", {
-          description: "Import sessions and Redcode data from V1 SQLite into the selected V2 database",
-          params: {
-            file: Argument.string("file").pipe(Argument.withDescription("Path to the Redcode SQLite database")),
-          },
-        }),
         Spec.make("rebind-share", {
           description: "Restore the Console account and organization for an imported V1 share",
           params: {
@@ -980,6 +995,7 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
           description: "List top-level sessions in the current project, newest first",
           params: {
             ...ServerParams,
+            archived: Flag.choice("archived", ["exclude", "include", "only"]).pipe(Flag.withDefault("exclude")),
             maxCount: Flag.integer("max-count").pipe(
               Flag.withAlias("n"),
               Flag.withSchema(Schema.Int.check(Schema.isGreaterThanOrEqualTo(1))),
@@ -990,6 +1006,14 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
               Flag.withDescription("Output format"),
               Flag.withDefault("table"),
             ),
+          },
+        }),
+        Spec.make("archive", {
+          description: "Archive a settled session or restore it without starting execution",
+          params: {
+            ...ServerParams,
+            sessionID: Argument.string("sessionID"),
+            restore: Flag.boolean("restore").pipe(Flag.withDefault(false)),
           },
         }),
         Spec.make("delete", {
@@ -1169,7 +1193,7 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
       },
     }),
     Spec.make("serve", {
-      description: "Start the v2 API and web server",
+      description: "Start the API and web server",
       params: {
         hostname: Flag.string("hostname").pipe(Flag.optional),
         accessConfig: Flag.string("access-config").pipe(
@@ -1189,7 +1213,7 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
       },
     }),
     Spec.make("web", {
-      description: "Start the v2 API and web server and open the browser",
+      description: "Start the API and web server and open the browser",
       params: {
         hostname: Flag.string("hostname").pipe(Flag.optional),
         port: Flag.integer("port").pipe(Flag.optional),

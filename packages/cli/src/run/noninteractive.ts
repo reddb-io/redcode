@@ -60,8 +60,8 @@ type ToolState = StartedPart & {
   content: ToolContent[]
 }
 
-type V2Event = EventSubscribeOutput
-type FormRequest = Extract<V2Event, { type: "form.created" }>["data"]["form"]
+type RuntimeEvent = EventSubscribeOutput
+type FormRequest = Extract<RuntimeEvent, { type: "form.created" }>["data"]["form"]
 
 // MCP elicitations are temporarily owned by the "global" sentinel instead of a real
 // session. An exclusive local process may treat them as this run's blockers; an

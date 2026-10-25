@@ -152,9 +152,55 @@ jobs:
       - name: Evaluate passive reasoning repetition detection
         working-directory: packages/core
         run: bun run script/reasoning-observation-eval.ts --check
+      - name: Verify generated OpenAPI
+        working-directory: packages/protocol
+        run: bun run check:generated
       - name: Verify generated client
         working-directory: packages/client
         run: bun run check:generated
+
+  browser:
+    name: browser journeys
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+      - uses: ./.github/actions/setup-bun
+      - name: Install Chromium
+        working-directory: packages/app
+        run: bun x playwright install --with-deps chromium
+      - name: Typecheck browser contracts
+        working-directory: packages/app
+        run: bun run typecheck:e2e
+      - name: Exercise critical React journeys in a production build
+        working-directory: packages/app
+        env:
+          PLAYWRIGHT_BUILD: "1"
+          PLAYWRIGHT_PORT: "4777"
+          PLAYWRIGHT_HTML_OUTPUT_DIR: e2e/playwright-report/journeys
+        run: >-
+          bun x playwright test
+          e2e/regression/home.spec.ts e2e/regression/settings.spec.ts
+          e2e/regression/agents.spec.ts e2e/regression/session-request-docks.spec.ts
+          e2e/regression/timeline-stream.spec.ts e2e/regression/design-embedded-review.spec.ts
+          e2e/regression/session-location-sync.spec.ts
+          --grep 'the session context menu|Home archives|project LSPs|server sign-in keeps|reconciles task contributions|reconciliation fails and recovers|question drafts retain|a pending permission dock|Vault masks and clears|MCP input preserves|reports writing while assistant text streams|ends running compactions as interrupted|refreshes a session moved during disconnection|canvas zoom and pan'
+          --workers=1 --retries=0 --reporter=line,html
+      - name: Exercise the browser against an isolated real backend
+        working-directory: packages/app
+        run: bun x playwright test --config e2e/live.config.ts
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: browser-journey-results
+          path: |
+            packages/app/e2e/test-results
+            packages/app/e2e/playwright-report
+          if-no-files-found: warn
+          retention-days: 7
 
   tests:
     needs: plan
@@ -654,7 +700,7 @@ jobs:
   publish_github:
     name: publish (GitHub)
     if: inputs.publish && github.repository == 'reddb-io/redcode' && github.ref == 'refs/heads/main'
-    needs: [plan, verify, tests, vault-coverage, build, design, smoke]
+    needs: [plan, verify, tests, browser, vault-coverage, build, design, smoke]
     runs-on: ubuntu-latest
     # Each release carries the desktop app per platform, about 1.5 GB of uploads and downloads.
     timeout-minutes: 90
@@ -738,7 +784,7 @@ jobs:
   publish_npm:
     name: publish (npm)
     if: inputs.publish && github.repository == 'reddb-io/redcode' && github.ref == 'refs/heads/main'
-    needs: [plan, verify, tests, vault-coverage, build, design, smoke]
+    needs: [plan, verify, tests, browser, vault-coverage, build, design, smoke]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: red-release

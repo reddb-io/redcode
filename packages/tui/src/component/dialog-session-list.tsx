@@ -40,6 +40,7 @@ export function DialogSessionList() {
   const [filter, setFilter] = createSignal("")
   const shortcuts = Keymap.useShortcuts()
   const [search, setSearch] = createDebouncedSignal("", 150)
+  const [archived, setArchived] = createSignal(false)
   const [toDelete, setToDelete] = createSignal<string>()
   const [prefs, updatePrefs] = useStorage().store<{ allProjects: boolean; scope: Scope }>("session-list", {
     initial: {
@@ -54,13 +55,14 @@ export function DialogSessionList() {
     activeLocation.ref ??
     data.location.default()
 
-  const [searchResults, { mutate: setSearchResults }] = createResource(
+  const [searchResults, { mutate: setSearchResults, refetch }] = createResource(
     () => ({
       query: search().trim(),
       scope: scope(),
+      archived: archived(),
       location: pickerLocation(),
     }),
-    async ({ query, scope, location }) => {
+    async ({ query, scope, location, archived }) => {
       try {
         if (!data.location.info(location)) await data.location.sync(location)
         const current = data.location.info(location)
@@ -77,15 +79,16 @@ export function DialogSessionList() {
                     : { subpath: path.relative(current.project.directory, current.directory).replaceAll("\\", "/") }),
                 }),
           ...(query ? { search: query } : {}),
+          archived: archived ? "only" : "exclude",
           limit: 50,
           order: "desc",
           parentID: null,
         })
-        return { query, scope, sessions: response.data, error: undefined }
+        return { query, scope, archived, sessions: response.data, error: undefined }
       } catch (error) {
         // A transient transport failure must degrade search, not crash the TUI
         // through the root ErrorBoundary when the errored resource is read.
-        return { query, scope, sessions: [] as SessionInfo[], error }
+        return { query, scope, archived, sessions: [] as SessionInfo[], error }
       }
     },
   )
@@ -96,6 +99,7 @@ export function DialogSessionList() {
     const current = data.location.info(pickerLocation())
     const sessions = data.session
       .list()
+      .filter((session) => (session.time.archived !== undefined) === archived())
       .filter(
         (session) =>
           scope() === "all" ||
@@ -111,6 +115,7 @@ export function DialogSessionList() {
   const sessions = createMemo(() => {
     const query = filter().trim()
     const local = localSessions()
+    if (searchResults.latest?.archived !== archived()) return local
     if (query !== search().trim()) return searchResults.latest?.sessions ?? local
     if (searchResults.loading) return searchResults.latest?.sessions ?? []
     const result = searchResults()
@@ -213,11 +218,11 @@ export function DialogSessionList() {
 
   return (
     <DialogSelect
-      title="Sessions"
+      title={archived() ? "Archived sessions" : "Sessions"}
       titleView={
         <box flexDirection="row">
           <text fg={theme.text.base} attributes={TextAttributes.BOLD}>
-            Sessions
+            {archived() ? "Archived sessions" : "Sessions"}
           </text>
           <Show when={scope() !== "all" && currentProjectName()}>
             <text fg={theme.text.muted}> for {currentProjectName()}</text>
@@ -232,6 +237,12 @@ export function DialogSessionList() {
         setSearch(query)
       }}
       bindings={[
+        {
+          bind: "ctrl+r",
+          title: archived() ? "Show active sessions" : "Show archived sessions",
+          group: "Dialog",
+          run: () => setArchived((value) => !value),
+        },
         {
           bind: "ctrl+a",
           title: `Show ${nextScope() === "all" ? "all" : `current ${nextScope()}`} sessions`,
@@ -263,6 +274,21 @@ export function DialogSessionList() {
         dialog.clear()
       }}
       actions={[
+        {
+          command: "session.archive",
+          bind: "ctrl+e",
+          title: archived() ? "restore" : "archive",
+          onTrigger: (option: { value: string }) => {
+            const restoring = archived()
+            void data.session
+              .archive(option.value, !restoring)
+              .then(async () => {
+                await refetch()
+                if (!restoring) sessionTabs.close(option.value)
+              })
+              .catch((error) => toast.show({ message: errorMessage(error), variant: "error", duration: 5000 }))
+          },
+        },
         {
           command: "session.pin.toggle",
           title: "pin/unpin",
@@ -305,6 +331,7 @@ export function DialogSessionList() {
       ]}
       footerHints={[
         ...quickSwitchFooterHints(),
+        { title: archived() ? "active sessions" : "archived sessions", label: "ctrl+r", side: "right" },
         { title: nextScope() === "all" ? "all projects" : `current ${nextScope()}`, label: "ctrl+a", side: "right" },
       ]}
     />

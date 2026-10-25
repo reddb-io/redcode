@@ -12,6 +12,8 @@ import { IntelligenceEvaluation } from "../intelligence/evaluation.js"
 import { SessionSchema } from "./schema.js"
 import { SessionGuardLog } from "./guard-log.js"
 import { SessionGoalTable, SessionGoalReviewTable } from "./redcode.sql.js"
+import { SessionArchive } from "./archive.js"
+import { BusyError } from "./error.js"
 import { SessionInbox } from "./inbox.js"
 import { SessionBudget } from "./budget.js"
 
@@ -181,12 +183,26 @@ const make = Effect.gen(function* () {
     if (!data.objective) return yield* new SessionGoal.Error({ message: "Goal objective must not be empty" })
     if (previous) return yield* save(previous, data)
     const rows = yield* db
-      .insert(SessionGoalTable)
-      .values({ session_id: sessionID, goal_id: data.id, revision: data.revision, owner: processOwner, data })
-      .onConflictDoNothing()
-      .returning()
-      .all()
-      .pipe(Effect.orDie)
+      .transaction(() =>
+        Effect.gen(function* () {
+          yield* SessionArchive.requireWritable(db, sessionID)
+          return yield* db
+            .insert(SessionGoalTable)
+            .values({ session_id: sessionID, goal_id: data.id, revision: data.revision, owner: processOwner, data })
+            .onConflictDoNothing()
+            .returning()
+            .all()
+            .pipe(Effect.orDie)
+        }),
+      )
+      .pipe(
+        Effect.orDie,
+        Effect.catchDefect((error) =>
+          error instanceof BusyError
+            ? new SessionGoal.Error({ message: error.reason ?? "Restore the archived session before adding a goal" })
+            : Effect.die(error),
+        ),
+      )
     if (!rows.length)
       return yield* new SessionGoal.Error({ message: "Another goal was created concurrently; inspect it again" })
     return data

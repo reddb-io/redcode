@@ -1,3 +1,4 @@
+import { SessionArchive } from "./archive.js"
 export * as SessionTodoStore from "./todo-store.js"
 
 import { createHash } from "node:crypto"
@@ -651,12 +652,26 @@ const make = Effect.gen(function* () {
         Effect.flatMap(IntelligenceEvaluation.requireConfigured),
         Effect.mapError((error) => new SessionTodo.Error({ message: error.message })),
       )
+    yield* SessionArchive.requireWritable(db, input.sessionID).pipe(
+      Effect.mapError(
+        (error) =>
+          new SessionTodo.Error({ message: error.reason ?? "Restore the archived session before updating tasks" }),
+      ),
+    )
     if (commit) yield* commit.before
     // Recheck the baseline inside the write transaction.
     return yield* assignments.withMutation(
       db
         .transaction((tx) =>
           Effect.gen(function* () {
+            yield* SessionArchive.requireWritable(db, input.sessionID).pipe(
+              Effect.mapError(
+                (error) =>
+                  new SessionTodo.Error({
+                    message: error.reason ?? "Restore the archived session before updating tasks",
+                  }),
+              ),
+            )
             const persisted = (yield* tx
               .select()
               .from(TodoTable)
@@ -771,6 +786,14 @@ const make = Effect.gen(function* () {
       .withMutation(
         db.transaction((tx) =>
           Effect.gen(function* () {
+            yield* SessionArchive.requireWritable(db, input.sessionID).pipe(
+              Effect.mapError(
+                (error) =>
+                  new SessionTodo.Error({
+                    message: error.reason ?? "Restore the archived session before updating tasks",
+                  }),
+              ),
+            )
             const rows = yield* tx
               .select()
               .from(TodoTable)
@@ -868,6 +891,14 @@ const make = Effect.gen(function* () {
     return yield* db
       .transaction((tx) =>
         Effect.gen(function* () {
+          yield* SessionArchive.requireWritable(db, input.sessionID).pipe(
+            Effect.mapError(
+              (error) =>
+                new SessionTodo.Error({
+                  message: error.reason ?? "Restore the archived session before updating tasks",
+                }),
+            ),
+          )
           const row = yield* tx
             .select()
             .from(TodoTable)

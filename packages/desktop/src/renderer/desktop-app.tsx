@@ -17,7 +17,7 @@ import {
 } from "@opencode/app/desktop"
 import { useTheme } from "@opencode/ui/theme/context"
 import type { BaseRouterProps } from "@solidjs/router"
-import { createEffect, createMemo, createResource, lazy, Show, Suspense } from "solid-js"
+import { createEffect, createMemo, createResource, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import type { ElectronAPI } from "./api-types"
 import { DesktopFirstLaunchOnboarding } from "./onboarding"
@@ -28,8 +28,6 @@ import { preloadStoredLocale } from "./startup/locale"
 import { LoadingSplash } from "./startup/splash"
 import { getLastActiveUrl } from "./window/route-storage"
 import { DesktopMemoryRouter } from "./window/router"
-
-const MigrationStatus = lazy(() => import("./migration-status").then((module) => ({ default: module.MigrationStatus })))
 
 export function DesktopApp(props: { api: ElectronAPI; version: string }) {
   const windowState = { id: props.api.getWindowID(), version: props.version }
@@ -122,11 +120,6 @@ export function DesktopApp(props: { api: ElectronAPI; version: string }) {
             onReady={() => setStartup("onboardingReady", true)}
           />
           <DesktopEffects api={props.api} />
-          <Suspense fallback={null}>
-            <Show when={initializationData(sidecar)} keyed>
-              {(server) => <MigrationStatus server={server} />}
-            </Show>
-          </Suspense>
         </AppInterface>
       </Show>
     )

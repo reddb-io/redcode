@@ -69,6 +69,7 @@ import type { EventLog } from "@opencode/schema/event-log"
 import type { FileDiff } from "@opencode/schema/file-diff"
 import { Job } from "./job.js"
 import type { Command } from "./command.js"
+import { SessionArchive } from "./session/archive.js"
 import { SessionEnvironment } from "./session/environment.js"
 import { InstructionEntry } from "./session/instruction-entry.js"
 import { Vault } from "./vault/vault.js"
@@ -131,7 +132,7 @@ export interface Interface {
   readonly list: (input?: ListInput) => Effect.Effect<{
     readonly data: SessionSchema.Info[]
   }>
-  readonly create: (input: CreateInput) => Effect.Effect<SessionSchema.Info, NotFoundError>
+  readonly create: (input: CreateInput) => Effect.Effect<SessionSchema.Info, NotFoundError | BusyError>
   readonly fork: (
     input: ForkInput,
   ) => Effect.Effect<SessionSchema.Info, NotFoundError | MessageNotFoundError | ForkEmptyError>
@@ -140,6 +141,10 @@ export interface Interface {
     readonly sessionID: SessionSchema.ID
     readonly variables?: SessionEnvironment.Variables
   }) => Effect.Effect<SessionEnvironment.Variables | undefined, NotFoundError>
+  readonly archive: (input: {
+    sessionID: SessionSchema.ID
+    archived: boolean
+  }) => Effect.Effect<void, NotFoundError | BusyError>
   readonly view: (input: { sessionID: SessionSchema.ID; idle: number }) => Effect.Effect<void, NotFoundError>
   readonly remove: (sessionID: SessionSchema.ID) => Effect.Effect<void, NotFoundError>
   readonly messages: (
@@ -204,6 +209,7 @@ export interface Interface {
   ) => Effect.Effect<
     SessionInbox.User,
     | NotFoundError
+    | BusyError
     | PromptConflictError
     | AttachmentError
     | SkillNotFoundError
@@ -227,26 +233,28 @@ export interface Interface {
     delivery?: SessionInbox.Delivery
   }) => Effect.Effect<
     void,
-    NotFoundError | Command.NotFoundError | Command.ExecutionError | FileSystem.DirectoryNotFoundError
+    NotFoundError | BusyError | Command.NotFoundError | Command.ExecutionError | FileSystem.DirectoryNotFoundError
   >
   readonly shell: (input: {
     sessionID: SessionSchema.ID
     id?: SessionMessage.ID
     command: string
-  }) => Effect.Effect<void, NotFoundError>
+  }) => Effect.Effect<void, NotFoundError | BusyError>
   readonly skill: (input: {
     sessionID: SessionSchema.ID
     messageID?: SessionMessage.ID
     skill: Skill.ID
     resume?: boolean
-  }) => Effect.Effect<void, NotFoundError | SkillNotFoundError | FileSystem.DirectoryNotFoundError>
+  }) => Effect.Effect<void, NotFoundError | BusyError | SkillNotFoundError | FileSystem.DirectoryNotFoundError>
   readonly compact: (
     input: CompactInput,
-  ) => Effect.Effect<SessionInbox.Compaction, NotFoundError | CompactionConflictError>
+  ) => Effect.Effect<SessionInbox.Compaction, NotFoundError | BusyError | CompactionConflictError>
   readonly wait: (id: SessionSchema.ID) => Effect.Effect<void, NotFoundError>
   readonly active: Effect.Effect<ReadonlySet<SessionSchema.ID>>
-  readonly background: (sessionID: SessionSchema.ID) => Effect.Effect<void, NotFoundError>
-  readonly resume: (sessionID: SessionSchema.ID) => Effect.Effect<void, NotFoundError | SessionRunner.RunError>
+  readonly background: (sessionID: SessionSchema.ID) => Effect.Effect<void, NotFoundError | BusyError>
+  readonly resume: (
+    sessionID: SessionSchema.ID,
+  ) => Effect.Effect<void, NotFoundError | BusyError | SessionRunner.RunError>
   readonly interrupt: (sessionID: SessionSchema.ID, options?: { readonly resume?: boolean }) => Effect.Effect<boolean>
   readonly synthetic: (input: {
     sessionID: SessionSchema.ID
@@ -256,7 +264,7 @@ export interface Interface {
     metadata?: Record<string, unknown>
     delivery?: SessionInbox.Delivery
     resume?: boolean
-  }) => Effect.Effect<SessionInbox.Synthetic, NotFoundError | SyntheticConflictError>
+  }) => Effect.Effect<SessionInbox.Synthetic, NotFoundError | BusyError | SyntheticConflictError>
   readonly revert: {
     readonly stage: (input: {
       sessionID: SessionSchema.ID
@@ -303,6 +311,7 @@ const layer = Layer.effect(
         if (recorded) return recorded
         const parent = input.parentID ? yield* store.get(input.parentID) : undefined
         if (input.parentID && parent === undefined) return yield* new NotFoundError({ sessionID: input.parentID })
+        if (parent) yield* SessionArchive.requireWritable(db, parent.id)
         const location = parent?.location ?? input.location
         if (location === undefined)
           return yield* Effect.die(new Error("Session.create requires either location or an existing parentID"))
@@ -349,6 +358,7 @@ const layer = Layer.effect(
                   ),
                 )
             }),
+            Effect.catchDefect((error) => (error instanceof BusyError ? Effect.fail(error) : Effect.die(error))),
           )
         if (projected.type === "existing") return projected.session
         // TODO: Restore recorded sessions onto replacement synchronized workspaces in a future API slice.
@@ -415,16 +425,33 @@ const layer = Layer.effect(
         yield* execution.interrupt(sessionID)
         yield* execution.awaitIdle(sessionID)
         yield* transport.close(sessionID)
-        const children = yield* result.list({ parentID: sessionID })
-        yield* Effect.forEach(children.data, (child) => result.remove(child.id), { concurrency: 1, discard: true })
+        const children = yield* store.list({ parentID: sessionID })
+        yield* Effect.forEach(children, (child) => result.remove(child.id), { concurrency: 1, discard: true })
         const { hasShare, revoke } = yield* Effect.promise(() => import("./session/share-remote.js"))
         if (yield* hasShare(db, sessionID)) yield* revoke(db, sessionID).pipe(instances.provide(session), Effect.orDie)
         yield* environments.clear(sessionID)
         yield* bus.publish(SessionEvent.Deleted, { sessionID })
         yield* bus.remove(sessionID)
       }),
+      archive: Effect.fn("Session.archive")((input) =>
+        SessionInbox.serialized(
+          input.sessionID,
+          Effect.gen(function* () {
+            const current = yield* result.get(input.sessionID)
+            if ((current.time.archived !== undefined) === input.archived) return
+            yield* bus
+              .publish(SessionEvent.Archived, input, {
+                commit: () =>
+                  input.archived ? SessionArchive.requireSettled(db, input.sessionID).pipe(Effect.orDie) : Effect.void,
+              })
+              .pipe(
+                Effect.catchDefect((error) => (error instanceof BusyError ? Effect.fail(error) : Effect.die(error))),
+              )
+          }),
+        ),
+      ),
       list: Effect.fn("Session.list")(function* (input) {
-        return { data: yield* store.list(input) }
+        return { data: yield* store.list({ ...input, archived: input?.archived ?? "exclude" }) }
       }),
       messages: Effect.fn("Session.messages")(function* (input) {
         yield* result.get(input.sessionID)

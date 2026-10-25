@@ -1,15 +1,15 @@
-import type { Config, Path, Project, ProviderAuthResponse } from "@/runtime/server/types"
+import type { Path, Project, ProviderAuthResponse } from "@/runtime/server/types"
 import { showToast } from "@/shell/notifications/toast"
 import { getFilename } from "@opencode/util/path"
 import { getOwner, onCleanup, untrack } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useLanguage } from "@/runtime/i18n/language"
 import { type ServerSDK } from "./client"
-import { bootstrapDirectory, bootstrapGlobal, loadGlobalConfigQuery, loadPathQuery } from "./global-sync/bootstrap"
+import { bootstrapDirectory, bootstrapGlobal, loadPathQuery, loadLspQuery } from "./global-sync/bootstrap"
 import { createChildStoreManager } from "./global-sync/child-store"
 import type { ProjectMeta } from "./global-sync/types"
 import { formatServerError } from "@/runtime/server/errors"
-import { queryOptions, useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/solid-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/solid-query"
 import { intelligenceSettingsKey } from "./intelligence"
 import { createRefreshQueue } from "./global-sync/queue"
 import { directoryKey, updateProjectInfo } from "./global-sync/utils"
@@ -27,22 +27,13 @@ type GlobalStore = {
   path: Path
   project: Project[]
   provider_auth: ProviderAuthResponse
-  config: Config
   reload: undefined | "pending" | "complete"
 }
 
-export const loadLspQuery = (scope: ServerScope, directory: string) =>
-  queryOptions({
-    queryKey: [scope, directory, "lsp"] as const,
-    // TODO: Restore LSP status when the V2 client exposes an LSP API.
-    queryFn: async () => [],
-  })
-
 function makeQueryOptionsApi(scope: ServerScope, serverAPI: () => ServerApi) {
   return {
-    globalConfig: () => loadGlobalConfigQuery(scope),
     path: () => loadPathQuery(scope, null, serverAPI().location),
-    lsp: (directory: PathKey) => loadLspQuery(scope, directory),
+    lsp: (directory: PathKey) => loadLspQuery(scope, directory, serverAPI().lsp),
   }
 }
 
@@ -59,12 +50,7 @@ export function createServerSyncContextInner(serverSDK: ServerSDK, data: Data) {
   const queryOptionsApi = makeQueryOptionsApi(serverSDK.scope, () => serverSDK.api)
   const connected = () => serverSDK.connection.status() === "connected"
 
-  const [configQuery, pathQuery] = useQueries(() => ({
-    queries: [
-      { ...queryOptionsApi.globalConfig(), enabled: connected() },
-      { ...queryOptionsApi.path(), enabled: connected() },
-    ],
-  }))
+  const pathQuery = useQuery(() => ({ ...queryOptionsApi.path(), enabled: connected() }))
 
   const [globalStore, setGlobalStore] = createStore<GlobalStore>({
     project: [],
@@ -75,11 +61,6 @@ export function createServerSyncContextInner(serverSDK: ServerSDK, data: Data) {
       if (pathQuery.isPending) return EMPTY
 
       return pathQuery.data ?? EMPTY
-    },
-    get config() {
-      if (configQuery.isPending) return {}
-
-      return configQuery.data ?? {}
     },
     get reload() {
       return updateConfigMutation.isPending ? "pending" : undefined
@@ -207,7 +188,6 @@ export function createServerSyncContextInner(serverSDK: ServerSDK, data: Data) {
           scope: serverSDK.scope,
           mcp: children.mcp(key),
           global: {
-            config: globalStore.config,
             path: globalStore.path,
             project: globalStore.project,
           },
@@ -296,12 +276,9 @@ export function createServerSyncContextInner(serverSDK: ServerSDK, data: Data) {
   }
 
   const updateConfigMutation = useMutation(() => ({
-    mutationFn: async (config: Config) => {
-      // TODO: Restore config updates when the V2 client exposes a config API.
-      // await serverSDK.api.config.update({ config })
-      throw new Error(`Config updates are unavailable: ${Object.keys(config).length} fields were not saved`)
-    },
+    mutationFn: (patch: Parameters<ServerApi["config"]["update"]>[0]) => serverSDK.api.config.update(patch),
     onSuccess: () => {
+      data.location.config.invalidate()
       bootstrap.refetch()
       data.location.provider.invalidate()
       data.location.model.invalidate()

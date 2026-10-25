@@ -4,7 +4,7 @@ import { SESSION_RECENT_LIMIT, SESSION_RECENT_WINDOW } from "@/runtime/server/gl
 import {
   HOME_SESSION_INDEX_LIMIT,
   HOME_SESSION_LIMIT,
-  HOME_V2_SESSION_PAGE_LIMIT,
+  HOME_SESSION_PAGE_LIMIT,
   loadHomeSessionIndex,
   mergeHomeSessionIndex,
   parseHomeSessionIndex,
@@ -40,15 +40,15 @@ const ids = (sessions: SessionInfo[]) => sessions.map((item) => item.id)
 
 describe("Home session index", () => {
   test("follows cursors across pages and bounds the result per directory", async () => {
-    const all = history("/repo", HOME_V2_SESSION_PAGE_LIMIT + 1)
+    const all = history("/repo", HOME_SESSION_PAGE_LIMIT + 1)
     const calls: Array<{ cursor?: string; parentID: null }> = []
 
     const result = await loadHomeSessionIndex(async (input) => {
       calls.push(input)
 
-      if (!input.cursor) return { data: all.slice(0, HOME_V2_SESSION_PAGE_LIMIT), cursor: { next: "next" } }
+      if (!input.cursor) return { data: all.slice(0, HOME_SESSION_PAGE_LIMIT), cursor: { next: "next" } }
 
-      return { data: all.slice(HOME_V2_SESSION_PAGE_LIMIT), cursor: {} }
+      return { data: all.slice(HOME_SESSION_PAGE_LIMIT), cursor: {} }
     })
 
     expect(calls.map((call) => call.cursor)).toEqual([undefined, "next"])
@@ -58,7 +58,7 @@ describe("Home session index", () => {
   })
 
   test("folds pages so every directory keeps its newest sessions", async () => {
-    const busy = history("/busy", HOME_V2_SESSION_PAGE_LIMIT + 300)
+    const busy = history("/busy", HOME_SESSION_PAGE_LIMIT + 300)
 
     const quiet = history("/quiet", 3).map((item) => ({
       ...item,
@@ -68,9 +68,9 @@ describe("Home session index", () => {
     // Server order is global by updated time: /quiet is older than all of /busy
     // and only arrives on the second page.
     const result = await loadHomeSessionIndex(async (input) => {
-      if (!input.cursor) return { data: busy.slice(0, HOME_V2_SESSION_PAGE_LIMIT), cursor: { next: "next" } }
+      if (!input.cursor) return { data: busy.slice(0, HOME_SESSION_PAGE_LIMIT), cursor: { next: "next" } }
 
-      return { data: [...busy.slice(HOME_V2_SESSION_PAGE_LIMIT), ...quiet], cursor: {} }
+      return { data: [...busy.slice(HOME_SESSION_PAGE_LIMIT), ...quiet], cursor: {} }
     })
 
     expect(ids(result.filter((item) => item.location.directory === "/quiet"))).toEqual(ids(quiet))

@@ -8,13 +8,14 @@ import { Bus } from "../bus.js"
 import { makeGlobalNode } from "@opencode/util/effect/app-node"
 import { Agent } from "@opencode/schema/agent"
 import { Model } from "@opencode/schema/model"
+import { SessionArchive } from "./archive.js"
 import { SessionEvent } from "./event.js"
 import { SessionMessage } from "./message.js"
 import { SessionMessageUpdater } from "./message-updater.js"
 import { SessionInbox } from "./inbox.js"
 import { Workspace } from "@opencode/schema/workspace"
 import { InstructionState } from "./instruction-state.js"
-import { RedcodeLegacyInstructions } from "./redcode-legacy-instructions.js"
+import { SessionImportedContext } from "./imported-context.js"
 import { SessionInboxTable, SessionMessageTable, SessionTable } from "./sql.js"
 import { InstructionEntry } from "./instruction-entry.js"
 import { Slug } from "../util/slug.js"
@@ -225,7 +226,7 @@ const projectFork = Effect.fn("SessionProjector.projectFork")(function* (
   if (copiedSeq !== undefined) yield* Bus.reserveSequence(db, event.data.sessionID, copiedSeq)
   if (event.data.instructions)
     yield* InstructionState.initialize(db, event.data.sessionID, event.durable.seq, event.data.instructions)
-  yield* RedcodeLegacyInstructions.fork(db, event.data.parentID, event.data.sessionID)
+  yield* SessionImportedContext.fork(db, event.data.parentID, event.data.sessionID)
 })
 
 function run(db: DatabaseService, event: MessageEvent) {
@@ -440,6 +441,7 @@ const layer = Layer.effectDiscard(
     const db = (yield* Database.Service).db
     yield* bus.project(SessionEvent.Created, (event) =>
       Effect.gen(function* () {
+        if (event.data.parentID) yield* SessionArchive.requireWritable(db, event.data.parentID).pipe(Effect.orDie)
         const parent = event.data.parentID
           ? yield* db
               .select({ id: SessionTable.id, cache_root_id: SessionTable.cache_root_id })
@@ -585,6 +587,17 @@ const layer = Layer.effectDiscard(
         .run()
         .pipe(Effect.orDie),
     )
+    yield* bus.project(SessionEvent.Archived, (event) =>
+      db
+        .update(SessionTable)
+        .set({
+          time_archived: event.data.archived ? event.created : null,
+          time_updated: sql`${SessionTable.time_updated}`,
+        })
+        .where(eq(SessionTable.id, event.data.sessionID))
+        .run()
+        .pipe(Effect.orDie),
+    )
     yield* bus.project(SessionEvent.MetadataUpdated, (event) =>
       db
         .update(SessionTable)
@@ -722,7 +735,7 @@ const layer = Layer.effectDiscard(
     yield* bus.project(SessionEvent.Compaction.Ended, (event) =>
       Effect.gen(function* () {
         yield* run(db, event)
-        if (yield* RedcodeLegacyInstructions.retire(db, event.data.sessionID))
+        if (yield* SessionImportedContext.retire(db, event.data.sessionID))
           yield* InstructionState.reset(db, event.data.sessionID)
         else yield* InstructionState.advanceEpoch(db, event.data.sessionID, event.durable.seq)
       }),
@@ -784,7 +797,7 @@ const layer = Layer.effectDiscard(
           .where(eq(SessionTable.id, event.data.sessionID))
           .run()
           .pipe(Effect.orDie)
-        yield* RedcodeLegacyInstructions.retire(db, event.data.sessionID)
+        yield* SessionImportedContext.retire(db, event.data.sessionID)
         yield* InstructionState.reset(db, event.data.sessionID)
       }),
     )

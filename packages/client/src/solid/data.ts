@@ -722,6 +722,17 @@ export function createData(config: CreateDataInput) {
             }),
         )
         return
+      case "session.archived":
+        if (store.session.info[event.data.sessionID])
+          setStore(
+            "session",
+            "info",
+            event.data.sessionID,
+            "time",
+            "archived",
+            event.data.archived ? event.created : undefined,
+          )
+        return
       case "session.renamed": {
         // Preserve the live title when it races the session's initial read.
         refresh(() => {
@@ -1405,6 +1416,11 @@ export function createData(config: CreateDataInput) {
       },
       get(sessionID: string) {
         return store.session.info[sessionID]
+      },
+      async archive(sessionID: string, archived: boolean) {
+        await api().session.archive({ sessionID, archived })
+        result.session.invalidate(sessionID)
+        await result.session.sync(sessionID)
       },
       creating(sessionID: string) {
         return creating.has(sessionID)

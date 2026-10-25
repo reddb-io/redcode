@@ -54,7 +54,6 @@ import { ClientProvider, useClient } from "./context/client"
 import { StartupLoading } from "./component/startup-loading"
 import { DevToolsBar } from "./component/devtools-bar"
 import { Reconnecting } from "./component/reconnecting"
-import { MigrationOverlay } from "./component/migration-overlay"
 import { DataProvider, useData } from "./context/data"
 import { SessionTabsProvider, useSessionTabs } from "./context/session-tabs"
 import { LocationProvider, useLocation } from "./context/location"
@@ -1499,7 +1498,6 @@ function App() {
       <Show when={showReconnecting()}>
         <Reconnecting managed={client.restart !== undefined} />
       </Show>
-      <MigrationOverlay />
       <Toast />
     </box>
   )

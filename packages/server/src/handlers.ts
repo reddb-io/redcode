@@ -28,7 +28,6 @@ import { ProjectHandler } from "./handlers/project"
 import { WorktreeHandler, WorktreeLifecycleHandler } from "./handlers/worktree"
 import { VcsHandler } from "./handlers/vcs"
 import { EventFeed } from "./event-feed"
-import { MigrationHandler } from "./handlers/migration"
 import { ConfigHandler } from "./handlers/config"
 import { IntelligenceHandler } from "./handlers/intelligence"
 import { HookHandler } from "./handlers/hook"
@@ -45,7 +44,6 @@ import { ProjectEnvironmentsHandler } from "./handlers/project-environments"
 export const handlers = Layer.mergeAll(
   ServerHandler,
   DebugHandler,
-  MigrationHandler,
   LocationHandler,
   AgentHandler,
   PluginHandler,

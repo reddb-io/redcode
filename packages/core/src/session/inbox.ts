@@ -19,6 +19,8 @@ import {
 import { Database } from "../database/database.js"
 import { Bus } from "../bus.js"
 import { KeyedMutex } from "../effect/keyed-mutex.js"
+import { BusyError } from "./error.js"
+import { SessionArchive } from "./archive.js"
 import { SessionEvent } from "./event.js"
 import { SessionMessage } from "./message.js"
 import { SessionSchema } from "./schema.js"
@@ -174,12 +176,17 @@ export const make = Effect.fn("SessionInbox.make")(function* () {
   }) {
     const existing = yield* reconcile({ ...request, type: request.item.type, delivery: request.item.delivery })
     if (existing !== undefined) return existing
+    yield* SessionArchive.requireWritable(db, request.sessionID)
     const admitted = yield* bus
-      .publish(SessionEvent.InboxEnqueued, {
-        inboxID: request.id,
-        sessionID: request.sessionID,
-        item: request.item,
-      }, { commit: request.commit })
+      .publish(
+        SessionEvent.InboxEnqueued,
+        {
+          inboxID: request.id,
+          sessionID: request.sessionID,
+          item: request.item,
+        },
+        { commit: request.commit },
+      )
       .pipe(
         Effect.map((event) =>
           Info.make({
@@ -189,12 +196,15 @@ export const make = Effect.fn("SessionInbox.make")(function* () {
             ...request.item,
           }),
         ),
-        Effect.catchDefect((defect) =>
-          defect instanceof LifecycleConflict
-            ? find(db, request.id).pipe(
-                Effect.flatMap((stored) => (stored === undefined ? Effect.fail(defect) : Effect.succeed(stored))),
-              )
-            : Effect.die(defect),
+        Effect.catchDefect(
+          (defect): Effect.Effect<Info, BusyError | LifecycleConflict> =>
+            defect instanceof BusyError
+              ? Effect.fail(defect)
+              : defect instanceof LifecycleConflict
+                ? find(db, request.id).pipe(
+                    Effect.flatMap((stored) => (stored === undefined ? Effect.fail(defect) : Effect.succeed(stored))),
+                  )
+                : Effect.die(defect),
         ),
       )
     if (!matches(admitted, { ...request, type: request.item.type }))
@@ -321,6 +331,7 @@ export const projectAdmitted = Effect.fn("SessionInbox.projectAdmitted")(functio
     readonly timeCreated: number
   },
 ) {
+  yield* SessionArchive.requireWritable(db, request.sessionID).pipe(Effect.orDie)
   const message = yield* db
     .select({ id: SessionMessageTable.id })
     .from(SessionMessageTable)

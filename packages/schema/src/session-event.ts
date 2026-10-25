@@ -133,6 +133,13 @@ export const Permissions = Event.durable({
 })
 export type Permissions = typeof Permissions.Type
 
+export const Archived = Event.durable({
+  type: "session.archived",
+  ...options,
+  schema: { ...Base, archived: Schema.Boolean },
+})
+export type Archived = typeof Archived.Type
+
 export const Viewed = Event.durable({
   type: "session.viewed",
   ...options,
@@ -677,6 +684,7 @@ export const Definitions = Event.inventory(
   ModelSelected,
   Moved,
   Renamed,
+  Archived,
   MetadataUpdated,
   Permissions,
   Viewed,

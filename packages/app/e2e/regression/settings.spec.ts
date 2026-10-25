@@ -962,7 +962,15 @@ const lsp: ConfigEntry[] = [
 
 for (const row of ["configured", "disabled", "failure"] as const) {
   test(`project LSPs: ${row}`, async ({ page }) => {
-    const { settings } = await open(page)
+    const { settings } = await open(page, {
+      lspStatuses:
+        row === "disabled"
+          ? []
+          : [
+              { id: "typescript", root: directory, status: "connected" },
+              { id: "rust", root: directory, status: "error", error: "Fixture server unavailable" },
+            ],
+    })
     await openProject(page)
     await settings.getByRole("tab", { name: "Agent extensions", exact: true }).click()
     const state = { fail: row === "failure" }
@@ -991,15 +999,23 @@ for (const row of ["configured", "disabled", "failure"] as const) {
     }
 
     if (row === "failure") {
-      await expect(panel.getByText("Could not load language server configuration", { exact: true })).toBeVisible()
+      await expect(
+        panel.getByText("Could not load language server configuration or status", { exact: true }),
+      ).toBeVisible()
       state.fail = false
       await panel.getByRole("button", { name: "Retry", exact: true }).click()
     }
 
     const rows = panel.locator(".project-settings-extension-row")
-    await expect(rows.filter({ hasText: "typescript" })).toContainText("Disabled in config")
-    await expect(rows.filter({ hasText: "typescript" })).toContainText(".ts, .tsx")
-    await expect(rows.filter({ hasText: "rust" })).toContainText("Enabled in config")
+    await expect(rows.filter({ hasText: "typescript" }).filter({ hasText: "Disabled in config" })).toBeVisible()
+    await expect(rows.filter({ hasText: "typescript" }).filter({ hasText: "Disabled in config" })).toContainText(
+      ".ts, .tsx",
+    )
+    await expect(rows.filter({ hasText: "rust" }).filter({ hasText: "Enabled in config" })).toBeVisible()
+    const runtime = panel.getByRole("region", { name: "Language server status", exact: true })
+    await expect(runtime.getByText("Connected", { exact: true })).toBeVisible()
+    await expect(runtime.getByText("Connection error", { exact: true })).toBeVisible()
+    await expect(runtime).toContainText("Fixture server unavailable")
     await expect(panel.getByRole("switch")).toHaveCount(0)
   })
 }

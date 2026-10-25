@@ -31,7 +31,7 @@ test("validates mini replay and work spinner settings", () => {
 })
 
 test("validates the session tabs setting", () => {
-  const decode = Schema.decodeUnknownSync(Info)
+  const decode = Schema.decodeUnknownSync(Info, { onExcessProperty: "error" })
 
   expect(decode({ tabs: { mode: "on", layout: "vertical", indicators: "numbers" } })).toEqual({
     tabs: { mode: "on", layout: "vertical", indicators: "numbers" },
@@ -39,7 +39,7 @@ test("validates the session tabs setting", () => {
   expect(() => decode({ tabs: { indicators: "unknown" } })).toThrow()
   expect(() => decode({ tabs: { layout: true } })).toThrow()
   expect(() => decode({ tabs: { mode: true } })).toThrow()
-  expect(decode({ tabs: { enabled: false } })).toEqual({ tabs: { enabled: false } })
+  expect(() => decode({ tabs: { enabled: false } })).toThrow()
   expect(decode({ prompt: { image_preview: true } })).toEqual({ prompt: { image_preview: true } })
   expect(decode({ session: { image_preview: true } })).toEqual({ session: { image_preview: true } })
   expect(decode({ session: { tps: false } })).toEqual({ session: { tps: false } })
@@ -82,13 +82,14 @@ test("resolves automatic tabs from the terminal environment", () => {
     resolve({ tabs: { mode: "on" } }, { terminalSuspend: true, environment: { HERDR_ENV: "1" } }).tabs.enabled,
   ).toBe(true)
   expect(resolve({ tabs: { mode: "off" } }, { terminalSuspend: true, environment: {} }).tabs.enabled).toBe(false)
-  expect(resolve({ tabs: { enabled: false } }, { terminalSuspend: true, environment: {} }).tabs).toMatchObject({
+  expect(resolve({ tabs: { mode: "off" } }, { terminalSuspend: true, environment: {} }).tabs).toMatchObject({
     mode: "off",
     enabled: false,
   })
-  expect(
-    resolve({ tabs: { mode: "on", enabled: false } }, { terminalSuspend: true, environment: {} }).tabs,
-  ).toMatchObject({ mode: "on", enabled: true })
+  expect(resolve({ tabs: { mode: "on" } }, { terminalSuspend: true, environment: {} }).tabs).toMatchObject({
+    mode: "on",
+    enabled: true,
+  })
 })
 
 test("shows resolved tab defaults in settings", () => {

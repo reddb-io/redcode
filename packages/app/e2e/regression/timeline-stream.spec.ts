@@ -750,7 +750,7 @@ test.describe("Working", () => {
     await expect(working).toBeVisible()
   })
 
-  test("hides Working while assistant text streams", async ({ page }) => {
+  test("reports writing while assistant text streams", async ({ page }) => {
     const timeline = await setupTimeline(page, {
       messages: [userMessage(), assistantMessage([], { completed: false })],
     })
@@ -776,7 +776,8 @@ test.describe("Working", () => {
     await expect(page.locator(`[data-timeline-part-id="${assistantID}:text:0"]`)).toContainText(
       "The response is streaming.",
     )
-    await expect(working).toHaveCount(0)
+    await expect(working).toContainText("Writing the reply")
+    await expect(working).toHaveAttribute("role", "status")
   })
 })
 

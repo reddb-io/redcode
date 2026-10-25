@@ -34,7 +34,6 @@ test("bootstraps projects through the native store setter and preserves subseque
     path: { state: "", config: "", worktree: "", directory: "", home: "" },
     project: [],
     provider_auth: {},
-    config: {},
     reload: undefined,
   })
 
@@ -51,7 +50,6 @@ test("bootstraps projects through the native store setter and preserves subseque
 
     await bootstrapGlobal({ serverAPI: api, scope: ServerScope.local, setGlobalStore: setStore, queryClient })
     expect(store.project.map((project) => [project.id, project.worktree])).toEqual([["project", "/repo"]])
-    expect(store.config).toEqual({})
 
     // A refetch keeps the inventory a view already loaded for this project.
     queryClient.setQueryData(worktreeInventoryKey(ServerScope.local, "project"), [

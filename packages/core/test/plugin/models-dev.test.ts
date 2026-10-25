@@ -7,6 +7,7 @@ import { Integration } from "@opencode/core/integration"
 import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
 import { LayerNode } from "@opencode/util/effect/layer-node"
 import { Bus } from "@opencode/core/bus"
+import { Config } from "@opencode/core/config"
 import { Location } from "@opencode/core/location"
 import { Model } from "@opencode/core/model"
 import { ModelsDev } from "@opencode/core/models-dev"
@@ -30,6 +31,7 @@ const locationLayer = Layer.succeed(
 )
 const layer = AppNodeBuilder.build(LayerNode.group([Provider.node, Model.node, Integration.node, Bus.node]), [
   Location.node.replace(locationLayer),
+  Config.node.replace(Config.testLayer([])),
 ])
 const it = testEffect(layer)
 const real = testEffect(PluginTestLayer)

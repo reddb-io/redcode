@@ -22,6 +22,7 @@ const path = { state: "", config: "", worktree: "", directory: "", home: "" }
 const data = {
   location: {
     info: () => undefined,
+    config: { list: () => undefined },
     agent: { list: () => undefined },
     command: { list: () => undefined },
     reference: { list: () => undefined },

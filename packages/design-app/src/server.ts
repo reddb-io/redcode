@@ -36,7 +36,6 @@ export async function start(options: Options) {
     },
     () => [],
     [DesignRenderer.node.replace(DesignRendererLocal.node)],
-    { v1Migration: false },
   ).pipe(Layer.provide(HttpServer.layerServices))
   // The route layer supplies request services through its dynamic Layer.flatMap.
   const context = await Effect.runPromise(
@@ -91,10 +90,12 @@ export async function start(options: Options) {
         SELECT COUNT(*) AS count FROM design_render_job
         WHERE json_extract(data, '$.status') IN ('queued', 'running')
       `),
-    ).then((row) => {
-      if ((row?.count ?? 0) > 0 || activity.requests || activity.feeds) return
-      return close().then(() => process.exit(0))
-    }).catch((error) => console.error("Unable to inspect Design jobs before idle shutdown", error))
+    )
+      .then((row) => {
+        if ((row?.count ?? 0) > 0 || activity.requests || activity.feeds) return
+        return close().then(() => process.exit(0))
+      })
+      .catch((error) => console.error("Unable to inspect Design jobs before idle shutdown", error))
   }, 30_000)
   idle.unref()
   return { url: server.url.origin, close }
@@ -128,17 +129,17 @@ async function dispatch(
   if (url.pathname.startsWith("/app/vendor/") && request.method === "GET") {
     if (!bearer) return new Response(null, { status: 401 })
     const asset = DesignVendor.FILES[url.pathname.slice("/app/vendor/".length)]
-    return asset ? new Response(asset.body, { headers: { "content-type": asset.mime } }) : new Response(null, { status: 404 })
+    return asset
+      ? new Response(asset.body, { headers: { "content-type": asset.mime } })
+      : new Response(null, { status: 404 })
   }
   const parts = url.pathname.split("/").filter(Boolean)
-  if (parts[0] !== "design" || parts[1] !== "session" || !parts[2])
-    return new Response(null, { status: 404 })
+  if (parts[0] !== "design" || parts[1] !== "session" || !parts[2]) return new Response(null, { status: 404 })
   const sessionID = decodeURIComponent(parts[2])
   if (parts[3] === "attach" && parts.length === 4 && request.method === "POST") {
     if (!bearer) return new Response(null, { status: 401 })
     const host = URL.parse(request.headers.get(DesignApp.HOST_HEADER) ?? "")
-    if (!host || (host.protocol !== "http:" && host.protocol !== "https:"))
-      return new Response(null, { status: 400 })
+    if (!host || (host.protocol !== "http:" && host.protocol !== "https:")) return new Response(null, { status: 400 })
     hosts.set(sessionID, {
       url: host.origin,
       authorization: request.headers.get(DesignApp.HOST_AUTHORIZATION_HEADER) ?? undefined,
@@ -150,7 +151,8 @@ async function dispatch(
     (parts[3] === "review" && request.method === "GET") ||
     (request.method !== "GET" && parts[4] !== "job")
   if (proxied) {
-    const cookie = request.headers.get("cookie")
+    const cookie = request.headers
+      .get("cookie")
       ?.split(";")
       .map((item) => item.trim())
       .find((item) => item.startsWith(`${DesignApp.COOKIE}=`))

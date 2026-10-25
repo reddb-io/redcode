@@ -22,6 +22,7 @@ const environment = {
     }),
   ),
   HOME: home,
+  REDCODE_TEST_HOME: home,
   OPENCODE_TEST_HOME: home,
   XDG_CONFIG_HOME: path.join(home, ".config"),
   XDG_DATA_HOME: path.join(home, ".local", "share"),
@@ -35,7 +36,19 @@ const environment = {
 }
 
 const child = Bun.spawn({
-  cmd: [process.execPath, "test", "--only-failures", ...process.argv.slice(2)],
+  // Running inside the source checkout discovers the developer's ancestor project
+  // configuration even when HOME/XDG are isolated. Keep discovery inside our fixture.
+  cmd: [
+    process.execPath,
+    "test",
+    "--preload",
+    path.resolve("test/preload.ts"),
+    "--only-failures",
+    ...(process.argv.length > 2 ? process.argv.slice(2) : ["./test"]).map((arg) =>
+      arg === "test" || arg.startsWith("test/") || arg.startsWith("./test") ? path.resolve(arg) : arg,
+    ),
+  ],
+  cwd: home,
   env: environment,
   stdin: "inherit",
   stdout: "inherit",

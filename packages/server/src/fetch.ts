@@ -52,7 +52,7 @@ export const make = Effect.fn("ServerFetch.make")(function* (options: ServerOpti
   // Forked so the returned handler is never delayed; resumed drains are already
   // logged and durably recorded by the execution layer.
   yield* Effect.forkDetach(
-    resume(Context.get(context, SessionRestart.Service), !options.database?.url).pipe(
+    resume(Context.get(context, SessionRestart.Service)).pipe(
       Effect.provide(Layer.succeedContext(context)),
       Effect.catchCause((cause) => Effect.logError("Session restart continuity failed", { cause })),
     ),

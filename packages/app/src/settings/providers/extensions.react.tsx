@@ -1,4 +1,5 @@
 /** @jsxImportSource react */
+import type { LSPStatus } from "@opencode/client/promise"
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react"
 import { Tabs } from "@reddb-io/design-system/base/Tabs"
 import { Switch } from "@reddb-io/design-system/base/Switch"
@@ -248,18 +249,26 @@ function LanguageServers(props: { state: ExtensionsSnapshot; services: Services 
   const state = props.state
   const language = state.language
   const [config, setConfig] = useState<ReturnType<typeof configuredLanguageServers>>()
+  const [statuses, setStatuses] = useState<LSPStatus[]>([])
   const [error, setError] = useState(false)
   const [pending, setPending] = useState(true)
   const [revision, setRevision] = useState(0)
   useEffect(() => {
+    setConfig(undefined)
+    setStatuses([])
+    setPending(true)
     if (!state.connected) return
     const owner = { active: true }
     const load = () => {
       setPending(true)
-      void state.api.config.get({ location: { directory: state.directory } }).then(
-        (value) => {
+      void Promise.all([
+        state.api.config.get({ location: { directory: state.directory } }),
+        state.api.lsp.status({ location: { directory: state.directory } }),
+      ]).then(
+        ([value, runtime]) => {
           if (!owner.active) return
           setConfig(configuredLanguageServers(value))
+          setStatuses(runtime.data)
           setError(false)
           setPending(false)
         },
@@ -309,7 +318,7 @@ function LanguageServers(props: { state: ExtensionsSnapshot; services: Services 
       ) : error ? (
         <div className="project-settings-extension-section-copy" role="status">
           <span className="project-settings-extension-empty-description">
-            {language.t("project.settings.extensions.lsp.loadFailed")}
+            {language.t("project.settings.extensions.lsp.status.loadFailed")}
           </span>
           <Button variant="ghost" onClick={() => setRevision((value) => value + 1)}>
             {language.t("project.settings.extensions.lsp.retry")}
@@ -337,6 +346,37 @@ function LanguageServers(props: { state: ExtensionsSnapshot; services: Services 
             ))}
           </SettingsList>
         )
+      )}
+      {!pending && !error && statuses.length > 0 && (
+        <section aria-label={language.t("project.settings.extensions.lsp.runtime")}>
+          <div className="project-settings-extension-section-header">
+            {language.t("project.settings.extensions.lsp.runtime")}
+          </div>
+          <SettingsList variant="catalog">
+            {statuses.map((item) => (
+              <ExtensionRow
+                key={`${item.id}:${item.root}`}
+                icon="code"
+                name={item.id}
+                project
+                description={
+                  <bdi dir="ltr">
+                    {item.root}
+                    {item.error ? `: ${item.error}` : ""}
+                  </bdi>
+                }
+              >
+                <span className="project-settings-extension-row-status">
+                  {language.t(
+                    item.status === "connected"
+                      ? "project.settings.extensions.lsp.connected"
+                      : "project.settings.extensions.lsp.error",
+                  )}
+                </span>
+              </ExtensionRow>
+            ))}
+          </SettingsList>
+        </section>
       )}
     </div>
   )

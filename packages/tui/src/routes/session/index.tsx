@@ -478,8 +478,7 @@ export function Session(props: {
   )
 
   createEffect(() => {
-    if (route.type !== "session" || route.sessionID !== sessionID || client.connection.status() !== "connected")
-      return
+    if (route.type !== "session" || route.sessionID !== sessionID || client.connection.status() !== "connected") return
     setSynced(false)
     void (async () => {
       await Promise.all([
@@ -859,7 +858,7 @@ export function Session(props: {
       />
     ))
   const unavailable = (feature: string) => {
-    toast.show({ message: `${feature} is not implemented for V2 sessions yet`, variant: "error", duration: 5000 })
+    toast.show({ message: `${feature} is not implemented for sessions yet`, variant: "error", duration: 5000 })
     dialog.clear()
   }
 
@@ -2277,12 +2276,12 @@ function SessionMessageView(props: { message: SessionMessageInfo }) {
           props.message.type === "location-switched"
         }
       >
-        <SessionSwitchMessageV2 message={props.message} />
+        <SessionSwitchMessage message={props.message} />
       </Match>
       <Match
         when={props.message.type === "system" || props.message.type === "synthetic" || props.message.type === "skill"}
       >
-        <Show when={props.message.type === "skill"} fallback={<SessionNoticeMessageV2 message={props.message} />}>
+        <Show when={props.message.type === "skill"} fallback={<SessionNoticeMessage message={props.message} />}>
           <SessionSkillMessage message={props.message as Extract<SessionMessageInfo, { type: "skill" }>} />
         </Show>
       </Match>
@@ -2413,7 +2412,7 @@ function AssistantFooter(props: { message: SessionMessageAssistant }) {
   )
 }
 
-function SessionSwitchMessageV2(props: { message: SessionMessageInfo }) {
+function SessionSwitchMessage(props: { message: SessionMessageInfo }) {
   const ctx = use()
   const theme = useTheme()
   if (props.message.type === "location-switched")
@@ -2443,7 +2442,7 @@ function SessionSwitchMessageV2(props: { message: SessionMessageInfo }) {
   )
 }
 
-function SessionNoticeMessageV2(props: { message: SessionMessageInfo }) {
+function SessionNoticeMessage(props: { message: SessionMessageInfo }) {
   const ctx = use()
   const theme = useTheme()
   const renderer = useRenderer()

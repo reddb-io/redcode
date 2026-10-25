@@ -92,7 +92,7 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
     const busySession = (error: Session.BusyError) =>
       new SessionBusyError({
         sessionID: error.sessionID,
-        message: `Session is busy: ${error.sessionID}`,
+        message: error.reason ?? `Session is busy: ${error.sessionID}`,
       })
     const designError = (designID: string) => (error: { code: string; message: string }) =>
       error.code === "not-found"
@@ -109,6 +109,15 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
       )
 
     return handlers
+      .handle("session.archive", (ctx) =>
+        session
+          .archive({ sessionID: ctx.params.sessionID, archived: ctx.payload.archived })
+          .pipe(
+            Effect.catchTag("Session.NotFoundError", missingSession),
+            Effect.catchTag("Session.BusyError", busySession),
+            Effect.as(HttpApiSchema.NoContent.make()),
+          ),
+      )
       .handle(
         "session.observation",
         Effect.fn(function* (ctx) {
@@ -210,7 +219,10 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
                   ? { location: ctx.payload.location ?? { directory: AbsolutePath.make(process.cwd()) } }
                   : { parentID: ctx.payload.parentID }),
               })
-              .pipe(Effect.catchTag("Session.NotFoundError", missingSession)),
+              .pipe(
+                Effect.catchTag("Session.NotFoundError", missingSession),
+                Effect.catchTag("Session.BusyError", busySession),
+              ),
           }
         }),
       )
@@ -503,6 +515,7 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
             })
             .pipe(
               Effect.catchTag("Session.NotFoundError", missingSession),
+              Effect.catchTag("Session.BusyError", busySession),
               Effect.catchTag(
                 "Session.SyntheticConflictError",
                 (error) => new InvalidRequestError({ message: error.message }),
@@ -537,6 +550,7 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
               })
               .pipe(
                 Effect.catchTag("Session.NotFoundError", missingSession),
+                Effect.catchTag("Session.BusyError", busySession),
                 Effect.catchTag(
                   "Session.SyntheticConflictError",
                   (error) => new InvalidRequestError({ message: error.message }),
@@ -855,6 +869,7 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
               })
               .pipe(
                 Effect.catchTag("Session.NotFoundError", missingSession),
+                Effect.catchTag("Session.BusyError", busySession),
                 Effect.catchTag("Session.PromptConflictError", (error) =>
                   Effect.fail(
                     new ConflictError({
@@ -900,6 +915,7 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
             })
             .pipe(
               Effect.catchTag("Session.NotFoundError", missingSession),
+              Effect.catchTag("Session.BusyError", busySession),
               Effect.catchTag("Command.NotFoundError", (error) =>
                 Effect.fail(
                   new CommandNotFoundError({
@@ -932,6 +948,7 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
             })
             .pipe(
               Effect.catchTag("Session.NotFoundError", missingSession),
+              Effect.catchTag("Session.BusyError", busySession),
               Effect.catchTag("Session.SkillNotFoundError", (error) =>
                 Effect.fail(new SkillNotFoundError({ skill: error.skill, message: `Skill not found: ${error.skill}` })),
               ),
@@ -956,6 +973,7 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
             })
             .pipe(
               Effect.catchTag("Session.NotFoundError", missingSession),
+              Effect.catchTag("Session.BusyError", busySession),
               Effect.catchTag("Session.SyntheticConflictError", (error) =>
                 Effect.fail(
                   new ConflictError({
@@ -974,7 +992,10 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
           yield* requireOwner(ctx.params.sessionID)
           yield* session
             .shell({ sessionID: ctx.params.sessionID, id: ctx.payload.id, command: ctx.payload.command })
-            .pipe(Effect.catchTag("Session.NotFoundError", missingSession))
+            .pipe(
+              Effect.catchTag("Session.NotFoundError", missingSession),
+              Effect.catchTag("Session.BusyError", busySession),
+            )
           return HttpApiSchema.NoContent.make()
         }),
       )
@@ -992,6 +1013,7 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
               })
               .pipe(
                 Effect.catchTag("Session.NotFoundError", missingSession),
+                Effect.catchTag("Session.BusyError", busySession),
                 Effect.catchTag("Session.CompactionConflictError", (error) =>
                   Effect.fail(
                     new ConflictError({
@@ -1190,7 +1212,12 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
       .handle(
         "session.background",
         Effect.fn(function* (ctx) {
-          yield* session.background(ctx.params.sessionID).pipe(Effect.catchTag("Session.NotFoundError", missingSession))
+          yield* session
+            .background(ctx.params.sessionID)
+            .pipe(
+              Effect.catchTag("Session.NotFoundError", missingSession),
+              Effect.catchTag("Session.BusyError", busySession),
+            )
           return HttpApiSchema.NoContent.make()
         }),
       )

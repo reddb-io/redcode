@@ -12,7 +12,7 @@ import { Project } from "@opencode/core/project"
 import { ProjectTable } from "@opencode/core/project/sql"
 import { AbsolutePath } from "@opencode/core/schema"
 import { InstructionState } from "@opencode/core/session/instruction-state"
-import { RedcodeLegacyInstructions } from "@opencode/core/session/redcode-legacy-instructions"
+import { SessionImportedContext } from "@opencode/core/session/imported-context"
 import { RedcodeSessionContextEpochTable } from "@opencode/core/session/redcode-legacy.sql"
 import { SessionProjector } from "@opencode/core/session/projector"
 import { SessionSchema } from "@opencode/core/session/schema"
@@ -91,12 +91,12 @@ describe("InstructionState", () => {
         .run()
         .pipe(Effect.orDie)
 
-      const first = yield* RedcodeLegacyInstructions.load(db, sessionID)
+      const first = yield* SessionImportedContext.load(db, sessionID)
       expect(first?.phase).toBe("baseline")
       yield* InstructionState.prepare(db, events, first!.instructions, sessionID)
       expect(yield* InstructionState.initial(db, sessionID, first!.instructions)).toBe("V1 instructions")
 
-      const next = yield* RedcodeLegacyInstructions.load(db, sessionID)
+      const next = yield* SessionImportedContext.load(db, sessionID)
       expect(next?.phase).toBe("transition")
       const current = source("test/v2", Effect.succeed("V2 instructions"))
       yield* InstructionState.prepare(db, events, Instructions.combine([next!.instructions, current]), sessionID)
@@ -108,11 +108,11 @@ describe("InstructionState", () => {
         .pipe(Effect.orDie)
       expect(updates).toHaveLength(1)
       expect(updates[0]?.data).toMatchObject({
-        text: expect.stringMatching(/V1 instruction baseline no longer applies[\s\S]*V2 instructions/),
+        text: expect.stringMatching(/imported instruction baseline no longer applies[\s\S]*V2 instructions/),
       })
-      expect(yield* RedcodeLegacyInstructions.load(db, sessionID)).toBeUndefined()
+      expect(yield* SessionImportedContext.load(db, sessionID)).toBeUndefined()
 
-      expect(yield* RedcodeLegacyInstructions.retire(db, sessionID)).toBe(false)
+      expect(yield* SessionImportedContext.retire(db, sessionID)).toBe(false)
       yield* InstructionState.advanceEpoch(db, sessionID, updates[0]!.seq)
       expect(yield* InstructionState.initial(db, sessionID, current)).toBe("V2 instructions")
     }),
@@ -134,7 +134,7 @@ describe("InstructionState", () => {
         .run()
         .pipe(Effect.orDie)
 
-      expect(yield* RedcodeLegacyInstructions.load(db, sessionID)).toBeUndefined()
+      expect(yield* SessionImportedContext.load(db, sessionID)).toBeUndefined()
     }),
   )
 

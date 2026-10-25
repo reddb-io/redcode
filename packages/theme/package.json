@@ -17,7 +17,8 @@
   ],
   "exports": {
     "./tui": "./src/tui/index.ts",
-    "./tui/v1": "./src/tui/v1.ts"
+    "./tui/v1": "./src/tui/v1.ts",
+    "./tui/import": "./src/tui/import.ts"
   },
   "scripts": {
     "build": "bun run script/build.ts",

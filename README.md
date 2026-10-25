@@ -101,6 +101,17 @@ The npm package includes the coding engine and Design; Desktop uses the full dis
 Use `redcode stats --cost --models` to inspect costs and token usage. Estimates, incomplete subtotals
 and records without cost provenance are marked in the report. [Statistics](docs/clients.md#cli).
 
+Use `redcode session archive <session-id>` to archive finished work and
+`redcode session archive <session-id> --restore` to restore it without starting execution.
+`redcode session list --archived only` lists archived sessions. The TUI session picker and
+Desktop Home expose the same actions.
+
+Older configuration, display preferences, themes and SQLite history require explicit conversion.
+`redcode migrate inspect <source> --kind config --json` inspects without printing file values;
+`redcode migrate convert <source> --kind config --output <new-file>` writes a new file and preserves
+the source. Use `history`, `theme` or `display` for the other formats.
+[Conversion and runtime contracts](docs/consolidation.md).
+
 [Installation and platforms](docs/installation.md) · [Client commands and history imports](docs/clients.md)
 
 ## Session modes

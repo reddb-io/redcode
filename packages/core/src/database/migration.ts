@@ -75,7 +75,9 @@ const REMOTE_BOOTSTRAP = "__redcode_schema_bootstrap__"
 
 export function applyRemote(db: Database) {
   return Effect.gen(function* () {
-    const journal = yield* db.all<{ id: string }>(sql`SELECT id FROM ${sql.identifier("migration")}`).pipe(Effect.result)
+    const journal = yield* db
+      .all<{ id: string }>(sql`SELECT id FROM ${sql.identifier("migration")}`)
+      .pipe(Effect.result)
     if (journal._tag === "Success") {
       const completed = new Set(journal.success.map((entry) => entry.id))
       if (completed.size > 0) {
@@ -86,7 +88,7 @@ export function applyRemote(db: Database) {
           !completed.has("20260804233008_loose_psylocke") &&
           !completed.has("20260730195856_optional_session_title")
         )
-          return yield* Effect.die(new Error("V1 RedDB session history requires explicit V1-to-V2 import"))
+          return yield* Effect.die(new Error("Historical RedDB sessions require explicit history conversion"))
         if (completed.has("20260804233008_loose_psylocke") && v2._tag === "Failure")
           return yield* Effect.die(new Error("Remote RedDB migration journal references a missing session_v2 table"))
         if (completed.has(REMOTE_BOOTSTRAP)) return yield* bootstrapRemote(db)
@@ -104,13 +106,19 @@ export function applyRemote(db: Database) {
 function bootstrapRemote(db: Database) {
   return Effect.gen(function* () {
     // RedDB may retain DDL from a failed transaction. The marker makes a retry resume the bootstrap.
-    yield* db.run(sql`CREATE TABLE IF NOT EXISTS ${sql.identifier("migration")} (id TEXT PRIMARY KEY, time_completed INTEGER NOT NULL)`)
-    yield* db.run(sql`INSERT INTO ${sql.identifier("migration")} (id, time_completed) VALUES (${REMOTE_BOOTSTRAP}, ${Date.now()}) ON CONFLICT (id) DO NOTHING`)
+    yield* db.run(
+      sql`CREATE TABLE IF NOT EXISTS ${sql.identifier("migration")} (id TEXT PRIMARY KEY, time_completed INTEGER NOT NULL)`,
+    )
+    yield* db.run(
+      sql`INSERT INTO ${sql.identifier("migration")} (id, time_completed) VALUES (${REMOTE_BOOTSTRAP}, ${Date.now()}) ON CONFLICT (id) DO NOTHING`,
+    )
     yield* db.transaction((tx) => schema.up(tx))
     yield* db.transaction((tx) =>
       Effect.gen(function* () {
         yield* Effect.forEach(migrations, (migration) =>
-          tx.run(sql`INSERT INTO ${sql.identifier("migration")} (id, time_completed) VALUES (${migration.id}, ${Date.now()}) ON CONFLICT (id) DO NOTHING`),
+          tx.run(
+            sql`INSERT INTO ${sql.identifier("migration")} (id, time_completed) VALUES (${migration.id}, ${Date.now()}) ON CONFLICT (id) DO NOTHING`,
+          ),
         )
         yield* tx.run(sql`DELETE FROM ${sql.identifier("migration")} WHERE id = ${REMOTE_BOOTSTRAP}`)
       }),

@@ -1,4 +1,6 @@
 import path from "node:path"
+import os from "node:os"
+import { mkdtemp, rm } from "node:fs/promises"
 
 // Product contracts owned by this fork. The complete inherited suite remains opt-in in redcode.yml.
 const suites = {
@@ -10,7 +12,9 @@ const suites = {
     "test/form.test.ts",
     "test/browser-idle.test.ts",
     "test/config/config.test.ts",
+    "test/config/agent.test.ts",
     "test/config/normalization.test.ts",
+    "test/import/config.test.ts",
     "test/config/provider.test.ts",
     "test/config/reload.test.ts",
     "test/config/watch.test.ts",
@@ -87,10 +91,13 @@ const suites = {
     "test/integration.test.ts",
     "test/plugin/provider-red-router.test.ts",
     "test/plugin/models-dev.test.ts",
+    "test/plugin/skill.test.ts",
     "test/plugin/provider-openai-compatible.test.ts",
     "test/session-compaction.test.ts",
     "test/session-repository-status.test.ts",
     "test/session-create.test.ts",
+    "test/session-archive.test.ts",
+    "test/session-owned.test.ts",
     "test/session-import.test.ts",
     "test/session-import-claude-code.test.ts",
     "test/session-import-codex.test.ts",
@@ -170,6 +177,8 @@ const suites = {
     "test/updater-install.test.ts",
     "test/auth-login-choices.test.ts",
     "test/config.test.ts",
+    "test/migrate.test.ts",
+    "test/migration/display.test.ts",
     "test/reasoning-flag.test.ts",
     "test/debug-guards-report.test.ts",
     "test/debug-memory.test.ts",
@@ -195,6 +204,8 @@ const suites = {
     "test/fetch.test.ts",
     "test/session-instances.test.ts",
     "test/session-owner.test.ts",
+    "test/session-update.test.ts",
+    "test/owned-paths.test.ts",
     "test/worker-lease.test.ts",
     "test/workerd.test.ts",
     "test/model.test.ts",
@@ -245,6 +256,7 @@ const suites = {
     "test/cli/tui/form.test.tsx",
     "test/plugin-select.test.tsx",
     "test/cli/tui/dialog-select.test.tsx",
+    "test/cli/tui/dialog-session-list.test.tsx",
     "test/context/local-selection.test.tsx",
     "test/cli/cmd/tui/integration-options.test.ts",
     "test/cli/tui/dialog-integration.test.tsx",
@@ -258,6 +270,9 @@ const suites = {
     "test/cli/tui/monitors-model.test.ts",
     "test/cli/tui/session-terminals.test.tsx",
     "test/redcode-theme.test.ts",
+    "test/theme.test.ts",
+    "test/theme/v2/v1-migrate.test.ts",
+    "test/cli/tui/theme-mode.test.tsx",
     "test/feature-plugins/sidebar-context.test.tsx",
     "test/feature-plugins/sidebar-footer.test.tsx",
     "test/feature-plugins/prompt-footer.test.tsx",
@@ -293,7 +308,8 @@ const suites = {
     "test/provider/venice.recorded.test.ts",
     "test/provider/vercel-ai-gateway.recorded.test.ts",
   ],
-  util: ["src/design-review.test.ts", "src/uuid.test.ts"],
+  util: ["src/design-review.test.ts", "src/uuid.test.ts", "src/global.test.ts"],
+  theme: ["test/theme.test.ts"],
   sdk: [
     "test/contract-identity.test.ts",
     "test/embedded.test.ts",
@@ -316,6 +332,12 @@ const suites = {
 }
 
 const failures: string[] = []
+await using home = {
+  path: await mkdtemp(path.join(os.tmpdir(), "redcode-contracts-")),
+  [Symbol.asyncDispose]() {
+    return rm(this.path, { recursive: true, force: true })
+  },
+}
 for (const [name, files] of Object.entries(suites)) {
   const cwd = path.resolve(import.meta.dir, "../packages", name)
   for (const file of files) {
@@ -331,14 +353,29 @@ for (const [name, files] of Object.entries(suites)) {
     const result = await Bun.spawn(
       [
         process.execPath,
-        ...(name === "app" ? ["test"] : ["run", name === "gui-extensions" ? "test:native" : "test"]),
+        ...(name === "app"
+          ? ["test", "--conditions=browser"]
+          : ["run", name === "gui-extensions" ? "test:native" : "test"]),
         ...files.slice(index, index + size),
         "--timeout",
         process.platform === "win32" ? "30000" : "5000",
       ],
       {
         cwd,
-        env: { ...process.env, GITHUB_ACTIONS: "false" },
+        env: {
+          ...process.env,
+          GITHUB_ACTIONS: "false",
+          REDCODE_TEST_HOME: home.path,
+          OPENCODE_TEST_HOME: home.path,
+          XDG_CONFIG_HOME: path.join(home.path, "config"),
+          XDG_DATA_HOME: path.join(home.path, "data"),
+          XDG_STATE_HOME: path.join(home.path, "state"),
+          XDG_CACHE_HOME: path.join(home.path, "cache"),
+          OPENCODE_CONFIG_DIR: path.join(home.path, "config"),
+          OPENCODE_CONFIG: undefined,
+          OPENCODE_CONFIG_CONTENT: undefined,
+          OPENCODE_CLI_CONFIG_CONTENT: undefined,
+        },
         stdin: "inherit",
         stdout: "inherit",
         stderr: "inherit",
@@ -351,5 +388,5 @@ for (const [name, files] of Object.entries(suites)) {
 
 if (failures.length > 0) {
   console.error(`Failed Redcode contracts: ${failures.join(", ")}`)
-  process.exit(1)
+  process.exitCode = 1
 }

@@ -29,6 +29,7 @@ const JsonPayload = Schema.Unknown.pipe(HttpApiSchema.asJson())
 const Query = Schema.Struct({
   directory: Schema.optional(Schema.String),
   parentID: Schema.optional(Schema.String),
+  archived: Schema.Literals(["exclude", "include", "only"]).pipe(Schema.optional),
   search: Schema.optional(Schema.String),
   order: Schema.optional(Schema.String),
   cursor: Schema.optional(Schema.String),
@@ -290,12 +291,21 @@ const Group = HttpApiGroup.make("mock")
       error: MockBadRequest.pipe(HttpApiSchema.status(400)),
     }),
   )
+  .add(HttpApiEndpoint.get("lspStatus", "/api/lsp", { query: Query, success: Json }))
   .add(HttpApiEndpoint.post("sessionCreate", "/api/session", { payload: JsonPayload, success: Json }))
   .add(HttpApiEndpoint.get("sessionActive", "/api/session/active", { success: Json }))
   .add(
     HttpApiEndpoint.get("sessionGet", "/api/session/:sessionID", {
       params: SessionParams,
       success: Json,
+      error: MockNotFound.pipe(HttpApiSchema.status(404)),
+    }),
+  )
+  .add(
+    HttpApiEndpoint.post("sessionArchive", "/api/session/:sessionID/archive", {
+      params: SessionParams,
+      payload: Schema.Struct({ archived: Schema.Boolean }),
+      success: NoContent,
       error: MockNotFound.pipe(HttpApiSchema.status(404)),
     }),
   )

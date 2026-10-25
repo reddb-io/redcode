@@ -55,6 +55,9 @@ export function HomeSessionsNativeView(props: { services: Services }) {
     >
       <div className="sticky top-0 z-30 flex shrink-0 items-center gap-2 bg-v2-background-bg-base pb-3 pt-3 md:pb-4 md:pt-6">
         <HomeSearch view={view} services={services} />
+        <Button variant="ghost" aria-pressed={view.archived} onClick={services.toggleArchived}>
+          {view.language.t(view.archived ? "home.sessions.active" : "home.sessions.archived")}
+        </Button>
         {view.groups.length > 0 && view.canCreateSession && (
           <Button
             data-action="home-new-session"
@@ -443,6 +446,13 @@ function SessionRow(props: {
                   label: props.view.language.t("common.rename"),
                   onselect: () =>
                     props.setEditor({ id: props.record.session.id, draft: props.record.title, busy: false }),
+                },
+                {
+                  id: "archive",
+                  label: props.view.language.t(
+                    props.record.session.time.archived !== undefined ? "session.restore" : "common.archive",
+                  ),
+                  onselect: () => void props.services.archive(props.record.session),
                 },
                 {
                   id: "export",

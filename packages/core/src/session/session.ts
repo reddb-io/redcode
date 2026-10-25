@@ -20,6 +20,7 @@ import {
   PromptConflictError,
   SyntheticConflictError,
 } from "./error.js"
+import { SessionArchive } from "./archive.js"
 import { SessionEvent } from "./event.js"
 import { SessionExecution } from "./execution.js"
 import { SessionInbox } from "./inbox.js"
@@ -195,6 +196,7 @@ export const make = Effect.fn("Session.make")(function* () {
             delivery: input.delivery ?? "steer",
           })
           if (existing) return existing
+          yield* SessionArchive.requireWritable(database.db, sessionID)
           const prepared = yield* restore(
             SessionPrompt.prepare({ session, messageID, input }).pipe(
               Effect.provideService(Instance.Service, instances),
@@ -235,6 +237,7 @@ export const make = Effect.fn("Session.make")(function* () {
     input: { id?: SessionMessage.ID; command: string },
   ) {
     const session = yield* get(sessionID)
+    yield* SessionArchive.requireWritable(database.db, sessionID)
     // The server owns completion recording even if the submitting client disconnects.
     const running = yield* Effect.gen(function* () {
       const started = yield* SessionShell.start({ session, command: input.command }).pipe(
@@ -282,6 +285,7 @@ export const make = Effect.fn("Session.make")(function* () {
     input: { messageID?: SessionMessage.ID; skill: Skill.ID; resume?: boolean },
   ) {
     const session = yield* get(sessionID)
+    yield* SessionArchive.requireWritable(database.db, sessionID)
     const skill = yield* SessionSkill.get({ session, skill: input.skill }).pipe(
       Effect.provideService(Instance.Service, instances),
     )
@@ -334,6 +338,7 @@ export const make = Effect.fn("Session.make")(function* () {
   })
   const resume = Effect.fn("Session.resume")(function* (sessionID: SessionSchema.ID) {
     yield* get(sessionID)
+    yield* SessionArchive.requireWritable(database.db, sessionID)
     yield* execution.resume(sessionID)
   })
   const synthetic = Effect.fn("Session.synthetic")(

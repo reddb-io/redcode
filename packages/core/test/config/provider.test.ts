@@ -5,7 +5,7 @@ import { Effect, Schedule, Schema } from "effect"
 import { Bus } from "@opencode/core/bus"
 import { Config } from "@opencode/core/config"
 import { ConfigProviderPlugin } from "@opencode/core/config/plugin/provider"
-import { ConfigNormalize } from "@opencode/core/config/normalize"
+import { ConfigImport } from "@opencode/core/import/config"
 import { Integration } from "@opencode/core/integration"
 import { Model } from "@opencode/core/model"
 import { ModelResolver } from "@opencode/core/model-resolver"
@@ -71,7 +71,7 @@ describe("ConfigProviderPlugin.Plugin", () => {
   it.effect("applies migrated release date and status to the model catalog", () =>
     Effect.gen(function* () {
       const models = yield* Model.Service
-      const migrated = ConfigNormalize.normalize({
+      const migrated = ConfigImport.convert({
         provider: { custom: { models: { chat: { release_date: "2025-04-10", status: "beta" } } } },
       })
       if (migrated.type !== "normalized") throw new Error("Expected normalized config")
@@ -93,7 +93,7 @@ describe("ConfigProviderPlugin.Plugin", () => {
           model.variants = [{ id: Model.VariantID.make("low") }, { id: Model.VariantID.make("high") }]
         }),
       )
-      const migrated = ConfigNormalize.normalize({
+      const migrated = ConfigImport.convert({
         provider: { custom: { models: { chat: { variants: { high: { disabled: true } } } } } },
       })
       if (migrated.type !== "normalized") throw new Error("Expected normalized config")
@@ -115,7 +115,7 @@ describe("ConfigProviderPlugin.Plugin", () => {
           model.capabilities = { tools: true, temperature: true, input: ["text", "image", "pdf"], output: ["text"] }
         }),
       )
-      const migrated = ConfigNormalize.normalize({
+      const migrated = ConfigImport.convert({
         provider: { custom: { models: { chat: { attachment: false, temperature: false } } } },
       })
       if (migrated.type !== "normalized") throw new Error("Expected normalized config")
@@ -146,7 +146,7 @@ describe("ConfigProviderPlugin.Plugin", () => {
           model.reasoningVariantIDs = [Model.VariantID.make("low"), Model.VariantID.make("high")]
         }),
       )
-      const migrated = ConfigNormalize.normalize({
+      const migrated = ConfigImport.convert({
         provider: { custom: { models: { chat: { reasoning: false, variants: { high: {} } } } } },
       })
       if (migrated.type !== "normalized") throw new Error("Expected normalized config")
@@ -176,7 +176,7 @@ describe("ConfigProviderPlugin.Plugin", () => {
           model.variants = [{ id: Model.VariantID.make("fast") }]
         })
       })
-      const migrated = ConfigNormalize.normalize({ provider: { custom: { models: { chat: { reasoning: true } } } } })
+      const migrated = ConfigImport.convert({ provider: { custom: { models: { chat: { reasoning: true } } } } })
       if (migrated.type !== "normalized") throw new Error("Expected normalized config")
       yield* addPlugin([new Document({ type: "document", info: decode(migrated.encoded) })])
       const model = required(yield* models.get(providerID, modelID))
@@ -191,7 +191,7 @@ describe("ConfigProviderPlugin.Plugin", () => {
   it.effect("applies V1 Gemini reasoning defaults while preserving explicit model options", () =>
     Effect.gen(function* () {
       const models = yield* Model.Service
-      const migrated = ConfigNormalize.normalize({
+      const migrated = ConfigImport.convert({
         provider: {
           google: {
             npm: "@ai-sdk/google",
@@ -225,7 +225,7 @@ describe("ConfigProviderPlugin.Plugin", () => {
   it.effect("applies V1 Kimi reasoning defaults on the native Anthropic route", () =>
     Effect.gen(function* () {
       const models = yield* Model.Service
-      const migrated = ConfigNormalize.normalize({
+      const migrated = ConfigImport.convert({
         provider: {
           moonshotai: {
             npm: "@opencode/ai/providers/moonshot/messages",
@@ -253,7 +253,7 @@ describe("ConfigProviderPlugin.Plugin", () => {
   it.effect("uses the migrated output limit for V1 Kimi reasoning budgets", () =>
     Effect.gen(function* () {
       const models = yield* Model.Service
-      const migrated = ConfigNormalize.normalize({
+      const migrated = ConfigImport.convert({
         provider: {
           custom: {
             npm: "@ai-sdk/anthropic",
@@ -273,7 +273,7 @@ describe("ConfigProviderPlugin.Plugin", () => {
   it.effect("enables V1 Alibaba reasoning except for kimi-k2-thinking", () =>
     Effect.gen(function* () {
       const models = yield* Model.Service
-      const migrated = ConfigNormalize.normalize({
+      const migrated = ConfigImport.convert({
         provider: {
           "alibaba-cn": {
             npm: "@ai-sdk/openai-compatible",
@@ -304,7 +304,7 @@ describe("ConfigProviderPlugin.Plugin", () => {
   it.effect("preserves V1 MiniMax, ZAI, and OpenRouter reasoning defaults", () =>
     Effect.gen(function* () {
       const models = yield* Model.Service
-      const migrated = ConfigNormalize.normalize({
+      const migrated = ConfigImport.convert({
         provider: {
           minimax: {
             npm: "@ai-sdk/anthropic",
@@ -350,7 +350,7 @@ describe("ConfigProviderPlugin.Plugin", () => {
   it.effect("preserves V1 GPT reasoning defaults on legacy AI SDK packages", () =>
     Effect.gen(function* () {
       const models = yield* Model.Service
-      const migrated = ConfigNormalize.normalize({
+      const migrated = ConfigImport.convert({
         provider: {
           legacyOpenAI: {
             npm: "@ai-sdk/openai",
@@ -850,7 +850,7 @@ describe("ConfigProviderPlugin.Plugin", () => {
       Effect.gen(function* () {
         const models = yield* Model.Service
         const providerID = Provider.ID.make("custom")
-        const result = ConfigNormalize.normalize({ provider: { custom: { models: { migrated: scenario.legacy } } } })
+        const result = ConfigImport.convert({ provider: { custom: { models: { migrated: scenario.legacy } } } })
         if (result.type !== "normalized") throw new Error("Expected normalized config")
         expect(result.diagnostics).toEqual([])
 
@@ -934,7 +934,7 @@ describe("ConfigProviderPlugin.Plugin", () => {
     it.effect(`matches native configuration for migrated ${scenario.name}`, () =>
       Effect.gen(function* () {
         const models = yield* Model.Service
-        const result = ConfigNormalize.normalize({ provider: { legacy: scenario.legacy } })
+        const result = ConfigImport.convert({ provider: { legacy: scenario.legacy } })
         if (result.type !== "normalized") throw new Error("Expected normalized config")
         expect(result.diagnostics).toEqual([])
 
@@ -978,7 +978,7 @@ describe("ConfigProviderPlugin.Plugin", () => {
         })
       })
       const before = required(yield* models.get(providerID, modelID))
-      const result = ConfigNormalize.normalize({ provider: { custom: { models: { chat: {} } } } })
+      const result = ConfigImport.convert({ provider: { custom: { models: { chat: {} } } } })
       if (result.type !== "normalized") throw new Error("Expected normalized config")
       expect(result.diagnostics).toEqual([])
       yield* addPlugin([new Document({ type: "document", info: decode(result.encoded) })])

@@ -25,6 +25,8 @@ import type {
   PluginCheckOutput,
   PluginUpdateInput,
   PluginUpdateOutput,
+  SessionArchiveInput,
+  SessionArchiveOutput,
   SessionDesignConversationsInput,
   SessionDesignConversationsOutput,
   SessionListInput,
@@ -361,7 +363,6 @@ import type {
   DebugLocationListOutput,
   DebugLocationEvictInput,
   DebugLocationEvictOutput,
-  MigrationV1StatusOutput,
   WebsearchProvidersInput,
   WebsearchProvidersOutput,
   WebsearchQueryInput,
@@ -873,6 +874,18 @@ export function make(options: ClientOptions) {
         ),
     },
     session: {
+      archive: (input: SessionArchiveInput, requestOptions?: RequestOptions) =>
+        request<SessionArchiveOutput>(
+          {
+            method: "POST",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/archive`,
+            body: { archived: input["archived"] },
+            successStatus: 204,
+            declaredStatuses: [400, 401, 403, 404, 409],
+            empty: true,
+          },
+          requestOptions,
+        ),
       design: {
         conversations: (input: SessionDesignConversationsInput, requestOptions?: RequestOptions) =>
           request<SessionDesignConversationsOutput>(
@@ -1074,6 +1087,7 @@ export function make(options: ClientOptions) {
               limit: input?.["limit"],
               order: input?.["order"],
               search: input?.["search"],
+              archived: input?.["archived"],
               parentID: input?.["parentID"],
               directory: input?.["directory"],
               project: input?.["project"],
@@ -3149,21 +3163,6 @@ export function make(options: ClientOptions) {
               successStatus: 204,
               declaredStatuses: [400, 401, 403, 409],
               empty: true,
-            },
-            requestOptions,
-          ),
-      },
-    },
-    migration: {
-      v1: {
-        status: (requestOptions?: RequestOptions) =>
-          request<MigrationV1StatusOutput>(
-            {
-              method: "GET",
-              path: `/api/experimental/migration/v1`,
-              successStatus: 200,
-              declaredStatuses: [400, 401, 403, 409],
-              empty: false,
             },
             requestOptions,
           ),

@@ -717,7 +717,7 @@ async function resolvePlugin(
       }
     }
     if (typeof mod !== "object" || mod === null || !("default" in mod) || !isPlugin(mod.default))
-      throw new Error(`Invalid V2 TUI plugin module: ${spec}`)
+      throw new Error(`Invalid TUI plugin module: ${spec}`)
     return { status: "loaded" as const, plugin: mod.default, version }
   }
 }

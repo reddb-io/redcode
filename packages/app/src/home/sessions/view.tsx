@@ -21,6 +21,9 @@ export type HomeSessionsViewProps = {
   language: ReturnType<typeof useLanguage>
   groups: HomeSessionGroup[]
   loading: boolean
+  archived: boolean
+  onToggleArchived: () => void
+  onArchiveSession: (session: SessionInfo) => Promise<void>
   desktop: boolean
   location: (record: HomeSessionRecord) => { worktree: string; branch: string | undefined }
   onRevealLocations: (record?: HomeSessionRecord) => void
@@ -114,6 +117,7 @@ export function createHomeSessionsViewServices(props: HomeSessionsViewProps) {
         opacity: header(group.id),
       })),
       loading: props.loading,
+      archived: props.archived,
       desktop: props.desktop,
       showProjectName: props.showProjectName,
       server: props.server,
@@ -127,6 +131,8 @@ export function createHomeSessionsViewServices(props: HomeSessionsViewProps) {
       searchNoResultsLabel: props.searchNoResultsLabel,
     })),
     create: () => props.onCreateSession(),
+    toggleArchived: props.onToggleArchived,
+    archive: props.onArchiveSession,
     open: (session: SessionInfo, options?: OpenSessionOptions) => props.onOpenSession(session, options),
     rename: (session: SessionInfo, title: string) => props.onRenameSession(props.server, session, title),
     export: (session: SessionInfo) => props.onExportSession(props.server, session),

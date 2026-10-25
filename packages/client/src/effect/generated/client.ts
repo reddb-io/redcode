@@ -31,6 +31,8 @@ import type {
   PluginCheckOutput,
   PluginUpdateInput,
   PluginUpdateOutput,
+  SessionArchiveInput,
+  SessionArchiveOutput,
   SessionDesignConversationsInput,
   SessionDesignConversationsOutput,
   SessionListInput,
@@ -363,7 +365,6 @@ import type {
   DebugLocationListOutput,
   DebugLocationEvictInput,
   DebugLocationEvictOutput,
-  MigrationV1StatusOutput,
   WebsearchProvidersInput,
   WebsearchProvidersOutput,
   WebsearchQueryInput,
@@ -645,6 +646,14 @@ const adaptGroupPlugin = (raw: RawClient["server.plugin"]) => ({
   update: EndpointPluginUpdate(raw),
 })
 
+const EndpointSessionArchive = (raw: RawClient["server.session"]) => (input: SessionArchiveInput) =>
+  preserveEffect<SessionArchiveOutput>()(
+    raw["session.archive"]({
+      params: { sessionID: input["sessionID"] },
+      payload: { archived: input["archived"] },
+    }).pipe(Effect.mapError(mapClientError)),
+  )
+
 const EndpointSessionDesignConversations =
   (raw: RawClient["server.session"]) => (input: SessionDesignConversationsInput) =>
     preserveEffect<SessionDesignConversationsOutput>()(
@@ -660,6 +669,7 @@ const EndpointSessionList = (raw: RawClient["server.session"]) => (input?: Sessi
         limit: input?.["limit"],
         order: input?.["order"],
         search: input?.["search"],
+        archived: input?.["archived"],
         parentID: input?.["parentID"],
         directory: input?.["directory"],
         project: input?.["project"],
@@ -1426,6 +1436,7 @@ const EndpointSessionView = (raw: RawClient["server.session"]) => (input: Sessio
   )
 
 const adaptGroupSession = (raw: RawClient["server.session"]) => ({
+  archive: EndpointSessionArchive(raw),
   design: {
     conversations: EndpointSessionDesignConversations(raw),
     feed: EndpointSessionDesignFeed(raw),
@@ -2354,11 +2365,6 @@ const adaptGroupDebug = (raw: RawClient["server.debug"]) => ({
   location: { list: EndpointDebugLocationList(raw), evict: EndpointDebugLocationEvict(raw) },
 })
 
-const EndpointMigrationV1Status = (raw: RawClient["server.migration"]) => () =>
-  preserveEffect<MigrationV1StatusOutput>()(raw["migration.v1.status"]({}).pipe(Effect.mapError(mapClientError)))
-
-const adaptGroupMigration = (raw: RawClient["server.migration"]) => ({ v1: { status: EndpointMigrationV1Status(raw) } })
-
 const EndpointWebsearchProviders = (raw: RawClient["server.websearch"]) => (input?: WebsearchProvidersInput) =>
   preserveEffect<WebsearchProvidersOutput>()(
     raw["websearch.providers"]({ query: { location: input?.["location"] } }).pipe(Effect.mapError(mapClientError)),
@@ -3091,7 +3097,6 @@ const adaptClient = (raw: RawClient) => ({
   worktree: adaptGroupWorktree(raw["server.worktree"]),
   vcs: adaptGroupVcs(raw["server.vcs"]),
   debug: adaptGroupDebug(raw["server.debug"]),
-  migration: adaptGroupMigration(raw["server.migration"]),
   websearch: adaptGroupWebsearch(raw["server.websearch"]),
   config: adaptGroupConfig(raw["server.config"]),
   hook: adaptGroupHook(raw["server.hook"]),

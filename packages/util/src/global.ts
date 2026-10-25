@@ -1,6 +1,5 @@
 import path from "path"
 import fs from "fs"
-import { existsSync, renameSync } from "fs"
 import os from "os"
 import { Context, Effect, Layer } from "effect"
 // XDG on runtimes with a home directory; one tmp-rooted directory on workerd.
@@ -15,27 +14,15 @@ declare const OPENCODE_ARTIFACT: string | undefined
 const redcode = typeof OPENCODE_ARTIFACT === "string" && OPENCODE_ARTIFACT === "redcode"
 const home = process.env.REDCODE_TEST_HOME ?? process.env.OPENCODE_TEST_HOME ?? os.homedir()
 const redcodeHome = path.join(home, ".red", "code")
-const legacyRedcodeHome = path.join(home, ".red", "redcode")
-const redcodeRoot = redcode ? adoptRedcodeHome() : redcodeHome
 const { data, cache, config, state, tmp } = redcode
   ? {
-      data: path.join(redcodeRoot, "data"),
-      cache: path.join(redcodeRoot, "cache"),
-      config: redcodeRoot,
-      state: path.join(redcodeRoot, "state"),
+      data: path.join(redcodeHome, "data"),
+      cache: path.join(redcodeHome, "cache"),
+      config: redcodeHome,
+      state: path.join(redcodeHome, "state"),
       tmp: path.join(os.tmpdir(), "redcode"),
     }
   : roots("opencode")
-
-function adoptRedcodeHome() {
-  if (existsSync(redcodeHome) || !existsSync(legacyRedcodeHome)) return redcodeHome
-  try {
-    renameSync(legacyRedcodeHome, redcodeHome)
-    return redcodeHome
-  } catch {
-    return legacyRedcodeHome
-  }
-}
 
 const paths = {
   get home() {

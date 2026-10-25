@@ -10,6 +10,7 @@ import { chmod } from "node:fs/promises"
 import { isAbsolute, join } from "path"
 import { DatabaseMigration } from "./migration.js"
 import { makeGlobalNode } from "@opencode/util/effect/app-node"
+import { sql } from "drizzle-orm"
 
 // One connection per process, and any number of processes on the same file: several TUIs,
 // `serve`, `run` workers and the design app all open the same database. WAL keeps that safe:
@@ -60,11 +61,19 @@ export class Service extends Context.Service<Service, Interface>()("@opencode/st
 // releasing a shared semaphore resumes the waiting object's fiber inside the
 // releasing object's I/O context, where its first storage call is rejected as
 // cross-object I/O.
-const databaseLayer = (lock: Effect.Effect<Semaphore.Semaphore>, remote = false) =>
+const databaseLayer = (
+  lock: Effect.Effect<Semaphore.Semaphore>,
+  remote = false,
+  options?: { importHistory?: boolean; filename?: string },
+) =>
   Layer.effect(
     Service,
     Effect.gen(function* () {
       const db = yield* remote ? makeRemoteDatabase : makeDatabase
+
+      if (!remote && !options?.importHistory) yield* requireCurrentStructure(db)
+      if (options?.filename && options.filename !== ":memory:")
+        yield* Effect.promise(() => restrictToOwner(options.filename!))
 
       if (!remote && supportsTuningPragmas) {
         yield* db.run(`PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS}`)
@@ -100,6 +109,15 @@ function lockFor(filename: string) {
 }
 
 export function layer(options: Options = { path: ":memory:" }) {
+  return localLayer(options, false)
+}
+
+/** Only explicit, staged history conversion may open an older schema for import. */
+export function importLayer(options: { path: string }) {
+  return localLayer(options, true)
+}
+
+function localLayer(options: Options, importHistory: boolean) {
   return Layer.unwrap(
     Effect.gen(function* () {
       if (options.url) {
@@ -110,17 +128,38 @@ export function layer(options: Options = { path: ":memory:" }) {
         )
       }
       const provide = (filename: string) =>
-        databaseLayer(filename === ":memory:" ? Semaphore.make(1) : Effect.succeed(lockFor(filename)), false).pipe(
-          Layer.provide(sqliteLayer({ filename, timeout: BUSY_TIMEOUT_MS })),
-        )
+        databaseLayer(filename === ":memory:" ? Semaphore.make(1) : Effect.succeed(lockFor(filename)), false, {
+          importHistory,
+          filename,
+        }).pipe(Layer.provide(sqliteLayer({ filename, timeout: BUSY_TIMEOUT_MS, disableWAL: true })))
       const filename = options.path ?? ":memory:"
       if (filename === ":memory:") return provide(filename)
       const file = isAbsolute(filename) ? filename : join((yield* Global.Service).data, filename)
-      yield* Effect.promise(() => restrictToOwner(file))
+      if (!existsSync(file)) yield* Effect.promise(() => restrictToOwner(file))
       return provide(file)
     }),
   )
 }
+
+const requireCurrentStructure = Effect.fnUntraced(function* (db: DatabaseShape) {
+  const tables = new Set(
+    (yield* db.all<{ name: string }>(sql`SELECT name FROM sqlite_master WHERE type = 'table'`)).map((row) => row.name),
+  )
+  if (!tables.has("session")) return
+  const legacy = yield* db.get<{ count: number }>(sql`SELECT COUNT(*) AS count FROM session`)
+  if (!legacy?.count) return
+  if (tables.has("session_v2") && tables.has("kv")) {
+    const completed = yield* db.get<{ phase: string }>(
+      sql`SELECT json_extract(value, '$.phase') AS phase FROM kv WHERE key = 'migration.v1-v2'`,
+    )
+    if (completed?.phase === "completed") return
+  }
+  return yield* Effect.die(
+    new Error(
+      "This database requires explicit history conversion. Use redcode migrate inspect --kind history and convert to a new output file.",
+    ),
+  )
+})
 
 // SQLite inherits the database's mode for new sidecars; existing sidecars need tightening too.
 // Windows uses the containing user directory's ACLs instead of POSIX modes.

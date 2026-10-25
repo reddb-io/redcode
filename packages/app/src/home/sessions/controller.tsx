@@ -6,7 +6,7 @@ import { sharedLanguage } from "@/runtime/react/language"
 import { ReactView } from "@/runtime/react/view"
 import { DeleteHomeSessionDialog } from "./delete-dialog.react"
 import { skipToken, useQuery, useQueryClient } from "@tanstack/solid-query"
-import { type Accessor, createEffect, createMemo, type JSX, startTransition, untrack } from "solid-js"
+import { type Accessor, createEffect, createMemo, createSignal, type JSX, startTransition, untrack } from "solid-js"
 import { notifySessionTabsRemoved } from "@/shell/titlebar/session-events"
 import { useCommand } from "@/shell/commands/command"
 import {
@@ -53,15 +53,16 @@ export type OpenSessionOptions = { background?: boolean }
 export function createHomeSessionIndex(
   conn: Accessor<ServerConnection.Any | undefined>,
   ctx: Accessor<ServerCtx | undefined>,
+  archived: Accessor<boolean> = () => false,
 ) {
   const load = useQuery(() => {
     const context = ctx()
     return {
-      queryKey: ["home-sessions", conn()] as const,
+      queryKey: archived() ? (["home-sessions", conn(), "archived"] as const) : (["home-sessions", conn()] as const),
       enabled: !!context && context.sdk.connection.status() === "connected",
       queryFn: context
         ? ({ signal }: { signal: AbortSignal }) =>
-            loadHomeSessionIndex((input, options) => context.sdk.api.session.list(input, options), signal)
+            loadHomeSessionIndex((input, options) => context.sdk.api.session.list(input, options), signal, archived())
         : skipToken,
       retry: false,
       staleTime: 30_000,
@@ -75,7 +76,7 @@ export function createHomeSessionIndex(
     if (!context || !conn()) return []
     return retainHomeSessions(
       context.data.session.apply(
-        mergeHomeSessionIndex(load.isPending ? [] : (load.data?.() ?? []), context.data.session.list()),
+        mergeHomeSessionIndex(load.isPending ? [] : (load.data?.() ?? []), context.data.session.list(), archived()),
       ),
       HOME_SESSION_LIMIT,
       Date.now(),
@@ -98,7 +99,8 @@ export function createHomeSessionsController(home: HomeController) {
     const project = home.project.selected()
     return project ? directories(project) : [selected]
   })
-  const index = createHomeSessionIndex(home.server.focused, home.server.focusedContext)
+  const [archived, setArchived] = createSignal(false)
+  const index = createHomeSessionIndex(home.server.focused, home.server.focusedContext, archived)
   const allRecords = createMemo(() =>
     buildHomeSessionRecords({
       sessions: index.sessions,
@@ -300,6 +302,8 @@ export function createHomeSessionsController(home: HomeController) {
       records,
       groups,
       loading: index.loading,
+      archived,
+      toggleArchived: () => setArchived((value) => !value),
       searchRecords: allRecords,
     },
     platform: {
@@ -319,7 +323,7 @@ export function createHomeSessionsController(home: HomeController) {
         if (!ctx) return
         const result = await ctx.sdk.api.session.get({ sessionID })
 
-        if (result.time.archived) return
+        if ((result.time.archived !== undefined) !== archived()) return
 
         return buildHomeSessionRecords({
           sessions: () => [result],
@@ -358,17 +362,24 @@ export function createHomeSessionsController(home: HomeController) {
         const ctx = home.server.focusedContext()
 
         if (!conn || !ctx) return
+        const restore = session.time.archived !== undefined
+        const failure = (cause: unknown) => {
+          showToast({
+            title: language.t("common.requestFailed"),
+            description: errorMessage(cause, language.t("common.requestFailed")),
+          })
+        }
+        const update = async (sessionID: string) => {
+          await ctx.data.session.archive(sessionID, !restore)
+          await queryClient.invalidateQueries({ queryKey: ["home-sessions", conn] })
+        }
+        if (restore) return update(session.id).catch(failure)
         await archiveHomeSession({
           server: ServerConnection.key(conn),
           session,
-          // TODO: Restore archiving when the V2 client exposes a session archive API.
-          archive: async (_sessionID) => Promise.reject(new Error("Session archiving is unavailable")),
+          archive: update,
           remove() {},
-          onError: (cause) =>
-            showToast({
-              title: language.t("common.requestFailed"),
-              description: errorMessage(cause, language.t("common.requestFailed")),
-            }),
+          onError: failure,
         })
       },
       rename,

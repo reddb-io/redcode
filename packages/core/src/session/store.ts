@@ -11,6 +11,7 @@ import { Workspace } from "@opencode/schema/workspace"
 import { AbsolutePath, PositiveInt, RelativePath } from "@opencode/schema/schema"
 import { Database } from "../database/database.js"
 import { makeGlobalNode } from "@opencode/util/effect/app-node"
+import { SessionArchive } from "./archive.js"
 import { SessionHistory } from "./history.js"
 import { MessageDecodeError } from "./error.js"
 import { SessionMessage } from "./message.js"
@@ -22,6 +23,7 @@ import { fromRow } from "./info.js"
 const ListInputBase = {
   workspaceID: Workspace.ID.pipe(Schema.optional),
   search: Schema.String.pipe(Schema.optional),
+  archived: Schema.Literals(["exclude", "include", "only"]).pipe(Schema.optional),
   limit: PositiveInt.pipe(Schema.optional),
   order: Schema.Literals(["asc", "desc"]).pipe(Schema.optional),
   parentID: Schema.NullOr(Session.ID).pipe(Schema.optional),
@@ -168,6 +170,7 @@ const layer = Layer.effect(
           .where(
             and(
               eq(SessionTable.id, sessionID),
+              SessionArchive.writableGate(sessionID),
               executionGate(sessionID, directory),
               row.owner === null ? isNull(SessionTable.execution_owner) : eq(SessionTable.execution_owner, row.owner),
             ),
@@ -218,6 +221,8 @@ const layer = Layer.effect(
         const order = direction === "previous" ? (requestedOrder === "asc" ? "desc" : "asc") : requestedOrder
         const sortColumn = SessionTable.time_updated
         const conditions: SQL[] = []
+        if (input.archived === "exclude") conditions.push(isNull(SessionTable.time_archived))
+        if (input.archived === "only") conditions.push(isNotNull(SessionTable.time_archived))
         if ("directory" in input) conditions.push(eq(SessionTable.directory, input.directory))
         if (input.workspaceID) conditions.push(eq(SessionTable.workspace_id, input.workspaceID))
         if ("project" in input) conditions.push(eq(SessionTable.project_id, input.project))

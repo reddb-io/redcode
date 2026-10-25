@@ -97,6 +97,7 @@ const SessionsQueryFields = {
     description: "Session order for the first page. Use desc for newest first or asc for oldest first.",
   }),
   search: Schema.optional(Schema.String),
+  archived: Schema.Literals(["exclude", "include", "only"]).pipe(Schema.optional),
   parentID: ParentIDFilter.pipe(Schema.optional),
 }
 
@@ -239,6 +240,16 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI ext
 ) =>
   HttpApiGroup.make("server.session")
     .add(
+      HttpApiEndpoint.post("session.archive", "/api/session/:sessionID/archive", {
+        params: { sessionID: Session.ID },
+        payload: Schema.Struct({ archived: Schema.Boolean }),
+        success: HttpApiSchema.NoContent,
+        error: [SessionNotFoundError, SessionBusyError],
+      }).annotateMerge(
+        OpenApi.annotations({ identifier: "session.archive", summary: "Archive or restore a settled session" }),
+      ),
+    )
+    .add(
       HttpApiEndpoint.get("session.design.conversations", "/api/experimental/design/conversations", {
         query: { directory: AbsolutePath },
         success: Schema.Array(Design.Conversation),
@@ -309,7 +320,7 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI ext
           permissions: Permission.Ruleset.pipe(Schema.optional),
         }),
         success: Schema.Struct({ data: PublicSessionInfo }),
-        error: SessionNotFoundError,
+        error: [SessionNotFoundError, SessionBusyError],
       }).annotateMerge(
         OpenApi.annotations({
           identifier: "session.create",
@@ -1052,7 +1063,7 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI ext
           resume: Schema.Boolean.pipe(Schema.optional),
         }),
         success: HttpApiSchema.NoContent,
-        error: [SessionNotFoundError, SkillNotFoundError],
+        error: [SessionNotFoundError, SessionBusyError, SkillNotFoundError],
       })
         .middleware(sessionLocationMiddleware)
         .annotateMerge(
@@ -1401,7 +1412,7 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI ext
       HttpApiEndpoint.post("session.background", "/api/session/:sessionID/background", {
         params: { sessionID: Session.ID },
         success: HttpApiSchema.NoContent,
-        error: SessionNotFoundError,
+        error: [SessionNotFoundError, SessionBusyError],
       })
         .middleware(sessionLocationMiddleware)
         .annotateMerge(

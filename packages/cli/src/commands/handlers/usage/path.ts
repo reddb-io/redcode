@@ -10,6 +10,6 @@ export default Runtime.handler(
   Commands.commands.usage.commands.path,
   Effect.fn("cli.usage.path")(function* (input) {
     const global = yield* Global.Service
-    process.stdout.write((input.v2 ? databasePath(global.data) : UsagePath.sidecar(global.home)) + EOL)
+    process.stdout.write((input.database ? databasePath(global.data) : UsagePath.sidecar(global.home)) + EOL)
   }),
 )

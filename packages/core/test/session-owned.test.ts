@@ -11,6 +11,8 @@ import { ID, Info, Output } from "@opencode/schema/shell"
 import { LayerNode } from "@opencode/util/effect/layer-node"
 import { FSUtil } from "@opencode/util/fs-util"
 import { Global } from "@opencode/util/global"
+import { Config } from "../src/config.js"
+import { HookRuntime } from "../src/hook.js"
 import { Bus } from "../src/bus.js"
 import { Database } from "../src/database/database.js"
 import { EventTable } from "../src/event/sql.js"
@@ -21,7 +23,7 @@ import { Plugin } from "../src/plugin.js"
 import { PluginHooks } from "../src/plugin/hooks.js"
 import { ProjectTable } from "../src/project/sql.js"
 import { AbsolutePath, RelativePath } from "../src/schema.js"
-import { InboxConflictError, NotFoundError, PromptConflictError } from "../src/session/error.js"
+import { BusyError, InboxConflictError, NotFoundError, PromptConflictError } from "../src/session/error.js"
 import { SessionEvent } from "../src/session/event.js"
 import { SessionExecution } from "../src/session/execution.js"
 import { SessionInbox } from "../src/session/inbox.js"
@@ -45,6 +47,7 @@ import { testEffect } from "./lib/effect"
 const it = testEffect(
   LayerNode.compile(
     LayerNode.group([
+      Global.node,
       Database.node,
       Bus.node,
       SessionProjector.node,
@@ -93,6 +96,18 @@ const setup = Effect.fnUntraced(function* (options?: {
       version: "test",
     }),
   )
+  const global = yield* Global.Service
+  const lifecycle = yield* HookRuntime.Service.pipe(
+    Effect.provide(
+      LayerNode.compile(HookRuntime.node, {
+        replacements: [
+          Config.node.replace(Config.testLayer([])),
+          Global.node.replace(Layer.succeed(Global.Service, global)),
+          Location.node.replace(Layer.succeed(Location.Service, location(source))),
+        ],
+      }),
+    ),
+  )
   const hooks = yield* PluginHooks.Service.pipe(Effect.provide(LayerNode.compile(PluginHooks.node)))
   const locations: Location.Ref[] = []
   const activationWaits: Location.Ref[] = []
@@ -126,6 +141,8 @@ const setup = Effect.fnUntraced(function* (options?: {
   })
   const services = Layer.mergeAll(
     Layer.succeed(PluginHooks.Service, hooks),
+    Layer.succeed(HookRuntime.Service, lifecycle),
+    Config.testLayer([]),
     Layer.mock(Image.Service, {}),
     options?.shell ?? Layer.mock(Shell.Service, {}),
   )
@@ -265,7 +282,7 @@ describe("Session-owned handles", () => {
         yield* Effect.promise(() => Bun.file(import.meta.path).text()),
       )
       expect(calls).toEqual(["Original"])
-      expect(fixture.locations).toEqual([source])
+      expect(fixture.locations).toEqual([source, source])
       expect(fixture.activationWaits).toEqual([source])
       expect(fixture.wakes).toEqual([
         { sessionID, pending: [synthetic.id, first.id], enqueued: 2 },
@@ -328,7 +345,7 @@ describe("Session-owned handles", () => {
         { id: prompt.id, text: "Keep this", metadata: { source: "first" } },
         { id: synthetic.id, text: "Original completion", description: "Job" },
       ])
-      expect(fixture.locations).toEqual([source])
+      expect(fixture.locations).toEqual([source, source])
     }),
   )
 
@@ -349,9 +366,9 @@ describe("Session-owned handles", () => {
       })
 
       expect((yield* get).location).toEqual(destination)
-      expect(fixture.locations).toEqual([source])
+      expect(fixture.locations).toEqual([source, source])
       yield* prompt
-      expect(fixture.locations).toEqual([source, destination])
+      expect(fixture.locations).toEqual([source, source, destination, destination])
       expect(fixture.activationWaits).toEqual([source, destination])
       expect((yield* fixture.sessions.forSession(otherID).get()).location).toEqual(source)
     }),
@@ -608,7 +625,7 @@ describe("Session-owned handles", () => {
       const missing = yield* fixture.sessions.forSession(missingID).inbox().pipe(Effect.flip)
       expect(missing).toBeInstanceOf(NotFoundError)
       expect(missing).toMatchObject({ _tag: "Session.NotFoundError", sessionID: missingID })
-      expect(fixture.locations).toEqual([source])
+      expect(fixture.locations).toEqual([source, source])
     }),
   )
 
@@ -937,9 +954,9 @@ describe("SessionInbox command contracts", () => {
         delivery: "steer",
         payload: { text: "First", description: "Notice", metadata: { source: "test" } },
       })
-      expect(
-        yield* admission.admitSynthetic({ id, sessionID, text: "Ignored retry", delivery: "queue" }),
-      ).toEqual(first)
+      expect(yield* admission.admitSynthetic({ id, sessionID, text: "Ignored retry", delivery: "queue" })).toEqual(
+        first,
+      )
       expect(
         yield* admission.admitSynthetic({ id, sessionID: otherID, text: "Other Session" }).pipe(Effect.flip),
       ).toMatchObject({ _tag: "SessionInbox.LifecycleConflict", id })
@@ -964,10 +981,7 @@ describe("SessionInbox command contracts", () => {
       expect(yield* handle.synthetic({ id, text: "Ignored retry" })).toEqual(quiet)
       expect(fixture.wakes).toEqual([{ sessionID, pending: [id], enqueued: 1 }])
       expect(
-        yield* fixture.sessions
-          .forSession(otherID)
-          .synthetic({ id, text: "Other Session" })
-          .pipe(Effect.flip),
+        yield* fixture.sessions.forSession(otherID).synthetic({ id, text: "Other Session" }).pipe(Effect.flip),
       ).toMatchObject({ _tag: "Session.SyntheticConflictError", sessionID: otherID, inputID: id })
       expect(fixture.wakes).toHaveLength(1)
     }),
@@ -985,7 +999,7 @@ describe("SessionInbox command contracts", () => {
         })
         .pipe(
           Effect.satisfiesSuccessType<SessionInbox.User>(),
-          Effect.satisfiesErrorType<SessionInbox.LifecycleConflict>(),
+          Effect.satisfiesErrorType<SessionInbox.LifecycleConflict | BusyError>(),
         )
       const synthetic = yield* admission
         .admit({

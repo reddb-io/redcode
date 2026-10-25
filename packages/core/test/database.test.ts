@@ -37,3 +37,22 @@ describe.skipIf(process.platform === "win32")("Database file permissions", () =>
     expect(await openModes(filename)).toEqual([0o600, 0o600, 0o600])
   })
 })
+
+test("refuses historical session data before changing the database", async () => {
+  await using tmp = await tmpdir()
+  const filename = path.join(tmp.path, "older.db")
+  const sqlite = await import("bun:sqlite")
+  using source = new sqlite.Database(filename)
+  source.run("CREATE TABLE session (id TEXT PRIMARY KEY); INSERT INTO session VALUES ('ses_preserved')")
+  const original = await Bun.file(filename).arrayBuffer()
+  await expect(
+    Effect.runPromise(
+      Layer.build(Database.layer({ path: filename })).pipe(
+        Effect.scoped,
+        Effect.provideService(Global.Service, Global.make({ data: tmp.path })),
+      ),
+    ),
+  ).rejects.toThrow("redcode migrate")
+  expect(await Bun.file(filename).arrayBuffer()).toEqual(original)
+  expect(await Bun.file(filename + "-wal").exists()).toBe(false)
+})

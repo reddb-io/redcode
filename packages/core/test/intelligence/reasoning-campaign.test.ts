@@ -1,3 +1,4 @@
+import path from "node:path"
 import { expect, test } from "bun:test"
 import { Schema } from "effect"
 import { Pair, Pairs, plan, switches } from "../../script/reasoning-eval/campaign"
@@ -107,7 +108,7 @@ for (const corpus of ["original", "challenge"] as const) {
     const child = Bun.spawn(
       [
         process.execPath,
-        "script/reasoning-eval/run.ts",
+        path.resolve(import.meta.dir, "../../script/reasoning-eval/run.ts"),
         "--suite",
         "coding",
         "--corpus",

@@ -17,7 +17,7 @@ import {
 } from "../../plugin/provider/catalog-limits.js"
 import { Provider } from "../../provider.js"
 import { Variant } from "../../variant.js"
-import { ConfigModelReasoningV1 } from "../../v1/config/model-reasoning.js"
+import { ConfigModelReasoning } from "../model-reasoning.js"
 import { ConfigEntryObserver } from "./entry-observer.js"
 
 /** Generic OpenAI-compatible endpoints: nothing but their `/models`, the configuration and the catalog describes a model. */
@@ -202,14 +202,15 @@ export const Plugin = define({
             if (resolved) model.limit = resolved
             else if (config.limit !== undefined) model.limit = { ...model.limit, ...config.limit }
             if (config.capabilities?.reasoning === true) {
-              const defaults = ConfigModelReasoningV1.defaults({
+              const defaults = ConfigModelReasoning.defaults({
                 providerID,
                 modelID: model.modelID,
                 outputLimit: model.limit.output,
                 packageName: model.package ?? models.provider.get(providerID)?.provider.package,
                 baseURL: model.settings?.baseURL ?? models.provider.get(providerID)?.provider.settings?.baseURL,
                 useCompletionUrls:
-                  model.settings?.useCompletionUrls ?? models.provider.get(providerID)?.provider.settings?.useCompletionUrls,
+                  model.settings?.useCompletionUrls ??
+                  models.provider.get(providerID)?.provider.settings?.useCompletionUrls,
               })
               if (defaults) model.settings = Provider.mergeOverlay(defaults.settings, model.settings)
             }

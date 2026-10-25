@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import fs from "fs/promises"
 import path from "path"
-import { Effect, Fiber, Schema, Stream } from "effect"
+import { Cause, Exit, Effect, Fiber, Schema, Stream } from "effect"
 import { Agent } from "@opencode/core/agent"
 import { Bus } from "@opencode/core/bus"
 import { Config } from "@opencode/core/config"
@@ -87,6 +87,16 @@ describe("ConfigAgentPlugin.Plugin", () => {
       model: "example/chat#high",
     },
   ]) {
+    if (/(^|\n)variant:/.test(item.frontmatter)) {
+      it.live(`requires explicit conversion for Markdown ${item.name}`, () =>
+        Effect.gen(function* () {
+          const result = yield* loadMarkdownAgent(item.frontmatter).pipe(Effect.exit)
+          expect(Exit.isFailure(result)).toBe(true)
+          if (Exit.isFailure(result)) expect(String(Cause.squash(result.cause))).toContain("redcode migrate")
+        }),
+      )
+      continue
+    }
     for (const native of [false, true]) {
       it.live(`loads Markdown ${item.name}${native ? " with native request and permissions" : ""}`, () =>
         Effect.gen(function* () {
@@ -120,10 +130,10 @@ permissions:
   }
 
   for (const variant of [undefined, "high"]) {
-    it.live(`loads Markdown legacy temperature ${variant ? "with" : "without"} a separate variant`, () =>
+    it.live(`loads Markdown request temperature ${variant ? "with" : "without"} a model variant`, () =>
       Effect.gen(function* () {
         const agent = yield* loadMarkdownAgent(
-          `model: example/chat\ntemperature: 0.5${variant ? `\nvariant: ${variant}` : ""}`,
+          `model: example/chat${variant ? `#${variant}` : ""}\nrequest:\n  body:\n    temperature: 0.5`,
         )
         expect(agent.model).toEqual(Model.Ref.parse(variant ? "example/chat#high" : "example/chat"))
         expect(agent.request).toEqual({ settings: {}, headers: {}, body: { temperature: 0.5 } })
@@ -425,7 +435,7 @@ permissions:
     }),
   )
 
-  it.live("loads legacy file-based agents from config directories", () =>
+  it.live("loads current file-based agents from config directories", () =>
     Effect.acquireDisposable(Effect.promise(() => tmpdir())).pipe(
       Effect.flatMap((tmp) =>
         Effect.gen(function* () {
@@ -437,9 +447,13 @@ permissions:
               `---
 model: openrouter/openai/gpt-5
 description: Markdown description
-temperature: 0.5
-tools:
-  write: false
+request:
+  body:
+    temperature: 0.5
+permissions:
+  - action: edit
+    resource: "*"
+    effect: deny
 ---
 Review carefully.`,
             )
@@ -447,7 +461,6 @@ Review carefully.`,
             await fs.writeFile(
               path.join(tmp.path, "agents", "native.md"),
               `---
-variant: high
 request:
   headers:
     x-agent: native
@@ -458,7 +471,7 @@ permissions:
     resource: "*"
     effect: deny
 ---
-Use native v2 fields.`,
+Use current fields.`,
             )
             await fs.writeFile(path.join(tmp.path, "agents", "disabled.md"), "---\ndisabled: true\n---\nDisabled")
             await fs.writeFile(path.join(tmp.path, "agents", "empty.md"), "")
@@ -487,7 +500,7 @@ Use native v2 fields.`,
           })
           expect(yield* agents.get(Agent.ID.make("team/helper"))).toMatchObject({ system: "Help the team." })
           expect(yield* agents.get(Agent.ID.make("native"))).toMatchObject({
-            system: "Use native v2 fields.",
+            system: "Use current fields.",
             request: { headers: { "x-agent": "native" }, body: { effort: "high" } },
             permissions: [...defaultPermissions(global), { action: "edit", resource: "*", effect: "deny" }],
           })

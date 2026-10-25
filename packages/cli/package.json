@@ -60,7 +60,8 @@
     "tree-sitter-powershell": "0.25.10",
     "uqr": "0.1.3",
     "web-tree-sitter": "0.25.10",
-    "ws": "8.21.0"
+    "ws": "8.21.0",
+    "@opencode/theme": "workspace:*"
   },
   "devDependencies": {
     "@opencode/script": "workspace:*",

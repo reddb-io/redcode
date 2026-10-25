@@ -122,7 +122,7 @@ export const start = Effect.fn("ServerProcess.start")(function* <E, R>(
     )
     if (lifecycle) {
       yield* installRestartContinuity(
-        resume(Context.get(context, SessionRestart.Service), !options.database?.url).pipe(
+        resume(Context.get(context, SessionRestart.Service)).pipe(
           Effect.provide(Layer.succeedContext(context)),
           Effect.catchCause((cause) => Effect.logError("Session restart continuity failed", { cause })),
         ),

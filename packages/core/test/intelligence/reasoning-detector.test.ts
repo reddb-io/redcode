@@ -63,7 +63,7 @@ for (const corpus of ["original", "challenge"] as const) {
     const child = Bun.spawn(
       [
         process.execPath,
-        "script/reasoning-eval/detector-run.ts",
+        path.resolve(import.meta.dir, "../../script/reasoning-eval/detector-run.ts"),
         "--corpus",
         corpus,
         "--split",
@@ -107,7 +107,7 @@ for (const billed of [true, false]) {
       const child = Bun.spawn(
         [
           process.execPath,
-          "script/reasoning-eval/detector-run.ts",
+          path.resolve(import.meta.dir, "../../script/reasoning-eval/detector-run.ts"),
           "--router",
           `${server.url}v1`,
           "--endpoint",

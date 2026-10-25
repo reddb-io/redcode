@@ -1,36 +1,33 @@
-# OpenCode
+# Redcode
 
-Use this guide as the starting point for work involving OpenCode itself. It
-covers the core concepts needed to configure and customize OpenCode, extend it
-with plugins, and build integrations with the OpenCode SDK, clients, and API.
+Use this guide as the starting point for work involving Redcode itself. The
+current repository schemas, CLI help, README and `docs/consolidation.md` own
+Redcode's behavior. Upstream OpenCode documentation below provides background;
+verify it against the fork before recommending configuration or commands.
 
-Full documentation is available at <https://opencode.ai/v2/docs/>. This overview is
+Upstream documentation is available at <https://opencode.ai/v2/docs/>. This overview is
 only an index of core concepts. Before answering a question about a topic below,
-fetch the URL named in that section and use the full page as the source of
-truth. Follow links from that page when the question needs more detail. Fetch
+fetch the URL named in that section and compare it with the current repository.
+Follow links from that page when the question needs more detail. Fetch
 <https://opencode.ai/v2/docs/> first when you need to discover the relevant
 documentation page.
 
 A machine-readable documentation index is available at
 <https://opencode.ai/v2/llms.txt>.
 
-## Version policy
+## Runtime policy
 
-Always answer for OpenCode V2 unless the user explicitly asks about V1,
-legacy OpenCode, or migrating from V1.
+Redcode has one current runtime. Do not describe it as a separate generation or
+offer an older execution path. Version numbers in upstream documentation URLs,
+protocols and persisted identifiers are technical contracts, not runtime choices.
 
-Use only <https://opencode.ai/v2/docs/> documentation as the source of truth for V2.
-Do not use <https://opencode.ai/docs/>, which documents V1, and do not use
-general web search to resolve a V2 documentation question when the V2 docs or
-linked pages cover it. The schema served from
-<https://opencode.ai/config.json> may describe V1 even though V2 configuration
-files include that URL for editor integration. Never use it to infer V2 field
-names or shapes. If V2 documentation is missing or contradictory, state the
-uncertainty or ask for clarification instead of falling back to V1.
-
-V1 documentation and syntax may be consulted only when the user explicitly
-asks about V1 or when needed as migration input. Outputs and recommendations
-must still use V2 unless the user specifically requests a V1 result.
+Older configuration, agent documents, terminal preferences, themes and session
+history require explicit conversion to a new output. Never edit or replace the
+source during conversion. Do not activate, discover or configure a provider from
+ambient credentials or environment variables; require an explicit connection or
+reference chosen by the user. The schema served from
+<https://opencode.ai/config.json> may describe a historical format. Resolve field
+shapes from the current repository schemas instead.
 
 ## [CLI](https://opencode.ai/v2/docs/cli)
 
@@ -99,10 +96,10 @@ This configuration is distinct from `cli.json`. Use the
 [CLI settings reference](https://opencode.ai/v2/docs/cli/config) for terminal
 preferences, especially themes and keybindings.
 
-Do not guess field names or shapes. Fetch the V2 configuration guide and its
-linked topic guide as the source of truth, and preserve unrelated settings when
+Do not guess field names or shapes. Check the current configuration schema and
+linked topic guide, and preserve unrelated settings when
 editing an existing file. Keep the published `$schema` URL in configuration
-examples, but do not fetch it to determine the V2 configuration shape.
+examples, but do not fetch it to determine the current configuration shape.
 
 See the [full configuration guide](https://opencode.ai/v2/docs/config) for
 every field, examples, config locations, and links to dedicated feature guides.
@@ -134,22 +131,18 @@ only when OAuth is unavailable or the user explicitly requires them, and use an
 environment substitution such as `{env:MCP_API_KEY}` instead of writing a
 secret into configuration.
 
-## [V1 to V2 migration](https://opencode.ai/v2/docs/migrate-v1)
+## Explicit conversion
 
-For any request to migrate OpenCode configuration, agents, commands, skills,
-plugins, integrations, or other behavior from V1 to V2, read the full
-[migration guide](https://opencode.ai/v2/docs/migrate-v1) before acting. In
-the repository, its source is `services/www/src/docs/content/migrate-v1.mdx`.
+Inspect with `redcode migrate inspect <source> --kind <kind> --json`. Convert
+with `redcode migrate convert <source> --kind <kind> --output <new-file>`.
+Kinds are `config`, `history`, `theme` and `display`. Inspect diagnostics and
+resolve unsupported values before converting. Existing destinations are refused.
+Markdown agents produce a current JSON configuration document; history conversion
+does not execute prompts or select the output as the active database.
 
-V1 config files and `.opencode/` definitions are intended to remain compatible.
-The only intentional breaking changes are the server API and plugin API. Native
-V2 config uses more ergonomic shapes, but conversion is optional. When the user
-requests conversion, inspect the complete configuration, preserve behavior and
-unrelated settings, and apply only the relevant migrations from the guide. For
-plugin migrations, fetch and follow both the migration guide and the full
-[plugins guide](https://opencode.ai/v2/docs/build/plugins). If non-API V1
-functionality fails in V2, use the `report` skill to file it as a compatibility
-bug.
+Use `docs/consolidation.md` for adoption instructions. Older server and plugin
+APIs require deliberate integration updates; upstream migration documentation
+is background and does not imply automatic compatibility in Redcode.
 
 ## [Plugins](https://opencode.ai/v2/docs/build/plugins)
 

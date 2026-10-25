@@ -1,32 +1,10 @@
 import { afterEach, expect, mock, test } from "bun:test"
-import { createRequire } from "node:module"
 import { createComponent, createRoot } from "solid-js"
 import { createStore } from "solid-js/store"
 import { QueryClient, QueryClientProvider } from "@tanstack/solid-query"
 import type { Agent } from "@/runtime/server/types"
 import type { ModelKey } from "@/providers/models/selection"
 import { ServerScope } from "@/runtime/server/scope"
-
-// Bun does not compile Solid JSX. Compile the real context provider with the
-// same presets as Vite instead of replacing LocalProvider's implementation.
-const require = createRequire(import.meta.url)
-
-const solid = createRequire(require.resolve("vite-plugin-solid"))
-
-const { transformSync } = solid("@babel/core")
-
-Bun.plugin({
-  name: "selection-solid-context",
-  setup(build) {
-    build.onLoad({ filter: /[\\/]ui[\\/]src[\\/]context[\\/]helper\.tsx$/ }, async (args) => ({
-      contents: transformSync(await Bun.file(args.path).text(), {
-        filename: args.path,
-        presets: [solid.resolve("babel-preset-solid"), solid.resolve("@babel/preset-typescript")],
-      }).code,
-      loader: "js",
-    }))
-  },
-})
 
 type Commit = { agent?: string; model?: { providerID: string; id: string; variant?: string } }
 

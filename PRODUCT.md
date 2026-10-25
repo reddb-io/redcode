@@ -12,8 +12,8 @@ software while retaining sessions, project context, goals and automation.
 ## Reference and identity
 
 The reference experience is Redcode v0.57.0, released September 25, 2026.
-Preserve its colors, layout, commands and features while adapting its engine to
-OpenCode V2. The shipped product and its independent version remain Redcode.
+Preserve its colors, layout, commands and features on the sole current runtime.
+The shipped product and its independent version remain Redcode.
 
 ## Design principles
 

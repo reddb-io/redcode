@@ -4,10 +4,9 @@ import { Global } from "@opencode/util/global"
 import { Flock } from "@opencode/util/flock"
 import { Context, Effect, FileSystem, Layer, Option, Schema } from "effect"
 import { produce, type Draft } from "immer"
-import { applyEdits, modify, parse, type ParseError } from "jsonc-parser"
+import { applyEdits, modify, parse, parseTree, type Node, type ParseError } from "jsonc-parser"
 import path from "path"
-import { ConfigMigration } from "./migrate"
-import { Info, normalizeLegacyTabs, SchemaURL } from "./schema"
+import { Info, SchemaURL } from "./schema"
 
 export * from "./schema"
 
@@ -19,7 +18,7 @@ export interface Interface {
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/cli/config/Config") {}
 
-const decode = Schema.decodeUnknownOption(Info)
+const decode = Schema.decodeUnknownOption(Info, { onExcessProperty: "error" })
 const decodeRecord = Schema.decodeUnknownOption(Schema.Record(Schema.String, Schema.Unknown))
 const empty: Info = {}
 
@@ -46,9 +45,6 @@ export const layer = Layer.effect(
       yield* fs.rename(temp, file)
     })
 
-    const migrate = ConfigMigration.run({ file, config: global.config, state: global.state }).pipe(
-      Effect.provideService(FileSystem.FileSystem, fs),
-    )
     const withLock = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
       Effect.scoped(
         Effect.uninterruptibleMask((restore) =>
@@ -61,45 +57,29 @@ export const layer = Layer.effect(
           }),
         ),
       )
-    const load = Effect.fnUntraced(function* (migration?: Info) {
-      return merge(migration ?? Option.getOrUndefined(decode(yield* readJson())), content)
+    const load = Effect.fnUntraced(function* () {
+      const raw = yield* readJson()
+      const info = raw === undefined ? undefined : Option.getOrUndefined(decode(raw))
+      if (raw !== undefined && info === undefined)
+        return yield* Effect.die(
+          new Error("CLI configuration does not match the current schema. Use redcode migrate inspect --kind display."),
+        )
+      return merge(info, content)
     })
 
-    const get = Effect.fn("cli.config.get")(() =>
-      withLock(
-        Effect.gen(function* () {
-          const migration = yield* migrate.pipe(
-            Effect.catchCause((cause) =>
-              Effect.logWarning("failed to migrate cli config", { cause }).pipe(Effect.as(undefined)),
-            ),
-          )
-          if (migration?.cause)
-            yield* Effect.logWarning("failed to persist migrated cli config", { cause: migration.cause })
-          return yield* load(migration?.info)
-        }),
-      ),
-    )
+    const get = Effect.fn("cli.config.get")(() => withLock(load()))
 
     const update = Effect.fn("cli.config.update")((update: (draft: Draft<Info>) => void) =>
       withLock(
         Effect.gen(function* () {
-          const migration = yield* migrate
-          if (migration?.cause) return yield* Effect.failCause(migration.cause)
-          const current = yield* load(migration?.info)
+          const current = yield* load()
           const next = produce(current, update)
           const edits = changes(current, next)
           if (!edits.length) return current
           const text = yield* fs
             .readFileString(file)
             .pipe(Effect.orElseSucceed(() => JSON.stringify({ $schema: SchemaURL }, null, 2)))
-          const updated = edits.reduce(
-            (text, edit) =>
-              applyEdits(
-                text,
-                modify(text, edit.path, edit.value, { formattingOptions: { tabSize: 2, insertSpaces: true } }),
-              ),
-            text,
-          )
+          const updated = edits.reduce((text, edit) => applyChange(text, edit), text)
           const errors: ParseError[] = []
           const config = Option.getOrUndefined(decode(parse(updated, errors, { allowTrailingComma: true })))
           if (errors.length || config === undefined) return yield* Effect.fail(new Error("Invalid CLI config update"))
@@ -115,14 +95,30 @@ export const layer = Layer.effect(
 
 type Edit = { readonly path: (string | number)[]; readonly value: any }
 
+function applyChange(text: string, edit: Edit) {
+  const root = parseTree(text, [], { allowTrailingComma: true })
+  const parent = edit.path
+    .slice(0, -1)
+    .reduce<
+      Node | undefined
+    >((node, key) => (node?.type === "object" ? node.children?.findLast((property) => property.children?.[0]?.value === key)?.children?.[1] : node?.children?.[Number(key)]), root)
+  const property =
+    parent?.type === "object"
+      ? parent.children?.findLast((property) => property.children?.[0]?.value === edit.path.at(-1))
+      : undefined
+  const value = property?.children?.[1]
+  // JSONC resolves duplicate keys to the last occurrence; modify() edits the first one.
+  if (value && edit.value !== undefined)
+    return text.slice(0, value.offset) + JSON.stringify(edit.value) + text.slice(value.offset + value.length)
+  return applyEdits(
+    text,
+    modify(text, edit.path, edit.value, { formattingOptions: { tabSize: 2, insertSpaces: true } }),
+  )
+}
+
 function merge(...values: readonly (Info | undefined)[]) {
   return Option.getOrElse(
-    decode(
-      values.reduce<Record<string, unknown>>(
-        (result, value) => mergeRecords(result, normalizeLegacyTabs(value) ?? {}),
-        {},
-      ),
-    ),
+    decode(values.reduce<Record<string, unknown>>((result, value) => mergeRecords(result, value ?? {}), {})),
     () => empty,
   )
 }

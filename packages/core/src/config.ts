@@ -155,7 +155,12 @@ export const layer = (options?: Options) =>
             action: diagnostic.message,
           }),
         )
-        if (result.type === "rejected") return
+        if (result.type === "rejected")
+          return yield* Effect.die(
+            new Error(
+              `Invalid configuration at ${source}. Use redcode migrate inspect --kind config before converting older files.`,
+            ),
+          )
         const info = Option.getOrUndefined(decodeInfo(result.encoded))
         if (info) return info
         yield* Effect.logWarning("configuration normalization diagnostic", {

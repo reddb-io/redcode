@@ -1,5 +1,4 @@
 import { Database } from "@opencode/core/database/database"
-import { V1Migration } from "@opencode/core/database/v1-migration"
 import { App } from "@opencode/core/app"
 import { LayerNode } from "@opencode/util/effect/layer-node"
 import { Node } from "@opencode/util/effect/app-node"
@@ -80,8 +79,8 @@ import { workerFencingLayer } from "./middleware/worker-fencing"
 import { WorkerLease } from "@opencode/core/worker-lease"
 import { ServerInfo } from "./server-info"
 import { DesignBrowser } from "./design-browser"
-import { LegacyRpcApi } from "@opencode/protocol/groups/legacy-rpc"
-import { LegacyRpcHandler } from "./handlers/legacy-rpc"
+import { RpcTransportApi } from "@opencode/protocol/groups/rpc-transport"
+import { RpcTransportHandler } from "./handlers/rpc-transport"
 import type { ServerOptions } from "./options"
 import path from "node:path"
 
@@ -145,7 +144,6 @@ export function createRoutes(
   serviceURLs: () => ReadonlyArray<string> = () => [],
   overrides: LayerNode.Replacements = [],
   features: {
-    readonly v1Migration?: boolean
     readonly ptySockets?: PtySockets.Interface
     readonly remoteAccess?: RemoteAccessHost.Interface
   } = {},
@@ -157,7 +155,6 @@ export function createRoutes(
     options,
     serviceURLs,
     overrides,
-    features.v1Migration !== false && !options.database?.url,
     undefined,
     features.ptySockets,
     features.remoteAccess,
@@ -173,14 +170,7 @@ export function createEmbeddedRoutes(
   overrides: LayerNode.Replacements = [],
   instances?: InstanceNode,
 ) {
-  return makeRoutes(
-    ServerAuth.Config.configLayer({ password: Option.none() }),
-    options,
-    () => [],
-    overrides,
-    !options.database?.url,
-    instances,
-  )
+  return makeRoutes(ServerAuth.Config.configLayer({ password: Option.none() }), options, () => [], overrides, instances)
 }
 
 function makeRoutes<AuthError, AuthServices>(
@@ -189,7 +179,6 @@ function makeRoutes<AuthError, AuthServices>(
   serviceURLs: () => ReadonlyArray<string>,
   // Runtime-profile replacements (e.g. workerd) applied after the standard set, so later entries win.
   overrides: LayerNode.Replacements,
-  runV1Migration = true,
   instances?: InstanceNode,
   ptySockets?: PtySockets.Interface,
   remoteAccess?: RemoteAccessHost.Interface,
@@ -305,7 +294,7 @@ function makeRoutes<AuthError, AuthServices>(
             ),
           ),
         ),
-        HttpApiBuilder.layer(LegacyRpcApi).pipe(Layer.provide(LegacyRpcHandler.pipe(Layer.provide(services)))),
+        HttpApiBuilder.layer(RpcTransportApi).pipe(Layer.provide(RpcTransportHandler.pipe(Layer.provide(services)))),
         defectLayer(options.app?.channel),
       ).pipe(
         Layer.provide(formLocationLayer),
@@ -333,7 +322,7 @@ function makeRoutes<AuthError, AuthServices>(
         Layer.provide(Layer.succeed(CorsConfig, options)),
         Layer.provideMerge(api),
       )
-      return runV1Migration ? Layer.merge(browser, V1Migration.layer.pipe(Layer.provide(services))) : browser
+      return browser
     }),
   )
 }

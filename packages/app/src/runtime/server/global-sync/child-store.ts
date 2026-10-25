@@ -225,7 +225,14 @@ export function createChildStoreManager(input: {
 
               return normalizeProviderList(provider, model)
             },
-            config: {},
+            get config() {
+              return Object.assign(
+                {},
+                ...(input.data.location.config.list({ directory }) ?? []).flatMap((entry) =>
+                  entry.type === "document" ? [entry.info] : [],
+                ),
+              )
+            },
             get path() {
               const location = input.data.location.info({ directory })
 
@@ -267,10 +274,10 @@ export function createChildStoreManager(input: {
               )
             },
             get lsp_ready() {
-              return instanceQueriesEnabled() && !lspQuery.isLoading
+              return instanceQueriesEnabled() && lspQuery.isSuccess
             },
             get lsp() {
-              return lspQuery.isLoading ? [] : (lspQuery.data ?? [])
+              return lspQuery.isSuccess ? lspQuery.data : []
             },
             get vcs() {
               const vcs = input.data.location.vcs.info({ directory })

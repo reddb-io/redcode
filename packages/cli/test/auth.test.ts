@@ -358,7 +358,7 @@ describe("auth command", () => {
     const result = await cli(["auth", "list", "--server", server.url.toString()])
     expect(result.exitCode).toBe(1)
     expect(result.stdout).toBe("")
-    expect(result.stderr).toContain("did not provide a compatible V2 health response")
+    expect(result.stderr).toContain("did not provide a compatible health response")
     expect(result.stderr).not.toContain("\n    at ")
   })
 })

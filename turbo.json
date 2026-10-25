@@ -4,21 +4,24 @@
   "globalEnv": ["CI", "OPENCODE_DISABLE_SHARE"],
   "globalPassThroughEnv": ["CI", "OPENCODE_DISABLE_SHARE"],
   "tasks": {
-    "typecheck": {},
+    "typecheck": {
+      "dependsOn": ["^typecheck"],
+      "outputs": []
+    },
     "@opencode/cli#typecheck": {
-      "dependsOn": ["@opencode/core#typecheck"]
+      "dependsOn": ["^typecheck", "@opencode/core#typecheck"]
     },
     "@reddb-io/redcode-design-app#typecheck": {
-      "dependsOn": ["@opencode/core#typecheck", "@opencode/server#typecheck"]
+      "dependsOn": ["^typecheck", "@opencode/core#typecheck", "@opencode/server#typecheck"]
     },
     "@opencode/server#typecheck": {
-      "dependsOn": ["@opencode/core#typecheck"]
+      "dependsOn": ["^typecheck", "@opencode/core#typecheck"]
     },
     "@opencode/simulation#typecheck": {
-      "dependsOn": ["@opencode/core#typecheck"]
+      "dependsOn": ["^typecheck", "@opencode/core#typecheck"]
     },
     "@opencode/tui#typecheck": {
-      "dependsOn": ["@opencode/core#typecheck"]
+      "dependsOn": ["^typecheck", "@opencode/core#typecheck"]
     },
     "build": {
       "dependsOn": [],
@@ -69,6 +72,12 @@
     "@opencode/session-ui#test": {
       "dependsOn": ["^build"],
       "outputs": []
+    },
+    "@opencode/core#typecheck": {
+      "outputs": ["node_modules/.ts-dist/**"]
+    },
+    "@opencode/app#typecheck": {
+      "outputs": ["node_modules/.ts-dist/**"]
     }
   }
 }

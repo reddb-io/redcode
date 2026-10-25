@@ -14,6 +14,7 @@ import { Credential } from "@opencode/core/credential"
 import { ConfigMigrateV1 } from "@opencode/core/v1/config/migrate"
 import { ConfigV1 } from "@opencode/core/v1/config/config"
 import { ConfigNormalize } from "@opencode/core/config/normalize"
+import { ConfigImport } from "@opencode/core/import/config"
 import { Watcher } from "@opencode/core/filesystem/watcher"
 import { Bus } from "@opencode/core/bus"
 import { Global } from "@opencode/util/global"
@@ -31,6 +32,11 @@ import { testEffect } from "../lib/effect"
 
 const it = testEffect(Layer.empty)
 const selection = Schema.decodeUnknownSync(ConfigModel.Selection)
+function converted(input: unknown) {
+  const result = ConfigImport.convert(input)
+  if (result.type !== "normalized") throw new Error("Expected compatible import")
+  return result
+}
 
 function inFixture(root: string, target: string) {
   const relative = path.relative(root, target)
@@ -631,8 +637,13 @@ describe("Config", () => {
             if (configStatus !== 200) return new Response("Unavailable", { status: configStatus })
             return Response.json({
               config: {
-                enabled_providers: ["remote"],
-                provider: { remote: { npm: "@ai-sdk/openai-compatible", models: { chat: {} } } },
+                experimental: {
+                  policies: [
+                    { action: "provider.use", resource: "*", effect: "deny" },
+                    { action: "provider.use", resource: "remote", effect: "allow" },
+                  ],
+                },
+                providers: { remote: { package: "aisdk:@ai-sdk/openai-compatible", models: { chat: {} } } },
               },
             })
           },
@@ -764,7 +775,7 @@ describe("Config", () => {
           yield* Effect.promise(async () => {
             await fs.mkdir(global, { recursive: true })
             await fs.mkdir(project, { recursive: true })
-            await fs.writeFile(path.join(global, "opencode.json"), "null")
+            await fs.writeFile(path.join(global, "opencode.json"), "{ invalid")
             await fs.writeFile(path.join(project, "opencode.json"), "")
             await fs.writeFile(malformed, '{ "credential": "file-secret"')
           })
@@ -816,14 +827,16 @@ describe("Config", () => {
             deps: [],
           })
 
-          yield* Config.Service.use((config) => config.entries()).pipe(
-            Effect.provide(
-              testLayer(project, global, project, undefined, undefined, credentialNode, wellknownNode, {
-                file: malformed,
-                content: "",
-              }),
-            ),
-          )
+          yield* Config.Service.use((config) => config.entries())
+            .pipe(
+              Effect.provide(
+                testLayer(project, global, project, undefined, undefined, credentialNode, wellknownNode, {
+                  file: malformed,
+                  content: "",
+                }),
+              ),
+            )
+            .pipe(Effect.exit)
 
           expect(output.map((item) => `${item.source}:${item.path}:${item.kind}`).toSorted()).toEqual(
             [
@@ -1579,20 +1592,22 @@ describe("Config", () => {
     ),
   )
 
-  it.live("migrates the deprecated reference key into references", () =>
+  it.live("loads explicitly converted references", () =>
     Effect.acquireDisposable(Effect.promise(() => tmpdir())).pipe(
       Effect.flatMap((tmp) =>
         Effect.gen(function* () {
           yield* Effect.promise(() =>
             fs.writeFile(
               path.join(tmp.path, "opencode.json"),
-              JSON.stringify({
-                reference: {
-                  local: { path: "../library" },
-                  sdk: { repository: "github.com/example/sdk", branch: "main" },
-                  shorthand: "github.com/example/docs",
-                },
-              }),
+              JSON.stringify(
+                converted({
+                  reference: {
+                    local: { path: "../library" },
+                    sdk: { repository: "github.com/example/sdk", branch: "main" },
+                    shorthand: "github.com/example/docs",
+                  },
+                }).encoded,
+              ),
             ),
           )
 
@@ -1612,83 +1627,85 @@ describe("Config", () => {
     ),
   )
 
-  it.live("migrates v1 configuration when a v1-only key is present", () =>
+  it.live("loads explicitly converted configuration using only the current runtime", () =>
     Effect.acquireDisposable(Effect.promise(() => tmpdir())).pipe(
       Effect.flatMap((tmp) =>
         Effect.gen(function* () {
           yield* Effect.promise(() =>
             fs.writeFile(
               path.join(tmp.path, "opencode.json"),
-              JSON.stringify({
-                shell: "/bin/zsh",
-                default_agent: "reviewer",
-                autoupdate: false,
-                snapshot: false,
-                autoshare: true,
-                permission: {
-                  bash: "ask",
-                  edit: { "*.md": "allow", "*": "deny" },
-                  question: "deny",
-                  webfetch: { "*": "ask", "https://en.wikipedia.org/*": "allow" },
-                },
-                agent: {
-                  reviewer: {
-                    prompt: "Review changes.",
-                    disable: true,
-                    temperature: 0.2,
-                    permission: { read: "allow" },
+              JSON.stringify(
+                converted({
+                  shell: "/bin/zsh",
+                  default_agent: "reviewer",
+                  autoupdate: false,
+                  snapshot: false,
+                  autoshare: true,
+                  permission: {
+                    bash: "ask",
+                    edit: { "*.md": "allow", "*": "deny" },
+                    question: "deny",
+                    webfetch: { "*": "ask", "https://en.wikipedia.org/*": "allow" },
                   },
-                },
-                skills: { paths: ["./skills"], urls: ["https://example.com/.well-known/skills/"] },
-                references: {
-                  docs: { path: "../docs", description: "Use for product documentation", hidden: true },
-                },
-                attachment: { image: { auto_resize: false, max_width: 1200 } },
-                provider: {
-                  custom: {
-                    options: { apiKey: "secret" },
-                    models: {
-                      model: {
-                        options: { reasoningEffort: "high" },
-                        variants: { fast: { temperature: 0.2 } },
-                      },
+                  agent: {
+                    reviewer: {
+                      prompt: "Review changes.",
+                      disable: true,
+                      temperature: 0.2,
+                      permission: { read: "allow" },
                     },
                   },
-                  openai: {
-                    npm: "@ai-sdk/openai",
-                    options: { apiKey: "secret", organization: "org" },
-                    models: {
-                      model: {
-                        options: { temperature: 0.3, reasoningEffort: "high", serviceTier: "priority" },
-                        variants: { high: { reasoningEffort: "high", reasoningSummary: "auto" } },
+                  skills: { paths: ["./skills"], urls: ["https://example.com/.well-known/skills/"] },
+                  references: {
+                    docs: { path: "../docs", description: "Use for product documentation", hidden: true },
+                  },
+                  attachment: { image: { auto_resize: false, max_width: 1200 } },
+                  provider: {
+                    custom: {
+                      options: { apiKey: "secret" },
+                      models: {
+                        model: {
+                          options: { reasoningEffort: "high" },
+                          variants: { fast: { temperature: 0.2 } },
+                        },
                       },
                     },
-                  },
-                  anthropic: {
-                    npm: "@ai-sdk/anthropic",
-                    models: {
-                      model: {
-                        options: {
-                          effort: "high",
-                          taskBudget: 4096,
-                          metadata: { userId: "user-1" },
+                    openai: {
+                      npm: "@ai-sdk/openai",
+                      options: { apiKey: "secret", organization: "org" },
+                      models: {
+                        model: {
+                          options: { temperature: 0.3, reasoningEffort: "high", serviceTier: "priority" },
+                          variants: { high: { reasoningEffort: "high", reasoningSummary: "auto" } },
+                        },
+                      },
+                    },
+                    anthropic: {
+                      npm: "@ai-sdk/anthropic",
+                      models: {
+                        model: {
+                          options: {
+                            effort: "high",
+                            taskBudget: 4096,
+                            metadata: { userId: "user-1" },
+                          },
                         },
                       },
                     },
                   },
-                },
-                compaction: { auto: true, tail_turns: 3, preserve_recent_tokens: 2000, reserved: 10000 },
-                experimental: { mcp_timeout: 5000 },
-                mcp: {
-                  local: { type: "local", command: ["node", "server.js"], enabled: false, timeout: 10000 },
-                  remote: {
-                    type: "remote",
-                    url: "https://mcp.example.com",
-                    oauth: { clientId: "client", callbackPort: 19876 },
-                    timeout: 20000,
+                  compaction: { auto: true, tail_turns: 3, preserve_recent_tokens: 2000, reserved: 10000 },
+                  experimental: { mcp_timeout: 5000 },
+                  mcp: {
+                    local: { type: "local", command: ["node", "server.js"], enabled: false, timeout: 10000 },
+                    remote: {
+                      type: "remote",
+                      url: "https://mcp.example.com",
+                      oauth: { clientId: "client", callbackPort: 19876 },
+                      timeout: 20000,
+                    },
                   },
-                },
-              }),
+                }).encoded,
+              ),
             ),
           )
 
@@ -1780,6 +1797,19 @@ describe("Config", () => {
       ),
     ),
   )
+
+  test("refuses unconverted local configuration instead of dropping restrictions", async () => {
+    await using tmp = await tmpdir()
+    const source = path.join(tmp.path, "opencode.json")
+    const text = JSON.stringify({ permission: { bash: "deny" } })
+    await Bun.write(source, text)
+    await expect(
+      Effect.runPromise(
+        Config.Service.use((config) => config.entries()).pipe(Effect.provide(testLayer(tmp.path)), Effect.scoped),
+      ),
+    ).rejects.toThrow("redcode migrate")
+    expect(await Bun.file(source).text()).toBe(text)
+  })
 
   it.live("ignores an invalid file while loading valid config values", () =>
     Effect.acquireDisposable(Effect.promise(() => tmpdir())).pipe(

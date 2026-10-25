@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { LegacyRpcApi } from "@opencode/protocol/groups/legacy-rpc"
+import { RpcTransportApi } from "@opencode/protocol/groups/rpc-transport"
 import { HttpApi } from "effect/unstable/httpapi"
 import path from "node:path"
 import { Api } from "../src/api"
@@ -41,7 +41,7 @@ describe("OwnedPaths.owned", () => {
       },
     }
     HttpApi.reflect(Api, collect)
-    HttpApi.reflect(LegacyRpcApi, collect)
+    HttpApi.reflect(RpcTransportApi, collect)
     expect(paths).toContain("/rpc")
     expect(paths.filter((pathname) => !OwnedPaths.owned(pathname))).toEqual([])
   })

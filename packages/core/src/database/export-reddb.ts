@@ -40,7 +40,7 @@ export async function exportRedcode(source: string, target: string, token?: stri
   const database = await connect(source, token ? { auth: { token } } : undefined)
   try {
     if (!(await database.exists("session")) || (await database.exists("session_v2")))
-      throw new Error("RedDB source must contain V1 sessions and no V2 session table")
+      throw new Error("RedDB source must contain historical sessions and no current session table")
     const available = new Set((await database.list()).map((table) => table.name))
     const missing = [...REQUIRED].filter((table) => !available.has(table))
     if (missing.length) throw new Error(`RedDB source is missing V1 tables: ${missing.join(", ")}`)
@@ -68,7 +68,9 @@ export async function exportRedcode(source: string, target: string, token?: stri
               `INSERT INTO ${identifier(name)} (${columns.map(identifier).join(", ")}) VALUES (${columns.map(() => "?").join(", ")})`,
             )
             result.rows.forEach((row) => insert.run(...columns.map((column) => binding(row[column]))))
-            const copied = sqlite.query<{ count: number }, []>(`SELECT COUNT(*) AS count FROM ${identifier(name)}`).get()?.count
+            const copied = sqlite
+              .query<{ count: number }, []>(`SELECT COUNT(*) AS count FROM ${identifier(name)}`)
+              .get()?.count
             if (copied !== result.rows.length) throw new Error(`SQLite snapshot row count differs for ${name}`)
             tables.push({ name, rows: result.rows.length })
           }

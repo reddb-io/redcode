@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test"
 import type {
+  LSPStatus,
   AttentionSnapshot,
   HostResourcesSnapshot,
   IntelligenceEvaluation,
@@ -163,6 +164,7 @@ export interface MockServerConfig {
   // Without it, writes answer 501 MockUnsupported.
   onFileWrite?: (input: { path: string; directory: string; body: string }) => void
   configEntries?: unknown[]
+  lspStatuses?: LSPStatus[]
   directory: string
   project: unknown
   // Replaces the `/api/project` inventory, which defaults to `[project]`.
@@ -1292,8 +1294,18 @@ function mockHandlers(
               return { location: location(config, directory), data: { ticket, expires_in: 60 } }
             }),
           ),
+        lspStatus: (ctx) =>
+          Effect.succeed({
+            location: location(config, requestDirectory(config, ctx.request)),
+            data: config.lspStatuses ?? [],
+          }),
         sessionList: (ctx) => {
           const sessions = config.sessions
+            .filter(
+              (session) =>
+                ctx.query.archived === "include" ||
+                (typeof decodeSession(session).time?.archived === "number") === (ctx.query.archived === "only"),
+            )
             .filter(
               (session) =>
                 !ctx.query.directory ||
@@ -1341,6 +1353,13 @@ function mockHandlers(
             return session
               ? Effect.succeed({ data: currentSession(session, config.directory) })
               : Effect.fail(new MockNotFound({ message: "Session not found" }))
+          }),
+        sessionArchive: (ctx) =>
+          Effect.suspend(() => {
+            const session = config.sessions.find((item) => item.id === ctx.params.sessionID)
+            if (!session) return new MockNotFound({ message: "Session not found" })
+            session.time = { ...decodeSession(session).time, archived: ctx.payload.archived ? Date.now() : undefined }
+            return noContent
           }),
         sessionRemove: () => noContent,
         sessionShell: () => noContent,

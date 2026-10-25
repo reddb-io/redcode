@@ -138,7 +138,9 @@ export const Info = Schema.Struct({
       max_height: Schema.optional(Schema.Int.check(Schema.isGreaterThan(0))).annotate({
         description: "Maximum prompt textarea height in rows",
       }),
-      max_width: Schema.optional(Schema.Union([Schema.Int.check(Schema.isGreaterThan(0)), Schema.Literal("auto")])).annotate({
+      max_width: Schema.optional(
+        Schema.Union([Schema.Int.check(Schema.isGreaterThan(0)), Schema.Literal("auto")]),
+      ).annotate({
         description: "Home prompt width cap; 'auto' scales with the terminal",
       }),
       editor: Schema.optional(Schema.Boolean).annotate({
@@ -183,7 +185,8 @@ export const Info = Schema.Struct({
         description: "Group related transcript items automatically or render each item separately",
       }),
       verbosity: Schema.optional(Schema.Literals(["low", "medium", "high"])).annotate({
-        description: "Transcript detail level: low summarizes each run of tools and thoughts, high opens exploration and instruction groups",
+        description:
+          "Transcript detail level: low summarizes each run of tools and thoughts, high opens exploration and instruction groups",
       }),
       image_preview: Schema.optional(Schema.Boolean).annotate({
         description: "Show user attachment and tool-result images in the session transcript",
@@ -206,9 +209,6 @@ export const Info = Schema.Struct({
     Schema.Struct({
       mode: Schema.optional(Schema.Literals(["auto", "on", "off"])).annotate({
         description: "Use session tabs always, never, or when the terminal environment supports them",
-      }),
-      enabled: Schema.optional(Schema.Boolean).annotate({
-        description: "Legacy tab toggle; use mode instead",
       }),
       scope: Schema.optional(Schema.Literals(["global", "cwd"])).annotate({
         description: "Share tabs globally or keep a separate set for each working directory",
@@ -307,8 +307,7 @@ export function resolve(
   input: Info,
   options: { terminalSuspend: boolean; environment?: Readonly<Record<string, string | undefined>> },
 ): Resolved {
-  const tabsMode =
-    input.tabs?.mode ?? (input.tabs?.enabled === undefined ? "auto" : input.tabs.enabled ? "on" : "off")
+  const tabsMode = input.tabs?.mode ?? "auto"
   const keybinds: TuiKeybind.KeybindOverrides = { ...input.keybinds }
   if (!options.terminalSuspend) {
     keybinds["terminal.suspend"] = "none"

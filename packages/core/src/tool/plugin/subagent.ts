@@ -472,7 +472,7 @@ export const Plugin = {
                 existing === undefined ? yield* sessions.context(parent.id).pipe(Effect.orElseSucceed(() => [])) : []
               const request = latestRequest(history)
               if (existing === undefined) {
-                const count = (yield* sessions.list({ parentID: parent.id })).data.filter(
+                const count = (yield* sessions.list({ parentID: parent.id, archived: "include" })).data.filter(
                   (child) => DateTime.toEpochMillis(child.time.created) >= request.created,
                 ).length
                 if (count >= caps.perRequest)

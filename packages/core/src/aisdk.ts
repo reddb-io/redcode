@@ -40,7 +40,7 @@ import { AsyncLocalStorage } from "node:async_hooks"
 import type { ID, RuntimeInfo } from "./model.js"
 import { Provider } from "./provider.js"
 import { State } from "./state.js"
-import { ConfigModelReasoningV1 } from "./v1/config/model-reasoning.js"
+import { ConfigModelReasoning } from "./config/model-reasoning.js"
 
 type SDK = any
 type UserContent = Extract<LanguageModelV3Message, { role: "user" }>["content"]
@@ -395,7 +395,7 @@ function modelFromLanguage(info: RuntimeInfo, language: LanguageModelV3) {
     Provider.mergeOverlay(
       legacyProviderDefaults(packageName, providerID, info.modelID ?? info.id),
       info.capabilities.reasoning
-        ? ConfigModelReasoningV1.defaults({
+        ? ConfigModelReasoning.defaults({
             providerID,
             modelID: info.modelID ?? info.id,
             outputLimit: info.limit.output,

@@ -1,14 +1,15 @@
+import { migrateV1 } from "@opencode/theme/tui/import"
+import { resolveHistoricalTheme } from "../../fixture/legacy-theme"
 import { expect, test } from "bun:test"
 import {
-  migrateV1,
   resolveThemeDocument,
   selectThemeMode,
   themeModes,
   type HueScale,
   type ResolvedTheme,
 } from "@opencode/theme/tui"
-import { DEFAULT_THEMES, getOpenCodeTheme, resolveTheme as resolveV1 } from "../../../src/theme"
-import opencodeSource from "../../../src/theme/assets/opencode.json" with { type: "json" }
+import { DEFAULT_THEMES, getOpenCodeTheme, parseTheme } from "../../../src/theme"
+import opencodeSource from "../../../../theme/test/fixture/legacy-themes/opencode.json" with { type: "json" }
 import type { ThemeV1Json } from "@opencode/theme/tui/v1"
 
 const opencodeV1 = opencodeSource as ThemeV1Json
@@ -19,7 +20,7 @@ const opencodeLightHues = allHues(opencodeLight)
 test("migrates resolved V1 modes into V2 tokens", () => {
   const migrated = migrateV1(opencodeV1)
   if (!migrated.light || !migrated.dark) throw new Error("Expected both modes")
-  const legacy = resolveV1(opencodeV1, "light")
+  const legacy = resolveHistoricalTheme(opencodeV1, "light")
   const resolved = resolveThemeDocument(migrated, "light")
 
   expect(migrated.base.categorical?.length).toBeGreaterThan(0)
@@ -197,8 +198,8 @@ test("builds and extrapolates gray from V1 surfaces and text without using menus
   source.theme.textMuted = { light: "#777777", dark: "#999999" }
   source.theme.text = { light: "#333333", dark: "#dddddd" }
   source.theme.backgroundMenu = { light: "#ededed", dark: "#252525" }
-  const light = resolveV1(source, "light")
-  const dark = resolveV1(source, "dark")
+  const light = resolveHistoricalTheme(source, "light")
+  const dark = resolveHistoricalTheme(source, "dark")
   const migrated = migrateV1(source)
   if (!migrated.light || !migrated.dark) throw new Error("Expected both modes")
   const lightGray = migrated.light.hue?.gray
@@ -248,9 +249,9 @@ test("retains V1 circular reference errors", () => {
   expect(() => migrateV1(source)).toThrow("Circular color reference: one -> two -> one")
 })
 
-test("migrates every built-in V1 theme in its supported modes", () => {
+test("resolves every current built-in theme in its supported modes", () => {
   for (const source of Object.values(DEFAULT_THEMES)) {
-    const migrated = migrateV1(source)
+    const migrated = parseTheme(source)
     for (const mode of themeModes(migrated)) {
       expect(resolveThemeDocument(migrated, mode).text.base).toBeDefined()
     }

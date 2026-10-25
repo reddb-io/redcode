@@ -25,6 +25,7 @@ const handler = Effect.fn("cli.session.list")(function* (
         {
           project: location.project.id,
           parentID: null,
+          archived: input.archived,
           order: "desc",
           limit: Option.getOrElse(input.maxCount, () => 100),
         },
@@ -41,6 +42,7 @@ const handler = Effect.fn("cli.session.list")(function* (
             title: session.title,
             updated: session.time.updated,
             created: session.time.created,
+            archived: session.time.archived,
             projectId: session.projectID,
             directory: session.location.directory,
             shareUrl: session.share?.url,
