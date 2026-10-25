@@ -209,7 +209,21 @@ it.live("invalid version targets never execute a command or create a cache", () 
     const test = yield* fixture()
     yield* Effect.forEach(Updater.methods, (method) =>
       Effect.forEach(
-        ["", "latest", "2.3", "01.2.3", "vv2.3.4", "2.3.4; echo unsafe", "--global", "v2.3.4\n--force"],
+        [
+          "",
+          "latest",
+          "2.3",
+          "01.2.3",
+          "vv2.3.4",
+          "2.3.4; echo unsafe",
+          "--global",
+          "v2.3.4\n--force",
+          "https://attacker.invalid/package.tgz",
+          "http://attacker.invalid/package.tgz",
+          "file:/tmp/package.tgz",
+          "npm:other-package@1.0.0",
+          "git+https://attacker.invalid/package.git",
+        ],
         (version) =>
           Effect.gen(function* () {
             const error = yield* test.updater.upgrade(method, version).pipe(Effect.flip)

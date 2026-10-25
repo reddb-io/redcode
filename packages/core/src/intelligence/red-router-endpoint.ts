@@ -8,7 +8,7 @@ export function redRouterEndpoint(credential?: Credential.Info) {
       ? value.configuration.baseURL
       : typeof value?.metadata?.baseURL === "string"
         ? value.metadata.baseURL
-        : (process.env.RED_ROUTER_BASE_URL ?? IntelligenceEvaluation.evaluatorPreset("red-router").baseURL)
+        : IntelligenceEvaluation.evaluatorPreset("red-router").baseURL
   return normalizeRouterEndpoint(configured)
 }
 

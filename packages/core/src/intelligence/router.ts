@@ -13,7 +13,7 @@ export const detect = Effect.fn("IntelligenceRouter.detect")(function* (connecti
       ? connection.value.key
       : connection?.value.type === "oauth" && connection.value.expires > Date.now()
         ? connection.value.access
-        : process.env.RED_ROUTER_API_KEY
+        : undefined
   if (!key) return
   const base = redRouterEndpoint(connection)
   if (!base) return

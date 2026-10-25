@@ -1,15 +1,17 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, spyOn, test } from "bun:test"
 import { Credential } from "@opencode/core/credential"
 import { Intelligence } from "@opencode/core/intelligence"
 import { credentialMatches, IntelligenceTransport } from "@opencode/core/intelligence/transport"
 import { IntelligenceEvaluation } from "@opencode/core/intelligence/evaluation"
 import { IntelligenceRouter } from "@opencode/core/intelligence/router"
+import { RemoteCheck } from "@opencode/core/remote-check"
 import { Integration } from "@opencode/schema/integration"
 import { Global } from "@opencode/util/global"
 import { LayerNode } from "@opencode/util/effect/layer-node"
 import { Effect, Schema } from "effect"
 import { tempGlobalLayer } from "../fixture/global"
 import { testEffect } from "../lib/effect"
+import { withEnv } from "../fixture/env"
 
 const it = testEffect(
   LayerNode.compile(LayerNode.group([Intelligence.node, IntelligenceTransport.node, Credential.node]), {
@@ -32,6 +34,227 @@ const connect = (baseURL: string, label: string, key: string) =>
       value: Credential.Key.make({ type: "key", key, configuration: { baseURL } }),
     })
   })
+
+describe("System One credential boundaries", () => {
+  const transports = [
+    "opencode-zen",
+    "openrouter",
+    "typesafe",
+    "red-router",
+    "cloudflare-ai-gateway",
+    "vercel",
+    "vivgrid",
+    "nano-gpt",
+  ] as const
+  const environment = {
+    OPENCODE_API_KEY: "ambient-zen",
+    OPENROUTER_API_KEY: "ambient-openrouter",
+    TYPESAFE_API_KEY: "ambient-typesafe",
+    RED_ROUTER_API_KEY: "ambient-router",
+    CLOUDFLARE_API_TOKEN: "ambient-cloudflare",
+    CF_AIG_TOKEN: "ambient-gateway",
+    CLOUDFLARE_ACCOUNT_ID: "ambient-account",
+    CLOUDFLARE_GATEWAY_ID: "ambient-gateway-id",
+    AI_GATEWAY_API_KEY: "ambient-vercel",
+    VIVGRID_API_KEY: "ambient-vivgrid",
+    NANO_GPT_API_KEY: "ambient-nano",
+  }
+
+  it.live("never offers or probes providers just because environment variables exist", () =>
+    Effect.gen(function* () {
+      const calls: string[] = []
+      const server = yield* serve((request) => {
+        calls.push(request.url)
+        return Response.json({ product: "red-router" })
+      })
+      yield* withEnv({ ...environment, RED_ROUTER_BASE_URL: `${server.url.href}v1` }, () =>
+        Effect.gen(function* () {
+          const transport = yield* IntelligenceTransport.Service
+          for (const id of transports) expect(yield* transport.options(id)).toEqual([])
+          const intelligence = yield* Intelligence.Service
+          const status = yield* intelligence.status()
+          expect(status.evaluators).toEqual([])
+          expect(status.router).toBeUndefined()
+          expect(calls).toEqual([])
+        }),
+      )
+    }),
+  )
+
+  it.live("never forwards ambient tokens or gateway headers to a selected endpoint", () =>
+    withEnv(environment, () =>
+      Effect.gen(function* () {
+        const calls: Array<{ authorization: string | null; gateway: string | null }> = []
+        const server = yield* serve((request) => {
+          calls.push({
+            authorization: request.headers.get("authorization"),
+            gateway: request.headers.get("cf-aig-gateway-id"),
+          })
+          return Response.json({})
+        })
+        const transport = yield* IntelligenceTransport.Service
+        for (const id of transports)
+          yield* transport.request(
+            { ...IntelligenceEvaluation.evaluatorPreset(id), baseURL: server.url.href },
+            "models",
+          )
+        expect(calls).toEqual(transports.map(() => ({ authorization: null, gateway: null })))
+      }),
+    ),
+  )
+
+  it.live("keeps saved and explicitly supplied keys working without ambient routing", () =>
+    withEnv(environment, () =>
+      Effect.gen(function* () {
+        const calls: Array<{ path: string; authorization: string | null; gateway: string | null }> = []
+        const server = yield* serve((request) => {
+          calls.push({
+            path: new URL(request.url).pathname,
+            authorization: request.headers.get("authorization"),
+            gateway: request.headers.get("cf-aig-gateway-id"),
+          })
+          return Response.json({})
+        })
+        const credential = yield* connect(`${server.url.href}v1`, "Selected Router", "selected-router")
+        const transport = yield* IntelligenceTransport.Service
+        const evaluator = (yield* transport.options("red-router"))[0].evaluator
+        expect(evaluator.credentialID).toBe(credential.id)
+        yield* transport.request(evaluator, "models")
+        yield* transport.request(evaluator, "models", undefined, "explicit-key")
+        const credentials = yield* Credential.Service
+        const cloudflare = yield* credentials.create({
+          integrationID: Integration.ID.make("cloudflare-ai-gateway"),
+          label: "Selected Cloudflare",
+          value: Credential.Key.make({
+            type: "key",
+            key: "selected-cloudflare",
+            configuration: {
+              baseURL: server.url.href,
+              accountId: "selected-account",
+              gatewayId: "selected-gateway",
+            },
+            metadata: { accountId: "old-account", gatewayId: "old-gateway" },
+          }),
+        })
+        yield* transport.request((yield* transport.options("cloudflare-ai-gateway"))[0].evaluator, "systemone", {
+          model: "typesafe/jev",
+          state: {},
+          questions: {},
+        })
+        expect(calls).toEqual([
+          { path: "/v1/models", authorization: "Bearer selected-router", gateway: null },
+          { path: "/v1/models", authorization: "Bearer explicit-key", gateway: null },
+          {
+            path: "/accounts/selected-account/ai/run",
+            authorization: "Bearer selected-cloudflare",
+            gateway: "selected-gateway",
+          },
+        ])
+        expect((yield* transport.options("cloudflare-ai-gateway"))[0].evaluator.credentialID).toBe(cloudflare.id)
+      }),
+    ),
+  )
+
+  it.live("does not replace missing Cloudflare account metadata with ambient configuration", () =>
+    withEnv(environment, () =>
+      Effect.gen(function* () {
+        const calls: string[] = []
+        const server = yield* serve((request) => {
+          calls.push(request.url)
+          return Response.json({})
+        })
+        const transport = yield* IntelligenceTransport.Service
+        const result = yield* transport
+          .request(
+            { ...IntelligenceEvaluation.evaluatorPreset("cloudflare-ai-gateway"), baseURL: server.url.href },
+            "systemone",
+            { model: "typesafe/jev", state: {}, questions: {} },
+            "explicit-key",
+          )
+          .pipe(Effect.flip)
+        expect(result.message).toContain("Cloudflare Account ID is required")
+        expect(calls).toEqual([])
+      }),
+    ),
+  )
+
+  it.live("does not send self-hosted Console credentials to the hosted Zen endpoint", () =>
+    Effect.gen(function* () {
+      const credentials = yield* Credential.Service
+      const transport = yield* IntelligenceTransport.Service
+      for (const server of ["https://console.example", "https://opencode.ai/other", "https://user@opencode.ai/console"])
+        for (const type of ["key", "oauth"] as const) {
+          const credential = yield* credentials.create({
+            integrationID: Integration.ID.make("opencode"),
+            label: "Self-hosted Console",
+            value:
+              type === "key"
+                ? Credential.Key.make({ type, key: "private-console", metadata: { server } })
+                : Credential.OAuth.make({
+                    type,
+                    methodID: Integration.MethodID.make("device"),
+                    access: "private-console",
+                    refresh: "private-refresh",
+                    expires: Date.now() + 60_000,
+                    metadata: { server },
+                  }),
+          })
+          expect(yield* transport.options("opencode-zen")).toEqual([])
+          expect(credentialMatches(IntelligenceEvaluation.evaluatorPreset(), credential)).toBe(false)
+          const result = yield* transport
+            .request({ ...IntelligenceEvaluation.evaluatorPreset(), credentialID: credential.id }, "models")
+            .pipe(Effect.flip)
+          expect(result.message).toContain("does not belong")
+          yield* credentials.remove(credential.id)
+        }
+      const hosted = yield* credentials.create({
+        integrationID: Integration.ID.make("opencode"),
+        label: "Hosted Console",
+        value: Credential.OAuth.make({
+          type: "oauth",
+          methodID: Integration.MethodID.make("device"),
+          access: "hosted-console",
+          refresh: "hosted-refresh",
+          expires: Date.now() + 60_000,
+          metadata: { server: "https://opencode.ai/console/" },
+        }),
+      })
+      expect((yield* transport.options("opencode-zen"))[0].evaluator.credentialID).toBe(hosted.id)
+      expect(credentialMatches(IntelligenceEvaluation.evaluatorPreset(), hosted)).toBe(true)
+    }),
+  )
+
+  it.live("uses only public access for an explicitly chosen Zen evaluator without a matching connection", () =>
+    withEnv(environment, () =>
+      Effect.gen(function* () {
+        const credentials = yield* Credential.Service
+        yield* credentials.create({
+          integrationID: Integration.ID.make("opencode"),
+          label: "Self-hosted Console",
+          value: Credential.Key.make({
+            type: "key",
+            key: "private-console",
+            metadata: { server: "https://console.example" },
+          }),
+        })
+        const calls: Array<{ url: string; authorization: string | null }> = []
+        // This endpoint is fixed to the real hosted service; intercept only its network boundary.
+        yield* Effect.acquireRelease(
+          Effect.sync(() =>
+            spyOn(RemoteCheck, "request").mockImplementation(async (url, init) => {
+              calls.push({ url, authorization: new Headers(init.headers).get("authorization") })
+              return Response.json({})
+            }),
+          ),
+          (request) => Effect.sync(() => request.mockRestore()),
+        )
+        const transport = yield* IntelligenceTransport.Service
+        yield* transport.request(IntelligenceEvaluation.evaluatorPreset(), "models")
+        expect(calls).toEqual([{ url: "https://opencode.ai/zen/v1/models", authorization: "Bearer public" }])
+      }),
+    ),
+  )
+})
 
 describe("connection-scoped System One discovery", () => {
   it.live("uses compatible canonical decision aliases only from the selected provider", () =>

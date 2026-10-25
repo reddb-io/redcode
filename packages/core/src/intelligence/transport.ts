@@ -42,8 +42,7 @@ const make = Effect.gen(function* () {
   const options = Effect.fn("IntelligenceTransport.options")(function* (
     transport: Intelligence.Evaluator["transport"],
   ) {
-    const saved = yield* connections(transport)
-    const connected = saved.flatMap((credential) => {
+    return (yield* connections(transport)).flatMap((credential) => {
       const baseURL = evaluatorEndpoint(transport, credential)
       return baseURL && IntelligenceSettings.validURL(baseURL)
         ? [
@@ -55,19 +54,6 @@ const make = Effect.gen(function* () {
           ]
         : []
     })
-    if (saved.length) return connected
-    return providerEnvironment(transport)
-      .filter((name) => process.env[name])
-      .slice(0, 1)
-      .map((name) => ({
-        name,
-        configured: false,
-        evaluator: {
-          ...IntelligenceEvaluation.evaluatorPreset(transport),
-          credentialID: undefined,
-          ...(transport === "red-router" ? { baseURL: redRouterEndpoint() ?? "" } : {}),
-        },
-      }))
   })
 
   const request = Effect.fn("IntelligenceTransport.request")(function* (
@@ -96,23 +82,13 @@ const make = Effect.gen(function* () {
     const officialZen =
       evaluator.transport === "opencode-zen" &&
       url.href.replace(/\/$/, "") === IntelligenceEvaluation.evaluatorPreset().baseURL
-    const zen = officialZen
-      ? (yield* credentials.list(Integration.ID.make("opencode")))
-          .toReversed()
-          .find((item) => credentialValue(item.value) !== undefined)?.value
-      : undefined
-    const key =
-      apiKey ??
-      credentialValue(stored?.value) ??
-      credentialValue(zen) ??
-      (officialZen
-        ? (process.env.OPENCODE_API_KEY ?? "public")
-        : providerEnvironment(evaluator.transport)
-            .map((name) => process.env[name])
-            .find((item) => item !== undefined))
-    const metadata = stored?.value.metadata
-    const accountID = stringMetadata(metadata, "accountId") ?? process.env.CLOUDFLARE_ACCOUNT_ID
-    const gatewayID = stringMetadata(metadata, "gatewayId") ?? process.env.CLOUDFLARE_GATEWAY_ID
+    const key = apiKey ?? credentialValue(stored?.value) ?? (officialZen ? "public" : undefined)
+    const settings = {
+      ...stored?.value.metadata,
+      ...(stored?.value.type === "key" ? stored.value.configuration : undefined),
+    }
+    const accountID = stringMetadata(settings, "accountId")
+    const gatewayID = stringMetadata(settings, "gatewayId")
     if (evaluator.transport === "cloudflare-ai-gateway" && body !== undefined && !accountID)
       return yield* new IntelligenceEvaluation.Error({
         message: "Cloudflare Account ID is required; connect Cloudflare AI Gateway first",
@@ -456,12 +432,22 @@ function evaluatorEndpoint(transport: Intelligence.Evaluator["transport"], crede
   if (credential.integrationID === Integration.ID.make(`intelligence:${transport}`))
     return stringMetadata(credential.value.metadata, "intelligenceBaseURL")
   if (transport === "red-router") return redRouterEndpoint(credential)
-  return (
-    (credential.value.type === "key" && typeof credential.value.configuration?.baseURL === "string"
+  const baseURL =
+    credential.value.type === "key" && typeof credential.value.configuration?.baseURL === "string"
       ? credential.value.configuration.baseURL
-      : stringMetadata(credential.value.metadata, "baseURL")) ??
-    IntelligenceEvaluation.evaluatorPreset(transport).baseURL
+      : stringMetadata(credential.value.metadata, "baseURL")
+  if (baseURL !== undefined) return baseURL
+  // A self-hosted Console token must not inherit the hosted Zen endpoint.
+  const server = credential.value.metadata?.server
+  if (
+    transport === "opencode-zen" &&
+    server !== undefined &&
+    (typeof server !== "string" ||
+      !IntelligenceSettings.validURL(server) ||
+      !sameEndpoint(server, "https://opencode.ai/console"))
   )
+    return
+  return IntelligenceEvaluation.evaluatorPreset(transport).baseURL
 }
 
 function sameEndpoint(left: string, right: string) {
@@ -482,17 +468,6 @@ function providerIntegrations(transport: Intelligence.Evaluator["transport"]) {
   if (transport === "opencode-zen") return ["opencode"]
   if (transport === "cloudflare-ai-gateway") return ["cloudflare-ai-gateway", "cloudflare-workers-ai"]
   return [transport]
-}
-
-function providerEnvironment(transport: Intelligence.Evaluator["transport"]) {
-  if (transport === "opencode-zen") return ["OPENCODE_API_KEY"]
-  if (transport === "openrouter") return ["OPENROUTER_API_KEY"]
-  if (transport === "typesafe") return ["TYPESAFE_API_KEY"]
-  if (transport === "red-router") return ["RED_ROUTER_API_KEY"]
-  if (transport === "cloudflare-ai-gateway") return ["CLOUDFLARE_API_TOKEN", "CF_AIG_TOKEN"]
-  if (transport === "vercel") return ["AI_GATEWAY_API_KEY"]
-  if (transport === "vivgrid") return ["VIVGRID_API_KEY"]
-  return ["NANO_GPT_API_KEY"]
 }
 
 function stringMetadata(metadata: Record<string, unknown> | undefined, key: string) {
