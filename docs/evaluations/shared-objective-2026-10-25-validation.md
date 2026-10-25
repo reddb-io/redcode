@@ -48,6 +48,10 @@ outro scheduler nem novos eventos de progresso derivados.
   formatação e `git diff --check` passaram. Os arquivos gerados foram produzidos
   pelo comando oficial de `packages/client`.
 
+A primeira CI apontou que faltava o documento OpenAPI versionado. Após regenerá-lo
+em `packages/protocol`, os comandos `check:generated` do Protocol e do Client
+passaram, sem alterações adicionais no SDK.
+
 Os grupos se sobrepõem em execuções de diagnóstico; não some todas as execuções
 como testes únicos. Não foram usados providers reais ou credenciais de usuário.
 

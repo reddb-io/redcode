@@ -42915,6 +42915,48 @@
         "required": ["version", "runtime", "platform", "pid", "started", "memory", "urls", "paths", "database"],
         "additionalProperties": false
       },
+      "TaskContext.Info": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string"
+          },
+          "goal": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "objective": {
+                "type": "string"
+              },
+              "criteria": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "gates": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "stopAfter": {
+                "type": "string",
+                "enum": ["design", "plan", "build"]
+              },
+              "executePlan": {
+                "type": "boolean"
+              }
+            },
+            "required": ["id", "objective", "criteria", "gates", "stopAfter", "executePlan"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["version", "goal"],
+        "additionalProperties": false
+      },
       "Todo": {
         "type": "object",
         "properties": {
@@ -43065,6 +43107,9 @@
           },
           "review": {
             "$ref": "#/components/schemas/SubagentReview.Decision"
+          },
+          "context": {
+            "$ref": "#/components/schemas/TaskContext.Info"
           }
         },
         "required": ["taskID", "sessionID", "directory", "revision", "current", "state", "review"],
@@ -43089,6 +43134,9 @@
           },
           "current": {
             "type": "boolean"
+          },
+          "context": {
+            "$ref": "#/components/schemas/TaskContext.Info"
           },
           "execution": {
             "type": "string",
@@ -43207,6 +43255,34 @@
         ],
         "additionalProperties": false
       },
+      "Todo.Convergence": {
+        "type": "object",
+        "properties": {
+          "required": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "accepted": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "waitingFor": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "ready": {
+            "type": "boolean"
+          }
+        },
+        "required": ["required", "accepted", "waitingFor", "ready"],
+        "additionalProperties": false
+      },
       "Todo.Evidence": {
         "type": "object",
         "properties": {
@@ -43256,6 +43332,9 @@
             "items": {
               "$ref": "#/components/schemas/Todo.Assignment"
             }
+          },
+          "context": {
+            "$ref": "#/components/schemas/TaskContext.Info"
           }
         },
         "required": ["sessionID", "tasks", "nodes", "assignments"],
@@ -43475,6 +43554,12 @@
           },
           "acceptanceReady": {
             "type": "boolean"
+          },
+          "convergence": {
+            "$ref": "#/components/schemas/Todo.Convergence"
+          },
+          "context": {
+            "$ref": "#/components/schemas/TaskContext.Info"
           },
           "inputs": {
             "type": "array",
