@@ -9,11 +9,13 @@ import { SessionMessage } from "./message.js"
 import { SessionSchema } from "./schema.js"
 import { SessionStore } from "./store.js"
 import { SessionTaskGraph } from "./task-graph.js"
+import { SessionTaskContext } from "./task-context.js"
 import type { SessionTaskFacts } from "./task-facts.js"
 
 const make = Effect.gen(function* () {
   const store = yield* SessionStore.Service
   const jobs = yield* Job.Service
+  const contexts = yield* SessionTaskContext.Service
   const lock = yield* Semaphore.make(1)
 
   // Include nested work: an idle child can still have descendants changing the shared checkout.
@@ -40,12 +42,13 @@ const make = Effect.gen(function* () {
     }
   })
 
-  const snapshot = Effect.fn("SessionTaskAssignments.snapshot")(function* (
+  const inspect = Effect.fn("SessionTaskAssignments.inspect")(function* (
     sessionID: SessionSchema.ID,
     tasks: ReadonlyArray<SessionTodo.Info>,
   ) {
+    const context = yield* contexts.get(sessionID)
     const children = yield* store.list({ parentID: sessionID })
-    return (yield* Effect.forEach(children, (child) =>
+    const assignments = (yield* Effect.forEach(children, (child) =>
       Effect.gen(function* () {
         const brief = SubagentReview.read(child.metadata)
         if (!brief?.task || brief.parentSessionID !== sessionID) return undefined
@@ -59,21 +62,30 @@ const make = Effect.gen(function* () {
           workspaceID: child.location.workspaceID,
           revision: brief.task.revision,
           assigned: brief.task.assigned,
+          ...(brief.task.context ? { context: brief.task.context } : {}),
           promptID: brief.task.promptID,
           fingerprint: brief.task.fingerprint,
           outcome: observed?.outcome,
           busy: state.busy,
           admission: observed?.admission,
-          current: task !== undefined && brief.task.fingerprint === SessionTaskGraph.fingerprint(task, tasks),
+          current:
+            task !== undefined &&
+            brief.task.fingerprint === SessionTaskGraph.fingerprint(task, tasks) &&
+            brief.task.context?.version === context?.version,
           state: state.busy || observed?.admission !== "delivered" ? ("running" as const) : ("settled" as const),
           settledAt: Math.max(state.updated, brief.result?.at ?? brief.task.assigned),
           review: brief.result?.decision ?? "unverified",
         }
       }),
     )).filter((entry) => entry !== undefined)
+    return { context, assignments }
   })
 
-  return { snapshot, withMutation: lock.withPermits(1) }
+  const snapshot = Effect.fn("SessionTaskAssignments.snapshot")(
+    (sessionID: SessionSchema.ID, tasks: ReadonlyArray<SessionTodo.Info>) =>
+      inspect(sessionID, tasks).pipe(Effect.map((value) => value.assignments)),
+  )
+  return { snapshot, inspect, withMutation: lock.withPermits(1) }
 })
 
 export type Assignment = Effect.Success<ReturnType<Effect.Success<typeof make>["snapshot"]>>[number]
@@ -89,7 +101,7 @@ export function completionError(
   if (related.some((entry) => entry.state !== "settled")) return `Task ${task.id} has unsettled delegated work`
   const latest = related.toSorted((a, b) => b.assigned - a.assigned)[0]!
   if (!latest.current)
-    return `Task ${task.id} changed after delegation; continue its subagent with the current contract`
+    return `Task ${task.id} or its shared objective changed after delegation; continue its subagent with the current contract`
   const proof = results.find(
     (entry) => entry.callID === task.evidence?.callID && entry.messageID === task.evidence?.messageID,
   )
@@ -107,5 +119,5 @@ export class Service extends Context.Service<Service, Effect.Success<typeof make
 export const node = makeGlobalNode({
   service: Service,
   layer: Layer.effect(Service, make),
-  deps: [SessionStore.node, Job.node],
+  deps: [SessionStore.node, Job.node, SessionTaskContext.node],
 })

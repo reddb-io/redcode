@@ -4,8 +4,10 @@ import { eq } from "drizzle-orm"
 import { it, testEffect } from "../../core/test/lib/effect"
 import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
 import { Database } from "@opencode/core/database/database"
-import { TodoTable } from "@opencode/core/session/redcode.sql"
+import { SessionGoalTable, TodoTable } from "@opencode/core/session/redcode.sql"
 import { SessionTodo } from "@opencode/schema/session-todo"
+import { SessionGoal } from "@opencode/schema/session-goal"
+import { Session } from "@opencode/schema/session"
 import { LayerNode } from "@opencode/util/effect/layer-node"
 import { Global } from "@opencode/util/global"
 import { tempGlobalLayer } from "../../core/test/fixture/global"
@@ -114,6 +116,35 @@ reconciliationIt.live(
           },
         ])
         .run()
+      const goal: SessionGoal.Info = {
+        id: "goal-shared",
+        sessionID: Session.ID.make("ses_reconciliation"),
+        revision: 1,
+        objective: "Deliver the API and client together",
+        criteria: ["Both inputs pass validation"],
+        gates: ["Retain compatibility"],
+        stopAfter: "build",
+        executePlan: true,
+        status: "active",
+        reason: "Starting",
+        turns: { used: 1, max: 10 },
+        tokens: 3,
+        reviews: 0,
+        evidence: [],
+        checks: [],
+        created: 1,
+        updated: 1,
+      }
+      yield* database.db
+        .insert(SessionGoalTable)
+        .values({
+          session_id: goal.sessionID,
+          goal_id: goal.id,
+          revision: goal.revision,
+          owner: "another-process",
+          data: goal,
+        })
+        .run()
       const url = "http://opencode.local/api/session/ses_reconciliation/todo/todo_integrate/reconciliation"
       expect((yield* Effect.promise(() => handler(new Request(url)))).status).toBe(401)
       const response = yield* Effect.promise(() => handler(new Request(`${url}?revision=3`, { headers })))
@@ -125,6 +156,13 @@ reconciliationIt.live(
         executionSettled: false,
         acceptanceReady: false,
         task: { id: "todo_integrate", revision: 3 },
+        convergence: {
+          required: ["todo_api", "todo_client"],
+          accepted: [],
+          waitingFor: ["todo_api", "todo_client"],
+          ready: false,
+        },
+        context: { goal: { id: goal.id, objective: goal.objective, criteria: goal.criteria } },
       })
       expect(report.inputs.map((input) => input.acceptance)).toEqual(["pending", "blocked"])
       const graphURL = "http://opencode.local/api/session/ses_reconciliation/todo/graph"
@@ -161,6 +199,7 @@ reconciliationIt.live(
       expect(yield* Effect.promise(() => graphResponse.json())).toMatchObject({
         data: {
           sessionID: "ses_reconciliation",
+          context: report.context,
           tasks: [{ id: "todo_api" }, { id: "todo_client" }, { id: "todo_integrate" }],
           nodes: [
             { id: "todo_api", revision: 2, dependencies: [], waitingFor: [], ready: true },
@@ -217,6 +256,7 @@ reconciliationIt.live(
         { status: "blocked", revision: 1 },
         { status: "pending", revision: 3 },
       ])
+      expect((yield* database.db.select().from(SessionGoalTable).get())?.data).toEqual(goal)
       yield* database.db.update(TodoTable).set({ status: "completed" }).where(eq(TodoTable.task_id, "todo_api")).run()
       const recorded = Schema.decodeUnknownSync(Schema.Struct({ data: SessionTodo.Graph }))(
         yield* Effect.promise(() => handler(new Request(graphURL, { headers })).then((response) => response.json())),

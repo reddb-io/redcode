@@ -20,6 +20,7 @@ import { SessionMessage } from "../../session/message.js"
 import { SessionSchema } from "../../session/schema.js"
 import { SessionTaskAssignments } from "../../session/task-assignments.js"
 import { SessionTaskGraph } from "../../session/task-graph.js"
+import { SessionTaskContext } from "../../session/task-context.js"
 import { SessionTodoStore } from "../../session/todo-store.js"
 import { SessionStopLoss } from "../../session/stop-loss.js"
 import { SubagentCompletion } from "../../session/subagent-completion.js"
@@ -151,6 +152,7 @@ export const Plugin = {
     const sessions = yield* Session.Service
     const todos = yield* SessionTodoStore.Service
     const assignments = yield* SessionTaskAssignments.Service
+    const contexts = yield* SessionTaskContext.Service
     const jobs = yield* Job.Service
     const agents = yield* Agent.Service
     const config = yield* Config.Service
@@ -579,6 +581,7 @@ export const Plugin = {
                               fingerprint: SessionTaskGraph.fingerprint(task, tasks),
                               promptID: SessionMessage.ID.create(),
                               assigned: Date.now(),
+                              context: yield* contexts.get(parent.id),
                             }
                           : undefined
                       const child =
@@ -656,6 +659,9 @@ export const Plugin = {
                 const contract = admittedTask.task
                   ? JSON.stringify({
                       taskID: admittedTask.task.id,
+                      revision: admittedTask.binding?.revision,
+                      fingerprint: admittedTask.binding?.fingerprint,
+                      sharedContext: admittedTask.binding?.context,
                       content: admittedTask.task.content,
                       criterion: admittedTask.task.criterion,
                       prerequisites: (admittedTask.task.dependencies ?? []).map((id) =>

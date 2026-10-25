@@ -12,6 +12,8 @@ import { SessionTodoStore } from "@opencode/core/session/todo-store"
 import { SessionTaskReconciliation } from "@opencode/core/session/task-reconciliation"
 import { SessionTaskGraph } from "@opencode/core/session/task-graph"
 import { SessionTaskFacts } from "@opencode/core/session/task-facts"
+import { SessionGoal } from "@opencode/core/session/goal"
+import { SessionTaskContext } from "@opencode/core/session/task-context"
 import { TodoHistoryTable, TodoTable } from "@opencode/core/session/redcode.sql"
 import { SessionMessageTable, SessionTable } from "@opencode/core/session/sql"
 import { Session } from "@opencode/schema/session"
@@ -31,7 +33,15 @@ import { ServerFetch } from "../src/fetch"
 
 const it = testEffect(
   AppNodeBuilder.build(
-    LayerNode.group([Database.node, Global.node, Git.node, SessionTodoStore.node, SessionTaskReconciliation.node]),
+    LayerNode.group([
+      Database.node,
+      Global.node,
+      Git.node,
+      SessionTodoStore.node,
+      SessionTaskReconciliation.node,
+      SessionGoal.node,
+      SessionTaskContext.node,
+    ]),
     [Global.node.replace(tempGlobalLayer), offlineModels],
   ),
 )
@@ -161,6 +171,13 @@ const fixture = Effect.fnUntraced(function* (conflict = false, subdirectory = fa
       (await request("/api/session", { location: { directory: target }, metadata: { reasoning: "single" } })).json(),
     ),
   ).data
+  const goals = yield* SessionGoal.Service
+  const contexts = yield* SessionTaskContext.Service
+  yield* goals.start(parent.id, {
+    objective: "Combine both components",
+    criteria: ["The combined candidate passes project checks"],
+  })
+  const shared = yield* contexts.get(parent.id)
   const tasks: SessionTodo.Info[] = [
     {
       id: "todo_sum",
@@ -224,6 +241,7 @@ const fixture = Effect.fnUntraced(function* (conflict = false, subdirectory = fa
             fingerprint: SessionTaskGraph.fingerprint(task, tasks),
             promptID,
             assigned: 1,
+            context: shared,
           },
           verdict: "skipped",
           issues: [],
@@ -498,6 +516,28 @@ it.live(
       expect(prepared.task.integration).toBeUndefined()
       const todos = yield* SessionTodoStore.Service
       expect((yield* todos.get(state.parent.id))[2]?.revision).toBe(1)
+    }),
+  30_000,
+)
+
+it.live(
+  "refuses combining contributions captured under an earlier shared objective",
+  () =>
+    Effect.gen(function* () {
+      const state = yield* fixture()
+      const goals = yield* SessionGoal.Service
+      const reconciliation = yield* SessionTaskReconciliation.Service
+      yield* goals.control(state.parent.id, { action: "pause" })
+      yield* goals.start(state.parent.id, { objective: "Combine the components with a new compatibility constraint" })
+      const report = yield* reconciliation.inspect(state.parent.id, "todo_joint")
+      expect(report.inputs.map((input) => input.acceptance)).toEqual(["stale", "stale"])
+      expect(report.convergence).toMatchObject({ waitingFor: ["todo_sum", "todo_run"], ready: false })
+      const rejected = yield* Effect.promise(() => state.request(state.url, state.input))
+      expect(rejected.status).toBe(400)
+      expect(yield* Effect.promise(() => rejected.text())).toContain("Accept and settle")
+      expect(
+        yield* Effect.promise(async () => (await $`git rev-parse HEAD`.cwd(state.target).quiet()).text().trim()),
+      ).toBe(state.input.targetHead)
     }),
   30_000,
 )

@@ -64,6 +64,7 @@ import { IntelligenceCodeRepair } from "@opencode/core/intelligence/code-repair"
 import { Intelligence } from "@opencode/core/intelligence"
 import { SessionTaskFacts } from "@opencode/core/session/task-facts"
 import { SessionTaskAssignments } from "@opencode/core/session/task-assignments"
+import { SessionTaskContext } from "@opencode/core/session/task-context"
 import { SessionTodoStore } from "@opencode/core/session/todo-store"
 import { TodoTool } from "@opencode/core/tool/plugin/todo"
 import { SessionRunnerModel } from "@opencode/core/session/runner/model"
@@ -566,6 +567,7 @@ const layer = Layer.unwrap(
         SessionGoal.node,
         SessionTodoStore.node,
         SessionTaskAssignments.node,
+        SessionTaskContext.node,
         SessionTaskFacts.node,
         MonitorRuntime.node,
         SessionExecution.node,

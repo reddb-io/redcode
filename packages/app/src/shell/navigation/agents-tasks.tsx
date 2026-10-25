@@ -119,6 +119,7 @@ export function createAgentTaskServices(props: { server: ServerConnection.Any; o
       tasks: tasks.data?.tasks ?? [],
       graph: tasks.data?.nodes ?? [],
       assignments: tasks.data?.assignments ?? [],
+      context: tasks.data?.context,
       task: task(),
       taskID: state.taskID,
       goal: goal.data,

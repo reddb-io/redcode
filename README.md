@@ -38,6 +38,8 @@ Open **Agents** in the siderail to follow sessions across hosts, answer requests
 session loads its conversation. [Agents workspace](docs/agent-features.md#agents-workspace).
 
 **Tasks** follows a session's shared objective, prerequisite acceptance and delegated contributions.
+Tracked agents receive a versioned snapshot of that objective and its criteria. Inspect the version
+each contribution used and the required results still awaiting acceptance before reconciling changes.
 Inspect observed checks and overlapping changes, prepare a combined local Git candidate, then review
 and explicitly apply it after the session has verified and accepted that exact candidate.
 

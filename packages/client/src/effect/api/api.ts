@@ -840,7 +840,33 @@ export type SessionTodoGraphOutput = {
     readonly state: "running" | "settled"
     readonly outcome?: "succeeded" | "failed" | "interrupted" | undefined
     readonly review: "verified" | "inconclusive" | "needs_revision" | "unverified"
+    readonly context?:
+      | {
+          readonly version: string
+          readonly goal: {
+            readonly id: string
+            readonly objective: string
+            readonly criteria: ReadonlyArray<string>
+            readonly gates: ReadonlyArray<string>
+            readonly stopAfter: "design" | "plan" | "build"
+            readonly executePlan: boolean
+          }
+        }
+      | undefined
   }>
+  readonly context?:
+    | {
+        readonly version: string
+        readonly goal: {
+          readonly id: string
+          readonly objective: string
+          readonly criteria: ReadonlyArray<string>
+          readonly gates: ReadonlyArray<string>
+          readonly stopAfter: "design" | "plan" | "build"
+          readonly executePlan: boolean
+        }
+      }
+    | undefined
 }
 export type SessionTodoGraphOperation<E = never> = (
   input: SessionTodoGraphInput,
@@ -934,6 +960,27 @@ export type SessionTodoReconcileOutput = {
   readonly observedAt: number
   readonly executionSettled: boolean
   readonly acceptanceReady: boolean
+  readonly convergence?:
+    | {
+        readonly required: ReadonlyArray<string>
+        readonly accepted: ReadonlyArray<string>
+        readonly waitingFor: ReadonlyArray<string>
+        readonly ready: boolean
+      }
+    | undefined
+  readonly context?:
+    | {
+        readonly version: string
+        readonly goal: {
+          readonly id: string
+          readonly objective: string
+          readonly criteria: ReadonlyArray<string>
+          readonly gates: ReadonlyArray<string>
+          readonly stopAfter: "design" | "plan" | "build"
+          readonly executePlan: boolean
+        }
+      }
+    | undefined
   readonly inputs: ReadonlyArray<{
     readonly task: {
       readonly id?: string | undefined
@@ -1019,6 +1066,19 @@ export type SessionTodoReconcileOutput = {
       readonly promptID: string
       readonly fingerprint: string
       readonly current: boolean
+      readonly context?:
+        | {
+            readonly version: string
+            readonly goal: {
+              readonly id: string
+              readonly objective: string
+              readonly criteria: ReadonlyArray<string>
+              readonly gates: ReadonlyArray<string>
+              readonly stopAfter: "design" | "plan" | "build"
+              readonly executePlan: boolean
+            }
+          }
+        | undefined
       readonly execution: "running" | "succeeded" | "failed" | "interrupted" | "unknown"
       readonly review?:
         | {

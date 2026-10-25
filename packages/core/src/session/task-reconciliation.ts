@@ -37,7 +37,8 @@ const make = Effect.gen(function* () {
       return yield* new SessionTodo.Error({
         message: `Task ${taskID} changed; its current revision is ${task.revision}`,
       })
-    const delegated = yield* assignments.snapshot(sessionID, tasks)
+    const snapshot = yield* assignments.inspect(sessionID, tasks)
+    const delegated = snapshot.assignments
     const observed = yield* facts.load(sessionID)
     const invalid = SessionTaskGraph.invalidated(
       tasks,
@@ -107,6 +108,7 @@ const make = Effect.gen(function* () {
               promptID: assignment.promptID,
               fingerprint: assignment.fingerprint,
               current: assignment.current,
+              context: assignment.context,
               execution:
                 assignment.state === "running"
                   ? ("running" as const)
@@ -190,7 +192,9 @@ const make = Effect.gen(function* () {
               ? []
               : [`Prerequisite ${id} is ${acceptance}; parent acceptance is required`]),
             ...(related.some((entry) => entry.state === "running") ? ["Delegated work is still running"] : []),
-            ...(latest && !latest.current ? ["The latest delegation uses an older task contract"] : []),
+            ...(latest && !latest.current
+              ? ["The latest delegation uses an older task contract or shared objective"]
+              : []),
             ...(latest && latest.execution !== "succeeded" ? [`Latest execution outcome: ${latest.execution}`] : []),
             ...(latest && latest.review?.decision !== "verified"
               ? [`Result review: ${latest.review?.decision ?? "unverified"}`]
@@ -212,17 +216,31 @@ const make = Effect.gen(function* () {
       return taskIDs.length > 1 ? [{ path, taskIDs }] : []
     })
     const integrationIssues = SessionTaskIntegration.issues(task, tasks, delegated)
+    const executionSettled = inputs.every((input) =>
+      input.contributions.length
+        ? input.contributions.every((entry) => entry.execution !== "running")
+        : input.acceptance === "accepted",
+    )
+    const accepted = inputs
+      .filter(
+        (input) =>
+          input.acceptance === "accepted" && input.contributions.every((entry) => entry.execution !== "running"),
+      )
+      .map((input) => input.task.id!)
     return {
       sessionID,
       task,
       fingerprint: SessionTaskGraph.fingerprint(task, tasks),
       observedAt: Date.now(),
-      executionSettled: inputs.every((input) =>
-        input.contributions.length
-          ? input.contributions.every((entry) => entry.execution !== "running")
-          : input.acceptance === "accepted",
-      ),
+      executionSettled,
       acceptanceReady: inputs.every((input) => input.acceptance === "accepted"),
+      convergence: {
+        required: task.dependencies ?? [],
+        accepted,
+        waitingFor: (task.dependencies ?? []).filter((id) => !accepted.includes(id)),
+        ready: executionSettled && accepted.length === inputs.length,
+      },
+      context: snapshot.context,
       inputs,
       ...(task.integration
         ? {

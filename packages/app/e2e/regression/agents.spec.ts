@@ -45,11 +45,17 @@ test("reconciles task contributions through the DS and preserves an uncertain ap
   await expect(workspace.getByLabel("Session", { exact: true })).toBeEnabled()
   await workspace.getByLabel("Session", { exact: true }).selectOption(mock.sessionID)
   await expect(workspace.getByText("Deliver a verified task workflow", { exact: true })).toBeVisible()
+  await expect(workspace.getByText("Context version aaaaaaaaaaaa", { exact: true })).toBeVisible()
   await expect(workspace.getByRole("progressbar", { name: "Task completion" })).toHaveAttribute("aria-valuenow", "2")
   await workspace.getByRole("button", { name: "Reconcile delegated results Pending", exact: true }).click()
   const detail = workspace.getByRole("region", { name: "Task details", exact: true })
+  const convergence = detail.getByRole("region", { name: "Result convergence", exact: true })
+  await expect(convergence.getByRole("status")).toHaveText("2 of 2 required results are accepted and settled.")
   const contribution = detail.getByRole("article", { name: "Implement task API", exact: true })
   await contribution.getByText(fixture.sessions[2].id + " · Succeeded", { exact: true }).click()
+  await contribution.getByText("Received shared objective", { exact: true }).click()
+  await expect(contribution.getByText("Deliver a verified task workflow", { exact: true })).toBeVisible()
+  await expect(contribution.getByText("Context version aaaaaaaaaaaa", { exact: true })).toBeVisible()
   await expect(contribution.getByText("Delegated result for api", { exact: true })).toBeVisible()
   await expect(contribution.getByText("bash · check-api · Succeeded", { exact: true })).toBeVisible()
   await expect(detail.getByRole("heading", { name: "Files changed by multiple prerequisites" })).toBeVisible()
@@ -146,6 +152,24 @@ test("keeps task navigation usable when reconciliation fails and recovers on ref
   mock.state.reportUnavailable = false
   await workspace.getByRole("button", { name: "Refresh", exact: true }).click()
   await expect(workspace.getByRole("alert")).toHaveCount(0)
+  await expect(workspace.getByRole("region", { name: "Reconcile results", exact: true })).toBeVisible()
+  await expect(workspace.getByRole("list", { name: "Results awaiting acceptance", exact: true })).toHaveText(
+    "Implement task APIVerify task API",
+  )
+  await expect(graph.getByText("Assigned context bbbbbbbbbbbb", { exact: true })).toBeVisible()
+  mock.state.context = {
+    ...mock.state.context,
+    version: "c".repeat(64),
+    goal: { ...mock.state.context.goal, objective: "Deliver with the updated compatibility requirements" },
+  }
+  await workspace.getByRole("button", { name: "Refresh", exact: true }).click()
+  await expect(workspace.getByText("Context version cccccccccccc", { exact: true })).toBeVisible()
+  await expect(workspace.getByRole("status").filter({ hasText: "The shared objective changed." })).toHaveText(
+    "The shared objective changed. Refresh to inspect current results.",
+  )
+  await expect(workspace.getByRole("region", { name: "Reconcile results", exact: true })).toHaveCount(0)
+  mock.reportContext.current = mock.state.context
+  await workspace.getByRole("button", { name: "Refresh", exact: true }).click()
   await expect(workspace.getByRole("region", { name: "Reconcile results", exact: true })).toBeVisible()
   mock.tasks[1] = { ...mock.tasks[1], status: "completed", reason: undefined }
   await workspace.getByRole("button", { name: "Refresh", exact: true }).click()

@@ -72,6 +72,7 @@ import { SessionPlan } from "../session/plan.js"
 import { SessionGoalCompletion } from "../session/goal-completion.js"
 import { SessionTaskFacts } from "../session/task-facts.js"
 import { SessionTaskAssignments } from "../session/task-assignments.js"
+import { SessionTaskContext } from "../session/task-context.js"
 import { SessionTodoStore } from "../session/todo-store.js"
 import { SessionCompaction } from "../session/compaction.js"
 import { SessionInstructions } from "../session/instructions.js"
@@ -204,6 +205,7 @@ const services = [
   SessionTodoStore.Service,
   SessionTaskReconciliation.Service,
   SessionTaskAssignments.Service,
+  SessionTaskContext.Service,
   SessionCompaction.Service,
   SessionInstructions.Service,
   SubagentJob.Service,
@@ -278,6 +280,7 @@ export const requirements = LayerNode.group([
   SessionTodoStore.node,
   SessionTaskReconciliation.node,
   SessionTaskAssignments.node,
+  SessionTaskContext.node,
   SessionCompaction.node,
   SessionInstructions.node,
   SubagentJob.node,

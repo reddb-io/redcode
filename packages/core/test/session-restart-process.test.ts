@@ -2,6 +2,7 @@ import { Database } from "bun:sqlite"
 import { expect, test } from "bun:test"
 import { Schema } from "effect"
 import { SubagentReview } from "@opencode/schema/subagent-review"
+import { TaskContext } from "@opencode/schema/task-context"
 import { tmpdir } from "./fixture/tmpdir"
 
 test("a new process resumes background children after graceful shutdown and delivers each result once", async () => {
@@ -23,7 +24,7 @@ test("a new process resumes background children after graceful shutdown and deli
     return stdout.trim().split("\n").at(-1)
   }
   const shutdown = Schema.decodeUnknownSync(
-    Schema.fromJsonString(Schema.Struct({ before: Schema.Array(Schema.String) })),
+    Schema.fromJsonString(Schema.Struct({ before: Schema.Array(Schema.String), context: TaskContext.Info })),
   )(await run("shutdown"))
   expect(shutdown.before).toHaveLength(2)
   // The first process has exited and closed SQLite. Inspect what it actually left on disk.
@@ -33,7 +34,10 @@ test("a new process resumes background children after graceful shutdown and deli
   const rows = Schema.decodeUnknownSync(
     Schema.Array(Schema.Struct({ metadata: Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown)) })),
   )(database.query("SELECT metadata FROM session_v2 WHERE parent_id IS NOT NULL").all())
-  for (const row of rows) expect(SubagentReview.read(row.metadata)?.completion).toBeUndefined()
+  for (const row of rows) {
+    expect(SubagentReview.read(row.metadata)?.completion).toBeUndefined()
+    expect(SubagentReview.read(row.metadata)?.task?.context).toEqual(shutdown.context)
+  }
   database.close()
 
   const recovered = Schema.decodeUnknownSync(
@@ -48,6 +52,8 @@ test("a new process resumes background children after graceful shutdown and deli
           }),
         ),
         pending: Schema.Number,
+        context: TaskContext.Info,
+        childContexts: Schema.Array(TaskContext.Info),
       }),
     ),
   )(await run("recover"))
@@ -60,4 +66,6 @@ test("a new process resumes background children after graceful shutdown and deli
   expect(recovered.notices.map((notice) => notice.id).toSorted()).toEqual(shutdown.before.toSorted())
   expect(recovered.notices.map((notice) => notice.payload.metadata.state)).toEqual(["completed", "completed"])
   expect(recovered.pending).toBe(0)
+  expect(recovered.context).toEqual(shutdown.context)
+  expect(recovered.childContexts).toEqual([shutdown.context, shutdown.context])
 }, 20_000)

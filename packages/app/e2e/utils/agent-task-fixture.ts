@@ -5,6 +5,7 @@ import type {
   TodoAssignment,
   TodoReconciliation,
   WorktreeIntegrationCandidate,
+  TaskContextInfo,
 } from "@opencode/client/promise"
 import { Schema } from "effect"
 import { SessionTodo } from "@opencode/schema/session-todo"
@@ -90,7 +91,19 @@ export async function mockAgentTasks(page: Page) {
     executionSettled: true,
     acceptanceReady: true,
     inputAcceptance: ["accepted", "accepted"] as TodoReconciliation["inputs"][number]["acceptance"][],
+    context: {
+      version: "a".repeat(64),
+      goal: {
+        id: "goal-fixture",
+        objective: "Deliver a verified task workflow",
+        criteria: ["All task contributions are reconciled"],
+        gates: [],
+        stopAfter: "build",
+        executePlan: true,
+      },
+    } satisfies TaskContextInfo,
   }
+  const reportContext = { current: state.context }
   const report = (taskID: string): TodoReconciliation => ({
     sessionID,
     task: tasks.find((task) => task.id === taskID)!,
@@ -98,6 +111,15 @@ export async function mockAgentTasks(page: Page) {
     observedAt: 1,
     executionSettled: state.executionSettled,
     acceptanceReady: state.acceptanceReady,
+    context: reportContext.current,
+    convergence: {
+      required: taskID === "combine" ? ["api", "tests"] : [],
+      accepted:
+        taskID === "combine" ? ["api", "tests"].filter((_, index) => state.inputAcceptance[index] === "accepted") : [],
+      waitingFor:
+        taskID === "combine" ? ["api", "tests"].filter((_, index) => state.inputAcceptance[index] !== "accepted") : [],
+      ready: state.acceptanceReady && state.executionSettled,
+    },
     inputs: (taskID === "combine" ? tasks.slice(0, 2) : []).map((task, index) => ({
       task,
       acceptance: state.inputAcceptance[index],
@@ -109,6 +131,13 @@ export async function mockAgentTasks(page: Page) {
           promptID: "prompt-" + task.id,
           fingerprint: "fingerprint-" + task.id,
           current: assignments.find((entry) => entry.taskID === task.id)?.current ?? true,
+          context: {
+            ...state.context,
+            version:
+              assignments.find((entry) => entry.taskID === task.id)?.current === false
+                ? "b".repeat(64)
+                : state.context.version,
+          },
           execution:
             assignments.find((entry) => entry.taskID === task.id)?.state === "running" ? "running" : "succeeded",
           response: {
@@ -173,7 +202,20 @@ export async function mockAgentTasks(page: Page) {
     if (request.method() === "GET") {
       if (pathname.endsWith("/graph")) {
         if (state.graphUnavailable) return route.fulfill({ status: 500, json: { message: "Task graph unavailable" } })
-        return route.fulfill({ json: { data: { sessionID, tasks, nodes, assignments } } })
+        return route.fulfill({
+          json: {
+            data: {
+              sessionID,
+              tasks,
+              nodes,
+              context: state.context,
+              assignments: assignments.map((entry) => ({
+                ...entry,
+                context: { ...state.context, version: entry.current ? state.context.version : "b".repeat(64) },
+              })),
+            },
+          },
+        })
       }
       if (pathname.endsWith("/reconciliation")) {
         if (state.reportUnavailable) return route.fulfill({ status: 500, json: { message: "Task report unavailable" } })
@@ -261,6 +303,7 @@ export async function mockAgentTasks(page: Page) {
   })
   return {
     sessionID,
+    reportContext,
     tasks,
     nodes,
     assignments,

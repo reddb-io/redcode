@@ -6,6 +6,7 @@ import { ephemeral, inventory } from "./event.js"
 import { SessionID } from "./session-id.js"
 import { AbsolutePath, optional, PositiveInt, NonNegativeInt } from "./schema.js"
 import { Worktree } from "./worktree.js"
+import { TaskContext } from "./task-context.js"
 
 export const Status = Schema.Literals(["pending", "in_progress", "blocked", "completed", "cancelled"])
 export const Priority = Schema.Literals(["high", "medium", "low"])
@@ -312,6 +313,7 @@ export const Assignment = Schema.Struct({
   state: Schema.Literals(["running", "settled"]),
   outcome: optional(Schema.Literals(["succeeded", "failed", "interrupted"])),
   review: SubagentReview.Decision,
+  context: optional(TaskContext.Info),
 }).annotate({ identifier: "Todo.Assignment" })
 export interface Assignment extends Schema.Schema.Type<typeof Assignment> {}
 
@@ -320,6 +322,7 @@ export const Graph = Schema.Struct({
   tasks: Schema.Array(Info),
   nodes: Schema.Array(GraphNode),
   assignments: Schema.Array(Assignment),
+  context: optional(TaskContext.Info),
 }).annotate({ identifier: "Todo.Graph" })
 export interface Graph extends Schema.Schema.Type<typeof Graph> {}
 
@@ -336,6 +339,7 @@ export const Contribution = Schema.Struct({
   promptID: Schema.String,
   fingerprint: Schema.String,
   current: Schema.Boolean,
+  context: optional(TaskContext.Info),
   execution: Schema.Literals(["running", "succeeded", "failed", "interrupted", "unknown"]),
   review: optional(SubagentReview.Result),
   completion: optional(SubagentReview.Completion),
@@ -378,6 +382,15 @@ export const ReconciliationInput = Schema.Struct({
 }).annotate({ identifier: "Todo.ReconciliationInput" })
 export interface ReconciliationInput extends Schema.Schema.Type<typeof ReconciliationInput> {}
 
+/** Derived acceptance barrier. Readiness never substitutes for candidate verification or application. */
+export const Convergence = Schema.Struct({
+  required: Schema.Array(Schema.String),
+  accepted: Schema.Array(Schema.String),
+  waitingFor: Schema.Array(Schema.String),
+  ready: Schema.Boolean,
+}).annotate({ identifier: "Todo.Convergence" })
+export interface Convergence extends Schema.Schema.Type<typeof Convergence> {}
+
 /** A derived read model for one task and its required inputs, not a persisted approval. */
 export const Reconciliation = Schema.Struct({
   sessionID: SessionID,
@@ -386,6 +399,8 @@ export const Reconciliation = Schema.Struct({
   observedAt: Schema.Finite,
   executionSettled: Schema.Boolean,
   acceptanceReady: Schema.Boolean,
+  convergence: optional(Convergence),
+  context: optional(TaskContext.Info),
   inputs: Schema.Array(ReconciliationInput),
   integration: optional(
     Schema.Struct({ binding: Integration, contractCurrent: Schema.Boolean, issues: Schema.Array(Schema.String) }),

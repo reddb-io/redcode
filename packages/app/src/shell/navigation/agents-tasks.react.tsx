@@ -12,8 +12,9 @@ export function AgentTasksView(props: { services: ReturnType<typeof createAgentT
   const services = props.services
   const view = useSyncExternalStore(services.snapshot.subscribe, services.snapshot.getSnapshot)
   const language = view.language
-  const task = view.report?.task ?? view.task
-  const report = view.report
+  const report = view.report?.context?.version === view.context?.version ? view.report : undefined
+  const task = report?.task ?? view.task
+  const goal = view.context?.goal ?? view.goal
   const candidate = view.review?.candidate
   const binding = report?.integration
   const application = task?.integrationApplication
@@ -76,14 +77,19 @@ export function AgentTasksView(props: { services: ReturnType<typeof createAgentT
             className="border-b border-v2-border-border-base pb-4"
           >
             <h3 className="text-13-medium">{language.t("agentTasks.objective")}</h3>
-            {view.goalError ? (
+            {view.goalError && !view.context ? (
               <p role="status">{language.t("agentTasks.goalUnavailable")}</p>
             ) : (
-              <p className="whitespace-pre-wrap">{view.goal?.objective || language.t("agentTasks.noGoal")}</p>
+              <p className="whitespace-pre-wrap">{goal?.objective || language.t("agentTasks.noGoal")}</p>
             )}
-            {!!view.goal?.criteria.length && (
+            {view.context && (
+              <p className="mt-1 break-all text-caption text-ink-muted" title={view.context.version}>
+                {language.t("agentTasks.contextVersion", { version: view.context.version.slice(0, 12) })}
+              </p>
+            )}
+            {!!goal?.criteria.length && (
               <ul className="list-disc ps-5">
-                {view.goal.criteria.map((item, index) => (
+                {goal.criteria.map((item, index) => (
                   <li key={index}>{item}</li>
                 ))}
               </ul>
@@ -168,6 +174,13 @@ export function AgentTasksView(props: { services: ReturnType<typeof createAgentT
                             {assignment.sessionID}
                           </Button>
                           <p>{language.t("agentTasks.assignmentRevision", { revision: assignment.revision })}</p>
+                          {assignment.context && (
+                            <p title={assignment.context.version}>
+                              {language.t("agentTasks.assignedContext", {
+                                version: assignment.context.version.slice(0, 12),
+                              })}
+                            </p>
+                          )}
                           <p>{status(assignment.state)}</p>
                           {assignment.state === "settled" && assignment.outcome && <p>{status(assignment.outcome)}</p>}
                           {!assignment.current && <Badge>{status("stale")}</Badge>}
@@ -207,11 +220,33 @@ export function AgentTasksView(props: { services: ReturnType<typeof createAgentT
                     </div>
                   )}
                 </div>
+                {view.report && !report && <p role="status">{language.t("agentTasks.contextChanged")}</p>}
                 {report && (
                   <>
                     <p role="status">
                       {language.t(report.executionSettled ? "agentTasks.settled" : "agentTasks.executing")}
                     </p>
+                    {report.convergence && report.convergence.required.length > 0 && (
+                      <section aria-label={language.t("agentTasks.convergence")}>
+                        <h4 className="text-13-medium">{language.t("agentTasks.convergence")}</h4>
+                        <p role="status">
+                          {language.plural("agentTasks.convergenceAccepted", report.convergence.accepted.length, {
+                            total: report.convergence.required.length,
+                          })}
+                        </p>
+                        {report.convergence.ready ? (
+                          <p className="text-ink-muted">{language.t("agentTasks.convergenceReady")}</p>
+                        ) : (
+                          <ul aria-label={language.t("agentTasks.convergenceWaiting")} className="list-disc ps-5">
+                            {report.convergence.waitingFor.map((id) => (
+                              <li key={id}>
+                                {SessionTodo.label(report.inputs.find((input) => input.task.id === id)!.task)}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </section>
+                    )}
                     <div>
                       <h4 className="text-13-medium">{language.t("agentTasks.prerequisites")}</h4>
                       <p className="text-ink-muted">
@@ -238,7 +273,32 @@ export function AgentTasksView(props: { services: ReturnType<typeof createAgentT
                                   status: status(contribution.execution),
                                 })}
                               </summary>
-                              <p>{language.t(contribution.current ? "agentTasks.current" : "agentTasks.outdated")}</p>
+                              <p>
+                                {language.t(
+                                  contribution.current ? "agentTasks.contractCurrent" : "agentTasks.contractOutdated",
+                                )}
+                              </p>
+                              {contribution.context && (
+                                <details className="mt-2">
+                                  <summary className="cursor-pointer py-1">
+                                    {language.t("agentTasks.receivedContext")}
+                                  </summary>
+                                  <p
+                                    className="break-all text-caption text-ink-muted"
+                                    title={contribution.context.version}
+                                  >
+                                    {language.t("agentTasks.contextVersion", {
+                                      version: contribution.context.version.slice(0, 12),
+                                    })}
+                                  </p>
+                                  <p className="whitespace-pre-wrap">{contribution.context.goal.objective}</p>
+                                  <ul className="list-disc ps-5">
+                                    {contribution.context.goal.criteria.map((criterion, index) => (
+                                      <li key={index}>{criterion}</li>
+                                    ))}
+                                  </ul>
+                                </details>
+                              )}
                               {contribution.response && (
                                 <p className="mt-2 whitespace-pre-wrap">{contribution.response.text}</p>
                               )}

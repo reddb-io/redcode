@@ -60,10 +60,12 @@ export const Plugin = {
                 ),
                 ...written.notes,
               ]
+              const snapshot = yield* assignments.inspect(context.sessionID, written.todos)
               const output = JSON.stringify({
                 todos: SessionTodo.forAgent(written.todos, context.agent),
                 graph: SessionTaskGraph.snapshot(SessionTodo.forAgent(written.todos, context.agent)),
-                assignments: yield* assignments.snapshot(context.sessionID, written.todos),
+                assignments: snapshot.assignments,
+                context: snapshot.context,
                 ...(notes.length ? { notes } : {}),
                 ...(input.todos.length ? {} : { availableEvidence: yield* facts.available(context.sessionID) }),
               })

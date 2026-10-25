@@ -34,6 +34,8 @@ import { SessionInbox } from "@opencode/core/session/inbox"
 import { SessionMessage } from "@opencode/core/session/message"
 import { SessionRunnerModel } from "@opencode/core/session/runner/model"
 import { SessionGoalCompletion } from "@opencode/core/session/goal-completion"
+import { SessionGoal } from "@opencode/core/session/goal"
+import { SessionTaskContext } from "@opencode/core/session/task-context"
 import { SessionTaskFacts } from "@opencode/core/session/task-facts"
 import { SessionTaskReconciliation } from "@opencode/core/session/task-reconciliation"
 import { TaskReconcileTool } from "@opencode/core/tool/plugin/task-reconcile"
@@ -166,6 +168,7 @@ const subagentPluginSupervisor = makeLocationNode({
     SessionTodoStore.node,
     SessionTaskReconciliation.node,
     SessionTaskAssignments.node,
+    SessionTaskContext.node,
     SessionGoalCompletion.node,
     Tool.node,
     PluginHooks.node,
@@ -178,6 +181,8 @@ const nodes = LayerNode.group([
   SessionTodoStore.node,
   SessionTaskAssignments.node,
   SessionTaskFacts.node,
+  SessionTaskContext.node,
+  SessionGoal.node,
   Database.node,
   Bus.node,
   Job.node,
@@ -309,6 +314,8 @@ describe("SubagentTool", () => {
             const assignments = yield* SessionTaskAssignments.Service
             const jobs = yield* Job.Service
             const llm = yield* TestLLM.Test
+            const goals = yield* SessionGoal.Service
+            const contexts = yield* SessionTaskContext.Service
             const parent = yield* sessions.create({
               location: Location.Ref.make({ directory: AbsolutePath.make(dir.path) }),
               model: parentModel,
@@ -320,6 +327,12 @@ describe("SubagentTool", () => {
               resume: false,
             })
             yield* sessions.resume(parent.id)
+            yield* goals.start(parent.id, {
+              objective: "Deliver checkout with a verified integration",
+              criteria: ["Checkout and integration checks pass"],
+              gates: ["Preserve public APIs"],
+            })
+            const shared = yield* contexts.get(parent.id)
             const created = (yield* todos.write({
               sessionID: parent.id,
               todos: [
@@ -385,6 +398,7 @@ describe("SubagentTool", () => {
               sessionID: childID,
               state: "running",
               current: true,
+              context: shared,
             })
             expect((yield* launch(created[0]!.id!, "duplicate-launch")).status).toBe("error")
             expect((yield* sessions.list({ parentID: parent.id })).data).toHaveLength(1)
@@ -408,6 +422,30 @@ describe("SubagentTool", () => {
             const child = yield* sessions.get(childID)
             expect(SubagentReview.read(child.metadata)?.task?.id).toBe(created[0]!.id)
             expect(JSON.stringify(yield* sessions.context(childID))).toContain("Tracked task contract")
+            expect(SubagentReview.read(child.metadata)?.task?.context).toEqual(shared)
+            expect(yield* contexts.get(childID)).toEqual(shared)
+            expect(JSON.stringify(yield* sessions.context(childID))).toContain(
+              "Deliver checkout with a verified integration",
+            )
+            yield* goals.recordUsage(parent.id, shared!.goal.id, 123)
+            yield* goals.control(parent.id, { action: "pause" })
+            yield* goals.control(parent.id, { action: "resume" })
+            expect(yield* contexts.get(parent.id)).toEqual(shared)
+            expect((yield* assignments.snapshot(parent.id, yield* todos.get(parent.id)))[0]!.current).toBe(true)
+            yield* goals.control(parent.id, { action: "pause" })
+            yield* goals.start(parent.id, {
+              objective: "Deliver checkout with malformed-input protection",
+              criteria: ["Malformed inputs are rejected"],
+            })
+            const updatedContext = yield* contexts.get(parent.id)
+            expect(updatedContext?.version).not.toBe(shared?.version)
+            const outdated = yield* assignments.snapshot(parent.id, yield* todos.get(parent.id))
+            expect(outdated[0]).toMatchObject({ current: false, context: shared })
+            expect((yield* readReconciliation()).context).toEqual(updatedContext)
+            expect((yield* readReconciliation()).convergence).toMatchObject({
+              waitingFor: [created[0]!.id],
+              ready: false,
+            })
             yield* todos.write({
               sessionID: parent.id,
               todos: [{ id: created[0]!.id, criterion: "Checkout also rejects malformed input" }],
@@ -449,6 +487,7 @@ describe("SubagentTool", () => {
               refreshed.completion,
             )
             expect((yield* assignments.snapshot(parent.id, yield* todos.get(parent.id)))[0]!.current).toBe(true)
+            expect(SubagentReview.read((yield* sessions.get(childID)).metadata)?.task?.context).toEqual(updatedContext)
             expect(SubagentReview.read((yield* sessions.get(childID)).metadata)?.criteria).toEqual([
               "Checkout also rejects malformed input",
             ])
@@ -483,6 +522,12 @@ describe("SubagentTool", () => {
             expect(completed.every((task) => task.status === "completed")).toBe(true)
             yield* goalCompletion.check(parent.id)
             expect((yield* readReconciliation()).acceptanceReady).toBe(true)
+            expect((yield* readReconciliation()).convergence).toEqual({
+              required: [created[0]!.id],
+              accepted: [created[0]!.id],
+              waitingFor: [],
+              ready: true,
+            })
             yield* record(parent.id, TaskReconcileTool.name, "reconciliation-is-not-proof")
             const rejectedProof = yield* todos
               .write({

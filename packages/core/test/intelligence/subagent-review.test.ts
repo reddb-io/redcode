@@ -277,11 +277,40 @@ describe("SubagentReview metadata", () => {
       verdict: "verified",
       issues: [],
       created: 1,
+      task: {
+        id: "task-loader",
+        revision: 1,
+        fingerprint: "task-contract",
+        promptID: "msg_loader",
+        assigned: 1,
+        context: {
+          version: "context-version",
+          goal: {
+            id: "goal-loader",
+            objective: "Keep loader compatibility",
+            criteria: ["Existing callers work"],
+            gates: [],
+            stopAfter: "build",
+            executePlan: true,
+          },
+        },
+      },
       result: { decision: "needs_revision", issues: ["unmet_criterion"], repaired: true, at: 2 },
     }
     const metadata = SubagentReview.write({ budget: { maxTokens: 10 } }, brief)
     expect(metadata.budget).toEqual({ maxTokens: 10 })
     expect(SubagentReview.read(metadata)).toEqual(brief)
+    const request = IntelligenceSubagentReview.resultEvaluation({
+      sessionID: brief.parentSessionID,
+      childID: "ses_loader",
+      repaired: false,
+      brief: SubagentReview.read(metadata)!,
+      findings: [],
+      text: "Loader calls remain compatible",
+      parts: [],
+    })
+    expect(request.sources.brief.context_version).toBe("context-version")
+    expect(JSON.stringify(request.sources.brief.shared_objective)).toContain("Keep loader compatibility")
     expect(SubagentReview.supervised(SubagentReview.read(metadata))).toBe(true)
     expect(SubagentReview.supervised({ ...brief, scope: [] })).toBe(false)
     expect(SubagentReview.decision({ review: { decision: "verified" } }, metadata)).toBe("verified")

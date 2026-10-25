@@ -271,6 +271,20 @@ write coverage so the coordinator can inspect the source sessions and verify the
 every prerequisite has current parent evidence. Failed, blocked, cancelled and stale inputs remain
 explicit. Reads preserve task state, and the report itself cannot prove completion.
 
+Tracked delegations also keep the shared goal's objective, criteria, gates and execution scope as a
+versioned snapshot in their brief and prompt. Agents → Tasks shows the current context version and
+the version each contribution received. Replacing the objective or its acceptance contract makes
+older delegations stale; pause/resume and usage accounting preserve the context version. Continuing
+the same tracked child admits the current contract, while its prior prompt remains in the transcript.
+Nested tracked tasks inherit the context their parent received when they have no goal of their own.
+An older delegation without a captured context must be continued against the recorded goal before
+its result can satisfy that goal. Sessions without a recorded shared goal keep their task-only checks.
+
+The reconciliation report's `convergence` lists required, accepted and waiting task IDs. Its `ready`
+flag means the required results are accepted and settled; it does not validate a Git candidate or
+authorize application. A report from an older context is hidden until refreshed. Context snapshots
+survive process restarts alongside the existing durable result-delivery records.
+
 Clients can read the same projection with
 `GET /api/session/:sessionID/todo/:taskID/reconciliation`, optionally supplying `revision` to reject a
 changed integration task. Background completion notices retain their existing delivery and recovery;

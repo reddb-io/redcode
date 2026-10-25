@@ -327,6 +327,25 @@ export type TodoGraphNode = {
 
 export type SubagentReviewDecision = "verified" | "inconclusive" | "needs_revision" | "unverified"
 
+export type TaskContextInfo = {
+  version: string
+  goal: {
+    id: string
+    objective: string
+    criteria: Array<string>
+    gates: Array<string>
+    stopAfter: "design" | "plan" | "build"
+    executePlan: boolean
+  }
+}
+
+export type TodoConvergence = {
+  required: Array<string>
+  accepted: Array<string>
+  waitingFor: Array<string>
+  ready: boolean
+}
+
 export type SubagentReviewCompletion = {
   promptID: string
   status: "completed" | "error" | "cancelled"
@@ -1451,6 +1470,15 @@ export type TodoIntegration = {
   sources: Array<TodoIntegrationSource>
 }
 
+export type SubagentReviewResult = {
+  decision: SubagentReviewDecision
+  issues: Array<string>
+  repaired: boolean
+  evaluationID?: string
+  unavailable?: string
+  at: number
+}
+
 export type TodoAssignment = {
   taskID: string
   sessionID: string
@@ -1460,15 +1488,7 @@ export type TodoAssignment = {
   state: "running" | "settled"
   outcome?: "succeeded" | "failed" | "interrupted"
   review: SubagentReviewDecision
-}
-
-export type SubagentReviewResult = {
-  decision: SubagentReviewDecision
-  issues: Array<string>
-  repaired: boolean
-  evaluationID?: string
-  unavailable?: string
-  at: number
+  context?: TaskContextInfo
 }
 
 export type SessionGoalInfo = {
@@ -3141,6 +3161,7 @@ export type TodoContribution = {
   promptID: string
   fingerprint: string
   current: boolean
+  context?: TaskContextInfo
   execution: "running" | "succeeded" | "failed" | "interrupted" | "unknown"
   review?: SubagentReviewResult
   completion?: SubagentReviewCompletion
@@ -3838,6 +3859,7 @@ export type TodoGraph = {
   tasks: Array<Todo>
   nodes: Array<TodoGraphNode>
   assignments: Array<TodoAssignment>
+  context?: TaskContextInfo
 }
 
 export type TodoIntegrationPreparation = { task: Todo; candidate: WorktreeIntegrationCandidate }
@@ -4014,6 +4036,8 @@ export type TodoReconciliation = {
   observedAt: number
   executionSettled: boolean
   acceptanceReady: boolean
+  convergence?: TodoConvergence
+  context?: TaskContextInfo
   inputs: Array<TodoReconciliationInput>
   integration?: { binding: TodoIntegration; contractCurrent: boolean; issues: Array<string> }
   overlaps: Array<{ path: string; taskIDs: Array<string> }>

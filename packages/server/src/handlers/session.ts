@@ -412,12 +412,14 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
           const todos = yield* SessionTodoStore.Service
           const assignments = yield* SessionTaskAssignments.Service
           const tasks = yield* todos.get(ctx.params.sessionID)
+          const snapshot = yield* assignments.inspect(ctx.params.sessionID, tasks)
           return {
             data: {
               sessionID: ctx.params.sessionID,
               tasks,
               nodes: SessionTaskGraph.snapshot(tasks),
-              assignments: yield* assignments.snapshot(ctx.params.sessionID, tasks),
+              assignments: snapshot.assignments,
+              context: snapshot.context,
             },
           }
         }),

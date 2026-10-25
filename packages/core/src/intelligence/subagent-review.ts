@@ -442,7 +442,7 @@ export const resultQuestions = IntelligenceEvaluation.questions({
   missing_output:
     "Does candidate lack what sources.brief.return_format asks for, in content or in shape? When there is no return format, does it fail to answer what sources.brief.prompt asks for?",
   contradicts_brief:
-    "Does candidate or sources.tool_calls contradict sources.brief.prompt: work toward a different objective, a non-goal done, or a stated constraint ignored?",
+    "Does candidate or sources.tool_calls contradict sources.brief.prompt or sources.brief.shared_objective: work toward a different objective, a non-goal done, or a stated constraint ignored?",
 })
 
 /** The S1 evaluation of a result against the brief it was produced under, on the parent's behalf. */
@@ -473,6 +473,14 @@ export function resultEvaluation(input: {
           : {}),
         scope: input.brief.scope,
         done_criteria: input.brief.criteria,
+        ...(input.brief.task?.context
+          ? {
+              context_version: input.brief.task.context.version,
+              shared_objective: IntelligenceEvaluation.evidence(JSON.stringify(input.brief.task.context.goal), {
+                limit: 8_000,
+              }),
+            }
+          : {}),
         ...(input.brief.returnFormat ? { return_format: input.brief.returnFormat } : {}),
         write_capable: input.brief.writeCapable,
       },

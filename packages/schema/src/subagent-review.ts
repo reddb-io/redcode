@@ -2,6 +2,7 @@ export * as SubagentReview from "./subagent-review.js"
 
 import { Option, Schema } from "effect"
 import { optional, PositiveInt } from "./schema.js"
+import { TaskContext } from "./task-context.js"
 
 /**
  * The child session metadata key holding the brief a subagent was launched under, how its parent
@@ -83,6 +84,7 @@ export const Brief = Schema.Struct({
       fingerprint: Schema.String,
       promptID: Schema.String,
       assigned: Schema.Finite,
+      context: optional(TaskContext.Info),
     }),
   ),
   verdict: BriefVerdict,

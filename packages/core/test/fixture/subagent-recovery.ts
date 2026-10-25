@@ -12,6 +12,8 @@ import { Session } from "@opencode/core/session"
 import { SessionExecution } from "@opencode/core/session/execution"
 import { SessionRestart } from "@opencode/core/session/execution/restart"
 import { SessionInbox } from "@opencode/core/session/inbox"
+import { SessionGoal } from "@opencode/core/session/goal"
+import { SessionTaskContext } from "@opencode/core/session/task-context"
 import { SessionRunner } from "@opencode/core/session/runner/index"
 import { SessionTable } from "@opencode/core/session/sql"
 import { SubagentJob } from "@opencode/core/session/subagent-job"
@@ -49,7 +51,15 @@ const result = await Effect.runPromise(
     )
     const context = yield* Layer.buildWithScope(
       AppNodeBuilder.build(
-        LayerNode.group([SessionRestart.node, SessionExecution.node, SubagentJob.node, Job.node, Database.node]),
+        LayerNode.group([
+          SessionRestart.node,
+          SessionExecution.node,
+          SubagentJob.node,
+          Job.node,
+          Database.node,
+          SessionGoal.node,
+          SessionTaskContext.node,
+        ]),
         [
           Database.node.replace(Database.configured({ path })),
           SessionExecution.node.replace(
@@ -75,6 +85,8 @@ const result = await Effect.runPromise(
     const subagents = Context.get(context, SubagentJob.Service)
     const execution = Context.get(context, SessionExecution.Service)
     const restart = Context.get(context, SessionRestart.Service)
+    const goals = Context.get(context, SessionGoal.Service)
+    const contexts = Context.get(context, SessionTaskContext.Service)
 
     if (mode === "shutdown") {
       yield* database.db
@@ -83,32 +95,52 @@ const result = await Effect.runPromise(
         .run()
       yield* database.db
         .insert(SessionTable)
+        .values({
+          id: parent,
+          project_id: Project.ID.global,
+          slug: parent,
+          directory: "/project",
+          version: "test",
+        })
+        .run()
+      yield* goals.start(parent, {
+        objective: "Reconcile both delegated contributions after restart",
+        criteria: ["Deliver each result once"],
+        gates: ["Keep the received task context"],
+      })
+      const shared = yield* contexts.get(parent)
+      yield* database.db
+        .insert(SessionTable)
         .values(
-          [parent, ...children].map((id) => ({
+          children.map((id) => ({
             id,
-            parent_id: id === parent ? null : parent,
+            parent_id: parent,
             project_id: Project.ID.global,
             slug: id,
             directory: "/project",
             version: "test",
-            metadata:
-              id === parent
-                ? {}
-                : SubagentReview.write<never>(
-                    {},
-                    {
-                      prompt: "Verify process recovery",
-                      agent: "general",
-                      scope: [],
-                      criteria: [],
-                      writeCapable: true,
-                      parentSessionID: parent,
-                      verdict: "skipped",
-                      issues: [],
-                      created: 0,
-                      task: { id, revision: 1, fingerprint: "fixture-contract", promptID: `msg_${id}`, assigned: 0 },
-                    },
-                  ),
+            metadata: SubagentReview.write<never>(
+              {},
+              {
+                prompt: "Verify process recovery",
+                agent: "general",
+                scope: [],
+                criteria: [],
+                writeCapable: true,
+                parentSessionID: parent,
+                verdict: "skipped",
+                issues: [],
+                created: 0,
+                task: {
+                  id,
+                  revision: 1,
+                  fingerprint: "fixture-contract",
+                  promptID: `msg_${id}`,
+                  assigned: 0,
+                  context: shared,
+                },
+              },
+            ),
           })),
         )
         .run()
@@ -133,7 +165,7 @@ const result = await Effect.runPromise(
       yield* Scope.close(executionScope, Exit.void)
       yield* Effect.forEach(children, (id) => jobs.wait({ id }))
       yield* Scope.close(scope, Exit.void)
-      return { before: before.map((marker) => marker.notificationID) }
+      return { before: before.map((marker) => marker.notificationID), context: shared }
     }
 
     yield* restart.resumeSuspendedSessions
@@ -149,6 +181,8 @@ const result = await Effect.runPromise(
     yield* restart.resumeSuspendedSessions
     return {
       started: [...started],
+      context: yield* contexts.get(parent),
+      childContexts: yield* Effect.forEach(children, (id) => contexts.get(id)),
       attempts: attempts.map((row) => row.attempts),
       notices: (yield* SessionInbox.list(database.db, parent)).map((notice) => ({
         id: notice.id,
