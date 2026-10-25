@@ -1,5 +1,11 @@
 # @reddb-io/redcode
 
+## 0.85.1
+
+### Patch Changes
+
+- Recognize equivalent Windows checkout paths when reviewing, checkpointing, archiving, and integrating managed worktrees. Resolve the Desktop animation dependency in both hoisted and isolated installs.
+
 ## 0.85.0
 
 ### Minor Changes
