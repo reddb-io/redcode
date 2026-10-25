@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs"
 import { createRequire } from "node:module"
+import { dirname, join } from "node:path"
 import solidPlugin from "vite-plugin-solid"
 import reactPlugin from "@vitejs/plugin-react"
 import tailwindcss from "@tailwindcss/vite"
@@ -100,9 +101,11 @@ export default [
             "@betteroffice/fonts-cjk": fileURLToPath(
               new URL("../gui-extensions/src/microsoft-office/fonts-cjk.ts", import.meta.url),
             ),
-            // Use the browser build: its `solid` export contains JSX in .js files and cannot be pre-bundled.
-            "@kitlangton/solid-motion": fileURLToPath(
-              new URL("../ui/node_modules/@kitlangton/solid-motion/dist/index.js", import.meta.url),
+            // Resolve from the owning package for both hoisted and isolated installs, then use the browser build:
+            // its `solid` export contains JSX in .js files and cannot be pre-bundled.
+            "@kitlangton/solid-motion": join(
+              dirname(createRequire(new URL("../ui/package.json", import.meta.url)).resolve("@kitlangton/solid-motion")),
+              "index.js",
             ),
           },
         },

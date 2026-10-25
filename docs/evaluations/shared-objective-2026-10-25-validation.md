@@ -72,6 +72,14 @@ servido por um preview exclusivo do teste. Medições sob carga de typecheck nã
 permitem concluir ganho ou regressão de latência. Esse diagnóstico preexistente
 continua aberto; os testes funcionais de Agents passaram.
 
+Os builds Desktop Windows x64 e ARM64 da primeira tentativa da release 0.85.0
+falharam porque o alias de `@kitlangton/solid-motion` pressupunha uma instalação
+isolada em `packages/ui/node_modules`, enquanto o CI Windows usa hoisting. O alias
+agora resolve a dependência pelo pacote proprietário e seleciona o mesmo entrypoint
+de navegador. Após a correção, o build Desktop Linux e as 27 tarefas de
+`bun run check` passaram; a confirmação Windows pertence à nova execução nativa
+da release.
+
 ## Alcance
 
 Este é o primeiro fluxo sobre o objetivo persistido, tarefas e recibos existentes.
