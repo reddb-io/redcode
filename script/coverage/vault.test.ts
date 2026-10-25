@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test"
+import path from "node:path"
+import { tmpdir } from "../../packages/core/test/fixture/tmpdir"
 import {
   THRESHOLDS,
   VAULT_TEST_NAME,
@@ -83,6 +85,34 @@ function measured() {
 }
 
 describe("parseLcov", () => {
+  test("resolves sources from the isolated Core runner after its temporary cwd is removed", async () => {
+    await using directory = await tmpdir("coverage-paths-")
+    const root = path.resolve(import.meta.dir, "../..")
+    const core = path.join(root, "packages/core")
+    const child = Bun.spawn(
+      [
+        process.execPath,
+        "run",
+        "test",
+        "--coverage",
+        "--coverage-reporter=lcov",
+        `--coverage-dir=${directory.path}`,
+        "test/vault-instructions.test.ts",
+      ],
+      { cwd: core, stdout: "pipe", stderr: "pipe" },
+    )
+    const [code, stdout, stderr] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ])
+    expect({ code, stdout, stderr }).toMatchObject({ code: 0 })
+    const files = parseLcov(await Bun.file(path.join(directory.path, "lcov.info")).text(), core, root)
+    const instructions = files.find((file) => file.path === "packages/core/src/vault/instructions.ts")
+    expect(instructions?.loaded).toBe(true)
+    expect([...instructions!.lines.values()].some((hits) => hits > 0)).toBe(true)
+  }, 15_000)
+
   test("makes every source path repository-relative and reads line and function totals", () => {
     const files = parseLcov(core, `${root}/packages/core`, root)
     expect(files.map((file) => file.path)).toEqual([

@@ -62,4 +62,20 @@ const result = await child.exited
 process.off("SIGINT", interrupt)
 process.off("SIGTERM", terminate)
 
+// LCOV paths are relative to the isolated child cwd, which is removed on exit.
+// Keep reports usable by coverage collectors running from the package directory.
+const args = process.argv.slice(2)
+const coverageIndex = args.indexOf("--coverage-dir")
+const coverage =
+  args.find((arg) => arg.startsWith("--coverage-dir="))?.slice("--coverage-dir=".length) ??
+  (coverageIndex >= 0 ? args[coverageIndex + 1] : undefined)
+if (args.includes("--coverage")) {
+  const report = Bun.file(path.join(coverage ? path.resolve(home, coverage) : path.join(home, "coverage"), "lcov.info"))
+  if (await report.exists())
+    await Bun.write(
+      report,
+      (await report.text()).replace(/^SF:(.+)$/gm, (_, source: string) => `SF:${path.resolve(home, source.trim())}`),
+    )
+}
+
 process.exitCode = result
