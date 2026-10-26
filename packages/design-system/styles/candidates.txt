@@ -11,8 +11,10 @@
 !header
 !inert
 !initial
+!label
 !moreOpen
 !paused
+!pre
 !previous
 !right
 !session
@@ -636,6 +638,7 @@ applicationShell
 applications
 applied
 appliedLabel
+applies
 apply
 applyChanges
 applyFocus
@@ -785,6 +788,7 @@ average
 averageRadius
 avoid
 await
+axe
 axes
 axis
 b
@@ -1208,6 +1212,7 @@ classes
 classic
 clean
 cleanup
+cleanups
 clear
 clearable
 clearance
@@ -1248,6 +1253,9 @@ cluster
 coalesced
 code
 codeBlock
+codeBlockCopiedLabel
+codeBlockCopyErrorLabel
+codeBlockRegionLabel
 codes
 coefficient
 col
@@ -1680,9 +1688,12 @@ data-circular-empty
 data-circular-legend
 data-circular-plot
 data-code-block
+data-code-block-copied-label
 data-code-block-copy
+data-code-block-copy-error-label
 data-code-block-language
 data-code-block-overflowing
+data-code-block-region-label
 data-code-field
 data-code-gutter
 data-code-highlight
@@ -2161,6 +2172,7 @@ decimal
 decimals
 decision
 deck
+declarations
 declare
 declared
 declares
@@ -2470,6 +2482,7 @@ engine
 engineHost
 engineState
 engines
+enhanceCodeBlocks
 enlarge
 enlarged
 enough
@@ -2598,6 +2611,7 @@ failure
 failures
 fall
 fallback
+fallback-initial
 fallbackClass
 falling
 falls
@@ -2657,6 +2671,7 @@ filteredSuggestions
 filtering
 filters
 financial
+find
 finds
 fine
 finer
@@ -2805,6 +2820,7 @@ formerly
 forms
 forty
 forward
+forwarded
 forwarding
 forwards
 four
@@ -3142,11 +3158,13 @@ hue
 human-readable
 hundred
 hydrates
+hydrating
 hydration
 i
 icon
 icon-only
 iconColor
+iconSize
 icons
 id
 id!
@@ -3260,6 +3278,7 @@ inputStyle
 inputType
 inputValue
 inserted
+inserting
 insertion
 inset
 inset-0
@@ -3344,7 +3363,9 @@ italic
 item
 itemActions
 itemClass
+itemGap
 itemListElement
+itemSize
 itemToStringLabel
 items
 items-baseline
@@ -3409,6 +3430,7 @@ labelId
 labelLayout
 labelLimit
 labelRadius
+labelSize
 labelWidth
 labelX
 labelY
@@ -3501,6 +3523,7 @@ lengths
 less
 let
 lets
+letter
 letters
 letting
 level
@@ -3798,6 +3821,7 @@ min-w-5
 min-w-64
 min-w-[5ch]
 min-w-[calc(var(--reddb-spatial-control-height-md)*15)]
+min-w-[calc(var(--reddb-spatial-control-height-md)+2*var(--reddb-spatial-inset-sm)+1px)]
 min-w-[min(32ch,calc(100vw-var(--reddb-spatial-inset-lg)*2))]
 min-w-[var(--reddb-spatial-control-height-sm)]
 min-w-[var(--reddb-spatial-icon-size-md)]
@@ -3932,6 +3956,7 @@ narrowest
 narrows
 national-number
 native
+natural
 naturalWidth
 nav
 navItem
@@ -4221,6 +4246,9 @@ orientation
 origin
 origin-top-left
 original
+originalLabel
+originalName
+originalRegion
 originating
 origins
 orphan
@@ -4474,6 +4502,7 @@ pointLabels
 pointer
 pointer-events-auto
 pointer-events-none
+pointer-target
 pointer/keyboard
 pointerEvents
 pointers
@@ -4684,6 +4713,7 @@ rail
 rail-panel
 railElement
 railOpen
+railPadding
 railRegion
 railWidth
 rails
@@ -5198,6 +5228,7 @@ seriesCell
 served
 server
 server-authorized
+server-rendered
 serverSnapshot
 service
 session
@@ -5357,6 +5388,7 @@ sidebarNavigation
 sidebarPanel
 sidebarRail
 sidebarRailItem
+sidebarRailSizing
 sides
 sigma
 sign
@@ -5693,6 +5725,7 @@ system-coloured
 tab
 tabDay
 tabIndex
+tabindex
 table
 tableAppearance
 tables

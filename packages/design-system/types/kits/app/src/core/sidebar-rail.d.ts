@@ -6,7 +6,7 @@ export interface SidebarRailItem extends NavigationMarkers {
     /**
      * Accessible name and Tooltip content for the visually compact control. A tile that shows
      * initials in icon-only mode is named `<initials>, <label>` unless `label` already holds them as words, so its
-     * name starts with what it shows (WCAG 2.5.3).
+     * name contains what it shows (WCAG 2.5.3). When a notification is present, its visible count precedes the initials.
      */
     label: string;
     /** Native destination; omit for an action or contextual section menu. */

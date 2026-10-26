@@ -9,7 +9,7 @@ host's density when one is set; otherwise it uses tiny on narrow viewports and
 compact on wider ones. Editable text and toolbar controls retain the DS touch
 floor on devices with a coarse pointer.
 
-The current delivery pins `v2026.10.34`, selects React and uses the official
+The current delivery pins `v2026.10.37`, selects React and uses the official
 compiled distribution. Settings and the migrated shell surfaces consume native
 React controls through canonical Base, App and Data imports. Shared service adapters
 retain the existing router, persistence, server subscriptions and extension owners.
@@ -42,6 +42,10 @@ producer adaptation in the receipt; the pinned checkout and Kit sources are unch
 Run `bun run check` and the affected application regression tests after updating.
 Do not edit vendored components or generated theme files by hand.
 
+Delivery's optional task flow uses the Data kit's native `WorkflowDiagram` in a separate lazy
+chunk. It draws recorded prerequisites and exposes task criteria and assigned conversations
+through the existing overview snapshot, without additional queries or inferred progress.
+
 ## Adapter contracts
 
 - Primary actions explicitly request the primary button variant. The upstream
@@ -55,8 +59,15 @@ Do not edit vendored components or generated theme files by hand.
   target, including the minimum touch target on mobile.
 - The desktop rail uses the shared badge and indicator contracts. Counts above
   99 display as `99+`; the accessible description retains the exact count.
-  Its labels are visible by default and can be disabled in Settings → Preferences
-  → Navigation labels. The grid follows the rail's intrinsic width in either mode.
+  Its labels are always visible. Saved choices from the retired icon-only mode
+  remain readable in settings storage but no longer hide the names. The grid
+  follows the rail's intrinsic width.
+  Redcode composes the rail recipe with smaller density-aware insets and item
+  gaps. Items use 18px icons and 11px captions with a 16px line height.
+  Coarse-pointer controls retain the Design System's touch floor.
+  Preferences → Navigation spacing controls the vertical gap from 0 to 16 CSS
+  pixels (12px by default) and retains the saved choice.
+  The Server action keeps its address in the tooltip rather than in its label.
 - Mobile uses `BottomNavigation` with Home, Browse, Agents, Search and More.
   Browse opens the current contextual sidemenu; More retains new-session,
   settings, server and help actions. The dock participates in shell layout, so

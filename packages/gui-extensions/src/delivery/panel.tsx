@@ -4,6 +4,7 @@ import { ReactView } from "@opencode/ui/react-view"
 import { createVisitState, useExtension, type MountedSession } from "../sdk"
 import { DeliveryView } from "./view.react"
 import { createDeliveryResources } from "./resources"
+import { createDeliveryMonitors } from "./monitors"
 import type { DeliverySection } from "./resources-model"
 import en from "./i18n/en"
 
@@ -22,6 +23,17 @@ export default function DeliveryPanel(props: { session: MountedSession; visible:
     },
   })
   const root = createMemo(() => props.session.server.data.session.root(props.session.id))
+  const monitors = createDeliveryMonitors({
+    get session() {
+      return props.session
+    },
+    get visible() {
+      return props.visible
+    },
+    get section() {
+      return section()
+    },
+  })
   const enabled = () => props.visible && props.session.server.connected && section() === "overview"
   const graph = useQuery(() => ({
     queryKey: ["delivery-tasks", props.session.server.id, root()],
@@ -51,6 +63,7 @@ export default function DeliveryPanel(props: { session: MountedSession; visible:
       copy: Object.fromEntries(Object.keys(en).map((key) => [key, ctx.t(key)])),
       goal: goal.data,
       tasks: graph.data?.tasks ?? [],
+      nodes: graph.data?.nodes ?? [],
       assignments: graph.data?.assignments ?? [],
       loading: graph.isPending || goal.isPending,
       unavailable: graph.isError || goal.isError,
@@ -79,8 +92,11 @@ export default function DeliveryPanel(props: { session: MountedSession; visible:
         view: view(),
         resources: resources.snapshot(),
         resourceActions: resources.actions,
+        monitors: monitors.snapshot(),
+        monitorActions: monitors.actions,
         section: setSection,
         refresh: () => {
+          if (section() === "monitors") return monitors.actions.refresh()
           if (section() !== "overview") return resources.actions.refresh()
           void Promise.all([graph.refetch(), goal.refetch()])
         },

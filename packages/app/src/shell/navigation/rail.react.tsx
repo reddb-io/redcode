@@ -138,7 +138,7 @@ function DockItem(props: {
 export function NavigationRail(props: NavigationProps) {
   const { view, navigation } = props
   const language = view.language
-  const rail = sidebarRail({ labelled: view.labelled })
+  const rail = sidebarRail({ labelled: true })
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     const keys: Record<string, (index: number, count: number) => number> = {
       ArrowDown: (index, count) => (index + 1) % count,
@@ -162,13 +162,15 @@ export function NavigationRail(props: NavigationProps) {
     <nav
       data-component="navigation-rail"
       aria-label={language.t("navigation.label")}
-      className={rail.root()}
+      className={rail.root({
+        class:
+          "w-[calc(max(5.75em,var(--reddb-spatial-control-height-md)*1.5)+var(--reddb-spatial-inset-sm))] min-w-[calc(var(--reddb-spatial-control-height-md)+var(--reddb-spatial-inset-sm)/2+1px)] p-[calc(var(--reddb-spatial-inset-sm)/4)]",
+      })}
       onKeyDown={onKeyDown}
     >
       <div className={rail.region({ class: rail.middle({ class: "overflow-x-hidden" }) })}>
-        <ul className={rail.list()}>
+        <ul className={rail.list()} style={{ gap: view.gap }}>
           <RailItem
-            labelled={view.labelled}
             label={language.t("home.title")}
             keybind={view.keybinds["home.toggle"]}
             current={view.route.home}
@@ -178,7 +180,6 @@ export function NavigationRail(props: NavigationProps) {
             <Glyph name="home" />
           </RailItem>
           <RailItem
-            labelled={view.labelled}
             label={language.t("command.session.new")}
             keybind={view.keybinds["tab.new"]}
             onClick={navigation.go.newSession}
@@ -186,7 +187,6 @@ export function NavigationRail(props: NavigationProps) {
             <Icon name="new-session" />
           </RailItem>
           <RailItem
-            labelled={view.labelled}
             label={language.t("navigation.search")}
             keybind={view.keybinds["command.palette"]}
             onClick={navigation.go.search}
@@ -194,7 +194,6 @@ export function NavigationRail(props: NavigationProps) {
             <Icon name="magnifying-glass" />
           </RailItem>
           <RailItem
-            labelled={view.labelled}
             label={language.t("command.sidebar.toggle")}
             keybind={view.keybinds["sidebar.toggle"]}
             expanded={view.opened}
@@ -204,32 +203,28 @@ export function NavigationRail(props: NavigationProps) {
             <Icon name={view.opened ? "layout-left-full" : "layout-left"} />
           </RailItem>
           <RailItem
-            labelled={view.labelled}
             label={language.t("agents.title")}
             description={view.count > 0 ? language.plural("navigation.background.running", view.count) : undefined}
             current={view.route.agents}
             keybind={view.keybinds["agents.open"]}
             onClick={navigation.go.agents}
           >
-            <span className={rail.face()}>
-              <span className={notification.root({ class: rail.badgeAnchor() })}>
-                <Glyph name="activity" />
-                {view.count > 0 && (
-                  <span data-indicator-marker className={notification.marker()} aria-hidden="true">
-                    <span className={badge({ variant: "filled", class: rail.badge() })}>
-                      {view.count > 99 ? "99+" : view.count}
-                    </span>
+            <span className={notification.root({ class: rail.badgeAnchor() })}>
+              <Glyph name="activity" />
+              {view.count > 0 && (
+                <span data-indicator-marker className={notification.marker()} aria-hidden="true">
+                  <span className={badge({ variant: "filled", class: rail.badge() })}>
+                    {view.count > 99 ? "99+" : view.count}
                   </span>
-                )}
-              </span>
+                </span>
+              )}
             </span>
           </RailItem>
         </ul>
       </div>
       <div className={rail.region()}>
-        <ul className={rail.list()}>
+        <ul className={rail.list()} style={{ gap: view.gap }}>
           <RailItem
-            labelled={view.labelled}
             label={language.t("sidebar.settings")}
             keybind={view.keybinds["settings.open"]}
             current={view.route.settings}
@@ -237,16 +232,16 @@ export function NavigationRail(props: NavigationProps) {
           >
             <Icon name="settings-gear" />
           </RailItem>
-          <RailItem labelled={view.labelled} label={language.t("navigation.help")} onClick={navigation.go.help}>
+          <RailItem label={language.t("navigation.help")} onClick={navigation.go.help}>
             <Icon name="help" />
           </RailItem>
-          <RailItem labelled={view.labelled} label={view.serverName} onClick={navigation.go.servers}>
-            <span
-              className="flex size-6 items-center justify-center rounded-full border border-control-edge bg-muted text-caption font-medium text-foreground"
-              aria-hidden="true"
-            >
-              {view.avatar}
-            </span>
+          <RailItem
+            label={language.t("navigation.server")}
+            tooltip={view.serverName}
+            description={view.serverName}
+            onClick={navigation.go.servers}
+          >
+            <Icon name="server" />
           </RailItem>
         </ul>
       </div>
@@ -255,9 +250,9 @@ export function NavigationRail(props: NavigationProps) {
 }
 
 function RailItem(props: {
-  labelled: boolean
   label: string
   description?: string
+  tooltip?: string
   keybind?: string[]
   current?: boolean
   expanded?: boolean
@@ -266,19 +261,22 @@ function RailItem(props: {
   onClick: () => void
   children: ReactNode
 }) {
-  const rail = sidebarRail({ labelled: props.labelled })
+  const rail = sidebarRail({ labelled: true })
   return (
-    <li className={props.labelled ? "w-full" : undefined}>
+    <li className="w-full">
       <Tooltip
         label={props.label}
-        content={[props.label, ...(props.keybind ?? [])].join(" ")}
+        content={[props.tooltip ?? props.label, ...(props.keybind ?? [])].join(" ")}
         child={({ props: trigger }) => (
           <button
             {...trigger}
             type="button"
             data-rail-item
             tabIndex={props.first ? 0 : -1}
-            className={rail.item({ class: "flex items-center justify-center" })}
+            className={rail.item({
+              class:
+                "flex items-center justify-center gap-[calc(var(--reddb-spatial-gap-sm)/2)] py-[calc(var(--reddb-spatial-gap-sm)/2)]",
+            })}
             aria-label={props.label}
             aria-description={props.description}
             aria-pressed={props.current}
@@ -286,8 +284,16 @@ function RailItem(props: {
             aria-controls={props.controls}
             onClick={props.onClick}
           >
-            <span className={rail.face()}>{props.children}</span>
-            {props.labelled && <span className={rail.label()}>{props.label}</span>}
+            <span
+              className={rail.face({
+                class: "size-[18px] [&_svg]:size-[18px]",
+              })}
+            >
+              {props.children}
+            </span>
+            <span className={rail.label({ class: "text-[11px] leading-[var(--line-height-compact)]" })}>
+              {props.label}
+            </span>
           </button>
         )}
       />

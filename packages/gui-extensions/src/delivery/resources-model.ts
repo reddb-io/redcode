@@ -3,7 +3,7 @@ import { Harness } from "@opencode/schema/harness"
 import type { SessionInfo } from "@opencode/client/promise"
 
 export const RESOURCE_KEY = "redcode.delivery"
-export type DeliverySection = "overview" | "resources" | "skills"
+export type DeliverySection = "overview" | "resources" | "skills" | "monitors"
 
 const PullRequest = Schema.String.check(
   Schema.makeFilter<string>((value) => (pullRequestURL(value) ? undefined : "Expected an HTTPS pull request URL")),

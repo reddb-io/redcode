@@ -80,9 +80,9 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
         setShowNavigation(value: boolean) {
           setStore("general", "showNavigation", value)
         },
-        navigationLabels: withFallback(() => store.general?.navigationLabels, true),
-        setNavigationLabels(value: boolean) {
-          setStore("general", "navigationLabels", value)
+        navigationGap: withFallback(() => store.general?.navigationGap, 12),
+        setNavigationGap(value: number) {
+          setStore("general", "navigationGap", value)
         },
         timelineDetail: withFallback(() => store.general?.timelineDetail, defaultSettings.general.timelineDetail),
         setTimelineDetail(value: TimelineDetail) {

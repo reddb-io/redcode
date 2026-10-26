@@ -16,6 +16,12 @@ an idle or successfully finished agent does not by itself accept its contributio
 verification** lists checks saved on the objective, with an explicit empty state when none exist.
 **Review changes** selects the existing change review. On narrow screens, Delivery has its own tab.
 
+Under **Tasks**, switch from **List** to **Flow** to inspect the recorded prerequisite graph.
+Select a task or connection to see its acceptance criterion, prerequisite acceptance and current
+assigned conversations. Prerequisite acceptance comes from the executor's graph, separately from
+the task completion counter. The flow uses the Design System's pan-and-zoom viewport and loads
+only when selected. Inspecting it does not dispatch work or accept a result.
+
 The overview reads metadata and refreshes its objective and graph only while visible and connected.
 Request failures keep the last snapshot with a warning. The lineage describes native Redcode sessions.
 
@@ -34,6 +40,13 @@ and calls `session.skill` with `resume: false`. The action is offered while the 
 it records the skill without starting a new execution. Previewing a skill does not load it.
 Resource and skill queries run only for their selected, visible view. Unknown resource annotation
 versions are preserved and editing is disabled until a compatible client can read them.
+
+**Monitors** shows the local monitors belonging to the current conversation, including a child
+conversation. Inspect a monitor's recorded state, attempts, observation mode, output and result
+delivery. Refresh failures leave the last snapshot visibly outdated and disable stopping it.
+The inventory refreshes only while this view is visible and connected. **Stop monitoring** ends
+local execution or observation and suppresses continuation; an external job keeps running.
+This view observes existing monitors and does not schedule new work.
 
 ## Agents workspace
 

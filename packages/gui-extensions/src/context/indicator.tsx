@@ -81,7 +81,7 @@ export function SessionContextUsage(props: {
       <ProgressCircle
         appearance="indicator"
         size={16}
-        strokeWidth={2}
+        strokeWidth={1.25}
         percentage={context()?.percent ?? 0}
         style={{
           "--progress-circle-background": "var(--reddb-color-muted)",
@@ -98,6 +98,7 @@ export function SessionContextUsage(props: {
     <div class="flex items-center justify-center">
       <ProgressCircle
         appearance="compact"
+        strokeWidth={1.25}
         percentage={context()?.percent ?? 0}
         style={over() ? { "--progress-circle-progress": "var(--reddb-color-feedback-warning-foreground)" } : undefined}
       />

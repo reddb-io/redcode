@@ -1,6 +1,9 @@
 /** @jsxImportSource react */
 import { useState, useSyncExternalStore } from "react"
 import { Button } from "@reddb-io/design-system/base/Button"
+import { Card } from "@reddb-io/design-system/base/Card"
+import { Statistic } from "@reddb-io/design-system/base/Statistic"
+import { Sparkline } from "@reddb-io/design-system/data/Sparkline"
 import { Select } from "@reddb-io/design-system/base/Select"
 import { CompositeChart } from "@reddb-io/design-system/data/CompositeChart"
 import { ErrorBoundary } from "@reddb-io/design-system/app/ErrorBoundary"
@@ -96,12 +99,53 @@ export function AgentUsageView(props: { services: Services }) {
       {view.loading && <p role="status">{language.t("common.loading")}</p>}
       {view.data && (
         <>
-          <p>
-            {language.t("usage.totals", {
+          <div
+            role="group"
+            aria-label={language.t("usage.totals", {
               cost: money(view.data.cost),
               tokens: tokens(view.data.tokens).toLocaleString(language.intl),
             })}
-          </p>
+            className="grid min-w-0 gap-3 sm:grid-cols-3"
+          >
+            {[
+              {
+                id: "cost",
+                label: language.t("usage.cost"),
+                value: view.data.cost,
+                format: (value: number | string) => money(Number(value)),
+                values: points.map((point) => point.cost),
+              },
+              {
+                id: "tokens",
+                label: language.t("usage.tokens"),
+                value: tokens(view.data.tokens),
+                format: (value: number | string) => Number(value).toLocaleString(language.intl),
+                values: points.map((point) => tokens(point.tokens)),
+              },
+              {
+                id: "steps",
+                label: language.t("usage.steps"),
+                value: view.data.steps,
+                format: (value: number | string) => Number(value).toLocaleString(language.intl),
+                values: points.map((point) => point.steps),
+              },
+            ].map((metric) => (
+              <Card key={metric.id} padding="md">
+                <div className="flex min-w-0 flex-col gap-2">
+                  <Statistic label={metric.label} value={metric.value} formatValue={metric.format} animate />
+                  {metric.values.length > 1 && (
+                    <Sparkline
+                      label={metric.label}
+                      values={metric.values}
+                      height={40}
+                      strokeWidth={1.25}
+                      variant="area"
+                    />
+                  )}
+                </div>
+              </Card>
+            ))}
+          </div>
           <p className="text-ink-muted">
             {language.t("usage.provenance", {
               reported: view.data.costCoverage?.reported ?? 0,

@@ -25,24 +25,35 @@ function CodeBlock({ code, language, grammar, copyLabel = "Copy code", copiedLab
     if (current === request.current) setCopyState(copied ? "copied" : "failed");
   }
   const label = copyState === "copied" ? copiedLabel : copyState === "failed" ? copyErrorLabel : copyLabel;
-  return /* @__PURE__ */ jsxs("div", { ...rest, "data-code-block": true, className: slots.root({ class: className }), children: [
-    /* @__PURE__ */ jsxs("div", { className: slots.toolbar(), children: [
-      language ? /* @__PURE__ */ jsx("span", { "data-code-block-language": true, className: slots.language(), children: language }) : /* @__PURE__ */ jsx("span", { "aria-hidden": "true" }),
-      /* @__PURE__ */ jsx(Button, { "data-code-block-copy": true, variant: "secondary", size: "sm", "aria-label": label, onClick: copy, children: /* @__PURE__ */ jsx("span", { "aria-live": "polite", children: label }) })
-    ] }),
-    /* @__PURE__ */ jsx(
-      "pre",
-      {
-        ref: pre,
-        className: slots.pre(),
-        tabIndex: overflowing ? 0 : void 0,
-        role: overflowing ? "region" : void 0,
-        "aria-label": overflowing ? regionLabel ?? (language ? `${language} code` : "Code sample") : void 0,
-        "data-code-block-overflowing": overflowing ? "true" : void 0,
-        children: /* @__PURE__ */ jsx("code", { className: slots.code(), children: grammar ? tokens.map((token, index) => /* @__PURE__ */ jsx("span", { "data-code-token": token.kind, className: CODE_TOKEN_CLASSES[token.kind], children: token.value }, index)) : code })
-      }
-    )
-  ] });
+  return /* @__PURE__ */ jsxs(
+    "div",
+    {
+      ...rest,
+      "data-code-block": true,
+      "data-code-block-copied-label": copiedLabel,
+      "data-code-block-copy-error-label": copyErrorLabel,
+      "data-code-block-region-label": regionLabel ?? (language ? `${language} code` : "Code sample"),
+      className: slots.root({ class: className }),
+      children: [
+        /* @__PURE__ */ jsxs("div", { className: slots.toolbar(), children: [
+          language ? /* @__PURE__ */ jsx("span", { "data-code-block-language": true, className: slots.language(), children: language }) : /* @__PURE__ */ jsx("span", { "aria-hidden": "true" }),
+          /* @__PURE__ */ jsx(Button, { "data-code-block-copy": true, variant: "secondary", size: "sm", "aria-label": label, onClick: copy, children: /* @__PURE__ */ jsx("span", { "aria-live": "polite", children: label }) })
+        ] }),
+        /* @__PURE__ */ jsx(
+          "pre",
+          {
+            ref: pre,
+            className: slots.pre(),
+            tabIndex: overflowing ? 0 : void 0,
+            role: overflowing ? "region" : void 0,
+            "aria-label": overflowing ? regionLabel ?? (language ? `${language} code` : "Code sample") : void 0,
+            "data-code-block-overflowing": overflowing ? "true" : void 0,
+            children: /* @__PURE__ */ jsx("code", { className: slots.code(), children: grammar ? tokens.map((token, index) => /* @__PURE__ */ jsx("span", { "data-code-token": token.kind, className: CODE_TOKEN_CLASSES[token.kind], children: token.value }, index)) : code })
+          }
+        )
+      ]
+    }
+  );
 }
 export {
   CodeBlock

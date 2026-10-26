@@ -1,6 +1,6 @@
 /** @jsxImportSource react */
-import { useState, type ComponentProps } from "react"
-import type { SessionInfo, SessionGoalInfo, Todo, TodoAssignment } from "@opencode/client/promise"
+import { lazy, Suspense, useState, type ComponentProps } from "react"
+import type { SessionInfo, SessionGoalInfo, Todo, TodoAssignment, TodoGraphNode } from "@opencode/client/promise"
 import { SidebarPanel } from "@reddb-io/design-system/app/SidebarPanel"
 import { TaskList } from "@reddb-io/design-system/app/TaskList"
 import { Button } from "@reddb-io/design-system/base/Button"
@@ -12,6 +12,10 @@ import TreeView, { type TreeNode } from "@reddb-io/design-system/data/TreeView"
 import { LinkedResources, DeliverySkills } from "./resources.react"
 import type { DeliveryResources } from "./resources"
 import type { DeliverySection } from "./resources-model"
+import { DeliveryMonitorView } from "./monitors.react"
+import type { DeliveryMonitors } from "./monitors"
+
+const DeliveryTaskFlow = lazy(() => import("./workflow.react"))
 
 type View = {
   key: string
@@ -24,6 +28,7 @@ type View = {
   copy: Record<string, string>
   goal?: SessionGoalInfo | null
   tasks: readonly Todo[]
+  nodes: readonly TodoGraphNode[]
   assignments: readonly TodoAssignment[]
   sessions: readonly (SessionInfo & { state: "running" | "waiting" | "idle" | NonNullable<SessionInfo["outcome"]> })[]
   loading: boolean
@@ -35,6 +40,8 @@ export function DeliveryView(props: {
   view: View
   resources: ReturnType<DeliveryResources["snapshot"]>
   resourceActions: DeliveryResources["actions"]
+  monitors: ReturnType<DeliveryMonitors["snapshot"]>
+  monitorActions: DeliveryMonitors["actions"]
   section(value: DeliverySection): void
   refresh(): void
   open(id: string): void
@@ -48,6 +55,7 @@ function DeliveryContent(props: Parameters<typeof DeliveryView>[0]) {
   const copy = view.copy
   const [selected, setSelected] = useState<string | null>(view.current)
   const [expanded, setExpanded] = useState<readonly string[]>([view.root])
+  const [taskView, setTaskView] = useState("list")
   const agent = view.sessions.find((item) => item.id === selected)
   const completed = view.tasks.filter((item) => item.status === "completed").length
   const tasks: ComponentProps<typeof TaskList>["items"] = view.tasks.map((task, index) => ({
@@ -94,7 +102,12 @@ function DeliveryContent(props: Parameters<typeof DeliveryView>[0]) {
           size="sm"
           variant="ghost"
           disabled={
-            !view.connected || (props.resources.section === "overview" ? view.refreshing : props.resources.refreshing)
+            !view.connected ||
+            (props.resources.section === "overview"
+              ? view.refreshing
+              : props.resources.section === "monitors"
+                ? props.monitors.refreshing
+                : props.resources.refreshing)
           }
           onClick={props.refresh}
         >
@@ -102,9 +115,11 @@ function DeliveryContent(props: Parameters<typeof DeliveryView>[0]) {
             copy[
               props.resources.section === "overview"
                 ? "refresh"
-                : props.resources.section === "skills"
-                  ? "refreshSkills"
-                  : "refreshResources"
+                : props.resources.section === "monitors"
+                  ? "refreshMonitors"
+                  : props.resources.section === "skills"
+                    ? "refreshSkills"
+                    : "refreshResources"
             ]
           }
         </Button>
@@ -124,9 +139,11 @@ function DeliveryContent(props: Parameters<typeof DeliveryView>[0]) {
           { value: "overview", label: copy.overview },
           { value: "resources", label: copy.resources },
           { value: "skills", label: copy.skills },
+          { value: "monitors", label: copy.monitors },
         ]}
         onValueChange={(value) => {
-          if (value === "overview" || value === "resources" || value === "skills") props.section(value)
+          if (value === "overview" || value === "resources" || value === "skills" || value === "monitors")
+            props.section(value)
         }}
       >
         {(item) =>
@@ -218,14 +235,49 @@ function DeliveryContent(props: Parameters<typeof DeliveryView>[0]) {
                       label={copy.progress}
                       value={completed}
                       max={view.tasks.length}
-                      diameter={76}
-                      thickness={0.12}
+                      diameter={64}
+                      thickness={0.055}
                       center={() => <RadialContent value={`${completed} / ${view.tasks.length}`} />}
                     />
                     <p className="m-0 flex-1 text-caption text-ink-muted">{copy.progressNote}</p>
                   </div>
                 )}
-                <TaskList label={copy.tasks} items={tasks} emptyLabel={copy.noTasks} />
+                {!!view.tasks.length && (
+                  <div role="group" aria-label={copy.taskViews} className="mb-2 flex gap-1">
+                    {["list", "flow"].map((mode) => (
+                      <Button
+                        key={mode}
+                        size="sm"
+                        variant={taskView === mode ? "secondary" : "ghost"}
+                        aria-pressed={taskView === mode}
+                        onClick={() => setTaskView(mode)}
+                      >
+                        {copy[mode]}
+                      </Button>
+                    ))}
+                  </div>
+                )}
+                {taskView === "flow" && view.tasks.length ? (
+                  <Suspense
+                    fallback={
+                      <p role="status" className="text-caption text-ink-muted">
+                        {copy.loadingFlow}
+                      </p>
+                    }
+                  >
+                    <DeliveryTaskFlow
+                      tasks={view.tasks}
+                      nodes={view.nodes}
+                      assignments={view.assignments}
+                      sessions={view.sessions}
+                      current={view.current}
+                      copy={copy}
+                      open={props.open}
+                    />
+                  </Suspense>
+                ) : (
+                  <TaskList label={copy.tasks} items={tasks} emptyLabel={copy.noTasks} />
+                )}
               </section>
               <section aria-label={copy.evidence}>
                 <h3 className="mb-2 mt-0 text-eyebrow text-ink-muted">{copy.evidence}</h3>
@@ -245,6 +297,8 @@ function DeliveryContent(props: Parameters<typeof DeliveryView>[0]) {
             </div>
           ) : item.value === "resources" ? (
             <LinkedResources view={props.resources} actions={props.resourceActions} copy={copy} />
+          ) : item.value === "monitors" ? (
+            <DeliveryMonitorView view={props.monitors} actions={props.monitorActions} copy={copy} />
           ) : (
             <DeliverySkills view={props.resources} actions={props.resourceActions} copy={copy} />
           )

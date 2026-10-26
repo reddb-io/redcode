@@ -35,7 +35,7 @@ function ShellHost(props: ParentProps) {
   const command = useCommand()
   const contributions = useProjectMenuItems()
   const source = sharedSource(() => ({
-    navigation: navigationView(navigation, command, contributions, platform, preferences.general.navigationLabels()),
+    navigation: navigationView(navigation, command, contributions, platform, preferences.general.navigationGap()),
     bottomTitlebar: navigation.mobile() && preferences.general.mobileTitlebarPosition() === "bottom",
     windows: platform.platform === "desktop" && platform.os === "windows",
     settings: settings.active(),

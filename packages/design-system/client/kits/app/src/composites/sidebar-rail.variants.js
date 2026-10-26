@@ -2,7 +2,7 @@ import { tv } from "tailwind-variants";
 const sidebarRail = tv({
   slots: {
     root: [
-      "flex h-full min-h-0 w-[calc(var(--reddb-spatial-control-height-md)+2*var(--reddb-spatial-inset-sm))] shrink-0 flex-col items-center",
+      "flex h-full min-h-0 w-[calc(var(--reddb-spatial-control-height-md)+2*var(--reddb-spatial-inset-sm))] min-w-[calc(var(--reddb-spatial-control-height-md)+2*var(--reddb-spatial-inset-sm)+1px)] shrink-0 flex-col items-center",
       "gap-[var(--reddb-spatial-gap-sm)] border-e border-elevation-sunken-border bg-elevation-sunken-surface shadow-elevation-sunken",
       "p-[var(--reddb-spatial-inset-sm)] text-foreground"
     ].join(" "),

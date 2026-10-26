@@ -106,6 +106,34 @@ Read the <Link href="/guide">guide</Link>, then press <Kbd keys={["Ctrl", "K"]} 
 <CodeBlock language="TypeScript" code={'const ready = true;'} />
 ```
 
+### Static pages without framework hydration
+
+Render CodeBlock with either native framework on the server, then activate just
+its copy feedback and keyboard overflow region with the portable interaction seam:
+
+```ts
+import { enhanceCodeBlocks } from "@reddb-io/design-system/base/interaction";
+const dispose = enhanceCodeBlocks(document.querySelector("article")!);
+// Before removing the page, or hydrating these blocks with React/Svelte:
+dispose();
+```
+
+For selective Sync include both the server component and portable entry:
+
+```json
+{ "base": ["CodeBlock"], "base/interaction": ["enhanceCodeBlocks"] }
+```
+
+The enhancer loads no renderer and preserves the server's translated copy,
+error and region labels. Clipboard denial announces a retry; copied source keeps
+its exact whitespace. Overflow adds a named keyboard region only while needed.
+Repeated calls skip active blocks; each disposer releases only its own blocks
+and restores the original markup. Call it again for newly inserted static blocks.
+Each block has one owner: static enhancement or native framework hydration.
+Dispose the enhancer before hydrating that DOM. Reactive pages continue to use
+the regular component without this helper. HTML/CSS remain application-owned;
+this helper activates only CodeBlock, not arbitrary Kit interactions.
+
 ## Alert and Feedback Roles
 
 Alert requires one DS-owned `feedback` meaning: `info`, `success`, `warning`, or

@@ -20,7 +20,7 @@ test("navigation shares pins, filtering, keyboard focus and persisted panel widt
   await home.press("ArrowDown")
   await expect(rail.getByRole("button", { name: "New session", exact: true })).toBeFocused()
   await page.keyboard.press("End")
-  await expect(rail.locator("[data-rail-item]").last()).toBeFocused()
+  await expect(rail.getByRole("button", { name: "Server", exact: true })).toBeFocused()
   await page.keyboard.press("Home")
   await expect(home).toBeFocused()
 

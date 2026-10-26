@@ -4,7 +4,7 @@ import { fileDiff, openSession } from "../utils/workspace"
 import { expectSessionTitle } from "../utils/waits"
 import { fixture, installStressSessionTabs, mockStressTimeline } from "../utils/session-fixture"
 import { mockAgentTasks } from "../utils/agent-task-fixture"
-import { deliverySkills, mockDeliveryResources } from "../utils/delivery-fixture"
+import { deliverySkills, mockDeliveryMonitors, mockDeliveryResources } from "../utils/delivery-fixture"
 
 test("delivery follows the session family and preserves recorded task acceptance", async ({ page }) => {
   await page.setViewportSize({ width: 1560, height: 1000 })
@@ -32,6 +32,33 @@ test("delivery follows the session family and preserves recorded task acceptance
     "aria-valuemax",
     "3",
   )
+  await delivery.getByRole("button", { name: "Flow", exact: true }).click()
+  const flow = delivery.getByRole("group", { name: "Task dependencies", exact: true })
+  await expect(flow).toBeVisible()
+  await flow.getByRole("button", { name: /^Reconcile delegated results, Pending/ }).click()
+  const task = delivery.getByRole("region", { name: "Task details", exact: true })
+  await expect(task.getByRole("heading", { name: "Reconcile delegated results", exact: true })).toBeVisible()
+  await expect(task.getByText("The combined candidate passes the project checks", { exact: true })).toBeVisible()
+  const prerequisites = task.getByRole("list", { name: "Prerequisites", exact: true })
+  await expect(prerequisites.getByRole("listitem")).toHaveCount(2)
+  await expect(prerequisites.getByText("Prerequisite satisfied", { exact: true })).toHaveCount(2)
+  mock.nodes[2].waitingFor = ["api"]
+  mock.nodes[2].ready = false
+  await delivery.getByRole("button", { name: "Refresh overview", exact: true }).click()
+  await expect(prerequisites.getByRole("listitem").filter({ hasText: "Implement task API" })).toContainText(
+    "Waiting for acceptance",
+  )
+  await expect(delivery.getByRole("progressbar", { name: "Task completion", exact: true })).toHaveAttribute(
+    "aria-valuenow",
+    "2",
+  )
+  await task.scrollIntoViewIfNeeded()
+  await page.screenshot({ path: test.info().outputPath("delivery-flow-desktop.png"), fullPage: true })
+  await task.getByRole("button", { name: "Implement task API", exact: true }).click()
+  await expect(task.getByRole("heading", { name: "Implement task API", exact: true })).toBeVisible()
+  await expect(task.getByRole("button", { name: "Inspect child navigation", exact: true })).toBeEnabled()
+  await delivery.getByRole("button", { name: "List", exact: true }).click()
+  await expect(flow).toHaveCount(0)
   const child = delivery.getByRole("treeitem", { name: /Inspect child navigation/ })
   await child.click()
   await expect(delivery.getByRole("button", { name: "Open conversation", exact: true })).toBeEnabled()
@@ -55,6 +82,10 @@ test("delivery follows the session family and preserves recorded task acceptance
   await page.setViewportSize({ width: 390, height: 844 })
   await page.getByRole("tab", { name: "Delivery", exact: true }).click()
   await expect(delivery.getByText("Deliver a verified task workflow", { exact: true })).toBeVisible()
+  await delivery.getByRole("button", { name: "Flow", exact: true }).click()
+  await expect(flow).toBeVisible()
+  await flow.scrollIntoViewIfNeeded()
+  await page.screenshot({ path: test.info().outputPath("delivery-flow-mobile.png"), fullPage: true })
   await page.screenshot({ path: test.info().outputPath("delivery-mobile.png"), fullPage: true })
   await delivery.getByRole("button", { name: "Review changes", exact: true }).click()
   await expect(delivery).toBeHidden()
@@ -179,6 +210,77 @@ test("delivery previews checkout skills and loads only into the selected convers
   expect(state.skills).toEqual([{ sessionID: fixture.childID, id: "review-local", resume: false }])
   expect(state.writes).toEqual([])
   await page.screenshot({ path: test.info().outputPath("delivery-skills-mobile.png"), fullPage: true })
+})
+
+test("delivery monitors isolate conversations, refresh evidence and stop only the selected local observation", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1560, height: 1000 })
+  await seed(page, { theme: { id: "oc-2", scheme: "dark" } })
+  await mockStressTimeline(page)
+  await installStressSessionTabs(page, { sessionIDs: [fixture.sourceID, fixture.childID] })
+  await mockAgentTasks(page)
+  const state = await mockDeliveryMonitors(page)
+  await page.goto(sessionHref(fixture.childID))
+  const toggle = page.getByRole("button", { name: "Open delivery overview", exact: true })
+  await expect(toggle).toBeEnabled()
+  expect(state.reads).toEqual([])
+  await toggle.click()
+  const delivery = page.getByRole("region", { name: "Delivery", exact: true })
+  await delivery.getByRole("tab", { name: "Monitors", exact: true }).click()
+  const row = delivery.getByRole("listitem").filter({ hasText: "Wait for deployment readiness" })
+  await expect(row).toContainText("Monitoring")
+  expect(new Set(state.reads)).toEqual(new Set([fixture.childID]))
+  await row.getByRole("button", { name: "Inspect monitor", exact: true }).click()
+  const details = delivery.getByRole("region", { name: "Monitor details", exact: true })
+  await expect(details).toContainText("Deployment still pending")
+  await expect(details).toContainText("monitor-child")
+  await expect(details).not.toContainText("monitor-parent")
+  state.monitors[1].attempts = 3
+  state.monitors[1].evidence!.output = "Waiting for readiness checks"
+  await delivery.getByRole("button", { name: "Refresh monitors", exact: true }).click()
+  await expect(details).toContainText("Waiting for readiness checks")
+  state.unavailable = true
+  await delivery.getByRole("button", { name: "Refresh monitors", exact: true }).click()
+  await expect(delivery.getByRole("alert")).toContainText("Monitors could not be refreshed")
+  await expect(details.getByRole("button", { name: "Stop monitoring", exact: true })).toBeDisabled()
+  state.unavailable = false
+  await delivery.getByRole("button", { name: "Refresh monitors", exact: true }).click()
+  await expect(delivery.getByRole("alert")).toHaveCount(0)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByRole("tab", { name: "Delivery", exact: true }).click()
+  await delivery.getByRole("tab", { name: "Monitors", exact: true }).click()
+  await row.getByRole("button", { name: "Inspect monitor", exact: true }).click()
+  await expect(details).toContainText("monitor-child")
+  await expect(details).toContainText("External jobs keep running")
+  state.cancelFailed = true
+  await details.getByRole("button", { name: "Stop monitoring", exact: true }).click()
+  await expect(delivery.getByRole("alert")).toContainText("Monitoring could not be stopped")
+  state.cancelFailed = false
+  await details.getByRole("button", { name: "Stop monitoring", exact: true }).click()
+  await expect(row).toContainText("Cancelled")
+  await expect(details.getByRole("button", { name: "Stop monitoring", exact: true })).toHaveCount(0)
+  expect(state.cancellations).toEqual([
+    { sessionID: fixture.childID, monitorID: "monitor-child" },
+    { sessionID: fixture.childID, monitorID: "monitor-child" },
+  ])
+  expect(state.monitors[0].status).toBe("running")
+  await details.scrollIntoViewIfNeeded()
+  await page.screenshot({ path: test.info().outputPath("delivery-monitors-mobile.png"), fullPage: true })
+  await page.setViewportSize({ width: 1560, height: 1000 })
+  await delivery.getByRole("tab", { name: "Monitors", exact: true }).click()
+  await row.getByRole("button", { name: "Inspect monitor", exact: true }).click()
+  await expect(details).toContainText("monitor-child")
+  await page.screenshot({ path: test.info().outputPath("delivery-monitors-desktop.png"), fullPage: true })
+  await page.clock.install()
+  await delivery.getByRole("tab", { name: "Overview", exact: true }).click()
+  await expect(details).toHaveCount(0)
+  await expect(delivery.getByText("Deliver a verified task workflow", { exact: true })).toBeVisible()
+  const reads = [...state.reads]
+  const refreshed = page.waitForResponse((response) => new URL(response.url()).pathname.endsWith("/todo/graph"))
+  await page.clock.fastForward(15000)
+  await refreshed
+  expect(state.reads).toEqual(reads)
 })
 
 test("review and terminal follow the session tab and stay mounted", async ({ page }) => {

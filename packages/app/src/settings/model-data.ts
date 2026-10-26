@@ -88,7 +88,9 @@ const generalSchema = Persistence.struct({
   releaseNotes: Persistence.optional(Schema.Boolean),
   showFileTree: Schema.Boolean,
   showNavigation: Persistence.optional(Schema.Boolean),
+  // Retired label-visibility preference; retain saved values when rewriting settings.
   navigationLabels: Persistence.optional(Schema.Boolean),
+  navigationGap: Persistence.optional(Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 16 }))),
   showSearch: Persistence.optional(Schema.Boolean),
   showTerminal: Persistence.optional(Schema.Boolean),
   timelineDetail: Persistence.struct({
@@ -259,6 +261,7 @@ export const defaultSettings: Settings = {
     showFileTree: false,
     showNavigation: true,
     navigationLabels: true,
+    navigationGap: 12,
     timelineDetail: { ...timelinePresets[2].value },
     showAgent: true,
     mobileTitlebarPosition: "top",

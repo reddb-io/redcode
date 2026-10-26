@@ -8,6 +8,9 @@ function nameOf(item, labelled = false) {
   if (labelled) {
     return [item.label, item.badge === void 0 ? void 0 : navigationBadge(item.badge), face(item)].filter(Boolean).join(", ");
   }
+  if (item.badge !== void 0 && words(face(item)).length > 0) {
+    return `${navigationBadge(item.badge)} ${face(item)}, ${item.label}`;
+  }
   const shown = words(face(item));
   if (shown.length === 0) return item.label;
   const named = words(item.label);

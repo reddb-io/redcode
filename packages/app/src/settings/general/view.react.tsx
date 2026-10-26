@@ -3,6 +3,7 @@ import { useEffect, useState, useSyncExternalStore } from "react"
 import { Button } from "@reddb-io/design-system/base/Button"
 import { Select } from "@reddb-io/design-system/base/Select"
 import { Switch } from "@reddb-io/design-system/base/Switch"
+import { Slider } from "@reddb-io/design-system/base/Slider"
 import { SettingsHeader, SettingsList, SettingsRow } from "../shared.react"
 import { SharedSlot } from "@/runtime/react/slot.react"
 import { formatKeybind } from "@/shell/commands/keys"
@@ -30,7 +31,7 @@ export function General(props: {
       locales: { value: ReturnType<typeof useLanguage>["locales"][number]; label: string }[]
       values: {
         showNavigation: boolean
-        navigationLabels: boolean
+        navigationGap: number
         autoApprove: boolean
         showAgent: boolean
         workspaceDestination: ReturnType<Settings["workspaces"]["defaultDestination"]>
@@ -177,16 +178,20 @@ export function General(props: {
             </SettingsRow>
             {!mobile && (
               <SettingsRow
-                title={language.t("settings.general.row.navigationLabels.title")}
-                description={language.t("settings.general.row.navigationLabels.description")}
+                title={language.t("settings.general.row.navigationGap.title")}
+                description={language.t("settings.general.row.navigationGap.description")}
               >
                 {(association) => (
-                  <Switch
+                  <Slider
                     {...association}
-                    label={language.t("settings.general.row.navigationLabels.title")}
-                    fieldClass="settings-react-switch"
-                    checked={values.navigationLabels}
-                    onCheckedChange={settings.general.setNavigationLabels}
+                    label={language.t("settings.general.row.navigationGap.title")}
+                    value={values.navigationGap}
+                    min={0}
+                    max={16}
+                    step={1}
+                    fieldClass="w-40 [&>label]:sr-only"
+                    formatValue={(value) => language.t("settings.general.row.navigationGap.value", { value })}
+                    onValueChange={settings.general.setNavigationGap}
                   />
                 )}
               </SettingsRow>

@@ -5,8 +5,6 @@ import { sidebarPanel } from "@reddb-io/design-system/contracts/sidebar-panel"
 import { multiColumnLayout } from "@reddb-io/design-system/contracts/multi-column-layout"
 import { searchSelectOptions } from "@reddb-io/design-system/contracts/search-select"
 import { statusIndicator } from "@reddb-io/design-system/contracts/status-indicator"
-import { meter } from "@reddb-io/design-system/contracts/meter"
-import { card } from "@reddb-io/design-system/contracts/card"
 import { Button } from "@opencode/ui/button"
 import { useQuery } from "@tanstack/solid-query"
 import { createEffect, createMemo, on, Show } from "solid-js"
@@ -227,111 +225,17 @@ function Resources(props: {
     retry: false,
     refetchInterval: 5000,
   }))
-  const bytes = (value: number | null) =>
-    value === null
-      ? language.t("agents.hosts.unknown")
-      : language.t("agents.hosts.memoryValue", { value: (value / 1024 ** 3).toFixed(2) })
   const history = sharedSource(() => ({
     language: sharedLanguage(language),
     sample: query.data,
     available: props.connected && !query.isError,
     identity: props.cacheKey,
+    connected: props.connected,
+    loading: query.isPending,
   }))
-  const measure = meter()
-  const surface = card({ padding: "md" })
   return (
     <article aria-label={props.name} class="py-[var(--reddb-spatial-inset-sm)]">
-      <ReactView component={HostHistory} props={{ source: history }} />
-      <div class="flex flex-col gap-[var(--reddb-spatial-gap-md)]">
-        <Show
-          when={props.connected && !query.isError}
-          fallback={
-            <div role="alert">
-              <p>{language.t("agents.hosts.unavailable")}</p>
-              <Button variant="outline" disabled={!props.connected} onClick={() => void query.refetch()}>
-                {language.t("common.retry")}
-              </Button>
-            </div>
-          }
-        >
-          <Show when={query.data} fallback={<p role="status">{language.t("agents.loading")}</p>} keyed>
-            {(sample) => (
-              <>
-                <p class="text-13-regular text-ink-muted">{sample.platform}</p>
-                <dl class="grid gap-[var(--reddb-spatial-gap-lg)] sm:grid-cols-2 text-body">
-                  <div class={surface.root({ class: "p-[var(--reddb-spatial-inset-md)]" })}>
-                    <dt class="text-ink-muted">{language.t("agents.hosts.cpu")}</dt>
-                    <dd class="mt-2 text-xl font-medium tabular-nums">
-                      {sample.cpu.utilization === null
-                        ? language.t("agents.hosts.sampling")
-                        : language.t("agents.hosts.percent", { value: Math.round(sample.cpu.utilization * 100) })}
-                    </dd>
-                    <Show when={sample.cpu.utilization !== null}>
-                      <dd class="mt-3">
-                        <div
-                          role="meter"
-                          aria-label={language.t("agents.hosts.cpu")}
-                          aria-valuemin={0}
-                          aria-valuemax={100}
-                          aria-valuenow={sample.cpu.utilization! * 100}
-                          class={measure.track()}
-                        >
-                          <div class={measure.indicator()} style={{ width: `${sample.cpu.utilization! * 100}%` }} />
-                        </div>
-                      </dd>
-                    </Show>
-                  </div>
-                  <div class={surface.root({ class: "p-[var(--reddb-spatial-inset-md)]" })}>
-                    <dt class="text-ink-muted">{language.t("agents.hosts.runtimeMemory")}</dt>
-                    <dd class="mt-2 text-lg font-medium tabular-nums">
-                      {language.t("agents.hosts.memoryPair", {
-                        free: bytes(sample.memory.freeBytes),
-                        total: bytes(sample.memory.totalBytes),
-                      })}
-                    </dd>
-                    <Show
-                      when={
-                        sample.memory.freeBytes !== null &&
-                        sample.memory.totalBytes !== null &&
-                        sample.memory.totalBytes > 0
-                      }
-                    >
-                      <dd class="mt-3">
-                        <div
-                          role="meter"
-                          aria-label={language.t("agents.hosts.runtimeMemory")}
-                          aria-valuemin={0}
-                          aria-valuemax={100}
-                          aria-valuenow={(sample.memory.freeBytes! / sample.memory.totalBytes!) * 100}
-                          class={measure.track()}
-                        >
-                          <div
-                            class={measure.indicator()}
-                            style={{ width: `${(sample.memory.freeBytes! / sample.memory.totalBytes!) * 100}%` }}
-                          />
-                        </div>
-                      </dd>
-                    </Show>
-                  </div>
-                  <div>
-                    <dt class="text-ink-muted">{language.t("agents.hosts.cores")}</dt>
-                    <dd class="font-medium tabular-nums">{sample.cpu.count ?? language.t("agents.hosts.unknown")}</dd>
-                  </div>
-                  <div>
-                    <dt class="text-ink-muted">{language.t("agents.hosts.process")}</dt>
-                    <dd class="font-medium tabular-nums">{bytes(sample.process.residentBytes)}</dd>
-                  </div>
-                </dl>
-                <p class="text-caption text-ink-muted">
-                  {language.t("agents.hosts.sampled", {
-                    time: new Date(sample.sampledAt).toLocaleTimeString(language.intl()),
-                  })}
-                </p>
-              </>
-            )}
-          </Show>
-        </Show>
-      </div>
+      <ReactView component={HostHistory} props={{ source: history, refresh: () => void query.refetch() }} />
     </article>
   )
 }

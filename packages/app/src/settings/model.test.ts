@@ -97,6 +97,7 @@ describe("settings schema", () => {
         showFileTree: false,
         showNavigation: true,
         navigationLabels: true,
+        navigationGap: 12,
         timelineDetail: timelinePresets[2].value,
         showAgent: true,
         mobileTitlebarPosition: "top",
@@ -133,6 +134,7 @@ describe("settings schema", () => {
         releaseNotes: undefined,
         reasoningMode: 3,
         followUpBehavior: "invalid",
+        navigationGap: 17,
       },
       appearance: {
         density: "invalid",
@@ -153,6 +155,7 @@ describe("settings schema", () => {
       autoSave: false,
       timelineDetail: timelinePresets[2].value,
       followUpBehavior: "steer",
+      navigationGap: 12,
     })
     // The retired vertical tab layout decodes away.
     expect(settings.appearance).toEqual({

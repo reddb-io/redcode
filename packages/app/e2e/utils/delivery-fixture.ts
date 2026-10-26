@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test"
+import type { MonitorPublicInfo } from "@opencode/client/promise"
 import { Schema } from "effect"
 import { AbsolutePath } from "@opencode/schema/schema"
 import { currentSession } from "./mock-server"
@@ -95,3 +96,45 @@ export const deliverySkills = [
       "# Local review\nInspect the diff, run the project checks and report unresolved issues.\nDo not merge or publish from this skill.",
   },
 ]
+
+/** Session-owned monitor observations and explicit local cancellation. */
+export async function mockDeliveryMonitors(page: Page) {
+  const monitor = (sessionID: string, id: string): MonitorPublicInfo => ({
+    id,
+    sessionID,
+    command: "Wait for deployment readiness",
+    workdir: fixture.directory,
+    options: { mode: "poll", interval_ms: 5000, deadline_ms: 120000 },
+    status: "running",
+    created: 1793016000000,
+    updated: 1793016005000,
+    attempts: 2,
+    evidence: { exit: 0, output: "Deployment still pending", truncated: false },
+    delivery: "pending",
+  })
+  const state = {
+    monitors: [monitor(fixture.sourceID, "monitor-parent"), monitor(fixture.childID, "monitor-child")],
+    reads: [] as string[],
+    cancellations: [] as { sessionID: string; monitorID: string }[],
+    unavailable: false,
+    cancelFailed: false,
+  }
+  await page.route(/\/api\/session\/[^/?]+\/monitor(?:\/[^/?]+\/cancel)?(?:\?.*)?$/, (route) => {
+    const parts = new URL(route.request().url()).pathname.split("/")
+    const sessionID = parts[3]
+    if (route.request().method() === "GET") {
+      state.reads.push(sessionID)
+      if (state.unavailable) return route.fulfill({ status: 503, json: { message: "Monitor unavailable" } })
+      return route.fulfill({ json: { data: state.monitors.filter((item) => item.sessionID === sessionID) } })
+    }
+    const monitorID = parts[5]
+    const found = state.monitors.find((item) => item.id === monitorID && item.sessionID === sessionID)
+    if (!found) return route.fulfill({ status: 404, json: { message: "Monitor not found" } })
+    state.cancellations.push({ sessionID, monitorID })
+    if (state.cancelFailed) return route.fulfill({ status: 500, json: { message: "Could not cancel monitor" } })
+    found.status = "cancelled"
+    found.delivery = "suppressed"
+    return route.fulfill({ json: { data: found } })
+  })
+  return state
+}

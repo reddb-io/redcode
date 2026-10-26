@@ -1378,7 +1378,15 @@ test("blocks stale task controls and preserves a removed inspector selection", a
 })
 
 test("shows unknown initial CPU usage and hides stale resources after a failed refresh", async ({ page }) => {
-  await mockStressTimeline(page)
+  await page.clock.install()
+  const resources = {
+    sampledAt: Date.now(),
+    cpu: { count: 4, utilization: null as number | null },
+    memory: { totalBytes: 8 * 1024 ** 3, freeBytes: 6 * 1024 ** 3 },
+    process: { pid: 42, residentBytes: 128 * 1024 ** 2 },
+    platform: "linux arm64",
+  }
+  await mockStressTimeline(page, { resources: () => resources })
   await installStressSessionTabs(page, { sessionIDs: [] })
   await mockRemoteWorkers(page)
   await page.goto("/agents?view=hosts")
@@ -1398,11 +1406,28 @@ test("shows unknown initial CPU usage and hides stale resources after a failed r
     "aria-valuenow",
     "75",
   )
+  await host.getByRole("combobox", { name: "Time window", exact: true }).selectOption("60000")
+  for (const percent of [25, 42, 36, 58, 44, 31]) {
+    resources.cpu.utilization = percent / 100
+    resources.sampledAt += 5000
+    const updated = page.waitForResponse(
+      (response) => new URL(response.url()).pathname === "/api/resources" && response.status() === 200,
+    )
+    await page.clock.fastForward(5000)
+    await updated
+    await expect
+      .poll(async () =>
+        Number(await host.getByRole("meter", { name: "CPU usage", exact: true }).getAttribute("aria-valuenow")),
+      )
+      .toBeCloseTo(percent, 8)
+    await expect(host.getByText(`${percent}%`, { exact: true })).toBeVisible()
+  }
   await page.screenshot({ path: test.info().outputPath("host-resource-meters.png"), animations: "disabled" })
   const failed = page.waitForResponse(
     (response) => new URL(response.url()).pathname === "/api/resources" && response.status() === 503,
   )
   await page.route("**/api/resources", (route) => route.fulfill({ status: 503, json: { message: "Offline" } }))
+  await page.clock.fastForward(5000)
   await failed
   await expect(host.getByText("Host resources are unavailable. Previous measurements are not live.")).toBeVisible()
   await expect(host.getByText("6.00 GiB / 8.00 GiB", { exact: true })).toHaveCount(0)
@@ -1853,7 +1878,7 @@ test("shows native daily usage with linked charts, explicit coverage and project
   const usage = await mockNativeUsage(page)
   await page.goto("/agents?view=usage")
   const workspace = page.getByRole("region", { name: "Agents", exact: true })
-  await expect(workspace.getByText("Recorded cost: $1.25. Tokens: 120.", { exact: true })).toBeVisible()
+  await expect(workspace.getByRole("group", { name: "Recorded cost: $1.25. Tokens: 120.", exact: true })).toBeVisible()
   await expect(
     workspace.getByText("Accounting records: 1 reported, 1 estimated, 1 unknown, 0 legacy.", { exact: true }),
   ).toBeVisible()

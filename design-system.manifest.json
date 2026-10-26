@@ -1,6 +1,6 @@
 {
   "source": "reddb-io/design-system",
-  "version": "v2026.10.34",
+  "version": "v2026.10.37",
   "framework": "react",
   "consumer": "redcode",
   "kits": ["app", "data"],

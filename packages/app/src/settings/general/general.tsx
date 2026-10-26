@@ -21,7 +21,7 @@ export function SettingsGeneral() {
       locales: language.locales.map((value) => ({ value, label: language.label(value) })),
       values: {
         showNavigation: settings.general.showNavigation(),
-        navigationLabels: settings.general.navigationLabels(),
+        navigationGap: settings.general.navigationGap(),
         workspaceDestination: settings.workspaces.defaultDestination(),
         autoApprove: settings.permissions.autoApprove(),
         showAgent: settings.general.showAgent(),

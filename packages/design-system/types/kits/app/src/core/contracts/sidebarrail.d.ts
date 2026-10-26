@@ -1,6 +1,21 @@
 import type { SidebarRailItem } from "../sidebar-rail";
+/** Local CSS-pixel overrides. Omitted values keep inheriting Density. */
+export interface SidebarRailSizing {
+    /** Item size in CSS pixels, independent of Density. Labelled items grow to fit text. The pointer-target floor still applies (24px fine, 44px coarse). */
+    itemSize?: number;
+    /** Glyph size in CSS pixels, independent of Density; constrained to fit the item. */
+    iconSize?: number;
+    /** Space between destinations in CSS pixels; zero is valid. Defaults to Density gap-md. */
+    itemGap?: number;
+    /** Requested rail width in CSS pixels. Grows only when needed to fit the item, padding and pointer-target floor. */
+    railWidth?: number;
+    /** Rail inset in CSS pixels; zero is valid. Defaults to Density inset-sm. */
+    railPadding?: number;
+    /** Label and fallback-initial font size in CSS pixels. Omitted, typography keeps its Theme role. */
+    labelSize?: number;
+}
 /** Portable SidebarRail properties shared by native adapters. */
-export interface SidebarRailContract {
+export interface SidebarRailContract extends SidebarRailSizing {
     /** Accessible name for this navigation landmark. */
     label: string;
     /** Caller-owned actions, organizations, and optional add affordance. */

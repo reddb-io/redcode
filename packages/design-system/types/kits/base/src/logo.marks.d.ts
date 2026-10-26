@@ -7,7 +7,7 @@
  * remembered: `test/marks.test.ts` fails when it drifts from the lock, which
  * is the same edit re-vendoring makes anyway.
  */
-export declare const BRAND_RELEASE = "2026.10";
+export declare const BRAND_RELEASE = "2026.10.1";
 /** How the Mark is laid out. */
 export declare const LOGO_LAYOUTS: readonly ["horizontal", "stacked", "icon", "symbol", "wordmark"];
 export type LogoLayout = (typeof LOGO_LAYOUTS)[number];

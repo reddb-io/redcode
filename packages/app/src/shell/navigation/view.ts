@@ -12,7 +12,7 @@ export function navigationView(
   command: ReturnType<typeof useCommand>,
   contributions: ReturnType<typeof useProjectMenuItems>,
   platform: ReturnType<typeof usePlatform>,
-  labelled: boolean,
+  gap: number,
 ) {
   const tree = navigation.tree()
   const server = navigation.server()
@@ -22,12 +22,11 @@ export function navigationView(
     mobile: navigation.mobile(),
     opened: navigation.panel.opened(),
     width: navigation.panel.width(),
-    labelled,
+    gap,
     count: navigation.background().length,
     server,
     serverKey: server ? ServerConnection.key(server) : undefined,
     serverName: name,
-    avatar: Array.from(name.replace(/^[^\p{L}\p{N}]+/u, ""))[0]?.toUpperCase() ?? "?",
     route: {
       home: navigation.route.home(),
       agents: navigation.route.agents(),

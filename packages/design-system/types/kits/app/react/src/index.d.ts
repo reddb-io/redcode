@@ -59,3 +59,4 @@ export { ShortcutHelp, type ShortcutHelpProps } from "./ShortcutHelp";
 export type { WorkspaceTab } from "../../src/core/workspace-tabs";
 export type { ReviewChange, ReviewState } from "../../src/core/change-review";
 export type { ShortcutGroup, ShortcutCommand } from "../../src/core/shortcut-help";
+export type { SidebarRailSizing } from "../../src/core/contracts/sidebarrail";
