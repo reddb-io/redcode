@@ -396,14 +396,22 @@ export async function createProjectEnvironments(
               }
             })
           } catch (error) {
+            const detail = await scrub(error instanceof Error ? error.message : "Environment operation failed")
             await persist({
               info: {
                 ...info,
                 state: abort.signal.aborted ? "reconcile" : "failed",
                 output: state.output,
-                detail: await scrub(error instanceof Error ? error.message : "Environment operation failed"),
+                detail,
                 updatedAt: new Date().toISOString(),
               },
+            }).catch(async (failure: unknown) => {
+              console.error("Could not persist project environment operation result", {
+                id,
+                requestID: input.requestID,
+                detail,
+                persistence: await scrub(failure instanceof Error ? failure.message : "Persistence failed"),
+              })
             })
           }
         }
