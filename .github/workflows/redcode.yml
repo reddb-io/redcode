@@ -202,6 +202,43 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+  windows-harness:
+    name: windows harness
+    if: github.event_name == 'pull_request'
+    needs: plan
+    runs-on: windows-2025
+    timeout-minutes: 15
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
+      OPENCODE_EXPERIMENTAL_DISABLE_FILEWATCHER: "true"
+      GITHUB_ACTIONS: "false"
+      REDCODE_TEST_HOME: ${{ runner.temp }}/harness-checks
+      OPENCODE_TEST_HOME: ${{ runner.temp }}/harness-checks
+      OPENCODE_CONFIG_DIR: ${{ runner.temp }}/harness-checks/config
+      XDG_CONFIG_HOME: ${{ runner.temp }}/harness-checks/config
+      XDG_DATA_HOME: ${{ runner.temp }}/harness-checks/data
+      XDG_STATE_HOME: ${{ runner.temp }}/harness-checks/state
+      XDG_CACHE_HOME: ${{ runner.temp }}/harness-checks/cache
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+      - uses: ./.github/actions/setup-bun
+      - name: Configure test git identity
+        shell: bash
+        run: |
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+      - name: Verify project environments
+        working-directory: packages/server
+        run: bun run test test/project-environments.test.ts --timeout 30000
+      - name: Verify CLI version startup
+        working-directory: packages/cli
+        run: bun run test test/version.test.ts --timeout 30000
+      - name: Verify OAuth refresh and embedded image worker
+        working-directory: packages/core
+        run: bun run test test/credential-refresh-process.test.ts test/integration-refresh.test.ts test/photon-worker.test.ts --timeout 30000
+
   tests:
     needs: plan
     name: unit (${{ matrix.name }})

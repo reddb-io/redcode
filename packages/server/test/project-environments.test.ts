@@ -194,7 +194,7 @@ if (process.env.FIXTURE_TOKEN) console.log(process.env.FIXTURE_TOKEN);
         yield* vault.forget({ projectID: resolved.id, name: "fixture-token" })
         yield* Effect.promise(() => Bun.write(path.join(repository, "release"), "release"))
         const maskedAfterForget = yield* wait(held.id)
-        expect(maskedAfterForget.state).toBe("prepared")
+        expect(maskedAfterForget.state, maskedAfterForget.detail ?? maskedAfterForget.output).toBe("prepared")
         expect(maskedAfterForget.output).not.toContain(secret)
         yield* vault.set({ projectID: resolved.id, name: "fixture-token", value: secret, origin: "user" })
         yield* Effect.promise(() =>
