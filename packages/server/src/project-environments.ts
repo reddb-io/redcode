@@ -13,7 +13,7 @@ import { Global } from "@opencode/util/global"
 import { Redact } from "@opencode/util/redact"
 import { makeGlobalNode } from "@opencode/util/effect/app-node"
 import { createHash, randomUUID } from "node:crypto"
-import { mkdir, readdir, realpath, rename } from "node:fs/promises"
+import { mkdir, readdir, realpath, rename, rm } from "node:fs/promises"
 import path from "node:path"
 
 const Saved = Schema.Struct({ info: ProjectEnvironment.Info, owner: optional(ExecutionOwner.Info) })
@@ -73,7 +73,25 @@ export async function createProjectEnvironments(
   const write = async (file: string, value: unknown) => {
     const temporary = `${file}.${randomUUID()}.tmp`
     await Bun.write(temporary, JSON.stringify(value), { mode: 0o600 })
-    await rename(temporary, file)
+    // Windows readers can briefly deny replacement. Retry the same durable write,
+    // never the environment commands whose result it records.
+    const replace = async (attempt = 0): Promise<void> =>
+      rename(temporary, file).catch(async (error: unknown) => {
+        if (
+          process.platform !== "win32" ||
+          !(error instanceof Error) ||
+          !("code" in error) ||
+          !["EPERM", "EACCES", "EBUSY"].includes(String(error.code)) ||
+          attempt >= 10
+        )
+          throw error
+        await Bun.sleep((attempt + 1) * 10)
+        return replace(attempt + 1)
+      })
+    await replace().catch(async (error: unknown) => {
+      await rm(temporary, { force: true })
+      throw error
+    })
   }
   const lock = <A>(prefix: string, run: () => Promise<A>) =>
     Flock.withLock(path.join(root, prefix), run, {
