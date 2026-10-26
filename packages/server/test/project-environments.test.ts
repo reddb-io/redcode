@@ -116,8 +116,16 @@ if (process.env.FIXTURE_TOKEN) console.log(process.env.FIXTURE_TOKEN);
         const alreadyReady = yield* Effect.promise(() =>
           service.run({ directory, recipeID: "dev", revision: 1, action: "start", requestID: "already-ready" }),
         )
-        expect((yield* wait(alreadyReady.id)).state).toBe("ready")
-        expect(yield* Effect.promise(() => Bun.file(path.join(repository, "prepare-count")).text())).toBe("1")
+        const restarted = yield* wait(alreadyReady.id)
+        expect(restarted.state, restarted.detail).toBe("ready")
+        const firstReceipt = yield* Effect.promise(() =>
+          service.run({ directory, recipeID: "dev", revision: 1, action: "start", requestID: "first" }),
+        )
+        expect(alreadyReady.id).toBe(started.id)
+        expect(
+          yield* Effect.promise(() => Bun.file(path.join(repository, "prepare-count")).text()),
+          JSON.stringify({ settled, firstReceipt, restarted }),
+        ).toBe("1")
         const snapshot = yield* Effect.promise(() => service.list(second))
         expect(snapshot.recipes[0].validatedRevision).toBe(1)
         expect(snapshot.environments[0].directory).toBe(directory)
