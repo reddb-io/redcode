@@ -55,6 +55,12 @@ import {
   PlaybackControls
 } from "./PlaybackControls.js";
 import { SettingsRow } from "./SettingsRow.js";
+import { EntityInspector } from "./EntityInspector.js";
+import { EntityJourney } from "./EntityJourney.js";
+import { WorkspaceTabs } from "./WorkspaceTabs.js";
+import { ChangeReview } from "./ChangeReview.js";
+import { ErrorBoundary } from "./ErrorBoundary.js";
+import { ShortcutHelp } from "./ShortcutHelp.js";
 export {
   ActionPanel,
   ActivityFeed,
@@ -63,11 +69,15 @@ export {
   CardHeading,
   CategoryFilter,
   CategoryPreview,
+  ChangeReview,
   ChatMessage,
   CheckoutForm,
   CommandPalette,
   ContextMenu,
   Diff,
+  EntityInspector,
+  EntityJourney,
+  ErrorBoundary,
   Filter,
   Incentive,
   ListRow,
@@ -89,6 +99,7 @@ export {
   Review,
   SettingsRow,
   ShoppingCart,
+  ShortcutHelp,
   SidebarLayout,
   SidebarNavigation,
   SidebarPanel,
@@ -99,5 +110,6 @@ export {
   TaskCard,
   TaskList,
   TelemetryRow,
-  Toolbar
+  Toolbar,
+  WorkspaceTabs
 };

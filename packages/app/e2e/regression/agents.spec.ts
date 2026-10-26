@@ -12,6 +12,8 @@ import {
   mockWorkerDistribution,
 } from "../utils/worker-fixture"
 import {
+  mockNativeUsage,
+  mockLocalSlots,
   mockHarnessOperations,
   mockWorktreeOperations,
   mockMachineInspection,
@@ -61,6 +63,10 @@ test("reconciles task contributions through the DS and preserves an uncertain ap
   await expect(detail.getByRole("heading", { name: "Files changed by multiple prerequisites" })).toBeVisible()
   const integration = detail.getByRole("region", { name: "Reconcile results", exact: true })
   await integration.getByLabel("Target checkout on this host", { exact: true }).selectOption(fixture.directory)
+  await detail.getByRole("tab", { name: "Reconciliation stages", exact: true }).click()
+  await expect(detail.getByRole("list", { name: "Reconciliation stages", exact: true })).toBeVisible()
+  await detail.getByRole("tab", { name: "Task details", exact: true }).click()
+  await expect(integration.getByLabel("Target checkout on this host", { exact: true })).toHaveValue(fixture.directory)
   await expect(integration.getByRole("button", { name: "Prepare combined candidate", exact: true })).toBeEnabled()
   await integration.getByRole("button", { name: "Prepare combined candidate", exact: true }).click()
   await expect(integration.getByLabel("Combined candidate diff", { exact: true })).toContainText(
@@ -313,10 +319,8 @@ test("starts a native Claude harness and preserves question input across host re
   const harness = await mockHarnessOperations(page)
   await page.goto("/agents?view=harness")
   const workspace = page.getByRole("region", { name: "Agents", exact: true })
-  await expect(
-    workspace.getByText("No native sessions on this host yet. Start one below.", { exact: true }),
-  ).toBeVisible()
-  await expect(workspace.getByRole("button", { name: "Native sessions", exact: true })).toHaveCount(0)
+  await expect(workspace.getByText("No external CLI sessions on this host yet.", { exact: true })).toBeVisible()
+  await expect(workspace.getByRole("button", { name: "Sessions", exact: true })).toHaveCount(0)
   await chooseSearchOption(page, workspace.getByRole("button", { name: /, Coding agent$/ }), "Claude Code")
   await workspace.getByLabel("Checkout directory on this host", { exact: true }).fill(fixture.directory)
   await workspace.getByRole("tab", { name: "Agent setup", exact: true }).click()
@@ -325,12 +329,12 @@ test("starts a native Claude harness and preserves question input across host re
     .getByLabel("Executable name or path", { exact: true })
   await executable.fill("claude-custom")
   await expect(workspace.getByRole("button", { name: "Start harness", exact: true })).toBeHidden()
-  await workspace.getByRole("tab", { name: "Native sessions", exact: true }).click()
+  await workspace.getByRole("tab", { name: "Sessions", exact: true }).click()
   await expect(workspace.getByLabel("Checkout directory on this host", { exact: true })).toHaveValue(fixture.directory)
   await expect(workspace.getByRole("button", { name: /, Coding agent$/ })).toContainText("Claude Code")
   await workspace.getByRole("tab", { name: "Agent setup", exact: true }).click()
   await expect(executable).toHaveValue("claude-custom")
-  await workspace.getByRole("tab", { name: "Native sessions", exact: true }).click()
+  await workspace.getByRole("tab", { name: "Sessions", exact: true }).click()
   await page.screenshot({ path: test.info().outputPath("harness-workspace.png"), animations: "disabled" })
   const opened = page.waitForResponse(
     (response) => new URL(response.url()).pathname === "/api/harness/runs" && response.request().method() === "POST",
@@ -369,7 +373,7 @@ test("starts a native Claude harness and preserves question input across host re
   await expect(workspace.getByRole("article", { name: "Native session details", exact: true })).toBeVisible()
   await expect.poll(() => workspace.evaluate((element) => element.scrollWidth - element.clientWidth)).toBe(0)
   await page.screenshot({ path: test.info().outputPath("harness-agent-setup.png"), animations: "disabled" })
-  await workspace.getByRole("tab", { name: "Native sessions", exact: true }).click()
+  await workspace.getByRole("tab", { name: "Sessions", exact: true }).click()
   harness.loseProcess()
   await expect(
     workspace.getByRole("checkbox", { name: "I confirmed that the original process is stopped" }),
@@ -503,8 +507,8 @@ test.describe("Remote project search on mobile", () => {
       .poll(async () => (await workspace.locator(":scope > div > header").boundingBox())!.height)
       .toBeLessThanOrEqual(80)
     await section.tap()
-    await page.getByRole("option", { name: "Harnesses", exact: true }).tap()
-    await expect(section).toContainText("Harnesses")
+    await page.getByRole("option", { name: "Executors", exact: true }).tap()
+    await expect(section).toContainText("Executors")
     await expect.poll(() => new URL(page.url()).searchParams.get("view")).toBe("harness")
     expect(new URL(page.url()).searchParams.get("host")).toBe(SERVER)
     await expect(workspace.getByRole("button", { name: /, Coding agent$/ })).toBeVisible()
@@ -514,16 +518,16 @@ test.describe("Remote project search on mobile", () => {
     await page.getByRole("dialog").getByRole("combobox").fill("Machines")
     await page.keyboard.press("Escape")
     await expect(section).toBeFocused()
-    await expect(section).toContainText("Harnesses")
+    await expect(section).toContainText("Executors")
     expect(new URL(page.url()).searchParams.get("host")).toBe(SERVER)
     expect(mutations).toEqual([])
     await page.setViewportSize({ width: 1200, height: 900 })
     await expect(section).toBeHidden()
-    await expect(workspace.getByRole("heading", { name: "Harnesses", exact: true })).toBeVisible()
+    await expect(workspace.getByRole("heading", { name: "Executors", exact: true })).toBeVisible()
     await expect(
       page
         .getByRole("navigation", { name: "Agents", exact: true })
-        .getByRole("button", { name: "Harnesses", exact: true }),
+        .getByRole("button", { name: "Executors", exact: true }),
     ).toHaveAttribute("aria-current", "page")
   })
 
@@ -1380,6 +1384,13 @@ test("shows unknown initial CPU usage and hides stale resources after a failed r
   await page.goto("/agents?view=hosts")
   const workspace = page.getByRole("region", { name: "Agents", exact: true })
   const host = workspace.getByRole("article", { name: "Coordinator host", exact: true })
+  await expect(host.getByRole("slider", { name: "Explore Memory (GiB)", exact: true }).locator("svg")).toBeVisible()
+  await host.getByRole("button", { name: "Pause charts", exact: true }).click()
+  await expect(host.getByRole("button", { name: "Resume live charts", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  )
+  await host.getByRole("button", { name: "Resume live charts", exact: true }).click()
   await expect(host.getByText("Collecting CPU sample", { exact: true })).toBeVisible()
   await expect(host.getByRole("meter", { name: "CPU usage", exact: true })).toHaveCount(0)
   await expect(host.getByText("6.00 GiB / 8.00 GiB", { exact: true })).toBeVisible()
@@ -1786,5 +1797,90 @@ test("filters the fleet without the removed RedSkills integration", async ({ pag
     ).toBeGreaterThan(150)
     expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
     await page.screenshot({ path: test.info().outputPath(`agents-${width}.png`), animations: "disabled" })
+  }
+})
+
+test("starts native Redcode sessions when external CLI adapters are unavailable", async ({ page }) => {
+  const creates: unknown[] = []
+  await mockStressTimeline(page, {
+    onSessionCreate: (body) => {
+      creates.push(body)
+    },
+  })
+  await installStressSessionTabs(page, { sessionIDs: [] })
+  await page.route("**/api/harness", (route) =>
+    route.fulfill({ status: 403, json: { message: "External adapters denied" } }),
+  )
+  await page.goto("/agents?view=harness")
+  const workspace = page.getByRole("region", { name: "Agents", exact: true })
+  await expect(workspace.getByRole("button", { name: /, Coding agent$/ })).toContainText("Redcode")
+  await workspace.getByLabel("Checkout directory on this host", { exact: true }).fill(fixture.directory)
+  await workspace.getByRole("button", { name: "Start Redcode session", exact: true }).click()
+  await expect(page).toHaveURL(/ses_mock_created/)
+  expect(creates).toEqual([{ location: { directory: fixture.directory } }])
+})
+
+test("reviews local checkout enablement and registers a native slot without credentials", async ({ page }) => {
+  await mockStressTimeline(page)
+  await installStressSessionTabs(page, { sessionIDs: [] })
+  const tree = await mockWorktreeOperations(page)
+  const slots = await mockLocalSlots(page)
+  await page.goto(`/agents?view=worktrees&project=${fixture.project.id}`)
+  await page.getByLabel("Worktree name", { exact: true }).fill("local-slot")
+  await page.getByRole("button", { name: "Create worktree", exact: true }).click()
+  const checkout = page.getByRole("article", { name: tree.directory, exact: true })
+  await checkout.getByRole("button", { name: "Enable this checkout for batches", exact: true }).click()
+  const review = page.getByRole("region", { name: "Enable native batch execution", exact: true })
+  await expect(review.getByText("One native execution slot on this server", { exact: true })).toBeVisible()
+  expect(slots.registrations).toHaveLength(0)
+  await review.getByRole("button", { name: "Enable this checkout for batches", exact: true }).click()
+  await expect(
+    checkout.getByRole("button", { name: "Checkout enabled for native batches", exact: true }),
+  ).toBeDisabled()
+  expect(slots.registrations).toEqual([
+    { kind: "local", id: expect.stringMatching(/^local-/), directories: [tree.directory], tags: [] },
+  ])
+  await page.goto("/agents?view=hosts")
+  const hosts = page.getByRole("list", { name: "Available hosts", exact: true })
+  await expect(hosts.getByRole("button", { name: /reference-worker/ })).toBeVisible()
+  await expect(hosts.getByRole("button")).toHaveCount(2)
+  await expect(hosts.getByRole("button", { name: /Coordinator host/ })).toBeVisible()
+})
+
+test("shows native daily usage with linked charts, explicit coverage and project filters", async ({ page }) => {
+  await mockStressTimeline(page)
+  await installStressSessionTabs(page, { sessionIDs: [] })
+  const usage = await mockNativeUsage(page)
+  await page.goto("/agents?view=usage")
+  const workspace = page.getByRole("region", { name: "Agents", exact: true })
+  await expect(workspace.getByText("Recorded cost: $1.25. Tokens: 120.", { exact: true })).toBeVisible()
+  await expect(
+    workspace.getByText("Accounting records: 1 reported, 1 estimated, 1 unknown, 0 legacy.", { exact: true }),
+  ).toBeVisible()
+  await expect(workspace.getByRole("table", { name: "Daily native usage" }).getByRole("row")).toHaveCount(3)
+  const cost = workspace.getByRole("slider", { name: "Explore Cost (USD)", exact: true })
+  const tokens = workspace.getByRole("slider", { name: "Explore Tokens", exact: true })
+  await expect(cost.locator("svg")).toBeVisible()
+  await cost.focus()
+  await cost.press("Home")
+  await expect(tokens).toHaveAttribute("aria-valuenow", "0")
+  await cost.press("End")
+  await expect(tokens).toHaveAttribute("aria-valuenow", "1")
+  await workspace.getByLabel("Period", { exact: true }).selectOption("30")
+  await workspace.getByLabel("Project", { exact: true }).selectOption(fixture.project.id)
+  await expect.poll(() => usage.requests.at(-1)?.searchParams.get("project")).toBe(fixture.project.id)
+  expect(usage.requests.at(-1)?.searchParams.get("series")).toBe("daily")
+  for (const viewport of [
+    { width: 1440, height: 900 },
+    { width: 390, height: 844 },
+  ]) {
+    await page.emulateMedia({ colorScheme: viewport.width < 500 ? "dark" : "light", reducedMotion: "reduce" })
+    await page.setViewportSize(viewport)
+    await expect(workspace.getByRole("table", { name: "Daily native usage" })).toBeVisible()
+    await expect.poll(() => workspace.evaluate((element) => element.scrollWidth - element.clientWidth)).toBe(0)
+    await page.screenshot({
+      path: test.info().outputPath(`native-usage-${viewport.width}.png`),
+      animations: "disabled",
+    })
   }
 })

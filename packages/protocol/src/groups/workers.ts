@@ -62,6 +62,13 @@ export const WorkersGroup = HttpApiGroup.make("server.workers")
     ),
   )
   .add(
+    HttpApiEndpoint.post("workers.local.add", "/api/workers/local", {
+      payload: Worker.LocalRegistration,
+      success: Worker.Status,
+      error: [InvalidRequestError, ConsoleForbiddenError],
+    }).annotateMerge(OpenApi.annotations({ identifier: "workers.local.add", summary: "Enable this server's checkout for native batches" })),
+  )
+  .add(
     HttpApiEndpoint.post("workers.add", "/api/workers", {
       payload: Worker.Register,
       success: Worker.Status,

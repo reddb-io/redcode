@@ -182,6 +182,7 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
               projectID: ctx.query.project,
               timezone,
               tools: ctx.query.tools,
+              series: ctx.query.series,
             }).pipe(
               Effect.mapError(() => new InvalidRequestError({ message: "Stats range must end after it starts" })),
             ),

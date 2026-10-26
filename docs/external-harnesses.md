@@ -1,7 +1,7 @@
 # External coding agents and worktrees
 
 The **Desktop / web app** controls these features through **Agents** in the siderail. Its sidemenu
-separates **Harnesses**, **Machines**, **Worktrees**, the native Session inbox and the worker coordinator.
+separates **Executors**, **Machines**, **Worktrees**, the native Session inbox and the worker coordinator.
 The host selector determines where an executable, credential, native session or checkout lives.
 **Settings → Servers** also links to the selected host's tools. Normal setup uses these screens;
 editing a configuration file is not required.
@@ -11,6 +11,23 @@ prepares a public Git repository automatically. Its setup and lifecycle are desc
 [distributed workers](distributed-workers.md#prepare-isolated-workspaces-in-the-app). Worker-batch
 placement still uses the native Redcode harness; the host-wide Claude/Codex adapters below do not
 automatically enter the isolated worker pool.
+
+## Run Redcode on the current server
+
+Executors defaults to **Redcode**. Enter an existing checkout and choose **Start Redcode session**;
+the app opens a normal native Session using saved Redcode settings. The external adapter inventory
+is independent, so an unavailable Codex or Claude installation does not disable native sessions.
+The session's normal permission, input and interruption controls remain in its conversation.
+
+For native batches, open **Worktrees**, select a project and choose **Enable this checkout for batches**.
+Review the proposed slot and confirm it. Registration uses the server's own listener and private
+authentication without copying credentials into the browser or registry. Then use **Remote workers**
+to compose and follow batches, selecting that local slot like another worker. Each enabled checkout
+provides one slot; submitting a batch never creates worktrees automatically.
+
+The CLI adapters below are explicit alternatives. Redcode execution does not spawn another Redcode
+CLI, runtime or database. Host-administration permissions still protect slot registration; creating
+an ordinary native Session keeps its existing authorization.
 
 ## Connect a remote machine
 
@@ -37,7 +54,7 @@ For offsite Desktop access through a router VPN, see [remote coding access](remo
 
 ## Configure Claude Code or Codex
 
-Open **Harnesses → Agent setup** for the execution host. **Check installation** detects the CLI version and account
+Open **Executors → Agent setup** for the execution host. **Check installation** detects the CLI version and account
 state without making an inference request. Set its executable name or path and choose **Save and
 check** if it is outside PATH. Changing an executable requires closing its active harnesses first.
 
@@ -58,7 +75,7 @@ external harness execution.
 
 ## Run and control a harness
 
-In **Harnesses → Native sessions**, choose the coding agent, optional model override and checkout directory, then **Start harness**.
+In **Executors → Sessions**, choose the coding agent, optional model override and checkout directory, then **Start harness**.
 Starting establishes the native protocol; **Send instruction** starts the work. The app shows output,
 tool activity and pending requests for that native session. Only an opened run reads its output;
 the session inventory contains metadata. The output view displays its most recent 200 events.
@@ -111,7 +128,7 @@ are outside this delivery.
 2. Select the source/integration target, a worktree name and an optional existing branch/ref. Creation
    uses the current strategy and project preparation configuration. The Git strategy creates a
    detached checkout; the app does not invent a new branch.
-3. Choose **Start coding agent here** to open Harnesses with this exact host and checkout preselected.
+3. Choose **Start coding agent here** to open Executors with this exact host and checkout preselected.
    **Project environments** opens reusable preparation and validation recipes for that same host and
    worktree. See [project environments](project-environments.md) for service lifecycle and ports.
 4. Close the attached harness before modifying its Git state. **Review changes** shows the common-base

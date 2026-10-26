@@ -17,7 +17,7 @@ export const WorkerEnvironmentsHandler = HttpApiBuilder.group(Api, "server.worke
         return yield* new ConsoleForbiddenError({ message: "Infrastructure administration is required for worker environments" })
       return yield* Effect.tryPromise({
         try: async () => {
-          if (idleID && (await workers.list()).workers.some((worker) => worker.worker.environmentID === idleID))
+          if (idleID && (await workers.list()).workers.some((worker) => worker.worker.kind !== "local" && worker.worker.environmentID === idleID))
             throw new Error("Remove this environment from its worker registry before stopping or archiving it")
           return run()
         },

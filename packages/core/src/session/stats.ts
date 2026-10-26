@@ -12,6 +12,7 @@ import { ToolMode } from "@opencode/schema/session-stats"
 import { TokenUsage } from "@opencode/schema/token-usage"
 import { Database } from "../database/database.js"
 import { EventTable } from "../event/sql.js"
+import { IntelligenceEvaluationTable } from "../intelligence/sql.js"
 import { SessionMessageTable, SessionTable } from "./sql.js"
 
 type Input = {
@@ -19,6 +20,7 @@ type Input = {
   readonly to?: number
   readonly projectID?: Project.ID
   readonly timezone?: string
+  readonly series?: "daily"
   readonly tools?: ToolMode
 }
 
@@ -121,6 +123,31 @@ export const get = Effect.fn("SessionStats.get")(function* (input: Input = {}) {
   }
   const toolTotals = { calls: 0, succeeded: 0, failed: 0, unfinished: 0 }
   const dateKey = makeDateKey(input.timezone)
+  const daily = new Map<
+    string,
+    {
+      date: string
+      steps: number
+      tokens: Tokens
+      cost: number
+      costCoverage: ReturnType<typeof emptyCoverage>
+      models: Map<string, ModelAggregate>
+    }
+  >()
+  const bucket = (time: number) => {
+    if (!input.series) return
+    const date = dateKey(time)
+    const current = daily.get(date) ?? {
+      date,
+      steps: 0,
+      tokens: emptyTokens(),
+      cost: 0,
+      costCoverage: emptyCoverage(),
+      models: new Map<string, ModelAggregate>(),
+    }
+    daily.set(date, current)
+    return current
+  }
 
   yield* Effect.forEach(
     ranges,
@@ -173,6 +200,13 @@ export const get = Effect.fn("SessionStats.get")(function* (input: Input = {}) {
                   Object.values(tokens.cache).reduce((a, b) => a + b, tokens.input + tokens.output + tokens.reasoning) >
                     0
                 if (accounted) cover(totals.costCoverage, row.costStatus)
+                const point = bucket(row.timeCreated)
+                if (point) {
+                  point.steps++
+                  addTokens(point.tokens, tokens)
+                  point.cost += row.cost ?? 0
+                  if (accounted) cover(point.costCoverage, row.costStatus)
+                }
                 const day = dateKey(row.timeCreated)
                 activity.set(day, (activity.get(day) ?? 0) + 1)
                 if (!row.providerID || !row.modelID) return
@@ -193,6 +227,20 @@ export const get = Effect.fn("SessionStats.get")(function* (input: Input = {}) {
                 model.cost += row.cost ?? 0
                 if (accounted) cover(model.costCoverage, row.costStatus)
                 addTokens(model.tokens, tokens)
+                if (point) {
+                  const group = point.models.get(key) ?? {
+                    model: model.model,
+                    steps: 0,
+                    tokens: emptyTokens(),
+                    cost: 0,
+                    costCoverage: emptyCoverage(),
+                  }
+                  point.models.set(key, group)
+                  group.steps++
+                  addTokens(group.tokens, tokens)
+                  group.cost += row.cost ?? 0
+                  if (accounted) cover(group.costCoverage, row.costStatus)
+                }
               })
             }),
           ),
@@ -300,7 +348,7 @@ export const get = Effect.fn("SessionStats.get")(function* (input: Input = {}) {
     batches(ids.map((row) => row.id)),
     (batch) =>
       db
-        .select({ data: EventTable.data })
+        .select({ data: EventTable.data, time: EventTable.created })
         .from(EventTable)
         .where(
           and(
@@ -309,7 +357,6 @@ export const get = Effect.fn("SessionStats.get")(function* (input: Input = {}) {
               EventTable.type,
               Event.versionedType(SessionEvent.UsageRecorded.type, SessionEvent.UsageRecorded.durable.version),
             ),
-            sql`json_extract(${EventTable.data}, '$.source') = 'compaction'`,
             gte(EventTable.created, from),
             lt(EventTable.created, to),
           ),
@@ -324,7 +371,65 @@ export const get = Effect.fn("SessionStats.get")(function* (input: Input = {}) {
     addTokens(totals.tokens, decoded.value.tokens)
     totals.cost += decoded.value.cost
     cover(totals.costCoverage, decoded.value.costAssessment?.status)
+    const point = bucket(row.time)
+    if (point) {
+      addTokens(point.tokens, decoded.value.tokens)
+      point.cost += decoded.value.cost
+      cover(point.costCoverage, decoded.value.costAssessment?.status)
+    }
   })
+
+  // Evaluator charges are separate from model-message and auxiliary usage-event accounting.
+  const evaluations = yield* db
+    .select({
+      time: IntelligenceEvaluationTable.time_created,
+      input: IntelligenceEvaluationTable.input_tokens,
+      output: IntelligenceEvaluationTable.output_tokens,
+      cost: IntelligenceEvaluationTable.cost,
+      unpriced: IntelligenceEvaluationTable.unpriced_cost,
+    })
+    .from(IntelligenceEvaluationTable)
+    .leftJoin(SessionTable, eq(SessionTable.id, IntelligenceEvaluationTable.session_id))
+    .where(
+      and(
+        gte(IntelligenceEvaluationTable.time_created, from),
+        lt(IntelligenceEvaluationTable.time_created, to),
+        input.projectID === undefined ? undefined : eq(SessionTable.project_id, input.projectID),
+      ),
+    )
+    .all()
+    .pipe(Effect.orDie)
+  evaluations.forEach((row) => {
+    const tokens = { input: row.input, output: row.output, reasoning: 0, cache: { read: 0, write: 0 } }
+    const status = row.unpriced || (row.cost === null && row.input + row.output > 0) ? "unknown" : undefined
+    addTokens(totals.tokens, tokens)
+    totals.cost += row.cost ?? 0
+    cover(totals.costCoverage, status)
+    const point = bucket(row.time)
+    if (!point) return
+    addTokens(point.tokens, tokens)
+    point.cost += row.cost ?? 0
+    cover(point.costCoverage, status)
+  })
+
+  if (input.series && daily.size) {
+    // Advance calendar labels in UTC so DST cannot duplicate or omit a local date.
+    const first = Date.parse(dateKey(from))
+    const count = Math.round((Date.parse(dateKey(to - 1)) - first) / 86_400_000) + 1
+    Array.from({ length: count }, (_, index) =>
+      new Date(first + index * 86_400_000).toISOString().slice(0, 10),
+    ).forEach((date) => {
+      if (!daily.has(date))
+        daily.set(date, {
+          date,
+          steps: 0,
+          tokens: emptyTokens(),
+          cost: 0,
+          costCoverage: emptyCoverage(),
+          models: new Map(),
+        })
+    })
+  }
 
   const days = [...activity.entries()].sort(([a], [b]) => a.localeCompare(b))
   return {
@@ -358,6 +463,20 @@ export const get = Effect.fn("SessionStats.get")(function* (input: Input = {}) {
     activeDays: days.length,
     streak: longestStreak(days.map(([date]) => date)),
     activity: days.map(([date, steps]) => ({ date, steps })),
+    ...(input.series
+      ? {
+          series: [...daily.values()]
+            .sort((a, b) => a.date.localeCompare(b.date))
+            .map((point) => ({
+              date: point.date,
+              steps: point.steps,
+              tokens: point.tokens,
+              cost: Money.USD.make(point.cost),
+              costCoverage: point.costCoverage,
+              models: [...point.models.values()].map((model) => ({ ...model, cost: Money.USD.make(model.cost) })),
+            })),
+        }
+      : {}),
     models: [...models.values()]
       .sort((a, b) => TokenUsage.total(b.tokens) - TokenUsage.total(a.tokens))
       .map((model) => ({ ...model, cost: Money.USD.make(model.cost) })),

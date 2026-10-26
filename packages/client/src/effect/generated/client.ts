@@ -419,6 +419,8 @@ import type {
   WorkersAnswerInput,
   WorkersAnswerOutput,
   WorkersListOutput,
+  WorkersLocalAddInput,
+  WorkersLocalAddOutput,
   WorkersAddInput,
   WorkersAddOutput,
   WorkersRemoveInput,
@@ -688,6 +690,7 @@ const EndpointSessionStats = (raw: RawClient["server.session"]) => (input?: Sess
         project: input?.["project"],
         timezone: input?.["timezone"],
         tools: input?.["tools"],
+        series: input?.["series"],
       },
     }).pipe(
       Effect.mapError(mapClientError),
@@ -2581,16 +2584,29 @@ const EndpointWorkersAnswer = (raw: RawClient["server.workers"]) => (input: Work
 const EndpointWorkersList = (raw: RawClient["server.workers"]) => () =>
   preserveEffect<WorkersListOutput>()(raw["workers.list"]({}).pipe(Effect.mapError(mapClientError)))
 
+const EndpointWorkersLocalAdd = (raw: RawClient["server.workers"]) => (input: WorkersLocalAddInput) =>
+  preserveEffect<WorkersLocalAddOutput>()(
+    raw["workers.local.add"]({
+      payload: {
+        id: input["id"],
+        directories: input["directories"],
+        tags: input["tags"],
+        resourceID: input["resourceID"],
+        kind: input["kind"],
+      },
+    }).pipe(Effect.mapError(mapClientError)),
+  )
+
 const EndpointWorkersAdd = (raw: RawClient["server.workers"]) => (input: WorkersAddInput) =>
   preserveEffect<WorkersAddOutput>()(
     raw["workers.add"]({
       payload: {
         id: input["id"],
-        url: input["url"],
         directories: input["directories"],
         tags: input["tags"],
-        password: input["password"],
         resourceID: input["resourceID"],
+        url: input["url"],
+        password: input["password"],
         environmentID: input["environmentID"],
         environmentProxy: input["environmentProxy"],
       },
@@ -2632,6 +2648,7 @@ const adaptGroupWorkers = (raw: RawClient["server.workers"]) => ({
   attention: EndpointWorkersAttention(raw),
   answer: EndpointWorkersAnswer(raw),
   list: EndpointWorkersList(raw),
+  local: { add: EndpointWorkersLocalAdd(raw) },
   add: EndpointWorkersAdd(raw),
   remove: EndpointWorkersRemove(raw),
   probe: EndpointWorkersProbe(raw),

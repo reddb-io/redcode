@@ -9,9 +9,9 @@ host's density when one is set; otherwise it uses tiny on narrow viewports and
 compact on wider ones. Editable text and toolbar controls retain the DS touch
 floor on devices with a coarse pointer.
 
-The current delivery pins `v2026.10.28`, selects React and uses the official
+The current delivery pins `v2026.10.33`, selects React and uses the official
 compiled distribution. Settings and the migrated shell surfaces consume native
-React controls through canonical Base and App imports. Shared service adapters
+React controls through canonical Base, App and Data imports. Shared service adapters
 retain the existing router, persistence, server subscriptions and extension owners.
 See [React GUI migration](react-gui-migration.md) for the current boundary and
 validation evidence.
@@ -166,15 +166,30 @@ docks, contextual sidebar panels, searchable selects and inline editing. Adoptin
 them in Redcode requires a Solid interaction adapter and a product-specific use
 case; vendoring their source does not enable them automatically.
 
-The upstream Data kit now includes charts, diagrams, traces, virtual lists and a
-terminal presentation component. It is outside the current App-only manifest.
-Its transport, agent execution, terminal ownership and telemetry remain the
-consumer's responsibility. Enable that kit when implementing a concrete surface
-rather than adding its chart or Svelte dependencies to application startup.
+The Data kit is included for the Hosts and native Usage surfaces. Both consume native React
+`CompositeChart` components through leaf imports, keeping drawing engines lazy. Hosts uses
+`createChartStream` with at most 600 observations and ten minutes of retention. Only the selected,
+visible inspector polls, at the existing five-second cadence. Pause freezes the published view
+while bounded reception continues; history is discarded when the view closes. Missing and stale
+observations remain gaps. The stream does not supply transport or persistent telemetry.
+
+Tasks uses `StatusBreakdown`, `EntityInspector`, `EntityJourney` and `WorkspaceTabs`. Journey
+states come from the current reconciliation report and application receipt; they do not infer
+elapsed durations or treat execution completion as acceptance. Inactive task panels stay mounted.
+The Designer iframe remains under its existing owner. Native-slot configuration uses `ChangeReview`
+for one explicit setting; Git candidates continue using the existing whole-candidate review and apply
+contract. `ShortcutHelp` reads the registered commands and their effective keybindings. Render
+failures are contained by `ErrorBoundary`; request failures retain their separate handling.
+
+Usage charts request daily native statistics for seven or thirty days, optionally filtered by
+project. Model-message usage, title generation, compaction and auxiliary evaluator charges are counted once. Costs
+retain provenance, and charges without a reliable model attribution remain a separate series.
+These totals are recorded subtotals, not provider invoices or external CLI usage.
+`SecretValue` is available in the delivery; no new secret-read or reveal permission is introduced.
 
 ## Opportunities by surface
 
-This assessment uses the stable [v2026.10.20 release](https://github.com/reddb-io/design-system/releases/tag/v2026.10.20).
+The opportunity inventory began with [v2026.10.20](https://github.com/reddb-io/design-system/releases/tag/v2026.10.20); the concrete integrations above describe the current pinned delivery.
 The manifest and receipt identify the delivered version; a later showcase commit
 does not move that pin. The tables distinguish integrated adapters from the
 opportunities that still require product work.
@@ -202,7 +217,7 @@ screens, safe areas and no Electron browser service.
 | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Responsive `SidebarLayout` with labelled dock          | Offer four stable primary destinations plus More on phones, giving clearer discovery than an icon rail while preserving conversation width. | Integrated with the shared navigation controller. The dock's normal layout height reserves its space, Browse opens the current scope, and More preserves the other actions. Resized mobile viewport and touch navigation are covered; physical-device keyboard and installed-PWA safe-area behavior still require device verification. |
 | `SidebarPanel` and Drawer                              | Turn host/workspace details into a drawer on narrow screens and a contextual panel on wide screens.                                         | Native harness details use a bounded inspector. Host resources now has a searchable list and selected inspector that replaces the list on mobile and restores focus on return. Workspace drawers remain future work.                                                                                                                   |
-| Data `Table`, `KpiCard`, `BreakdownBar`, `MetricChart` | Make worker fleets comparable with filtering, sorting and CPU/RAM/capacity summaries.                                                       | [`agents-hosts.tsx`](../packages/app/src/shell/navigation/agents-hosts.tsx) currently reads snapshots. Historical charts need timestamped retained samples; an unavailable or stale sample must remain visibly different from zero.                                                                                                    |
+| Data `Table`, `KpiCard`, `BreakdownBar`, `MetricChart` | Make worker fleets comparable with filtering, sorting and CPU/RAM/capacity summaries.                                                       | [`agents-hosts.tsx`](../packages/app/src/shell/navigation/agents-hosts.tsx) retains timestamped samples locally while its inspector is visible, with linked native charts. An unavailable or stale sample remains visibly different from zero.                                                                                                    |
 | `TraceWaterfall`, `Diagram`, `SequenceDiagram`         | Explain coordinator → worker dispatch, queue time, execution and retries.                                                                   | Supply actual task/session events, timings and stable identities. DS selection opens the existing task details; it does not acquire execution ownership or infer a successful retry.                                                                                                                                                   |
 
 ### Designer: web pages, mobile, slides and creatives

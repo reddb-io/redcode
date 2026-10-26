@@ -238,6 +238,7 @@ export type SessionStatsInput = {
   readonly project?: Project.ID | undefined
   readonly timezone?: string | undefined
   readonly tools?: "none" | "summary" | "detail" | undefined
+  readonly series?: "daily" | undefined
 }
 export type SessionStatsOutput = {
   readonly range: { readonly from: DateTime.Utc; readonly to: DateTime.Utc }
@@ -286,6 +287,44 @@ export type SessionStatsOutput = {
   readonly activeDays: number
   readonly streak: number
   readonly activity: ReadonlyArray<{ readonly date: string; readonly steps: number }>
+  readonly series?:
+    | ReadonlyArray<{
+        readonly date: string
+        readonly steps: number
+        readonly tokens: {
+          readonly input: number
+          readonly output: number
+          readonly reasoning: number
+          readonly cache: { readonly read: number; readonly write: number }
+        }
+        readonly cost: number & Brand.Brand<"Money.USD">
+        readonly costCoverage: {
+          readonly reported: number
+          readonly estimated: number
+          readonly unknown: number
+          readonly legacy: number
+        }
+        readonly models: ReadonlyArray<{
+          readonly model: Model.Ref
+          readonly steps: number
+          readonly tokens: {
+            readonly input: number
+            readonly output: number
+            readonly reasoning: number
+            readonly cache: { readonly read: number; readonly write: number }
+          }
+          readonly cost: number & Brand.Brand<"Money.USD">
+          readonly costCoverage?:
+            | {
+                readonly reported: number
+                readonly estimated: number
+                readonly unknown: number
+                readonly legacy: number
+              }
+            | undefined
+        }>
+      }>
+    | undefined
   readonly models: ReadonlyArray<{
     readonly model: Model.Ref
     readonly steps: number
@@ -956,6 +995,7 @@ export type SessionTodoReconcileOutput = {
     readonly priority: string
     readonly closedAt?: number | undefined
   }
+  readonly acceptance?: "accepted" | "pending" | "blocked" | "cancelled" | "stale" | "unverified" | undefined
   readonly fingerprint: string
   readonly observedAt: number
   readonly executionSettled: boolean
@@ -6270,13 +6310,25 @@ export type WorkersAnswerOperation<E = never> = (input: WorkersAnswerInput) => E
 export type WorkersListOutput = Worker.Snapshot
 export type WorkersListOperation<E = never> = () => Effect.Effect<WorkersListOutput, E>
 
-export type WorkersAddInput = {
+export type WorkersLocalAddInput = {
   readonly id: Worker.Name
-  readonly url: string
   readonly directories: ReadonlyArray<string>
   readonly tags: ReadonlyArray<string>
-  readonly password: string
   readonly resourceID?: string | undefined
+  readonly kind: "local"
+}
+export type WorkersLocalAddOutput = Worker.Status
+export type WorkersLocalAddOperation<E = never> = (
+  input: WorkersLocalAddInput,
+) => Effect.Effect<WorkersLocalAddOutput, E>
+
+export type WorkersAddInput = {
+  readonly id: Worker.Name
+  readonly directories: ReadonlyArray<string>
+  readonly tags: ReadonlyArray<string>
+  readonly resourceID?: string | undefined
+  readonly url: string
+  readonly password: string
   readonly environmentID?: Worker.Name | undefined
   readonly environmentProxy?: boolean | undefined
 }
@@ -6309,6 +6361,7 @@ export interface WorkersApi<E = never> {
   readonly attention: WorkersAttentionOperation<E>
   readonly answer: WorkersAnswerOperation<E>
   readonly list: WorkersListOperation<E>
+  readonly local: { readonly add: WorkersLocalAddOperation<E> }
   readonly add: WorkersAddOperation<E>
   readonly remove: WorkersRemoveOperation<E>
   readonly probe: WorkersProbeOperation<E>

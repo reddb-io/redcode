@@ -14,17 +14,32 @@ export const Name = Schema.String.check(Schema.isMinLength(1), Schema.isPattern(
 })
 export type Name = typeof Name.Type
 const Text = Schema.String.check(Schema.isMinLength(1))
-export const Registration = Schema.Struct({
+const Slot = {
   id: Name,
-  url: Text,
-  passwordEnv: Name,
   directories: Schema.Array(Text.check(Schema.isPattern(/^(\/|[a-zA-Z]:[\\/])/))).check(Schema.isMinLength(1)),
   tags: Schema.Array(Text),
   resourceID: optional(Text),
+}
+export const RemoteRegistration = Schema.Struct({
+  // Field order preserves the fingerprint of existing durable batch journals.
+  id: Name,
+  url: Text,
+  passwordEnv: Name,
+  directories: Slot.directories,
+  tags: Slot.tags,
+  resourceID: Slot.resourceID,
   environmentID: optional(Name),
   environmentProxy: optional(Schema.Boolean),
-}).annotate({ identifier: "Worker.Registration" })
-export interface Registration extends Schema.Schema.Type<typeof Registration> {}
+  kind: optional(Schema.Literal("remote")),
+}).annotate({ identifier: "Worker.RemoteRegistration" })
+export const LocalRegistration = Schema.Struct({
+  ...Slot,
+  kind: Schema.Literal("local"),
+}).annotate({ identifier: "Worker.LocalRegistration" })
+export const Registration = Schema.Union([LocalRegistration, RemoteRegistration]).annotate({
+  identifier: "Worker.Registration",
+})
+export type Registration = typeof Registration.Type
 export const Config = Schema.Struct({ workers: Schema.Array(Registration) }).annotate({ identifier: "Worker.Config" })
 export interface Config extends Schema.Schema.Type<typeof Config> {}
 /** Admission budgets owned by one coordinator; they do not enforce OS quotas. */
@@ -106,12 +121,9 @@ export const Report = Schema.Struct({ fingerprint: Text, tasks: Schema.Array(Ent
 })
 export interface Report extends Schema.Schema.Type<typeof Report> {}
 export const Register = Schema.Struct({
-  id: Name,
-  url: Registration.fields.url,
-  directories: Registration.fields.directories,
-  tags: Registration.fields.tags,
+  ...Slot,
+  url: Text,
   password: Text,
-  resourceID: optional(Text),
   environmentID: optional(Name),
   environmentProxy: optional(Schema.Boolean),
 }).annotate({ identifier: "Worker.Register" })
@@ -135,6 +147,7 @@ export const Batch = Schema.Struct({
 export interface Batch extends Schema.Schema.Type<typeof Batch> {}
 export const Snapshot = Schema.Struct({
   available: Schema.Boolean,
+  localExecution: optional(Schema.Struct({ available: Schema.Boolean, reason: optional(Text) })),
   reason: optional(Text),
   workers: Schema.Array(Status),
   batches: Schema.Array(Batch),

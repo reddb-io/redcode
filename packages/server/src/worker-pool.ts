@@ -48,6 +48,7 @@ type BatchInput = {
   signal?: AbortSignal
   /** A coordinator runtime incarnation, never restored from its task journal. */
   coordinator?: string
+  local?: () => OpenCodeClient
 }
 const localCoordinator = randomUUID()
 
@@ -57,11 +58,11 @@ export async function readConfig(file: string): Promise<Config> {
   if (new Set(ids).size !== ids.length) throw new Error("Worker IDs must be unique")
   const slots = config.workers.flatMap((worker) =>
     worker.directories.map((directory) =>
-      JSON.stringify([address(worker.url), worker.environmentID ?? null, directory]),
+      JSON.stringify([placement(worker), (worker.kind === "local" ? null : worker.environmentID) ?? null, directory]),
     ),
   )
   if (new Set(slots).size !== slots.length) throw new Error("Each server checkout may belong to only one worker slot")
-  config.workers.forEach((worker) => address(worker.url))
+  config.workers.forEach((worker) => placement(worker))
   return config
 }
 
@@ -73,7 +74,7 @@ export async function readManifest(file: string): Promise<Manifest> {
 }
 
 export async function add(file: string, worker: Worker.Registration) {
-  address(worker.url)
+  placement(worker)
   await Flock.withLock(
     path.resolve(file),
     async () => {
@@ -84,8 +85,9 @@ export async function add(file: string, worker: Worker.Registration) {
       if (
         config.workers.some(
           (item) =>
-            address(item.url) === address(worker.url) &&
-            item.environmentID === worker.environmentID &&
+            placement(item) === placement(worker) &&
+            (item.kind === "local" ? undefined : item.environmentID) ===
+              (worker.kind === "local" ? undefined : worker.environmentID) &&
             item.directories.some((dir) => worker.directories.includes(dir)),
         )
       )
@@ -113,8 +115,9 @@ export async function remove(file: string, id: string) {
 export async function health(
   worker: Worker.Registration,
   environment: Readonly<Record<string, string | undefined>> = process.env,
+  local?: () => OpenCodeClient,
 ) {
-  return client(worker, environment).server.system({ signal: AbortSignal.timeout(5_000) })
+  return client(worker, environment, local).server.system({ signal: AbortSignal.timeout(5_000) })
 }
 
 /** One local coordinator owns a batch. Workers own independent Sessions and databases. */
@@ -155,7 +158,7 @@ export async function run(
   if (
     recovery &&
     (!recoveryWorker ||
-      address(recoveryWorker.url) !== recovery.url ||
+      placement(recoveryWorker) !== recovery.url ||
       !recoveryWorker.directories.includes(recovery.directory!))
   )
     throw new Error("Recovery placement does not match the saved worker")
@@ -166,7 +169,9 @@ export async function run(
       throw new Error(`No eligible worker for task ${task.id}`)
   })
   // Missing credentials fail before any remote Session is created; they are never persisted in the registry/report.
-  const clients = new Map(config.workers.map((worker) => [worker.id, client(worker, input.environment ?? process.env)]))
+  const clients = new Map(
+    config.workers.map((worker) => [worker.id, client(worker, input.environment ?? process.env, input.local)]),
+  )
   if (report.tasks.every(terminal)) {
     await rm(`${input.config}.batch.json`, { force: true })
     return report
@@ -194,7 +199,7 @@ export async function run(
   // Share a short-lived sample across slots registered against the same server origin.
   const samples = new Map<string, { startedAt: number; pending: Promise<HostResources.Snapshot | undefined> }>()
   const sample = (worker: Worker.Registration) => {
-    const origin = address(worker.url)
+    const origin = placement(worker)
     const cached = samples.get(origin)
     if (cached && Date.now() - cached.startedAt < 1_000) return cached.pending
     const pending = clients
@@ -209,7 +214,7 @@ export async function run(
   }
   const reserved = (worker: Worker.Registration) =>
     report.tasks
-      .filter((entry) => entry.url === address(worker.url) && entry.state !== "queued" && !terminal(entry))
+      .filter((entry) => entry.url === placement(worker) && entry.state !== "queued" && !terminal(entry))
       .reduce(
         (budget, entry) => {
           const resources = manifest.tasks.find((task) => task.id === entry.id)?.resources
@@ -578,7 +583,7 @@ export async function run(
               id: entry.id,
               state: "dispatching",
               worker: worker.id,
-              url: address(worker.url),
+              url: placement(worker),
               directory,
               sessionID: Session.ID.create(),
               messageID: SessionMessage.ID.create(),
@@ -675,7 +680,7 @@ export async function run(
         (directory) =>
           !report.tasks.some(
             (item) =>
-              item.url === address(worker.url) &&
+              item.url === placement(worker) &&
               item.directory === directory &&
               !terminal(item) &&
               item.state !== "queued",
@@ -717,9 +722,8 @@ export async function collect(input: BatchInput & { task: string; output: string
   if (!entry || !["succeeded", "failed", "interrupted"].includes(entry.state) || !entry.sessionID || !entry.messageID)
     throw new Error("Collect requires a terminal task with recorded Session and message IDs")
   const worker = config.workers.find((worker) => worker.id === entry.worker)
-  if (!worker || address(worker.url) !== entry.url)
-    throw new Error("Saved worker placement does not match the registry")
-  const api = client(worker, input.environment ?? process.env)
+  if (!worker || placement(worker) !== entry.url) throw new Error("Saved worker placement does not match the registry")
+  const api = client(worker, input.environment ?? process.env, input.local)
   const options = { signal: AbortSignal.any([AbortSignal.timeout(30_000), ...(input.signal ? [input.signal] : [])]) }
   const session = await api.session.get({ sessionID: entry.sessionID }, options)
   const active = await api.session.active(options)
@@ -820,8 +824,9 @@ export async function answer(input: BatchInput, answer: Worker.Answer) {
 export async function resources(
   worker: Worker.Registration,
   environment: Readonly<Record<string, string | undefined>>,
+  local?: () => OpenCodeClient,
 ) {
-  return client(worker, environment).server.resources({ signal: AbortSignal.timeout(5_000) })
+  return client(worker, environment, local).server.resources({ signal: AbortSignal.timeout(5_000) })
 }
 
 /** Reuse the native Session harness with first-admission-wins prompt IDs and original task placement. */
@@ -864,9 +869,9 @@ async function assignedSession(input: BatchInput, task: string) {
   if (!entry?.sessionID || !entry.directory || terminal(entry))
     throw new Error("This task has no live assigned Session")
   const worker = config.workers.find((worker) => worker.id === entry.worker)
-  if (!worker || address(worker.url) !== entry.url || !worker.directories.includes(entry.directory))
+  if (!worker || placement(worker) !== entry.url || !worker.directories.includes(entry.directory))
     throw new Error("Saved worker placement does not match the registry")
-  const api = client(worker, input.environment ?? process.env)
+  const api = client(worker, input.environment ?? process.env, input.local)
   const options = { signal: AbortSignal.any([AbortSignal.timeout(5_000), ...(input.signal ? [input.signal] : [])]) }
   const session = await api.session.get({ sessionID: entry.sessionID }, options)
   if (!sameDirectory(session.location.directory, entry.directory))
@@ -944,11 +949,24 @@ export function address(value: string) {
   return url.origin
 }
 
-function client(worker: Worker.Registration, environment: Readonly<Record<string, string | undefined>>) {
+/** Stable placement identity; a local server's listening port is never journal identity. */
+export function placement(worker: Worker.Registration) {
+  return worker.kind === "local" ? "local" : address(worker.url)
+}
+
+function client(
+  worker: Worker.Registration,
+  environment: Readonly<Record<string, string | undefined>>,
+  local?: () => OpenCodeClient,
+) {
+  if (worker.kind === "local") {
+    if (!local) throw new Error("Local execution requires this server's active listener")
+    return local()
+  }
   const password = environment[worker.passwordEnv]
   if (!password) throw new Error(`Set ${worker.passwordEnv} to this worker's server password or pairing token`)
   return OpenCode.make({
-    baseUrl: address(worker.url),
+    baseUrl: placement(worker),
     headers: { authorization: `Basic ${btoa(`opencode:${password}`)}` },
     ...(worker.environmentID && worker.environmentProxy
       ? {
@@ -957,7 +975,7 @@ function client(worker: Worker.Registration, environment: Readonly<Record<string
               const request = new Request(input, init)
               const url = new URL(request.url)
               const response = await fetch(
-                `${address(worker.url)}/api/worker-environments/${encodeURIComponent(worker.environmentID!)}/request`,
+                `${placement(worker)}/api/worker-environments/${encodeURIComponent(worker.environmentID!)}/request`,
                 {
                   method: "POST",
                   headers: {

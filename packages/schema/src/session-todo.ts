@@ -395,6 +395,7 @@ export interface Convergence extends Schema.Schema.Type<typeof Convergence> {}
 export const Reconciliation = Schema.Struct({
   sessionID: SessionID,
   task: Info,
+  acceptance: optional(ReconciliationInput.fields.acceptance),
   fingerprint: Schema.String,
   observedAt: Schema.Finite,
   executionSettled: Schema.Boolean,

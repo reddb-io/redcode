@@ -20,9 +20,9 @@ export declare const button: import("tailwind-variants").TVReturnType<{
         readonly danger: "";
     };
     size: {
-        readonly sm: "h-[var(--reddb-spatial-control-height-sm)] px-[var(--reddb-spatial-inset-sm)] text-sm";
-        readonly md: "h-[var(--reddb-spatial-control-height-md)] px-[var(--reddb-spatial-inset-md)] text-sm";
-        readonly lg: "h-[var(--reddb-spatial-control-height-lg)] px-[var(--reddb-spatial-inset-lg)] text-base";
+        readonly sm: "min-h-[var(--reddb-spatial-control-height-sm)] px-[var(--reddb-spatial-inset-sm)] text-sm";
+        readonly md: "min-h-[var(--reddb-spatial-control-height-md)] px-[var(--reddb-spatial-inset-md)] text-sm";
+        readonly lg: "min-h-[var(--reddb-spatial-control-height-lg)] px-[var(--reddb-spatial-inset-lg)] text-base";
     };
     block: {
         /** Fills its column — a form's submit, a drawer's confirm, a mobile action. */
@@ -51,9 +51,9 @@ export declare const button: import("tailwind-variants").TVReturnType<{
         readonly danger: "";
     };
     size: {
-        readonly sm: "h-[var(--reddb-spatial-control-height-sm)] px-[var(--reddb-spatial-inset-sm)] text-sm";
-        readonly md: "h-[var(--reddb-spatial-control-height-md)] px-[var(--reddb-spatial-inset-md)] text-sm";
-        readonly lg: "h-[var(--reddb-spatial-control-height-lg)] px-[var(--reddb-spatial-inset-lg)] text-base";
+        readonly sm: "min-h-[var(--reddb-spatial-control-height-sm)] px-[var(--reddb-spatial-inset-sm)] text-sm";
+        readonly md: "min-h-[var(--reddb-spatial-control-height-md)] px-[var(--reddb-spatial-inset-md)] text-sm";
+        readonly lg: "min-h-[var(--reddb-spatial-control-height-lg)] px-[var(--reddb-spatial-inset-lg)] text-base";
     };
     block: {
         /** Fills its column — a form's submit, a drawer's confirm, a mobile action. */
@@ -82,9 +82,9 @@ export declare const button: import("tailwind-variants").TVReturnType<{
         readonly danger: "";
     };
     size: {
-        readonly sm: "h-[var(--reddb-spatial-control-height-sm)] px-[var(--reddb-spatial-inset-sm)] text-sm";
-        readonly md: "h-[var(--reddb-spatial-control-height-md)] px-[var(--reddb-spatial-inset-md)] text-sm";
-        readonly lg: "h-[var(--reddb-spatial-control-height-lg)] px-[var(--reddb-spatial-inset-lg)] text-base";
+        readonly sm: "min-h-[var(--reddb-spatial-control-height-sm)] px-[var(--reddb-spatial-inset-sm)] text-sm";
+        readonly md: "min-h-[var(--reddb-spatial-control-height-md)] px-[var(--reddb-spatial-inset-md)] text-sm";
+        readonly lg: "min-h-[var(--reddb-spatial-control-height-lg)] px-[var(--reddb-spatial-inset-lg)] text-base";
     };
     block: {
         /** Fills its column — a form's submit, a drawer's confirm, a mobile action. */

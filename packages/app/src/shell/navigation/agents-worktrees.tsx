@@ -7,6 +7,11 @@ import { Button } from "@opencode/ui/button"
 import { For, onCleanup, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import type { WorktreeReview } from "@opencode/client/promise"
+import { ReactView } from "@/runtime/react/view"
+import { sharedLanguage } from "@/runtime/react/language"
+import { LocalSlotReview } from "./local-slot-review.react"
+import { uuid } from "@/runtime/persistence/uuid"
+import { pathKey } from "@/workspaces/path-key"
 import { useLanguage } from "@/runtime/i18n/language"
 import { ServerConnection } from "@/runtime/server/registry"
 import { useGlobal } from "@/runtime/server/runtime"
@@ -23,6 +28,7 @@ export default function AgentWorktrees(props: { server: ServerConnection.Any }) 
   const [params, setParams] = useSearchParams()
   const api = () => global.ensureServerCtx(props.server).sdk.api
   const [state, setState] = createStore({
+    pendingSlot: "",
     projectID: "",
     directory: "",
     name: "",
@@ -47,6 +53,18 @@ export default function AgentWorktrees(props: { server: ServerConnection.Any }) 
     enabled: connected(),
     retry: false,
   }))
+  const workers = useQuery(() => ({
+    queryKey: ["local-worktree-slots", ServerConnection.key(props.server)],
+    queryFn: ({ signal }) => api().workers.list({ signal }),
+    enabled: connected(),
+    retry: false,
+  }))
+  const enabled = (directory: string) =>
+    workers.data?.workers.some(
+      (status) =>
+        status.worker.kind === "local" &&
+        status.worker.directories.some((slot) => pathKey(slot) === pathKey(directory)),
+    )
   const projectID = () => state.projectID || (typeof params.project === "string" ? params.project : "")
   const project = () => projects.data?.find((item) => item.id === projectID())
   const inventory = useQuery(() => ({
@@ -97,6 +115,30 @@ export default function AgentWorktrees(props: { server: ServerConnection.Any }) 
       <p hidden={!!state.review && navigation.mobile()} class="text-ink-muted">
         {language.t("agentWorktrees.description")}
       </p>
+      <Show when={state.pendingSlot}>
+        <ReactView
+          component={LocalSlotReview}
+          props={{
+            directory: state.pendingSlot,
+            language: sharedLanguage(language),
+            busy: state.busy,
+            cancel: () => {
+              if (!state.busy) setState("pendingSlot", "")
+            },
+            approve: () =>
+              void action(async () => {
+                await api().workers.local.add({
+                  kind: "local",
+                  id: `local-${uuid()}`,
+                  directories: [state.pendingSlot],
+                  tags: [],
+                })
+                await workers.refetch()
+                if (lifetime.active) setState("pendingSlot", "")
+              }),
+          }}
+        />
+      </Show>
       <Show when={state.error && !state.review}>
         <p role="alert">{state.error}</p>
       </Show>
@@ -386,6 +428,20 @@ export default function AgentWorktrees(props: { server: ServerConnection.Any }) 
                       }
                     >
                       {language.t("agentWorktrees.startAgent")}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      disabled={state.busy || !workers.data?.localExecution?.available || enabled(item().directory)}
+                      title={
+                        !workers.data?.localExecution?.available
+                          ? language.t("agentWorktrees.localUnavailable")
+                          : undefined
+                      }
+                      onClick={() => setState("pendingSlot", item().directory)}
+                    >
+                      {language.t(
+                        enabled(item().directory) ? "agentWorktrees.localEnabled" : "agentWorktrees.enableLocal",
+                      )}
                     </Button>
                     <Button
                       variant="outline"

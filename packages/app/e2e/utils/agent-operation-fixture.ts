@@ -1,5 +1,7 @@
 import type { Page } from "@playwright/test"
 import { Schema } from "effect"
+import { Worker } from "@opencode/schema/worker"
+import { SessionStats } from "@opencode/schema/session-stats"
 import { Harness } from "@opencode/schema/harness"
 import { Worktree } from "@opencode/schema/worktree"
 import { AbsolutePath } from "@opencode/schema/schema"
@@ -243,6 +245,7 @@ export async function mockHarnessOperations(page: Page, input: { output?: string
 }
 
 export async function mockWorktreeOperations(page: Page, options: { diff?: string } = {}) {
+  await page.route("**/api/workers", (route) => route.fulfill({ json: { available: true, workers: [], batches: [] } }))
   const child = fixture.directory + "/worktree-agent"
   const state = { created: false, archived: false }
   const archive = {
@@ -308,4 +311,86 @@ export async function mockWorktreeOperations(page: Page, options: { diff?: strin
     return route.fulfill({ status: 400, json: { message: "Unsupported fixture operation" } })
   })
   return { directory: AbsolutePath.make(child) }
+}
+
+export async function mockLocalSlots(page: Page) {
+  const workers: Worker.Status[] = [
+    {
+      worker: {
+        id: "reference-worker",
+        url: "http://worker.example.invalid",
+        passwordEnv: "FIXTURE_PASSWORD",
+        directories: [fixture.directory],
+        tags: [],
+      },
+      connection: "unchecked",
+    },
+  ]
+  const registrations: Worker.Registration[] = []
+  await page.route("**/api/workers", (route) =>
+    route.fulfill({ json: { available: true, localExecution: { available: true }, workers, batches: [] } }),
+  )
+  await page.route("**/api/workers/local", async (route) => {
+    const worker = Schema.decodeUnknownSync(Worker.LocalRegistration)(route.request().postDataJSON())
+    registrations.push(worker)
+    const status: Worker.Status = { worker, connection: "online", platform: "fixture" }
+    workers.push(status)
+    return route.fulfill({ json: status })
+  })
+  return { registrations }
+}
+
+export async function mockNativeUsage(page: Page) {
+  const requests: URL[] = []
+  await page.route("**/api/experimental/session/stats?**", (route) => {
+    const url = new URL(route.request().url())
+    requests.push(url)
+    const coverage = { reported: 1, estimated: 1, unknown: 1, legacy: 0 }
+    const tokens = { input: 100, output: 20, reasoning: 0, cache: { read: 0, write: 0 } }
+    const models = [
+      {
+        model: { providerID: "opencode", id: "native-test" },
+        steps: 2,
+        tokens,
+        cost: 1,
+        costCoverage: { reported: 1, estimated: 0, unknown: 0, legacy: 0 },
+      },
+    ]
+    const date = new Date(Number(url.searchParams.get("to"))).toISOString().slice(0, 10)
+    const data = Schema.decodeUnknownSync(SessionStats.Info)({
+      range: { from: Number(url.searchParams.get("from")), to: Number(url.searchParams.get("to")) },
+      sessions: 1,
+      subagents: 0,
+      prompts: 1,
+      steps: 2,
+      tokens,
+      cost: 1.25,
+      costCoverage: coverage,
+      tools: { mode: "summary", totals: { calls: 0, succeeded: 0, failed: 0, unfinished: 0 } },
+      activeDays: 1,
+      streak: 1,
+      activity: [{ date, steps: 1 }],
+      models,
+      series: [
+        {
+          date: new Date(Date.parse(date) - 86_400_000).toISOString().slice(0, 10),
+          steps: 1,
+          tokens: { ...tokens, input: 60, output: 20 },
+          cost: 0.5,
+          costCoverage: { reported: 1, estimated: 0, unknown: 0, legacy: 0 },
+          models: [{ ...models[0], cost: 0.4 }],
+        },
+        {
+          date,
+          steps: 1,
+          tokens: { ...tokens, input: 40, output: 0 },
+          cost: 0.75,
+          costCoverage: { reported: 0, estimated: 1, unknown: 1, legacy: 0 },
+          models: [{ ...models[0], cost: 0.6 }],
+        },
+      ],
+    })
+    return route.fulfill({ json: { data: Schema.encodeSync(SessionStats.Info)(data) } })
+  })
+  return { requests }
 }

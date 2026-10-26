@@ -1,5 +1,5 @@
 export const AGENT_GROUPS = [
-  { label: "agents.group.execution", views: ["sessions", "tasks", "inbox", "harness", "remote"] },
+  { label: "agents.group.execution", views: ["sessions", "tasks", "inbox", "harness", "remote", "usage"] },
   { label: "agents.group.workspaces", views: ["project-environments", "environments", "worktrees"] },
   { label: "agents.group.infrastructure", views: ["machines", "hosts"] },
 ] as const
@@ -9,7 +9,8 @@ export const AGENT_LABELS = {
   sessions: "agents.sessions",
   tasks: "agentTasks.title",
   inbox: "agents.inbox.title",
-  harness: "harness.title",
+  harness: "executors.title",
+  usage: "usage.title",
   machines: "agentMachines.title",
   "project-environments": "projectEnvironments.title",
   environments: "environments.title",

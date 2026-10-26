@@ -1,14 +1,33 @@
 /** @jsxImportSource react */
-import { useSyncExternalStore } from "react"
+import { useState, useSyncExternalStore } from "react"
 import { Badge } from "@reddb-io/design-system/base/Badge"
 import { Button } from "@reddb-io/design-system/base/Button"
 import { Progress } from "@reddb-io/design-system/base/Progress"
 import { Select } from "@reddb-io/design-system/base/Select"
 import { Skeleton } from "@reddb-io/design-system/base/Skeleton"
+import { EntityJourney, type JourneyStage } from "@reddb-io/design-system/app/EntityJourney"
+import { EntityInspector } from "@reddb-io/design-system/app/EntityInspector"
+import { WorkspaceTabs } from "@reddb-io/design-system/app/WorkspaceTabs"
+import { ErrorBoundary } from "@reddb-io/design-system/app/ErrorBoundary"
+import { StatusBreakdown } from "@reddb-io/design-system/data/StatusBreakdown"
 import { SessionTodo } from "@opencode/schema/session-todo"
 import type { createAgentTaskServices } from "./agents-tasks"
 
 export function AgentTasksView(props: { services: ReturnType<typeof createAgentTaskServices> }) {
+  const view = useSyncExternalStore(props.services.snapshot.subscribe, props.services.snapshot.getSnapshot)
+  return (
+    <ErrorBoundary
+      title={view.language.t("agentTasks.unavailable")}
+      retryLabel={view.language.t("common.retry")}
+      resetKey={view.sessionID}
+    >
+      <AgentTasksContent services={props.services} />
+    </ErrorBoundary>
+  )
+}
+
+function AgentTasksContent(props: { services: ReturnType<typeof createAgentTaskServices> }) {
+  const [panel, setPanel] = useState("details")
   const services = props.services
   const view = useSyncExternalStore(services.snapshot.subscribe, services.snapshot.getSnapshot)
   const language = view.language
@@ -40,6 +59,45 @@ export function AgentTasksView(props: { services: ReturnType<typeof createAgentT
     binding?.contractCurrent
   const completed = view.tasks.filter((item) => item.status === "completed").length
   const status = (value: string) => language.t(STATUSES[value as keyof typeof STATUSES] ?? "agentTasks.status.unknown")
+  const stages: JourneyStage[] = [
+    {
+      id: "execution",
+      label: language.t("agentTasks.execution"),
+      state: view.assignments.some((item) => item.taskID === task?.id && item.state === "running")
+        ? "current"
+        : task?.status === "cancelled"
+          ? "skipped"
+          : task?.status === "completed"
+            ? "complete"
+            : task?.status === "in_progress"
+              ? "current"
+              : task?.status === "blocked"
+                ? "blocked"
+                : "upcoming",
+    },
+    {
+      id: "verification",
+      label: language.t("agentTasks.verification"),
+      state:
+        report?.acceptance === "accepted" || accepted
+          ? "complete"
+          : report?.acceptance === "stale" ||
+              report?.acceptance === "unverified" ||
+              (binding && !binding.contractCurrent)
+            ? "blocked"
+            : "upcoming",
+    },
+    {
+      id: "acceptance",
+      label: language.t("agentTasks.acceptance"),
+      state: report?.acceptance === "accepted" || accepted ? "complete" : "upcoming",
+    },
+    {
+      id: "application",
+      label: language.t("agentTasks.application"),
+      state: applied ? "complete" : pending ? "current" : "upcoming",
+    },
+  ]
   return (
     <div className="flex min-w-0 flex-col gap-4 text-13-regular leading-[var(--line-height-base)]">
       <p className="max-w-prose text-ink-muted">{language.t("agentTasks.description")}</p>
@@ -104,6 +162,16 @@ export function AgentTasksView(props: { services: ReturnType<typeof createAgentT
             />
           </section>
           {!view.loading && view.tasks.length === 0 && <p role="status">{language.t("agentTasks.empty")}</p>}
+          <StatusBreakdown
+            label={language.t("agentTasks.progress")}
+            interactive={false}
+            emptyLabel={language.t("agentTasks.empty")}
+            items={(["pending", "in_progress", "blocked", "completed", "cancelled"] as const).map((id) => ({
+              id,
+              label: status(id),
+              count: view.tasks.filter((item) => item.status === id).length,
+            }))}
+          />
           <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(180px,1fr)_minmax(0,2fr)]">
             <ul aria-label={language.t("agentTasks.dependencies")} className="min-w-0 space-y-4">
               {view.tasks.map((item, index) => (
@@ -191,286 +259,349 @@ export function AgentTasksView(props: { services: ReturnType<typeof createAgentT
               ))}
             </ul>
             {task && (
-              <section aria-label={language.t("agentTasks.detail")} className="flex min-w-0 flex-col gap-4">
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="text-13-medium">{SessionTodo.label(task)}</h3>
-                    <Badge>{status(task.status)}</Badge>
-                  </div>
-                  <p className="mt-2 whitespace-pre-wrap">{task.content}</p>
-                  {task.reason && <p className="mt-2 whitespace-pre-wrap">{task.reason}</p>}
-                  {task.criterion && (
-                    <div className="mt-3">
-                      <h4 className="text-13-medium">{language.t("agentTasks.criterion")}</h4>
-                      <p className="whitespace-pre-wrap">{task.criterion}</p>
-                    </div>
-                  )}
-                  {task.source && (
-                    <blockquote className="mt-3 border-s-2 border-v2-border-border-base ps-3 whitespace-pre-wrap text-ink-muted">
-                      {task.source.quote}
-                    </blockquote>
-                  )}
-                  {task.evidence && (
-                    <div className="mt-3">
-                      <h4 className="text-13-medium">{language.t("agentTasks.evidence")}</h4>
-                      <p className="whitespace-pre-wrap">{task.evidence.explanation}</p>
-                      <p className="break-all text-caption text-ink-muted">
-                        {task.evidence.tool} · {task.evidence.callID}
-                      </p>
-                    </div>
-                  )}
-                </div>
-                {view.report && !report && <p role="status">{language.t("agentTasks.contextChanged")}</p>}
-                {report && (
-                  <>
-                    <p role="status">
-                      {language.t(report.executionSettled ? "agentTasks.settled" : "agentTasks.executing")}
-                    </p>
-                    {report.convergence && report.convergence.required.length > 0 && (
-                      <section aria-label={language.t("agentTasks.convergence")}>
-                        <h4 className="text-13-medium">{language.t("agentTasks.convergence")}</h4>
-                        <p role="status">
-                          {language.plural("agentTasks.convergenceAccepted", report.convergence.accepted.length, {
-                            total: report.convergence.required.length,
-                          })}
-                        </p>
-                        {report.convergence.ready ? (
-                          <p className="text-ink-muted">{language.t("agentTasks.convergenceReady")}</p>
-                        ) : (
-                          <ul aria-label={language.t("agentTasks.convergenceWaiting")} className="list-disc ps-5">
-                            {report.convergence.waitingFor.map((id) => (
-                              <li key={id}>
-                                {SessionTodo.label(report.inputs.find((input) => input.task.id === id)!.task)}
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </section>
-                    )}
-                    <div>
-                      <h4 className="text-13-medium">{language.t("agentTasks.prerequisites")}</h4>
-                      <p className="text-ink-muted">
-                        {language.t(report.acceptanceReady ? "agentTasks.inputsAccepted" : "agentTasks.inputsPending")}
-                      </p>
-                      {report.inputs.map((input) => (
-                        <article
-                          key={input.task.id}
-                          aria-label={SessionTodo.label(input.task)}
-                          className="mt-3 border-s-2 border-v2-border-border-base ps-3"
-                        >
-                          <h5 className="text-13-medium">{SessionTodo.label(input.task)}</h5>
-                          <Badge>{status(input.acceptance)}</Badge>
-                          {input.issues.map((issue, index) => (
-                            <p key={index} className="mt-1 whitespace-pre-wrap">
-                              {issue}
-                            </p>
-                          ))}
-                          {input.contributions.map((contribution) => (
-                            <details key={contribution.sessionID + contribution.promptID} className="mt-2">
-                              <summary className="cursor-pointer py-1">
-                                {language.t("agentTasks.contribution", {
-                                  session: contribution.sessionID,
-                                  status: status(contribution.execution),
-                                })}
-                              </summary>
-                              <p>
-                                {language.t(
-                                  contribution.current ? "agentTasks.contractCurrent" : "agentTasks.contractOutdated",
-                                )}
+              <EntityInspector
+                label={language.t("agentTasks.detail")}
+                selected={view.taskID}
+                onselectedchange={services.selectTask}
+                items={view.tasks.flatMap((item) =>
+                  item.id ? [{ id: item.id, label: SessionTodo.label(item), description: status(item.status) }] : [],
+                )}
+                previousLabel={language.t("agentTasks.previous")}
+                nextLabel={language.t("agentTasks.next")}
+                emptyLabel={language.t("agentTasks.empty")}
+              >
+                <WorkspaceTabs
+                  label={language.t("agentTasks.workspace")}
+                  selected={panel}
+                  onselectedchange={setPanel}
+                  items={[
+                    { id: "details", label: language.t("agentTasks.detail"), busy: view.busy },
+                    { id: "stages", label: language.t("agentTasks.journey") },
+                  ]}
+                >
+                  {(tab) =>
+                    tab.id === "stages" ? (
+                      <EntityJourney
+                        label={language.t("agentTasks.journey")}
+                        items={stages.map((stage) => ({
+                          ...stage,
+                          stateLabel: language.tDynamic(`agentTasks.stage.${stage.state}`, stage.state),
+                        }))}
+                      />
+                    ) : (
+                      <div className="flex min-w-0 flex-col gap-4">
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="text-13-medium">{SessionTodo.label(task)}</h3>
+                            <Badge>{status(task.status)}</Badge>
+                          </div>
+                          <p className="mt-2 whitespace-pre-wrap">{task.content}</p>
+                          {task.reason && <p className="mt-2 whitespace-pre-wrap">{task.reason}</p>}
+                          {task.criterion && (
+                            <div className="mt-3">
+                              <h4 className="text-13-medium">{language.t("agentTasks.criterion")}</h4>
+                              <p className="whitespace-pre-wrap">{task.criterion}</p>
+                            </div>
+                          )}
+                          {task.source && (
+                            <blockquote className="mt-3 border-s-2 border-v2-border-border-base ps-3 whitespace-pre-wrap text-ink-muted">
+                              {task.source.quote}
+                            </blockquote>
+                          )}
+                          {task.evidence && (
+                            <div className="mt-3">
+                              <h4 className="text-13-medium">{language.t("agentTasks.evidence")}</h4>
+                              <p className="whitespace-pre-wrap">{task.evidence.explanation}</p>
+                              <p className="break-all text-caption text-ink-muted">
+                                {task.evidence.tool} · {task.evidence.callID}
                               </p>
-                              {contribution.context && (
-                                <details className="mt-2">
-                                  <summary className="cursor-pointer py-1">
-                                    {language.t("agentTasks.receivedContext")}
-                                  </summary>
-                                  <p
-                                    className="break-all text-caption text-ink-muted"
-                                    title={contribution.context.version}
-                                  >
-                                    {language.t("agentTasks.contextVersion", {
-                                      version: contribution.context.version.slice(0, 12),
-                                    })}
-                                  </p>
-                                  <p className="whitespace-pre-wrap">{contribution.context.goal.objective}</p>
-                                  <ul className="list-disc ps-5">
-                                    {contribution.context.goal.criteria.map((criterion, index) => (
-                                      <li key={index}>{criterion}</li>
-                                    ))}
-                                  </ul>
-                                </details>
-                              )}
-                              {contribution.response && (
-                                <p className="mt-2 whitespace-pre-wrap">{contribution.response.text}</p>
-                              )}
-                              {contribution.response?.truncated && <p>{language.t("agentTasks.truncatedSummary")}</p>}
-                              <h6 className="mt-2 text-13-medium">{language.t("agentTasks.checks")}</h6>
-                              <ul className="list-disc ps-5">
-                                {contribution.checks.map((check) => (
-                                  <li key={check.messageID + check.callID} className="break-all">
-                                    {language.t("agentTasks.check", {
-                                      tool: check.tool,
-                                      call: check.callID,
-                                      status: status(
-                                        !check.settled
-                                          ? "running"
-                                          : !check.successful
-                                            ? "failed"
-                                            : check.fresh
-                                              ? "succeeded"
-                                              : "stale",
-                                      ),
-                                    })}
-                                  </li>
-                                ))}
-                              </ul>
-                              {contribution.omittedChecks > 0 && (
-                                <p>{language.plural("agentTasks.omittedChecks", contribution.omittedChecks)}</p>
-                              )}
-                              <h6 className="mt-2 text-13-medium">{language.t("agentTasks.files")}</h6>
-                              <ul className="list-disc ps-5">
-                                {contribution.changedPaths.map((path) => (
-                                  <li key={path} className="break-all font-mono">
-                                    {path}
-                                  </li>
-                                ))}
-                              </ul>
-                              {contribution.omittedPaths > 0 && (
-                                <p>{language.plural("agentTasks.omittedPaths", contribution.omittedPaths)}</p>
-                              )}
-                              {contribution.unknownWriteScope && <p>{language.t("agentTasks.unknownWrites")}</p>}
-                            </details>
-                          ))}
-                        </article>
-                      ))}
-                    </div>
-                    {report.overlaps.length > 0 && (
-                      <div>
-                        <h4 className="text-13-medium">{language.t("agentTasks.overlaps")}</h4>
-                        <ul>
-                          {report.overlaps.map((item) => (
-                            <li key={item.path} className="break-all">
-                              {item.path} · {language.list(item.taskIDs)}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    <section
-                      aria-label={language.t("agentTasks.integration")}
-                      className="flex min-w-0 flex-col gap-3 border-t border-v2-border-border-base pt-4"
-                    >
-                      <h4 className="text-13-medium">{language.t("agentTasks.integration")}</h4>
-                      <p className="text-ink-muted">{language.t("agentTasks.integrationHelp")}</p>
-                      {view.inventoryError && <p role="alert">{language.t("agentTasks.targetsUnavailable")}</p>}
-                      {(task.status === "pending" || task.status === "in_progress") && (
-                        <>
-                          <label className="flex min-w-0 flex-col gap-1">
-                            {language.t("agentTasks.target")}
-                            <Select
-                              aria-label={language.t("agentTasks.target")}
-                              value={view.target}
-                              disabled={view.busy}
-                              onValueChange={services.selectTarget}
-                              options={[
-                                { value: "", label: language.t("agentTasks.chooseTarget") },
-                                ...view.targets.map((item) => ({ value: item.directory, label: item.directory })),
-                              ]}
-                            />
-                          </label>
-                          <Button
-                            variant="secondary"
-                            className="self-start"
-                            disabled={
-                              !available ||
-                              !view.target ||
-                              view.inventoryError ||
-                              !report.inputs.length ||
-                              !report.executionSettled ||
-                              !report.acceptanceReady
-                            }
-                            onClick={services.prepare}
-                          >
-                            {language.t("agentTasks.prepare")}
-                          </Button>
-                        </>
-                      )}
-                      {binding && (
-                        <div className="min-w-0">
-                          <p className="break-all">
-                            {language.t("agentTasks.boundTarget", { directory: binding.binding.target })}
-                          </p>
-                          <p className="break-all font-mono">
-                            {binding.binding.targetHead} → {binding.binding.head}
-                          </p>
-                          {!binding.contractCurrent && <p role="status">{language.t("agentTasks.changedCandidate")}</p>}
-                          {binding.issues.map((issue, index) => (
-                            <p key={index}>{issue}</p>
-                          ))}
-                          <Button
-                            className="mt-2"
-                            variant="secondary"
-                            disabled={!available || !binding.contractCurrent}
-                            onClick={services.review}
-                          >
-                            {language.t("agentTasks.review")}
-                          </Button>
-                        </div>
-                      )}
-                      {candidate && (
-                        <div className="min-w-0">
-                          <h5 className="text-13-medium">{language.t("agentTasks.candidate")}</h5>
-                          <p>
-                            {language.t(candidate.status === "ready" ? "agentTasks.prepared" : "agentTasks.conflicted")}
-                          </p>
-                          <p className="break-all">{candidate.target}</p>
-                          <p className="break-all font-mono">
-                            {candidate.targetHead} → {candidate.head}
-                          </p>
-                          {candidate.steps
-                            .flatMap((step) => step.conflicts)
-                            .map((path, index) => (
-                              <p key={index} className="break-all">
-                                {path}
-                              </p>
-                            ))}
-                          <pre
-                            aria-label={language.t("agentTasks.diff")}
-                            tabIndex={0}
-                            className="my-2 max-h-96 min-w-0 overflow-auto rounded border border-v2-border-border-base p-3 font-mono text-caption whitespace-pre"
-                          >
-                            {candidate.diff || language.t("agentWorktrees.noDiff")}
-                          </pre>
-                          {candidate.truncated && <p role="status">{language.t("agentTasks.truncatedDiff")}</p>}
-                          {!accepted && <p>{language.t("agentTasks.verificationRequired")}</p>}
-                          {accepted && !reviewed && <p>{language.t("agentTasks.reviewAgain")}</p>}
-                          {accepted && reviewed && !pending && !applied && (
-                            <>
-                              <p>{language.t("agentTasks.applyHelp")}</p>
-                              <Button
-                                className="mt-2"
-                                disabled={!available || view.refreshing}
-                                onClick={services.apply}
-                              >
-                                {language.t("agentTasks.apply")}
-                              </Button>
-                            </>
+                            </div>
                           )}
                         </div>
-                      )}
-                      {applied && <p role="status">{language.t("agentTasks.applied")}</p>}
-                      {pending && (
-                        <div>
-                          <p role="status">{language.t("agentTasks.pendingApplication")}</p>
-                          <p className="break-all font-mono">{view.request?.requestID ?? application?.requestID}</p>
-                          <Button className="mt-2" variant="secondary" disabled={!available} onClick={services.retry}>
-                            {language.t("agentTasks.retry")}
-                          </Button>
-                        </div>
-                      )}
-                    </section>
-                  </>
-                )}
-              </section>
+                        {view.report && !report && <p role="status">{language.t("agentTasks.contextChanged")}</p>}
+                        {report && (
+                          <>
+                            <p role="status">
+                              {language.t(report.executionSettled ? "agentTasks.settled" : "agentTasks.executing")}
+                            </p>
+                            {report.convergence && report.convergence.required.length > 0 && (
+                              <section aria-label={language.t("agentTasks.convergence")}>
+                                <h4 className="text-13-medium">{language.t("agentTasks.convergence")}</h4>
+                                <p role="status">
+                                  {language.plural(
+                                    "agentTasks.convergenceAccepted",
+                                    report.convergence.accepted.length,
+                                    {
+                                      total: report.convergence.required.length,
+                                    },
+                                  )}
+                                </p>
+                                {report.convergence.ready ? (
+                                  <p className="text-ink-muted">{language.t("agentTasks.convergenceReady")}</p>
+                                ) : (
+                                  <ul
+                                    aria-label={language.t("agentTasks.convergenceWaiting")}
+                                    className="list-disc ps-5"
+                                  >
+                                    {report.convergence.waitingFor.map((id) => (
+                                      <li key={id}>
+                                        {SessionTodo.label(report.inputs.find((input) => input.task.id === id)!.task)}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
+                              </section>
+                            )}
+                            <div>
+                              <h4 className="text-13-medium">{language.t("agentTasks.prerequisites")}</h4>
+                              <p className="text-ink-muted">
+                                {language.t(
+                                  report.acceptanceReady ? "agentTasks.inputsAccepted" : "agentTasks.inputsPending",
+                                )}
+                              </p>
+                              {report.inputs.map((input) => (
+                                <article
+                                  key={input.task.id}
+                                  aria-label={SessionTodo.label(input.task)}
+                                  className="mt-3 border-s-2 border-v2-border-border-base ps-3"
+                                >
+                                  <h5 className="text-13-medium">{SessionTodo.label(input.task)}</h5>
+                                  <Badge>{status(input.acceptance)}</Badge>
+                                  {input.issues.map((issue, index) => (
+                                    <p key={index} className="mt-1 whitespace-pre-wrap">
+                                      {issue}
+                                    </p>
+                                  ))}
+                                  {input.contributions.map((contribution) => (
+                                    <details key={contribution.sessionID + contribution.promptID} className="mt-2">
+                                      <summary className="cursor-pointer py-1">
+                                        {language.t("agentTasks.contribution", {
+                                          session: contribution.sessionID,
+                                          status: status(contribution.execution),
+                                        })}
+                                      </summary>
+                                      <p>
+                                        {language.t(
+                                          contribution.current
+                                            ? "agentTasks.contractCurrent"
+                                            : "agentTasks.contractOutdated",
+                                        )}
+                                      </p>
+                                      {contribution.context && (
+                                        <details className="mt-2">
+                                          <summary className="cursor-pointer py-1">
+                                            {language.t("agentTasks.receivedContext")}
+                                          </summary>
+                                          <p
+                                            className="break-all text-caption text-ink-muted"
+                                            title={contribution.context.version}
+                                          >
+                                            {language.t("agentTasks.contextVersion", {
+                                              version: contribution.context.version.slice(0, 12),
+                                            })}
+                                          </p>
+                                          <p className="whitespace-pre-wrap">{contribution.context.goal.objective}</p>
+                                          <ul className="list-disc ps-5">
+                                            {contribution.context.goal.criteria.map((criterion, index) => (
+                                              <li key={index}>{criterion}</li>
+                                            ))}
+                                          </ul>
+                                        </details>
+                                      )}
+                                      {contribution.response && (
+                                        <p className="mt-2 whitespace-pre-wrap">{contribution.response.text}</p>
+                                      )}
+                                      {contribution.response?.truncated && (
+                                        <p>{language.t("agentTasks.truncatedSummary")}</p>
+                                      )}
+                                      <h6 className="mt-2 text-13-medium">{language.t("agentTasks.checks")}</h6>
+                                      <ul className="list-disc ps-5">
+                                        {contribution.checks.map((check) => (
+                                          <li key={check.messageID + check.callID} className="break-all">
+                                            {language.t("agentTasks.check", {
+                                              tool: check.tool,
+                                              call: check.callID,
+                                              status: status(
+                                                !check.settled
+                                                  ? "running"
+                                                  : !check.successful
+                                                    ? "failed"
+                                                    : check.fresh
+                                                      ? "succeeded"
+                                                      : "stale",
+                                              ),
+                                            })}
+                                          </li>
+                                        ))}
+                                      </ul>
+                                      {contribution.omittedChecks > 0 && (
+                                        <p>{language.plural("agentTasks.omittedChecks", contribution.omittedChecks)}</p>
+                                      )}
+                                      <h6 className="mt-2 text-13-medium">{language.t("agentTasks.files")}</h6>
+                                      <ul className="list-disc ps-5">
+                                        {contribution.changedPaths.map((path) => (
+                                          <li key={path} className="break-all font-mono">
+                                            {path}
+                                          </li>
+                                        ))}
+                                      </ul>
+                                      {contribution.omittedPaths > 0 && (
+                                        <p>{language.plural("agentTasks.omittedPaths", contribution.omittedPaths)}</p>
+                                      )}
+                                      {contribution.unknownWriteScope && (
+                                        <p>{language.t("agentTasks.unknownWrites")}</p>
+                                      )}
+                                    </details>
+                                  ))}
+                                </article>
+                              ))}
+                            </div>
+                            {report.overlaps.length > 0 && (
+                              <div>
+                                <h4 className="text-13-medium">{language.t("agentTasks.overlaps")}</h4>
+                                <ul>
+                                  {report.overlaps.map((item) => (
+                                    <li key={item.path} className="break-all">
+                                      {item.path} · {language.list(item.taskIDs)}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            <section
+                              aria-label={language.t("agentTasks.integration")}
+                              className="flex min-w-0 flex-col gap-3 border-t border-v2-border-border-base pt-4"
+                            >
+                              <h4 className="text-13-medium">{language.t("agentTasks.integration")}</h4>
+                              <p className="text-ink-muted">{language.t("agentTasks.integrationHelp")}</p>
+                              {view.inventoryError && <p role="alert">{language.t("agentTasks.targetsUnavailable")}</p>}
+                              {(task.status === "pending" || task.status === "in_progress") && (
+                                <>
+                                  <label className="flex min-w-0 flex-col gap-1">
+                                    {language.t("agentTasks.target")}
+                                    <Select
+                                      aria-label={language.t("agentTasks.target")}
+                                      value={view.target}
+                                      disabled={view.busy}
+                                      onValueChange={services.selectTarget}
+                                      options={[
+                                        { value: "", label: language.t("agentTasks.chooseTarget") },
+                                        ...view.targets.map((item) => ({
+                                          value: item.directory,
+                                          label: item.directory,
+                                        })),
+                                      ]}
+                                    />
+                                  </label>
+                                  <Button
+                                    variant="secondary"
+                                    className="self-start"
+                                    disabled={
+                                      !available ||
+                                      !view.target ||
+                                      view.inventoryError ||
+                                      !report.inputs.length ||
+                                      !report.executionSettled ||
+                                      !report.acceptanceReady
+                                    }
+                                    onClick={services.prepare}
+                                  >
+                                    {language.t("agentTasks.prepare")}
+                                  </Button>
+                                </>
+                              )}
+                              {binding && (
+                                <div className="min-w-0">
+                                  <p className="break-all">
+                                    {language.t("agentTasks.boundTarget", { directory: binding.binding.target })}
+                                  </p>
+                                  <p className="break-all font-mono">
+                                    {binding.binding.targetHead} → {binding.binding.head}
+                                  </p>
+                                  {!binding.contractCurrent && (
+                                    <p role="status">{language.t("agentTasks.changedCandidate")}</p>
+                                  )}
+                                  {binding.issues.map((issue, index) => (
+                                    <p key={index}>{issue}</p>
+                                  ))}
+                                  <Button
+                                    className="mt-2"
+                                    variant="secondary"
+                                    disabled={!available || !binding.contractCurrent}
+                                    onClick={services.review}
+                                  >
+                                    {language.t("agentTasks.review")}
+                                  </Button>
+                                </div>
+                              )}
+                              {candidate && (
+                                <div className="min-w-0">
+                                  <h5 className="text-13-medium">{language.t("agentTasks.candidate")}</h5>
+                                  <p>
+                                    {language.t(
+                                      candidate.status === "ready" ? "agentTasks.prepared" : "agentTasks.conflicted",
+                                    )}
+                                  </p>
+                                  <p className="break-all">{candidate.target}</p>
+                                  <p className="break-all font-mono">
+                                    {candidate.targetHead} → {candidate.head}
+                                  </p>
+                                  {candidate.steps
+                                    .flatMap((step) => step.conflicts)
+                                    .map((path, index) => (
+                                      <p key={index} className="break-all">
+                                        {path}
+                                      </p>
+                                    ))}
+                                  <pre
+                                    aria-label={language.t("agentTasks.diff")}
+                                    tabIndex={0}
+                                    className="my-2 max-h-96 min-w-0 overflow-auto rounded border border-v2-border-border-base p-3 font-mono text-caption whitespace-pre"
+                                  >
+                                    {candidate.diff || language.t("agentWorktrees.noDiff")}
+                                  </pre>
+                                  {candidate.truncated && <p role="status">{language.t("agentTasks.truncatedDiff")}</p>}
+                                  {!accepted && <p>{language.t("agentTasks.verificationRequired")}</p>}
+                                  {accepted && !reviewed && <p>{language.t("agentTasks.reviewAgain")}</p>}
+                                  {accepted && reviewed && !pending && !applied && (
+                                    <>
+                                      <p>{language.t("agentTasks.applyHelp")}</p>
+                                      <Button
+                                        className="mt-2"
+                                        disabled={!available || view.refreshing}
+                                        onClick={services.apply}
+                                      >
+                                        {language.t("agentTasks.apply")}
+                                      </Button>
+                                    </>
+                                  )}
+                                </div>
+                              )}
+                              {applied && <p role="status">{language.t("agentTasks.applied")}</p>}
+                              {pending && (
+                                <div>
+                                  <p role="status">{language.t("agentTasks.pendingApplication")}</p>
+                                  <p className="break-all font-mono">
+                                    {view.request?.requestID ?? application?.requestID}
+                                  </p>
+                                  <Button
+                                    className="mt-2"
+                                    variant="secondary"
+                                    disabled={!available}
+                                    onClick={services.retry}
+                                  >
+                                    {language.t("agentTasks.retry")}
+                                  </Button>
+                                </div>
+                              )}
+                            </section>
+                          </>
+                        )}
+                      </div>
+                    )
+                  }
+                </WorkspaceTabs>
+              </EntityInspector>
             )}
           </div>
         </>

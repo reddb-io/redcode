@@ -170,18 +170,7 @@ const make = Effect.gen(function* () {
             } satisfies SessionTodo.Contribution
           }),
         )
-        const acceptance =
-          input.status === "completed"
-            ? !input.evidence
-              ? ("unverified" as const)
-              : invalid.has(id)
-                ? ("stale" as const)
-                : ("accepted" as const)
-            : input.status === "cancelled"
-              ? ("cancelled" as const)
-              : input.status === "blocked"
-                ? ("blocked" as const)
-                : ("pending" as const)
+        const acceptance = acceptanceOf(input, invalid)
         const latest = contributions.at(-1)
         return {
           task: input,
@@ -230,6 +219,7 @@ const make = Effect.gen(function* () {
     return {
       sessionID,
       task,
+      acceptance: acceptanceOf(task, invalid),
       fingerprint: SessionTaskGraph.fingerprint(task, tasks),
       observedAt: Date.now(),
       executionSettled,
@@ -265,3 +255,13 @@ export const node = makeGlobalNode({
   layer: Layer.effect(Service, make),
   deps: [SessionTodoStore.node, SessionTaskAssignments.node, SessionTaskFacts.node, SessionStore.node, Job.node],
 })
+
+function acceptanceOf(task: SessionTodo.Info, invalid: ReadonlySet<string>) {
+  if (task.status === "completed") {
+    if (!task.evidence) return "unverified" as const
+    return task.id && invalid.has(task.id) ? ("stale" as const) : ("accepted" as const)
+  }
+  if (task.status === "cancelled") return "cancelled" as const
+  if (task.status === "blocked") return "blocked" as const
+  return "pending" as const
+}

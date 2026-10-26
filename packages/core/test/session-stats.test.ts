@@ -12,6 +12,7 @@ import { Bus } from "@opencode/core/bus"
 import { Database } from "@opencode/core/database/database"
 import { ProjectTable } from "@opencode/core/project/sql"
 import { SessionMessageTable, SessionTable } from "@opencode/core/session/sql"
+import { IntelligenceEvaluationTable } from "@opencode/core/intelligence/sql"
 import { SessionStats } from "@opencode/core/session/stats"
 import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
 import { LayerNode } from "@opencode/util/effect/layer-node"
@@ -186,14 +187,16 @@ describe("SessionStats", () => {
         to: Date.UTC(2026, 1, 1),
         timezone: "UTC",
         tools: "detail",
+        series: "daily",
       })
 
       expect(stats.sessions).toBe(2)
       expect(stats.subagents).toBe(1)
       expect(stats.prompts).toBe(1)
       expect(stats.steps).toBe(3)
-      expect(stats.tokens).toEqual({ input: 42, output: 22, reasoning: 10, cache: { read: 18, write: 6 } })
-      expect(stats.cost).toBe(Money.USD.make(6.25))
+      expect(stats.tokens).toEqual({ input: 43, output: 23, reasoning: 11, cache: { read: 19, write: 7 } })
+      expect(stats.cost).toBe(Money.USD.make(6.75))
+      expect(stats.costCoverage.legacy).toBe(5)
       expect(stats.tools).toMatchObject({
         mode: "detail",
         totals: { calls: 3, succeeded: 1, failed: 1, unfinished: 1 },
@@ -203,6 +206,22 @@ describe("SessionStats", () => {
         { date: "2026-01-03", steps: 1 },
         { date: "2026-01-05", steps: 1 },
       ])
+      expect(
+        stats.series?.filter((point) => point.steps > 0 || point.cost > 0).map((point) => [point.date, point.cost]),
+      ).toEqual([
+        ["2026-01-02", Money.USD.make(2.25)],
+        ["2026-01-03", Money.USD.make(3)],
+        ["2026-01-05", Money.USD.make(1.5)],
+      ])
+      expect(stats.series).toHaveLength(31)
+      expect(stats.series?.find((point) => point.date === "2026-01-04")).toMatchObject({
+        steps: 0,
+        cost: 0,
+        costCoverage: { reported: 0, estimated: 0, unknown: 0, legacy: 0 },
+      })
+      expect(stats.series?.reduce((sum, point) => sum + point.cost, 0)).toBe(stats.cost)
+      expect(stats.series?.reduce((sum, point) => sum + point.tokens.input, 0)).toBe(stats.tokens.input)
+      expect(stats.series?.reduce((sum, point) => sum + point.steps, 0)).toBe(stats.steps)
       expect(stats.streak).toBe(2)
       expect(stats.models.map((model) => String(model.model.id))).toEqual(["large", "sonnet", "fork-new"])
       expect(stats.tools.mode).toBe("detail")
@@ -231,6 +250,14 @@ describe("SessionStats", () => {
         tools: "none",
       })
       expect(withoutTools.tools).toEqual({ mode: "none" })
+      expect(
+        (yield* SessionStats.get({
+          from: Date.UTC(2026, 0, 6),
+          to: Date.UTC(2026, 0, 7),
+          tools: "none",
+          series: "daily",
+        })).series,
+      ).toEqual([])
 
       const project = yield* SessionStats.get({ projectID, timezone: "UTC", tools: "none" })
       expect(DateTime.toEpochMillis(project.range.from)).toBe(Date.UTC(2025, 11, 30, 10))
@@ -244,6 +271,80 @@ describe("SessionStats", () => {
 
       const future = yield* Effect.flip(SessionStats.get({ from: Number.MAX_SAFE_INTEGER, tools: "none" }))
       expect(future._tag).toBe("SessionStats.InvalidRangeError")
+
+      yield* db
+        .insert(IntelligenceEvaluationTable)
+        .values(
+          [
+            {
+              id: "priced",
+              session_id: sessionID,
+              cost: 0.75,
+              input_tokens: 11,
+              output_tokens: 7,
+              time_created: Date.UTC(2026, 0, 2, 0, 30),
+            },
+            {
+              id: "unknown",
+              session_id: childID,
+              cost: null,
+              input_tokens: 3,
+              output_tokens: 2,
+              time_created: Date.UTC(2026, 0, 2, 0, 30),
+            },
+            {
+              id: "other-project",
+              session_id: otherSessionID,
+              cost: 99,
+              input_tokens: 99,
+              output_tokens: 99,
+              time_created: Date.UTC(2026, 0, 2, 0, 30),
+            },
+            {
+              id: "at-end",
+              session_id: sessionID,
+              cost: 99,
+              input_tokens: 99,
+              output_tokens: 99,
+              time_created: Date.UTC(2026, 0, 2, 1),
+            },
+          ].map((row) => ({
+            ...row,
+            operation: "response_quality",
+            evaluation_kind: "gate",
+            fingerprint: row.id,
+            policy: "test",
+            decision: "accepted",
+            model: "evaluator",
+            issues: [],
+            duration: 1,
+            source_hash: "source",
+            candidate_hash: "candidate",
+          })),
+        )
+        .run()
+        .pipe(Effect.orDie)
+      const daily = yield* SessionStats.get({
+        projectID,
+        from: Date.UTC(2026, 0, 2),
+        to: Date.UTC(2026, 0, 2, 1),
+        timezone: "America/Los_Angeles",
+        tools: "none",
+        series: "daily",
+      })
+      expect(daily.cost).toBe(Money.USD.make(0.75))
+      expect(daily.tokens.input).toBe(14)
+      expect(daily.costCoverage).toEqual({ reported: 0, estimated: 0, unknown: 1, legacy: 1 })
+      expect(daily.series).toEqual([
+        {
+          date: "2026-01-01",
+          steps: 0,
+          tokens: { input: 14, output: 9, reasoning: 0, cache: { read: 0, write: 0 } },
+          cost: Money.USD.make(0.75),
+          costCoverage: daily.costCoverage,
+          models: [],
+        },
+      ])
     }),
   )
 })

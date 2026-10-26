@@ -50,6 +50,16 @@ export const Tools = Schema.Union([
 ]).annotate({ identifier: "SessionStats.Tools" })
 export type Tools = typeof Tools.Type
 
+export const Daily = Schema.Struct({
+  date: Schema.String,
+  steps: NonNegativeInt,
+  tokens: TokenUsage.Info,
+  cost: Money.USD,
+  costCoverage: CostAssessment.Coverage,
+  models: Schema.Array(ModelUsage),
+}).annotate({ identifier: "SessionStats.Daily" })
+export interface Daily extends Schema.Schema.Type<typeof Daily> {}
+
 export const Info = Schema.Struct({
   range: Schema.Struct({
     from: DateTimeUtcFromMillis,
@@ -66,6 +76,7 @@ export const Info = Schema.Struct({
   activeDays: NonNegativeInt,
   streak: NonNegativeInt,
   activity: Schema.Array(Activity),
+  series: optional(Schema.Array(Daily)),
   models: Schema.Array(ModelUsage),
 }).annotate({ identifier: "SessionStats.Info" })
 export type Info = typeof Info.Type

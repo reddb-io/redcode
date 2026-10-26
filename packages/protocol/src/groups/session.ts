@@ -284,6 +284,7 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI ext
           project: Project.ID.pipe(Schema.optional),
           timezone: Schema.String.pipe(Schema.optional),
           tools: SessionStats.ToolMode.pipe(Schema.optional),
+          series: Schema.Literal("daily").pipe(Schema.optional),
         }),
         success: Schema.Struct({ data: SessionStats.Info }),
         error: InvalidRequestError,

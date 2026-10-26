@@ -619,3 +619,140 @@ it.live(
     }),
   20_000,
 )
+
+it.live(
+  "registers a native slot on the running server without saving its listening address or password",
+  () =>
+    Effect.gen(function* () {
+      const directory = yield* Effect.acquireDisposable(Effect.promise(() => tmpdir()))
+      const host = yield* startServer(directory.path)
+      const api = OpenCode.make({ baseUrl: host.base, headers: host.headers })
+      const status = yield* Effect.promise(() =>
+        api.workers.local.add({ kind: "local", id: "self", directories: [directory.path], tags: [] }),
+      )
+      expect(status.worker.kind).toBe("local")
+      expect(status.connection).toBe("online")
+      const registry = yield* Effect.promise(() => Bun.file(`${directory.path}/coordinator/workers.json`).json())
+      expect(registry).toEqual({ workers: [{ kind: "local", id: "self", directories: [directory.path], tags: [] }] })
+      expect(JSON.stringify(registry)).not.toContain("secret")
+      expect(JSON.stringify(registry)).not.toContain(host.base)
+      expect((yield* Effect.promise(() => api.workers.resources({ id: "self" }))).process.pid).toBe(process.pid)
+      yield* Effect.promise(async () => {
+        await expect(
+          api.workers.local.add({ kind: "local", id: "duplicate", directories: [directory.path + "/."], tags: [] }),
+        ).rejects.toThrow("already registered")
+        await expect(
+          OpenCode.make({ baseUrl: host.base }).workers.local.add({
+            kind: "local",
+            id: "unauthorized",
+            directories: [directory.path],
+            tags: [],
+          }),
+        ).rejects.toThrow()
+      })
+      yield* Effect.promise(() => api.workers.remove({ id: "self" }))
+      expect((yield* Effect.promise(() => api.workers.list())).workers).toHaveLength(0)
+    }),
+  20_000,
+)
+
+it.live(
+  "executes local native batches through the same Session runtime and serializes each checkout",
+  () =>
+    Effect.gen(function* () {
+      const directory = yield* Effect.acquireDisposable(Effect.promise(() => tmpdir()))
+      const first = yield* Effect.acquireDisposable(Effect.promise(() => tmpdir()))
+      const second = yield* Effect.acquireDisposable(Effect.promise(() => tmpdir()))
+      const llm = yield* TestLLM.Test.pipe(Effect.provide(TestLLM.testLayer()))
+      yield* llm.always(TestLLM.hangAfter())
+      const model = SessionRunnerModel.resolved(
+        LanguageModel.make({ id: "local-model", provider: "test", route: OpenAIChat.route }),
+        {
+          capabilities: { tools: true, input: ["text"], output: ["text"] },
+          cost: [],
+          limit: { context: 200_000, output: 8_192 },
+        },
+      )
+      const listener = { server: undefined as ReturnType<typeof Bun.serve> | undefined }
+      const context = yield* Layer.build(
+        createRoutes(
+          {
+            password: "secret",
+            database: { path: ":memory:" },
+            workers: { directory: `${directory.path}/coordinator` },
+            config: {
+              directory: directory.path,
+              global: false,
+              project: false,
+              content: '{"worktree":{"auto":false}}',
+            },
+            models: { fetch: false },
+            fs: { filewatcher: false, fff: false },
+          },
+          () => [],
+          [
+            llmClient.replace(Layer.succeed(LLMClient.Service, llm)),
+            SessionRunnerModel.node.replace(
+              Layer.succeed(SessionRunnerModel.Service, { resolve: () => Effect.succeed(model) }),
+            ),
+          ],
+          { workerConnection: { url: () => listener.server!.url.origin, ready: () => !!listener.server } },
+        ).pipe(Layer.provide(HttpServer.layerServices)),
+      )
+      const handler = Context.get(context, HttpRouter.HttpRouter)
+        .asHttpEffect()
+        .pipe(HttpEffect.toWebHandlerWith(context))
+      const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: handler })
+      listener.server = server
+      yield* Effect.addFinalizer(() => Effect.sync(() => server.stop(true)))
+      const api = OpenCode.make({
+        baseUrl: server.url.origin,
+        headers: { authorization: `Basic ${btoa("opencode:secret")}` },
+      })
+      yield* Effect.promise(async () => {
+        await api.workers.local.add({ kind: "local", id: "first", directories: [first.path], tags: [] })
+        await api.workers.local.add({ kind: "local", id: "second", directories: [second.path], tags: [] })
+      })
+      const batch = yield* Effect.promise(() =>
+        api.workers.submit({
+          tasks: [
+            { id: "one", worker: "first", prompt: "First task" },
+            { id: "two", worker: "second", prompt: "Second task" },
+            { id: "three", worker: "first", prompt: "Queued task" },
+          ],
+        }),
+      )
+      yield* llm.wait(2)
+      const running = (yield* Effect.promise(() => api.workers.list())).batches.find((item) => item.id === batch.id)!
+      const assigned = running.report!.tasks.filter((item) => item.sessionID)
+      expect(assigned.map((item) => item.id)).toEqual(["one", "two"])
+      expect(running.report!.tasks.find((item) => item.id === "three")!.state).toBe("queued")
+      expect(assigned.map((item) => item.url)).toEqual(["local", "local"])
+      yield* Effect.promise(async () => {
+        await expect(
+          api.workers.local.add({ kind: "local", id: "while-busy", directories: [directory.path], tags: [] }),
+        ).rejects.toThrow("Finish")
+      })
+      yield* llm.always(TestLLM.text("Native result", "native-result"))
+      yield* Effect.promise(() => api.workers.control({ id: batch.id, payload: { kind: "interrupt", task: "one" } }))
+      yield* llm.wait(3)
+      const final = yield* Effect.promise(async () => {
+        const deadline = Date.now() + 10_000
+        for (;;) {
+          const current = (await api.workers.list()).batches.find((item) => item.id === batch.id)!
+          if (current.report?.tasks.find((item) => item.id === "three")?.state === "succeeded") return current
+          if (Date.now() > deadline) throw new Error("Local queued task did not complete")
+          await Bun.sleep(20)
+        }
+      })
+      const queued = final.report!.tasks.find((item) => item.id === "three")!
+      expect(queued.directory).toBe(first.path)
+      expect(queued.sessionID).not.toBe(assigned[0].sessionID)
+      expect((yield* Effect.promise(() => api.session.get({ sessionID: queued.sessionID! }))).outcome).toBe("succeeded")
+      const artifact = yield* Effect.promise(() => api.workers.collect({ id: batch.id, task: "three" }))
+      expect(artifact.task.messageID).toBe(queued.messageID)
+      expect(artifact.task.text).toContain("Native result")
+      yield* Effect.promise(() => api.workers.control({ id: batch.id, payload: { kind: "interrupt", task: "two" } }))
+    }),
+  30_000,
+)

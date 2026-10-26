@@ -132,6 +132,7 @@ import {
 import { Transfer } from "./Transfer.js";
 import { observeActivity } from "../../src/core/operational-motion.js";
 import { PhoneInput } from "./PhoneInput.js";
+import { SecretValue } from "./SecretValue.js";
 export {
   APPEARANCE_AXES,
   Accordion,
@@ -213,6 +214,7 @@ export {
   Reveal,
   ScrollArea,
   SearchSelect,
+  SecretValue,
   SectionHeading,
   SectionSlide,
   Select,

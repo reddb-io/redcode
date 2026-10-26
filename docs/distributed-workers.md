@@ -2,9 +2,21 @@
 
 Available in Redcode 0.76.0 and later. CLI and server coordination have Docker acceptance coverage; physical Raspberry Pi ARM64/LAN/SSH execution still needs device validation.
 
-The desktop's **Agents → Remote workers** panel and `redcode workers` coordinate independent Redcode servers through the authenticated V2 API. Each server owns its own database, sessions, tools, provider configuration and checkout. A registered checkout is one execution slot. Tasks in different slots run concurrently; tasks in the same slot run sequentially.
+The desktop's **Agents → Remote workers** panel and `redcode workers` coordinate independent Redcode servers through the authenticated API. Each server owns its own database, sessions, tools, provider configuration and checkout. A registered checkout is one execution slot. Tasks in different slots run concurrently; tasks in the same slot run sequentially.
 
 Each worker arbitrates its own checkout reservations, including requests from different coordinators and registries. Workers keep independent databases; do not share SQLite files between hosts. A worker database is the authority for that worker, rather than a shared Session execution cluster.
+
+## Native slots on the coordinator
+
+The selected server can also execute its own native batches. Enable an existing checkout through
+**Agents → Worktrees** and review the proposed setting. Its local registration stores checkout
+identity without the server's URL or password. The coordinator resolves its live listener privately,
+so a changed listening port does not change the saved assignment identity.
+
+Local tasks use the existing Session runtime, database and worker lease API on that server. A
+server without a listener or a supported worker coordinator reports local batches as unavailable;
+ordinary native Sessions remain separate. Local and remote slots can participate in the same batch.
+Resource admission remains advisory and does not create an OS sandbox or enforce CPU/RAM quotas.
 
 ## Checkout ownership and reconnection
 

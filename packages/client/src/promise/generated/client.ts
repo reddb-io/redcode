@@ -417,6 +417,8 @@ import type {
   WorkersAnswerInput,
   WorkersAnswerOutput,
   WorkersListOutput,
+  WorkersLocalAddInput,
+  WorkersLocalAddOutput,
   WorkersAddInput,
   WorkersAddOutput,
   WorkersRemoveInput,
@@ -1111,6 +1113,7 @@ export function make(options: ClientOptions) {
               project: input?.["project"],
               timezone: input?.["timezone"],
               tools: input?.["tools"],
+              series: input?.["series"],
             },
             successStatus: 200,
             declaredStatuses: [400, 401, 403, 409],
@@ -3515,6 +3518,26 @@ export function make(options: ClientOptions) {
           },
           requestOptions,
         ),
+      local: {
+        add: (input: WorkersLocalAddInput, requestOptions?: RequestOptions) =>
+          request<WorkersLocalAddOutput>(
+            {
+              method: "POST",
+              path: `/api/workers/local`,
+              body: {
+                id: input["id"],
+                directories: input["directories"],
+                tags: input["tags"],
+                resourceID: input["resourceID"],
+                kind: input["kind"],
+              },
+              successStatus: 200,
+              declaredStatuses: [400, 401, 403, 409],
+              empty: false,
+            },
+            requestOptions,
+          ),
+      },
       add: (input: WorkersAddInput, requestOptions?: RequestOptions) =>
         request<WorkersAddOutput>(
           {
@@ -3522,11 +3545,11 @@ export function make(options: ClientOptions) {
             path: `/api/workers`,
             body: {
               id: input["id"],
-              url: input["url"],
               directories: input["directories"],
               tags: input["tags"],
-              password: input["password"],
               resourceID: input["resourceID"],
+              url: input["url"],
+              password: input["password"],
               environmentID: input["environmentID"],
               environmentProxy: input["environmentProxy"],
             },

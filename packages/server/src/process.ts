@@ -71,6 +71,16 @@ export const start = Effect.fn("ServerProcess.start")(function* <E, R>(
     const host = address.family === "IPv6" ? `[${address.address}]` : address.address
     return [...ServerInfo.connectionURLs(`http://${host}:${address.port}`, hostname), ...(additionalURLs?.() ?? [])]
   }
+  const local = { ready: false }
+  const workerConnection = {
+    ready: () => local.ready,
+    url: () => {
+      const address = bound.server.address()
+      if (!address || typeof address === "string") throw new Error("Server listener is unavailable")
+      const host = address.address === "0.0.0.0" ? "127.0.0.1" : address.address === "::" ? "::1" : address.address
+      return `http://${address.family === "IPv6" ? `[${host}]` : host}:${address.port}`
+    },
+  }
   const application = yield* Ref.make(Option.none<App>())
   const ptySockets = yield* PtySockets.make
   const app = dispatch(
@@ -103,7 +113,10 @@ export const start = Effect.fn("ServerProcess.start")(function* <E, R>(
   const parentScope = yield* Scope.Scope
   const applicationScope = yield* Scope.fork(parentScope)
   yield* Effect.addFinalizer(() =>
-    status.beginStopping.pipe(
+    Effect.sync(() => {
+      local.ready = false
+    }).pipe(
+      Effect.andThen(status.beginStopping),
       Effect.andThen(Ref.set(application, Option.none())),
       Effect.andThen(ptySockets.shutdown),
       Effect.andThen(bound.closeUpgrades),
@@ -112,9 +125,11 @@ export const start = Effect.fn("ServerProcess.start")(function* <E, R>(
   )
 
   const boot = Effect.gen(function* () {
-    const routes = createRoutes({ ...options, password }, urls, [], { ptySockets, remoteAccess }).pipe(
-      Layer.provideMerge(NodeHttpServer.layerHttpServices),
-    )
+    const routes = createRoutes({ ...options, password }, urls, [], {
+      ptySockets,
+      remoteAccess,
+      workerConnection,
+    }).pipe(Layer.provideMerge(NodeHttpServer.layerHttpServices))
     // makeRoutes provides request services through its dynamic Layer.flatMap.
     const context = yield* Layer.buildWithScope(
       routes as unknown as Layer.Layer<Layer.Success<typeof routes>, Layer.Error<typeof routes>>,
@@ -130,6 +145,7 @@ export const start = Effect.fn("ServerProcess.start")(function* <E, R>(
     }
     yield* Ref.set(application, Option.some(Context.get(context, HttpRouter.HttpRouter).asHttpEffect()))
     yield* status.ready
+    local.ready = true
     const bus = Context.get(context, Bus.Service)
     return {
       address: bound.http.address,

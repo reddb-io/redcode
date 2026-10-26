@@ -145,6 +145,8 @@ export function RemoteWorkers(props: { server: ServerConnection.Any }) {
     // Native focus scrolling does not account for the pinned form actions.
     field.scrollIntoView({ block: "center", inline: "nearest" })
   }
+  const workerAddress = (worker: Worker.Registration) =>
+    worker.kind === "local" ? language.t("harness.driver.redcode") : worker.url
   const missingWorker = (id: string) => !!id && !query.data?.workers.some((status) => status.worker.id === id)
   const unavailable = () =>
     !query.data?.workers.length ||
@@ -714,7 +716,7 @@ export function RemoteWorkers(props: { server: ServerConnection.Any }) {
                       <h4 class="font-medium">
                         {status().worker.id} · {language.t(`remoteWorkers.connection.${status().connection}`)}
                       </h4>
-                      <p class="break-all text-ink-muted">{status().worker.url}</p>
+                      <p class="break-all text-ink-muted">{workerAddress(status().worker)}</p>
                       <p class="break-all">{status().worker.directories.join(" · ")}</p>
                       <Show when={status().platform}>
                         <p class="text-ink-muted">
@@ -822,7 +824,7 @@ export function RemoteWorkers(props: { server: ServerConnection.Any }) {
                           connection: language.t(`remoteWorkers.connection.${status.connection}`),
                           directory: status.worker.directories.join(" · "),
                         }),
-                        keywords: [status.worker.url, ...status.worker.tags],
+                        keywords: [workerAddress(status.worker), ...status.worker.tags],
                       })),
                     ]}
                   />

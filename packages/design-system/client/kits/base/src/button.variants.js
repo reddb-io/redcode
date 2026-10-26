@@ -21,9 +21,9 @@ const TONE = {
   danger: ""
 };
 const SIZE = {
-  sm: "h-[var(--reddb-spatial-control-height-sm)] px-[var(--reddb-spatial-inset-sm)] text-sm",
-  md: "h-[var(--reddb-spatial-control-height-md)] px-[var(--reddb-spatial-inset-md)] text-sm",
-  lg: "h-[var(--reddb-spatial-control-height-lg)] px-[var(--reddb-spatial-inset-lg)] text-base"
+  sm: "min-h-[var(--reddb-spatial-control-height-sm)] px-[var(--reddb-spatial-inset-sm)] text-sm",
+  md: "min-h-[var(--reddb-spatial-control-height-md)] px-[var(--reddb-spatial-inset-md)] text-sm",
+  lg: "min-h-[var(--reddb-spatial-control-height-lg)] px-[var(--reddb-spatial-inset-lg)] text-base"
 };
 const BLOCK = {
   /** Fills its column — a form's submit, a drawer's confirm, a mobile action. */
@@ -35,7 +35,7 @@ const button = tv({
   base: [
     "inline-flex items-center justify-center gap-[var(--reddb-spatial-gap-md)]",
     "rounded-md border border-transparent",
-    "font-medium leading-tight whitespace-nowrap",
+    "h-auto min-w-0 max-w-full font-medium leading-tight whitespace-normal [overflow-wrap:anywhere]",
     // No colour transition (quiet-control.variants.ts): states and a Color
     // Scheme switch land at full contrast at once.
     // One ink focus ring for every variant and tone (ADR 0023): 2px, offset

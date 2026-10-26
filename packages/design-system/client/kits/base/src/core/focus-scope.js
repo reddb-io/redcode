@@ -18,6 +18,12 @@ function trapScopeTab(scope) {
   scope.addEventListener("keydown", keydown, true);
   return () => scope.removeEventListener("keydown", keydown, true);
 }
+function focusMovedOutside(anchor, popupSelector) {
+  const document2 = anchor?.ownerDocument;
+  const active = document2?.activeElement;
+  return !!active && active !== document2?.body && active !== document2?.documentElement && !anchor?.contains(active) && !active.closest(popupSelector);
+}
 export {
+  focusMovedOutside,
   trapScopeTab
 };

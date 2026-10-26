@@ -10,15 +10,18 @@ import { SessionGoal } from "@opencode/schema/session-goal"
 import { Session } from "@opencode/schema/session"
 import { LayerNode } from "@opencode/util/effect/layer-node"
 import { Global } from "@opencode/util/global"
+import { tmpdir } from "../../core/test/fixture/tmpdir"
 import { tempGlobalLayer } from "../../core/test/fixture/global"
 import { ServerFetch } from "../src/fetch"
 
 it.live("reads tasks through the authenticated V2 session API and rejects missing sessions", () =>
   Effect.gen(function* () {
+    const directory = yield* Effect.acquireDisposable(Effect.promise(() => tmpdir()))
     const handler = yield* ServerFetch.make({
       app: { version: "test" },
       database: { path: ":memory:" },
-      config: { project: false },
+      config: { directory: directory.path, global: false, project: false, content: '{"worktree":{"auto":false}}' },
+      workers: { directory: `${directory.path}/workers` },
       models: { fetch: false },
       fs: { filewatcher: false },
       password: "secret",
@@ -38,7 +41,7 @@ it.live("reads tasks through the authenticated V2 session API and rejects missin
         }),
       ),
     )
-    expect(created.status).toBe(200)
+    expect(created.status, yield* Effect.promise(() => created.text())).toBe(200)
     const response = yield* Effect.promise(() => handler(new Request(url, { headers })))
     expect(response.status).toBe(200)
     expect(yield* Effect.promise(() => response.json())).toEqual({ data: [] })
@@ -59,7 +62,7 @@ reconciliationIt.live(
         {
           app: { version: "test" },
           database: { path: ":memory:" },
-          config: { project: false },
+          config: { global: false, project: false, content: '{"worktree":{"auto":false}}' },
           models: { fetch: false },
           fs: { filewatcher: false },
           password: "secret",
@@ -78,7 +81,7 @@ reconciliationIt.live(
             new Request("http://opencode.local/api/session", { method: "POST", headers, body: JSON.stringify({ id }) }),
           ),
         )
-        expect(created.status).toBe(200)
+        expect(created.status, yield* Effect.promise(() => created.text())).toBe(200)
       }
       yield* database.db
         .insert(TodoTable)
@@ -153,6 +156,7 @@ reconciliationIt.live(
         yield* Effect.promise(() => response.json()),
       ).data
       expect(report).toMatchObject({
+        acceptance: "pending",
         executionSettled: false,
         acceptanceReady: false,
         task: { id: "todo_integrate", revision: 3 },

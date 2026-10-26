@@ -22,6 +22,11 @@ import { RemoteWorkers } from "./remote-workers"
 
 const AgentInbox = lazy(() => import("./agents-inbox"))
 const AgentTasks = lazy(() => import("./agents-tasks"))
+import { ReactView } from "@/runtime/react/view"
+import { useCommand } from "@/shell/commands/command"
+import { AgentShortcuts } from "./agents-shortcuts.react"
+
+const AgentUsage = lazy(() => import("./agents-usage"))
 const AgentHosts = lazy(() => import("./agents-hosts"))
 const AgentHarnesses = lazy(() => import("./agents-harnesses"))
 const AgentMachines = lazy(() => import("./agents-machines"))
@@ -43,6 +48,7 @@ export default function Agents() {
   const global = useGlobal()
   const navigation = useNavigation()
   const scope = useAgentsScope()
+  const command = useCommand()
   const [state, setState] = createStore({ query: "", attention: false, selected: "" })
   const selection = { get: () => state.selected, set: (key: string) => setState("selected", key) }
   return (
@@ -82,6 +88,23 @@ export default function Agents() {
             </span>
             <span class="hidden md:inline">{language.t("command.session.new")}</span>
           </Button>
+          <ReactView
+            component={AgentShortcuts}
+            props={{
+              title: language.t("agents.shortcuts"),
+              triggerLabel: language.t("agents.shortcuts"),
+              groups: [
+                {
+                  id: "available",
+                  label: language.t("agents.shortcuts.available"),
+                  items: command.options.flatMap((item) => {
+                    const keys = command.keybindParts(item.id)
+                    return keys.length && !item.disabled ? [{ id: item.id, label: item.title, keys }] : []
+                  }),
+                },
+              ],
+            }}
+          />
           <Show when={scope.view() === "sessions"}>
             <input
               class={input({ size: "sm", class: "min-h-[var(--reddb-spatial-target-min)] w-full sm:w-48" })}
@@ -149,6 +172,9 @@ export default function Agents() {
                     </Match>
                     <Match when={scope.view() === "tasks"}>
                       <AgentTasks server={server} open={(session) => navigation.session.open(session, { server })} />
+                    </Match>
+                    <Match when={scope.view() === "usage"}>
+                      <AgentUsage server={server} />
                     </Match>
                     <Match when={scope.view() === "hosts"}>
                       <AgentHosts server={server} />

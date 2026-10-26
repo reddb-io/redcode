@@ -10,6 +10,8 @@ import { Context, Effect, Layer, Schema } from "effect"
 import { mkdir, readdir, rename, rm } from "node:fs/promises"
 import { randomUUID } from "node:crypto"
 import path from "node:path"
+import type { OpenCodeClient } from "@opencode/client/promise"
+import { realpath } from "node:fs/promises"
 import { WorkerPool } from "./worker-pool"
 import { InfrastructureAccess } from "./infrastructure-access"
 import { ServerAccess } from "@opencode/protocol/server-access"
@@ -19,7 +21,10 @@ import { HostResources } from "@opencode/schema/host-resources"
 
 export interface Interface {
   readonly list: (scope?: ServerAccess.Principal) => Promise<Worker.Snapshot>
-  readonly add: (input: Worker.Register, scope?: ServerAccess.Principal) => Promise<Worker.Status>
+  readonly add: (
+    input: Worker.Register | typeof Worker.LocalRegistration.Type,
+    scope?: ServerAccess.Principal,
+  ) => Promise<Worker.Status>
   readonly remove: (id: string, scope?: ServerAccess.Principal) => Promise<void>
   readonly probe: (id: string, scope?: ServerAccess.Principal) => Promise<Worker.Status>
   readonly submit: (manifest: Worker.Manifest, scope?: ServerAccess.Principal) => Promise<Worker.Batch>
@@ -51,7 +56,9 @@ const directoryKey = (directory: string) =>
         .replace(/[\\/]$/, "")
     : path.posix.normalize(directory).replace(/\/$/, "") || "/"
 
-function layer(directory?: string, accessOptions?: InfrastructureAccess.Options) {
+export type LocalConnection = { readonly ready: () => boolean; readonly client: () => OpenCodeClient }
+
+function layer(directory?: string, accessOptions?: InfrastructureAccess.Options, local?: LocalConnection) {
   return Layer.effect(
     Service,
     Effect.gen(function* () {
@@ -88,15 +95,17 @@ function layer(directory?: string, accessOptions?: InfrastructureAccess.Options)
       const environment = async (file = config) => {
         const registry = await WorkerPool.readConfig(file)
         const secrets = await Promise.all(
-          registry.workers.map(async (worker) => {
-            const stored = await run(credential.get(Credential.ID.make(worker.passwordEnv)))
-            return [
-              worker.passwordEnv,
-              stored?.integrationID === `redcode-worker:${worker.id}` && stored.value.type === "key"
-                ? stored.value.key
-                : undefined,
-            ] as const
-          }),
+          registry.workers
+            .filter((worker) => worker.kind !== "local")
+            .map(async (worker) => {
+              const stored = await run(credential.get(Credential.ID.make(worker.passwordEnv)))
+              return [
+                worker.passwordEnv,
+                stored?.integrationID === `redcode-worker:${worker.id}` && stored.value.type === "key"
+                  ? stored.value.key
+                  : undefined,
+              ] as const
+            }),
         )
         return Object.fromEntries(secrets)
       }
@@ -134,6 +143,7 @@ function layer(directory?: string, accessOptions?: InfrastructureAccess.Options)
       }
       const input = async (id: string) => ({
         coordinator,
+        local: local?.client,
         config: path.join(folder(id), "registry.json"),
         manifest: path.join(folder(id), "manifest.json"),
         report: path.join(folder(id), "report.json"),
@@ -180,10 +190,12 @@ function layer(directory?: string, accessOptions?: InfrastructureAccess.Options)
           if (
             !(
               await Promise.all(
-                registry.workers.map(async (worker) => {
-                  const allowed = await permitted(worker, scope)
-                  return !!allowed && allowed.directories.length === worker.directories.length
-                }),
+                registry.workers
+                  .filter((worker) => worker.kind !== "local")
+                  .map(async (worker) => {
+                    const allowed = await permitted(worker, scope)
+                    return !!allowed && allowed.directories.length === worker.directories.length
+                  }),
               )
             ).every(Boolean)
           )
@@ -192,7 +204,7 @@ function layer(directory?: string, accessOptions?: InfrastructureAccess.Options)
         return item
       }
       const pump = async () => {
-        if (state.error || state.busy || abort.signal.aborted) return
+        if (state.error || state.busy || abort.signal.aborted || (local && !local.ready())) return
         state.busy = true
         try {
           const pending = (await all())
@@ -261,7 +273,7 @@ function layer(directory?: string, accessOptions?: InfrastructureAccess.Options)
           ready()
           const worker = (await WorkerPool.readConfig(config)).workers.find((worker) => worker.id === id)
           if (!worker || !(await permitted(worker, scope))) throw denied()
-          return WorkerPool.resources(worker, await environment())
+          return WorkerPool.resources(worker, await environment(), local?.client)
         },
         list: async (scope) => {
           if (state.error) return { available: false, reason: state.error, workers: [], batches: [] }
@@ -271,6 +283,10 @@ function layer(directory?: string, accessOptions?: InfrastructureAccess.Options)
           )
           return {
             available: true,
+            localExecution: {
+              available: !!local?.ready(),
+              ...(!local?.ready() ? { reason: "Local batches require a ready server listener" } : {}),
+            },
             workers: workers.map((worker) => ({
               ...(connections.get(worker.id) ?? { connection: "unchecked" as const }),
               worker,
@@ -289,16 +305,40 @@ function layer(directory?: string, accessOptions?: InfrastructureAccess.Options)
         add: (value, scope) =>
           mutate(async () => {
             manage(scope)
+            const resourceID = "kind" in value ? infrastructure.resourceID : value.resourceID
             if (scope) {
-              if (!value.resourceID) throw denied()
-              const access = await verify(scope.token, value.resourceID)
+              if (!resourceID) throw denied()
+              const access = await verify(scope.token, resourceID)
               if (access.ownerRole !== "admin" || access.ownerID !== scope.access.ownerID) throw denied()
             }
             if ((await all()).some((item) => !terminal(item.report)))
               throw new Error("Finish the current batch before changing workers")
-            if (value.resourceID && (await WorkerPool.readConfig(config)).workers.some((item) =>
-              item.resourceID === value.resourceID && item.environmentID !== value.environmentID && (item.environmentID || value.environmentID),
-            )) throw new Error("An isolated environment needs its own Console resource; do not share grants across environments")
+            if ("kind" in value) {
+              if (!local?.ready()) throw new Error("Local batches require a ready server listener")
+              const worker = {
+                ...value,
+                resourceID: infrastructure.resourceID,
+                directories: await Promise.all(value.directories.map((directory) => realpath(directory))),
+              }
+              const health = await WorkerPool.health(worker, {}, local.client)
+              await WorkerPool.add(config, worker)
+              const status: Worker.Status = { worker, connection: "online", platform: health.platform }
+              connections.set(worker.id, status)
+              return status
+            }
+            if (
+              value.resourceID &&
+              (await WorkerPool.readConfig(config)).workers.some(
+                (item) =>
+                  item.kind !== "local" &&
+                  item.resourceID === value.resourceID &&
+                  item.environmentID !== value.environmentID &&
+                  (item.environmentID || value.environmentID),
+              )
+            )
+              throw new Error(
+                "An isolated environment needs its own Console resource; do not share grants across environments",
+              )
             const stored = await run(
               credential.create({
                 integrationID: Integration.ID.make(`redcode-worker:${value.id}`),
@@ -335,7 +375,7 @@ function layer(directory?: string, accessOptions?: InfrastructureAccess.Options)
               throw new Error("Finish the current batch before changing workers")
             const worker = (await WorkerPool.readConfig(config)).workers.find((entry) => entry.id === id)
             await WorkerPool.remove(config, id)
-            if (worker) await run(credential.remove(Credential.ID.make(worker.passwordEnv)))
+            if (worker && worker.kind !== "local") await run(credential.remove(Credential.ID.make(worker.passwordEnv)))
             connections.delete(id)
           }),
         probe: async (id, scope) => {
@@ -344,7 +384,7 @@ function layer(directory?: string, accessOptions?: InfrastructureAccess.Options)
           if (!worker) throw new Error("Worker does not exist")
           const authorized = await permitted(worker, scope)
           if (!authorized) throw denied()
-          const health = await WorkerPool.health(worker, await environment()).catch(() => undefined)
+          const health = await WorkerPool.health(worker, await environment(), local?.client).catch(() => undefined)
           const status: Worker.Status = {
             worker: authorized,
             connection: health ? "online" : "offline",
@@ -372,7 +412,7 @@ function layer(directory?: string, accessOptions?: InfrastructureAccess.Options)
                   (worker) =>
                     (!task.worker || task.worker === worker.id) &&
                     (task.tags ?? []).every((tag) => worker.tags.includes(tag)) &&
-                    secrets[worker.passwordEnv],
+                    (worker.kind === "local" ? local?.ready() : secrets[worker.passwordEnv]),
                 )
               )
                 throw new Error(`No authenticated eligible worker for task ${task.id}`)
@@ -450,8 +490,8 @@ function layer(directory?: string, accessOptions?: InfrastructureAccess.Options)
   )
 }
 
-export const configured = (directory?: string, access?: InfrastructureAccess.Options) =>
-  makeGlobalNode({ service: Service, layer: layer(directory, access), deps: [Global.node, Credential.node] })
+export const configured = (directory?: string, access?: InfrastructureAccess.Options, local?: LocalConnection) =>
+  makeGlobalNode({ service: Service, layer: layer(directory, access, local), deps: [Global.node, Credential.node] })
 export const node = configured()
 
 async function write(file: string, value: unknown) {

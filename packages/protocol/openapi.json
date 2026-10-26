@@ -2216,6 +2216,22 @@
               ]
             },
             "required": false
+          },
+          {
+            "name": "series",
+            "in": "query",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": ["daily"]
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false
           }
         ],
         "security": [],
@@ -25316,6 +25332,91 @@
         }
       }
     },
+    "/api/workers/local": {
+      "post": {
+        "tags": ["server.workers"],
+        "operationId": "workers.local.add",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Worker.Status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Worker.Status"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorEncoded"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ConsoleForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictErrorEncoded"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Enable this server's checkout for native batches",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Worker.LocalRegistration"
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
     "/api/workers/{id}": {
       "delete": {
         "tags": ["server.workers"],
@@ -42336,6 +42437,35 @@
         "required": ["date", "steps"],
         "additionalProperties": false
       },
+      "SessionStats.Daily": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string"
+          },
+          "steps": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "tokens": {
+            "$ref": "#/components/schemas/TokenUsage.Info"
+          },
+          "cost": {
+            "$ref": "#/components/schemas/Money.USD"
+          },
+          "costCoverage": {
+            "$ref": "#/components/schemas/CostAssessment.Coverage"
+          },
+          "models": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SessionStats.ModelUsage"
+            }
+          }
+        },
+        "required": ["date", "steps", "tokens", "cost", "costCoverage", "models"],
+        "additionalProperties": false
+      },
       "SessionStats.Info": {
         "type": "object",
         "properties": {
@@ -42392,6 +42522,12 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/SessionStats.Activity"
+            }
+          },
+          "series": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SessionStats.Daily"
             }
           },
           "models": {
@@ -43542,6 +43678,10 @@
           },
           "task": {
             "$ref": "#/components/schemas/Todo"
+          },
+          "acceptance": {
+            "type": "string",
+            "enum": ["accepted", "pending", "blocked", "cancelled", "stale", "unverified"]
           },
           "fingerprint": {
             "type": "string"
@@ -44795,6 +44935,40 @@
         "required": ["data", "unavailable"],
         "additionalProperties": false
       },
+      "Worker.LocalRegistration": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Worker.Name"
+          },
+          "directories": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^(\\/|[a-zA-Z]:[\\\\/])"
+            },
+            "minItems": 1
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "resourceID": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["local"]
+          }
+        },
+        "required": ["id", "directories", "tags", "kind"],
+        "additionalProperties": false
+      },
       "Worker.Manifest": {
         "type": "object",
         "properties": {
@@ -44861,10 +45035,6 @@
           "id": {
             "$ref": "#/components/schemas/Worker.Name"
           },
-          "url": {
-            "type": "string",
-            "minLength": 1
-          },
           "directories": {
             "type": "array",
             "items": {
@@ -44881,11 +45051,15 @@
               "minLength": 1
             }
           },
-          "password": {
+          "resourceID": {
             "type": "string",
             "minLength": 1
           },
-          "resourceID": {
+          "url": {
+            "type": "string",
+            "minLength": 1
+          },
+          "password": {
             "type": "string",
             "minLength": 1
           },
@@ -44896,10 +45070,20 @@
             "type": "boolean"
           }
         },
-        "required": ["id", "url", "directories", "tags", "password"],
+        "required": ["id", "directories", "tags", "url", "password"],
         "additionalProperties": false
       },
       "Worker.Registration": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/Worker.LocalRegistration"
+          },
+          {
+            "$ref": "#/components/schemas/Worker.RemoteRegistration"
+          }
+        ]
+      },
+      "Worker.RemoteRegistration": {
         "type": "object",
         "properties": {
           "id": {
@@ -44937,6 +45121,10 @@
           },
           "environmentProxy": {
             "type": "boolean"
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["remote"]
           }
         },
         "required": ["id", "url", "passwordEnv", "directories", "tags"],
@@ -44985,6 +45173,20 @@
         "properties": {
           "available": {
             "type": "boolean"
+          },
+          "localExecution": {
+            "type": "object",
+            "properties": {
+              "available": {
+                "type": "boolean"
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": ["available"],
+            "additionalProperties": false
           },
           "reason": {
             "type": "string",

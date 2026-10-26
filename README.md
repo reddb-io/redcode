@@ -34,8 +34,10 @@ PWA installation requires HTTPS; a plain HTTP address on the local network remai
 browser shortcut. [Remote access and mobile installation](docs/remote-access.md#install-the-web-app-on-a-phone).
 
 Open **Agents** in the siderail to follow sessions across hosts, answer requests in **Inbox**, inspect
-**Hosts and resources**, or manage **Remote workers**. This workspace shows agent metadata; opening a
-session loads its conversation. [Agents workspace](docs/agent-features.md#agents-workspace).
+**Hosts and resources**, or manage **Remote workers**. Host charts share a cursor and time window,
+with a bounded history collected while the view is open. **Usage and costs** shows native usage by
+project and day, with reported, estimated and unknown cost coverage. This workspace shows agent
+metadata; opening a session loads its conversation. [Agents workspace](docs/agent-features.md#agents-workspace).
 
 **Tasks** follows a session's shared objective, prerequisite acceptance and delegated contributions.
 Tracked agents receive a versioned snapshot of that objective and its criteria. Inspect the version
@@ -43,8 +45,11 @@ each contribution used and the required results still awaiting acceptance before
 Inspect observed checks and overlapping changes, prepare a combined local Git candidate, then review
 and explicitly apply it after the session has verified and accepted that exact candidate.
 
-**Harnesses** runs installed Claude Code and Codex on the selected host. **Machines** guides remote
-connection, inspection and worker registration. **Worktrees** creates isolated checkouts, reviews and
+**Executors** starts native Redcode sessions by default, with installed Claude Code and Codex as
+explicit alternatives on the selected host. **Machines** guides remote connection, inspection and
+worker registration. **Worktrees** can enable an existing checkout as a native batch slot on its own
+server, without entering that server's password. Each checkout runs one batch task at a time;
+parallel tasks require separate checkouts. Worktrees also creates isolated checkouts, reviews and
 commits results, integrates a reviewed commit and archives/restores detached worktrees.
 Configuration is available in the app; **Settings → Servers** links to each host's tools.
 [External agents and worktree workflow](docs/external-harnesses.md).

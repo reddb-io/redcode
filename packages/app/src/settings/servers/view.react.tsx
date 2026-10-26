@@ -67,7 +67,7 @@ export function ServerGeneral(props: { services: Services }) {
                   <Button key={view} variant="secondary" size="sm" onClick={() => services.agents(view)}>
                     {language.t(
                       view === "harness"
-                        ? "harness.title"
+                        ? "executors.title"
                         : view === "machines"
                           ? "agentMachines.title"
                           : "agentWorktrees.title",

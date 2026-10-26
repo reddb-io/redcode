@@ -37,6 +37,10 @@
       "types": "./types/kits/app/react/src/CategoryPreview.d.ts",
       "default": "./client/kits/app/react/src/CategoryPreview.js"
     },
+    "./app/ChangeReview": {
+      "types": "./types/kits/app/react/src/ChangeReview.d.ts",
+      "default": "./client/kits/app/react/src/ChangeReview.js"
+    },
     "./app/ChatMessage": {
       "types": "./types/kits/app/react/src/ChatMessage.d.ts",
       "default": "./client/kits/app/react/src/ChatMessage.js"
@@ -56,6 +60,18 @@
     "./app/Diff": {
       "types": "./types/kits/app/react/src/Diff.d.ts",
       "default": "./client/kits/app/react/src/Diff.js"
+    },
+    "./app/EntityInspector": {
+      "types": "./types/kits/app/react/src/EntityInspector.d.ts",
+      "default": "./client/kits/app/react/src/EntityInspector.js"
+    },
+    "./app/EntityJourney": {
+      "types": "./types/kits/app/react/src/EntityJourney.d.ts",
+      "default": "./client/kits/app/react/src/EntityJourney.js"
+    },
+    "./app/ErrorBoundary": {
+      "types": "./types/kits/app/react/src/ErrorBoundary.d.ts",
+      "default": "./client/kits/app/react/src/ErrorBoundary.js"
     },
     "./app/Filter": {
       "types": "./types/kits/app/react/src/Filter.d.ts",
@@ -141,6 +157,10 @@
       "types": "./types/kits/app/react/src/ShoppingCart.d.ts",
       "default": "./client/kits/app/react/src/ShoppingCart.js"
     },
+    "./app/ShortcutHelp": {
+      "types": "./types/kits/app/react/src/ShortcutHelp.d.ts",
+      "default": "./client/kits/app/react/src/ShortcutHelp.js"
+    },
     "./app/SidebarLayout": {
       "types": "./types/kits/app/react/src/SidebarLayout.d.ts",
       "default": "./client/kits/app/react/src/SidebarLayout.js"
@@ -184,6 +204,10 @@
     "./app/Toolbar": {
       "types": "./types/kits/app/react/src/Toolbar.d.ts",
       "default": "./client/kits/app/react/src/Toolbar.js"
+    },
+    "./app/WorkspaceTabs": {
+      "types": "./types/kits/app/react/src/WorkspaceTabs.d.ts",
+      "default": "./client/kits/app/react/src/WorkspaceTabs.js"
     },
     "./app/recipes": {
       "types": "./types/kits/app/src/recipes.d.ts",
@@ -497,6 +521,10 @@
       "types": "./types/kits/base/react/src/SearchSelect.d.ts",
       "default": "./client/kits/base/react/src/SearchSelect.js"
     },
+    "./base/SecretValue": {
+      "types": "./types/kits/base/react/src/SecretValue.d.ts",
+      "default": "./client/kits/base/react/src/SecretValue.js"
+    },
     "./base/SectionHeading": {
       "types": "./types/kits/base/react/src/SectionHeading.d.ts",
       "default": "./client/kits/base/react/src/SectionHeading.js"
@@ -614,6 +642,202 @@
       "default": "./client/kits/base/src/recipes.js"
     },
     "./color": "./layers/color/src/index.ts",
+    "./data/BreakdownBar": {
+      "types": "./types/kits/data/react/src/BreakdownBar.d.ts",
+      "default": "./client/kits/data/react/src/BreakdownBar.js"
+    },
+    "./data/Candlestick": {
+      "types": "./types/kits/data/react/src/Candlestick.d.ts",
+      "default": "./client/kits/data/react/src/Candlestick.js"
+    },
+    "./data/CodeField": {
+      "types": "./types/kits/data/react/src/CodeField.d.ts",
+      "default": "./client/kits/data/react/src/CodeField.js"
+    },
+    "./data/CompositeChart": {
+      "types": "./types/kits/data/react/src/CompositeChart.d.ts",
+      "default": "./client/kits/data/react/src/CompositeChart.js"
+    },
+    "./data/Diagram": {
+      "types": "./types/kits/data/react/src/Diagram.d.ts",
+      "default": "./client/kits/data/react/src/Diagram.js"
+    },
+    "./data/Diff": {
+      "types": "./types/kits/data/react/src/Diff.d.ts",
+      "default": "./client/kits/data/react/src/Diff.js"
+    },
+    "./data/DocumentViewer": {
+      "types": "./types/kits/data/react/src/DocumentViewer.d.ts",
+      "default": "./client/kits/data/react/src/DocumentViewer.js"
+    },
+    "./data/EntityRelationship": {
+      "types": "./types/kits/data/react/src/EntityRelationship.d.ts",
+      "default": "./client/kits/data/react/src/EntityRelationship.js"
+    },
+    "./data/EventLog": {
+      "types": "./types/kits/data/react/src/EventLog.d.ts",
+      "default": "./client/kits/data/react/src/EventLog.js"
+    },
+    "./data/ExplodedLayers": {
+      "types": "./types/kits/data/react/src/ExplodedLayers.d.ts",
+      "default": "./client/kits/data/react/src/ExplodedLayers.js"
+    },
+    "./data/Gantt": {
+      "types": "./types/kits/data/react/src/Gantt.d.ts",
+      "default": "./client/kits/data/react/src/Gantt.js"
+    },
+    "./data/GeoMap": {
+      "types": "./types/kits/data/react/src/GeoMap.d.ts",
+      "default": "./client/kits/data/react/src/GeoMap.js"
+    },
+    "./data/Graph": {
+      "types": "./types/kits/data/react/src/Graph.d.ts",
+      "default": "./client/kits/data/react/src/Graph.js"
+    },
+    "./data/Heatmap": {
+      "types": "./types/kits/data/react/src/Heatmap.d.ts",
+      "default": "./client/kits/data/react/src/Heatmap.js"
+    },
+    "./data/HexViewer": {
+      "types": "./types/kits/data/react/src/HexViewer.d.ts",
+      "default": "./client/kits/data/react/src/HexViewer.js"
+    },
+    "./data/Histogram": {
+      "types": "./types/kits/data/react/src/Histogram.d.ts",
+      "default": "./client/kits/data/react/src/Histogram.js"
+    },
+    "./data/IsometricBlock": {
+      "types": "./types/kits/data/react/src/IsometricBlock.d.ts",
+      "default": "./client/kits/data/react/src/IsometricBlock.js"
+    },
+    "./data/IsometricScene": {
+      "types": "./types/kits/data/react/src/IsometricScene.d.ts",
+      "default": "./client/kits/data/react/src/IsometricScene.js"
+    },
+    "./data/JsonTree": {
+      "types": "./types/kits/data/react/src/JsonTree.d.ts",
+      "default": "./client/kits/data/react/src/JsonTree.js"
+    },
+    "./data/KpiCard": {
+      "types": "./types/kits/data/react/src/KpiCard.d.ts",
+      "default": "./client/kits/data/react/src/KpiCard.js"
+    },
+    "./data/MatrixHeatmap": {
+      "types": "./types/kits/data/react/src/MatrixHeatmap.d.ts",
+      "default": "./client/kits/data/react/src/MatrixHeatmap.js"
+    },
+    "./data/MetricChart": {
+      "types": "./types/kits/data/react/src/MetricChart.d.ts",
+      "default": "./client/kits/data/react/src/MetricChart.js"
+    },
+    "./data/MetricStrip": {
+      "types": "./types/kits/data/react/src/MetricStrip.d.ts",
+      "default": "./client/kits/data/react/src/MetricStrip.js"
+    },
+    "./data/ObjectStack": {
+      "types": "./types/kits/data/react/src/ObjectStack.d.ts",
+      "default": "./client/kits/data/react/src/ObjectStack.js"
+    },
+    "./data/PanZoomViewport": {
+      "types": "./types/kits/data/react/src/PanZoomViewport.d.ts",
+      "default": "./client/kits/data/react/src/PanZoomViewport.js"
+    },
+    "./data/Quadrant": {
+      "types": "./types/kits/data/react/src/Quadrant.d.ts",
+      "default": "./client/kits/data/react/src/Quadrant.js"
+    },
+    "./data/QueueView": {
+      "types": "./types/kits/data/react/src/QueueView.d.ts",
+      "default": "./client/kits/data/react/src/QueueView.js"
+    },
+    "./data/Radar": {
+      "types": "./types/kits/data/react/src/Radar.d.ts",
+      "default": "./client/kits/data/react/src/Radar.js"
+    },
+    "./data/Sankey": {
+      "types": "./types/kits/data/react/src/Sankey.d.ts",
+      "default": "./client/kits/data/react/src/Sankey.js"
+    },
+    "./data/Scatter": {
+      "types": "./types/kits/data/react/src/Scatter.d.ts",
+      "default": "./client/kits/data/react/src/Scatter.js"
+    },
+    "./data/SceneViewport": {
+      "types": "./types/kits/data/react/src/SceneViewport.d.ts",
+      "default": "./client/kits/data/react/src/SceneViewport.js"
+    },
+    "./data/SchemaDiagram": {
+      "types": "./types/kits/data/react/src/SchemaDiagram.d.ts",
+      "default": "./client/kits/data/react/src/SchemaDiagram.js"
+    },
+    "./data/SequenceDiagram": {
+      "types": "./types/kits/data/react/src/SequenceDiagram.d.ts",
+      "default": "./client/kits/data/react/src/SequenceDiagram.js"
+    },
+    "./data/Sparkline": {
+      "types": "./types/kits/data/react/src/Sparkline.d.ts",
+      "default": "./client/kits/data/react/src/Sparkline.js"
+    },
+    "./data/StateGrid": {
+      "types": "./types/kits/data/react/src/StateGrid.d.ts",
+      "default": "./client/kits/data/react/src/StateGrid.js"
+    },
+    "./data/StatusBreakdown": {
+      "types": "./types/kits/data/react/src/StatusBreakdown.d.ts",
+      "default": "./client/kits/data/react/src/StatusBreakdown.js"
+    },
+    "./data/Table": {
+      "types": "./types/kits/data/react/src/Table.d.ts",
+      "default": "./client/kits/data/react/src/Table.js"
+    },
+    "./data/TerminalSession": {
+      "types": "./types/kits/data/react/src/TerminalSession.d.ts",
+      "default": "./client/kits/data/react/src/TerminalSession.js"
+    },
+    "./data/TimeSeries": {
+      "types": "./types/kits/data/react/src/TimeSeries.d.ts",
+      "default": "./client/kits/data/react/src/TimeSeries.js"
+    },
+    "./data/TraceWaterfall": {
+      "types": "./types/kits/data/react/src/TraceWaterfall.d.ts",
+      "default": "./client/kits/data/react/src/TraceWaterfall.js"
+    },
+    "./data/TreeView": {
+      "types": "./types/kits/data/react/src/TreeView.d.ts",
+      "default": "./client/kits/data/react/src/TreeView.js"
+    },
+    "./data/Treemap": {
+      "types": "./types/kits/data/react/src/Treemap.d.ts",
+      "default": "./client/kits/data/react/src/Treemap.js"
+    },
+    "./data/VirtualList": {
+      "types": "./types/kits/data/react/src/VirtualList.d.ts",
+      "default": "./client/kits/data/react/src/VirtualList.js"
+    },
+    "./data/Waterfall": {
+      "types": "./types/kits/data/react/src/Waterfall.d.ts",
+      "default": "./client/kits/data/react/src/Waterfall.js"
+    },
+    "./data/WorkflowDiagram": {
+      "types": "./types/kits/data/react/src/WorkflowDiagram.d.ts",
+      "default": "./client/kits/data/react/src/WorkflowDiagram.js"
+    },
+    "./data/XmlTree": {
+      "types": "./types/kits/data/react/src/XmlTree.d.ts",
+      "default": "./client/kits/data/react/src/XmlTree.js"
+    },
+    "./data/recipes": {
+      "types": "./types/kits/data/src/recipes.d.ts",
+      "default": "./client/kits/data/src/recipes.js"
+    },
+    "./data/static": {
+      "types": "./types/kits/data/react/src/static.server.d.ts",
+      "default": "./client/kits/data/react/src/static.server.js"
+    },
+    "./data/stream": {
+      "types": "./types/kits/data/src/chart-stream.d.ts",
+      "default": "./client/kits/data/src/chart-stream.js"
+    },
     "./styles.css": "./styles/all.css",
     "./styles/all.css": "./styles/all.css",
     "./styles/application.css": "./styles/application.css",
@@ -629,6 +853,30 @@
     "./contracts/operational": {
       "types": "./types/kits/app/src/operational.variants.d.ts",
       "default": "./client/kits/app/src/operational.variants.js"
+    },
+    "./contracts/error-boundary": {
+      "types": "./types/kits/app/src/error-boundary.variants.d.ts",
+      "default": "./client/kits/app/src/error-boundary.variants.js"
+    },
+    "./contracts/change-review": {
+      "types": "./types/kits/app/src/change-review.variants.d.ts",
+      "default": "./client/kits/app/src/change-review.variants.js"
+    },
+    "./contracts/workspace-tabs": {
+      "types": "./types/kits/app/src/workspace-tabs.variants.d.ts",
+      "default": "./client/kits/app/src/workspace-tabs.variants.js"
+    },
+    "./contracts/entity-journey": {
+      "types": "./types/kits/app/src/entity-journey.variants.d.ts",
+      "default": "./client/kits/app/src/entity-journey.variants.js"
+    },
+    "./contracts/entity-inspector": {
+      "types": "./types/kits/app/src/entity-inspector.variants.d.ts",
+      "default": "./client/kits/app/src/entity-inspector.variants.js"
+    },
+    "./contracts/shortcut-help": {
+      "types": "./types/kits/app/src/shortcut-help.variants.d.ts",
+      "default": "./client/kits/app/src/shortcut-help.variants.js"
     },
     "./contracts/split-view": {
       "types": "./types/kits/app/src/primitives/split-view.variants.d.ts",
@@ -790,16 +1038,52 @@
   "dependencies": {
     "@base-ui/react": "1.9.0",
     "@internationalized/date": "^3.12.4",
+    "@types/d3-hierarchy": "^3.1.7",
+    "@types/d3-sankey": "0.12.5",
+    "@types/d3-scale": "4.0.9",
+    "@types/d3-shape": "^3.2.0",
     "libphonenumber-js": "1.13.15",
     "tailwind-variants": "^3.1.1"
   },
   "peerDependencies": {
+    "@aflsolutions/graphology-communities-leiden": "^1.1.1",
+    "d3-hierarchy": "^3.1.2",
+    "d3-sankey": "^0.12.3",
+    "d3-scale": "^4.0.2",
+    "d3-shape": "^3.2.0",
+    "graphology": "^0.26.0",
+    "graphology-layout-forceatlas2": "^0.10.1",
     "lucide-react": "^1.52.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "sigma": "^3.0.3"
   },
   "peerDependenciesMeta": {
+    "@aflsolutions/graphology-communities-leiden": {
+      "optional": true
+    },
+    "d3-hierarchy": {
+      "optional": true
+    },
+    "d3-sankey": {
+      "optional": true
+    },
+    "d3-scale": {
+      "optional": true
+    },
+    "d3-shape": {
+      "optional": true
+    },
+    "graphology": {
+      "optional": true
+    },
+    "graphology-layout-forceatlas2": {
+      "optional": true
+    },
     "lucide-react": {
+      "optional": true
+    },
+    "sigma": {
       "optional": true
     }
   }

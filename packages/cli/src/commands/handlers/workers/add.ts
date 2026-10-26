@@ -6,7 +6,7 @@ import { Worker } from "@opencode/schema/worker"
 
 export default Runtime.handler(Commands.commands.workers.commands.add, (input) =>
   Effect.tryPromise(async () => {
-    const worker = Worker.Registration.make({
+    const worker = Worker.RemoteRegistration.make({
       id: input.id,
       url: input.url,
       passwordEnv: input.passwordEnv,

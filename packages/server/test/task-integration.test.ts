@@ -415,6 +415,7 @@ it.live(
         ],
       })
       expect(completed.todos[2]?.status).toBe("completed")
+      expect((yield* reconciliation.inspect(state.parent.id, "todo_joint")).acceptance).toBe("accepted")
       const applyURL = `${state.url}/apply`
       const applyInput = {
         requestID: "apply-accepted-joint",
@@ -476,7 +477,9 @@ it.live(
         })
         .where(eq(SessionTable.id, state.children[0]!.id))
         .run()
-      expect((yield* reconciliation.inspect(state.parent.id, "todo_joint")).integration?.contractCurrent).toBe(false)
+      const outdated = yield* reconciliation.inspect(state.parent.id, "todo_joint")
+      expect(outdated.integration?.contractCurrent).toBe(false)
+      expect(outdated.acceptance).toBe("stale")
       expect((yield* todos.review(state.parent.id))[2]?.status).not.toBe("completed")
     }),
   30_000,

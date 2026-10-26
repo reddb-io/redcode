@@ -29,7 +29,7 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
   const connected = () => global.ensureServerCtx(props.server).sdk.connection.status() === "connected"
   const [state, setState] = createStore({
     view: "sessions",
-    driver: "codex" as Harness.Driver,
+    driver: "redcode" as Harness.Driver | "redcode",
     directory: "",
     model: "",
     executable: { claude: "", codex: "" },
@@ -128,7 +128,7 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
   return (
     <div class="flex flex-col gap-4 text-13-regular leading-[var(--line-height-base)]">
       <Show when={query.isError || !connected()}>
-        <p role="alert">{language.t("harness.unavailable")}</p>
+        <p role="alert">{language.t("harness.externalUnavailable")}</p>
       </Show>
       <Show when={state.error}>
         <p role="alert">{state.error}</p>
@@ -432,7 +432,7 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
             class="!h-auto !overflow-visible"
           >
             <Tabs.List aria-label={language.t("harness.tabs.label")}>
-              <Tabs.Trigger value="sessions">{language.t("harness.runs")}</Tabs.Trigger>
+              <Tabs.Trigger value="sessions">{language.t("executors.sessions")}</Tabs.Trigger>
               <Tabs.Trigger value="setup">{language.t("harness.tabs.setup")}</Tabs.Trigger>
             </Tabs.List>
             <Tabs.Content
@@ -441,22 +441,22 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
               hidden={state.view !== "sessions"}
               class="!overflow-visible space-y-4 pt-4"
             >
-              <p class="text-body text-ink-muted">{language.t("harness.workspace.description")}</p>
+              <p class="text-body text-ink-muted">{language.t("executors.description")}</p>
               <article class={appearance.root()}>
                 <div class={appearance.body({ class: "flex flex-col gap-3 space-y-0" })}>
-                  <h3 class="text-13-medium">{language.t("harness.runs")}</h3>
+                  <h3 class="text-13-medium">{language.t("executors.externalSessions")}</h3>
                   <Show
                     when={query.data?.runs.length}
                     fallback={
                       <Show when={query.isPending || (!!query.data && !query.isError)}>
                         <p class="text-body text-ink-muted">
-                          {language.t(query.isPending ? "agents.loading" : "harness.sessions.empty")}
+                          {language.t(query.isPending ? "agents.loading" : "executors.empty")}
                         </p>
                       </Show>
                     }
                   >
                     <SearchSelect
-                      label={language.t("harness.runs")}
+                      label={language.t("executors.externalSessions")}
                       value={state.runID}
                       options={(query.data?.runs ?? []).map((run) => ({
                         value: run.id,
@@ -480,6 +480,13 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                 onSubmit={(event) => {
                   event.preventDefault()
                   void action(async () => {
+                    if (state.driver === "redcode") {
+                      const session = await global.ensureServerCtx(props.server).sdk.api.session.create({
+                        location: { directory: directory() },
+                      })
+                      if (lifetime.active) navigation.session.open(session, { server: props.server })
+                      return
+                    }
                     const run = await api().open({
                       driver: state.driver,
                       directory: directory(),
@@ -490,34 +497,44 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                 }}
               >
                 <div class={appearance.body({ class: "grid gap-3 @md/harness-workspace:grid-cols-2 space-y-0" })}>
-                  <h3 class="text-13-medium @md/harness-workspace:col-span-2">{language.t("harness.start")}</h3>
+                  <h3 class="text-13-medium @md/harness-workspace:col-span-2">
+                    {language.t(state.driver === "redcode" ? "harness.native.start" : "harness.start")}
+                  </h3>
                   <label>
                     {language.t("harness.provider")}
                     <SearchSelect
                       label={language.t("harness.provider")}
                       class="mt-1 w-full"
                       value={state.driver}
-                      options={(["codex", "claude"] as const).map((driver) => ({
+                      options={(["redcode", "codex", "claude"] as const).map((driver) => ({
                         value: driver,
                         label: language.t(`harness.driver.${driver}`),
                       }))}
-                      onChange={(value) => setState("driver", value === "claude" ? "claude" : "codex")}
+                      onChange={(value) => {
+                        if (value === "redcode" || value === "claude" || value === "codex")
+                          setState({ driver: value, model: "" })
+                      }}
                     />
                   </label>
-                  <label>
-                    {language.t("harness.model")}
-                    <input
-                      list={`harness-models-${ServerConnection.key(props.server)}`}
-                      class={input({ size: "sm", class: "mt-1 w-full" })}
-                      value={state.model}
-                      onInput={(event) => setState("model", event.currentTarget.value)}
-                    />
-                    <datalist id={`harness-models-${ServerConnection.key(props.server)}`}>
-                      <For each={query.data?.providers.find((provider) => provider.driver === state.driver)?.models}>
-                        {(model) => <option value={model.id}>{model.label}</option>}
-                      </For>
-                    </datalist>
-                  </label>
+                  <Show when={state.driver !== "redcode"}>
+                    <label>
+                      {language.t("harness.model")}
+                      <input
+                        list={`harness-models-${ServerConnection.key(props.server)}`}
+                        class={input({ size: "sm", class: "mt-1 w-full" })}
+                        value={state.model}
+                        onInput={(event) => setState("model", event.currentTarget.value)}
+                      />
+                      <datalist id={`harness-models-${ServerConnection.key(props.server)}`}>
+                        <For each={query.data?.providers.find((provider) => provider.driver === state.driver)?.models}>
+                          {(model) => <option value={model.id}>{model.label}</option>}
+                        </For>
+                      </datalist>
+                    </label>
+                  </Show>
+                  <Show when={state.driver === "redcode"}>
+                    <p class="text-ink-muted">{language.t("harness.native.description")}</p>
+                  </Show>
                   <label class="@md/harness-workspace:col-span-2">
                     {language.t("harness.directory")}
                     <input
@@ -531,7 +548,7 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                     />
                   </label>
                   <Button type="submit" disabled={state.busy || !connected() || !directory().trim()}>
-                    {language.t("harness.start")}
+                    {language.t(state.driver === "redcode" ? "harness.native.start" : "harness.start")}
                   </Button>
                 </div>
               </form>

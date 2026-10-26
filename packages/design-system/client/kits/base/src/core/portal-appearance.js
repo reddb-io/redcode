@@ -1,3 +1,6 @@
+function modalPortalContainer(source) {
+  return source.closest("dialog[open]") ?? void 0;
+}
 function observePortalAppearance(source, changed) {
   const keys = ["data-theme", "data-color-scheme", "data-density"];
   const read = () => changed({
@@ -5,7 +8,7 @@ function observePortalAppearance(source, changed) {
       const value = source.closest(`[${key}]`)?.getAttribute(key);
       return value == null ? [] : [[key, value]];
     })),
-    container: source.closest("dialog[open]") ?? void 0
+    container: modalPortalContainer(source)
   });
   read();
   const observer = new MutationObserver(read);
@@ -13,5 +16,6 @@ function observePortalAppearance(source, changed) {
   return () => observer.disconnect();
 }
 export {
+  modalPortalContainer,
   observePortalAppearance
 };

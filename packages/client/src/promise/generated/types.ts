@@ -2828,6 +2828,14 @@ export type IntelligenceCheck = {
   requests?: Array<ConnectionCheckRequest1> | null
 }
 
+export type WorkerLocalRegistration = {
+  id: WorkerName
+  directories: Array<string>
+  tags: Array<string>
+  resourceID?: string
+  kind: "local"
+}
+
 export type WorkerEnvironmentInfo = {
   id: WorkerName
   repository: string
@@ -2844,7 +2852,7 @@ export type WorkerEnvironmentInfo = {
   error?: string
 }
 
-export type WorkerRegistration = {
+export type WorkerRemoteRegistration = {
   id: WorkerName
   url: string
   passwordEnv: WorkerName
@@ -2853,6 +2861,7 @@ export type WorkerRegistration = {
   resourceID?: string
   environmentID?: WorkerName
   environmentProxy?: boolean
+  kind?: "remote"
 }
 
 export type WorkerEntry = {
@@ -3343,11 +3352,7 @@ export type WorkerEnvironmentSnapshot = {
   environments: Array<WorkerEnvironmentInfo>
 }
 
-export type WorkerStatus = {
-  worker: WorkerRegistration
-  connection: "unchecked" | "online" | "offline"
-  platform?: string
-}
+export type WorkerRegistration = WorkerLocalRegistration | WorkerRemoteRegistration
 
 export type WorkerReport = { fingerprint: string; tasks: Array<WorkerEntry> }
 
@@ -3936,6 +3941,12 @@ export type CredentialValue = CredentialOAuth | CredentialKey | CredentialExtern
 
 export type FormFields2 = [FormField1, ...Array<FormField1>]
 
+export type WorkerStatus = {
+  worker: WorkerRegistration
+  connection: "unchecked" | "online" | "offline"
+  platform?: string
+}
+
 export type WorkerBatch = {
   id: WorkerName
   createdAt: string
@@ -3961,19 +3972,12 @@ export type IntelligenceStatus = {
   router?: IntelligenceDetectedRouter
 }
 
-export type SessionStatsInfo = {
-  range: { from: number; to: number }
-  sessions: number
-  subagents: number
-  prompts: number
+export type SessionStatsDaily = {
+  date: string
   steps: number
   tokens: TokenUsageInfo
   cost: MoneyUSD
-  costCoverage?: CostAssessmentCoverage
-  tools: SessionStatsTools
-  activeDays: number
-  streak: number
-  activity: Array<SessionStatsActivity>
+  costCoverage: CostAssessmentCoverage
   models: Array<SessionStatsModelUsage>
 }
 
@@ -4032,6 +4036,7 @@ export type SessionMessageAssistant = {
 export type TodoReconciliation = {
   sessionID: string
   task: Todo
+  acceptance?: "accepted" | "pending" | "blocked" | "cancelled" | "stale" | "unverified"
   fingerprint: string
   observedAt: number
   executionSettled: boolean
@@ -4101,9 +4106,27 @@ export type FormInfo1 = { id: string; sessionID: string; title: string; metadata
 
 export type WorkerSnapshot = {
   available: boolean
+  localExecution?: { available: boolean; reason?: string }
   reason?: string
   workers: Array<WorkerStatus>
   batches: Array<WorkerBatch>
+}
+
+export type SessionStatsInfo = {
+  range: { from: number; to: number }
+  sessions: number
+  subagents: number
+  prompts: number
+  steps: number
+  tokens: TokenUsageInfo
+  cost: MoneyUSD
+  costCoverage?: CostAssessmentCoverage
+  tools: SessionStatsTools
+  activeDays: number
+  streak: number
+  activity: Array<SessionStatsActivity>
+  series?: Array<SessionStatsDaily>
+  models: Array<SessionStatsModelUsage>
 }
 
 export type AttentionEntry = { session: SessionInfo; permissions: Array<PermissionRequest>; forms: Array<FormInfo> }
@@ -4805,6 +4828,7 @@ export type SessionStatsInput = {
     readonly project?: string | undefined
     readonly timezone?: string | undefined
     readonly tools?: "none" | "summary" | "detail" | undefined
+    readonly series?: "daily" | undefined
   }["from"]
   readonly to?: {
     readonly from?: number | undefined
@@ -4812,6 +4836,7 @@ export type SessionStatsInput = {
     readonly project?: string | undefined
     readonly timezone?: string | undefined
     readonly tools?: "none" | "summary" | "detail" | undefined
+    readonly series?: "daily" | undefined
   }["to"]
   readonly project?: {
     readonly from?: number | undefined
@@ -4819,6 +4844,7 @@ export type SessionStatsInput = {
     readonly project?: string | undefined
     readonly timezone?: string | undefined
     readonly tools?: "none" | "summary" | "detail" | undefined
+    readonly series?: "daily" | undefined
   }["project"]
   readonly timezone?: {
     readonly from?: number | undefined
@@ -4826,6 +4852,7 @@ export type SessionStatsInput = {
     readonly project?: string | undefined
     readonly timezone?: string | undefined
     readonly tools?: "none" | "summary" | "detail" | undefined
+    readonly series?: "daily" | undefined
   }["timezone"]
   readonly tools?: {
     readonly from?: number | undefined
@@ -4833,7 +4860,16 @@ export type SessionStatsInput = {
     readonly project?: string | undefined
     readonly timezone?: string | undefined
     readonly tools?: "none" | "summary" | "detail" | undefined
+    readonly series?: "daily" | undefined
   }["tools"]
+  readonly series?: {
+    readonly from?: number | undefined
+    readonly to?: number | undefined
+    readonly project?: string | undefined
+    readonly timezone?: string | undefined
+    readonly tools?: "none" | "summary" | "detail" | undefined
+    readonly series?: "daily" | undefined
+  }["series"]
 }
 
 export type SessionStatsOutput = { data: SessionStatsInfo }["data"]
@@ -11379,84 +11415,124 @@ export type WorkersAnswerOutput = void
 
 export type WorkersListOutput = WorkerSnapshot
 
+export type WorkersLocalAddInput = {
+  readonly id: {
+    readonly id: string
+    readonly directories: ReadonlyArray<string>
+    readonly tags: ReadonlyArray<string>
+    readonly resourceID?: string
+    readonly kind: "local"
+  }["id"]
+  readonly directories: {
+    readonly id: string
+    readonly directories: ReadonlyArray<string>
+    readonly tags: ReadonlyArray<string>
+    readonly resourceID?: string
+    readonly kind: "local"
+  }["directories"]
+  readonly tags: {
+    readonly id: string
+    readonly directories: ReadonlyArray<string>
+    readonly tags: ReadonlyArray<string>
+    readonly resourceID?: string
+    readonly kind: "local"
+  }["tags"]
+  readonly resourceID?: {
+    readonly id: string
+    readonly directories: ReadonlyArray<string>
+    readonly tags: ReadonlyArray<string>
+    readonly resourceID?: string
+    readonly kind: "local"
+  }["resourceID"]
+  readonly kind: {
+    readonly id: string
+    readonly directories: ReadonlyArray<string>
+    readonly tags: ReadonlyArray<string>
+    readonly resourceID?: string
+    readonly kind: "local"
+  }["kind"]
+}
+
+export type WorkersLocalAddOutput = WorkerStatus
+
 export type WorkersAddInput = {
   readonly id: {
     readonly id: string
-    readonly url: string
     readonly directories: ReadonlyArray<string>
     readonly tags: ReadonlyArray<string>
-    readonly password: string
     readonly resourceID?: string
+    readonly url: string
+    readonly password: string
     readonly environmentID?: string
     readonly environmentProxy?: boolean
   }["id"]
-  readonly url: {
-    readonly id: string
-    readonly url: string
-    readonly directories: ReadonlyArray<string>
-    readonly tags: ReadonlyArray<string>
-    readonly password: string
-    readonly resourceID?: string
-    readonly environmentID?: string
-    readonly environmentProxy?: boolean
-  }["url"]
   readonly directories: {
     readonly id: string
-    readonly url: string
     readonly directories: ReadonlyArray<string>
     readonly tags: ReadonlyArray<string>
-    readonly password: string
     readonly resourceID?: string
+    readonly url: string
+    readonly password: string
     readonly environmentID?: string
     readonly environmentProxy?: boolean
   }["directories"]
   readonly tags: {
     readonly id: string
-    readonly url: string
     readonly directories: ReadonlyArray<string>
     readonly tags: ReadonlyArray<string>
-    readonly password: string
     readonly resourceID?: string
+    readonly url: string
+    readonly password: string
     readonly environmentID?: string
     readonly environmentProxy?: boolean
   }["tags"]
-  readonly password: {
-    readonly id: string
-    readonly url: string
-    readonly directories: ReadonlyArray<string>
-    readonly tags: ReadonlyArray<string>
-    readonly password: string
-    readonly resourceID?: string
-    readonly environmentID?: string
-    readonly environmentProxy?: boolean
-  }["password"]
   readonly resourceID?: {
     readonly id: string
-    readonly url: string
     readonly directories: ReadonlyArray<string>
     readonly tags: ReadonlyArray<string>
-    readonly password: string
     readonly resourceID?: string
+    readonly url: string
+    readonly password: string
     readonly environmentID?: string
     readonly environmentProxy?: boolean
   }["resourceID"]
-  readonly environmentID?: {
+  readonly url: {
     readonly id: string
-    readonly url: string
     readonly directories: ReadonlyArray<string>
     readonly tags: ReadonlyArray<string>
-    readonly password: string
     readonly resourceID?: string
+    readonly url: string
+    readonly password: string
+    readonly environmentID?: string
+    readonly environmentProxy?: boolean
+  }["url"]
+  readonly password: {
+    readonly id: string
+    readonly directories: ReadonlyArray<string>
+    readonly tags: ReadonlyArray<string>
+    readonly resourceID?: string
+    readonly url: string
+    readonly password: string
+    readonly environmentID?: string
+    readonly environmentProxy?: boolean
+  }["password"]
+  readonly environmentID?: {
+    readonly id: string
+    readonly directories: ReadonlyArray<string>
+    readonly tags: ReadonlyArray<string>
+    readonly resourceID?: string
+    readonly url: string
+    readonly password: string
     readonly environmentID?: string
     readonly environmentProxy?: boolean
   }["environmentID"]
   readonly environmentProxy?: {
     readonly id: string
-    readonly url: string
     readonly directories: ReadonlyArray<string>
     readonly tags: ReadonlyArray<string>
-    readonly password: string
     readonly resourceID?: string
+    readonly url: string
+    readonly password: string
     readonly environmentID?: string
     readonly environmentProxy?: boolean
   }["environmentProxy"]

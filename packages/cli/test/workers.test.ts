@@ -1,3 +1,5 @@
+import { OpenCode } from "@opencode/client/promise"
+import { createHash } from "node:crypto"
 import { Worker } from "@opencode/schema/worker"
 import { expect, test } from "bun:test"
 import { WorkerPool } from "../src/workers/pool"
@@ -898,3 +900,63 @@ test("worker CLI registers, dispatches, recovers, collects and removes through r
   await command(["remove", "cli-pi", "--config", config])
   expect((await WorkerPool.readConfig(config)).workers).toEqual([])
 }, 45_000)
+
+test("resumes a legacy remote journal after adding native local registrations", async () => {
+  await using host = await fixture()
+  const config = {
+    workers: [
+      {
+        id: host.worker.id,
+        url: host.server.url.origin,
+        passwordEnv: "PI_PASSWORD",
+        directories: ["/checkout/a"],
+        tags: ["linux", "arm64"],
+      },
+    ],
+  }
+  const manifest = await Bun.file(host.manifest).json()
+  await Bun.write(host.config, JSON.stringify(config))
+  await Bun.write(
+    host.report,
+    JSON.stringify({
+      fingerprint: createHash("sha256").update(JSON.stringify({ config, manifest })).digest("hex"),
+      tasks: manifest.tasks.map((task: Worker.Task) => ({ id: task.id, state: "queued" })),
+    }),
+  )
+  expect((await host.run()).tasks.every((entry) => entry.state === "succeeded")).toBe(true)
+})
+
+test("recovers local admission across a changed listener and coordinator incarnation", async () => {
+  await using host = await fixture("admission-lost")
+  await Bun.write(
+    host.config,
+    JSON.stringify({
+      workers: [{ kind: "local", id: host.worker.id, directories: ["/checkout/a"], tags: ["linux", "arm64"] }],
+    }),
+  )
+  const connection = { url: host.server.url.origin }
+  const local = () =>
+    OpenCode.make({ baseUrl: connection.url, headers: { authorization: `Basic ${btoa("opencode:test-secret")}` } })
+  const initial = await host.run({ local, environment: {}, coordinator: "before-restart" })
+  expect(initial.tasks[0]?.state).toBe("unknown")
+  const listener = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: (request) => {
+      const url = new URL(request.url)
+      return fetch(new Request(host.server.url.origin + url.pathname + url.search, request))
+    },
+  })
+  connection.url = listener.url.origin
+  host.leases.forEach((lease, directory) => host.leases.set(directory, { ...lease, expiresAt: Date.now() - 1 }))
+  const recovered = await host
+    .run({ local, environment: {}, coordinator: "after-restart", recoverTask: "one" })
+    .finally(() => listener.stop(true))
+  expect(recovered.tasks.map((entry) => entry.state)).toEqual(["succeeded", "succeeded", "succeeded"])
+  expect(recovered.tasks[0]?.sessionID).toBe(initial.tasks[0]?.sessionID)
+  expect(recovered.tasks[0]?.messageID).toBe(initial.tasks[0]?.messageID)
+  expect(recovered.tasks[0]?.url).toBe("local")
+  expect(host.counts.creates).toBe(3)
+  expect(host.counts.wakes).toBe(1)
+  expect(host.admitted.size).toBe(3)
+})

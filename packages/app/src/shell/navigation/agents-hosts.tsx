@@ -12,6 +12,10 @@ import { useQuery } from "@tanstack/solid-query"
 import { createEffect, createMemo, on, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { Key } from "@solid-primitives/keyed"
+import { ReactView } from "@/runtime/react/view"
+import { sharedSource } from "@/runtime/react/source"
+import { sharedLanguage } from "@/runtime/react/language"
+import { HostHistory } from "./host-history.react"
 import { useLanguage } from "@/runtime/i18n/language"
 import { ServerConnection } from "@/runtime/server/registry"
 import { useGlobal } from "@/runtime/server/runtime"
@@ -44,14 +48,20 @@ export default function AgentHosts(props: { server: ServerConnection.Any }) {
       keywords: [] as string[],
       connection: connected() ? ("online" as const) : ("offline" as const),
     },
-    ...(workers.data?.workers ?? []).map((status) => ({
-      id: status.worker.id,
-      name: status.worker.id,
-      description: status.worker.directories.join(" · "),
-      keywords: [status.worker.url, ...status.worker.tags],
-      connection:
-        connected() && !workers.isError && workers.data?.available ? status.connection : ("unchecked" as const),
-    })),
+    ...(workers.data?.workers ?? []).flatMap((status) =>
+      status.worker.kind === "local"
+        ? []
+        : [
+            {
+              id: status.worker.id,
+              name: status.worker.id,
+              description: status.worker.directories.join(" · "),
+              keywords: [status.worker.url, ...status.worker.tags],
+              connection:
+                connected() && !workers.isError && workers.data?.available ? status.connection : ("unchecked" as const),
+            },
+          ],
+    ),
   ])
   const filtered = createMemo(() => {
     const found = new Set(
@@ -221,10 +231,17 @@ function Resources(props: {
     value === null
       ? language.t("agents.hosts.unknown")
       : language.t("agents.hosts.memoryValue", { value: (value / 1024 ** 3).toFixed(2) })
+  const history = sharedSource(() => ({
+    language: sharedLanguage(language),
+    sample: query.data,
+    available: props.connected && !query.isError,
+    identity: props.cacheKey,
+  }))
   const measure = meter()
   const surface = card({ padding: "md" })
   return (
     <article aria-label={props.name} class="py-[var(--reddb-spatial-inset-sm)]">
+      <ReactView component={HostHistory} props={{ source: history }} />
       <div class="flex flex-col gap-[var(--reddb-spatial-gap-md)]">
         <Show
           when={props.connected && !query.isError}

@@ -67,6 +67,7 @@ import { PtyEnvironment } from "./pty-environment"
 import { PtySockets } from "./pty-sockets"
 import { ServerPairing } from "./pairing"
 import { Workers } from "./workers"
+import { OpenCode } from "@opencode/client/promise"
 import { WorkerEnvironments } from "./worker-environments"
 import { ProjectEnvironments } from "./project-environments"
 import { Harnesses } from "./harness"
@@ -148,6 +149,7 @@ export function createRoutes(
   features: {
     readonly ptySockets?: PtySockets.Interface
     readonly remoteAccess?: RemoteAccessHost.Interface
+    readonly workerConnection?: { readonly url: () => string; readonly ready: () => boolean }
   } = {},
 ) {
   return makeRoutes(
@@ -160,6 +162,7 @@ export function createRoutes(
     undefined,
     features.ptySockets,
     features.remoteAccess,
+    features.workerConnection,
   )
 }
 
@@ -184,6 +187,7 @@ function makeRoutes<AuthError, AuthServices>(
   instances?: InstanceNode,
   ptySockets?: PtySockets.Interface,
   remoteAccess?: RemoteAccessHost.Interface,
+  workerConnection?: { readonly url: () => string; readonly ready: () => boolean },
 ) {
   const standard: LayerNode.Replacements = [
     Database.node.replace(Database.configured(options.database)),
@@ -236,7 +240,26 @@ function makeRoutes<AuthError, AuthServices>(
   const build = (overrides: LayerNode.Replacements) => {
     const replacements: LayerNode.Replacements = [
       ...standard,
-      Workers.node.replace(Workers.configured(options.workers?.directory, options.access)),
+      Workers.node.replace(
+        Workers.configured(
+          options.workers?.directory,
+          options.access,
+          workerConnection && {
+            ready: workerConnection.ready,
+            client: () =>
+              OpenCode.make({
+                baseUrl: workerConnection.url(),
+                ...(options.password
+                  ? {
+                      headers: {
+                        authorization: `Basic ${Buffer.from(`opencode:${options.password}`).toString("base64")}`,
+                      },
+                    }
+                  : {}),
+              }),
+          },
+        ),
+      ),
       ...(options.workers?.directory
         ? [
             WorkerEnvironments.node.replace(

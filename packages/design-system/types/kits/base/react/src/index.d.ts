@@ -115,3 +115,5 @@ export { Transfer, type TransferProps } from "./Transfer";
 export { observeActivity } from "../../src/core/operational-motion";
 export { PhoneInput, type PhoneInputProps } from "./PhoneInput";
 export type { PhoneCountry } from "../../src/core/contracts/phoneinput";
+export { SecretValue, type SecretValueProps } from "./SecretValue";
+export type { SecretValueContract, SecretHideReason } from "../../src/core/contracts/secretvalue";
