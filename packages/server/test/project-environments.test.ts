@@ -95,9 +95,11 @@ if (process.env.FIXTURE_TOKEN) console.log(process.env.FIXTURE_TOKEN);
           Effect.gen(function* () {
             const until = Date.now() + 15_000
             while (Date.now() < until) {
-              const result = (yield* Effect.promise(() => service.list(directory))).environments.find(
-                (item) => item.id === id,
+              // Concurrent clients can poll while an operation replaces its durable result.
+              const snapshots = yield* Effect.promise(() =>
+                Promise.all(Array.from({ length: 8 }, () => service.list(directory))),
               )
+              const result = snapshots.at(-1)!.environments.find((item) => item.id === id)
               if (result && result.state !== "working") return result
               yield* Effect.sleep("10 millis")
             }
