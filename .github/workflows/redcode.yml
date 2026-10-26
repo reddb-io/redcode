@@ -169,6 +169,11 @@ jobs:
         with:
           ref: ${{ needs.plan.outputs.sha }}
       - uses: ./.github/actions/setup-bun
+      - name: Use the primary Ubuntu package mirror
+        run: |
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            printf '%s\n' 'https://archive.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt
+          fi
       - name: Install Chromium
         working-directory: packages/app
         run: bun x playwright install --with-deps chromium
