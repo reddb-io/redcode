@@ -1,7 +1,8 @@
+import type { ScatterAnalysisOptions } from "../scatter-analysis";
 import type { VisualizationSize } from "../../visualization";
 import type { ScatterPoint } from "../../scatter";
 /** Portable Quadrant properties shared by native adapters. */
-export interface QuadrantContract {
+export interface QuadrantContract extends ScatterAnalysisOptions {
     /** Named observations placed on the two quantitative axes. */
     data: readonly ScatterPoint[];
     /** Full horizontal domain; defaults to zero through one hundred. */

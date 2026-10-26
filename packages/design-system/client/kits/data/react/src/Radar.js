@@ -131,9 +131,9 @@ function Radar(props) {
                     "path",
                     {
                       d: path,
-                      fill: complete ? tint(seriesColor(s.series), 12) : "none",
+                      fill: complete ? tint(seriesColor(s.series, s.color), 12) : "none",
                       fillOpacity: complete ? 0.5 : 0,
-                      stroke: seriesColor(s.series),
+                      stroke: seriesColor(s.series, s.color),
                       strokeWidth: selected === s.id ? 3 : 1.5
                     }
                   ),
@@ -153,7 +153,7 @@ function Radar(props) {
                           cx: p.x,
                           cy: p.y,
                           r: 3,
-                          fill: seriesColor(s.series)
+                          fill: seriesColor(s.series, s.color)
                         }
                       ) });
                     })() : null }, i);

@@ -212,6 +212,7 @@ const navigationPinnedSchema = Persistence.struct({
   list: Persistence.array(Persistence.struct({ server: Schema.String, session: Schema.String })),
 })
 const navigationTreeSchema = Persistence.struct({
+  grouping: Persistence.optional(Schema.Literals(["attention", "projects"])),
   expanded: Persistence.record(Schema.Boolean),
   collapsedSections: Persistence.record(Schema.Boolean),
 })
@@ -479,6 +480,8 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           setTree("expanded", key, expanded)
         },
         sectionOpen: (id: string) => !tree.collapsedSections[id],
+        grouping: () => tree.grouping ?? "attention",
+        setGrouping: (grouping: "attention" | "projects") => setTree("grouping", grouping),
         toggleSection(id: string) {
           setTree("collapsedSections", id, (collapsed) => !collapsed)
         },

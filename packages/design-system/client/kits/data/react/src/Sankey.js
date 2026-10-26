@@ -94,7 +94,8 @@ function Sankey(props) {
                               d: `M${x0},${link.y0} C${mid},${link.y0} ${mid},${link.y1} ${x1},${link.y1}`,
                               fill: "none",
                               stroke: seriesColor(
-                                link.series ?? link.source.series
+                                link.series ?? link.source.series,
+                                link.color ?? (link.series === void 0 ? link.source.color : void 0)
                               ),
                               strokeOpacity: selected === link.id ? 0.8 : 0.25,
                               strokeWidth: Math.max(1, link.width)
@@ -120,7 +121,7 @@ function Sankey(props) {
                                 width: node.x1 - node.x0,
                                 height: node.y1 - node.y0,
                                 rx: 2,
-                                fill: seriesColor(node.series)
+                                fill: seriesColor(node.series, node.color)
                               }
                             ),
                             /* @__PURE__ */ jsx(

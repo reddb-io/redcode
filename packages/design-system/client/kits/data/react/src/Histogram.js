@@ -1,5 +1,6 @@
 "use client";
 import { Fragment, jsx, jsxs } from "react/jsx-runtime";
+import { tokenColor } from "@reddb-io/design-system/base/recipes";
 import {
   useRef
 } from "react";
@@ -28,6 +29,7 @@ function Histogram(props) {
     label = "Histogram",
     format,
     series = 1,
+    color,
     width,
     height,
     size = "lg",
@@ -76,6 +78,7 @@ function Histogram(props) {
       "data-chart-width": width === void 0 ? "fluid" : "fixed",
       role: "img",
       "aria-label": label,
+      style: { "--color-primary": tokenColor(color, `var(--reddb-color-series-${series})`) },
       className: chartFigure({
         series,
         fluid: width === void 0,

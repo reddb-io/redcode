@@ -1,7 +1,8 @@
+import type { ScatterAnalysisOptions } from "../scatter-analysis";
 import type { VisualizationSize } from "../../visualization";
 import type { ScatterPoint } from "../../scatter";
 /** Portable Scatter properties shared by native adapters. */
-export interface ScatterContract {
+export interface ScatterContract extends ScatterAnalysisOptions {
     /** Observations with stable ids, numeric x/y coordinates and optional radius. */
     data: readonly ScatterPoint[];
     /** Explicit x-axis bounds, shared across comparisons. */

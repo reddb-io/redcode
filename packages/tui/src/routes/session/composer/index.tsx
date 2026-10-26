@@ -10,6 +10,7 @@ import { MonitorsTab, type SessionMonitors } from "./monitors-tab"
 import { ShellTab } from "./shell-tab"
 import { SystemTab } from "./system-tab"
 import { TerminalsTab } from "./terminals-tab"
+import { OrchestrationTab } from "./orchestration-tab"
 import { useConfig } from "../../../config"
 import { ComposerContext, type ComposerTab } from "./context"
 import { ComposerFooter } from "./footer"
@@ -109,7 +110,7 @@ export function Composer(props: ComposerProps) {
           paddingBottom={1}
         >
           <box gap={1}>
-            <box flexDirection="row" justifyContent="space-between" paddingLeft={1}>
+            <box flexDirection="row" justifyContent="space-between" paddingLeft={1} paddingRight={4}>
               <Show
                 when={tabList().length > 1}
                 fallback={
@@ -118,7 +119,7 @@ export function Composer(props: ComposerProps) {
                   </text>
                 }
               >
-                <box flexDirection="row" gap={2}>
+                <box flexDirection="row" flexWrap="wrap" columnGap={2} flexGrow={1} flexShrink={1} minWidth={0}>
                   <For each={tabList()}>
                     {(t) => {
                       const isActive = createMemo(() => store.active === t.id)
@@ -126,6 +127,7 @@ export function Composer(props: ComposerProps) {
                         <text
                           fg={isActive() ? theme.text.base : theme.text.muted}
                           attributes={isActive() ? TextAttributes.BOLD : undefined}
+                          onMouseUp={() => setStore("active", t.id)}
                         >
                           {t.label}
                         </text>
@@ -134,7 +136,7 @@ export function Composer(props: ComposerProps) {
                   </For>
                 </box>
               </Show>
-              <text fg={theme.text.muted} onMouseUp={close}>
+              <text fg={theme.text.muted} position="absolute" top={0} right={0} onMouseUp={close}>
                 esc
               </text>
             </box>
@@ -147,6 +149,7 @@ export function Composer(props: ComposerProps) {
               <TerminalsTab sessionID={props.sessionID} visibleTerminalID={props.visibleTerminalID} />
             </Show>
             <SystemTab />
+            <OrchestrationTab sessionID={props.sessionID} />
             <ComposerFooter hints={footerHints()} />
           </box>
         </box>

@@ -14,12 +14,14 @@ import wsl from "./wsl"
 import microsoftOffice from "./microsoft-office"
 import design from "./design"
 import sessionImport from "./import"
+import delivery from "./delivery"
 
 /**
  * Built-in extensions with their main entries. Lists every built-in so their ids stay reserved. `builtins.typecheck.ts`
  * checks that it provides every Ipc the renderer composition uses.
  */
 export const builtins = Extension.compose(
+  delivery,
   context,
   btw,
   debug,

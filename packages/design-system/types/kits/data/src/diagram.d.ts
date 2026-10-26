@@ -32,6 +32,7 @@ export declare function diagramLayout(data: DiagramData, width: number, height: 
         y: number;
         kind?: "process" | "decision" | "store" | "terminal";
         group?: string;
+        color?: import("./core/chart-color").ColorToken;
         id: string;
         label: string;
         description?: string;

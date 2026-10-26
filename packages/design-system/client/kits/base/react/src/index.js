@@ -133,6 +133,9 @@ import { Transfer } from "./Transfer.js";
 import { observeActivity } from "../../src/core/operational-motion.js";
 import { PhoneInput } from "./PhoneInput.js";
 import { SecretValue } from "./SecretValue.js";
+import { tokenColor } from "../../src/core/color-token.js";
+import { ringThickness } from "../../src/core/radial.js";
+import { RadialContent } from "./RadialContent.js";
 export {
   APPEARANCE_AXES,
   Accordion,
@@ -207,6 +210,7 @@ export {
   Prose,
   QuoteSlide,
   REDUCED_MOTION_QUERY,
+  RadialContent,
   RadialProgress,
   RadioGroup,
   RangeCalendar,
@@ -248,6 +252,8 @@ export {
   applyAppearance,
   createNavigationDisclosures,
   observeActivity,
+  ringThickness,
+  tokenColor,
   useNavigationDisclosure,
   useReducedMotion
 };

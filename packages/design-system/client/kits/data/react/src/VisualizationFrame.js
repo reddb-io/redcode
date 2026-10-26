@@ -114,7 +114,7 @@ function VisualizationFrame({
                     {
                       "aria-hidden": "true",
                       className: "inline-block h-[var(--reddb-spatial-icon-size-sm)] w-[var(--reddb-spatial-icon-size-sm)] rounded-full",
-                      style: { background: seriesColor(item.series) }
+                      style: { background: seriesColor(item.series, item.color) }
                     }
                   ),
                   onSelect ? /* @__PURE__ */ jsx(

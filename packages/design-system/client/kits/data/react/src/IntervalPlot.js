@@ -151,7 +151,7 @@ function IntervalPlot(props) {
               const y = 36 + i * rowHeight;
               const x = project(item.start, view, left, w - 12);
               const end = project(item.end, view, left, w - 12);
-              const color = item.tone && item.tone !== "neutral" ? `var(--reddb-color-feedback-${item.tone}-foreground)` : seriesColor(item.series);
+              const color = item.tone && item.tone !== "neutral" ? `var(--reddb-color-feedback-${item.tone}-foreground)` : seriesColor(item.series, item.color);
               return /* @__PURE__ */ jsxs(Fragment2, { children: [
                 /* @__PURE__ */ jsx(
                   "line",

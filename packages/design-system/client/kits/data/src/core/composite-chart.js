@@ -1,3 +1,4 @@
+import { automaticChartPalette, chartColor } from "./chart-color.js";
 import { chartTimeRange } from "./chart-time.js";
 import { axisLabelWidth, formatChartNumber } from "../chart.js";
 const compositePaint = (series = 1) => `var(--reddb-color-series-${series})`;
@@ -23,7 +24,9 @@ function valueDomain(series, axis, declared) {
   }
   return [low, high];
 }
-function resolveCompositeChart(data, orientation = "vertical", primaryAxis, secondaryAxis, references = [], timeRange) {
+function resolveCompositeChart(data, orientation = "vertical", primaryAxis, secondaryAxis, references = [], timeRange, options = {}) {
+  if (options.barPadding !== void 0 && (!Number.isFinite(options.barPadding) || options.barPadding < 0 || options.barPadding >= 1)) throw new Error("barPadding must be in [0, 1)");
+  if (options.strokeWidth !== void 0 && (!Number.isFinite(options.strokeWidth) || options.strokeWidth <= 0)) throw new Error("strokeWidth must be positive");
   const viewport = chartTimeRange(timeRange);
   const identities = /* @__PURE__ */ new Set();
   const coordinates = data.flatMap((item) => item.data.map((point) => point.x));
@@ -34,6 +37,7 @@ function resolveCompositeChart(data, orientation = "vertical", primaryAxis, seco
   for (const value of coordinates) if (typeof value === "string" && !categories.has(value)) categories.set(value, categories.size);
   const coordinate = (value) => typeof value === "string" ? categorical ? categories.get(value) ?? NaN : NaN : categorical ? NaN : +value;
   const original = /* @__PURE__ */ new Map();
+  const automatic = automaticChartPalette(data);
   const series = data.map((item, index) => {
     if (!item.id.trim() || identities.has(item.id)) throw new Error("CompositeChart: series ids must be nonempty and unique.");
     identities.add(item.id);
@@ -47,9 +51,9 @@ function resolveCompositeChart(data, orientation = "vertical", primaryAxis, seco
       if ("open" in point) {
         const valid = [point.open, point.high, point.low, point.close].every(Number.isFinite) && point.low <= Math.min(point.open, point.close) && point.high >= Math.max(point.open, point.close);
         samples2.set(x, { x, value: valid ? point.close : null, ...valid ? { candle: point } : {} });
-      } else samples2.set(x, { x, value: typeof point.y === "number" && Number.isFinite(point.y) ? point.y : null });
+      } else samples2.set(x, { x, value: typeof point.y === "number" && Number.isFinite(point.y) ? point.y : null, paint: point.color ? chartColor({ color: point.color, series: item.series }) : void 0 });
     }
-    return { id: item.id, label: item.label, kind: item.kind, axis: item.axis ?? "primary", paint: compositePaint(item.series ?? index % 6 + 1), dash: compositeDash("dash" in item ? item.dash : void 0), samples: samples2, points: [...samples2.values()].sort((a, b) => a.x - b.x) };
+    return { format: (item.axis === "secondary" ? secondaryAxis : primaryAxis)?.format, id: item.id, label: item.label, kind: item.kind, axis: item.axis ?? "primary", paint: chartColor(item, options.palette, automatic), dash: compositeDash("dash" in item ? item.dash : void 0), samples: samples2, points: [...samples2.values()].sort((a, b) => a.x - b.x) };
   });
   const ordered = series.map((item, index) => ({ item, order: data[index].order ?? index })).sort((a, b) => a.order - b.order).map((entry) => entry.item);
   const allSamples = [...original].sort((a, b) => a[0] - b[0]).map(([key, value]) => ({ key, value }));
@@ -68,7 +72,19 @@ function resolveCompositeChart(data, orientation = "vertical", primaryAxis, seco
     if (axis === "secondary" && !secondaryAxis?.label.trim()) throw new Error("CompositeChart: secondary references require a named secondaryAxis.");
     return Number.isFinite(value) ? [{ id: reference.id, label: reference.label, paint: compositePaint(reference.series ?? 6), kind: reference.kind, value, axis }] : [];
   });
-  return { series: ordered, samples, interval, categorical, sampleDomain, primaryDomain: valueDomain(series, "primary", primaryAxis?.domain), secondaryDomain: valueDomain(series, "secondary", secondaryAxis?.domain), references: resolvedReferences };
+  const stacked = (axis, declared) => {
+    if (options.columnMode !== "stacked") return valueDomain(series, axis, declared);
+    const sums = /* @__PURE__ */ new Map();
+    for (const item of series.filter((item2) => item2.kind === "column" && item2.axis === axis)) for (const point of item.points) {
+      if (point.value === null) continue;
+      const sum = sums.get(point.x) ?? [0, 0];
+      sum[point.value >= 0 ? 1 : 0] += point.value;
+      sums.set(point.x, sum);
+    }
+    const stackSeries = { id: "stack", label: "Stack", kind: "column", axis, paint: "", samples: /* @__PURE__ */ new Map(), points: [...sums].flatMap(([x, pair]) => pair.map((value) => ({ x, value }))) };
+    return valueDomain([...series, stackSeries], axis, declared);
+  };
+  return { options, series: ordered, samples, interval, categorical, sampleDomain, primaryDomain: stacked("primary", primaryAxis?.domain), secondaryDomain: stacked("secondary", secondaryAxis?.domain), references: resolvedReferences };
 }
 function formatCompositeSample(value) {
   return value instanceof Date ? value.toISOString().replace("T", " ").replace(/\.000Z$/, " UTC") : String(value);
@@ -120,6 +136,12 @@ function compositeLayout(model, width, height, horizontal = false, presentation 
   const sampleLabels = model.samples.map((sample) => formatX(sample.value));
   const textRoom = (values) => axisLabelWidth(values) + 10;
   const padding = presentation === "minimal" ? { top: 2, right: 2, bottom: 2, left: 2 } : horizontal ? { top: secondary ? 24 : 10, right: Math.max(textRoom([...primaryValues.map(primaryFormat), ...secondaryValues.map(secondaryFormat)]) / 2, 10), bottom: 24, left: textRoom(sampleLabels) } : { top: 10, right: Math.max(secondary ? textRoom(secondaryValues.map(secondaryFormat)) : 0, textRoom(sampleLabels) / 2), bottom: 24, left: Math.max(textRoom(primaryValues.map(primaryFormat)), textRoom(sampleLabels) / 2) };
+  if (!horizontal && presentation === "full" && model.options?.categoryLabelAngle) {
+    padding.bottom = Math.min(height * 0.4, Math.max(40, textRoom(sampleLabels) * Math.abs(Math.sin(model.options.categoryLabelAngle * Math.PI / 180)) + 18));
+    padding.left = textRoom(primaryValues.map(primaryFormat));
+    padding.right = Math.max(12, secondary ? textRoom(secondaryValues.map(secondaryFormat)) : 12);
+  }
+  if (model.options?.dataLabels === "value" || model.options?.showTotals) padding.top = Math.max(padding.top, 24);
   if (padding.left + padding.right > width * 0.7) {
     const ratio = width * 0.7 / (padding.left + padding.right);
     padding.left *= ratio;
@@ -131,7 +153,7 @@ function compositeLayout(model, width, height, horizontal = false, presentation 
   let lastEnd = -Infinity;
   for (const sample of model.samples) {
     const label = formatX(sample.value), position = compositeProject(sample.key, model.sampleDomain, sampleLength);
-    const extent = horizontal ? 16 : axisLabelWidth([label]) + 8;
+    const extent = horizontal || model.options?.categoryLabelAngle ? 16 : axisLabelWidth([label]) + 8;
     const start = position - extent / 2, end = position + extent / 2;
     if (start < lastEnd || start < -0.5 || end > sampleLength + 0.5 || horizontal && axisLabelWidth([label]) > padding.left - 6) continue;
     sampleTicks.push({ value: sample.key, label, position });

@@ -15,6 +15,7 @@ export function SettingsAppearance() {
       language: settingsLanguage(language),
       scheme: theme.colorScheme(),
       theme: theme.themeId(),
+      density: settings.appearance.density(),
       themes: theme.ids().map((id) => ({ value: id, label: theme.name(id) })),
       fonts: {
         ui: settings.appearance.uiFont(),
@@ -25,6 +26,7 @@ export function SettingsAppearance() {
     loadThemes: () => theme.loadThemes(),
     setScheme: theme.setColorScheme,
     setTheme: theme.setTheme,
+    setDensity: settings.appearance.setDensity,
     fonts: {
       ui: settings.appearance.setUIFont,
       code: settings.appearance.setFont,

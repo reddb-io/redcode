@@ -42,7 +42,7 @@ function Treemap(props) {
     setSelected(id);
   }
   const all = treemapNodes(data);
-  const root = all.find((n) => n.id === rootId) ?? data;
+  const root = all.find((n) => n.id === rootId) ?? all[0];
   const tree = hierarchy(root, (d) => d.children).sum((d) => d.children?.length ? 0 : d.value ?? 0).sort(
     (a, b) => (b.value ?? 0) - (a.value ?? 0) || a.data.id.localeCompare(b.data.id)
   );
@@ -74,7 +74,7 @@ function Treemap(props) {
               return /* @__PURE__ */ jsx(Fragment, { children: nodes.filter((n) => n.depth > 0 || !n.children).map((node, index) => {
                 const nw = node.x1 - node.x0;
                 const nh = node.y1 - node.y0;
-                const color = seriesColor(node.data.series);
+                const color = seriesColor(node.data.series, node.data.color);
                 return /* @__PURE__ */ jsx(Fragment2, { children: /* @__PURE__ */ jsxs(
                   Mark,
                   {

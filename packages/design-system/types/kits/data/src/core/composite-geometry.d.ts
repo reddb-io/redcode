@@ -4,6 +4,8 @@ export interface CompositeRect {
     y: number;
     width: number;
     height: number;
+    paint?: string;
+    value?: number;
 }
 export interface CompositeCandle extends CompositeRect {
     key: number;
@@ -19,6 +21,7 @@ export declare function compositeGeometry(model: CompositeModel, layout: Composi
         fill: string;
         rects: CompositeRect[];
         candles: CompositeCandle[];
+        format?: import("./histogram").ChartNumberFormat;
         id: string;
         label: string;
         kind: import("./composite-chart").CompositeChartSeries["kind"];
@@ -27,6 +30,14 @@ export declare function compositeGeometry(model: CompositeModel, layout: Composi
         dash?: string;
         points: ResolvedCompositePoint[];
         samples: Map<number, ResolvedCompositePoint>;
+    }[];
+    totals: {
+        format: import("./histogram").ChartNumberFormat | undefined;
+        x: number;
+        y: number;
+        key: number;
+        axis: "primary" | "secondary";
+        value: number;
     }[];
     references: {
         x1: number;
@@ -41,4 +52,11 @@ export declare function compositeGeometry(model: CompositeModel, layout: Composi
         axis: "primary" | "secondary";
     }[];
     cursor: (key: number) => number;
+};
+/** Values yield to geometry rather than colliding in dense category comparisons. */
+export declare function compositeColumnLabel(rect: CompositeRect, layout: CompositeLayout, stacked: boolean, format: (value: number) => string): {
+    text: string;
+    visible: boolean;
+    x: number;
+    y: number;
 };

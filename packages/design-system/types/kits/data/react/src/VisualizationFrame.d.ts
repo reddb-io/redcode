@@ -14,6 +14,7 @@ interface VisualizationFrameProps {
         id: string;
         label: string;
         series?: VisualizationSeries;
+        color?: import("@reddb-io/design-system/base/recipes").ColorToken;
     }[];
     selected?: string;
     onSelect?: (id: string) => void;

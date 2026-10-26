@@ -45,6 +45,7 @@ export declare function schemaLayout(data: SchemaData, width: number, fieldLimit
         group?: string;
         kind?: "entity" | "table" | "join" | "aggregate";
         indexes?: readonly string[];
+        color?: import("./core/chart-color").ColorToken;
         id: string;
         label: string;
         description?: string;

@@ -104,6 +104,7 @@ describe("settings schema", () => {
         followUpBehavior: "steer",
       },
       appearance: {
+        density: "tiny",
         fontSize: 14,
         mono: "",
         sans: "",
@@ -133,7 +134,13 @@ describe("settings schema", () => {
         reasoningMode: 3,
         followUpBehavior: "invalid",
       },
-      appearance: { fontSize: "large", mono: "Custom Mono", tabLayout: "vertical", showProjectName: true },
+      appearance: {
+        density: "invalid",
+        fontSize: "large",
+        mono: "Custom Mono",
+        tabLayout: "vertical",
+        showProjectName: true,
+      },
       permissions: { autoApprove: true },
       workspaces: { defaultDestination: "new", lastUsed: { good: "workspace", bad: true } },
       keybinds: { good: "ctrl+k", bad: 3 },
@@ -149,6 +156,7 @@ describe("settings schema", () => {
     })
     // The retired vertical tab layout decodes away.
     expect(settings.appearance).toEqual({
+      density: "tiny",
       fontSize: 14,
       mono: "Custom Mono",
       sans: "",

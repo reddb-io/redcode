@@ -1,7 +1,10 @@
+import { type ColorToken } from "@reddb-io/design-system/base/recipes";
 /** Shared, browser-safe contracts. No renderer, layout engine or component registry. */
 export type VisualizationSize = "sm" | "md" | "lg";
 export type VisualizationSeries = 1 | 2 | 3 | 4 | 5 | 6;
 export interface VisualizationItem {
+    /** Explicit scheme-aware color custom-property name. */
+    color?: ColorToken;
     id: string;
     label: string;
     description?: string;
@@ -19,7 +22,7 @@ export declare const ink = "var(--reddb-color-foreground)";
 export declare const mutedInk = "var(--reddb-color-ink-muted)";
 export declare const edge = "var(--reddb-color-muted)";
 export declare const surface = "var(--reddb-color-elevation-raised-surface)";
-export declare function seriesColor(series?: VisualizationSeries): string;
+export declare function seriesColor(series?: VisualizationSeries, color?: ColorToken): string;
 export declare function tint(color: string, amount?: number): string;
 export declare function unique(items: readonly {
     id: string;

@@ -131,8 +131,8 @@ function Diagram(props) {
                 const left = n.x - n.width / 2;
                 const top = n.y - n.height / 2;
                 const active = selected === n.id;
-                const fill = n.series ? tint(seriesColor(n.series), active ? 16 : 8) : active ? tint(ink, 8) : surface;
-                const stroke = active ? ink : n.series ? tint(seriesColor(n.series), 55) : tint(ink, 36);
+                const fill = n.series ? tint(seriesColor(n.series, n.color), active ? 16 : 8) : active ? tint(ink, 8) : surface;
+                const stroke = active ? ink : n.series ? tint(seriesColor(n.series, n.color), 55) : tint(ink, 36);
                 return /* @__PURE__ */ jsx(Fragment2, { children: /* @__PURE__ */ jsxs(
                   Mark,
                   {

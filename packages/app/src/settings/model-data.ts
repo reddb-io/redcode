@@ -14,6 +14,7 @@ export type FollowUpBehavior = Settings["general"]["followUpBehavior"]
 export type NotificationSettings = Settings["notifications"]
 
 export type SoundSettings = Settings["sounds"]
+export type AppearanceDensity = Settings["appearance"]["density"]
 
 export const monoDefault = "JetBrains Mono"
 export const sansDefault = "Space Grotesk"
@@ -109,6 +110,7 @@ const generalSchema = Persistence.struct({
 })
 
 const appearanceSchema = Persistence.struct({
+  density: Schema.Literals(["tiny", "compact", "comfortable"]),
   fontSize: Schema.Number,
   mono: Schema.String,
   sans: Schema.String,
@@ -264,7 +266,7 @@ export const defaultSettings: Settings = {
     followUpBehavior: "steer",
   },
   // The retired `tabLayout: "vertical"` decodes away: the rail's sidemenu, open by default, replaced it.
-  appearance: { fontSize: 14, mono: "", sans: "", terminal: "" },
+  appearance: { density: "tiny", fontSize: 14, mono: "", sans: "", terminal: "" },
   keybinds: {},
   permissions: { autoApprove: false },
   workspaces: { defaultDestination: "last-used", lastUsed: {} },

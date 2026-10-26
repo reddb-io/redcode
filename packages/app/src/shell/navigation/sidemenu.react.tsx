@@ -39,7 +39,8 @@ export function NavigationSidemenu(props: NavigationProps) {
   const [menu, setMenu] = useState<string>()
   const now = useNow(60_000)
   const tree = view.tree
-  const empty = tree.filtered && !tree.pinned.length && !tree.projects.length && !tree.recents.length
+  const empty =
+    tree.filtered && !tree.pinned.length && !tree.projects.length && !tree.recents.length && !tree.activity.length
   const filter = useRef<HTMLInputElement>(null)
   const rows = { ...props, now, menu, onMenu: setMenu }
   // A filtered, collapsed or removed row must not retain the controlled menu selection.
@@ -52,6 +53,7 @@ export function NavigationSidemenu(props: NavigationProps) {
         ...(item.expanded ? item.sessions.map((item) => `session:${item.session.id}`) : []),
       ]),
       ...tree.recents.map((item) => `recent:session:${item.session.id}`),
+      ...tree.activity.flatMap((group) => group.items.map((item) => `activity:session:${item.session.id}`)),
     ]
     if (!ids.includes(menu)) setMenu(undefined)
   }, [tree, menu])
@@ -101,13 +103,31 @@ export function NavigationSidemenu(props: NavigationProps) {
           )}
         </label>
       </div>
+      <div
+        role="group"
+        aria-label={language.t("navigation.grouping")}
+        className="mx-2 mb-2 flex rounded-md bg-muted p-0.5"
+      >
+        {(["attention", "projects"] as const).map((mode) => (
+          <Button
+            key={mode}
+            size="sm"
+            variant="ghost"
+            aria-pressed={tree.grouping === mode}
+            onClick={() => props.navigation.grouping.set(mode)}
+            className={`min-w-0 flex-1 ${tree.grouping === mode ? "bg-elevation-raised-surface font-medium" : "text-ink-muted"}`}
+          >
+            {language.t(mode === "attention" ? "navigation.byAttention" : "navigation.byProject")}
+          </Button>
+        ))}
+      </div>
       <ScrollArea
         variant="plain"
         label={language.t("sidebar.nav.projectsAndSessions")}
         className="min-h-0 flex-1"
         data-slot="navigation-scroll"
       >
-        <div className="flex flex-col gap-3 px-2 pb-4">
+        <div className="flex flex-col gap-[var(--reddb-spatial-layout-gap-sm)] px-2 pb-4">
           {empty && (
             <p className="m-0 px-2 py-3 text-caption text-ink-muted">
               {language.t("navigation.filter.empty", { query: view.query.trim() })}
@@ -122,7 +142,17 @@ export function NavigationSidemenu(props: NavigationProps) {
               </ul>
             </NavigationSection>
           )}
-          {(!tree.filtered || tree.projects.length > 0) && (
+          {tree.grouping === "attention" &&
+            tree.activity.map((group) => (
+              <NavigationSection {...props} key={group.id} id={group.id} title={language.t(`navigation.${group.id}`)}>
+                <ul className={nav.list({ class: "gap-1" })}>
+                  {group.items.map((item) => (
+                    <SessionRow key={item.session.id} {...rows} item={item} idPrefix="activity:" activity />
+                  ))}
+                </ul>
+              </NavigationSection>
+            ))}
+          {tree.grouping === "projects" && (!tree.filtered || tree.projects.length > 0) && (
             <NavigationSection
               {...props}
               id="projects"
@@ -167,7 +197,7 @@ export function NavigationSidemenu(props: NavigationProps) {
               )}
             </NavigationSection>
           )}
-          {tree.recents.length > 0 && (
+          {tree.grouping === "projects" && tree.recents.length > 0 && (
             <NavigationSection {...props} id="recents" title={language.t("navigation.recents")}>
               <div className="flex flex-col gap-2">
                 {groupByDay(
@@ -407,7 +437,12 @@ function ProjectNode(props: RowProps & { project: NavigationView["tree"]["projec
 }
 
 function SessionRow(
-  props: RowProps & { item: NavigationView["tree"]["recents"][number]; nested?: boolean; idPrefix?: string },
+  props: RowProps & {
+    item: NavigationView["tree"]["recents"][number]
+    nested?: boolean
+    idPrefix?: string
+    activity?: boolean
+  },
 ) {
   const language = props.view.language
   const id = props.item.session.id
@@ -443,7 +478,7 @@ function SessionRow(
           selected: current,
           focus: "inset",
           class: navItem({ current }).root({
-            class: `min-w-0 flex-1 gap-2 pe-2 text-start text-body ${props.nested ? "ps-[calc(var(--reddb-spatial-inset-sm)+1.25rem)]" : ""} ${sessionAwaitsUser(state.status) ? "text-foreground" : ""}`,
+            class: `min-w-0 flex-1 gap-2 pe-2 text-start text-body ${props.activity ? "h-auto min-h-[calc(var(--line-height-base)+var(--line-height-compact)+2*var(--reddb-spatial-gap-md))] py-[var(--reddb-spatial-gap-md)]" : ""} ${props.nested ? "ps-[calc(var(--reddb-spatial-inset-sm)+1.25rem)]" : ""} ${sessionAwaitsUser(state.status) ? "text-foreground" : ""}`,
           }),
         })}
         onClick={open}
@@ -465,8 +500,18 @@ function SessionRow(
             )
           )}
         </span>
-        <span dir="auto" className={navItem().label({ class: "min-w-0 flex-1" })}>
-          {sessionLabel(props.item.session)}
+        <span dir="auto" className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className={navItem().label({ class: "min-w-0 font-medium" })}>{sessionLabel(props.item.session)}</span>
+          {props.activity && (
+            <span className="truncate text-caption text-ink-muted">
+              {[
+                props.item.project?.name ?? props.item.project?.worktree ?? props.item.session.location.directory,
+                state.status ? language.t(`navigation.status.${state.status}`) : undefined,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </span>
+          )}
         </span>
         <span
           className={`shrink-0 text-caption tabular-nums text-ink-muted group-hover/row:invisible group-focus-within/row:invisible ${props.menu === menuID ? "invisible" : ""}`}

@@ -1,4 +1,4 @@
-import { type VisualizationItem, type VisualizationSeries } from "./visualization";
+import { type VisualizationItem } from "./visualization";
 export interface SankeyNode extends VisualizationItem {
 }
 export interface SankeyLink extends VisualizationItem {
@@ -12,21 +12,16 @@ export interface SankeyData {
 }
 /** Validate before handing fresh copies to LayerChart's mutating layout engine. */
 export declare function sankeyData(data: SankeyData): {
-    nodes: {
-        series: VisualizationSeries;
-        id: string;
-        label: string;
-        description?: string;
-        href?: string;
-    }[];
+    nodes: SankeyNode[];
     links: {
         source: string;
         target: string;
         value: number;
+        color?: import("./core/chart-color").ColorToken;
         id: string;
         label: string;
         description?: string;
-        series?: VisualizationSeries;
+        series?: import("./visualization").VisualizationSeries;
         href?: string;
     }[];
 };

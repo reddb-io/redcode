@@ -1,3 +1,4 @@
+import { type ColorToken, type ChartPalette } from "./chart-color";
 import type { ChartTimeRange } from "../chart";
 import { type ChartNumberFormat, type ChartSeries } from "../chart";
 /** A shared observation coordinate. String categories cannot be mixed with numbers or Dates. */
@@ -8,6 +9,8 @@ export interface CompositePoint {
     x: CompositeX;
     /** Observed value, or null when unavailable. */
     y: number | null;
+    /** Optional observation color token, useful for category rankings. */
+    color?: ColorToken;
 }
 /** An OHLC observation; invalid bounds are omitted rather than repaired. */
 export interface CandlePoint {
@@ -23,6 +26,8 @@ export interface CandlePoint {
     close: number;
 }
 interface CompositeSeriesIdentity {
+    /** Explicit color token, overriding the id palette and series role. */
+    color?: ColorToken;
     /** Unique stable identity used by legend state. */
     id: string;
     /** Visible series name. */
@@ -82,8 +87,10 @@ export interface ResolvedCompositePoint {
     x: number;
     value: number | null;
     candle?: CandlePoint;
+    paint?: string;
 }
 export interface ResolvedCompositeSeries {
+    format?: ChartNumberFormat;
     id: string;
     label: string;
     kind: CompositeChartSeries["kind"];
@@ -97,7 +104,25 @@ export interface CompositeSample {
     key: number;
     value: CompositeX;
 }
+/** Appearance and stacking shared by the native plots. */
+export interface CompositeOptions {
+    /** Stable series-id color token map. */
+    palette?: ChartPalette;
+    /** Grouped columns by default, or signed stacks on each value axis. */
+    columnMode?: "grouped" | "stacked";
+    /** Fraction of each observation slot left empty, from zero to less than one; defaults to 0.28. */
+    barPadding?: number;
+    /** Category-label rotation on vertical plots; defaults to zero. */
+    categoryLabelAngle?: 0 | -45 | -60;
+    /** Line and candle stroke width in drawing pixels; omitted, preserves 1.5 for lines and 1 for candles. */
+    strokeWidth?: number;
+    /** Exact values within stacks or beyond grouped columns. Defaults to none. */
+    dataLabels?: "none" | "value";
+    /** Show totals above positive and below negative stacks. Defaults to false. */
+    showTotals?: boolean;
+}
 export interface CompositeModel {
+    options: CompositeOptions;
     series: ResolvedCompositeSeries[];
     samples: CompositeSample[];
     sampleDomain: [number, number];
@@ -117,7 +142,7 @@ export interface CompositeModel {
 export declare const compositePaint: (series?: ChartSeries) => string;
 export declare const compositeDash: (dash?: "solid" | "dashed" | "dotted") => "6 3" | "2 3" | undefined;
 /** Validate identities/scales and normalize coordinates once, without changing caller data. */
-export declare function resolveCompositeChart(data: readonly CompositeChartSeries[], orientation?: "vertical" | "horizontal", primaryAxis?: CompositeAxis, secondaryAxis?: CompositeAxis, references?: readonly CompositeReference[], timeRange?: ChartTimeRange): CompositeModel;
+export declare function resolveCompositeChart(data: readonly CompositeChartSeries[], orientation?: "vertical" | "horizontal", primaryAxis?: CompositeAxis, secondaryAxis?: CompositeAxis, references?: readonly CompositeReference[], timeRange?: ChartTimeRange, options?: CompositeOptions): CompositeModel;
 /** Exact, timezone-independent default sample description. */
 export declare function formatCompositeSample(value: CompositeX): string;
 /** Compact default tick labels; exact values remain in the shared readout. */

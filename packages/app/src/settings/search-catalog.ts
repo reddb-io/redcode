@@ -101,6 +101,13 @@ export const clientSettings: Entry<SettingsRootTab>[] = [
   { tab: "appearance", label: "settings.general.row.theme.title", target: "settings-theme" },
   {
     tab: "appearance",
+    label: "settings.appearance.density.title",
+    description: "settings.appearance.density.description",
+    target: "settings-density",
+    keywords: "spacing compact comfortable dense",
+  },
+  {
+    tab: "appearance",
     label: "settings.general.row.uiFont.title",
     target: "settings-ui-font",
     keywords: "interface typeface",

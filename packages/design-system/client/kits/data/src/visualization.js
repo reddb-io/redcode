@@ -1,9 +1,10 @@
+import { tokenColor } from "@reddb-io/design-system/base/recipes";
 const ink = "var(--reddb-color-foreground)";
 const mutedInk = "var(--reddb-color-ink-muted)";
 const edge = "var(--reddb-color-muted)";
 const surface = "var(--reddb-color-elevation-raised-surface)";
-function seriesColor(series = 1) {
-  return `var(--reddb-color-series-${series})`;
+function seriesColor(series = 1, color) {
+  return tokenColor(color, `var(--reddb-color-series-${series})`);
 }
 function tint(color, amount = 15) {
   return `color-mix(in srgb, ${color} ${amount}%, var(--reddb-color-background))`;

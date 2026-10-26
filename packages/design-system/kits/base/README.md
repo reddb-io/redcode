@@ -1496,3 +1496,11 @@ documents remove plaintext from the rendered DOM. Handle false callbacks by
 clearing the supplied value as well. The component stores no credentials and
 provides no access control; masking does not make client-held plaintext secret.
 See `/kit/secret-value` and `/examples/operations-workbench` for both flavors.
+
+`RadialProgress` also accepts relative ring `thickness`, optional pixel `diameter`,
+a token-name `color`, and a custom `center` snippet/render function receiving
+`{ value, percent, determinate }`. Its original defaults and progressbar semantics
+remain intact. `RadialContent` supplies a reusable noninteractive center with
+`avatar`, `title`, `value` and `description`; allow sufficient diameter for all
+content. Countdowns supply remaining values from the application; the component
+creates no timers. Omitted values remain indeterminate and honor reduced motion.

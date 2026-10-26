@@ -1,3 +1,4 @@
+import { type ColorToken } from "./chart-color";
 import type { ChartSeries } from "../chart";
 export interface BreakdownItem {
     /** Stable group identity, retained through sorting and refreshes. */
@@ -8,6 +9,8 @@ export interface BreakdownItem {
     value: number;
     /** Explicit DS Series Role for identity across related charts. */
     series?: ChartSeries;
+    /** Optional color custom-property name for this group. */
+    color?: ColorToken;
 }
 export declare function breakdownItems(items: readonly BreakdownItem[]): {
     fraction: number;
@@ -20,4 +23,6 @@ export declare function breakdownItems(items: readonly BreakdownItem[]): {
     value: number;
     /** Explicit DS Series Role for identity across related charts. */
     series?: ChartSeries;
+    /** Optional color custom-property name for this group. */
+    color?: ColorToken;
 }[];

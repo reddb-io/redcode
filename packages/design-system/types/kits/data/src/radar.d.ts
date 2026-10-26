@@ -1,4 +1,4 @@
-import { type VisualizationItem, type VisualizationSeries } from "./visualization";
+import { type VisualizationItem } from "./visualization";
 export interface RadarAxis {
     id: string;
     label: string;
@@ -9,14 +9,7 @@ export interface RadarAxis {
 export interface RadarSeries extends VisualizationItem {
     values: Readonly<Record<string, number | null>>;
 }
-export declare function radarData(axes: readonly RadarAxis[], data: readonly RadarSeries[]): {
-    series: VisualizationSeries;
-    values: Readonly<Record<string, number | null>>;
-    id: string;
-    label: string;
-    description?: string;
-    href?: string;
-}[];
+export declare function radarData(axes: readonly RadarAxis[], data: readonly RadarSeries[]): RadarSeries[];
 export declare function radarPoint(index: number, count: number, fraction: number, cx: number, cy: number, radius: number): {
     x: number;
     y: number;

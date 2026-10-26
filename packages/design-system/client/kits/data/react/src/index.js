@@ -46,7 +46,11 @@ import { SceneViewport } from "./SceneViewport.js";
 import { StatusBreakdown } from "./StatusBreakdown.js";
 import { CompositeChart } from "./CompositeChart.js";
 import { Candlestick } from "./Candlestick.js";
+import { PieChart } from "./PieChart.js";
+import { DonutChart } from "./DonutChart.js";
+import { BarChart } from "./BarChart.js";
 export {
+  BarChart,
   BreakdownBar,
   Candlestick,
   CodeField,
@@ -54,6 +58,7 @@ export {
   Diagram,
   Diff,
   DocumentViewer,
+  DonutChart,
   EntityRelationship,
   EventLog,
   ExplodedLayers,
@@ -72,6 +77,7 @@ export {
   MetricStrip,
   ObjectStack,
   PanZoomViewport,
+  PieChart,
   Quadrant,
   QueueView,
   Radar,

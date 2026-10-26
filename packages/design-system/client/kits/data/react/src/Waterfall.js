@@ -106,8 +106,8 @@ function Waterfall(props) {
                         y: Math.min(y1, y2),
                         width: band * 0.74,
                         height: Math.max(1, Math.abs(y2 - y1)),
-                        fill: step.kind !== "delta" ? tint(seriesColor(step.series), 30) : step.amount < 0 ? "var(--reddb-color-background)" : tint(seriesColor(step.series), 14),
-                        stroke: selected === step.id ? ink : seriesColor(step.series),
+                        fill: step.kind !== "delta" ? tint(seriesColor(step.series, step.color), 30) : step.amount < 0 ? "var(--reddb-color-background)" : tint(seriesColor(step.series, step.color), 14),
+                        stroke: selected === step.id ? ink : seriesColor(step.series, step.color),
                         strokeWidth: selected === step.id ? 2.5 : 1.5
                       }
                     ),

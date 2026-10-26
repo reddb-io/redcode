@@ -493,6 +493,10 @@
       "types": "./types/kits/base/react/src/QuoteSlide.d.ts",
       "default": "./client/kits/base/react/src/QuoteSlide.js"
     },
+    "./base/RadialContent": {
+      "types": "./types/kits/base/react/src/RadialContent.d.ts",
+      "default": "./client/kits/base/react/src/RadialContent.js"
+    },
     "./base/RadialProgress": {
       "types": "./types/kits/base/react/src/RadialProgress.d.ts",
       "default": "./client/kits/base/react/src/RadialProgress.js"
@@ -642,6 +646,10 @@
       "default": "./client/kits/base/src/recipes.js"
     },
     "./color": "./layers/color/src/index.ts",
+    "./data/BarChart": {
+      "types": "./types/kits/data/react/src/BarChart.d.ts",
+      "default": "./client/kits/data/react/src/BarChart.js"
+    },
     "./data/BreakdownBar": {
       "types": "./types/kits/data/react/src/BreakdownBar.d.ts",
       "default": "./client/kits/data/react/src/BreakdownBar.js"
@@ -669,6 +677,10 @@
     "./data/DocumentViewer": {
       "types": "./types/kits/data/react/src/DocumentViewer.d.ts",
       "default": "./client/kits/data/react/src/DocumentViewer.js"
+    },
+    "./data/DonutChart": {
+      "types": "./types/kits/data/react/src/DonutChart.d.ts",
+      "default": "./client/kits/data/react/src/DonutChart.js"
     },
     "./data/EntityRelationship": {
       "types": "./types/kits/data/react/src/EntityRelationship.d.ts",
@@ -741,6 +753,10 @@
     "./data/PanZoomViewport": {
       "types": "./types/kits/data/react/src/PanZoomViewport.d.ts",
       "default": "./client/kits/data/react/src/PanZoomViewport.js"
+    },
+    "./data/PieChart": {
+      "types": "./types/kits/data/react/src/PieChart.d.ts",
+      "default": "./client/kits/data/react/src/PieChart.js"
     },
     "./data/Quadrant": {
       "types": "./types/kits/data/react/src/Quadrant.d.ts",
@@ -850,149 +866,93 @@
       "types": "./types/kits/base/src/*.variants.d.ts",
       "default": "./client/kits/base/src/*.variants.js"
     },
-    "./contracts/operational": {
-      "types": "./types/kits/app/src/operational.variants.d.ts",
-      "default": "./client/kits/app/src/operational.variants.js"
-    },
-    "./contracts/error-boundary": {
-      "types": "./types/kits/app/src/error-boundary.variants.d.ts",
-      "default": "./client/kits/app/src/error-boundary.variants.js"
-    },
     "./contracts/change-review": {
       "types": "./types/kits/app/src/change-review.variants.d.ts",
       "default": "./client/kits/app/src/change-review.variants.js"
-    },
-    "./contracts/workspace-tabs": {
-      "types": "./types/kits/app/src/workspace-tabs.variants.d.ts",
-      "default": "./client/kits/app/src/workspace-tabs.variants.js"
-    },
-    "./contracts/entity-journey": {
-      "types": "./types/kits/app/src/entity-journey.variants.d.ts",
-      "default": "./client/kits/app/src/entity-journey.variants.js"
     },
     "./contracts/entity-inspector": {
       "types": "./types/kits/app/src/entity-inspector.variants.d.ts",
       "default": "./client/kits/app/src/entity-inspector.variants.js"
     },
+    "./contracts/entity-journey": {
+      "types": "./types/kits/app/src/entity-journey.variants.d.ts",
+      "default": "./client/kits/app/src/entity-journey.variants.js"
+    },
+    "./contracts/error-boundary": {
+      "types": "./types/kits/app/src/error-boundary.variants.d.ts",
+      "default": "./client/kits/app/src/error-boundary.variants.js"
+    },
+    "./contracts/operational": {
+      "types": "./types/kits/app/src/operational.variants.d.ts",
+      "default": "./client/kits/app/src/operational.variants.js"
+    },
     "./contracts/shortcut-help": {
       "types": "./types/kits/app/src/shortcut-help.variants.d.ts",
       "default": "./client/kits/app/src/shortcut-help.variants.js"
     },
-    "./contracts/split-view": {
-      "types": "./types/kits/app/src/primitives/split-view.variants.d.ts",
-      "default": "./client/kits/app/src/primitives/split-view.variants.js"
-    },
-    "./contracts/node-badge": {
-      "types": "./types/kits/app/src/primitives/node-badge.variants.d.ts",
-      "default": "./client/kits/app/src/primitives/node-badge.variants.js"
+    "./contracts/workspace-tabs": {
+      "types": "./types/kits/app/src/workspace-tabs.variants.d.ts",
+      "default": "./client/kits/app/src/workspace-tabs.variants.js"
     },
     "./contracts/list-row": {
       "types": "./types/kits/app/src/primitives/list-row.variants.d.ts",
       "default": "./client/kits/app/src/primitives/list-row.variants.js"
     },
-    "./contracts/pill": {
-      "types": "./types/kits/app/src/primitives/pill.variants.d.ts",
-      "default": "./client/kits/app/src/primitives/pill.variants.js"
-    },
     "./contracts/nav-item": {
       "types": "./types/kits/app/src/primitives/nav-item.variants.d.ts",
       "default": "./client/kits/app/src/primitives/nav-item.variants.js"
     },
-    "./contracts/sidebar-panel": {
-      "types": "./types/kits/app/src/composites/sidebar-panel.variants.d.ts",
-      "default": "./client/kits/app/src/composites/sidebar-panel.variants.js"
+    "./contracts/node-badge": {
+      "types": "./types/kits/app/src/primitives/node-badge.variants.d.ts",
+      "default": "./client/kits/app/src/primitives/node-badge.variants.js"
     },
-    "./contracts/review": {
-      "types": "./types/kits/app/src/composites/review.variants.d.ts",
-      "default": "./client/kits/app/src/composites/review.variants.js"
+    "./contracts/pill": {
+      "types": "./types/kits/app/src/primitives/pill.variants.d.ts",
+      "default": "./client/kits/app/src/primitives/pill.variants.js"
     },
-    "./contracts/chat-message": {
-      "types": "./types/kits/app/src/composites/chat-message.variants.d.ts",
-      "default": "./client/kits/app/src/composites/chat-message.variants.js"
-    },
-    "./contracts/task-list": {
-      "types": "./types/kits/app/src/composites/task-list.variants.d.ts",
-      "default": "./client/kits/app/src/composites/task-list.variants.js"
-    },
-    "./contracts/incentive": {
-      "types": "./types/kits/app/src/composites/incentive.variants.d.ts",
-      "default": "./client/kits/app/src/composites/incentive.variants.js"
-    },
-    "./contracts/store-navigation": {
-      "types": "./types/kits/app/src/composites/store-navigation.variants.d.ts",
-      "default": "./client/kits/app/src/composites/store-navigation.variants.js"
-    },
-    "./contracts/product-feature": {
-      "types": "./types/kits/app/src/composites/product-feature.variants.d.ts",
-      "default": "./client/kits/app/src/composites/product-feature.variants.js"
-    },
-    "./contracts/settings-row": {
-      "types": "./types/kits/app/src/composites/settings-row.variants.d.ts",
-      "default": "./client/kits/app/src/composites/settings-row.variants.js"
-    },
-    "./contracts/product-quickview": {
-      "types": "./types/kits/app/src/composites/product-quickview.variants.d.ts",
-      "default": "./client/kits/app/src/composites/product-quickview.variants.js"
-    },
-    "./contracts/context-menu": {
-      "types": "./types/kits/app/src/composites/context-menu.variants.d.ts",
-      "default": "./client/kits/app/src/composites/context-menu.variants.js"
-    },
-    "./contracts/category-filter": {
-      "types": "./types/kits/app/src/composites/category-filter.variants.d.ts",
-      "default": "./client/kits/app/src/composites/category-filter.variants.js"
-    },
-    "./contracts/menubar": {
-      "types": "./types/kits/app/src/composites/menubar.variants.d.ts",
-      "default": "./client/kits/app/src/composites/menubar.variants.js"
-    },
-    "./contracts/order-history": {
-      "types": "./types/kits/app/src/composites/order-history.variants.d.ts",
-      "default": "./client/kits/app/src/composites/order-history.variants.js"
-    },
-    "./contracts/speed-dial": {
-      "types": "./types/kits/app/src/composites/speed-dial.variants.d.ts",
-      "default": "./client/kits/app/src/composites/speed-dial.variants.js"
+    "./contracts/split-view": {
+      "types": "./types/kits/app/src/primitives/split-view.variants.d.ts",
+      "default": "./client/kits/app/src/primitives/split-view.variants.js"
     },
     "./contracts/action-panel": {
       "types": "./types/kits/app/src/composites/action-panel.variants.d.ts",
       "default": "./client/kits/app/src/composites/action-panel.variants.js"
     },
-    "./contracts/category-preview": {
-      "types": "./types/kits/app/src/composites/category-preview.variants.d.ts",
-      "default": "./client/kits/app/src/composites/category-preview.variants.js"
-    },
-    "./contracts/product-overview": {
-      "types": "./types/kits/app/src/composites/product-overview.variants.d.ts",
-      "default": "./client/kits/app/src/composites/product-overview.variants.js"
-    },
     "./contracts/activity-feed": {
       "types": "./types/kits/app/src/composites/activity-feed.variants.d.ts",
       "default": "./client/kits/app/src/composites/activity-feed.variants.js"
     },
-    "./contracts/sidebar-navigation": {
-      "types": "./types/kits/app/src/composites/sidebar-navigation.variants.d.ts",
-      "default": "./client/kits/app/src/composites/sidebar-navigation.variants.js"
+    "./contracts/application-shell": {
+      "types": "./types/kits/app/src/composites/application-shell.variants.d.ts",
+      "default": "./client/kits/app/src/composites/application-shell.variants.js"
     },
-    "./contracts/page-heading": {
-      "types": "./types/kits/app/src/composites/page-heading.variants.d.ts",
-      "default": "./client/kits/app/src/composites/page-heading.variants.js"
+    "./contracts/bottom-navigation": {
+      "types": "./types/kits/app/src/composites/bottom-navigation.variants.d.ts",
+      "default": "./client/kits/app/src/composites/bottom-navigation.variants.js"
     },
     "./contracts/card-heading": {
       "types": "./types/kits/app/src/composites/card-heading.variants.d.ts",
       "default": "./client/kits/app/src/composites/card-heading.variants.js"
     },
-    "./contracts/order-summary": {
-      "types": "./types/kits/app/src/composites/order-summary.variants.d.ts",
-      "default": "./client/kits/app/src/composites/order-summary.variants.js"
+    "./contracts/category-filter": {
+      "types": "./types/kits/app/src/composites/category-filter.variants.d.ts",
+      "default": "./client/kits/app/src/composites/category-filter.variants.js"
     },
-    "./contracts/multi-column-layout": {
-      "types": "./types/kits/app/src/composites/multi-column-layout.variants.d.ts",
-      "default": "./client/kits/app/src/composites/multi-column-layout.variants.js"
+    "./contracts/category-preview": {
+      "types": "./types/kits/app/src/composites/category-preview.variants.d.ts",
+      "default": "./client/kits/app/src/composites/category-preview.variants.js"
     },
-    "./contracts/sidebar-rail": {
-      "types": "./types/kits/app/src/composites/sidebar-rail.variants.d.ts",
-      "default": "./client/kits/app/src/composites/sidebar-rail.variants.js"
+    "./contracts/chat-message": {
+      "types": "./types/kits/app/src/composites/chat-message.variants.d.ts",
+      "default": "./client/kits/app/src/composites/chat-message.variants.js"
+    },
+    "./contracts/command-palette": {
+      "types": "./types/kits/app/src/composites/command-palette.variants.d.ts",
+      "default": "./client/kits/app/src/composites/command-palette.variants.js"
+    },
+    "./contracts/context-menu": {
+      "types": "./types/kits/app/src/composites/context-menu.variants.d.ts",
+      "default": "./client/kits/app/src/composites/context-menu.variants.js"
     },
     "./contracts/diff": {
       "types": "./types/kits/app/src/composites/diff.variants.d.ts",
@@ -1002,29 +962,85 @@
       "types": "./types/kits/app/src/composites/filter.variants.d.ts",
       "default": "./client/kits/app/src/composites/filter.variants.js"
     },
-    "./contracts/command-palette": {
-      "types": "./types/kits/app/src/composites/command-palette.variants.d.ts",
-      "default": "./client/kits/app/src/composites/command-palette.variants.js"
+    "./contracts/incentive": {
+      "types": "./types/kits/app/src/composites/incentive.variants.d.ts",
+      "default": "./client/kits/app/src/composites/incentive.variants.js"
+    },
+    "./contracts/menubar": {
+      "types": "./types/kits/app/src/composites/menubar.variants.d.ts",
+      "default": "./client/kits/app/src/composites/menubar.variants.js"
+    },
+    "./contracts/multi-column-layout": {
+      "types": "./types/kits/app/src/composites/multi-column-layout.variants.d.ts",
+      "default": "./client/kits/app/src/composites/multi-column-layout.variants.js"
+    },
+    "./contracts/order-history": {
+      "types": "./types/kits/app/src/composites/order-history.variants.d.ts",
+      "default": "./client/kits/app/src/composites/order-history.variants.js"
+    },
+    "./contracts/order-summary": {
+      "types": "./types/kits/app/src/composites/order-summary.variants.d.ts",
+      "default": "./client/kits/app/src/composites/order-summary.variants.js"
+    },
+    "./contracts/page-heading": {
+      "types": "./types/kits/app/src/composites/page-heading.variants.d.ts",
+      "default": "./client/kits/app/src/composites/page-heading.variants.js"
+    },
+    "./contracts/product-feature": {
+      "types": "./types/kits/app/src/composites/product-feature.variants.d.ts",
+      "default": "./client/kits/app/src/composites/product-feature.variants.js"
     },
     "./contracts/product-list": {
       "types": "./types/kits/app/src/composites/product-list.variants.d.ts",
       "default": "./client/kits/app/src/composites/product-list.variants.js"
     },
-    "./contracts/bottom-navigation": {
-      "types": "./types/kits/app/src/composites/bottom-navigation.variants.d.ts",
-      "default": "./client/kits/app/src/composites/bottom-navigation.variants.js"
+    "./contracts/product-overview": {
+      "types": "./types/kits/app/src/composites/product-overview.variants.d.ts",
+      "default": "./client/kits/app/src/composites/product-overview.variants.js"
     },
-    "./contracts/toolbar": {
-      "types": "./types/kits/app/src/composites/toolbar.variants.d.ts",
-      "default": "./client/kits/app/src/composites/toolbar.variants.js"
+    "./contracts/product-quickview": {
+      "types": "./types/kits/app/src/composites/product-quickview.variants.d.ts",
+      "default": "./client/kits/app/src/composites/product-quickview.variants.js"
     },
-    "./contracts/application-shell": {
-      "types": "./types/kits/app/src/composites/application-shell.variants.d.ts",
-      "default": "./client/kits/app/src/composites/application-shell.variants.js"
+    "./contracts/review": {
+      "types": "./types/kits/app/src/composites/review.variants.d.ts",
+      "default": "./client/kits/app/src/composites/review.variants.js"
+    },
+    "./contracts/settings-row": {
+      "types": "./types/kits/app/src/composites/settings-row.variants.d.ts",
+      "default": "./client/kits/app/src/composites/settings-row.variants.js"
     },
     "./contracts/sidebar-layout": {
       "types": "./types/kits/app/src/composites/sidebar-layout.variants.d.ts",
       "default": "./client/kits/app/src/composites/sidebar-layout.variants.js"
+    },
+    "./contracts/sidebar-navigation": {
+      "types": "./types/kits/app/src/composites/sidebar-navigation.variants.d.ts",
+      "default": "./client/kits/app/src/composites/sidebar-navigation.variants.js"
+    },
+    "./contracts/sidebar-panel": {
+      "types": "./types/kits/app/src/composites/sidebar-panel.variants.d.ts",
+      "default": "./client/kits/app/src/composites/sidebar-panel.variants.js"
+    },
+    "./contracts/sidebar-rail": {
+      "types": "./types/kits/app/src/composites/sidebar-rail.variants.d.ts",
+      "default": "./client/kits/app/src/composites/sidebar-rail.variants.js"
+    },
+    "./contracts/speed-dial": {
+      "types": "./types/kits/app/src/composites/speed-dial.variants.d.ts",
+      "default": "./client/kits/app/src/composites/speed-dial.variants.js"
+    },
+    "./contracts/store-navigation": {
+      "types": "./types/kits/app/src/composites/store-navigation.variants.d.ts",
+      "default": "./client/kits/app/src/composites/store-navigation.variants.js"
+    },
+    "./contracts/task-list": {
+      "types": "./types/kits/app/src/composites/task-list.variants.d.ts",
+      "default": "./client/kits/app/src/composites/task-list.variants.js"
+    },
+    "./contracts/toolbar": {
+      "types": "./types/kits/app/src/composites/toolbar.variants.d.ts",
+      "default": "./client/kits/app/src/composites/toolbar.variants.js"
     },
     "./logo/*": {
       "types": "./types/kits/base/src/logo.*.d.ts",

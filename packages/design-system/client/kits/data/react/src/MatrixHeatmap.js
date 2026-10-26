@@ -126,7 +126,7 @@ function MatrixHeatmap(props) {
                           width: Math.max(0, cw - 4),
                           height: Math.max(0, ch - 4),
                           fill: cell?.value == null ? "none" : tint(
-                            seriesColor(cell.series),
+                            seriesColor(cell.series, cell.color),
                             8 + intensity * 48
                           ),
                           stroke: selected === cell?.id ? ink : edge,

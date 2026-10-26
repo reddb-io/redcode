@@ -1,3 +1,4 @@
+import type { ColorToken } from "../chart-color";
 import type { ChartSeries } from "../../chart";
 import type { ChartLoading } from "../../chart-loading";
 import type { HeatmapPoint } from "../heatmap";
@@ -17,6 +18,8 @@ export interface HeatmapContract {
     label?: string;
     /** The Series Role (1–6) the intensity ramp is drawn in. Never the Brand red. */
     series?: ChartSeries;
+    /** Explicit color custom-property name; omitted, keeps the DS series role. */
+    color?: ColorToken;
     /**
          * Fixed drawing width in px. Omitted, the calendar fills its figure's
          * content width and follows it on resize (640 until the figure is measured);

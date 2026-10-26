@@ -1,3 +1,4 @@
+import type { ColorToken } from "../chart-color";
 import type { ChartCurve, ChartSeries, SparklineVariant } from "../../chart";
 import type { ChartLoading } from "../../chart-loading";
 /** Portable Sparkline properties shared by native adapters. */
@@ -13,6 +14,10 @@ export interface SparklineContract {
     label?: string;
     /** The Series Role (1–6) the trend is drawn in. Never the Brand red. */
     series?: ChartSeries;
+    /** Explicit color custom-property name; omitted, keeps the DS series role. */
+    color?: ColorToken;
+    /** Positive line/area outline width in drawing pixels; defaults to 2. */
+    strokeWidth?: number;
     /** `smooth` (default) uses monotone interpolation through the observations without local overshoot; `linear` joins them with straight segments. Applies to line and area; columns are unchanged. Values and statistics are unchanged. */
     curve?: ChartCurve;
     /** Drawing width in px. Omitted, fills its container; an explicit width keeps a fixed drawing. */

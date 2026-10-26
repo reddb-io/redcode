@@ -1,6 +1,7 @@
-export type { VisualizationSize, VisualizationSeries, } from "../../src/visualization";
-export type { ScatterPoint as QuadrantPoint } from "../../src/scatter";
 import type { QuadrantContract } from "../../src/core/contracts/quadrant";
+export type { VisualizationSize, VisualizationSeries } from "../../src/visualization";
+export type { ScatterPoint, ScatterPoint as QuadrantPoint } from "../../src/scatter";
+export type { ScatterScale, ScatterRegion } from "../../src/core/scatter-analysis";
 export interface QuadrantProps extends QuadrantContract {
     /** Reports selection for application-owned filtering or detail navigation. */
     onSelectedChange?: (id: string) => void;

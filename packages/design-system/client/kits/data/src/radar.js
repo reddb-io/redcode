@@ -1,3 +1,4 @@
+import { automaticChartColors } from "./core/chart-color.js";
 import { finite, unique } from "./visualization.js";
 function radarData(axes, data) {
   unique(axes, "Radar axes");
@@ -13,7 +14,7 @@ function radarData(axes, data) {
       if (v != null && (finite(v, axis.id) < low || v > high)) throw new Error(`Radar value outside ${axis.id} domain`);
     }
   }
-  return data.map((item, index) => ({ ...item, series: item.series ?? index % 6 + 1 }));
+  return automaticChartColors(data);
 }
 function radarPoint(index, count, fraction, cx, cy, radius) {
   const angle = index / count * Math.PI * 2 - Math.PI / 2;

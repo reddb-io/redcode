@@ -1,3 +1,5 @@
+import type { ChartPalette } from "../chart-color";
+import type { ColorToken } from "../chart-color";
 import type { ChartTimestamp, ChartTimeRange } from "../../chart";
 import type { TimeSeriesPoint, TimeSeriesDataset, TimeSeriesVariant } from "../../time-series";
 import type { ChartNumberFormat, ChartCurve, ChartSeries, ChartSize, ChartLayout, ChartReadout, ChartHeight } from "../../chart";
@@ -39,6 +41,12 @@ export interface TimeSeriesContract {
     interactive?: boolean;
     /** The Series Role (1–6) the series is drawn in. Never the Brand red. */
     series?: ChartSeries;
+    /** Explicit color custom-property name; omitted, keeps the DS series role. */
+    color?: ColorToken;
+    /** Positive line/area outline width in drawing pixels; defaults to 2. */
+    strokeWidth?: number;
+    /** Dataset-id palette, overridden by a dataset color. */
+    palette?: ChartPalette;
     /**
          * Fixed drawing width in px. Omitted, the series fills its figure's content
          * width and follows it on resize (640 until the figure is measured); the

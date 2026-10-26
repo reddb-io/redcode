@@ -5,5 +5,5 @@ export interface SparklineProps extends SparklineContract {
     /** Extra classes merged onto the chart's root figure. */
     className?: string;
 }
-export declare function Sparkline({ values, label, series, variant, curve, width, height, loading, className, }: SparklineProps): import("react").JSX.Element;
+export declare function Sparkline({ values, label, strokeWidth, series, color, variant, curve, width, height, loading, className, }: SparklineProps): import("react").JSX.Element;
 export default Sparkline;

@@ -297,6 +297,7 @@ export async function mockAgentTasks(page: Page) {
         },
       })
     }
+    if (!new URL(route.request().url()).pathname.startsWith("/api/worktree/integration/")) return route.fallback()
     const input = Schema.decodeUnknownSync(Worktree.PrepareIntegrationInput)(route.request().postDataJSON())
     operations.push({ action: "review", input })
     return route.fulfill({ json: candidate })

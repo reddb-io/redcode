@@ -25,8 +25,9 @@ export interface Changes {
    *
    * @param options - `files` scopes the review panel to those paths (absolute, or relative to the session's worktree)
    * and opens the first one that has changes; the panel offers "Show all" to leave the scope.
+   * `select` also selects the review tab on wide screens; defaults to false, preserving the selected side tab.
    */
-  open(session: SessionRef, options?: { readonly files?: readonly string[] }): void
+  open(session: SessionRef, options?: { readonly files?: readonly string[]; readonly select?: boolean }): void
   /**
    * Keeps the changes of the view the caller renders loaded while it shows them, across the view's session
    * switches. A `tree` is a persistent change list: opening the side region refreshes the changes it shows.

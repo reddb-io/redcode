@@ -1,9 +1,12 @@
+import type { ChartPalette } from "../chart-color";
 import type { ChartTimestamp, ChartTimeRange } from "../../chart";
 import type { IconGlyph } from "@reddb-io/design-system/base";
 import type { TimeSeriesDataset, TimeSeriesVariant } from "../../time-series";
 import type { ChartCurve, ChartNumberFormat, ChartSize, ChartLayout, ChartReadout } from "../../chart";
 /** Portable MetricChart properties shared by native adapters. */
 export interface MetricChartContract {
+    /** Dataset-id color tokens shared by summary, detail and legend. */
+    palette?: ChartPalette;
     /** Exact continuous sample-axis viewport, shared between panels. Omitted, fits the supplied observations. Value scales still describe the supplied data. */
     timeRange?: ChartTimeRange;
     /** Linked inspection timestamp. Null clears the drawn cursor and reads the latest observation; omitted, inspection is local. The nearest retained observation supplies the exact reading. Bindable. */

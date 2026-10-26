@@ -1665,6 +1665,17 @@ export function Session(props: {
       },
     },
     {
+      title: "Open orchestration",
+      id: "session.orchestration",
+      group: "Session",
+      palette: true as const,
+      slash: { name: "orchestration" },
+      run: () => {
+        setComposer({ open: true, tab: "orchestration" })
+        dialog.clear()
+      },
+    },
+    {
       title: "Open MCPs drawer",
       id: "session.composer.mcps",
       group: "Session",

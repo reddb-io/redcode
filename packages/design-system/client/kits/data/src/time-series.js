@@ -1,17 +1,18 @@
+import { automaticChartPalette, chartColor } from "./core/chart-color.js";
 import { axisLabelWidth, valueAxisGutter, CATEGORY_AXIS_GUTTER_PX } from "./chart.js";
-function timeSeriesDatasets(data, label, series) {
+function timeSeriesDatasets(data, label, series, palette) {
   const multiple = data.length > 0 && "data" in data[0];
   const datasets = multiple ? data : [{ id: "series", label, data, series }];
   const ids = /* @__PURE__ */ new Set();
+  const automatic = automaticChartPalette(datasets);
   return datasets.map((dataset, index) => {
     if (ids.has(dataset.id)) throw new Error(`TimeSeries: duplicate dataset id "${dataset.id}"`);
     ids.add(dataset.id);
-    const role = dataset.series ?? index % 6 + 1;
     return {
       ...dataset,
       samples: new Map(dataset.data.filter((point) => Number.isFinite(+point.x) && Number.isFinite(point.y)).map((point) => [+point.x, point.y])),
       // Single-series charts retain the inherited paint bridge (e.g. KpiCard).
-      paint: multiple ? `var(--reddb-color-series-${role})` : "var(--color-primary)",
+      paint: multiple || dataset.color || palette?.[dataset.id] ? chartColor(dataset, palette, automatic) : "var(--color-primary)",
       data: dataset.data.filter((point) => Number.isFinite(+point.x) && Number.isFinite(point.y)).sort((a, b) => +a.x - +b.x)
     };
   });

@@ -1,9 +1,9 @@
 import type { ChartTimestamp, ChartTimeRange } from "../../chart";
 import type { ChartSize, ChartLayout, ChartReadout, ChartHeight } from "../../chart";
 import type { ChartLoading } from "../../chart-loading";
-import type { CompositeAxis, CompositeChartSeries, CompositeReference, CompositeX } from "../composite-chart";
+import type { CompositeOptions, CompositeAxis, CompositeChartSeries, CompositeReference, CompositeX } from "../composite-chart";
 /** Portable mixed-chart properties shared by native Svelte and React adapters. */
-export interface CompositeChartContract {
+export interface CompositeChartContract extends CompositeOptions {
     /** Exact continuous sample-axis viewport, shared between panels. Omitted, fits the supplied observations. Value scales still describe the supplied data. */
     timeRange?: ChartTimeRange;
     /** Linked inspection timestamp. Null clears the drawn cursor and reads the latest observation; omitted, inspection is local. The nearest retained observation supplies the exact reading. Bindable. */

@@ -126,6 +126,8 @@
     "marked-shiki": "catalog:",
     "motion": "12.34.5",
     "remeda": "catalog:",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
     "shiki": "catalog:",
     "solid-list": "catalog:",
     "solid-sonner": "catalog:",

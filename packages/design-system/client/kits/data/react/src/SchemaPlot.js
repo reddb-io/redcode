@@ -140,7 +140,7 @@ function SchemaPlot(props) {
                 const sy = below ? source.y + source.height : source.y + (si >= 0 ? source.header + source.inset + source.rowHeight * 0.4 + si * source.rowHeight : 26);
                 const ty = below ? target.y : target.y + (ti >= 0 ? target.header + target.inset + target.rowHeight * 0.4 + ti * target.rowHeight : 26);
                 const mid = below ? (sy + ty) / 2 : (sx + tx) / 2;
-                const color = selected === relation.id ? seriesColor(relation.series) : mutedInk;
+                const color = selected === relation.id ? seriesColor(relation.series, relation.color) : mutedInk;
                 const corridor = source.x + source.width + 18;
                 const fromY = source.y + (si >= 0 ? source.header + source.inset + source.rowHeight * 0.4 + si * source.rowHeight : source.header * 0.6);
                 const toY = target.y + (ti >= 0 ? target.header + target.inset + target.rowHeight * 0.4 + ti * target.rowHeight : target.header * 0.6);
@@ -216,7 +216,7 @@ function SchemaPlot(props) {
                 ) }, relation.id);
               }),
               scene.nodes.map((node, index) => {
-                const color = seriesColor(node.series);
+                const color = seriesColor(node.series, node.color);
                 const active = selected === node.id || node.kind === "aggregate";
                 return /* @__PURE__ */ jsx(Fragment2, { children: /* @__PURE__ */ jsxs(
                   Mark,

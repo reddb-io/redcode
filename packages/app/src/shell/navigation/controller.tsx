@@ -92,12 +92,13 @@ export function createNavigationController() {
     const input = roots(
       data.session.form.sessions().filter((id) => data.session.form.list(id)?.some(isSessionForm) ?? false),
     )
+    const working = roots(data.session.active())
     return new Map(
       index.sessions().flatMap((session) => {
         const status = sessionStatus({
           approval: approval.has(session.id),
           input: input.has(session.id),
-          working: data.session.status(session.id) === "running",
+          working: working.has(session.id),
           // Like the session tab, parked synthetic context is not work waiting to run.
           queued: data.session.pending.list(session.id).some((item) => item.type !== "synthetic"),
           failed: context.notification.session.all(session.id).at(-1)?.type === "error",
@@ -118,6 +119,7 @@ export function createNavigationController() {
   })
   const tree = createMemo(() =>
     buildNavigationTree({
+      grouping: layout.navigation.grouping(),
       projects: ctx()?.projects.list() ?? [],
       sessions: index.sessions(),
       pinned: pinned(),
@@ -292,6 +294,7 @@ export function createNavigationController() {
       open: layout.navigation.sectionOpen,
       toggle: layout.navigation.toggleSection,
     },
+    grouping: { set: layout.navigation.setGrouping },
     project: {
       expanded: (key: string) => tree().projects.find((project) => project.key === key)?.expanded ?? true,
       toggle: (key: string) => layout.navigation.setExpanded(key, !layout.navigation.expanded(key)),

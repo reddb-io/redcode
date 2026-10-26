@@ -1,5 +1,6 @@
 "use client";
 import { jsx, jsxs } from "react/jsx-runtime";
+import { tokenColor } from "@reddb-io/design-system/base/recipes";
 import { useRef } from "react";
 import { chartFigure } from "../../src/chart.variants.js";
 import {
@@ -14,7 +15,9 @@ const loadPlot = () => pending ??= importPlot();
 function Sparkline({
   values,
   label = "Trend",
+  strokeWidth = 2,
   series = 1,
+  color,
   variant = "line",
   curve = "smooth",
   width,
@@ -48,6 +51,7 @@ function Sparkline({
       "data-chart-width": width === void 0 ? "fluid" : "fixed",
       role: "img",
       "aria-label": label,
+      style: { "--color-primary": tokenColor(color, `var(--reddb-color-series-${series})`) },
       className: chartFigure({
         series,
         fluid: width === void 0,
@@ -66,6 +70,7 @@ function Sparkline({
         Plot ? /* @__PURE__ */ jsx(
           Plot,
           {
+            strokeWidth,
             data: values.map((y, x) => ({ x, y })),
             curve,
             variant,

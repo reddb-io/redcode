@@ -253,9 +253,16 @@ const suites = {
   app: [
     "src/runtime/server/request-queue.test.ts",
     "src/composer/submit.test.ts",
+    "src/settings/model.test.ts",
+    "src/shell/navigation/model.test.ts",
     "./test-browser/model-selection.test.ts",
   ],
-  "gui-extensions": ["test/ssh-main.test.ts", "test/updater-main.test.ts", "./src/terminal/writer.test.ts"],
+  "gui-extensions": [
+    "test/ssh-main.test.ts",
+    "test/updater-main.test.ts",
+    "./src/terminal/writer.test.ts",
+    "./src/delivery/resources-model.test.ts",
+  ],
   tui: [
     "test/clipboard.test.ts",
     "test/keybind.test.ts",

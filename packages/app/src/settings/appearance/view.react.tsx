@@ -15,6 +15,7 @@ import {
   terminalInput,
   terminalFontFamily,
   terminalDefault,
+  type AppearanceDensity,
 } from "../model-data"
 
 const fontSettings = {
@@ -42,6 +43,8 @@ export function Appearance(props: {
   themes: { value: string; label: string }[]
   theme: string
   onThemeChange: (id: string) => void
+  density: AppearanceDensity
+  onDensityChange: (value: AppearanceDensity) => void
   fonts: {
     kind: keyof typeof fontSettings
     value: string
@@ -106,6 +109,26 @@ export function Appearance(props: {
                 />
               )}
             </SettingsRow>
+            <SettingsRow
+              title={props.language.t("settings.appearance.density.title")}
+              description={props.language.t("settings.appearance.density.description")}
+            >
+              {(association) => (
+                <Select
+                  {...association}
+                  data-action="settings-density"
+                  controlSize="sm"
+                  value={props.density}
+                  options={(["tiny", "compact", "comfortable"] as const).map((value) => ({
+                    value,
+                    label: props.language.t(`settings.appearance.density.${value}`),
+                  }))}
+                  onValueChange={(value) => {
+                    if (value === "tiny" || value === "compact" || value === "comfortable") props.onDensityChange(value)
+                  }}
+                />
+              )}
+            </SettingsRow>
             {props.fonts.map((font) => (
               <SettingsRow
                 key={font.kind}
@@ -145,12 +168,14 @@ export function AppearanceSettings(props: {
       language: SettingsLanguage
       scheme: ColorScheme
       theme: string
+      density: AppearanceDensity
       themes: { value: string; label: string }[]
       fonts: Record<"ui" | "code" | "terminal", string>
     }>
     loadThemes: () => Promise<unknown>
     setScheme: (value: ColorScheme) => void
     setTheme: (id: string) => void
+    setDensity: (value: AppearanceDensity) => void
     fonts: Record<"ui" | "code" | "terminal", (value: string) => void>
   }
 }) {
@@ -166,6 +191,8 @@ export function AppearanceSettings(props: {
       themes={state.themes}
       theme={state.theme}
       onThemeChange={props.services.setTheme}
+      density={state.density}
+      onDensityChange={props.services.setDensity}
       fonts={(
         [
           {

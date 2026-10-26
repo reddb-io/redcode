@@ -99,7 +99,7 @@ function ExplodedLayers(props) {
                 ) });
               })() : null,
               [...scene].reverse().map((layer, index) => {
-                const color = seriesColor(layer.series);
+                const color = seriesColor(layer.series, layer.color);
                 const active = selected === layer.id;
                 const titleLines = layerLines(
                   layer.label,

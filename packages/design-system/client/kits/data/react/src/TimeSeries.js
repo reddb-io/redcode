@@ -1,5 +1,6 @@
 "use client";
 import { Fragment, jsx, jsxs } from "react/jsx-runtime";
+import { tokenColor } from "@reddb-io/design-system/base/recipes";
 import {
   Fragment as Fragment2,
   useMemo,
@@ -52,7 +53,10 @@ function TimeSeries(props) {
     formatX,
     valueDomain,
     interactive,
+    strokeWidth = 2,
     series = 1,
+    color,
+    palette,
     width,
     height,
     loading = "lazy",
@@ -67,7 +71,7 @@ function TimeSeries(props) {
     props.onHiddenSeriesChange
   );
   const FALLBACK_WIDTH = 640;
-  const datasets = useMemo(() => timeSeriesDatasets(data, label, series), [data, label, series]);
+  const datasets = useMemo(() => timeSeriesDatasets(data, label, series, palette), [data, label, series, palette]);
   const explores = interactive ?? (data.length > 0 && "data" in data[0]);
   const legacyRows = explores ? 6 : 10;
   const ROWS = chartRows(layout, legacyRows, size);
@@ -168,6 +172,7 @@ function TimeSeries(props) {
       "data-chart-width": width === void 0 ? "fluid" : "fixed",
       role: explores ? "group" : "img",
       "aria-label": label,
+      style: { "--color-primary": tokenColor(color, `var(--reddb-color-series-${series})`) },
       className: chartFigure({
         series,
         fluid: width === void 0,
@@ -207,6 +212,7 @@ function TimeSeries(props) {
               return /* @__PURE__ */ jsx(Fragment, { children: /* @__PURE__ */ jsx(
                 Engine,
                 {
+                  strokeWidth,
                   data: points,
                   datasets: visible,
                   variant,

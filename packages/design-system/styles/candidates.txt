@@ -16,6 +16,7 @@
 !previous
 !right
 !session
+!stacked
 !suggestion
 !suspended
 !to
@@ -40,6 +41,7 @@
 --reddb-breakpoint-md
 --reddb-color-
 --reddb-color-background
+--reddb-color-chart-
 --reddb-color-control-edge
 --reddb-color-elevation-raised-surface
 --reddb-color-feedback-
@@ -446,6 +448,7 @@ accessible
 accessible-name
 accordion
 accounting
+accumulators
 accurate
 acknowledges
 across
@@ -582,6 +585,7 @@ amount
 amounts
 amp
 an
+analytical
 anatomy
 ancestor
 ancestors
@@ -641,6 +645,7 @@ applyingLabel
 approval
 approximation
 arbitrate
+arc
 are
 area
 areas
@@ -768,6 +773,8 @@ autoCapitalize
 autoComplete
 autofocus
 automatic
+automaticChartColors
+automaticChartPalette
 autoplay
 available
 availableX
@@ -800,6 +807,7 @@ band
 bandPadding
 bar
 barDomain
+barPadding
 bare
 bars
 base
@@ -1108,6 +1116,7 @@ categories
 category
 category/number
 categoryFilter
+categoryLabelAngle
 categoryPreview
 categoryValues
 cell
@@ -1117,8 +1126,10 @@ cellItem
 cellWidth
 cells
 center
+centerSize
 centered
 centers
+central
 centrality
 centrality-based
 centrality-forest
@@ -1127,6 +1138,7 @@ centreX
 centreY
 centred
 centres
+centroid
 ch
 change
 change-set
@@ -1143,8 +1155,10 @@ character
 characters
 chart
 chartAdaptiveHeight
+chartColorToken
 chartCursor
 chartFigure
+chartHeightStyle
 chartSurface
 chartTimeIndex
 chartTimeRange
@@ -1181,6 +1195,7 @@ chronological
 chunk
 circle
 circles
+circularChart
 claims
 clamp
 clampToCanvas
@@ -1251,8 +1266,10 @@ collapses
 collapsing
 collator
 collection
+colliding
 collision
 collision-free
+collision-managed
 collisionPadding
 collisions
 color
@@ -1264,6 +1281,7 @@ column
 column-header
 columnAxis
 columnKey
+columnMode
 columnOffset
 columnPosition
 columnVisibility
@@ -1297,7 +1315,9 @@ compareQueue
 compared
 compares
 comparison
+comparisons
 compete
+competing
 compiles
 complementary
 complete
@@ -1314,8 +1334,8 @@ composing
 composite
 composite-chart
 compositeChart
+compositeColumnLabel
 compositeDash
-compositeGeometry
 compositePaint
 compositeProject
 composition
@@ -1328,6 +1348,7 @@ computing
 concatenate
 condition
 config
+configurable
 configuration
 configurations
 configured
@@ -1336,6 +1357,7 @@ confirmLabel
 confirmation
 confirmations
 confirms
+conflating
 conflicting
 connection
 connector
@@ -1462,6 +1484,7 @@ crescent-shaped
 crisp
 crop
 cross
+cross-chart/live
 crosses
 crossingLimit
 crossings
@@ -1492,6 +1515,7 @@ curve
 curveMonotoneX
 curves
 custom
+custom-property
 cut
 cw
 cx
@@ -1499,7 +1523,6 @@ cy
 cyan
 cyclic
 cyclically
-cycling
 d3-hierarchy
 d3-sankey
 d3-scale
@@ -1652,6 +1675,10 @@ data-checkout-error
 data-checkout-form
 data-choice-box
 data-choice-mark
+data-circular-chart
+data-circular-empty
+data-circular-legend
+data-circular-plot
 data-code-block
 data-code-block-copy
 data-code-block-language
@@ -1666,6 +1693,7 @@ data-code-token
 data-collision-padding
 data-color-scheme
 data-column
+data-column-label
 data-column-visibility
 data-columns
 data-combobox-empty
@@ -1725,6 +1753,7 @@ data-document-panes
 data-document-raw
 data-document-title
 data-document-viewer
+data-donut-center
 data-drawer
 data-dropdown-menu-separator
 data-dropdown-menu-surface
@@ -1865,6 +1894,7 @@ data-pagination
 data-pan-zoom
 data-pan-zoom-content
 data-panel-open
+data-pareto
 data-phase
 data-phase-summary
 data-phone-input
@@ -1875,6 +1905,7 @@ data-phone-value
 data-pill
 data-pill-dismiss
 data-playback-controls
+data-point-label
 data-polarity
 data-popover-surface
 data-popover-trigger
@@ -1907,6 +1938,8 @@ data-property-panel
 data-prose
 data-prose-measure
 data-queue-view
+data-radial-center
+data-radial-content
 data-radial-progress
 data-radio-list
 data-rail-open
@@ -1916,6 +1949,7 @@ data-range-end
 data-range-middle
 data-range-start
 data-rating-mark
+data-regression
 data-reveal
 data-reveal-debug
 data-reveal-delay
@@ -1932,6 +1966,7 @@ data-review-change
 data-review-content
 data-row-height
 data-saved-value
+data-scatter-region
 data-scene-annotation
 data-scene-engine
 data-scene-viewport
@@ -1979,6 +2014,7 @@ data-sidebar-toolbar
 data-size
 data-skeleton
 data-skip-link
+data-slice
 data-slide-column
 data-slide-columns
 data-slide-figure
@@ -2002,6 +2038,7 @@ data-speed-dial-action
 data-split-view-divider
 data-stack
 data-stack-direction
+data-stack-total
 data-state
 data-state-grid
 data-statistic
@@ -2092,6 +2129,7 @@ data-xml-tree
 data-y
 dataIndex
 dataLabel
+dataLabels
 dataWithHierarchy
 dataset
 datasets
@@ -2155,6 +2193,7 @@ defect
 deferred
 defined
 defines
+defining
 definitions
 degraded
 degree
@@ -2229,6 +2268,7 @@ dialog
 dialogClass
 dialogClose
 dialogs
+diameter
 diamond
 diff
 different
@@ -2270,6 +2310,7 @@ dismissLabel
 dismissal
 dismisses
 dismissible
+dismissing
 dispatching
 displace
 display
@@ -2311,6 +2352,7 @@ doing
 domain
 domains
 dominantBaseline
+donut
 dot
 dotted
 dottedPath
@@ -2382,6 +2424,7 @@ edits
 effectAllowed
 effects
 either
+el
 elapsed
 element
 elements
@@ -2415,6 +2458,7 @@ enclosing
 encoded
 end
 end-0
+endAngle
 endLabel
 endName
 endValue
@@ -2438,6 +2482,7 @@ entire
 entities
 entities:readonly
 entity
+entity-id
 entityInspector
 entityJourney
 entityList
@@ -2758,6 +2803,7 @@ formatting
 former
 formerly
 forms
+forty
 forward
 forwarding
 forwards
@@ -2848,6 +2894,7 @@ graph
 graphDistance
 graphRoot
 graphic
+graphical
 graphology
 graphs
 greater
@@ -3093,6 +3140,7 @@ hubSet
 hubs
 hue
 human-readable
+hundred
 hydrates
 hydration
 i
@@ -3199,6 +3247,7 @@ inline-grid
 inline-start
 inlineEdit
 innerHeight
+innerRadius
 innerWidth
 innermost
 input
@@ -3320,6 +3369,7 @@ justify
 justify-between
 justify-center
 justify-end
+justify-items-center
 justify-items-start
 justify-self-end
 justify-start
@@ -3365,6 +3415,7 @@ labelY
 labelled
 labelledBy
 labels
+labels/selection
 laid
 laid-out
 land
@@ -3441,6 +3492,7 @@ legacyRows
 legend
 legend/readout
 legendClass
+legendContent
 legendItem
 legitimate
 leiden
@@ -3471,6 +3523,7 @@ limit
 limits
 line
 line-height
+line/area
 lineClass
 lineHeight
 lineNumbers
@@ -3524,6 +3577,7 @@ lock
 locked
 locks
 lockup
+log
 logging
 logical
 logo
@@ -3561,6 +3615,7 @@ mandatory
 manual
 many
 map
+mapped
 maps
 margin
 mark
@@ -3758,6 +3813,7 @@ minWidth
 miniature
 minimal
 minimisation
+minimize
 minimum
 minimumDistance
 minimumX
@@ -3777,6 +3833,7 @@ modal
 modalFocusable
 mode
 model
+models
 modern
 modes
 modified
@@ -3960,8 +4017,10 @@ non-overlapping
 non-primary
 non-text
 non-whitespace
+nondominated
 none
 nonempty
+noninteractive
 nonnegative
 nor
 normal
@@ -4169,6 +4228,7 @@ other
 otherwise
 out
 outer
+outerRadius
 outermost
 outgoing
 outline
@@ -4203,8 +4263,10 @@ overlapping/off-scene
 overlaps
 overlay
 overlays
+overridden
 override
 overrides
+overriding
 overscan
 overscanned
 overscroll-contain
@@ -4246,6 +4308,7 @@ pagination
 paging
 paint
 paint-only
+paintOrder
 painted
 paints
 pair
@@ -4269,6 +4332,7 @@ parentByNode
 parentElement
 parentId
 parents
+pareto
 parse
 parseCalendarDate
 parseIncompletePhoneNumber
@@ -4364,6 +4428,7 @@ physics
 picked
 picks
 picture
+pie
 pill
 pillDismiss
 pinned
@@ -4405,6 +4470,7 @@ plotted
 plus
 point
 point-cloud
+pointLabels
 pointer
 pointer-events-auto
 pointer-events-none
@@ -4567,6 +4633,7 @@ px-[var(--reddb-spatial-inset-lg)]
 px-[var(--reddb-spatial-inset-md)]
 px-[var(--reddb-spatial-inset-sm)]
 px-[var(--reddb-spatial-section-inset)]
+py
 py-0
 py-0.5
 py-1
@@ -4604,6 +4671,7 @@ quoteText
 quoted
 r
 radial
+radialContent
 radialProgress
 radii
 radio
@@ -4896,6 +4964,7 @@ rightValue
 ring
 ring-1
 ring-current
+ringThickness
 ringed
 rings
 rises
@@ -5006,9 +5075,11 @@ scale
 scaleAt
 scaleBand
 scaleLinear
+scaleProject
 scaled
 scales
 scan
+scatter
 scene
 sceneContent
 sceneFigure
@@ -5052,6 +5123,7 @@ secondRadius
 secondX
 secondY
 secondary
+secondaryAxis
 secondaryDomain
 secondaryFormat
 secondaryTicks
@@ -5121,6 +5193,7 @@ serializer
 series
 series-3
 series-4
+series-id
 seriesCell
 served
 server
@@ -5262,6 +5335,7 @@ showLabels
 showModal
 showRailLabels
 showStatus
+showTotals
 showUnchanged
 shown
 shows
@@ -5287,6 +5361,7 @@ sides
 sigma
 sign
 signal
+signed
 significance
 significant
 silence
@@ -5301,6 +5376,7 @@ single
 single-active
 single-colour
 single-line
+single-series
 sit
 sits
 six
@@ -5335,6 +5411,8 @@ skipped
 skipping
 skips
 slam
+slice
+slices
 slide
 slideClass
 slideFrame
@@ -5428,12 +5506,15 @@ stableCommunities
 stably
 stack
 stackItems
+stackSeries
+stackTotals
 stacked
 stacked-area
 stackedColor
 stackedFill
 stackedInverse
 stackedLine
+stacking
 stacks
 stage
 stageChange
@@ -5452,6 +5533,7 @@ start-0
 start-1/2
 start-edge
 start/end
+startAngle
 startLabel
 startName
 startValue
@@ -5503,6 +5585,7 @@ strength
 stress
 stretch
 stretches
+strictly
 stride
 string
 strings
@@ -5551,6 +5634,7 @@ succeeded
 success
 successful
 such
+sufficiently
 suffix
 suggestion
 suggestions
@@ -5794,6 +5878,7 @@ token-coloured
 token-only
 token-painted
 tokenClass
+tokenColor
 tokens
 told
 tone
@@ -5929,6 +6014,7 @@ unit/scale
 unitless
 units
 unknown
+unknown-duration
 unlabelled
 unless
 unlike
@@ -5985,6 +6071,7 @@ useState
 useSyncExternalStore
 useValue
 used
+useful
 user
 userScroll
 userSpaceOnUse
@@ -6204,6 +6291,7 @@ x1
 x2
 xDomain
 xLabel
+xScale
 xTicks
 xd
 xl
@@ -6217,6 +6305,7 @@ y1
 y2
 yDomain
 yLabel
+yScale
 yTicks
 yd
 year

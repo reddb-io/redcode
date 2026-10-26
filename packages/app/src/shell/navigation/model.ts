@@ -35,6 +35,8 @@ export type NavigationProject<P extends NavigationProjectLike> = {
 }
 
 export type NavigationTree<P extends NavigationProjectLike> = {
+  grouping: "attention" | "projects"
+  activity: { id: "attention" | "working" | "other"; items: NavigationSession<P>[] }[]
   pinned: NavigationSession<P>[]
   projects: NavigationProject<P>[]
   recents: NavigationSession<P>[]
@@ -42,6 +44,7 @@ export type NavigationTree<P extends NavigationProjectLike> = {
 }
 
 export type NavigationInput<P extends NavigationProjectLike> = {
+  grouping?: "attention" | "projects"
   projects: readonly P[]
   sessions: readonly SessionInfo[]
   /** Pinned session IDs, in pin order. */
@@ -58,8 +61,8 @@ export type NavigationInput<P extends NavigationProjectLike> = {
 export const navigationProjectKey = (worktree: string) => pathKey(worktree) as string
 
 /**
- * Builds the sidemenu: pinned sessions first, then every open project with its newest root
- * sessions, then a flat tail of the newest sessions overall. A filter keeps a project whose name
+ * Builds the sidemenu's attention groups and project tree, keeping pinned roots separate.
+ * A filter keeps a project whose name
  * matches with all of its sessions, and otherwise only the sessions whose title matches.
  */
 export function buildNavigationTree<P extends NavigationProjectLike>(input: NavigationInput<P>): NavigationTree<P> {
@@ -113,6 +116,23 @@ export function buildNavigationTree<P extends NavigationProjectLike>(input: Navi
   })
 
   return {
+    grouping: input.grouping ?? "projects",
+    activity: (["attention", "working", "other"] as const).flatMap((id) => {
+      const items = unpinned.filter(matches).filter((item) => {
+        const status = input.status?.(item.session.id)
+        if (id === "attention") return sessionAwaitsUser(status)
+        if (id === "working") return status === "working" || status === "queued"
+        return !status
+      })
+      return items.length
+        ? [
+            {
+              id,
+              items: id === "other" && !filtered ? items.slice(0, input.recentLimit ?? NAVIGATION_RECENT_LIMIT) : items,
+            },
+          ]
+        : []
+    }),
     pinned: pinned.filter(matches),
     projects,
     recents: unpinned.filter(matches).slice(0, input.recentLimit ?? NAVIGATION_RECENT_LIMIT),
@@ -125,7 +145,11 @@ export function navigationSessionOrder<P extends NavigationProjectLike>(tree: Na
   return [
     ...new Set([
       ...tree.pinned.map((item) => item.session.id),
-      ...tree.projects.flatMap((project) => (project.expanded ? project.sessions.map((item) => item.session.id) : [])),
+      ...(tree.grouping === "attention"
+        ? tree.activity.flatMap((group) => group.items.map((item) => item.session.id))
+        : tree.projects.flatMap((project) =>
+            project.expanded ? project.sessions.map((item) => item.session.id) : [],
+          )),
     ]),
   ]
 }
@@ -188,6 +212,7 @@ export function nextSessionAwaitingUser<P extends NavigationProjectLike>(
       ...tree.pinned.map((item) => item.session.id),
       ...tree.projects.flatMap((project) => project.sessions.map((item) => item.session.id)),
       ...tree.recents.map((item) => item.session.id),
+      ...tree.activity.flatMap((group) => group.items.map((item) => item.session.id)),
     ]),
   ]
     .filter((id) => sessionAwaitsUser(status(id)))

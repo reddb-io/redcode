@@ -159,9 +159,9 @@ export async function mockMachineInspection(page: Page) {
   return state
 }
 
-export async function mockHarnessOperations(page: Page, input: { output?: string } = {}) {
+export async function mockHarnessOperations(page: Page, input: { output?: string; runs?: Harness.Run[] } = {}) {
   const state = {
-    runs: [] as Harness.Run[],
+    runs: input.runs?.map((run) => ({ ...run })) ?? ([] as Harness.Run[]),
     requests: [] as Harness.Request[],
   }
   await page.route("**/api/harness**", async (route) => {

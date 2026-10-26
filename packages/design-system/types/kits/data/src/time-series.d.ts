@@ -1,3 +1,4 @@
+import { type ChartPalette, type ColorToken } from "./core/chart-color";
 import { type ChartSeries } from "./chart";
 export interface TimeSeriesPoint {
     x: number | Date;
@@ -11,14 +12,16 @@ export interface TimeSeriesDataset {
     label: string;
     /** Points in this measurement; missing timestamps are not interpolated in the readout. */
     data: readonly TimeSeriesPoint[];
-    /** DS Series Role. Defaults to the dataset's position, cycling through the six roles. */
+    /** DS Series Role. Explicit role; omitted roles use the automatic 10/40 palette. */
     series?: ChartSeries;
+    /** Explicit color custom-property name, overriding a palette entry. */
+    color?: ColorToken;
 }
 export interface ResolvedTimeSeries extends TimeSeriesDataset {
     paint: string;
     samples: ReadonlyMap<number, number>;
 }
-export declare function timeSeriesDatasets(data: readonly TimeSeriesPoint[] | readonly TimeSeriesDataset[], label: string, series: ChartSeries): ResolvedTimeSeries[];
+export declare function timeSeriesDatasets(data: readonly TimeSeriesPoint[] | readonly TimeSeriesDataset[], label: string, series: ChartSeries, palette?: ChartPalette): ResolvedTimeSeries[];
 export declare function timeSeriesSamples(datasets: readonly TimeSeriesDataset[]): (number | Date)[];
 export declare function nearestTimeIndex(samples: readonly (number | Date)[], value: number): number;
 export declare function timeSeriesDomain(samples: readonly (number | Date)[]): [number, number];

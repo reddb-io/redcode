@@ -9,3 +9,4 @@ export * from "./status-breakdown.variants";
 export * from "./scene-viewport.variants";
 export * from "./composite-chart.variants";
 export * from "./chart-layout.variants";
+export { CHART_PALETTE_10, CHART_PALETTE_40, chartPaletteFor, automaticChartPalette } from "./core/chart-color";

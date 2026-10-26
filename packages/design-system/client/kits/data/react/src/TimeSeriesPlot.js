@@ -11,6 +11,7 @@ import {
   formatTimeTick
 } from "../../src/time-series.js";
 function TimeSeriesPlot({
+  strokeWidth = 2,
   data,
   datasets,
   domain,
@@ -101,7 +102,7 @@ function TimeSeriesPlot({
                     d: stackedLine,
                     fill: "none",
                     stroke: dataset.paint,
-                    strokeWidth: 2
+                    strokeWidth
                   }
                 )
               ] }) : /* @__PURE__ */ jsxs(Fragment, { children: [
@@ -112,7 +113,7 @@ function TimeSeriesPlot({
                     d: path,
                     fill: "none",
                     stroke: dataset.paint,
-                    strokeWidth: 2
+                    strokeWidth
                   }
                 )
               ] }) }, dataset.id);

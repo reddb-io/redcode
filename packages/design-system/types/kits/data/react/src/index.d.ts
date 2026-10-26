@@ -44,3 +44,6 @@ export { SceneViewport, type SceneViewportProps } from "./SceneViewport";
 export { StatusBreakdown, type StatusBreakdownProps } from "./StatusBreakdown";
 export { CompositeChart, type CompositeChartProps } from "./CompositeChart";
 export { Candlestick, type CandlestickProps } from "./Candlestick";
+export { PieChart, type PieChartProps } from "./PieChart";
+export { DonutChart, type DonutChartProps } from "./DonutChart";
+export { BarChart, type BarChartProps } from "./BarChart";

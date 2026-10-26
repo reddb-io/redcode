@@ -7,6 +7,13 @@ import { compositeChart } from "../../src/composite-chart.variants.js";
 import Panel from "./CompositeChartPanel.js";
 function CompositeChart(props) {
   const {
+    categoryLabelAngle = 0,
+    palette,
+    columnMode = "grouped",
+    barPadding = 0.28,
+    strokeWidth,
+    dataLabels = "none",
+    showTotals = false,
     data,
     label,
     timeRange,
@@ -38,7 +45,7 @@ function CompositeChart(props) {
   const [expanded, setExpanded] = useControllableValue(props.expanded, initialExpanded, onExpandedChange);
   const [activeX, setActiveX] = useControllableValue(props.activeX === void 0 ? void 0 : suppliedActiveX === null ? null : +suppliedActiveX, null, onActiveXChange);
   const styles = compositeChart();
-  const model = useMemo(() => resolveCompositeChart(data, orientation, primaryAxis, secondaryAxis, references, timeRange), [data, orientation, primaryAxis, secondaryAxis, props.references, timeRange]);
+  const model = useMemo(() => resolveCompositeChart(data, orientation, primaryAxis, secondaryAxis, references, timeRange, { categoryLabelAngle, palette, columnMode, barPadding, strokeWidth, dataLabels, showTotals }), [data, orientation, primaryAxis, secondaryAxis, props.references, timeRange, categoryLabelAngle, palette, columnMode, barPadding, strokeWidth, dataLabels, showTotals]);
   const panel = { model, label, layoutMode: layout, readoutMode: readout, orientation, primaryAxis, secondaryAxis, formatX, presentation, legend, interactive, hiddenSeries, activeX, size, height, loading };
   const toggle = (id) => setHiddenSeries(hiddenSeries.includes(id) ? hiddenSeries.filter((value) => value !== id) : [...hiddenSeries, id]);
   return /* @__PURE__ */ jsxs("section", { "data-composite-chart": true, "aria-label": label, className: styles.root({ class: `${height === "fill" ? "h-full" : ""} ${className}` }), children: [

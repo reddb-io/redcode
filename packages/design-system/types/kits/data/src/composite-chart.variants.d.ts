@@ -9,10 +9,10 @@ export declare const compositeChart: import("tailwind-variants").TVReturnType<{
             toolbar?: import("tailwind-variants").ClassValue;
             empty?: import("tailwind-variants").ClassValue;
             panel?: import("tailwind-variants").ClassValue;
+            readout?: import("tailwind-variants").ClassValue;
             legendItem?: import("tailwind-variants").ClassValue;
             swatch?: import("tailwind-variants").ClassValue;
             plot?: import("tailwind-variants").ClassValue;
-            readout?: import("tailwind-variants").ClassValue;
             axes?: import("tailwind-variants").ClassValue;
         };
     };
@@ -26,10 +26,10 @@ export declare const compositeChart: import("tailwind-variants").TVReturnType<{
             toolbar?: import("tailwind-variants").ClassValue;
             empty?: import("tailwind-variants").ClassValue;
             panel?: import("tailwind-variants").ClassValue;
+            readout?: import("tailwind-variants").ClassValue;
             legendItem?: import("tailwind-variants").ClassValue;
             swatch?: import("tailwind-variants").ClassValue;
             plot?: import("tailwind-variants").ClassValue;
-            readout?: import("tailwind-variants").ClassValue;
             axes?: import("tailwind-variants").ClassValue;
         };
     };
@@ -56,10 +56,10 @@ export declare const compositeChart: import("tailwind-variants").TVReturnType<{
             toolbar?: import("tailwind-variants").ClassValue;
             empty?: import("tailwind-variants").ClassValue;
             panel?: import("tailwind-variants").ClassValue;
+            readout?: import("tailwind-variants").ClassValue;
             legendItem?: import("tailwind-variants").ClassValue;
             swatch?: import("tailwind-variants").ClassValue;
             plot?: import("tailwind-variants").ClassValue;
-            readout?: import("tailwind-variants").ClassValue;
             axes?: import("tailwind-variants").ClassValue;
         };
     };

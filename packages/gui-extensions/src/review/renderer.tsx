@@ -280,6 +280,7 @@ const setup: Setup<typeof Review> = (ctx) => {
     open(session, options) {
       // The session details' changes row: narrow screens switch to the Changes view; wide ones open the side region.
       if (layout.narrow()) return layout.open(KEY, session)
+      if (options?.select) layout.open(KEY, session)
 
       const files = options?.files
       const model = modelFor(session)

@@ -593,3 +593,79 @@ The external store publishes immutable array snapshots at a configurable `interv
 In Svelte, `$stream.data` consumes the store directly. In React, `useSyncExternalStore(stream.subscribe, stream.getSnapshot, stream.getServerSnapshot)` consumes the same contract. Create a stream per mounted owner or SSR request; `getServerSnapshot` retains the deterministic initial view. Subscription cleanup cancels scheduled work, including React StrictMode effect replay; close the application-owned transport in its effect cleanup. Suspend publication for hidden views through the application lifecycle.
 
 The `/examples/realtime-charts` workspace demonstrates 4, 6 or 9 panels, open-candle replacement, coalesced input, retained history, linked cursors and ranges, and a 1,000-update burst. It uses a deterministic simulated feed, with no external service. Drawing retains only the visible sample window plus edge neighbours for continuous lines/areas; value scales and exact readings still use the supplied retained observations. The SVG engines recompute that visible geometry; measure actual panel count, observation count and publication frequency for a Product Surface before committing to a throughput target.
+
+### Analytical comparisons and circular shares
+
+`BarChart` accepts stable categories (`id`, `label`, `value`) or contributions
+(`values` keyed by declared `series`). `sort="ascending" | "descending"` orders
+category totals without mutating input. It inherits CompositeChart's horizontal
+orientation, dense layout, maximization and shared inspection. `columnMode="stacked"`
+uses independent positive and negative stacks; `dataLabels="value"`, `showTotals`,
+`barPadding` and `categoryLabelAngle` configure dense comparisons.
+
+`PieChart` and `DonutChart` take nonnegative `{ id, label, value }` contributions.
+Zero values remain in the exact data table and legend. A zero total has an empty
+state. Selection is controlled through `bind:selected` / `onSelectedChange`.
+Selecting the same slice again clears selection. Arrow keys move focus between
+slices; Enter or Space selects one. Maximize retains the same selection.
+
+Donut `thickness` is a fraction of outer radius, strictly between zero and one
+(default `0.25`). A Svelte `center` snippet or React `center(reading)` render
+function receives `{ total, selected, value, percent }`. The default center shows
+total, then the selected reading. A custom center can ignore selection to stay
+fixed. Base `RadialContent` composes optional avatar, title, value and description;
+use sufficient diameter when showing all four. Centers must be noninteractive.
+
+`Scatter` and `Quadrant` independently support `xScale` and `yScale` (`linear`
+or `log`), `pointLabels`, clipped `highlights` and
+`pareto={{ x: "minimize", y: "maximize" }}`. Pareto is separate from `trend`'s
+least-squares regression. Log scales require positive observations and domains.
+Hidden colliding point labels retain exact values in accessible marks and tables.
+
+Chart `color` values name CSS custom properties, for example
+`color="--app-provider-a"`; they are not raw colors. Explicit `series` roles remain available. Named series and categorical observations support their own colors;
+comparison and circular charts also accept `palette={{ entityId: "--app-color" }}`.
+Explicit item colors win over palette entries. Define application tokens in the
+host stylesheet, verify their contrast in both schemes, and use the same stable
+ids and palette across related charts. `strokeWidth` configures line outlines;
+ring thickness, bar padding and Density remain separate controls.
+
+The Showcase's `/examples/analytical-charts` demonstrates the same data and controls
+in Svelte and React. Its data are illustrative, not external model benchmarks.
+
+
+### Automatic categorical palettes
+
+Omit `color`, `series` and `palette` to use the DS categorical colors without setup.
+The chart counts competing identities: up to ten uses `CHART_PALETTE_10`, eleven
+or more uses `CHART_PALETTE_40`. Both are scheme-aware `--reddb-color-chart-1`…`40`
+tokens, derived from Brand materials. Their first ten positions are identical.
+The palettes maximize color separation; labels and selection still carry identity,
+especially with forty categories or color-vision differences.
+
+- Pie/Donut, single-series BarChart, BreakdownBar, Scatter/Quadrant, Waterfall and
+  Treemap count categories (leaves for Treemap).
+- Grouped/stacked BarChart, CompositeChart, named TimeSeries datasets and Radar
+  count series/layers. A thousand samples in one series still uses one color.
+- Sankey colors nodes; unspecified links inherit their source node.
+- Candle rise/fall and sequential heatmap intensity retain their measurement semantics.
+  A raw single TimeSeries/Sparkline retains its inherited single-color bridge.
+
+Precedence is item `color`, application `palette[id]`, explicit `series`, then the
+automatic color. Partial application palettes leave remaining identities automatic.
+Colors are collision-free through forty identities and stable when the same set
+is sorted, filtered in the legend, or refreshed. Beyond forty, positions repeat.
+Changing the identity set can reassign automatic positions. To retain colors across
+changing live membership or compare different subsets, create one shared palette
+from the complete identity universe and pass it to related charts:
+
+```ts
+import { automaticChartPalette } from "@reddb-io/design-system/data/recipes";
+const palette = automaticChartPalette(allEntities);
+// <BarChart data={visibleCategories} {palette} />
+// <Scatter data={visiblePoints} {palette} />
+```
+
+The analytical-charts example includes 10, 11 and 40-category views, an application
+palette toggle, a ring-thickness slider, and controls for highlighting a single
+quadrant with the exact `highlights` configuration displayed inline.

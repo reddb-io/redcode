@@ -10,6 +10,7 @@ export declare function waterfallSteps(data: readonly WaterfallStep[]): ({
     amount: number;
     kind: "subtotal";
     value?: number;
+    color?: import("./core/chart-color").ColorToken;
     id: string;
     label: string;
     description?: string;
@@ -21,6 +22,7 @@ export declare function waterfallSteps(data: readonly WaterfallStep[]): ({
     amount: number;
     kind: "total";
     value?: number;
+    color?: import("./core/chart-color").ColorToken;
     id: string;
     label: string;
     description?: string;
@@ -32,6 +34,7 @@ export declare function waterfallSteps(data: readonly WaterfallStep[]): ({
     amount: number;
     kind: "delta";
     value?: number;
+    color?: import("./core/chart-color").ColorToken;
     id: string;
     label: string;
     description?: string;

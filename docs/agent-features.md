@@ -2,6 +2,39 @@
 
 This guide describes coding-session features. Slash commands are entered in the TUI, not in the Console. For component boundaries, installation and remote execution, start with the [README](../README.md). Distributed Redcode workers have a [separate guide](distributed-workers.md).
 
+## Session workspace
+
+**Desktop / web app.** The sidemenu defaults to **By attention**, separating sessions that need
+your input, sessions working or queued, and recent inactive sessions. Requests and running
+subagents surface on their parent session. **By project** keeps the project tree, pins and recent
+sessions available; the selected grouping survives reload. Search filters both views.
+
+Open **Delivery** from the session header or **Open delivery overview** in the command palette.
+The side panel follows the current session's root objective and task graph. **Session lineage**
+opens a selected parent or child conversation. Task completion uses the recorded task status;
+an idle or successfully finished agent does not by itself accept its contribution. **Recorded
+verification** lists checks saved on the objective, with an explicit empty state when none exist.
+**Review changes** selects the existing change review. On narrow screens, Delivery has its own tab.
+
+The overview reads metadata and refreshes its objective and graph only while visible and connected.
+Request failures keep the last snapshot with a warning. The lineage describes native Redcode sessions.
+
+**Resources** links HTTPS pull request URLs to the session family. References are saved on the root
+session, shared between its parent and child conversations, and survive reload. They do not report
+live review, CI or merge status. **Unlink** removes only the reference.
+
+Select an existing Claude Code or Codex run on the connected machine to link it explicitly.
+Runs sharing a checkout are not automatically related. **Inspect output** reads only the selected
+run, preserving its native identity, reported state and steering capability. Linking or unlinking
+does not start, interrupt or close a process. Full execution controls remain in **Agents → Harnesses**.
+
+**Skills** lists the skills registered for the current conversation's checkout and previews their
+instructions as text. **Load into conversation** targets that conversation, including a child,
+and calls `session.skill` with `resume: false`. The action is offered while the conversation is idle;
+it records the skill without starting a new execution. Previewing a skill does not load it.
+Resource and skill queries run only for their selected, visible view. Unknown resource annotation
+versions are preserved and editing is disabled until a compatible client can read them.
+
 ## Agents workspace
 
 **Desktop / web app.** Open **Agents** in the siderail, or use `Ctrl+Shift+A` (`Cmd+Shift+A` on macOS).
@@ -76,6 +109,28 @@ See [external coding agents and worktrees](external-harnesses.md) for capabiliti
 **Project environments** stores reusable preparation and validation recipes. Run a Docker Compose
 stack or existing project scripts on the selected host, with separate execution state per worktree.
 See [project environments](project-environments.md) for setup, ports, Vault bindings and recovery.
+
+## TUI orchestration
+
+**CLI / TUI.** Enter `/orchestration`, or choose **Open orchestration** in the command palette
+(`Ctrl+P`). The composer shows one tree of the main session and its delegated sessions, with
+aligned execution states. The selected session's model appears below the tree.
+
+Use `Up`/`Down` (or `k`/`j`) to select, `Enter` to open the selected conversation, and
+`PageUp`/`PageDown` to scroll. For a running session, `e` sends a steering instruction and
+`Ctrl+D` opens an interruption confirmation. `i` opens the selected agent's details; press it again
+to return to the tree without losing selection. `Esc` closes the composer. These controls follow
+the TUI keybinding configuration and act on the selected session.
+
+Details contains the checkout, server, reported token/cache usage and cost, and S1 quality checks.
+The configuration and six latest recorded checks are read only while details is open;
+`r` refreshes that snapshot. It also refreshes when selection or execution state changes.
+The support model is the configured transformation model. The chosen model is not proof of
+which upstream model a provider served. Unavailable
+readings stay explicit, and idle sessions are shown as completed only when that outcome is recorded.
+
+This view covers the session family on the connected server. Distributed worker assignments and
+external harness runs remain in the app's **Remote workers** and **Harnesses** sections.
 
 ## Tool discovery
 

@@ -126,7 +126,7 @@ function SequenceDiagram(props) {
                         {
                           d: `M${sx},${y} h32 v16 h-32`,
                           fill: "none",
-                          stroke: seriesColor(m.series)
+                          stroke: seriesColor(m.series, m.color)
                         }
                       ) }) : /* @__PURE__ */ jsx(Fragment, { children: /* @__PURE__ */ jsx(
                         "line",
@@ -135,7 +135,7 @@ function SequenceDiagram(props) {
                           x2: tx,
                           y1: y,
                           y2: y,
-                          stroke: seriesColor(m.series),
+                          stroke: seriesColor(m.series, m.color),
                           strokeWidth: selected === m.id ? 2.5 : 1.5,
                           strokeDasharray: m.kind === "return" ? "5 4" : void 0
                         }
@@ -144,8 +144,8 @@ function SequenceDiagram(props) {
                         "path",
                         {
                           d: `M${tx - sign * 7},${y - 4} L${tx},${y} L${tx - sign * 7},${y + 4}`,
-                          fill: m.kind === "async" ? "none" : seriesColor(m.series),
-                          stroke: seriesColor(m.series)
+                          fill: m.kind === "async" ? "none" : seriesColor(m.series, m.color),
+                          stroke: seriesColor(m.series, m.color)
                         }
                       ),
                       /* @__PURE__ */ jsx(

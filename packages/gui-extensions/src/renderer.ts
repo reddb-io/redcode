@@ -29,6 +29,8 @@ import design from "./design"
 import designRenderer from "./design/renderer"
 import sessionImport from "./import"
 import sessionImportRenderer from "./import/renderer"
+import delivery from "./delivery"
+import deliveryRenderer from "./delivery/renderer"
 
 // The window renders once every built-in is active, so the small renderer entries load with the app, like the
 // features they replaced. Heavy UI stays behind `lazy()` inside them.
@@ -40,6 +42,7 @@ const eager = (setup: Awaited<ReturnType<NonNullable<Definition["renderer"]>>>["
  * checks this composition against the main one.
  */
 export const builtins = Extension.compose(
+  { ...delivery, renderer: eager(deliveryRenderer) },
   { ...context, renderer: eager(contextRenderer) },
   { ...btw, renderer: eager(btwRenderer) },
   { ...debug, renderer: eager(debugRenderer) },

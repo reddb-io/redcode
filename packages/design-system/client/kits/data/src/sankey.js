@@ -1,3 +1,4 @@
+import { automaticChartColors } from "./core/chart-color.js";
 import { finite, unique } from "./visualization.js";
 function sankeyData(data) {
   unique(data.nodes, "Sankey nodes");
@@ -21,7 +22,7 @@ function sankeyData(data) {
   for (const node of data.nodes) visit(node.id);
   const links = data.links.filter((l) => l.value > 0).map((l) => ({ ...l }));
   const used = new Set(links.flatMap((l) => [l.source, l.target]));
-  return { nodes: data.nodes.map((n, index) => ({ ...n, series: n.series ?? index % 6 + 1 })).filter((n) => used.has(n.id)), links };
+  return { nodes: automaticChartColors(data.nodes).filter((n) => used.has(n.id)), links };
 }
 export {
   sankeyData

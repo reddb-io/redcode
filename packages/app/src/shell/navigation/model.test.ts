@@ -31,6 +31,40 @@ const alpha = { id: "project:/repo/alpha", worktree: "/repo/alpha" }
 const beta = { id: "project:/repo/beta", worktree: "/repo/beta", name: "Beta app" }
 const ids = (items: { session: SessionInfo }[]) => items.map((item) => item.session.id)
 
+test("attention grouping keeps actionable roots visible and navigation follows the displayed groups", () => {
+  const statuses: Record<string, SessionStatus> = { question: "input", running: "working", queued: "queued" }
+  const tree = buildNavigationTree({
+    grouping: "attention",
+    projects: [alpha],
+    sessions: [
+      session("running", alpha.worktree, 4),
+      session("question", "/repo/outside", 2),
+      session("queued", alpha.worktree, 3),
+      session("older", alpha.worktree, 1),
+      session("oldest", alpha.worktree, 0),
+    ],
+    pinned: ["running"],
+    recentLimit: 1,
+    status: (id) => statuses[id],
+  })
+  expect(tree.activity.map((group) => [group.id, ids(group.items)])).toEqual([
+    ["attention", ["question"]],
+    ["working", ["queued"]],
+    ["other", ["older"]],
+  ])
+  expect(navigationSessionOrder(tree)).toEqual(["running", "question", "queued", "older"])
+  expect(nextSessionAwaitingUser(tree, (id) => statuses[id], undefined)).toBe("question")
+  expect(
+    buildNavigationTree({
+      projects: [alpha],
+      sessions: [session("oldest", alpha.worktree, 0)],
+      pinned: [],
+      query: "oldest",
+      recentLimit: 0,
+    }).activity[0].items[0].session.id,
+  ).toBe("oldest")
+})
+
 test("agent families retain nested depth and sessions whose parent is unavailable", () => {
   const trees = agentSessionTrees([
     session("grandchild", "/repo/alpha/tree", 3, { parentID: "child" }),

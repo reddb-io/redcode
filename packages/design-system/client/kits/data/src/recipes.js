@@ -9,3 +9,10 @@ export * from "./status-breakdown.variants.js";
 export * from "./scene-viewport.variants.js";
 export * from "./composite-chart.variants.js";
 export * from "./chart-layout.variants.js";
+import { CHART_PALETTE_10, CHART_PALETTE_40, chartPaletteFor, automaticChartPalette } from "./core/chart-color.js";
+export {
+  CHART_PALETTE_10,
+  CHART_PALETTE_40,
+  automaticChartPalette,
+  chartPaletteFor
+};

@@ -1,6 +1,7 @@
 import { Fragment, jsx, jsxs } from "react/jsx-runtime";
 import { area, line, curveLinear, curveMonotoneX } from "d3-shape";
 function SparklinePlot({
+  strokeWidth = 2,
   data,
   curve,
   variant,
@@ -55,7 +56,7 @@ function SparklinePlot({
             d: path,
             fill: "none",
             stroke: "var(--color-primary)",
-            strokeWidth: 2
+            strokeWidth
           }
         )
       ] }) })

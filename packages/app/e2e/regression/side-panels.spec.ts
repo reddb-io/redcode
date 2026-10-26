@@ -1,7 +1,185 @@
 import { expect, test, type Locator, type Page } from "@playwright/test"
-import { tabKey } from "../utils/app"
+import { seed, sessionHref, tabKey } from "../utils/app"
 import { fileDiff, openSession } from "../utils/workspace"
 import { expectSessionTitle } from "../utils/waits"
+import { fixture, installStressSessionTabs, mockStressTimeline } from "../utils/session-fixture"
+import { mockAgentTasks } from "../utils/agent-task-fixture"
+import { deliverySkills, mockDeliveryResources } from "../utils/delivery-fixture"
+
+test("delivery follows the session family and preserves recorded task acceptance", async ({ page }) => {
+  await page.setViewportSize({ width: 1560, height: 1000 })
+  await seed(page, { theme: { id: "oc-2", scheme: "dark" } })
+  await mockStressTimeline(page)
+  await installStressSessionTabs(page)
+  const mock = await mockAgentTasks(page)
+  const reads: string[] = []
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname
+    if (path.endsWith("/todo/graph") || path.endsWith("/goal")) reads.push(path)
+  })
+  await page.goto(sessionHref(mock.sessionID))
+  const toggle = page.getByRole("button", { name: "Open delivery overview", exact: true })
+  await expect(toggle).toBeEnabled()
+  expect(reads).toEqual([])
+  await toggle.click()
+  const delivery = page.getByRole("region", { name: "Delivery", exact: true })
+  await expect(delivery.getByText("Deliver a verified task workflow", { exact: true })).toBeVisible()
+  await expect(delivery.getByRole("progressbar", { name: "Task completion", exact: true })).toHaveAttribute(
+    "aria-valuenow",
+    "2",
+  )
+  await expect(delivery.getByRole("progressbar", { name: "Task completion", exact: true })).toHaveAttribute(
+    "aria-valuemax",
+    "3",
+  )
+  const child = delivery.getByRole("treeitem", { name: /Inspect child navigation/ })
+  await child.click()
+  await expect(delivery.getByRole("button", { name: "Open conversation", exact: true })).toBeEnabled()
+  await page.screenshot({ path: test.info().outputPath("delivery-desktop.png"), fullPage: true })
+  await delivery.getByRole("button", { name: "Review changes", exact: true }).click()
+  await expect(delivery).toBeHidden()
+  await expect(page.locator('[data-component="session-review-v2"]')).toBeVisible()
+  await toggle.click()
+  await expect(delivery).toBeVisible()
+  await child.click()
+  await delivery.getByRole("button", { name: "Open conversation", exact: true }).click()
+  await expect(page).toHaveURL(sessionHref(fixture.sessions[2].id))
+  await page.getByRole("button", { name: "Open delivery overview", exact: true }).click()
+  await expect(delivery.getByText("Deliver a verified task workflow", { exact: true })).toBeVisible()
+  mock.state.graphUnavailable = true
+  await delivery.getByRole("button", { name: "Refresh overview", exact: true }).click()
+  await expect(delivery.getByRole("alert")).toContainText("The overview could not be refreshed")
+  mock.state.graphUnavailable = false
+  await delivery.getByRole("button", { name: "Refresh overview", exact: true }).click()
+  await expect(delivery.getByRole("alert")).toHaveCount(0)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByRole("tab", { name: "Delivery", exact: true }).click()
+  await expect(delivery.getByText("Deliver a verified task workflow", { exact: true })).toBeVisible()
+  await page.screenshot({ path: test.info().outputPath("delivery-mobile.png"), fullPage: true })
+  await delivery.getByRole("button", { name: "Review changes", exact: true }).click()
+  await expect(delivery).toBeHidden()
+  expect(mock.operations).toEqual([])
+})
+
+test("delivery persists PR and external-session links across the native family without taking over the harness", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1560, height: 1000 })
+  await seed(page, { theme: { id: "oc-2", scheme: "dark" } })
+  await mockStressTimeline(page)
+  await installStressSessionTabs(page)
+  await mockAgentTasks(page)
+  const state = await mockDeliveryResources(page)
+  await page.goto(sessionHref(fixture.sourceID))
+  await page.getByRole("button", { name: "Open delivery overview", exact: true }).click()
+  const delivery = page.getByRole("region", { name: "Delivery", exact: true })
+  await delivery.getByRole("tab", { name: "Resources", exact: true }).click()
+  const url = delivery.getByRole("textbox", { name: "Pull request URL", exact: true })
+  const link = delivery.getByRole("button", { name: "Link pull request", exact: true })
+  await expect(url).toBeEnabled()
+  expect(state.detailReads).toEqual([])
+  await expect(delivery.getByText("No external sessions linked.", { exact: true })).toBeVisible()
+  await url.fill("javascript:alert(1)")
+  await expect(link).toBeDisabled()
+  const href = "https://github.com/reddb-io/redcode/pull/42"
+  await url.fill(href + "?tab=files#diff")
+  await link.click()
+  await expect(delivery.getByRole("button", { name: href, exact: true })).toBeVisible()
+  await expect(link).toBeDisabled()
+  state.failSave = true
+  await url.fill("https://github.com/reddb-io/redcode/pull/43")
+  await link.click()
+  await expect(delivery.getByRole("alert")).toContainText("Resources could not be saved")
+  state.failSave = false
+  await link.click()
+  const second = delivery
+    .getByRole("listitem")
+    .filter({ has: page.getByRole("button", { name: "https://github.com/reddb-io/redcode/pull/43", exact: true }) })
+  await second.getByRole("button", { name: "Unlink", exact: true }).click()
+  await expect(second).toHaveCount(0)
+  const external = delivery.getByRole("combobox", { name: "External session", exact: true })
+  await external.selectOption("delivery-codex")
+  await delivery.getByRole("button", { name: "Link external session", exact: true }).click()
+  const codex = delivery.getByRole("listitem").filter({ hasText: "codex-thread-123" })
+  await expect(codex.getByText("Needs input", { exact: true })).toBeVisible()
+  await external.selectOption("delivery-claude")
+  await delivery.getByRole("button", { name: "Link external session", exact: true }).click()
+  const claude = delivery.getByRole("listitem").filter({ hasText: "claude-session-456" })
+  await expect(claude.getByText("Ready", { exact: true })).toBeVisible()
+  expect(state.detailReads).toEqual([])
+  await codex.getByRole("button", { name: "Inspect output", exact: true }).click()
+  await expect(delivery.getByRole("log", { name: "External session output", exact: true })).toHaveText(
+    "Native review is waiting for your answer.",
+  )
+  await expect(delivery.getByText("This adapter supports steering active work.", { exact: true })).toBeVisible()
+  expect(state.detailReads.every((path) => path.endsWith("/delivery-codex"))).toBe(true)
+  await delivery.getByRole("button", { name: "Close details", exact: true }).click()
+  await claude.getByRole("button", { name: "Inspect output", exact: true }).click()
+  await expect(
+    delivery.getByText("This adapter queues instructions; active steering is unavailable.", { exact: true }),
+  ).toBeVisible()
+  await page.screenshot({ path: test.info().outputPath("delivery-resources-desktop.png"), fullPage: true })
+  await delivery.getByRole("tab", { name: "Overview", exact: true }).click()
+  await delivery.getByRole("treeitem", { name: /Inspect child navigation/ }).click()
+  await delivery.getByRole("button", { name: "Open conversation", exact: true }).click()
+  await expect(page).toHaveURL(sessionHref(fixture.childID))
+  await page.getByRole("button", { name: "Open delivery overview", exact: true }).click()
+  await delivery.getByRole("tab", { name: "Resources", exact: true }).click()
+  await expect(delivery.getByRole("button", { name: href, exact: true })).toBeVisible()
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByRole("tab", { name: "Delivery", exact: true }).click()
+  await delivery.getByRole("tab", { name: "Resources", exact: true }).click()
+  await expect(delivery.getByRole("button", { name: href, exact: true })).toBeVisible()
+  await page.screenshot({ path: test.info().outputPath("delivery-resources-mobile.png"), fullPage: true })
+  await page.reload()
+  await page.getByRole("tab", { name: "Delivery", exact: true }).click()
+  await delivery.getByRole("tab", { name: "Resources", exact: true }).click()
+  await expect(delivery.getByRole("button", { name: href, exact: true })).toBeVisible()
+  await expect(codex.getByText("Needs input", { exact: true })).toBeVisible()
+  await codex.getByRole("button", { name: "Unlink", exact: true }).click()
+  await expect(codex).toHaveCount(0)
+  expect(
+    state.writes.every(
+      (entry) => entry.sessionID === fixture.sourceID && entry.metadata.owner === "keep-this-annotation",
+    ),
+  ).toBe(true)
+  expect(state.skills).toEqual([])
+  expect(state.harnessWrites).toEqual([])
+})
+
+test("delivery previews checkout skills and loads only into the selected conversation without resuming execution", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await seed(page, { theme: { id: "oc-2", scheme: "dark" } })
+  await mockStressTimeline(page, { skills: deliverySkills })
+  await installStressSessionTabs(page, { sessionIDs: [fixture.childID] })
+  await mockAgentTasks(page)
+  const state = await mockDeliveryResources(page)
+  await page.goto(sessionHref(fixture.childID))
+  await page.getByRole("tab", { name: "Delivery", exact: true }).click()
+  const delivery = page.getByRole("region", { name: "Delivery", exact: true })
+  await delivery.getByRole("tab", { name: "Skills", exact: true }).click()
+  const skills = delivery.getByRole("combobox", { name: "Available skill", exact: true })
+  await expect(skills.getByRole("option", { name: "Review local changes", exact: true })).toHaveCount(1)
+  await skills.selectOption("review-local")
+  await expect(delivery.getByRole("region", { name: "Skill instructions", exact: true })).toContainText(
+    "Do not merge or publish from this skill.",
+  )
+  expect(state.skills).toEqual([])
+  state.failSkill = true
+  await delivery.getByRole("button", { name: "Load into conversation", exact: true }).click()
+  await expect(delivery.getByRole("alert")).toContainText("The skill could not be loaded")
+  state.failSkill = false
+  await delivery.getByRole("button", { name: "Load into conversation", exact: true }).click()
+  await expect(delivery.getByRole("button", { name: "Loaded", exact: true })).toBeDisabled()
+  await expect(delivery.getByRole("status")).toHaveText(
+    "The skill was loaded into this conversation. Loading did not start a new execution.",
+  )
+  expect(state.skills).toEqual([{ sessionID: fixture.childID, id: "review-local", resume: false }])
+  expect(state.writes).toEqual([])
+  await page.screenshot({ path: test.info().outputPath("delivery-skills-mobile.png"), fullPage: true })
+})
 
 test("review and terminal follow the session tab and stay mounted", async ({ page }) => {
   await page.setViewportSize({ width: 1800, height: 900 })

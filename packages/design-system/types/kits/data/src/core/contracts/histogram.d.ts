@@ -1,3 +1,4 @@
+import type { ColorToken } from "../chart-color";
 import type { ChartNumberFormat } from "../../chart";
 import type { ChartSeries, ChartSize } from "../../chart";
 import type { ChartLoading } from "../../chart-loading";
@@ -22,6 +23,8 @@ export interface HistogramContract {
     format?: ChartNumberFormat;
     /** The Series Role (1–6) the bars are drawn in. Never the Brand red. */
     series?: ChartSeries;
+    /** Explicit color custom-property name; omitted, keeps the DS series role. */
+    color?: ColorToken;
     /**
          * Fixed drawing width in px. Omitted, the histogram fills its figure's
          * content width and follows it on resize (640 until the figure is measured);

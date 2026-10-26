@@ -15,6 +15,7 @@ import { timeSeriesDatasets } from "../../src/time-series.js";
 import { metricStatistics } from "../../src/metric.js";
 function MetricChart(props) {
   const {
+    palette,
     label,
     data,
     timeRange,
@@ -51,7 +52,7 @@ function MetricChart(props) {
     initialHiddenSeries,
     onHiddenSeriesChange
   );
-  const resolved = timeSeriesDatasets(data, label, 1), statistics = metricStatistics(resolved), observed = statistics.filter((row) => row.count > 0), headline = observed.length ? aggregate === "average" ? observed.reduce((sum, row) => sum + (row.total ?? 0), 0) / observed.reduce((sum, row) => sum + row.count, 0) : observed.reduce((sum, row) => sum + (row[aggregate] ?? 0), 0) : null;
+  const resolved = timeSeriesDatasets(data, label, 1, palette), statistics = metricStatistics(resolved), observed = statistics.filter((row) => row.count > 0), headline = observed.length ? aggregate === "average" ? observed.reduce((sum, row) => sum + (row.total ?? 0), 0) / observed.reduce((sum, row) => sum + row.count, 0) : observed.reduce((sum, row) => sum + (row[aggregate] ?? 0), 0) : null;
   const reading = (value) => typeof value === "number" ? format(value) : "No samples";
   const columns = [
     { key: "label", header: "Series", sortable: true },
@@ -127,6 +128,7 @@ function MetricChart(props) {
           /* @__PURE__ */ jsx(
             TimeSeries,
             {
+              palette,
               data,
               timeRange,
               activeX,
@@ -212,6 +214,7 @@ function MetricChart(props) {
               /* @__PURE__ */ jsx(
                 TimeSeries,
                 {
+                  palette,
                   data,
                   timeRange,
                   activeX,

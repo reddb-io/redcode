@@ -1,6 +1,8 @@
 import { expect, test, type Page } from "@playwright/test"
 import type { ConfigEntry, OpenCodeEvent, WorktreeDirectory } from "@opencode/client/promise"
-import { NO_PROVIDER, REMOTE_SERVER, SERVER, holdRoute, project, session } from "../utils/app"
+import { NO_PROVIDER, REMOTE_SERVER, SERVER, holdRoute, project, seed, session, sessionHref } from "../utils/app"
+import { fixture, installStressSessionTabs, mockStressTimeline } from "../utils/session-fixture"
+import { mockAgentTasks } from "../utils/agent-task-fixture"
 import { mockAgentTools, mockOpenCodeServer, mockUsageReporter } from "../utils/mock-server"
 import { mockRemoteServer, mockWorkspace, openSettings, type WorkspaceInput } from "../utils/workspace"
 import { mockHttpsAccess } from "../utils/https-fixture"
@@ -230,6 +232,73 @@ test("a settings page survives refresh", async ({ page }) => {
   await page.reload()
   await expect(appearance).toHaveAttribute("aria-selected", "true")
   await expect(page).toHaveURL("/settings?tab=appearance")
+})
+
+test("desktop density condenses navigation without shrinking text and preserves its choice across mobile and reload", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1560, height: 1000 })
+  await mockStressTimeline(page)
+  await installStressSessionTabs(page)
+  await mockAgentTasks(page)
+  await seed(page, { theme: { id: "oc-2", scheme: "dark" } })
+  await page.goto(sessionHref(fixture.sourceID))
+  await expect(page.locator("html")).toHaveAttribute("data-density", "tiny")
+  await page.getByRole("button", { name: "Open delivery overview", exact: true }).click()
+  const delivery = page.getByRole("region", { name: "Delivery", exact: true })
+  await expect(delivery.getByText("Deliver a verified task workflow", { exact: true })).toBeVisible()
+  const rail = page.getByRole("navigation", { name: "Navigation", exact: true })
+  const row = page.locator(
+    `[data-component="navigation-sidemenu"] [data-action="navigation-session"][data-session="${fixture.sourceID}"]`,
+  )
+  const density = page.getByRole("combobox", { name: "Desktop density", exact: true })
+  const appearance = page.getByRole("tab", { name: "Appearance", exact: true })
+  const returnToSession = async () => {
+    await page.locator(`[data-titlebar-tab-link][href="${sessionHref(fixture.sourceID)}"]`).click()
+    await expect(delivery.getByText("Deliver a verified task workflow", { exact: true })).toBeVisible()
+  }
+  const metrics = () =>
+    row.evaluate((element) => ({
+      height: element.getBoundingClientRect().height,
+      font: getComputedStyle(element).fontSize,
+      lineHeight: getComputedStyle(element).lineHeight,
+      bodyFont: getComputedStyle(document.body).fontSize,
+    }))
+  await rail.getByRole("button", { name: "Settings", exact: true }).click()
+  await appearance.click()
+  await expect(density).toHaveValue("tiny")
+  await density.selectOption("compact")
+  await expect(page.locator("html")).toHaveAttribute("data-density", "compact")
+  await returnToSession()
+  const compact = await metrics()
+  await page.screenshot({ path: test.info().outputPath("desktop-density-compact.png"), fullPage: true })
+  await rail.getByRole("button", { name: "Settings", exact: true }).click()
+  await appearance.click()
+  await density.selectOption("tiny")
+  await expect(page.locator("html")).toHaveAttribute("data-density", "tiny")
+  await returnToSession()
+  const dense = await metrics()
+  expect(dense.height).toBeLessThan(compact.height)
+  expect(dense.font).toBe(compact.font)
+  expect(dense.lineHeight).toBe(compact.lineHeight)
+  expect(dense.bodyFont).toBe(compact.bodyFont)
+  await page.screenshot({ path: test.info().outputPath("desktop-density-dense.png"), fullPage: true })
+  await rail.getByRole("button", { name: "Settings", exact: true }).click()
+  await appearance.click()
+  await density.selectOption("comfortable")
+  await page.reload()
+  await expect(density).toHaveValue("comfortable")
+  await expect(page.locator("html")).toHaveAttribute("data-density", "comfortable")
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(page.locator("html")).toHaveAttribute("data-density", "tiny")
+  await expect(density).toHaveValue("comfortable")
+  const browse = page
+    .getByRole("navigation", { name: "Mobile navigation", exact: true })
+    .getByRole("button", { name: "Browse", exact: true })
+  await expect(browse).toBeVisible()
+  expect((await browse.boundingBox())!.height).toBeGreaterThanOrEqual(44)
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await expect(page.locator("html")).toHaveAttribute("data-density", "comfortable")
 })
 
 test("appearance options remain reachable in a short viewport", async ({ page }) => {

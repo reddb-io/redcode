@@ -29,7 +29,21 @@ using producer = {
   },
 }
 await Bun.$`git -C ${source} archive ${pinned} | tar -xf - -C ${producer.path}`
-symlinkSync(join(root, "packages/design-system-tools/node_modules"), join(producer.path, "node_modules"), "dir")
+symlinkSync(
+  join(root, "packages/design-system-tools/node_modules"),
+  join(producer.path, "node_modules"),
+  process.platform === "win32" ? "junction" : "dir",
+)
+
+// The pinned compiler also creates a dependency link. Adapt only its temporary
+// copy so Windows builds need no symlink privilege; Kit sources stay untouched.
+if (process.platform === "win32") {
+  const compiler = join(producer.path, "scripts/producer/src/compile-delivery.ts")
+  const content = readFileSync(compiler, "utf8")
+  const link = 'symlinkSync(join(toolRoot, "node_modules"), link, "dir")'
+  if (!content.includes(link)) throw new Error("The pinned React compiler's dependency link has changed")
+  writeFileSync(compiler, content.replace(link, link.replace('"dir"', '"junction"')))
+}
 
 // The receipt hashes bytes. Keep the producer's temporary clone canonical on Windows too.
 const gitConfigCount = Number(process.env.GIT_CONFIG_COUNT ?? 0)
@@ -127,7 +141,12 @@ for (const file of [
   receipt.files[file] = createHash("sha256")
     .update(readFileSync(join(dest, file)))
     .digest("hex")
-receipt.consumer = { name: manifest.consumer, framework: "react", upstreamPackageSha256 }
+receipt.consumer = {
+  name: manifest.consumer,
+  framework: "react",
+  upstreamPackageSha256,
+  ...(process.platform === "win32" ? { producerAdaptations: ["windows-react-dependency-junction"] } : {}),
+}
 writeFileSync(receiptPath, JSON.stringify(receipt, null, 2) + "\n")
 
 // The design app injects its UI into a shadow root, so it takes the Application direction, both Color Schemes and

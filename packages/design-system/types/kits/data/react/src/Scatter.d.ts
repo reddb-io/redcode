@@ -1,6 +1,7 @@
-export type { VisualizationSize, VisualizationSeries, } from "../../src/visualization";
-export type { ScatterPoint } from "../../src/scatter";
 import type { ScatterContract } from "../../src/core/contracts/scatter";
+export type { VisualizationSize, VisualizationSeries } from "../../src/visualization";
+export type { ScatterPoint } from "../../src/scatter";
+export type { ScatterScale, ScatterRegion } from "../../src/core/scatter-analysis";
 export interface ScatterProps extends ScatterContract {
     /** Reports selection for application-owned filtering or detail navigation. */
     onSelectedChange?: (id: string) => void;

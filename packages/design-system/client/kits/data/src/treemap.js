@@ -1,3 +1,4 @@
+import { automaticChartPalette, chartColorToken } from "./core/chart-color.js";
 import { finite, unique } from "./visualization.js";
 function treemapNodes(data) {
   const all = [], active = /* @__PURE__ */ new Set();
@@ -11,7 +12,10 @@ function treemapNodes(data) {
   }
   visit(data);
   unique(all, "Treemap");
-  return all;
+  const automatic = automaticChartPalette(all.filter((node) => !node.children?.length));
+  const copies = new Map(all.map((node) => [node.id, { ...node, color: chartColorToken(node, void 0, automatic) }]));
+  for (const node of all) if (node.children) copies.get(node.id).children = node.children.map((child) => copies.get(child.id));
+  return all.map((node) => copies.get(node.id));
 }
 export {
   treemapNodes

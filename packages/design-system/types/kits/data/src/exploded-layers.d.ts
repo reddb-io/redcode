@@ -3,6 +3,7 @@ export interface ExplodedLayer extends VisualizationItem {
 }
 export declare function explodedLayers(data: readonly ExplodedLayer[]): {
     series: VisualizationSeries;
+    color?: import("./core/chart-color").ColorToken;
     id: string;
     label: string;
     description?: string;
@@ -22,6 +23,7 @@ export declare function explodedLayout(data: readonly ExplodedLayer[], width: nu
     front: string;
     labelX: number;
     labelWidth: number;
+    color?: import("./core/chart-color").ColorToken;
     id: string;
     label: string;
     description?: string;

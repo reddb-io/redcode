@@ -9,7 +9,7 @@ host's density when one is set; otherwise it uses tiny on narrow viewports and
 compact on wider ones. Editable text and toolbar controls retain the DS touch
 floor on devices with a coarse pointer.
 
-The current delivery pins `v2026.10.33`, selects React and uses the official
+The current delivery pins `v2026.10.34`, selects React and uses the official
 compiled distribution. Settings and the migrated shell surfaces consume native
 React controls through canonical Base, App and Data imports. Shared service adapters
 retain the existing router, persistence, server subscriptions and extension owners.
@@ -34,6 +34,10 @@ regenerates the embedded designer's theme. The delivery receipt records the
 upstream commit and file hashes. Its consumer section preserves the upstream
 package-manifest hash before adding compatibility exports; the delivered hashes
 include that adaptation and the platform icons.
+
+On Windows, the wrapper uses directory junctions for build dependencies and adapts
+the temporary React compiler's dependency link the same way. It records that
+producer adaptation in the receipt; the pinned checkout and Kit sources are unchanged.
 
 Run `bun run check` and the affected application regression tests after updating.
 Do not edit vendored components or generated theme files by hand.
@@ -187,6 +191,39 @@ retain provenance, and charges without a reliable model attribution remain a sep
 These totals are recorded subtotals, not provider invoices or external CLI usage.
 `SecretValue` is available in the delivery; no new secret-read or reveal permission is introduced.
 
+The analytical-chart delivery adds React `BarChart`, `PieChart`, `DonutChart` and
+Base `RadialContent`, with configurable circular centers and ring thickness.
+Categorical charts can select scheme-aware ten- or forty-color palettes automatically;
+explicit item colors and Series Roles still take precedence. Share an identity palette
+across filtered views when the same model or agent must retain its color.
+
+The session **Delivery** extension uses `SidebarPanel`, `TreeView`, `TaskList`, `Badge`,
+`RadialProgress` and `RadialContent` for the shared objective, native session family,
+recorded task completion and objective checks. It opens the existing change review and
+leaves execution and acceptance under their current owners. The sidemenu offers saved
+attention/project grouping through the existing navigation recipes and controls.
+Delivery's `Tabs`, `Input` and `Select` controls separate the overview, linked resources and
+checkout skills. Native harness identities stay distinct from the session tree; their output
+loads only after selection. Skill source remains inert preview text until explicitly loaded.
+
+**Settings → Appearance → Desktop density** stores the wide-screen density preference:
+Dense uses the official `tiny` spatial tokens, Compact uses `compact`, and Comfortable uses
+`comfortable`. Dense is the default. Typography keeps its existing size and line height; mobile
+continues using its own `tiny` layout and the design system's coarse-pointer target floor.
+Session navigation rows and Delivery section gaps derive their spacing from these tokens.
+
+Further session components should use recorded data:
+
+| Component                | Candidate use                                        | Data boundary                                                                                     |
+| ------------------------ | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `WorkflowDiagram`        | Inspect task dependencies beside the conversation    | Use recorded task relationships; keep native and external execution identities explicit.          |
+| `TraceWaterfall`         | Inspect execution timing and parallel work           | Requires recorded start/end times; current states alone cannot establish durations.               |
+| `BarChart`, `DonutChart` | Compare recorded model usage and cost contributions  | Preserve reported/estimated/unknown provenance and keep unavailable values out of numeric totals. |
+| `Scatter`, `Quadrant`    | Explore measured quality, latency and cost tradeoffs | Use comparable evaluation samples; model names alone do not establish quality.                    |
+
+These further charts remain available imports. The sidebar and inspector can adopt them
+incrementally without replacing the conversation or introducing new telemetry.
+
 ## Opportunities by surface
 
 The opportunity inventory began with [v2026.10.20](https://github.com/reddb-io/design-system/releases/tag/v2026.10.20); the concrete integrations above describe the current pinned delivery.
@@ -217,7 +254,7 @@ screens, safe areas and no Electron browser service.
 | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Responsive `SidebarLayout` with labelled dock          | Offer four stable primary destinations plus More on phones, giving clearer discovery than an icon rail while preserving conversation width. | Integrated with the shared navigation controller. The dock's normal layout height reserves its space, Browse opens the current scope, and More preserves the other actions. Resized mobile viewport and touch navigation are covered; physical-device keyboard and installed-PWA safe-area behavior still require device verification. |
 | `SidebarPanel` and Drawer                              | Turn host/workspace details into a drawer on narrow screens and a contextual panel on wide screens.                                         | Native harness details use a bounded inspector. Host resources now has a searchable list and selected inspector that replaces the list on mobile and restores focus on return. Workspace drawers remain future work.                                                                                                                   |
-| Data `Table`, `KpiCard`, `BreakdownBar`, `MetricChart` | Make worker fleets comparable with filtering, sorting and CPU/RAM/capacity summaries.                                                       | [`agents-hosts.tsx`](../packages/app/src/shell/navigation/agents-hosts.tsx) retains timestamped samples locally while its inspector is visible, with linked native charts. An unavailable or stale sample remains visibly different from zero.                                                                                                    |
+| Data `Table`, `KpiCard`, `BreakdownBar`, `MetricChart` | Make worker fleets comparable with filtering, sorting and CPU/RAM/capacity summaries.                                                       | [`agents-hosts.tsx`](../packages/app/src/shell/navigation/agents-hosts.tsx) retains timestamped samples locally while its inspector is visible, with linked native charts. An unavailable or stale sample remains visibly different from zero.                                                                                         |
 | `TraceWaterfall`, `Diagram`, `SequenceDiagram`         | Explain coordinator → worker dispatch, queue time, execution and retries.                                                                   | Supply actual task/session events, timings and stable identities. DS selection opens the existing task details; it does not acquire execution ownership or infer a successful retry.                                                                                                                                                   |
 
 ### Designer: web pages, mobile, slides and creatives

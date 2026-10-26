@@ -27,6 +27,11 @@ test("navigation shares pins, filtering, keyboard focus and persisted panel widt
   const toggle = rail.getByRole("button", { name: "Toggle sidebar", exact: true })
   if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click()
   const sidebar = page.getByRole("complementary", { name: "Projects and sessions", exact: true })
+  await expect(sidebar.getByRole("button", { name: "By attention", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  )
+  await sidebar.getByRole("button", { name: "By project", exact: true }).click()
   const target = sidebar.locator(
     `[data-section="projects"] [data-action="navigation-session"][data-session="${fixture.targetID}"]`,
   )
@@ -57,6 +62,7 @@ test("navigation shares pins, filtering, keyboard focus and persisted panel widt
   await page.reload()
   await expect(page.locator('[data-component="composer-editor"]')).toBeEditable()
   await expect(sidebar.getByRole("separator")).toHaveAttribute("aria-valuenow", "420")
+  await expect(sidebar.getByRole("button", { name: "By project", exact: true })).toHaveAttribute("aria-pressed", "true")
   await expect(pinned.locator(`[data-session="${fixture.targetID}"]`)).toBeVisible()
   const box = await sidebar.getByRole("separator").boundingBox()
   if (!box) throw new Error("Missing panel resize handle")

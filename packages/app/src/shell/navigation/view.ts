@@ -41,7 +41,9 @@ export function navigationView(
     ),
     current: { session: navigation.current.session(), project: navigation.current.project() },
     query: navigation.filter.value(),
-    sections: Object.fromEntries(["pinned", "projects", "recents"].map((id) => [id, navigation.section.open(id)])),
+    sections: Object.fromEntries(
+      ["pinned", "projects", "recents", "attention", "working", "other"].map((id) => [id, navigation.section.open(id)]),
+    ),
     tree,
     projects: Object.fromEntries(
       tree.projects.map((item) => [
@@ -53,7 +55,12 @@ export function navigationView(
       ]),
     ),
     sessions: Object.fromEntries(
-      [...tree.pinned, ...tree.projects.flatMap((item) => item.sessions), ...tree.recents].map(({ session }) => [
+      [
+        ...tree.pinned,
+        ...tree.projects.flatMap((item) => item.sessions),
+        ...tree.recents,
+        ...tree.activity.flatMap((item) => item.items),
+      ].map(({ session }) => [
         session.id,
         {
           status: navigation.session.status(session.id),

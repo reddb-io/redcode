@@ -13,6 +13,7 @@ import {
   type FollowUpBehavior,
   type WorkspaceDefaultDestination,
   type WorkspaceLastUsed,
+  type AppearanceDensity,
 } from "./model-data"
 export {
   type Settings,
@@ -22,6 +23,7 @@ export {
   type FollowUpBehavior,
   type NotificationSettings,
   type SoundSettings,
+  type AppearanceDensity,
   monoDefault,
   sansDefault,
   terminalDefault,
@@ -114,6 +116,10 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
         agent: showAgent,
       },
       appearance: {
+        density: withFallback(() => store.appearance?.density, defaultSettings.appearance.density),
+        setDensity(value: AppearanceDensity) {
+          setStore("appearance", "density", value)
+        },
         fontSize: withFallback(() => store.appearance?.fontSize, defaultSettings.appearance.fontSize),
         setFontSize(value: number) {
           setStore("appearance", "fontSize", value)

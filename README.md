@@ -25,6 +25,15 @@ Choose the interface you prefer. Both work with your project's files and the mod
 
 **The visual app:** conversations, sessions, subagents and Design review in one workspace.
 
+Group the sidemenu **By attention** to see requests and ongoing work, or **By project** to browse
+the project tree. **Delivery** beside the conversation follows its objective, agent lineage,
+recorded task completion and verification, with access to change review.
+Its **Resources** tab keeps PR references and explicitly linked Claude/Codex runs together;
+**Skills** previews checkout instructions and loads a selected skill without starting execution.
+Choose **Dense**, **Compact** or **Comfortable** under **Settings → Appearance → Desktop density**.
+Dense is the default on wider screens; the setting changes spacing and controls while keeping text sizes.
+[Session workspace](docs/agent-features.md#session-workspace).
+
 On phones, the shared web workspace uses a header navigation menu and overlay sidemenus so the
 conversation keeps the full screen width, with denser spacing and reading text from the design system.
 Install it on your home screen through **Settings → Preferences → Install Redcode** or your browser's

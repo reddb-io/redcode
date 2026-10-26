@@ -97,8 +97,13 @@ import { fieldAssociation } from "./core/field.js";
 import { typeRoleMerge, TYPE_ROLE_UTILITIES } from "./type-roles.js";
 export * from "./phone-input.variants.js";
 export * from "./secret-value.variants.js";
+import { tokenColor } from "./core/color-token.js";
+import { ringThickness } from "./core/radial.js";
+export * from "./radial-content.variants.js";
 export {
   TYPE_ROLE_UTILITIES,
   fieldAssociation,
+  ringThickness,
+  tokenColor,
   typeRoleMerge
 };

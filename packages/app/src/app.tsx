@@ -13,7 +13,7 @@ import { DesktopCommands } from "@/shell/commands/desktop"
 import { GlobalProvider } from "@/runtime/server/runtime"
 import { LanguageProvider, UiI18nBridge, type Locale } from "@/runtime/i18n/language"
 import { ServerConnection, ServersProvider } from "@/runtime/server/registry"
-import { SettingsProvider } from "@/settings/model"
+import { SettingsProvider, useSettings } from "@/settings/model"
 import { TabsProvider } from "@/shell/tabs/tabs"
 import { ErrorPage } from "@/shell/errors/error"
 import { AppRoutes, File, preloadRoute } from "@/shell/routes/routes"
@@ -38,9 +38,10 @@ function QueryProvider(props: ParentProps) {
 
 function BodyTypography() {
   const mobile = createMediaQuery("(max-width: 767px)")
+  const settings = useSettings()
   createRenderEffect(() => {
     if (typeof document === "undefined") return
-    document.documentElement.dataset.density = mobile() ? "tiny" : "compact"
+    document.documentElement.dataset.density = mobile() ? "tiny" : settings.appearance.density()
     document.body.classList.remove("text-12-regular")
     document.body.classList.add("font-(family-name:--font-family-text)", "text-[13px]", "font-normal")
   })
