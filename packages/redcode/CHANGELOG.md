@@ -1,5 +1,17 @@
 # @reddb-io/redcode
 
+## 0.86.2
+
+### Patch Changes
+
+- Vendor Design System v2026.10.37 through its official compiled React delivery. Use 18px icons and smaller 11px labels throughout the Desktop and web navigation rail. Keep names visible, retire the icon-only preference while preserving its stored values, and retain keyboard navigation and touch targets.
+
+  Add a persisted Navigation spacing slider to Preferences, ranging from 0 to 16px with a 12px default. Show Server with its own icon in the rail, keeping the current server address in its tooltip.
+
+- Add an optional task dependency flow to the Desktop and web Delivery panel using the Design System's native WorkflowDiagram. Inspect a task's acceptance criterion, recorded prerequisite acceptance and current assigned conversations, preserving selection during refreshes. Keep the task list as the default and load the flow only when requested, without new polling or execution side effects.
+- Add a Monitors view to Desktop and web Delivery. Inspect the current conversation's local monitor state, attempts, recorded output and result delivery using native Design System controls. Refresh only while visible and connected, retain explicit stale-state errors, and stop a selected monitor without cancelling external jobs or resuming the conversation.
+- Use native Design System Statistic cards for host resources and usage totals, with subtle value-change feedback and real usage trends. Render live host samples as area charts with finer outlines, preserving gaps, pause controls and stale-data warnings. Make Delivery and context progress rings thinner without changing their readings or accounting.
+
 ## 0.86.1
 
 ### Patch Changes
