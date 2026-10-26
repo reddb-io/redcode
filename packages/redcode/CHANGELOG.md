@@ -1,5 +1,25 @@
 # @reddb-io/redcode
 
+## 0.86.1
+
+### Patch Changes
+
+- Update the shared Desktop, web and embedded Design appearance to Design System v2026.10.34, including analytical charts and scheme-aware categorical palettes. Allow the pinned React delivery to regenerate on Windows without symlink privileges.
+- Return `--version` and `-v` before loading CLI services or initializing configuration, storage and telemetry, so a version query can succeed even when application startup is blocked.
+- Add Resources and Skills tabs to the Delivery panel. Save pull request references and explicitly linked Claude Code/Codex runs on the native session family's metadata; inspect only the selected external output and preserve provider identity and reported capabilities. Preview checkout skills and load them into the current idle conversation without resuming execution.
+- Use denser controls and spacing by default on Desktop and wider web screens, retaining text sizes. Add a saved Desktop density choice under Appearance with Dense, Compact and Comfortable options. Make session rows and Delivery section spacing follow the design system's density tokens while retaining the mobile layout and touch target sizes.
+- Coordinate OAuth refreshes across Sessions, Locations and local processes while preserving saved accounts and allowing independent waiters to cancel safely.
+
+  Process images in a reusable worker that releases its memory when idle and is replaced after failure or cancellation. Avoid retaining request-hook transcripts during slow tool calls and load only visible synthetic messages when deduplicating nested instructions.
+
+  Notify that a response is ready after outstanding background subagent results have been delivered to the parent, including nested delegations and results admitted during execution cleanup. Keep background services independent and stop announcing interrupted executions as completed responses.
+
+- Give prompt classification, response review, goal progress and stop-loss evaluation the same bounded request history. Preserve original requests and recent corrections across continuation and compaction, with source IDs, redaction and explicit omissions. Reviews retain goal criteria and distinguish superseded topics from current requirements.
+- Group the Desktop and web sidebar by attention or project, with a saved preference and live subagent activity on the parent session. Add a Delivery panel beside the conversation with the shared objective, navigable session lineage, recorded task completion and verification, and direct access to change review. Use the vendored SidebarPanel, TreeView, TaskList and radial progress components without loading transcripts or starting work during inspection.
+- Add a TUI orchestration view with one delegation tree and aligned execution states. Inspect the selected agent's model, checkout, reported usage and recent S1 checks on demand. Support keyboard navigation, steering and confirmed interruption without loading other agents' conversations or polling checks in the overview.
+- Allow restricted response verification to inspect evidence and then synthesize a complete answer in one final Step without tools. Preserve the durable two-Step allowance across resumes and finish immediately when inspection is unnecessary.
+- Keep project environment operations from failing on Windows when concurrent status reads briefly block an atomic result-file replacement. Retry only the same bounded file replacement, without replaying commands, and report scrubbed persistence errors if saving still fails.
+
 ## 0.86.0
 
 ### Minor Changes
