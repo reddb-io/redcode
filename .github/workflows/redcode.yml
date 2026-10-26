@@ -208,22 +208,28 @@ jobs:
     needs: plan
     runs-on: windows-2025
     timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
     env:
       NODE_OPTIONS: --max-old-space-size=4096
       OPENCODE_EXPERIMENTAL_DISABLE_FILEWATCHER: "true"
-      GITHUB_ACTIONS: "false"
-      REDCODE_TEST_HOME: ${{ runner.temp }}/harness-checks
-      OPENCODE_TEST_HOME: ${{ runner.temp }}/harness-checks
-      OPENCODE_CONFIG_DIR: ${{ runner.temp }}/harness-checks/config
-      XDG_CONFIG_HOME: ${{ runner.temp }}/harness-checks/config
-      XDG_DATA_HOME: ${{ runner.temp }}/harness-checks/data
-      XDG_STATE_HOME: ${{ runner.temp }}/harness-checks/state
-      XDG_CACHE_HOME: ${{ runner.temp }}/harness-checks/cache
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           ref: ${{ needs.plan.outputs.sha }}
       - uses: ./.github/actions/setup-bun
+      - name: Configure isolated test storage
+        run: |
+          windows_harness_root="$RUNNER_TEMP/harness-checks"
+          printf '%s\n' \
+            "REDCODE_TEST_HOME=$windows_harness_root" \
+            "OPENCODE_TEST_HOME=$windows_harness_root" \
+            "OPENCODE_CONFIG_DIR=$windows_harness_root/config" \
+            "XDG_CONFIG_HOME=$windows_harness_root/config" \
+            "XDG_DATA_HOME=$windows_harness_root/data" \
+            "XDG_STATE_HOME=$windows_harness_root/state" \
+            "XDG_CACHE_HOME=$windows_harness_root/cache" >> "$GITHUB_ENV"
       - name: Configure test git identity
         shell: bash
         run: |
@@ -233,16 +239,15 @@ jobs:
         working-directory: packages/server
         run: |
           # Repeat successful runs to exercise completion/read contention; fail on the first error.
-          1..10 | ForEach-Object {
-            bun run test test/project-environments.test.ts --timeout 30000
-            if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          }
+          for attempt in {1..10}; do
+            GITHUB_ACTIONS=false bun run test test/project-environments.test.ts --timeout 30000
+          done
       - name: Verify CLI version startup
         working-directory: packages/cli
-        run: bun run test test/version.test.ts --timeout 30000
+        run: GITHUB_ACTIONS=false bun run test test/version.test.ts --timeout 30000
       - name: Verify OAuth refresh and embedded image worker
         working-directory: packages/core
-        run: bun run test test/credential-refresh-process.test.ts test/integration-refresh.test.ts test/photon-worker.test.ts --timeout 30000
+        run: GITHUB_ACTIONS=false bun run test test/credential-refresh-process.test.ts test/integration-refresh.test.ts test/photon-worker.test.ts --timeout 30000
 
   tests:
     needs: plan
