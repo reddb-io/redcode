@@ -245,7 +245,7 @@ jobs:
         run: |
           # Repeat successful runs to exercise completion/read contention; fail on the first error.
           for attempt in {1..10}; do
-            GITHUB_ACTIONS=false bun run test test/project-environments.test.ts --timeout 30000
+            GITHUB_ACTIONS=false bun run test test/project-environments.test.ts --timeout 90000
           done
       - name: Verify CLI version startup
         working-directory: packages/cli

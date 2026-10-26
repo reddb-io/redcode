@@ -19,6 +19,9 @@ const quoted = (value: string) =>
   process.platform === "win32" ? `'${value.replaceAll("'", "''")}'` : `'${value.replaceAll("'", "'\\''")}'`
 const command = (file: string, action: string) =>
   `${process.platform === "win32" ? "& " : ""}${quoted(process.execPath)} ${quoted(file)} ${action}`
+// Hosted Windows runners can spend more than ten seconds starting a cold PowerShell.
+// The dedicated timeout recipe below still uses one second to verify cancellation.
+const timeoutSeconds = process.platform === "win32" ? 30 : 10
 
 it.live(
   "environment recipes share project identity, preserve execution directories and redact real command results",
@@ -84,7 +87,7 @@ if (process.env.FIXTURE_TOKEN) console.log(process.env.FIXTURE_TOKEN);
           start: command(runner, "start"),
           stop: command(runner, "stop"),
           validate: command(runner, "validate"),
-          timeoutSeconds: 10,
+          timeoutSeconds,
           secrets: { FIXTURE_TOKEN: "fixture-token" },
         }
         const recipe = yield* Effect.promise(() => service.save({ directory, definition, expectedRevision: 0 }))
@@ -93,7 +96,7 @@ if (process.env.FIXTURE_TOKEN) console.log(process.env.FIXTURE_TOKEN);
         expect(other.recipes[0].revision).toBe(recipe.revision)
         const wait = (id: string) =>
           Effect.gen(function* () {
-            const until = Date.now() + 15_000
+            const until = Date.now() + (timeoutSeconds + 5) * 1000
             while (Date.now() < until) {
               // Concurrent clients can poll while an operation replaces its durable result.
               const snapshots = yield* Effect.promise(() =>
@@ -264,5 +267,5 @@ if (process.env.FIXTURE_TOKEN) console.log(process.env.FIXTURE_TOKEN);
         ),
       )
     }),
-  30_000,
+  timeoutSeconds * 3000,
 )
