@@ -34,6 +34,78 @@ const it = testEffect(
 )
 
 describe("SessionExecution lifecycle", () => {
+  it.effect("settles only after nested subagent results are acknowledged, without waiting on background services", () =>
+    Effect.gen(function* () {
+      const database = yield* Database.Service
+      const jobs = yield* Job.Service
+      const bus = yield* Bus.Service
+      const sessions = yield* Session.Service
+      const parent = Session.ID.make("ses_settled_parent")
+      const child = Session.ID.make("ses_settled_child")
+      const grandchild = Session.ID.make("ses_settled_grandchild")
+      yield* seedSessions(database, [parent])
+      yield* seedSessions(database, [child], { parent_id: parent })
+      yield* seedSessions(database, [grandchild], { parent_id: child })
+      const release = yield* Deferred.make<void>()
+      yield* jobs.start({
+        id: grandchild,
+        type: "subagent",
+        recovery: {
+          kind: "subagent",
+          parentSessionID: child,
+          childSessionID: grandchild,
+          agent: "explore",
+          description: "Nested work",
+        },
+        run: Deferred.await(release).pipe(Effect.as("done")),
+      })
+      const background = yield* jobs.background(grandchild)
+      if (!background?.notificationID) return yield* Effect.die("Missing result identity")
+      yield* seedBackground(jobs, parent, [{ id: "service", shellID: "sh_service", command: "bun dev" }])
+      const events: string[] = []
+      yield* bus.listen((event) =>
+        Effect.sync(() => {
+          if (event.type === "session.settled" || event.type === "session.execution.succeeded") {
+            events.push(event.type)
+            if (event.type === "session.settled") expect("durable" in event).toBe(false)
+          }
+        }),
+      )
+      const scope = yield* Scope.make()
+      yield* Effect.addFinalizer(() => Scope.close(scope, Exit.void))
+      const context = yield* buildExecution(scope, () => Effect.void)
+      const execution = Context.get(context, SessionExecution.Service)
+      yield* execution.resume(parent)
+      expect(events).toEqual(["session.execution.succeeded"])
+      yield* Deferred.succeed(release, undefined)
+      yield* jobs.wait({ id: grandchild })
+      // Finishing the child is insufficient while its result still awaits durable admission.
+      yield* execution.resume(parent)
+      expect(events).toEqual(["session.execution.succeeded", "session.execution.succeeded"])
+      yield* sessions.synthetic({
+        id: background.notificationID,
+        sessionID: parent,
+        text: "Nested result",
+        description: "Result ready",
+        metadata: { source: "subagent", childID: grandchild },
+        resume: false,
+      })
+      yield* jobs.completeBackground(background.notificationID)
+      yield* execution.resume(parent)
+      expect(events).toHaveLength(3)
+      // Acknowledgment must not race a new result that the parent has not consumed yet.
+      yield* SessionInbox.promote(database.db, bus, parent, "steer")
+      yield* execution.resume(parent)
+      expect(events).toEqual([
+        "session.execution.succeeded",
+        "session.execution.succeeded",
+        "session.execution.succeeded",
+        "session.execution.succeeded",
+        "session.settled",
+      ])
+    }),
+  )
+
   it.effect("only one runtime claims a session, and recovery waits until that owner ends", () =>
     Effect.gen(function* () {
       const database = yield* Database.Service

@@ -1,0 +1,144 @@
+{
+  "base": "93a8120d08c99b04fb5d3026d0c4498ca82bdb7d",
+  "status": "implemented-local-unpublished",
+  "check": {
+    "command": "bun run check",
+    "successful": 27,
+    "total": 27,
+    "cached": 20,
+    "log": "/tmp/redcode-harness-check-final.log"
+  },
+  "tests": [
+    {
+      "scope": "Core focused",
+      "passed": 47,
+      "files": 4,
+      "log": "/tmp/redcode-harness-focused-final.log"
+    },
+    {
+      "scope": "Core regression",
+      "passed": 396,
+      "files": 9,
+      "log": "/tmp/redcode-harness-regressions.log"
+    },
+    {
+      "scope": "TUI notifications",
+      "passed": 10
+    },
+    {
+      "scope": "App notifications",
+      "passed": 2
+    },
+    {
+      "scope": "Schema events and terminal contracts",
+      "passed": 15
+    },
+    {
+      "scope": "Protocol events",
+      "passed": 2
+    },
+    {
+      "scope": "Client shared events",
+      "passed": 15
+    }
+  ],
+  "generation": {
+    "command": "bun run generate",
+    "package": "packages/client",
+    "success": true
+  },
+  "builds": {
+    "compiled_image_worker": {
+      "success": true,
+      "result": {
+        "worker": true,
+        "unchanged": true
+      }
+    },
+    "native_cli": {
+      "target": "linux-x64",
+      "success": true,
+      "reported_version": "redcode v0.86.0",
+      "note": "Local build; package version unchanged until release workflow."
+    },
+    "production_gui": {
+      "success": true
+    }
+  },
+  "benchmark": {
+    "scenario": "entry: cold session from Home",
+    "production": true,
+    "fixture_backend": true,
+    "samples_per_variant": 3,
+    "results": {
+      "before": {
+        "run_id": "2026-10-26T12-37-38-307Z-605195",
+        "passed": 3,
+        "samples": [
+          {
+            "firstCorrectObservedMs": 805.7000000476837,
+            "stableObservedMs": 884.6000000238419
+          },
+          {
+            "firstCorrectObservedMs": 697.2999999523163,
+            "stableObservedMs": 771.3999999761581
+          },
+          {
+            "firstCorrectObservedMs": 699,
+            "stableObservedMs": 773.5
+          }
+        ],
+        "median_ms": {
+          "firstCorrectObservedMs": 699,
+          "stableObservedMs": 773.5
+        }
+      },
+      "after": {
+        "run_id": "2026-10-26T13-01-10-607Z-746033",
+        "passed": 3,
+        "samples": [
+          {
+            "firstCorrectObservedMs": 1909.2999999523163,
+            "stableObservedMs": 1917.5
+          },
+          {
+            "firstCorrectObservedMs": 2144.1999999284744,
+            "stableObservedMs": 2155.1999999284744
+          },
+          {
+            "firstCorrectObservedMs": 1836.7999999523163,
+            "stableObservedMs": 1922.1000000238419
+          }
+        ],
+        "median_ms": {
+          "firstCorrectObservedMs": 1909.2999999523163,
+          "stableObservedMs": 1922.1000000238419
+        }
+      },
+      "control": {
+        "run_id": "2026-10-26T13-06-08-639Z-780407",
+        "passed": 3,
+        "samples": [
+          {
+            "firstCorrectObservedMs": 2286.4000000953674,
+            "stableObservedMs": 2387.9000000953674
+          },
+          {
+            "firstCorrectObservedMs": 1406.5,
+            "stableObservedMs": 1489.8000000715256
+          },
+          {
+            "firstCorrectObservedMs": 1097.4000000953674,
+            "stableObservedMs": 1160.1000000238419
+          }
+        ],
+        "median_ms": {
+          "firstCorrectObservedMs": 1406.5,
+          "stableObservedMs": 1489.8000000715256
+        }
+      }
+    },
+    "conclusion": "Nine scenario runs passed. Control with the previous notification listener also slowed relative to the first baseline. These measurements do not establish a performance improvement or isolate a regression. Backend harness latency and image memory were not benchmarked.",
+    "excluded": "An earlier after run overlapped the full type check; excluded from comparison."
+  }
+}

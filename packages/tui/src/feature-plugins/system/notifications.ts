@@ -38,7 +38,7 @@ export default Plugin.define({
         return
       }
       const session = context.data.session.get(sessionID)
-      notify(context, sessionID, "Session done", session?.parentID ? "subagent_done" : "done")
+      notify(context, sessionID, "Response ready", session?.parentID ? "subagent_done" : "done")
     }
 
     const dispose = [
@@ -56,8 +56,8 @@ export default Plugin.define({
       }),
       context.data.on("permission.replied", (event) => permissions.delete(event.data.requestID)),
       context.data.on("session.execution.started", (event) => started(event.data.sessionID)),
-      context.data.on("session.execution.succeeded", (event) => ended(event.data.sessionID)),
-      context.data.on("session.execution.interrupted", (event) => ended(event.data.sessionID)),
+      context.data.on("session.settled", (event) => ended(event.data.sessionID)),
+      context.data.on("session.execution.interrupted", (event) => terminal.add(event.data.sessionID)),
       context.data.on("session.execution.failed", (event) => {
         const sessionID = event.data.sessionID
         if (terminal.has(sessionID)) return
@@ -67,7 +67,12 @@ export default Plugin.define({
         }
         errored.add(sessionID)
         notify(context, sessionID, event.data.error.message, "error")
-        context.ui.toast.show({ sessionID, title: "Session failed", message: event.data.error.message, variant: "error" })
+        context.ui.toast.show({
+          sessionID,
+          title: "Session failed",
+          message: event.data.error.message,
+          variant: "error",
+        })
         ended(sessionID)
       }),
     ]

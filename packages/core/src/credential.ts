@@ -1,12 +1,13 @@
 export * as Credential from "./credential.js"
 
 import { asc, desc, eq } from "drizzle-orm"
-import { Cause, Context, Effect, Layer, Schema } from "effect"
+import { Cause, Context, Effect, Fiber, Layer, Schema } from "effect"
 import { Credential } from "@opencode/schema/credential"
 import { Integration } from "@opencode/schema/integration"
 import { Database } from "./database/database.js"
 import { Bus } from "./bus.js"
 import { makeGlobalNode } from "@opencode/util/effect/app-node"
+import { EffectFlock } from "@opencode/util/effect-flock"
 import { CredentialTable } from "./credential/sql.js"
 import { ErrorSummary } from "./util/error-summary.js"
 
@@ -41,6 +42,11 @@ export interface Interface {
   readonly list: (integrationID: Integration.ID) => Effect.Effect<Info[]>
   /** Returns one stored credential by ID. */
   readonly get: (id: ID) => Effect.Effect<Info | undefined>
+  /** Shares an OAuth refresh across Locations; the file lock serializes other local processes. */
+  readonly lock: (
+    id: ID,
+    operation: Effect.Effect<OAuth | undefined, unknown>,
+  ) => Effect.Effect<OAuth | undefined, unknown>
   /**
    * Creates a credential for an integration and returns the new record. The new credential becomes the
    * integration's selection unless `activate` is false and the integration already has a credential.
@@ -67,6 +73,9 @@ const layer = Layer.effect(
   Effect.gen(function* () {
     const db = (yield* Database.Service).db
     const bus = yield* Bus.Service
+    const flock = yield* EffectFlock.Service
+    const scope = yield* Effect.scope
+    const pending = new Map<ID, Fiber.Fiber<OAuth | undefined, unknown>>()
     const decode = Schema.decodeUnknownSync(Value)
     const stored = (row: typeof CredentialTable.$inferSelect) => {
       if (!row.integration_id) return
@@ -84,6 +93,22 @@ const layer = Layer.effect(
       })
 
     return Service.of({
+      lock: Effect.fn("Credential.lock")((id, operation) =>
+        Effect.uninterruptibleMask((restore) =>
+          Effect.gen(function* () {
+            const current = pending.get(id)
+            if (current) return yield* restore(Fiber.join(current))
+            // The global scope owns refresh: a closing Location must not cancel other waiters.
+            const fiber = yield* operation.pipe(
+              flock.withLock(`credential-refresh:${id}`),
+              Effect.ensuring(Effect.sync(() => pending.delete(id))),
+              Effect.forkIn(scope),
+            )
+            pending.set(id, fiber)
+            return yield* restore(Fiber.join(fiber))
+          }),
+        ),
+      ),
       all: Effect.fn("Credential.all")(() =>
         db
           .select()
@@ -208,7 +233,11 @@ const layer = Layer.effect(
       update: Effect.fn("Credential.update")(function* (id, updates) {
         if (updates.label === undefined && updates.value === undefined) return
         const credential = yield* db
-          .select({ integrationID: CredentialTable.integration_id, label: CredentialTable.label, active: CredentialTable.active })
+          .select({
+            integrationID: CredentialTable.integration_id,
+            label: CredentialTable.label,
+            active: CredentialTable.active,
+          })
           .from(CredentialTable)
           .where(eq(CredentialTable.id, id))
           .get()
@@ -255,7 +284,11 @@ const layer = Layer.effect(
         if (updates.label !== undefined && updates.label !== credential.label)
           yield* bus.publish(Event.Updated, {}, { global: true })
         if (updates.value !== undefined && credential.active)
-          yield* bus.publish(Event.Switched, { integrationID: credential.integrationID, credentialID: id }, { global: true })
+          yield* bus.publish(
+            Event.Switched,
+            { integrationID: credential.integrationID, credentialID: id },
+            { global: true },
+          )
       }),
       remove: Effect.fn("Credential.remove")(function* (id) {
         const removed = yield* db
@@ -327,4 +360,4 @@ const layer = Layer.effect(
   }),
 )
 
-export const node = makeGlobalNode({ service: Service, layer, deps: [Database.node, Bus.node] })
+export const node = makeGlobalNode({ service: Service, layer, deps: [Database.node, Bus.node, EffectFlock.node] })

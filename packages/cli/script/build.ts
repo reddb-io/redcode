@@ -79,6 +79,7 @@ const rasterWorker = await Bun.build({
 })
 if (!rasterWorker.success) throw new AggregateError(rasterWorker.logs, "Unable to bundle the Design raster worker")
 const rasterWorkerPath = "design-raster-worker.js"
+const photonWorkerPath = "photon-worker.js"
 const rasterWorkerSource = await rasterWorker.outputs[0].text()
 const appAssetsPlugin: BunPlugin = {
   name: "opencode-app-assets",
@@ -137,8 +138,12 @@ export default { path: file, version: ${JSON.stringify(opencodePty.version)}, sh
   const executablePath = await compileExecutable(item)
   console.log(`building ${name}`)
   const result = await Bun.build({
-    entrypoints: [redcode ? "./src/redcode.ts" : "./src/index.ts", rasterWorkerPath],
-    files: { [rasterWorkerPath]: rasterWorkerSource },
+    entrypoints: [redcode ? "./src/redcode.ts" : "./src/index.ts", rasterWorkerPath, photonWorkerPath],
+    files: {
+      [rasterWorkerPath]: rasterWorkerSource,
+      // A root entry keeps the worker beside the shared chunks that resolve its URL.
+      [photonWorkerPath]: 'import "../core/src/image/photon-worker.ts"',
+    },
     tsconfig: "./tsconfig.json",
     plugins: [appAssetsPlugin, solidPlugin, parcelWatcherPlugin, opencodePtyPlugin, simulationGraphPlugin],
     external: ["node-gyp"],

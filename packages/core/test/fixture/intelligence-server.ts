@@ -1,7 +1,11 @@
 import { Schema } from "effect"
 import { Intelligence } from "@opencode/schema/intelligence"
 
-const Request = Schema.Struct({ model: Schema.String, questions: Schema.Record(Schema.String, Intelligence.Question) })
+const Request = Schema.Struct({
+  model: Schema.String,
+  questions: Schema.Record(Schema.String, Intelligence.Question),
+  state: Schema.optional(Schema.Struct({ sources: Schema.Record(Schema.String, Schema.Unknown) })),
+})
 
 /**
  * Real local HTTP transport with a controllable classification response; it never calls a provider. `choices`
@@ -13,14 +17,14 @@ export function intelligenceServer(
 ) {
   const started = Promise.withResolvers<void>()
   const release = Promise.withResolvers<void>()
-  const requests: Array<{ classification: boolean }> = []
+  const requests: Array<{ classification: boolean; questions: string[]; sources?: Record<string, unknown> }> = []
   const server = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
     fetch: async (request) => {
       const input = Schema.decodeUnknownSync(Request)(await request.json())
       const classification = Object.hasOwn(input.questions, "work_route")
-      requests.push({ classification })
+      requests.push({ classification, questions: Object.keys(input.questions), sources: input.state?.sources })
       if (classification) {
         started.resolve()
         await release.promise

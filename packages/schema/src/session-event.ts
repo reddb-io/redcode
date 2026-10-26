@@ -249,6 +249,10 @@ export const InboxDeliveryChanged = Event.durable({
 })
 export type InboxDeliveryChanged = typeof InboxDeliveryChanged.Type
 
+/** A successful execution has no outstanding background subagent results. Derived, never replayed. */
+export const Settled = Event.ephemeral({ type: "session.settled", schema: Base })
+export type Settled = typeof Settled.Type
+
 export namespace Execution {
   export const Started = Event.durable({ type: "session.execution.started", ...options, schema: Base })
   export type Started = typeof Started.Type
@@ -697,6 +701,7 @@ export const Definitions = Event.inventory(
   InboxDeliveryChanged,
   Execution.Started,
   Execution.Succeeded,
+  Settled,
   Execution.Failed,
   Execution.Interrupted,
   InstructionsUpdated,

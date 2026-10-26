@@ -38,6 +38,7 @@ import { SessionGuardLog } from "../guard-log.js"
 import { SessionPlan } from "../plan.js"
 import { SessionGoalCompletion } from "../goal-completion.js"
 import { SessionTaskFacts } from "../task-facts.js"
+import { SessionRequestContext } from "../request-context.js"
 import { SessionTodo } from "../todo.js"
 import { SessionTodoStore } from "../todo-store.js"
 import { HookRuntime } from "../../hook.js"
@@ -190,7 +191,7 @@ const layer = Layer.effect(
         type: "assistant",
         order: "asc",
         cursor: { id: marker.id, direction: "next" },
-        limit: 1,
+        limit: IntelligenceVerification.MAX_STEPS,
       })
       return IntelligenceVerification.state([user, marker, ...after])
     })
@@ -423,7 +424,7 @@ const layer = Layer.effect(
         if (Exit.isFailure(result)) return yield* Effect.failCause(result.cause)
         if (result.value) worked = true
         continuing = verification?.pending
-          ? false
+          ? verification.remaining > 1 && result.value
           : codeRepair?.pending
             ? codeRepair.remaining > 1 && result.value
             : result.value && !(yield* monitors.list(sessionID)).some(Monitor.parks)
@@ -583,6 +584,7 @@ const layer = Layer.effect(
               SessionStopLoss.evaluation({
                 sessionID,
                 request: turn.request,
+                requestContext: yield* requestContext(loaded, user.id),
                 steps: turn.steps,
                 trajectory,
                 checkpoint,
@@ -644,6 +646,22 @@ const layer = Layer.effect(
       return { memory: next, ended: true }
     })
 
+    const requestContext = Effect.fn("SessionRunner.requestContext")(function* (
+      loaded: SessionContext.Loaded,
+      requestID?: SessionMessage.ID,
+    ) {
+      const session = yield* store.get(loaded.session.id)
+      if (!session) return undefined
+      const id = requestID ?? (yield* store.messages({ sessionID: session.id, type: "user", limit: 1 }))[0]?.id
+      if (!id) return undefined
+      return yield* SessionRequestContext.load(db, {
+        sessionID: session.id,
+        requestID: id,
+        excluded: VaultRestricted.excluded(session.metadata),
+        scrub: yield* vault.scrubber(session.projectID),
+      })
+    })
+
     /**
      * Classifies the latest user request with System One once, from a bounded view of the session.
      * Advisory only: sources and inference run in the background. Persisted guidance enters later
@@ -677,6 +695,7 @@ const layer = Layer.effect(
             sessionID,
             scrub,
             request: { id: user.id, text: user.text, files: user.files },
+            requestContext: yield* requestContext(loaded, user.id),
             history: preceding
               .slice(-IntelligenceClassification.HISTORY)
               .flatMap(IntelligenceClassification.historyEntry),
@@ -701,10 +720,6 @@ const layer = Layer.effect(
                   .filter((item) => item.type === "user")
                   .map((item) => ({ id: item.id, delivery: item.delivery, text: item.payload.text })),
                 tasks: SessionTodo.forAgent(yield* todos.get(sessionID), loaded.agent.id),
-                originalRequest: [
-                  ...(yield* store.messages({ sessionID, type: "user", order: "asc", limit: 1 })),
-                  ...(yield* store.messages({ sessionID, type: "user", limit: 2 })),
-                ].map((message) => (message.type === "user" ? { id: message.id, text: message.text } : null)),
                 priorDecision: (yield* intelligence.history(sessionID, {
                   operation: "prompt_classification",
                   limit: 2,
@@ -1057,6 +1072,7 @@ const layer = Layer.effect(
                   SessionGoal.judgement({
                     goal,
                     response: { id: response.id, text },
+                    requestContext: yield* requestContext(loaded),
                     tools: SessionStopLoss.digest(parts, { directory: loaded.session.location.directory }),
                   }),
                 )
@@ -1229,6 +1245,7 @@ const layer = Layer.effect(
           IntelligenceResponse.evaluation({
             sessionID,
             request: { id: plan.user.id, text: plan.user.text },
+            requestContext: yield* requestContext(loaded, plan.user.id),
             candidate: { id: plan.candidate.id, text: plan.text },
             attempt: plan.current.attempts,
             tools: SessionTaskFacts.evidence(projected),
@@ -1239,7 +1256,19 @@ const layer = Layer.effect(
               status: task.status,
               ...(task.reason ? { reason: task.reason } : {}),
             })),
-            goal: goal ? { objective: goal.objective, status: goal.status, reason: goal.reason } : undefined,
+            goal: goal
+              ? {
+                  id: goal.id,
+                  revision: goal.revision,
+                  objective: goal.objective,
+                  criteria: goal.criteria,
+                  gates: goal.gates,
+                  stopAfter: goal.stopAfter,
+                  executePlan: goal.executePlan,
+                  status: goal.status,
+                  reason: goal.reason,
+                }
+              : undefined,
             route: IntelligenceClassification.workRoute(classification),
           }),
         )
@@ -1471,7 +1500,8 @@ const layer = Layer.effect(
       stopGuard: () => void,
     ) {
       const sessionID = first.session.id
-      const verifying = (yield* verificationState(sessionID))?.pending === true
+      const verification = yield* verificationState(sessionID)
+      const verifying = verification?.pending === true
       const codeRepair = yield* codeRepairState(sessionID)
       let assistantMessageID = SessionMessage.ID.create()
       const retry = yield* SessionRunnerRetry.make(bus, sessionID)
@@ -1524,6 +1554,7 @@ const layer = Layer.effect(
                 yield* registry.snapshot(Permission.forAgent(loaded.agent.info, loaded.session.permissions), {
                   codeMode: false,
                 }),
+                verification.remaining === 1,
               )
             : loaded.tools
         const curation =
@@ -1590,6 +1621,11 @@ const layer = Layer.effect(
           inherited ? SessionGoal.inherit(inherited) : "",
           SessionPlan.guidance(yield* plans.list(sessionID)),
           advice,
+          verifying
+            ? verification.remaining === 1
+              ? "Final response verification Step: synthesize the inspection results into the complete answer. No tools are allowed. Preserve uncertainty and outstanding work when evidence is insufficient."
+              : "Response verification: inspect with read-only tools only if needed, or give the complete answer now. A tool inspection may be followed by one final synthesis Step with no tools."
+            : "",
           codeRepair?.pending
             ? `Code review allowance: ${codeRepair.remaining} Steps remain. ${codeRepair.remaining === 1 ? "This is the final Step: report actual changes, tests and any unresolved defect; tools are disabled." : "Check the suspected defect, make a focused correction only if confirmed, and run the allowed test after editing."}`
             : "",
@@ -1610,11 +1646,18 @@ const layer = Layer.effect(
               ? [...transcript.messages, Message.assistant(MAX_STEPS_PROMPT)]
               : transcript.messages,
             // Keep tool definitions on the final Step to preserve the provider's cached prefix.
-            toolChoice: stepLimitReached ? "none" : undefined,
+            toolChoice: stepLimitReached || (verifying && verification.remaining === 1) ? "none" : undefined,
             webSocket: "session",
             inputTokens: SessionCompaction.estimatePrompt(loaded),
           })
           .pipe(
+            // Slow tools keep the prepared request alive; discard the hook's unbounded transcript copy.
+            Effect.map((prepared) => ({
+              request: prepared.request,
+              options: prepared.options,
+              retry: prepared.retry,
+              executeTool: prepared.executeTool,
+            })),
             Effect.map((prepared) =>
               verifying || codeRepair?.pending
                 ? {

@@ -5,6 +5,7 @@ import { Intelligence } from "@opencode/schema/intelligence"
 import type { EvaluationInput } from "../intelligence.js"
 import { IntelligenceEvaluation } from "./evaluation.js"
 import { IntelligenceCodeRepair } from "./code-repair.js"
+import type { SessionRequestContext } from "../session/request-context.js"
 
 /**
  * System One review of the agent's final response. S1 validates the answer against the request
@@ -22,7 +23,8 @@ export const REPAIRS = 1
 export const QUESTIONS: Record<string, Intelligence.Question> = IntelligenceEvaluation.questions({
   correctness:
     "Does candidate contain a factual or logical error contradicted by the request or available evidence? Compare actual behavior with intended behavior and check the requested result. Missing evidence alone does not establish an error.",
-  omission: "Does candidate fail to answer an applicable user request or question in sources?",
+  omission:
+    "Does candidate fail to answer an applicable request or question in sources.request and sources.request_context? Follow later corrections and scope changes; neutral continuation preserves applicable requirements. Do not revive a superseded topic or infer an omission from missing or truncated history.",
   // Only claims of performed or verified work: a greeting or a statement of readiness is not one.
   unsupported:
     "Does candidate claim it performed or verified work, such as making edits, running commands or tests, completing tasks or checking results, that sources.tasks, sources.goal and sources.tools do not support? Conversational statements, such as greetings, saying it is ready, plans or offers of help, are not claims of work.",
@@ -73,6 +75,7 @@ export function questionsFor(input: {
 export function evaluation(input: {
   readonly sessionID: string
   readonly request: { readonly id: string; readonly text: string }
+  readonly requestContext?: SessionRequestContext.Info
   readonly candidate: { readonly id: string; readonly text: string }
   readonly attempt: number
   readonly tools: { readonly total: number; readonly calls: ReadonlyArray<unknown> }
@@ -94,6 +97,7 @@ export function evaluation(input: {
     candidateID: input.candidate.id,
     attempt: input.attempt,
     sources: {
+      ...(input.requestContext ? { request_context: input.requestContext } : {}),
       request: IntelligenceEvaluation.evidence(clean(input.request.text), {
         reference: input.request.id,
         limit: 6_000,
@@ -110,7 +114,8 @@ export function evaluation(input: {
         "Only successful, settled, fresh checks support verification. An edit invalidates earlier overlapping checks. Truncated text is not complete evidence; retrieve by durable IDs.",
       tools: IntelligenceEvaluation.evidence(clean(input.tools), {
         reference: `${input.sessionID}/tools`,
-        limit: 36_000,
+        // Share the existing source budget instead of making large reviews exceed the evaluator's request ceiling.
+        limit: 36_000 - (input.requestContext ? JSON.stringify(input.requestContext).length : 0),
       }),
       ...(input.artifact ? { artifact: input.artifact } : {}),
     },

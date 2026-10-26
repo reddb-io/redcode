@@ -1972,6 +1972,15 @@ export type SessionUsageUpdated = {
   data: { sessionID: string; cost: MoneyUSD; tokens: TokenUsageInfo }
 }
 
+export type SessionSettled = {
+  id: string
+  created: number
+  metadata?: { [x: string]: any }
+  type: "session.settled"
+  location?: LocationRef
+  data: { sessionID: string }
+}
+
 export type SessionTextDelta = {
   id: string
   created: number
@@ -4275,6 +4284,7 @@ export type V2Event =
   | SessionInboxDeliveryChanged
   | SessionExecutionStarted
   | SessionExecutionSucceeded
+  | SessionSettled
   | SessionExecutionFailed
   | SessionExecutionInterrupted
   | SessionInstructionsUpdated

@@ -42,6 +42,7 @@ import { IntelligenceEvaluation } from "../intelligence/evaluation.js"
 import { LoopGuard } from "./loop-guard.js"
 import { LOOP_GUARD_REFUSAL } from "./loop-marker.js"
 import { ShellPolling } from "../tool/shell-polling.js"
+import type { SessionRequestContext } from "./request-context.js"
 import type { SessionMessage } from "./message.js"
 import { SessionTaskFacts } from "./task-facts.js"
 
@@ -548,6 +549,7 @@ export function evaluation(input: {
   readonly subagent: boolean
   readonly directory?: string
   readonly limits: Limits
+  readonly requestContext?: SessionRequestContext.Info
 }): EvaluationInput {
   const trajectory = input.trajectory
   return {
@@ -556,6 +558,7 @@ export function evaluation(input: {
     kind: "classification",
     ...(input.request.id ? { subjectID: input.request.id } : {}),
     sources: {
+      ...(input.requestContext ? { request_context: input.requestContext } : {}),
       request: IntelligenceEvaluation.evidence(input.request.text, { reference: input.request.id, limit: 4000 }),
       trajectory: IntelligenceEvaluation.evidence(
         digest(

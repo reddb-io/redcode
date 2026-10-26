@@ -31,9 +31,9 @@ const Marker = Schema.Struct({ userID: SessionMessage.ID, scope: Scope })
 
 export const QUESTIONS = IntelligenceEvaluation.questions({
   code_behavior:
-    "Does the actual code in sources.artifact contradict an explicit behavior required by sources.request? Trace a concrete input or execution path. Judge the implementation, not how convincing the candidate response is. Missing tests or truncated patches alone do not prove a defect.",
+    "Does the actual code in sources.artifact contradict an explicit behavior required by sources.request or its applicable request_context? Follow later corrections and scope changes; do not revive superseded topics. Trace a concrete input or execution path. Judge the implementation, not how convincing the candidate response is. Missing tests or truncated context or patches alone do not prove a defect.",
   code_contract:
-    "Does the actual code in sources.artifact break an explicit API or state-preservation constraint in sources.request? A different implementation that satisfies the stated contract is not a defect. Do not invent requirements.",
+    "Does the actual code in sources.artifact break an explicit API or state-preservation constraint in sources.request or its applicable request_context? Follow later corrections and scope changes. A different implementation that satisfies the stated contract is not a defect. Do not invent requirements or revive superseded topics.",
 })
 
 /** Only the immutable candidate trees, never the final prose, establish what code was reviewed. */

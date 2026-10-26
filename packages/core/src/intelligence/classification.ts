@@ -7,6 +7,7 @@ import { DesignTargetCriteria } from "../design/target-criteria.js"
 import type { EvaluationInput } from "../intelligence.js"
 import { ProviderRouter } from "../provider-router.js"
 import { IntelligenceEvaluation } from "./evaluation.js"
+import type { SessionRequestContext } from "../session/request-context.js"
 
 /**
  * The per-prompt System One classification: what the user's latest request asks for, read with a
@@ -192,7 +193,7 @@ const definitions: Record<string, Intelligence.Question> = {
   restricted_content: {
     type: "noul",
     instructions:
-      "Does the current user message in sources.text itself state a credential, secret, personal data or other restricted content written out in prose? Judge only that message, never sources.history or sources.session.",
+      "Does the current user message in sources.text itself state a credential, secret, personal data or other restricted content written out in prose? Judge only that message, never other sources.",
     criteria: {
       true: "The message writes out, as ordinary text, a password, passphrase, key, token or similar secret, personal data that identifies or exposes a person such as a document number, bank account, health record or home address, or data it marks as confidential",
       false:
@@ -346,6 +347,7 @@ export function evaluation(input: {
   }
   readonly history: ReadonlyArray<HistoryEntry>
   readonly omitted: number
+  readonly requestContext?: SessionRequestContext.Info
   readonly session: {
     readonly mode: string
     readonly goal: string
@@ -363,6 +365,7 @@ export function evaluation(input: {
     kind: "classification",
     subjectID: input.request.id,
     sources: {
+      ...(input.requestContext ? { request_context: input.requestContext } : {}),
       text: IntelligenceEvaluation.evidence(clean(input.request.text), { reference: input.request.id, limit: 12_000 }),
       files: input.request.files?.map((file) => ({ name: file.name, mime: file.mime, contentReviewed: false })) ?? [],
       session: {
@@ -382,7 +385,10 @@ export function evaluation(input: {
           })),
           omittedMessages: input.omitted,
         },
-        { reference: `${input.sessionID}/before/${input.request.id}`, limit: 12_000 },
+        {
+          reference: `${input.sessionID}/before/${input.request.id}`,
+          limit: 12_000 - (input.requestContext ? JSON.stringify(input.requestContext).length : 0),
+        },
       ),
     },
     questions: questionsFor(input.skills, input.namespaces),
