@@ -53,11 +53,27 @@ test("session override wins over the saved mode without changing the saved setti
   expect(settings.reasoning).toBe("dual")
 })
 
-test("durable verification permits one Step and new input supersedes it", () => {
-  expect(IntelligenceVerification.state([user("msg_request"), marker()])?.pending).toBe(true)
-  expect(IntelligenceVerification.state([user("msg_request"), marker(), tool("msg_done", "read", {})])?.pending).toBe(
-    false,
-  )
+test("durable verification permits inspection then synthesis and new input supersedes it", () => {
+  expect(IntelligenceVerification.state([user("msg_request"), marker()])).toMatchObject({ pending: true, remaining: 2 })
+  const inspected = [user("msg_request"), marker(), tool("msg_read", "read", {})]
+  expect(IntelligenceVerification.state(inspected)).toMatchObject({ pending: true, remaining: 1 })
+  expect(IntelligenceVerification.state([...inspected, tool("msg_done", "read", {})])).toMatchObject({
+    pending: false,
+    remaining: 0,
+  })
+  expect(
+    IntelligenceVerification.state([
+      user("msg_request"),
+      marker(),
+      { ...tool("msg_answer", "read", {}), content: [{ type: "text", text: "Confirmed" }] },
+    ])?.pending,
+  ).toBe(false)
+  expect(
+    IntelligenceVerification.state([
+      ...inspected,
+      { ...tool("msg_failed", "read", {}), error: { type: "aborted", message: "Interrupted" } },
+    ])?.pending,
+  ).toBe(false)
   expect(IntelligenceVerification.state([user("msg_request"), marker(), user("msg_new")])).toBeUndefined()
 })
 
@@ -89,6 +105,35 @@ test("verification denies invasive tools at execution, not just in listings", ()
       } as Parameters<Tool.Snapshot["execute"]>[0]),
     )
     expect(Exit.isFailure(exit)).toBe(true)
+  }
+  expect(calls).toEqual([])
+})
+
+test("verification synthesis denies even read-only tools at execution", () => {
+  const calls: string[] = []
+  const snapshot: Tool.Snapshot = {
+    definitions: [],
+    execute: (input) =>
+      Effect.sync(() => {
+        calls.push(input.call.name)
+        return { content: [] }
+      }),
+  }
+  const restricted = IntelligenceVerification.restrict(snapshot, true)
+  expect(restricted.definitions).toEqual([])
+  for (const name of ["read", "glob", "grep", "session_history", "shell", "edit"]) {
+    expect(
+      Exit.isFailure(
+        Effect.runSyncExit(
+          restricted.execute({
+            sessionID: "ses_fixture",
+            agent: "build",
+            messageID: "msg_fixture",
+            call: { id: "call", name, input: {} },
+          } as Parameters<Tool.Snapshot["execute"]>[0]),
+        ),
+      ),
+    ).toBe(true)
   }
   expect(calls).toEqual([])
 })

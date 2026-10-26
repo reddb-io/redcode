@@ -90,6 +90,22 @@ export const layer: Layer.Layer<
     const releaseOnCommit = (sessionID: SessionSchema.ID) => ({
       commit: () => store.release(sessionID),
     })
+    const backgroundPending = Effect.fnUntraced(function* (sessionID: SessionSchema.ID) {
+      // A terminal marker is still pending until its synthetic result has been admitted.
+      const parents = new Set(
+        (yield* jobs.pendingBackground).flatMap((entry) =>
+          entry.recovery.kind === "subagent" ? [entry.recovery.parentSessionID] : [],
+        ),
+      )
+      if (parents.size === 0) return false
+      const belongs = (id: SessionSchema.ID): Effect.Effect<boolean> =>
+        Effect.gen(function* () {
+          if (id === sessionID) return true
+          const session = yield* store.get(id)
+          return session?.parentID ? yield* belongs(session.parentID) : false
+        })
+      return (yield* Effect.forEach(parents, belongs)).some(Boolean)
+    })
     const drain = Effect.fnUntraced(function* (
       sessionID: SessionSchema.ID,
       force: boolean,
@@ -138,6 +154,11 @@ export const layer: Layer.Layer<
               const outcome = terminal(exit, reason)
               if (outcome.type === "succeeded") {
                 yield* bus.publish(SessionEvent.Execution.Succeeded, { sessionID }, releaseOnCommit(sessionID))
+                if (
+                  !(yield* SessionInbox.nextPromotable(db, sessionID, "input")) &&
+                  !(yield* backgroundPending(sessionID))
+                )
+                  yield* bus.publish(SessionEvent.Settled, { sessionID })
                 const session = yield* store.get(sessionID)
                 if (session)
                   yield* HookRuntime.Service.use((hooks) =>

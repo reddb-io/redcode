@@ -55,7 +55,7 @@ beforeAll(async () => {
 afterAll(() => mock.module("@/runtime/persistence/storage", () => storage))
 
 test.each([
-  ["session.execution.succeeded", "notification.session.responseReady.title"],
+  ["session.settled", "notification.session.responseReady.title"],
   ["session.execution.failed", "notification.session.error.title"],
 ] as const)("system alert for %s requires an open session tab", async (type, title) => {
   alerts.length = 0
@@ -81,6 +81,11 @@ test.each([
 
     return { dispose, state }
   })
+
+  listener?.({ type: "session.execution.succeeded", id: "still-working", data: { sessionID: session.id } })
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(dispose.state.session.all(session.id)).toHaveLength(0)
+  expect(alerts).toEqual([])
 
   listener?.({
     type,

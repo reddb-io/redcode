@@ -2228,7 +2228,7 @@ describe("SessionRunnerLLM", () => {
     ])
   })
 
-  scenario("verification survives a long history, spends one Step and a new user supersedes it", function* (s) {
+  scenario("verification survives a long history, skips unused synthesis and a new user supersedes it", function* (s) {
     yield* s.llm.push(TestLLM.text("Initial answer", "initial"))
     const user = yield* s.runPrompt("Inspect this result")
     yield* Effect.forEach(
@@ -2262,40 +2262,51 @@ describe("SessionRunnerLLM", () => {
     expect(s.requests[2]?.tools.some((tool) => tool.name === "echo")).toBe(true)
   })
 
-  scenario("a tool-only verification cannot earn another synthesis Step", function* (s) {
-    const registry = yield* Tool.Service
-    const inspections: string[] = []
-    yield* transformTools(
-      registry,
-      {
-        read: {
-          name: "read",
-          description: "Inspect evidence",
-          input: Schema.Struct({ path: Schema.String }),
-          output: Schema.Struct({ text: Schema.String }),
-          execute: (input) =>
-            Effect.sync(() => {
-              inspections.push(input.path)
-              return { output: { text: "Evidence" } }
-            }),
+  scenario(
+    "a tool-only verification gets one tool-free synthesis Step and cannot restart its allowance",
+    function* (s) {
+      const registry = yield* Tool.Service
+      const inspections: string[] = []
+      yield* transformTools(
+        registry,
+        {
+          read: {
+            name: "read",
+            description: "Inspect evidence",
+            input: Schema.Struct({ path: Schema.String }),
+            output: Schema.Struct({ text: Schema.String }),
+            execute: (input) =>
+              Effect.sync(() => {
+                inspections.push(input.path)
+                return { output: { text: "Evidence" } }
+              }),
+          },
         },
-      },
-      { codemode: false },
-    )
-    yield* s.llm.push(TestLLM.text("Initial answer", "initial"))
-    const user = yield* s.runPrompt("Inspect this result")
-    yield* s.bus.publish(SessionEvent.Synthetic, {
-      sessionID,
-      text: "Verify using the evidence",
-      metadata: { [IntelligenceVerification.KEY]: { userID: user.id } },
-    })
-    yield* s.llm.push(TestLLM.tool("read-evidence", "read", { path: "evidence.txt" }))
-    yield* s.resume
-    expect(inspections).toEqual(["evidence.txt"])
-    expect(s.requests).toHaveLength(2)
-    yield* s.resume
-    expect(s.requests).toHaveLength(2)
-  })
+        { codemode: false },
+      )
+      yield* s.llm.push(TestLLM.text("Initial answer", "initial"))
+      const user = yield* s.runPrompt("Inspect this result")
+      yield* s.bus.publish(SessionEvent.Synthetic, {
+        sessionID,
+        text: "Verify using the evidence",
+        metadata: { [IntelligenceVerification.KEY]: { userID: user.id } },
+      })
+      yield* s.llm.push(
+        TestLLM.tool("read-evidence", "read", { path: "evidence.txt" }),
+        TestLLM.text("The evidence confirms the original answer", "verified"),
+      )
+      yield* s.resume
+      expect(inspections).toEqual(["evidence.txt"])
+      expect(s.requests).toHaveLength(3)
+      expect(s.requests[2]?.tools).toEqual([])
+      expect(s.requests[2]?.toolChoice?.type).toBe("none")
+      expect(s.requests[2]?.generation?.maxTokens).toBeLessThanOrEqual(2_048)
+      expect(JSON.stringify(s.requests[2]?.messages)).toContain("Evidence")
+      expect(JSON.stringify(yield* s.context)).toContain("The evidence confirms the original answer")
+      yield* s.resume
+      expect(s.requests).toHaveLength(3)
+    },
+  )
 
   scenario(
     "scoped code repair executes edits and tests with four bounded Steps and a tool-free final Step",
@@ -2394,6 +2405,61 @@ describe("SessionRunnerLLM", () => {
 
     expect(s.requests).toHaveLength(1)
     expect(yield* s.messages).toMatchObject([{ id: message.id, type: "user", text: "Run automatically" }])
+  })
+
+  scenario(
+    "shares request context across compaction and continuation in classification and response review",
+    function* (s) {
+      const fixture = yield* classificationFixture()
+      fixture.release()
+      yield* s.llm.push(TestLLM.text("Working on recovery", "original"))
+      const first = yield* s.runPrompt("Fix session recovery without activating providers automatically")
+      yield* fixture.classified(first.id)
+      yield* s.llm.push(TestLLM.text("Preserving the selected account", "correction"))
+      const correction = yield* s.runPrompt("Correction: preserve the selected account and its saved credential")
+      yield* fixture.classified(correction.id)
+      yield* Effect.forEach(
+        Array.from({ length: 70 }, (_, index) => index),
+        (index) => s.bus.publish(SessionEvent.Synthetic, { sessionID, text: `Intervening work ${index}` }),
+      )
+      yield* s.bus.publish(SessionEvent.Compaction.Started, { sessionID, reason: "manual", recent: "" })
+      yield* s.bus.publish(SessionEvent.Compaction.Ended, {
+        sessionID,
+        reason: "manual",
+        text: "Working on session recovery",
+        recent: "",
+      })
+      yield* s.llm.push(TestLLM.text("Continued recovery work", "continued"))
+      const current = yield* s.runPrompt("continue")
+      yield* fixture.classified(current.id)
+      const classified = fixture.requests.filter((request) => request.classification).at(-1)?.sources?.request_context
+      const reviewed = fixture.requests.filter((request) => request.questions.includes("omission")).at(-1)
+        ?.sources?.request_context
+      expect(JSON.stringify(s.requests.at(-1)?.messages)).not.toContain("without activating providers automatically")
+      expect(classified).toEqual(reviewed)
+      expect(reviewed).toMatchObject({
+        through: current.id,
+        olderOmitted: false,
+        messages: [
+          { messageID: first.id, text: { content: "Fix session recovery without activating providers automatically" } },
+          {
+            messageID: correction.id,
+            text: { content: "Correction: preserve the selected account and its saved credential" },
+          },
+          { messageID: current.id, text: { content: "continue" } },
+        ],
+      })
+    },
+  )
+
+  scenario("single reasoning admits continuation without consulting the request-context evaluators", function* (s) {
+    const fixture = yield* classificationFixture()
+    yield* fixture.intelligence.sessionMode(sessionID, { reasoning: "single" })
+    yield* s.llm.push(TestLLM.text("Working", "original"), TestLLM.text("Continuing", "continued"))
+    yield* s.runPrompt("Fix recovery without changing providers")
+    yield* s.runPrompt("continue")
+    expect(fixture.requests).toEqual([])
+    expect(s.requests).toHaveLength(2)
   })
 
   scenario("starts S2 while S1 is held and steers only the next Step with persisted friction telemetry", function* (s) {

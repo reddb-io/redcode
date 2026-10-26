@@ -1,0 +1,404 @@
+{
+  "collected_at": "2026-10-26T12:25:51Z",
+  "window_start": "2026-10-19T00:00:00Z",
+  "scope": "Focused harness review; recent and thematic searches, not a complete census or runtime/security audit.",
+  "redcode": {
+    "sha": "93a8120d08c99b04fb5d3026d0c4498ca82bdb7d",
+    "version": "0.86.0"
+  },
+  "upstreams": [
+    {
+      "repository": "anomalyco/opencode",
+      "branch": "dev",
+      "sha": "ed74ec82ce1fe3a36da6c0815a935473ef4bb0fb"
+    },
+    {
+      "repository": "NousResearch/hermes-agent",
+      "branch": "main",
+      "sha": "9b904dcc22c23fe8b82834339bbdd96495072e59"
+    }
+  ],
+  "commits": [
+    {
+      "repository": "anomalyco/opencode",
+      "sha": "2903845bf28f7559da56f340a44f8b75e49881fa",
+      "title": "perf(session): load a step's history once (#59091)",
+      "url": "https://github.com/anomalyco/opencode/commit/2903845bf28f7559da56f340a44f8b75e49881fa",
+      "created_at": "2026-10-26T05:27:39Z",
+      "files": [
+        "packages/core/src/session/compaction.ts",
+        "packages/core/src/session/history.ts",
+        "packages/core/src/session/instructions.ts",
+        "packages/core/src/session/model-request.ts",
+        "packages/core/src/session/runner/llm.ts",
+        "packages/core/test/session-compaction.test.ts",
+        "packages/core/test/session-instructions.test.ts"
+      ]
+    },
+    {
+      "repository": "anomalyco/opencode",
+      "sha": "94353780cf289dcecee2866322dbbe1f34d51641",
+      "title": "fix(core): coordinate credential refreshes across locations and processes (#54023)",
+      "url": "https://github.com/anomalyco/opencode/commit/94353780cf289dcecee2866322dbbe1f34d51641",
+      "created_at": "2026-10-26T06:09:42Z",
+      "files": [
+        "packages/core/src/credential.ts",
+        "packages/core/src/integration.ts",
+        "packages/core/test/config/config.test.ts",
+        "packages/core/test/credential-lock.test.ts",
+        "packages/core/test/fixture/config-nodes.ts",
+        "packages/core/test/integration-refresh.test.ts",
+        "packages/core/test/integration.test.ts",
+        "packages/core/test/mcp-oauth.test.ts"
+      ]
+    },
+    {
+      "repository": "anomalyco/opencode",
+      "sha": "787811f6846004def66e1986d1967f0064b5dd22",
+      "title": "perf(core): resize images in a worker and release photon memory when idle (#58820)",
+      "url": "https://github.com/anomalyco/opencode/commit/787811f6846004def66e1986d1967f0064b5dd22",
+      "created_at": "2026-10-26T05:28:48Z",
+      "files": [
+        "packages/cli/script/build.ts",
+        "packages/cli/src/photon-worker.ts",
+        "packages/core/src/image/photon-normalize.ts",
+        "packages/core/src/image/photon-worker.ts",
+        "packages/core/src/image/photon.ts",
+        "packages/core/test/fixture/photon-crash-worker.ts",
+        "packages/core/test/fixture/photon-exit.ts",
+        "packages/core/test/fixture/photon-hang-worker.ts",
+        "packages/core/test/image-photon.test.ts"
+      ]
+    },
+    {
+      "repository": "anomalyco/opencode",
+      "sha": "91b5a7c25d0b4fcc95e73207cafcdd9eb8433b72",
+      "title": "fix(core): stop running tools from keeping the request hook event alive (#59098)",
+      "url": "https://github.com/anomalyco/opencode/commit/91b5a7c25d0b4fcc95e73207cafcdd9eb8433b72",
+      "created_at": "2026-10-25T23:37:07Z",
+      "files": ["packages/core/src/session/runner/llm.ts"]
+    },
+    {
+      "repository": "NousResearch/hermes-agent",
+      "sha": "765933299d885e850390ed1d8e4fd4d37fae8342",
+      "title": "fix(compression): a prepared summary is never redone over a moved tail cut",
+      "url": "https://github.com/NousResearch/hermes-agent/commit/765933299d885e850390ed1d8e4fd4d37fae8342",
+      "created_at": "2026-10-26T07:10:23Z",
+      "files": [
+        "agent/context_compressor.py",
+        "agent/context_compressor_window.py",
+        "agent/prepared_compaction.py",
+        "hermes_cli/observability/schemas/hermes.shared_metrics.v4.schema.json",
+        "hermes_cli/observability/shared_metrics_prepared_compaction.py",
+        "tests/agent/test_prepared_compaction.py",
+        "tests/hermes_cli/test_shared_metrics_prepared_compaction.py",
+        "website/docs/developer-guide/context-compression-and-caching.md",
+        "website/docs/developer-guide/relay-shared-metrics.md"
+      ]
+    },
+    {
+      "repository": "NousResearch/hermes-agent",
+      "sha": "05d7b5af1c42d524762c7ffce991c1fe1aa2adb1",
+      "title": "fix(gateway): a receipted wake queued behind human follow-ups still runs in a drain",
+      "url": "https://github.com/NousResearch/hermes-agent/commit/05d7b5af1c42d524762c7ffce991c1fe1aa2adb1",
+      "created_at": "2026-10-26T08:11:04Z",
+      "files": ["gateway/run_busy.py", "gateway/run_turn.py", "tests/gateway/test_wake_admitted_before_drain.py"]
+    },
+    {
+      "repository": "NousResearch/hermes-agent",
+      "sha": "70d31a5a5da782ca04b5f2450c8fc4eb05866e84",
+      "title": "fix(agent): only the first attempt of a user turn carries user attribution (billing parity)",
+      "url": "https://github.com/NousResearch/hermes-agent/commit/70d31a5a5da782ca04b5f2450c8fc4eb05866e84",
+      "created_at": "2026-10-26T07:32:11Z",
+      "files": [
+        "agent/agent_init.py",
+        "agent/turn_api_request.py",
+        "agent/turn_context.py",
+        "providers/base.py",
+        "run_agent.py",
+        "tests/agent/test_provider_wire_seams.py"
+      ]
+    },
+    {
+      "repository": "NousResearch/hermes-agent",
+      "sha": "5e8f892657bf07e24c806c5d16cf96c6366f1619",
+      "title": "fix(providers): safe mode never scans home provider plugins",
+      "url": "https://github.com/NousResearch/hermes-agent/commit/5e8f892657bf07e24c806c5d16cf96c6366f1619",
+      "created_at": "2026-10-26T07:56:09Z",
+      "files": ["providers/__init__.py"]
+    },
+    {
+      "repository": "NousResearch/hermes-agent",
+      "sha": "4501b3f80b560251405b25d849bb7072160dee9e",
+      "title": "feat(compression): record every prepared-compaction pass and splice outcome",
+      "url": "https://github.com/NousResearch/hermes-agent/commit/4501b3f80b560251405b25d849bb7072160dee9e",
+      "created_at": "2026-10-26T05:55:11Z",
+      "files": [
+        "agent/conversation_compression_telemetry.py",
+        "agent/prepared_compaction.py",
+        "tests/hermes_cli/test_shared_metrics_prepared_compaction.py"
+      ]
+    },
+    {
+      "repository": "NousResearch/hermes-agent",
+      "sha": "4baddd2606d0e30ef9f971aa16838c6cd550b0e3",
+      "title": "feat(mcp): declared per-tool costs and a per-chat spend limit for MCP servers",
+      "url": "https://github.com/NousResearch/hermes-agent/commit/4baddd2606d0e30ef9f971aa16838c6cd550b0e3",
+      "created_at": "2026-10-21T11:12:11Z",
+      "files": [
+        "hermes_cli/agent_plugins.py",
+        "hermes_cli/plugin_validate.py",
+        "tests/tools/test_mcp_tool_costs.py",
+        "tools/mcp_tool.py",
+        "tools/mcp_tool_config.py",
+        "tools/mcp_tool_costs.py",
+        "tools/mcp_tool_handlers.py",
+        "tools/mcp_tool_registration.py",
+        "tools/mcp_tool_scope.py"
+      ]
+    },
+    {
+      "repository": "NousResearch/hermes-agent",
+      "sha": "3ae67dc3d6fbb723df7fefff1e083da6c8918c3d",
+      "title": "fix(delegation): stopping a turn no longer kills background subagents",
+      "url": "https://github.com/NousResearch/hermes-agent/commit/3ae67dc3d6fbb723df7fefff1e083da6c8918c3d",
+      "created_at": "2026-10-26T01:33:24Z",
+      "files": [
+        "acp_adapter/server.py",
+        "gateway/session_authority.py",
+        "tests/gateway/test_canonical_stop_hard_cancel.py",
+        "tools/AGENTS.md",
+        "tui_gateway/session_lifecycle.py",
+        "website/docs/user-guide/features/delegation.md"
+      ]
+    },
+    {
+      "repository": "anomalyco/opencode",
+      "sha": "9007700546e5d664b393857a1ead8073700e9ce4",
+      "title": "feat(ai): configurable prompt cache TTL (#59157)",
+      "url": "https://github.com/anomalyco/opencode/commit/9007700546e5d664b393857a1ead8073700e9ce4",
+      "created_at": "2026-10-26T05:35:33Z",
+      "files": [
+        "packages/ai/README.md",
+        "packages/ai/src/cache-policy.ts",
+        "packages/ai/src/protocols/anthropic-messages.ts",
+        "packages/ai/src/protocols/meta-messages.ts",
+        "packages/ai/src/protocols/openai-chat.ts",
+        "packages/ai/src/protocols/openai-responses.ts",
+        "packages/ai/src/protocols/utils/bedrock-cache.ts",
+        "packages/ai/src/protocols/utils/cache.ts",
+        "packages/ai/src/protocols/venice-chat.ts",
+        "packages/ai/src/schema/options.ts",
+        "packages/ai/test/cache-policy.test.ts",
+        "packages/ai/test/provider-options/anthropic.types.ts",
+        "packages/ai/test/provider/anthropic-messages.test.ts",
+        "packages/ai/test/provider/bedrock-converse-cache.test.ts",
+        "packages/ai/test/provider/bedrock-converse.test.ts",
+        "packages/ai/test/provider/digitalocean.test.ts",
+        "packages/ai/test/provider/openai-chat.test.ts",
+        "packages/ai/test/provider/openai-responses.test.ts",
+        "packages/ai/test/provider/openrouter.test.ts",
+        "packages/client/src/promise/generated/types.ts",
+        "packages/core/src/aisdk.ts",
+        "packages/core/src/model-resolver.ts",
+        "packages/core/src/provider.ts",
+        "packages/core/src/session/model-request.ts",
+        "packages/protocol/openapi.json",
+        "packages/schema/src/config/provider.ts",
+        "packages/schema/src/model.ts",
+        "packages/schema/src/provider.ts"
+      ]
+    },
+    {
+      "repository": "NousResearch/hermes-agent",
+      "sha": "5e8639accd20d2492c7b6750e0303d189b18b009",
+      "title": "refactor(delegate): drop process_command_fallback, keep the selected provider",
+      "url": "https://github.com/NousResearch/hermes-agent/commit/5e8639accd20d2492c7b6750e0303d189b18b009",
+      "created_at": "2026-10-26T05:22:45Z",
+      "files": [
+        "providers/base.py",
+        "tests/tools/test_delegate_external_provider.py",
+        "tools/delegate_tool_config.py",
+        "website/docs/developer-guide/model-provider-plugin.md"
+      ]
+    }
+  ],
+  "prs": [
+    {
+      "number": 59262,
+      "url": "https://github.com/anomalyco/opencode/pull/59262",
+      "title": "feat(core): add /goal to keep a session working until an objective is met",
+      "state": "open",
+      "merged": false,
+      "head": "d082767021df40b92e1a184f9217d67ac12c9170",
+      "base": "2abf740ea6895f80501362c98671c8bcb499e6a6",
+      "updated_at": "2026-10-26T12:13:57Z",
+      "changed_files": 6
+    },
+    {
+      "number": 59258,
+      "url": "https://github.com/anomalyco/opencode/pull/59258",
+      "title": "fix(core): hold session done notifications until background subagents finish",
+      "state": "open",
+      "merged": false,
+      "head": "2abf740ea6895f80501362c98671c8bcb499e6a6",
+      "base": "af1ca0fe81603e7e98a7a9dae3b5352c2b673ffa",
+      "updated_at": "2026-10-26T12:13:55Z",
+      "changed_files": 8
+    },
+    {
+      "number": 142162,
+      "url": "https://github.com/NousResearch/hermes-agent/pull/142162",
+      "title": "fix(delegation): fail closed when requested worktree isolation is unavailable",
+      "state": "open",
+      "merged": false,
+      "head": "9a6af2c91a7cfa5b41cc6089c6d22829fd2200ed",
+      "base": "9b904dcc22c23fe8b82834339bbdd96495072e59",
+      "updated_at": "2026-10-26T12:10:17Z",
+      "changed_files": 4
+    },
+    {
+      "number": 145007,
+      "url": "https://github.com/NousResearch/hermes-agent/pull/145007",
+      "title": "fix(kanban): preserve Stop/resume ordering and worker recovery",
+      "state": "open",
+      "merged": false,
+      "head": "35b4f4ac102cb0710715a22be8f4ad531d3a5370",
+      "base": "9b904dcc22c23fe8b82834339bbdd96495072e59",
+      "updated_at": "2026-10-26T11:22:30Z",
+      "changed_files": 12
+    },
+    {
+      "number": 144196,
+      "url": "https://github.com/NousResearch/hermes-agent/pull/144196",
+      "title": "feat(delegation): enable persistent subagents through plugins",
+      "state": "open",
+      "merged": false,
+      "head": "9de1299c3ce71391b227928a78f025aaa6e321f5",
+      "base": "a480a27e76dcad8da7665408e54c6ec270c10f14",
+      "updated_at": "2026-10-25T08:25:02Z",
+      "changed_files": 57
+    },
+    {
+      "number": 136708,
+      "url": "https://github.com/NousResearch/hermes-agent/pull/136708",
+      "title": "feat(gateway): busy_result_mode carries mid-turn subagent and background-process results into the running turn",
+      "state": "open",
+      "merged": false,
+      "head": "85efea5d36a8439c25a9b893fd025f67fd4f3a78",
+      "base": "5b32cfc230078417fc523e12b9aabbc9b59f684b",
+      "updated_at": "2026-10-26T04:20:44Z",
+      "changed_files": 14
+    }
+  ],
+  "issues": [
+    {
+      "number": 59247,
+      "url": "https://github.com/anomalyco/opencode/issues/59247",
+      "title": "Pending permission is lost when the server restarts, and a crash mid-tool leaves no record",
+      "state": "open",
+      "updated_at": "2026-10-26T10:53:49Z"
+    },
+    {
+      "number": 59253,
+      "url": "https://github.com/anomalyco/opencode/issues/59253",
+      "title": "session: compaction failed with \"Compaction produced no summary\" (223K in / 108 out)",
+      "state": "open",
+      "updated_at": "2026-10-26T11:33:43Z"
+    },
+    {
+      "number": 145022,
+      "url": "https://github.com/NousResearch/hermes-agent/issues/145022",
+      "title": "Kanban workers crash with \"Kanban execution unknown; retained by owner\" when the gateway stalls during worker saves",
+      "state": "open",
+      "updated_at": "2026-10-26T11:41:12Z"
+    },
+    {
+      "number": 99743,
+      "url": "https://github.com/NousResearch/hermes-agent/issues/99743",
+      "title": "feat: built-in loop detection for pre_tool_call (repeat command guard)",
+      "state": "open",
+      "updated_at": "2026-10-26T10:06:19Z"
+    }
+  ],
+  "ancestry": [
+    {
+      "sha": "2903845bf28f7559da56f340a44f8b75e49881fa",
+      "status": "ahead",
+      "behind_by": 0,
+      "merge_base": "2903845bf28f7559da56f340a44f8b75e49881fa"
+    },
+    {
+      "sha": "94353780cf289dcecee2866322dbbe1f34d51641",
+      "status": "ahead",
+      "behind_by": 0,
+      "merge_base": "94353780cf289dcecee2866322dbbe1f34d51641"
+    },
+    {
+      "sha": "787811f6846004def66e1986d1967f0064b5dd22",
+      "status": "ahead",
+      "behind_by": 0,
+      "merge_base": "787811f6846004def66e1986d1967f0064b5dd22"
+    },
+    {
+      "sha": "91b5a7c25d0b4fcc95e73207cafcdd9eb8433b72",
+      "status": "ahead",
+      "behind_by": 0,
+      "merge_base": "91b5a7c25d0b4fcc95e73207cafcdd9eb8433b72"
+    },
+    {
+      "sha": "765933299d885e850390ed1d8e4fd4d37fae8342",
+      "status": "ahead",
+      "behind_by": 0,
+      "merge_base": "765933299d885e850390ed1d8e4fd4d37fae8342"
+    },
+    {
+      "sha": "05d7b5af1c42d524762c7ffce991c1fe1aa2adb1",
+      "status": "ahead",
+      "behind_by": 0,
+      "merge_base": "05d7b5af1c42d524762c7ffce991c1fe1aa2adb1"
+    },
+    {
+      "sha": "70d31a5a5da782ca04b5f2450c8fc4eb05866e84",
+      "status": "ahead",
+      "behind_by": 0,
+      "merge_base": "70d31a5a5da782ca04b5f2450c8fc4eb05866e84"
+    },
+    {
+      "sha": "5e8f892657bf07e24c806c5d16cf96c6366f1619",
+      "status": "ahead",
+      "behind_by": 0,
+      "merge_base": "5e8f892657bf07e24c806c5d16cf96c6366f1619"
+    },
+    {
+      "sha": "4501b3f80b560251405b25d849bb7072160dee9e",
+      "status": "ahead",
+      "behind_by": 0,
+      "merge_base": "4501b3f80b560251405b25d849bb7072160dee9e"
+    },
+    {
+      "sha": "4baddd2606d0e30ef9f971aa16838c6cd550b0e3",
+      "status": "ahead",
+      "behind_by": 0,
+      "merge_base": "4baddd2606d0e30ef9f971aa16838c6cd550b0e3"
+    },
+    {
+      "sha": "3ae67dc3d6fbb723df7fefff1e083da6c8918c3d",
+      "status": "ahead",
+      "behind_by": 0,
+      "merge_base": "3ae67dc3d6fbb723df7fefff1e083da6c8918c3d"
+    },
+    {
+      "sha": "9007700546e5d664b393857a1ead8073700e9ce4",
+      "status": "ahead",
+      "behind_by": 0,
+      "merge_base": "9007700546e5d664b393857a1ead8073700e9ce4"
+    },
+    {
+      "sha": "5e8639accd20d2492c7b6750e0303d189b18b009",
+      "status": "ahead",
+      "behind_by": 0,
+      "merge_base": "5e8639accd20d2492c7b6750e0303d189b18b009"
+    }
+  ]
+}

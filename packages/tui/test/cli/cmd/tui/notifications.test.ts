@@ -98,12 +98,11 @@ function executionStarted(id: string, sessionID = "session"): OpenCodeEvent {
   }
 }
 
-function executionSucceeded(id: string, sessionID = "session"): OpenCodeEvent {
+function sessionSettled(id: string, sessionID = "session"): OpenCodeEvent {
   return {
     id,
     created: 0,
-    type: "session.execution.succeeded",
-    durable: durable(sessionID),
+    type: "session.settled",
     data: { sessionID },
   }
 }
@@ -232,24 +231,49 @@ describe("internal notifications TUI plugin", () => {
   test("notifies for terminal lifecycle events even when attached after execution started", async () => {
     const harness = await setup()
 
-    harness.emit(executionSucceeded("event-1"))
+    harness.emit(sessionSettled("event-1"))
     harness.emit(executionStarted("event-2"))
-    harness.emit(executionSucceeded("event-3"))
+    harness.emit(sessionSettled("event-3"))
 
     expect(harness.notifications).toEqual([
       {
         title: "Demo session",
-        message: "Session done",
+        message: "Response ready",
         notification: { when: "blurred" },
         sound: { name: "done", when: "always" },
       },
       {
         title: "Demo session",
-        message: "Session done",
+        message: "Response ready",
         notification: { when: "blurred" },
         sound: { name: "done", when: "always" },
       },
     ])
+  })
+
+  test("waits for settled work and never announces an interrupted execution as a ready response", async () => {
+    const harness = await setup()
+    harness.emit(executionStarted("start"))
+    harness.emit({
+      id: "execution-finished",
+      created: 0,
+      type: "session.execution.succeeded",
+      durable: durable("session"),
+      data: { sessionID: "session" },
+    })
+    expect(harness.notifications).toEqual([])
+    harness.emit(sessionSettled("settled"))
+    harness.emit(sessionSettled("duplicate"))
+    expect(harness.notifications).toHaveLength(1)
+    harness.emit(executionStarted("next"))
+    harness.emit({
+      id: "interrupted",
+      created: 0,
+      type: "session.execution.interrupted",
+      durable: durable("session"),
+      data: { sessionID: "session", reason: "user" },
+    })
+    expect(harness.notifications).toHaveLength(1)
   })
 
   test("uses sound-only notifications and subagent_done sound for subagent sessions", async () => {
@@ -262,7 +286,7 @@ describe("internal notifications TUI plugin", () => {
       data: { form: { ...form("form-1", "subagent"), title: "Questions" } },
     })
     harness.emit(executionStarted("event-2", "subagent"))
-    harness.emit(executionSucceeded("event-3", "subagent"))
+    harness.emit(sessionSettled("event-3", "subagent"))
 
     expect(harness.notifications).toEqual([
       {
@@ -273,7 +297,7 @@ describe("internal notifications TUI plugin", () => {
       },
       {
         title: "Subagent session",
-        message: "Session done",
+        message: "Response ready",
         notification: false,
         sound: { name: "subagent_done", when: "always" },
       },
@@ -285,7 +309,7 @@ describe("internal notifications TUI plugin", () => {
 
     harness.emit(executionStarted("event-1"))
     harness.emit(executionFailed("event-2"))
-    harness.emit(executionSucceeded("event-3"))
+    harness.emit(sessionSettled("event-3"))
 
     expect(harness.notifications).toEqual([
       {

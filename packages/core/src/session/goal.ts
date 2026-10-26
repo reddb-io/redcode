@@ -16,6 +16,7 @@ import { SessionArchive } from "./archive.js"
 import { BusyError } from "./error.js"
 import { SessionInbox } from "./inbox.js"
 import { SessionBudget } from "./budget.js"
+import type { SessionRequestContext } from "./request-context.js"
 
 const owner = { id: "" }
 const live = (goal: SessionGoal.Info) => goal.status === "active" || goal.status === "waiting"
@@ -399,6 +400,7 @@ export function judgement(input: {
   readonly goal: SessionGoal.Info
   readonly response: { readonly id: string; readonly text: string }
   readonly tools: unknown
+  readonly requestContext?: SessionRequestContext.Info
 }): EvaluationInput {
   return {
     sessionID: input.goal.sessionID,
@@ -408,6 +410,7 @@ export function judgement(input: {
     candidateID: input.response.id,
     attempt: input.goal.turns.used,
     sources: {
+      ...(input.requestContext ? { request_context: input.requestContext } : {}),
       goal: IntelligenceEvaluation.evidence(
         {
           objective: input.goal.objective,

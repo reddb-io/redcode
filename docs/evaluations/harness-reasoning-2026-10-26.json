@@ -1,0 +1,146 @@
+{
+  "collected_at": "2026-10-26T13:26:36Z",
+  "scope": "Focused source study of loop, compaction, problem detection, context and single/dual reasoning. Existing restricted-verification behavior checked with four local tests; proposals not implemented or model-benchmarked.",
+  "redcode": {
+    "branch": "main",
+    "base_sha": "93a8120d08c99b04fb5d3026d0c4498ca82bdb7d",
+    "dirty": true
+  },
+  "upstreams": [
+    {
+      "repository": "anomalyco/opencode",
+      "branch": "dev",
+      "sha": "ed74ec82ce1fe3a36da6c0815a935473ef4bb0fb"
+    },
+    {
+      "repository": "NousResearch/hermes-agent",
+      "branch": "main",
+      "sha": "9b904dcc22c23fe8b82834339bbdd96495072e59"
+    }
+  ],
+  "additional_commits": [
+    {
+      "repository": "NousResearch/hermes-agent",
+      "sha": "a8db83446f1d6be429a9815f5c9dc54befbd3909",
+      "title": "feat(plugins): ctx.side_question asks the session's own agent after a turn",
+      "url": "https://github.com/NousResearch/hermes-agent/commit/a8db83446f1d6be429a9815f5c9dc54befbd3909",
+      "created_at": "2026-10-25T02:56:21Z",
+      "files": [
+        "agent/background_review.py",
+        "agent/side_question_lease.py",
+        "agent/side_question_request.py",
+        "agent/turn_finalizer.py",
+        "hermes_cli/plugin_capabilities.py",
+        "hermes_cli/plugins.py",
+        "hermes_cli/plugins_capability_ctx.py",
+        "tests/agent/test_side_question_lease.py",
+        "tests/agent/test_side_question_request.py",
+        "website/docs/developer-guide/plugin-llm-access.md",
+        "website/docs/developer-guide/plugins/index.md",
+        "website/docs/user-guide/features/hooks.md",
+        "website/docs/user-guide/features/plugins.md"
+      ]
+    },
+    {
+      "repository": "NousResearch/hermes-agent",
+      "sha": "599a749ae9818747700fcc00565b7553c36ff604",
+      "title": "fix(agent): side-question forks release clients only, never close the shared session",
+      "url": "https://github.com/NousResearch/hermes-agent/commit/599a749ae9818747700fcc00565b7553c36ff604",
+      "created_at": "2026-10-25T02:56:21Z",
+      "files": [
+        "agent/background_review.py",
+        "agent/side_question.py",
+        "agent/side_question_request.py",
+        "tests/agent/test_side_question.py",
+        "tests/agent/test_side_question_request.py"
+      ]
+    },
+    {
+      "repository": "NousResearch/hermes-agent",
+      "sha": "4ea8d23cc9f527332ccb1d55359b27741b6ea51b",
+      "title": "fix(agent): side-question review fixes (unattended turns, profile-bound leases, billing, attribution)",
+      "url": "https://github.com/NousResearch/hermes-agent/commit/4ea8d23cc9f527332ccb1d55359b27741b6ea51b",
+      "created_at": "2026-10-25T02:56:21Z",
+      "files": [
+        "agent/auxiliary_hooks.py",
+        "agent/background_review.py",
+        "agent/side_question_lease.py",
+        "agent/side_question_request.py",
+        "hermes_cli/plugin_capabilities.py",
+        "hermes_cli/plugins_capability_ctx.py",
+        "tests/agent/test_side_question_lease.py",
+        "tests/agent/test_side_question_request.py",
+        "tests/hermes_cli/test_plugin_capabilities.py",
+        "website/docs/developer-guide/plugin-llm-access.md",
+        "website/docs/user-guide/features/hooks.md",
+        "website/docs/user-guide/features/plugins.md"
+      ]
+    },
+    {
+      "repository": "NousResearch/hermes-agent",
+      "sha": "ad249d9cac01d57523d2a9832810de88f5cf35ee",
+      "title": "fix(hold-stream): a held reply kept as the budget fallback, and its codex commentary, in history",
+      "url": "https://github.com/NousResearch/hermes-agent/commit/ad249d9cac01d57523d2a9832810de88f5cf35ee",
+      "created_at": "2026-10-25T13:18:48Z",
+      "files": [
+        "agent/history_commentary.py",
+        "agent/stream_delivery.py",
+        "agent/turn_finalizer.py",
+        "agent/turn_stop_gates.py",
+        "tests/agent/test_hold_stream_exits.py",
+        "tests/fakes/providers/openai_responses.py",
+        "tests/hermes_cli/test_plugin_hold_stream.py"
+      ]
+    }
+  ],
+  "source_files": [
+    {
+      "repository": "NousResearch/hermes-agent",
+      "ref": "9b904dcc22c23fe8b82834339bbdd96495072e59",
+      "path": "agent/side_question_lease.py",
+      "blob_sha": "b544619b713dced1c1d217be0d5cc925a4e8534f",
+      "url": "https://github.com/NousResearch/hermes-agent/blob/9b904dcc22c23fe8b82834339bbdd96495072e59/agent/side_question_lease.py"
+    },
+    {
+      "repository": "NousResearch/hermes-agent",
+      "ref": "9b904dcc22c23fe8b82834339bbdd96495072e59",
+      "path": "agent/side_question_request.py",
+      "blob_sha": "dc5ce6e1a64c96d92c3eb3c2a39d160296a1f096",
+      "url": "https://github.com/NousResearch/hermes-agent/blob/9b904dcc22c23fe8b82834339bbdd96495072e59/agent/side_question_request.py"
+    }
+  ],
+  "findings": [
+    {
+      "id": "active-request-coverage",
+      "status": "static-input-difference",
+      "paths": ["packages/core/src/session/runner/llm.ts", "packages/core/src/intelligence/response.ts"],
+      "finding": "Prompt classification includes broader request history than final response evaluation. A neutral continuation may leave applicable earlier constraints outside explicit reviewer input; no measured error rate."
+    },
+    {
+      "id": "verification-one-step",
+      "status": "existing-behavior-confirmed",
+      "paths": [
+        "packages/core/src/intelligence/verification.ts",
+        "packages/core/test/intelligence/controls.test.ts",
+        "packages/core/test/session-runner.test.ts"
+      ],
+      "finding": "A tool-only assistant verification consumes the current one-Step allowance. Existing tests require this; bounded inspect-then-synthesize is a policy proposal, not a regression fix."
+    },
+    {
+      "id": "compaction-preservation",
+      "status": "design-proposal",
+      "paths": ["packages/core/src/session/compaction.ts", "packages/core/src/session/task-facts.ts"],
+      "finding": "Reuse existing structured checkpoints and evidence invalidation; evaluate preservation of negative findings, pending work and evidence scope/freshness."
+    }
+  ],
+  "validation": {
+    "command": "bun run test test/intelligence/controls.test.ts test/session-runner.test.ts --test-name-pattern 'durable verification|verification denies|verification survives|tool-only verification'",
+    "cwd": "packages/core",
+    "passed": 4,
+    "failed": 0,
+    "filtered": 271,
+    "log": "/tmp/redcode-harness-verification-study-20261026.log",
+    "real_model_campaign": false
+  },
+  "report": "harness-reasoning-2026-10-26.md"
+}
