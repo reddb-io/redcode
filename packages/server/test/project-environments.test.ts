@@ -19,6 +19,9 @@ const quoted = (value: string) =>
   process.platform === "win32" ? `'${value.replaceAll("'", "''")}'` : `'${value.replaceAll("'", "'\\''")}'`
 const command = (file: string, action: string) =>
   `${process.platform === "win32" ? "& " : ""}${quoted(process.execPath)} ${quoted(file)} ${action}`
+// Hosted Windows runners can spend more than ten seconds starting a cold PowerShell.
+// The dedicated timeout recipe below still uses one second to verify cancellation.
+const timeoutSeconds = process.platform === "win32" ? 30 : 10
 
 it.live(
   "environment recipes share project identity, preserve execution directories and redact real command results",
@@ -84,7 +87,7 @@ if (process.env.FIXTURE_TOKEN) console.log(process.env.FIXTURE_TOKEN);
           start: command(runner, "start"),
           stop: command(runner, "stop"),
           validate: command(runner, "validate"),
-          timeoutSeconds: 10,
+          timeoutSeconds,
           secrets: { FIXTURE_TOKEN: "fixture-token" },
         }
         const recipe = yield* Effect.promise(() => service.save({ directory, definition, expectedRevision: 0 }))
@@ -93,11 +96,13 @@ if (process.env.FIXTURE_TOKEN) console.log(process.env.FIXTURE_TOKEN);
         expect(other.recipes[0].revision).toBe(recipe.revision)
         const wait = (id: string) =>
           Effect.gen(function* () {
-            const until = Date.now() + 15_000
+            const until = Date.now() + (timeoutSeconds + 5) * 1000
             while (Date.now() < until) {
-              const result = (yield* Effect.promise(() => service.list(directory))).environments.find(
-                (item) => item.id === id,
+              // Concurrent clients can poll while an operation replaces its durable result.
+              const snapshots = yield* Effect.promise(() =>
+                Promise.all(Array.from({ length: 8 }, () => service.list(directory))),
               )
+              const result = snapshots.at(-1)!.environments.find((item) => item.id === id)
               if (result && result.state !== "working") return result
               yield* Effect.sleep("10 millis")
             }
@@ -116,8 +121,16 @@ if (process.env.FIXTURE_TOKEN) console.log(process.env.FIXTURE_TOKEN);
         const alreadyReady = yield* Effect.promise(() =>
           service.run({ directory, recipeID: "dev", revision: 1, action: "start", requestID: "already-ready" }),
         )
-        expect((yield* wait(alreadyReady.id)).state).toBe("ready")
-        expect(yield* Effect.promise(() => Bun.file(path.join(repository, "prepare-count")).text())).toBe("1")
+        const restarted = yield* wait(alreadyReady.id)
+        expect(restarted.state, restarted.detail).toBe("ready")
+        const firstReceipt = yield* Effect.promise(() =>
+          service.run({ directory, recipeID: "dev", revision: 1, action: "start", requestID: "first" }),
+        )
+        expect(alreadyReady.id).toBe(started.id)
+        expect(
+          yield* Effect.promise(() => Bun.file(path.join(repository, "prepare-count")).text()),
+          JSON.stringify({ settled, firstReceipt, restarted }),
+        ).toBe("1")
         const snapshot = yield* Effect.promise(() => service.list(second))
         expect(snapshot.recipes[0].validatedRevision).toBe(1)
         expect(snapshot.environments[0].directory).toBe(directory)
@@ -194,7 +207,7 @@ if (process.env.FIXTURE_TOKEN) console.log(process.env.FIXTURE_TOKEN);
         yield* vault.forget({ projectID: resolved.id, name: "fixture-token" })
         yield* Effect.promise(() => Bun.write(path.join(repository, "release"), "release"))
         const maskedAfterForget = yield* wait(held.id)
-        expect(maskedAfterForget.state).toBe("prepared")
+        expect(maskedAfterForget.state, maskedAfterForget.detail ?? maskedAfterForget.output).toBe("prepared")
         expect(maskedAfterForget.output).not.toContain(secret)
         yield* vault.set({ projectID: resolved.id, name: "fixture-token", value: secret, origin: "user" })
         yield* Effect.promise(() =>
@@ -254,5 +267,5 @@ if (process.env.FIXTURE_TOKEN) console.log(process.env.FIXTURE_TOKEN);
         ),
       )
     }),
-  30_000,
+  timeoutSeconds * 3000,
 )
