@@ -1,5 +1,0 @@
----
-"@reddb-io/redcode": patch
----
-
-Refine the desktop resource and usage dashboards with small, thin radial CPU/RAM meters, a joined KPI summary, line sparklines, token distribution and a cost-coverage ring based on actual accounting records. Integrate usage into one analytics surface with a wider activity column, a complementary cost column and exact daily values beside interactive legends. Use a segmented period control and compact summary counts, retaining exact accounting details. Adapt KPI trends to leave room for numbers at intermediate widths. Compose step columns with a lightly filled token area on an independent scale, and model costs in stacked columns beneath the total-cost line. Keep unattributed costs explicit and provide full axes and legends in the expanded charts. Show the newest daily rows first in a bounded table with aligned numbers and a persistent header. Move accounting explanations into a disclosure. Preserve linked cursors, container-aware layouts, bounded resource history, missing readings and stale-request warnings. Hide resource readings older than fifteen seconds even when the host successfully returns an unchanged old sample.
