@@ -7,6 +7,7 @@ import { InstallationEvent } from "@opencode/schema/installation-event"
 import { hasPtyConnectTicketURL } from "@opencode/protocol/groups/pty"
 import { hasPersistentPtyConnectTicketURL } from "@opencode/protocol/groups/persistent-pty"
 import { isPairingConnectURL } from "@opencode/protocol/groups/server"
+import { isWorkerEnrollmentRequest } from "@opencode/protocol/groups/workers"
 import { Global } from "@opencode/util/global"
 import { Logging } from "@opencode/util/observability/logging"
 import { Cause, Context, Effect, Exit, Latch, Layer, Option, Ref, Scope } from "effect"
@@ -239,6 +240,7 @@ function dispatch(
     }
     if (
       !isPairingConnectURL(url) &&
+      !isWorkerEnrollmentRequest(request.method, url) &&
       // Ready Design routes authenticate their own session-scoped ticket or cookie.
       // Challenging here prevents a freshly opened signed review from reaching that check.
       (!ready ||

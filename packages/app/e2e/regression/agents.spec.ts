@@ -3,13 +3,14 @@ import type { Worker } from "@opencode/schema/worker"
 import { WorkerLease } from "@opencode/schema/worker-lease"
 import { Schema } from "effect"
 import { fixture, installStressSessionTabs, mockStressTimeline } from "../utils/session-fixture"
-import { sessionHref } from "../utils/app"
+import { seed, sessionHref } from "../utils/app"
 import { status } from "../utils/timeline"
 import {
   mockRemoteWorkers,
   mockWaitingWorker,
   mockWorkerTaskInspection,
   mockWorkerDistribution,
+  mockWorkerEnrollmentPage,
 } from "../utils/worker-fixture"
 import {
   mockNativeUsage,
@@ -31,6 +32,143 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(crypto, "randomUUID", { configurable: true, value: undefined })
   })
+})
+
+test("one server topology scopes its workers and explains local, remote and browser access", async ({ page }) => {
+  await mockStressTimeline(page)
+  await mockStressTimeline(page, { server: REMOTE_SERVER })
+  await seed(page, { servers: [{ url: REMOTE_SERVER, name: "Build server" }] })
+  await mockRemoteWorkers(page, {
+    server: SERVER,
+    workers: [
+      {
+        worker: { kind: "local", id: "local-checkout", directories: [fixture.directory], tags: [] },
+        connection: "online",
+      },
+    ],
+  })
+  await mockRemoteWorkers(page, {
+    server: REMOTE_SERVER,
+    workers: [
+      {
+        worker: {
+          id: "gpu-box",
+          url: "https://worker.example.com",
+          passwordEnv: "cred_fixture",
+          directories: ["/work/build"],
+          tags: ["gpu"],
+        },
+        connection: "online",
+      },
+    ],
+  })
+  await page.goto(`/agents?view=remote&host=${encodeURIComponent(SERVER)}`)
+  const workspace = page.getByRole("region", { name: "Agents", exact: true })
+  const menu = page.getByRole("navigation", { name: "Agents", exact: true })
+  await expect(menu.getByRole("button", { name: "Servers & workers", exact: true })).toHaveAttribute(
+    "aria-current",
+    "page",
+  )
+  await expect(menu.getByRole("button", { name: "Machines", exact: true })).toHaveCount(0)
+  await expect(menu.getByRole("button", { name: "Remote workers", exact: true })).toHaveCount(0)
+  const topology = workspace.getByRole("region", { name: "Client, server and workers", exact: true })
+  await expect(topology.getByText("local-checkout", { exact: true })).toBeVisible()
+  await expect(topology.getByText("Checkout on this server", { exact: true })).toBeVisible()
+  await workspace.getByRole("tab", { name: "New batch", exact: true }).click()
+  await workspace
+    .getByRole("textbox", { name: "What should the worker do?", exact: true })
+    .fill("Task for the local coordinator")
+  await chooseSearchOption(page, menu.getByRole("button", { name: /, Server$/ }), "Build server")
+  await expect(topology.getByText("Build server", { exact: true })).toBeVisible()
+  await expect(topology.getByText("gpu-box", { exact: true })).toBeVisible()
+  await expect(topology.getByText("local-checkout", { exact: true })).toHaveCount(0)
+  await expect(workspace.getByRole("textbox", { name: "What should the worker do?", exact: true })).toHaveValue("")
+  const projectRequest = page.waitForRequest(
+    (request) => new URL(request.url()).origin === REMOTE_SERVER && new URL(request.url()).pathname === "/api/location",
+  )
+  await topology.getByRole("button", { name: "Open a project on this server", exact: true }).click()
+  await projectRequest
+  await expect(page.getByRole("dialog", { name: "Choose a project on Build server", exact: true })).toBeVisible()
+  await page.keyboard.press("Escape")
+  await expect(page.getByRole("dialog", { name: "Choose a project on Build server", exact: true })).toHaveCount(0)
+  await topology.getByText("How local and remote connections work", { exact: true }).click()
+  await expect(topology.getByText(/The remote server owns those sessions and files/)).toBeVisible()
+  await expect(topology.getByText(/The browser connects to that server directly/)).toBeVisible()
+  await expect(topology.getByRole("button", { name: "Connect another device", exact: true })).toBeEnabled()
+  await expect(topology.getByRole("button", { name: "HTTPS & mobile access", exact: true })).toBeEnabled()
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect.poll(() => workspace.evaluate((element) => element.scrollWidth - element.clientWidth)).toBe(0)
+  await page.screenshot({ path: test.info().outputPath("server-topology-mobile.png"), fullPage: true })
+  await topology.getByRole("button", { name: "Connect a server", exact: true }).click()
+  await expect(workspace.getByRole("navigation", { name: "Server setup", exact: true })).toBeVisible()
+  await workspace.getByRole("button", { name: "Back to server overview", exact: true }).click()
+  await expect(topology.getByText("Build server", { exact: true })).toBeVisible()
+  expect(new URL(page.url()).searchParams.get("host")).toBe(REMOTE_SERVER)
+})
+
+test("worker invitations copy a reachable enrollment command, revoke links and observe registration", async ({
+  page,
+}) => {
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"])
+  await mockStressTimeline(page)
+  const workers = await mockRemoteWorkers(page)
+  await page.goto("/agents?view=servers")
+  await page.getByRole("button", { name: "Invite worker", exact: true }).click()
+  const invite = page.getByRole("dialog", { name: "Invite worker", exact: true })
+  await invite.getByLabel("Worker name", { exact: true }).fill("remote-box")
+  const create = invite.getByRole("button", { name: "Create invitation", exact: true })
+  await expect(create).toBeDisabled()
+  await invite
+    .getByLabel("Coordinator address reachable from the worker", { exact: true })
+    .fill("https://code.example.com")
+  await invite.getByLabel("Capabilities (comma-separated)", { exact: true }).fill("linux, gpu")
+  await create.click()
+  const code = "a".repeat(42) + "1"
+  await expect(
+    invite.getByText(`redcode workers join 'https://code.example.com/auth/worker#${code}'`, { exact: true }),
+  ).toBeVisible()
+  await invite.getByRole("button", { name: "Copy command", exact: true }).click()
+  await expect(invite.getByText("Copied to clipboard", { exact: true })).toBeVisible()
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toBe(`redcode workers join 'https://code.example.com/auth/worker#${code}'`)
+  const landing = await page.context().newPage()
+  await mockWorkerEnrollmentPage(landing)
+  await landing.goto(`https://code.example.com/auth/worker#${code}`)
+  await expect(landing.getByRole("heading", { name: "Join as a Redcode worker", exact: true })).toBeVisible()
+  await expect(landing.locator("pre")).toHaveText(`redcode workers join 'https://code.example.com/auth/worker#${code}'`)
+  await landing.getByRole("button", { name: "Copy command", exact: true }).click()
+  await expect(landing.getByRole("status")).toHaveText("Command copied.")
+  await landing.close()
+  expect(workers.requests.find((item) => item.path === "/api/workers/invitations")?.body).toEqual({
+    id: "remote-box",
+    tags: ["linux", "gpu"],
+  })
+  await invite.getByRole("button", { name: "Revoke invitation", exact: true }).click()
+  await expect(create).toBeEnabled()
+  expect(
+    workers.requests.some((item) => item.path === `/api/workers/invitations/${code}` && item.method === "DELETE"),
+  ).toBe(true)
+  await create.click()
+  await expect(invite.getByText("Waiting for the worker to join…", { exact: true })).toBeVisible()
+  workers.setWorkers([
+    {
+      worker: {
+        id: "remote-box",
+        tags: ["linux", "gpu"],
+        url: "https://worker.example.com",
+        directories: ["/work/redcode"],
+        passwordEnv: "cred_worker",
+      },
+      connection: "online",
+    },
+  ])
+  await expect(
+    invite.getByText("Worker registered and available. You can close this dialog.", { exact: true }),
+  ).toBeVisible()
+  await expect(invite.getByRole("button", { name: "Copy command", exact: true })).toHaveCount(0)
+  await invite.getByRole("button", { name: "Close invitation", exact: true }).click()
+  await expect(invite).toHaveCount(0)
 })
 
 test("reconciles task contributions through the DS and preserves an uncertain application identity", async ({
@@ -503,11 +641,11 @@ test.describe("Remote project search on mobile", () => {
       if (request.method() !== "GET" && new URL(request.url()).pathname.startsWith("/api/harness"))
         mutations.push(request.url())
     })
-    await page.goto(`/agents?view=machines&host=${encodeURIComponent(SERVER)}`)
+    await page.goto(`/agents?view=machines&setup=1&host=${encodeURIComponent(SERVER)}`)
     const workspace = page.getByRole("region", { name: "Agents", exact: true })
     const section = workspace.getByRole("button", { name: /, Agents section$/ })
     await expect(section).toBeVisible()
-    await expect(section).toContainText("Machines")
+    await expect(section).toContainText("Servers & workers")
     const create = workspace.getByRole("button", { name: "New session", exact: true })
     await expect.poll(async () => (await create.boundingBox())!.height).toBeGreaterThanOrEqual(44)
     await expect.poll(async () => (await create.boundingBox())!.width).toBeGreaterThanOrEqual(44)
@@ -523,7 +661,7 @@ test.describe("Remote project search on mobile", () => {
     await expect.poll(() => workspace.evaluate((element) => element.scrollWidth - element.clientWidth)).toBe(0)
     await page.screenshot({ path: test.info().outputPath("mobile-agents-sections.png"), animations: "disabled" })
     await section.tap()
-    await page.getByRole("dialog").getByRole("combobox").fill("Machines")
+    await page.getByRole("dialog").getByRole("combobox").fill("Servers & workers")
     await page.keyboard.press("Escape")
     await expect(section).toBeFocused()
     await expect(section).toContainText("Executors")
@@ -553,9 +691,9 @@ test.describe("Remote project search on mobile", () => {
     })
     await installStressSessionTabs(page, { sessionIDs: [] })
     await mockMachineInspection(page)
-    await page.goto("/agents?view=machines")
+    await page.goto("/agents?view=machines&setup=1")
     const workspace = page.getByRole("region", { name: "Agents", exact: true })
-    const machine = workspace.getByRole("button", { name: /, Connected machine$/ })
+    const machine = workspace.getByRole("button", { name: /, Connected server$/ })
     await machine.tap()
     const machineSearch = page.getByRole("dialog").getByRole("combobox")
     await expect(machineSearch).toBeFocused()
@@ -566,7 +704,7 @@ test.describe("Remote project search on mobile", () => {
     await workspace.getByRole("button", { name: "Check server", exact: true }).tap()
     await expect(workspace.getByText("Server access verified.", { exact: true })).toBeVisible()
     await workspace.getByRole("button", { name: "Continue", exact: true }).tap()
-    const project = workspace.getByRole("button", { name: /, Project on the machine$/ })
+    const project = workspace.getByRole("button", { name: /, Project on the server$/ })
     await project.press("ArrowDown")
     const search = page.getByRole("dialog").getByRole("combobox")
     await expect(search).toBeFocused()
@@ -685,11 +823,11 @@ test.describe("Machine touch setup", () => {
     const workers = await mockRemoteWorkers(page)
     machine.available = false
     machine.missingDirectory = "/missing/project"
-    await page.goto("/agents?view=machines")
+    await page.goto("/agents?view=machines&setup=1")
     const workspace = page.getByRole("region", { name: "Agents", exact: true })
     const next = workspace.getByRole("button", { name: "Continue", exact: true })
     await expect(next).toBeDisabled()
-    const picker = workspace.getByRole("button", { name: /, Connected machine$/ })
+    const picker = workspace.getByRole("button", { name: /, Connected server$/ })
     await chooseSearchOption(page, picker, new URL(SERVER).host)
     expect(machine.checks).toHaveLength(0)
     await next.click()
@@ -748,16 +886,23 @@ test("machine onboarding registers the verified checkout with its coordinator cr
   await mockMachineInspection(page)
   const workers = await mockRemoteWorkers(page)
   await page.goto(
-    `/e2e/utils/settings-wsl.html?${new URLSearchParams({ server: SERVER, mode: "ready", ssh: REMOTE_SERVER, path: "/agents?view=machines" })}`,
+    `/e2e/utils/settings-wsl.html?${new URLSearchParams({ server: SERVER, mode: "ready", ssh: REMOTE_SERVER, path: "/agents?view=machines&setup=1" })}`,
   )
   const workspace = page.getByRole("region", { name: "Agents", exact: true })
   await workspace.getByRole("button", { name: "Add server", exact: true }).click()
   await page.getByRole("menuitem", { name: "Add SSH server", exact: true }).click()
   const connect = page.getByRole("dialog")
   await connect.getByLabel("Host or SSH command", { exact: true }).fill("filip@10.101.1.105")
+  await connect.getByText("Username, port and SSH key", { exact: true }).click()
+  await connect.getByLabel("SSH username (optional)", { exact: true }).fill("worker")
+  await connect.getByLabel("SSH port (optional)", { exact: true }).fill("2222")
+  await connect.getByLabel("Private key path on this machine (optional)", { exact: true }).fill("C:\\Keys\\worker key")
   await connect.getByLabel("Server name (optional)", { exact: true }).fill("Strong PC")
   await connect.getByRole("button", { name: "Add server", exact: true }).click()
   await expect(connect).toHaveCount(0)
+  await expect(page.getByLabel("SSH target", { exact: true })).toHaveText(
+    "ssh -l 'worker' -p '2222' -o IdentitiesOnly=yes -i 'C:\\Keys\\worker key' filip@10.101.1.105",
+  )
   await expect(
     workspace.getByText("Connected to Strong PC. Choose how to use this machine below.", { exact: true }),
   ).toBeVisible()
@@ -767,7 +912,7 @@ test("machine onboarding registers the verified checkout with its coordinator cr
   await workspace.getByRole("button", { name: "Continue", exact: true }).click()
   await chooseSearchOption(
     page,
-    workspace.getByRole("button", { name: /, Project on the machine$/ }),
+    workspace.getByRole("button", { name: /, Project on the server$/ }),
     fixture.project.name,
     fixture.directory,
   )
@@ -791,23 +936,24 @@ test("machine onboarding registers the verified checkout with its coordinator cr
     directories: [fixture.directory],
     tags: ["linux", "arm64"],
   })
-  await workspace.getByRole("button", { name: "Manage workers on this machine", exact: true }).click()
-  await expect(workspace.getByRole("heading", { name: "Remote workers", exact: true, level: 1 })).toBeVisible()
+  await workspace.getByRole("button", { name: "Manage this server", exact: true }).click()
+  await expect(workspace.getByRole("heading", { name: "Servers & workers", exact: true, level: 1 })).toBeVisible()
   await expect(
-    page.getByRole("complementary", { name: "Agents", exact: true }).getByRole("button", { name: /, Host$/ }),
+    page.getByRole("complementary", { name: "Agents", exact: true }).getByRole("button", { name: /, Server$/ }),
   ).toContainText("Strong PC")
   await page
     .getByRole("complementary", { name: "Agents", exact: true })
-    .getByRole("button", { name: "Machines", exact: true })
+    .getByRole("button", { name: "Servers & workers", exact: true })
     .click()
-  await chooseSearchOption(page, workspace.getByRole("button", { name: /, Connected machine$/ }), "box")
+  await workspace.getByRole("button", { name: "Connect a server", exact: true }).click()
+  await chooseSearchOption(page, workspace.getByRole("button", { name: /, Connected server$/ }), "box")
   await workspace.getByRole("button", { name: "Continue", exact: true }).click()
   await workspace.getByRole("button", { name: "Check server", exact: true }).click()
   await expect(workspace.getByText("Server version: fixture", { exact: true })).toBeVisible()
   await workspace.getByRole("button", { name: "Continue", exact: true }).click()
   await chooseSearchOption(
     page,
-    workspace.getByRole("button", { name: /, Project on the machine$/ }),
+    workspace.getByRole("button", { name: /, Project on the server$/ }),
     fixture.project.name,
     fixture.directory,
   )
@@ -818,10 +964,10 @@ test("machine onboarding registers the verified checkout with its coordinator cr
     workspace.getByText(/A desktop loopback forward cannot be registered with a remote coordinator/),
   ).toBeVisible()
   await workspace
-    .getByRole("navigation", { name: "Machine setup", exact: true })
+    .getByRole("navigation", { name: "Server setup", exact: true })
     .getByRole("button", { name: "Connect Completed", exact: true })
     .click()
-  await chooseSearchOption(page, workspace.getByRole("button", { name: /, Connected machine$/ }), "Strong PC")
+  await chooseSearchOption(page, workspace.getByRole("button", { name: /, Connected server$/ }), "Strong PC")
   await workspace.getByRole("button", { name: "Continue", exact: true }).click()
   await expect(workspace.getByRole("button", { name: "Continue", exact: true })).toBeDisabled()
   await expect(workspace.getByText("Server access verified.", { exact: true })).toBeHidden()
@@ -830,7 +976,7 @@ test("machine onboarding registers the verified checkout with its coordinator cr
   await workspace.getByRole("button", { name: "Continue", exact: true }).click()
   await chooseSearchOption(
     page,
-    workspace.getByRole("button", { name: /, Project on the machine$/ }),
+    workspace.getByRole("button", { name: /, Project on the server$/ }),
     fixture.project.name,
     fixture.directory,
   )
@@ -1673,12 +1819,12 @@ test.describe("Worker touch review", () => {
     const dialog = page.getByRole("region", { name: "Agents", exact: true })
     await page
       .getByRole("navigation", { name: "Agents", exact: true })
-      .getByRole("button", { name: "Remote workers", exact: true })
+      .getByRole("button", { name: "Servers & workers", exact: true })
       .click()
     await expect(
       dialog
         .getByRole("tabpanel", { name: "Workers", exact: true })
-        .getByText("Connect a machine to start sending tasks."),
+        .getByText("Invite a worker or enable a connected server's checkout to receive tasks."),
     ).toBeVisible()
     await page.setViewportSize({ width: 320, height: 480 })
     const add = dialog.getByRole("button", { name: "Add worker", exact: true })
@@ -1837,7 +1983,7 @@ test("filters the fleet without the removed RedSkills integration", async ({ pag
   await expect(dialog.getByText("No sessions match this view.")).toBeVisible()
   const menu = page.getByRole("navigation", { name: "Agents", exact: true })
   await expect(menu.getByRole("button", { name: "Workers", exact: true })).toHaveCount(0)
-  await expect(menu.getByRole("button", { name: "Remote workers", exact: true })).toBeVisible()
+  await expect(menu.getByRole("button", { name: "Servers & workers", exact: true })).toBeVisible()
   await dialog.getByRole("textbox", { name: "Filter agents, projects or worktrees" }).fill("")
   await expect(dialog.getByText("No sessions match this view.")).toHaveCount(0)
   for (const width of [1440, 720, 390]) {

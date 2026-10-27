@@ -1,6 +1,85 @@
 import { DESKTOP_NATIVE_ENGLISH } from "./desktop-native"
 
 export const dict = {
+  "infrastructure.title": "Servers & workers",
+  "infrastructure.description":
+    "Connect to a server, access it from your devices and choose where it distributes work.",
+  "infrastructure.serverFilter": "Server",
+  "infrastructure.topology": "Client, server and workers",
+  "infrastructure.client": "1 · Your client",
+  "infrastructure.desktop": "Redcode Desktop on this device",
+  "infrastructure.browser": "Redcode Web in this browser",
+  "infrastructure.clientNote": "The client displays your conversations and sends requests to the server.",
+  "infrastructure.server": "2 · Selected server",
+  "infrastructure.serverNote": "Sessions, project files, terminals, tools and model connections live on this server.",
+  "infrastructure.connected": "Connected",
+  "infrastructure.disconnected": "Connection unavailable",
+  "infrastructure.workers": "3 · Workers for this server",
+  "infrastructure.viewWorkers": "View workers",
+  "infrastructure.workersNote":
+    "Registered checkouts receive distributed tasks from this server. They can run on this machine or another one.",
+  "infrastructure.localWorker": "Checkout on this server",
+  "infrastructure.noWorkers": "No workers registered. This server can still run coding sessions on its own.",
+  "infrastructure.connectServer": "Connect a server",
+  "infrastructure.openProject": "Open a project on this server",
+  "infrastructure.openProjectTitle": "Choose a project on {{server}}",
+  "infrastructure.sessionScope":
+    "This selection controls server management and distributed work. Each coding tab keeps its own server. Open a project here to start a coding session on this server.",
+  "infrastructure.pairDevice": "Connect another device",
+  "infrastructure.https": "HTTPS & mobile access",
+  "infrastructure.back": "Back to server overview",
+  "infrastructure.connections": "How local and remote connections work",
+  "infrastructure.localTitle": "Code on this computer",
+  "infrastructure.localNote":
+    "Desktop and the CLI can use a background server on this computer. Projects and execution stay here.",
+  "infrastructure.remoteTitle": "Code on a remote server",
+  "infrastructure.remoteNote":
+    "Connect Desktop or the CLI to the remote server by its URL, or use SSH in Desktop. The remote server owns those sessions and files; your local server keeps its own sessions.",
+  "infrastructure.webTitle": "Use a phone or browser",
+  "infrastructure.webNote":
+    "Open the server's web address or pairing link. The browser connects to that server directly; it does not need Desktop running on another computer.",
+  "infrastructure.ownership":
+    "Saved server connections belong to this client. Worker registrations belong to the selected server and are shared by clients connected to it.",
+  "infrastructure.coordinatorNote":
+    "A server acts as a coordinator when it distributes tasks to workers. Workers execute those tasks in registered checkouts. The same server can coordinate work and provide worker checkouts; each checkout is an execution slot.",
+  "infrastructure.networkNote":
+    "Each client must reach its server. The coordinating server must reach its workers. A forward on your laptop does not create a connection from a remote server to a worker.",
+  "infrastructure.sshNote":
+    "This address is a Desktop SSH forward. The server is on the remote machine. Keep Desktop open while using its forward; closing Desktop leaves remote sessions running.",
+  "infrastructure.distributedWork": "Workers & distributed work",
+  "infrastructure.workerEmpty": "Invite a worker or enable a connected server's checkout to receive tasks.",
+  "infrastructure.dispatchNote":
+    "Choose worker checkouts, submit independent tasks and review their results. Ordinary coding sessions execute on their selected server; they are not automatically split across workers.",
+  "infrastructure.setup.progress": "Server setup",
+  "infrastructure.setup.use": "Use server",
+  "infrastructure.setup.server": "Connected server",
+  "infrastructure.setup.choose": "Choose a server",
+  "infrastructure.setup.project": "Project on the server",
+  "infrastructure.setup.description":
+    "Connect a server once, verify a project, then code there or enable its checkout as a worker for the selected server.",
+  "infrastructure.manageServer": "Manage this server",
+  "workerInvitation.title": "Invite worker",
+  "workerInvitation.close": "Close invitation",
+  "workerInvitation.connectMachine": "Connect machine",
+  "workerInvitation.description":
+    "Create a private link or command to run on another machine. Its worker registration appears here after the coordinator verifies the connection.",
+  "workerInvitation.address": "Coordinator address reachable from the worker",
+  "workerInvitation.network":
+    "Use a LAN address, or HTTPS or a VPN for remote machines. Both machines must be reachable. Creating an invitation does not expose this server or open network ports.",
+  "workerInvitation.create": "Create invitation",
+  "workerInvitation.waiting": "Waiting for the worker to join…",
+  "workerInvitation.enrolled": "Worker registered and available. You can close this dialog.",
+  "workerInvitation.expired": "This invitation has expired. Revoke it and create another one.",
+  "workerInvitation.expires": "Single use · expires at {{time}}",
+  "workerInvitation.copyCommand": "Copy command",
+  "workerInvitation.copyLink": "Copy invitation link",
+  "workerInvitation.workerSetup":
+    "Run the command with Redcode installed on the worker. It asks for the project directory and reachable worker URL. The coordinator password is never included in the invitation.",
+  "workerInvitation.syncFailed":
+    "Could not refresh registration status. Check the worker list or reconnect to the coordinator.",
+  "workerInvitation.revoke": "Revoke invitation",
+  "workerInvitation.copied": "Copied to clipboard",
+
   "voice.start": "Record voice",
   "voice.stop": "Stop and transcribe",
   "voice.cancel": "Cancel recording",

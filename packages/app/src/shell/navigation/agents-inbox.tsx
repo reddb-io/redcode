@@ -86,7 +86,7 @@ export default function AgentInbox(props: { server: ServerConnection.Any; select
             await local.refetch()
           }}
         />
-        <h3 class="text-13-medium">{language.t("remoteWorkers.title")}</h3>
+        <h3 class="text-13-medium">{language.t("infrastructure.distributedWork")}</h3>
         <Show when={workers.isError || !connected()}>
           <p role="alert">{language.t("agents.inbox.unavailable")}</p>
         </Show>

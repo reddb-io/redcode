@@ -152,19 +152,19 @@ export default function AgentMachines(props: { server: ServerConnection.Any }) {
     language.t("agentMachines.setup.connect"),
     language.t("agentMachines.setup.check"),
     language.t("agentMachines.setup.project"),
-    language.t("agentMachines.setup.use"),
+    language.t("infrastructure.setup.use"),
   ]
   const manage = () => {
     const selected = target()
     if (!selected) return
     layout.home.setSelection({ server: ServerConnection.key(selected) })
-    setParams({ view: "remote", host: ServerConnection.key(selected) })
+    setParams({ view: "servers", host: ServerConnection.key(selected), setup: undefined })
   }
   return (
     <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-[var(--reddb-spatial-gap-md)] text-13-regular leading-[var(--line-height-base)]">
-      <p class="shrink-0 text-ink-muted">{language.t("agentMachines.description")}</p>
+      <p class="shrink-0 text-ink-muted">{language.t("infrastructure.setup.description")}</p>
       <Steps
-        label={language.t("agentMachines.setup.progress")}
+        label={language.t("infrastructure.setup.progress")}
         completedLabel={language.t("agentMachines.setup.completed")}
         items={labels().map((label, index) => ({
           id: String(index),
@@ -174,7 +174,7 @@ export default function AgentMachines(props: { server: ServerConnection.Any }) {
         }))}
       />
       <section
-        aria-label={language.t("agentMachines.setup.progress")}
+        aria-label={language.t("infrastructure.setup.progress")}
         class={panel.root({
           class: "flex-1 overflow-hidden rounded-lg border border-muted",
         })}
@@ -200,10 +200,10 @@ export default function AgentMachines(props: { server: ServerConnection.Any }) {
           <div hidden={state.step !== 0} class="flex flex-col gap-3 [&[hidden]]:hidden">
             <p>{language.t("agentMachines.connectNote")}</p>
             <SearchSelect
-              label={language.t("agentMachines.machine")}
+              label={language.t("infrastructure.setup.server")}
               class="w-full"
               value={state.selected}
-              placeholder={language.t("agentMachines.choose")}
+              placeholder={language.t("infrastructure.setup.choose")}
               options={servers.visible.map((server) => ({
                 value: ServerConnection.key(server),
                 label: serverName(server),
@@ -257,7 +257,7 @@ export default function AgentMachines(props: { server: ServerConnection.Any }) {
             </Show>
             <p class="text-ink-muted">{language.t("agentMachines.credentials")}</p>
             <Button variant="outline" disabled={!target() || !state.checked || state.busy} onClick={manage}>
-              {language.t("agentMachines.useCoordinator")}
+              {language.t("infrastructure.manageServer")}
             </Button>
           </div>
           <div hidden={state.step !== 2} class="flex flex-col gap-3 [&[hidden]]:hidden">
@@ -273,7 +273,7 @@ export default function AgentMachines(props: { server: ServerConnection.Any }) {
             </Show>
             <Show when={projects.data?.length}>
               <SearchSelect
-                label={language.t("agentMachines.project")}
+                label={language.t("infrastructure.setup.project")}
                 class="w-full"
                 disabled={state.busy}
                 value={state.directory}
@@ -324,7 +324,7 @@ export default function AgentMachines(props: { server: ServerConnection.Any }) {
             </Show>
             <p class="text-ink-muted">{language.t("agentMachines.setup.readyNote")}</p>
             <Button variant="outline" disabled={!target() || !state.checked || state.busy} onClick={manage}>
-              {language.t("agentMachines.useCoordinator")}
+              {language.t("infrastructure.manageServer")}
             </Button>
             <Button
               variant="outline"
@@ -402,9 +402,11 @@ export default function AgentMachines(props: { server: ServerConnection.Any }) {
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => setParams({ view: "remote", host: ServerConnection.key(props.server) })}
+                    onClick={() =>
+                      setParams({ view: "servers", host: ServerConnection.key(props.server), setup: undefined })
+                    }
                   >
-                    {language.t("remoteWorkers.title")}
+                    {language.t("infrastructure.viewWorkers")}
                   </Button>
                 </Show>
               </form>

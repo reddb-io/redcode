@@ -12,7 +12,7 @@ import { SearchSelect } from "@/runtime/react/search-select"
 import { Tabs } from "@opencode/ui/tabs"
 import { Key } from "@solid-primitives/keyed"
 import { useQuery } from "@tanstack/solid-query"
-import { createEffect, createMemo, For, onCleanup, Show } from "solid-js"
+import { createEffect, createMemo, For, onCleanup, Show, type JSX } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useLanguage } from "@/runtime/i18n/language"
 import { uuid } from "@/runtime/persistence/uuid"
@@ -35,7 +35,7 @@ const TASK_STATES = [
   "interrupted",
 ] as const satisfies readonly Worker.State[]
 
-export function RemoteWorkers(props: { server: ServerConnection.Any }) {
+export function RemoteWorkers(props: { server: ServerConnection.Any; overview?: JSX.Element }) {
   const language = useLanguage()
   const navigation = useNavigation()
   let reviewOpener: HTMLButtonElement | undefined
@@ -339,9 +339,12 @@ export function RemoteWorkers(props: { server: ServerConnection.Any }) {
   return (
     <div class="flex min-w-0 flex-col gap-[var(--reddb-spatial-layout-gap-md)] text-body">
       <Show when={!navigation.mobile() || (!state.inspector.task && !state.artifact) || state.view !== "tasks"}>
+        {props.overview}
         <header class="flex flex-col gap-1">
-          <h3 class="text-lg font-medium">{language.t("remoteWorkers.title")}</h3>
-          <p class="text-body text-ink-muted">{language.t("remoteWorkers.workspace.description")}</p>
+          <h3 class="text-13-medium">{language.t("infrastructure.distributedWork")}</h3>
+          <p class="text-13-regular leading-[var(--line-height-base)] text-ink-muted">
+            {language.t("infrastructure.dispatchNote")}
+          </p>
         </header>
       </Show>
       <Show when={query.isPending}>
@@ -705,7 +708,7 @@ export function RemoteWorkers(props: { server: ServerConnection.Any }) {
             </Show>
 
             <Show when={query.data?.available && !query.data.workers.length}>
-              <p class="text-ink-muted">{language.t("remoteWorkers.empty")}</p>
+              <p class="text-ink-muted">{language.t("infrastructure.workerEmpty")}</p>
             </Show>
 
             <Key each={query.data?.workers} by={(status) => status.worker.id}>
@@ -771,7 +774,7 @@ export function RemoteWorkers(props: { server: ServerConnection.Any }) {
             when={query.data?.available && !query.data.workers.length && !state.drafts.length && !state.prompt.trim()}
           >
             <div class="flex flex-col items-start gap-3 py-6">
-              <p class="text-ink-muted">{language.t("remoteWorkers.empty")}</p>
+              <p class="text-ink-muted">{language.t("infrastructure.workerEmpty")}</p>
               <button class={secondary} onClick={() => setState("view", "workers")}>
                 {language.t("remoteWorkers.workers.heading")}
               </button>
@@ -976,7 +979,7 @@ export function RemoteWorkers(props: { server: ServerConnection.Any }) {
               >
                 <Show when={!query.data?.workers.length}>
                   <p role="status" class="basis-full">
-                    {language.t("remoteWorkers.empty")}
+                    {language.t("infrastructure.workerEmpty")}
                   </p>
                 </Show>
                 <Show when={state.prompt.trim() && missingWorker(state.target)}>

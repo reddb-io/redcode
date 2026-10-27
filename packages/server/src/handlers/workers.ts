@@ -5,6 +5,8 @@ import { Api } from "../api"
 import { Workers } from "../workers"
 import { ServerAccess } from "@opencode/protocol/server-access"
 import { ConsoleForbiddenError } from "@opencode/protocol/console"
+import { HttpServerResponse } from "effect/unstable/http"
+import { workerEnrollmentPage } from "../worker-enrollment-page"
 
 export const WorkersHandler = HttpApiBuilder.group(Api, "server.workers", (handlers) =>
   Effect.gen(function* () {
@@ -20,6 +22,17 @@ export const WorkersHandler = HttpApiBuilder.group(Api, "server.workers", (handl
     const scoped = <A>(run: (scope: ServerAccess.Principal | undefined) => Promise<A>) =>
       Effect.flatMap(ServerAccess.Current, (scope) => call(() => run(scope)))
     return handlers
+      .handle("workers.enrollmentPage", () =>
+        Effect.succeed(
+          HttpServerResponse.text(workerEnrollmentPage, {
+            contentType: "text/html",
+            headers: { "cache-control": "no-store", "referrer-policy": "no-referrer" },
+          }),
+        ),
+      )
+      .handle("workers.invite", (ctx) => scoped((scope) => workers.invite(ctx.payload, scope)))
+      .handle("workers.revokeInvitation", (ctx) => scoped((scope) => workers.revokeInvitation(ctx.params.code, scope)))
+      .handle("workers.enroll", (ctx) => call(() => workers.enroll(ctx.payload)))
       .handle("workers.control", (ctx) => scoped((scope) => workers.control(ctx.params.id, ctx.payload, scope)))
       .handle("workers.resources", (ctx) => scoped((scope) => workers.resources(ctx.params.id, scope)))
       .handle("workers.attention", (ctx) => scoped((scope) => workers.attention(ctx.params.id, scope)))

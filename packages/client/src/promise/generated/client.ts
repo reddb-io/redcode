@@ -426,6 +426,12 @@ import type {
   ServerIntelligenceDiscoverOutput,
   ServerIntelligenceProbeInput,
   ServerIntelligenceProbeOutput,
+  WorkersInviteInput,
+  WorkersInviteOutput,
+  WorkersRevokeInvitationInput,
+  WorkersRevokeInvitationOutput,
+  WorkersEnrollInput,
+  WorkersEnrollOutput,
   WorkersControlInput,
   WorkersControlOutput,
   WorkersResourcesInput,
@@ -3597,6 +3603,46 @@ export function make(options: ClientOptions) {
         ),
     },
     workers: {
+      invite: (input: WorkersInviteInput, requestOptions?: RequestOptions) =>
+        request<WorkersInviteOutput>(
+          {
+            method: "POST",
+            path: `/api/workers/invitations`,
+            body: { id: input["id"], tags: input["tags"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 409],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      revokeInvitation: (input: WorkersRevokeInvitationInput, requestOptions?: RequestOptions) =>
+        request<WorkersRevokeInvitationOutput>(
+          {
+            method: "DELETE",
+            path: `/api/workers/invitations/${encodeURIComponent(input.code)}`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 409],
+            empty: true,
+          },
+          requestOptions,
+        ),
+      enroll: (input: WorkersEnrollInput, requestOptions?: RequestOptions) =>
+        request<WorkersEnrollOutput>(
+          {
+            method: "POST",
+            path: `/api/workers/enroll`,
+            body: {
+              code: input["code"],
+              url: input["url"],
+              password: input["password"],
+              directories: input["directories"],
+            },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 409],
+            empty: false,
+          },
+          requestOptions,
+        ),
       control: (input: WorkersControlInput, requestOptions?: RequestOptions) =>
         request<WorkersControlOutput>(
           {

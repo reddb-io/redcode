@@ -9,7 +9,7 @@ const rows = 2
 test("mobile navigation leaves the conversation full width and keeps scopes accessible", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await mockStressTimeline(page)
-  await openStress(page)
+  await openStress(page, { settings: { appearance: { density: "compact" } } })
   await page.goto(sessionHref(fixture.targetID))
   const rail = page.getByRole("navigation", { name: "Navigation", exact: true })
   const main = page.getByRole("main")
@@ -63,7 +63,7 @@ test("mobile navigation leaves the conversation full width and keeps scopes acce
   await expect(page.getByRole("region", { name: "Agents", exact: true })).toBeVisible()
   await dock.getByRole("button", { name: "Browse", exact: true }).click()
   const agents = page.getByRole("complementary", { name: "Agents", exact: true })
-  await expect(agents.getByRole("button", { name: "Machines", exact: true })).toBeVisible()
+  await expect(agents.getByRole("button", { name: "Servers & workers", exact: true })).toBeVisible()
   await expect(agents).toBeFocused()
   await page.keyboard.press("Escape")
   await expect(agents).toBeHidden()
@@ -137,7 +137,7 @@ for (const position of ["top", "bottom"] as const) {
     await expect(navigation).toHaveCount(1)
     await expect(message).toBeVisible()
     await expect(composer).toBeVisible()
-    await expect(tabs.getByRole("tab")).toHaveText(["Session", "Changes", "More..."])
+    await expect(tabs.getByRole("tab")).toHaveText(["Session", "Changes", "Delivery", "More..."])
     await expect(tabs).toHaveCSS("padding-left", "0px")
     await expect(tabs).toHaveCSS("padding-right", "0px")
 

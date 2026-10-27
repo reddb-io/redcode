@@ -2,9 +2,46 @@
 
 Available in Redcode 0.76.0 and later. CLI and server coordination have Docker acceptance coverage; physical Raspberry Pi ARM64/LAN/SSH execution still needs device validation.
 
-The desktop's **Agents → Remote workers** panel and `redcode workers` coordinate independent Redcode servers through the authenticated API. Each server owns its own database, sessions, tools, provider configuration and checkout. A registered checkout is one execution slot. Tasks in different slots run concurrently; tasks in the same slot run sequentially.
+The desktop's **Agents → Servers & workers** panel and `redcode workers` coordinate independent Redcode servers through the authenticated API. Each server owns its own database, sessions, tools, provider configuration and checkout. A registered checkout is one execution slot. Tasks in different slots run concurrently; tasks in the same slot run sequentially.
 
 Each worker arbitrates its own checkout reservations, including requests from different coordinators and registries. Workers keep independent databases; do not share SQLite files between hosts. A worker database is the authority for that worker, rather than a shared Session execution cluster.
+
+## Invite a worker from Desktop
+
+In **Agents → Servers & workers → Invite worker**, choose a new worker name, optional capability tags
+and the coordinator address the worker can reach. Copy the command or share the invitation link.
+The browser link shows the same command without signing the recipient into the coordinator.
+
+On the worker, with Redcode installed, run the copied command. It starts or reuses the configured
+background service, then asks for the existing project directory and the worker URL reachable from
+the coordinator. For scripts, pass both values explicitly:
+
+```sh
+redcode workers join 'https://coordinator.example.com/auth/worker#INVITATION_CODE' \
+  --url https://worker.example.com --directory /work/project
+```
+
+Invitations work once, expire after ten minutes and stop working when revoked or when the
+coordinator restarts. A new invitation for the same name replaces its previous invitation.
+They authorize only enrollment of that new worker identity; they cannot sign into the coordinator
+or replace an existing worker. A connection failure leaves the invitation available for retry until
+it expires. After successful authentication, the Desktop worker list updates automatically.
+The coordinator refreshes connection health every ten seconds, so unavailable workers are marked
+offline and returning workers become available again. Health checks never release checkout
+reservations or replay tasks.
+
+Both directions must be reachable: worker → coordinator for enrollment, coordinator → worker
+for authentication and tasks. Use LAN addresses on a trusted network, or HTTPS or a VPN for
+internet hosts. A server listening only on loopback cannot receive direct remote worker traffic.
+Configure network access first using the [remote connection guide](remote-access.md); creating an
+invitation does not open ports, enable a relay or change the service's listening address.
+
+For a machine without Redcode installed, use **Agents → Servers & workers → Connect a server → Add server → Add SSH server**.
+Enter its host, optional username, port and private key path. Redcode asks for passwords or key
+passphrases as needed and checks or installs the matching server version. Verify the project in
+the server setup wizard, then choose **Use this project as a worker**. Desktop owns this SSH forward;
+keep Desktop open while it is in use, and use a directly reachable worker URL when the coordinator
+runs on another machine.
 
 ## Native slots on the coordinator
 
@@ -46,7 +83,7 @@ worker**, or `redcode workers recover`, with the saved registry, manifest and re
 files: their original IDs are needed for recovery. A permanently abandoned reservation is deliberately
 not reassigned to a different task just because its timer expired.
 
-The CLI reports reservation generations and release alongside task state. **Agents → Remote workers**
+The CLI reports reservation generations and release alongside task state. **Agents → Servers & workers**
 shows the same state, explains a lost lease and offers recovery in desktop and web. Older workers
 without the fencing capability leave new tasks queued with an upgrade explanation. Existing
 unfenced assignments can still be observed; their ambiguous prompts are never automatically resent.
@@ -57,11 +94,11 @@ coordinators. Use isolated workspaces for OS resource limits and checkout isolat
 
 ## Connecting from the web client
 
-**Agents → Remote workers** registers workers on the selected coordinator. The coordinator connects
+**Agents → Servers & workers** registers workers on the selected coordinator. The coordinator connects
 to each worker; the browser needs access to the coordinator, and the coordinator needs network access
 and credentials for its workers. Each worker is an independent Redcode server.
 
-**Agents → Machines** also lets the browser connect directly to another Redcode server. When the web
+**Agents → Servers & workers → Connect a server** also lets the browser connect directly to another Redcode server. When the web
 page and that server have different origins, allow the web page's origin on the destination server.
 For example, if the web client is open at `http://10.0.0.10:4096`, run on the destination machine:
 
@@ -101,7 +138,7 @@ The resource-admission extension passed 35 checks inside WSL. Both workers repor
 
 ## Permanent coordinator and desktop
 
-Keep the updated agent server running on the machine that will coordinate the pool. Its server-owned worker service runs independently of any desktop/browser connection. In **Agents → Remote workers** on that server, register each machine's address, absolute checkout directory, server password or pairing token, and optional capability tags. **Check connection** verifies authentication and displays the actual platform.
+Keep the updated agent server running on the machine that will coordinate the pool. Its server-owned worker service runs independently of any desktop/browser connection. In **Agents → Servers & workers** on that server, register each machine's address, absolute checkout directory, server password or pairing token, and optional capability tags. **Check connection** verifies authentication and displays the actual platform.
 
 The panel uses the canonical Redcode design-system form contracts. Worker setup starts with the name,
 address, checkout and credential; **Advanced worker settings** holds capability tags and the Console
@@ -357,7 +394,7 @@ inbox, message and activity APIs for compatible confirmation.
 An existing Session alone does not confirm a task. A task remains reserved if its input is missing,
 accepted but idle, suspended, or its connection cannot be observed. A terminal result releases the
 checkout only after the original input was delivered, execution is idle and the inbox is empty.
-**Agents → Remote workers** explains the recovery reason beside the task and offers **Recover on
+**Agents → Servers & workers** explains the recovery reason beside the task and offers **Recover on
 the original worker**. Repeated checks do not re-admit the prompt, create a replacement Session or
 rewrite an unchanged journal. The CLI reports the same states and reasons.
 

@@ -2881,6 +2881,8 @@ export type IntelligenceCheck = {
   requests?: Array<ConnectionCheckRequest1> | null
 }
 
+export type WorkerInvitation = { id: WorkerName; tags: Array<string>; code: string; expiresAt: number }
+
 export type WorkerLocalRegistration = {
   id: WorkerName
   directories: Array<string>
@@ -11599,6 +11601,46 @@ export type ServerIntelligenceProbeInput = {
 }
 
 export type ServerIntelligenceProbeOutput = IntelligenceCheck
+
+export type WorkersInviteInput = {
+  readonly id: { readonly id: string; readonly tags: ReadonlyArray<string> }["id"]
+  readonly tags: { readonly id: string; readonly tags: ReadonlyArray<string> }["tags"]
+}
+
+export type WorkersInviteOutput = WorkerInvitation
+
+export type WorkersRevokeInvitationInput = { readonly code: { readonly code: string }["code"] }
+
+export type WorkersRevokeInvitationOutput = void
+
+export type WorkersEnrollInput = {
+  readonly code: {
+    readonly code: string
+    readonly url: string
+    readonly password: string
+    readonly directories: ReadonlyArray<string>
+  }["code"]
+  readonly url: {
+    readonly code: string
+    readonly url: string
+    readonly password: string
+    readonly directories: ReadonlyArray<string>
+  }["url"]
+  readonly password: {
+    readonly code: string
+    readonly url: string
+    readonly password: string
+    readonly directories: ReadonlyArray<string>
+  }["password"]
+  readonly directories: {
+    readonly code: string
+    readonly url: string
+    readonly password: string
+    readonly directories: ReadonlyArray<string>
+  }["directories"]
+}
+
+export type WorkersEnrollOutput = WorkerStatus
 
 export type WorkersControlInput = {
   readonly id: { readonly id: string }["id"]

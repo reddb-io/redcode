@@ -69,7 +69,7 @@ export function ServerGeneral(props: { services: Services }) {
                       view === "harness"
                         ? "executors.title"
                         : view === "machines"
-                          ? "agentMachines.title"
+                          ? "infrastructure.title"
                           : "agentWorktrees.title",
                     )}
                   </Button>

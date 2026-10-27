@@ -1,8 +1,8 @@
-import { expect } from "bun:test"
+import { expect, setSystemTime } from "bun:test"
 import { OpenCode } from "@opencode/client/promise"
 import { Session } from "@opencode/schema/session"
 import { SessionMessage } from "@opencode/schema/session-message"
-import { Context, Effect, Layer, RcMap, Schema } from "effect"
+import { Context, Effect, Exit, Layer, RcMap, Schema, Scope } from "effect"
 import { LocationServiceMap } from "@opencode/core/location-service-map"
 import { Form } from "@opencode/core/form"
 import { Permission } from "@opencode/core/permission"
@@ -37,6 +37,94 @@ const startServer = Effect.fnUntraced(function* (directory: string) {
     headers: { authorization: `Basic ${btoa("opencode:secret")}` },
   }
 })
+
+it.live(
+  "worker invitations enroll only the reserved identity after authentication, and cannot be replayed or revoke host access",
+  () =>
+    Effect.gen(function* () {
+      const directory = yield* Effect.acquireDisposable(Effect.promise(() => tmpdir()))
+      const checkout = yield* Effect.acquireDisposable(Effect.promise(() => tmpdir()))
+      const coordinator = yield* startServer(directory.path)
+      const workerScope = yield* Scope.fork(yield* Scope.Scope)
+      const host = yield* startServer(checkout.path).pipe(Effect.provideService(Scope.Scope, workerScope))
+      const admin = OpenCode.make({ baseUrl: coordinator.base, headers: coordinator.headers })
+      const guest = OpenCode.make({ baseUrl: coordinator.base })
+      yield* Effect.promise(async () => {
+        const page = await fetch(`${coordinator.base}/auth/worker`)
+        expect(page.status).toBe(200)
+        expect(page.headers.get("content-type")).toContain("text/html")
+        expect(page.headers.get("referrer-policy")).toBe("no-referrer")
+        expect(await page.text()).toContain("Join as a Redcode worker")
+        await expect(guest.workers.invite({ id: "injected", tags: [] })).rejects.toThrow()
+        const invitation = await admin.workers.invite({ id: "invited", tags: ["arm64"] })
+        expect(invitation.code).toMatch(/^[A-Za-z0-9_-]{43}$/)
+        const registration = { code: invitation.code, url: host.base, password: "wrong", directories: [checkout.path] }
+        await expect(guest.workers.enroll(registration)).rejects.toThrow("authenticate")
+        expect((await admin.workers.list()).workers).toHaveLength(0)
+        const results = await Promise.allSettled([
+          guest.workers.enroll({ ...registration, password: "secret" }),
+          guest.workers.enroll({ ...registration, password: "secret" }),
+        ])
+        expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1)
+        const snapshot = await admin.workers.list()
+        expect(snapshot.workers).toHaveLength(1)
+        expect(snapshot.workers[0]).toMatchObject({
+          connection: "online",
+          worker: { id: "invited", tags: ["arm64"], url: host.base, directories: [checkout.path] },
+        })
+        expect(JSON.stringify(snapshot)).not.toContain('"secret"')
+        await expect(guest.workers.enroll({ ...registration, password: "secret" })).rejects.toThrow("already used")
+        await expect(admin.workers.invite({ id: "invited", tags: [] })).rejects.toThrow("already registered")
+        const revoke = await admin.workers.invite({ id: "revoked", tags: [] })
+        await expect(guest.workers.revokeInvitation({ code: revoke.code })).rejects.toThrow()
+        await admin.workers.revokeInvitation({ code: revoke.code })
+        await expect(guest.workers.enroll({ ...registration, code: revoke.code })).rejects.toThrow("revoked")
+        // Issuing a replacement invalidates the prior link for the same identity.
+        const replaced = await admin.workers.invite({ id: "replacement", tags: [] })
+        const replacement = await admin.workers.invite({ id: "replacement", tags: [] })
+        await expect(guest.workers.enroll({ ...registration, code: replaced.code })).rejects.toThrow("revoked")
+        // An invitation can never overwrite a worker registered through another path in the meantime.
+        await admin.workers.add({
+          id: "replacement",
+          tags: ["original"],
+          url: host.base,
+          password: "secret",
+          directories: [directory.path],
+        })
+        await expect(
+          guest.workers.enroll({ ...registration, code: replacement.code, password: "secret" }),
+        ).rejects.toThrow("already registered")
+        expect(
+          (await admin.workers.list()).workers.find((item) => item.worker.id === "replacement")?.worker.tags,
+        ).toEqual(["original"])
+        const expiring = await admin.workers.invite({ id: "expiring", tags: [] })
+        try {
+          setSystemTime(new Date(expiring.expiresAt + 1))
+          await expect(guest.workers.enroll({ ...registration, code: expiring.code })).rejects.toThrow("expired")
+        } finally {
+          setSystemTime()
+        }
+        expect((await fetch(`${coordinator.base}/api/info`)).status).toBe(401)
+        expect(
+          (
+            await fetch(`${coordinator.base}/api/info`, {
+              headers: { authorization: `Basic ${btoa(`opencode:${invitation.code}`)}` },
+            })
+          ).status,
+        ).toBe(401)
+      })
+      yield* Scope.close(workerScope, Exit.void)
+      yield* Effect.promise(async () => {
+        const deadline = Date.now() + 15_000
+        for (;;) {
+          if ((await admin.workers.list()).workers.every((item) => item.connection === "offline")) return
+          if (Date.now() >= deadline) throw new Error("Coordinator did not refresh the disconnected workers")
+          await Bun.sleep(50)
+        }
+      })
+    }),
+  30_000,
+)
 
 it.live(
   "native worker controls retain durable queue/steer identities and interrupt only the assigned harness",

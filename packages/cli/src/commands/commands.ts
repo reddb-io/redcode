@@ -458,6 +458,20 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
       description: "Distribute tasks across independent Redcode servers",
       params: {},
       commands: [
+        Spec.make("join", {
+          description: "Enroll this machine with a coordinator invitation",
+          params: {
+            invitation: Argument.string("invitation"),
+            url: Flag.string("url").pipe(
+              Flag.optional,
+              Flag.withDescription("This worker's address as reached by the coordinator"),
+            ),
+            directory: Flag.string("directory").pipe(
+              Flag.optional,
+              Flag.withDescription("Absolute checkout directory to register"),
+            ),
+          },
+        }),
         Spec.make("add", {
           description: "Register a worker checkout; credentials stay in an environment variable",
           params: {

@@ -4,6 +4,58 @@ Remote access connects a client to an **agent server**. Sessions, tools, provide
 project files remain on that server's machine. Console is a separate administration listener;
 opening Console does not connect a coding client to a project.
 
+## Client, server and worker
+
+| Term            | Where it runs and what it owns                                                                                                                                                    |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Client**      | Desktop, TUI or a web browser. Displays the interface and connects to a server.                                                                                                   |
+| **Server**      | Runs locally or on another computer. Owns its sessions, project files, tools, terminals and model connections.                                                                    |
+| **Coordinator** | The role a server takes when it dispatches tasks to registered workers. It can also run ordinary coding sessions itself.                                                          |
+| **Worker**      | Redcode execution capacity registered with a coordinator, on the same server or another host. Tasks run in its allowed checkouts; each checkout is an independent execution slot. |
+
+In **Agents → Servers & workers**, choose the server to manage. The overview shows your client,
+that server and its registered workers. Connect servers, invite workers, pair another device and
+configure HTTPS from this area. **Workers & distributed work** contains worker registrations,
+new batches and task results.
+
+### Local Desktop or TUI
+
+Starting Desktop or the TUI normally uses a background server on the same computer. The client
+and server happen to share a machine; they remain separate processes. No worker is required to
+start a coding session.
+
+### Local client, remote execution
+
+Connect Desktop to the remote server by URL or SSH, or pass `--server` to the CLI. This connects
+your local interface to that server's sessions and projects. It does not move your local sessions,
+turn your laptop into a worker or copy your repositories to the server. Your local server can keep
+its own independent sessions while you use the remote one.
+
+With a Desktop SSH connection, the `127.0.0.1` address shown in the client is a local forwarding
+endpoint. Execution still happens on the remote server. The SSH forward belongs to Desktop;
+closing Desktop disconnects clients that depend on that forward while remote sessions remain on
+the server. The [CLI connection example](#connect-a-cli-to-a-foreground-server) explains passwords
+and directory selection, including connecting from Windows to a Linux server.
+
+### Browser or phone, remote execution
+
+Open the server's reachable web address or device-pairing link. The browser connects directly to
+that server; Desktop on your laptop is not an intermediate service. Use the server's HTTPS address
+for mobile installation and remote browser access. On a phone, `localhost` refers to the phone,
+so a laptop's loopback address cannot be reused there without a separate forwarding arrangement.
+
+### Distributed execution
+
+A coding session normally executes on its selected server. Register worker checkouts and submit a
+batch to distribute independent tasks. Registration does not automatically split every prompt across
+the pool. Each checkout remains owned by its worker, and results return for review.
+
+The coordinator must reach its workers independently of your client's connection. Saved server
+connections belong to the client; worker registrations belong to the coordinator and are visible to
+its connected clients. The file-based `redcode workers ... --config` commands are a standalone CLI
+batch coordinator with its own registry; `redcode workers join` enrolls a worker in the server's
+registry. Those registries are not implicitly merged.
+
 ## Connect Desktop over your LAN or router VPN
 
 The computer running Desktop can be your control device while a stronger machine runs the agent
@@ -11,7 +63,7 @@ server and coordinates other workers. Connect your router VPN before opening the
 the VPN must route the execution host's address and permit SSH. A router VPN does not require
 publishing Redcode's coding port to the internet.
 
-1. Open **Agents → Machines** and **Add server → Add SSH server** in Desktop. Enter the execution
+1. Open **Agents → Servers & workers → Connect a server** and **Add server → Add SSH server** in Desktop. Enter the execution
    host or SSH alias, such as `user@10.0.0.50`, and an optional display name.
 2. Complete SSH authentication and host-key verification in the dialog. Desktop checks the remote
    service, stages the matching server when needed, starts it and manages a loopback SSH forward.
@@ -20,11 +72,11 @@ publishing Redcode's coding port to the internet.
 3. The connected machine is selected in the setup flow. Continue to **Check access** and choose
    **Check server**. Continue to **Choose project**, select a known project or **Browse this machine**,
    then choose **Check project**. The checks verify access without running project commands or an agent.
-   In **Use machine**, choose **Code in this project on this machine** to open a session there.
+   In **Use server**, choose **Code in this project on this machine** to open a session there.
    Going back retains the draft; changing the machine or directory requires its access to be checked again.
-4. Choose **Manage workers on this machine** to make it the active coordinator. Add its other
-   workers using addresses reachable from that coordinator, then send batches through **Remote
-   workers**. A normal coding session runs directly on the selected server; batch tasks execute on
+4. Choose **Manage this server** to make it the active coordinator. Add its other
+   workers using addresses reachable from that coordinator, then send batches through **Workers &
+   distributed work**. A normal coding session runs directly on the selected server; batch tasks execute on
    registered worker checkouts, including its own checkout if explicitly registered.
 
 For example, a laptop can connect through the VPN to a workstation that dispatches to additional
@@ -224,8 +276,8 @@ copy credentials, or merge worker changes into your local checkout.
   and coding access.
 - **Organization or infrastructure user:** a Console session plus resource/workspace grants permits
   scoped worker-batch operations when the coordinator has Console access configuration.
-- **Remote worker:** an independent agent server registered with a coordinator. Each checkout is an
-  execution slot; task results are collected for review.
+- **Worker:** Redcode execution capacity registered with a coordinator, on the same server or another host.
+  Tasks run in its allowed checkouts; each checkout is one execution slot. Task results are collected for review.
 
 See [infrastructure access](console-infrastructure.md) for the delegation setup and current limits,
 and [distributed workers](distributed-workers.md) for registration, task manifests, restart recovery

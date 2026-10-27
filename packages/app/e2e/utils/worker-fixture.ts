@@ -3,6 +3,11 @@ import type { HostResourcesSnapshot } from "@opencode/client/promise"
 import { Worker } from "@opencode/schema/worker"
 import { Schema } from "effect"
 import { currentSession, type MockSession } from "./mock-server"
+import { workerEnrollmentPage } from "../../../server/src/worker-enrollment-page"
+
+export async function mockWorkerEnrollmentPage(page: Page) {
+  await page.route("**/auth/worker", (route) => route.fulfill({ contentType: "text/html", body: workerEnrollmentPage }))
+}
 
 export async function mockWaitingWorker(page: Page, session: MockSession) {
   const inbox = Schema.decodeUnknownSync(Worker.Inbox)({
@@ -136,6 +141,7 @@ export async function mockWorkerDistribution(page: Page) {
 export async function mockRemoteWorkers(
   page: Page,
   initial?: {
+    server?: string
     workers?: Worker.Status[]
     batches?: Worker.Batch[]
     inbox?: Worker.Inbox
@@ -148,14 +154,29 @@ export async function mockRemoteWorkers(
     batches: initial?.batches ?? [],
   }
   const requests: { path: string; method: string; body: unknown }[] = []
+  const invitations = new Map<string, Worker.Invitation>()
   const inbox = { data: [...(initial?.inbox?.data ?? [])], unavailable: [...(initial?.inbox?.unavailable ?? [])] }
   const patch =
     "diff --git a/result.txt b/result.txt\nnew file mode 100644\n--- /dev/null\n+++ b/result.txt\n@@ -0,0 +1 @@\n+Worker result\n"
-  await page.route("**/api/workers**", async (route) => {
+  await page.route(initial?.server ? `${initial.server}/api/workers**` : "**/api/workers**", async (route) => {
     const request = route.request()
     const path = new URL(request.url()).pathname
     const body: unknown = request.method() === "POST" ? request.postDataJSON() : undefined
     requests.push({ path, method: request.method(), body })
+    if (path === "/api/workers/invitations" && request.method() === "POST") {
+      const value = Schema.decodeUnknownSync(Worker.InvitationRequest)(body)
+      const invitation = {
+        ...value,
+        code: String(invitations.size + 1).padStart(43, "a"),
+        expiresAt: Date.now() + 600_000,
+      }
+      invitations.set(invitation.code, invitation)
+      return route.fulfill({ json: invitation })
+    }
+    if (path.startsWith("/api/workers/invitations/") && request.method() === "DELETE") {
+      invitations.delete(path.split("/").at(-1)!)
+      return route.fulfill({ status: 200, body: "" })
+    }
     if (path.endsWith("/resources")) {
       const sample = initial?.resources?.[path.split("/")[3]]
       return sample

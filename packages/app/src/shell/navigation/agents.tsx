@@ -4,7 +4,8 @@ import { Icon } from "@opencode/ui/icon"
 import { SearchSelect } from "@/runtime/react/search-select"
 import { input } from "@reddb-io/design-system/contracts/input"
 import { useQuery } from "@tanstack/solid-query"
-import { createMemo, For, lazy, onCleanup, Show, Switch, Match } from "solid-js"
+import { Key } from "@solid-primitives/keyed"
+import { createMemo, For, lazy, onCleanup, Show, Suspense, Switch, Match } from "solid-js"
 import { createStore, type SetStoreFunction } from "solid-js/store"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { useLanguage } from "@/runtime/i18n/language"
@@ -18,7 +19,6 @@ import { showToast } from "@/shell/notifications/toast"
 import { useNavigation } from "./controller"
 import { AGENT_LABELS, AGENT_VIEWS, useAgentsScope } from "./agents-menu"
 import { agentSessionTrees, SESSION_STATUSES, rollupSessionStatus, sessionAwaitsUser, sessionStatus } from "./model"
-import { RemoteWorkers } from "./remote-workers"
 
 const AgentInbox = lazy(() => import("./agents-inbox"))
 const AgentTasks = lazy(() => import("./agents-tasks"))
@@ -29,7 +29,7 @@ import { AgentShortcuts } from "./agents-shortcuts.react"
 const AgentUsage = lazy(() => import("./agents-usage"))
 const AgentHosts = lazy(() => import("./agents-hosts"))
 const AgentHarnesses = lazy(() => import("./agents-harnesses"))
-const AgentMachines = lazy(() => import("./agents-machines"))
+const AgentServers = lazy(() => import("./agents-servers"))
 const AgentEnvironments = lazy(() => import("./agents-environments"))
 const ProjectEnvironments = lazy(() => import("./project-environments"))
 const AgentWorktrees = lazy(() => import("./agents-worktrees"))
@@ -74,7 +74,7 @@ export default function Agents() {
               />
             </div>
             <p class="hidden text-13-regular leading-[var(--line-height-base)] text-v2-text-text-muted md:block">
-              {language.t("agents.description")}
+              {language.t(scope.view() === "servers" ? "infrastructure.description" : "agents.description")}
             </p>
           </div>
           <Button
@@ -134,7 +134,7 @@ export default function Agents() {
           <Show when={scope.servers().length === 0}>
             <p role="status">{language.t("agents.scope.missing")}</p>
           </Show>
-          <Show when={scope.view() === "machines" && scope.servers()[0]}>
+          <Key each={scope.view() === "servers" ? scope.servers().slice(0, 1) : []} by={ServerConnection.key}>
             {(server) => (
               <section class="flex h-full min-h-0 flex-col">
                 <h2 class="mb-2 text-13-medium text-v2-text-text-muted">{serverName(server())}</h2>
@@ -142,12 +142,14 @@ export default function Agents() {
                   when={!global.servers.health[ServerConnection.key(server())]?.unauthorized}
                   fallback={<p role="alert">{language.t("agents.unavailable")}</p>}
                 >
-                  <AgentMachines server={server()} />
+                  <Suspense fallback={<p role="status">{language.t("agents.loading")}</p>}>
+                    <AgentServers server={server()} />
+                  </Suspense>
                 </Show>
               </section>
             )}
-          </Show>
-          <For each={scope.view() === "machines" ? [] : scope.servers()}>
+          </Key>
+          <For each={scope.view() === "servers" ? [] : scope.servers()}>
             {(server) => (
               <section class="mb-5">
                 <h2 class="mb-2 text-13-medium text-v2-text-text-muted">{serverName(server)}</h2>
@@ -190,9 +192,6 @@ export default function Agents() {
                     </Match>
                     <Match when={scope.view() === "worktrees"}>
                       <AgentWorktrees server={server} />
-                    </Match>
-                    <Match when={scope.view() === "remote"}>
-                      <RemoteWorkers server={server} />
                     </Match>
                   </Switch>
                 </Show>

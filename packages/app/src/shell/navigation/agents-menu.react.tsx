@@ -29,7 +29,7 @@ export function AgentsMenuView(props: {
     >
       <h2 className="px-2 py-3 text-13-medium leading-[var(--line-height-base)]">{language.t("agents.title")}</h2>
       <SearchSelect
-        label={language.t("agents.scope.host")}
+        label={language.t("infrastructure.serverFilter")}
         value={view.host}
         onValueChange={props.selectHost}
         controlSize="sm"
@@ -40,7 +40,7 @@ export function AgentsMenuView(props: {
         searchPlaceholder={language.t("ui.searchSelect.search")}
         emptyText={language.t("ui.searchSelect.empty")}
         options={[
-          ...(view.view === "machines" ? [] : [{ value: "", label: language.t("agents.scope.all") }]),
+          ...(view.view === "servers" ? [] : [{ value: "", label: language.t("agents.scope.all") }]),
           ...view.servers,
         ]}
       />

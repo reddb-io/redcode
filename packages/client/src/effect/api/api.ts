@@ -6391,6 +6391,25 @@ export interface ServerIntelligenceApi<E = never> {
   readonly probe: ServerIntelligenceProbeOperation<E>
 }
 
+export type WorkersInviteInput = { readonly id: Worker.Name; readonly tags: ReadonlyArray<string> }
+export type WorkersInviteOutput = Worker.Invitation
+export type WorkersInviteOperation<E = never> = (input: WorkersInviteInput) => Effect.Effect<WorkersInviteOutput, E>
+
+export type WorkersRevokeInvitationInput = { readonly code: string }
+export type WorkersRevokeInvitationOutput = void
+export type WorkersRevokeInvitationOperation<E = never> = (
+  input: WorkersRevokeInvitationInput,
+) => Effect.Effect<WorkersRevokeInvitationOutput, E>
+
+export type WorkersEnrollInput = {
+  readonly code: string
+  readonly url: string
+  readonly password: string
+  readonly directories: ReadonlyArray<string>
+}
+export type WorkersEnrollOutput = Worker.Status
+export type WorkersEnrollOperation<E = never> = (input: WorkersEnrollInput) => Effect.Effect<WorkersEnrollOutput, E>
+
 export type WorkersControlInput = { readonly id: Worker.Name; readonly payload: Worker.Control }
 export type WorkersControlOutput = void
 export type WorkersControlOperation<E = never> = (input: WorkersControlInput) => Effect.Effect<WorkersControlOutput, E>
@@ -6460,6 +6479,9 @@ export type WorkersCollectOutput = Worker.Artifact
 export type WorkersCollectOperation<E = never> = (input: WorkersCollectInput) => Effect.Effect<WorkersCollectOutput, E>
 
 export interface WorkersApi<E = never> {
+  readonly invite: WorkersInviteOperation<E>
+  readonly revokeInvitation: WorkersRevokeInvitationOperation<E>
+  readonly enroll: WorkersEnrollOperation<E>
   readonly control: WorkersControlOperation<E>
   readonly resources: WorkersResourcesOperation<E>
   readonly attention: WorkersAttentionOperation<E>

@@ -49,7 +49,7 @@ PWA installation requires HTTPS; a plain HTTP address on the local network remai
 browser shortcut. [Remote access and mobile installation](docs/remote-access.md#install-the-web-app-on-a-phone).
 
 Open **Agents** in the siderail to follow sessions across hosts, answer requests in **Inbox**, inspect
-**Hosts and resources**, or manage **Remote workers**. Host charts share a cursor and time window,
+**Hosts and resources**, or connect servers and manage their workers in **Servers & workers**. Host charts share a cursor and time window,
 with thin CPU/RAM gauges and a bounded history collected while the view is open.
 **Usage and costs** combines KPI trends, token distribution and daily charts by project,
 with reported, estimated and unknown cost coverage. This workspace shows agent
@@ -62,7 +62,7 @@ Inspect observed checks and overlapping changes, prepare a combined local Git ca
 and explicitly apply it after the session has verified and accepted that exact candidate.
 
 **Executors** starts native Redcode sessions by default, with installed Claude Code and Codex as
-explicit alternatives on the selected host. **Machines** guides remote connection, inspection and
+explicit alternatives on the selected host. **Servers & workers** guides remote connection, inspection and
 worker registration. **Worktrees** can enable an existing checkout as a native batch slot on its own
 server, without entering that server's password. Each checkout runs one batch task at a time;
 parallel tasks require separate checkouts. Worktrees also creates isolated checkouts, reviews and
@@ -325,7 +325,7 @@ pinned offers and MCP tools. TUI `/connect` manages provider connections; `/dual
 <img src="docs/features/workers.svg" alt="Redcode worker pool" width="100%" />
 
 **CLI / Desktop / web · agent server.** Register execution machines, dispatch tasks and collect results
-through **Agents → Remote workers** or `redcode workers`. Each worker owns its checkout, sessions and
+through **Agents → Servers & workers** or `redcode workers`. Each worker owns its checkout, sessions and
 provider configuration. [Connect workers to a coordinator](#add-workers-to-the-coordinator).
 
 </details>
@@ -397,13 +397,14 @@ workers. For offsite access, the connection follows this path:
 
 1. Connect your router VPN so the PC's address and SSH service are reachable. On the same LAN,
    connect directly. The execution host must already have SSH available.
-2. In Desktop, open **Agents → Machines → Add server → Add SSH server**. Enter the host or SSH
+2. In Desktop, open **Agents → Servers & workers → Connect a server → Add server → Add SSH server**. Enter the host or SSH
    alias, such as `user@10.0.0.50`. Complete authentication in the dialog; Desktop manages server
-   setup and forwarding.
+   setup and forwarding. **Username, port and SSH key** provides optional connection fields;
+   passwords and key passphrases are requested during authentication and are not saved.
 3. Continue to **Check access** and choose **Check server**. Then choose a remote project or
    **Browse this machine** and select **Check project**. These checks verify access without running
-   an agent. In **Use machine**, choose **Code in this project on this machine** to open a session there.
-4. Choose **Manage workers on this machine** to control its pool. In **Agents → Remote workers**,
+   an agent. In **Use server**, choose **Code in this project on this machine** to open a session there.
+4. Choose **Manage this server** to control its pool. In **Agents → Servers & workers**,
    register reachable workers and send a batch. To include execution on the coordinator in a batch,
    register an independent checkout on that machine as a worker too.
 
@@ -423,7 +424,10 @@ command, each with its own checkout and model configuration.
 
 In Desktop connected to the coordinator:
 
-1. Open **Agents → Remote workers**, register a worker and check the connection.
+1. Open **Agents → Servers & workers → Invite worker** and copy the invitation link or command
+   to the worker. Run it there with Redcode installed, choose a checkout and supply the worker's
+   reachable URL. The invitation expires after ten minutes and can be revoked. The coordinator
+   verifies the connection before the worker appears in its list. Manual registration is also available.
    Tasks can require capability tags and CPU/RAM budgets. Unsatisfied requirements keep the task queued with a reason; native harness controls let you steer, queue instructions or interrupt assigned work.
 2. Add independent tasks and send a batch.
    Search or filter tasks by status, then open **Execution details** to inspect the saved assignment

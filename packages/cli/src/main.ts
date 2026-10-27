@@ -45,6 +45,7 @@ const Handlers = Runtime.handlers(Commands, {
     remove: () => import("./commands/handlers/auth/remove"),
   },
   workers: {
+    join: () => import("./commands/handlers/workers/join"),
     add: () => import("./commands/handlers/workers/add"),
     list: () => import("./commands/handlers/workers/list"),
     remove: () => import("./commands/handlers/workers/remove"),

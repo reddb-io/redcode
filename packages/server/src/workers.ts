@@ -8,18 +8,22 @@ import { Flock } from "@opencode/util/flock"
 import { makeGlobalNode } from "@opencode/util/effect/app-node"
 import { Context, Effect, Layer, Schema } from "effect"
 import { mkdir, readdir, rename, rm } from "node:fs/promises"
-import { randomUUID } from "node:crypto"
+import { randomBytes, randomUUID } from "node:crypto"
 import path from "node:path"
 import type { OpenCodeClient } from "@opencode/client/promise"
 import { realpath } from "node:fs/promises"
 import { WorkerPool } from "./worker-pool"
 import { InfrastructureAccess } from "./infrastructure-access"
 import { ServerAccess } from "@opencode/protocol/server-access"
+import { UnauthorizedError } from "@opencode/protocol/errors"
 import { ConsoleForbiddenError } from "@opencode/protocol/console"
 import { optional } from "@opencode/schema/schema"
 import { HostResources } from "@opencode/schema/host-resources"
 
 export interface Interface {
+  readonly invite: (input: Worker.InvitationRequest, scope?: ServerAccess.Principal) => Promise<Worker.Invitation>
+  readonly revokeInvitation: (code: string, scope?: ServerAccess.Principal) => Promise<void>
+  readonly enroll: (input: Worker.Enrollment) => Promise<Worker.Status>
   readonly list: (scope?: ServerAccess.Principal) => Promise<Worker.Snapshot>
   readonly add: (
     input: Worker.Register | typeof Worker.LocalRegistration.Type,
@@ -241,6 +245,27 @@ function layer(directory?: string, accessOptions?: InfrastructureAccess.Options,
           Effect.forever,
           Effect.forkScoped,
         )
+        // Connection health is an advisory read model; it never releases checkout reservations or redispatches work.
+        yield* io(async () => {
+          if (state.error || abort.signal.aborted) return
+          const registry = await WorkerPool.readConfig(config)
+          const secrets = await environment()
+          await Promise.all(
+            registry.workers.map(async (worker) => {
+              const health = await WorkerPool.health(worker, secrets, local?.client).catch(() => undefined)
+              connections.set(worker.id, {
+                worker,
+                connection: health ? "online" : "offline",
+                ...(health ? { platform: health.platform } : {}),
+              })
+            }),
+          )
+        }).pipe(
+          Effect.catch(() => Effect.void),
+          Effect.delay("10 seconds"),
+          Effect.forever,
+          Effect.forkScoped,
+        )
         // Abort dispatch before joining the pump, then release ownership after its journal writes finish.
         yield* Effect.addFinalizer(() => Effect.sync(() => abort.abort()))
       }
@@ -251,6 +276,79 @@ function layer(directory?: string, accessOptions?: InfrastructureAccess.Options,
           signal: abort.signal,
           timeoutMs: 2_000,
         })
+      }
+      const invitations = new Map<string, Worker.Invitation>()
+      // Called only under the registry mutation lock, including enrollment's create-only check.
+      const register = async (
+        value: Worker.Register | typeof Worker.LocalRegistration.Type,
+        scope?: ServerAccess.Principal,
+        createOnly = false,
+      ) => {
+        if (createOnly && (await WorkerPool.readConfig(config)).workers.some((worker) => worker.id === value.id))
+          throw new Error("This worker ID is already registered")
+        manage(scope)
+        const resourceID = "kind" in value ? infrastructure.resourceID : value.resourceID
+        if (scope) {
+          if (!resourceID) throw denied()
+          const access = await verify(scope.token, resourceID)
+          if (access.ownerRole !== "admin" || access.ownerID !== scope.access.ownerID) throw denied()
+        }
+        if ((await all()).some((item) => !terminal(item.report)))
+          throw new Error("Finish the current batch before changing workers")
+        if ("kind" in value) {
+          if (!local?.ready()) throw new Error("Local batches require a ready server listener")
+          const worker = {
+            ...value,
+            resourceID: infrastructure.resourceID,
+            directories: await Promise.all(value.directories.map((directory) => realpath(directory))),
+          }
+          const health = await WorkerPool.health(worker, {}, local.client)
+          await WorkerPool.add(config, worker)
+          const status: Worker.Status = { worker, connection: "online", platform: health.platform }
+          connections.set(worker.id, status)
+          return status
+        }
+        if (
+          value.resourceID &&
+          (await WorkerPool.readConfig(config)).workers.some(
+            (item) =>
+              item.kind !== "local" &&
+              item.resourceID === value.resourceID &&
+              item.environmentID !== value.environmentID &&
+              (item.environmentID || value.environmentID),
+          )
+        )
+          throw new Error(
+            "An isolated environment needs its own Console resource; do not share grants across environments",
+          )
+        const stored = await run(
+          credential.create({
+            integrationID: Integration.ID.make(`redcode-worker:${value.id}`),
+            value: { type: "key", key: value.password },
+            activate: false,
+          }),
+        )
+        const worker = {
+          id: value.id,
+          url: value.url,
+          directories: value.directories,
+          ...(value.resourceID ? { resourceID: value.resourceID } : {}),
+          ...(value.environmentID ? { environmentID: value.environmentID } : {}),
+          ...(value.environmentProxy !== undefined ? { environmentProxy: value.environmentProxy } : {}),
+          tags: value.tags,
+          passwordEnv: stored.id,
+        }
+        const health = await WorkerPool.health(worker, { [stored.id]: value.password }).catch(async () => {
+          await run(credential.remove(stored.id))
+          throw new Error("Could not authenticate this worker. Check its address and password.")
+        })
+        await WorkerPool.add(config, worker).catch(async (error: unknown) => {
+          await run(credential.remove(stored.id))
+          throw error
+        })
+        const status: Worker.Status = { worker, connection: "online", platform: health.platform }
+        connections.set(worker.id, status)
+        return status
       }
       return Service.of({
         control: async (id, control, scope) => {
@@ -302,71 +400,49 @@ function layer(directory?: string, accessOptions?: InfrastructureAccess.Options,
               .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
           }
         },
-        add: (value, scope) =>
+        add: (value, scope) => mutate(() => register(value, scope)),
+        invite: (value, scope) =>
           mutate(async () => {
             manage(scope)
-            const resourceID = "kind" in value ? infrastructure.resourceID : value.resourceID
-            if (scope) {
-              if (!resourceID) throw denied()
-              const access = await verify(scope.token, resourceID)
-              if (access.ownerRole !== "admin" || access.ownerID !== scope.access.ownerID) throw denied()
-            }
-            if ((await all()).some((item) => !terminal(item.report)))
-              throw new Error("Finish the current batch before changing workers")
-            if ("kind" in value) {
-              if (!local?.ready()) throw new Error("Local batches require a ready server listener")
-              const worker = {
-                ...value,
-                resourceID: infrastructure.resourceID,
-                directories: await Promise.all(value.directories.map((directory) => realpath(directory))),
-              }
-              const health = await WorkerPool.health(worker, {}, local.client)
-              await WorkerPool.add(config, worker)
-              const status: Worker.Status = { worker, connection: "online", platform: health.platform }
-              connections.set(worker.id, status)
-              return status
-            }
-            if (
-              value.resourceID &&
-              (await WorkerPool.readConfig(config)).workers.some(
-                (item) =>
-                  item.kind !== "local" &&
-                  item.resourceID === value.resourceID &&
-                  item.environmentID !== value.environmentID &&
-                  (item.environmentID || value.environmentID),
-              )
-            )
-              throw new Error(
-                "An isolated environment needs its own Console resource; do not share grants across environments",
-              )
-            const stored = await run(
-              credential.create({
-                integrationID: Integration.ID.make(`redcode-worker:${value.id}`),
-                value: { type: "key", key: value.password },
-                activate: false,
-              }),
-            )
-            const worker = {
-              id: value.id,
-              url: value.url,
-              directories: value.directories,
-              ...(value.resourceID ? { resourceID: value.resourceID } : {}),
-              ...(value.environmentID ? { environmentID: value.environmentID } : {}),
-              ...(value.environmentProxy !== undefined ? { environmentProxy: value.environmentProxy } : {}),
-              tags: value.tags,
-              passwordEnv: stored.id,
-            }
-            const health = await WorkerPool.health(worker, { [stored.id]: value.password }).catch(async () => {
-              await run(credential.remove(stored.id))
-              throw new Error("Could not authenticate this worker. Check its address and password.")
+            if ((await WorkerPool.readConfig(config)).workers.some((worker) => worker.id === value.id))
+              throw new Error("This worker ID is already registered")
+            invitations.forEach((invitation, code) => {
+              if (invitation.expiresAt <= Date.now() || invitation.id === value.id) invitations.delete(code)
             })
-            await WorkerPool.add(config, worker).catch(async (error: unknown) => {
-              await run(credential.remove(stored.id))
-              throw error
-            })
-            const status: Worker.Status = { worker, connection: "online", platform: health.platform }
-            connections.set(worker.id, status)
-            return status
+            if (invitations.size >= 1_000) throw new Error("Too many active worker invitations")
+            const invitation = {
+              ...value,
+              code: randomBytes(32).toString("base64url"),
+              expiresAt: Date.now() + 10 * 60_000,
+            }
+            invitations.set(invitation.code, invitation)
+            return invitation
+          }),
+        revokeInvitation: (code, scope) =>
+          mutate(async () => {
+            manage(scope)
+            invitations.delete(code)
+          }),
+        enroll: (value) =>
+          mutate(async () => {
+            const invitation = invitations.get(value.code)
+            if (!invitation || invitation.expiresAt <= Date.now()) {
+              invitations.delete(value.code)
+              throw new UnauthorizedError({ message: "Worker invitation expired, revoked or already used" })
+            }
+            const result = await register(
+              {
+                id: invitation.id,
+                tags: invitation.tags,
+                url: value.url,
+                password: value.password,
+                directories: value.directories,
+              },
+              undefined,
+              true,
+            )
+            invitations.delete(value.code)
+            return result
           }),
         remove: (id, scope) =>
           mutate(async () => {

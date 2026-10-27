@@ -1,8 +1,38 @@
 import { describe, expect, test } from "bun:test"
 import { PlatformError } from "effect"
 import { parseTarget, quote, sshArgs, tunnelArgs, commandFailureDetail, SshFailure } from "./command"
+import { connectionTarget } from "./target"
 
 describe("SSH connection commands", () => {
+  test("structured SSH fields preserve Windows key paths and existing jump hosts without a shell", () => {
+    expect(
+      parseTarget(
+        connectionTarget({
+          target: "ssh -J gateway [2001:db8::1]",
+          user: "filip",
+          port: "2222",
+          identity: "C:\\Users\\filip\\.ssh\\work's key",
+        }),
+      ),
+    ).toEqual({
+      host: "[2001:db8::1]",
+      args: [
+        "-l",
+        "filip",
+        "-p",
+        "2222",
+        "-o",
+        "IdentitiesOnly=yes",
+        "-i",
+        "C:\\Users\\filip\\.ssh\\work's key",
+        "-J",
+        "gateway",
+      ],
+    })
+    expect(() =>
+      parseTarget(connectionTarget({ target: "host", user: "", port: "22 -L 1234:x:80", identity: "" })),
+    ).toThrow()
+  })
   test("classifies a missing SSH executable from the platform error", () => {
     const error = PlatformError.systemError({
       _tag: "NotFound",

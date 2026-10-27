@@ -1,11 +1,62 @@
 import { Worker } from "@opencode/schema/worker"
 import { Schema } from "effect"
-import { HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/unstable/httpapi"
-import { InvalidRequestError } from "../errors.js"
+import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema, OpenApi } from "effect/unstable/httpapi"
+import { InvalidRequestError, UnauthorizedError } from "../errors.js"
 import { ConsoleForbiddenError } from "../console.js"
 import { HostResources } from "@opencode/schema/host-resources"
 
+/** Public instructions and capability redemption only; every other worker operation requires host authentication. */
+export function isWorkerEnrollmentRequest(method: string, url: URL) {
+  return (
+    (method === "POST" && url.pathname === "/api/workers/enroll") ||
+    (method === "GET" && url.pathname === "/auth/worker")
+  )
+}
+
 export const WorkersGroup = HttpApiGroup.make("server.workers")
+  .add(
+    HttpApiEndpoint.get("workers.enrollmentPage", "/auth/worker", {
+      success: Schema.String.pipe(HttpApiSchema.asText({ contentType: "text/html" })),
+    }).annotateMerge(
+      OpenApi.annotations({
+        identifier: "workers.enrollmentPage",
+        summary: "Show instructions for a worker invitation",
+      }),
+    ),
+  )
+  .add(
+    HttpApiEndpoint.post("workers.invite", "/api/workers/invitations", {
+      payload: Worker.InvitationRequest,
+      success: Worker.Invitation,
+      error: [InvalidRequestError, ConsoleForbiddenError],
+    }).annotateMerge(
+      OpenApi.annotations({
+        identifier: "workers.invite",
+        summary: "Invite a new worker with a short-lived enrollment code",
+      }),
+    ),
+  )
+  .add(
+    HttpApiEndpoint.delete("workers.revokeInvitation", "/api/workers/invitations/:code", {
+      params: { code: Schema.String },
+      success: Schema.Void,
+      error: [InvalidRequestError, ConsoleForbiddenError],
+    }).annotateMerge(
+      OpenApi.annotations({ identifier: "workers.revokeInvitation", summary: "Revoke an unused worker invitation" }),
+    ),
+  )
+  .add(
+    HttpApiEndpoint.post("workers.enroll", "/api/workers/enroll", {
+      payload: Worker.Enrollment,
+      success: Worker.Status,
+      error: [InvalidRequestError, UnauthorizedError],
+    }).annotateMerge(
+      OpenApi.annotations({
+        identifier: "workers.enroll",
+        summary: "Enroll a reachable worker using a single-use invitation",
+      }),
+    ),
+  )
   .add(
     HttpApiEndpoint.post("workers.control", "/api/workers/batches/:id/control", {
       params: { id: Worker.Name },
@@ -66,7 +117,12 @@ export const WorkersGroup = HttpApiGroup.make("server.workers")
       payload: Worker.LocalRegistration,
       success: Worker.Status,
       error: [InvalidRequestError, ConsoleForbiddenError],
-    }).annotateMerge(OpenApi.annotations({ identifier: "workers.local.add", summary: "Enable this server's checkout for native batches" })),
+    }).annotateMerge(
+      OpenApi.annotations({
+        identifier: "workers.local.add",
+        summary: "Enable this server's checkout for native batches",
+      }),
+    ),
   )
   .add(
     HttpApiEndpoint.post("workers.add", "/api/workers", {

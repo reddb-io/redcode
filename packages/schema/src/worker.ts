@@ -128,6 +128,25 @@ export const Register = Schema.Struct({
   environmentProxy: optional(Schema.Boolean),
 }).annotate({ identifier: "Worker.Register" })
 export interface Register extends Schema.Schema.Type<typeof Register> {}
+/** A coordinator-owned invitation reserves a new worker's identity and labels. */
+export const InvitationRequest = Schema.Struct({ id: Name, tags: Slot.tags }).annotate({
+  identifier: "Worker.InvitationRequest",
+})
+export interface InvitationRequest extends Schema.Schema.Type<typeof InvitationRequest> {}
+export const Invitation = Schema.Struct({
+  ...InvitationRequest.fields,
+  code: Text,
+  expiresAt: Schema.Finite,
+}).annotate({ identifier: "Worker.Invitation" })
+export interface Invitation extends Schema.Schema.Type<typeof Invitation> {}
+/** The worker supplies its own reachable listener and credential, never the coordinator's password. */
+export const Enrollment = Schema.Struct({
+  code: Text,
+  url: Text,
+  password: Text,
+  directories: Slot.directories,
+}).annotate({ identifier: "Worker.Enrollment" })
+export interface Enrollment extends Schema.Schema.Type<typeof Enrollment> {}
 export const Status = Schema.Struct({
   worker: Registration,
   connection: Schema.Literals(["unchecked", "online", "offline"]),

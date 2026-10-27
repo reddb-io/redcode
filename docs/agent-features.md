@@ -136,10 +136,10 @@ incoming webhooks and automatic new conversations are not available.
 ## Agents workspace
 
 **Desktop / web app.** Open **Agents** in the siderail, or use `Ctrl+Shift+A` (`Cmd+Shift+A` on macOS).
-Its sidemenu groups **Sessions**, **Tasks**, **Inbox**, **Harnesses** and **Remote workers** under
+Its sidemenu groups **Sessions**, **Tasks**, **Inbox**, **Harnesses** and **Usage and costs** under
 **Execution**; project environments, isolated workspaces and worktrees under **Workspaces**;
-and **Machines** plus **Hosts and resources** under **Infrastructure**.
-Select one host or view all configured hosts. The selected
+and **Servers & workers** plus **Hosts and resources** under **Infrastructure**.
+Select one server or view all configured servers. **Servers & workers** always manages one server at a time. The selected
 section and host are stored in the URL and survive reload; the desktop can restore the Agents page.
 On mobile, open **Agents** in the bottom navigation and use the section selector in its header.
 Changing sections keeps the selected host. **Browse** opens the sidemenu to change the host scope.
@@ -179,10 +179,11 @@ Changing sections keeps the selected host. **Browse** opens the sidemenu to chan
   shows reported or estimated records as a share of all accounting records; unknown and legacy
   records remain explicit. Missing or empty coverage has no percentage ring. Period and project
   filters apply to the same recorded totals, linked daily charts and exact daily table.
-- **Machines** guides connection, server access verification, project access verification and the
+- **Servers & workers** shows the client-to-server-to-worker topology and brings server connections,
+  project opening, device pairing, HTTPS and worker invitations together. Its setup flow guides connection, server access verification, project access verification and the
   choice to open a session or register a worker checkout. Going back retains the draft; a changed
   target requires new checks. Verification does not start an agent or dispatch work.
-- **Remote workers** filters task reports by status or searches their prompt, identifiers, worker,
+- **Workers & distributed work**, in **Servers & workers**, filters task reports by status or searches their prompt, identifiers, worker,
   checkout and capability tags. **Execution details** shows the saved assignment and its current
   queue, input or recovery state. Instruction, interruption, recovery and patch-review
   actions belong to the selected task's inspector. On mobile it replaces the inventory; returning preserves
@@ -202,7 +203,7 @@ inbox/resources APIs require infrastructure administration or the existing trust
 See [distributed workers](distributed-workers.md) for registration, credentials, independent checkouts,
 recovery and collecting changes.
 
-**Harnesses**, **Machines** and **Worktrees** extend this workspace with external Claude Code/Codex
+**Harnesses**, **Servers & workers** and **Worktrees** extend this workspace with external Claude Code/Codex
 sessions, guided remote registration and a create/review/integrate/archive/restore workflow.
 The harness's **Native sessions** tab contains session selection and creation; **Agent setup**
 contains installation, executable configuration and sign-in. Changing tabs retains unsaved fields.
@@ -233,7 +234,7 @@ which upstream model a provider served. Unavailable
 readings stay explicit, and idle sessions are shown as completed only when that outcome is recorded.
 
 This view covers the session family on the connected server. Distributed worker assignments and
-external harness runs remain in the app's **Remote workers** and **Harnesses** sections.
+external harness runs remain in the app's **Servers & workers** and **Harnesses** sections.
 
 ## Tool discovery
 

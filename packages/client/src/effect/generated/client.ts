@@ -428,6 +428,12 @@ import type {
   ServerIntelligenceDiscoverOutput,
   ServerIntelligenceProbeInput,
   ServerIntelligenceProbeOutput,
+  WorkersInviteInput,
+  WorkersInviteOutput,
+  WorkersRevokeInvitationInput,
+  WorkersRevokeInvitationOutput,
+  WorkersEnrollInput,
+  WorkersEnrollOutput,
   WorkersControlInput,
   WorkersControlOutput,
   WorkersResourcesInput,
@@ -2675,6 +2681,28 @@ const adaptGroupServerIntelligence = (raw: RawClient["server.intelligence"]) => 
   probe: EndpointServerIntelligenceProbe(raw),
 })
 
+const EndpointWorkersInvite = (raw: RawClient["server.workers"]) => (input: WorkersInviteInput) =>
+  preserveEffect<WorkersInviteOutput>()(
+    raw["workers.invite"]({ payload: { id: input["id"], tags: input["tags"] } }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const EndpointWorkersRevokeInvitation = (raw: RawClient["server.workers"]) => (input: WorkersRevokeInvitationInput) =>
+  preserveEffect<WorkersRevokeInvitationOutput>()(
+    raw["workers.revokeInvitation"]({ params: { code: input["code"] } }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const EndpointWorkersEnroll = (raw: RawClient["server.workers"]) => (input: WorkersEnrollInput) =>
+  preserveEffect<WorkersEnrollOutput>()(
+    raw["workers.enroll"]({
+      payload: {
+        code: input["code"],
+        url: input["url"],
+        password: input["password"],
+        directories: input["directories"],
+      },
+    }).pipe(Effect.mapError(mapClientError)),
+  )
+
 type WorkersControlRequest = Parameters<RawClient["server.workers"]["workers.control"]>[0]
 const EndpointWorkersControl = (raw: RawClient["server.workers"]) => (input: WorkersControlInput) =>
   preserveEffect<WorkersControlOutput>()(
@@ -2763,6 +2791,9 @@ const EndpointWorkersCollect = (raw: RawClient["server.workers"]) => (input: Wor
   )
 
 const adaptGroupWorkers = (raw: RawClient["server.workers"]) => ({
+  invite: EndpointWorkersInvite(raw),
+  revokeInvitation: EndpointWorkersRevokeInvitation(raw),
+  enroll: EndpointWorkersEnroll(raw),
   control: EndpointWorkersControl(raw),
   resources: EndpointWorkersResources(raw),
   attention: EndpointWorkersAttention(raw),

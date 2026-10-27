@@ -15,16 +15,19 @@ export type { AgentView } from "./agents-menu-model"
 export function useAgentsScope() {
   const [params, setParams] = useSearchParams()
   const servers = useServers()
-  const view = (): AgentView => AGENT_VIEWS.find((view) => view === params.view) ?? "sessions"
+  const view = (): AgentView =>
+    params.view === "machines" || params.view === "remote"
+      ? "servers"
+      : (AGENT_VIEWS.find((view) => view === params.view) ?? "sessions")
   const host = () =>
     typeof params.host === "string" && params.host
       ? params.host
-      : view() === "machines" && servers.visible[0]
+      : view() === "servers" && servers.visible[0]
         ? ServerConnection.key(servers.visible[0])
         : ""
   return {
     view,
-    select: (view: AgentView) => setParams({ view }),
+    select: (view: AgentView) => setParams({ view, host: host() || undefined, setup: undefined }),
     host,
     selectHost: (host: string) => setParams({ host: host || undefined }),
     servers: () => servers.visible.filter((server) => !host() || ServerConnection.key(server) === host()),

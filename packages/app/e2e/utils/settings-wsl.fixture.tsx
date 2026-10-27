@@ -314,6 +314,7 @@ export function mount(input: {
               Require SSH sign-in
             </button>
             <output aria-label="SSH connects">{store.connects}</output>
+            <output aria-label="SSH target">{store.ssh.servers.at(-1)?.config.target}</output>
           </Show>
           <Show when={input.hold}>
             <button type="button" onClick={() => held.resolve()}>

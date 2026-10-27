@@ -10,6 +10,7 @@ import { createKeyed, useExtension } from "../sdk"
 import type { SshConfig, SshItem } from "./contract"
 import { isSshConnecting, sshName } from "./name"
 import type { SshController } from "./state"
+import { connectionTarget } from "./target"
 
 export { default as css } from "./ssh.css?inline"
 
@@ -33,6 +34,9 @@ export function DialogSsh(props: {
   const [state, setState] = createStore({
     target: props.config?.target ?? "",
     name: props.config?.name ?? "",
+    user: "",
+    port: "",
+    identity: "",
     started: !!props.promptOnly,
     // Counts `start` calls, each of which forgets the challenges shown before it.
     starts: 0,
@@ -78,11 +82,27 @@ export function DialogSsh(props: {
   }
 
   const waiting = () => busy() || ssh.answered(id)
+  const progress = () => {
+    switch (item()?.stage) {
+      case "checking":
+        return extension.t("stage.checking")
+      case "downloading":
+        return extension.t("stage.downloading")
+      case "uploading":
+        return extension.t("stage.uploading")
+      case "starting":
+        return extension.t("stage.starting")
+      case "authentication":
+        return extension.t("stage.authentication")
+      default:
+        return extension.t("stage.connecting")
+    }
+  }
 
   const start = (replace = false) => {
     if (busy() || !state.target.trim()) return
     setState({ started: true, starts: state.starts + 1 })
-    ssh.connect({ id, target: state.target, name: state.name }, { dialog: true, replace })
+    ssh.connect({ id, target: connectionTarget(state), name: state.name }, { dialog: true, replace })
   }
 
   const respond = () => {
@@ -178,6 +198,51 @@ export function DialogSsh(props: {
                 onKeyDown={keyDown}
               />
             </div>
+            <details>
+              <summary class="cursor-pointer py-2 text-13-regular leading-[var(--line-height-base)]">
+                {extension.t("form.connectionOptions")}
+              </summary>
+              <div class="flex flex-col gap-3 pt-2">
+                <label class="flex flex-col gap-1" for="ssh-user">
+                  {extension.t("form.user")}
+                  <TextInput
+                    id="ssh-user"
+                    value={state.user}
+                    autocomplete="off"
+                    disabled={busy() || !!prompt()}
+                    onInput={(event) => setState("user", event.currentTarget.value)}
+                    onKeyDown={keyDown}
+                  />
+                </label>
+                <label class="flex flex-col gap-1" for="ssh-port">
+                  {extension.t("form.port")}
+                  <TextInput
+                    id="ssh-port"
+                    value={state.port}
+                    inputmode="numeric"
+                    placeholder="22"
+                    disabled={busy() || !!prompt()}
+                    onInput={(event) => setState("port", event.currentTarget.value)}
+                    onKeyDown={keyDown}
+                  />
+                </label>
+                <label class="flex flex-col gap-1" for="ssh-identity">
+                  {extension.t("form.identity")}
+                  <TextInput
+                    id="ssh-identity"
+                    value={state.identity}
+                    autocomplete="off"
+                    spellcheck={false}
+                    disabled={busy() || !!prompt()}
+                    onInput={(event) => setState("identity", event.currentTarget.value)}
+                    onKeyDown={keyDown}
+                  />
+                </label>
+                <p class="text-13-regular leading-[var(--line-height-base)] text-ink-muted">
+                  {extension.t("form.authenticationNote")}
+                </p>
+              </div>
+            </details>
           </Show>
           <Show when={item()?.stage === "incompatible"}>
             <div class="flex w-full min-w-0 flex-col gap-2" role="status" aria-live="polite">
@@ -248,7 +313,7 @@ export function DialogSsh(props: {
               onClick={() => start(item()?.stage === "incompatible")}
             >
               {busy()
-                ? extension.t("stage.connecting")
+                ? progress()
                 : item()?.stage === "incompatible"
                   ? extension.t("update")
                   : props.config

@@ -8,6 +8,7 @@ export { Authorization } from "@opencode/protocol/middleware/authorization"
 import { hasPtyConnectTicketURL } from "@opencode/protocol/groups/pty"
 import { hasPersistentPtyConnectTicketURL } from "@opencode/protocol/groups/persistent-pty"
 import { isPairingConnectURL } from "@opencode/protocol/groups/server"
+import { isWorkerEnrollmentRequest } from "@opencode/protocol/groups/workers"
 import { Effect, Encoding, Layer, Redacted } from "effect"
 import { HttpEffect, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 
@@ -99,10 +100,15 @@ export const authorizationLayer = Layer.effect(
         }
         if (!ServerAuth.required(config))
           return yield* effect.pipe(Effect.provideService(ServerAccess.Current, undefined))
-        // Ticketed PTY connects (browsers cannot set headers on WebSocket upgrades) and pairing links
-        // skip credential checks here; their handlers consume and validate the ticket or code.
+        // Capability handlers validate their own tickets or enrollment codes. The worker landing page is public
+        // instructions only; its URL fragment never reaches the server and cannot authorize other host APIs.
         const url = new URL(request.url, "http://localhost")
-        if (hasPtyConnectTicketURL(url) || hasPersistentPtyConnectTicketURL(url) || isPairingConnectURL(url))
+        if (
+          hasPtyConnectTicketURL(url) ||
+          hasPersistentPtyConnectTicketURL(url) ||
+          isPairingConnectURL(url) ||
+          isWorkerEnrollmentRequest(request.method, url)
+        )
           return yield* effect.pipe(Effect.provideService(ServerAccess.Current, undefined))
         if (yield* authorizedRequest(request, config))
           return yield* effect.pipe(Effect.provideService(ServerAccess.Current, undefined))

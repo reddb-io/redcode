@@ -79,5 +79,12 @@ export const groupNames = {
   "server.worktreeLifecycle": "worktreeLifecycle",
 } as const
 
-export const promiseOmitEndpoints = new Set(["pty.connect", "persistentPty.connect"])
-export const effectOmitEndpoints = new Set(["fs.read", "fs.write", "pty.connect", "persistentPty.connect"])
+// Enrollment instructions are a browser landing page, not a data API for SDK consumers.
+export const promiseOmitEndpoints = new Set(["pty.connect", "persistentPty.connect", "workers.enrollmentPage"])
+export const effectOmitEndpoints = new Set([
+  "fs.read",
+  "fs.write",
+  "pty.connect",
+  "persistentPty.connect",
+  "workers.enrollmentPage",
+])
