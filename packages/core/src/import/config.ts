@@ -200,6 +200,7 @@ export function convert(input: unknown): Result {
     hooks: Info.fields.hooks,
     $schema: Info.fields.$schema,
     shell: Info.fields.shell,
+    voice: Info.fields.voice,
     model: Info.fields.model,
     default_agent: Info.fields.default_agent,
     share: Info.fields.share,

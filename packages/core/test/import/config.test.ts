@@ -3,6 +3,8 @@ import { Duration, Schema } from "effect"
 import { FastCheck } from "effect/testing"
 import { ConfigImport } from "@opencode/core/import/config"
 import { Info } from "@opencode/schema/config"
+import { Credential } from "@opencode/schema/credential"
+import { Voice } from "@opencode/schema/voice"
 
 const options = { errors: "all", onExcessProperty: "ignore", propertyOrder: "original" } as const
 
@@ -84,9 +86,17 @@ describe("ConfigImport", () => {
   })
 
   test("keeps unrelated native fields when a legacy field is present", () => {
-    const result = decoded({ snapshot: false, agents: { reviewer: { system: "Use V2" } } })
+    const voice = Voice.Settings.make({
+      provider: "openai-compatible",
+      model: "whisper-1",
+      baseURL: "http://127.0.0.1:8080/v1",
+      connection: { type: "credential", id: Credential.ID.make("cred_voice") },
+      language: "pt",
+    })
+    const result = decoded({ snapshot: false, agents: { reviewer: { system: "Use V2" } }, voice })
     expect(result.snapshots).toBe(false)
     expect(result.agents?.reviewer?.system).toBe("Use V2")
+    expect(result.voice).toEqual(voice)
   })
 
   test("canonicalizes transformed native values through decode then encode", () => {
