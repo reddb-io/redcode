@@ -493,7 +493,7 @@ function SessionRow(
           selected: current,
           focus: "inset",
           class: navItem({ current }).root({
-            class: `h-auto min-h-10 min-w-0 flex-1 items-start gap-2 py-1 pe-2 text-start text-body ${props.nested ? "ps-[calc(var(--reddb-spatial-inset-sm)+1.25rem)]" : ""} ${sessionAwaitsUser(state.status) ? "text-foreground" : ""}`,
+            class: `h-auto min-h-10 min-w-0 flex-1 items-start gap-2 py-[var(--reddb-spatial-gap-md)] pe-2 text-start text-body ${props.nested ? "ps-[calc(var(--reddb-spatial-inset-sm)+1.25rem)]" : ""} ${sessionAwaitsUser(state.status) ? "text-foreground" : ""}`,
           }),
         })}
         onClick={open}
