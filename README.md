@@ -333,12 +333,15 @@ provider configuration. [Connect workers to a coordinator](#add-workers-to-the-c
 <a id="dictation"></a>
 
 <details>
-<summary><strong>Dictation</strong> — voice input for the TUI composer</summary>
+<summary><strong>Dictation</strong> — voice input for Desktop and the terminal</summary>
 
 <img src="docs/features/voice.svg" alt="Structured voice dictation" width="100%" />
 
-**TUI · optional dit integration.** Structured dictation stays as an editable draft and never submits
-the composer. Unix uses a local socket; Windows retains dit's existing input injection.
+**Desktop / web / CLI / TUI.** Record with the composer microphone, or use `/voice` in the terminal
+to open a local browser recorder. Choose your transcription provider, model and saved API-key
+connection in **Voice settings**, `/voice-settings` in the TUI, or `redcode voice --setup`; an OpenAI-compatible local endpoint
+can run without a key. Transcripts stay editable and never submit the composer. The separate
+global F9 workflow in dit remains available, alongside the TUI's Unix structured-input socket.
 [Voice input](docs/voice-input.md).
 
 </details>

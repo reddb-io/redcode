@@ -2,17 +2,34 @@ import type { BrowserWindow } from "electron"
 import { SidecarCredentials } from "../service/sidecar-credentials"
 import { addRendererHeaders, hasHeader, upsertHeader } from "./headers"
 import { isRendererUrl } from "./scheme"
+import { allowsAudioCapture } from "./media-permission"
 
 const rendererPermissions = new Set(["clipboard-sanitized-write", "notifications"])
 
 export function allowRendererPermissions(win: BrowserWindow) {
   const webContentsId = win.webContents.id
   win.webContents.session.setPermissionRequestHandler((webContents, permission, callback, details) => {
+    if (permission === "media") {
+      callback(
+        allowsAudioCapture({
+          renderer: webContents.id === webContentsId && isRendererUrl(details.requestingUrl),
+          mainFrame: details.isMainFrame,
+          types: "mediaTypes" in details ? details.mediaTypes : undefined,
+        }),
+      )
+      return
+    }
     callback(
       rendererPermissions.has(permission) && isRendererUrl(details.requestingUrl) && webContents.id === webContentsId,
     )
   })
   win.webContents.session.setPermissionCheckHandler((webContents, permission, requestingOrigin, details) => {
+    if (permission === "media")
+      return allowsAudioCapture({
+        renderer: webContents?.id === webContentsId && isRendererUrl(details.requestingUrl),
+        mainFrame: details.isMainFrame,
+        types: details.mediaType ? [details.mediaType] : undefined,
+      })
     if (!rendererPermissions.has(permission)) return false
 
     if (webContents && webContents.id !== webContentsId) return false

@@ -14,6 +14,7 @@ import { Formatter } from "./formatter.js"
 import { FileSystem } from "./filesystem.js"
 import { FileSystemSearch } from "./filesystem/search.js"
 import { Generate } from "./generate.js"
+import { Voice } from "./voice.js"
 import { Form } from "./form.js"
 import { Image } from "./image.js"
 import { LocationWatcher } from "./filesystem/location-watcher.js"
@@ -70,6 +71,7 @@ const nodes = [
   LocationLifecycle.node,
   Environment.node,
   Config.node,
+  Voice.node,
   HookRuntime.node,
   Agent.node,
   Command.node,

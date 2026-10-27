@@ -88,6 +88,7 @@ export type ComposerEditorProps = {
   reasoningControl?: JSX.Element
   /** The permission mode chip, at the start of the actions beside send. */
   permissionControl?: JSX.Element
+  voiceControl?: JSX.Element
   attachKeybind?: string[]
   attachShortcut?: string
   alternateKeybind?: string[]
@@ -396,6 +397,7 @@ export function ComposerEditor(props: ComposerEditorProps) {
             </div>
           </div>
           <div data-slot="composer-actions" class="flex shrink-0 items-center">
+            <Show when={state.mode === "normal"}>{props.voiceControl}</Show>
             <Show when={state.mode === "normal"}>
               <div class="me-2 flex items-center">{props.permissionControl}</div>
             </Show>

@@ -15,6 +15,7 @@ import { DialogSelectModelUnpaid } from "@/providers/models/unpaid"
 import { formatKeybind, useCommand } from "@/shell/commands/command"
 import { useLanguage } from "@/runtime/i18n/language"
 import type { ComposerModel } from "./model"
+import { ComposerVoiceControl } from "./voice"
 
 export function Composer(props: {
   class?: string
@@ -65,6 +66,11 @@ export function Composer(props: {
           </Show>
         }
         permissionControl={<ComposerPermissionControl />}
+        voiceControl={
+          <Show when={props.model.voice}>
+            {(voice) => <ComposerVoiceControl voice={voice()} disabled={props.readOnly} />}
+          </Show>
+        }
       />
     </div>
   )

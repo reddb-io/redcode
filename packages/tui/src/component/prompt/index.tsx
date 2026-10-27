@@ -84,6 +84,9 @@ import { truncateFilePath } from "../../ui/file-path"
 import { PromptMetadataRow } from "./metadata"
 import { IntelligenceLabel } from "@opencode/util/intelligence-label"
 import { ModelPresentation } from "@opencode/schema/model-presentation"
+import { startVoiceCapture } from "../../util/voice-capture"
+import { showVoiceSettings } from "../dialog-voice"
+import { openUrl } from "@opencode/util/open"
 
 export type PromptProps = {
   sessionID?: string
@@ -291,10 +294,70 @@ export function Prompt(props: PromptProps) {
     sessionID: () => props.sessionID,
   })
   const [pendingDirectory, setPendingDirectory] = createSignal<string>()
+  let voiceCapture: ReturnType<typeof startVoiceCapture> | undefined
+  onCleanup(() => voiceCapture?.cancel())
   Keymap.createLayer(() => ({
     mode: "global",
     enabled: !disabled(),
     commands: [
+      {
+        id: "prompt.voice.settings",
+        title: "Voice settings",
+        slash: { name: "voice-settings" },
+        run: () => showVoiceSettings({ api: client.api, dialog, toast }),
+      },
+      {
+        id: "prompt.voice",
+        title: "Record voice",
+        slash: { name: "voice" },
+        run: async () => {
+          if (voiceCapture) {
+            toast.show({ message: "A voice recorder is already open", variant: "info" })
+            return
+          }
+          const entries = await client.api.config.get()
+          if (!entries.some((entry) => entry.type === "document" && entry.info.voice)) {
+            await showVoiceSettings({ api: client.api, dialog, toast })
+            return
+          }
+          const target = promptRef.current
+          if (!target || target.mode !== "normal") return
+          const original = structuredClone(unwrap(target.current))
+          const sessionID = props.sessionID
+          const directory = currentLocation.current?.directory
+          const capture = startVoiceCapture({
+            signal: new AbortController().signal,
+            transcribe: async (audio, signal) => (await client.api.voice.transcribe({ audio }, { signal })).text,
+            accept: (text) => {
+              if (
+                promptRef.current !== target ||
+                target.mode !== "normal" ||
+                props.sessionID !== sessionID ||
+                currentLocation.current?.directory !== directory ||
+                JSON.stringify(target.current) !== JSON.stringify(original)
+              )
+                return false
+              target.set({
+                ...original,
+                text: `${original.text}${original.text && !/\s$/.test(original.text) ? " " : ""}${text}`,
+              })
+              target.focus()
+              return true
+            },
+          })
+          voiceCapture = capture
+          toast.show({
+            message: "Voice recorder opened locally. Review the transcript before adding it to this draft.",
+            variant: "info",
+          })
+          await openUrl(capture.url).catch(() => {
+            toast.show({ message: `Open the local voice recorder: ${capture.url}`, variant: "info", duration: 15000 })
+          })
+          void capture.result.finally(() => {
+            if (voiceCapture === capture) voiceCapture = undefined
+          })
+        },
+      },
       {
         id: "session.cd",
         title: "Change working directory",

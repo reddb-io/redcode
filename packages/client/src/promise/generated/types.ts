@@ -945,6 +945,8 @@ export type ConfigModels = { sources?: Array<string> }
 
 export type ConfigShellOption = { path: string; name: string; acceptable: boolean }
 
+export type VoiceSavedConnection = { id: string; label: string; integrationID: string }
+
 export type HookTrust = { trusted: boolean; fingerprint: string }
 
 export type HookDefinition = {
@@ -3058,6 +3060,14 @@ export type ProjectEnvironmentInfo = {
 
 export type ModelRef = { id: string; providerID: string; variant?: string; connection?: ConnectionRef }
 
+export type VoiceSettings = {
+  provider: "openai" | "elevenlabs" | "deepgram" | "openai-compatible"
+  model: string
+  connection?: ConnectionRef
+  baseURL?: string
+  language?: string
+}
+
 export type ModelCatalog = {
   format: 2
   digest: string
@@ -3616,6 +3626,7 @@ export type ConfigEntry =
         $schema?: string
         hooks?: { [x: string]: Array<HookMatcher> }
         shell?: string
+        voice?: VoiceSettings
         model?: string | { providerID: string; model: string; variant?: string }
         default_agent?: string
         update?: "disable" | "notify" | "auto"
@@ -11254,9 +11265,55 @@ export type ConfigGetOutput = Array<ConfigEntry>
 
 export type ConfigShellsOutput = Array<ConfigShellOption>
 
-export type ConfigUpdateInput = { readonly shell: { readonly shell: string | null }["shell"] }
+export type ConfigUpdateInput = {
+  readonly shell?: {
+    readonly shell?: string | null
+    readonly voice?: {
+      readonly provider: "openai" | "elevenlabs" | "deepgram" | "openai-compatible"
+      readonly model: string
+      readonly connection?:
+        | { readonly type: "credential"; readonly id: string }
+        | { readonly type: "env"; readonly name: string }
+      readonly baseURL?: string
+      readonly language?: string
+    } | null
+  }["shell"]
+  readonly voice?: {
+    readonly shell?: string | null
+    readonly voice?: {
+      readonly provider: "openai" | "elevenlabs" | "deepgram" | "openai-compatible"
+      readonly model: string
+      readonly connection?:
+        | { readonly type: "credential"; readonly id: string }
+        | { readonly type: "env"; readonly name: string }
+      readonly baseURL?: string
+      readonly language?: string
+    } | null
+  }["voice"]
+}
 
 export type ConfigUpdateOutput = void
+
+export type VoiceConnectionsInput = {
+  readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]
+}
+
+export type VoiceConnectionsOutput = { data: Array<VoiceSavedConnection> }["data"]
+
+export type VoiceConnectInput = {
+  readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]
+  readonly label: { readonly label: string; readonly key: string }["label"]
+  readonly key: { readonly label: string; readonly key: string }["key"]
+}
+
+export type VoiceConnectOutput = { data: VoiceSavedConnection }["data"]
+
+export type VoiceTranscribeInput = {
+  readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]
+  readonly audio: { readonly audio: string }["audio"]
+}
+
+export type VoiceTranscribeOutput = { data: { text: string } }["data"]
 
 export type HookStatusInput = {
   readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]

@@ -384,6 +384,12 @@ import type {
   ConfigShellsOutput,
   ConfigUpdateInput,
   ConfigUpdateOutput,
+  VoiceConnectionsInput,
+  VoiceConnectionsOutput,
+  VoiceConnectInput,
+  VoiceConnectOutput,
+  VoiceTranscribeInput,
+  VoiceTranscribeOutput,
   HookStatusInput,
   HookStatusOutput,
   HookTrustInput,
@@ -3305,18 +3311,58 @@ export function make(options: ClientOptions) {
           },
           requestOptions,
         ),
-      update: (input: ConfigUpdateInput, requestOptions?: RequestOptions) =>
+      update: (input?: ConfigUpdateInput, requestOptions?: RequestOptions) =>
         request<ConfigUpdateOutput>(
           {
             method: "PATCH",
             path: `/api/experimental/config`,
-            body: { shell: input["shell"] },
+            body: { shell: input?.["shell"], voice: input?.["voice"] },
             successStatus: 204,
             declaredStatuses: [400, 401, 403, 404, 409],
             empty: true,
           },
           requestOptions,
         ),
+    },
+    voice: {
+      connections: (input?: VoiceConnectionsInput, requestOptions?: RequestOptions) =>
+        request<{ readonly data: VoiceConnectionsOutput }>(
+          {
+            method: "GET",
+            path: `/api/voice/connections`,
+            query: { location: input?.["location"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 404, 409],
+            empty: false,
+          },
+          requestOptions,
+        ).then((value) => value.data),
+      connect: (input: VoiceConnectInput, requestOptions?: RequestOptions) =>
+        request<{ readonly data: VoiceConnectOutput }>(
+          {
+            method: "POST",
+            path: `/api/voice/connections`,
+            query: { location: input["location"] },
+            body: { label: input["label"], key: input["key"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 404, 409],
+            empty: false,
+          },
+          requestOptions,
+        ).then((value) => value.data),
+      transcribe: (input: VoiceTranscribeInput, requestOptions?: RequestOptions) =>
+        request<{ readonly data: VoiceTranscribeOutput }>(
+          {
+            method: "POST",
+            path: `/api/voice/transcribe`,
+            query: { location: input["location"] },
+            body: { audio: input["audio"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 404, 409, 503],
+            empty: false,
+          },
+          requestOptions,
+        ).then((value) => value.data),
     },
     hook: {
       status: (input?: HookStatusInput, requestOptions?: RequestOptions) =>

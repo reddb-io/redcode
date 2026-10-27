@@ -26,6 +26,7 @@ import { ConfigDesign } from "./config/design.js"
 import { ConfigDatabase } from "./config/database.js"
 import { ConfigSession } from "./config/session.js"
 import { ConfigModels } from "./config/models.js"
+import { Voice } from "./voice.js"
 
 export class Info extends Schema.Class<Info>("Config.Info")({
   $schema: optional(Schema.String).annotate({
@@ -36,6 +37,9 @@ export class Info extends Schema.Class<Info>("Config.Info")({
   }),
   shell: Schema.String.pipe(optional).annotate({
     description: "Default shell to use for terminal and shell tool execution",
+  }),
+  voice: Voice.Settings.pipe(optional).annotate({
+    description: "Explicit dictation provider, model, and connection; voice input never submits a prompt",
   }),
   model: ConfigModel.Selection.pipe(optional).annotate({
     description: "Default model to use when no session or agent model is selected",
@@ -134,7 +138,8 @@ export class Info extends Schema.Class<Info>("Config.Info")({
 }) {}
 
 export const Patch = Schema.Struct({
-  shell: Schema.NullOr(Schema.String),
+  shell: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  voice: Schema.optionalKey(Schema.NullOr(Voice.Settings)),
 }).annotate({ identifier: "Config.Patch" })
 export interface Patch extends Schema.Schema.Type<typeof Patch> {}
 

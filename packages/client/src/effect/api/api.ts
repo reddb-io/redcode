@@ -5798,14 +5798,62 @@ export type ConfigShellsOutput = ReadonlyArray<{
 }>
 export type ConfigShellsOperation<E = never> = () => Effect.Effect<ConfigShellsOutput, E>
 
-export type ConfigUpdateInput = { readonly shell: string | null }
+export type ConfigUpdateInput = {
+  readonly shell?: string | null
+  readonly voice?: {
+    readonly provider: "openai" | "elevenlabs" | "deepgram" | "openai-compatible"
+    readonly model: string
+    readonly connection?:
+      | { readonly type: "credential"; readonly id: Credential.ID }
+      | { readonly type: "env"; readonly name: string }
+    readonly baseURL?: string
+    readonly language?: string
+  } | null
+}
 export type ConfigUpdateOutput = void
-export type ConfigUpdateOperation<E = never> = (input: ConfigUpdateInput) => Effect.Effect<ConfigUpdateOutput, E>
+export type ConfigUpdateOperation<E = never> = (input?: ConfigUpdateInput) => Effect.Effect<ConfigUpdateOutput, E>
 
 export interface ConfigApi<E = never> {
   readonly get: ConfigGetOperation<E>
   readonly shells: ConfigShellsOperation<E>
   readonly update: ConfigUpdateOperation<E>
+}
+
+export type VoiceConnectionsInput = { readonly location?: { readonly directory?: string | undefined } | undefined }
+export type VoiceConnectionsOutput = ReadonlyArray<{
+  readonly id: Credential.ID
+  readonly label: string
+  readonly integrationID: Integration.ID
+}>
+export type VoiceConnectionsOperation<E = never> = (
+  input?: VoiceConnectionsInput,
+) => Effect.Effect<VoiceConnectionsOutput, E>
+
+export type VoiceConnectInput = {
+  readonly location?: { readonly directory?: string | undefined } | undefined
+  readonly label: string
+  readonly key: string
+}
+export type VoiceConnectOutput = {
+  readonly id: Credential.ID
+  readonly label: string
+  readonly integrationID: Integration.ID
+}
+export type VoiceConnectOperation<E = never> = (input: VoiceConnectInput) => Effect.Effect<VoiceConnectOutput, E>
+
+export type VoiceTranscribeInput = {
+  readonly location?: { readonly directory?: string | undefined } | undefined
+  readonly audio: string
+}
+export type VoiceTranscribeOutput = { readonly text: string }
+export type VoiceTranscribeOperation<E = never> = (
+  input: VoiceTranscribeInput,
+) => Effect.Effect<VoiceTranscribeOutput, E>
+
+export interface VoiceApi<E = never> {
+  readonly connections: VoiceConnectionsOperation<E>
+  readonly connect: VoiceConnectOperation<E>
+  readonly transcribe: VoiceTranscribeOperation<E>
 }
 
 export type HookStatusInput = { readonly location?: { readonly directory?: string | undefined } | undefined }
@@ -6868,6 +6916,7 @@ export interface AppApi<E = never> {
   readonly debug: DebugApi<E>
   readonly websearch: WebsearchApi<E>
   readonly config: ConfigApi<E>
+  readonly voice: VoiceApi<E>
   readonly hook: HookApi<E>
   readonly lsp: LspApi<E>
   readonly formatter: FormatterApi<E>

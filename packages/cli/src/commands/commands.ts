@@ -1192,6 +1192,20 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
         ),
       },
     }),
+    Spec.make("voice", {
+      description: "Record locally and transcribe with your selected provider",
+      params: {
+        ...ServerParams,
+        setup: Flag.boolean("setup").pipe(
+          Flag.withDescription("Choose the dictation provider, connection, and model"),
+          Flag.withDefault(false),
+        ),
+        noOpen: Flag.boolean("no-open").pipe(
+          Flag.withDescription("Print the local recorder URL without opening it"),
+          Flag.withDefault(false),
+        ),
+      },
+    }),
     Spec.make("serve", {
       description: "Start the API and web server",
       params: {

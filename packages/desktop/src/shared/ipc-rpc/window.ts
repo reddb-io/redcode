@@ -4,6 +4,7 @@ import { Rpc, RpcGroup } from "effect/unstable/rpc"
 export const WindowThemeReady = Rpc.make("WindowThemeReady")
 
 export const WindowGetFocused = Rpc.make("WindowGetFocused", { success: Schema.Boolean })
+export const WindowRequestMicrophone = Rpc.make("WindowRequestMicrophone", { success: Schema.Boolean })
 
 export const WindowGetFullscreen = Rpc.make("WindowGetFullscreen", { success: Schema.Boolean })
 
@@ -37,6 +38,7 @@ export const WindowSetTitlebar = Rpc.make("WindowSetTitlebar", {
 export const WindowRpcs = RpcGroup.make(
   WindowThemeReady,
   WindowGetFocused,
+  WindowRequestMicrophone,
   WindowGetFullscreen,
   WindowSetFocus,
   WindowShow,

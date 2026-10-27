@@ -33,6 +33,7 @@ export type FatalRendererErrorLog = {
 }
 
 type PlatformBase = {
+  requestMicrophone?(): Promise<boolean>
   /** Browser installation, captured for the lifetime of the web client. */
   installation?: ReturnType<typeof createPwaInstallation>
 

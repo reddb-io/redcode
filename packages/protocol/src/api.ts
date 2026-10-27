@@ -32,6 +32,7 @@ import { ProjectGroup } from "./groups/project.js"
 import { WorktreeGroup } from "./groups/worktree.js"
 import { VcsGroup } from "./groups/vcs.js"
 import { ConfigGroup } from "./groups/config.js"
+import { VoiceGroup } from "./groups/voice.js"
 import { IntelligenceGroup } from "./groups/intelligence.js"
 import { HookGroup } from "./groups/hook.js"
 import { makeAutomationGroup } from "./groups/automation.js"
@@ -64,6 +65,7 @@ type LocationGroups<LocationId extends HttpApiMiddleware.AnyId> =
   | HttpApiGroup.AddMiddleware<typeof ReferenceGroup, LocationId>
   | HttpApiGroup.AddMiddleware<typeof VcsGroup, LocationId>
   | HttpApiGroup.AddMiddleware<typeof ConfigGroup, LocationId>
+  | HttpApiGroup.AddMiddleware<typeof VoiceGroup, LocationId>
   | HttpApiGroup.AddMiddleware<typeof HookGroup, LocationId>
   | HttpApiGroup.AddMiddleware<typeof LSPGroup, LocationId>
   | HttpApiGroup.AddMiddleware<typeof FormatterGroup, LocationId>
@@ -211,6 +213,7 @@ const makeApiFromGroup = <
     .add(DebugGroup)
     .add(WebSearchGroup.middleware(locationMiddleware))
     .add(ConfigGroup.middleware(locationMiddleware))
+    .add(VoiceGroup.middleware(locationMiddleware))
     .add(HookGroup.middleware(locationMiddleware))
     .add(LSPGroup.middleware(locationMiddleware))
     .add(FormatterGroup.middleware(locationMiddleware))

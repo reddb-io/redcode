@@ -73,6 +73,7 @@ function getConfig(): Configuration {
       category: "public.app-category.developer-tools",
       icon: "../design-system/platform/icon-512.png",
       extendInfo: {
+        NSMicrophoneUsageDescription: "Redcode records your voice to transcribe it into an editable prompt.",
         NSAutoFillRequiresTextContentTypeForOneTimeCodeOnMac: true,
       },
       hardenedRuntime: true,

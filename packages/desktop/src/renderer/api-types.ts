@@ -13,6 +13,7 @@ import type {
 } from "../shared/ipc-contract"
 
 export type ElectronAPI = {
+  requestMicrophone(): Promise<boolean>
   awaitInitialization(): Promise<ServerReadyData>
   reconnectService(): Promise<ServerReadyData>
   consumeInitialDeepLinks(): Promise<string[]>

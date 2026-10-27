@@ -44,6 +44,7 @@ const QUEUE_DEFAULT = "alt+return,<leader>return"
 const keybind = (value: Definition["default"], description: string): Definition => ({ default: value, description })
 
 export const Definitions = {
+  "prompt.voice": keybind("<leader>v", "Open the local voice recorder"),
   leader: keybind(LeaderDefault, "Leader key for keybind combinations"),
 
   "app.exit": keybind("ctrl+c,ctrl+d,<leader>q", "Exit the application"),

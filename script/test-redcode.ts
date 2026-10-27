@@ -204,6 +204,7 @@ const suites = {
     "test/acp/replay.test.ts",
   ],
   server: [
+    "test/voice.test.ts",
     "test/pty-socket.test.ts",
     "test/agent-tools.test.ts",
     "test/fs.test.ts",
@@ -276,6 +277,7 @@ const suites = {
     "test/context/local-selection.test.tsx",
     "test/cli/cmd/tui/integration-options.test.ts",
     "test/cli/tui/dialog-integration.test.tsx",
+    "test/cli/tui/dialog-voice.test.tsx",
     "test/config-v2.test.tsx",
     "test/session-group-navigation.test.tsx",
     "test/redcode-workflows.test.tsx",
@@ -293,6 +295,7 @@ const suites = {
     "test/feature-plugins/sidebar-footer.test.tsx",
     "test/feature-plugins/prompt-footer.test.tsx",
     "test/voice-input.test.ts",
+    "test/voice-capture.test.ts",
     "test/system-model.test.ts",
   ],
   schema: [
@@ -324,7 +327,8 @@ const suites = {
     "test/provider/venice.recorded.test.ts",
     "test/provider/vercel-ai-gateway.recorded.test.ts",
   ],
-  util: ["src/design-review.test.ts", "src/uuid.test.ts", "src/global.test.ts"],
+  util: ["src/design-review.test.ts", "src/uuid.test.ts", "src/global.test.ts", "src/voice-input.test.ts"],
+  desktop: ["src/main/windows/media-permission.test.ts"],
   theme: ["test/theme.test.ts"],
   sdk: [
     "test/contract-identity.test.ts",

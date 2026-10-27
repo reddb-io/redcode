@@ -21,6 +21,7 @@ const toArrayBuffer = (value: Uint8Array) =>
 const seeded = window.electron.storageSnapshot.then((snapshot) => new Map(Object.entries(snapshot)))
 
 export const api: ElectronAPI = {
+  requestMicrophone: () => invoke("WindowRequestMicrophone"),
   awaitInitialization: () => invoke("AppAwaitInitialization"),
   reconnectService: () => invoke("AppReconnectService"),
   consumeInitialDeepLinks: () => invoke("AppConsumeInitialDeepLinks").then(mutable),

@@ -193,7 +193,8 @@ jobs:
           e2e/regression/timeline-stream.spec.ts e2e/regression/design-embedded-review.spec.ts
           e2e/regression/session-location-sync.spec.ts
           e2e/regression/navigation.spec.ts e2e/regression/side-panels.spec.ts
-          --grep 'the session context menu|Home archives|project LSPs|server sign-in keeps|reconciles task contributions|reconciliation fails and recovers|question drafts retain|a pending permission dock|Vault masks and clears|MCP input preserves|reports writing while assistant text streams|ends running compactions as interrupted|refreshes a session moved during disconnection|canvas zoom and pan|desktop density|appearance options|React settings keep|navigation shares|delivery'
+          e2e/regression/voice.spec.ts e2e/regression/voice-cli.spec.ts
+          --grep 'the session context menu|Home archives|project LSPs|server sign-in keeps|reconciles task contributions|reconciliation fails and recovers|question drafts retain|a pending permission dock|Vault masks and clears|MCP input preserves|reports writing while assistant text streams|ends running compactions as interrupted|refreshes a session moved during disconnection|canvas zoom and pan|desktop density|appearance options|React settings keep|navigation shares|delivery|voice settings|CLI recorder'
           --workers=1 --retries=0 --reporter=line,html
       - name: Exercise the browser against an isolated real backend
         working-directory: packages/app

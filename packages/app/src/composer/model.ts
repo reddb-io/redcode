@@ -27,11 +27,13 @@ import { createComposerHistory } from "./history/store"
 import { createComposerSubmit } from "./submit"
 import { useAttachmentDestination } from "./attachments/destination"
 import { parseClientSlashCommand } from "./client-slash-command"
+import { createComposerVoice } from "./voice"
 
 export type ComposerModel = ComposerEditorModel & {
   readonly model: ComposerControls["model"]
   /** The session's reasoning mode and its views; absent when the adapter has no reasoning. */
   readonly reasoning?: ComposerReasoningActions
+  readonly voice?: ReturnType<typeof createComposerVoice>
 }
 
 const sendFailedTitle = {
@@ -44,9 +46,11 @@ export function createComposerModel(adapter: ComposerAdapter, options?: { queue?
   const sdk = useWorkspaceLocation()
   const data = useData()
   const server = useServer()
+  const voice = createComposerVoice(adapter)
 
   const available = () =>
-    server.conn.type !== "extension" || !server.conn.managed || server.ctx.sdk.connection.status() === "connected"
+    !voice.busy() &&
+    (server.conn.type !== "extension" || !server.conn.managed || server.ctx.sdk.connection.status() === "connected")
 
   const files = useFile()
   const links = useExtensionHost().links
@@ -445,6 +449,7 @@ export function createComposerModel(adapter: ComposerAdapter, options?: { queue?
   })
 
   Object.defineProperty(controller, "model", { get: () => adapter.controls().model })
+  Object.defineProperty(controller, "voice", { value: voice })
 
   Object.defineProperty(controller, "reasoning", {
     value: adapter.reasoning
@@ -453,6 +458,15 @@ export function createComposerModel(adapter: ComposerAdapter, options?: { queue?
   })
 
   command.register("composer-editor", () => [
+    {
+      id: "prompt.voice",
+      title: language.t("voice.start"),
+      category: language.t("command.category.session"),
+      keybind: "mod+shift+m",
+      editable: true,
+      disabled: controller.state.mode !== "normal",
+      onSelect: () => void (voice.state.phase === "recording" ? voice.finish() : voice.start()),
+    },
     {
       id: "file.attach",
       title: language.t("prompt.action.attachFile"),

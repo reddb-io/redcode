@@ -386,6 +386,12 @@ import type {
   ConfigShellsOutput,
   ConfigUpdateInput,
   ConfigUpdateOutput,
+  VoiceConnectionsInput,
+  VoiceConnectionsOutput,
+  VoiceConnectInput,
+  VoiceConnectOutput,
+  VoiceTranscribeInput,
+  VoiceTranscribeOutput,
   HookStatusInput,
   HookStatusOutput,
   HookTrustInput,
@@ -2473,15 +2479,50 @@ const EndpointConfigGet = (raw: RawClient["server.config"]) => (input?: ConfigGe
 const EndpointConfigShells = (raw: RawClient["server.config"]) => () =>
   preserveEffect<ConfigShellsOutput>()(raw["config.shells"]({}).pipe(Effect.mapError(mapClientError)))
 
-const EndpointConfigUpdate = (raw: RawClient["server.config"]) => (input: ConfigUpdateInput) =>
+const EndpointConfigUpdate = (raw: RawClient["server.config"]) => (input?: ConfigUpdateInput) =>
   preserveEffect<ConfigUpdateOutput>()(
-    raw["config.update"]({ payload: { shell: input["shell"] } }).pipe(Effect.mapError(mapClientError)),
+    raw["config.update"]({ payload: { shell: input?.["shell"], voice: input?.["voice"] } }).pipe(
+      Effect.mapError(mapClientError),
+    ),
   )
 
 const adaptGroupConfig = (raw: RawClient["server.config"]) => ({
   get: EndpointConfigGet(raw),
   shells: EndpointConfigShells(raw),
   update: EndpointConfigUpdate(raw),
+})
+
+const EndpointVoiceConnections = (raw: RawClient["server.voice"]) => (input?: VoiceConnectionsInput) =>
+  preserveEffect<VoiceConnectionsOutput>()(
+    raw["voice.connections"]({ query: { location: input?.["location"] } }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
+const EndpointVoiceConnect = (raw: RawClient["server.voice"]) => (input: VoiceConnectInput) =>
+  preserveEffect<VoiceConnectOutput>()(
+    raw["voice.connect"]({
+      query: { location: input["location"] },
+      payload: { label: input["label"], key: input["key"] },
+    }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
+const EndpointVoiceTranscribe = (raw: RawClient["server.voice"]) => (input: VoiceTranscribeInput) =>
+  preserveEffect<VoiceTranscribeOutput>()(
+    raw["voice.transcribe"]({ query: { location: input["location"] }, payload: { audio: input["audio"] } }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
+const adaptGroupVoice = (raw: RawClient["server.voice"]) => ({
+  connections: EndpointVoiceConnections(raw),
+  connect: EndpointVoiceConnect(raw),
+  transcribe: EndpointVoiceTranscribe(raw),
 })
 
 const EndpointHookStatus = (raw: RawClient["server.hook"]) => (input?: HookStatusInput) =>
@@ -3201,6 +3242,7 @@ const adaptClient = (raw: RawClient) => ({
   debug: adaptGroupDebug(raw["server.debug"]),
   websearch: adaptGroupWebsearch(raw["server.websearch"]),
   config: adaptGroupConfig(raw["server.config"]),
+  voice: adaptGroupVoice(raw["server.voice"]),
   hook: adaptGroupHook(raw["server.hook"]),
   lsp: adaptGroupLsp(raw["server.lsp"]),
   formatter: adaptGroupFormatter(raw["server.formatter"]),

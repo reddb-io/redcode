@@ -148,6 +148,7 @@ const Handlers = Runtime.handlers(Commands, {
   pair: () => import("./commands/handlers/pair"),
   design: () => import("./commands/handlers/design"),
   desktop: () => import("./commands/handlers/desktop"),
+  voice: () => import("./commands/handlers/voice"),
   reload: () => import("./commands/handlers/reload"),
   session: {
     archive: () => import("./commands/handlers/session/archive"),
