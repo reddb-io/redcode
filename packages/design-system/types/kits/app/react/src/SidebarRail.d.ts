@@ -10,4 +10,4 @@ export interface SidebarRailProps extends SidebarRailContract, Omit<ComponentPro
     /** Additional navigation classes. */
     className?: string;
 }
-export declare function SidebarRail({ label, items, currentId, onSelect, top, bottom, showLabels, itemSize, iconSize, itemGap, railWidth, railPadding, labelSize, style, className, onKeyDown, onFocus, ...rest }: SidebarRailProps): import("react").JSX.Element;
+export declare function SidebarRail({ label, items, currentId, onSelect, top, bottom, showLabels, itemSize, iconSize, itemGap, labelGap, railWidth, railPadding, labelSize, style, className, onKeyDown, onFocus, ...rest }: SidebarRailProps): import("react").JSX.Element;

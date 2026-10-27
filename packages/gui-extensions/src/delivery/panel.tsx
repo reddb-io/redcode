@@ -5,6 +5,8 @@ import { createVisitState, useExtension, type MountedSession } from "../sdk"
 import { DeliveryView } from "./view.react"
 import { createDeliveryResources } from "./resources"
 import { createDeliveryMonitors } from "./monitors"
+import { createDeliveryHooks } from "./hooks"
+import { createDeliveryAutomations } from "./automations"
 import type { DeliverySection } from "./resources-model"
 import en from "./i18n/en"
 
@@ -35,6 +37,28 @@ export default function DeliveryPanel(props: { session: MountedSession; visible:
     },
   })
   const enabled = () => props.visible && props.session.server.connected && section() === "overview"
+  const hooks = createDeliveryHooks({
+    get session() {
+      return props.session
+    },
+    get visible() {
+      return props.visible
+    },
+    get section() {
+      return section()
+    },
+  })
+  const automations = createDeliveryAutomations({
+    get session() {
+      return props.session
+    },
+    get visible() {
+      return props.visible
+    },
+    get section() {
+      return section()
+    },
+  })
   const graph = useQuery(() => ({
     queryKey: ["delivery-tasks", props.session.server.id, root()],
     enabled: enabled(),
@@ -94,8 +118,14 @@ export default function DeliveryPanel(props: { session: MountedSession; visible:
         resourceActions: resources.actions,
         monitors: monitors.snapshot(),
         monitorActions: monitors.actions,
+        hooks: hooks.snapshot(),
+        hookActions: hooks.actions,
+        automations: automations.snapshot(),
+        automationActions: automations.actions,
         section: setSection,
         refresh: () => {
+          if (section() === "automations") return automations.actions.refresh()
+          if (section() === "hooks") return hooks.actions.refresh()
           if (section() === "monitors") return monitors.actions.refresh()
           if (section() !== "overview") return resources.actions.refresh()
           void Promise.all([graph.refetch(), goal.refetch()])

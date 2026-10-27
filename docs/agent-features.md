@@ -48,6 +48,91 @@ The inventory refreshes only while this view is visible and connected. **Stop mo
 local execution or observation and suppresses continuation; an external job keeps running.
 This view observes existing monitors and does not schedule new work.
 
+Under **Linked harness tasks**, choose a Claude or Codex run already linked in **Resources**.
+These links belong to the session family; local monitors above still belong only to the current
+conversation. Only the selected harness is read. A shared checkout does not automatically link
+or select a run. Refresh failures keep its last records with a warning, and unsupported older
+servers show that native task records are unavailable.
+
+The execution host persists Claude `task_started`, `task_progress` and `task_notification`
+observations, correlating the launching tool call to distinguish **Monitor** from background
+**Bash**. Native task IDs, parent task IDs, reported summaries and output-file paths remain
+attached to their harness run. Codex `commandExecution` items retain their item and process IDs,
+reported lifecycle state and output; they are labelled commands. The inspector shows at most
+64,000 characters of recorded output per task and indicates truncation. Output-file paths are
+displayed as reported metadata without reading those files.
+
+A completed harness response does not complete its native tasks. Losing the owned process or
+restarting the host marks unfinished task observations **State unconfirmed**, retaining recorded
+terminal outcomes. Late progress does not reopen a terminal task. Inspection does not start,
+resume, interrupt or stop native work. This inventory covers events observed by Redcode's owned
+harness processes; it does not discover historical tasks from other CLI processes or reconcile
+a native task roster.
+
+When starting an external run in **Agents → Harnesses**, optionally enable **Native background
+wait tool**. The choice belongs to that run and is off by default. Claude receives the tool through
+its SDK MCP bridge; Codex receives a dynamic tool using its experimental app-server API. Compatible
+native CLI versions are required. The tool `redcode_background_wait` accepts a recorded Monitor or
+command task ID from that run, plus an optional timeout from 1 to 30 seconds (10 by default).
+It observes existing work without issuing commands or reading output files.
+
+The result distinguishes a terminal task observation, timeout, cancellation and unavailable
+observation. A settled wait can contain a **failed** task: inspect the returned status and output.
+Timing out leaves the task running; interrupting or closing the harness cancels its active waits.
+Process loss or host restart marks outstanding observations unavailable. The inspector retains
+the latest wait state and deadline per task; active waits are not replayed after restart.
+
+T3 Code's `t3_background_wait` marks which background tasks the agent intends to await so its
+orchestrator can keep the thread working. Redcode's tool instead waits for a bounded observation
+inside the current native execution. It does not provide T3's task-roster reconciliation or wake
+an idle parent when a native task finishes.
+
+**Hooks** inspects the lifecycle hooks configured for the current conversation's project
+checkout. Review commands, HTTP endpoints, configuration sources, matchers and support
+states, then explicitly approve or revoke project hook trust. Approval applies across
+conversations in that project until the definitions change. Unsupported handlers remain
+visible and inactive. HTTP header names are shown while their values stay hidden.
+
+**Import Claude hooks** copies `.claude/settings*.json` hooks into the project's existing
+Redcode configuration, replacing that target's hooks only after confirmation. The result
+shows the target file and any instruction to reopen the project. Importing does not approve
+the hooks or restart the server. Refresh errors keep the last snapshot visible and disable
+actions until the connection and hook inventory recover.
+
+**Automations** schedules a prompt once, at an interval or on selected days at a fixed local time
+in the current conversation. Review the name, prompt and cadence before creating it. One-time
+execution uses the device's displayed time zone and stores an absolute time; intervals measure
+elapsed minutes. **Weekly calendar** stores the selected weekdays, time and named time zone,
+independently of the execution host's local zone. Next execution and admission timestamps are
+displayed in that saved zone. Each dispatch queues the prompt through the durable session inbox
+and uses the conversation's current agent,
+model and permissions. It follows the conversation's current location when execution starts.
+
+The server must run for schedules to fire. After suspension or restart, a missed interval produces
+one admission and schedules the next interval from that dispatch, without replaying a backlog.
+An overdue one-time schedule fires when the server returns. **Pause schedule** prevents future
+scheduled dispatches; resuming an interval starts a fresh interval. **Run now** dispatches once
+without changing the saved schedule, including an inactive or completed one-time schedule.
+
+Calendar occurrences allow up to ten minutes of lateness. An older occurrence is recorded as
+**Scheduled time missed**, queues no prompt and leaves the schedule enabled for its next future
+occurrence. A long outage records the pending occurrence once without replaying every missed day.
+Resuming a calendar schedule selects its next future time. During a daylight-saving gap, the
+scheduled time shifts forward by the size of the gap; a repeated time uses its first occurrence
+only. These rules apply when recovering a pending dispatch too. A prompt already admitted before
+interruption keeps its admission receipt even if recovery happens outside the grace period.
+
+Inspect **Recent admissions** to distinguish pending dispatch, admitted prompts, failed admission
+and suppressed admission. Admission confirms that the prompt reached the session inbox; it does
+not prove the agent completed its work. A failed or suppressed admission pauses the schedule.
+Archived conversations, staged reverts and paused or blocked goals suppress new admission.
+Recovery records an existing admission without creating another prompt or waking a paused goal.
+
+Pausing or deleting does not cancel a dispatch already in progress or a prompt already queued.
+**Delete automation** removes the schedule and its admission history. Refresh errors retain the last
+snapshot and disable actions. This version schedules existing conversations;
+incoming webhooks and automatic new conversations are not available.
+
 ## Agents workspace
 
 **Desktop / web app.** Open **Agents** in the siderail, or use `Ctrl+Shift+A` (`Cmd+Shift+A` on macOS).
@@ -85,10 +170,15 @@ Changing sections keeps the selected host. **Browse** opens the sidemenu to chan
 - **Hosts and resources** provides a searchable host list and one selected resource inspector showing
   logical CPUs, sampled CPU usage, OS free/total RAM and the Redcode process's memory, considering visible
   runtime/container limits. Mobile details replace the list; **Back to hosts** preserves its search.
-  CPU and available RAM have labelled meters; an unavailable reading has no meter.
+  CPU and available RAM have thin radial meters beside their numeric readings; an unavailable reading has no meter.
   The first CPU sample is unknown. Measurements refresh for the open inspector or when queued tasks need admission;
-  failed/disconnected hosts do not display cached values as live. These figures do not reserve RAM or
+  failed/disconnected hosts and samples older than fifteen seconds do not display cached values as live. These figures do not reserve RAM or
   enforce OS quotas. Optional [worker task requirements](distributed-workers.md#resource-aware-admission) control admission through the coordinator.
+- **Usage and costs** groups recorded cost, tokens and steps into KPI cards with daily trends.
+  Token distribution separates input, output, reasoning and cache counts. The cost-coverage ring
+  shows reported or estimated records as a share of all accounting records; unknown and legacy
+  records remain explicit. Missing or empty coverage has no percentage ring. Period and project
+  filters apply to the same recorded totals, linked daily charts and exact daily table.
 - **Machines** guides connection, server access verification, project access verification and the
   choice to open a session or register a worker checkout. Going back retains the draft; a changed
   target requires new checks. Verification does not start an agent or dispatch work.

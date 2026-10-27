@@ -65,6 +65,7 @@ export const groupNames = {
   "server.vcs": "vcs",
   "server.config": "config",
   "server.hook": "hook",
+  "server.automation": "automation",
   "server.lsp": "lsp",
   "server.formatter": "formatter",
   "server.workers": "workers",

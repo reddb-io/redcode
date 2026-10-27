@@ -5,8 +5,10 @@ export interface SidebarRailSizing {
     itemSize?: number;
     /** Glyph size in CSS pixels, independent of Density; constrained to fit the item. */
     iconSize?: number;
-    /** Space between destinations in CSS pixels; zero is valid. Defaults to Density gap-md. */
+    /** Space between destinations in CSS pixels; zero is valid and explicit values win. Defaults to Density gap-md for icons, Density layout-gap-sm when labels are visible (twice gap-md at current stops). */
     itemGap?: number;
+    /** Space between the icon/initials and its visible label in CSS pixels; zero is valid. Omitted, labelled items use Density gap-sm. */
+    labelGap?: number;
     /** Requested rail width in CSS pixels. Grows only when needed to fit the item, padding and pointer-target floor. */
     railWidth?: number;
     /** Rail inset in CSS pixels; zero is valid. Defaults to Density inset-sm. */

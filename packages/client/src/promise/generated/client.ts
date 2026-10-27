@@ -12,6 +12,18 @@ import type {
   ServerCancelPairOutput,
   ServerConnectInput,
   ServerConnectOutput,
+  AutomationListInput,
+  AutomationListOutput,
+  AutomationCreateInput,
+  AutomationCreateOutput,
+  AutomationControlInput,
+  AutomationControlOutput,
+  AutomationRunInput,
+  AutomationRunOutput,
+  AutomationHistoryInput,
+  AutomationHistoryOutput,
+  AutomationRemoveInput,
+  AutomationRemoveOutput,
   LocationGetInput,
   LocationGetOutput,
   LocationReloadOutput,
@@ -780,6 +792,77 @@ export function make(options: ClientOptions) {
             successStatus: 200,
             declaredStatuses: [400, 401, 403, 409],
             empty: false,
+          },
+          requestOptions,
+        ),
+    },
+    automation: {
+      list: (input: AutomationListInput, requestOptions?: RequestOptions) =>
+        request<{ readonly data: AutomationListOutput }>(
+          {
+            method: "GET",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/automation`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 404, 409],
+            empty: false,
+          },
+          requestOptions,
+        ).then((value) => value.data),
+      create: (input: AutomationCreateInput, requestOptions?: RequestOptions) =>
+        request<{ readonly data: AutomationCreateOutput }>(
+          {
+            method: "POST",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/automation`,
+            body: { id: input["id"], title: input["title"], prompt: input["prompt"], schedule: input["schedule"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 404, 409],
+            empty: false,
+          },
+          requestOptions,
+        ).then((value) => value.data),
+      control: (input: AutomationControlInput, requestOptions?: RequestOptions) =>
+        request<{ readonly data: AutomationControlOutput }>(
+          {
+            method: "POST",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/automation/${encodeURIComponent(input.automationID)}/control`,
+            body: { enabled: input["enabled"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 404, 409],
+            empty: false,
+          },
+          requestOptions,
+        ).then((value) => value.data),
+      run: (input: AutomationRunInput, requestOptions?: RequestOptions) =>
+        request<{ readonly data: AutomationRunOutput }>(
+          {
+            method: "POST",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/automation/${encodeURIComponent(input.automationID)}/run`,
+            body: { id: input["id"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 404, 409],
+            empty: false,
+          },
+          requestOptions,
+        ).then((value) => value.data),
+      history: (input: AutomationHistoryInput, requestOptions?: RequestOptions) =>
+        request<{ readonly data: AutomationHistoryOutput }>(
+          {
+            method: "GET",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/automation/${encodeURIComponent(input.automationID)}/history`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 404, 409],
+            empty: false,
+          },
+          requestOptions,
+        ).then((value) => value.data),
+      remove: (input: AutomationRemoveInput, requestOptions?: RequestOptions) =>
+        request<AutomationRemoveOutput>(
+          {
+            method: "DELETE",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/automation/${encodeURIComponent(input.automationID)}`,
+            successStatus: 204,
+            declaredStatuses: [400, 401, 403, 404, 409],
+            empty: true,
           },
           requestOptions,
         ),
@@ -3788,7 +3871,12 @@ export function make(options: ClientOptions) {
           {
             method: "POST",
             path: `/api/harness/runs`,
-            body: { driver: input["driver"], directory: input["directory"], model: input["model"] },
+            body: {
+              driver: input["driver"],
+              directory: input["directory"],
+              model: input["model"],
+              backgroundWait: input["backgroundWait"],
+            },
             successStatus: 200,
             declaredStatuses: [400, 401, 403, 409],
             empty: false,

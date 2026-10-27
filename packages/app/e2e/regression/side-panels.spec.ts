@@ -4,7 +4,14 @@ import { fileDiff, openSession } from "../utils/workspace"
 import { expectSessionTitle } from "../utils/waits"
 import { fixture, installStressSessionTabs, mockStressTimeline } from "../utils/session-fixture"
 import { mockAgentTasks } from "../utils/agent-task-fixture"
-import { deliverySkills, mockDeliveryMonitors, mockDeliveryResources } from "../utils/delivery-fixture"
+import {
+  deliverySkills,
+  mockDeliveryAutomations,
+  mockDeliveryHooks,
+  mockDeliveryMonitors,
+  mockDeliveryNativeTasks,
+  mockDeliveryResources,
+} from "../utils/delivery-fixture"
 
 test("delivery follows the session family and preserves recorded task acceptance", async ({ page }) => {
   await page.setViewportSize({ width: 1560, height: 1000 })
@@ -281,6 +288,309 @@ test("delivery monitors isolate conversations, refresh evidence and stop only th
   await page.clock.fastForward(15000)
   await refreshed
   expect(state.reads).toEqual(reads)
+})
+
+test("delivery hooks review project definitions and confirm trust, revocation and Claude import", async ({ page }) => {
+  await page.setViewportSize({ width: 1560, height: 1000 })
+  await seed(page, { theme: { id: "oc-2", scheme: "dark" } })
+  const directory = fixture.directory + "/linked-worktree"
+  await mockStressTimeline(page, {
+    sessions: fixture.sessions.map((item) => (item.id === fixture.childID ? { ...item, directory } : { ...item })),
+  })
+  await installStressSessionTabs(page, { sessionIDs: [fixture.sourceID, fixture.childID] })
+  await mockAgentTasks(page)
+  const state = await mockDeliveryHooks(page)
+  await page.goto(sessionHref(fixture.childID))
+  const toggle = page.getByRole("button", { name: "Open delivery overview", exact: true })
+  await expect(toggle).toBeEnabled()
+  expect(state.reads).toEqual([])
+  await toggle.click()
+  const delivery = page.getByRole("region", { name: "Delivery", exact: true })
+  await delivery.getByRole("tab", { name: "Hooks", exact: true }).click()
+  const definitions = delivery.getByRole("list", { name: "Hook definitions", exact: true })
+  await expect(definitions).toContainText("bun run verify-project")
+  await expect(definitions).toContainText("https://hooks.example.test/events")
+  await expect(definitions).toContainText("Authorization")
+  await expect(definitions).toContainText("Unsupported")
+  await expect(page.locator("body")).not.toContainText("fixture-hidden-header")
+  expect(new Set(state.reads)).toEqual(new Set([directory]))
+  await delivery.getByRole("button", { name: "Approve project hooks", exact: true }).click()
+  const confirmation = page.getByRole("dialog", { name: "Approve project hooks?", exact: true })
+  await expect(confirmation).toContainText(directory)
+  expect(state.writes).toEqual([])
+  await confirmation.getByRole("button", { name: "Cancel", exact: true }).click()
+  expect(state.writes).toEqual([])
+  await delivery.getByRole("button", { name: "Approve project hooks", exact: true }).click()
+  state.failChange = true
+  await confirmation.getByRole("button", { name: "Confirm", exact: true }).click()
+  await expect(confirmation.getByRole("alert")).toContainText("The hook action failed")
+  state.failChange = false
+  await confirmation.getByRole("button", { name: "Confirm", exact: true }).click()
+  await expect(confirmation).toHaveCount(0)
+  await expect(delivery.getByText("Project hooks approved", { exact: true })).toBeVisible()
+  await expect(definitions.getByText("Active", { exact: true })).toHaveCount(2)
+  await expect(definitions.getByText("Unsupported", { exact: true })).toHaveCount(1)
+  state.unavailable = true
+  await delivery.getByRole("button", { name: "Refresh hooks", exact: true }).click()
+  await expect(delivery.getByRole("alert")).toContainText("Hooks could not be refreshed")
+  await expect(delivery.getByRole("button", { name: "Revoke approval", exact: true })).toBeDisabled()
+  await expect(definitions).toContainText("bun run verify-project")
+  state.unavailable = false
+  await delivery.getByRole("button", { name: "Refresh hooks", exact: true }).click()
+  await delivery.getByRole("button", { name: "Revoke approval", exact: true }).click()
+  await page
+    .getByRole("dialog", { name: "Revoke project hook approval?", exact: true })
+    .getByRole("button", { name: "Confirm", exact: true })
+    .click()
+  await expect(delivery.getByRole("button", { name: "Approve project hooks", exact: true })).toBeEnabled()
+  await page.screenshot({ path: test.info().outputPath("delivery-hooks-desktop.png"), fullPage: true })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByRole("tab", { name: "Delivery", exact: true }).click()
+  await delivery.getByRole("tab", { name: "Hooks", exact: true }).click()
+  await delivery.getByRole("button", { name: "Import Claude hooks", exact: true }).click()
+  const importing = page.getByRole("dialog", { name: "Import Claude hooks?", exact: true })
+  await expect(importing).toContainText("replaces the target configuration's hooks")
+  await importing.getByRole("button", { name: "Confirm", exact: true }).click()
+  await expect(importing).toHaveCount(0)
+  await expect(delivery.getByRole("status")).toContainText("Reopen this project")
+  await expect(delivery.getByRole("status")).toBeInViewport()
+  expect(state.writes).toEqual([
+    { action: "trust", directory },
+    { action: "trust", directory },
+    { action: "revoke", directory },
+    { action: "import", directory },
+  ])
+  await page.screenshot({ path: test.info().outputPath("delivery-hooks-mobile.png"), fullPage: true })
+})
+
+test("delivery inspects only selected linked native tasks and preserves stale records without taking over execution", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1560, height: 1000 })
+  await seed(page, { theme: { id: "oc-2", scheme: "dark" } })
+  await mockStressTimeline(page)
+  await installStressSessionTabs(page, { sessionIDs: [fixture.sourceID, fixture.childID] })
+  await mockAgentTasks(page)
+  await mockDeliveryMonitors(page)
+  const state = await mockDeliveryNativeTasks(page)
+  await page.goto(sessionHref(fixture.childID))
+  const toggle = page.getByRole("button", { name: "Open delivery overview", exact: true })
+  await expect(toggle).toBeEnabled()
+  await toggle.click()
+  const delivery = page.getByRole("region", { name: "Delivery", exact: true })
+  await delivery.getByRole("tab", { name: "Monitors", exact: true }).click()
+  const native = delivery.getByRole("region", { name: "Linked harness tasks", exact: true })
+  const picker = native.getByRole("combobox", { name: "Linked harness", exact: true })
+  await expect(picker).toBeEnabled()
+  expect(state.detailReads).toEqual([])
+  await picker.selectOption("delivery-claude")
+  await expect(native).toContainText("Observe native deployment")
+  await native.getByRole("button", { name: "Inspect native task", exact: true }).click()
+  const details = native.getByRole("region", { name: "Native task details", exact: true })
+  await expect(details).toContainText("parent-native-agent")
+  await expect(details).toContainText("tool-monitor")
+  await expect(details).toContainText("Native deployment pending")
+  await expect(details).toContainText("Waiting for a native report")
+  expect(state.detailReads.every((path) => path.endsWith("delivery-claude"))).toBe(true)
+  state.nativeTasks["delivery-claude"][0] = {
+    ...state.nativeTasks["delivery-claude"][0],
+    status: "unknown",
+    wait: { ...state.nativeTasks["delivery-claude"][0].wait!, state: "timed_out", endedAt: 1793016035000 },
+  }
+  state.nativeUnavailable = true
+  await delivery.getByRole("button", { name: "Refresh monitors", exact: true }).click()
+  await expect(native.getByRole("alert")).toContainText("Native task records could not be refreshed")
+  await expect(details).toContainText("Native deployment pending")
+  state.nativeUnavailable = false
+  await delivery.getByRole("button", { name: "Refresh monitors", exact: true }).click()
+  await expect(details).toContainText("State unconfirmed")
+  await expect(details).toContainText("Wait limit reached; task may still be running")
+  await expect(details).toContainText("does not prove its native tasks stopped")
+  await page.screenshot({ path: test.info().outputPath("native-harness-tasks-desktop.png"), fullPage: true })
+  await picker.selectOption("delivery-codex")
+  await expect(native).toContainText("Native build verification")
+  await expect(details).toHaveCount(0)
+  await native.getByRole("button", { name: "Inspect native task", exact: true }).click()
+  await expect(details).toContainText("Native build passed")
+  await expect(details).toContainText("pty-42")
+  await expect(details).not.toContainText("parent-native-agent")
+  await expect(details).not.toContainText("Latest explicit wait")
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByRole("tab", { name: "Delivery", exact: true }).click()
+  await delivery.getByRole("tab", { name: "Monitors", exact: true }).click()
+  await picker.selectOption("delivery-codex")
+  await native.getByRole("button", { name: "Inspect native task", exact: true }).click()
+  await expect(details).toContainText("Native build passed")
+  await details.scrollIntoViewIfNeeded()
+  await page.screenshot({ path: test.info().outputPath("native-harness-tasks-mobile.png"), fullPage: true })
+  delete state.nativeTasks["delivery-codex"]
+  await delivery.getByRole("button", { name: "Refresh monitors", exact: true }).click()
+  await expect(native).toContainText("This server does not expose native task records yet")
+  expect(state.harnessWrites).toEqual([])
+  state.metadata = { owner: "keep-this-annotation" }
+  await delivery.getByRole("button", { name: "Refresh monitors", exact: true }).click()
+  await expect(native).toContainText("Link a Claude or Codex run in Resources")
+  await expect(picker).toHaveCount(0)
+  await expect(native).not.toContainText("Native build verification")
+  await page.clock.install()
+  await delivery.getByRole("tab", { name: "Overview", exact: true }).click()
+  await expect(delivery.getByText("Deliver a verified task workflow", { exact: true })).toBeVisible()
+  const reads = [...state.detailReads]
+  const refreshed = page.waitForResponse((response) => new URL(response.url()).pathname.endsWith("/todo/graph"))
+  await page.clock.fastForward(15000)
+  await refreshed
+  expect(state.detailReads).toEqual(reads)
+})
+
+test("delivery automations persist conversation schedules, review admissions and preserve retry identities", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1560, height: 1000 })
+  await seed(page, { theme: { id: "oc-2", scheme: "dark" } })
+  await mockStressTimeline(page)
+  await installStressSessionTabs(page, { sessionIDs: [fixture.sourceID, fixture.childID] })
+  await mockAgentTasks(page)
+  const state = await mockDeliveryAutomations(page)
+  await page.goto(sessionHref(fixture.childID))
+  const toggle = page.getByRole("button", { name: "Open delivery overview", exact: true })
+  await expect(toggle).toBeEnabled()
+  expect(state.reads).toEqual([])
+  await toggle.click()
+  const delivery = page.getByRole("region", { name: "Delivery", exact: true })
+  await delivery.getByRole("tab", { name: "Automations", exact: true }).click()
+  await expect(delivery).toContainText("No automations in this conversation")
+  await expect(delivery).not.toContainText("Parent schedule")
+  expect(new Set(state.reads)).toEqual(new Set([fixture.childID]))
+  await delivery.getByRole("button", { name: "Create automation", exact: true }).click()
+  const creating = page.getByRole("dialog", { name: "Create automation", exact: true })
+  await expect(creating).toContainText("start execution when due")
+  expect(state.creates).toEqual([])
+  await creating.getByRole("textbox", { name: "Automation name", exact: true }).fill("Check deployment")
+  await creating
+    .getByRole("textbox", { name: "Scheduled prompt", exact: true })
+    .fill("Inspect deployment health and record evidence.")
+  await creating.getByRole("spinbutton", { name: "Interval in minutes", exact: true }).fill("2")
+  await creating.getByRole("button", { name: "Create automation", exact: true }).click()
+  await expect(creating).toHaveCount(0)
+  const row = delivery.getByRole("listitem").filter({ hasText: "Check deployment" })
+  await expect(row).toContainText("Every 2 minutes")
+  expect(state.creates).toHaveLength(1)
+  expect(state.creates[0]).toMatchObject({
+    sessionID: fixture.childID,
+    input: { title: "Check deployment", schedule: { type: "interval", everyMs: 120000 } },
+  })
+  await row.getByRole("button", { name: "Inspect automation", exact: true }).click()
+  const details = delivery.getByRole("region", { name: "Automation details", exact: true })
+  await expect(details).toContainText("Inspect deployment health and record evidence.")
+  await expect(details).toContainText("This automation has not fired yet")
+  await details.getByRole("button", { name: "Pause schedule", exact: true }).click()
+  await expect(details.getByRole("button", { name: "Resume schedule", exact: true })).toBeEnabled()
+  await details.getByRole("button", { name: "Resume schedule", exact: true }).click()
+  await expect(details.getByRole("button", { name: "Pause schedule", exact: true })).toBeEnabled()
+  expect(state.controls.map((item) => item.enabled)).toEqual([false, true])
+  await details.getByRole("button", { name: "Run now", exact: true }).click()
+  const running = page.getByRole("dialog", { name: "Run this automation now?", exact: true })
+  await expect(running).toContainText("Inspect deployment health and record evidence.")
+  expect(state.triggers).toEqual([])
+  state.failRun = true
+  await running.getByRole("button", { name: "Confirm", exact: true }).click()
+  await expect(running.getByRole("alert")).toContainText("The automation action failed")
+  state.failRun = false
+  await running.getByRole("button", { name: "Confirm", exact: true }).click()
+  await expect(running).toHaveCount(0)
+  await expect(details).toContainText("Prompt admitted")
+  expect(state.triggers).toHaveLength(2)
+  expect(state.triggers[0]).toEqual(state.triggers[1])
+  expect(state.runs).toHaveLength(1)
+  state.unavailable = true
+  await delivery.getByRole("button", { name: "Refresh automations", exact: true }).click()
+  await expect(delivery.getByRole("alert")).toContainText("Automations could not be refreshed")
+  await expect(details.getByRole("button", { name: "Run now", exact: true })).toBeDisabled()
+  await expect(details).toContainText("Prompt admitted")
+  state.unavailable = false
+  await delivery.getByRole("button", { name: "Refresh automations", exact: true }).click()
+  await expect(details.getByRole("button", { name: "Run now", exact: true })).toBeEnabled()
+  await page.screenshot({ path: test.info().outputPath("delivery-automations-desktop.png"), fullPage: true })
+  await page.reload()
+  await delivery.getByRole("tab", { name: "Automations", exact: true }).click()
+  await expect(row).toContainText("Check deployment")
+  expect(state.creates).toHaveLength(1)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByRole("tab", { name: "Delivery", exact: true }).click()
+  await delivery.getByRole("tab", { name: "Automations", exact: true }).click()
+  await row.getByRole("button", { name: "Inspect automation", exact: true }).click()
+  await expect(details).toContainText("Prompt admitted")
+  await details.getByRole("button", { name: "Delete automation", exact: true }).click()
+  const deleting = page.getByRole("dialog", { name: "Delete this automation?", exact: true })
+  await deleting.getByRole("button", { name: "Cancel", exact: true }).click()
+  expect(state.removals).toEqual([])
+  await details.getByRole("button", { name: "Delete automation", exact: true }).click()
+  await deleting.getByRole("button", { name: "Confirm", exact: true }).click()
+  await expect(delivery).toContainText("No automations in this conversation")
+  expect(state.items.map((item) => item.title)).toEqual(["Parent schedule"])
+  await delivery.getByRole("button", { name: "Create automation", exact: true }).click()
+  await creating.getByRole("textbox", { name: "Automation name", exact: true }).fill("One-time follow-up")
+  await creating.getByRole("textbox", { name: "Scheduled prompt", exact: true }).fill("Check once and report findings.")
+  await creating.getByRole("combobox", { name: "Schedule", exact: true }).selectOption("once")
+  await creating.getByLabel("Execution time", { exact: true }).fill("2030-01-01T09:00")
+  await creating.getByRole("button", { name: "Create automation", exact: true }).click()
+  await expect(creating).toHaveCount(0)
+  const once = delivery.getByRole("listitem").filter({ hasText: "One-time follow-up" })
+  await expect(once).toContainText("One-time execution")
+  expect(state.creates[1].input.schedule.type).toBe("once")
+  await page.screenshot({ path: test.info().outputPath("delivery-automations-mobile.png"), fullPage: true })
+  await delivery.getByRole("button", { name: "Create automation", exact: true }).click()
+  await creating.getByRole("textbox", { name: "Automation name", exact: true }).fill("Morning calendar check")
+  await creating
+    .getByRole("textbox", { name: "Scheduled prompt", exact: true })
+    .fill("Inspect build health on selected mornings.")
+  await creating.getByRole("combobox", { name: "Schedule", exact: true }).selectOption("fixed_time")
+  await creating.getByLabel("Time of day", { exact: true }).fill("09:00")
+  const zone = creating.getByRole("textbox", { name: "Schedule time zone", exact: true })
+  await zone.fill("Not/AZone")
+  await creating.getByRole("button", { name: "Create automation", exact: true }).click()
+  await expect(creating.getByRole("alert")).toContainText("valid time and named time zone")
+  expect(state.creates).toHaveLength(2)
+  await zone.fill("America/Sao_Paulo")
+  await creating.getByRole("checkbox", { name: "Saturday", exact: true }).uncheck()
+  await creating.getByRole("checkbox", { name: "Sunday", exact: true }).uncheck()
+  await expect(creating).toContainText("up to 10 minutes of delay")
+  await expect(creating.getByRole("button", { name: "Create automation", exact: true })).toBeInViewport()
+  await expect(creating.getByRole("button", { name: "Cancel", exact: true })).toBeInViewport()
+  await page.screenshot({ path: test.info().outputPath("delivery-calendar-form-mobile.png"), fullPage: true })
+  await creating.getByRole("button", { name: "Create automation", exact: true }).click()
+  await expect(creating).toHaveCount(0)
+  const calendar = delivery.getByRole("listitem").filter({ hasText: "Morning calendar check" })
+  await expect(calendar).toContainText("Monday, Tuesday, Wednesday, Thursday, Friday at 09:00 · America/Sao_Paulo")
+  expect(state.creates[2].input.schedule).toEqual({
+    type: "fixed_time",
+    timeOfDay: "09:00",
+    timeZone: "America/Sao_Paulo",
+    weekdays: [1, 2, 3, 4, 5],
+  })
+  await calendar.getByRole("button", { name: "Inspect automation", exact: true }).click()
+  await expect(details).toContainText("Schedule time zone")
+  await expect(details).toContainText("1/7/30, 9:00 AM")
+  await expect(details).toContainText("America/Sao_Paulo")
+  await page.setViewportSize({ width: 1560, height: 1000 })
+  await delivery.getByRole("tab", { name: "Automations", exact: true }).click()
+  await calendar.getByRole("button", { name: "Inspect automation", exact: true }).click()
+  await expect(details).toContainText("Morning calendar check")
+  await page.screenshot({ path: test.info().outputPath("delivery-calendar-desktop.png"), fullPage: true })
+  await page.reload()
+  await delivery.getByRole("tab", { name: "Automations", exact: true }).click()
+  await expect(calendar).toContainText("America/Sao_Paulo")
+  expect(state.creates).toHaveLength(3)
+  await page.clock.install()
+  await delivery.getByRole("tab", { name: "Overview", exact: true }).click()
+  await expect(delivery.getByText("Deliver a verified task workflow", { exact: true })).toBeVisible()
+  const reads = [...state.reads]
+  const historyReads = [...state.historyReads]
+  const refreshed = page.waitForResponse((response) => new URL(response.url()).pathname.endsWith("/todo/graph"))
+  await page.clock.fastForward(15000)
+  await refreshed
+  expect(state.reads).toEqual(reads)
+  expect(state.historyReads).toEqual(historyReads)
 })
 
 test("review and terminal follow the session tab and stay mounted", async ({ page }) => {

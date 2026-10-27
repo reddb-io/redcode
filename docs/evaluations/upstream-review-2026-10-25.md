@@ -104,6 +104,75 @@ Corpos, comentários, patches, assinaturas e identidades de usuários foram omit
 
 ## T3 Code
 
+### Direção de produto acordada em 26/10/2026
+
+- **Monitors:** usar o T3 Code como referência de comportamento, interface e integração
+  com os harnesses Claude e Codex. Evoluir o serviço nativo e a inspeção Desktop já
+  existentes no Redcode; comparar identidade, acompanhamento, conclusão e cancelamento
+  do trabalho antes de definir as próximas mudanças.
+- **Automations:** partir da implementação do T3 Code para estudar agenda, persistência,
+  vínculo com conversas e worktrees, gatilhos e histórico de execuções. Adaptar esse
+  comportamento à admissão durável de prompts do Redcode, mantendo explícita a diferença
+  entre disparar trabalho e confirmar sua conclusão.
+- **Hooks:** continuar a implementação já iniciada no Redcode, em `packages/core/src/hook.ts`,
+  com API, configuração, confiança/importação e `/hooks` no TUI. A próxima etapa deve
+  aproveitar essa base e avaliar sua exposição no Desktop, preservando os contratos
+  existentes; hooks não são uma funcionalidade a começar do zero.
+
+Inspeção complementar do T3 Code em 26/10, na revisão
+`560ddb14d90eba7652da4f7846e4b18d4d802aa4`:
+
+- O [adaptador Claude](https://github.com/pingdotgg/t3code/blob/560ddb14d90eba7652da4f7846e4b18d4d802aa4/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts)
+  distingue Monitor de Bash pela ferramenta que iniciou a tarefa `local_bash`, preserva
+  identidade e relação com a tarefa pai, e marca explicitamente tarefas aguardadas.
+  Essa é a referência para ampliar a inspeção dos harnesses do Redcode; listar apenas
+  monitores nativos de Session ainda não cobre esse comportamento.
+- O [serviço de agenda](https://github.com/pingdotgg/t3code/blob/560ddb14d90eba7652da4f7846e4b18d4d802aa4/apps/server/src/scheduledTasks/ScheduledTaskService.ts)
+  cria uma conversa ou enfileira o prompt na conversa vinculada. Nesse serviço,
+  `succeeded` registra sucesso do despacho, sem comprovar o resultado do agente.
+  A adaptação deve registrar admissão e resultado como fatos distintos, usando a inbox
+  existente em vez de introduzir outro executor de modelos.
+- O [cálculo da agenda](https://github.com/pingdotgg/t3code/blob/560ddb14d90eba7652da4f7846e4b18d4d802aa4/apps/server/src/scheduledTasks/Schedule.ts)
+  diferencia intervalo decorrido e horário fixo e trata horários fixos perdidos com uma
+  tolerância explícita. O Redcode começa por intervalos decorridos: depois de suspensão
+  ou reinício, admite uma ocorrência vencida e calcula o próximo intervalo a partir dela,
+  sem reproduzir todas as ocorrências perdidas. A agenda de calendário agora mantém
+  os dias e horário em um fuso nomeado, com a mesma tolerância de dez minutos do T3 Code.
+  Registra uma ocorrência antiga como perdida e calcula a próxima futura, sem admitir
+  trabalho atrasado nem pausar a recorrência. Em saltos de horário de verão, desloca pelo
+  tamanho do salto; em horário repetido, usa somente a primeira ocorrência.
+
+O Desktop do Redcode agora expõe a base existente de hooks em **Delivery → Hooks**.
+**Delivery → Automations** oferece agenda persistida na conversa existente, execução única,
+por intervalo ou por calendário semanal, pausa, retomada, disparo manual e histórico de admissão.
+Usa a inbox durável
+da Session e preserva a identidade do disparo na recuperação. Admissão e conclusão do agente
+permanecem fatos distintos.
+
+**Delivery → Monitors → Linked harness tasks** acrescenta a observação persistida das tarefas
+nativas do Claude e dos comandos do Codex. Mantém ID nativo, relação com a tarefa pai quando
+reportada, saída e estado terminal, usando somente harnesses vinculados explicitamente em
+Resources. O monitor Claude é classificado pela chamada da ferramenta Monitor, inclusive quando
+essa chamada chega depois do início da tarefa. O fim de uma resposta não implica o fim de suas
+tarefas; perda do processo ou reinício deixa tarefas inacabadas com estado não confirmado.
+
+Para Codex, a referência do contrato de comandos é
+[ThreadItem](https://github.com/openai/codex/blob/9526f8d0d076f950ccc108d03c53b2df22289b2d/codex-rs/app-server-protocol/schema/typescript/v2/ThreadItem.ts).
+A integração cobre eventos observados pelos processos que o Redcode possui. Não reconstrói
+histórico de outros processos nem implementa o roster do T3 Code.
+
+A ferramenta [`t3_background_wait`](https://github.com/pingdotgg/t3code/blob/560ddb14d90eba7652da4f7846e4b18d4d802aa4/apps/server/src/mcp/toolkits/orchestrator/tools.ts)
+marca a intenção de aguardar tarefas, em vez de bloquear até sua conclusão. O adaptador usa essa
+intenção no estado de execução da conversa. A adaptação inicial do Redcode é diferente:
+`redcode_background_wait`, habilitada explicitamente ao abrir o harness, aguarda uma observação
+por até trinta segundos, limitada aos IDs daquela execução. O Claude a recebe pelo MCP do SDK;
+o Codex, por ferramentas dinâmicas na API experimental do app-server. A resposta distingue estado
+terminal, prazo esgotado, cancelamento e observação indisponível. O estado terminal da espera não
+equivale a sucesso da tarefa. O Desktop mostra o último estado e prazo da espera.
+
+Roster, retomada de pais ociosos após conclusão nativa e webhooks continuam pendentes. A espera
+ativa não é restaurada após reinício e não inicia nem encerra trabalho externo.
+
 ### Integrado upstream
 
 - **Coalescência de atualizações substituídas:** [#24267](https://github.com/pingdotgg/t3code/pull/24267),

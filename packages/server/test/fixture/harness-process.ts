@@ -15,7 +15,81 @@ if (args.includes("login")) {
   console.log("https://claude.example.test/authorize")
   for await (const code of createInterface({ input: process.stdin })) process.exit(code === "fixture-code" ? 0 : 1)
 }
-const state = { turn: "turn-fixture", thread: "thread-fixture", completed: 0, prompt: "" }
+const state = { turn: "turn-fixture", thread: "thread-fixture", completed: 0, prompt: "", waiting: "" }
+const startWait = (mode: string) => {
+  state.waiting = mode
+  const taskID = `wait-${driver === "claude" ? state.prompt : state.turn}`
+  const arguments_ =
+    mode === "wait-invalid"
+      ? { taskID, runID: "foreign-run", timeoutMs: 999999 }
+      : {
+          taskID: mode === "wait-foreign" ? (driver === "claude" ? "native-monitor" : "native-command") : taskID,
+          timeoutMs: mode === "wait-timeout" ? 1000 : 30000,
+        }
+  if (driver === "codex") {
+    const item = {
+      type: "commandExecution",
+      id: taskID,
+      command: mode,
+      status: "inProgress",
+      processId: "wait-pty",
+      aggregatedOutput: null,
+    }
+    send({ method: "item/started", params: { threadId: state.thread, turnId: state.turn, item } })
+    send({
+      id: 909,
+      method: "item/tool/call",
+      params: {
+        threadId: mode === "wait-foreign-thread" ? "foreign-thread" : state.thread,
+        turnId: state.turn,
+        callId: "wait-call",
+        namespace: null,
+        tool: "redcode_background_wait",
+        arguments: arguments_,
+      },
+    })
+    if (mode === "wait-success")
+      send({
+        method: "item/completed",
+        params: {
+          threadId: state.thread,
+          item: { ...item, status: "failed", aggregatedOutput: "native build failed" },
+        },
+      })
+  }
+  if (driver === "claude") {
+    send({
+      type: "assistant",
+      session_id: "claude-fixture",
+      message: { content: [{ type: "tool_use", id: `tool-${taskID}`, name: "Monitor" }] },
+    })
+    const task = {
+      type: "system",
+      session_id: "claude-fixture",
+      task_id: taskID,
+      task_type: "local_bash",
+      tool_use_id: `tool-${taskID}`,
+      description: mode,
+    }
+    send({ ...task, subtype: "task_started" })
+    send({
+      type: "control_request",
+      request_id: "wait-call",
+      request: {
+        subtype: "mcp_message",
+        server_name: "redcode_wait",
+        message: {
+          jsonrpc: "2.0",
+          id: 909,
+          method: "tools/call",
+          params: { name: "redcode_background_wait", arguments: arguments_ },
+        },
+      },
+    })
+    if (mode === "wait-success")
+      send({ ...task, subtype: "task_notification", status: "failed", summary: "native build failed" })
+  }
+}
 const complete = () => {
   state.completed++
   if (driver === "codex") {
@@ -99,6 +173,48 @@ for await (const line of createInterface({ input: process.stdin })) {
       send({ id: value.id, result: { turn: { id: state.turn } } })
       send({ method: "turn/started", params: { threadId: state.thread, turn: { id: state.turn } } })
       const text = value.params.input[0].text
+      if (text.startsWith("wait-")) {
+        startWait(text)
+        if (text === "wait-foreign-thread") complete()
+        continue
+      }
+      if (text === "native-tasks") {
+        const item = {
+          type: "commandExecution",
+          id: "native-command",
+          command: "bun run verify",
+          status: "inProgress",
+          processId: "pty-42",
+          aggregatedOutput: null,
+        }
+        send({ method: "item/started", params: { threadId: state.thread, turnId: state.turn, item } })
+        send({
+          method: "item/commandExecution/outputDelta",
+          params: { threadId: state.thread, turnId: state.turn, itemId: item.id, delta: "check started" },
+        })
+        send({ method: "item/started", params: { threadId: "foreign-thread", item: { ...item, id: "foreign-task" } } })
+        send({
+          method: "item/completed",
+          params: {
+            threadId: state.thread,
+            turnId: "previous-turn",
+            item: { ...item, status: "completed", aggregatedOutput: "checks passed" },
+          },
+        })
+        send({
+          method: "item/commandExecution/outputDelta",
+          params: { threadId: state.thread, itemId: item.id, delta: "late output" },
+        })
+        send({ method: "item/started", params: { threadId: state.thread, item: { ...item, id: "native-active" } } })
+        send({
+          method: "item/commandExecution/outputDelta",
+          params: { threadId: state.thread, itemId: "native-active", delta: "x".repeat(64000) + "tail" },
+        })
+        send({
+          method: "item/completed",
+          params: { threadId: state.thread, item: { ...item, id: "native-unknown", status: "future-status" } },
+        })
+      }
       if (text === "permission")
         send({
           id: 77,
@@ -143,14 +259,93 @@ for await (const line of createInterface({ input: process.stdin })) {
       })
     }
     if ([77, 78, 79].includes(value.id) && (value.result || value.error)) complete()
+    if (value.id === 909 && value.result) {
+      send({
+        method: "item/agentMessage/delta",
+        params: {
+          threadId: state.thread,
+          turnId: state.turn,
+          delta: `WAIT_RESULT ${value.result.contentItems[0].text}`,
+        },
+      })
+      if (state.waiting !== "wait-cancel") complete()
+    }
   }
   if (driver === "claude") {
-    if (value.type === "control_request")
+    if (value.type === "control_request") {
       send({ type: "control_response", response: { subtype: "success", request_id: value.request_id, response: {} } })
+      if (value.request.subtype === "initialize" && value.request.sdkMcpServers?.includes("redcode_wait")) {
+        send({
+          type: "control_request",
+          request_id: "wait-mcp-init",
+          request: {
+            subtype: "mcp_message",
+            server_name: "redcode_wait",
+            message: { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05" } },
+          },
+        })
+        send({
+          type: "control_request",
+          request_id: "wait-mcp-list",
+          request: {
+            subtype: "mcp_message",
+            server_name: "redcode_wait",
+            message: { jsonrpc: "2.0", id: 2, method: "tools/list" },
+          },
+        })
+      }
+    }
     if (value.type === "user") {
       state.prompt = value.uuid
       send({ type: "system", subtype: "init", session_id: "claude-fixture" })
       const text = value.message.content
+      if (text.startsWith("wait-")) {
+        startWait(text)
+        continue
+      }
+      if (text === "native-tasks") {
+        const task = {
+          type: "system",
+          session_id: "claude-fixture",
+          task_id: "native-monitor",
+          task_type: "local_bash",
+          tool_use_id: "monitor-call",
+          parent_task_id: "native-parent",
+          description: "Observe deployment",
+        }
+        send({ ...task, subtype: "task_started" })
+        send({
+          type: "assistant",
+          session_id: "claude-fixture",
+          parent_tool_use_id: null,
+          message: { content: [{ type: "tool_use", id: "monitor-call", name: "Monitor" }] },
+        })
+        send({ ...task, subtype: "task_progress", description: "Observe deployment readiness" })
+        send({
+          ...task,
+          subtype: "task_notification",
+          status: "completed",
+          summary: "deployment healthy",
+          output_file: "/native/task-output.txt",
+        })
+        send({ ...task, subtype: "task_progress", description: "late progress" })
+        send({ ...task, subtype: "task_started", session_id: "foreign-session", task_id: "foreign-task" })
+        send({
+          ...task,
+          subtype: "task_started",
+          task_id: "native-active",
+          tool_use_id: "bash-call",
+          description: "Background build",
+        })
+        send({
+          ...task,
+          subtype: "task_notification",
+          task_id: "native-unknown",
+          tool_use_id: "future-call",
+          task_type: "future-kind",
+          status: "future-status",
+        })
+      }
       if (text === "permission")
         send({
           type: "control_request",
@@ -169,6 +364,22 @@ for await (const line of createInterface({ input: process.stdin })) {
         })
       if (!["permission", "question", "hold"].includes(text)) complete()
     }
-    if (value.type === "control_response") complete()
+    if (value.type === "control_response") {
+      if (["wait-mcp-init", "wait-mcp-list"].includes(value.response.request_id)) continue
+      if (value.response.request_id === "wait-call") {
+        send({
+          type: "assistant",
+          message: {
+            content: [
+              { type: "text", text: `WAIT_RESULT ${value.response.response.mcp_response.result.content[0].text}` },
+            ],
+          },
+          parent_tool_use_id: null,
+        })
+        if (state.waiting !== "wait-cancel") complete()
+        continue
+      }
+      complete()
+    }
   }
 }

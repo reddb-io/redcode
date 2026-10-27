@@ -6,7 +6,7 @@ import { sidebarRailSizing } from "../../src/core/sidebar-rail-sizing.js";
 import { face, nameOf } from "../../src/core/sidebar-rail.js";
 import { navigationBadge, navigationMarkerLabel } from "../../src/composites/navigation.behavior.js";
 import { sidebarRail } from "../../src/composites/sidebar-rail.variants.js";
-function SidebarRail({ label, items, currentId, onSelect, top, bottom, showLabels = false, itemSize, iconSize, itemGap, railWidth, railPadding, labelSize, style, className, onKeyDown, onFocus, ...rest }) {
+function SidebarRail({ label, items, currentId, onSelect, top, bottom, showLabels = false, itemSize, iconSize, itemGap, labelGap, railWidth, railPadding, labelSize, style, className, onKeyDown, onFocus, ...rest }) {
   const initial = () => {
     const current = items.findIndex((item) => item.id === currentId && !item.disabled);
     return current >= 0 ? current : Math.max(0, items.findIndex((item) => !item.disabled));
@@ -15,7 +15,7 @@ function SidebarRail({ label, items, currentId, onSelect, top, bottom, showLabel
   useEffect(() => {
     if (!items[focusIndex] || items[focusIndex]?.disabled) setFocusIndex(initial());
   }, [items, focusIndex, currentId]);
-  const sizing = sidebarRailSizing({ itemSize, iconSize, itemGap, railWidth, railPadding, labelSize }, showLabels);
+  const sizing = sidebarRailSizing({ itemSize, iconSize, itemGap, labelGap, railWidth, railPadding, labelSize }, showLabels);
   return /* @__PURE__ */ jsxs("nav", { ...rest, style: { ...style, ...sizing.root }, "aria-label": label, "data-sidebar-rail": true, "data-sidebar-rail-labels": showLabels ? "" : void 0, className: styles.root({ class: className }), onKeyDown: (event) => {
     onKeyDown?.(event);
     if (event.defaultPrevented || !(event.target instanceof HTMLElement) || !event.target.dataset.sidebarRailItem) return;

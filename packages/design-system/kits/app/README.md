@@ -673,3 +673,10 @@ The SidebarRail Showcase includes adjustable sliders and a global/local switch.
 Browser tests check both native implementations across every Theme, Color Scheme
 and Density with fine and coarse pointers. Existing roving focus, disabled
 entries, selection and SidebarLayout composition remain tested independently.
+
+With `showLabels`, destination spacing defaults to **twice Density gap-md**.
+The icon-to-label gap stays Density gap-sm, so labels have breathing room
+without separating the icon from its own name. Explicit `itemGap` keeps its
+exact value; it is never multiplied. `labelGap` independently overrides the
+icon-to-label space in CSS pixels and accepts zero. Both values remain local
+and forward through `SidebarLayout.railSizing`.

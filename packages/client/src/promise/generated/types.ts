@@ -87,6 +87,23 @@ export type PairingCode = { code: string; expires_in: number }
 
 export type PairingSession = { token: string }
 
+export type AutomationSchedule =
+  | { type: "once"; at: number }
+  | { type: "interval"; everyMs: number }
+  | { type: "fixed_time"; timeOfDay: string; timeZone: string; weekdays: Array<number> }
+
+export type AutomationRun = {
+  id: string
+  automationID: string
+  inboxID: string
+  trigger: "scheduled" | "manual"
+  scheduledAt: number
+  created: number
+  updated: number
+  status: "pending" | "admitted" | "failed" | "skipped" | "missed"
+  error: string | null
+}
+
 export type LocationPublicInfo = { directory: string; project: { id: string; directory: string; canonical: string } }
 
 export type LocationPublicRef = { directory: string }
@@ -1141,6 +1158,14 @@ export type HarnessEvent = { cursor: number; kind: "text" | "activity" | "error"
 
 export type HarnessQuestion = { id: string; text: string; options: Array<string> }
 
+export type HarnessTaskWait = {
+  id: string
+  state: "waiting" | "settled" | "timed_out" | "cancelled" | "unavailable"
+  startedAt: number
+  deadlineAt: number
+  endedAt?: number
+}
+
 export type AgentToolsID = "rift" | "browser-control" | "terminal-control" | "computer-use"
 
 export type AgentToolsSettings = { enabled: boolean; command?: Array<string>; timeout?: number; copyAll?: boolean }
@@ -1318,6 +1343,18 @@ export type FormMultiselectField = {
   maxItems?: number
   custom?: boolean
   default?: Array<string>
+}
+
+export type AutomationInfo = {
+  id: string
+  title: string
+  prompt: string
+  schedule: AutomationSchedule
+  sessionID: string
+  enabled: boolean
+  nextAt: number | null
+  created: number
+  updated: number
 }
 
 export type SessionMessageLocationSwitched = {
@@ -2935,6 +2972,7 @@ export type HarnessRun = {
   createdAt: string
   detail?: string
   queued: number
+  backgroundWait?: boolean
   capabilities: { steer: boolean; resume: boolean; interrupt: boolean }
 }
 
@@ -2944,6 +2982,22 @@ export type HarnessRequest = {
   title: string
   detail: string
   questions: Array<HarnessQuestion>
+}
+
+export type HarnessTask = {
+  id: string
+  kind: "monitor" | "command" | "agent" | "unknown"
+  status: "running" | "succeeded" | "failed" | "cancelled" | "unknown"
+  nativeType?: string
+  toolUseID?: string
+  parentTaskID?: string
+  processID?: string
+  title: string
+  output: string
+  outputFile?: string
+  truncated: boolean
+  updatedAt: number
+  wait?: HarnessTaskWait
 }
 
 export type AgentToolsStatus = {
@@ -3377,7 +3431,12 @@ export type WorkerManifest = { tasks: Array<WorkerTask> }
 
 export type HarnessSnapshot = { providers: Array<HarnessProvider>; runs: Array<HarnessRun> }
 
-export type HarnessDetail = { run: HarnessRun; events: Array<HarnessEvent>; requests: Array<HarnessRequest> }
+export type HarnessDetail = {
+  run: HarnessRun
+  events: Array<HarnessEvent>
+  requests: Array<HarnessRequest>
+  tasks?: Array<HarnessTask>
+}
 
 export type AgentToolsSnapshot = {
   host: { name: string; platform: string; arch: string }
@@ -4390,6 +4449,18 @@ export type ConflictError = {
 export const isConflictError = (value: unknown): value is ConflictError =>
   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "ConflictError"
 
+export type AutomationNotFoundError = { readonly _tag: "AutomationNotFoundError"; readonly message: string }
+export const isAutomationNotFoundError = (value: unknown): value is AutomationNotFoundError =>
+  typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "AutomationNotFoundError"
+
+export type SessionNotFoundError = {
+  readonly _tag: "SessionNotFoundError"
+  readonly sessionID: string
+  readonly message: string
+}
+export const isSessionNotFoundError = (value: unknown): value is SessionNotFoundError =>
+  typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "SessionNotFoundError"
+
 export type LocationNotFoundError = {
   readonly _tag: "LocationNotFoundError"
   readonly location: { readonly directory: string }
@@ -4424,14 +4495,6 @@ export type AgentNotFoundError = {
 }
 export const isAgentNotFoundError = (value: unknown): value is AgentNotFoundError =>
   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "AgentNotFoundError"
-
-export type SessionNotFoundError = {
-  readonly _tag: "SessionNotFoundError"
-  readonly sessionID: string
-  readonly message: string
-}
-export const isSessionNotFoundError = (value: unknown): value is SessionNotFoundError =>
-  typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "SessionNotFoundError"
 
 export type SessionBusyError = {
   readonly _tag: "SessionBusyError"
@@ -4669,6 +4732,102 @@ export type ServerCancelPairOutput = void
 export type ServerConnectInput = { readonly code: { readonly code: string }["code"] }
 
 export type ServerConnectOutput = PairingSession
+
+export type AutomationListInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
+
+export type AutomationListOutput = { data: Array<AutomationInfo> }["data"]
+
+export type AutomationCreateInput = {
+  readonly sessionID: { readonly sessionID: string }["sessionID"]
+  readonly id: {
+    readonly id: string
+    readonly title: string
+    readonly prompt: string
+    readonly schedule:
+      | { readonly type: "once"; readonly at: number }
+      | { readonly type: "interval"; readonly everyMs: number }
+      | {
+          readonly type: "fixed_time"
+          readonly timeOfDay: string
+          readonly timeZone: string
+          readonly weekdays: ReadonlyArray<number>
+        }
+  }["id"]
+  readonly title: {
+    readonly id: string
+    readonly title: string
+    readonly prompt: string
+    readonly schedule:
+      | { readonly type: "once"; readonly at: number }
+      | { readonly type: "interval"; readonly everyMs: number }
+      | {
+          readonly type: "fixed_time"
+          readonly timeOfDay: string
+          readonly timeZone: string
+          readonly weekdays: ReadonlyArray<number>
+        }
+  }["title"]
+  readonly prompt: {
+    readonly id: string
+    readonly title: string
+    readonly prompt: string
+    readonly schedule:
+      | { readonly type: "once"; readonly at: number }
+      | { readonly type: "interval"; readonly everyMs: number }
+      | {
+          readonly type: "fixed_time"
+          readonly timeOfDay: string
+          readonly timeZone: string
+          readonly weekdays: ReadonlyArray<number>
+        }
+  }["prompt"]
+  readonly schedule: {
+    readonly id: string
+    readonly title: string
+    readonly prompt: string
+    readonly schedule:
+      | { readonly type: "once"; readonly at: number }
+      | { readonly type: "interval"; readonly everyMs: number }
+      | {
+          readonly type: "fixed_time"
+          readonly timeOfDay: string
+          readonly timeZone: string
+          readonly weekdays: ReadonlyArray<number>
+        }
+  }["schedule"]
+}
+
+export type AutomationCreateOutput = { data: AutomationInfo }["data"]
+
+export type AutomationControlInput = {
+  readonly sessionID: { readonly sessionID: string; readonly automationID: string }["sessionID"]
+  readonly automationID: { readonly sessionID: string; readonly automationID: string }["automationID"]
+  readonly enabled: { readonly enabled: boolean }["enabled"]
+}
+
+export type AutomationControlOutput = { data: AutomationInfo }["data"]
+
+export type AutomationRunInput = {
+  readonly sessionID: { readonly sessionID: string; readonly automationID: string }["sessionID"]
+  readonly automationID: { readonly sessionID: string; readonly automationID: string }["automationID"]
+  readonly id: { readonly id: string }["id"]
+}
+
+export type AutomationRunOutput = { data: AutomationRun }["data"]
+
+export type AutomationHistoryInput = {
+  readonly sessionID: { readonly sessionID: string; readonly automationID: string }["sessionID"]
+  readonly automationID: { readonly sessionID: string; readonly automationID: string }["automationID"]
+}
+
+export type AutomationHistoryOutput = { data: Array<AutomationRun> }["data"]
+
+export type AutomationRemoveInput = {
+  readonly sessionID: { readonly sessionID: string; readonly automationID: string }["sessionID"]
+  readonly automationID: { readonly sessionID: string; readonly automationID: string }["automationID"]
+}
+
+export type AutomationRemoveOutput = void
 
 export type LocationGetInput = {
   readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]
@@ -11856,13 +12015,26 @@ export type HarnessOpenInput = {
     readonly driver: "claude" | "codex"
     readonly directory: string
     readonly model?: string
+    readonly backgroundWait?: boolean
   }["driver"]
   readonly directory: {
     readonly driver: "claude" | "codex"
     readonly directory: string
     readonly model?: string
+    readonly backgroundWait?: boolean
   }["directory"]
-  readonly model?: { readonly driver: "claude" | "codex"; readonly directory: string; readonly model?: string }["model"]
+  readonly model?: {
+    readonly driver: "claude" | "codex"
+    readonly directory: string
+    readonly model?: string
+    readonly backgroundWait?: boolean
+  }["model"]
+  readonly backgroundWait?: {
+    readonly driver: "claude" | "codex"
+    readonly directory: string
+    readonly model?: string
+    readonly backgroundWait?: boolean
+  }["backgroundWait"]
 }
 
 export type HarnessOpenOutput = HarnessRun

@@ -1,10 +1,13 @@
 import { describe, expect, test } from "bun:test"
+import { fileURLToPath } from "node:url"
 import { DateTime, Schema } from "effect"
 import { Agent } from "../src/agent.js"
+import { Automation } from "../src/automation.js"
 import { ConfigAgent } from "../src/config/agent.js"
 import { ConfigProvider } from "../src/config/provider.js"
 import { FileSystem } from "../src/filesystem.js"
 import { Form } from "../src/form.js"
+import { Harness } from "../src/harness.js"
 import { Mcp } from "../src/mcp.js"
 import { Model } from "../src/model.js"
 import { Project } from "../src/project.js"
@@ -24,6 +27,31 @@ import { PersistedRevert } from "../src/session-revert.js"
 import { AbsolutePath, optional } from "../src/schema.js"
 
 describe("contract hygiene", () => {
+  test("native harness task timestamps remain JSON numbers and optional lineage fields omit undefined", () => {
+    const task = {
+      id: "native-task",
+      kind: "monitor" as const,
+      status: "running" as const,
+      title: "Observe build",
+      output: "",
+      truncated: false,
+      updatedAt: 1793016005000,
+    }
+    expect(Schema.encodeSync(Harness.Task)({ ...task, parentTaskID: undefined, outputFile: undefined })).toEqual(task)
+    expect(Schema.decodeUnknownOption(Harness.Task)({ ...task, updatedAt: Infinity })._tag).toBe("None")
+    expect(Schema.decodeUnknownOption(Harness.Task)({ ...task, updatedAt: -1 })._tag).toBe("None")
+    expect(Schema.decodeUnknownSync(Harness.Task)(task)).toEqual(task)
+    const wait = {
+      id: "wait-native-task",
+      state: "timed_out" as const,
+      startedAt: 1793016005000,
+      deadlineAt: 1793016035000,
+      endedAt: 1793016035000,
+    }
+    expect(Schema.decodeUnknownSync(Harness.Task)({ ...task, wait })).toEqual({ ...task, wait })
+    expect(Schema.decodeUnknownOption(Harness.TaskWait)({ ...wait, deadlineAt: Infinity })._tag).toBe("None")
+  })
+
   test("restricts agent colors to six-digit hex values", () => {
     const decode = Schema.decodeUnknownSync(ConfigAgent.Color)
     expect(decode("#ff6b6b")).toBe("#ff6b6b")
@@ -169,6 +197,10 @@ describe("contract hygiene", () => {
   test("reusable public identifiers are stable and unique", () => {
     const identifiers = [
       Agent.Color,
+      Automation.Schedule,
+      Automation.Input,
+      Automation.Info,
+      Automation.Run,
       ConfigProvider.ModelSettings,
       ConfigProvider.Settings,
       FileSystem.Submatch,
@@ -176,6 +208,8 @@ describe("contract hygiene", () => {
       Form.Fields,
       Form.Info,
       Form.ExternalField,
+      Harness.Task,
+      Harness.TaskWait,
       Mcp.Resource,
       Mcp.ResourceTemplate,
       Mcp.ResourceCatalog,
@@ -233,7 +267,13 @@ describe("contract hygiene", () => {
   test("a compaction item carries an optional focus and still decodes without one", () => {
     const decode = Schema.decodeUnknownSync(SessionInbox.Info)
     const encode = Schema.encodeSync(SessionInbox.CompactionPayload)
-    const base = { id: "msg_inbox", sessionID: "ses_inbox", time: { created: 1 }, type: "compaction", delivery: "steer" }
+    const base = {
+      id: "msg_inbox",
+      sessionID: "ses_inbox",
+      time: { created: 1 },
+      type: "compaction",
+      delivery: "steer",
+    }
     expect(decode({ ...base, payload: {} })).toMatchObject({ payload: {} })
     expect(decode({ ...base, payload: { focus: "the migration" } })).toMatchObject({
       payload: { focus: "the migration" },
@@ -242,7 +282,7 @@ describe("contract hygiene", () => {
   })
 
   test("current source limits Any to reviewed boundaries and avoids mutable contract wrappers", async () => {
-    const files = [...new Bun.Glob("*.ts").scanSync(new URL("../src", import.meta.url).pathname)].filter(
+    const files = [...new Bun.Glob("*.ts").scanSync(fileURLToPath(new URL("../src", import.meta.url)))].filter(
       (file) => !file.endsWith("-v1.ts"),
     )
     const sources = await Promise.all(

@@ -12,8 +12,8 @@ export interface IconGlyphProps extends SVGAttributes<SVGSVGElement>, RefAttribu
 }
 export type IconGlyph = ForwardRefExoticComponent<IconGlyphProps>;
 export interface IconProps extends Omit<ComponentPropsWithRef<"svg">, "color" | "height" | "stroke" | "strokeWidth" | "width"> {
-    /** Consumer-supplied Lucide glyph, or the built-in navigation menu without the optional icon package. */
-    icon: IconGlyph | "menu";
+    /** Consumer-supplied Lucide glyph, or a built-in navigation glyph without the optional icon package. */
+    icon: IconGlyph | "menu" | "chevron-down";
     /** Density-responsive DS size. */
     size?: IconSize;
     /** Semantic Theme ink role. The deprecated muted alias draws in ink-muted. */

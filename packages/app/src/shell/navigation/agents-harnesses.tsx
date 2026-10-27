@@ -32,6 +32,7 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
     driver: "redcode" as Harness.Driver | "redcode",
     directory: "",
     model: "",
+    backgroundWait: false,
     executable: { claude: "", codex: "" },
     busy: false,
     error: "",
@@ -227,6 +228,9 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                         {language.t("harness.reconcile")}
                       </Button>
                     </section>
+                  </Show>
+                  <Show when={result().run.backgroundWait}>
+                    <p class="text-ink-muted">{language.t("harness.backgroundWaitEnabled")}</p>
                   </Show>
                   <Show when={result().requests.length}>
                     <section
@@ -491,6 +495,7 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                       driver: state.driver,
                       directory: directory(),
                       ...(state.model.trim() ? { model: state.model.trim() } : {}),
+                      ...(state.backgroundWait ? { backgroundWait: true } : {}),
                     })
                     if (lifetime.active) inspect(run.id)
                   })
@@ -534,6 +539,20 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                   </Show>
                   <Show when={state.driver === "redcode"}>
                     <p class="text-ink-muted">{language.t("harness.native.description")}</p>
+                  </Show>
+                  <Show when={state.driver !== "redcode"}>
+                    <div class="@md/harness-workspace:col-span-2">
+                      <label class="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={state.backgroundWait}
+                          disabled={state.busy}
+                          onChange={(event) => setState("backgroundWait", event.currentTarget.checked)}
+                        />
+                        {language.t("harness.backgroundWait")}
+                      </label>
+                      <p class="mt-1 text-ink-muted">{language.t("harness.backgroundWaitNote")}</p>
+                    </div>
                   </Show>
                   <label class="@md/harness-workspace:col-span-2">
                     {language.t("harness.directory")}

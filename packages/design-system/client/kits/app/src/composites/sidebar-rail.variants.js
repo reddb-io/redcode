@@ -46,7 +46,7 @@ const sidebarRail = tv({
         // Let the whole item establish the badge's containing block. Presence
         // stays relative to the face through its own Indicator.
         badgeAnchor: "static [&>[data-indicator-marker]]:end-[calc(var(--reddb-spatial-gap-sm)/2)] [&>[data-indicator-marker]]:top-[calc(var(--reddb-spatial-gap-sm)/2)] [&>[data-indicator-marker]]:translate-x-0 [&>[data-indicator-marker]]:translate-y-0",
-        list: "[&_[data-tooltip-root]]:w-full"
+        list: "gap-[var(--reddb-spatial-layout-gap-sm)] [&_[data-tooltip-root]]:w-full"
       }
     }
   },

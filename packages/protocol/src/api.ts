@@ -34,6 +34,7 @@ import { VcsGroup } from "./groups/vcs.js"
 import { ConfigGroup } from "./groups/config.js"
 import { IntelligenceGroup } from "./groups/intelligence.js"
 import { HookGroup } from "./groups/hook.js"
+import { makeAutomationGroup } from "./groups/automation.js"
 import { LSPGroup } from "./groups/lsp.js"
 import { FormatterGroup } from "./groups/formatter.js"
 import { WorkersGroup } from "./groups/workers.js"
@@ -101,6 +102,7 @@ type ApiGroups<
   Event extends HttpApiGroup.Constraint,
 > =
   | typeof ServerGroup
+  | ReturnType<typeof makeAutomationGroup<SessionLocationId, SessionLocationService>>
   | typeof DebugGroup
   | typeof WorktreeGroup
   | typeof GenerateGroup
@@ -180,6 +182,7 @@ const makeApiFromGroup = <
 > =>
   HttpApi.make("server")
     .add(ServerGroup)
+    .add(makeAutomationGroup(sessionLocationMiddleware))
     .add(makeLocationGroup(locationMiddleware))
     .add(AgentGroup.middleware(locationMiddleware))
     .add(PluginGroup.middleware(locationMiddleware))

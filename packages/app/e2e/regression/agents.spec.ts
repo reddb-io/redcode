@@ -323,6 +323,9 @@ test("starts a native Claude harness and preserves question input across host re
   await expect(workspace.getByRole("button", { name: "Sessions", exact: true })).toHaveCount(0)
   await chooseSearchOption(page, workspace.getByRole("button", { name: /, Coding agent$/ }), "Claude Code")
   await workspace.getByLabel("Checkout directory on this host", { exact: true }).fill(fixture.directory)
+  const backgroundWait = workspace.getByRole("checkbox", { name: "Enable native background wait tool", exact: true })
+  await expect(backgroundWait).not.toBeChecked()
+  await backgroundWait.check()
   await workspace.getByRole("tab", { name: "Agent setup", exact: true }).click()
   const executable = workspace
     .getByRole("article", { name: "Claude Code", exact: true })
@@ -340,7 +343,12 @@ test("starts a native Claude harness and preserves question input across host re
     (response) => new URL(response.url()).pathname === "/api/harness/runs" && response.request().method() === "POST",
   )
   await workspace.getByRole("button", { name: "Start harness", exact: true }).click()
-  expect((await opened).request().postDataJSON()).toEqual({ driver: "claude", directory: fixture.directory })
+  expect((await opened).request().postDataJSON()).toEqual({
+    driver: "claude",
+    directory: fixture.directory,
+    backgroundWait: true,
+  })
+  await expect(workspace).toContainText("Native background wait tool enabled")
   await expect(workspace.getByRole("log", { name: "Harness output" })).toContainText("Native harness output")
   await expect(
     workspace.getByLabel("Delivery", { exact: true }).getByRole("option", { name: "Steer active execution" }),
@@ -1406,6 +1414,10 @@ test("shows unknown initial CPU usage and hides stale resources after a failed r
     "aria-valuenow",
     "75",
   )
+  await expect(
+    host.getByRole("meter", { name: "RAM available / limit", exact: true }).locator("[data-radial-progress] > svg"),
+  ).toBeVisible()
+  await expect(host.getByRole("progressbar")).toHaveCount(0)
   await host.getByRole("combobox", { name: "Time window", exact: true }).selectOption("60000")
   for (const percent of [25, 42, 36, 58, 44, 31]) {
     resources.cpu.utilization = percent / 100
@@ -1423,6 +1435,20 @@ test("shows unknown initial CPU usage and hides stale resources after a failed r
     await expect(host.getByText(`${percent}%`, { exact: true })).toBeVisible()
   }
   await page.screenshot({ path: test.info().outputPath("host-resource-meters.png"), animations: "disabled" })
+  const stale = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === "/api/resources" && response.status() === 200,
+  )
+  await page.clock.fastForward(20000)
+  await stale
+  await expect(host.getByRole("alert")).toContainText("Previous measurements are not live")
+  await expect(host.getByRole("meter")).toHaveCount(0)
+  resources.sampledAt += 25000
+  const recovered = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === "/api/resources" && response.status() === 200,
+  )
+  await page.clock.fastForward(5000)
+  await recovered
+  await expect(host.getByRole("meter", { name: "CPU usage", exact: true })).toBeVisible()
   const failed = page.waitForResponse(
     (response) => new URL(response.url()).pathname === "/api/resources" && response.status() === 503,
   )
@@ -1882,30 +1908,123 @@ test("shows native daily usage with linked charts, explicit coverage and project
   await expect(
     workspace.getByText("Accounting records: 1 reported, 1 estimated, 1 unknown, 0 legacy.", { exact: true }),
   ).toBeVisible()
+  const coverage = workspace.getByRole("region", { name: "Cost coverage", exact: true })
+  const ring = coverage.getByRole("progressbar", { name: "Reported or estimated records", exact: true })
+  await expect(ring).toHaveAttribute("aria-valuenow", "2")
+  await expect(ring).toHaveAttribute("aria-valuemax", "3")
+  await expect(ring).toHaveAttribute("aria-valuetext", "66.7%")
+  const distribution = workspace.getByRole("region", { name: "Token distribution", exact: true })
+  const input = distribution.getByRole("button", { name: /^Input/ })
+  await expect(input).toContainText("100")
+  await input.click()
+  await expect(input).toHaveAttribute("aria-pressed", "true")
+  await input.click()
+  await expect(input).toHaveAttribute("aria-pressed", "false")
   await expect(workspace.getByRole("table", { name: "Daily native usage" }).getByRole("row")).toHaveCount(3)
-  const cost = workspace.getByRole("slider", { name: "Explore Cost (USD)", exact: true })
-  const tokens = workspace.getByRole("slider", { name: "Explore Tokens", exact: true })
+  const activity = workspace.getByRole("region", { name: "Activity", exact: true })
+  const costs = workspace.getByRole("region", { name: "Cost composition", exact: true })
+  const cost = costs.getByRole("slider", { name: "Explore Cost composition", exact: true })
+  const tokens = activity.getByRole("slider", { name: "Explore Activity", exact: true })
+  await expect(workspace.getByRole("slider", { name: /^Explore / })).toHaveCount(2)
+  await activity.getByRole("button", { name: "Maximize Activity", exact: true }).click()
+  const expanded = page.getByRole("dialog", { name: "Activity", exact: true })
+  await expect(expanded).toBeVisible()
+  await expect(expanded).toContainText("Steps (left) · Tokens (right)")
+  await expanded.getByRole("button", { name: "Close", exact: true }).click()
+  await expect(expanded).toBeHidden()
+  await costs.getByRole("button", { name: "Maximize Cost composition", exact: true }).click()
+  const expandedCosts = page.getByRole("dialog", { name: "Cost composition", exact: true })
+  await expect(expandedCosts).toContainText("Cost (USD) (left)")
+  await expandedCosts.getByRole("button", { name: "Close", exact: true }).click()
+  await expect(expandedCosts).toBeHidden()
   await expect(cost.locator("svg")).toBeVisible()
+  await expect(tokens.locator("svg")).toBeVisible()
+  await expect(cost.locator('[data-composite-kind="column"]')).toHaveCount(2)
+  await expect(cost.locator('[data-composite-kind="line"]')).toHaveCount(1)
   await cost.focus()
   await cost.press("Home")
   await expect(tokens).toHaveAttribute("aria-valuenow", "0")
+  await expect(tokens).toHaveAttribute("aria-valuetext", /Steps: 1.*Tokens: 80/)
+  await expect(activity.getByRole("button", { name: "Tokens", exact: true })).toContainText("80")
   await cost.press("End")
   await expect(tokens).toHaveAttribute("aria-valuenow", "1")
-  await workspace.getByLabel("Period", { exact: true }).selectOption("30")
+  await expect(tokens).toHaveAttribute("aria-valuetext", /Steps: 1.*Tokens: 40/)
+  await expect(activity.getByRole("button", { name: "Tokens", exact: true })).toContainText("40")
+  await expect(cost).toHaveAttribute(
+    "aria-valuetext",
+    /opencode\/native-test: \$0\.60.*Not attributed to a model: \$0\.15.*Total cost: \$0\.75/,
+  )
+  const model = costs.getByRole("button", { name: "opencode/native-test", exact: true })
+  await model.click()
+  await expect(model).toHaveAttribute("aria-pressed", "false")
+  await expect(cost).toHaveAttribute("aria-valuetext", /Total cost: \$0\.75/)
+  await expect(cost).not.toHaveAttribute("aria-valuetext", /opencode\/native-test/)
+  await model.click()
+  await expect(model).toHaveAttribute("aria-pressed", "true")
+  await cost.press("Escape")
+  await workspace.getByRole("button", { name: "Last thirty days", exact: true }).click()
+  await expect(workspace.getByRole("button", { name: "Last thirty days", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  )
   await workspace.getByLabel("Project", { exact: true }).selectOption(fixture.project.id)
   await expect.poll(() => usage.requests.at(-1)?.searchParams.get("project")).toBe(fixture.project.id)
   expect(usage.requests.at(-1)?.searchParams.get("series")).toBe("daily")
+  usage.state.history = true
+  const history = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === "/api/experimental/session/stats",
+  )
+  await workspace.getByRole("button", { name: "Refresh", exact: true }).click()
+  await history
+  await expect(workspace.getByRole("table", { name: "Daily native usage" }).getByRole("row")).toHaveCount(15)
+  await expect(cost.locator('[data-composite-kind="column"]')).toHaveCount(4)
+  await expect(ring).toHaveAttribute("aria-valuetext", "93.3%")
+  await expect(workspace.getByText("4.8M", { exact: true })).toBeVisible()
+  await expect(costs.getByRole("button", { name: "anthropic/claude-sonnet", exact: true })).toBeVisible()
+  await workspace.getByRole("button", { name: "Refresh", exact: true }).hover()
   for (const viewport of [
-    { width: 1440, height: 900 },
-    { width: 390, height: 844 },
+    { width: 1440, height: 900, colorScheme: "light" as const },
+    { width: 1440, height: 900, colorScheme: "dark" as const },
+    { width: 1024, height: 900, colorScheme: "dark" as const },
+    { width: 390, height: 844, colorScheme: "dark" as const },
   ]) {
-    await page.emulateMedia({ colorScheme: viewport.width < 500 ? "dark" : "light", reducedMotion: "reduce" })
+    await page.emulateMedia({ colorScheme: viewport.colorScheme, reducedMotion: "reduce" })
     await page.setViewportSize(viewport)
     await expect(workspace.getByRole("table", { name: "Daily native usage" })).toBeVisible()
     await expect.poll(() => workspace.evaluate((element) => element.scrollWidth - element.clientWidth)).toBe(0)
     await page.screenshot({
-      path: test.info().outputPath(`native-usage-${viewport.width}.png`),
+      path: test.info().outputPath(`native-usage-${viewport.width}-${viewport.colorScheme}.png`),
       animations: "disabled",
     })
   }
+  usage.state.history = false
+  for (const next of [
+    { reported: 0, estimated: 0, unknown: 3, legacy: 0 },
+    { reported: 0, estimated: 0, unknown: 0, legacy: 0 },
+    undefined,
+  ]) {
+    usage.state.coverage = next
+    const refreshed = page.waitForResponse(
+      (response) => new URL(response.url()).pathname === "/api/experimental/session/stats",
+    )
+    await workspace.getByRole("button", { name: "Refresh", exact: true }).click()
+    await refreshed
+    if (next?.unknown) {
+      await expect(ring).toHaveAttribute("aria-valuenow", "0")
+      await expect(ring).toHaveAttribute("aria-valuemax", "3")
+      await expect(ring).toHaveAttribute("aria-valuetext", "0%")
+      continue
+    }
+    await expect(coverage).toContainText("No accounting coverage is available for this period.")
+    await expect(ring).toHaveCount(0)
+  }
+  await expect(workspace.getByText("Accounting records:", { exact: false })).toHaveCount(0)
+  usage.state.fail = true
+  const unavailable = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === "/api/experimental/session/stats" && response.status() === 503,
+  )
+  await workspace.getByRole("button", { name: "Refresh", exact: true }).click()
+  await unavailable
+  await expect(workspace.getByRole("alert")).toContainText("Usage could not be refreshed")
+  await expect(ring).toHaveCount(0)
 })

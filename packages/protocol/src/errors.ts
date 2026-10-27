@@ -19,6 +19,12 @@ export class InvalidRequestError extends Schema.TaggedError<InvalidRequestError>
   { httpApiStatus: 400 },
 ) {}
 
+export class AutomationNotFoundError extends Schema.TaggedError<AutomationNotFoundError>()(
+  "AutomationNotFoundError",
+  { message: Schema.String },
+  { httpApiStatus: 404 },
+) {}
+
 export class RpcError extends Schema.TaggedError<RpcError>()(
   "RpcError",
   {

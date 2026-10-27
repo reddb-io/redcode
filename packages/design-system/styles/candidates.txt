@@ -1180,6 +1180,7 @@ checked:before:translate-x-[calc(var(--reddb-spatial-switch-track-height)*0.75)]
 checkout
 checkoutForm
 checks
+chevron-down
 child
 childNodes
 childRanges
@@ -2867,6 +2868,7 @@ gap-[var(--reddb-spatial-layout-gap-lg)]
 gap-[var(--reddb-spatial-layout-gap-md)]
 gap-[var(--reddb-spatial-layout-gap-sm)]
 gap-[var(--reddb-spatial-section-gap)]
+gap-md
 gap-sm
 gap-x-[var(--reddb-spatial-gap-lg)]
 gap-x-[var(--reddb-spatial-gap-md)]
@@ -3163,6 +3165,7 @@ hydration
 i
 icon
 icon-only
+icon/initials
 iconColor
 iconSize
 icons
@@ -3425,6 +3428,7 @@ label
 label:string
 labelAnchor
 labelColor
+labelGap
 labelHidden
 labelId
 labelLayout
@@ -3622,6 +3626,7 @@ m
 m-0
 m-[var(--reddb-spatial-gap-sm)]
 m-auto
+m6
 machine
 machine-readable
 made

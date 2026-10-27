@@ -228,7 +228,9 @@ function Resources(props: {
   const history = sharedSource(() => ({
     language: sharedLanguage(language),
     sample: query.data,
-    available: props.connected && !query.isError,
+    // Reevaluate freshness on every completed poll, including identical cached payloads.
+    available:
+      props.connected && !query.isError && (!query.data || query.dataUpdatedAt - query.data.sampledAt <= 15_000),
     identity: props.cacheKey,
     connected: props.connected,
     loading: query.isPending,

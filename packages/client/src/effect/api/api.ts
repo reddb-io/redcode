@@ -3,10 +3,11 @@ import type { Effect, Stream } from "effect"
 import type { RemoteAccess } from "@opencode/schema/remote-access"
 import type { HostResources } from "@opencode/schema/host-resources"
 import type { Attention } from "@opencode/schema/attention"
+import type { Session } from "@opencode/schema/session"
+import type { Automation } from "@opencode/schema/automation"
 import type { Location } from "@opencode/schema/location"
 import type { Agent } from "@opencode/schema/agent"
 import type { Plugin } from "@opencode/schema/plugin"
-import type { Session } from "@opencode/schema/session"
 import type { AbsolutePath } from "@opencode/schema/schema"
 import type { Brand } from "effect"
 import type { Project } from "@opencode/schema/project"
@@ -137,6 +138,61 @@ export interface ServerApi<E = never> {
   readonly pair: ServerPairOperation<E>
   readonly cancelPair: ServerCancelPairOperation<E>
   readonly connect: ServerConnectOperation<E>
+}
+
+export type AutomationListInput = { readonly sessionID: Session.ID }
+export type AutomationListOutput = ReadonlyArray<Automation.Info>
+export type AutomationListOperation<E = never> = (input: AutomationListInput) => Effect.Effect<AutomationListOutput, E>
+
+export type AutomationCreateInput = {
+  readonly sessionID: Session.ID
+  readonly id: Automation.ID
+  readonly title: string
+  readonly prompt: string
+  readonly schedule: Automation.Schedule
+}
+export type AutomationCreateOutput = Automation.Info
+export type AutomationCreateOperation<E = never> = (
+  input: AutomationCreateInput,
+) => Effect.Effect<AutomationCreateOutput, E>
+
+export type AutomationControlInput = {
+  readonly sessionID: Session.ID
+  readonly automationID: Automation.ID
+  readonly enabled: boolean
+}
+export type AutomationControlOutput = Automation.Info
+export type AutomationControlOperation<E = never> = (
+  input: AutomationControlInput,
+) => Effect.Effect<AutomationControlOutput, E>
+
+export type AutomationRunInput = {
+  readonly sessionID: Session.ID
+  readonly automationID: Automation.ID
+  readonly id: Automation.RunID
+}
+export type AutomationRunOutput = Automation.Run
+export type AutomationRunOperation<E = never> = (input: AutomationRunInput) => Effect.Effect<AutomationRunOutput, E>
+
+export type AutomationHistoryInput = { readonly sessionID: Session.ID; readonly automationID: Automation.ID }
+export type AutomationHistoryOutput = ReadonlyArray<Automation.Run>
+export type AutomationHistoryOperation<E = never> = (
+  input: AutomationHistoryInput,
+) => Effect.Effect<AutomationHistoryOutput, E>
+
+export type AutomationRemoveInput = { readonly sessionID: Session.ID; readonly automationID: Automation.ID }
+export type AutomationRemoveOutput = void
+export type AutomationRemoveOperation<E = never> = (
+  input: AutomationRemoveInput,
+) => Effect.Effect<AutomationRemoveOutput, E>
+
+export interface AutomationApi<E = never> {
+  readonly list: AutomationListOperation<E>
+  readonly create: AutomationCreateOperation<E>
+  readonly control: AutomationControlOperation<E>
+  readonly run: AutomationRunOperation<E>
+  readonly history: AutomationHistoryOperation<E>
+  readonly remove: AutomationRemoveOperation<E>
 }
 
 export type LocationGetInput = { readonly location?: { readonly directory?: string | undefined } | undefined }
@@ -6468,6 +6524,7 @@ export type HarnessOpenInput = {
   readonly driver: Harness.Driver
   readonly directory: AbsolutePath
   readonly model?: string | undefined
+  readonly backgroundWait?: boolean | undefined
 }
 export type HarnessOpenOutput = Harness.Run
 export type HarnessOpenOperation<E = never> = (input: HarnessOpenInput) => Effect.Effect<HarnessOpenOutput, E>
@@ -6782,6 +6839,7 @@ export interface WorktreeLifecycleApi<E = never> {
 
 export interface AppApi<E = never> {
   readonly server: ServerApi<E>
+  readonly automation: AutomationApi<E>
   readonly location: LocationApi<E>
   readonly agent: AgentApi<E>
   readonly plugin: PluginApi<E>

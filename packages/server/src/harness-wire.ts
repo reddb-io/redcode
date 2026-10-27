@@ -94,6 +94,7 @@ export function wire(input: {
     input.frame(frame)
   })
   return {
+    available: () => !state.closed && stdin.writable,
     send,
     request(method: string, params: Frame, driver: "codex" | "claude") {
       const id = crypto.randomUUID()

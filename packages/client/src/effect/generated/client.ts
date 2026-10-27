@@ -18,6 +18,18 @@ import type {
   ServerCancelPairOutput,
   ServerConnectInput,
   ServerConnectOutput,
+  AutomationListInput,
+  AutomationListOutput,
+  AutomationCreateInput,
+  AutomationCreateOutput,
+  AutomationControlInput,
+  AutomationControlOutput,
+  AutomationRunInput,
+  AutomationRunOutput,
+  AutomationHistoryInput,
+  AutomationHistoryOutput,
+  AutomationRemoveInput,
+  AutomationRemoveOutput,
   LocationGetInput,
   LocationGetOutput,
   LocationReloadOutput,
@@ -591,6 +603,73 @@ const adaptGroupServer = (raw: RawClient["server.server"]) => ({
   pair: EndpointServerPair(raw),
   cancelPair: EndpointServerCancelPair(raw),
   connect: EndpointServerConnect(raw),
+})
+
+const EndpointAutomationList = (raw: RawClient["server.automation"]) => (input: AutomationListInput) =>
+  preserveEffect<AutomationListOutput>()(
+    raw["session.automation.list"]({ params: { sessionID: input["sessionID"] } }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
+const EndpointAutomationCreate = (raw: RawClient["server.automation"]) => (input: AutomationCreateInput) =>
+  preserveEffect<AutomationCreateOutput>()(
+    raw["session.automation.create"]({
+      params: { sessionID: input["sessionID"] },
+      payload: { id: input["id"], title: input["title"], prompt: input["prompt"], schedule: input["schedule"] },
+    }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
+const EndpointAutomationControl = (raw: RawClient["server.automation"]) => (input: AutomationControlInput) =>
+  preserveEffect<AutomationControlOutput>()(
+    raw["session.automation.control"]({
+      params: { sessionID: input["sessionID"], automationID: input["automationID"] },
+      payload: { enabled: input["enabled"] },
+    }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
+const EndpointAutomationRun = (raw: RawClient["server.automation"]) => (input: AutomationRunInput) =>
+  preserveEffect<AutomationRunOutput>()(
+    raw["session.automation.run"]({
+      params: { sessionID: input["sessionID"], automationID: input["automationID"] },
+      payload: { id: input["id"] },
+    }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
+const EndpointAutomationHistory = (raw: RawClient["server.automation"]) => (input: AutomationHistoryInput) =>
+  preserveEffect<AutomationHistoryOutput>()(
+    raw["session.automation.history"]({
+      params: { sessionID: input["sessionID"], automationID: input["automationID"] },
+    }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
+const EndpointAutomationRemove = (raw: RawClient["server.automation"]) => (input: AutomationRemoveInput) =>
+  preserveEffect<AutomationRemoveOutput>()(
+    raw["session.automation.remove"]({
+      params: { sessionID: input["sessionID"], automationID: input["automationID"] },
+    }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const adaptGroupAutomation = (raw: RawClient["server.automation"]) => ({
+  list: EndpointAutomationList(raw),
+  create: EndpointAutomationCreate(raw),
+  control: EndpointAutomationControl(raw),
+  run: EndpointAutomationRun(raw),
+  history: EndpointAutomationHistory(raw),
+  remove: EndpointAutomationRemove(raw),
 })
 
 const EndpointLocationGet = (raw: RawClient["server.location"]) => (input?: LocationGetInput) =>
@@ -2759,7 +2838,12 @@ const EndpointHarnessLoginStatus = (raw: RawClient["server.harness"]) => (input:
 const EndpointHarnessOpen = (raw: RawClient["server.harness"]) => (input: HarnessOpenInput) =>
   preserveEffect<HarnessOpenOutput>()(
     raw["harness.open"]({
-      payload: { driver: input["driver"], directory: input["directory"], model: input["model"] },
+      payload: {
+        driver: input["driver"],
+        directory: input["directory"],
+        model: input["model"],
+        backgroundWait: input["backgroundWait"],
+      },
     }).pipe(Effect.mapError(mapClientError)),
   )
 
@@ -3088,6 +3172,7 @@ const adaptGroupWorktreeLifecycle = (raw: RawClient["server.worktreeLifecycle"])
 
 const adaptClient = (raw: RawClient) => ({
   server: adaptGroupServer(raw["server.server"]),
+  automation: adaptGroupAutomation(raw["server.automation"]),
   location: adaptGroupLocation(raw["server.location"]),
   agent: adaptGroupAgent(raw["server.agent"]),
   plugin: adaptGroupPlugin(raw["server.plugin"]),

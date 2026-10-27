@@ -1,11 +1,14 @@
 /** @jsxImportSource react */
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react"
+import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react"
+import { Cpu, MemoryStick, Activity, Layers } from "lucide-react"
 import type { HostResourcesSnapshot } from "@opencode/client/promise"
 import { Button } from "@reddb-io/design-system/base/Button"
 import { Card } from "@reddb-io/design-system/base/Card"
 import { Statistic } from "@reddb-io/design-system/base/Statistic"
 import { Select } from "@reddb-io/design-system/base/Select"
-import { meter } from "@reddb-io/design-system/base/recipes"
+import { Icon } from "@reddb-io/design-system/base/Icon"
+import { RadialProgress } from "@reddb-io/design-system/base/RadialProgress"
+import type { ColorToken } from "@reddb-io/design-system/base/recipes"
 import { ErrorBoundary } from "@reddb-io/design-system/app/ErrorBoundary"
 import { CompositeChart } from "@reddb-io/design-system/data/CompositeChart"
 import { createChartStream } from "@reddb-io/design-system/data/stream"
@@ -38,7 +41,7 @@ export function HostHistory(props: {
   useEffect(() => {
     const sample = view.sample
     if (!sample) return
-    const stale = !view.available || Date.now() - sample.sampledAt > 15_000
+    const stale = !view.available
     stream.upsert({
       x: stale ? Date.now() : sample.sampledAt,
       cpu: stale || sample.cpu.utilization === null ? null : sample.cpu.utilization * 100,
@@ -57,14 +60,13 @@ export function HostHistory(props: {
     value === null
       ? language.t("agents.hosts.unknown")
       : language.t("agents.hosts.memoryValue", { value: (value / 1024 ** 3).toFixed(2) })
-  const track = meter()
   return (
     <ErrorBoundary
       title={language.t("usage.chartError")}
       retryLabel={language.t("common.retry")}
       resetKey={view.identity}
     >
-      <section aria-label={language.t("agents.hosts.history")} className="mb-4 min-w-0">
+      <section aria-label={language.t("agents.hosts.history")} className="@container/resources mb-4 min-w-0">
         {!view.available && (
           <div role="alert">
             <p>{language.t("agents.hosts.unavailable")}</p>
@@ -76,11 +78,15 @@ export function HostHistory(props: {
         {view.loading && view.available && <p role="status">{language.t("agents.loading")}</p>}
         {sample && (
           <>
-            <p className="text-caption text-ink-muted">{sample.platform}</p>
-            <div className="mb-3 grid min-w-0 grid-cols-2 gap-[var(--reddb-spatial-gap-lg)]">
-              <Card padding="md">
-                <div className="flex min-w-0 flex-col gap-3">
+            <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+              <h4 className="m-0 text-body font-medium">{language.t("agents.hosts.overview")}</h4>
+              <span className="text-caption text-ink-muted">{sample.platform}</span>
+            </div>
+            <div className="mb-3 grid min-w-0 gap-3 @sm/resources:grid-cols-2">
+              <Card padding="sm">
+                <div className="flex min-w-0 items-center justify-between gap-3">
                   <Statistic
+                    className="flex-1"
                     label={language.t("agents.hosts.cpu")}
                     value={
                       sample.cpu.utilization === null
@@ -94,22 +100,20 @@ export function HostHistory(props: {
                     animate
                   />
                   {sample.cpu.utilization !== null && (
-                    <div
-                      role="meter"
-                      aria-label={language.t("agents.hosts.cpu")}
-                      aria-valuemin={0}
-                      aria-valuemax={100}
-                      aria-valuenow={sample.cpu.utilization * 100}
-                      className={track.track({ class: "h-[2px]" })}
+                    <ResourceGauge
+                      label={language.t("agents.hosts.cpu")}
+                      value={sample.cpu.utilization * 100}
+                      color="--reddb-color-series-1"
                     >
-                      <div className={track.indicator()} style={{ width: `${sample.cpu.utilization * 100}%` }} />
-                    </div>
+                      <Icon icon={Cpu} size="md" />
+                    </ResourceGauge>
                   )}
                 </div>
               </Card>
-              <Card padding="md">
-                <div className="flex min-w-0 flex-col gap-3">
+              <Card padding="sm">
+                <div className="flex min-w-0 items-center justify-between gap-3">
                   <Statistic
+                    className="flex-1"
                     label={language.t("agents.hosts.runtimeMemory")}
                     value={sample.memory.freeBytes ?? language.t("agents.hosts.unknown")}
                     formatValue={() => bytes(sample.memory.freeBytes)}
@@ -122,36 +126,42 @@ export function HostHistory(props: {
                   {sample.memory.freeBytes !== null &&
                     sample.memory.totalBytes !== null &&
                     sample.memory.totalBytes > 0 && (
-                      <div
-                        role="meter"
-                        aria-label={language.t("agents.hosts.runtimeMemory")}
-                        aria-valuemin={0}
-                        aria-valuemax={100}
-                        aria-valuenow={(sample.memory.freeBytes / sample.memory.totalBytes) * 100}
-                        className={track.track({ class: "h-[2px]" })}
+                      <ResourceGauge
+                        label={language.t("agents.hosts.runtimeMemory")}
+                        value={(sample.memory.freeBytes / sample.memory.totalBytes) * 100}
+                        color="--reddb-color-series-2"
                       >
-                        <div
-                          className={track.indicator()}
-                          style={{ width: `${(sample.memory.freeBytes / sample.memory.totalBytes) * 100}%` }}
-                        />
-                      </div>
+                        <Icon icon={MemoryStick} size="md" />
+                      </ResourceGauge>
                     )}
                 </div>
               </Card>
-              <Card padding="md">
-                <Statistic
-                  label={language.t("agents.hosts.process")}
-                  value={sample.process.residentBytes}
-                  formatValue={() => bytes(sample.process.residentBytes)}
-                  animate
-                />
+              <Card padding="sm">
+                <div className="flex min-w-0 items-center justify-between gap-3">
+                  <Statistic
+                    className="flex-1"
+                    label={language.t("agents.hosts.process")}
+                    value={sample.process.residentBytes}
+                    formatValue={() => bytes(sample.process.residentBytes)}
+                    animate
+                  />
+                  <span aria-hidden="true" className="text-ink-muted">
+                    <Icon icon={Activity} size="lg" />
+                  </span>
+                </div>
               </Card>
-              <Card padding="md">
-                <Statistic
-                  label={language.t("agents.hosts.cores")}
-                  value={sample.cpu.count ?? language.t("agents.hosts.unknown")}
-                  animate
-                />
+              <Card padding="sm">
+                <div className="flex min-w-0 items-center justify-between gap-3">
+                  <Statistic
+                    className="flex-1"
+                    label={language.t("agents.hosts.cores")}
+                    value={sample.cpu.count ?? language.t("agents.hosts.unknown")}
+                    animate
+                  />
+                  <span aria-hidden="true" className="text-ink-muted">
+                    <Icon icon={Layers} size="lg" />
+                  </span>
+                </div>
               </Card>
             </div>
             <p className="text-caption text-ink-muted">
@@ -178,12 +188,14 @@ export function HostHistory(props: {
           </label>
           <p className="text-caption text-ink-muted">{language.t("agents.hosts.localHistory")}</p>
         </div>
-        <div className="grid min-w-0 gap-3 xl:grid-cols-2">
+        <div className="grid min-w-0 gap-3 @3xl/resources:grid-cols-2">
           <CompositeChart
             label={language.t("agents.hosts.cpu")}
-            layout="auto"
+            layout="dense"
             size="sm"
-            strokeWidth={1.25}
+            readout="overlay"
+            legend="hidden"
+            strokeWidth={1}
             activeX={activeX}
             onActiveXChange={setActiveX}
             timeRange={timeRange}
@@ -198,7 +210,8 @@ export function HostHistory(props: {
             data={[
               {
                 id: "cpu",
-                kind: "area",
+                kind: "line",
+                series: 1,
                 label: language.t("agents.hosts.cpu"),
                 data: snapshot.data.map((point) => ({ x: point.x, y: point.cpu })),
               },
@@ -206,9 +219,10 @@ export function HostHistory(props: {
           />
           <CompositeChart
             label={language.t("agents.hosts.historyMemory")}
-            layout="auto"
+            layout="dense"
             size="sm"
-            strokeWidth={1.25}
+            readout="overlay"
+            strokeWidth={1}
             activeX={activeX}
             onActiveXChange={setActiveX}
             timeRange={timeRange}
@@ -222,13 +236,15 @@ export function HostHistory(props: {
             data={[
               {
                 id: "memory",
-                kind: "area",
+                kind: "line",
+                series: 2,
                 label: language.t("agents.hosts.usedMemory"),
                 data: snapshot.data.map((point) => ({ x: point.x, y: point.memory })),
               },
               {
                 id: "process",
                 kind: "line",
+                series: 3,
                 label: language.t("agents.hosts.process"),
                 data: snapshot.data.map((point) => ({ x: point.x, y: point.process })),
               },
@@ -237,5 +253,22 @@ export function HostHistory(props: {
         </div>
       </section>
     </ErrorBoundary>
+  )
+}
+
+/** Resource utilization is exposed as a meter; the radial supplies decorative geometry. */
+function ResourceGauge(props: { label: string; value: number; color: ColorToken; children: ReactNode }) {
+  return (
+    <div role="meter" aria-label={props.label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={props.value}>
+      <RadialProgress
+        aria-hidden="true"
+        label={props.label}
+        value={props.value}
+        diameter={44}
+        thickness={0.05}
+        color={props.color}
+        center={() => props.children}
+      />
+    </div>
   )
 }

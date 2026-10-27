@@ -31,6 +31,7 @@ import { EventFeed } from "./event-feed"
 import { ConfigHandler } from "./handlers/config"
 import { IntelligenceHandler } from "./handlers/intelligence"
 import { HookHandler } from "./handlers/hook"
+import { AutomationHandler } from "./handlers/automation"
 import { LSPHandler } from "./handlers/lsp"
 import { FormatterHandler } from "./handlers/formatter"
 import { WorkersHandler } from "./handlers/workers"
@@ -74,6 +75,7 @@ export const handlers = Layer.mergeAll(
   ConfigHandler,
   IntelligenceHandler,
   HookHandler,
+  AutomationHandler,
   LSPHandler,
   FormatterHandler,
   WorkersHandler,

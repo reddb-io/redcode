@@ -30,6 +30,12 @@ the project tree. **Delivery** beside the conversation follows its objective, ag
 recorded task completion and verification, with access to change review.
 Its **Resources** tab keeps PR references and explicitly linked Claude/Codex runs together;
 **Skills** previews checkout instructions and loads a selected skill without starting execution.
+**Hooks** reviews project lifecycle handlers and their approval; **Automations** schedules prompts
+in the current conversation once, at an interval or by weekday and time zone, with pause,
+manual execution and admission history.
+**Monitors** inspects local observations and the native tasks of explicitly linked Claude/Codex
+harnesses, preserving their reported identity and state. External runs can optionally expose a
+bounded background wait tool, with its latest observation visible in the task inspector.
 Choose **Dense**, **Compact** or **Comfortable** under **Settings → Appearance → Desktop density**.
 Dense is the default on wider screens; the setting changes spacing and controls while keeping text sizes.
 [Session workspace](docs/agent-features.md#session-workspace).
@@ -44,8 +50,9 @@ browser shortcut. [Remote access and mobile installation](docs/remote-access.md#
 
 Open **Agents** in the siderail to follow sessions across hosts, answer requests in **Inbox**, inspect
 **Hosts and resources**, or manage **Remote workers**. Host charts share a cursor and time window,
-with a bounded history collected while the view is open. **Usage and costs** shows native usage by
-project and day, with reported, estimated and unknown cost coverage. This workspace shows agent
+with thin CPU/RAM gauges and a bounded history collected while the view is open.
+**Usage and costs** combines KPI trends, token distribution and daily charts by project,
+with reported, estimated and unknown cost coverage. This workspace shows agent
 metadata; opening a session loads its conversation. [Agents workspace](docs/agent-features.md#agents-workspace).
 
 **Tasks** follows a session's shared objective, prerequisite acceptance and delegated contributions.

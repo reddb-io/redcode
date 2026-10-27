@@ -9,7 +9,7 @@ import symbolKnockout from "./marks/reddb-symbol-knockout.svg.js";
 import symbolWhite from "./marks/reddb-symbol-white.svg.js";
 import wordmarkBlack from "./marks/reddb-wordmark-black.svg.js";
 import wordmarkWhite from "./marks/reddb-wordmark-white.svg.js";
-const BRAND_RELEASE = "2026.10.1";
+const BRAND_RELEASE = "2026.10.3";
 const LOGO_LAYOUTS = ["horizontal", "stacked", "icon", "symbol", "wordmark"];
 const LOGO_SURFACES = ["light", "dark"];
 const MARKS = {

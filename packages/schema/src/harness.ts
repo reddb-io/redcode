@@ -25,6 +25,7 @@ export const Open = Schema.Struct({
   driver: Driver,
   directory: AbsolutePath,
   model: optional(Schema.NonEmptyString),
+  backgroundWait: optional(Schema.Boolean),
 }).annotate({ identifier: "Harness.Open" })
 export interface Open extends Schema.Schema.Type<typeof Open> {}
 export const State = Schema.Literals([
@@ -48,6 +49,7 @@ export const Run = Schema.Struct({
   createdAt: Schema.String,
   detail: optional(Schema.String),
   queued: Schema.Int,
+  backgroundWait: optional(Schema.Boolean),
   capabilities: Schema.Struct({ steer: Schema.Boolean, resume: Schema.Boolean, interrupt: Schema.Boolean }),
 }).annotate({ identifier: "Harness.Run" })
 export interface Run extends Schema.Schema.Type<typeof Run> {}
@@ -71,10 +73,36 @@ export const Event = Schema.Struct({
   text: Schema.String,
 }).annotate({ identifier: "Harness.Event" })
 export interface Event extends Schema.Schema.Type<typeof Event> {}
+const Timestamp = Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 8_640_000_000_000_000 }))
+export const TaskWait = Schema.Struct({
+  id: Schema.NonEmptyString,
+  state: Schema.Literals(["waiting", "settled", "timed_out", "cancelled", "unavailable"]),
+  startedAt: Timestamp,
+  deadlineAt: Timestamp,
+  endedAt: optional(Timestamp),
+}).annotate({ identifier: "Harness.TaskWait" })
+export interface TaskWait extends Schema.Schema.Type<typeof TaskWait> {}
+export const Task = Schema.Struct({
+  id: Schema.NonEmptyString,
+  kind: Schema.Literals(["monitor", "command", "agent", "unknown"]),
+  status: Schema.Literals(["running", "succeeded", "failed", "cancelled", "unknown"]),
+  nativeType: optional(Schema.String),
+  toolUseID: optional(Schema.String),
+  parentTaskID: optional(Schema.String),
+  processID: optional(Schema.String),
+  title: Schema.String,
+  output: Schema.String,
+  outputFile: optional(Schema.String),
+  truncated: Schema.Boolean,
+  updatedAt: Timestamp,
+  wait: optional(TaskWait),
+}).annotate({ identifier: "Harness.Task" })
+export interface Task extends Schema.Schema.Type<typeof Task> {}
 export const Detail = Schema.Struct({
   run: Run,
   events: Schema.Array(Event),
   requests: Schema.Array(Request),
+  tasks: optional(Schema.Array(Task)),
 }).annotate({ identifier: "Harness.Detail" })
 export interface Detail extends Schema.Schema.Type<typeof Detail> {}
 export const Snapshot = Schema.Struct({ providers: Schema.Array(Provider), runs: Schema.Array(Run) }).annotate({

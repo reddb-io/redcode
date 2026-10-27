@@ -1,6 +1,6 @@
 function sidebarRailSizing(sizing, labelled = false) {
-  for (const prop of ["itemSize", "iconSize", "itemGap", "railWidth", "railPadding", "labelSize"]) {
-    const value = sizing[prop], zero = prop === "itemGap" || prop === "railPadding";
+  for (const prop of ["itemSize", "iconSize", "itemGap", "labelGap", "railWidth", "railPadding", "labelSize"]) {
+    const value = sizing[prop], zero = prop === "itemGap" || prop === "labelGap" || prop === "railPadding";
     if (value !== void 0 && (!Number.isFinite(value) || value < 0 || !zero && value === 0)) {
       throw new Error(`SidebarRail ${prop} must be a finite ${zero ? "non-negative" : "positive"} CSS-pixel value`);
     }
@@ -28,6 +28,7 @@ function sidebarRailSizing(sizing, labelled = false) {
   }
   if (sizing.iconSize !== void 0) glyph.width = glyph.height = `min(${px(sizing.iconSize)},calc(${hit} - 2px))`;
   if (sizing.labelSize !== void 0) label.fontSize = px(sizing.labelSize);
+  if (labelled && sizing.labelGap !== void 0) item.gap = px(sizing.labelGap);
   if (sizing.itemGap !== void 0) list.gap = px(sizing.itemGap);
   return { root, item, face, glyph, label, list };
 }

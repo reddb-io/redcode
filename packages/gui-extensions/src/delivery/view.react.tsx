@@ -14,6 +14,10 @@ import type { DeliveryResources } from "./resources"
 import type { DeliverySection } from "./resources-model"
 import { DeliveryMonitorView } from "./monitors.react"
 import type { DeliveryMonitors } from "./monitors"
+import { DeliveryHooksView } from "./hooks.react"
+import type { DeliveryHooks } from "./hooks"
+import { DeliveryAutomationsView } from "./automations.react"
+import type { DeliveryAutomations } from "./automations"
 
 const DeliveryTaskFlow = lazy(() => import("./workflow.react"))
 
@@ -42,6 +46,10 @@ export function DeliveryView(props: {
   resourceActions: DeliveryResources["actions"]
   monitors: ReturnType<DeliveryMonitors["snapshot"]>
   monitorActions: DeliveryMonitors["actions"]
+  hooks: ReturnType<DeliveryHooks["snapshot"]>
+  hookActions: DeliveryHooks["actions"]
+  automations: ReturnType<DeliveryAutomations["snapshot"]>
+  automationActions: DeliveryAutomations["actions"]
   section(value: DeliverySection): void
   refresh(): void
   open(id: string): void
@@ -107,7 +115,11 @@ function DeliveryContent(props: Parameters<typeof DeliveryView>[0]) {
               ? view.refreshing
               : props.resources.section === "monitors"
                 ? props.monitors.refreshing
-                : props.resources.refreshing)
+                : props.resources.section === "hooks"
+                  ? props.hooks.refreshing
+                  : props.resources.section === "automations"
+                    ? props.automations.refreshing
+                    : props.resources.refreshing)
           }
           onClick={props.refresh}
         >
@@ -117,9 +129,13 @@ function DeliveryContent(props: Parameters<typeof DeliveryView>[0]) {
                 ? "refresh"
                 : props.resources.section === "monitors"
                   ? "refreshMonitors"
-                  : props.resources.section === "skills"
-                    ? "refreshSkills"
-                    : "refreshResources"
+                  : props.resources.section === "hooks"
+                    ? "refreshHooks"
+                    : props.resources.section === "automations"
+                      ? "refreshAutomations"
+                      : props.resources.section === "skills"
+                        ? "refreshSkills"
+                        : "refreshResources"
             ]
           }
         </Button>
@@ -140,9 +156,18 @@ function DeliveryContent(props: Parameters<typeof DeliveryView>[0]) {
           { value: "resources", label: copy.resources },
           { value: "skills", label: copy.skills },
           { value: "monitors", label: copy.monitors },
+          { value: "hooks", label: copy.hooks },
+          { value: "automations", label: copy.automations },
         ]}
         onValueChange={(value) => {
-          if (value === "overview" || value === "resources" || value === "skills" || value === "monitors")
+          if (
+            value === "overview" ||
+            value === "resources" ||
+            value === "skills" ||
+            value === "monitors" ||
+            value === "hooks" ||
+            value === "automations"
+          )
             props.section(value)
         }}
       >
@@ -299,6 +324,20 @@ function DeliveryContent(props: Parameters<typeof DeliveryView>[0]) {
             <LinkedResources view={props.resources} actions={props.resourceActions} copy={copy} />
           ) : item.value === "monitors" ? (
             <DeliveryMonitorView view={props.monitors} actions={props.monitorActions} copy={copy} />
+          ) : item.value === "automations" ? (
+            <DeliveryAutomationsView
+              key={view.key}
+              view={props.automations}
+              actions={props.automationActions}
+              copy={copy}
+            />
+          ) : item.value === "hooks" ? (
+            <DeliveryHooksView
+              key={`${view.key}:${view.directory}`}
+              view={props.hooks}
+              actions={props.hookActions}
+              copy={copy}
+            />
           ) : (
             <DeliverySkills view={props.resources} actions={props.resourceActions} copy={copy} />
           )

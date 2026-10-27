@@ -39,6 +39,7 @@ import { SessionImport } from "@opencode/core/session/import/service"
 import { SessionShare } from "@opencode/core/session/share"
 import { ShellSelect } from "@opencode/core/shell/select"
 import { MonitorRuntime } from "@opencode/core/monitor"
+import { AutomationRuntime } from "@opencode/core/automation"
 import { Job } from "@opencode/core/job"
 import { Mcp } from "@opencode/core/mcp/index"
 import { Global } from "@opencode/util/global"
@@ -94,6 +95,7 @@ const applicationServiceNodes = [
   httpClient,
   Job.node,
   MonitorRuntime.node,
+  AutomationRuntime.node,
   Project.node,
   Project.sweepNode,
   Worktree.node,

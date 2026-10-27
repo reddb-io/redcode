@@ -1,5 +1,5 @@
 "use client";
-import { jsx, jsxs } from "react/jsx-runtime";
+import { Fragment, jsx, jsxs } from "react/jsx-runtime";
 import { useEffect } from "react";
 import { iconColor, iconDimension } from "../../src/core/icon.js";
 import { warnDeprecated } from "../../src/deprecation.js";
@@ -10,8 +10,8 @@ function Icon({ icon: Glyph, size = "md", color = "foreground", className, ...re
   useEffect(() => {
     if (color === "muted") warnDeprecated("Icon", 'color="muted"', 'color="ink-muted"');
   }, [color]);
-  if (Glyph !== "menu") return /* @__PURE__ */ jsx(Glyph, { ...rest, "data-icon": true, size: dimension, color: resolvedColor, strokeWidth: 2, className });
-  /*! @license Built-in menu geometry: Copyright (c) 2026 Lucide Icons and Contributors.
+  if (typeof Glyph !== "string") return /* @__PURE__ */ jsx(Glyph, { ...rest, "data-icon": true, size: dimension, color: resolvedColor, strokeWidth: 2, className });
+  /*! @license Built-in navigation geometry: Copyright (c) 2026 Lucide Icons and Contributors.
    * Permission to use, copy, modify, and/or distribute this software for any
    * purpose with or without fee is hereby granted, provided that the above
    * copyright notice and this permission notice appear in all copies.
@@ -23,11 +23,11 @@ function Icon({ icon: Glyph, size = "md", color = "foreground", className, ...re
    * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
    * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
    */
-  return /* @__PURE__ */ jsxs("svg", { ...rest, "data-icon": true, width: dimension, height: dimension, viewBox: "0 0 24 24", fill: "none", stroke: resolvedColor, strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round", className, children: [
+  return /* @__PURE__ */ jsx("svg", { ...rest, "data-icon": true, width: dimension, height: dimension, viewBox: "0 0 24 24", fill: "none", stroke: resolvedColor, strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round", className, children: Glyph === "chevron-down" ? /* @__PURE__ */ jsx("path", { d: "m6 9 6 6 6-6" }) : /* @__PURE__ */ jsxs(Fragment, { children: [
     /* @__PURE__ */ jsx("path", { d: "M4 5h16" }),
     /* @__PURE__ */ jsx("path", { d: "M4 12h16" }),
     /* @__PURE__ */ jsx("path", { d: "M4 19h16" })
-  ] });
+  ] }) });
 }
 export {
   ICON_COLORS,

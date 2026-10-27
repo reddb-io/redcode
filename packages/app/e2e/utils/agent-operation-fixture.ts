@@ -159,7 +159,15 @@ export async function mockMachineInspection(page: Page) {
   return state
 }
 
-export async function mockHarnessOperations(page: Page, input: { output?: string; runs?: Harness.Run[] } = {}) {
+export async function mockHarnessOperations(
+  page: Page,
+  input: {
+    output?: string
+    runs?: Harness.Run[]
+    tasks?: Record<string, Harness.Task[]>
+    unavailable?: () => boolean
+  } = {},
+) {
   const state = {
     runs: input.runs?.map((run) => ({ ...run })) ?? ([] as Harness.Run[]),
     requests: [] as Harness.Request[],
@@ -227,12 +235,14 @@ export async function mockHarnessOperations(page: Page, input: { output?: string
       state.runs = state.runs.map((item) => ({ ...item, state: "closed" }))
       return route.fulfill({ status: 200 })
     }
+    if (run && input.unavailable?.()) return route.fulfill({ status: 503, json: { message: "Harness unavailable" } })
     if (run)
       return route.fulfill({
         json: {
           run,
           events: [{ cursor: 1, kind: "text", text: input.output ?? "Native harness output" }],
           requests: state.requests,
+          ...(input.tasks?.[run.id] ? { tasks: input.tasks[run.id] } : {}),
         },
       })
     return route.fulfill({ status: 400, json: { message: "Unsupported fixture operation" } })
@@ -342,10 +352,15 @@ export async function mockLocalSlots(page: Page) {
 
 export async function mockNativeUsage(page: Page) {
   const requests: URL[] = []
+  const state = {
+    coverage: { reported: 1, estimated: 1, unknown: 1, legacy: 0 } as SessionStats.Info["costCoverage"],
+    fail: false,
+    history: false,
+  }
   await page.route("**/api/experimental/session/stats?**", (route) => {
     const url = new URL(route.request().url())
     requests.push(url)
-    const coverage = { reported: 1, estimated: 1, unknown: 1, legacy: 0 }
+    if (state.fail) return route.fulfill({ status: 503, json: { message: "Fixture unavailable" } })
     const tokens = { input: 100, output: 20, reasoning: 0, cache: { read: 0, write: 0 } }
     const models = [
       {
@@ -365,7 +380,7 @@ export async function mockNativeUsage(page: Page) {
       steps: 2,
       tokens,
       cost: 1.25,
-      costCoverage: coverage,
+      ...(state.coverage ? { costCoverage: state.coverage } : {}),
       tools: { mode: "summary", totals: { calls: 0, succeeded: 0, failed: 0, unfinished: 0 } },
       activeDays: 1,
       streak: 1,
@@ -389,8 +404,76 @@ export async function mockNativeUsage(page: Page) {
           models: [{ ...models[0], cost: 0.6 }],
         },
       ],
+      ...(state.history ? nativeUsageHistory(date) : {}),
     })
     return route.fulfill({ json: { data: Schema.encodeSync(SessionStats.Info)(data) } })
   })
-  return { requests }
+  return { requests, state }
+}
+
+function nativeUsageHistory(date: string) {
+  const identities = [
+    { providerID: "anthropic", id: "claude-sonnet" },
+    { providerID: "openai", id: "gpt-codex" },
+    { providerID: "local", id: "qwen-coder" },
+  ]
+  const series = [4, 7, 5, 12, 9, 3, 8, 13, 11, 16, 9, 14, 18, 12].map((weight, day) => {
+    const models = identities.map((model, index) => ({
+      model,
+      steps: weight * (3 - index),
+      tokens: {
+        input: weight * (index + 1) * (1800 + (day % 4) * 400),
+        output: weight * (3 - index) * (220 + (day % 5) * 60),
+        reasoning: index === 1 ? weight * (600 + (day % 3) * 300) : 0,
+        cache: { read: weight * (index + 1) * (2200 + (day % 3) * 700), write: weight * 180 },
+      },
+      cost: Math.round(weight * [0.14, 0.09, 0.005][index]! * 1000) / 1000,
+      costCoverage: { reported: index === 1 ? 0 : 1, estimated: index === 1 ? 1 : 0, unknown: 0, legacy: 0 },
+    }))
+    return {
+      date: new Date(Date.parse(date) - (13 - day) * 86_400_000).toISOString().slice(0, 10),
+      steps: models.reduce((total, item) => total + item.steps, 0),
+      tokens: nativeUsageTokens(models),
+      cost: models.reduce((total, item) => total + item.cost, 0) + (day % 5 === 0 ? 0.11 : 0),
+      costCoverage: { reported: 2, estimated: 1, unknown: day % 5 === 0 ? 1 : 0, legacy: 0 },
+      models,
+    }
+  })
+  return {
+    steps: series.reduce((total, item) => total + item.steps, 0),
+    tokens: nativeUsageTokens(series),
+    cost: series.reduce((total, item) => total + item.cost, 0),
+    costCoverage: { reported: 28, estimated: 14, unknown: 3, legacy: 0 },
+    activeDays: 14,
+    streak: 14,
+    activity: series.map((point) => ({ date: point.date, steps: point.steps })),
+    series,
+    models: identities.map((model) => {
+      const rows = series.flatMap((point) => point.models).filter((item) => item.model.id === model.id)
+      return {
+        model,
+        steps: rows.reduce((total, item) => total + item.steps, 0),
+        tokens: nativeUsageTokens(rows),
+        cost: rows.reduce((total, item) => total + item.cost, 0),
+        costCoverage: {
+          reported: model.providerID === "openai" ? 0 : 14,
+          estimated: model.providerID === "openai" ? 14 : 0,
+          unknown: 0,
+          legacy: 0,
+        },
+      }
+    }),
+  }
+}
+
+function nativeUsageTokens(rows: readonly { tokens: SessionStats.Info["tokens"] }[]) {
+  return {
+    input: rows.reduce((total, item) => total + item.tokens.input, 0),
+    output: rows.reduce((total, item) => total + item.tokens.output, 0),
+    reasoning: rows.reduce((total, item) => total + item.tokens.reasoning, 0),
+    cache: {
+      read: rows.reduce((total, item) => total + item.tokens.cache.read, 0),
+      write: rows.reduce((total, item) => total + item.tokens.cache.write, 0),
+    },
+  }
 }

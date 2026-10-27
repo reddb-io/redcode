@@ -11,6 +11,8 @@ import { Global } from "@opencode/util/global"
 import { makeGlobalNode } from "@opencode/util/effect/app-node"
 import { Context, Effect, Layer, Option, Schema } from "effect"
 import { object, string, wire, stopOwnedProcess, type Frame, type Wire } from "./harness-wire"
+import { createHarnessTasks } from "./harness-tasks"
+import { backgroundWaitTool, createHarnessTools } from "./harness-tools"
 
 type Pending = { request: Harness.Request; frame: Frame }
 type Live = {
@@ -20,6 +22,7 @@ type Live = {
   sending: boolean
   input?: string
   started?: number
+  tools?: ReturnType<typeof createHarnessTools>
 }
 
 /** Persistence belongs to the execution host. Native IDs survive restart; processes are never replayed automatically. */
@@ -36,6 +39,7 @@ export async function createHarnesses(directory: string) {
   db.exec(
     "CREATE TABLE IF NOT EXISTS metric (id TEXT PRIMARY KEY, data TEXT NOT NULL, reported INTEGER NOT NULL DEFAULT 0)",
   )
+  const tasks = createHarnessTasks(db)
   const live = new Map<string, Live>()
   const lifetime = { closed: false }
   const providers = new Map<Harness.Driver, Harness.Provider>()
@@ -135,6 +139,7 @@ export async function createHarnesses(directory: string) {
   const executable = (driver: Harness.Driver) =>
     db.query<{ executable: string }, [string]>("SELECT executable FROM config WHERE driver=?").get(driver)
       ?.executable ?? driver
+  runs().forEach((run) => tasks.unavailable(run.id))
   runs()
     .filter((run) => !["closed", "failed", "interrupted"].includes(run.state))
     .forEach((run) =>
@@ -170,10 +175,13 @@ export async function createHarnesses(directory: string) {
           : reject(new Error(output.error || "Harness diagnostic failed"))
       })
     })
-  const codexInit = async (connection: Wire) => {
+  const codexInit = async (connection: Wire, backgroundWait = false) => {
     await connection.request(
       "initialize",
-      { clientInfo: { name: "redcode", title: "Redcode", version: "0.78.0" } },
+      {
+        clientInfo: { name: "redcode", title: "Redcode", version: "0.78.0" },
+        ...(backgroundWait ? { capabilities: { experimentalApi: true } } : {}),
+      },
       "codex",
     )
     connection.send({ method: "initialized", params: {} })
@@ -274,11 +282,16 @@ export async function createHarnesses(directory: string) {
     const run = read(id)
     const connection = live.get(id)
     if (!connection) return
+    // Native background items may finish after their launching turn; correlate their identities before turn filtering.
+    tasks.observe(run, value)
+    // Closing may still flush native frames; they cannot reopen an execution already closed by the operator.
+    if (run.state === "closed") return
     if (run.driver === "codex") {
       const params = object(value.params)
       // This process owns one thread. Ignore notifications belonging to another thread/turn.
       if (params.threadId && params.threadId !== run.nativeID) return
       if (params.turnId && connection.turn && params.turnId !== connection.turn) return
+      if (connection.tools?.handle(value)) return
       const method = string(value.method)
       if (method === "thread/tokenUsage/updated") {
         const usage = object(object(params.tokenUsage).total)
@@ -312,7 +325,10 @@ export async function createHarnesses(directory: string) {
         )
         return
       }
-      if (method === "serverRequest/resolved") connection.pending.delete(String(params.requestId))
+      if (method === "serverRequest/resolved") {
+        connection.tools?.cancel(String(params.requestId))
+        connection.pending.delete(String(params.requestId))
+      }
       if (method === "turn/started") {
         connection.turn = string(object(params.turn).id)
         update(id, { state: "running" })
@@ -320,6 +336,7 @@ export async function createHarnesses(directory: string) {
       if (method === "item/agentMessage/delta") event(id, "text", string(params.delta))
       if (method === "item/started") event(id, "activity", string(object(params.item).type))
       if (method === "turn/completed") {
+        connection.tools?.cancel()
         const turn = object(params.turn)
         metric(
           id,
@@ -340,10 +357,12 @@ export async function createHarnesses(directory: string) {
       return
     }
     if (value.type === "control_cancel_request") {
+      connection.tools?.cancel(string(value.request_id))
       connection.pending.delete(string(value.request_id))
       return
     }
     if (value.type === "control_request") {
+      if (connection.tools?.handle(value)) return
       const request = object(value.request)
       const input = object(request.input)
       const supported = request.subtype === "can_use_tool"
@@ -370,6 +389,7 @@ export async function createHarnesses(directory: string) {
         })
     }
     if (value.type === "result") {
+      connection.tools?.cancel()
       if (string(value.session_id) && string(value.session_id) !== read(id).nativeID)
         update(id, { nativeID: string(value.session_id) })
       const usage = object(value.usage)
@@ -456,13 +476,36 @@ export async function createHarnesses(directory: string) {
         if (live.get(run.id)?.wire !== connection) return
         live.delete(run.id)
         if (lifetime.closed) return
+        tasks.unavailable(run.id)
         if (read(run.id).state !== "closed") update(run.id, { state: "unknown", detail })
       },
     })
-    live.set(run.id, { wire: connection, turn: "", pending: new Map(), sending: false })
+    live.set(run.id, {
+      wire: connection,
+      turn: "",
+      pending: new Map(),
+      sending: false,
+      ...(run.backgroundWait
+        ? {
+            tools: createHarnessTools({
+              driver: run.driver,
+              wait: (taskID, timeoutMs, signal) => tasks.wait(run.id, taskID, timeoutMs, signal),
+              send: (frame) => {
+                if (
+                  !lifetime.closed &&
+                  live.get(run.id)?.wire === connection &&
+                  read(run.id).state !== "closed" &&
+                  connection.available()
+                )
+                  connection.send(frame)
+              },
+            }),
+          }
+        : {}),
+    })
     try {
       if (run.driver === "codex") {
-        await codexInit(connection)
+        await codexInit(connection, run.backgroundWait)
         const result = await connection.request(
           run.nativeID ? "thread/resume" : "thread/start",
           {
@@ -471,6 +514,9 @@ export async function createHarnesses(directory: string) {
             ...(run.model ? { model: run.model } : {}),
             approvalPolicy: "on-request",
             sandbox: "workspace-write",
+            ...(!run.nativeID && run.backgroundWait
+              ? { dynamicTools: [{ type: "function", ...backgroundWaitTool }] }
+              : {}),
           },
           run.driver,
         )
@@ -478,7 +524,12 @@ export async function createHarnesses(directory: string) {
         if (!nativeID) throw new Error("Codex did not return a thread identity")
         update(run.id, { nativeID })
       }
-      if (run.driver === "claude") await connection.request("initialize", { hooks: {}, sdkMcpServers: [] }, run.driver)
+      if (run.driver === "claude")
+        await connection.request(
+          "initialize",
+          { hooks: {}, ...(run.backgroundWait ? { sdkMcpServers: ["redcode_wait"] } : {}) },
+          run.driver,
+        )
       return update(run.id, { state: "ready" })
     } catch (error) {
       update(run.id, { state: "failed", detail: error instanceof Error ? error.message : String(error) })
@@ -701,7 +752,7 @@ export async function createHarnesses(directory: string) {
           [string]
         >("SELECT cursor,kind,text FROM (SELECT cursor,kind,text FROM event WHERE run=? ORDER BY cursor DESC LIMIT 200) ORDER BY cursor")
         .all(id)
-      return { run: { ...read(id), queued: queued(id) }, events, requests: requests(id) }
+      return { run: { ...read(id), queued: queued(id) }, events, requests: requests(id), tasks: tasks.list(id) }
     },
     async prompt(id: string, input: Harness.Prompt) {
       const existing = db.query<{ run: string }, [string]>("SELECT run FROM prompt WHERE id=?").get(input.id)
@@ -722,6 +773,7 @@ export async function createHarnesses(directory: string) {
       const run = read(id)
       const connection = live.get(id)
       if (!connection) throw new Error("Harness process is unavailable")
+      connection.tools?.cancel()
       db.query("UPDATE prompt SET status='cancelled' WHERE run=? AND status='queued'").run(id)
       if (run.driver === "codex" && connection.turn)
         await connection.wire.request(
@@ -805,6 +857,7 @@ export async function createHarnesses(directory: string) {
           "No owned process can be stopped. Reconcile the original process before releasing this checkout",
         )
       update(id, { state: "closed" })
+      live.get(id)?.tools?.cancel()
       db.query("UPDATE prompt SET status='cancelled' WHERE run=? AND status='queued'").run(id)
       await live.get(id)?.wire.close()
       live.delete(id)
@@ -822,6 +875,7 @@ export async function createHarnesses(directory: string) {
         throw new Error("Close or reconcile this checkout's harness before changing its Git state")
     },
     async dispose() {
+      live.forEach((_connection, id) => tasks.unavailable(id))
       lifetime.closed = true
       const logins = [...loginWires.values()]
       loginWires.clear()

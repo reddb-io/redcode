@@ -9,7 +9,7 @@ host's density when one is set; otherwise it uses tiny on narrow viewports and
 compact on wider ones. Editable text and toolbar controls retain the DS touch
 floor on devices with a coarse pointer.
 
-The current delivery pins `v2026.10.37`, selects React and uses the official
+The current delivery pins `v2026.10.38`, selects React and uses the official
 compiled distribution. Settings and the migrated shell surfaces consume native
 React controls through canonical Base, App and Data imports. Shared service adapters
 retain the existing router, persistence, server subscriptions and extension owners.
@@ -45,6 +45,13 @@ Do not edit vendored components or generated theme files by hand.
 Delivery's optional task flow uses the Data kit's native `WorkflowDiagram` in a separate lazy
 chunk. It draws recorded prerequisites and exposes task criteria and assigned conversations
 through the existing overview snapshot, without additional queries or inferred progress.
+
+The current rail contract separates `itemGap` (between destinations) from `labelGap`
+(between icon and caption). Redcode's saved Navigation spacing remains the explicit
+destination gap, so the upstream labelled default does not override that preference.
+The delivery retains the complete font policy. Upstream's optional `ui` profile offers
+smaller 400–700 resources with original-face fallback; adopting it also requires the
+embedded designer's font inliner to handle the profile's `web-fonts/` paths.
 
 ## Adapter contracts
 
@@ -149,11 +156,41 @@ through the existing overview snapshot, without additional queries or inferred p
   Inbox requests retain their button identity across metadata refreshes. On
   mobile, the selected review is placed first, and explicit back navigation
   restores focus without submitting or advancing to another request.
-- Host resource details use labelled Base `Meter` contracts for sampled CPU usage
-  and available RAM as a proportion of the visible limit. They show no bar for
-  unknown readings, and remove previous values when a refresh fails. The view
-  does not infer capacity thresholds or add resource requests. Technical measurement
+- Host resource details compose thin Base `RadialProgress` rings with accessible
+  meter semantics for sampled CPU usage and available RAM as a proportion of the
+  visible limit. `Statistic` keeps the numeric readings and change feedback. The
+  cards and charts adapt to the inspector's width. Unknown readings show no ring;
+  failed refreshes or samples older than fifteen seconds hide the current readings,
+  even when the host returns an identical old payload successfully. The view does
+  not infer capacity thresholds or add resource requests. Technical measurement
   notes remain available in a disclosure.
+- Usage composes native `KpiCard` and `Sparkline` readings with a token `BreakdownBar`
+  and a thin coverage radial. Its denominator is the accounting-record count; its
+  numerator includes reported and estimated records, separately from unknown and
+  legacy records. Missing or empty coverage has no radial. A known denominator with
+  no reported/estimated records reads zero percent. Coverage does not measure agent
+  success, price accuracy or invoice completeness. Existing project/period filters,
+  linked daily-chart cursors and exact daily rows retain their owners.
+  Resource history uses compact three-row plots. Usage combines its KPI summary,
+  charts and accounting details in one analytics surface. Its wider activity
+  column uses a 128-pixel plot and its complementary cost column uses 96 pixels.
+  Base `ToggleGroup` exposes the two period choices directly. Summary counts use
+  locale-aware compact notation, while accounting details retain exact numbers.
+  Intermediate widths omit KPI sparklines to keep the three readings together;
+  narrow layouts stack the readings and restore their small trends.
+  Date endpoints and interactive legends include exact values for the inspected
+  day, or the latest recorded day when the cursor is clear. Inline usage plots
+  omit grid and axis furniture; maximizing restores
+  the full axes and native chart legends. One-pixel lines, unfilled sparklines,
+  narrow columns and small thin radials keep the readings light; text retains its
+  readable Theme roles. Coverage and token detail sit below the main plots, with
+  numeric table columns aligned for comparison and accounting notes in a disclosure.
+  Usage has two composed plots: Activity pairs step columns with a lightly filled token area on
+  independently labelled axes; Cost composition stacks each model and unattributed
+  costs in USD beneath the recorded total-cost line. Hiding a model changes only
+  its visibility, preserving the total's recorded values. Both plots share the same
+  date cursor and selected period. Daily table rows show the newest date first in
+  a bounded scroll area with a persistent header.
 - The serialized designer uses the panel's spatial roles in its shadow-root
   CSS. Feedback, Assets, Details and Params keep persistent tabs, keyboard
   navigation and scrollable bodies; changing sections preserves unsent notes.
@@ -176,10 +213,31 @@ through the existing overview snapshot, without additional queries or inferred p
 
 ## Available upstream patterns
 
+For the current desktop, the next useful compositions are:
+
+- **Monitors:** `KpiCard` summaries of recorded running, failed and unconfirmed tasks,
+  plus `EventLog` where actual lifecycle history is available. Task snapshots alone
+  must not be presented as a historical event stream.
+- **Automations:** `Gantt` for saved next-run times and recorded dispatch timestamps,
+  with explicit missed/admitted states. Admission is separate from agent completion;
+  no execution duration is available from an admission receipt alone.
+- **Host resources and usage:** compose existing sampled `MetricChart` series with
+  `MetricStrip` and optional sparklines. Missing samples stay unavailable, not zero.
+- **Task and agent progress:** `RadialProgress` supports thin rings through `thickness`;
+  use counts with a known denominator, and keep unknown work indeterminate. Existing
+  `WorkflowDiagram` activity markers can reflect observed execution, respecting visibility
+  and reduced motion.
+
+These components are already delivered in the selected Base, App and Data kits;
+vendoring makes them available without automatically changing feature behavior. The
+upstream full-page recovery references are examples, rather than new application routes
+in this consumer.
+
 The vendored App and Base kits also provide labelled rails, responsive navigation
-docks, contextual sidebar panels, searchable selects and inline editing. Adopting
-them in Redcode requires a Solid interaction adapter and a product-specific use
-case; vendoring their source does not enable them automatically.
+docks, contextual sidebar panels, searchable selects and inline editing. New React
+surfaces consume their canonical leaf imports; remaining Solid surfaces retain their
+interaction adapters. Each adoption needs a product-specific use case; vendoring
+the components does not enable them automatically.
 
 The Data kit is included for the Hosts and native Usage surfaces. Both consume native React
 `CompositeChart` components through leaf imports, keeping drawing engines lazy. Hosts uses
