@@ -8,6 +8,7 @@ import type {
   OpenCodeEvent,
   SessionMessageInfo,
   SessionBudgetView,
+  VcsInfo,
 } from "@opencode/client/promise"
 import { Permission } from "@opencode/schema/permission"
 import { Worktree } from "@opencode/schema/worktree"
@@ -179,6 +180,7 @@ export interface MockServerConfig {
     cursor?: string
   }
   vcs?: { current: string; default: string }
+  vcsInfo?: (directory: string) => VcsInfo
   branches?: Resolvable<string[]>
   // Initializes the mock project's VCS; without a handler this mutation answers 501.
   onVcsInit?: (input: { directory: string; provider?: string }) => void
@@ -1120,10 +1122,13 @@ function mockHandlers(
                 }),
           ),
         formRequests: () => Effect.succeed({ location: location(config), data: resolve(config.forms ?? []) }),
-        vcs: () =>
-          Effect.succeed({
-            location: location(config),
-            data: { branch: config.vcs ?? { current: "main", default: "main" } },
+        vcs: (ctx) =>
+          Effect.sync(() => {
+            const directory = requestDirectory(config, ctx.request)
+            return {
+              location: location(config, directory),
+              data: config.vcsInfo?.(directory) ?? { branch: config.vcs ?? { current: "main", default: "main" } },
+            }
           }),
         vcsInit: (ctx) => {
           if (!config.onVcsInit) return unsupported("initialize VCS", "onVcsInit")

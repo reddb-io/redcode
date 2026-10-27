@@ -21,7 +21,7 @@ import { settingsLanguage } from "../shared.react"
 import type { ShellOption } from "../general/behavior"
 import type { SettingsServer } from "./inventory"
 import { ServerGeneral } from "./view.react"
-import { VoiceSettings } from "@/composer/voice"
+import { VoiceSettings } from "../voice"
 
 export function createServerGeneralServices(props: {
   entry: SettingsServer

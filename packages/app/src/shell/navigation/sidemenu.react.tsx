@@ -11,6 +11,7 @@ import { Icon } from "@/runtime/react/icon.react"
 import type { SharedLanguage } from "@/runtime/react/language"
 import { shouldOpenSessionInBackground } from "@/home/sessions/open"
 import { sessionLabel } from "@/session/title"
+import { getFilename } from "@opencode/util/path"
 import { ProjectTile } from "@/shell/layout/project-tile.react"
 import type { NavigationController } from "./controller"
 import type { NavigationView } from "./view"
@@ -147,7 +148,7 @@ export function NavigationSidemenu(props: NavigationProps) {
               <NavigationSection {...props} key={group.id} id={group.id} title={language.t(`navigation.${group.id}`)}>
                 <ul className={nav.list({ class: "gap-1" })}>
                   {group.items.map((item) => (
-                    <SessionRow key={item.session.id} {...rows} item={item} idPrefix="activity:" activity />
+                    <SessionRow key={item.session.id} {...rows} item={item} idPrefix="activity:" />
                   ))}
                 </ul>
               </NavigationSection>
@@ -441,7 +442,6 @@ function SessionRow(
     item: NavigationView["tree"]["recents"][number]
     nested?: boolean
     idPrefix?: string
-    activity?: boolean
   },
 ) {
   const language = props.view.language
@@ -449,6 +449,13 @@ function SessionRow(
   const menuID = `${props.idPrefix ?? ""}session:${id}`
   const current = props.view.current.session === id
   const state = props.view.sessions[id]
+  const vcs = state.vcs
+  const branch = vcs?.branch.current ?? (vcs?.repository ? language.t("navigation.branch.detached") : undefined)
+  const worktree = vcs?.worktree
+    ? vcs.worktree.main
+      ? language.t("navigation.worktree.main")
+      : getFilename(vcs.worktree.directory)
+    : undefined
   const since = state.status === "working" ? state.since : undefined
   const open = (event: MouseEvent) =>
     props.navigation.session.open(props.item.session, {
@@ -473,12 +480,20 @@ function SessionRow(
         type="button"
         data-action="navigation-session"
         data-session={id}
+        title={[
+          vcs?.repository && language.t("navigation.session.repository", { name: vcs.repository.name }),
+          branch && language.t("navigation.session.branch", { name: branch }),
+          vcs?.worktree && language.t("navigation.session.worktree", { directory: vcs.worktree.directory }),
+          language.t("navigation.session.directory", { directory: props.item.session.location.directory }),
+        ]
+          .filter(Boolean)
+          .join("\n")}
         aria-current={current ? "page" : undefined}
         className={quietControl({
           selected: current,
           focus: "inset",
           class: navItem({ current }).root({
-            class: `min-w-0 flex-1 gap-2 pe-2 text-start text-body ${props.activity ? "h-auto min-h-[calc(var(--line-height-base)+var(--line-height-compact)+2*var(--reddb-spatial-gap-md))] py-[var(--reddb-spatial-gap-md)]" : ""} ${props.nested ? "ps-[calc(var(--reddb-spatial-inset-sm)+1.25rem)]" : ""} ${sessionAwaitsUser(state.status) ? "text-foreground" : ""}`,
+            class: `h-auto min-h-10 min-w-0 flex-1 items-start gap-2 py-1 pe-2 text-start text-body ${props.nested ? "ps-[calc(var(--reddb-spatial-inset-sm)+1.25rem)]" : ""} ${sessionAwaitsUser(state.status) ? "text-foreground" : ""}`,
           }),
         })}
         onClick={open}
@@ -488,7 +503,7 @@ function SessionRow(
           open(event)
         }}
       >
-        <span className="flex size-4 shrink-0 items-center justify-center">
+        <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center">
           {state.status ? (
             <StatusMark status={state.status} language={language} />
           ) : (
@@ -501,26 +516,43 @@ function SessionRow(
           )}
         </span>
         <span dir="auto" className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className={navItem().label({ class: "min-w-0 font-medium" })}>{sessionLabel(props.item.session)}</span>
-          {props.activity && (
-            <span className="truncate text-caption text-ink-muted">
-              {[
-                props.item.project?.name ?? props.item.project?.worktree ?? props.item.session.location.directory,
-                state.status ? language.t(`navigation.status.${state.status}`) : undefined,
-              ]
-                .filter(Boolean)
-                .join(" · ")}
+          <span className="flex min-w-0 items-center gap-2">
+            <span className={navItem().label({ class: "min-w-0 flex-1 font-medium" })}>
+              {sessionLabel(props.item.session)}
+            </span>
+            <span
+              className={`shrink-0 text-caption tabular-nums text-ink-muted group-hover/row:invisible group-focus-within/row:invisible ${props.menu === menuID ? "invisible" : ""}`}
+            >
+              {since ? (
+                <Elapsed since={since} language={language} />
+              ) : (
+                formatAge(language, props.now - (props.item.session.time.updated ?? props.item.session.time.created))
+              )}
+            </span>
+          </span>
+          {(vcs?.repository || branch) && (
+            <span className="flex min-w-0 items-center gap-1.5 text-caption text-ink-muted">
+              {vcs?.repository && <span className="min-w-0 flex-1 truncate">{vcs.repository.name}</span>}
+              {branch && (
+                <span className="flex min-w-0 max-w-[55%] items-center gap-1">
+                  <Icon name="branch" size="small" className="size-3 shrink-0" />
+                  <span className="truncate">{branch}</span>
+                </span>
+              )}
             </span>
           )}
-        </span>
-        <span
-          className={`shrink-0 text-caption tabular-nums text-ink-muted group-hover/row:invisible group-focus-within/row:invisible ${props.menu === menuID ? "invisible" : ""}`}
-        >
-          {since ? (
-            <Elapsed since={since} language={language} />
-          ) : (
-            formatAge(language, props.now - (props.item.session.time.updated ?? props.item.session.time.created))
-          )}
+          <span className="flex min-w-0 items-center gap-1 text-caption text-ink-muted">
+            {worktree && (
+              <>
+                <Icon name="outline-worktree" size="small" className="size-3 shrink-0" />
+                <span className="max-w-[40%] shrink-0 truncate">{worktree}</span>
+                <span aria-hidden="true">·</span>
+              </>
+            )}
+            <span className="min-w-0 truncate" dir="auto">
+              {props.item.session.location.directory}
+            </span>
+          </span>
         </span>
       </button>
       <div

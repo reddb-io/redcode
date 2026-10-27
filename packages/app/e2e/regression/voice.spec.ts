@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test"
-import { openDraft } from "../utils/workspace"
+import { openDraft, openSettings } from "../utils/workspace"
 
 test.use({
   launchOptions: { args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"] },
@@ -50,7 +50,15 @@ test("voice settings explicitly select a connection and microphone capture only 
     },
   )
   await editor.fill("Pedido:")
-  await page.getByRole("button", { name: "Voice settings", exact: true }).click()
+  await expect(page.getByRole("button", { name: "Voice settings", exact: true })).toHaveCount(0)
+  await page.getByRole("button", { name: "Record voice", exact: true }).click()
+  await expect(page.getByRole("status").filter({ hasText: "Microphone or voice settings unavailable." })).toBeVisible()
+  await expect(page.getByRole("dialog", { name: "Voice settings", exact: true })).toHaveCount(0)
+  await expect(editor).toHaveText("Pedido:")
+  await page.getByRole("button", { name: "Settings", exact: true }).click()
+  const screen = page.getByTestId("settings-screen")
+  await screen.getByRole("tab", { name: "Server", exact: true }).click()
+  await screen.getByRole("button", { name: "Voice settings", exact: true }).click()
   const settings = page.getByRole("dialog", { name: "Voice settings", exact: true })
   await expect(settings.getByRole("button", { name: "Save voice settings" })).toBeDisabled()
   await settings.getByLabel("Saved API key connection").selectOption("cred_voice")
@@ -64,6 +72,9 @@ test("voice settings explicitly select a connection and microphone capture only 
     model: "gpt-4o-mini-transcribe",
     connection: { type: "credential", id: "cred_voice" },
   })
+  await screen.getByRole("button", { name: "Back to app", exact: true }).click()
+  await expect(editor).toBeEditable()
+  await expect(editor).toHaveText("Pedido:")
   await editor.click()
   await editor.press("End")
   await page.getByRole("button", { name: "Record voice", exact: true }).click()
@@ -88,7 +99,6 @@ test("voice settings explicitly select a connection and microphone capture only 
   await expect(editor).toHaveText("Pedido: implemente a melhoria de voz ")
   expect(prompts).toEqual([])
   await page.getByRole("button", { name: "Settings", exact: true }).click()
-  const screen = page.getByTestId("settings-screen")
   await screen.getByRole("tab", { name: "Server", exact: true }).click()
   await screen.getByRole("button", { name: "Voice settings", exact: true }).click()
   await expect(settings.getByLabel("Saved API key connection")).toHaveValue("cred_voice")
@@ -106,3 +116,49 @@ test("voice settings explicitly select a connection and microphone capture only 
   await expect(settings.getByLabel("Language code (empty for automatic detection)")).toHaveValue("pt")
   expect(errors).toEqual([])
 })
+
+for (const failure of ["unsupported", "content-type", "configuration"] as const) {
+  test(`voice settings contain ${failure} failures and can retry without leaving Settings`, async ({ page }) => {
+    const errors: string[] = []
+    page.on("pageerror", (error) => errors.push(error.message))
+    const { settings: screen } = await openSettings(page, { name: "VoiceFailure" })
+    const broken = { value: true }
+    await page.route(
+      (url) => url.pathname === "/api/voice/connections",
+      (route) =>
+        broken.value && failure !== "configuration"
+          ? route.fulfill({
+              status: failure === "unsupported" ? 404 : 200,
+              contentType: "text/plain",
+              body: "Voice unavailable",
+            })
+          : route.fulfill({ json: { data: [] } }),
+    )
+    if (failure === "configuration") {
+      await page.route(
+        (url) => url.pathname === "/api/config",
+        (route) =>
+          broken.value
+            ? route.fulfill({ status: 500, contentType: "text/plain", body: "Configuration unavailable" })
+            : route.fulfill({ json: [] }),
+      )
+    }
+    await screen.getByRole("tab", { name: "Server", exact: true }).click()
+    await screen.getByRole("button", { name: "Voice settings", exact: true }).click()
+    const dialog = page.getByRole("dialog", { name: "Voice settings", exact: true })
+    await expect(dialog.getByRole("alert")).toHaveText(
+      failure === "unsupported"
+        ? "This server does not support voice settings. Update the server to use dictation."
+        : "Could not load voice settings. Check the server connection and try again.",
+    )
+    await expect(dialog.getByRole("button", { name: "Save voice settings", exact: true })).toBeDisabled()
+    broken.value = false
+    await dialog.getByRole("button", { name: "Try again", exact: true }).click()
+    await expect(dialog.getByLabel("Saved API key connection")).toBeEnabled()
+    await expect(dialog.getByRole("alert")).toHaveCount(0)
+    await dialog.getByRole("button", { name: "Close", exact: true }).click()
+    await screen.getByRole("button", { name: "Back to app", exact: true }).click()
+    await expect(page.getByRole("button", { name: "Settings", exact: true })).toBeEnabled()
+    expect(errors).toEqual([])
+  })
+}

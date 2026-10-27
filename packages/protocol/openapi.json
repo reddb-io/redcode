@@ -46021,6 +46021,32 @@
           },
           "branch": {
             "$ref": "#/components/schemas/Vcs.Branch"
+          },
+          "repository": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "directory": {
+                "type": "string"
+              }
+            },
+            "required": ["name", "directory"],
+            "additionalProperties": false
+          },
+          "worktree": {
+            "type": "object",
+            "properties": {
+              "directory": {
+                "type": "string"
+              },
+              "main": {
+                "type": "boolean"
+              }
+            },
+            "required": ["directory", "main"],
+            "additionalProperties": false
           }
         },
         "required": ["branch"],

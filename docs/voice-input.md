@@ -2,7 +2,7 @@
 
 ## Desktop and web
 
-Open **Voice settings** in the selected server's settings, or beside the composer microphone.
+Open **Settings → Server → Voice settings** for the selected server.
 Choose OpenAI, ElevenLabs, Deepgram, or an OpenAI-compatible endpoint, then explicitly select a saved API-key connection and transcription
 model. A local compatible endpoint can be used without a key. The endpoint field is a base URL,
 such as `http://127.0.0.1:8080/v1`; Redcode appends the protocol's transcription path.

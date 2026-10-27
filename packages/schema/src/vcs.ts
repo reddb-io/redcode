@@ -1,7 +1,7 @@
 export * as Vcs from "./vcs.js"
 
 import { Schema } from "effect"
-import { NonNegativeInt, optional } from "./schema.js"
+import { AbsolutePath, NonNegativeInt, optional } from "./schema.js"
 
 export const Branch = Schema.Struct({
   current: optional(Schema.String),
@@ -12,6 +12,8 @@ export interface Branch extends Schema.Schema.Type<typeof Branch> {}
 export const Info = Schema.Struct({
   provider: optional(Schema.String),
   branch: Branch,
+  repository: optional(Schema.Struct({ name: Schema.String, directory: AbsolutePath })),
+  worktree: optional(Schema.Struct({ directory: AbsolutePath, main: Schema.Boolean })),
 }).annotate({ identifier: "Vcs.Info" })
 export interface Info extends Schema.Schema.Type<typeof Info> {}
 

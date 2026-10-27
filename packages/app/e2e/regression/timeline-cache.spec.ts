@@ -154,7 +154,15 @@ test("recovers from a failed cold history load when another session is selected"
   await page.goto(sessionHref(fixture.sourceID))
   await expect(page.getByText(`History for ${fixture.sourceID}`, { exact: true })).toBeVisible()
   await tab(page, fixture.targetID).click()
-  await expect(page.getByRole("heading", { name: "Something went wrong", exact: true })).toBeVisible()
+  const error = page.getByRole("heading", { name: "Something went wrong", exact: true })
+  await expect(error).toBeVisible()
+  await expect
+    .poll(() =>
+      error.evaluate((element) =>
+        getComputedStyle(element.closest("[data-tauri-drag-region]") ?? element).getPropertyValue("app-region"),
+      ),
+    )
+    .not.toBe("drag")
   await tab(page, fixture.sourceID).click()
   await expect(page.getByText(`History for ${fixture.sourceID}`, { exact: true })).toBeVisible()
   await expect(page.getByRole("heading", { name: "Something went wrong", exact: true })).toHaveCount(0)

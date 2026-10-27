@@ -66,6 +66,7 @@ export function navigationView(
           since: navigation.session.since(session.id),
           unread: navigation.session.unread(session.id),
           pinned: navigation.session.pinned(session.id),
+          vcs: navigation.context()?.data.location.vcs.info(session.location),
         },
       ]),
     ),

@@ -7,6 +7,7 @@ import { Accessibility, AutoScroller, Feedback, PointerActivationConstraints } f
 import { RestrictToHorizontalAxis } from "@dnd-kit/abstract/modifiers"
 import { RestrictToElement } from "@dnd-kit/dom/modifiers"
 import { Tabs } from "@opencode/ui/tabs"
+import { Button } from "@opencode/ui/button"
 import { IconButton } from "@opencode/ui/icon-button"
 import { Icon } from "@opencode/ui/icon"
 import { Tooltip } from "@opencode/ui/tooltip"
@@ -317,6 +318,22 @@ export default function TerminalPanel(props: { model: TerminalModel; session: Mo
               <div class="w-12 shrink-0" aria-hidden />
             </Show>
           </div>
+          <Show when={terminal().creationError()}>
+            {(message) => (
+              <div
+                role="alert"
+                class="flex shrink-0 items-center gap-3 border-b border-elevation-base-border bg-elevation-sunken-surface px-3 py-3"
+              >
+                <div class="min-w-0 flex-1 text-body leading-5">
+                  <div class="text-feedback-danger-foreground">{extension.t("createFailed.title")}</div>
+                  <div class="break-words text-ink-muted">{message()}</div>
+                </div>
+                <Button size="small" variant="outline" onClick={() => terminal().new()}>
+                  {extension.t("createFailed.retry")}
+                </Button>
+              </div>
+            )}
+          </Show>
           <div class="flex-1 min-h-0 relative bg-elevation-sunken-surface">
             <For each={store.surfaces}>
               {(surface) => (

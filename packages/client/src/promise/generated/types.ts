@@ -2762,7 +2762,12 @@ export type ReferenceSource = ReferenceLocalSource | ReferenceGitSource
 
 export type WorktreeList = Array<WorktreeDirectory>
 
-export type VcsInfo = { provider?: string; branch: VcsBranch }
+export type VcsInfo = {
+  provider?: string
+  branch: VcsBranch
+  repository?: { name: string; directory: string }
+  worktree?: { directory: string; main: boolean }
+}
 
 export type FileSystemMatch = {
   entry: FileSystemEntry

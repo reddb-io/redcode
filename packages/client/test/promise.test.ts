@@ -233,6 +233,17 @@ test("client errors keep the reason and describe the failure in the message", as
       message: "UnsupportedContentType: text/html",
     },
   )
+  for (const response of [
+    new Response(null, { status: 404 }),
+    new Response("Not found", { status: 404, headers: { "content-type": "text/plain" } }),
+    new Response("{", { status: 400, headers: { "content-type": "application/json" } }),
+  ]) {
+    const client = OpenCode.make({ baseUrl: "http://localhost:3000", fetch: async () => response })
+    await expect(client.voice.connections()).rejects.toMatchObject({
+      reason: "UnexpectedStatus",
+      cause: { status: response.status },
+    })
+  }
 })
 
 test("project.update uses the global project contract", async () => {

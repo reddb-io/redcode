@@ -1,4 +1,5 @@
 import type { SessionInfo } from "@opencode/client/promise"
+import { locationKey } from "@opencode/client/solid"
 import { createMediaQuery } from "@solid-primitives/media"
 import { createEffect, createMemo, startTransition, untrack } from "solid-js"
 import { createSimpleContext } from "@opencode/ui/context"
@@ -129,6 +130,30 @@ export function createNavigationController() {
       status,
     }),
   )
+
+  // Share one cached read per visible Location, rather than querying once per session row.
+  createEffect(() => {
+    if (!(mobile() ? layout.mobileSidebar.opened() : layout.navigation.opened())) return
+    const context = ctx()
+    if (!context) return
+    const current = tree()
+    const open = (id: string) => current.filtered || layout.navigation.sectionOpen(id)
+    const visible = [
+      ...(open("pinned") ? current.pinned : []),
+      ...(current.grouping === "attention"
+        ? current.activity.filter((group) => open(group.id)).flatMap((group) => group.items)
+        : [
+            ...(open("projects")
+              ? current.projects.filter((project) => project.expanded).flatMap((project) => project.sessions)
+              : []),
+            ...(open("recents") ? current.recents : []),
+          ]),
+    ]
+    new Map(visible.map((item) => [locationKey(item.session.location), item.session.location])).forEach((location) => {
+      if (context.data.location.vcs.info(location)) return
+      void context.data.location.vcs.sync(location).catch(() => undefined)
+    })
+  })
 
   // The root session the current route shows, when it belongs to the sidemenu's server.
   const currentSession = createMemo(() => {

@@ -1288,6 +1288,7 @@ export function createData(config: CreateDataInput) {
       case "vcs.branch.updated":
         setStore("location", locationKey(location), (data) => ({
           vcs: {
+            ...data?.vcs,
             branch: {
               ...data?.vcs?.branch,
               current: event.data.branch,

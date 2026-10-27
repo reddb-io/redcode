@@ -141,7 +141,7 @@ function createWorkspace(input: { storage: Storage; server: ServerRef; directory
   // Empty until the stored terminals load; changes made before then apply over them in order.
   const all = createMemo(() => stored.value?.all ?? [])
   const active = createMemo(() => stored.value?.active)
-  const [ui, setUi] = createStore<{ focus?: FocusRequest }>({})
+  const [ui, setUi] = createStore<{ focus?: FocusRequest; creationError?: string }>({})
   const focus = { request: 0 }
 
   const requestFocus = (id?: string, pending = false) => {
@@ -306,10 +306,12 @@ function createWorkspace(input: { storage: Storage; server: ServerRef; directory
     ready: () => stored.ready(),
     all,
     active,
+    creationError: () => ui.creationError,
     clear() {
       stored.set({ active: undefined, all: [] })
     },
     new() {
+      setUi("creationError", undefined)
       const nextNumber = pickNextTerminalNumber()
       const focusRequest = requestFocus(undefined, true)
 
@@ -348,6 +350,7 @@ function createWorkspace(input: { storage: Storage; server: ServerRef; directory
         })
         .catch((error) => {
           cancelFocus(focusRequest)
+          setUi("creationError", error instanceof Error ? error.message : String(error))
           console.error("Failed to create terminal", error)
         })
     },

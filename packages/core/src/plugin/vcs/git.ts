@@ -11,6 +11,9 @@ import { FileDiff } from "@opencode/schema/file-diff"
 import { Base, BranchList, FileStatus, Info, Mode } from "@opencode/schema/vcs"
 import { AppProcess } from "@opencode/util/process"
 import { Location } from "../../location.js"
+import { Git } from "../../git.js"
+import { AbsolutePath } from "@opencode/schema/schema"
+import { parse } from "../../repository.js"
 import type { Adapter, BranchOptions, DiffOptions } from "../../vcs.js"
 import { DiffError } from "../../vcs.js"
 import { gitExecutable } from "../../util/git-executable.js"
@@ -32,10 +35,16 @@ export const Plugin = define({
     if (location.vcs && location.vcs.type !== "git") return
 
     const processes = yield* AppProcess.Service
-    const adapter = make(processes, {
-      directory: location.directory,
-      worktree: location.project.directory,
-    })
+    const git = yield* Git.Service
+    const adapter = make(
+      processes,
+      {
+        directory: location.directory,
+        worktree: location.project.directory,
+        canonical: location.project.canonical,
+      },
+      git,
+    )
 
     yield* ctx.vcs.transform((editor) => {
       editor.add({
@@ -63,17 +72,44 @@ export const Plugin = define({
  * batched through one `git diff` invocation where possible and capped by
  * per-file and total byte budgets, falling back to empty patches when capped.
  */
-function make(proc: AppProcess.Interface, input: { directory: string; worktree: string }) {
+function make(
+  proc: AppProcess.Interface,
+  input: { directory: string; worktree: string; canonical: string },
+  git: Git.Interface,
+) {
   // Listing commands scope pathspecs to the requested directory; per-file
   // commands run from the worktree root because git lists root-relative paths.
   const ctx: Ctx = { proc, git: makeGit(proc), directory: input.directory, worktree: input.worktree }
 
   return {
     info: Effect.fn("VcsGit.info")(function* () {
-      const [current, root] = yield* Effect.all([ctx.git.branch(ctx.directory), ctx.git.defaultBranch(ctx.directory)], {
-        concurrency: 2,
-      })
-      return { branch: { current, default: root?.name } } satisfies Info
+      const [current, root, repository] = yield* Effect.all(
+        [
+          ctx.git.branch(ctx.directory),
+          ctx.git.defaultBranch(ctx.directory),
+          git.repo.discover(AbsolutePath.make(ctx.directory)),
+        ],
+        {
+          concurrency: 3,
+        },
+      )
+      const remote = repository ? yield* git.remote.get(repository) : undefined
+      const reference = remote ? parse(remote) : undefined
+      return {
+        branch: { current, default: root?.name },
+        ...(repository
+          ? {
+              repository: {
+                name: reference && reference.protocol !== "file:" ? reference.label : path.basename(input.canonical),
+                directory: AbsolutePath.make(input.canonical),
+              },
+              worktree: {
+                directory: repository.worktree,
+                main: path.resolve(repository.gitDirectory) === path.resolve(repository.commonDirectory),
+              },
+            }
+          : {}),
+      } satisfies Info
     }),
     base: () => ctx.git.base(ctx.directory),
     branches: Effect.fn("VcsGit.branches")(function* (options?: BranchOptions) {

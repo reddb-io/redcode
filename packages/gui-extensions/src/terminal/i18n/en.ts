@@ -6,6 +6,8 @@ export default {
   loading: "Loading terminal…",
   "title.numbered": "Terminal {{number}}",
   close: "Close terminal",
+  "createFailed.title": "Could not create terminal",
+  "createFailed.retry": "Try again",
   "connectionLost.title": "Connection Lost",
   "connectionLost.abnormalClose": "WebSocket closed abnormally: {{code}}",
   "connectionLost.description": "The terminal connection was interrupted. This can happen when the server restarts.",

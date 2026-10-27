@@ -8,6 +8,43 @@ const workspace = { name: "TerminalInput", pty: {} } satisfies WorkspaceInput
 
 test.use({ viewport: { width: 1440, height: 900 } })
 
+test("shows terminal creation failures and retries without losing existing tabs", async ({ page }) => {
+  const { pty } = await openSession(page, workspace)
+  const failure = { next: true }
+  await page.route(/\/api\/pty\?/, (route) => {
+    if (route.request().method() !== "POST" || !failure.next) return route.fallback()
+    failure.next = false
+    return route.fulfill({
+      status: 500,
+      headers: { "access-control-allow-origin": "*" },
+      body: "Internal Server Error",
+    })
+  })
+
+  await page.keyboard.press("Control+Backquote")
+  const panel = page.locator("#terminal-panel")
+  const alert = panel.getByRole("alert")
+  await expect(alert).toContainText("Could not create terminal")
+  expect(pty.created).toEqual([])
+  await alert.getByRole("button", { name: "Try again", exact: true }).click()
+  await expect(alert).toHaveCount(0)
+  await expect(panel.getByRole("tab", { name: "Terminal 1", exact: true })).toHaveAttribute("aria-selected", "true")
+  await expect.poll(() => pty.sockets.length).toBe(1)
+  const original = pty.created[0]!.id
+
+  failure.next = true
+  await panel.getByRole("button", { name: "New terminal", exact: true }).click()
+  await expect(alert).toContainText("Could not create terminal")
+  await expect(panel.getByRole("tab", { name: "Terminal 1", exact: true })).toHaveAttribute("aria-selected", "true")
+  expect(pty.created.map((item) => item.id)).toEqual([original])
+  await alert.getByRole("button", { name: "Try again", exact: true }).click()
+  await expect(alert).toHaveCount(0)
+  await expect(panel.getByRole("tab", { name: "Terminal 2", exact: true })).toHaveAttribute("aria-selected", "true")
+  await expect.poll(() => pty.sockets.length).toBe(2)
+  expect(pty.created.map((item) => item.id)).toEqual([original, "pty_2"])
+  expect(pty.removed).toEqual([])
+})
+
 test("clears the terminal line with Command+Delete", async ({ page }) => {
   const { pty } = await openSession(page, workspace)
   const terminal = page.locator('[data-component="terminal"]')

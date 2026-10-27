@@ -172,7 +172,7 @@ describe("Vcs", () => {
         expect(yield* vcs.info()).toEqual({ provider: "git", branch: { current: "feature", default: "main" } })
 
         yield* registration.dispose
-        expect(yield* vcs.info()).toEqual({ provider: "git", branch: { current: "main", default: undefined } })
+        expect(yield* vcs.info()).toMatchObject({ provider: "git", branch: { current: "main", default: undefined } })
       }),
     ),
   )
@@ -649,7 +649,13 @@ describe("Vcs", () => {
         })
         const vcs = yield* Vcs.Service
         const bus = yield* Bus.Service
-        expect(yield* vcs.info()).toEqual({ provider: "git", branch: { current: "main", default: undefined } })
+        const initial = {
+          provider: "git",
+          branch: { current: "main", default: undefined },
+          repository: { name: path.basename(directory), directory: AbsolutePath.make(directory) },
+          worktree: { directory: AbsolutePath.make(directory), main: true },
+        }
+        expect(yield* vcs.info()).toEqual(initial)
 
         const updated = yield* bus
           .subscribe(VcsEvent.BranchUpdated)
@@ -657,14 +663,14 @@ describe("Vcs", () => {
         yield* Effect.promise(() => $`git checkout -q -b feature`.cwd(directory).quiet())
 
         yield* bus.publish(FileSystem.Event.Changed, { file: path.join(directory, "HEAD"), event: "change" })
-        expect(yield* vcs.info()).toEqual({ provider: "git", branch: { current: "main", default: undefined } })
+        expect(yield* vcs.info()).toEqual(initial)
 
         yield* bus.publish(FileSystem.Event.Changed, { file: path.join(directory, ".git", "HEAD"), event: "change" })
         expect(yield* Fiber.join(updated)).toMatchObject({
           _tag: "Some",
           value: { location: { directory }, data: { branch: "feature" } },
         })
-        expect(yield* vcs.info()).toEqual({ provider: "git", branch: { current: "feature", default: "main" } })
+        expect(yield* vcs.info()).toEqual({ ...initial, branch: { current: "feature", default: "main" } })
       }),
     ),
   )
@@ -1119,7 +1125,9 @@ describe("Vcs", () => {
         yield* Effect.promise(async () => {
           await fs.writeFile(path.join(directory, "base.txt"), "base\n")
           await commitAll(directory, "initial")
-          await $`git remote add origin https://example.com/team/repo.git`.cwd(directory).quiet()
+          await $`git remote add origin https://fixture-user:fixture-token@example.com/team/repo.git`
+            .cwd(directory)
+            .quiet()
           await $`git update-ref refs/remotes/origin/dev HEAD`.cwd(directory).quiet()
           await $`git symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/dev`.cwd(directory).quiet()
           await fs.writeFile(path.join(directory, "v2.txt"), "v2\n")
@@ -1145,6 +1153,11 @@ describe("Vcs", () => {
             ...context,
             vcs: { ...context.vcs, transform: vcs.transform, reload: vcs.reload },
           })
+          const info = yield* vcs.info()
+          expect(info.repository?.name).toBe("example.com/team/repo")
+          expect(info.worktree).toEqual({ directory: linked.worktree, main: false })
+          expect(info.branch.current).toBeUndefined()
+          expect(JSON.stringify(info)).not.toContain("fixture-token")
           expect(yield* vcs.base().pipe(Effect.flip)).toMatchObject({ message: "Choose a review base" })
           expect(yield* vcs.diff("committed", { base: "origin/v2" })).toEqual([])
           expect((yield* vcs.diff("committed", { base: "origin/dev" })).map((row) => row.file)).toEqual(["v2.txt"])
