@@ -1,5 +1,12 @@
 # @reddb-io/redcode
 
+## 0.86.6
+
+### Patch Changes
+
+- Unify Machines and Remote workers in Servers & workers. Show the client-to-server-to-worker topology, keep worker management scoped to the selected server, and bring connection setup, device pairing and HTTPS access together. Explain local, remote and browser access while retaining links to the previous views.
+- Add single-use worker invitations with a Desktop copy command and browser instructions, CLI enrollment, revocation, expiration and automatic worker-list updates after authenticated connection checks. Refresh worker connection health in the coordinator. Add SSH username, port and private-key fields and installation progress alongside the existing automatic remote installation and password prompts.
+
 ## 0.86.5
 
 ### Patch Changes
