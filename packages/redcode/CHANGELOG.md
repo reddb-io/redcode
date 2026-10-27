@@ -1,5 +1,13 @@
 # @reddb-io/redcode
 
+## 0.86.5
+
+### Patch Changes
+
+- Show repository, branch and worktree context in Desktop session rows, with full paths available on hover. Resolve Git metadata per visible location, share reads between sessions in the same directory, and keep repository context when branch updates arrive.
+- Show terminal creation errors in the Desktop and web terminal panel with an option to retry, preserving existing terminal tabs.
+- Keep voice configuration in Server settings, handle unavailable or older servers inside the voice dialog with a retry action, and prevent the crash page from turning the entire window into a drag region.
+
 ## 0.86.4
 
 ### Patch Changes
