@@ -114,25 +114,6 @@ export function ServerGeneral(props: { services: Services }) {
               </SettingsList>
             </section>
             <ServerShell key={state.key} services={services} language={language} />
-            <section className="settings-section">
-              <h3 className="settings-section-title">{language.t("voice.settings")}</h3>
-              <SettingsList>
-                <SettingsRow title={language.t("voice.provider")} description={language.t("voice.description")}>
-                  {(association) => (
-                    <Button
-                      {...association}
-                      aria-labelledby={undefined}
-                      size="sm"
-                      variant="secondary"
-                      disabled={state.unauthorized}
-                      onClick={services.voice}
-                    >
-                      {language.t("voice.settings")}
-                    </Button>
-                  )}
-                </SettingsRow>
-              </SettingsList>
-            </section>
           </>
         )}
       </div>

@@ -28,6 +28,7 @@ export function SettingsGeneral() {
         terminalPlacement: settings.general.terminalPlacement(),
         followUpBehavior: settings.general.followUpBehavior(),
         mobileTitlebarPosition: settings.general.mobileTitlebarPosition(),
+        timelineWidth: settings.general.timelineWidth(),
         timelineDetail: Object.fromEntries(
           Object.entries(settings.general.timelineDetail()).map(([key, value]) => [key, { ...value }]),
         ) as ReturnType<typeof settings.general.timelineDetail>,

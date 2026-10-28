@@ -61,10 +61,13 @@ import { WorkspaceTabs } from "./WorkspaceTabs.js";
 import { ChangeReview } from "./ChangeReview.js";
 import { ErrorBoundary } from "./ErrorBoundary.js";
 import { ShortcutHelp } from "./ShortcutHelp.js";
+import { createWorkspaceSession } from "../../src/core/workspace-session.js";
+import { ApplicationWorkspace } from "./ApplicationWorkspace.js";
 export {
   ActionPanel,
   ActivityFeed,
   ApplicationShell,
+  ApplicationWorkspace,
   BottomNavigation,
   CardHeading,
   CategoryFilter,
@@ -111,5 +114,6 @@ export {
   TaskList,
   TelemetryRow,
   Toolbar,
-  WorkspaceTabs
+  WorkspaceTabs,
+  createWorkspaceSession
 };

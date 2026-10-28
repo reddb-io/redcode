@@ -2,9 +2,11 @@ import { useDialog } from "@opencode/ui/context/dialog"
 import { useSettingsCommand } from "@/settings/command"
 import { useCommand } from "@/shell/commands/command"
 import { useLanguage } from "@/runtime/i18n/language"
+import { useServerSDK } from "@/runtime/server/client"
 
 export function useNewSessionCommands(input: {
   restoreFocus: () => void
+  startGoal: (objective: string) => Promise<void>
   project: {
     empty: () => boolean
     open: () => void
@@ -17,9 +19,22 @@ export function useNewSessionCommands(input: {
   const command = useCommand()
   const dialog = useDialog()
   const language = useLanguage()
+  const serverSDK = useServerSDK()
 
   useSettingsCommand()
   command.register("new-session", () => [
+    {
+      id: "session.goal",
+      title: language.t("goal.title"),
+      description: language.t("goal.command.description"),
+      category: language.t("command.category.session"),
+      slash: "goal",
+      slashArguments: true,
+      onSelect: async (_source, text) => {
+        const { GoalDialog } = await import("@/composer/goal-dialog")
+        void dialog.show(() => <GoalDialog api={serverSDK.api} input={text ?? ""} startDraft={input.startGoal} />)
+      },
+    },
     {
       id: "command.palette",
       title: language.t("command.palette"),

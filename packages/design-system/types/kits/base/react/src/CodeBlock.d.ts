@@ -7,6 +7,8 @@ export interface CodeBlockProps extends Omit<ComponentPropsWithRef<"div">, "chil
     language?: string;
     /** Synchronous exact-source tokenizer, rendered on the server as well as in the browser. */
     grammar?: CodeTokenizer;
+    /** Show non-selectable, decorative line numbers. */
+    lineNumbers?: boolean;
     /** Accessible and visible copy label. Defaults to `Copy code`. */
     copyLabel?: string;
     /** Label shown and announced after a successful copy. Defaults to `Copied`. */
@@ -18,5 +20,5 @@ export interface CodeBlockProps extends Omit<ComponentPropsWithRef<"div">, "chil
     /** Extra classes merged onto the code block root. */
     className?: string;
 }
-export declare function CodeBlock({ code, language, grammar, copyLabel, copiedLabel, copyErrorLabel, regionLabel, className, ...rest }: CodeBlockProps): import("react").JSX.Element;
+export declare function CodeBlock({ code, language, grammar, lineNumbers, copyLabel, copiedLabel, copyErrorLabel, regionLabel, className, ...rest }: CodeBlockProps): import("react").JSX.Element;
 export type { CodeTokenizer, CodeToken } from "../../src/code-block.variants";

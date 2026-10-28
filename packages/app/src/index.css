@@ -3,6 +3,52 @@
 @import "@opencode/ui/styles/tokens";
 @import "tw-animate-css";
 
+/* The Design System resets container tokens, so session width belongs to the app shell. */
+:root {
+  --redcode-session-width: 72rem;
+}
+
+:root[data-timeline-width="comfortable"] {
+  --redcode-session-width: 46.5rem;
+}
+
+:root[data-timeline-width="full"] {
+  --redcode-session-width: 100%;
+}
+
+@media (min-width: 48rem) {
+  .md\:max-w-session {
+    max-width: var(--redcode-session-width);
+  }
+
+  :root:is([data-timeline-width="wide"], [data-timeline-width="full"])
+    [data-component="text-part"]
+    [data-slot="text-part-body"]
+    [data-component="markdown"]
+    :is(p, ul, ol, blockquote, h1, h2, h3, h4, h5, h6),
+  :root:is([data-timeline-width="wide"], [data-timeline-width="full"]) [data-slot="user-message-text"] {
+    max-width: none;
+  }
+}
+
+/* Keep the composer and transcript in one lane beside the floating outputs card. */
+@container (min-width: 30rem) {
+  [data-slot="session-chat-panel"]:has([data-component="session-outputs"]) .md\:max-w-session {
+    --redcode-outputs-space: 11rem;
+    max-width: min(var(--redcode-session-width), 100% - var(--redcode-outputs-space));
+    margin-inline-start: max(
+      0px,
+      (100% - var(--redcode-outputs-space) - min(var(--redcode-session-width), 100% - var(--redcode-outputs-space))) / 2
+    );
+    margin-inline-end: auto;
+  }
+
+  [data-slot="session-chat-panel"]:has([data-component="session-outputs"] > button[aria-expanded="true"])
+    .md\:max-w-session {
+    --redcode-outputs-space: 19.5rem;
+  }
+}
+
 @font-face {
   font-family: "JetBrainsMono Nerd Font Mono";
   src: url("/assets/JetBrainsMonoNerdFontMono-Regular.woff2") format("woff2");

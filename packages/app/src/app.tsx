@@ -15,6 +15,7 @@ import { LanguageProvider, UiI18nBridge, type Locale } from "@/runtime/i18n/lang
 import { ServerConnection, ServersProvider } from "@/runtime/server/registry"
 import { SettingsProvider, useSettings } from "@/settings/model"
 import { TabsProvider } from "@/shell/tabs/tabs"
+import { SessionHistoryCache } from "@/shell/tabs/history-cache"
 import { ErrorPage } from "@/shell/errors/error"
 import { AppRoutes, File, preloadRoute } from "@/shell/routes/routes"
 import { ExtensionRoot } from "@/runtime/extension/root"
@@ -42,6 +43,7 @@ function BodyTypography() {
   createRenderEffect(() => {
     if (typeof document === "undefined") return
     document.documentElement.dataset.density = mobile() ? "tiny" : settings.appearance.density()
+    document.documentElement.dataset.timelineWidth = settings.general.timelineWidth()
     document.body.classList.remove("text-12-regular")
     document.body.classList.add("font-(family-name:--font-family-text)", "text-[13px]", "font-normal")
   })
@@ -100,6 +102,7 @@ export function AppInterface(props: {
   const Root = (rootProps: ParentProps) => (
     <TabsProvider>
       <GlobalProvider>
+        <SessionHistoryCache />
         <BodyTypography />
         <CommandProvider>
           <DesktopCommands />

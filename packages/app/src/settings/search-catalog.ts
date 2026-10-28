@@ -17,7 +17,15 @@ type Entry<Tab> = {
 
 export const clientSettings: Entry<SettingsRootTab>[] = [
   { tab: "general", label: "settings.tab.preferences" },
+  {
+    tab: "general",
+    label: "settings.timeline.width.title",
+    description: "settings.timeline.width.description",
+    target: "settings-timeline-width",
+    keywords: "chat conversation width full wide column",
+  },
   { tab: "appearance", label: "settings.general.section.appearance" },
+  { tab: "voice", label: "voice.settings", keywords: "microphone dictation transcription audio" },
   { tab: "notifications", label: "settings.tab.notifications" },
   { tab: "shortcuts", label: "settings.shortcuts.title", keywords: "keybind keyboard hotkey" },
   { tab: "about", label: "settings.tab.about", keywords: "version license credits" },

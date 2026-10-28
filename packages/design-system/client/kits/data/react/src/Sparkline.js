@@ -1,5 +1,6 @@
 "use client";
 import { jsx, jsxs } from "react/jsx-runtime";
+import { Skeleton } from "@reddb-io/design-system/base";
 import { tokenColor } from "@reddb-io/design-system/base/recipes";
 import { useRef } from "react";
 import { chartFigure } from "../../src/chart.variants.js";
@@ -36,7 +37,8 @@ function Sparkline({
       style: {
         height: height === void 0 ? `calc(var(--reddb-spatial-control-height-md) * ${rows})` : `${height}px`,
         width: width === void 0 ? "100%" : `${width}px`
-      }
+      },
+      children: /* @__PURE__ */ jsx(Skeleton, { shape: variant === "bar" ? "column" : variant, className: "h-full max-w-none" })
     }
   );
   return /* @__PURE__ */ jsxs(
@@ -44,6 +46,7 @@ function Sparkline({
     {
       ref: figure,
       "data-ds-chart": true,
+      "aria-busy": !Plot || void 0,
       "data-chart-loaded": Plot ? "" : void 0,
       "data-chart-kind": "sparkline",
       "data-chart-variant": variant,

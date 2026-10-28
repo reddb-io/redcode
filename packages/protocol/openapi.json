@@ -25844,7 +25844,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Intelligence.Probe"
+                "$ref": "#/components/schemas/Intelligence.Discovery"
               }
             }
           },
@@ -37914,6 +37914,20 @@
         "required": ["providerID", "baseURL", "detection"],
         "additionalProperties": false
       },
+      "Intelligence.Discovery": {
+        "type": "object",
+        "properties": {
+          "evaluator": {
+            "$ref": "#/components/schemas/Intelligence.EvaluatorConnection"
+          },
+          "apiKey": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": ["evaluator"],
+        "additionalProperties": false
+      },
       "Intelligence.Evaluation": {
         "type": "object",
         "properties": {
@@ -38098,6 +38112,40 @@
         "required": ["transport", "baseURL", "model"],
         "additionalProperties": false
       },
+      "Intelligence.EvaluatorConnection": {
+        "type": "object",
+        "properties": {
+          "transport": {
+            "type": "string",
+            "enum": [
+              "opencode-zen",
+              "openrouter",
+              "typesafe",
+              "red-router",
+              "cloudflare-ai-gateway",
+              "vercel",
+              "vivgrid",
+              "nano-gpt"
+            ]
+          },
+          "baseURL": {
+            "type": "string",
+            "minLength": 1
+          },
+          "model": {
+            "type": "string",
+            "minLength": 1
+          },
+          "credentialID": {
+            "type": "string"
+          },
+          "endpoint": {
+            "$ref": "#/components/schemas/Intelligence.DecisionEndpoint"
+          }
+        },
+        "required": ["transport", "baseURL"],
+        "additionalProperties": false
+      },
       "Intelligence.EvaluatorOption": {
         "type": "object",
         "properties": {
@@ -38109,7 +38157,7 @@
             "type": "boolean"
           },
           "evaluator": {
-            "$ref": "#/components/schemas/Intelligence.Evaluator"
+            "$ref": "#/components/schemas/Intelligence.EvaluatorConnection"
           }
         },
         "required": ["name", "configured", "evaluator"],

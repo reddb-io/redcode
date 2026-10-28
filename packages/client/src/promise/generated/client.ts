@@ -624,10 +624,25 @@ export function make(options: ClientOptions) {
       })
       throw declared(body as DeclaredErrorBody)
     }
-    try {
-      await response.body?.cancel()
-    } catch {}
-    throw new ClientError("UnexpectedStatus", { cause: { status: response.status }, detail: String(response.status) })
+    const body = isContentType(response, "application/json") ? await json(response).catch(() => undefined) : undefined
+    if (!body) {
+      try {
+        await response.body?.cancel()
+      } catch {}
+    }
+    const detail =
+      typeof body === "object" &&
+      body !== null &&
+      "_tag" in body &&
+      body._tag === "UnknownError" &&
+      "message" in body &&
+      typeof body.message === "string"
+        ? body.message
+        : undefined
+    throw new ClientError("UnexpectedStatus", {
+      cause: { status: response.status },
+      detail: detail ? `${response.status}: ${detail}` : String(response.status),
+    })
   }
 
   const request = async <A>(descriptor: RequestDescriptor, requestOptions?: RequestOptions): Promise<A> => {

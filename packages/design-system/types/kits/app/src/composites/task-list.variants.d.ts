@@ -7,10 +7,10 @@ export declare const taskList: import("tailwind-variants").TVReturnType<{
             progress?: import("tailwind-variants").ClassValue;
             root?: import("tailwind-variants").ClassValue;
             list?: import("tailwind-variants").ClassValue;
+            context?: import("tailwind-variants").ClassValue;
             description?: import("tailwind-variants").ClassValue;
             actions?: import("tailwind-variants").ClassValue;
             item?: import("tailwind-variants").ClassValue;
-            context?: import("tailwind-variants").ClassValue;
             reading?: import("tailwind-variants").ClassValue;
             reason?: import("tailwind-variants").ClassValue;
         };
@@ -23,10 +23,10 @@ export declare const taskList: import("tailwind-variants").TVReturnType<{
             progress?: import("tailwind-variants").ClassValue;
             root?: import("tailwind-variants").ClassValue;
             list?: import("tailwind-variants").ClassValue;
+            context?: import("tailwind-variants").ClassValue;
             description?: import("tailwind-variants").ClassValue;
             actions?: import("tailwind-variants").ClassValue;
             item?: import("tailwind-variants").ClassValue;
-            context?: import("tailwind-variants").ClassValue;
             reading?: import("tailwind-variants").ClassValue;
             reason?: import("tailwind-variants").ClassValue;
         };
@@ -51,10 +51,10 @@ export declare const taskList: import("tailwind-variants").TVReturnType<{
             progress?: import("tailwind-variants").ClassValue;
             root?: import("tailwind-variants").ClassValue;
             list?: import("tailwind-variants").ClassValue;
+            context?: import("tailwind-variants").ClassValue;
             description?: import("tailwind-variants").ClassValue;
             actions?: import("tailwind-variants").ClassValue;
             item?: import("tailwind-variants").ClassValue;
-            context?: import("tailwind-variants").ClassValue;
             reading?: import("tailwind-variants").ClassValue;
             reason?: import("tailwind-variants").ClassValue;
         };

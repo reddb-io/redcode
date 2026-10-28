@@ -2,13 +2,18 @@
 
 ## Desktop and web
 
-Open **Settings → Server → Voice settings** for the selected server.
+Open **Settings → Voice**. When several servers are connected, choose which server stores the transcription settings.
 Choose OpenAI, ElevenLabs, Deepgram, or an OpenAI-compatible endpoint, then explicitly select a saved API-key connection and transcription
 model. A local compatible endpoint can be used without a key. The endpoint field is a base URL,
 such as `http://127.0.0.1:8080/v1`; Redcode appends the protocol's transcription path.
 
 Choose **Add a voice API key…** to save a new named key without leaving the app. Keys are masked
 while entering them, and a dedicated voice connection does not change the selected coding account.
+
+The microphone selector lists local audio inputs and remembers the choice on this client immediately.
+Use **Allow microphone access** to reveal device names when the browser requires permission, or
+**Refresh microphones** after connecting a device. The system default follows the operating system;
+an unavailable selected device must be reconnected or changed before recording.
 
 Click the microphone, speak, then **Stop and transcribe**. `Ctrl+Shift+M` (`Cmd+Shift+M` on macOS)
 also starts or stops recording. The small level meter reflects the microphone's actual signal.

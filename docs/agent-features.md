@@ -387,6 +387,10 @@ Every mode is turn by turn: the agent answers, the harness waits for you. `/goal
 session. You give it a definition of done, and the harness keeps the agent on it across turns until it
 holds, until it is blocked, or until the budget runs out.
 
+In the Desktop and web composer, type `/goal` to inspect and manage the current objective, or
+`/goal <objective>` to start one. Starting from a new-session draft creates a session in the selected
+workspace. Use `/goal pause`, `/goal resume`, `/goal drop`, or `/goal budget` to control it.
+
 ```
 /goal make the design suite pass; verify: bun test test/design; gate: bun test test/design;
 constraints: do not touch the app package; stop when: a test needs a network

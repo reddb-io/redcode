@@ -18,18 +18,18 @@ export class Error extends Schema.TaggedError<Error>()("IntelligenceError", {
 
 export function evaluatorPreset(
   transport: Intelligence.Evaluator["transport"] = "opencode-zen",
-): Intelligence.Evaluator {
-  if (transport === "opencode-zen") return { transport, baseURL: "https://opencode.ai/zen/v1", model: "jev-1.13-free" }
+): Intelligence.EvaluatorConnection {
+  if (transport === "opencode-zen") return { transport, baseURL: "https://opencode.ai/zen/v1" }
   if (transport === "openrouter")
-    return { transport, baseURL: "https://openrouter.ai/api/v1", model: "typesafe/jev-1.13" }
-  if (transport === "typesafe") return { transport, baseURL: "https://api.typesafe.ai/v1", model: "jev-1.13.0" }
-  if (transport === "red-router") return { transport, baseURL: "http://127.0.0.1:25050/v1", model: "jev-1.13.0" }
+    return { transport, baseURL: "https://openrouter.ai/api/v1" }
+  if (transport === "typesafe") return { transport, baseURL: "https://api.typesafe.ai/v1" }
+  if (transport === "red-router") return { transport, baseURL: "http://127.0.0.1:25050/v1" }
   if (transport === "cloudflare-ai-gateway")
-    return { transport, baseURL: "https://api.cloudflare.com/client/v4", model: "typesafe/jev" }
+    return { transport, baseURL: "https://api.cloudflare.com/client/v4" }
   if (transport === "vercel")
-    return { transport, baseURL: "https://ai-gateway.vercel.sh/v4/ai", model: "typesafe-ai/jev" }
-  if (transport === "vivgrid") return { transport, baseURL: "https://api.vivgrid.com/v1", model: "jev" }
-  return { transport, baseURL: "https://nano-gpt.com/api/v1", model: "typesafe/jev-latest" }
+    return { transport, baseURL: "https://ai-gateway.vercel.sh/v4/ai" }
+  if (transport === "vivgrid") return { transport, baseURL: "https://api.vivgrid.com/v1" }
+  return { transport, baseURL: "https://nano-gpt.com/api/v1" }
 }
 
 export const isJev = Router.isJevEvaluator

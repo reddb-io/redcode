@@ -11,6 +11,7 @@ export type WorkspaceLastUsed = Settings["workspaces"]["lastUsed"][string]
 export type TerminalPlacement = Settings["general"]["terminalPlacement"]
 
 export type FollowUpBehavior = Settings["general"]["followUpBehavior"]
+export type TimelineWidth = "comfortable" | "wide" | "full"
 export type NotificationSettings = Settings["notifications"]
 
 export type SoundSettings = Settings["sounds"]
@@ -93,6 +94,7 @@ const generalSchema = Persistence.struct({
   navigationGap: Persistence.optional(Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 16 }))),
   showSearch: Persistence.optional(Schema.Boolean),
   showTerminal: Persistence.optional(Schema.Boolean),
+  timelineWidth: Persistence.optional(Schema.Literals(["comfortable", "wide", "full"])),
   timelineDetail: Persistence.struct({
     shell: activitySchema,
     edit: activitySchema,
@@ -146,6 +148,7 @@ const soundsSchema = Persistence.struct({
 })
 
 export const settingsSchema = Persistence.struct({
+  voiceDevice: Persistence.optional(Schema.String),
   general: generalSchema,
   // Owned by the details extension, which copies it out once; kept so settings rewrites cannot drop it first.
   sessionSummary: Schema.optional(

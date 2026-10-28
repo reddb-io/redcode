@@ -3,7 +3,7 @@ import { base64Encode } from "@opencode/util/encode"
 import type { SessionMessageUser } from "@opencode/client/promise"
 import { Session } from "@opencode/schema/session"
 import { startTransition } from "solid-js"
-import type { NewSessionComposerAdapter } from "@/composer/adapter"
+import type { ComposerSelection, NewSessionComposerAdapter } from "@/composer/adapter"
 import { useComposerState } from "@/composer/persistence"
 import { createComposerReasoning } from "@/composer/reasoning/state"
 import { createComposerControls, createComposerModelSelection } from "@/composer/selection"
@@ -212,11 +212,78 @@ export function createNewSessionComposerAdapter(props: {
     },
   }
 
+  let goalSession: { id: string; directory: string; selection: ComposerSelection; identity: string } | undefined
   return {
     adapter,
     project: createComposerProjectControls({ draftId: props.draftID, worktree: props.worktree }),
     model,
     ready: prompt.ready,
+    async startGoal(objective: string) {
+      const selected = controls()
+      const selectedModel = selected.model.selection.current()
+      const agent = selected.agents.current
+      if (!selectedModel || !agent) throw new Error(language.t("goal.selectionRequired"))
+      const selection = {
+        agent,
+        model: {
+          providerID: selectedModel.provider.id,
+          modelID: selectedModel.id,
+          connection: selectedModel.connection,
+        },
+        variant: selected.model.selection.variant.current(),
+      }
+      const currentDirectory = location().directory
+      const projectDirectory = data.location.info({ directory: currentDirectory })?.project.canonical ?? currentDirectory
+      const identity = JSON.stringify([projectDirectory, props.worktree(), props.branch(), selection])
+      if (goalSession?.identity !== identity) goalSession = undefined
+      if (!goalSession) {
+        const sessionDirectory = await resolveSessionDirectory({
+          projectDirectory,
+          worktree: props.worktree(),
+          branch: props.branch(),
+          data,
+          serverSDK,
+          language,
+        })
+        if (!sessionDirectory) throw new Error(language.t("goal.workspaceFailed"))
+        if (!(await props.mcp.prepare(sessionDirectory, props.mcp.capture())))
+          throw new Error(language.t("goal.workspaceFailed"))
+        const created = data.session.create({
+          id: Session.ID.create(),
+          agent,
+          model: {
+            id: selection.model.modelID,
+            providerID: selection.model.providerID,
+            connection: selection.model.connection,
+            variant: selection.variant,
+          },
+          location: { directory: sessionDirectory },
+        })
+        await created.request
+        goalSession = { id: created.id, directory: sessionDirectory, selection, identity }
+      }
+      await reasoning.apply(goalSession.id)
+      await serverSDK.api.session.goal.start({
+        sessionID: goalSession.id,
+        objective,
+        agent: goalSession.selection.agent,
+      })
+      props.submitted()
+      local.session.promote(goalSession.directory, goalSession.id, {
+        agent: goalSession.selection.agent,
+        model: goalSession.selection.model,
+        variant: goalSession.selection.variant ?? null,
+        choices: model.remembered(),
+      })
+      const target = prompt.capture(
+        { dir: base64Encode(goalSession.directory), id: goalSession.id },
+        { server: server.key, scope: serverSDK.scope },
+      )
+      target.set(state.current(), state.cursor())
+      target.context.replace(state.context.items())
+      tabs.updateDraft(props.draftID, { worktree: undefined, branch: undefined })
+      tabs.promoteDraft(props.draftID, { server: server.key, sessionId: goalSession.id })
+    },
   }
 }
 

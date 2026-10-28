@@ -57,7 +57,7 @@ const make = Effect.gen(function* () {
   })
 
   const request = Effect.fn("IntelligenceTransport.request")(function* (
-    evaluator: Intelligence.Evaluator,
+    evaluator: Intelligence.EvaluatorConnection,
     suffix: string,
     body?: unknown,
     apiKey?: string,
@@ -123,7 +123,9 @@ const make = Effect.gen(function* () {
               ...(images ? { "TypeSafe-Danger-Zone-Images": "true" } : {}),
               ...(key ? { Authorization: `Bearer ${key}` } : {}),
               ...(gatewayID ? { "cf-aig-gateway-id": gatewayID } : {}),
-              ...(vercel ? { "ai-evaluation-model-specification-version": "4", "ai-model-id": evaluator.model } : {}),
+              ...(vercel && evaluator.model
+                ? { "ai-evaluation-model-specification-version": "4", "ai-model-id": evaluator.model }
+                : {}),
             },
             ...(body === undefined
               ? {}
@@ -150,7 +152,7 @@ const make = Effect.gen(function* () {
           })
         }
         const result: unknown = await response.json()
-        return vercel ? vercelResponse(evaluator.model, body, result) : result
+        return vercel ? vercelResponse(evaluator.model ?? "", body, result) : result
       },
       catch: (cause) =>
         cause instanceof IntelligenceEvaluation.Error
@@ -166,7 +168,7 @@ const make = Effect.gen(function* () {
   })
 
   const discover = Effect.fn("IntelligenceTransport.discover")(function* (
-    input: Intelligence.Probe,
+    input: Intelligence.Discovery,
     requests?: ConnectionCheck.Request[],
   ) {
     if (["openrouter", "cloudflare-ai-gateway", "vercel"].includes(input.evaluator.transport)) {
@@ -180,16 +182,17 @@ const make = Effect.gen(function* () {
         providerIntegrations(input.evaluator.transport).includes(provider.info.id)
           ? provider.models
               .filter(
-                (model) =>
-                  model.type === "decision" &&
-                  model.status !== "deprecated" &&
-                  IntelligenceEvaluation.isJev(model.canonicalModelID ?? model.id),
+                (model) => model.type === "decision" && model.status !== "deprecated",
               )
               .map((model) => ({ id: model.id, name: model.name }))
           : [],
       )
       return {
-        models: models.length ? models : [{ id: input.evaluator.model, name: input.evaluator.model }],
+        models: models.length
+          ? models
+          : input.evaluator.model
+            ? [{ id: input.evaluator.model, name: input.evaluator.model }]
+            : [],
         manual: false,
       }
     }
@@ -302,14 +305,25 @@ const make = Effect.gen(function* () {
     return {
       models: [
         ...(catalog.data ?? [])
-          .filter((model) => IntelligenceEvaluation.isJev(model.canonical_model_id ?? model.id))
-          .map((model) => ({
-            id: model.id,
-            name:
-              [typeof model.provider === "string" ? model.provider : model.provider?.name, model.name]
-                .filter(Boolean)
-                .join(" · ") || model.id,
-          })),
+          .filter(
+            (model) =>
+              model.type === "systemone" ||
+              model.type === "decision" ||
+              model.capabilities?.decision === true ||
+              model.supported_endpoints?.some((endpoint) => /(^|\/)(systemone|decisions)$/.test(endpoint)) ||
+              (model.type === undefined && IntelligenceEvaluation.isJev(model.canonical_model_id ?? model.id)),
+          )
+          .map((model) => {
+            const endpoint = model.supported_endpoints?.map(Router.systemOneEndpoint).find((value) => value !== undefined)
+            return {
+              id: model.id,
+              ...(endpoint ? { endpoint } : {}),
+              name:
+                [typeof model.provider === "string" ? model.provider : model.provider?.name, model.name]
+                  .filter(Boolean)
+                  .join(" · ") || model.id,
+            }
+          }),
         ...(catalog.models ?? [])
           .filter((model) => IntelligenceEvaluation.isJev(model.name))
           .map((model) => ({ id: model.name, name: model.name })),
@@ -383,7 +397,7 @@ const make = Effect.gen(function* () {
 
   return {
     request,
-    discover: (input: Intelligence.Probe, requests?: ConnectionCheck.Request[]) =>
+    discover: (input: Intelligence.Discovery, requests?: ConnectionCheck.Request[]) =>
       discover(input, requests).pipe(Effect.map((catalog): Intelligence.Models => catalog)),
     probe: (input: Intelligence.Probe) =>
       probe(input).pipe(Effect.map((check): Intelligence.Check & { requests: ConnectionCheck.Request[] } => check)),
@@ -406,7 +420,7 @@ function credentialValue(value: Credential.Value | undefined) {
   if (value?.type === "oauth" && value.expires > Date.now()) return value.access
 }
 
-export function credentialMatches(evaluator: Intelligence.Evaluator, credential: Credential.Info) {
+export function credentialMatches(evaluator: Intelligence.EvaluatorConnection, credential: Credential.Info) {
   const metadata = credential.value.metadata
   if (credential.integrationID === Integration.ID.make(`intelligence:${evaluator.transport}`))
     return (

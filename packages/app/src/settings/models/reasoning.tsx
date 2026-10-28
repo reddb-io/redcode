@@ -1,6 +1,5 @@
 import type { IntelligenceStatus } from "@opencode/client"
 import { useModels } from "@/providers/models/models"
-import { useIntegrations } from "@/providers/catalog/integrations"
 import { useLanguage } from "@/runtime/i18n/language"
 import { useServerSDK } from "@/runtime/server/client"
 import { useIntelligenceSettings } from "@/runtime/server/intelligence"
@@ -15,7 +14,6 @@ export type ReasoningServices = {
     current?: IntelligenceStatus
     error: boolean
     models: { key: string; ref: { providerID: string; id: string }; label: string }[]
-    connected: string[]
   }>
   refetch: () => Promise<void>
   notify: (toast: Parameters<typeof showToast>[0]) => void
@@ -23,7 +21,6 @@ export type ReasoningServices = {
 export function createReasoningServices(): ReasoningServices {
   const language = useLanguage()
   const models = useModels()
-  const integrations = useIntegrations(() => undefined)
   const server = useServerSDK()
   const status = useIntelligenceSettings()
   const snapshot: SharedSource<{
@@ -32,7 +29,6 @@ export function createReasoningServices(): ReasoningServices {
     current?: IntelligenceStatus
     error: boolean
     models: { key: string; ref: { providerID: string; id: string }; label: string }[]
-    connected: string[]
   }> = sharedSource(() => ({
     language: settingsLanguage(language),
     api: server.api,
@@ -47,10 +43,6 @@ export function createReasoningServices(): ReasoningServices {
         label: `${model.provider.name} · ${model.name}`,
       }))
       .toSorted((a, b) => a.label.localeCompare(b.label)),
-    connected: integrations
-      .list()
-      .filter((item) => item.connections.length > 0)
-      .map((item) => item.id),
   }))
   return {
     snapshot,

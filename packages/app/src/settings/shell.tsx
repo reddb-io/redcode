@@ -18,6 +18,7 @@ import { AddServerMenu } from "@/servers/registry/add-menu"
 import { DialogServer } from "@/servers/connect/dialog"
 import { LocationProvider } from "@/workspaces/location"
 import { SettingsGeneral } from "./general/general"
+import { SettingsVoice } from "./voice"
 import { SettingsAppearance } from "./appearance/appearance"
 import { experimentalSettingsAvailable, SettingsExperimental } from "./experimental/experimental"
 import { SettingsKeybinds } from "./keybinds/keybinds"
@@ -52,6 +53,7 @@ const GuiExtensionsSettings = import.meta.env.DEV
 const rootClientTabs = [
   { value: "general", icon: pageIcons.general, label: "settings.tab.preferences" },
   { value: "appearance", icon: pageIcons.appearance, label: "settings.general.section.appearance" },
+  { value: "voice", icon: pageIcons.voice, label: "settings.tab.voice" },
   { value: "notifications", icon: pageIcons.notifications, label: "settings.tab.notifications" },
   { value: "shortcuts", icon: pageIcons.shortcuts, label: "settings.tab.shortcuts" },
 ] as const
@@ -308,6 +310,9 @@ function RootSettings() {
       </SettingsPanel>
       <SettingsPanel value="appearance" class="settings-panel">
         <SettingsAppearance />
+      </SettingsPanel>
+      <SettingsPanel value="voice" class="settings-panel">
+        <SettingsVoice servers={inventory} source={sourceServer} />
       </SettingsPanel>
       <SettingsPanel value="notifications" class="settings-panel">
         <SettingsNotifications />

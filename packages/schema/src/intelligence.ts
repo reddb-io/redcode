@@ -13,7 +13,7 @@ export const DecisionEndpoint = Schema.Literals(["systemone", "decisions"]).anno
   identifier: "Intelligence.DecisionEndpoint",
 })
 export type DecisionEndpoint = typeof DecisionEndpoint.Type
-export const Evaluator = Schema.Struct({
+export const EvaluatorConnection = Schema.Struct({
   transport: Schema.Literals([
     "opencode-zen",
     "openrouter",
@@ -25,10 +25,14 @@ export const Evaluator = Schema.Struct({
     "nano-gpt",
   ]),
   baseURL: Text,
-  model: Text,
+  model: Text.pipe(optional),
   credentialID: Credential.ID.pipe(optional),
   endpoint: DecisionEndpoint.pipe(optional),
-}).annotate({ identifier: "Intelligence.Evaluator" })
+}).annotate({ identifier: "Intelligence.EvaluatorConnection" })
+export interface EvaluatorConnection extends Schema.Schema.Type<typeof EvaluatorConnection> {}
+export const Evaluator = Schema.Struct({ ...EvaluatorConnection.fields, model: Text }).annotate({
+  identifier: "Intelligence.Evaluator",
+})
 export interface Evaluator extends Schema.Schema.Type<typeof Evaluator> {}
 
 /** `observe` records S1 recommendations while S2 follows the single-reasoning path. */
@@ -177,7 +181,7 @@ export interface DetectedRouter extends Schema.Schema.Type<typeof DetectedRouter
 export const EvaluatorOption = Schema.Struct({
   name: Text,
   configured: Schema.Boolean,
-  evaluator: Evaluator,
+  evaluator: EvaluatorConnection,
 }).annotate({ identifier: "Intelligence.EvaluatorOption" })
 export interface EvaluatorOption extends Schema.Schema.Type<typeof EvaluatorOption> {}
 export const Status = Schema.Struct({
@@ -201,6 +205,10 @@ export const Models = Schema.Struct({
 export interface Probe extends Schema.Schema.Type<typeof Probe> {}
 export const Probe = Schema.Struct({ evaluator: Evaluator, apiKey: Text.pipe(optional) }).annotate({
   identifier: "Intelligence.Probe",
+})
+export interface Discovery extends Schema.Schema.Type<typeof Discovery> {}
+export const Discovery = Schema.Struct({ evaluator: EvaluatorConnection, apiKey: Text.pipe(optional) }).annotate({
+  identifier: "Intelligence.Discovery",
 })
 export interface Check extends Schema.Schema.Type<typeof Check> {}
 export const Check = Schema.Struct({

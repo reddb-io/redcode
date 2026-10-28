@@ -94,6 +94,123 @@ test("paints cold and warm session tabs at the latest message", async ({ page })
   expect(await warm.stop()).toBe(0)
 })
 
+test("recreates a closed timeline when its tab is reopened", async ({ page }) => {
+  const reads: string[] = []
+  await openTabs(page, {
+    pageMessages: placeholderHistory,
+    onMessages: ({ sessionID, phase }) => { if (phase === "start") reads.push(sessionID) },
+  })
+  await page.goto(sessionHref(fixture.sourceID))
+  await expect(page.getByText(`History for ${fixture.sourceID}`, { exact: true })).toBeVisible({ timeout: 30_000 })
+  const original = await page.locator("[data-timeline-virtual-content]").elementHandle()
+  await tab(page, fixture.targetID).click()
+  await expect(page.getByText(`History for ${fixture.targetID}`, { exact: true })).toBeVisible()
+  const closed = page.locator("[data-titlebar-tab-slot]", { has: tab(page, fixture.sourceID) })
+  await closed.getByRole("button", { name: "Close tab", exact: true }).click()
+  await expect(closed).toHaveCount(0)
+  const targetReads = reads.filter((id) => id === fixture.targetID).length
+  await page.keyboard.press("ControlOrMeta+Shift+t")
+  await expect(page.getByText(`History for ${fixture.sourceID}`, { exact: true })).toBeVisible()
+  await expect.poll(() => reads.filter((id) => id === fixture.sourceID).length).toBe(2)
+  expect(reads.filter((id) => id === fixture.targetID)).toHaveLength(targetReads)
+  expect(await original!.evaluate((element) => element.isConnected)).toBe(false)
+})
+
+test("reloads the final closed session after returning home", async ({ page }) => {
+  const reads: string[] = []
+  await openTabs(page, {
+    pageMessages: placeholderHistory,
+    onMessages: ({ sessionID, phase }) => { if (phase === "start") reads.push(sessionID) },
+  })
+  await page.goto(sessionHref(fixture.sourceID))
+  await expect(page.getByText(`History for ${fixture.sourceID}`, { exact: true })).toBeVisible({ timeout: 30_000 })
+  await page.locator("[data-titlebar-tab-slot]", { has: tab(page, fixture.targetID) }).getByRole("button", { name: "Close tab", exact: true }).click()
+  await page.locator("[data-titlebar-tab-slot]", { has: tab(page, fixture.sourceID) }).getByRole("button", { name: "Close tab", exact: true }).click()
+  await expect(page).toHaveURL("/")
+  await page.keyboard.press("ControlOrMeta+Shift+t")
+  await expect(page.getByText(`History for ${fixture.sourceID}`, { exact: true })).toBeVisible()
+  await expect.poll(() => reads.filter((id) => id === fixture.sourceID).length).toBe(2)
+})
+
+test("conversation width stays aligned with the composer and clear of outputs", async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 900 })
+  await openTabs(page, {
+    pageMessages: (id) => ({
+      items: [
+        { id: `msg_width_${id}`, type: "user", text: `Width test for ${id}`, time: { created: 1 } },
+        {
+          id: `msg_width_answer_${id}`,
+          type: "assistant",
+          agent: "build",
+          model: { id: "claude-opus-4-6", providerID: "opencode" },
+          time: { created: 2, completed: 3 },
+          content: [
+            {
+              type: "tool",
+              id: `tool_width_${id}`,
+              name: "webfetch",
+              time: { created: 2, completed: 3 },
+              state: {
+                status: "completed",
+                input: { url: "https://example.com/width" },
+                metadata: {},
+                content: [{ type: "text", text: "Fetched source" }],
+              },
+            },
+            { type: "text", text: `Answer for ${id}` },
+          ],
+        },
+      ] satisfies SessionMessageInfo[],
+    }),
+  })
+  await page.goto(sessionHref(fixture.sourceID))
+  const row = page.locator(`[data-timeline-row="UserMessage"][data-message-id="msg_width_${fixture.sourceID}"]`)
+  const composer = page.locator('[data-component="session-composer-dock"] > div')
+  const outputs = page.locator('[data-component="session-outputs"]')
+  await expect(row).toBeVisible()
+  await expect(outputs.locator(":scope > button")).toHaveAttribute("aria-expanded", "true")
+  const bounds = async () => ({
+    row: (await row.boundingBox())!,
+    composer: (await composer.boundingBox())!,
+    outputs: (await outputs.boundingBox())!,
+  })
+  await expect.poll(async () => {
+    const value = await bounds()
+    return value.outputs.x - (value.row.x + value.row.width)
+  }).toBeGreaterThanOrEqual(0)
+  const wide = await bounds()
+  expect(Math.abs(wide.row.x - wide.composer.x)).toBeLessThan(32)
+
+  await page.getByRole("button", { name: "Settings", exact: true }).click()
+  const settings = page.getByTestId("settings-screen")
+  const width = settings.getByRole("combobox", { name: "Conversation width", exact: true })
+  await expect(width).toHaveValue("wide")
+  await width.selectOption("comfortable")
+  await settings.getByRole("button", { name: "Back to app", exact: true }).click()
+  await expect(row).toBeVisible()
+  await expect.poll(async () => (await row.boundingBox())!.width).toBeLessThan(wide.row.width)
+  await page.getByRole("button", { name: "Settings", exact: true }).click()
+  await width.selectOption("full")
+  await page.reload()
+  await expect(width).toHaveValue("full")
+  await settings.getByRole("button", { name: "Back to app", exact: true }).click()
+  await tab(page, fixture.sourceID).click()
+  await expect(row).toBeVisible()
+  await expect.poll(async () => {
+    const value = await bounds()
+    return Math.min(value.outputs.x - (value.row.x + value.row.width), value.outputs.x - (value.composer.x + value.composer.width))
+  }).toBeGreaterThanOrEqual(0)
+  await page.setViewportSize({ width: 1000, height: 900 })
+  const toggle = outputs.locator(":scope > button")
+  await expect(toggle).toHaveAttribute("aria-expanded", "false")
+  await toggle.click()
+  await expect(toggle).toHaveAttribute("aria-expanded", "true")
+  await expect.poll(async () => {
+    const value = await bounds()
+    return Math.min(value.outputs.x - (value.row.x + value.row.width), value.outputs.x - (value.composer.x + value.composer.width))
+  }).toBeGreaterThanOrEqual(0)
+})
+
 test("scrolls within a long answer without mounting unrelated history", async ({ page }) => {
   await openTimeline(page, messages[fixture.sourceID])
   const answer = page.locator(`[data-timeline-part-id="${expected[fixture.sourceID].answerID}"]`)
@@ -363,6 +480,7 @@ for (const grouped of [true, false]) {
 
     await page.goto(sessionHref(fixture.sourceID))
     await expect(page.getByText(`Answer for ${fixture.sourceID}`, { exact: true })).toBeVisible()
+    await page.getByRole("button", { name: /Worked for .*Ran 1 command/ }).click()
 
     if (grouped)
       await page

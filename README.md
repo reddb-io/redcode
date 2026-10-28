@@ -38,6 +38,8 @@ harnesses, preserving their reported identity and state. External runs can optio
 bounded background wait tool, with its latest observation visible in the task inspector.
 Choose **Dense**, **Compact** or **Comfortable** under **Settings → Appearance → Desktop density**.
 Dense is the default on wider screens; the setting changes spacing and controls while keeping text sizes.
+Under **Settings → Preferences → Conversation width**, choose a centered comfortable or wide column,
+or use the full available width. Where the panel has room, session outputs stay beside the conversation.
 [Session workspace](docs/agent-features.md#session-workspace).
 
 On phones, the shared web workspace uses a header navigation menu and overlay sidemenus so the
@@ -202,8 +204,8 @@ Use `/vault` or `redcode vault`. [Behavior and storage](docs/agent-features.md#v
 
 <img src="docs/features/goal.svg" alt="Autonomous goals with completion criteria" width="100%" />
 
-**Session engine · TUI controls.** `/goal` pursues an outcome across turns with verification gates and
-stopping conditions. Pause, resume or drop it with `/goal-pause`, `/goal-resume` and `/goal-drop`.
+**Session engine · Desktop and TUI.** `/goal` pursues an outcome across steps with verification gates and
+stopping conditions. Use `/goal pause`, `/goal resume` or `/goal drop` to control it.
 [Goal contract](docs/agent-features.md#goal).
 
 </details>
@@ -238,8 +240,8 @@ Desktop embeds the review beside the chat. Standalone browser review includes it
 
 <img src="docs/features/intelligence.svg" alt="S1 and S2 dual reasoning" width="100%" />
 
-**Session engine · TUI controls.** S2 does the work; optional S1 evaluates candidates and provides feedback.
-Configure with `/dual` and inspect with `/intelligence`. Coding studies have not demonstrated an accuracy
+**Session engine · Desktop and TUI controls.** S2 does the work; optional S1 evaluates candidates and provides feedback.
+Configure under **Settings → Models** or with `/dual`, and inspect with `/intelligence`. Coding studies have not demonstrated an accuracy
 or speed gain. [Roles](docs/system-one.md) · [Measurements](docs/evaluations/reasoning-0.71.3-2026-10-02.md).
 
 </details>

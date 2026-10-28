@@ -14,6 +14,7 @@ import {
   type WorkspaceDefaultDestination,
   type WorkspaceLastUsed,
   type AppearanceDensity,
+  type TimelineWidth,
 } from "./model-data"
 export {
   type Settings,
@@ -67,6 +68,12 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
       get current() {
         return store
       },
+      voice: {
+        device: withFallback(() => store.voiceDevice, ""),
+        setDevice(value: string) {
+          setStore("voiceDevice", value)
+        },
+      },
       general: {
         showFileTree,
         setShowFileTree(value: boolean) {
@@ -83,6 +90,10 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
         navigationGap: withFallback(() => store.general?.navigationGap, 12),
         setNavigationGap(value: number) {
           setStore("general", "navigationGap", value)
+        },
+        timelineWidth: withFallback(() => store.general?.timelineWidth, "wide" as TimelineWidth),
+        setTimelineWidth(value: TimelineWidth) {
+          setStore("general", "timelineWidth", value)
         },
         timelineDetail: withFallback(() => store.general?.timelineDetail, defaultSettings.general.timelineDetail),
         setTimelineDetail(value: TimelineDetail) {

@@ -7,10 +7,10 @@ export declare const review: import("tailwind-variants").TVReturnType<{
             time?: import("tailwind-variants").ClassValue;
             content?: import("tailwind-variants").ClassValue;
             root?: import("tailwind-variants").ClassValue;
+            card?: import("tailwind-variants").ClassValue;
             actions?: import("tailwind-variants").ClassValue;
             author?: import("tailwind-variants").ClassValue;
             identity?: import("tailwind-variants").ClassValue;
-            card?: import("tailwind-variants").ClassValue;
         };
     };
 } | {
@@ -20,10 +20,10 @@ export declare const review: import("tailwind-variants").TVReturnType<{
             time?: import("tailwind-variants").ClassValue;
             content?: import("tailwind-variants").ClassValue;
             root?: import("tailwind-variants").ClassValue;
+            card?: import("tailwind-variants").ClassValue;
             actions?: import("tailwind-variants").ClassValue;
             author?: import("tailwind-variants").ClassValue;
             identity?: import("tailwind-variants").ClassValue;
-            card?: import("tailwind-variants").ClassValue;
         };
     };
 } | {}, {
@@ -42,10 +42,10 @@ export declare const review: import("tailwind-variants").TVReturnType<{
             time?: import("tailwind-variants").ClassValue;
             content?: import("tailwind-variants").ClassValue;
             root?: import("tailwind-variants").ClassValue;
+            card?: import("tailwind-variants").ClassValue;
             actions?: import("tailwind-variants").ClassValue;
             author?: import("tailwind-variants").ClassValue;
             identity?: import("tailwind-variants").ClassValue;
-            card?: import("tailwind-variants").ClassValue;
         };
     };
 } | {}, {

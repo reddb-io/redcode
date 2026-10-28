@@ -1,5 +1,6 @@
 "use client";
 import { Fragment, jsx, jsxs } from "react/jsx-runtime";
+import { Skeleton } from "@reddb-io/design-system/base";
 import { tokenColor } from "@reddb-io/design-system/base/recipes";
 import {
   Fragment as Fragment2,
@@ -161,6 +162,7 @@ function TimeSeries(props) {
     {
       ref: figure,
       "data-ds-chart": true,
+      "aria-busy": !chart.Engine || void 0,
       "data-chart-loaded": chart.Engine ? "" : void 0,
       "data-chart-kind": "time-series",
       "data-chart-variant": variant,
@@ -236,7 +238,8 @@ function TimeSeries(props) {
               {
                 "data-chart-placeholder": true,
                 "aria-hidden": "true",
-                className: "h-full w-full"
+                className: "h-full w-full",
+                children: /* @__PURE__ */ jsx(Skeleton, { shape: variant === "bar" ? "column" : variant === "line" ? "line" : "area", className: "h-full max-w-none" })
               }
             ) })
           }

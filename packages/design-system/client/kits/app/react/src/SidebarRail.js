@@ -31,7 +31,7 @@ function SidebarRail({ label, items, currentId, onSelect, top, bottom, showLabel
     onFocus?.(event);
     if (event.target instanceof HTMLElement && event.target.dataset.sidebarRailItem) setFocusIndex(Number(event.target.dataset.sidebarRailIndex));
   }, children: [
-    /* @__PURE__ */ jsx("div", { "data-sidebar-rail-region": "top", className: styles.region(), children: top }),
+    /* @__PURE__ */ jsx("div", { "data-sidebar-rail-region": "top", className: styles.region(), style: sizing.list, children: top }),
     /* @__PURE__ */ jsx("div", { "data-sidebar-rail-region": "middle", className: styles.region({ class: styles.middle() }), children: /* @__PURE__ */ jsx("ul", { "data-sidebar-rail-items": true, className: styles.list(), style: sizing.list, children: items.map((item, index) => {
       const glyph = item.icon ? /* @__PURE__ */ jsx(Icon, { icon: item.icon, size: "md", "aria-hidden": "true", "data-sidebar-rail-glyph": true, style: sizing.glyph }) : /* @__PURE__ */ jsx("span", { "aria-hidden": "true", "data-sidebar-rail-glyph": true, className: styles.fallback(), style: sizing.label, children: face(item) });
       return /* @__PURE__ */ jsxs("li", { className: "w-full", children: [
@@ -43,7 +43,7 @@ function SidebarRail({ label, items, currentId, onSelect, top, bottom, showLabel
         ] }) })
       ] }, item.id);
     }) }) }),
-    /* @__PURE__ */ jsx("div", { "data-sidebar-rail-region": "bottom", className: styles.region(), children: bottom })
+    /* @__PURE__ */ jsx("div", { "data-sidebar-rail-region": "bottom", className: styles.region(), style: sizing.list, children: bottom })
   ] });
 }
 export {

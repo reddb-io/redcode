@@ -1,6 +1,6 @@
 /** @jsxImportSource react */
-import { useState, useSyncExternalStore } from "react"
-import type { IntelligenceEvaluator, IntelligenceStatus } from "@opencode/client"
+import { useRef, useState, useSyncExternalStore } from "react"
+import type { IntelligenceEvaluatorConnection, IntelligenceModels, IntelligenceStatus } from "@opencode/client"
 import { firstConnectionFailure, type ConnectionFailure } from "@opencode/util/connection-failure"
 import { Button } from "@reddb-io/design-system/base/Button"
 import { Input } from "@reddb-io/design-system/base/Input"
@@ -41,7 +41,7 @@ type Draft = {
   failure?: { role: keyof typeof failureRoles; failure: ConnectionFailure }
 }
 
-type EvaluatorChoice = { key: string; label: string; evaluator: IntelligenceEvaluator }
+type EvaluatorChoice = { key: string; label: string; evaluator: IntelligenceEvaluatorConnection }
 
 export function ReasoningRoles(props: { services: ReturnType<typeof createReasoningServices> }) {
   const services = props.services
@@ -50,6 +50,8 @@ export function ReasoningRoles(props: { services: ReturnType<typeof createReason
   const server = state
   const api = state.api["server.intelligence"]
   const [form] = useState(() => settingsState<Draft>({ checking: false }))
+  const [catalog, setCatalog] = useState<{ key: string; loading: boolean; models?: IntelligenceModels; error?: string }>()
+  const catalogRequest = useRef(0)
   const draft = useSyncExternalStore(form.subscribe, form.getSnapshot)
   const modelKey = (ref: { providerID: string; id: string } | undefined) =>
     ref ? `${ref.providerID}/${ref.id}` : undefined
@@ -58,21 +60,24 @@ export function ReasoningRoles(props: { services: ReturnType<typeof createReason
     { key: "", ref: undefined, label: language.t("settings.models.reasoning.fast.reuse") },
     ...state.models,
   ]
-  const connected = () => new Set(state.connected)
   const evaluatorOptions = (value: IntelligenceStatus): EvaluatorChoice[] => {
     const choices = [
       ...(value.settings.evaluator
         ? [{ label: language.t("settings.models.reasoning.evaluator.current"), evaluator: value.settings.evaluator }]
         : []),
       ...(value.router?.evaluator ? [{ label: "RedRouter", evaluator: value.router.evaluator }] : []),
-      // Only services with an active connection are offered; the connection's own credential does the evaluating.
+      // The server only lists saved connections and binds each choice to its own credential.
       ...value.evaluators
-        .filter((option) => option.evaluator.transport !== "red-router" || !value.router?.evaluator)
-        .filter((option) => connected().has(option.evaluator.transport))
+        .filter(
+          (option) =>
+            option.evaluator.transport !== "red-router" ||
+            !value.router?.evaluator ||
+            option.evaluator.credentialID !== value.router.evaluator.credentialID,
+        )
         .map((option) => ({ label: option.name, evaluator: option.evaluator })),
     ].map((choice) => ({
-      key: `${choice.evaluator.transport} ${choice.evaluator.baseURL} ${choice.evaluator.model}`,
-      label: `${choice.label} · ${choice.evaluator.model}`,
+      key: `${choice.evaluator.transport} ${choice.evaluator.baseURL} ${choice.evaluator.credentialID ?? ""} ${choice.evaluator.model ?? ""}`,
+      label: choice.label,
       evaluator: choice.evaluator,
     }))
     return choices.filter((choice, index) => choices.findIndex((item) => item.key === choice.key) === index)
@@ -86,9 +91,24 @@ export function ReasoningRoles(props: { services: ReturnType<typeof createReason
     fastOptions()[0]
   const evaluator = (value: IntelligenceStatus) => {
     const options = evaluatorOptions(value)
-    return options.find((option) => option.key === draft.evaluator) ?? options[0]
+    if (draft.evaluator !== undefined) return options.find((option) => option.key === draft.evaluator)
+    return value.settings.evaluator ? options[0] : undefined
   }
   const evaluatorModel = (value: IntelligenceStatus) => draft.evaluatorModel ?? evaluator(value)?.evaluator.model ?? ""
+
+  const loadModels = async (choice: EvaluatorChoice) => {
+    const request = ++catalogRequest.current
+    setCatalog({ key: choice.key, loading: true })
+    await api.discover({ evaluator: choice.evaluator }, { signal: AbortSignal.timeout(30_000) }).then(
+      (models) => {
+        if (request === catalogRequest.current) setCatalog({ key: choice.key, loading: false, models })
+      },
+      (error: unknown) => {
+        if (request === catalogRequest.current)
+          setCatalog({ key: choice.key, loading: false, error: error instanceof Error ? error.message : String(error) })
+      },
+    )
+  }
 
   const save = async (value: IntelligenceStatus) => {
     const selected = principal(value)
@@ -98,7 +118,15 @@ export function ReasoningRoles(props: { services: ReturnType<typeof createReason
     const chosen = evaluator(value)
     const s1 =
       dual && chosen && evaluatorModel(value).trim()
-        ? { ...chosen.evaluator, model: evaluatorModel(value).trim() }
+        ? {
+            ...chosen.evaluator,
+            model: evaluatorModel(value).trim(),
+            endpoint:
+              catalog?.key === chosen.key
+                ? (catalog.models?.models.find((model) => model.id === evaluatorModel(value).trim())?.endpoint ??
+                  chosen.evaluator.endpoint)
+                : chosen.evaluator.endpoint,
+          }
         : undefined
     if (dual && !s1) return
     form.update({ checking: true, failure: undefined })
@@ -130,6 +158,7 @@ export function ReasoningRoles(props: { services: ReturnType<typeof createReason
               run: () =>
                 api.probe({ evaluator: s1 }, { signal: AbortSignal.timeout(30_000) }).then((check) => {
                   if (!check.ok) throw new Error(check.message)
+                  if (check.endpoint) s1.endpoint = check.endpoint
                 }),
             },
           ]
@@ -256,9 +285,11 @@ export function ReasoningRoles(props: { services: ReturnType<typeof createReason
                       { value: "", label: language.t("settings.models.reasoning.unset"), disabled: true },
                       ...evaluatorOptions(value).map((option) => ({ value: option.key, label: option.label })),
                     ]}
-                    onValueChange={(evaluator) =>
-                      form.update({ evaluator, evaluatorModel: undefined, failure: undefined })
-                    }
+                    onValueChange={(key) => {
+                      form.update({ evaluator: key, evaluatorModel: "", failure: undefined })
+                      const choice = evaluatorOptions(value).find((item) => item.key === key)
+                      if (choice) void loadModels(choice)
+                    }}
                   />
                 )}
               </SettingsRow>
@@ -267,11 +298,50 @@ export function ReasoningRoles(props: { services: ReturnType<typeof createReason
                 description={evaluator(value)?.evaluator.transport ?? ""}
               >
                 {(association) => (
-                  <Input
-                    {...association}
-                    value={evaluatorModel(value)}
-                    onValueChange={(evaluatorModel) => form.update({ evaluatorModel, failure: undefined })}
-                  />
+                  <div className="flex flex-col gap-2">
+                    <Select
+                      {...association}
+                      controlSize="sm"
+                      value={evaluatorModel(value)}
+                      options={[
+                        { value: "", label: language.t("settings.models.reasoning.unset"), disabled: true },
+                        ...(evaluatorModel(value) &&
+                        !catalog?.models?.models.some((item) => item.id === evaluatorModel(value))
+                          ? [{ value: evaluatorModel(value), label: evaluatorModel(value) }]
+                          : []),
+                        ...(catalog && catalog.key === evaluator(value)?.key ? catalog.models?.models ?? [] : []).map(
+                          (item) => ({ value: item.id, label: item.name }),
+                        ),
+                      ]}
+                      onValueChange={(evaluatorModel) => form.update({ evaluatorModel, failure: undefined })}
+                    />
+                    {catalog && catalog.key === evaluator(value)?.key && catalog.error && (
+                      <span role="alert">{catalog.error}</span>
+                    )}
+                    {catalog && catalog.key === evaluator(value)?.key && catalog.models && !catalog.models.models.length && (
+                      <span role="status">{language.t("settings.models.reasoning.models.empty")}</span>
+                    )}
+                    {evaluator(value) && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        disabled={catalog?.loading}
+                        onClick={() => void loadModels(evaluator(value)!)}
+                      >
+                        {language.t(
+                          catalog?.loading ? "settings.models.reasoning.models.loading" : "settings.models.reasoning.models.load",
+                        )}
+                      </Button>
+                    )}
+                    {catalog && catalog.key === evaluator(value)?.key &&
+                      (catalog.models?.manual || (catalog.models && !catalog.models.models.length) || catalog.error) && (
+                      <Input
+                        aria-label={language.t("settings.models.reasoning.models.manual")}
+                        value={evaluatorModel(value)}
+                        onValueChange={(evaluatorModel) => form.update({ evaluatorModel, failure: undefined })}
+                      />
+                    )}
+                  </div>
                 )}
               </SettingsRow>
             </>
@@ -288,7 +358,9 @@ export function ReasoningRoles(props: { services: ReturnType<typeof createReason
                 aria-labelledby={undefined}
                 data-action="settings-reasoning-save"
                 size="sm"
-                disabled={draft.checking || !principal(value)}
+                disabled={
+                  draft.checking || !principal(value) || (reasoning(value) !== "single" && !evaluatorModel(value).trim())
+                }
                 onClick={() => void save(value)}
               >
                 {language.t("settings.models.reasoning.save")}

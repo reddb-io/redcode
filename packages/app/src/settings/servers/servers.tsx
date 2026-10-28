@@ -21,7 +21,6 @@ import { settingsLanguage } from "../shared.react"
 import type { ShellOption } from "../general/behavior"
 import type { SettingsServer } from "./inventory"
 import { ServerGeneral } from "./view.react"
-import { VoiceSettings } from "../voice"
 
 export function createServerGeneralServices(props: {
   entry: SettingsServer
@@ -75,10 +74,6 @@ export function createServerGeneralServices(props: {
     https() {
       const server = props.entry.connection
       if (server) void dialog.push(() => <DialogHttpsAccess server={server} />)
-    },
-    voice() {
-      const api = context()?.sdk.api
-      if (api) void dialog.push(() => <VoiceSettings api={api} />)
     },
     async shells(): Promise<{ shells: ShellOption[]; shell: string }> {
       const api = context()?.sdk.api.config

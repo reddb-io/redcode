@@ -266,6 +266,23 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
 
   const sessionCmds = () => [
     sessionCommand({
+      id: "session.goal",
+      title: language.t("goal.title"),
+      description: language.t("goal.command.description"),
+      slash: "goal",
+      slashArguments: true,
+      disabled: !actions.session.identity.params.id,
+      onSelect: async (_source, input) => {
+        const sessionID = actions.session.identity.params.id
+        if (!sessionID) return
+        const owner = actions.session.ownership.capture()
+        const { GoalDialog } = await import("@/composer/goal-dialog")
+        owner.run(
+          () => void dialog.show(() => <GoalDialog api={serverSDK.api} sessionID={sessionID} input={input ?? ""} />),
+        )
+      },
+    }),
+    sessionCommand({
       id: "session.new",
       title: language.t("command.session.new"),
       keybind: "mod+shift+s",

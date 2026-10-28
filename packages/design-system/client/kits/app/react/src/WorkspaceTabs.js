@@ -24,6 +24,7 @@ function WorkspaceTabs({
   closeLabel = "Close",
   dirtyLabel = "Unsaved changes",
   busyLabel = "Running",
+  panelClass,
   emptyLabel = "No open documents",
   children,
   className
@@ -55,7 +56,7 @@ function WorkspaceTabs({
     for (const tab of root.current.querySelectorAll(
       '[role="tab"]'
     ))
-      tab.disabled = !!documents.find(
+      if (tab instanceof HTMLButtonElement) tab.disabled = !!documents.find(
         (item) => item.id === tab.dataset.workspaceTab
       )?.disabled;
     focus.current?.sync(documents, active);
@@ -67,7 +68,7 @@ function WorkspaceTabs({
       "data-workspace-tabs": true,
       className: s.root({ class: className }),
       children: [
-        /* @__PURE__ */ jsxs(Managed.Root, { value: active, onValueChange: select, children: [
+        /* @__PURE__ */ jsxs(Managed.Root, { className: "min-h-0 flex flex-1 flex-col", value: active, onValueChange: select, children: [
           /* @__PURE__ */ jsxs(
             "div",
             {
@@ -81,7 +82,7 @@ function WorkspaceTabs({
                   Managed.List,
                   {
                     "aria-label": label,
-                    activateOnFocus: true,
+                    activateOnFocus: !documents.some((item) => item.href),
                     className: s.list(),
                     onKeyDown: (event) => {
                       if (event.key !== "Delete" || !(event.target instanceof HTMLElement) || event.target.getAttribute("role") !== "tab")
@@ -96,6 +97,18 @@ function WorkspaceTabs({
                       Managed.Tab,
                       {
                         value: item.id,
+                        nativeButton: !item.href,
+                        render: item.href ? /* @__PURE__ */ jsx("a", { className: quietControl({ ink: "foreground" }), href: item.disabled ? void 0 : item.href, "aria-disabled": item.disabled || void 0 }) : void 0,
+                        onKeyDown: (event) => {
+                          if (item.href && event.key === " " && !item.disabled) {
+                            event.preventDefault();
+                            event.preventBaseUIHandler();
+                            event.currentTarget.click();
+                          }
+                        },
+                        onClick: (event) => {
+                          if (item.href && (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)) event.preventBaseUIHandler();
+                        },
                         disabled: item.disabled,
                         "data-workspace-item": item.id,
                         "data-workspace-tab": item.id,
@@ -166,7 +179,7 @@ function WorkspaceTabs({
               keepMounted: true,
               hidden: active !== item.id,
               "data-workspace-panel": item.id,
-              className: s.panel(),
+              className: s.panel({ class: panelClass }),
               tabIndex: 0,
               children: children?.({ id: item.id })
             },

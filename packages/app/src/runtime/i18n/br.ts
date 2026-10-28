@@ -1007,6 +1007,10 @@ export const dict = {
   "settings.models.reasoning.fast.reuse": "Reutilizar o Sistema Dois (principal)",
   "settings.models.reasoning.evaluator.current": "Avaliador atual",
   "settings.models.reasoning.evaluator.model": "Modelo do Sistema Um",
+  "settings.models.reasoning.models.load": "Carregar modelos disponíveis",
+  "settings.models.reasoning.models.loading": "Carregando modelos…",
+  "settings.models.reasoning.models.manual": "Informar ID do modelo",
+  "settings.models.reasoning.models.empty": "Nenhum modelo de decisão encontrado para esta conexão.",
   "settings.models.reasoning.evaluator.apiKey": "Chave de API do Sistema Um",
   "settings.models.reasoning.evaluator.apiKey.description":
     "Deixe em branco para reutilizar uma credencial salva ou a conexão de um provedor.",

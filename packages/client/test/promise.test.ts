@@ -227,6 +227,15 @@ test("client errors keep the reason and describe the failure in the message", as
     reason: "UnexpectedStatus",
     message: "UnexpectedStatus: 500",
   })
+  expect(
+    await failure(async () =>
+      Response.json({ _tag: "UnknownError", message: "Invalid configuration" }, { status: 500 }),
+    ),
+  ).toMatchObject({
+    reason: "UnexpectedStatus",
+    message: "UnexpectedStatus: 500: Invalid configuration",
+    cause: { status: 500 },
+  })
   expect(await failure(async () => new Response("<html>", { headers: { "content-type": "text/html" } }))).toMatchObject(
     {
       reason: "UnsupportedContentType",

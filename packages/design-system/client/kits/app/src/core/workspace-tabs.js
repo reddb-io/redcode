@@ -23,7 +23,7 @@ function mountWorkspaceFocus(root) {
       if (!focused || items.some((item) => item.id === focused && !item.disabled))
         return;
       focused = null;
-      const active = root.ownerDocument.activeElement;
+      const active = root.getRootNode().activeElement;
       if (!active || active === root.ownerDocument.body || root.contains(active)) {
         [...root.querySelectorAll('[role="tab"]')].find((item) => item.dataset.workspaceTab === selected)?.focus();
       }

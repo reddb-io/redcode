@@ -109,7 +109,7 @@ export const IntelligenceGroup = HttpApiGroup.make("server.intelligence")
   )
   .add(
     HttpApiEndpoint.post("intelligence.discover", "/api/experimental/intelligence/models", {
-      payload: Intelligence.Probe,
+      payload: Intelligence.Discovery,
       success: Intelligence.Models,
       error: InvalidRequestError,
     }).annotateMerge(

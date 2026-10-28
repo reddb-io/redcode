@@ -9,10 +9,10 @@ export declare const changeReview: import("tailwind-variants").TVReturnType<{
             list?: import("tailwind-variants").ClassValue;
             term?: import("tailwind-variants").ClassValue;
             error?: import("tailwind-variants").ClassValue;
+            comparison?: import("tailwind-variants").ClassValue;
+            context?: import("tailwind-variants").ClassValue;
             actions?: import("tailwind-variants").ClassValue;
             item?: import("tailwind-variants").ClassValue;
-            context?: import("tailwind-variants").ClassValue;
-            comparison?: import("tailwind-variants").ClassValue;
             pair?: import("tailwind-variants").ClassValue;
         };
     };
@@ -27,10 +27,10 @@ export declare const changeReview: import("tailwind-variants").TVReturnType<{
             list?: import("tailwind-variants").ClassValue;
             term?: import("tailwind-variants").ClassValue;
             error?: import("tailwind-variants").ClassValue;
+            comparison?: import("tailwind-variants").ClassValue;
+            context?: import("tailwind-variants").ClassValue;
             actions?: import("tailwind-variants").ClassValue;
             item?: import("tailwind-variants").ClassValue;
-            context?: import("tailwind-variants").ClassValue;
-            comparison?: import("tailwind-variants").ClassValue;
             pair?: import("tailwind-variants").ClassValue;
         };
     };
@@ -59,10 +59,10 @@ export declare const changeReview: import("tailwind-variants").TVReturnType<{
             list?: import("tailwind-variants").ClassValue;
             term?: import("tailwind-variants").ClassValue;
             error?: import("tailwind-variants").ClassValue;
+            comparison?: import("tailwind-variants").ClassValue;
+            context?: import("tailwind-variants").ClassValue;
             actions?: import("tailwind-variants").ClassValue;
             item?: import("tailwind-variants").ClassValue;
-            context?: import("tailwind-variants").ClassValue;
-            comparison?: import("tailwind-variants").ClassValue;
             pair?: import("tailwind-variants").ClassValue;
         };
     };

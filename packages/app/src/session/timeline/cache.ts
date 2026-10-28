@@ -10,6 +10,8 @@ import {
   type JSX,
 } from "solid-js"
 import { createScopedCache } from "@/runtime/server/scoped-cache"
+import { useServer } from "@/runtime/server/current"
+import { useTabs } from "@/shell/tabs/tabs"
 import type { TimelineSessionSource } from "./controller"
 
 export function createTimelineCache(
@@ -18,12 +20,16 @@ export function createTimelineCache(
   visible: Accessor<boolean>,
 ) {
   const owner = getOwner()
+  const server = useServer()
+  const tabs = useTabs()
+  const sessions = new Map<string, string>()
   let workspace = untrack(session.identity.workspaceKey)
 
   const cache = createScopedCache(
     (key) =>
       createRoot((dispose) => {
         const id = untrack(session.identity.sessionID)
+        if (id) sessions.set(key, id)
         const sessionKey = untrack(session.identity.sessionKey)
         const active = createMemo(() => visible() && session.identity.sessionKey() === key)
 
@@ -52,7 +58,13 @@ export function createTimelineCache(
           dispose,
         }
       }, owner),
-    { maxEntries: 16, dispose: (entry) => entry.dispose() },
+    {
+      maxEntries: 16,
+      dispose: (entry, key) => {
+        sessions.delete(key)
+        entry.dispose()
+      },
+    },
   )
 
   onCleanup(cache.clear)
@@ -66,6 +78,25 @@ export function createTimelineCache(
   // Providers follow the selected Location even while its history is loading.
   // Dispose detached views before their effects can read the new Location.
   createComputed(on(session.identity.workspaceKey, syncWorkspace, { defer: true }))
+
+  createComputed(() => {
+    if (!tabs.ready()) return
+    const current = session.identity.sessionID()
+    const open = new Set(
+      tabs.store.flatMap((tab) =>
+        tab.type === "session" && tab.server === server.key
+          ? [
+              server.ctx.data.session.root(tab.sessionId),
+              ...(tab.routeSessionId ? [server.ctx.data.session.root(tab.routeSessionId)] : []),
+            ]
+          : [],
+      ),
+    )
+    for (const [key, id] of sessions) {
+      if (id === current || open.has(server.ctx.data.session.root(id))) continue
+      cache.delete(key)
+    }
+  })
 
   return () => {
     // A tab's render can run before the workspace watcher in the same batch.

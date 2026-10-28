@@ -315,7 +315,7 @@ const configureEvaluator: (
           }),
         ),
       )
-    const evaluator: IntelligenceEvaluator = options[index].evaluator
+    const evaluator = options[index].evaluator
     const discovered = yield* request((signal) =>
       client["server.intelligence"].discover(
         { evaluator },

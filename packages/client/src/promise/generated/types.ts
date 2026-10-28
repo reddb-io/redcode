@@ -2799,6 +2799,22 @@ export type IntelligenceEvaluator = {
   endpoint?: IntelligenceDecisionEndpoint
 }
 
+export type IntelligenceEvaluatorConnection = {
+  transport:
+    | "opencode-zen"
+    | "openrouter"
+    | "typesafe"
+    | "red-router"
+    | "cloudflare-ai-gateway"
+    | "vercel"
+    | "vivgrid"
+    | "nano-gpt"
+  baseURL: string
+  model?: string
+  credentialID?: string
+  endpoint?: IntelligenceDecisionEndpoint
+}
+
 export type IntelligenceModels = {
   models: Array<{ id: string; name: string; endpoint?: IntelligenceDecisionEndpoint }>
   manual: boolean
@@ -3416,7 +3432,11 @@ export type ReferenceInfo = {
   source: ReferenceSource
 }
 
-export type IntelligenceEvaluatorOption = { name: string; configured: boolean; evaluator: IntelligenceEvaluator }
+export type IntelligenceEvaluatorOption = {
+  name: string
+  configured: boolean
+  evaluator: IntelligenceEvaluatorConnection
+}
 
 export type IntelligenceDetectedRouter = {
   providerID: string
@@ -11533,7 +11553,7 @@ export type ServerIntelligenceDiscoverInput = {
         | "vivgrid"
         | "nano-gpt"
       readonly baseURL: string
-      readonly model: string
+      readonly model?: string
       readonly credentialID?: string
       readonly endpoint?: "systemone" | "decisions"
     }
@@ -11551,7 +11571,7 @@ export type ServerIntelligenceDiscoverInput = {
         | "vivgrid"
         | "nano-gpt"
       readonly baseURL: string
-      readonly model: string
+      readonly model?: string
       readonly credentialID?: string
       readonly endpoint?: "systemone" | "decisions"
     }

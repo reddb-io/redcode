@@ -5,6 +5,7 @@ import type { SettingsRootTab } from "./surface"
 export const pageIcons = {
   general: "sliders",
   appearance: "appearance",
+  voice: "microphone",
   notifications: "notifications",
   shortcuts: "keyboard",
   projects: "folder",
@@ -23,6 +24,7 @@ export const pageIcons = {
 export const pageLabels = {
   general: "settings.tab.preferences",
   appearance: "settings.general.section.appearance",
+  voice: "settings.tab.voice",
   notifications: "settings.tab.notifications",
   shortcuts: "settings.shortcuts.title",
   projects: "settings.tab.projects",

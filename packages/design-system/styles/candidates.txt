@@ -153,6 +153,11 @@
 -trigger
 @2xl/document-viewer:border-r
 @2xl/document-viewer:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]
+@3xl/application-workspace:basis-0
+@3xl/application-workspace:basis-1/4
+@3xl/application-workspace:border-b-0
+@3xl/application-workspace:border-e
+@3xl/application-workspace:grow
 @3xl/multi-column-layout:basis-0
 @3xl/multi-column-layout:grow-[1]
 @3xl/multi-column-layout:grow-[2]
@@ -164,7 +169,9 @@
 @3xl/sidebar-layout:grow-[3]
 @5xl/multi-column-layout:basis-0
 @5xl/multi-column-layout:grow-[1]
+@__PURE__
 @aflsolutions/graphology-communities-leiden
+@container/application-workspace
 @container/card
 @container/change-review
 @container/chart
@@ -424,6 +431,7 @@
 [contain:layout]
 [overflow-anchor:none]
 [overflow-wrap:anywhere]
+[scrollbar-gutter:stable]
 [scrollbar-width:none]
 [touch-action:none]
 [transform:translate3d(var(--reveal-x),var(--reveal-y),0)]
@@ -445,6 +453,8 @@ accepted
 accepting
 accepts
 access
+access-locked
+accessLocked
 accessibility
 accessible
 accessible-name
@@ -453,6 +463,7 @@ accounting
 accumulators
 accurate
 acknowledges
+acquisition
 across
 action
 actionPanel
@@ -507,6 +518,8 @@ address
 adds
 adjacency
 adjacent
+adjusts
+admitted
 adopt
 adopts
 advances
@@ -562,6 +575,7 @@ alignment
 alive
 all
 allSamples
+allocating
 allowUnpress
 allowed
 allowlist
@@ -599,6 +613,7 @@ and/or
 angle
 angular
 animate
+animated
 animation
 animation-timeline
 annealed
@@ -635,6 +650,7 @@ application-owned
 application-requested
 application-supplied
 applicationShell
+applicationWorkspace
 applications
 applied
 appliedLabel
@@ -646,6 +662,7 @@ applyLabel
 applying
 applyingLabel
 approval
+approved
 approximation
 arbitrate
 arc
@@ -730,8 +747,10 @@ arrive
 arrives
 arrow
 arrow-key
+art
 art-directed
 article
+artwork
 as
 ascending
 ascii
@@ -748,6 +767,7 @@ aspect-square
 aspect-video
 aspectRatio
 asset
+assets
 assigned
 assistive
 associated
@@ -767,6 +787,7 @@ attributes
 attribution
 attrs
 audible
+authenticate
 author
 authorization
 auto
@@ -774,6 +795,7 @@ auto-fill
 auto-inserted
 autoCapitalize
 autoComplete
+autoHighlight
 autofocus
 automatic
 automaticChartColors
@@ -788,6 +810,7 @@ average
 averageRadius
 avoid
 await
+awaiting
 axe
 axes
 axis
@@ -857,6 +880,7 @@ beginning
 behavior
 behind
 being
+bell
 belong
 belongs
 below
@@ -1019,6 +1043,7 @@ buildJsonTree
 buildPathTree
 buildXmlTree
 builder
+building
 builds
 built-in
 bundled
@@ -1065,6 +1090,7 @@ callout
 callouts
 calls
 came
+camel
 camera
 can
 canRename
@@ -1088,7 +1114,10 @@ canvas
 canvas-derived
 canvases
 cap
+capability
 capacity
+capacity-full
+capacityFull
 caps
 caption
 caption-top
@@ -1144,6 +1173,7 @@ centred
 centres
 centroid
 ch
+chair
 change
 change-set
 changeFollowing
@@ -1177,6 +1207,7 @@ checked
 checked:after:bg-primary
 checked:before:bg-on-primary
 checked:before:translate-x-[calc(var(--reddb-spatial-switch-track-height)*0.75)]
+checklist
 checkout
 checkoutForm
 checks
@@ -1192,6 +1223,7 @@ choice
 choiceBox
 choices
 choose
+chooses
 choosing
 chord
 chosen
@@ -1200,6 +1232,7 @@ chronological
 chunk
 circle
 circles
+circular
 circularChart
 claims
 clamp
@@ -1219,6 +1252,7 @@ clearable
 clearance
 cleared
 clearing
+clearly
 clears
 clearspace
 click
@@ -1244,6 +1278,7 @@ closeAfterDestination
 closeButton
 closeDelay
 closeLabel
+closeWorkspaceDocument
 closed
 closers
 closes
@@ -1275,6 +1310,8 @@ collapses
 collapsing
 collator
 collection
+collection-empty
+collectionEmpty
 colliding
 collision
 collision-free
@@ -1299,6 +1336,7 @@ columnheader
 columns
 com
 combines
+combo
 combobox
 come
 comes
@@ -1325,6 +1363,7 @@ compared
 compares
 comparison
 comparisons
+compatible
 compete
 competing
 compiles
@@ -1347,6 +1386,7 @@ compositeColumnLabel
 compositeDash
 compositePaint
 compositeProject
+compositeSkeletonShape
 composition
 compositionend
 compositionstart
@@ -1369,6 +1409,10 @@ confirms
 conflating
 conflicting
 connection
+connection-lost
+connection-restored
+connectionLost
+connectionRestored
 connector
 consecutive
 const
@@ -1402,6 +1446,8 @@ contentClass
 contentHeight
 contentLabel
 contentMask
+contentState
+contentStateHeight
 contentWidth
 contents
 context
@@ -1438,12 +1484,15 @@ controlledPage
 controlledSelected
 controlledSort
 controller
+controllers
 controls
 controlsClass
 convention
 conventional
 converged
 conversation
+convey
+conveyor
 conveys
 coordinate
 coordinated
@@ -1484,8 +1533,11 @@ createChartStream
 createConfirmationSession
 createContext
 createElement
+createId
 createModalController
 createNavigationDisclosures
+createWorkspaceExecution
+createWorkspaceSession
 created
 creation
 creeps
@@ -1532,6 +1584,7 @@ cy
 cyan
 cyclic
 cyclically
+d
 d3-hierarchy
 d3-sankey
 d3-scale
@@ -1593,6 +1646,10 @@ data-appearance-axis
 data-appearance-switch
 data-application-shell
 data-application-shell-region
+data-application-workspace
+data-application-workspace-content
+data-application-workspace-navigation
+data-application-workspace-toolbar
 data-aspect-ratio
 data-avatar
 data-avatar-fallback
@@ -1724,6 +1781,7 @@ data-composite-reference
 data-container
 data-container-size
 data-content-mask
+data-content-state
 data-context-menu-surface
 data-context-menu-trigger
 data-countdown
@@ -1774,6 +1832,7 @@ data-ds-chart
 data-ds-focus-scope
 data-ds-graph
 data-edge-id
+data-empty
 data-engine-state
 data-entity-id
 data-entity-inspector
@@ -1846,6 +1905,7 @@ data-logo-layout
 data-logo-mark
 data-logo-on
 data-mark-id
+data-math-expression
 data-media-object
 data-media-object-content
 data-media-object-media
@@ -2025,6 +2085,8 @@ data-sidebar-rail-region
 data-sidebar-toolbar
 data-size
 data-skeleton
+data-skeleton-part
+data-skeleton-svg
 data-skip-link
 data-slice
 data-slide-column
@@ -2053,6 +2115,7 @@ data-stack-direction
 data-stack-total
 data-state
 data-state-grid
+data-state-illustration
 data-statistic
 data-statistic-description
 data-statistic-value
@@ -2139,10 +2202,12 @@ data-workspace-tabs
 data-x
 data-xml-tree
 data-y
+dataEmpty
 dataIndex
 dataLabel
 dataLabels
 dataWithHierarchy
+database
 dataset
 datasets
 date
@@ -2204,9 +2269,11 @@ defaultVariants
 defaults
 defect
 deferred
+defineStateIllustration
 defined
 defines
 defining
+definite
 definitions
 degraded
 degree
@@ -2330,6 +2397,7 @@ display
 display-only
 displayLabel
 displayed
+displaying
 displays
 disposal
 dispose
@@ -2338,7 +2406,9 @@ distance
 distances
 distancesByPivot
 distinct
+distinguish
 distinguishes
+distinguishing
 distorts
 distribute
 distribution
@@ -2355,8 +2425,29 @@ doc
 dock
 dockable
 document
+document-approved
+document-approved-compact
+document-collection-empty
+document-collection-empty-compact
+document-draft
+document-draft-compact
+document-history
+document-history-compact
 document-level
+document-review
+document-review-compact
+documentApproved
+documentApprovedCompact
+documentCollectionEmpty
+documentCollectionEmptyCompact
+documentDraft
+documentDraftCompact
 documentElement
+documentHistory
+documentHistoryCompact
+documentLabel
+documentReview
+documentReviewCompact
 documentation
 documented
 documents
@@ -2442,6 +2533,7 @@ elapsed
 element
 elements
 elevation
+ellipse
 else
 elsewhere
 em
@@ -2457,12 +2549,14 @@ empty
 empty-collection
 empty-filter
 empty-state
+empty-value
 empty/national
 empty:hidden
 emptyLabel
 emptyMessage
 emptyState
 emptyText
+emptyTitle
 en
 enabled
 enabled:checked:hover:after:bg-primary-active
@@ -2503,6 +2597,7 @@ entityList
 entries
 entry
 enumerates
+envelope
 environments
 epoch
 epochs
@@ -2515,6 +2610,8 @@ error
 errorBoundary
 errorId
 errorLabel
+errorMessage
+errors
 escape
 escapes
 escaping
@@ -2533,6 +2630,7 @@ eventBody
 eventMessage
 eventMeta
 events
+eventual
 ever
 every
 everything
@@ -2540,6 +2638,7 @@ everywhere
 exact
 exact-source
 exactly
+example
 exceeds
 except
 exception
@@ -2547,9 +2646,11 @@ exclude
 excludeDisabled
 excludes
 exclusive
+execute
 executed
 executes
 execution
+executions
 exist
 existing
 exists
@@ -2581,6 +2682,7 @@ exposure
 express
 expressed
 expresses
+expression
 extend
 extended
 extends
@@ -2637,6 +2739,7 @@ fell
 fetch
 fetchPriority
 fetched
+fetches
 few
 fewer
 field
@@ -2651,8 +2754,12 @@ fieldset
 figure
 figureBody
 file
+file-download
+file-upload
+fileDownload
 fileInput
 fileNames
+fileUpload
 filename
 files
 filesystem
@@ -2671,6 +2778,7 @@ filteredRows
 filteredSuggestions
 filtering
 filters
+finally
 financial
 find
 finds
@@ -2759,6 +2867,7 @@ focusAfterRetry
 focusIndex
 focusNode
 focusSkipTarget
+focusWorkspaceDocument
 focusable
 focusableWhenDisabled
 focusables
@@ -2769,6 +2878,7 @@ focusedNodes
 focuses
 focusin
 fold
+folder
 follow
 follow!
 follow-up
@@ -2789,6 +2899,7 @@ font-sans
 font-size
 fontFamily
 fontSize
+fonts
 foot
 footer
 footerContainer
@@ -2797,6 +2908,7 @@ footprints
 for
 force
 forceLabel
+forceNew
 forced
 forced-colors:appearance-auto
 forced-colors:hidden
@@ -2836,6 +2948,7 @@ framework-independent
 framework-neutral
 frameworks
 free
+freeze
 fresh
 from
 fromContent
@@ -2885,6 +2998,7 @@ geoMap
 geographic
 geography
 geometry
+geometryCache
 get
 getServerSnapshot
 getSnapshot
@@ -2909,7 +3023,11 @@ gradient
 grammar
 grammar-owned
 graph
+graph-empty
+graph-empty-compact
 graphDistance
+graphEmpty
+graphEmptyCompact
 graphRoot
 graphic
 graphical
@@ -2950,12 +3068,14 @@ gridHead
 gridList
 gridRow
 gridTemplateColumns
+gridTemplateRows
 gridcell
 ground
 grounds
 group
 group-aria-expanded:rotate-180
 group-data-[chart-inspecting]/chart:visible
+group-data-[highlighted]/command:text-foreground
 group-data-[highlighted]:text-foreground
 group-disabled/fieldset:text-ink-muted
 group-focus-within/chart:visible
@@ -2966,6 +3086,7 @@ group-hover/chart:visible
 group-hover/inline-edit:opacity-100
 group-last:after:hidden
 group/chart
+group/command
 group/field
 group/fieldset
 group/inline-edit
@@ -2977,6 +3098,7 @@ grow-0
 grows
 growthProgress
 gt
+guarantee
 gutter
 gutterElement
 gutters
@@ -3095,6 +3217,7 @@ highlightElement
 highlighted
 highlights
 hint
+hints
 histogram
 histogramBins
 history
@@ -3111,6 +3234,7 @@ horizontal
 horizontalColor
 horizontalInverse
 host
+host-supplied
 hour
 hours
 hover
@@ -3174,6 +3298,7 @@ id!
 idea
 identical
 identically
+identified
 identifier
 identifiers
 identify
@@ -3183,8 +3308,10 @@ identity
 idle
 ids
 if
+ignore
 ignored
 illegibly
+illustration
 image
 image/avif
 imageClass
@@ -3193,6 +3320,7 @@ img
 immediately
 immutable
 implementation
+implementations
 implicit
 implied
 import
@@ -3209,6 +3337,10 @@ in-memory
 in-page
 inView
 inactive
+inbox-clear
+inbox-clear-compact
+inboxClear
+inboxClearCompact
 incentive
 include
 included
@@ -3228,6 +3360,7 @@ indeterminate
 index
 indexById
 indexes
+indicate
 indicator
 indices
 individual
@@ -3243,6 +3376,7 @@ inherited
 inheriting
 inherits
 initial
+initial-load
 initialActiveX
 initialCollapsed
 initialData
@@ -3304,6 +3438,10 @@ instructions
 integer
 integers
 integration
+integration-empty
+integration-empty-compact
+integrationEmpty
+integrationEmptyCompact
 intended
 intensity
 intent
@@ -3322,6 +3460,7 @@ interpolated
 interpolating
 interpolation
 interprets
+interrupted
 interval
 intervalId
 intervalIds
@@ -3341,6 +3480,11 @@ invents
 inverse
 inverted
 invisible
+invitation-sent
+invitationSent
+invite
+invites
+invoker
 invoking
 io
 is
@@ -3422,6 +3566,7 @@ knockout
 knowing
 known
 knows
+kpi
 kpiCard
 l
 label
@@ -3446,6 +3591,7 @@ laid
 laid-out
 land
 landmark
+landmarks
 lands
 lane
 lanes
@@ -3626,17 +3772,58 @@ m
 m-0
 m-[var(--reddb-spatial-gap-sm)]
 m-auto
+m129
+m137
+m141
+m145
+m146
+m149
+m151
+m155
+m159
+m167
+m172
+m188
+m194
+m213
+m220
+m222
+m225
+m228
+m237
+m240
+m247
+m250
+m260
+m267
+m268
+m269
+m273
+m274
+m277
+m278
+m282
+m292
+m299
+m304
+m310
+m317
+m320
+m334
+m335
 m6
 machine
 machine-readable
 made
 magenta
+magnifier
 main
 main-content
 mainContainer
 mainId
 mainItems
 mainRegion
+maintenance
 make
 makes
 mandatory
@@ -3651,6 +3838,7 @@ markClass
 markHeight
 markWidth
 markdown
+marked
 marker
 marker:text-ink-muted
 markerPaint
@@ -3659,6 +3847,7 @@ marketing
 marking
 marks
 markup
+markupCache
 masked
 master-detail
 master-list
@@ -3672,10 +3861,13 @@ material
 materialize
 materials
 math
+mathExpression
+mathematical
 matrix
 matters
 max
 max-h-64
+max-h-[50dvh]
 max-h-[min(70dvh,var(--bits-combobox-content-available-height))]
 max-h-[min(70dvh,var(--bits-popover-content-available-height))]
 max-h-dvh
@@ -3780,6 +3972,7 @@ mediaClass
 mediaObject
 mediaSide
 medium
+meet
 member
 member-sized
 memberIds
@@ -3961,6 +4154,7 @@ narrowest
 narrows
 national-number
 native
+nativeButton
 natural
 naturalWidth
 nav
@@ -3974,6 +4168,7 @@ navigationLabel
 navigationMarkerLabel
 navigationMenu
 near
+nearby
 nearest
 nearestDistance
 nearestX
@@ -4073,6 +4268,10 @@ nothing
 notice
 notification
 notifications
+notifications-quiet
+notifications-quiet-compact
+notificationsQuiet
+notificationsQuietCompact
 notify
 now
 null
@@ -4215,10 +4414,13 @@ open:flex
 open:flex-col
 openDelay
 openDetails
+openWorkspaceDocument
 opened
 opening
 opens
 operation
+operation-complete
+operationComplete
 operational
 operationalToneInk
 operationalView
@@ -4329,8 +4531,10 @@ paddingInner
 paddingLeft
 paddingTop
 page
+page-missing
 pageCount
 pageHeading
+pageMissing
 pageRows
 pageSize
 pagedNavigation
@@ -4353,6 +4557,7 @@ palette
 panZoom
 pane
 panel
+panelClass
 panelLink
 panelLinks
 panelOpen
@@ -4380,6 +4585,7 @@ participants:readonly
 partition
 parts
 pass
+passages
 passed
 passes
 passing
@@ -4387,6 +4593,7 @@ passive
 password
 past
 paste
+patch
 patched
 path
 path-carrier
@@ -4430,6 +4637,7 @@ peer-indeterminate:translate-y-0
 peer-indeterminate:visible
 peer-indeterminate:w-[calc(var(--reddb-spatial-icon-size-md)*0.5)]
 peers
+pencil
 pending
 pending/failed
 pendingFocus
@@ -4437,6 +4645,7 @@ pendingLabel
 pentagon
 per
 per-component
+per-instance
 per-item
 per-layout
 per-role
@@ -4462,6 +4671,7 @@ picked
 picks
 picture
 pie
+pieces
 pill
 pillDismiss
 pinned
@@ -4500,6 +4710,7 @@ plotHeight
 plotSamples
 plotWidth
 plotted
+plug
 plus
 point
 point-cloud
@@ -4518,6 +4729,7 @@ polite
 politely
 polygon
 polygons
+polyline
 popover
 popstate
 popup
@@ -4539,6 +4751,7 @@ positive
 possible
 possibleDate
 pr-[var(--reddb-spatial-control-height-md)]
+pr-[var(--reddb-spatial-gap-md)]
 pr-[var(--reddb-spatial-gap-sm)]
 pr-[var(--reddb-spatial-inset-md)]
 pragmatic
@@ -4551,6 +4764,7 @@ predecessors
 predicate
 preference
 preferences
+preferred
 prefers-reduced-motion
 prefix
 prepend
@@ -4562,6 +4776,7 @@ presentations
 presenter
 presents
 preserve
+preserveAspectRatio
 preserved
 preserves
 preserving
@@ -4580,6 +4795,7 @@ previews
 previous
 previous-entity
 previous-month
+previousActiveId
 previousLabel
 previousValue
 price
@@ -4594,9 +4810,11 @@ primaryValues
 printable-ASCII
 printed
 priority
+private
 probe
 problem
 process
+processing
 produces
 product
 productFeature
@@ -4613,6 +4831,8 @@ progressLabel!
 progressY
 progressbar
 project
+project-empty
+projectEmpty
 projected
 prop
 propagating
@@ -4628,6 +4848,7 @@ protocol
 provenance
 provide
 provided
+provider
 provider-independent
 provides
 ps
@@ -4689,6 +4910,10 @@ query
 querySelector
 querySelectorAll
 queue
+queue-empty
+queue-empty-compact
+queueEmpty
+queueEmptyCompact
 queuePops
 queuePushes
 queueSlot
@@ -4813,6 +5038,7 @@ referenceIds
 referenced
 references
 referentially
+refocus
 refresh
 refreshed
 refs
@@ -4825,8 +5051,10 @@ regionId
 regionLabel
 regions
 register
+registered
 registers
 registration
+registrations
 regression
 reject
 rejection
@@ -4839,6 +5067,7 @@ relationship
 relationships
 relative
 release
+released
 releases
 relevant
 rem
@@ -4849,6 +5078,7 @@ remains
 remap
 remember
 remembered
+remote
 remounts
 removable
 removal
@@ -4873,6 +5103,7 @@ renderers
 rendering
 renders
 rendersMain
+reopen
 reopened
 reorder
 reorderable
@@ -4916,6 +5147,7 @@ requirement
 requires
 rerender
 reschedules
+reserve
 reserved
 reserves
 reset
@@ -4944,12 +5176,14 @@ responsive
 responsiveNavigationLayout
 rest
 restating
+resting
 restingLabels
 restore
 restoreFocus
 restoreLabel
 restored
 restores
+restricted
 result
 results
 resume
@@ -4976,6 +5210,7 @@ reveal
 revealLabel
 revealable
 revealed
+reverse
 reversed
 review
 reviewChanges
@@ -4984,6 +5219,7 @@ revision
 rewrite
 rewrites
 rhythm
+ribbon
 rich
 richer
 right
@@ -5077,6 +5313,7 @@ safeArea
 safeMax
 safeMin
 safeValue
+safely
 said
 same
 same-origin
@@ -5114,6 +5351,7 @@ scaleProject
 scaled
 scales
 scan
+scans
 scatter
 scene
 sceneContent
@@ -5143,12 +5381,16 @@ scrollHeight
 scrollLeft
 scrollTop
 scrollWidth
+scrollable
 scrollbar
 scrolling
 scrolls
+seal
 seam
 seams
 search
+search-empty
+searchEmpty
 searchPlaceholder
 searchSelect
 searchSelectOptions
@@ -5172,6 +5414,7 @@ sectionHeading
 sectionId
 sections
 sector
+sectors
 see
 seed
 seek
@@ -5211,6 +5454,7 @@ semantics
 sense
 sensitive
 sensitivity
+sent
 sentence
 sentiment
 separate
@@ -5234,10 +5478,14 @@ served
 server
 server-authorized
 server-rendered
+server/client
 serverSnapshot
 service
+services
 session
+session-expired
 session-region
+sessionExpired
 sessionRef
 set
 setActive
@@ -5402,6 +5650,7 @@ signed
 significance
 significant
 silence
+silences
 silently
 simple
 simple/interactive
@@ -5440,6 +5689,7 @@ sized
 sizes
 sizing
 skeleton
+skeletonSvgMarkup
 skip
 skip-link
 skipDelayDuration
@@ -5470,6 +5720,7 @@ snapshot
 snippet
 snippets
 so
+socket
 software
 solid
 someone
@@ -5494,6 +5745,7 @@ sourceY
 sources
 space
 space-y-[var(--reddb-spatial-layout-gap-sm)]
+spacer
 spaces
 spacing
 spacious
@@ -5509,6 +5761,7 @@ sparse-stress
 spatial
 speaker
 speaks
+spec
 specialization
 specialized
 specificity
@@ -5583,6 +5836,7 @@ state
 state-change
 state-filter
 stateCellWidth
+stateIllustration
 stateItem
 stateLabel
 stateY
@@ -5673,6 +5927,7 @@ successful
 such
 sufficiently
 suffix
+suggested
 suggestion
 suggestions
 suitable
@@ -5724,6 +5979,7 @@ symbolWhite
 sync
 synchronized
 synchronous
+synchronously
 syntax
 system
 system-coloured
@@ -5732,7 +5988,11 @@ tabDay
 tabIndex
 tabindex
 table
+table-empty
+table-empty-compact
 tableAppearance
+tableEmpty
+tableEmptyCompact
 tables
 tabs
 tabsOwner
@@ -5740,6 +6000,7 @@ tabular
 tabular-nums
 tag
 tagName
+tags
 tail
 tailwind-variants
 take
@@ -5763,6 +6024,12 @@ targets
 task
 taskList
 tasks
+team
+team-empty
+team-empty-compact
+teamEmpty
+teamEmptyCompact
+technical
 technology
 tel
 tel-national
@@ -5912,6 +6179,7 @@ toggleGroupTarget
 toggles
 toggling
 token
+token-backed
 token-coloured
 token-only
 token-painted
@@ -5925,6 +6193,7 @@ too
 tool
 toolbar
 toolbarLabel
+tools/generate-illustrations.mjs.
 tooltip
 top
 top-0
@@ -5937,6 +6206,7 @@ top-center
 top-end
 top-level
 top-start
+top/bottom
 topology-aware
 total
 totalHeight
@@ -5949,6 +6219,7 @@ touchstart
 toward
 trace
 track
+trackCount
 trackHeight
 tracking
 tracks
@@ -5980,6 +6251,7 @@ transport
 transports
 trap-focus
 trapScopeTab
+tray
 treatment
 treatments
 tree
@@ -6044,6 +6316,8 @@ underline-offset-[calc(var(--reddb-spatial-gap-sm)/2)]
 underline-offset-[var(--reddb-spatial-gap-sm)]
 underlying
 undirected
+unfilled
+unfinished
 unicode
 unique
 uniqueEntities
@@ -6082,11 +6356,13 @@ up
 upcoming
 update
 updateFocusState
+updateWorkspaceDocument
 updates
 upper
 uppercase
 upserts
 upstream
+upward
 url
 usable
 use
@@ -6195,7 +6471,10 @@ w-[calc(100%+2*var(--reddb-spatial-gap-sm))]
 w-[calc(3ch+var(--reddb-spatial-inset-md))]
 w-[calc(max(6.65em,var(--reddb-spatial-control-height-md)*2)+2*var(--reddb-spatial-inset-sm))]
 w-[calc(var(--reddb-spatial-control-height-md)*1.5)]
+w-[calc(var(--reddb-spatial-control-height-md)*12)]
 w-[calc(var(--reddb-spatial-control-height-md)*3)]
+w-[calc(var(--reddb-spatial-control-height-md)*5)]
+w-[calc(var(--reddb-spatial-control-height-md)*8)]
 w-[calc(var(--reddb-spatial-control-height-md)+2*var(--reddb-spatial-inset-sm))]
 w-[calc(var(--reddb-spatial-icon-size-md)*0.3)]
 w-[max(20rem,var(--bits-popover-anchor-width))]
@@ -6215,6 +6494,7 @@ w-max
 w-px
 wait
 waited
+waiting
 wanted
 wants
 warn
@@ -6329,6 +6609,7 @@ x1
 x2
 xDomain
 xLabel
+xMidYMid
 xScale
 xTicks
 xd
@@ -6352,6 +6633,7 @@ years
 yellow
 yield
 you
+your
 ys
 z
 z-10

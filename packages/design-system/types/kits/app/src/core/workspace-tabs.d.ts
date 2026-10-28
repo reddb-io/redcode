@@ -3,6 +3,8 @@ export interface WorkspaceTab {
     id: string;
     /** Visible tab name. */
     label: string;
+    /** Native destination. NavigationScope may intercept owned, unmodified clicks. */
+    href?: string;
     /** Whether the application accepts close requests. */
     closable?: boolean;
     /** Caller-observed unsaved changes, independent of execution. */

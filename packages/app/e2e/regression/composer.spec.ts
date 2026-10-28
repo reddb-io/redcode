@@ -1,8 +1,81 @@
 import { expect, test, type Locator, type Page } from "@playwright/test"
 import { NO_PROVIDER, T0, provider } from "../utils/app"
 import { openDraft, openSession } from "../utils/workspace"
+import { mockGoal } from "../utils/goal-fixture"
 
 test.use({ permissions: ["clipboard-read", "clipboard-write"] })
+
+test("goal commands manage the current session and ask before ambiguous changes", async ({ page }) => {
+  const { editor } = await openSession(page, { name: "DesktopGoal" })
+  const fixture = await mockGoal(page, { ambiguous: true })
+  await editor.fill("/goal")
+  await editor.press("Escape")
+  await editor.press("Enter")
+  const dialog = page.getByRole("dialog", { name: "Goal", exact: true })
+  await expect(dialog.getByText("No goal yet. Set an objective to start working on it.")).toBeVisible()
+  await dialog.getByRole("button", { name: "Set goal", exact: true }).click()
+  await dialog.getByLabel("What does done look like?").fill("Ship the desktop feature")
+  await dialog.getByRole("button", { name: "Start goal", exact: true }).click()
+  await expect(dialog.getByText("Ship the desktop feature", { exact: true })).toBeVisible()
+  await dialog.getByRole("button", { name: "Pause goal", exact: true }).click()
+  await expect(dialog.getByText(/Goal paused/)).toBeVisible()
+  await dialog.getByRole("button", { name: "Resume goal", exact: true }).click()
+  await expect(dialog.getByText(/Goal active/)).toBeVisible()
+  await dialog.getByRole("button", { name: "Close", exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  await editor.fill("/goal budget 25 steps 200k tokens")
+  await editor.press("Enter")
+  await expect(dialog.getByText(/0 \/ 25 steps/)).toBeVisible()
+  await dialog.getByRole("button", { name: "Close", exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  await editor.fill("/goal maybe stop this")
+  await editor.press("Enter")
+  await expect(dialog.getByText("What should happen with “maybe stop this”?")).toBeVisible()
+  expect(fixture.requests.filter((request) => request.body.action === "pause")).toHaveLength(1)
+  await dialog.getByRole("button", { name: "Pause goal", exact: true }).click()
+  await expect(dialog.getByText(/Goal paused/)).toBeVisible()
+  await dialog.getByRole("button", { name: "Drop goal", exact: true }).click()
+  await expect(dialog.getByText("No goal yet. Set an objective to start working on it.")).toBeVisible()
+  expect(fixture.requests.every((request) => request.sessionID === "ses_desktopgoal")).toBe(true)
+})
+
+test("a goal in a new session starts in the selected project without sending a prompt", async ({ page }) => {
+  const prompts: string[] = []
+  const creations: unknown[] = []
+  const { editor } = await openDraft(page, {
+    name: "NewDesktopGoal",
+    onPrompt: ({ sessionID }) => prompts.push(sessionID),
+    onSessionCreate: (body) => { creations.push(body) },
+  })
+  const fixture = await mockGoal(page)
+  await editor.fill("/goal Build a reliable import")
+  await editor.press("Enter")
+  await expect.poll(() => fixture.requests.filter((request) => request.path === "goal").length).toBe(1)
+  const created = fixture.requests.find((request) => request.path === "goal")!
+  expect(created.body.objective).toBe("Build a reliable import")
+  expect(creations).toEqual([expect.objectContaining({ id: created.sessionID, location: { directory: "C:/OpenCode/NewDesktopGoal" } })])
+  await expect(page).toHaveURL(new RegExp(`/session/${created.sessionID}$`))
+  expect(prompts).toEqual([])
+})
+
+test("a failed goal start keeps the objective and retries the same new session", async ({ page }) => {
+  const sessions: string[] = []
+  const { editor } = await openDraft(page, {
+    name: "GoalRetry",
+    onSessionCreate: (body) => { if (typeof body.id === "string") sessions.push(body.id) },
+  })
+  const fixture = await mockGoal(page, { failStart: true })
+  await editor.fill("/goal Deliver the feature")
+  await editor.press("Enter")
+  const dialog = page.getByRole("dialog", { name: "Goal", exact: true })
+  await expect(dialog.getByRole("alert")).toContainText("Goal service unavailable")
+  await expect(dialog.getByLabel("What does done look like?")).toHaveValue("Deliver the feature")
+  await dialog.getByRole("button", { name: "Start goal", exact: true }).click()
+  await expect.poll(() => fixture.requests.filter((request) => request.path === "goal").length).toBe(2)
+  expect(sessions).toHaveLength(1)
+  expect(fixture.requests.map((request) => request.sessionID)).toEqual([sessions[0], sessions[0]])
+  await expect(page).toHaveURL(new RegExp(`/session/${sessions[0]}$`))
+})
 
 test("Shift+Tab cycles primary agents while preserving the prompt", async ({ page }) => {
   const { editor } = await openDraft(page, {
@@ -406,6 +479,7 @@ test("lists slash commands in their built-in order", async ({ page }) => {
     "/review",
     "/reasoning",
     "/intelligence",
+    "/goal",
     "/new",
     "/undo",
     "/compact",

@@ -1,5 +1,6 @@
 "use client";
 import { Fragment, jsx, jsxs } from "react/jsx-runtime";
+import { Skeleton } from "@reddb-io/design-system/base";
 import { tokenColor } from "@reddb-io/design-system/base/recipes";
 import {
   useRef
@@ -61,6 +62,7 @@ function Heatmap(props) {
     {
       ref: figure,
       "data-ds-chart": true,
+      "aria-busy": !chart.Engine || void 0,
       "data-chart-loaded": chart.Engine ? "" : void 0,
       "data-chart-kind": "heatmap",
       "data-chart-series": series,
@@ -103,7 +105,8 @@ function Heatmap(props) {
             className: "w-full",
             style: {
               height: height === void 0 ? `calc(var(--reddb-spatial-control-height-md) * ${ROWS})` : `${height}px`
-            }
+            },
+            children: /* @__PURE__ */ jsx(Skeleton, { shape: "heatmap", className: "h-full max-w-none" })
           }
         ) })
       ]

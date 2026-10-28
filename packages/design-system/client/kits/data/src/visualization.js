@@ -44,8 +44,12 @@ function project(value, range, start, end) {
 function ticks(range, count = 4) {
   return Array.from({ length: count + 1 }, (_, i) => range[0] + (range[1] - range[0]) * i / count);
 }
+const numbers = {
+  compact: new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 2 }),
+  standard: new Intl.NumberFormat("en", { notation: "standard", maximumFractionDigits: 2 })
+};
 function number(value) {
-  return new Intl.NumberFormat("en", { notation: Math.abs(value) >= 1e4 ? "compact" : "standard", maximumFractionDigits: 2 }).format(value);
+  return numbers[Math.abs(value) >= 1e4 ? "compact" : "standard"].format(value);
 }
 function short(value, length = 24) {
   return value.length > length ? `${value.slice(0, length - 1)}\u2026` : value;

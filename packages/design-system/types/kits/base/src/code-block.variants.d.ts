@@ -7,6 +7,7 @@ export declare const codeBlock: import("tailwind-variants").TVReturnType<{
             root?: import("tailwind-variants").ClassValue;
             toolbar?: import("tailwind-variants").ClassValue;
             language?: import("tailwind-variants").ClassValue;
+            gutter?: import("tailwind-variants").ClassValue;
         };
     };
 } | {
@@ -17,6 +18,7 @@ export declare const codeBlock: import("tailwind-variants").TVReturnType<{
             root?: import("tailwind-variants").ClassValue;
             toolbar?: import("tailwind-variants").ClassValue;
             language?: import("tailwind-variants").ClassValue;
+            gutter?: import("tailwind-variants").ClassValue;
         };
     };
 } | {}, {
@@ -24,6 +26,7 @@ export declare const codeBlock: import("tailwind-variants").TVReturnType<{
     toolbar: string;
     language: string;
     pre: string;
+    gutter: string;
     code: string;
 }, undefined, {
     [key: string]: {
@@ -33,6 +36,7 @@ export declare const codeBlock: import("tailwind-variants").TVReturnType<{
             root?: import("tailwind-variants").ClassValue;
             toolbar?: import("tailwind-variants").ClassValue;
             language?: import("tailwind-variants").ClassValue;
+            gutter?: import("tailwind-variants").ClassValue;
         };
     };
 } | {}, {
@@ -40,12 +44,14 @@ export declare const codeBlock: import("tailwind-variants").TVReturnType<{
     toolbar: string;
     language: string;
     pre: string;
+    gutter: string;
     code: string;
 }, import("tailwind-variants").TVReturnType<unknown, {
     root: string;
     toolbar: string;
     language: string;
     pre: string;
+    gutter: string;
     code: string;
 }, undefined, unknown, unknown, undefined>>;
 export type CodeBlockVariants = VariantProps<typeof codeBlock>;

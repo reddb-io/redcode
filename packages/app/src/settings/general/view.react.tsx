@@ -38,6 +38,7 @@ export function General(props: {
         terminalPlacement: ReturnType<Settings["general"]["terminalPlacement"]>
         followUpBehavior: ReturnType<Settings["general"]["followUpBehavior"]>
         mobileTitlebarPosition: "top" | "bottom"
+        timelineWidth: ReturnType<Settings["general"]["timelineWidth"]>
         timelineDetail: ReturnType<Settings["general"]["timelineDetail"]>
       }
       installation?: { status: keyof typeof installationDescriptions; failed: boolean; pending: boolean }
@@ -342,6 +343,27 @@ export function General(props: {
         <section className="settings-section" aria-label={language.t("settings.timeline.title")}>
           <h3 className="settings-section-title">{language.t("settings.timeline.title")}</h3>
           <SettingsList>
+            <SettingsRow
+              title={language.t("settings.timeline.width.title")}
+              description={language.t("settings.timeline.width.description")}
+            >
+              {(association) => (
+                <Select
+                  {...association}
+                  data-action="settings-timeline-width"
+                  controlSize="sm"
+                  options={(["comfortable", "wide", "full"] as const).map((value) => ({
+                    value,
+                    label: language.t(`settings.timeline.width.${value}`),
+                  }))}
+                  value={values.timelineWidth}
+                  onValueChange={(value) => {
+                    if (value === "comfortable" || value === "wide" || value === "full")
+                      settings.general.setTimelineWidth(value)
+                  }}
+                />
+              )}
+            </SettingsRow>
             <div className="py-5">
               <TimelineDetailControl
                 language={language}

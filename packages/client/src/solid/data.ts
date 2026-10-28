@@ -561,18 +561,21 @@ export function createData(config: CreateDataInput) {
     )
   }
 
-  function evictSession(sessionID: string) {
+  function evictSession(sessionID: string, keepPending = false) {
     if (sessionOutbox.has(sessionID)) return
-    sync.invalidate(`session.pending:${sessionID}`)
+    if (!keepPending) sync.invalidate(`session.pending:${sessionID}`)
     sync.invalidate(`session.message:${sessionID}`)
     sync.invalidate(`session.spend:${sessionID}`)
     spending.delete(sessionID)
     clearTimeout(settling.get(`session.spend:${sessionID}`))
     settling.delete(`session.spend:${sessionID}`)
     messageLoads.delete(sessionID)
-    // Keep unacknowledged submissions until their echo or rollback settles them.
-    const pending = store.session.pending[sessionID]?.filter((item) => outbox.has(item.id)) ?? []
-    const messages = store.session.message[sessionID]?.filter((item) => outbox.has(item.id)) ?? []
+    // Keep unacknowledged submissions and the visible rows for retained inbox items.
+    const pending = keepPending
+      ? store.session.pending[sessionID] ?? []
+      : store.session.pending[sessionID]?.filter((item) => outbox.has(item.id)) ?? []
+    const pendingIDs = new Set(pending.map((item) => item.id))
+    const messages = store.session.message[sessionID]?.filter((item) => outbox.has(item.id) || pendingIDs.has(item.id)) ?? []
     messageIndex.delete(sessionID)
     if (messages.length) messageIndex.set(sessionID, new Map(messages.map((item, index) => [item.id, index])))
     setStore(
@@ -1447,6 +1450,13 @@ export function createData(config: CreateDataInput) {
         const root = resolveRoot(sessionID)
         batch(() => {
           for (const id of new Set([root, sessionID, ...(store.session.family[root] ?? [])])) evictSession(id)
+        })
+      },
+      /** Clear transcript data while preserving pending work used by session indicators. */
+      evictHistory(sessionID: string) {
+        const root = resolveRoot(sessionID)
+        batch(() => {
+          for (const id of new Set([root, sessionID, ...(store.session.family[root] ?? [])])) evictSession(id, true)
         })
       },
       cost(sessionID: string) {

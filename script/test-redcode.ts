@@ -218,6 +218,7 @@ const suites = {
     "test/model.test.ts",
     "test/generate.test.ts",
     "test/intelligence-history.test.ts",
+    "test/intelligence-models.test.ts",
     "test/legacy-rpc.test.ts",
     "test/session-tasks.test.ts",
     "test/session-monitors.test.ts",
@@ -251,6 +252,7 @@ const suites = {
     "test/effect.test.ts",
     "test/promise.test.ts",
     "test/solid-data.test.ts",
+    "test/solid-eviction.test.ts",
     "test/import-boundaries.test.ts",
   ],
   app: [

@@ -1,6 +1,7 @@
 export type SettingsRootTab =
   | "general"
   | "appearance"
+  | "voice"
   | "notifications"
   | "shortcuts"
   | "projects"
@@ -59,6 +60,7 @@ export type SettingsTransientView = Pick<SettingsView, "target" | "searchActivat
 const rootTabs: Record<SettingsRootTab, true> = {
   general: true,
   appearance: true,
+  voice: true,
   notifications: true,
   shortcuts: true,
   projects: true,

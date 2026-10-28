@@ -1,5 +1,7 @@
 "use client";
 import { Fragment, jsx, jsxs } from "react/jsx-runtime";
+import { Skeleton } from "@reddb-io/design-system/base";
+import { compositeSkeletonShape } from "../../src/core/chart-skeleton.js";
 import { useId, useMemo, useRef, useState } from "react";
 import { quietControl } from "@reddb-io/design-system/base";
 import { chartSurface, chartReadout, chartRows, chartHeightStyle, chartAdaptiveHeight } from "../../src/chart-layout.variants.js";
@@ -50,6 +52,7 @@ function CompositeChartPanel({ model, label, layoutMode, readoutMode, orientatio
       "data-chart-presentation": presentation,
       "data-chart-layout": layoutMode,
       "data-chart-readout": readoutMode,
+      "aria-busy": !Engine || void 0,
       "data-chart-loaded": Engine ? "" : void 0,
       role: "group",
       "aria-label": label,
@@ -105,7 +108,7 @@ function CompositeChartPanel({ model, label, layoutMode, readoutMode, orientatio
             onKeyDown: key,
             onBlur: () => setKeyboard(false),
             children: [
-              Engine ? /* @__PURE__ */ jsx(Engine, { model, layout, hiddenSeries, presentation, cursor: interactive ? chartCursor(activeX, model.sampleDomain) : void 0 }) : /* @__PURE__ */ jsx("div", { "data-chart-placeholder": true, "aria-hidden": "true", className: "h-full w-full" }),
+              Engine ? /* @__PURE__ */ jsx(Engine, { model, layout, hiddenSeries, presentation, cursor: interactive ? chartCursor(activeX, model.sampleDomain) : void 0 }) : /* @__PURE__ */ jsx("div", { "data-chart-placeholder": true, "aria-hidden": "true", className: "h-full w-full", children: /* @__PURE__ */ jsx(Skeleton, { shape: compositeSkeletonShape(model, orientation), className: "h-full max-w-none" }) }),
               inspection.empty && /* @__PURE__ */ jsx("div", { "data-composite-empty": true, className: styles.empty(), children: inspection.empty })
             ]
           }

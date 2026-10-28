@@ -46,7 +46,7 @@ const dual: IntelligenceEvaluation.ScopedSettings = {
   onboarding: "completed",
   sessionReasoning: "dual",
   principal: { providerID: Provider.ID.make("fake"), id: Model.ID.make("fake-model") },
-  evaluator: IntelligenceEvaluation.evaluatorPreset("red-router"),
+  evaluator: { ...IntelligenceEvaluation.evaluatorPreset("red-router"), model: "fixture-evaluator" },
 }
 
 /** How System One answers one request: a probability per question, a failed review, a transport error or no review. */

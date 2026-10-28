@@ -1,5 +1,108 @@
 # Base Kit
 
+## Request state around real components
+
+`ContentState` composes `Skeleton`, `EmptyState` and `Alert` around caller-owned
+content. Pass an explicit `state`: `loading | ready | empty | error`, and a
+required region `label`. It never fetches, guesses whether a value is empty, or
+starts artificial loading timers. A KPI of zero is valid ready content.
+
+```svelte
+<ContentState state={pending ? 'loading' : error ? 'error' : rows.length ? 'ready' : 'empty'}
+  label="Query results" shape="table" rows={6} columns={columns.length}
+  height="calc(var(--reddb-spatial-control-height-md) * 12)"
+  errorMessage={error ?? undefined} emptyTitle="No matching rows">
+  <Table {columns} {rows} caption="Query results" />
+  {#snippet empty()}
+    <EmptyState title="No matching rows" description="Try a broader query." />
+  {/snippet}
+</ContentState>
+```
+
+The Table above is the Data Kit's canonical Table. Keep its own `empty` slot
+when headers and filters should stay visible; put ContentState around it when
+the whole region should change. For a metric, keep `state="ready"` for valid
+zero values. Skeleton `shape`, `rows`, `columns` and `animated` configure the
+default loading content. A `loading` snippet replaces it with a whole dashboard.
+The optional `empty` snippet replaces the default zero state. `failure(message)`
+replaces the default error alert and can supply a real retry action. React uses
+render content for loading/empty and a message callback for failure.
+
+The named region owns `aria-busy`. Its single polite live message sits outside
+that busy subtree; default errors use Alert's assertive announcement instead.
+Applications may override `announcement`, including an empty string, and own
+focus, request cancellation and error recovery. Keep controls outside a region
+that is replaced, and preserve ready content during background/realtime refresh.
+
+### Reserve the final viewport before loading
+
+For layout stability, pass `height` before the request starts: positive pixels,
+a definite CSS length or a Density token calculation. `height="fill"` fills a
+parent whose height is already bounded. The same outer box remains in loading,
+ready, empty and error, with native keyboard-accessible scrolling for content
+that exceeds it and a stable scrollbar gutter. This includes table headers,
+rows, controls and paging, or chart titles, plot, wrapped legends and readouts.
+Reserve the entire component viewport, not just its drawing.
+
+Without a declared height or a caller-owned bounded layout, ContentState follows
+its content. Matching a skeleton `shape` alone cannot predict the final height of
+unknown rows, images or wrapping text. `min-height` alone also allows growth.
+Do not measure a loaded component and set its height afterwards: the first
+response would already have moved the page. Give images intrinsic dimensions
+and keep the same responsive size contract on both sides of a request.
+
+The real catalogue reference shares the viewport sizes between skeletons and
+components, and retains its height on HTTP failure. Browser tests compare every
+individual region and the following content at phone and desktop widths in all
+appearance cells, and observe layout shifts during the actual response swap.
+
+`/examples/loading-states` reads the real `/ai/index.json` catalogue over HTTP,
+derives KPI and chart values from that response, and renders the actual Data
+Table, KpiCard, BarChart and DonutChart. It demonstrates optional illustrated
+empty slots, a real HTTP error, retry, cancellation and native Svelte/React
+composition. “Load catalogue” restarts the initial-load demonstration; the
+component itself does not impose that policy on product refreshes.
+
+## Loading silhouettes
+
+`Skeleton` reserves the outline of incoming content without fetching data or
+importing a chart engine. Existing `text`, `rectangle` and `circle` shapes retain
+their defaults. The ready-made shapes are `table`, `kpi`, `bar`, `column`, `line`,
+`area`, `combo`, `pie`, `donut`, `radial`, `candlestick`, `scatter`, `heatmap`,
+`graph`, `list`, `document` and `card`.
+
+```svelte
+<script>
+  import { Skeleton } from '@reddb-io/design-system/base';
+</script>
+
+<Skeleton shape="table" rows={6} columns={5} label="Loading query results" />
+<Skeleton shape="kpi" label="Loading throughput" />
+<Skeleton shape="area" label="Loading traffic" />
+<Skeleton shape="donut" animated={false} label="Loading usage" />
+```
+
+The same canonical imports and props apply after Sync selects React; use
+`className` in React and `class` in Svelte for local bounds. Geometry and counts
+are shared between both adapters. Bounds follow Density, while circle and
+rectangle keep their existing dimensions for compatibility. Match the final
+content's dimensions with classes to avoid layout shifts.
+
+`rows` defaults to 5 (integers 1–20), `columns` to 4 (integers 1–12). Rows apply
+to table, list and heatmap; columns to table and heatmap. Charts have fixed neutral
+silhouettes with no real values, legends or percentages. A radial skeleton is
+not a determinate progress indicator. The shapes need no external SVG or fonts.
+
+Skeletons are decorative by default and never enter the tab order. Give a single
+owner a `label`, or put decorative skeletons inside a region that owns `aria-busy`
+and its loading announcement. Do not label every cell. `animated={false}` stops
+the pulse; `prefers-reduced-motion` always stops it. Use initial-load skeletons
+only while content is pending. Preserve visible data during background/realtime
+refreshes, and replace completed loads with content, an EmptyState or an error.
+
+The native gallery at `/kit/skeleton` compares all twenty shapes, animation and
+row/column controls under every Theme, Color Scheme and Density.
+
 ## Numeric entry and rich choices
 
 `NumberField` composes Field, Input and Button. Supply a visible `label`, bind
@@ -1209,7 +1312,8 @@ announces a polite busy state. Rotation is gated by the platform motion
 preference. The Application Kit's former `LoadingState` duplicate has been
 retired; every consumer receives this Base contract instead.
 
-Skeleton offers text, rectangle, and circle placeholders while leaving their
+Skeleton offers twenty placeholder shapes for basic geometry, tables, metrics,
+charts and content (see Loading silhouettes above), while leaving their
 arrangement and final dimensions to the consumer. It is decorative by default;
 a caller may give it a label when the placeholder itself owns the polite busy
 announcement. Its pulse is motion-safe and its rectangle height remains a live
@@ -1532,3 +1636,88 @@ remain intact. `RadialContent` supplies a reusable noninteractive center with
 `avatar`, `title`, `value` and `description`; allow sufficient diameter for all
 content. Countdowns supply remaining values from the application; the component
 creates no timers. Omitted values remain indeterminate and honor reduced motion.
+
+## Interface illustrations and zero states
+
+`StateIllustration` renders transparent, passive SVG artwork. Twenty-eight scenes and twelve compact object compositions cover empty search, empty collections/projects/data, missing pages,
+restricted access, lost/restored connections, expired sessions, upload/download,
+processing, completion, capacity, maintenance and invitations. They share native
+Svelte/React geometry and use Theme colour roles without fonts, bitmap images,
+remote resources or animation.
+
+Import individual assets to retain tree shaking:
+
+```svelte
+<script lang="ts">
+  import { Button, EmptyState, StateIllustration } from "@reddb-io/design-system/base";
+  import { projectEmpty } from "@reddb-io/design-system/base/illustrations";
+</script>
+<EmptyState title="No projects yet" description="Create your first project.">
+  {#snippet media()}<StateIllustration art={projectEmpty} size="sm" />{/snippet}
+  {#snippet actions()}<Button href="/projects/new">Create project</Button>{/snippet}
+</EmptyState>
+```
+
+```tsx
+import { Button, EmptyState, StateIllustration } from "@reddb-io/design-system/base";
+import { projectEmpty } from "@reddb-io/design-system/base/illustrations";
+
+<EmptyState title="No projects yet" description="Create your first project."
+  media={<StateIllustration art={projectEmpty} size="sm" />}
+  actions={<Button href="/projects/new">Create project</Button>} />;
+```
+
+The default `size="md"`, plus `sm` and `lg`, follows Density. `size="full"`
+uses its parent's width and all sizes preserve the 480:300 aspect ratio.
+`accent` accepts a DS ColorToken, for example `"--reddb-color-feedback-success-fill"`. Artwork is decorative
+by default, appropriate beside explanatory copy. Use `decorative={false}` and a
+localized `label` only when the artwork itself conveys information.
+
+`illustrationSvg(projectEmpty)` returns standalone SVG source without a framework.
+It keeps semantic CSS variables and system-colour fallbacks; serve it inline with
+the DS styles to retain theming. For an independent image file with fixed colours,
+use the Showcase gallery's **Download SVG**, which resolves the current appearance
+into the downloaded file. Original generated files live in `src/illustrations/`.
+They are interface artwork owned by the Kit, distinct from Brand Marks and fonts.
+
+For selective Sync, include `"base": ["StateIllustration", "EmptyState", "Button"]`
+and `"base/illustrations": ["projectEmpty"]` in `distribution.include`.
+Do not import `STATE_ILLUSTRATIONS` into ordinary pages: it intentionally retains
+the complete catalogue. `pnpm --filter kit-base illustrations` regenerates the
+assets; `illustrations:check` verifies them without changing files.
+
+See `/kit/state-illustration` for the gallery and `/examples/zero-states` for
+working first-project and filtered-search states in both native implementations.
+
+### Document and workflow artwork
+
+The following exports each have a scene and an independently importable compact
+composition. Compact artwork removes surrounding marks, shadows and context,
+keeping the main object clear at smaller display sizes. It is a different
+composition; `size` continues to control Density-responsive display bounds.
+
+| Meaning | Scene export | Compact export |
+| --- | --- | --- |
+| First draft | `documentDraft` | `documentDraftCompact` |
+| Review | `documentReview` | `documentReviewCompact` |
+| Approval | `documentApproved` | `documentApprovedCompact` |
+| History and restoration | `documentHistory` | `documentHistoryCompact` |
+| First teammate | `teamEmpty` | `teamEmptyCompact` |
+| Completed inbox | `inboxClear` | `inboxClearCompact` |
+| No unread notifications | `notificationsQuiet` | `notificationsQuietCompact` |
+| First integration | `integrationEmpty` | `integrationEmptyCompact` |
+| Empty table | `tableEmpty` | `tableEmptyCompact` |
+| Empty graph | `graphEmpty` | `graphEmptyCompact` |
+| Empty queue | `queueEmpty` | `queueEmptyCompact` |
+| Empty document collection | `documentCollectionEmpty` | `documentCollectionEmptyCompact` |
+
+All exports come from `/base/illustrations`. For example,
+`<StateIllustration art={inboxClearCompact} size="sm" />` composes with EmptyState
+in either framework. Select only `inboxClearCompact` in `distribution.include`
+to omit the scene and the other artwork from source or compiled Sync.
+
+Choose the illustration by the reason for the state: first content needs a
+creation action, empty search needs a filter recovery, and completed work needs
+confirmation plus a way to review history. An inbox with a check means the work
+is complete; it should not replace an illustration for missing initial content.
+The gallery compares scene/compact compositions and downloads the selected one.

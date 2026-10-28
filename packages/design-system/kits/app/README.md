@@ -468,6 +468,45 @@ every test here while failing the first `svelte-check` it meets in an
 application; this is what closes that gap (issue #50), and
 `test/consumer-check.test.ts` runs it on every `test` so it cannot reopen.
 
+## Workspace sessions
+
+`createWorkspaceSession(services)` is portable lifecycle and command behavior
+shared by the native Svelte and React entrypoints. Each mount supplies fresh
+services and disposes its own session on unmount. The `/app/workspace` entry
+works in plain TypeScript hosts without loading component or framework types:
+
+```ts
+import { createWorkspaceSession } from "@reddb-io/design-system/app/workspace";
+
+const session = createWorkspaceSession({ documents: new Map() });
+const unsubscribe = session.on("new-document", openDocument);
+session.dispatch("new-document");
+session.onDispose(releaseResources);
+// Unmount: aborts session.signal, drops command listeners and runs cleanup.
+session.dispose();
+```
+
+Commands are synchronous and instance-local. `on` returns an unsubscribe;
+`onDispose` returns an unregister. Disposal aborts first and runs cleanups in
+reverse registration order, continuing through failures and then throwing one
+AggregateError. Registering cleanup after disposal runs it immediately. Commands
+after disposal are ignored. Services remain caller-owned; their cleanup must
+be registered explicitly. This foundation does not yet provide a complete
+workspace component or a database adapter (ADR 0051).
+
+Document identity and selection are also available without component types:
+
+```ts
+import { openWorkspaceDocument, closeWorkspaceDocument } from "@reddb-io/design-system/app/workspace/documents";
+
+const first = openWorkspaceDocument({ items: [], activeId: null },
+  { kind: "note", key: "draft", label: "Draft" }, () => crypto.randomUUID());
+const closed = closeWorkspaceDocument(first.state, first.document.id);
+```
+
+These pure transitions preserve caller-defined metadata. The host owns reactive
+subscriptions, persistence, unsaved-change decisions and document content.
+
 ## Commands
 
 ```
@@ -680,3 +719,30 @@ without separating the icon from its own name. Explicit `itemGap` keeps its
 exact value; it is never multiplied. `labelGap` independently overrides the
 icon-to-label space in CSS pixels and accepts zero. Both values remain local
 and forward through `SidebarLayout.railSizing`.
+
+The same default gap spaces the navigation list and direct children in the
+`top` and `bottom` regions: Density `gap-md` for icon-only rails and
+`layout-gap-sm` when labels are visible. `itemGap` overrides all three stacks,
+including zero. A bottom slot can place a collapse Tooltip beside an account
+DropdownMenu without duplicating that spacing. Nested caller-owned containers
+retain their own layout, and slot control/icon/avatar sizes remain caller-owned.
+
+### Workspace renderer registry
+
+`@reddb-io/design-system/app/workspace/renderers` provides a portable,
+instance-owned registry for host-defined renderers. `resolve` tries a registered
+explicit override, a compatible hint, the first matching renderer and an
+optional caller-selected fallback. It returns `undefined` when none is found;
+the host owns the missing-renderer policy, result model and rendering adapter.
+
+For selective Sync, include this root as
+`{"app/workspace/renderers": ["WorkspaceRendererRegistry"]}`. The selected
+contract does not require a component framework or Data Kit.
+
+### Application workspace
+
+`ApplicationWorkspace` composes a named resource navigation region, optional
+commands, and controlled document tabs. The host supplies document contents,
+selection and close decisions; it owns state, persistence and service lifecycle.
+Both Svelte and React can instead provide a custom content region during gradual
+migration. The component does not connect to a service or import the Data Kit.

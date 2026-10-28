@@ -8,6 +8,7 @@ export declare const sidebarRail: import("tailwind-variants").TVReturnType<{
             item: string;
             face: string;
             badgeAnchor: string;
+            region: string;
             list: string;
         };
     };
@@ -32,6 +33,7 @@ export declare const sidebarRail: import("tailwind-variants").TVReturnType<{
             item: string;
             face: string;
             badgeAnchor: string;
+            region: string;
             list: string;
         };
     };
@@ -56,6 +58,7 @@ export declare const sidebarRail: import("tailwind-variants").TVReturnType<{
             item: string;
             face: string;
             badgeAnchor: string;
+            region: string;
             list: string;
         };
     };

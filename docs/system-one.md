@@ -28,13 +28,16 @@ Captures are prepared within TypeSafe's current 280–1568 pixel bounds without 
 creative or its exports.
 
 The setup selects an enabled text model for S2, discovers evaluator models for S1,
-and checks the connections before saving. Cancelling setup leaves saved settings
+and checks the connections before saving. Desktop loads the model list for the selected
+S1 connection and lets you choose a model or enter its ID when discovery fails or returns
+no models. Opening settings does not change an existing model. Cancelling setup leaves saved settings
 unchanged. A blank S1 API key reuses credentials when the selected connection supports it.
 Sources and candidates are sent to the selected evaluator in dual mode.
 
 The S2 connection picker offers **Use current connection and model** when the
 session's selected model and connection are still available. Choosing another
-connection continues to its model list. S1 always comes from its connection's catalog.
+connection continues to its model list. S1 models come from the selected connection's catalog
+or compatible bundled provider catalog.
 Connection-test Retry resumes with the failed role; a successful S2 probe is retained.
 
 For RedRouter, the selected S1 model's `supported_endpoints` or the router's
@@ -70,11 +73,9 @@ test the selected route before saving a working evaluator.
 The bundled models.dev provider catalog includes specialized entries through
 `api.json?type=all`. Their `type` and `canonical_model_id` are retained separately
 from executable provider IDs. Specialized entries are excluded from S2. For
-OpenRouter, Cloudflare AI Gateway and Vercel, S1 discovery lazily reads compatible
-JEV decision offerings from the matching provider in the bundled snapshot, with
-the adapter preset as a fallback. This does not start a remote catalog refresh.
-Other classifiers need a compatible typed-question adapter before they
-can be offered as S1. Catalog availability still requires a successful connection
+OpenRouter, Cloudflare AI Gateway and Vercel, S1 discovery reads decision offerings
+from the matching provider in the bundled snapshot. It does not assign a model to a
+connection or start a remote catalog refresh. Catalog availability still requires a successful connection
 probe. RedRouter always uses its selected key's remote catalog and capabilities;
 the public snapshot never fills an empty Router list.
 

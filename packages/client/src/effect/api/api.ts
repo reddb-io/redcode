@@ -6157,7 +6157,7 @@ export type ServerIntelligenceStatusOutput = {
         | "vivgrid"
         | "nano-gpt"
       readonly baseURL: string
-      readonly model: string
+      readonly model?: string | undefined
       readonly credentialID?: Credential.ID | undefined
       readonly endpoint?: ("systemone" | "decisions") | undefined
     }
@@ -6323,7 +6323,7 @@ export type ServerIntelligenceDiscoverInput = {
       | "vivgrid"
       | "nano-gpt"
     readonly baseURL: string
-    readonly model: string
+    readonly model?: string | undefined
     readonly credentialID?: Credential.ID | undefined
     readonly endpoint?: ("systemone" | "decisions") | undefined
   }

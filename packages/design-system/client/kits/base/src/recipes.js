@@ -12,6 +12,7 @@ export * from "./card.variants.js";
 export * from "./carousel.variants.js";
 export * from "./checkbox.variants.js";
 export * from "./code-block.variants.js";
+export * from "./math-expression.variants.js";
 export * from "./combobox.variants.js";
 export * from "./container.variants.js";
 export * from "./content-mask.variants.js";
@@ -100,6 +101,8 @@ export * from "./secret-value.variants.js";
 import { tokenColor } from "./core/color-token.js";
 import { ringThickness } from "./core/radial.js";
 export * from "./radial-content.variants.js";
+export * from "./state-illustration.variants.js";
+export * from "./content-state.variants.js";
 export {
   TYPE_ROLE_UTILITIES,
   fieldAssociation,

@@ -9,7 +9,7 @@ host's density when one is set; otherwise it uses tiny on narrow viewports and
 compact on wider ones. Editable text and toolbar controls retain the DS touch
 floor on devices with a coarse pointer.
 
-The current delivery pins `v2026.10.38`, selects React and uses the official
+The current delivery pins `v2026.10.49`, selects React and uses the official
 compiled distribution. Settings and the migrated shell surfaces consume native
 React controls through canonical Base, App and Data imports. Shared service adapters
 retain the existing router, persistence, server subscriptions and extension owners.

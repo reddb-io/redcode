@@ -53,6 +53,22 @@ test("evicts a whole family while preserving metadata and attention", async () =
   }
 })
 
+test("evicting history preserves queued work and reloads the transcript", async () => {
+  const setup = fixture()
+  try {
+    await setup.data.session.message.sync("ses_child")
+    await setup.data.session.pending.sync("ses_child")
+    setup.data.session.evictHistory("ses_parent")
+    expect(setup.data.session.message.list("ses_child").map((item) => item.id)).toEqual(["msg_pending"])
+    expect(setup.data.session.pending.list("ses_child")).toMatchObject([{ id: "msg_pending" }])
+    await setup.data.session.message.sync("ses_child")
+    expect(setup.data.session.message.list("ses_child").map((item) => item.id)).toEqual(["msg_page", "msg_pending"])
+    expect(setup.data.session.pending.list("ses_child")).toMatchObject([{ id: "msg_pending" }])
+  } finally {
+    setup.dispose()
+  }
+})
+
 test("evicting an in-flight read leaves the next sync invalidated", async () => {
   const requested = Promise.withResolvers<void>()
   const release = Promise.withResolvers<void>()

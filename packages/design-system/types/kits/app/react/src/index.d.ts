@@ -60,3 +60,5 @@ export type { WorkspaceTab } from "../../src/core/workspace-tabs";
 export type { ReviewChange, ReviewState } from "../../src/core/change-review";
 export type { ShortcutGroup, ShortcutCommand } from "../../src/core/shortcut-help";
 export type { SidebarRailSizing } from "../../src/core/contracts/sidebarrail";
+export { createWorkspaceSession, type WorkspaceSession } from "../../src/core/workspace-session";
+export { ApplicationWorkspace, type ApplicationWorkspaceProps } from "./ApplicationWorkspace";

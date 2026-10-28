@@ -10,6 +10,7 @@ import { useLanguage } from "@/runtime/i18n/language"
 import { useServer } from "@/runtime/server/current"
 import { usePlatform } from "@/runtime/platform/platform"
 import { useWorkspaceLocation } from "@/workspaces/location"
+import { useSettings } from "@/settings/model"
 import type { ComposerAdapter } from "./adapter"
 import { createComposerEditorActions } from "./editor/actions"
 
@@ -18,6 +19,7 @@ export function createComposerVoice(adapter: ComposerAdapter) {
   const route = useLocation()
   const sdk = useWorkspaceLocation()
   const platform = usePlatform()
+  const settings = useSettings()
   const [state, setState] = createStore<VoiceState>({ phase: "idle", seconds: 0, level: 0, retry: false })
   const draft = createComposerEditorActions(adapter.state.store)
   const cursor = { value: 0 }
@@ -71,7 +73,7 @@ export function createComposerVoice(adapter: ComposerAdapter) {
   return {
     state,
     busy: () => ["preparing", "recording", "transcribing"].includes(state.phase),
-    start: () => voice.start(),
+    start: () => voice.start(settings.voice.device() || undefined),
     finish: voice.finish,
     cancel: voice.cancel,
     retry: voice.retry,

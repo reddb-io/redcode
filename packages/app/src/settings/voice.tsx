@@ -1,18 +1,109 @@
-import { createResource, For, Show } from "solid-js"
+import { createMemo, createResource, createSignal, For, onCleanup, onMount, Show, type Accessor } from "solid-js"
 import { createStore } from "solid-js/store"
 import { Voice } from "@opencode/schema/voice"
 import { Credential } from "@opencode/schema/credential"
 import { Button } from "@opencode/ui/button"
-import { Dialog, DialogBody, DialogFooter, DialogHeader, DialogTitle } from "@opencode/ui/dialog"
-import { useDialog } from "@opencode/ui/context/dialog"
 import { useLanguage } from "@/runtime/i18n/language"
 import type { ServerApi } from "@/runtime/server/api"
+import { useGlobal } from "@/runtime/server/runtime"
+import { ServerConnection } from "@/runtime/server/registry"
+import type { SettingsServer } from "./servers/inventory"
+import { showToast } from "@/shell/notifications/toast"
 import { errorStatus } from "@/shell/errors/description"
+import { useSettings } from "@/settings/model"
+import { usePlatform } from "@/runtime/platform/platform"
 
-export function VoiceSettings(props: { api: ServerApi }) {
+export function SettingsVoice(props: {
+  servers: Accessor<SettingsServer[]>
+  source: Accessor<ServerConnection.Any | undefined>
+}) {
+  const language = useLanguage()
+  const global = useGlobal()
+  const [chosen, setChosen] = createSignal<string>()
+  const selected = createMemo(() => {
+    const source = props.source()
+    const key =
+      chosen() ?? (source ? ServerConnection.key(source) : props.servers().length === 1 ? props.servers()[0]?.key : undefined)
+    return props.servers().find((server) => server.key === key)
+  })
+
+  return (
+    <>
+      <div class="settings-tab-header">
+        <div class="settings-tab-header-row">
+          <div class="flex flex-col gap-1">
+            <h2 class="settings-tab-title">{language.t("voice.settings")}</h2>
+            <span class="text-11-regular text-ink-muted">{language.t("voice.description")}</span>
+          </div>
+        </div>
+      </div>
+      <div class="settings-tab-body settings-tab-body--sectioned">
+        <Show when={props.servers().length > 1}>
+          <label class="flex flex-col gap-1 text-body">
+            {language.t("voice.settings.server")}
+            <select
+              class="h-8 w-full rounded-md border border-stroke-base bg-surface-base px-2 text-body"
+              value={selected()?.key ?? ""}
+              onChange={(event) => setChosen(event.currentTarget.value || undefined)}
+            >
+              <option value="">{language.t("voice.settings.chooseServer")}</option>
+              <For each={props.servers()}>
+                {(server) => <option value={server.key}>{server.name}</option>}
+              </For>
+            </select>
+          </label>
+        </Show>
+        <Show when={selected()?.connection} keyed fallback={<VoiceSettings />}>
+          {(server) => <VoiceSettings api={global.ensureServerCtx(server).sdk.api} />}
+        </Show>
+      </div>
+    </>
+  )
+}
+
+function VoiceSettings(props: { api?: ServerApi }) {
   const language = useLanguage()
   const api = props.api
-  const dialog = useDialog()
+  const settings = useSettings()
+  const platform = usePlatform()
+  const [microphone, setMicrophone] = createStore({
+    devices: [] as MediaDeviceInfo[],
+    error: "",
+    loading: false,
+  })
+  const refreshMicrophones = async () => {
+    if (!navigator.mediaDevices?.enumerateDevices) {
+      setMicrophone("error", language.t("voice.microphone.unavailable"))
+      return
+    }
+    setMicrophone({ loading: true, error: "" })
+    await navigator.mediaDevices.enumerateDevices().then(
+      (devices) => setMicrophone({ devices: devices.filter((device) => device.kind === "audioinput"), loading: false }),
+      (error: unknown) =>
+        setMicrophone({ loading: false, error: error instanceof Error ? error.message : String(error) }),
+    )
+  }
+  const allowMicrophone = async () => {
+    setMicrophone({ loading: true, error: "" })
+    await (async () => {
+      if (platform.requestMicrophone && !(await platform.requestMicrophone()))
+        throw new DOMException(language.t("voice.microphone.denied"), "NotAllowedError")
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error(language.t("voice.microphone.unavailable"))
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      stream.getTracks().forEach((track) => track.stop())
+      await refreshMicrophones()
+    })().catch((error: unknown) =>
+      setMicrophone({
+        loading: false,
+        error: error instanceof Error ? `${error.name}: ${error.message}` : String(error),
+      }),
+    )
+  }
+  onMount(() => {
+    void refreshMicrophones()
+    navigator.mediaDevices?.addEventListener("devicechange", refreshMicrophones)
+  })
+  onCleanup(() => navigator.mediaDevices?.removeEventListener("devicechange", refreshMicrophones))
   const [form, setForm] = createStore({
     provider: "openai" as Voice.Settings["provider"],
     model: "gpt-4o-mini-transcribe",
@@ -23,13 +114,16 @@ export function VoiceSettings(props: { api: ServerApi }) {
     key: "",
     label: "",
     saving: false,
-    failed: false,
+    failed: "",
     loadError: undefined as "unsupported" | "failed" | undefined,
+    loadDetail: "",
   })
   const [data, { mutate, refetch }] = createResource(async () => {
-    setForm("loadError", undefined)
+    if (!api) return
+    setForm({ loadError: undefined, loadDetail: "" })
     const loaded = await Promise.all([api.config.get(), api.voice.connections()]).catch((error) => {
       setForm("loadError", errorStatus(error) === 404 ? "unsupported" : "failed")
+      setForm("loadDetail", error instanceof Error ? error.message : String(error))
       return undefined
     })
     if (!loaded) return
@@ -53,7 +147,8 @@ export function VoiceSettings(props: { api: ServerApi }) {
     return connections
   })
   const save = async () => {
-    setForm({ saving: true, failed: false })
+    if (!api) return
+    setForm({ saving: true, failed: "" })
     const connection =
       form.connection === "new"
         ? await api.voice.connect({ label: form.label.trim(), key: form.key.trim() }).then(
@@ -62,11 +157,14 @@ export function VoiceSettings(props: { api: ServerApi }) {
               setForm({ connection: entry.id, key: "" })
               return entry.id
             },
-            () => undefined,
+            (error: unknown) => {
+              setForm("failed", error instanceof Error ? error.message : String(error))
+              return undefined
+            },
           )
         : form.connection
     if (connection === undefined) {
-      setForm({ saving: false, failed: true })
+      setForm("saving", false)
       return
     }
     await api.config
@@ -86,17 +184,75 @@ export function VoiceSettings(props: { api: ServerApi }) {
         },
       })
       .then(
-        () => dialog.close(),
-        () => setForm({ saving: false, failed: true }),
+        () => {
+          setForm("saving", false)
+          showToast({ title: language.t("voice.settings.saved") })
+        },
+        (error: unknown) => setForm({ saving: false, failed: error instanceof Error ? error.message : String(error) }),
       )
   }
   const field = "h-8 w-full rounded-md border border-stroke-base bg-surface-base px-2 text-body"
   return (
-    <Dialog fit>
-      <DialogHeader>
-        <DialogTitle>{language.t("voice.settings")}</DialogTitle>
-      </DialogHeader>
-      <DialogBody class="flex flex-col gap-3 px-4 pb-4 !overflow-y-auto">
+    <div class="flex flex-col gap-3">
+        <label class="flex flex-col gap-1 text-body">
+          {language.t("voice.microphone")}
+          <select
+            class={field}
+            value={settings.voice.device()}
+            onChange={(event) => settings.voice.setDevice(event.currentTarget.value)}
+          >
+            <option value="" selected={!settings.voice.device()}>{language.t("voice.microphone.default")}</option>
+            <Show
+              when={
+                settings.voice.device() &&
+                !microphone.devices.some((device) => device.deviceId === settings.voice.device())
+              }
+            >
+              <option value={settings.voice.device()} selected>{language.t("voice.microphone.missing")}</option>
+            </Show>
+            <For each={microphone.devices.filter((device) => device.deviceId && device.deviceId !== "default")}>
+              {(device, index) => (
+                <option value={device.deviceId} selected={settings.voice.device() === device.deviceId}>
+                  {device.label || language.t("voice.microphone.unknown", { number: index() + 1 })}
+                </option>
+              )}
+            </For>
+          </select>
+        </label>
+        <p class="text-body text-ink-muted">{language.t("voice.microphone.description")}</p>
+        <div class="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            size="small"
+            variant="outline"
+            disabled={microphone.loading}
+            onClick={() => void allowMicrophone()}
+          >
+            {language.t("voice.microphone.permission")}
+          </Button>
+          <Button
+            type="button"
+            size="small"
+            variant="outline"
+            disabled={microphone.loading}
+            onClick={() => void refreshMicrophones()}
+          >
+            {language.t("voice.microphone.refresh")}
+          </Button>
+        </div>
+        <Show when={microphone.error}>
+          <p role="alert" class="text-body text-feedback-danger-foreground">
+            {language.t("voice.microphone.failed", { detail: microphone.error })}
+          </p>
+        </Show>
+        <Show when={!api}>
+          <p role="status" class="text-body text-ink-muted">
+            {language.t("voice.settings.serverUnavailable")}
+          </p>
+        </Show>
+        <Show when={!microphone.loading && !microphone.error && !microphone.devices.length}>
+          <p class="text-body text-ink-muted">{language.t("voice.microphone.empty")}</p>
+        </Show>
         <Show when={data.loading}>
           <p role="status" class="text-body text-ink-muted">
             {language.t("common.loading")}
@@ -104,7 +260,6 @@ export function VoiceSettings(props: { api: ServerApi }) {
         </Show>
         <Show when={!form.loadError && data.latest}>
           <fieldset disabled={form.saving || data.loading} class="flex min-w-0 flex-col gap-3">
-            <p class="text-body text-ink-muted">{language.t("voice.description")}</p>
             <label class="flex flex-col gap-1 text-body">
               {language.t("voice.provider")}
               <select
@@ -204,6 +359,9 @@ export function VoiceSettings(props: { api: ServerApi }) {
             <Show when={form.failed}>
               <p role="alert" class="text-body">
                 {language.t("common.requestFailed")}
+                <span class="block break-words">
+                  {language.t("voice.settings.errorDetail", { detail: form.failed })}
+                </span>
               </p>
             </Show>
           </fieldset>
@@ -213,6 +371,11 @@ export function VoiceSettings(props: { api: ServerApi }) {
             <div class="flex flex-col items-start gap-3">
               <p role="alert" class="text-body text-feedback-danger-foreground">
                 {language.t(error() === "unsupported" ? "voice.settings.unsupported" : "voice.settings.loadFailed")}
+                <Show when={form.loadDetail && error() !== "unsupported"}>
+                  <span class="block break-words">
+                    {language.t("voice.settings.errorDetail", { detail: form.loadDetail })}
+                  </span>
+                </Show>
               </p>
               <Button type="button" size="small" variant="outline" onClick={() => void refetch()}>
                 {language.t("common.retry")}
@@ -220,11 +383,11 @@ export function VoiceSettings(props: { api: ServerApi }) {
             </div>
           )}
         </Show>
-      </DialogBody>
-      <DialogFooter>
+      <div class="flex justify-end">
         <Button
           type="button"
           disabled={
+            !api ||
             data.loading ||
             !!form.loadError ||
             form.saving ||
@@ -237,7 +400,7 @@ export function VoiceSettings(props: { api: ServerApi }) {
         >
           {language.t("voice.save")}
         </Button>
-      </DialogFooter>
-    </Dialog>
+      </div>
+    </div>
   )
 }

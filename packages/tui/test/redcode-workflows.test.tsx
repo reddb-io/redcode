@@ -455,7 +455,6 @@ test("an empty S1 catalog offers refresh and another connection instead of model
   const evaluator = {
     transport: "red-router",
     baseURL: "http://router.local/v1",
-    model: "unlisted-preset",
     credentialID: "cred_router",
   }
   const discoveries: unknown[] = []

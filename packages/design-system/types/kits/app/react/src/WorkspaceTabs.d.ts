@@ -9,5 +9,5 @@ export interface WorkspaceTabsProps extends WorkspaceTabsContract {
     /** Additional composition classes. */
     className?: string;
 }
-export declare function WorkspaceTabs({ label, items, selected, onselectedchange, oncloserequest, closeLabel, dirtyLabel, busyLabel, emptyLabel, children, className, }: WorkspaceTabsProps): import("react").JSX.Element;
+export declare function WorkspaceTabs({ label, items, selected, onselectedchange, oncloserequest, closeLabel, dirtyLabel, busyLabel, panelClass, emptyLabel, children, className, }: WorkspaceTabsProps): import("react").JSX.Element;
 export default WorkspaceTabs;

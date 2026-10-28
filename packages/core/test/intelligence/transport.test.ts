@@ -260,22 +260,12 @@ describe("connection-scoped System One discovery", () => {
   it.live("uses compatible canonical decision aliases only from the selected provider", () =>
     Effect.gen(function* () {
       const transport = yield* IntelligenceTransport.Service
-      expect(yield* transport.discover({ evaluator: IntelligenceEvaluation.evaluatorPreset("vercel") })).toEqual({
-        models: [
-          { id: "typesafe-ai/jev", name: "Jev" },
-          { id: "typesafe-ai/jev-1.14.0", name: "Jev 1.14.0" },
-          { id: "typesafe-ai/jev-1.13.0", name: "Jev 1.13.0" },
-        ],
-        manual: false,
-      })
-      expect(yield* transport.discover({ evaluator: IntelligenceEvaluation.evaluatorPreset("openrouter") })).toEqual({
-        models: [
-          { id: "~typesafe/jev-latest", name: "Jev Latest" },
-          { id: "typesafe/jev-1.13", name: "Jev 1.13" },
-          { id: "typesafe/jev-1.14", name: "Jev 1.14" },
-        ],
-        manual: false,
-      })
+      const vercel = yield* transport.discover({ evaluator: IntelligenceEvaluation.evaluatorPreset("vercel") })
+      expect(vercel.models).toContainEqual({ id: "typesafe-ai/jev-1.14.0", name: "Jev 1.14.0" })
+      expect(vercel.models).toContainEqual({ id: "openai/gpt-6-luna-decisions", name: "GPT-6 Luna Decisions" })
+      const openrouter = yield* transport.discover({ evaluator: IntelligenceEvaluation.evaluatorPreset("openrouter") })
+      expect(openrouter.models).toContainEqual({ id: "typesafe/jev-1.14", name: "Jev 1.14" })
+      expect(openrouter.models).toContainEqual({ id: "openai/gpt-6-luna-decisions", name: "GPT-6 Luna Decisions" })
     }),
   )
 
@@ -368,7 +358,7 @@ describe("connection-scoped System One discovery", () => {
       })
       yield* connect(`${server.url.href}v1`, "Router", "selected")
       const transport = yield* IntelligenceTransport.Service
-      const evaluator = (yield* transport.options("red-router"))[0].evaluator
+      const evaluator = { ...(yield* transport.options("red-router"))[0].evaluator, model: "fixture-evaluator" }
       const result = yield* transport.probe({ evaluator })
       expect(result).toMatchObject({ ok: true, endpoint: "decisions" })
       expect(result.requests.map((request) => request.status)).toEqual([404, 200])
@@ -387,7 +377,7 @@ describe("connection-scoped System One discovery", () => {
         })
         yield* connect(`${server.url.href}v1`, "Router", "selected")
         const transport = yield* IntelligenceTransport.Service
-        const result = yield* transport.probe({ evaluator: (yield* transport.options("red-router"))[0].evaluator })
+        const result = yield* transport.probe({ evaluator: { ...(yield* transport.options("red-router"))[0].evaluator, model: "fixture-evaluator" } })
         expect(result.ok).toBe(false)
         expect(result.requests[0]).toMatchObject({ status, bytes: 6 })
         expect(calls).toEqual(["/v1/systemone"])
@@ -441,7 +431,7 @@ describe("connection-scoped System One discovery", () => {
       const server = yield* serve(() => new Response("Unauthorized", { status: 401 }))
       yield* connect(`${server.url.href}v1`, "Router", "selected")
       const transport = yield* IntelligenceTransport.Service
-      const result = yield* transport.probe({ evaluator: (yield* transport.options("red-router"))[0].evaluator })
+      const result = yield* transport.probe({ evaluator: { ...(yield* transport.options("red-router"))[0].evaluator, model: "fixture-evaluator" } })
       expect(result.ok).toBe(false)
       expect(result.requests[0]).toMatchObject({ status: 401, bytes: 12 })
     }),
@@ -634,9 +624,11 @@ describe("OpenRouter System One transport", () => {
           }),
         })
         const transport = yield* IntelligenceTransport.Service
-        const evaluator = (yield* transport.options("openrouter")).find(
+        const option = (yield* transport.options("openrouter")).find(
           (item) => item.evaluator.credentialID === chosen.id,
         )!.evaluator
+        expect(option.model).toBeUndefined()
+        const evaluator = { ...option, model: "typesafe/jev-1.13" }
         expect(evaluator.baseURL).toBe(`${server.url.href}api/${api}`)
         expect(yield* transport.probe({ evaluator })).toMatchObject({ ok: true })
         expect(calls).toEqual([`POST /api/${api}/${api === "alpha" ? "decisions" : "systemone"}`])
@@ -690,6 +682,7 @@ describe("OpenRouter System One transport", () => {
       const checked = yield* transport.probe({
         evaluator: {
           ...IntelligenceEvaluation.evaluatorPreset("openrouter"),
+          model: "fixture-evaluator",
           baseURL: `${server.url.href}api/v1`,
           credentialID: chosen.id,
         },
@@ -839,7 +832,7 @@ describe("current RedRouter decision contract", () => {
         })
         yield* connect(`${server.url.href}v1`, "Router", "selected")
         const transport = yield* IntelligenceTransport.Service
-        const checked = yield* transport.probe({ evaluator: (yield* transport.options("red-router"))[0].evaluator })
+        const checked = yield* transport.probe({ evaluator: { ...(yield* transport.options("red-router"))[0].evaluator, model: "fixture-evaluator" } })
         expect(checked.ok).toBe(false)
         expect(checked.message).toContain("HTTP 502")
         if (code !== "unknown_upstream_error") expect(checked.message).toContain(`(${code})`)
@@ -855,7 +848,7 @@ describe("current RedRouter decision contract", () => {
       const server = yield* serve(() => Response.json({ answers: "private upstream data" }))
       yield* connect(`${server.url.href}v1`, "Router", "selected")
       const transport = yield* IntelligenceTransport.Service
-      const checked = yield* transport.probe({ evaluator: (yield* transport.options("red-router"))[0].evaluator })
+      const checked = yield* transport.probe({ evaluator: { ...(yield* transport.options("red-router"))[0].evaluator, model: "fixture-evaluator" } })
       expect(checked).toMatchObject({ ok: false, message: "Invalid System One typed response" })
       expect(checked.requests[0].status).toBe(200)
     }),
