@@ -1,5 +1,16 @@
 # @reddb-io/redcode
 
+## 0.86.8
+
+### Patch Changes
+
+- Update the integrated Design System components and loading states to the latest stable release.
+- Add the `/goal` command to the Desktop and web composers, including new sessions and goal controls.
+- Let users select the available System One model for each connection in Desktop and terminal setup without a hardcoded JEV version.
+- Let desktop users choose a centered conversation width or use the full available space, including beside session outputs.
+- Release cached timeline views and transcript data when their last session tab closes to reduce renderer memory retention while keeping queued work.
+- Give voice its own Settings page, list local microphones, remember the selected input, and show server error details when voice settings fail.
+
 ## 0.86.7
 
 ### Patch Changes
