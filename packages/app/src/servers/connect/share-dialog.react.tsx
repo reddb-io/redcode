@@ -23,6 +23,7 @@ type ShareState = {
 export function ShareServerDialog(props: {
   source: SharedSource<{
     language: SharedLanguage
+    server: string
     open: boolean
     state: ShareState
     addresses: string[]
@@ -48,10 +49,10 @@ export function ShareServerDialog(props: {
   return (
     <Dialog
       open={view.open}
-      title={language.t("server.share.title")}
-      description={language.t("server.share.description")}
+      title={language.t("server.access.title")}
+      description={language.t("server.access.description", { server: view.server })}
       showClose={false}
-      header={() => <DialogHeader title={language.t("server.share.title")} language={language} close={props.close} />}
+      header={() => <DialogHeader title={language.t("server.access.title")} language={language} close={props.close} />}
       onOpenChange={(open) => {
         if (!open) props.close()
       }}
@@ -67,13 +68,14 @@ export function ShareServerDialog(props: {
             onClick={props.generate}
           >
             {language.t(
-              state.busy ? "server.share.working" : state.code ? "server.share.regenerate" : "server.share.generate",
+              state.busy ? "server.share.working" : state.code ? "server.share.regenerate" : "server.access.generate",
             )}
           </Button>
         </div>
       )}
     >
       <div className="server-share">
+        <p>{language.t("server.access.network")}</p>
         <p>{language.t("server.share.access")}</p>
         <Button variant="secondary" onClick={props.configureHttps}>
           {language.t("https.configure")}
@@ -137,32 +139,32 @@ export function ShareServerDialog(props: {
                 <p>{language.t("server.share.networkHint")}</p>
                 <code>redcode service set hostname 0.0.0.0</code>
                 <code>redcode service start</code>
-                <p>{language.t("server.share.remoteHint")}</p>
+                <p>{language.t("server.access.remoteHint")}</p>
                 <code>redcode pair --remote</code>
                 <p>{language.t("server.share.setupEffect")}</p>
               </div>
             )}
             {view.active && view.link && (
               <div className="server-share-result">
-                <img src={view.qr} alt={language.t("server.share.qr")} width="192" height="192" />
+                <img src={view.qr} alt={language.t("server.access.qr")} width="192" height="192" />
                 <div className="server-share-field">
-                  <label htmlFor="server-share-link">{language.t("server.connect.link")}</label>
+                  <label htmlFor="server-share-link">{language.t("server.access.link")}</label>
                   <Input id="server-share-link" readOnly value={view.link} dir="ltr" />
                   <Button variant="secondary" disabled={state.busy} onClick={props.copy}>
-                    {language.t(state.copied ? "server.share.copied" : "server.share.copy")}
+                    {language.t(state.copied ? "server.share.copied" : "server.access.copy")}
                   </Button>
                 </div>
                 <p>{language.t("server.share.expires", { time: view.expiry })}</p>
-                <p>{language.t("server.share.instructions")}</p>
+                <p>{language.t("server.access.instructions")}</p>
               </div>
             )}
-            {state.code && !view.active && <p role="status">{language.t("server.share.expired")}</p>}
+            {state.code && !view.active && <p role="status">{language.t("server.access.expired")}</p>}
             {state.code && (
               <>
                 <Button variant="ghost" disabled={state.busy} onClick={props.cancel}>
                   {language.t("server.share.cancel")}
                 </Button>
-                <p>{language.t("server.share.cancelHint")}</p>
+                <p>{language.t("server.access.cancelHint")}</p>
               </>
             )}
           </>

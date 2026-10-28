@@ -128,14 +128,14 @@ export default function AgentServers(props: { server: ServerConnection.Any }) {
                     disabled={connection() !== "connected" || !workers.data?.available}
                     onClick={() => dialog.show(() => <WorkerInvitation server={props.server} />)}
                   >
-                    {language.t("workerInvitation.title")}
+                    {language.t("infrastructure.addWorker")}
                   </Button>
                   <Button
                     variant="outline"
                     disabled={connection() !== "connected"}
                     onClick={() => dialog.show(() => <DialogShareServer server={props.server} />)}
                   >
-                    {language.t("infrastructure.pairDevice")}
+                    {language.t("infrastructure.openDevice")}
                   </Button>
                   <Button
                     variant="outline"

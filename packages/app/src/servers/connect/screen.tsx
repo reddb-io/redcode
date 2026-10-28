@@ -85,7 +85,7 @@ export function ConnectServerScreen(props: { url?: string } = {}) {
 
         if (address) return void setState({ method: "password", url: address, link: "", error: "" })
 
-        return void setState("error", language.t("server.connect.link.invalid"))
+        return void setState("error", language.t("server.access.invalidLink"))
       }
 
       // A pairing link pasted into the address field still pairs.

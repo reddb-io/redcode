@@ -19,7 +19,7 @@ export function ServerGeneral(props: { services: Services }) {
           <div className="flex flex-col gap-1">
             <h2 className="settings-tab-title">{state.nested ? state.name : language.t("settings.section.server")}</h2>
             <span className="text-11-regular text-ink-muted">
-              {language.t(state.nested ? "settings.server.description" : "settings.servers.description")}
+              {language.t(state.nested ? "settings.server.description" : "server.access.serversDescription")}
             </span>
           </div>
           {state.add && <SharedSlot mount={services.add} />}
@@ -77,11 +77,11 @@ export function ServerGeneral(props: { services: Services }) {
               </div>
             </section>
             <section className="settings-section">
-              <h3 className="settings-section-title">{language.t("server.share.section")}</h3>
+              <h3 className="settings-section-title">{language.t("server.access.section")}</h3>
               <SettingsList>
                 <SettingsRow
-                  title={language.t("server.share.title")}
-                  description={language.t("server.share.rowDescription")}
+                  title={language.t("server.access.title")}
+                  description={language.t("server.access.rowDescription")}
                 >
                   {(association) => (
                     <div data-action="settings-server-pairing">
@@ -92,7 +92,7 @@ export function ServerGeneral(props: { services: Services }) {
                         disabled={state.unauthorized}
                         onClick={services.share}
                       >
-                        {language.t("server.share.open")}
+                        {language.t("server.access.open")}
                       </Button>
                     </div>
                   )}

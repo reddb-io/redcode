@@ -196,7 +196,7 @@ function createFormController(options: { onSelect?: (server: ServerConnection.Ht
         return
       }
 
-      return void setStore("error", language.t("server.connect.link.invalid"))
+      return void setStore("error", language.t("server.access.invalidLink"))
     }
 
     // A pairing link pasted into the address field still pairs.

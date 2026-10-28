@@ -178,8 +178,8 @@ export const serverSettings: Entry<SettingsServerTab>[] = [
   { tab: "reporting", label: "reporting.title", keywords: "metrics telemetry tokens usage reporter webhook queue" },
   {
     tab: "general",
-    label: "server.share.title",
-    description: "server.share.rowDescription",
+    label: "server.access.title",
+    description: "server.access.rowDescription",
     target: "settings-server-pairing",
     keywords: "remote pair pairing device qr tunnel link computer",
   },

@@ -10,7 +10,7 @@ import { renderSVG } from "uqr"
 import { useLanguage } from "@/runtime/i18n/language"
 import { usePlatform } from "@/runtime/platform/platform"
 import { useServerCtx } from "@/runtime/server/runtime"
-import { ServerConnection } from "@/runtime/server/registry"
+import { ServerConnection, serverName } from "@/runtime/server/registry"
 import { forwardedPairingAddress, pairingAddresses } from "./share"
 import { DialogHttpsAccess } from "./https-dialog"
 import "./share.css"
@@ -77,7 +77,7 @@ export function DialogShareServer(props: { server: ServerConnection.Any }) {
       .then(
         (pairing) =>
           setState({ code: pairing.code, expires: Date.now() + pairing.expires_in * 1_000, now: Date.now() }),
-        () => setState("error", language.t("server.share.generateFailed")),
+        () => setState("error", language.t("server.access.generateFailed")),
       )
     setState("busy", false)
   }
@@ -95,6 +95,7 @@ export function DialogShareServer(props: { server: ServerConnection.Any }) {
   const modal = useNativeDialog()
   const source = sharedSource(() => ({
     language: sharedLanguage(language),
+    server: serverName(props.server),
     open: modal.open(),
     state: { ...state },
     addresses: addresses(),
