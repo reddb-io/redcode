@@ -1,5 +1,11 @@
 # @reddb-io/redcode
 
+## 0.86.7
+
+### Patch Changes
+
+- Clarify server connections, access from other devices and worker enrollment in Desktop settings and infrastructure.
+
 ## 0.86.6
 
 ### Patch Changes
