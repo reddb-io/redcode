@@ -1,0 +1,17 @@
+name: OAuth Windows diagnostic
+on:
+  workflow_dispatch:
+jobs:
+  oauth:
+    runs-on: windows-2025
+    timeout-minutes: 15
+    env:
+      REDCODE_OAUTH_DIAGNOSTIC: '1'
+      OPENCODE_EXPERIMENTAL_DISABLE_FILEWATCHER: 'true'
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: ./.github/actions/setup-bun
+      - name: Test ChatGPT callback
+        shell: bash
+        working-directory: packages/core
+        run: bun test test/plugin/provider-chatgpt.test.ts --timeout 30000
