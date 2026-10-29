@@ -3,7 +3,7 @@ import path from "node:path"
 import { $ } from "bun"
 import { expect } from "bun:test"
 import { Effect } from "effect"
-import { tmpdir } from "../../core/test/fixture/tmpdir"
+import { removeTempDir, tmpdir } from "../../core/test/fixture/tmpdir"
 import { it } from "../../core/test/lib/effect"
 import { startServer } from "./fixture/server"
 import { OpenCode } from "@opencode/client"
@@ -208,7 +208,7 @@ it.live("list reads saved inventory even when its checkout is missing, without b
     yield* Effect.promise(async () => {
       const session = await api.session.create({ location: { directory } })
       const loaded = await api.debug.location.list()
-      await fs.rm(directory, { recursive: true })
+      await removeTempDir(directory)
       expect(await api.worktree.list({ projectID: session.projectID })).toEqual([{ directory }])
       await expect(api.worktree.create({ projectID: session.projectID })).rejects.toMatchObject({
         name: "WorktreeError",
@@ -262,7 +262,7 @@ it.live("refresh discovers both clones while list alone never discovers external
           { directory: b, strategy: "git" },
         ]),
       )
-      await fs.rm(second, { recursive: true })
+      await removeTempDir(second)
       await $`git worktree remove ${a}`.cwd(first).quiet()
       await api.worktree.refresh({ projectID })
       const rows = await api.worktree.list({ projectID })

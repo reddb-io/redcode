@@ -10,7 +10,7 @@ export const tmpdir = async (prefix = "opencode-core-test-") => {
   return {
     path: dir,
     [Symbol.asyncDispose]() {
-      return remove(dir)
+      return removeTempDir(dir)
     },
   }
 }
@@ -18,20 +18,20 @@ export const tmpdir = async (prefix = "opencode-core-test-") => {
 export const tmpdirScoped = (prefix = "opencode-core-test-") =>
   Effect.acquireRelease(
     Effect.tryPromise(() => make(prefix)),
-    (dir) => Effect.tryPromise(() => remove(dir)).pipe(Effect.orDie),
+    (dir) => Effect.tryPromise(() => removeTempDir(dir)).pipe(Effect.orDie),
   ).pipe(Effect.map((path) => ({ path })))
 
 export const withTempDir = <A, E, R>(body: (tmp: TempDir) => Effect.Effect<A, E, R>) =>
   Effect.acquireUseRelease(
     Effect.tryPromise(() => make("opencode-core-test-")),
     (path) => body({ path }),
-    (dir) => Effect.tryPromise(() => remove(dir)).pipe(Effect.orDie),
+    (dir) => Effect.tryPromise(() => removeTempDir(dir)).pipe(Effect.orDie),
   )
 
 const make = async (prefix: string) => fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), prefix)))
 
 // Bun's callback APIs expose short paths and can hang during recursive removal on Windows.
-async function remove(dir: string, retries = 30): Promise<void> {
+export async function removeTempDir(dir: string, retries = 30): Promise<void> {
   try {
     await fs.rm(dir, { recursive: true, force: true })
   } catch (error) {
@@ -39,6 +39,6 @@ async function remove(dir: string, retries = 30): Promise<void> {
       throw error
     Bun.gc(true)
     await Bun.sleep(100)
-    return remove(dir, retries - 1)
+    return removeTempDir(dir, retries - 1)
   }
 }
