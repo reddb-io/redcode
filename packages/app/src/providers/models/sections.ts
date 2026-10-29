@@ -62,10 +62,12 @@ export function modelSections<T extends ModelOptionBase>(
   const favorites = input.provider ? [] : pick(input.favorites)
   const recent = input.provider ? [] : pick(input.recent).filter((option) => !favorites.includes(option))
   const listed = new Set([...favorites, ...recent])
-  const routes = ModelPresentation.sortModelOptions(options.filter((option) => !listed.has(option))).reduce(
-    (groups, option) => groups.set(option.category, [...(groups.get(option.category) ?? []), option]),
-    new Map<string, T[]>(),
-  )
+  const routes = ModelPresentation.sortModelOptions(options.filter((option) => !listed.has(option))).reduce((groups, option) => {
+    const items = groups.get(option.category)
+    if (items) items.push(option)
+    else groups.set(option.category, [option])
+    return groups
+  }, new Map<string, T[]>())
 
   return [
     ...(favorites.length ? [{ key: "favorites", kind: "favorites" as const, items: favorites }] : []),

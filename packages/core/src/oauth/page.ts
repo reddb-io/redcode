@@ -6,9 +6,11 @@
 // offline and drop into any transport (`res.end(...)`, Effect `response.end`,
 // etc.).
 //
-// The visual language mirrors the Redcode app: the design tokens are a curated
-// subset of the OC-2 semantic tokens in `packages/ui/src/styles/theme.css`.
-// Keep this file in sync with those sources when the brand changes.
+// The Application theme, fonts and Base Kit illustrations are embedded from the
+// pinned Design System delivery, so the loopback page remains self-contained.
+
+import { appearance, fonts } from "../design/ui/brand.gen.js"
+import { illustrations } from "./illustrations.gen.js"
 
 export interface CallbackPageOptions {
   /** Friendly integration name shown as a subtitle, e.g. "xAI", "Snowflake", "MCP". */
@@ -78,29 +80,33 @@ type Status = "pending" | "success" | "error"
 
 function renderCard(input: { status: Status; headline: string; message: string; detail?: string; footnote: string }) {
   const detail = input.detail?.trim()
-  return `<main class="card" id="oc-card" data-status="${input.status}" role="status" aria-live="polite">
-      <div class="brand">${WORDMARK}</div>
-      <div class="status" aria-hidden="true">
-        <span class="icon icon-pending">${ICON_SPINNER}</span>
-        <span class="icon icon-success">${ICON_CHECK}</span>
-        <span class="icon icon-error">${ICON_CROSS}</span>
+  return `<main class="page" id="oc-card" data-status="${input.status}" role="status" aria-live="polite">
+      <div class="brand"><img src="${appearance.favicon}" alt="" /><span>redcode</span></div>
+      <div class="content">
+        <div class="illustration" aria-hidden="true">
+          <span class="art art-pending">${illustrations.pending}</span>
+          <span class="art art-success">${illustrations.success}</span>
+          <span class="art art-error">${illustrations.error}</span>
+        </div>
+        <div class="eyebrow">Account connection</div>
+        <h1 class="headline" id="oc-headline">${escapeHtml(input.headline)}</h1>
+        <p class="message" id="oc-message">${input.message}</p>
+        <pre class="detail" id="oc-detail"${detail ? "" : " hidden"}>${detail ? escapeHtml(detail) : ""}</pre>
+        <p class="footnote" id="oc-footnote">${escapeHtml(input.footnote)}</p>
       </div>
-      <h1 class="headline" id="oc-headline">${escapeHtml(input.headline)}</h1>
-      <p class="message" id="oc-message">${input.message}</p>
-      <pre class="detail" id="oc-detail"${detail ? "" : " hidden"}>${detail ? escapeHtml(detail) : ""}</pre>
-      <p class="footnote" id="oc-footnote">${escapeHtml(input.footnote)}</p>
     </main>`
 }
 
 function renderDocument(input: { title: string; body: string; script?: string }) {
   return `<!doctype html>
-<html lang="en">
+<html lang="en" data-theme="application" data-density="compact">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex" />
     <title>${escapeHtml(input.title)} · Redcode</title>
-    <style>${STYLES}</style>
+    <link rel="icon" href="${appearance.favicon}" />
+    <style>${appearance.css}\n${fonts}\n${STYLES}</style>
   </head>
   <body>
     ${input.body}${input.script ? `\n    <script>${input.script}</script>` : ""}
@@ -145,114 +151,87 @@ function escapeHtml(value: string) {
     .replaceAll("'", "&#39;")
 }
 
-// Curated subset of OC-2 tokens (packages/ui/src/styles/theme.css). Default is
-// light; dark applies via prefers-color-scheme. The [data-theme] selectors let a
-// host force a scheme without changing the default.
-const LIGHT_VARS = `
-    --oc-bg: #f8f8f8;
-    --oc-card: #fcfcfc;
-    --oc-text-strong: #171717;
-    --oc-text-base: #6f6f6f;
-    --oc-text-weak: #8f8f8f;
-    --oc-border-weak: #e5e5e5;
-    --oc-icon-strong: #171717;
-    --oc-icon-base: #8f8f8f;
-    --oc-icon-weak: #dbdbdb;
-    --oc-success: #2dba26;
-    --oc-error: #ed4831;
-    --oc-detail-bg: #fff8f6;
-    --oc-detail-border: #fdc3b7;
-    --oc-shadow: 0 16px 48px -6px rgba(0,0,0,.10), 0 6px 12px -2px rgba(0,0,0,.05), 0 1px 2px rgba(0,0,0,.06);`
-
-const DARK_VARS = `
-    --oc-bg: #101010;
-    --oc-card: #161616;
-    --oc-text-strong: rgba(255,255,255,.936);
-    --oc-text-base: rgba(255,255,255,.618);
-    --oc-text-weak: rgba(255,255,255,.422);
-    --oc-border-weak: #282828;
-    --oc-icon-strong: #ededed;
-    --oc-icon-base: #7e7e7e;
-    --oc-icon-weak: #343434;
-    --oc-success: #12c905;
-    --oc-error: #fc533a;
-    --oc-detail-bg: #28110c;
-    --oc-detail-border: #6a1206;
-    --oc-shadow: 0 16px 48px -6px rgba(0,0,0,.55), 0 6px 12px -2px rgba(0,0,0,.35), 0 1px 2px rgba(0,0,0,.4);`
-
+// The browser chooses the OS color scheme; the embedded Application theme supplies all materials.
 const STYLES = `
-  :root { color-scheme: light dark;${LIGHT_VARS}
-    --oc-font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    --oc-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  :root { color-scheme: light dark; }
+  @media (prefers-color-scheme: dark) {
+    :root[data-theme="application"] { --reddb-scheme-not-light: ; --reddb-scheme-not-dark: initial; }
   }
-  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {${DARK_VARS} } }
-  :root[data-theme="dark"] {${DARK_VARS} }
-  :root[data-theme="light"] {${LIGHT_VARS} }
-
   * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; }
+  html, body { margin: 0; min-height: 100%; }
   body {
     min-height: 100vh;
     display: grid;
     place-items: center;
     padding: 24px;
-    background: var(--oc-bg);
-    color: var(--oc-text-base);
-    font-family: var(--oc-font-sans);
-    line-height: 1.5;
+    background: var(--reddb-color-elevation-sunken-surface);
+    color: var(--reddb-color-foreground);
+    font-family: var(--reddb-font-family-sans);
+    line-height: var(--reddb-line-height-normal);
     -webkit-font-smoothing: antialiased;
-    text-rendering: optimizeLegibility;
   }
-  .card {
-    width: min(100%, 28rem);
-    padding: 2.25rem 2rem 1.75rem;
-    background: var(--oc-card);
-    border: 1px solid var(--oc-border-weak);
-    border-radius: 14px;
-    box-shadow: var(--oc-shadow);
-    text-align: center;
+  .page {
+    width: min(100%, 32rem);
+    background: var(--reddb-color-elevation-base-surface);
+    border: 1px solid var(--reddb-color-elevation-base-border);
+    border-radius: var(--reddb-radius-lg);
   }
-  .brand { display: flex; justify-content: center; margin-bottom: 1.75rem; }
-  .wordmark { color: var(--oc-text-strong); font-size: 1.25rem; font-weight: 700; letter-spacing: -0.04em; line-height: 1; }
-  .wordmark-accent { color: #ff2056; }
-  .status { display: flex; justify-content: center; margin-bottom: 1.125rem; }
-  .icon { display: none; line-height: 0; }
-  .icon svg { display: block; }
-  .card[data-status="pending"] .icon-pending,
-  .card[data-status="success"] .icon-success,
-  .card[data-status="error"] .icon-error { display: block; }
-  .icon-success { color: var(--oc-success); }
-  .icon-error { color: var(--oc-error); }
-  .icon-pending { color: var(--oc-text-weak); }
-  .headline { margin: 0; font-size: 1.1875rem; font-weight: 500; line-height: 1.3; letter-spacing: -0.012em; color: var(--oc-text-strong); }
-  .message { margin: 0.5rem 0 0; font-size: 0.9375rem; color: var(--oc-text-base); }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 18px 22px;
+    border-bottom: 1px solid var(--reddb-color-elevation-base-border);
+    color: var(--reddb-color-foreground);
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+  }
+  .brand img { width: 26px; height: 26px; border-radius: 4px; }
+  .content { padding: 20px 32px 32px; text-align: center; }
+  .illustration { width: min(100%, 240px); margin: 0 auto 12px; }
+  .art { display: none; }
+  .art svg { display: block; width: 100%; height: auto; }
+  .page[data-status="pending"] .art-pending,
+  .page[data-status="success"] .art-success,
+  .page[data-status="error"] .art-error { display: block; }
+  .eyebrow {
+    margin-bottom: 8px;
+    color: var(--reddb-color-ink-muted);
+    font-size: var(--reddb-font-size-xs);
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+  .headline { margin: 0; font-size: var(--reddb-font-size-2xl); font-weight: 600; line-height: 1.25; }
+  .message { margin: 10px 0 0; color: var(--reddb-color-ink-muted); font-size: var(--reddb-font-size-sm); }
   .detail {
-    margin: 1.25rem 0 0;
-    padding: 0.75rem 0.875rem;
+    margin: 20px 0 0;
+    padding: 12px 14px;
     text-align: left;
-    font-family: var(--oc-font-mono);
-    font-size: 0.8125rem;
+    font-family: var(--reddb-font-family-mono);
+    font-size: var(--reddb-font-size-xs);
     line-height: 1.55;
-    color: var(--oc-text-strong);
-    background: var(--oc-detail-bg);
-    border: 1px solid var(--oc-detail-border);
-    border-radius: 8px;
+    color: var(--reddb-color-feedback-danger-foreground);
+    background: var(--reddb-color-feedback-danger-surface);
+    border: 1px solid var(--reddb-color-feedback-danger-border);
+    border-radius: var(--reddb-radius-md);
     white-space: pre-wrap;
-    word-break: break-word;
-    max-height: 9.5rem;
+    overflow-wrap: anywhere;
+    max-height: 10rem;
     overflow: auto;
   }
   .detail[hidden] { display: none; }
-  .footnote { margin: 1.5rem 0 0; font-size: 0.8125rem; color: var(--oc-text-weak); }
-  .spinner { animation: oc-spin 0.8s linear infinite; transform-origin: center; }
-  @keyframes oc-spin { to { transform: rotate(360deg); } }
-  @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+  .footnote {
+    margin: 24px 0 0;
+    padding-top: 18px;
+    border-top: 1px solid var(--reddb-color-elevation-base-border);
+    color: var(--reddb-color-ink-muted);
+    font-size: var(--reddb-font-size-xs);
+  }
+  @media (max-width: 420px) {
+    body { padding: 16px; }
+    .content { padding: 16px 20px 24px; }
+    .illustration { width: min(100%, 200px); }
+  }
 `
-
-const WORDMARK = `<span class="wordmark" aria-label="Redcode" role="img"><span class="wordmark-accent">red</span>code</span>`
-
-const ICON_CHECK = `<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><path d="m8.5 12.5 2.4 2.4 4.6-5.4" /></svg>`
-
-const ICON_CROSS = `<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><path d="m9 9 6 6m0-6-6 6" /></svg>`
-
-const ICON_SPINNER = `<svg class="spinner" viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9" opacity="0.2" /><path d="M21 12a9 9 0 0 0-9-9" /></svg>`

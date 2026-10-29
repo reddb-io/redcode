@@ -1,5 +1,6 @@
 /** @jsxImportSource react */
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react"
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
+import { useVirtualizer } from "@tanstack/react-virtual"
 import { Badge } from "@reddb-io/design-system/base/Badge"
 import { Button } from "@reddb-io/design-system/base/Button"
 import { Input } from "@reddb-io/design-system/base/Input"
@@ -31,35 +32,48 @@ export function ModelListView(props: {
   const [offers, setOffers] = useState<Record<string, boolean>>({})
   const scroll = useRef<HTMLDivElement>(null)
   const input = useRef<HTMLInputElement>(null)
-  const sections = modelSections(view.options, {
+  const previousSearch = useRef(search)
+  const keyboardNavigation = useRef(false)
+  const sections = useMemo(() => modelSections(view.options, {
     search,
     favorites: view.favorites,
     recent: view.recent,
     provider: view.provider,
+  }), [view.options, view.favorites, view.recent, view.provider, search])
+  const options = useMemo(() => sections.flatMap((section) => section.items), [sections])
+  const positions = useMemo(() => new Map(options.map((option, index) => [option.key, index + 1])), [options])
+  const rows = useMemo(() => sections.flatMap((section) => [
+    ...(section.kind === "results" ? [] : [{ type: "heading" as const, section }]),
+    ...section.items.map((option) => ({ type: "model" as const, option, section })),
+  ]), [sections])
+  const virtual = useVirtualizer({
+    count: props.menu ? rows.length : 0,
+    getScrollElement: () => scroll.current,
+    estimateSize: (index) => rows[index]?.type === "heading" ? 32 : 56,
+    getItemKey: (index) => {
+      const row = rows[index]
+      return row?.type === "model" ? row.option.key : row?.section.key ?? index
+    },
+    overscan: 4,
   })
-  const options = sections.flatMap((section) => section.items)
   useEffect(() => {
     if (!view.mobile || !view.open) return
     setSearch("")
     setActive(view.current ?? "")
   }, [view.open])
+  useLayoutEffect(() => {
+    if (previousSearch.current === search) return
+    previousSearch.current = search
+    setActive(options[0]?.key ?? "")
+  }, [search, options])
   const filter = (value: string) => {
     setSearch(value)
-    setActive(
-      modelSections(view.options, {
-        search: value,
-        favorites: view.favorites,
-        recent: view.recent,
-        provider: view.provider,
-      }).flatMap((section) => section.items)[0]?.key ?? "",
-    )
   }
   useLayoutEffect(() => {
     if (!props.menu || !view.current) return
-    scroll.current
-      ?.querySelector<HTMLElement>(`[data-option-key="${CSS.escape(view.current)}"]`)
-      ?.scrollIntoView({ block: "nearest" })
-  }, [props.menu, view.current])
+    const index = rows.findIndex((row) => row.type === "model" && row.option.key === view.current)
+    if (index >= 0) virtual.scrollToIndex(index, { align: "auto" })
+  }, [props.menu, view.current, rows, virtual])
   const select = props.select ?? props.services.select
   useEffect(() => {
     if (!props.menu) return
@@ -69,12 +83,18 @@ export function ModelListView(props: {
     return () => document.removeEventListener("keydown", keydown, true)
   }, [props.menu, search, view])
   const move = (delta: 1 | -1) => {
+    keyboardNavigation.current = true
     const keys = [...options.map((option) => option.key), ...(props.actions ?? []).map((action) => action.key)]
     if (!keys.length) return
     const index = keys.indexOf(active)
     const start = index === -1 ? (delta > 0 ? -1 : 0) : index
     const next = keys[(start + delta + keys.length) % keys.length]
     setActive(next)
+    if (props.menu) {
+      const index = rows.findIndex((row) => row.type === "model" && row.option.key === next)
+      if (index >= 0) virtual.scrollToIndex(index, { align: "auto" })
+      return
+    }
     scroll.current
       ?.querySelector<HTMLElement>(`[data-option-key="${CSS.escape(next)}"]`)
       ?.scrollIntoView({ block: "nearest" })
@@ -88,6 +108,8 @@ export function ModelListView(props: {
         data-option-key={option.key}
         role={props.menu ? "menuitemradio" : undefined}
         aria-checked={props.menu ? view.current === option.key : undefined}
+        aria-posinset={props.menu ? positions.get(option.key) : undefined}
+        aria-setsize={props.menu ? options.length : undefined}
         aria-pressed={!props.menu ? view.current === option.key : undefined}
         data-selected-model={props.menu && view.current === option.key ? true : undefined}
         className="w-full text-start"
@@ -122,10 +144,18 @@ export function ModelListView(props: {
           data-slot="model-row"
           className="group relative [&>[data-tooltip-root]]:flex [&>[data-tooltip-root]]:w-full"
           onMouseEnter={() => {
+            if (keyboardNavigation.current) return
             setActive(option.key)
             if (props.menu) input.current?.focus()
           }}
-          onMouseLeave={() => setActive("")}
+          onMouseMove={() => {
+            if (!keyboardNavigation.current) return
+            keyboardNavigation.current = false
+            setActive(option.key)
+          }}
+          onMouseLeave={() => {
+            if (!keyboardNavigation.current) setActive("")
+          }}
         >
           {view.mobile ? (
             control()
@@ -262,6 +292,35 @@ export function ModelListView(props: {
           {!options.length ? (
             <div role="status" className="settings-models-status">
               {view.language.t("dialog.model.empty")}
+            </div>
+          ) : props.menu ? (
+            <div style={{ height: virtual.getTotalSize(), position: "relative" }}>
+              {virtual.getVirtualItems().map((virtualRow) => {
+                const entry = rows[virtualRow.index]
+                if (!entry) return null
+                return (
+                  <div
+                    key={virtualRow.key}
+                    data-index={virtualRow.index}
+                    ref={virtual.measureElement}
+                    style={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${virtualRow.start}px)` }}
+                  >
+                    {entry.type === "heading" ? (
+                      <h3 className="m-0 flex min-h-8 items-center gap-2 px-3 text-eyebrow uppercase text-ink-muted">
+                        {entry.section.kind === "route" ? (
+                          <ProviderModelIcon provider={entry.section.items[0].item.provider} className="shrink-0" />
+                        ) : (
+                          <Icon name={entry.section.kind === "favorites" ? "star" : "reset"} size="small" />
+                        )}
+                        <span className="min-w-0 truncate">
+                          {entry.section.kind === "favorites" ? view.language.t("dialog.model.section.favorites") :
+                            entry.section.kind === "recent" ? view.language.t("dialog.model.section.recent") : entry.section.category}
+                        </span>
+                      </h3>
+                    ) : row(entry.option)}
+                  </div>
+                )
+              })}
             </div>
           ) : (
             <div className="flex flex-col gap-4">

@@ -750,6 +750,7 @@ export function DockHost(props: {
   screen: SessionScreen
   sidebar: PanelSidebar
   target: HTMLElement | undefined
+  toolbar: HTMLElement | undefined
   visible: boolean
   animate: boolean
 }) {
@@ -772,6 +773,7 @@ export function DockHost(props: {
               placement: () => "side",
               reserve: () => false,
               animate: () => props.animate,
+              toolbar: () => props.toolbar,
               sidebar: props.sidebar,
               open: () => [],
             }}

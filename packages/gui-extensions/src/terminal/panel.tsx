@@ -1,5 +1,6 @@
 import { For, Show, createMemo, onCleanup, onMount, untrack } from "solid-js"
 import { createStore } from "solid-js/store"
+import { Portal } from "solid-js/web"
 import { makeEventListener } from "@solid-primitives/event-listener"
 import { DragDropProvider, PointerSensor } from "@dnd-kit/solid"
 import { isSortable } from "@dnd-kit/solid/sortable"
@@ -55,7 +56,7 @@ export default function TerminalPanel(props: { model: TerminalModel; session: Mo
 
   onMount(() => {
     makeEventListener(document, "focusin", (event) => {
-      if (event.target instanceof Element && event.target.closest("#terminal-panel")) return
+      if (event.target instanceof Element && event.target.closest('#terminal-panel, [data-slot="terminal-tabs-toolbar"]')) return
 
       setStore("surfaces", (surface) => surface.focus, "focus", false)
     })
@@ -215,6 +216,62 @@ export default function TerminalPanel(props: { model: TerminalModel; session: Mo
     })
   }
 
+  const toolbar = () => (
+    <div
+      data-slot="terminal-tabs-toolbar"
+      class="h-full min-w-0 flex"
+      classList={{ "border-b border-elevation-base-border": !frame.toolbar?.() }}
+    >
+      <Tabs
+        variant="panel"
+        value={terminal().active()}
+        onChange={(id) => terminal().open(id)}
+        class="!h-full min-w-0 !flex-1"
+      >
+        <Tabs.List
+          ref={tabList}
+          class="!border-b-0"
+          onPointerDown={(event: PointerEvent & { currentTarget: HTMLDivElement }) => {
+            const active = document.activeElement
+
+            if (event.target === active) return
+            if (active instanceof HTMLInputElement && event.currentTarget.contains(active)) active.blur()
+          }}
+        >
+          <For each={all()}>
+            {(pty, index) => (
+              <SortableTerminalTab terminal={pty} workspace={terminal()} index={index()} onClose={close} />
+            )}
+          </For>
+          <div class="h-full flex items-center justify-center">
+            <Tooltip
+              value={
+                <>
+                  {extension.t("command.new")}
+                  <Show when={newTerminalKeybind().length > 0}>
+                    <Keybind keys={newTerminalKeybind()} variant="neutral" />
+                  </Show>
+                </>
+              }
+              placement="bottom"
+              class="flex items-center"
+            >
+              <IconButton
+                icon={<Icon name="plus-small" size="large" />}
+                variant="ghost"
+                onClick={() => terminal().new()}
+                aria-label={extension.t("command.new")}
+              />
+            </Tooltip>
+          </div>
+        </Tabs.List>
+      </Tabs>
+      <Show when={frame.reserve()}>
+        <div class="w-12 shrink-0" aria-hidden />
+      </Show>
+    </div>
+  )
+
   return (
     <Show
       when={terminal().ready() || store.surfaces.length > 0}
@@ -267,57 +324,9 @@ export default function TerminalPanel(props: { model: TerminalModel; session: Mo
         }}
       >
         <div class="flex flex-col h-full">
-          <div class="h-10 shrink-0 flex border-b border-elevation-base-border">
-            <Tabs
-              variant="panel"
-              value={terminal().active()}
-              onChange={(id) => terminal().open(id)}
-              class="!h-full min-w-0 !flex-1"
-            >
-              <Tabs.List
-                ref={tabList}
-                class="!border-b-0"
-                onPointerDown={(event: PointerEvent & { currentTarget: HTMLDivElement }) => {
-                  const active = document.activeElement
-
-                  if (event.target === active) return
-
-                  if (active instanceof HTMLInputElement && event.currentTarget.contains(active)) active.blur()
-                }}
-              >
-                <For each={all()}>
-                  {(pty, index) => (
-                    <SortableTerminalTab terminal={pty} workspace={terminal()} index={index()} onClose={close} />
-                  )}
-                </For>
-                <div class="h-full flex items-center justify-center">
-                  <Tooltip
-                    value={
-                      <>
-                        {extension.t("command.new")}
-                        <Show when={newTerminalKeybind().length > 0}>
-                          <Keybind keys={newTerminalKeybind()} variant="neutral" />
-                        </Show>
-                      </>
-                    }
-                    placement="bottom"
-                    class="flex items-center"
-                  >
-                    <IconButton
-                      icon={<Icon name="plus-small" size="large" />}
-                      variant="ghost"
-                      onClick={() => terminal().new()}
-                      aria-label={extension.t("command.new")}
-                    />
-                  </Tooltip>
-                </div>
-              </Tabs.List>
-            </Tabs>
-            {/* Reserve outside the scroll viewport so overflowing tabs cannot cover the toggle. */}
-            <Show when={frame.reserve()}>
-              <div class="w-12 shrink-0" aria-hidden />
-            </Show>
-          </div>
+          <Show when={frame.toolbar?.()} fallback={<div class="h-10 shrink-0">{toolbar()}</div>}>
+            {(target) => <Portal mount={target()} ref={(element) => (element.style.height = "100%")}>{toolbar()}</Portal>}
+          </Show>
           <Show when={terminal().creationError()}>
             {(message) => (
               <div

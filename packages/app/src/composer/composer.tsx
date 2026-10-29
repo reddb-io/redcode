@@ -1,6 +1,5 @@
 import { Show, createMemo } from "solid-js"
 import { createMediaQuery } from "@solid-primitives/media"
-import { useDialog } from "@opencode/ui/context/dialog"
 import { Icon } from "@opencode/ui/icon"
 import { Keybind } from "@opencode/ui/keybind"
 import { Tooltip } from "@opencode/ui/tooltip"
@@ -9,9 +8,6 @@ import { ComposerEditor, ComposerEditorSelect } from "./editor/editor"
 import { ComposerReasoningControl } from "./reasoning/control"
 import { useSettings } from "@/settings/model"
 import { ModelSelectorPopover } from "@/providers/models/select-dialog"
-import { ReactView } from "@/runtime/react/view"
-import { ModelTriggerButton } from "@/providers/models/popover.react"
-import { DialogSelectModelUnpaid } from "@/providers/models/unpaid"
 import { formatKeybind, useCommand } from "@/shell/commands/command"
 import { useLanguage } from "@/runtime/i18n/language"
 import type { ComposerModel } from "./model"
@@ -24,7 +20,6 @@ export function Composer(props: {
   readOnly?: boolean
   suggestionBoundary?: () => HTMLElement | undefined
 }) {
-  const dialog = useDialog()
   const command = useCommand()
   const language = useLanguage()
 
@@ -51,7 +46,6 @@ export function Composer(props: {
             provider={props.model.model.selection.current()?.provider}
             modelName={props.model.model.selection.current()?.name ?? language.t("dialog.model.select.title")}
             onClose={props.model.restoreFocus}
-            onUnpaidClick={() => dialog.show(() => <DialogSelectModelUnpaid model={props.model.model.selection} />)}
           />
         }
         reasoningControl={
@@ -85,7 +79,6 @@ function ComposerModelControl(props: {
   provider?: { id: string; canonical?: string; name: string }
   modelName: string
   onClose: () => void
-  onUnpaidClick: () => void
 }) {
   const shouldAnimate = createMemo<boolean>((previous) => previous ?? props.loading)
   const mobile = createMediaQuery("(max-width: 767px)")
@@ -103,30 +96,14 @@ function ComposerModelControl(props: {
           </>
         }
       >
-        <Show
-          when={props.paid || mobile()}
-          fallback={
-            <ReactView
-              component={ModelTriggerButton}
-              props={{
-                provider: props.provider,
-                label: props.modelName,
-                kind: "dialog",
-                className: `min-w-0 max-w-[220px] justify-start !font-normal group h-7 ${shouldAnimate() ? "animate-in fade-in" : ""}`,
-                onClick: props.onUnpaidClick,
-              }}
-            />
-          }
-        >
-          <ModelSelectorPopover
-            model={props.model}
-            unpaid={!props.paid}
-            triggerProvider={props.provider}
-            triggerLabel={props.modelName}
-            triggerClass={`min-w-0 max-w-[220px] justify-start !font-normal group h-7 ${shouldAnimate() ? "animate-in fade-in" : ""}`}
-            onClose={props.onClose}
-          />
-        </Show>
+        <ModelSelectorPopover
+          model={props.model}
+          unpaid={!props.paid}
+          triggerProvider={props.provider}
+          triggerLabel={props.modelName}
+          triggerClass={`min-w-0 max-w-[220px] justify-start !font-normal group h-7 ${shouldAnimate() ? "animate-in fade-in" : ""}`}
+          onClose={props.onClose}
+        />
       </Tooltip>
     </Show>
   )

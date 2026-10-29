@@ -80,6 +80,7 @@
     "@solid-primitives/storage": "catalog:",
     "@solidjs/meta": "catalog:",
     "@solidjs/router": "catalog:",
+    "@tanstack/react-virtual": "3.13.18",
     "@tanstack/solid-query": "5.91.4",
     "@tanstack/solid-virtual": "catalog:",
     "core-js": "3.50.0",

@@ -85,6 +85,7 @@ export function SideRegion(props: {
   const state = props.workbench.state
   const [launcher, setLauncher] = createStore<Record<WorkbenchGroup, boolean>>({ top: false, bottom: false })
   const [slots, setSlots] = createStore<Partial<Record<WorkbenchGroup, HTMLElement>>>({})
+  const [toolbars, setToolbars] = createStore<Partial<Record<WorkbenchGroup, HTMLElement>>>({})
   const [column, setColumn] = createSignal<HTMLDivElement>()
   const empty = createMemo(() => top.entries().length === 0 && bottom.entries().length === 0)
 
@@ -243,6 +244,7 @@ export function SideRegion(props: {
         onLaunch={(item) => launch(name, item)}
         dockKey={props.dock?.key}
         slot={(element) => setSlots(name, element)}
+        toolbar={(element) => setToolbars(name, element)}
         style={groupStyle(name)}
         actions={actions(name)}
       />
@@ -341,6 +343,7 @@ export function SideRegion(props: {
               screen={props.screen}
               sidebar={props.sidebar}
               target={dockOpen() && dockGroup() ? slots[dockGroup()!] : undefined}
+              toolbar={dockOpen() && dockGroup() ? toolbars[dockGroup()!] : undefined}
               visible={dockShown()}
               animate={!props.size.active()}
             />
@@ -372,6 +375,7 @@ function WorkbenchGroupView(props: {
   onLaunch: (item: LauncherItem) => void
   dockKey?: string
   slot: (element: HTMLDivElement) => void
+  toolbar: (element: HTMLDivElement) => void
   style: JSX.CSSProperties
   actions: JSX.Element
 }) {
@@ -436,9 +440,13 @@ function WorkbenchGroupView(props: {
           {/* The leading strip shares the session header's 48px row; a lower group's strip is 40px. */}
           <div
             class="session-review-v2-tabs-bar sticky top-0 shrink-0 flex items-center"
-            style={{ "--tabs-bar-height": props.leading ? "48px" : "40px" }}
+            style={{ "--tabs-bar-height": props.leading ? "48px" : "40px", height: "var(--tabs-bar-height)" }}
           >
             <Tabs.List
+              style={{
+                flex: !props.launcher && props.dockKey && props.group.active() === props.dockKey ? "0 1 auto" : undefined,
+                "max-width": !props.launcher && props.dockKey && props.group.active() === props.dockKey ? "50%" : undefined,
+              }}
               ref={(el: HTMLDivElement) => {
                 tabList = el
                 createEventListener(el, ["pointerdown", "click", "keydown"], (event) => (selectionEvent = event), {
@@ -496,6 +504,12 @@ function WorkbenchGroupView(props: {
                 </Tooltip>
               </div>
             </Tabs.List>
+            <div
+              ref={props.toolbar}
+              data-slot="workbench-terminal-toolbar"
+              class="min-w-0 h-full flex-1"
+              classList={{ hidden: props.launcher || !props.dockKey || props.group.active() !== props.dockKey }}
+            />
             <div
               data-slot="session-side-panel-actions"
               class="session-review-v2-open-in-app-slot h-[var(--tabs-bar-height)] shrink-0 flex items-center gap-1 pe-2"

@@ -6,6 +6,67 @@ import { openWithDirection } from "../utils/direction"
 import { mockOpenCodeServer } from "../utils/mock-server"
 import { expectAppVisible } from "../utils/waits"
 
+test("populates the model picker when an initially empty catalog arrives", async ({ page }) => {
+  const catalog = { current: { all: [{ id: "opencode", name: "OpenCode", models: {} }], connected: ["opencode"], default: {} } }
+  const workspace = await openDraft(page, {
+    name: "LoadingModels",
+    provider: () => catalog.current,
+  })
+  await page.locator('[data-action="composer-model"]').click()
+  const popup = page.getByRole("dialog", { name: "Select model", exact: true })
+  await expect(popup.getByRole("searchbox", { name: "Search models" })).toHaveValue("")
+  await expect(popup.getByRole("menuitemradio")).toHaveCount(0)
+  catalog.current = provider(...Array.from({ length: 25 }, (_, index) => ({
+      id: `model-${index}`,
+      name: `Model ${String(index).padStart(2, "0")}`,
+      cost: { input: 1, output: 1 },
+    })))
+  await workspace.push([{
+    id: "evt_models_loaded",
+    created: Date.now(),
+    type: "model.updated",
+    location: { directory: workspace.directory },
+    data: {},
+  }, {
+    id: "evt_providers_loaded",
+    created: Date.now(),
+    type: "provider.updated",
+    location: { directory: workspace.directory },
+    data: {},
+  }])
+  await expect(popup.getByRole("menuitemradio").first()).toHaveAttribute("aria-setsize", "25")
+  await expect(popup.getByRole("searchbox", { name: "Search models" })).toHaveValue("")
+})
+
+test("navigates a virtualized large model list with keyboard and search", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await openDraft(page, {
+    name: "LargeModelCatalog",
+    provider: provider(...Array.from({ length: 600 }, (_, index) => ({
+      id: `model-${index}`,
+      name: `Model ${String(index).padStart(4, "0")}`,
+      cost: { input: 1, output: 1 },
+    }))),
+  })
+  const trigger = page.locator('[data-action="composer-model"]')
+  await trigger.click()
+  const popup = page.getByRole("dialog", { name: "Select model", exact: true })
+  const search = popup.getByRole("searchbox", { name: "Search models" })
+  await expect(search).toBeFocused()
+  await expect(search).toHaveValue("")
+  await expect(popup.getByRole("menuitemradio").first()).toHaveAttribute("aria-setsize", "600")
+  await expect.poll(() => popup.locator('[data-slot="model-row"]').count()).toBeLessThan(40)
+  for (let index = 0; index < 20; index++) await search.press("ArrowDown")
+  await search.press("Enter")
+  await expect(trigger).toHaveText("Model 0020")
+
+  await trigger.click()
+  await search.fill("Model 0599")
+  await expect(popup.getByRole("menuitemradio", { name: /Model 0599/ })).toBeVisible()
+  await search.press("Enter")
+  await expect(trigger).toHaveText("Model 0599")
+})
+
 test("desktop models retain favorites, find fuzzy matches and refresh the catalog", async ({ page }) => {
   const catalog = {
     current: provider(
@@ -114,11 +175,12 @@ test("desktop free models retain selection and hand off to provider search", asy
   const model = page.locator('[data-component="composer"]').locator('[data-action="composer-model"]')
   await model.click()
   const chooser = page.getByRole("dialog", { name: "Select model", exact: true })
-  await chooser.getByRole("button", { name: /Mobile Model B/ }).click()
+  await expect(chooser.getByRole("searchbox", { name: "Search models" })).toBeFocused()
+  await chooser.getByRole("menuitemradio", { name: /Mobile Model B/ }).click()
   await expect(chooser).toBeHidden()
   await expect(model).toHaveText("Mobile Model B")
   await model.click()
-  await chooser.getByRole("button", { name: "See 70+ more providers", exact: true }).click()
+  await chooser.getByRole("menuitem", { name: "Connect provider", exact: true }).click()
   await expect(chooser).toBeHidden()
   const providers = page.getByRole("dialog", { name: "Connect provider", exact: true })
   await expect(providers.getByRole("searchbox", { name: "Search providers", exact: true })).toBeFocused()

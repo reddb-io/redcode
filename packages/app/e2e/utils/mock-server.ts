@@ -1618,6 +1618,7 @@ function currentProviders(catalog: MockProviderCatalog) {
 }
 
 function currentModels(catalog: MockProviderCatalog) {
+  const released = Date.now()
   return (catalog.all ?? [])
     .flatMap((item) => Option.toArray(decodeModelProvider(item)))
     .flatMap((provider) =>
@@ -1632,7 +1633,7 @@ function currentModels(catalog: MockProviderCatalog) {
           variants: Object.entries(model.variants ?? {}).map(([id, settings]) =>
             Predicate.isObject(settings) ? { id, settings } : { id },
           ),
-          time: { released: Date.now() },
+          time: { released },
           cost: [{ input: model.cost?.input ?? 0, output: model.cost?.output ?? 0, cache: { read: 0, write: 0 } }],
           status: "active",
           enabled: true,

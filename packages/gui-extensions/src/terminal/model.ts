@@ -177,7 +177,7 @@ function createWorkspace(input: { storage: Storage; server: ServerRef; directory
 
       if (!(event.target instanceof Element)) return
 
-      if (event.target.closest("#terminal-panel")) return
+      if (event.target.closest('#terminal-panel, [data-slot="terminal-tabs-toolbar"]')) return
 
       cancelFocus()
     }

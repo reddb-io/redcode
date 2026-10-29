@@ -23,23 +23,24 @@ test("shows terminal creation failures and retries without losing existing tabs"
 
   await page.keyboard.press("Control+Backquote")
   const panel = page.locator("#terminal-panel")
+  const toolbar = page.locator('[data-slot="terminal-tabs-toolbar"]')
   const alert = panel.getByRole("alert")
   await expect(alert).toContainText("Could not create terminal")
   expect(pty.created).toEqual([])
   await alert.getByRole("button", { name: "Try again", exact: true }).click()
   await expect(alert).toHaveCount(0)
-  await expect(panel.getByRole("tab", { name: "Terminal 1", exact: true })).toHaveAttribute("aria-selected", "true")
+  await expect(toolbar.getByRole("tab", { name: "Terminal 1", exact: true })).toHaveAttribute("aria-selected", "true")
   await expect.poll(() => pty.sockets.length).toBe(1)
   const original = pty.created[0]!.id
 
   failure.next = true
-  await panel.getByRole("button", { name: "New terminal", exact: true }).click()
+  await toolbar.getByRole("button", { name: "New terminal", exact: true }).click()
   await expect(alert).toContainText("Could not create terminal")
-  await expect(panel.getByRole("tab", { name: "Terminal 1", exact: true })).toHaveAttribute("aria-selected", "true")
+  await expect(toolbar.getByRole("tab", { name: "Terminal 1", exact: true })).toHaveAttribute("aria-selected", "true")
   expect(pty.created.map((item) => item.id)).toEqual([original])
   await alert.getByRole("button", { name: "Try again", exact: true }).click()
   await expect(alert).toHaveCount(0)
-  await expect(panel.getByRole("tab", { name: "Terminal 2", exact: true })).toHaveAttribute("aria-selected", "true")
+  await expect(toolbar.getByRole("tab", { name: "Terminal 2", exact: true })).toHaveAttribute("aria-selected", "true")
   await expect.poll(() => pty.sockets.length).toBe(2)
   expect(pty.created.map((item) => item.id)).toEqual([original, "pty_2"])
   expect(pty.removed).toEqual([])
@@ -227,7 +228,7 @@ test("closing the last restored terminal does not create a hidden replacement", 
   await expect.poll(() => pty.sockets.length).toBe(1)
   expect(pty.created).toEqual([])
 
-  await page.locator("#terminal-panel").getByRole("button", { name: "Close terminal", exact: true }).click()
+  await page.locator('[data-slot="terminal-tabs-toolbar"]').getByRole("button", { name: "Close terminal", exact: true }).click()
   await expect(terminal).toBeHidden()
   await expect.poll(() => pty.removed).toEqual([cached.id])
   expect(pty.created).toEqual([])
@@ -235,7 +236,7 @@ test("closing the last restored terminal does not create a hidden replacement", 
   await page.keyboard.press("Control+Backquote")
   await expect(terminal.locator("textarea")).toHaveCount(1)
   await expect.poll(() => pty.created.map((item) => item.id)).toEqual(["pty_1"])
-  await expect(page.locator("#terminal-panel").getByRole("tab", { name: "Terminal 1", exact: true })).toHaveAttribute(
+  await expect(page.locator('[data-slot="terminal-tabs-toolbar"]').getByRole("tab", { name: "Terminal 1", exact: true })).toHaveAttribute(
     "aria-selected",
     "true",
   )

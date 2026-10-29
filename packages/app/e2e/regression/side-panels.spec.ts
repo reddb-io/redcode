@@ -831,7 +831,7 @@ for (const direction of ["ltr", "rtl"] as const) {
     const toggle = page.getByRole("button", { name: "Toggle review", exact: true })
     await expect(toggle).toHaveAttribute("aria-pressed", "false")
     await page.keyboard.press("Control+Backquote")
-    const terminal = page.getByRole("region", { name: "Terminal", exact: true })
+    const terminal = page.locator('[data-slot="terminal-tabs-toolbar"]')
     await expect(terminal.getByRole("tab", { name: "Terminal 1", exact: true })).toHaveAttribute(
       "aria-selected",
       "true",
@@ -990,7 +990,7 @@ function sideContentOffset(page: Page, direction: "ltr" | "rtl") {
   }, direction)
 }
 
-// Panel controls live in the session header; terminal tabs and actions own their separate bar.
+// Panel controls and terminal controls must not overlap.
 async function expectPanelControlsSeparated(terminal: Locator, toggle: Locator) {
   await expect
     .poll(async () => {

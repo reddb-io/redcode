@@ -17,6 +17,12 @@
 - Do not add "What's new" blocks or version announcements to the README. Release history belongs in Changesets, the changelog and GitHub release notes.
 - Preserve the README's SVG artwork and section hierarchy. Update SVGs through their generator; do not replace them with Mermaid diagrams.
 
+## GUI Selectors
+
+- Selection controls provide a search input and show matching choices below it. An empty search shows available choices immediately, without requiring the user to type.
+- Load choices from the appropriate API or application cache; an initial empty collection must update when its data arrives. When at least 20 choices exist, make at least 20 available from the initial result set. Show the actual choices when fewer exist, and do not invent or duplicate options to reach 20.
+- Keep large result sets responsive with virtualization or pagination without limiting keyboard access or search to the rendered rows. Preserve explicit provider configuration and do not discover remote models without user authorization.
+
 ## Live TUI Testing
 
 - Run `bun run dev:live` from a development worktree to test its TUI against the currently elected `opencode` background server and live sessions.
