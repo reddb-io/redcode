@@ -6,7 +6,6 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 15
     env:
-      REDCODE_OAUTH_DIAGNOSTIC: '1'
       OPENCODE_EXPERIMENTAL_DISABLE_FILEWATCHER: 'true'
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -14,4 +13,7 @@ jobs:
       - name: Test ChatGPT callback
         shell: bash
         working-directory: packages/core
-        run: bun test test/plugin/provider-chatgpt.test.ts --timeout 30000
+        run: |
+          for attempt in 1 2 3 4 5; do
+            bun test test/plugin/provider-chatgpt.test.ts --timeout 30000 || exit 1
+          done

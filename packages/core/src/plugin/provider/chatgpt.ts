@@ -182,28 +182,25 @@ const signIn = (app: App.Info, savedClientID: () => string | undefined, storage:
 
 function respond(response: ServerResponse, error?: string) {
   return Effect.callback<void>((resume) => {
-    if (process.env.REDCODE_OAUTH_DIAGNOSTIC) console.error("oauth response start", response.destroyed, response.writableEnded)
-    if (response.destroyed) return resume(Effect.void)
+    // Bun can close an idle connection before the browser receives a finished response.
+    const socket = response.socket
+    if (!socket || socket.destroyed) return resume(Effect.void)
     const done = () => {
-      if (process.env.REDCODE_OAUTH_DIAGNOSTIC) console.error("oauth response done", response.destroyed, response.writableFinished)
-      response.off("finish", done)
-      response.off("close", done)
+      socket.off("close", done)
       response.off("error", done)
       resume(Effect.void)
     }
-    response.once("finish", done)
-    response.once("close", done)
+    socket.once("close", done)
     response.once("error", done)
     response
-      .writeHead(error ? 400 : 200, { "Content-Type": "text/html" })
+      .writeHead(error ? 400 : 200, { "Content-Type": "text/html", Connection: "close" })
       .end(
         error
           ? OauthCallbackPage.error(error, { provider: "ChatGPT" })
           : OauthCallbackPage.success({ provider: "ChatGPT" }),
       )
     return Effect.sync(() => {
-      response.off("finish", done)
-      response.off("close", done)
+      socket.off("close", done)
       response.off("error", done)
       response.destroy()
     })
