@@ -29,7 +29,7 @@ const CodexModelPage = Schema.Struct({
 })
 
 async function codexModels(connection: Wire) {
-  const models: NonNullable<Harness.Provider["models"]> = []
+  const models: NonNullable<Harness.Provider["models"]>[number][] = []
   let cursor: string | undefined
   do {
     const page = Schema.decodeUnknownSync(CodexModelPage)(
