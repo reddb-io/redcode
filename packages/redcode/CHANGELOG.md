@@ -1,5 +1,14 @@
 # @reddb-io/redcode
 
+## 0.86.9
+
+### Patch Changes
+
+- Keep the model picker responsive with large catalogs by rendering only the visible rows and avoiding repeated grouping on pointer movement.
+- Use the Design System's Application theme and illustrations for authorization callbacks, including success, error and pending states.
+- Use the searchable model picker for free models and keep provider connection available from the same menu.
+- Place terminal tabs in the workbench header to give the terminal more room while keeping panel and shell controls available.
+
 ## 0.86.8
 
 ### Patch Changes
