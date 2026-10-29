@@ -54,6 +54,36 @@ user choices. This policy does not sandbox external SDKs or change the operating
 system's environment. OAuth application client configuration and paths used to
 offer local CLI configuration choices are not model-provider connections.
 
+## ChatGPT accounts and Codex
+
+**Sign in with ChatGPT** uses the selected saved account's token to request
+`https://api.openai.com/v1/models`. Model names and availability come from that
+catalog. Metadata such as context limits and reasoning choices enriches the
+existing model definitions when the response supplies it. A minimal catalog with
+only names does not erase known capabilities.
+
+Each saved connection and issued client ID has its own cache. Cached choices
+remain usable during a temporary catalog failure. Discovery runs in the
+background, normally every five minutes; permission failures wait for an explicit
+update or account change. **Update model list** in Desktop or TUI refreshes the
+selected account without rebuilding the Location. The connection panel shows
+loading, cached or current state, the last successful update, and available HTTP
+status, error code and request ID.
+
+An account sign-in, a loaded catalog and a completed inference request are separate
+checks. Use **Test remote API** to verify a generation. An empty remote inventory
+does not fall back to a fixed list or another account.
+
+The token-sharing method uses the public Responses endpoint over HTTP with summary
+compaction. Legacy Codex browser/device methods retain their own account routing;
+switching methods does not share their model inventories. Redcode keeps its own
+session execution, tools, permissions and recovery. The existing Codex app-server
+integration in **Executors** uses the host's explicitly configured Codex CLI and
+its own native sessions, independently of this provider path.
+
+See OpenAI's [models and inference contract](https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference)
+and [error recovery guidance](https://developers.openai.com/siwc/token-sharing-open-source/errors-and-recovery).
+
 ## SAP AI Core
 
 The SAP adapter requires an explicitly configured `destination` or `serviceKey`

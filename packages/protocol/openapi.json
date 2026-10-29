@@ -12353,6 +12353,134 @@
         }
       }
     },
+    "/api/provider/{providerID}/refresh": {
+      "post": {
+        "tags": ["provider"],
+        "operationId": "provider.refresh",
+        "parameters": [
+          {
+            "name": "providerID",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "name": "location",
+            "in": "query",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "directory": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false,
+            "style": "deepObject",
+            "explode": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "location": {
+                      "$ref": "#/components/schemas/Location.PublicRef"
+                    },
+                    "data": {
+                      "type": "null"
+                    }
+                  },
+                  "required": ["location", "data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorEncoded"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ConsoleForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "LocationNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationNotFoundErrorEncoded"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictErrorEncoded"
+                }
+              }
+            }
+          }
+        },
+        "description": "Refresh the model catalog using the explicitly selected saved connection.",
+        "summary": "Refresh provider models"
+      }
+    },
     "/api/provider": {
       "get": {
         "tags": ["provider"],
@@ -41342,6 +41470,32 @@
         "required": ["id"],
         "additionalProperties": false
       },
+      "Provider.Catalog": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["loading", "ready", "stale", "error"]
+          },
+          "updatedAt": {
+            "type": "integer"
+          },
+          "message": {
+            "type": "string"
+          },
+          "httpStatus": {
+            "type": "integer"
+          },
+          "code": {
+            "type": "string"
+          },
+          "requestID": {
+            "type": "string"
+          }
+        },
+        "required": ["status"],
+        "additionalProperties": false
+      },
       "Provider.Compaction": {
         "anyOf": [
           {
@@ -41392,6 +41546,9 @@
           },
           "router": {
             "$ref": "#/components/schemas/Router.Connection"
+          },
+          "catalog": {
+            "$ref": "#/components/schemas/Provider.Catalog"
           },
           "settings": {
             "$ref": "#/components/schemas/Provider.Settings"

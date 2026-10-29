@@ -13,6 +13,44 @@ import { Context, Effect, Layer, Option, Schema } from "effect"
 import { object, string, wire, stopOwnedProcess, type Frame, type Wire } from "./harness-wire"
 import { createHarnessTasks } from "./harness-tasks"
 import { backgroundWaitTool, createHarnessTools } from "./harness-tools"
+import { App } from "@opencode/core/app"
+
+const CodexModelPage = Schema.Struct({
+  data: Schema.Array(
+    Schema.Struct({
+      id: Schema.optional(Schema.NonEmptyString),
+      model: Schema.optional(Schema.NonEmptyString),
+      displayName: Schema.optional(Schema.String),
+      isDefault: Schema.optional(Schema.Boolean),
+      hidden: Schema.optional(Schema.Boolean),
+    }),
+  ),
+  nextCursor: Schema.optional(Schema.NullOr(Schema.String)),
+})
+
+async function codexModels(connection: Wire) {
+  const models: NonNullable<Harness.Provider["models"]> = []
+  let cursor: string | undefined
+  do {
+    const page = Schema.decodeUnknownSync(CodexModelPage)(
+      await connection.request(
+        "model/list",
+        { limit: 100, includeHidden: false, ...(cursor ? { cursor } : {}) },
+        "codex",
+      ),
+    )
+    models.push(
+      ...page.data.flatMap((model) => {
+        const id = model.model ?? model.id
+        return id && !model.hidden
+          ? [{ id, label: model.displayName || id, recommended: model.isDefault === true }]
+          : []
+      }),
+    )
+    cursor = page.nextCursor ?? undefined
+  } while (cursor)
+  return models
+}
 
 type Pending = { request: Harness.Request; frame: Frame }
 type Live = {
@@ -26,7 +64,7 @@ type Live = {
 }
 
 /** Persistence belongs to the execution host. Native IDs survive restart; processes are never replayed automatically. */
-export async function createHarnesses(directory: string) {
+export async function createHarnesses(directory: string, app = App.make({ name: "redcode" })) {
   const { Database } = await import("bun:sqlite")
   await mkdir(directory, { recursive: true })
   const db = new Database(path.join(directory, "harness.sqlite"), { create: true })
@@ -179,7 +217,7 @@ export async function createHarnesses(directory: string) {
     await connection.request(
       "initialize",
       {
-        clientInfo: { name: "redcode", title: "Redcode", version: "0.78.0" },
+        clientInfo: { name: "redcode", title: "Redcode", version: app.version },
         ...(backgroundWait ? { capabilities: { experimentalApi: true } } : {}),
       },
       "codex",
@@ -203,6 +241,7 @@ export async function createHarnesses(directory: string) {
       version,
       authenticated: undefined as boolean | undefined,
       models: undefined as Harness.Provider["models"],
+      detail: undefined as string | undefined,
     }
     if (driver === "claude") {
       const auth = await call(file, ["auth", "status", "--json"], 15_000, [0, 1]).catch(() => undefined)
@@ -223,16 +262,10 @@ export async function createHarnesses(directory: string) {
         await codexInit(connection)
         const status = await connection.request("account/read", { refreshToken: false }, driver)
         result.authenticated = status.account !== null && status.account !== undefined
-        const models = await connection.request("model/list", { limit: 100 }, driver).catch(() => ({}))
-        const data = object(models).data
-        if (Array.isArray(data))
-          result.models = data.flatMap((item) => {
-            const model = object(item)
-            const id = string(model.model) || string(model.id)
-            return id && !model.hidden
-              ? [{ id, label: string(model.displayName) || id, recommended: model.isDefault === true }]
-              : []
-          })
+        result.models = await codexModels(connection).catch((error: unknown) => {
+          result.detail = `Could not load Codex models: ${error instanceof Error ? error.message : String(error)}`
+          return undefined
+        })
       } finally {
         await connection.close()
       }
@@ -895,10 +928,11 @@ const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
     const global = yield* Global.Service
+    const app = yield* App.Metadata
     return yield* Effect.acquireRelease(
-      Effect.promise(() => createHarnesses(path.join(global.state, "harnesses"))),
+      Effect.promise(() => createHarnesses(path.join(global.state, "harnesses"), app)),
       (service) => Effect.promise(() => service.dispose()),
     )
   }),
 )
-export const node = makeGlobalNode({ service: Service, layer, deps: [Global.node] })
+export const node = makeGlobalNode({ service: Service, layer, deps: [Global.node, App.node] })

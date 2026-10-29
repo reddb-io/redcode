@@ -206,13 +206,23 @@ export function DialogModel(props: { providerID?: string }) {
     dialog.clear()
   }
 
-  // Rebuilds the location's services, which asks every provider for its models again, then reads the list back.
+  // Refresh account inventories without rebuilding every service in the Location.
   const refresh = async () => {
     if (refreshing()) return
     setRefreshing(true)
     toast.show({ variant: "info", message: "Refreshing models…", duration: 30000 })
-    await client.api.location
-      .reload()
+    const catalogs = [...providers().values()].filter(
+      (provider) => provider.catalog && (!props.providerID || provider.id === props.providerID),
+    )
+    await (
+      catalogs.length
+        ? Promise.all(
+            catalogs.map((provider) =>
+              client.api.provider.refresh({ providerID: provider.id, location: location.ref }),
+            ),
+          )
+        : client.api.location.reload()
+    )
       .then(() => data.location.sync(location.ref))
       .then(() => toast.show({ variant: "success", message: "Models refreshed" }))
       .catch(toast.error)

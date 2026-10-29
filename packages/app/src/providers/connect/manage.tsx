@@ -41,7 +41,8 @@ export function createIntegrationConnectionsServices(props: {
     deleting?: string
     checking: boolean
     report?: ConnectionCheck.Report
-  }>({ label: "", checking: false })
+    refreshing: boolean
+  }>({ label: "", checking: false, refreshing: false })
 
   const integration = createMemo(() => integrations.list().find((item) => item.id === props.integrationID))
   const connections = createMemo(() => {
@@ -55,6 +56,11 @@ export function createIntegrationConnectionsServices(props: {
     return value ? IntegrationConnections.connectMethods(value) : []
   })
   const name = () => integration()?.name ?? props.integrationID
+  const catalogProvider = createMemo(() =>
+    (data.location.provider.list(location()) ?? []).find(
+      (provider) => (provider.integrationID ?? provider.id) === props.integrationID && provider.catalog,
+    ),
+  )
 
   // A RedRouter connection says what its key may do; the saved router connection describes the active key.
   const keyRole = () => {
@@ -166,6 +172,19 @@ export function createIntegrationConnectionsServices(props: {
     props.onPickModel?.(provider ?? props.integrationID)
   }
 
+  const refreshModels = async () => {
+    const provider = catalogProvider()
+    if (!provider || state.refreshing) return
+    setState("refreshing", true)
+    await sdk.api.provider
+      .refresh({ providerID: provider.id, location: location() })
+      .catch(fail)
+      .finally(async () => {
+        await refresh().catch(fail)
+        setState("refreshing", false)
+      })
+  }
+
   return {
     snapshot: sharedSource(() => ({
       language: sharedLanguage(language),
@@ -177,6 +196,10 @@ export function createIntegrationConnectionsServices(props: {
       canCheck: integration()?.metadata?.source !== "mcp",
       canPick: !!props.onPickModel,
       keyRole: keyRole(),
+      catalog: catalogProvider()?.catalog,
+      modelCount: (data.location.model.list(location()) ?? []).filter(
+        (model) => model.providerID === catalogProvider()?.id,
+      ).length,
       state: { ...state },
     })),
     update: (patch: Partial<typeof state>) => setState(patch),
@@ -184,6 +207,7 @@ export function createIntegrationConnectionsServices(props: {
     rename,
     remove,
     check: () => void check(),
+    refreshModels: () => void refreshModels(),
     pickModel,
     add: () => props.onAdd(),
   }

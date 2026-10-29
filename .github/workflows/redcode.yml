@@ -198,6 +198,7 @@ jobs:
           e2e/regression/composer.spec.ts e2e/regression/mobile-model-pickers.spec.ts
           e2e/regression/terminal-input.spec.ts e2e/regression/terminal-toolbar.spec.ts
           e2e/regression/oauth-callback.spec.ts
+          e2e/regression/provider-catalog.spec.ts
           --grep 'the session context menu|Home archives|project LSPs|server sign-in keeps|reconciles task contributions|reconciliation fails and recovers|question drafts retain|a pending permission dock|Vault masks and clears|MCP input preserves|reports writing while assistant text streams|ends running compactions as interrupted|refreshes a session moved during disconnection|canvas zoom and pan|desktop density|appearance options|React settings keep|navigation shares|delivery|voice settings|CLI recorder|chooses a discovered System One model|keeps the saved evaluator|recreates a closed timeline|reloads the final closed session|conversation width stays aligned|goal commands manage|a goal in a new session|a failed goal start|populates the model picker|navigates a virtualized|desktop models retain|desktop free models|renders the callback|reports errors and resolves|keeps workbench and terminal controls|terminal creation failures|closing the last restored terminal|terminal controls stay clear'
           --workers=1 --retries=0 --reporter=line,html
       - name: Exercise the browser against an isolated real backend

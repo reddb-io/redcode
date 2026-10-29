@@ -99,6 +99,10 @@ Model providers require a saved connection or explicit configuration. Environmen
 do not activate or configure them. User-declared references such as `{env:MY_API_KEY}` remain
 supported. [Provider configuration](docs/provider-configuration.md).
 
+**Sign in with ChatGPT** loads models from the selected account and keeps a separate
+cache for each saved connection. Desktop and TUI show catalog status and offer
+**Update model list**, including diagnostics when an update fails.
+
 <details>
 <summary>See the Desktop / web workspace</summary>
 

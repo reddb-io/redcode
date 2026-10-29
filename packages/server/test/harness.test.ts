@@ -6,15 +6,16 @@ import { createHarnesses } from "../src/harness"
 import { Harness } from "@opencode/schema/harness"
 import { AbsolutePath } from "@opencode/schema/schema"
 import { Schema } from "effect"
+import { App } from "@opencode/core/app"
 
 const fixture = path.resolve(import.meta.dir, "fixture/harness-process.ts")
-async function executable(root: string, driver: Harness.Driver) {
+async function executable(root: string, driver: Harness.Driver, modelsError = false) {
   const file = path.join(root, driver + (process.platform === "win32" ? ".cmd" : ".sh"))
   await writeFile(
     file,
     process.platform === "win32"
-      ? `@"${process.execPath}" "${fixture}" ${driver} "${path.join(root, "wire.jsonl")}" %*\r\n`
-      : `#!/bin/sh\nexec '${process.execPath}' '${fixture}' ${driver} '${path.join(root, "wire.jsonl")}' "$@"\n`,
+      ? `@"${process.execPath}" "${fixture}" ${driver} "${path.join(root, "wire.jsonl")}" ${modelsError ? "models-error" : ""} %*\r\n`
+      : `#!/bin/sh\nexec '${process.execPath}' '${fixture}' ${driver} '${path.join(root, "wire.jsonl")}' ${modelsError ? "models-error" : ""} "$@"\n`,
   )
   await chmod(file, 0o700)
   return file
@@ -26,6 +27,38 @@ async function until(check: () => boolean) {
     await Bun.sleep(10)
   }
 }
+
+test("Codex reads every model page and identifies the running Redcode version", async () => {
+  await using tmp = await tmpdir("redcode-codex-models-")
+  const service = await createHarnesses(path.join(tmp.path, "state"), App.make({ name: "redcode", version: "9.8.7" }))
+  try {
+    const provider = await service.configure({ driver: "codex", executable: await executable(tmp.path, "codex") })
+    expect(provider.models).toEqual([
+      { id: "fixture-model", label: "Fixture model", recommended: true },
+      { id: "fixture-second", label: "Second model", recommended: false },
+    ])
+    const captured = await Bun.file(path.join(tmp.path, "wire.jsonl")).text()
+    expect(captured).toContain('"cursor":"models-second-page"')
+    expect(captured).toContain('"clientInfo":{"name":"redcode","title":"Redcode","version":"9.8.7"}')
+    expect(captured).not.toContain('"method":"turn/start"')
+  } finally {
+    await service.dispose()
+  }
+})
+
+test("Codex reports a later model-page failure without presenting a partial catalog as complete", async () => {
+  await using tmp = await tmpdir("redcode-codex-model-error-")
+  const service = await createHarnesses(path.join(tmp.path, "state"))
+  try {
+    const provider = await service.configure({ driver: "codex", executable: await executable(tmp.path, "codex", true) })
+    expect(provider.installed).toBe(true)
+    expect(provider.authenticated).toBe(true)
+    expect(provider.models).toBeUndefined()
+    expect(provider.detail).toContain("The model catalog is temporarily unavailable")
+  } finally {
+    await service.dispose()
+  }
+})
 
 for (const driver of ["codex", "claude"] as const) {
   test(`${driver}: structured permissions, questions, idempotent admission and native resume`, async () => {

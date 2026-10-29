@@ -210,6 +210,8 @@ import type {
   ModelDefaultOutput,
   GenerateTextInput,
   GenerateTextOutput,
+  ProviderRefreshInput,
+  ProviderRefreshOutput,
   ProviderListInput,
   ProviderListOutput,
   ProviderGetInput,
@@ -1670,6 +1672,14 @@ const EndpointGenerateText = (raw: RawClient["server.generate"]) => (input: Gene
 
 const adaptGroupGenerate = (raw: RawClient["server.generate"]) => ({ text: EndpointGenerateText(raw) })
 
+const EndpointProviderRefresh = (raw: RawClient["server.provider"]) => (input: ProviderRefreshInput) =>
+  preserveEffect<ProviderRefreshOutput>()(
+    raw["provider.refresh"]({
+      params: { providerID: input["providerID"] },
+      query: { location: input["location"] },
+    }).pipe(Effect.mapError(mapClientError)),
+  )
+
 const EndpointProviderList = (raw: RawClient["server.provider"]) => (input?: ProviderListInput) =>
   preserveEffect<ProviderListOutput>()(
     raw["provider.list"]({ query: { location: input?.["location"] } }).pipe(Effect.mapError(mapClientError)),
@@ -1692,6 +1702,7 @@ const EndpointProviderRemove = (raw: RawClient["server.provider"]) => (input: Pr
   )
 
 const adaptGroupProvider = (raw: RawClient["server.provider"]) => ({
+  refresh: EndpointProviderRefresh(raw),
   list: EndpointProviderList(raw),
   get: EndpointProviderGet(raw),
   remove: EndpointProviderRemove(raw),

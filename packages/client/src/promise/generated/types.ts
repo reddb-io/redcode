@@ -686,6 +686,15 @@ export type ConnectionCheckRequest = {
 
 export type RouterKeyRole = "standard" | "admin"
 
+export type ProviderCatalog = {
+  status: "loading" | "ready" | "stale" | "error"
+  updatedAt?: number
+  message?: string
+  httpStatus?: number
+  code?: string
+  requestID?: string
+}
+
 export type ProviderRemovalResult = {
   providerID: string
   dryRun: boolean
@@ -3402,6 +3411,7 @@ export type ProviderInfo = {
   activation: "auto" | "enabled" | "disabled"
   package: string
   router?: RouterConnection
+  catalog?: ProviderCatalog
   settings?: ProviderSettings
   headers?: { [x: string]: string }
   body?: { [x: string]: any }
@@ -9999,6 +10009,13 @@ export type GenerateTextInput = {
 }
 
 export type GenerateTextOutput = GenerateTextResponse["data"]
+
+export type ProviderRefreshInput = {
+  readonly providerID: { readonly providerID: string }["providerID"]
+  readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]
+}
+
+export type ProviderRefreshOutput = { location: LocationPublicRef; data: void }
 
 export type ProviderListInput = {
   readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]

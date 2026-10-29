@@ -451,6 +451,40 @@ test("prepares an isolated workspace through the DS and restores retained data b
   await expect(page).toHaveURL(/view=remote/)
 })
 
+test("searches discovered Codex models and permits an explicit custom model ID", async ({ page }) => {
+  await mockStressTimeline(page)
+  await installStressSessionTabs(page, { sessionIDs: [] })
+  await mockHarnessOperations(page, {
+    models: Array.from({ length: 25 }, (_, index) => ({
+      id: `catalog-model-${index}`,
+      label: `Catalog model ${String(index).padStart(2, "0")}`,
+      recommended: index === 0,
+    })),
+  })
+  await page.goto("/agents?view=harness")
+  const workspace = page.getByRole("region", { name: "Agents", exact: true })
+  await chooseSearchOption(page, workspace.getByRole("button", { name: /, Coding agent$/ }), "Codex")
+  const model = workspace.getByRole("button", { name: /, Model override \(optional\)$/ })
+  await model.click()
+  const search = page.getByRole("dialog").getByRole("combobox")
+  await expect(search).toHaveValue("")
+  await expect.poll(() => page.getByRole("option").count()).toBeGreaterThanOrEqual(20)
+  await search.fill("Catalog model 24")
+  await page.getByRole("option", { name: /Catalog model 24/ }).click()
+  await expect(model).toContainText("Catalog model 24")
+  await workspace.getByRole("tab", { name: "Agent setup", exact: true }).click()
+  await workspace.getByRole("tab", { name: "Sessions", exact: true }).click()
+  await expect(model).toContainText("Catalog model 24")
+  await chooseSearchOption(page, model, "Enter a model ID")
+  await workspace.getByLabel("Custom model ID", { exact: true }).fill("explicit-model-id")
+  await workspace.getByLabel("Checkout directory on this host", { exact: true }).fill(fixture.directory)
+  const opened = page.waitForRequest(
+    (request) => request.method() === "POST" && new URL(request.url()).pathname === "/api/harness/runs",
+  )
+  await workspace.getByRole("button", { name: "Start harness", exact: true }).click()
+  expect((await opened).postDataJSON()).toMatchObject({ driver: "codex", model: "explicit-model-id" })
+})
+
 test("starts a native Claude harness and preserves question input across host refresh", async ({ page }) => {
   await mockStressTimeline(page)
   await installStressSessionTabs(page, { sessionIDs: [] })

@@ -32,6 +32,7 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
     driver: "redcode" as Harness.Driver | "redcode",
     directory: "",
     model: "",
+    customModel: false,
     backgroundWait: false,
     executable: { claude: "", codex: "" },
     busy: false,
@@ -517,25 +518,46 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                       }))}
                       onChange={(value) => {
                         if (value === "redcode" || value === "claude" || value === "codex")
-                          setState({ driver: value, model: "" })
+                          setState({ driver: value, model: "", customModel: false })
                       }}
                     />
                   </label>
                   <Show when={state.driver !== "redcode"}>
-                    <label>
-                      {language.t("harness.model")}
-                      <input
-                        list={`harness-models-${ServerConnection.key(props.server)}`}
-                        class={input({ size: "sm", class: "mt-1 w-full" })}
-                        value={state.model}
-                        onInput={(event) => setState("model", event.currentTarget.value)}
+                    <div>
+                      <span>{language.t("harness.model")}</span>
+                      <SearchSelect
+                        label={language.t("harness.model")}
+                        class="mt-1 w-full"
+                        value={state.customModel ? "__custom_model__" : state.model}
+                        options={[
+                          { value: "", label: language.t("harness.model.default") },
+                          ...(
+                            query.data?.providers.find((provider) => provider.driver === state.driver)?.models ?? []
+                          ).map((model) => ({
+                            value: model.id,
+                            label: model.label,
+                            description: model.recommended ? language.t("harness.model.recommended") : model.id,
+                          })),
+                          { value: "__custom_model__", label: language.t("harness.model.custom") },
+                        ]}
+                        onChange={(value) =>
+                          setState({
+                            customModel: value === "__custom_model__",
+                            model: value === "__custom_model__" ? "" : value,
+                          })
+                        }
                       />
-                      <datalist id={`harness-models-${ServerConnection.key(props.server)}`}>
-                        <For each={query.data?.providers.find((provider) => provider.driver === state.driver)?.models}>
-                          {(model) => <option value={model.id}>{model.label}</option>}
-                        </For>
-                      </datalist>
-                    </label>
+                      <Show when={state.customModel}>
+                        <label class="mt-2 block">
+                          {language.t("harness.model.customID")}
+                          <input
+                            class={input({ size: "sm", class: "mt-1 w-full" })}
+                            value={state.model}
+                            onInput={(event) => setState("model", event.currentTarget.value)}
+                          />
+                        </label>
+                      </Show>
+                    </div>
                   </Show>
                   <Show when={state.driver === "redcode"}>
                     <p class="text-ink-muted">{language.t("harness.native.description")}</p>
@@ -597,6 +619,11 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                         </div>
                         <Show when={provider().authenticated !== undefined}>
                           <p>{language.t(provider().authenticated ? "harness.signedIn" : "harness.signedOut")}</p>
+                        </Show>
+                        <Show when={provider().detail}>
+                          <p role="status" class="text-ink-muted">
+                            {provider().detail}
+                          </p>
                         </Show>
                         <label>
                           {language.t("harness.executable")}

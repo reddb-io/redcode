@@ -354,13 +354,19 @@ function createModelSelectorController(input: {
 
   const favorite = (option: ModelOption) => models.favorite.has(option.value)
 
-  // Rebuilds the location's services, which asks every provider for its models again, then reads the lists back.
+  // Account catalogs can update without rebuilding every service in the Location.
   const refresh = async () => {
     if (state.refreshing) return
     setState("refreshing", true)
     const ref = location().ref
-    await sdk.api.location
-      .reload()
+    const catalogs = [...providers().values()].filter(
+      (provider) => provider.catalog && (!input.provider() || provider.id === input.provider()),
+    )
+    await (
+      catalogs.length
+        ? Promise.all(catalogs.map((provider) => sdk.api.provider.refresh({ providerID: provider.id, location: ref })))
+        : sdk.api.location.reload()
+    )
       .then(() => {
         data.location.integration.invalidate(ref)
         data.location.provider.invalidate(ref)

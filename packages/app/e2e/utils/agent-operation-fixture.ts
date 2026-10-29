@@ -166,6 +166,7 @@ export async function mockHarnessOperations(
     runs?: Harness.Run[]
     tasks?: Record<string, Harness.Task[]>
     unavailable?: () => boolean
+    models?: Harness.Provider["models"]
   } = {},
 ) {
   const state = {
@@ -185,6 +186,7 @@ export async function mockHarnessOperations(
             installed: true,
             version: "fixture",
             authenticated: true,
+            models: driver === "codex" ? input.models : undefined,
           })),
           runs: state.runs,
         },

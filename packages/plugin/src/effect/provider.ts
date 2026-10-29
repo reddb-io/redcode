@@ -3,8 +3,8 @@ import type { ProviderApi } from "@opencode/client/effect/api"
 import type { Model } from "@opencode/schema/model"
 import type { Provider } from "@opencode/schema/provider"
 import type { ConnectionInfo } from "@opencode/client"
-import type { Effect } from "effect"
-import type { Transform } from "./registration.js"
+import type { Effect, Scope } from "effect"
+import type { Registration, Transform } from "./registration.js"
 
 /** Provider metadata and immutable source definitions, including inactive providers. */
 export interface ProviderRecord {
@@ -29,6 +29,10 @@ export interface ProviderEditor {
 }
 
 export interface ProviderDomain extends ProviderApi<unknown> {
+  readonly onRefresh: (
+    providerID: string,
+    refresh: () => Effect.Effect<void, Error>,
+  ) => Effect.Effect<Registration, never, Scope.Scope>
   readonly transform: Transform<ProviderEditor>
   readonly reload: () => Effect.Effect<void>
 }

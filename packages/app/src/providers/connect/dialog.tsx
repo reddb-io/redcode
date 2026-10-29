@@ -100,7 +100,10 @@ export const DialogConnectProvider: Component<{
 
   const select = (provider?: string) => {
     back.current = reset
-    controller.select(provider)
+    const integration = integrations.list().find((item) => item.id === provider)
+    controller.select(provider, {
+      add: !!integration && !IntegrationConnections.credentialConnections(integration).length,
+    })
   }
 
   // A connected integration opens its saved connections first; "Add connection…" starts a new one.
@@ -266,7 +269,7 @@ export function createProviderConnectionServices(props: {
 
       return index === -1 ? undefined : index
     },
-    prepare: isConsole ? prepareConsoleCatalog : undefined,
+    prepare: isConsole ? prepareConsoleCatalog : props.provider === "openai" ? prepareChatGPTCatalog : undefined,
     pollInterval: isConsole ? 500 : undefined,
     onComplete: () => {
       const method = controller.currentMethod()
@@ -276,6 +279,13 @@ export function createProviderConnectionServices(props: {
       if (state.catalogPending) {
         setState("noModels", true)
 
+        return
+      }
+      if (
+        accountCatalog() &&
+        (accountCatalog()?.status === "error" || accountCatalog()?.status === "loading" || !connectionModels().length)
+      ) {
+        setState("noModels", true)
         return
       }
 
@@ -357,6 +367,7 @@ export function createProviderConnectionServices(props: {
       (provider) => provider.id === props.provider || provider.integrationID === target() || provider.id === target(),
     ),
   )
+  const accountCatalog = createMemo(() => connectionProviders().find((provider) => provider.catalog)?.catalog)
 
   const connectionModels = createMemo(() => {
     const ids = new Set(connectionProviders().map((provider) => provider.id))
@@ -399,6 +410,21 @@ export function createProviderConnectionServices(props: {
 
     setState("catalogPending", !loaded())
 
+    return active()
+  }
+
+  async function prepareChatGPTCatalog(active: () => boolean) {
+    const method = controller.currentMethod()
+    if (method?.type !== "oauth" || method.id !== "chatgpt-token-sharing") return active()
+    await sdk.api.provider.refresh({ providerID: "openai", location: location() }).catch(() => undefined)
+    if (!active()) return false
+    data.location.provider.invalidate(location())
+    data.location.model.invalidate(location())
+    const loaded = await Promise.all([data.location.provider.sync(location()), data.location.model.sync(location())])
+      .then(() => true)
+      .catch(() => false)
+    if (!loaded) return false
+    setState("catalogPending", accountCatalog()?.status === "loading")
     return active()
   }
 
@@ -562,6 +588,7 @@ export function createProviderConnectionServices(props: {
       consoleSignIn: consoleSignIn(),
       keyIndex: keyIndex(),
       managed: managedProviders(),
+      catalog: accountCatalog(),
       groups: connectionGroups().map((group) => ({
         provider: { ...group.provider, name: connectionGroupName(group.provider.name) },
         models: group.models.map((model) => ({ ...model })),

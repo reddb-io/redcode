@@ -58,6 +58,11 @@ Open **Executors → Agent setup** for the execution host. **Check installation*
 state without making an inference request. Set its executable name or path and choose **Save and
 check** if it is outside PATH. Changing an executable requires closing its active harnesses first.
 
+Codex model discovery follows every page returned by app-server and preserves its model names and
+recommended default. A discovery failure appears in Agent setup instead of being shown as a complete
+empty or partial list. The handshake identifies the running Redcode version.
+The model selector provides search and an explicit **Enter a model ID** option for custom overrides.
+
 **Install with npm on this host** installs the official `@anthropic-ai/claude-code` or `@openai/codex`
 package. This explicit action needs Node.js/npm and permission for a global installation on that host.
 The CLIs are not bundled into Redcode, and existing installations can be used without downloading them.

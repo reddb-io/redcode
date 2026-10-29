@@ -196,6 +196,8 @@ export const make = Effect.fn("PluginHost.make")(function* (
     },
     provider: {
       list: () => response(providers.available()),
+      refresh: (input) => response(providers.refresh(Provider.ID.make(input.providerID))),
+      onRefresh: (id, refresh) => providers.onRefresh(Provider.ID.make(id), refresh),
       remove: (input) => response(removal.remove(input.providerID, { dryRun: input.dryRun })),
       get: (input) =>
         providers

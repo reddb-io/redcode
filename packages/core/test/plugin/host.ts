@@ -46,6 +46,8 @@ export function host(overrides: Overrides = {}): Plugin.Context {
       hook: () => Effect.die("unused aisdk.hook"),
     },
     provider: overrides.provider ?? {
+      refresh: () => Effect.die("unused provider.refresh"),
+      onRefresh: () => Effect.succeed({ dispose: Effect.void }),
       list: () => Effect.die("unused provider.list"),
       get: () => Effect.die("unused provider.get"),
       transform: () => Effect.die("unused provider.transform"),
@@ -234,6 +236,8 @@ export function agentHost(agent: Agent.Interface): Plugin.Context["agent"] {
 
 export function providerHost(providers: Provider.Interface): Plugin.Context["provider"] {
   return {
+    refresh: (input) => providers.refresh(Provider.ID.make(input.providerID)).pipe(Effect.map(located)),
+    onRefresh: (id, refresh) => providers.onRefresh(Provider.ID.make(id), refresh),
     list: () => providers.available().pipe(Effect.map(located)),
     get: (input) =>
       providers
@@ -268,6 +272,8 @@ export function providerHost(providers: Provider.Interface): Plugin.Context["pro
 
 /** Empty catalog for hosts that only need provider lookups to fall back. */
 export const noProviders: Plugin.Context["provider"] = {
+  refresh: () => Effect.die("unused provider.refresh"),
+  onRefresh: () => Effect.succeed({ dispose: Effect.void }),
   list: () => Effect.succeed(located([])),
   get: () => Effect.die("unused provider.get"),
   transform: () => Effect.die("unused provider.transform"),

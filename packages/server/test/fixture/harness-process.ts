@@ -159,11 +159,21 @@ for await (const line of createInterface({ input: process.stdin })) {
       send({ method: "account/login/completed", params: { loginId: "fixture-login", success: true } })
     }
     if (value.method === "account/read") send({ id: value.id, result: { account: { type: "chatgpt" } } })
+    if (value.method === "model/list" && value.params.cursor && args.includes("models-error")) {
+      send({ id: value.id, error: { code: -32000, message: "The model catalog is temporarily unavailable" } })
+      continue
+    }
     if (value.method === "model/list")
       send({
         id: value.id,
         result: {
-          data: [{ id: "fixture-model", model: "fixture-model", displayName: "Fixture model", isDefault: true }],
+          data: value.params.cursor
+            ? [{ id: "fixture-second", model: "fixture-second", displayName: "Second model", isDefault: false }]
+            : [
+                { id: "fixture-model", model: "fixture-model", displayName: "Fixture model", isDefault: true },
+                { id: "hidden-model", hidden: true },
+              ],
+          nextCursor: value.params.cursor ? null : "models-second-page",
         },
       })
     if (["thread/start", "thread/resume"].includes(value.method))

@@ -1,13 +1,14 @@
 import type { IntegrationOAuthMethodRegistration } from "@opencode/plugin/effect/integration"
 import type { Context } from "@opencode/plugin/effect/plugin"
 import { define } from "@opencode/plugin/effect/plugin"
-import { Deferred, Effect, Option, Schema, Semaphore, Stream } from "effect"
+import { Clock, Deferred, Effect, Fiber, Option, Result, Schedule, Schema, Stream } from "effect"
 import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http"
 import type { Server, ServerResponse } from "node:http"
 import { App } from "../../app.js"
 import { Credential } from "../../credential.js"
 import { Bus } from "../../bus.js"
 import { Integration } from "../../integration.js"
+import { IntegrationConnection } from "../../integration/connection.js"
 import { Model } from "../../model.js"
 import { OauthCallbackPage } from "../../oauth/page.js"
 import { Provider } from "../../provider.js"
@@ -24,25 +25,9 @@ const tokenSharingScope = "chatgpt.tokens.use.direct"
 const providerID = Provider.ID.openai
 const integrationID = Integration.ID.make("openai")
 const methodID = Integration.MethodID.make("chatgpt-token-sharing")
-const modelCacheKey = (clientID: string) => `models:${clientID}`
-const fallbackModels = new Set([
-  "gpt-5.5",
-  "gpt-5.5-fast",
-  "gpt-5.6-luna",
-  "gpt-5.6-luna-fast",
-  "gpt-5.6-sol",
-  "gpt-5.6-sol-fast",
-  "gpt-5.6-terra",
-  "gpt-5.6-terra-fast",
-  "gpt-6-astra",
-  "gpt-6-astra-fast",
-  "gpt-6-luna",
-  "gpt-6-luna-fast",
-  "gpt-6-sol",
-  "gpt-6-sol-fast",
-  "gpt-6.1-sol",
-  "gpt-6.1-sol-fast",
-])
+const modelCacheKey = (connection: Parameters<typeof IntegrationConnection.key>[0], clientID: string) =>
+  `models:v2:${IntegrationConnection.key(connection)}:${clientID}`
+const catalogMaxAge = 5 * 60_000
 const nonRetryableSharingCodes = [
   "subscription_sharing_usage_limit_exceeded",
   "subscription_sharing_user_not_eligible",
@@ -69,14 +54,26 @@ const RemoteModel = Schema.Struct({
   slug: Schema.String,
   display_name: Schema.String,
   visibility: Schema.String,
-  supported_in_api: Schema.Boolean,
-  context_window: Schema.Int.check(Schema.isGreaterThan(1)),
-  input_modalities: Schema.Array(Schema.String),
+  supported_in_api: Schema.optional(Schema.Boolean),
+  context_window: Schema.optional(Schema.Int.check(Schema.isGreaterThan(1))),
+  input_modalities: Schema.optional(Schema.Array(Schema.String)),
   supported_reasoning_levels: Schema.optional(Schema.Array(Schema.Struct({ effort: Schema.String }))),
 })
 type RemoteModel = typeof RemoteModel.Type
 const RemoteModels = Schema.Struct({ models: Schema.Array(RemoteModel) })
-const decodeCachedModels = Schema.decodeUnknownOption(Schema.Array(RemoteModel))
+const decodeModelCache = Schema.decodeUnknownOption(
+  Schema.Struct({
+    updatedAt: Schema.Number,
+    models: Schema.Array(RemoteModel),
+  }),
+)
+
+class CatalogError extends Schema.TaggedError<CatalogError>()("ChatGPT.CatalogError", {
+  message: Schema.String,
+  httpStatus: Schema.optional(Schema.Number),
+  code: Schema.optional(Schema.String),
+  requestID: Schema.optional(Schema.String),
+}) {}
 
 // Credential metadata is merged into provider settings; these keys are not OpenAI request options.
 const decodeMetadata = Schema.decodeUnknownOption(
@@ -116,16 +113,12 @@ const signIn = (app: App.Info, savedClientID: () => string | undefined, storage:
           const error = url.searchParams.get("error_description") ?? url.searchParams.get("error")
           const authorizationCode = url.searchParams.get("code")
           if (error) {
-            Effect.runFork(
-              respond(response, error).pipe(Effect.andThen(Deferred.fail(received, new Error(error)))),
-            )
+            Effect.runFork(respond(response, error).pipe(Effect.andThen(Deferred.fail(received, new Error(error)))))
             return
           }
           if (!authorizationCode || url.searchParams.get("state") !== state) {
             const message = authorizationCode ? "Invalid OAuth state" : "Missing authorization code"
-            Effect.runFork(
-              respond(response, message).pipe(Effect.andThen(Deferred.fail(received, new Error(message)))),
-            )
+            Effect.runFork(respond(response, message).pipe(Effect.andThen(Deferred.fail(received, new Error(message)))))
             return
           }
           if (
@@ -226,17 +219,50 @@ export const ChatGPTPlugin = define({
     const bus = yield* Bus.Service
     const credentials = yield* Credential.Service
     const sessions = yield* SessionStore.Service
-    const loading = Semaphore.makeUnsafe(1)
+    const http = yield* HttpClient.HttpClient
+    const scope = yield* Effect.scope
+    const refreshes = new Map<string, Fiber.Fiber<void, CatalogError>>()
     let chatgpt: Credential.OAuth | undefined
     let source: Effect.Success<ReturnType<typeof ctx.integration.connection.active>>
+    let available: ReadonlyArray<RemoteModel> | undefined
+    let catalog: Provider.Catalog | undefined
+    let authenticated = false
 
     const load = Effect.fn("ChatGPTPlugin.load")(function* () {
       const connection = yield* ctx.integration.connection.active(integrationID)
-      const credential = connection
-        ? yield* ctx.integration.connection.resolve(connection).pipe(Effect.orElseSucceed(() => undefined))
+      const resolved = connection
+        ? yield* ctx.integration.connection.resolve(connection).pipe(Effect.result)
         : undefined
+      const saved =
+        connection?.type === "credential" ? yield* credentials.get(Credential.ID.make(connection.id)) : undefined
+      const credential = resolved && Result.isSuccess(resolved) ? resolved.success : saved?.value
+      if (
+        IntegrationConnection.key(connection) !==
+        IntegrationConnection.key(yield* ctx.integration.connection.active(integrationID))
+      )
+        return
       chatgpt = credential?.type === "oauth" && credential.methodID === methodID ? credential : undefined
       source = chatgpt ? connection : undefined
+      authenticated = !!resolved && Result.isSuccess(resolved)
+      available = undefined
+      catalog = undefined
+      if (!chatgpt || !source) return
+      const metadata = Option.getOrUndefined(decodeMetadata(chatgpt.metadata))
+      if (!metadata || (resolved && Result.isFailure(resolved))) {
+        catalog = {
+          status: "error",
+          message: metadata
+            ? "The selected ChatGPT connection could not be refreshed. Check this account and sign in again if its authorization was revoked."
+            : "This ChatGPT connection has no registered client ID. Sign in again.",
+        }
+        return
+      }
+      const cache = Option.getOrUndefined(
+        decodeModelCache(yield* ctx.storage.get(modelCacheKey(source, metadata.clientID))),
+      )
+      if (IntegrationConnection.key(connection) !== IntegrationConnection.key(source)) return
+      available = cache?.models
+      catalog = cache ? { status: "ready", updatedAt: cache.updatedAt } : { status: "loading" }
     })
 
     yield* ctx.integration.transform((editor) => {
@@ -253,9 +279,18 @@ export const ChatGPTPlugin = define({
         const metadata = Option.getOrUndefined(decodeMetadata(value.metadata))
         if (!metadata) return Effect.void
         return Effect.gen(function* () {
-          const saved = yield* ctx.storage.get(modelCacheKey(metadata.clientID))
-          if (!Option.isSome(decodeCachedModels(saved)) && metadata.models)
-            yield* ctx.storage.set(modelCacheKey(metadata.clientID), metadata.models)
+          if (metadata.models) {
+            const connection = {
+              type: "credential" as const,
+              id: entry.id,
+              label: entry.label,
+              method: "oauth" as const,
+            }
+            yield* ctx.storage.set(modelCacheKey(connection, metadata.clientID), {
+              updatedAt: 0,
+              models: metadata.models,
+            })
+          }
           const { models: _, ...rest } = value.metadata ?? {}
           yield* credentials.update(entry.id, {
             value: Credential.OAuth.make({ ...value, methodID, metadata: rest }),
@@ -296,15 +331,13 @@ export const ChatGPTPlugin = define({
           transport: "http",
           compaction: { type: "summary" },
         })
+        provider.catalog = catalog
       })
       const updated = providers.get(providerID)
       if (!updated) return
       providers.add({
         info: updated.provider,
-        // models: available
-        //   ? deriveModels(available, Array.from(item.models.values()))
-        //   : Array.from(item.models.values()).filter((model) => fallbackModels.has(model.id)),
-        models: Array.from(item.models.values()).filter((model) => fallbackModels.has(model.id)),
+        models: deriveModels(available ?? [], Array.from(item.models.values())),
         sourceConnection: source,
       })
     })
@@ -323,12 +356,90 @@ export const ChatGPTPlugin = define({
         })
       }
     })
-    const reload = () => loading.withPermit(load().pipe(Effect.andThen(ctx.provider.reload())))
+    const refresh = Effect.fn("ChatGPTPlugin.refresh")(function* () {
+      const connection = source
+      const credential = chatgpt
+      const metadata = Option.getOrUndefined(decodeMetadata(credential?.metadata))
+      if (!connection || !credential) return
+      if (!metadata || !authenticated)
+        return yield* Effect.fail(
+          new CatalogError({
+            message: catalog?.message ?? "The selected ChatGPT account could not be authorized.",
+          }),
+        )
+      const key = modelCacheKey(connection, metadata.clientID)
+      const current = () =>
+        Effect.gen(function* () {
+          return (
+            IntegrationConnection.key(connection) === IntegrationConnection.key(source) &&
+            IntegrationConnection.key(connection) ===
+              IntegrationConnection.key(yield* ctx.integration.connection.active(integrationID))
+          )
+        })
+      catalog = { status: "loading", updatedAt: catalog?.updatedAt }
+      yield* ctx.provider.reload()
+      const result = yield* fetchModels(credential.access, ctx.app).pipe(
+        Effect.provideService(HttpClient.HttpClient, http),
+        Effect.result,
+      )
+      if (!(yield* current())) return
+      if (Result.isFailure(result)) {
+        catalog = {
+          status: available ? "stale" : "error",
+          updatedAt: catalog?.updatedAt,
+          message: result.failure.message,
+          httpStatus: result.failure.httpStatus,
+          code: result.failure.code,
+          requestID: result.failure.requestID,
+        }
+        yield* ctx.provider.reload()
+        return yield* Effect.fail(result.failure)
+      }
+      available = result.success
+      const updatedAt = yield* Clock.currentTimeMillis
+      catalog = {
+        status: "ready",
+        updatedAt,
+        message: available.length
+          ? undefined
+          : "No models are available for the selected ChatGPT account. Check this account's ChatGPT plan usage permissions.",
+      }
+      yield* ctx.storage.set(key, { updatedAt, models: result.success })
+      yield* ctx.provider.reload()
+    })
+    const sync = Effect.fn("ChatGPTPlugin.sync")(function* (force = false) {
+      const key = IntegrationConnection.key(source)
+      if (!key) return
+      const pending = refreshes.get(key)
+      if (pending) return yield* Fiber.join(pending)
+      if (!force && catalog?.updatedAt && (yield* Clock.currentTimeMillis) - catalog.updatedAt < catalogMaxAge) return
+      const fiber = yield* refresh().pipe(
+        Effect.ensuring(Effect.sync(() => refreshes.delete(key))),
+        Effect.forkIn(scope),
+      )
+      refreshes.set(key, fiber)
+      return yield* Fiber.join(fiber)
+    })
+    yield* ctx.provider.onRefresh(providerID, () =>
+      load().pipe(Effect.andThen(ctx.provider.reload()), Effect.andThen(sync(true))),
+    )
+    const reload = () =>
+      load().pipe(Effect.andThen(ctx.provider.reload()), Effect.andThen(sync().pipe(Effect.ignore, Effect.forkScoped)))
     yield* bus.subscribe(Credential.Event.Switched).pipe(
       Stream.filter((event) => event.data.integrationID === integrationID),
       Stream.runForEach(reload),
       Effect.forkScoped({ startImmediately: true }),
     )
+    yield* Effect.gen(function* () {
+      if (
+        catalog &&
+        (catalog.status === "error" || catalog.status === "stale") &&
+        (!authenticated || [400, 401, 403].includes(catalog.httpStatus ?? 0))
+      )
+        return
+      yield* load()
+      yield* sync()
+    }).pipe(Effect.ignore, Effect.repeat(Schedule.spaced("5 minutes")), Effect.forkScoped)
   }),
 } satisfies PluginInternal.InternalPlugin)
 
@@ -372,32 +483,67 @@ function refresh(value: Credential.OAuth, app: App.Info) {
 
 export function fetchModels(token: string, app: App.Info, baseURL = resource) {
   return Effect.gen(function* () {
-    const http = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
+    const http = yield* HttpClient.HttpClient
     const response = yield* http.execute(
       HttpClientRequest.get(`${baseURL}/models`).pipe(
         HttpClientRequest.bearerToken(token),
         HttpClientRequest.setHeader("User-Agent", App.useragent(app)),
       ),
     )
-    const data = yield* HttpClientResponse.schemaBodyJson(RemoteModels)(response)
-    const models = data.models.filter((model) => model.visibility === "list" && model.supported_in_api)
-    if (!models.length) return yield* Effect.fail(new Error("No ChatGPT models are available for this account."))
-    return models
-  })
+    const requestID = response.headers["x-request-id"]
+    if (response.status !== 200) {
+      const body = yield* HttpClientResponse.schemaBodyJson(
+        Schema.Struct({
+          detail: Schema.optional(Schema.String),
+          error: Schema.optional(
+            Schema.Struct({
+              code: Schema.optional(Schema.String),
+              message: Schema.optional(Schema.String),
+            }),
+          ),
+        }),
+      )(response).pipe(Effect.orElseSucceed(() => ({ detail: undefined, error: undefined })))
+      const detail = body.error?.message ?? body.detail
+      return yield* Effect.fail(
+        new CatalogError({
+          message: `ChatGPT model catalog returned HTTP ${response.status}${detail ? `: ${detail.slice(0, 1500)}` : "."}`,
+          httpStatus: response.status,
+          code: body.error?.code,
+          requestID,
+        }),
+      )
+    }
+    const data = yield* HttpClientResponse.schemaBodyJson(RemoteModels)(response).pipe(
+      Effect.mapError(
+        () =>
+          new CatalogError({
+            message: "ChatGPT returned an invalid model catalog. Try updating the model list again.",
+            httpStatus: response.status,
+            requestID,
+          }),
+      ),
+    )
+    return data.models.filter((model) => model.visibility === "list")
+  }).pipe(
+    Effect.timeout("10 seconds"),
+    Effect.mapError((error) =>
+      error instanceof CatalogError
+        ? error
+        : new CatalogError({
+            message: `Could not load the selected ChatGPT account's models: ${error.message}`,
+          }),
+    ),
+  )
 }
 
 export function deriveModels(remote: ReadonlyArray<RemoteModel>, existing: ReadonlyArray<Model.Info>) {
-  const byID = new Map(remote.map((model) => [model.slug, model]))
-  const known = new Set(existing.map((model) => model.id))
-  return [
-    ...existing.flatMap((model) => {
-      const found = byID.get(model.modelID)
-      return found ? [deriveModel(found, model)] : []
-    }),
-    ...remote
-      .filter((model) => !known.has(Model.ID.make(model.slug)))
-      .map((model) => deriveModel(model, Model.Info.default(Provider.ID.openai, Model.ID.make(model.slug)))),
-  ]
+  const byID = new Map(existing.map((model) => [model.id, model]))
+  return remote.map((model) =>
+    deriveModel(
+      model,
+      byID.get(Model.ID.make(model.slug)) ?? Model.Info.default(Provider.ID.openai, Model.ID.make(model.slug)),
+    ),
+  )
 }
 
 function deriveModel(remote: RemoteModel, previous: Model.Info): Model.Info {
@@ -407,18 +553,22 @@ function deriveModel(remote: RemoteModel, previous: Model.Info): Model.Info {
     package: previous.package ?? "@opencode/ai/providers/openai",
     capabilities: {
       ...previous.capabilities,
-      input: remote.input_modalities.filter((modality) => modality === "text" || modality === "image"),
+      input: remote.input_modalities
+        ? remote.input_modalities.filter((modality) => modality === "text" || modality === "image")
+        : previous.capabilities.input,
     },
-    variants: [
-      ...previous.variants.filter((variant) => typeof variant.settings?.reasoningEffort !== "string"),
-      ...(remote.supported_reasoning_levels ?? []).map(
-        ({ effort }) =>
-          previous.variants.find(
-            (variant) => variant.id === effort && variant.settings?.reasoningEffort === effort,
-          ) ?? { id: Model.VariantID.make(effort), settings: { reasoningEffort: effort } },
-      ),
-    ],
-    limit: { context: remote.context_window, output: previous.limit.output },
+    variants: remote.supported_reasoning_levels
+      ? [
+          ...previous.variants.filter((variant) => typeof variant.settings?.reasoningEffort !== "string"),
+          ...(remote.supported_reasoning_levels ?? []).map(
+            ({ effort }) =>
+              previous.variants.find(
+                (variant) => variant.id === effort && variant.settings?.reasoningEffort === effort,
+              ) ?? { id: Model.VariantID.make(effort), settings: { reasoningEffort: effort } },
+          ),
+        ]
+      : previous.variants,
+    limit: remote.context_window ? { context: remote.context_window, output: previous.limit.output } : previous.limit,
   }
 }
 

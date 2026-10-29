@@ -6,7 +6,7 @@ import { AIError, HttpContext, LLM, Message, RateLimitError } from "@opencode/ai
 import { classifyProviderFailure } from "@opencode/ai/provider-error"
 import { compileRequest } from "@opencode/ai/route/client"
 import { describe, expect } from "bun:test"
-import { DateTime, Effect, Schedule } from "effect"
+import { DateTime, Deferred, Effect, Schedule } from "effect"
 import { HttpClient, HttpClientResponse } from "effect/unstable/http"
 import { exportJWK, generateKeyPair, SignJWT } from "jose"
 import { App } from "@opencode/core/app"
@@ -20,7 +20,7 @@ import { Plugin } from "@opencode/core/plugin"
 import { PluginHost } from "@opencode/core/plugin/host"
 import { PluginHooks } from "@opencode/core/plugin/hooks"
 import { GithubCopilotPlugin } from "@opencode/core/plugin/provider/github-copilot"
-import { ChatGPTPlugin, fetchModels, verifyIDToken } from "@opencode/core/plugin/provider/chatgpt"
+import { ChatGPTPlugin, deriveModels, fetchModels, verifyIDToken } from "@opencode/core/plugin/provider/chatgpt"
 import { OpenAIPlugin } from "@opencode/core/plugin/provider/openai"
 import { Project } from "@opencode/core/project"
 import { Provider } from "@opencode/core/provider"
@@ -39,10 +39,28 @@ const unavailableModels = HttpClient.make((request) =>
   Effect.succeed(HttpClientResponse.fromWeb(request, Response.json({}, { status: 503 }))),
 )
 
-const addPlugin = Effect.fn(function* (http = unavailableModels) {
+const accountModels = ["gpt-5.5", "gpt-5.6-sol", "gpt-6-astra", "gpt-6.1-sol"].map((slug) => ({
+  slug,
+  display_name: slug,
+  visibility: "list",
+}))
+const catalogModels = HttpClient.make((request) =>
+  Effect.succeed(HttpClientResponse.fromWeb(request, Response.json({ models: accountModels }))),
+)
+
+const addPlugin = Effect.fn(function* (http = catalogModels, wait = true) {
+  const providers = yield* Provider.Service
+  if (!(yield* providers.get(Provider.ID.openai)))
+    yield* providers.transform((editor) => {
+      editor.update(Provider.ID.openai, (provider) => {
+        provider.package = "@opencode/ai/providers/openai"
+      })
+    })
   const plugin = yield* Plugin.Service
   const host = yield* PluginHost.make(plugin, ChatGPTPlugin.id)
   yield* ChatGPTPlugin.effect(host).pipe(Effect.provideService(HttpClient.HttpClient, http))
+  if (!wait) return
+  yield* providers.refresh(Provider.ID.openai).pipe(Effect.ignore)
 })
 
 const addLegacyPlugin = Effect.fn(function* () {
@@ -97,13 +115,257 @@ const request = Effect.fn(function* (
 })
 
 describe("ChatGPTPlugin", () => {
-  it.live("loads only visible API-supported ChatGPT models", () =>
+  it.effect("keeps account order and known capabilities when the catalog has only names", () =>
+    Effect.gen(function* () {
+      const known = {
+        ...Model.Info.default(Provider.ID.openai, Model.ID.make("known")),
+        limit: { context: 123_000, input: 100_000, output: 23_000 },
+        variants: [{ id: Model.VariantID.make("high"), settings: { reasoningEffort: "high" } }],
+        capabilities: { tools: true, input: ["text", "image"] as const, output: ["text"] as const },
+      }
+      const models = deriveModels(
+        [
+          { slug: "new-model", display_name: "A new model", visibility: "list" },
+          { slug: "known", display_name: "Known model", visibility: "list" },
+        ],
+        [known],
+      )
+      expect(models.map((model) => model.id)).toEqual(["new-model", "known"].map((id) => Model.ID.make(id)))
+      expect(models[1]).toMatchObject({
+        name: "Known model",
+        limit: known.limit,
+        variants: known.variants,
+        capabilities: known.capabilities,
+      })
+    }),
+  )
+
+  it.live("discovers only the selected saved connection and supports an explicit refresh", () =>
+    Effect.gen(function* () {
+      const credentials = yield* Credential.Service
+      const providers = yield* Provider.Service
+      const kv = yield* KV.Service
+      const requests: string[] = []
+      const chosen = yield* credentials.create({
+        integrationID: Integration.ID.make("openai"),
+        value: Credential.OAuth.make({
+          type: "oauth",
+          methodID: Integration.MethodID.make("chatgpt-token-sharing"),
+          access: "chosen",
+          refresh: "refresh",
+          expires: Date.now() + 60 * 60_000,
+          metadata: { clientID: "shared-client" },
+        }),
+      })
+      yield* PluginHost.storage(kv, ChatGPTPlugin.id).set(`models:v2:credential:${chosen.id}:shared-client`, {
+        updatedAt: Date.now(),
+        models: [{ slug: "from-cache", display_name: "Cached model", visibility: "list" }],
+      })
+      yield* credentials.create({
+        integrationID: Integration.ID.make("openai"),
+        activate: false,
+        value: Credential.OAuth.make({
+          type: "oauth",
+          methodID: Integration.MethodID.make("chatgpt-token-sharing"),
+          access: "unselected",
+          refresh: "refresh",
+          expires: Date.now() + 60 * 60_000,
+          metadata: { clientID: "shared-client" },
+        }),
+      })
+      const http = HttpClient.make((request) =>
+        Effect.sync(() => {
+          requests.push(request.headers.authorization)
+          return HttpClientResponse.fromWeb(
+            request,
+            Response.json({ models: [{ slug: "from-account", display_name: "Account model", visibility: "list" }] }),
+          )
+        }),
+      )
+      yield* addPlugin(http, false)
+      expect(requests).toEqual([])
+      expect((yield* providers.get(Provider.ID.openai))?.catalog?.status).toBe("ready")
+      yield* providers.refresh(Provider.ID.openai)
+      expect(requests).toEqual(["Bearer chosen"])
+      const models = yield* Model.Service
+      expect(
+        (yield* models.available()).filter((model) => model.providerID === Provider.ID.openai).map((model) => model.id),
+      ).toEqual([Model.ID.make("from-account")])
+    }),
+  )
+
+  it.live("does not discover models without a selected saved ChatGPT connection", () =>
+    Effect.gen(function* () {
+      const calls: string[] = []
+      const http = HttpClient.make((request) =>
+        Effect.sync(() => {
+          calls.push(request.url)
+          return HttpClientResponse.fromWeb(request, Response.json({ models: accountModels }))
+        }),
+      )
+      yield* addPlugin(http)
+      const providers = yield* Provider.Service
+      expect((yield* providers.get(Provider.ID.openai))?.catalog).toBeUndefined()
+      expect(calls).toEqual([])
+    }),
+  )
+
+  it.live("isolates caches for two accounts with the same client and ignores an old in-flight result", () =>
+    Effect.gen(function* () {
+      const credentials = yield* Credential.Service
+      const providers = yield* Provider.Service
+      const models = yield* Model.Service
+      const kv = yield* KV.Service
+      const storage = PluginHost.storage(kv, ChatGPTPlugin.id)
+      const first = yield* credentials.create({
+        integrationID: Integration.ID.make("openai"),
+        value: Credential.OAuth.make({
+          type: "oauth",
+          methodID: Integration.MethodID.make("chatgpt-token-sharing"),
+          access: "first",
+          refresh: "refresh",
+          expires: Date.now() + 60 * 60_000,
+          metadata: { clientID: "same-client" },
+        }),
+      })
+      const second = yield* credentials.create({
+        integrationID: Integration.ID.make("openai"),
+        activate: false,
+        value: Credential.OAuth.make({
+          type: "oauth",
+          methodID: Integration.MethodID.make("chatgpt-token-sharing"),
+          access: "second",
+          refresh: "refresh",
+          expires: Date.now() + 60 * 60_000,
+          metadata: { clientID: "same-client" },
+        }),
+      })
+      yield* storage.set(`models:v2:credential:${first.id}:same-client`, {
+        updatedAt: 0,
+        models: [{ slug: "cached-first", display_name: "First cached model", visibility: "list" }],
+      })
+      const started = yield* Deferred.make<void>()
+      const release = yield* Deferred.make<void>()
+      const http = HttpClient.make((request) =>
+        Effect.gen(function* () {
+          if (request.headers.authorization === "Bearer first") {
+            yield* Deferred.succeed(started, undefined)
+            yield* Deferred.await(release)
+          }
+          return HttpClientResponse.fromWeb(
+            request,
+            Response.json({
+              models: [
+                {
+                  slug: request.headers.authorization === "Bearer first" ? "remote-first" : "remote-second",
+                  display_name: "Account model",
+                  visibility: "list",
+                },
+              ],
+            }),
+          )
+        }),
+      )
+      yield* addPlugin(http, false)
+      expect((yield* models.available()).some((model) => model.id === "cached-first")).toBe(true)
+      yield* Deferred.await(started).pipe(Effect.timeout("2 seconds"))
+      yield* credentials.activate(second.id)
+      expect((yield* models.available()).some((model) => model.id === "cached-first")).toBe(false)
+      yield* Deferred.succeed(release, undefined)
+      const available = yield* models
+        .available()
+        .pipe(
+          Effect.repeat({
+            until: (items) => items.some((model) => model.id === "remote-second"),
+            schedule: Schedule.spaced("10 millis"),
+          }),
+          Effect.timeout("2 seconds"),
+        )
+      expect(available.filter((model) => model.providerID === Provider.ID.openai).map((model) => model.id)).toEqual([
+        Model.ID.make("remote-second"),
+      ])
+      expect((yield* providers.get(Provider.ID.openai))?.catalog?.status).toBe("ready")
+      expect(yield* storage.get(`models:v2:credential:${first.id}:same-client`)).toMatchObject({
+        models: [{ slug: "cached-first" }],
+      })
+      expect(yield* storage.get(`models:v2:credential:${second.id}:same-client`)).toMatchObject({
+        models: [{ slug: "remote-second" }],
+      })
+    }),
+  )
+
+  it.live("preserves cached models and diagnostic details on failure, then recovers on refresh", () =>
+    Effect.gen(function* () {
+      const credentials = yield* Credential.Service
+      const providers = yield* Provider.Service
+      const models = yield* Model.Service
+      const kv = yield* KV.Service
+      const saved = yield* credentials.create({
+        integrationID: Integration.ID.make("openai"),
+        value: Credential.OAuth.make({
+          type: "oauth",
+          methodID: Integration.MethodID.make("chatgpt-token-sharing"),
+          access: "chosen",
+          refresh: "refresh",
+          expires: Date.now() + 60 * 60_000,
+          metadata: { clientID: "issued-client" },
+        }),
+      })
+      yield* PluginHost.storage(kv, ChatGPTPlugin.id).set(`models:v2:credential:${saved.id}:issued-client`, {
+        updatedAt: 0,
+        models: [{ slug: "cached", display_name: "Cached model", visibility: "list" }],
+      })
+      const state = { failing: true }
+      const http = HttpClient.make((request) =>
+        Effect.sync(() =>
+          HttpClientResponse.fromWeb(
+            request,
+            state.failing
+              ? Response.json(
+                  {
+                    error: {
+                      code: "subscription_sharing_user_not_eligible",
+                      message: "This workspace does not allow ChatGPT plan usage.",
+                    },
+                  },
+                  { status: 403, headers: { "x-request-id": "req_catalog" } },
+                )
+              : Response.json({ models: [{ slug: "newly-available", display_name: "New model", visibility: "list" }] }),
+          ),
+        ),
+      )
+      yield* addPlugin(http)
+      expect((yield* providers.get(Provider.ID.openai))?.catalog).toMatchObject({
+        status: "stale",
+        updatedAt: 0,
+        httpStatus: 403,
+        code: "subscription_sharing_user_not_eligible",
+        requestID: "req_catalog",
+      })
+      expect((yield* models.available()).some((model) => model.id === "cached")).toBe(true)
+      expect((yield* credentials.get(saved.id))?.value).toMatchObject({ access: "chosen" })
+      state.failing = false
+      yield* providers.refresh(Provider.ID.openai)
+      expect((yield* providers.get(Provider.ID.openai))?.catalog).toMatchObject({ status: "ready" })
+      expect(
+        (yield* models.available()).filter((model) => model.providerID === Provider.ID.openai).map((model) => model.id),
+      ).toEqual([Model.ID.make("newly-available")])
+    }),
+  )
+
+  it.live("accepts minimal account catalogs and loads only listable models", () =>
     Effect.gen(function* () {
       const server = yield* Effect.acquireRelease(
         Effect.sync(() =>
           Bun.serve({
             port: 0,
             fetch: (request) => {
+              if (new URL(request.url).pathname === "/restricted/models")
+                return Response.json(
+                  { detail: "This workspace is restricted." },
+                  { status: 403, headers: { "x-request-id": "req_restricted" } },
+                )
+              if (new URL(request.url).pathname === "/malformed/models") return Response.json({ data: [] })
               if (new URL(request.url).pathname === "/error/models") return new Response(null, { status: 503 })
               if (new URL(request.url).pathname === "/empty/models") return Response.json({ models: [] })
               expect(request.headers.get("authorization")).toBe("Bearer test-token")
@@ -131,11 +393,12 @@ describe("ChatGPTPlugin", () => {
                   {
                     slug: "not-in-api",
                     display_name: "Not in API",
-                    visibility: "list",
+                    visibility: "hide",
                     supported_in_api: false,
                     context_window: 272_000,
                     input_modalities: ["text"],
                   },
+                  { slug: "future-model", display_name: "Future model", visibility: "list" },
                 ],
               })
             },
@@ -154,9 +417,19 @@ describe("ChatGPTPlugin", () => {
           input_modalities: ["text", "image"],
           supported_reasoning_levels: [{ effort: "low" }],
         },
+        { slug: "future-model", display_name: "Future model", visibility: "list" },
       ])
-      expect(yield* Effect.flip(fetchModels("test-token", App.make(), `${baseURL}/empty`))).toBeInstanceOf(Error)
+      expect(yield* fetchModels("test-token", App.make(), `${baseURL}/empty`)).toEqual([])
       expect(yield* Effect.flip(fetchModels("test-token", App.make(), `${baseURL}/error`))).toBeInstanceOf(Error)
+      expect(yield* Effect.flip(fetchModels("test-token", App.make(), `${baseURL}/restricted`))).toMatchObject({
+        httpStatus: 403,
+        requestID: "req_restricted",
+        message: "ChatGPT model catalog returned HTTP 403: This workspace is restricted.",
+      })
+      expect(yield* Effect.flip(fetchModels("test-token", App.make(), `${baseURL}/malformed`))).toMatchObject({
+        httpStatus: 200,
+        message: "ChatGPT returned an invalid model catalog. Try updating the model list again.",
+      })
     }),
   )
 
@@ -558,162 +831,20 @@ describe("ChatGPTPlugin", () => {
         }),
       })
 
-      yield* addPlugin()
+      yield* addPlugin(unavailableModels)
       expect((yield* credentials.get(legacy.id))?.value).toMatchObject({ methodID: "chatgpt-browser" })
       expect((yield* credentials.get(sharing.id))?.value).toMatchObject({
         methodID: "chatgpt-token-sharing",
         access: "sharing-token",
         metadata: { clientID: "oaiapp_issued" },
       })
-      expect(yield* PluginHost.storage(kv, ChatGPTPlugin.id).get("models:oaiapp_issued")).toEqual(snapshot)
+      expect(
+        yield* PluginHost.storage(kv, ChatGPTPlugin.id).get(`models:v2:credential:${sharing.id}:oaiapp_issued`),
+      ).toEqual({ updatedAt: 0, models: snapshot })
     }),
   )
 
-  // it.effect("merges account models with catalog metadata and leaves input budgeting to compaction", () =>
-  //   Effect.gen(function* () {
-  //     const catalog = yield* Provider.Service
-  //     const models = yield* Model.Service
-  //     const credentials = yield* Credential.Service
-  //     const kv = yield* KV.Service
-  //     yield* catalog.transform((editor) => {
-  //       editor.update(Provider.ID.openai, (provider) => {
-  //         provider.package = "@opencode/ai/providers/openai"
-  //       })
-  //       editor.models.update(Provider.ID.openai, Model.ID.make("gpt-5.6-sol"), (model) => {
-  //         model.limit = { context: 1_050_000, input: 922_000, output: 128_000 }
-  //         model.capabilities = { tools: true, input: ["text", "image", "pdf"], output: ["text"] }
-  //         model.variants = [
-  //           { id: Model.VariantID.make("low"), settings: { reasoningEffort: "low" } },
-  //           { id: Model.VariantID.make("high"), settings: { reasoningEffort: "high" } },
-  //         ]
-  //       })
-  //       editor.models.update(Provider.ID.openai, Model.ID.make("gpt-5.5"), () => {})
-  //     })
-  //     yield* PluginHost.storage(kv, ChatGPTPlugin.id).set("models:oaiapp_issued", [
-  //       {
-  //         slug: "gpt-5.6-sol",
-  //         display_name: "GPT-5.6-Sol",
-  //         visibility: "list",
-  //         supported_in_api: true,
-  //         context_window: 272_000,
-  //         input_modalities: ["text", "image"],
-  //         supported_reasoning_levels: [{ effort: "low" }, { effort: "ultra" }],
-  //       },
-  //       {
-  //         slug: "gpt-6-future",
-  //         display_name: "GPT-6-Future",
-  //         visibility: "list",
-  //         supported_in_api: true,
-  //         context_window: 272_000,
-  //         input_modalities: ["text"],
-  //         supported_reasoning_levels: [],
-  //       },
-  //     ])
-  //     yield* credentials.create({
-  //       integrationID: Integration.ID.make("openai"),
-  //       value: Credential.OAuth.make({
-  //         type: "oauth",
-  //         methodID: Integration.MethodID.make("chatgpt-token-sharing"),
-  //         access: "chatgpt-token",
-  //         refresh: "refresh",
-  //         expires: Date.now() + 60 * 60_000,
-  //         metadata: { clientID: "oaiapp_issued" },
-  //       }),
-  //     })
-  //     yield* addPlugin()
-  //
-  //     const available = (yield* models.available()).filter((model) => model.providerID === Provider.ID.openai)
-  //     expect(available.map((model) => model.id).sort()).toEqual([
-  //       Model.ID.make("gpt-5.6-sol"),
-  //       Model.ID.make("gpt-6-future"),
-  //     ])
-  //     const sol = required(available.find((model) => model.id === "gpt-5.6-sol"))
-  //     expect(sol.name).toBe("GPT-5.6-Sol")
-  //     expect(sol.capabilities.input).toEqual(["text", "image"])
-  //     expect(sol.variants.map((variant) => variant.id)).toEqual([
-  //       Model.VariantID.make("low"),
-  //       Model.VariantID.make("ultra"),
-  //     ])
-  //     expect(sol.limit).toEqual({ context: 272_000, output: 128_000 })
-  //     expect(sol.cost).toEqual([])
-  //     expect(sol.settings?.compaction).toEqual({ type: "summary" })
-  //     const future = required(available.find((model) => model.id === "gpt-6-future"))
-  //     expect(future.name).toBe("GPT-6-Future")
-  //     expect(future.package).toBe("@opencode/ai/providers/openai")
-  //     expect(future.limit).toEqual({ context: 272_000, output: 32_000 })
-  //   }),
-  // )
-  //
-  // it.live("shows catalog models while account models refresh in the background and saves them to KV", () =>
-  //   Effect.gen(function* () {
-  //     const catalog = yield* Provider.Service
-  //     const models = yield* Model.Service
-  //     const credentials = yield* Credential.Service
-  //     const kv = yield* KV.Service
-  //     yield* catalog.transform((editor) => {
-  //       editor.update(Provider.ID.openai, (provider) => {
-  //         provider.package = "@opencode/ai/providers/openai"
-  //       })
-  //       for (const id of ["gpt-5.5", "gpt-6-astra", "gpt-6-sol"])
-  //         editor.models.update(Provider.ID.openai, Model.ID.make(id), () => {})
-  //     })
-  //     const requested = yield* Deferred.make<void>()
-  //     const release = yield* Deferred.make<void>()
-  //     const remote = [
-  //       {
-  //         slug: "gpt-6-future",
-  //         display_name: "GPT-6-Future",
-  //         visibility: "list",
-  //         supported_in_api: true,
-  //         context_window: 272_000,
-  //         input_modalities: ["text"],
-  //       },
-  //     ]
-  //     const http = HttpClient.make((request) =>
-  //       Effect.gen(function* () {
-  //         expect(request.url).toBe("https://api.openai.com/v1/models")
-  //         expect(request.headers.authorization).toBe("Bearer chatgpt-token")
-  //         yield* Deferred.succeed(requested, undefined)
-  //         yield* Deferred.await(release)
-  //         return HttpClientResponse.fromWeb(request, Response.json({ models: remote }))
-  //       }),
-  //     )
-  //     yield* addPlugin(http)
-  //     yield* credentials.create({
-  //       integrationID: Integration.ID.make("openai"),
-  //       value: Credential.OAuth.make({
-  //         type: "oauth",
-  //         methodID: Integration.MethodID.make("chatgpt-token-sharing"),
-  //         access: "chatgpt-token",
-  //         refresh: "refresh",
-  //         expires: Date.now() + 60 * 60_000,
-  //         metadata: { clientID: "oaiapp_issued" },
-  //       }),
-  //     })
-  //     yield* Deferred.await(requested).pipe(Effect.timeout("2 seconds"))
-  //     expect((yield* models.available()).filter((model) => model.providerID === Provider.ID.openai).map((model) => model.id)).toEqual([
-  //       Model.ID.make("gpt-5.5"),
-  //       Model.ID.make("gpt-6-astra"),
-  //     ])
-  //     const storage = PluginHost.storage(kv, ChatGPTPlugin.id)
-  //     expect(yield* storage.get("models:oaiapp_issued")).toBeUndefined()
-  //
-  //     yield* Deferred.succeed(release, undefined)
-  //     const available = yield* models.available().pipe(
-  //       Effect.repeat({
-  //         until: (current) => current.some((model) => model.providerID === Provider.ID.openai && model.id === "gpt-6-future"),
-  //         schedule: Schedule.spaced("10 millis"),
-  //       }),
-  //       Effect.timeout("2 seconds"),
-  //     )
-  //     expect(available.filter((model) => model.providerID === Provider.ID.openai).map((model) => model.id)).toEqual([
-  //       Model.ID.make("gpt-6-future"),
-  //     ])
-  //     expect(yield* storage.get("models:oaiapp_issued")).toEqual(remote)
-  //   }),
-  // )
-
-  it.effect("routes ChatGPT over HTTP with only the listed catalog fallback models", () =>
+  it.effect("routes ChatGPT over HTTP with only models returned by the selected account", () =>
     Effect.gen(function* () {
       const catalog = yield* Provider.Service
       const models = yield* Model.Service
@@ -783,6 +914,7 @@ describe("ChatGPTPlugin", () => {
           access: "chatgpt-token",
           refresh: "refresh",
           expires: Date.now() + 60_000,
+          metadata: { clientID: "oaiapp_issued" },
         }),
       })
       yield* addPlugin()
@@ -843,26 +975,7 @@ describe("ChatGPTPlugin", () => {
           .filter((model) => model.providerID === Provider.ID.openai)
           .map((model) => model.id)
           .sort(),
-      ).toEqual(
-        [
-          "gpt-5.5",
-          "gpt-5.5-fast",
-          "gpt-5.6-luna",
-          "gpt-5.6-luna-fast",
-          "gpt-5.6-sol",
-          "gpt-5.6-sol-fast",
-          "gpt-5.6-terra",
-          "gpt-5.6-terra-fast",
-          "gpt-6-astra",
-          "gpt-6-astra-fast",
-          "gpt-6-luna",
-          "gpt-6-luna-fast",
-          "gpt-6-sol",
-          "gpt-6-sol-fast",
-          "gpt-6.1-sol",
-          "gpt-6.1-sol-fast",
-        ].map((id) => Model.ID.make(id)),
-      )
+      ).toEqual(["gpt-5.5", "gpt-5.6-sol", "gpt-6-astra", "gpt-6.1-sol"].map((id) => Model.ID.make(id)))
     }),
   )
 

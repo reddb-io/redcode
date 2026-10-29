@@ -204,6 +204,8 @@ import type {
   ModelDefaultOutput,
   GenerateTextInput,
   GenerateTextOutput,
+  ProviderRefreshInput,
+  ProviderRefreshOutput,
   ProviderListInput,
   ProviderListOutput,
   ProviderGetInput,
@@ -2111,6 +2113,18 @@ export function make(options: ClientOptions) {
         ).then((value) => value.data),
     },
     provider: {
+      refresh: (input: ProviderRefreshInput, requestOptions?: RequestOptions) =>
+        request<ProviderRefreshOutput>(
+          {
+            method: "POST",
+            path: `/api/provider/${encodeURIComponent(input.providerID)}/refresh`,
+            query: { location: input["location"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 404, 409],
+            empty: false,
+          },
+          requestOptions,
+        ),
       list: (input?: ProviderListInput, requestOptions?: RequestOptions) =>
         request<ProviderListOutput>(
           {

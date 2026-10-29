@@ -50,18 +50,26 @@ export function ProviderConnectionView(props: { services: Services }) {
             <div>
               <p className="flex items-center gap-2 font-medium text-foreground">
                 <Icon name="circle-check" />
-                {language.t("provider.connect.console.connected")}
+                {language.t(view.isConsole ? "provider.connect.console.connected" : "provider.connect.account.saved")}
               </p>
               <p>
-                {language.t(
-                  view.state.catalogPending
-                    ? "provider.connect.console.modelsLoading"
-                    : "provider.connect.console.noModels",
-                )}
+                {view.catalog?.message ??
+                  language.t(
+                    view.state.catalogPending
+                      ? "provider.connect.console.modelsLoading"
+                      : view.isConsole
+                        ? "provider.connect.console.noModels"
+                        : "provider.manage.catalog.error",
+                  )}
               </p>
+              {view.catalog?.requestID && (
+                <p className="select-text break-all text-caption">
+                  {language.t("provider.manage.catalog.requestID")}: {view.catalog.requestID}
+                </p>
+              )}
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              {!view.state.catalogPending && (
+              {view.isConsole && !view.state.catalogPending && (
                 <Button onClick={services.openConsole}>{language.t("provider.connect.console.openAgain")}</Button>
               )}
               <Button
@@ -69,7 +77,7 @@ export function ProviderConnectionView(props: { services: Services }) {
                 aria-busy={view.authState === "refreshing"}
                 onClick={() => void services.auth.refresh()}
               >
-                {language.t("provider.connect.console.refresh")}
+                {language.t(view.isConsole ? "provider.connect.console.refresh" : "provider.manage.catalog.refresh")}
               </Button>
             </div>
           </div>
@@ -534,6 +542,12 @@ function FirstConnectionModels(props: { view: View; services: Services }) {
   return (
     <div data-component="first-provider-models" className="flex min-h-0 flex-1 flex-col gap-4 px-3">
       <p className="m-0 shrink-0 text-body text-ink-muted">{language.t("provider.connect.models.description")}</p>
+      {view.catalog?.status === "stale" && (
+        <p role="status" className="m-0 text-body text-ink-muted">
+          {language.plural("provider.manage.catalog.stale", view.groups.flatMap((group) => group.models).length)}{" "}
+          {view.catalog.message}
+        </p>
+      )}
       <div data-component="first-provider-model-scroll" className="min-h-0 flex-1 overflow-y-auto pb-4">
         <div data-component="available-models-heading" className="mb-3 flex items-center gap-2 text-body font-medium">
           {language.t("provider.connect.models.available")}

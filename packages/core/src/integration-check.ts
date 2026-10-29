@@ -76,19 +76,24 @@ export const check = Effect.fn("IntegrationCheck.check")(function* (integrationI
       return `Catalog checked: ${catalog.data.length} models visible to this connection. Generation was not checked; use /dual to test a selected S2 model.`
     }
     const providers = yield* Provider.Service
-    const ids = new Set(
-      (yield* providers.available())
-        .filter((provider) => (provider.integrationID ?? provider.id) === integrationID)
-        .map((provider) => provider.id),
+    const available = (yield* providers.available()).filter(
+      (provider) => (provider.integrationID ?? provider.id) === integrationID,
     )
+    const ids = new Set(available.map((provider) => provider.id))
     const models = yield* Model.Service
     const model = (yield* models.available()).find(
       (model) => ids.has(model.providerID) && model.capabilities.output.includes("text"),
     )
-    if (!model)
+    if (!model) {
+      const catalog = available.find((provider) => provider.catalog?.message)?.catalog
       return yield* Effect.fail(
-        new Error("No generation model is available for this connection. No remote API request was sent."),
+        new Error(
+          catalog?.message
+            ? `${catalog.message}${catalog.requestID ? ` Request ID: ${catalog.requestID}.` : ""} No generation request was sent.`
+            : "No generation model is available for this connection. No remote API request was sent.",
+        ),
       )
+    }
     const generate = yield* Generate.Service
     yield* generate
       .text({

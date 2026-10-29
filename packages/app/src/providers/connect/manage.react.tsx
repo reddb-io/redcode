@@ -156,6 +156,64 @@ export function IntegrationConnectionsView(props: {
           ))}
         </div>
       </section>
+      {view.catalog && (
+        <section data-component="provider-model-catalog" className="flex flex-col gap-2 text-body">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="m-0 text-eyebrow uppercase text-ink-muted">{language.t("provider.manage.catalog.title")}</h3>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={state.refreshing || view.catalog.status === "loading" || !!state.busy}
+              aria-busy={state.refreshing}
+              onClick={services.refreshModels}
+            >
+              {language.t("provider.manage.catalog.refresh")}
+            </Button>
+          </div>
+          <p role="status" className="m-0 text-ink-muted">
+            {view.catalog.status === "ready" || view.catalog.status === "stale"
+              ? language.plural(`provider.manage.catalog.${view.catalog.status}`, view.modelCount)
+              : language.t(`provider.manage.catalog.${view.catalog.status}`)}
+          </p>
+          {view.catalog.updatedAt !== undefined && view.catalog.updatedAt > 0 && (
+            <p className="m-0 text-caption text-ink-muted">
+              {language.t("provider.manage.catalog.updated", {
+                time: new Date(view.catalog.updatedAt).toLocaleString(language.intl),
+              })}
+            </p>
+          )}
+          {view.catalog.message && (
+            <p role={view.catalog.status === "error" ? "alert" : undefined} className="m-0 break-words text-foreground">
+              {view.catalog.message}
+            </p>
+          )}
+          {(view.catalog.httpStatus !== undefined || view.catalog.code || view.catalog.requestID) && (
+            <details className="text-caption text-ink-muted">
+              <summary className="cursor-pointer">{language.t("provider.manage.catalog.details")}</summary>
+              <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+                {view.catalog.httpStatus !== undefined && (
+                  <>
+                    <dt>HTTP</dt>
+                    <dd>{view.catalog.httpStatus}</dd>
+                  </>
+                )}
+                {view.catalog.code && (
+                  <>
+                    <dt>{language.t("provider.manage.catalog.code")}</dt>
+                    <dd className="break-all">{view.catalog.code}</dd>
+                  </>
+                )}
+                {view.catalog.requestID && (
+                  <>
+                    <dt>{language.t("provider.manage.catalog.requestID")}</dt>
+                    <dd className="break-all select-text">{view.catalog.requestID}</dd>
+                  </>
+                )}
+              </dl>
+            </details>
+          )}
+        </section>
+      )}
       <div className="flex flex-wrap items-center gap-2">
         {view.canAdd && (
           <Button variant="secondary" disabled={!!state.busy} onClick={services.add}>

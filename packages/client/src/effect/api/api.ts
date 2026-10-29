@@ -4770,6 +4770,15 @@ export interface GenerateApi<E = never> {
   readonly text: GenerateTextOperation<E>
 }
 
+export type ProviderRefreshInput = {
+  readonly providerID: Provider.ID
+  readonly location?: { readonly directory?: string | undefined } | undefined
+}
+export type ProviderRefreshOutput = { readonly location: Location.PublicRef; readonly data: void }
+export type ProviderRefreshOperation<E = never> = (
+  input: ProviderRefreshInput,
+) => Effect.Effect<ProviderRefreshOutput, E>
+
 export type ProviderListInput = { readonly location?: { readonly directory?: string | undefined } | undefined }
 export type ProviderListOutput = { readonly location: Location.PublicRef; readonly data: ReadonlyArray<Provider.Info> }
 export type ProviderListOperation<E = never> = (input?: ProviderListInput) => Effect.Effect<ProviderListOutput, E>
@@ -4806,6 +4815,7 @@ export type ProviderRemoveOutput = {
 export type ProviderRemoveOperation<E = never> = (input: ProviderRemoveInput) => Effect.Effect<ProviderRemoveOutput, E>
 
 export interface ProviderApi<E = never> {
+  readonly refresh: ProviderRefreshOperation<E>
   readonly list: ProviderListOperation<E>
   readonly get: ProviderGetOperation<E>
   readonly remove: ProviderRemoveOperation<E>

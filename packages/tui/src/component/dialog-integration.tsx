@@ -140,6 +140,7 @@ function manageConnections(
     const shortcuts = Keymap.useShortcuts()
     const [deleting, setDeleting] = createSignal<string>()
     const [opening, setOpening] = createSignal<string>()
+    const [refreshing, setRefreshing] = createSignal(false)
     const [selected, setSelected] = createSignal(
       IntegrationConnections.credentialConnections(integration)[0]?.id ?? "add",
     )
@@ -147,12 +148,61 @@ function manageConnections(
       data.location.integration.list(location)?.find((item) => item.id === integration.id),
     )
     const connections = createMemo(() => IntegrationConnections.credentialConnections(current() ?? integration))
+    const catalogProvider = createMemo(() =>
+      data.location.provider
+        .list(location)
+        ?.find((provider) => (provider.integrationID ?? provider.id) === integration.id && provider.catalog),
+    )
 
     return (
       <DialogSelect
         title={integration.name}
         current={connections()[0]?.id}
         preserveSelection
+        footer={
+          <Show when={catalogProvider()?.catalog} keyed>
+            {(catalog) => (
+              <box paddingX={4} paddingBottom={1} flexDirection="column">
+                <text
+                  fg={
+                    catalog.status === "error"
+                      ? theme.text.feedback.error.base
+                      : catalog.status === "stale"
+                        ? theme.text.feedback.warning.base
+                        : theme.text.muted
+                  }
+                >
+                  {catalog.status === "loading"
+                    ? "Updating account models…"
+                    : catalog.status === "stale"
+                      ? "Using this account's cached models. The latest update failed."
+                      : catalog.status === "error"
+                        ? "The account is saved, but its model list could not be loaded."
+                        : "Account model list updated."}
+                </text>
+                <Show when={catalog.message}>
+                  <text fg={theme.text.base}>{catalog.message}</text>
+                </Show>
+                <Show when={catalog.updatedAt !== undefined && catalog.updatedAt > 0}>
+                  <text fg={theme.text.muted}>
+                    Last successful update: {new Date(catalog.updatedAt!).toLocaleString()}
+                  </text>
+                </Show>
+                <Show when={catalog.httpStatus || catalog.code || catalog.requestID}>
+                  <text fg={theme.text.muted}>
+                    {[
+                      catalog.httpStatus ? `HTTP ${catalog.httpStatus}` : undefined,
+                      catalog.code,
+                      catalog.requestID ? `Request ${catalog.requestID}` : undefined,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </text>
+                </Show>
+              </box>
+            )}
+          </Show>
+        }
         onMove={(option) => {
           setSelected(option.value)
           setDeleting(undefined)
@@ -218,6 +268,30 @@ function manageConnections(
                 },
               ]
             : []),
+          ...(catalogProvider()
+            ? [
+                {
+                  title: refreshing() ? "Updating account models…" : "Update model list",
+                  value: "refresh",
+                  category: "Actions",
+                  description: "Load the current model list for the selected account",
+                  disabled: refreshing(),
+                  onSelect: () => {
+                    const provider = catalogProvider()
+                    if (!provider || refreshing()) return
+                    setRefreshing(true)
+                    void client.api.provider
+                      .refresh({ providerID: provider.id, location: locationQuery(location) })
+                      .then(() => toast.show({ variant: "success", message: "Account models updated" }))
+                      .catch(toast.error)
+                      .finally(async () => {
+                        await data.location.sync(location).catch(toast.error)
+                        setRefreshing(false)
+                      })
+                  },
+                },
+              ]
+            : []),
           ...(integration.metadata?.source === "mcp"
             ? []
             : [
@@ -241,9 +315,8 @@ function manageConnections(
           {
             command: "dialog.integration.rename",
             title: "rename",
-            hidden: selected() === "add" || selected() === "remove" || selected() === "check",
-            disabled: (option) =>
-              !option || option.value === "add" || option.value === "remove" || option.value === "check",
+            hidden: ["add", "remove", "check", "refresh"].includes(selected()),
+            disabled: (option) => !option || ["add", "remove", "check", "refresh"].includes(option.value),
             onTrigger: (option) => {
               dialog.replace(() => (
                 <DialogPrompt
@@ -265,9 +338,8 @@ function manageConnections(
           {
             command: "dialog.integration.delete",
             title: "delete",
-            hidden: selected() === "add" || selected() === "remove" || selected() === "check",
-            disabled: (option) =>
-              !option || option.value === "add" || option.value === "remove" || option.value === "check",
+            hidden: ["add", "remove", "check", "refresh"].includes(selected()),
+            disabled: (option) => !option || ["add", "remove", "check", "refresh"].includes(option.value),
             onTrigger: (option) => {
               if (deleting() !== option.value) return setDeleting(option.value)
               const final = IntegrationConnections.credentialConnections(current() ?? integration).length === 1

@@ -45,6 +45,17 @@ export type Compaction = typeof Compaction.Type
 export const Transport = Schema.Literals(["http", "websocket"]).annotate({ identifier: "Provider.Transport" })
 export type Transport = typeof Transport.Type
 
+/** Account-specific discovery state. A cached inventory is not evidence of a successful generation. */
+export const Catalog = Schema.Struct({
+  status: Schema.Literals(["loading", "ready", "stale", "error"]),
+  updatedAt: Schema.Int.pipe(optional),
+  message: Schema.String.pipe(optional),
+  httpStatus: Schema.Int.pipe(optional),
+  code: Schema.String.pipe(optional),
+  requestID: Schema.String.pipe(optional),
+}).annotate({ identifier: "Provider.Catalog" })
+export type Catalog = typeof Catalog.Type
+
 export const Settings = Schema.StructWithRest(
   Schema.Struct({
     timeout: Schema.Union([Schema.Finite, Schema.Literal(false)]).pipe(optional),
@@ -79,6 +90,7 @@ export const Info = Schema.Struct({
   activation: Activation,
   package: Package,
   router: Router.Connection.pipe(optional),
+  catalog: Catalog.pipe(optional),
   ...Overlays,
 })
   .annotate({ identifier: "Provider.Info" })

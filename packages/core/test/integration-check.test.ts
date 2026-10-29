@@ -3,11 +3,44 @@ import { Effect } from "effect"
 import { Credential } from "../src/credential"
 import { Integration } from "../src/integration"
 import { IntegrationCheck } from "../src/integration-check"
+import { Provider } from "../src/provider"
 import { ConnectionCheck } from "@opencode/schema/connection-check"
 import { PluginTestLayer } from "./plugin/fixture"
 import { testEffect } from "./lib/effect"
 
 const it = testEffect(PluginTestLayer)
+
+it.effect("reports the actual model-discovery failure when no generation model is available", () =>
+  Effect.gen(function* () {
+    const integrations = yield* Integration.Service
+    const providers = yield* Provider.Service
+    const credentials = yield* Credential.Service
+    const integrationID = Integration.ID.make("openai")
+    yield* integrations.transform((editor) =>
+      editor.update(integrationID, (entry) => {
+        entry.name = "OpenAI"
+      }),
+    )
+    yield* credentials.create({ integrationID, value: Credential.Key.make({ type: "key", key: "saved-key" }) })
+    yield* providers.transform((editor) => {
+      editor.update(Provider.ID.openai, (provider) => {
+        provider.catalog = {
+          status: "error",
+          httpStatus: 403,
+          message: "Model catalog returned HTTP 403: workspace restriction.",
+          requestID: "req_workspace",
+        }
+      })
+      editor.models.set(Provider.ID.openai, [])
+    })
+    const report = yield* IntegrationCheck.check(integrationID)
+    expect(report.ok).toBe(false)
+    expect(report.message).toContain("HTTP 403: workspace restriction")
+    expect(report.message).toContain("req_workspace")
+    expect(report.message).toContain("No generation request was sent")
+    expect(report.requests).toEqual([])
+  }),
+)
 
 const checkCatalog = (body: string, status = 200) =>
   Effect.gen(function* () {

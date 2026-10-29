@@ -21,6 +21,8 @@ export const registerIntegrationPolicy = Effect.fn(function* (input: {
           ),
       },
       provider: {
+        refresh: () => Effect.die("unused provider.refresh"),
+        onRefresh: () => Effect.succeed({ dispose: Effect.void }),
         list: () => Effect.die("unused provider.list"),
         get: () => Effect.die("unused provider.get"),
         remove: () => Effect.die("unused provider.remove"),

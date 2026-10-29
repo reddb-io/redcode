@@ -8,6 +8,22 @@ import { LocationQuery, locationQueryOpenApi } from "./location.js"
 
 export const ProviderGroup = HttpApiGroup.make("server.provider")
   .add(
+    HttpApiEndpoint.post("provider.refresh", "/api/provider/:providerID/refresh", {
+      params: { providerID: Provider.ID },
+      query: LocationQuery,
+      success: Location.response(Schema.Void),
+      error: InvalidRequestError,
+    })
+      .annotateMerge(locationQueryOpenApi)
+      .annotateMerge(
+        OpenApi.annotations({
+          identifier: "provider.refresh",
+          summary: "Refresh provider models",
+          description: "Refresh the model catalog using the explicitly selected saved connection.",
+        }),
+      ),
+  )
+  .add(
     HttpApiEndpoint.get("provider.list", "/api/provider", {
       query: LocationQuery,
       success: Location.response(Schema.Array(Provider.Info)),
@@ -47,11 +63,13 @@ export const ProviderGroup = HttpApiGroup.make("server.provider")
       error: InvalidRequestError,
     })
       .annotateMerge(locationQueryOpenApi)
-      .annotateMerge(OpenApi.annotations({
-        identifier: "experimental.provider.remove",
-        summary: "Remove provider",
-        description: "Preview or remove saved provider credentials, global references, and learned model limits.",
-      })),
+      .annotateMerge(
+        OpenApi.annotations({
+          identifier: "experimental.provider.remove",
+          summary: "Remove provider",
+          description: "Preview or remove saved provider credentials, global references, and learned model limits.",
+        }),
+      ),
   )
   .annotateMerge(
     OpenApi.annotations({

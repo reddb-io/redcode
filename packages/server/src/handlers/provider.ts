@@ -10,6 +10,17 @@ export const ProviderHandler = HttpApiBuilder.group(Api, "server.provider", (han
   Effect.gen(function* () {
     return handlers
       .handle(
+        "provider.refresh",
+        Effect.fn(function* (ctx) {
+          const providers = yield* Provider.Service
+          return yield* response(
+            providers
+              .refresh(ctx.params.providerID)
+              .pipe(Effect.mapError((error) => new InvalidRequestError({ message: error.message }))),
+          )
+        }),
+      )
+      .handle(
         "provider.list",
         Effect.fn(function* () {
           const providers = yield* Provider.Service
@@ -33,9 +44,11 @@ export const ProviderHandler = HttpApiBuilder.group(Api, "server.provider", (han
         "provider.remove",
         Effect.fn(function* (ctx) {
           const removal = yield* ProviderRemove.Service
-          return yield* response(removal.remove(ctx.params.providerID, ctx.payload).pipe(
-            Effect.mapError((error) => new InvalidRequestError({ message: error.message })),
-          ))
+          return yield* response(
+            removal
+              .remove(ctx.params.providerID, ctx.payload)
+              .pipe(Effect.mapError((error) => new InvalidRequestError({ message: error.message }))),
+          )
         }),
       )
   }),

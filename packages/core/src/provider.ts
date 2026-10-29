@@ -1,7 +1,7 @@
 export * as Provider from "./provider.js"
 export { AISDK_PREFIX, isAISDK, aisdk, packageName } from "./provider-package.js"
 
-import { Context, Effect, Layer, Option, Schema, Stream, Struct } from "effect"
+import { Context, Effect, Layer, Option, Schema, Stream, Struct, type Scope } from "effect"
 import { Provider } from "@opencode/schema/provider"
 import { Model } from "@opencode/schema/model"
 import { makeLocationNode } from "@opencode/util/effect/app-node"
@@ -22,6 +22,7 @@ import { packageName } from "./provider-package.js"
 
 export const ID = Provider.ID
 export type ID = typeof ID.Type
+export type Catalog = Provider.Catalog
 
 type Json = Schema.Schema.Type<typeof Schema.Json>
 const JsonRecord = Schema.Record(Schema.String, Schema.Json)
@@ -264,6 +265,11 @@ export interface Snapshot {
 }
 
 export interface Interface extends State.Transformable<Editor> {
+  readonly refresh: (providerID: ID) => Effect.Effect<void, Error>
+  readonly onRefresh: (
+    providerID: ID,
+    refresh: () => Effect.Effect<void, Error>,
+  ) => Effect.Effect<State.Registration, never, Scope.Scope>
   readonly get: (providerID: ID) => Effect.Effect<Info | undefined>
   readonly all: () => Effect.Effect<readonly Info[]>
   readonly available: () => Effect.Effect<readonly Info[]>
@@ -295,6 +301,7 @@ const layer = Layer.effect(
     const bus = yield* Bus.Service
     const integrations = yield* Integration.Service
     const location = yield* Location.Service
+    const refreshers = new Map<ID, () => Effect.Effect<void, Error>>()
     const state = State.create<
       Map<
         ID,
@@ -444,6 +451,19 @@ const layer = Layer.effect(
       Effect.forkScoped({ startImmediately: true }),
     )
     return Service.of({
+      refresh: Effect.fn("Provider.refresh")((id) => {
+        const refresh = refreshers.get(id)
+        return refresh ? refresh() : Effect.fail(new Error(`Model refresh is not available for provider: ${id}`))
+      }),
+      onRefresh: (id, refresh) =>
+        Effect.gen(function* () {
+          refreshers.set(id, refresh)
+          const dispose = Effect.sync(() => {
+            if (refreshers.get(id) === refresh) refreshers.delete(id)
+          })
+          yield* Effect.addFinalizer(() => dispose)
+          return { dispose }
+        }),
       transform: state.transform,
       reload: state.reload,
       get: Effect.fn("Provider.get")((id) => Effect.sync(() => freeze(state.get().get(id)?.provider, true))),

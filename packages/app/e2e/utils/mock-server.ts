@@ -30,6 +30,7 @@ import { installSseTransport } from "./sse-transport"
 import type { UsageReporter } from "@opencode/schema/usage-reporter"
 import { AgentTools } from "@opencode/schema/agent-tools"
 import { Model } from "@opencode/schema/model"
+import { Provider } from "@opencode/schema/provider"
 
 export async function mockAgentTools(page: Page, server = SERVER) {
   const operations: string[] = []
@@ -1614,6 +1615,7 @@ function currentProviders(catalog: MockProviderCatalog) {
       name: provider.name,
       package: provider.id,
       activation: connected.has(provider.id) ? "enabled" : "auto",
+      catalog: provider.catalog,
     }))
 }
 
@@ -1744,7 +1746,13 @@ const decodePromptPayload = Schema.decodeUnknownOption(
   }),
 )
 
-const decodeProvider = Schema.decodeUnknownOption(Schema.Struct({ id: Schema.String, name: Schema.String }))
+const decodeProvider = Schema.decodeUnknownOption(
+  Schema.Struct({
+    id: Schema.String,
+    name: Schema.String,
+    catalog: Schema.optional(Provider.Catalog),
+  }),
+)
 
 const decodeModelProvider = Schema.decodeUnknownOption(
   Schema.Struct({ id: Schema.String, models: Schema.Record(Schema.String, Schema.Unknown) }),
