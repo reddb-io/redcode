@@ -6,7 +6,7 @@ import { AIError, HttpContext, LLM, Message, RateLimitError } from "@opencode/ai
 import { classifyProviderFailure } from "@opencode/ai/provider-error"
 import { compileRequest } from "@opencode/ai/route/client"
 import { describe, expect } from "bun:test"
-import { DateTime, Deferred, Effect, Schedule } from "effect"
+import { DateTime, Deferred, Effect, Fiber, Schedule } from "effect"
 import { HttpClient, HttpClientResponse } from "effect/unstable/http"
 import { exportJWK, generateKeyPair, SignJWT } from "jose"
 import { App } from "@opencode/core/app"
@@ -272,15 +272,13 @@ describe("ChatGPTPlugin", () => {
       yield* credentials.activate(second.id)
       expect((yield* models.available()).some((model) => model.id === "cached-first")).toBe(false)
       yield* Deferred.succeed(release, undefined)
-      const available = yield* models
-        .available()
-        .pipe(
-          Effect.repeat({
-            until: (items) => items.some((model) => model.id === "remote-second"),
-            schedule: Schedule.spaced("10 millis"),
-          }),
-          Effect.timeout("2 seconds"),
-        )
+      const available = yield* models.available().pipe(
+        Effect.repeat({
+          until: (items) => items.some((model) => model.id === "remote-second"),
+          schedule: Schedule.spaced("10 millis"),
+        }),
+        Effect.timeout("2 seconds"),
+      )
       expect(available.filter((model) => model.providerID === Provider.ID.openai).map((model) => model.id)).toEqual([
         Model.ID.make("remote-second"),
       ])
@@ -350,6 +348,55 @@ describe("ChatGPTPlugin", () => {
       expect(
         (yield* models.available()).filter((model) => model.providerID === Provider.ID.openai).map((model) => model.id),
       ).toEqual([Model.ID.make("newly-available")])
+    }),
+  )
+
+  it.live("keeps cached models visible during a failed OAuth token refresh", () =>
+    Effect.gen(function* () {
+      const credentials = yield* Credential.Service
+      const integrations = yield* Integration.Service
+      const providers = yield* Provider.Service
+      const models = yield* Model.Service
+      const integrationID = Integration.ID.make("openai")
+      const methodID = Integration.MethodID.make("chatgpt-token-sharing")
+      const value = Credential.OAuth.make({
+        type: "oauth",
+        methodID,
+        access: "saved-token",
+        refresh: "saved-refresh",
+        expires: Date.now() + 60 * 60_000,
+        metadata: { clientID: "issued-client" },
+      })
+      const saved = yield* credentials.create({ integrationID, value })
+      yield* addPlugin()
+      const started = yield* Deferred.make<void>()
+      const release = yield* Deferred.make<void>()
+      yield* integrations.transform((editor) =>
+        editor.method.update({
+          integrationID,
+          method: { type: "oauth", id: methodID, label: "Sign in with ChatGPT" },
+          authorize: () => Effect.die("unused authorization"),
+          refresh: () =>
+            Effect.gen(function* () {
+              yield* Deferred.succeed(started, undefined)
+              yield* Deferred.await(release)
+              return yield* Effect.fail(new Error("OAuth refresh is temporarily unavailable"))
+            }),
+        }),
+      )
+      yield* credentials.update(saved.id, { value: Credential.OAuth.make({ ...value, expires: 0 }) })
+      const refresh = yield* providers.refresh(Provider.ID.openai).pipe(Effect.flip, Effect.forkScoped)
+      yield* Deferred.await(started).pipe(Effect.timeout("2 seconds"))
+      expect((yield* providers.get(Provider.ID.openai))?.catalog?.status).toBe("loading")
+      expect((yield* models.available()).some((model) => model.id === "gpt-5.5")).toBe(true)
+      yield* Deferred.succeed(release, undefined)
+      expect((yield* Fiber.join(refresh)).message).toContain("OAuth refresh is temporarily unavailable")
+      expect((yield* providers.get(Provider.ID.openai))?.catalog).toMatchObject({ status: "stale" })
+      expect((yield* models.available()).some((model) => model.id === "gpt-5.5")).toBe(true)
+      expect((yield* credentials.get(saved.id))?.value).toMatchObject({
+        access: "saved-token",
+        refresh: "saved-refresh",
+      })
     }),
   )
 

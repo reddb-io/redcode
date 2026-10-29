@@ -63,7 +63,7 @@ existing model definitions when the response supplies it. A minimal catalog with
 only names does not erase known capabilities.
 
 Each saved connection and issued client ID has its own cache. Cached choices
-remain usable during a temporary catalog failure. Discovery runs in the
+remain visible while tokens renew and during a temporary catalog or refresh failure. Discovery runs in the
 background, normally every five minutes; permission failures wait for an explicit
 update or account change. **Update model list** in Desktop or TUI refreshes the
 selected account without rebuilding the Location. The connection panel shows

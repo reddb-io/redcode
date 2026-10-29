@@ -226,16 +226,12 @@ export const ChatGPTPlugin = define({
     let source: Effect.Success<ReturnType<typeof ctx.integration.connection.active>>
     let available: ReadonlyArray<RemoteModel> | undefined
     let catalog: Provider.Catalog | undefined
-    let authenticated = false
 
     const load = Effect.fn("ChatGPTPlugin.load")(function* () {
       const connection = yield* ctx.integration.connection.active(integrationID)
-      const resolved = connection
-        ? yield* ctx.integration.connection.resolve(connection).pipe(Effect.result)
-        : undefined
       const saved =
         connection?.type === "credential" ? yield* credentials.get(Credential.ID.make(connection.id)) : undefined
-      const credential = resolved && Result.isSuccess(resolved) ? resolved.success : saved?.value
+      const credential = saved?.value
       if (
         IntegrationConnection.key(connection) !==
         IntegrationConnection.key(yield* ctx.integration.connection.active(integrationID))
@@ -243,17 +239,14 @@ export const ChatGPTPlugin = define({
         return
       chatgpt = credential?.type === "oauth" && credential.methodID === methodID ? credential : undefined
       source = chatgpt ? connection : undefined
-      authenticated = !!resolved && Result.isSuccess(resolved)
       available = undefined
       catalog = undefined
       if (!chatgpt || !source) return
       const metadata = Option.getOrUndefined(decodeMetadata(chatgpt.metadata))
-      if (!metadata || (resolved && Result.isFailure(resolved))) {
+      if (!metadata) {
         catalog = {
           status: "error",
-          message: metadata
-            ? "The selected ChatGPT connection could not be refreshed. Check this account and sign in again if its authorization was revoked."
-            : "This ChatGPT connection has no registered client ID. Sign in again.",
+          message: "This ChatGPT connection has no registered client ID. Sign in again.",
         }
         return
       }
@@ -361,7 +354,7 @@ export const ChatGPTPlugin = define({
       const credential = chatgpt
       const metadata = Option.getOrUndefined(decodeMetadata(credential?.metadata))
       if (!connection || !credential) return
-      if (!metadata || !authenticated)
+      if (!metadata)
         return yield* Effect.fail(
           new CatalogError({
             message: catalog?.message ?? "The selected ChatGPT account could not be authorized.",
@@ -378,8 +371,31 @@ export const ChatGPTPlugin = define({
         })
       catalog = { status: "loading", updatedAt: catalog?.updatedAt }
       yield* ctx.provider.reload()
-      const result = yield* fetchModels(credential.access, ctx.app).pipe(
+      const result = yield* Effect.gen(function* () {
+        const value = yield* ctx.integration.connection.resolve(connection)
+        if (value?.type !== "oauth" || value.methodID !== methodID)
+          return yield* Effect.fail(
+            new CatalogError({
+              message: "Select a saved ChatGPT connection before updating its model list.",
+            }),
+          )
+        if (!(yield* current()))
+          return yield* Effect.fail(
+            new CatalogError({
+              message: "The selected ChatGPT account changed while its model list was loading.",
+            }),
+          )
+        return yield* fetchModels(value.access, ctx.app)
+      }).pipe(
         Effect.provideService(HttpClient.HttpClient, http),
+        Effect.mapError((cause) => {
+          const error = cause instanceof Integration.AuthorizationError ? cause.cause : cause
+          return error instanceof CatalogError
+            ? error
+            : new CatalogError({
+                message: `Could not refresh the selected ChatGPT account: ${error instanceof Error ? error.message : String(error)}`,
+              })
+        }),
         Effect.result,
       )
       if (!(yield* current())) return
@@ -434,7 +450,7 @@ export const ChatGPTPlugin = define({
       if (
         catalog &&
         (catalog.status === "error" || catalog.status === "stale") &&
-        (!authenticated || [400, 401, 403].includes(catalog.httpStatus ?? 0))
+        [400, 401, 403].includes(catalog.httpStatus ?? 0)
       )
         return
       yield* load()
