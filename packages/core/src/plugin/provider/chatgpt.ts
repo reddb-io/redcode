@@ -116,18 +116,16 @@ const signIn = (app: App.Info, savedClientID: () => string | undefined, storage:
           const error = url.searchParams.get("error_description") ?? url.searchParams.get("error")
           const authorizationCode = url.searchParams.get("code")
           if (error) {
-            Effect.runFork(Deferred.fail(received, new Error(error)))
-            response
-              .writeHead(400, { "Content-Type": "text/html" })
-              .end(OauthCallbackPage.error(error, { provider: "ChatGPT" }))
+            Effect.runFork(
+              respond(response, error).pipe(Effect.andThen(Deferred.fail(received, new Error(error)))),
+            )
             return
           }
           if (!authorizationCode || url.searchParams.get("state") !== state) {
             const message = authorizationCode ? "Invalid OAuth state" : "Missing authorization code"
-            Effect.runFork(Deferred.fail(received, new Error(message)))
-            response
-              .writeHead(400, { "Content-Type": "text/html" })
-              .end(OauthCallbackPage.error(message, { provider: "ChatGPT" }))
+            Effect.runFork(
+              respond(response, message).pipe(Effect.andThen(Deferred.fail(received, new Error(message)))),
+            )
             return
           }
           if (
@@ -150,16 +148,6 @@ const signIn = (app: App.Info, savedClientID: () => string | undefined, storage:
           instructions: "Complete authorization in your browser. This window will close automatically.",
           callback: Effect.gen(function* () {
             const result = yield* Deferred.await(received)
-            const respond = (error?: string) =>
-              Effect.sync(() =>
-                result.response
-                  .writeHead(error ? 400 : 200, { "Content-Type": "text/html" })
-                  .end(
-                    error
-                      ? OauthCallbackPage.error(error, { provider: "ChatGPT" })
-                      : OauthCallbackPage.success({ provider: "ChatGPT" }),
-                  ),
-              )
             return yield* Effect.gen(function* () {
               // Reauthorization callbacks may omit the client ID; reuse the one this attempt started with.
               if (savedID && result.clientID && result.clientID !== savedID)
@@ -180,8 +168,10 @@ const signIn = (app: App.Info, savedClientID: () => string | undefined, storage:
               yield* verifyIDToken(tokens.id_token, clientID, nonce)
               return credential(tokens, clientID)
             }).pipe(
-              Effect.tap(() => respond()),
-              Effect.tapError((error) => respond(error instanceof Error ? error.message : "ChatGPT sign-in failed")),
+              Effect.tap(() => respond(result.response)),
+              Effect.tapError((error) =>
+                respond(result.response, error instanceof Error ? error.message : "ChatGPT sign-in failed"),
+              ),
               Effect.onInterrupt(() => Effect.sync(() => result.response.destroy())),
             )
           }),
@@ -189,6 +179,34 @@ const signIn = (app: App.Info, savedClientID: () => string | undefined, storage:
       }),
     refresh: (value) => refresh(value, app),
   }) satisfies IntegrationOAuthMethodRegistration
+
+function respond(response: ServerResponse, error?: string) {
+  return Effect.callback<void>((resume) => {
+    if (response.destroyed) return resume(Effect.void)
+    const done = () => {
+      response.off("finish", done)
+      response.off("close", done)
+      response.off("error", done)
+      resume(Effect.void)
+    }
+    response.once("finish", done)
+    response.once("close", done)
+    response.once("error", done)
+    response
+      .writeHead(error ? 400 : 200, { "Content-Type": "text/html" })
+      .end(
+        error
+          ? OauthCallbackPage.error(error, { provider: "ChatGPT" })
+          : OauthCallbackPage.success({ provider: "ChatGPT" }),
+      )
+    return Effect.sync(() => {
+      response.off("finish", done)
+      response.off("close", done)
+      response.off("error", done)
+      response.destroy()
+    })
+  })
+}
 
 function listen(server: Server) {
   return Effect.callback<number, Error>((resume) => {

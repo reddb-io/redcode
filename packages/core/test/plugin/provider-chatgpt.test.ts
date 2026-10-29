@@ -442,6 +442,26 @@ describe("ChatGPTPlugin", () => {
     }),
   )
 
+  it.live("sends the complete error page before closing an invalid callback", () =>
+    Effect.gen(function* () {
+      yield* addPlugin()
+      const integrations = yield* Integration.Service
+      const attempt = yield* integrations.oauth.connect({
+        integrationID: Integration.ID.make("openai"),
+        methodID: Integration.MethodID.make("chatgpt-token-sharing"),
+      })
+      const authorization = new URL(attempt.url)
+      const callback = new URL(authorization.searchParams.get("redirect_uri") ?? "")
+      callback.searchParams.set("code", "test-code")
+      callback.searchParams.set("state", "invalid")
+      const response = yield* Effect.promise(() => fetch(callback))
+      expect(response.status).toBe(400)
+      const body = yield* Effect.promise(() => response.text())
+      expect(body).toContain("Invalid OAuth state")
+      expect(body).toContain("</html>")
+    }),
+  )
+
   it.effect("reauthorizes with the client ID issued to an existing ChatGPT connection", () =>
     Effect.gen(function* () {
       const credentials = yield* Credential.Service
