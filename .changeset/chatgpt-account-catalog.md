@@ -1,5 +1,5 @@
 ---
-"@reddb-io/redcode": patch
+"@reddb-io/redcode": minor
 ---
 
 Discover ChatGPT models from the selected account instead of a fixed model list. Keep a separate cache for each saved connection, refresh it in the background, and preserve known capabilities when the server returns only model names.
