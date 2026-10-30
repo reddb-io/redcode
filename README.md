@@ -127,6 +127,10 @@ Use `/agent-tools` or `redcode tools` to configure the host's optional browser, 
 snapshot capabilities. [Agent tools](docs/agent-tools.md).
 The npm package includes the coding engine and Design; Desktop uses the full distribution above.
 
+Inside [Herdr](https://herdr.dev), Redcode reports activity and pending approvals or questions for
+the selected session and its subagents. Herdr can restore that session after restarting; no OpenCode
+plugin is required. [Herdr integration](docs/clients.md#herdr).
+
 Use `redcode stats --cost --models` to inspect costs and token usage. Estimates, incomplete subtotals
 and records without cost provenance are marked in the report. [Statistics](docs/clients.md#cli).
 

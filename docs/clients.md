@@ -61,6 +61,29 @@ routine footer details are hidden or cannot fit. These amounts are not reconcile
 | `/intelligence`, `/reasoning`               | Inspect evaluations or change the session's reasoning mode. |
 | `/budget`, `/compact`                       | Set an optional budget or compact context.                  |
 
+### Herdr
+
+Run `redcode` in a [Herdr](https://herdr.dev) pane. Integration activates automatically when Herdr
+provides its pane, binary and socket environment. No `herdr integration install opencode` step is
+needed for Redcode.
+
+The pane reports `working` while the selected session or its subagents execute, `blocked` while
+they need a permission decision or form response, and `idle` when they are ready. A lost Redcode
+server connection reports `unknown`. Opening a subagent retains its root session; opening settings
+or returning Home keeps tracking the last selected session. Other sessions do not change that pane.
+
+With Herdr 0.9.2 or newer, restarting Herdr can reopen the selected session using
+`redcode --session <id>`. Explicit server, standalone and permission options are preserved; the
+original prompt is never submitted again. Herdr restores the pane's working directory. Disable
+restoration in Herdr with `[session] resume_agents_on_restore = false`.
+For an authenticated explicit server, `OPENCODE_PASSWORD` must also be available in the restored
+shell environment. Resume commands do not store passwords.
+
+Exiting Redcode releases the pane's agent identity without stopping the background agent server.
+Reports use short timeouts and retry only the latest state, so an unavailable Herdr socket does
+not block the TUI. This integration applies to the full TUI; Desktop, Mini and headless runs do not
+report pane activity.
+
 ## Desktop
 
 With a full native installation:

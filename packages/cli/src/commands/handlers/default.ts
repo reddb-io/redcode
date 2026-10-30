@@ -103,6 +103,17 @@ export default Runtime.handler(Commands, (input) =>
         version: OPENCODE_VERSION,
         channel: process.env.OPENCODE_TUI_CHANNEL ?? OPENCODE_CHANNEL,
       },
+      resume:
+        OPENCODE_ARTIFACT === "redcode"
+          ? (session) => [
+              "redcode",
+              ...(requestedServer ? ["--server", requestedServer] : []),
+              ...(input.standalone ? ["--standalone"] : []),
+              ...(process.env.REDCODE_YOLO === "1" ? ["--yolo"] : permissions.auto ? ["--auto"] : []),
+              "--session",
+              session.id,
+            ]
+          : undefined,
       server: {
         endpoint: server.endpoint,
         service: service

@@ -269,6 +269,7 @@ const suites = {
     "./src/delivery/resources-model.test.ts",
   ],
   tui: [
+    "test/herdr.test.tsx",
     "test/clipboard.test.ts",
     "test/keybind.test.ts",
     "test/cli/tui/dialog-prompt.test.tsx",

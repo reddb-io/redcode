@@ -42,6 +42,7 @@ import {
   useTuiApp,
   useTuiStartup,
   useTuiTerminalEnvironment,
+  useTuiLifecycle,
   type TuiApp,
 } from "./context/runtime"
 import { DialogProvider, useDialog } from "./ui/dialog"
@@ -55,6 +56,7 @@ import { StartupLoading } from "./component/startup-loading"
 import { DevToolsBar } from "./component/devtools-bar"
 import { Reconnecting } from "./component/reconnecting"
 import { DataProvider, useData } from "./context/data"
+import { startHerdr } from "./herdr"
 import { SessionTabsProvider, useSessionTabs } from "./context/session-tabs"
 import { LocationProvider, useLocation } from "./context/location"
 import { LocalProvider, useLocal } from "./context/local"
@@ -184,6 +186,7 @@ const appBindingCommands = [
 
 export type TuiInput = {
   app: TuiApp
+  resume?: (session: SessionInfo) => readonly string[]
   server: {
     endpoint: Endpoint
     service?: {
@@ -417,7 +420,7 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
                                                                                   packages={input.packages}
                                                                                   directories={pluginDirectories}
                                                                                 >
-                                                                                  <App />
+                                                                                  <App resume={input.resume} />
                                                                                 </PluginProvider>
                                                                               </PanelProvider>
                                                                             </UpdateNotificationProvider>
@@ -471,7 +474,7 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
   })
 })
 
-function App() {
+function App(props: Pick<TuiInput, "resume">) {
   const log = useLog({ component: "app" })
   const app = useTuiApp()
   const startup = useTuiStartup()
@@ -492,6 +495,20 @@ function App() {
   const theme = useTheme()
   const { mode, supports, setMode, locked, lock, unlock, afterPaint } = useThemes()
   const data = useData()
+  if (props.resume) {
+    const close = startHerdr({
+      data,
+      route: () => route.data,
+      connected: () => client.connection.status() === "connected",
+      resume: props.resume,
+    })
+    if (close) {
+      const unregister = useTuiLifecycle().add(close)
+      onCleanup(() => {
+        void close().finally(unregister)
+      })
+    }
+  }
   const location = useLocation()
   const exit = useExit()
   // A bare Ctrl+C or Ctrl+D exits only on a second press (see `accidentalExitKey`).
