@@ -1,5 +1,16 @@
 # @reddb-io/redcode
 
+## 0.87.3
+
+### Patch Changes
+
+- Show compact live CPU and available-memory trends in host resources, visualize recent automation admissions, and allow exact navigation spacing in settings.
+- Show a compact task-state distribution and a live process-memory trend in the shared dashboards.
+- Update the vendored RedDB design system for compact desktop and web dashboard components.
+- Visualize recorded session lineage, show worker queue reasons in the batch overview, and offer an explicitly labeled seven-day cost extrapolation from native usage.
+- Show a compact breakdown of reported, estimated, unknown and legacy usage records alongside cost coverage, and reduce dashboard indicator spacing on narrow screens.
+- Show a compact, live distribution of worker task states in the batch overview.
+
 ## 0.87.2
 
 ### Patch Changes
