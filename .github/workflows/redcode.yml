@@ -162,7 +162,7 @@ jobs:
   browser:
     name: browser journeys
     needs: plan
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -269,7 +269,7 @@ jobs:
       # Pull requests gate on Linux only. Windows is the slowest lane, so it runs after merge
       # on main and before every publication, never on open pull requests.
       matrix:
-        include: ${{ fromJSON(github.event_name == 'pull_request' && '[{"name":"linux","host":"ubuntu-latest"}]' || '[{"name":"linux","host":"ubuntu-latest"},{"name":"windows","host":"windows-2025"}]') }}
+        include: ${{ fromJSON(github.event_name == 'pull_request' && '[{"name":"linux","host":"ubuntu-24.04"}]' || '[{"name":"linux","host":"ubuntu-24.04"},{"name":"windows","host":"windows-2025"}]') }}
     runs-on: ${{ matrix.host }}
     timeout-minutes: ${{ matrix.name == 'windows' && 45 || 30 }}
     defaults:

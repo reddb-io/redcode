@@ -58,14 +58,21 @@ const Cache = Schema.Struct({
 const CACHE_KEY = "models-dev:catalog"
 const STATE_KEY = "models-dev:sources"
 /** Public catalogs, tried after `REDCODE_MODELS_URL` and the `models.sources` configuration. */
-export const DEFAULT_SOURCES = ["https://models.dev/experimental/v2.0/api.json"] as const
+export const DEFAULT_SOURCES = [
+  "https://models.dev/experimental/v2.0/api.json?type=all",
+  "https://raw.githubusercontent.com/reddb-io/redcode/refs/heads/models-catalog-cache/models.json",
+  "https://github.com/reddb-io/redcode/releases/download/models-catalog/models.json",
+] as const
 
 /** Catalog URLs in the order they are tried: a URL without a `.json` path gets `/api.json`, duplicates go. */
 export function sources(configured: readonly (string | undefined)[]) {
   const urls = [...configured, ...DEFAULT_SOURCES].flatMap((value) => {
     const url = value?.trim() ? URL.parse(value.trim()) : null
     if (!url) return []
-    if (url.hostname === "models.dev" && url.pathname === "/") url.pathname = "/experimental/v2.0/api.json"
+    if (url.hostname === "models.dev" && url.pathname === "/") {
+      url.pathname = "/experimental/v2.0/api.json"
+      if (!url.searchParams.has("type")) url.searchParams.set("type", "all")
+    }
     if (!url.pathname.endsWith(".json")) url.pathname = `${url.pathname.replace(/\/+$/, "")}/api.json`
     return [url.toString()]
   })

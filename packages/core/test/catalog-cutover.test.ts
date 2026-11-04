@@ -72,7 +72,11 @@ test("committed catalog is exclusively V2 and round-trips every model", async ()
   expect(snapshots.some((provider) => provider.info.id === "azure-cognitive-services")).toBe(false)
   expect(snapshots.some((provider) => provider.info.id === "google-vertex-anthropic")).toBe(false)
   models.forEach((model) => expect(decode(encode(model)).id).toBe(model.id))
-  expect(ModelsDev.DEFAULT_SOURCES).toEqual(["https://models.dev/experimental/v2.0/api.json"])
+  expect(ModelsDev.DEFAULT_SOURCES).toEqual([
+    "https://models.dev/experimental/v2.0/api.json?type=all",
+    "https://raw.githubusercontent.com/reddb-io/redcode/refs/heads/models-catalog-cache/models.json",
+    "https://github.com/reddb-io/redcode/releases/download/models-catalog/models.json",
+  ])
 })
 
 test.each(["openai", "anthropic", "google", "openrouter", "deepseek", "xai", "groq", "cohere", "alibaba"])(
