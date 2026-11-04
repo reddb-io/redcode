@@ -2,6 +2,7 @@ export * as ConfigNormalize from "./normalize.js"
 
 import { Schema, SchemaIssue, SchemaParser } from "effect"
 import { Info } from "@opencode/schema/config"
+import { ConfigImport } from "../import/config.js"
 
 export interface Diagnostic {
   readonly kind: "invalid"
@@ -33,5 +34,20 @@ export function normalize(input: unknown): Result {
       path: issue.path?.length ? issue.path.map((part) => String(typeof part === "object" ? part.key : part)) : ["$"],
       message,
     })),
+  }
+}
+
+/** Accept an older document only when conversion is complete and conflict-free. */
+export function compatible(input: unknown) {
+  const current = normalize(input)
+  if (current.type === "normalized") return { ...current, converted: false as const }
+  const legacy = ConfigImport.convert(input)
+  if (legacy.type === "normalized" && legacy.diagnostics.length === 0) {
+    const validated = normalize(legacy.encoded)
+    if (validated.type === "normalized") return { ...validated, converted: true as const }
+  }
+  return {
+    type: "rejected" as const,
+    diagnostics: legacy.diagnostics.length ? legacy.diagnostics : current.diagnostics,
   }
 }

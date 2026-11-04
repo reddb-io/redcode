@@ -460,6 +460,8 @@ describe("RedRouterPlugin", () => {
               },
             })
             const providers = yield* Provider.Service
+            yield* providers.refresh(Provider.ID.make("red-router"))
+            expect((yield* providers.get(Provider.ID.make("red-router")))?.catalog?.status).toBe("ready")
             expect((yield* providers.get(Provider.ID.make("red-router")))?.router).toEqual({
               kind: "red-router",
               instanceID: "instance-1",

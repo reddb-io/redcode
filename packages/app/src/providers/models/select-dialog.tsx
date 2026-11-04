@@ -362,22 +362,23 @@ function createModelSelectorController(input: {
     const catalogs = [...providers().values()].filter(
       (provider) => provider.catalog && (!input.provider() || provider.id === input.provider()),
     )
-    await (
-      catalogs.length
-        ? Promise.all(catalogs.map((provider) => sdk.api.provider.refresh({ providerID: provider.id, location: ref })))
-        : sdk.api.location.reload()
-    )
-      .then(() => {
-        data.location.integration.invalidate(ref)
-        data.location.provider.invalidate(ref)
-        data.location.model.invalidate(ref)
-
-        return Promise.all([
-          data.location.integration.sync(ref),
-          data.location.provider.sync(ref),
-          data.location.model.sync(ref),
-        ])
-      })
+    await (async () => {
+      const results = catalogs.length
+        ? await Promise.allSettled(
+            catalogs.map((provider) => sdk.api.provider.refresh({ providerID: provider.id, location: ref })),
+          )
+        : (await sdk.api.location.reload(), [])
+      data.location.integration.invalidate(ref)
+      data.location.provider.invalidate(ref)
+      data.location.model.invalidate(ref)
+      await Promise.all([
+        data.location.integration.sync(ref),
+        data.location.provider.sync(ref),
+        data.location.model.sync(ref),
+      ])
+      const failed = results.find((result) => result.status === "rejected")
+      if (failed?.status === "rejected") throw failed.reason
+    })()
       .then(() => showToast({ variant: "success", title: language.t("dialog.model.refresh.done") }))
       .catch((error: unknown) =>
         showToast({ title: language.t("common.requestFailed"), description: formatServerError(error, language.t) }),

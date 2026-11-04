@@ -2,6 +2,11 @@ import { afterAll, describe, expect, test } from "bun:test"
 import { Effect, Schema, Stream } from "effect"
 import { Config } from "@opencode/core/config"
 import { Credential } from "@opencode/core/credential"
+import { KV } from "@opencode/core/kv"
+import { Model } from "@opencode/core/model"
+import { Provider } from "@opencode/core/provider"
+import { ConfigProviderPlugin } from "@opencode/core/config/plugin/provider"
+import { OpenAICompatibleCatalogPlugin } from "@opencode/core/plugin/provider/openai-compatible-catalog"
 import { Integration } from "@opencode/core/integration"
 import { Plugin } from "@opencode/core/plugin"
 import { PluginHost } from "@opencode/core/plugin/host"
@@ -25,11 +30,17 @@ const largeCatalog = Array.from({ length: 2505 }, (_, index) => ({
   max_completion_tokens: 4_000,
 }))
 
+let dynamicModels: string[] = []
+let dynamicStatus = 200
 const server = Bun.serve({
   port: 0,
   fetch(request) {
     const url = new URL(request.url)
     if (request.headers.get("authorization") !== "Bearer sk-good") return new Response("no", { status: 401 })
+    if (url.pathname === "/dynamic/models")
+      return dynamicStatus === 200
+        ? Response.json({ data: dynamicModels.map((id) => ({ id })) })
+        : new Response("unavailable", { status: dynamicStatus })
     if (url.pathname === "/v1/models")
       return Response.json({
         data: [
@@ -281,3 +292,74 @@ describe("OpenAI-compatible endpoints that the router knows", () => {
     expect(await Effect.runPromise(isRedRouter(endpoint({ baseURL: "http://127.0.0.1:1/v1" }), "sk-good"))).toBe(false)
   })
 })
+
+it.effect("refreshes a custom endpoint without changing configured models or losing the last good inventory", () =>
+  Effect.gen(function* () {
+    const id = "custom-refresh-test"
+    const baseURL = `${server.url.origin}/dynamic`
+    const source = {
+      providers: {
+        [id]: {
+          package: "@opencode/ai/providers/openai-compatible",
+          settings: { baseURL },
+          excludeModels: ["blocked"],
+          models: { alpha: { name: "alpha" }, manual: { name: "manual" } },
+        },
+      },
+    }
+    const config = {
+      compatibility: () => Effect.succeed({ claude: [], agents: [] }),
+      changes: () => Stream.empty,
+      entries: () => Effect.succeed([new Document({ type: "document", info: Schema.decodeUnknownSync(Info)(source) })]),
+    }
+    const plugin = yield* Plugin.Service
+    const host = yield* PluginHost.make(plugin)
+    const credentials = yield* Credential.Service
+    const providers = yield* Provider.Service
+    const models = yield* Model.Service
+    const kv = yield* KV.Service
+    yield* credentials.create({
+      integrationID: Integration.ID.make(id),
+      value: Credential.Key.make({ type: "key", key: "sk-good" }),
+    })
+    yield* kv.set(`openai-compatible:managed:${id}`, { baseURL, models: { alpha: { name: "alpha" } } })
+    yield* ConfigProviderPlugin.Plugin.effect(host).pipe(Effect.provideService(Config.Service, config))
+    yield* OpenAICompatibleCatalogPlugin.effect(host).pipe(Effect.provideService(Config.Service, config))
+    dynamicStatus = 200
+    dynamicModels = ["alpha", "new-model", "blocked"]
+    yield* providers.refresh(Provider.ID.make(id))
+    expect(
+      (yield* models.available())
+        .filter((item) => item.providerID === id)
+        .map((item) => String(item.id))
+        .sort(),
+    ).toEqual(["alpha", "manual", "new-model"])
+    dynamicModels = ["new-model", "newer-model"]
+    yield* providers.refresh(Provider.ID.make(id))
+    expect(
+      (yield* models.available())
+        .filter((item) => item.providerID === id)
+        .map((item) => String(item.id))
+        .sort(),
+    ).toEqual(["manual", "new-model", "newer-model"])
+    dynamicStatus = 503
+    yield* providers.refresh(Provider.ID.make(id)).pipe(Effect.flip)
+    expect((yield* providers.get(Provider.ID.make(id)))?.catalog?.status).toBe("stale")
+    expect(
+      (yield* models.available())
+        .filter((item) => item.providerID === id)
+        .map((item) => String(item.id))
+        .sort(),
+    ).toEqual(["manual", "new-model", "newer-model"])
+    expect(source.providers[id].models).toEqual({ alpha: { name: "alpha" }, manual: { name: "manual" } })
+    yield* credentials.create({
+      integrationID: Integration.ID.make(id),
+      value: Credential.Key.make({ type: "key", key: "other-account" }),
+    })
+    for (let attempt = 0; attempt < 100; attempt++) {
+      if (!(yield* models.available()).some((model) => model.providerID === id && model.id === "new-model")) break
+      yield* Effect.yieldNow
+    }
+    expect((yield* models.available()).some((model) => model.providerID === id && model.id === "new-model")).toBe(false)
+  }),
+)

@@ -214,16 +214,22 @@ export function DialogModel(props: { providerID?: string }) {
     const catalogs = [...providers().values()].filter(
       (provider) => provider.catalog && (!props.providerID || provider.id === props.providerID),
     )
-    await (
-      catalogs.length
-        ? Promise.all(
+    await (async () => {
+      const results = catalogs.length
+        ? await Promise.allSettled(
             catalogs.map((provider) =>
               client.api.provider.refresh({ providerID: provider.id, location: location.ref }),
             ),
           )
-        : client.api.location.reload()
-    )
-      .then(() => data.location.sync(location.ref))
+        : (await client.api.location.reload(), [])
+      await data.location.sync(location.ref)
+      const failed = catalogs.filter((_, index) => results[index]?.status === "rejected")
+      if (failed.length === 1) {
+        const result = results[catalogs.indexOf(failed[0])]
+        if (result?.status === "rejected") throw result.reason
+      }
+      if (failed.length) throw new Error(`Could not refresh: ${failed.map((provider) => provider.name).join(", ")}`)
+    })()
       .then(() => toast.show({ variant: "success", message: "Models refreshed" }))
       .catch(toast.error)
       .finally(() => setRefreshing(false))

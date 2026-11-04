@@ -146,7 +146,7 @@ export const layer = (options?: Options) =>
           })
           return
         }
-        const result = ConfigNormalize.normalize(input)
+        const result = ConfigNormalize.compatible(input)
         yield* Effect.forEach(result.diagnostics, (diagnostic) =>
           Effect.logWarning("configuration normalization diagnostic", {
             source,
@@ -158,9 +158,10 @@ export const layer = (options?: Options) =>
         if (result.type === "rejected")
           return yield* Effect.die(
             new Error(
-              `Invalid configuration at ${source}. Use redcode migrate inspect --kind config before converting older files.`,
+              `Invalid configuration at ${source}. Incompatible fields: ${result.diagnostics.map((item) => item.path.join(".")).join(", ")}. Run redcode migrate inspect <file> --kind config for details.`,
             ),
           )
+        if (result.converted) yield* Effect.logInfo("loaded compatible legacy configuration in memory", { source })
         const info = Option.getOrUndefined(decodeInfo(result.encoded))
         if (info) return info
         yield* Effect.logWarning("configuration normalization diagnostic", {

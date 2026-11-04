@@ -54,6 +54,23 @@ user choices. This policy does not sandbox external SDKs or change the operating
 system's environment. OAuth application client configuration and paths used to
 offer local CLI configuration choices are not model-provider connections.
 
+## Refreshing OpenAI-compatible endpoints
+
+The Desktop model selector and connection panel offer **Refresh models** / **Update
+model list**; in the TUI model selector press **Ctrl+R**, or choose **Update model
+list** in the connection's actions. The server requests the active connection's
+`/models` endpoint and updates its in-memory inventory without rewriting your
+configuration. A failed request keeps the last successful inventory. Explicit
+model filters and manually configured models remain in force.
+
+For endpoints connected by the current wizard, Redcode tracks which entries the
+wizard discovered. If the endpoint removes one of those entries and it has not
+been manually edited, a successful refresh hides it. Older connections without
+that provenance retain their configured entries, because Redcode cannot safely
+distinguish discovered entries from manual ones. Newly discovered entries are
+held in memory for the current server session; refresh again after a restart.
+RedRouter and 9Router also support the same explicit refresh action.
+
 ## ChatGPT accounts and Codex
 
 **Sign in with ChatGPT** uses the selected saved account's token to request

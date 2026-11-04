@@ -7,8 +7,9 @@ alternativos de execução.
 
 ## Decisões de produto
 
-- Conversão de dados antigos exige ação explícita, com inspeção anterior e saída
-  em um destino novo. A origem é preservada e uma saída existente não é sobrescrita.
+- O servidor aceita configurações antigas sem conflitos ou campos desconhecidos por
+  meio de uma adaptação em memória, sem reescrever a origem. Conversão persistente
+  de dados exige ação explícita, inspeção anterior e saída em um destino novo.
 - A consolidação da GUI usa React e o Design System oficial por jornadas completas.
 - Arquivamento exige ausência de execução e trabalho pendente, incluindo filhos.
   Restaurar não inicia execução; arquivar não cancela nem apaga trabalho.
@@ -16,7 +17,8 @@ alternativos de execução.
 
 ## Execução do plano aprovado
 
-- [x] Retirar conversões automáticas de configuração, preferências, temas e startup.
+- [x] Manter preferências, temas e dados persistidos sob conversão explícita; a
+      compatibilidade de configuração no servidor ocorre somente em memória.
 - [x] Entregar inspeção e conversão explícitas de configuração, histórico, tema e display.
 - [x] Conectar configuração e LSP às APIs existentes, com erros e escopo corretos.
 - [x] Entregar arquivamento/restauração pelo mesmo contrato em CLI, TUI e GUI.
@@ -37,7 +39,8 @@ somente uma saída nova. Os tipos são `config`, `history`, `theme` e `display`.
 Executar uma conversão não executa prompts nem descobre providers.
 
 O comando de inspeção não imprime o conteúdo dos arquivos. Incompatibilidades
-precisam ser resolvidas antes de publicar uma conversão. A origem preservada é a
+impedem a conversão quando há campos inválidos ou sem suporte; conflitos aparecem
+no resultado da conversão explícita e impedem a adaptação automática. A origem preservada é a
 cópia de recuperação; o conversor não faz atualizações no arquivo original.
 
 ```sh

@@ -48,7 +48,7 @@ export async function convert(source: string, output: string, kind: Kind = "conf
   await fs.writeFile(temporary, JSON.stringify(prepared.result.encoded, null, 2) + "\n", { flag: "wx", mode: 0o600 })
   // Publishing with a hard link refuses an existing destination atomically, including symlinks.
   await fs.link(temporary, path.resolve(output)).finally(() => fs.unlink(temporary))
-  return { source: path.resolve(source), output: path.resolve(output), kind }
+  return { source: path.resolve(source), output: path.resolve(output), kind, diagnostics: prepared.result.diagnostics }
 }
 
 async function prepare(source: string, kind: Exclude<Kind, "history">) {

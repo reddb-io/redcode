@@ -2,7 +2,7 @@ export * as ConfigImport from "./config.js"
 
 import { isDeepStrictEqual } from "node:util"
 import { isRecord } from "@opencode/ai/utils/record"
-import { Option, Schema } from "effect"
+import { Option, Schema, SchemaIssue, SchemaParser } from "effect"
 import { Info } from "@opencode/schema/config"
 import { ConfigAgent } from "@opencode/schema/config/agent"
 import { ConfigCommand } from "@opencode/schema/config/command"
@@ -52,6 +52,92 @@ const unsupportedExperimental = [
   "continue_loop_on_deny",
 ] as const
 const unsupportedProvider = ["id"] as const
+const nativeAtomic = {
+  hooks: Info.fields.hooks,
+  $schema: Info.fields.$schema,
+  shell: Info.fields.shell,
+  voice: Info.fields.voice,
+  model: Info.fields.model,
+  default_agent: Info.fields.default_agent,
+  share: Info.fields.share,
+  enterprise: Info.fields.enterprise,
+  username: Info.fields.username,
+  snapshots: Info.fields.snapshots,
+  vault: Info.fields.vault,
+  media: Info.fields.media,
+  tool_output: Info.fields.tool_output,
+  websearch: Info.fields.websearch,
+  worktree: Info.fields.worktree,
+  database: Info.fields.database,
+  design: Info.fields.design,
+  warming: Info.fields.warming,
+  session: Info.fields.session,
+  models: Info.fields.models,
+}
+
+const knownTopLevel = new Set([
+  ...Object.keys(nativeAtomic),
+  "update",
+  "references",
+  "commands",
+  "agents",
+  "providers",
+  "permissions",
+  "plugins",
+  "skills",
+  "mcp",
+  "compaction",
+  "experimental",
+  "watcher",
+  "formatter",
+  "lsp",
+  "instructions",
+  ...unsupportedTopLevel,
+  "snapshot",
+  "autoupdate",
+  "autoshare",
+  "attachment",
+  "reference",
+  "command",
+  "agent",
+  "small_model",
+  "mode",
+  "provider",
+  "tools",
+  "permission",
+  "plugin",
+  "subagent_depth",
+  "enabled_providers",
+  "disabled_providers",
+])
+const knownExperimental = new Set([
+  ...unsupportedExperimental,
+  "mcp_timeout",
+  "portable_shell_scanner",
+  "subagent_depth",
+  "subagent_limits",
+  "background_subagents_max",
+  "subtask_concurrency",
+  "loop_guard",
+  "stop_loss",
+  "aux_timeout",
+  "turn_steps",
+  "turn_stall",
+  "tool_timeout",
+  "model_suggestions",
+  "reasoning_code_repair",
+  "reasoning_self_review",
+  "reasoning_verification",
+  "reasoning_tool_selection",
+  "reasoning_context_curation",
+  "reasoning_learning",
+  "code_mode",
+  "policies",
+])
+const issueFormatter = SchemaIssue.makeFormatterStandardSchemaV1({
+  leafHook: () => "unrecognized setting cannot be converted safely",
+  checkHook: () => "unrecognized setting cannot be converted safely",
+})
 
 export function convert(input: unknown): Result {
   if (!isRecord(input))
@@ -64,6 +150,7 @@ export function convert(input: unknown): Result {
 
   const diagnostics: Diagnostic[] = []
   const encoded: Record<string, unknown> = {}
+  unknownKeys(input, knownTopLevel, [], diagnostics)
   unsupportedTopLevel.forEach((key) => unsupportedIfPresent(input, key, [key], diagnostics))
 
   const legacySnapshots = own(input, "snapshot")
@@ -75,11 +162,10 @@ export function convert(input: unknown): Result {
   const nativeUpdate = own(input, "update")
     ? decodeEncoded(Info.fields.update, input.update, ["update"], diagnostics)
     : undefined
-  const legacyShare = own(input, "autoshare")
-    ? decodeValue(Schema.Boolean, input.autoshare, ["autoshare"], diagnostics) === true
-      ? "auto"
-      : undefined
+  const legacyAutoshare = own(input, "autoshare")
+    ? decodeValue(Schema.Boolean, input.autoshare, ["autoshare"], diagnostics)
     : undefined
+  const legacyShare = legacyAutoshare === undefined ? undefined : legacyAutoshare ? "auto" : "manual"
   const legacyMedia = own(input, "attachment")
     ? decodeValue(ConfigAttachmentV1.Info, input.attachment, ["attachment"], diagnostics)
     : undefined
@@ -196,28 +282,6 @@ export function convert(input: unknown): Result {
   normalizeFormatter(input, encoded, diagnostics)
   normalizeLsp(input, encoded, diagnostics)
 
-  const nativeAtomic = {
-    hooks: Info.fields.hooks,
-    $schema: Info.fields.$schema,
-    shell: Info.fields.shell,
-    voice: Info.fields.voice,
-    model: Info.fields.model,
-    default_agent: Info.fields.default_agent,
-    share: Info.fields.share,
-    enterprise: Info.fields.enterprise,
-    username: Info.fields.username,
-    snapshots: Info.fields.snapshots,
-    vault: Info.fields.vault,
-    media: Info.fields.media,
-    tool_output: Info.fields.tool_output,
-    websearch: Info.fields.websearch,
-    worktree: Info.fields.worktree,
-    database: Info.fields.database,
-    design: Info.fields.design,
-    warming: Info.fields.warming,
-    session: Info.fields.session,
-    models: Info.fields.models,
-  }
   Object.entries(nativeAtomic).forEach(([key, schema]) => {
     if (!own(input, key)) return
     const value = decodeEncoded(schema, input[key], [key], diagnostics)
@@ -241,6 +305,7 @@ function normalizeSkills(input: Record<string, unknown>, encoded: Record<string,
     invalid(["skills"], diagnostics)
     return
   }
+  unknownKeys(input.skills, new Set(["paths", "urls"]), ["skills"], diagnostics)
   encoded.skills = [
     ...decodeList(input.skills.paths, Schema.String, ["skills", "paths"], diagnostics, decodeEncoded),
     ...decodeList(input.skills.urls, Schema.String, ["skills", "urls"], diagnostics, decodeEncoded),
@@ -309,6 +374,7 @@ function normalizeMcpTimeout(
     invalid(path, diagnostics)
     return
   }
+  unknownKeys(value, new Set(Object.keys(ConfigMCP.Timeout.fields)), path, diagnostics)
   const recognized = Object.entries(ConfigMCP.Timeout.fields).filter(([key]) => own(value, key))
   if (Object.keys(value).length && !recognized.length) {
     invalid(path, diagnostics)
@@ -331,6 +397,22 @@ function normalizeCompaction(
     invalid(["compaction"], diagnostics)
     return
   }
+  unknownKeys(
+    input.compaction,
+    new Set([
+      "prune",
+      "auto",
+      "preserve_recent_tokens",
+      "keep",
+      "tail_turns",
+      "reserved",
+      "buffer",
+      "summary_max_tokens",
+      "background",
+    ]),
+    ["compaction"],
+    diagnostics,
+  )
   const result: Record<string, unknown> = {}
   if (own(input.compaction, "prune")) {
     const value = decodeEncoded(
@@ -359,6 +441,7 @@ function normalizeCompaction(
       )
     : undefined
   const nativeKeep = isRecord(input.compaction.keep) ? input.compaction.keep : undefined
+  if (nativeKeep) unknownKeys(nativeKeep, new Set(["tokens", "turns"]), ["compaction", "keep"], diagnostics)
   if (own(input.compaction, "keep") && !nativeKeep) invalid(["compaction", "keep"], diagnostics)
   const nativeTokens =
     nativeKeep && own(nativeKeep, "tokens")
@@ -463,6 +546,7 @@ function normalizeExperimental(
     if (!isRecord(input.experimental)) invalid(["experimental"], diagnostics)
     if (isRecord(input.experimental)) {
       const experimental = input.experimental
+      unknownKeys(experimental, knownExperimental, ["experimental"], diagnostics)
       unsupportedExperimental.forEach((key) =>
         unsupportedIfPresent(experimental, key, ["experimental", key], diagnostics),
       )
@@ -541,6 +625,20 @@ function normalizeExperimental(
       }
       if (own(experimental, "turn_steps")) {
         // V1 spelled the ceiling as { wrap_up_at, stop_at }; only the wall carries over.
+        if (isRecord(experimental.turn_steps)) {
+          unknownKeys(
+            experimental.turn_steps,
+            new Set(["wrap_up_at", "stop_at"]),
+            ["experimental", "turn_steps"],
+            diagnostics,
+          )
+          unsupportedIfPresent(
+            experimental.turn_steps,
+            "wrap_up_at",
+            ["experimental", "turn_steps", "wrap_up_at"],
+            diagnostics,
+          )
+        }
         const legacy = isRecord(experimental.turn_steps) ? experimental.turn_steps.stop_at : experimental.turn_steps
         const value =
           legacy === undefined
@@ -632,6 +730,7 @@ function normalizeWatcher(input: Record<string, unknown>, encoded: Record<string
     invalid(["watcher"], diagnostics)
     return
   }
+  unknownKeys(input.watcher, new Set(["ignore"]), ["watcher"], diagnostics)
   const ignore = decodeList(input.watcher.ignore, Schema.String, ["watcher", "ignore"], diagnostics, decodeEncoded)
   encoded.watcher = ignore.length || Array.isArray(input.watcher.ignore) ? { ignore } : {}
 }
@@ -728,7 +827,14 @@ function migrateProviders(value: unknown, diagnostics: Diagnostic[]) {
   const current = new Set(candidates.filter((item) => item.name === item.destination).map((item) => item.destination))
   const result: Record<string, unknown> = {}
   candidates.forEach((item) => {
-    if (item.name !== item.destination && current.has(item.destination)) return
+    if (item.name !== item.destination && current.has(item.destination)) {
+      const canonical = candidates.find((candidate) => candidate.name === item.destination)
+      if (canonical && !isDeepStrictEqual(item.provider, canonical.provider))
+        conflict(["provider", item.name], diagnostics)
+      return
+    }
+    if (Object.hasOwn(result, item.destination) && !isDeepStrictEqual(result[item.destination], item.provider))
+      conflict(["provider", item.name], diagnostics)
     setOwn(result, item.destination, item.provider)
   })
   return result
@@ -756,6 +862,10 @@ function diagnoseAgentUnsupported(value: unknown, path: string[], diagnostics: D
   Object.entries(value).forEach(([name, agent]) => {
     if (!isRecord(agent)) return
     unsupportedIfPresent(agent, "name", [...path, name, "name"], diagnostics)
+    if (typeof agent.color === "string" && !agent.color.startsWith("#"))
+      unsupported([...path, name, "color"], diagnostics)
+    if (agent.steps !== undefined && agent.maxSteps !== undefined && agent.steps !== agent.maxSteps)
+      conflict([...path, name, "maxSteps"], diagnostics)
     diagnoseSelection(agent, [...path, name], diagnostics)
   })
 }
@@ -849,7 +959,10 @@ function decodeValue<S extends Schema.Codec<unknown, unknown, never, never>>(
   diagnostics: Diagnostic[],
 ) {
   const decoded = Schema.decodeUnknownOption(schema, options)(value)
-  if (Option.isSome(decoded)) return decoded.value
+  if (Option.isSome(decoded)) {
+    diagnoseExcess(schema, value, path, diagnostics)
+    return decoded.value
+  }
   invalid(path, diagnostics)
   return undefined
 }
@@ -865,6 +978,7 @@ function decodeEncoded<S extends Schema.Codec<unknown, unknown, never, never>>(
     invalid(path, diagnostics)
     return undefined
   }
+  diagnoseExcess(schema, value, path, diagnostics)
   const encoded = Schema.encodeUnknownOption(schema, options)(decoded.value)
   if (Option.isSome(encoded)) return plain(encoded.value)
   invalid(path, diagnostics)
@@ -945,6 +1059,38 @@ function prefer(legacy: unknown, native: unknown, path: string[], diagnostics: D
 function unsupportedIfPresent(value: Record<string, unknown>, key: string, path: string[], diagnostics: Diagnostic[]) {
   if (!own(value, key)) return
   diagnostics.push({ kind: "unsupported", path, message: "omitted unsupported legacy setting" })
+}
+
+function unknownKeys(
+  value: Record<string, unknown>,
+  known: ReadonlySet<string>,
+  path: string[],
+  diagnostics: Diagnostic[],
+) {
+  for (const key of Object.keys(value)) {
+    if (!known.has(key)) unsupported([...path, key], diagnostics)
+  }
+}
+
+function unsupported(path: string[], diagnostics: Diagnostic[]) {
+  if (diagnostics.some((entry) => entry.kind === "unsupported" && isDeepStrictEqual(entry.path, path))) return
+  diagnostics.push({ kind: "unsupported", path, message: "unrecognized setting cannot be converted safely" })
+}
+
+function diagnoseExcess<S extends Schema.Codec<unknown, unknown, never, never>>(
+  schema: S,
+  value: unknown,
+  path: string[],
+  diagnostics: Diagnostic[],
+) {
+  const strict = SchemaParser.decodeUnknownResult(schema, { ...options, onExcessProperty: "error" })(value)
+  if (strict._tag === "Success") return
+  for (const issue of issueFormatter(strict.failure).issues) {
+    unsupported(
+      [...path, ...(issue.path ?? []).map((part) => String(typeof part === "object" ? part.key : part))],
+      diagnostics,
+    )
+  }
 }
 
 function invalid(path: string[], diagnostics: Diagnostic[]) {

@@ -252,3 +252,25 @@ test("explicit Markdown agent conversion preserves its body and nested identity 
     permissions: [{ action: "edit", resource: "*", effect: "deny" }],
   })
 })
+
+test("unknown legacy settings prevent conversion without creating an output", async () => {
+  await using directory = await tmpdir()
+  const source = path.join(directory.path, "old.json")
+  const output = path.join(directory.path, "converted.json")
+  await Bun.write(source, JSON.stringify({ snapshot: false, future: "private-value" }))
+  const inspection = await FileConversion.inspect(source, "config")
+  expect(inspection).toMatchObject({ compatible: false })
+  expect(JSON.stringify(inspection)).not.toContain("private-value")
+  await expect(FileConversion.convert(source, output, "config")).rejects.toThrow("incompatibilities")
+  expect(await Bun.file(output).exists()).toBe(false)
+})
+
+test("explicit conversion returns conflict diagnostics", async () => {
+  await using directory = await tmpdir()
+  const source = path.join(directory.path, "old.json")
+  const output = path.join(directory.path, "converted.json")
+  await Bun.write(source, JSON.stringify({ snapshot: false, snapshots: true }))
+  expect(await FileConversion.convert(source, output, "config")).toMatchObject({
+    diagnostics: [expect.objectContaining({ kind: "conflict" })],
+  })
+})

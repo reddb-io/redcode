@@ -2,6 +2,7 @@ import { define } from "@opencode/plugin/effect/plugin"
 import { Form } from "@opencode/schema/form"
 import { Effect, Option, Schema } from "effect"
 import { Config } from "../../config.js"
+import { KV } from "../../kv.js"
 import { Integration } from "../../integration.js"
 import { Provider } from "../../provider.js"
 import { RemoteCheck } from "../../remote-check.js"
@@ -80,6 +81,7 @@ export const OpenAICompatiblePlugin = define({
     const integrations = yield* Integration.Service
     const providers = yield* Provider.Service
     const config = yield* Config.Service
+    const kv = yield* KV.Service
 
     const freeProviderID = Effect.fn("OpenAICompatible.freeProviderID")(function* (base: string, baseURL: string) {
       const entries = yield* config.entries()
@@ -143,6 +145,12 @@ export const OpenAICompatiblePlugin = define({
         )
       if (!config.saveProvider) return yield* Effect.fail(new Error("The configuration cannot be written"))
       yield* config.saveProvider(endpoint.providerID, provider)
+      // Keep provenance separate from user configuration, so future refreshes can distinguish
+      // discovered entries from model IDs the user entered or subsequently edited.
+      yield* kv.set(`openai-compatible:managed:${endpoint.providerID}`, {
+        baseURL: endpoint.baseURL,
+        models: Object.fromEntries(Object.entries(provider.models).filter(([id]) => !endpoint.models.includes(id))),
+      })
       return prepared({
         integrationID: Integration.ID.make(endpoint.providerID),
         label: endpoint.name,
@@ -362,6 +370,8 @@ export const discover = Effect.fn("OpenAICompatible.discover")(function* (endpoi
     )
   }
   const models = list.data.flatMap((item) => Option.toArray(Schema.decodeUnknownOption(ListedModel)(item)))
+  if (list.data.length > 0 && models.length === 0)
+    return yield* Effect.fail(failure(`${url} returned no valid model entries`))
   requests[requests.length - 1].models = models.length
   yield* Effect.logInfo("OpenAI-compatible catalog checked", { requests })
   return models

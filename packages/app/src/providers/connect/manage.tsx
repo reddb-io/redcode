@@ -176,13 +176,16 @@ export function createIntegrationConnectionsServices(props: {
     const provider = catalogProvider()
     if (!provider || state.refreshing) return
     setState("refreshing", true)
-    await sdk.api.provider
-      .refresh({ providerID: provider.id, location: location() })
-      .catch(fail)
-      .finally(async () => {
-        await refresh().catch(fail)
-        setState("refreshing", false)
-      })
+    try {
+      await sdk.api.provider.refresh({ providerID: provider.id, location: location() })
+      await refresh()
+      showToast({ variant: "success", title: language.t("dialog.model.refresh.done") })
+    } catch (error) {
+      fail(error)
+      await refresh().catch(fail)
+    } finally {
+      setState("refreshing", false)
+    }
   }
 
   return {

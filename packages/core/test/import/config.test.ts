@@ -404,7 +404,10 @@ describe("ConfigImport", () => {
 
     const unknown = normalized({ mcp: { timeout: { unknown: 1000 } } })
     expect(unknown.encoded.mcp).toBeUndefined()
-    expect(unknown.diagnostics.map((item) => [item.kind, item.path])).toEqual([["invalid", ["mcp", "timeout"]]])
+    expect(unknown.diagnostics.map((item) => [item.kind, item.path])).toEqual([
+      ["unsupported", ["mcp", "timeout", "unknown"]],
+      ["invalid", ["mcp", "timeout"]],
+    ])
   })
 
   test("merges bounded compaction leaves and preserves prune", () => {
@@ -660,6 +663,20 @@ describe("ConfigImport", () => {
       instructions: [],
       experimental: { subagent_depth: 0 },
     })
-    expect(result.encoded.share).toBeUndefined()
+    expect(result.encoded.share).toBe("manual")
   })
+})
+
+test("reports unknown fields in legacy documents without exposing their values", () => {
+  for (const [input, path] of [
+    [{ snapshot: false, future: "private-value" }, ["future"]],
+    [{ skills: { paths: [], future: "private-value" } }, ["skills", "future"]],
+    [{ experimental: { future: "private-value" } }, ["experimental", "future"]],
+    [{ compaction: { keep: { future: "private-value" } } }, ["compaction", "keep", "future"]],
+    [{ mcp: { example: { type: "local", command: ["cmd"], future: "private-value" } } }, ["mcp", "example", "future"]],
+  ] as const) {
+    const result = normalized(input)
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ kind: "unsupported", path }))
+    expect(JSON.stringify(result.diagnostics)).not.toContain("private-value")
+  }
 })

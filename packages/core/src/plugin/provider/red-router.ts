@@ -432,6 +432,7 @@ function routerPlugin(options: {
         refresh().pipe(
           Effect.catchCause((cause) => Effect.logWarning(`${options.name} model catalog refresh failed`, { cause })),
         )
+      yield* ctx.provider.onRefresh(providerID, refresh)
       const features = () => new Set(loaded.inspection.features)
 
       yield* ctx.integration.transform((integrations) => {
@@ -466,6 +467,7 @@ function routerPlugin(options: {
             name: options.name,
             integrationID: connection.integrationID,
             activation: "auto",
+            catalog: { status: "ready" },
             package: "@opencode/ai/providers/openai-compatible",
             settings: { baseURL: connection.baseURL, provider: providerID },
             ...(loaded.inspection.router ? { router: loaded.inspection.router } : {}),

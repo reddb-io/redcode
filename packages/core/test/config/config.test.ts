@@ -1800,10 +1800,10 @@ describe("Config", () => {
     ),
   )
 
-  test("refuses unconverted local configuration instead of dropping restrictions", async () => {
+  test("refuses ambiguous local configuration instead of dropping restrictions", async () => {
     await using tmp = await tmpdir()
     const source = path.join(tmp.path, "opencode.json")
-    const text = JSON.stringify({ permission: { bash: "deny" } })
+    const text = JSON.stringify({ permission: { bash: "deny" }, unknownSetting: true })
     await Bun.write(source, text)
     await expect(
       Effect.runPromise(
@@ -1938,4 +1938,30 @@ describe("Config", () => {
       }),
     ),
   )
+})
+
+test("server reads legacy configuration without rewriting the source", async () => {
+  await using tmp = await tmpdir()
+  const global = path.join(tmp.path, "global")
+  await fs.mkdir(global, { recursive: true })
+  const file = path.join(global, "opencode.jsonc")
+  const original =
+    '// legacy config\n{"mcp":{"blender":{"type":"local","command":["example"],"enabled":false}},"permission":{"bash":"deny"}}\n'
+  await fs.writeFile(file, original)
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const config = yield* Config.Service
+      const entries = yield* config.entries()
+      expect(Config.latest(entries, "mcp")).toMatchObject({ servers: { blender: { disabled: true } } })
+      expect(Config.latest(entries, "permissions")).toContainEqual(
+        expect.objectContaining({ action: "shell", effect: "deny" }),
+      )
+    }).pipe(
+      Effect.provide(
+        testLayer(tmp.path, global, tmp.path, undefined, undefined, undefined, undefined, { project: false }),
+      ),
+      Effect.scoped,
+    ),
+  )
+  expect(await fs.readFile(file, "utf8")).toBe(original)
 })
