@@ -1,5 +1,13 @@
 # @reddb-io/redcode
 
+## 0.87.2
+
+### Patch Changes
+
+- Load unambiguous legacy server configuration in memory and report configuration conversion losses and conflicts.
+- Use the independently refreshed Redcode GitHub mirrors when the models.dev catalog is unavailable.
+- Refresh OpenAI-compatible endpoint and router model inventories from Desktop and TUI without restarting.
+
 ## 0.87.1
 
 ### Patch Changes
