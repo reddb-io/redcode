@@ -702,7 +702,7 @@ jobs:
     name: smoke (built binary)
     if: github.event_name == 'workflow_dispatch'
     needs: [plan, build]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
       REDCODE_VERSION: ${{ needs.plan.outputs.version }}
