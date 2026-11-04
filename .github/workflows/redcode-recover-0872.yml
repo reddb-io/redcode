@@ -1,0 +1,313 @@
+name: redcode-0.87.2-recovery
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  GH_REPO: reddb-io/redcode
+  NPM_CONFIG_REGISTRY: https://registry.npmjs.org
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  audit:
+    name: verify original release gates
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Verify successful jobs and source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = reddb-io/redcode
+          test "$GITHUB_REF" = refs/heads/main
+          test "$(gh api repos/reddb-io/redcode/actions/runs/41852888957 --jq .event)" = workflow_dispatch
+          test "$(gh api repos/reddb-io/redcode/actions/runs/41852888957 --jq .head_sha)" = 0eb3803676e767c4d7c4801e8b99ba4e8da8e326
+          gh api repos/reddb-io/redcode/actions/runs/41852888957/attempts/7/jobs --paginate --slurp > "$RUNNER_TEMP/jobs.json"
+          for job in 'plan' 'typecheck' 'unit (windows)' 'unit (linux)' 'browser journeys' 'vault-coverage' 'design' 'build' 'desktop (linux-x64)' 'desktop (linux-arm64)' 'desktop (darwin-x64)' 'desktop (darwin-arm64)' 'desktop (windows-x64)' 'desktop (windows-arm64)' 'sidecar (linux-x64, ubuntu-latest, x86_64-linux-gnu.2.29, redcode-rpc-sidecar-linux-x64)' 'sidecar (linux-arm64, ubuntu-latest, aarch64-linux-gnu.2.29, redcode-rpc-sidecar-linux-arm64)' 'sidecar (linux-x64-musl, ubuntu-latest, x86_64-linux-musl, redcode-rpc-sidecar-linux-x64-musl)' 'sidecar (linux-arm64-musl, ubuntu-latest, aarch64-linux-musl, redcode-rpc-sidecar-linux-arm64-musl)' 'sidecar (windows-x64, ubuntu-latest, x86_64-windows-gnu, redcode-rpc-sidecar-windows-x64.exe)' 'sidecar (windows-arm64, ubuntu-latest, aarch64-windows-gnu, redcode-rpc-sidecar-windows-arm64.exe)' 'sidecar (darwin-x64, macos-15-intel, redcode-rpc-sidecar-darwin-x64)' 'sidecar (darwin-arm64, macos-15, redcode-rpc-sidecar-darwin-arm64)'; do
+            jq -e --arg name "$job" 'any(.[] .jobs[]; .name == $name and .conclusion == "success")' "$RUNNER_TEMP/jobs.json" >/dev/null || { echo "::error::Original release gate not successful: $job"; exit 1; }
+          done
+          build_id=$(jq -r '[.[] .jobs[] | select(.name == "build" and .conclusion == "success")][0].id' "$RUNNER_TEMP/jobs.json")
+          gh run view 41852888957 --repo reddb-io/redcode --job "$build_id" --log > "$RUNNER_TEMP/build.log"
+          grep -F 'ref: e0dc97922b17d99849d411136b87478c32831db6' "$RUNNER_TEMP/build.log" >/dev/null
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: e0dc97922b17d99849d411136b87478c32831db6
+      - name: Verify version
+        run: test "$(node -p 'require("./packages/redcode/package.json").version')" = '0.87.2'
+
+  migration_check:
+    name: recheck Windows migration snapshot
+    needs: audit
+    runs-on: windows-2025
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: e0dc97922b17d99849d411136b87478c32831db6
+      - uses: ./.github/actions/setup-bun
+      - name: Use isolated test storage
+        run: |
+          root="$RUNNER_TEMP/recovery-tests"
+          printf '%s\n' "REDCODE_TEST_HOME=$root" "OPENCODE_CONFIG_DIR=$root/config" "XDG_CONFIG_HOME=$root/config" "XDG_DATA_HOME=$root/data" "XDG_STATE_HOME=$root/state" "XDG_CACHE_HOME=$root/cache" >> "$GITHUB_ENV"
+      - name: Verify WAL conversion and source preservation
+        working-directory: packages/cli
+        run: bun test test/migrate.test.ts -t 'history conversion reads a consistent WAL snapshot' --timeout 90000
+
+  smoke:
+    name: smoke original release archive
+    needs: audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    outputs:
+      archive_sha: ${{ steps.hash.outputs.sha }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: e0dc97922b17d99849d411136b87478c32831db6
+      - uses: ./.github/actions/setup-bun
+        with:
+          install-flags: --filter=@opencode/core
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: redcode-smoke-linux-x64
+          run-id: 41852888957
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/redcode-archive
+      - id: hash
+        name: Hash original smoke archive
+        run: echo "sha=$(sha256sum "$RUNNER_TEMP/redcode-archive/redcode-linux-x64.tar.gz" | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
+      - name: Extract the shipped Linux archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/redcode"
+          tar -xzf "$RUNNER_TEMP/redcode-archive/redcode-linux-x64.tar.gz" -C "$RUNNER_TEMP/redcode"
+          test -x "$RUNNER_TEMP/redcode/redcode"
+          test -x "$RUNNER_TEMP/redcode/redcode-rpc-sidecar"
+          test "$("$RUNNER_TEMP/redcode/redcode" __design-app --version)" = 0.87.2
+          app=$(REDCODE_TEST_HOME="$(mktemp -d)" "$RUNNER_TEMP/redcode/redcode" desktop --path | tail -n 1)
+          test "$app" = "$RUNNER_TEMP/redcode/desktop/io.reddb.redcode"
+          test -x "$app"
+      - name: Install headless Chromium for Design review
+        run: node packages/core/node_modules/playwright-core/cli.js install --with-deps --only-shell chromium
+      - name: Smoke-test the built binary
+        timeout-minutes: 8
+        env:
+          REDCODE_VERSION: 0.87.2
+        run: |
+          bun script/smoke/run.ts --binary "$RUNNER_TEMP/redcode/redcode" --version "$REDCODE_VERSION" --design --artifacts "$RUNNER_TEMP/smoke-artifacts"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: redcode-recovery-smoke-results
+          path: ${{ runner.temp }}/smoke-artifacts
+          if-no-files-found: warn
+
+  publish_github:
+    name: publish (GitHub)
+    needs: [audit, smoke, migration_check]
+    runs-on: ubuntu-latest
+    # Each release carries the desktop app per platform, about 1.5 GB of uploads and downloads.
+    timeout-minutes: 90
+    environment: red-release
+    env:
+      REDCODE_VERSION: 0.87.2
+      REDCODE_RELEASE_SHA: e0dc97922b17d99849d411136b87478c32831db6
+      REDCODE_CHANNEL: latest
+      REDCODE_RELEASE: "1"
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: e0dc97922b17d99849d411136b87478c32831db6
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: ./.github/actions/setup-bun
+        with:
+          install-flags: --filter=@reddb-io/redcode
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: redcode-release-archives
+          run-id: 41852888957
+          github-token: ${{ github.token }}
+          path: packages/redcode/release
+      - name: Verify the published archive was smoke-tested
+        env:
+          EXPECTED_SHA: ${{ needs.smoke.outputs.archive_sha }}
+        run: echo "$EXPECTED_SHA  packages/redcode/release/redcode-linux-x64.tar.gz" | sha256sum --check -
+      - name: Extract reviewed release notes
+        run: |
+          bun -e '
+            const version = process.env.REDCODE_VERSION
+            const changelog = await Bun.file("packages/redcode/CHANGELOG.md").text()
+            const section = changelog.split(/^## /m).find((part) => part.split(/\r?\n/, 1)[0].trim() === version)
+            if (!section) throw new Error(`Missing Changesets release notes for ${version}`)
+            await Bun.write("release-notes.md", `## ${section.trim()}\n`)
+          '
+      - name: Prepare draft release
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT || github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="v$REDCODE_VERSION"
+          (cd packages/redcode/release && sha256sum --check SHA256SUMS)
+          if git rev-parse "$tag^{commit}" >/dev/null 2>&1; then
+            test "$(git rev-parse "$tag^{commit}")" = "$REDCODE_RELEASE_SHA"
+          fi
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" --draft --target "$REDCODE_RELEASE_SHA" --title "Redcode $tag" --notes-file release-notes.md
+          fi
+          if [ "$(gh release view "$tag" --json isDraft --jq .isDraft)" = "true" ]; then
+            gh release upload "$tag" packages/redcode/release/* --clobber
+          fi
+      - name: Verify GitHub release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=$(mktemp -d)
+          gh release download "v$REDCODE_VERSION" --dir "$root/assets"
+          (cd "$root/assets" && sha256sum --check SHA256SUMS)
+          test -f "$root/assets/redcode-whiteboard-$REDCODE_VERSION.tar.gz"
+          mkdir "$root/cli-native"
+          tar -xzf "$root/assets/redcode-linux-x64.tar.gz" -C "$root/cli-native"
+          test "$("$root/cli-native/redcode" --version)" = "redcode v$REDCODE_VERSION"
+          test -x "$root/cli-native/redcode-rpc-sidecar"
+          # The design app must speak the protocol of the redcode source this release was built from.
+          protocol=$(sed -n 's/^export const PROTOCOL = \([0-9][0-9]*\)$/\1/p' packages/core/src/design/app.ts)
+          test -n "$protocol"
+          test "$("$root/cli-native/redcode" __design-app --version)" = "$REDCODE_VERSION"
+          test "$("$root/cli-native/redcode" __design-app --protocol)" = "$protocol"
+          test -x "$root/cli-native/desktop/io.reddb.redcode"
+          app=$(REDCODE_TEST_HOME="$root/home" "$root/cli-native/redcode" desktop --path | tail -n 1)
+          test "$app" = "$root/cli-native/desktop/io.reddb.redcode"
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT || github.token }}
+        shell: bash
+        run: |
+          gh release edit "v$REDCODE_VERSION" --draft=false
+          test "$(gh release view "v$REDCODE_VERSION" --json isDraft --jq .isDraft)" = 'false'
+
+  publish_npm:
+    name: publish (npm)
+    needs: [audit, smoke, migration_check]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: red-release
+    env:
+      REDCODE_VERSION: 0.87.2
+      REDCODE_CHANNEL: latest
+      REDCODE_RELEASE: "1"
+      NPM_PUBLISH_MODE: ${{ vars.NPM_PUBLISH_MODE || 'token' }}
+    permissions:
+      contents: read
+      id-token: write
+      actions: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: e0dc97922b17d99849d411136b87478c32831db6
+      - uses: ./.github/actions/setup-bun
+        with:
+          install-flags: --filter=@reddb-io/redcode
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+      - name: Install pinned npm with trusted publishing support
+        env:
+          NODE_AUTH_TOKEN: ""
+        run: npm install --global npm@11.20.0
+      - name: Validate npm authentication before downloading native packages
+        env:
+          NODE_AUTH_TOKEN: ${{ vars.NPM_PUBLISH_MODE != 'oidc' && secrets.NPM_TOKEN || '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --version
+          case "$NPM_PUBLISH_MODE" in
+            token)
+              if [ -z "$NODE_AUTH_TOKEN" ]; then
+                echo '::error::NPM_PUBLISH_MODE=token requires NPM_TOKEN in the red-release environment or repository/organization.'
+                exit 1
+              fi
+              npm whoami --registry https://registry.npmjs.org
+              ;;
+            oidc)
+              test -n "$ACTIONS_ID_TOKEN_REQUEST_URL"
+              test -n "$ACTIONS_ID_TOKEN_REQUEST_TOKEN"
+              echo 'Using OIDC without a token fallback; each npm package must allow direct publishing from redcode.yml.'
+              ;;
+            *)
+              echo '::error::NPM_PUBLISH_MODE must be token or oidc.'
+              exit 1
+              ;;
+          esac
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: redcode-native-packages
+          run-id: 41852888957
+          github-token: ${{ github.token }}
+          path: packages/redcode/dist
+      - name: Publish npm packages
+        working-directory: packages/redcode
+        env:
+          NODE_AUTH_TOKEN: ${{ vars.NPM_PUBLISH_MODE != 'oidc' && secrets.NPM_TOKEN || '' }}
+        run: bun run publish
+      - name: Verify anonymous registry access and installed native package
+        env:
+          NODE_AUTH_TOKEN: ""
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=$(mktemp -d)
+          for attempt in {1..20}; do
+            if tarball=$(npm view "@reddb-io/redcode@$REDCODE_VERSION" dist.tarball --prefer-online 2>/dev/null) &&
+              [ -n "$tarball" ] && curl --fail --silent --show-error --head --location --max-time 30 "$tarball" >/dev/null; then
+              break
+            fi
+            if [ "$attempt" -eq 20 ]; then
+              echo "@reddb-io/redcode@$REDCODE_VERSION metadata or tarball did not reach npm after 10 minutes" >&2
+              exit 1
+            fi
+            sleep 30
+          done
+          npm install --prefer-online --prefix "$root/install" --ignore-scripts --no-audit --no-fund "@reddb-io/redcode@$REDCODE_VERSION"
+          test "$("$root/install/node_modules/.bin/redcode" --version)" = "redcode v$REDCODE_VERSION"
+          test -x "$root/install/node_modules/@reddb-io/redcode-linux-x64-baseline/bin/redcode-rpc-sidecar"
+          test "$(find "$root/install/node_modules/@reddb-io" -mindepth 1 -maxdepth 1 -type d -name 'redcode-linux-*' | wc -l)" -eq 1
+          test "$("$root/install/node_modules/.bin/redcode" __design-app --version)" = "$REDCODE_VERSION"
+          # The desktop app ships only in the release archives; npm points to them.
+          if REDCODE_TEST_HOME="$root/home" "$root/install/node_modules/.bin/redcode" desktop --path > "$root/desktop.txt" 2>&1; then
+            echo 'redcode desktop must fail in an npm install' >&2
+            exit 1
+          fi
+          grep -F 'not included in the npm package' "$root/desktop.txt"
+          test "$(npm view "@reddb-io/redcode@$REDCODE_VERSION" version --prefer-online)" = "$REDCODE_VERSION"
+
+  status:
+    name: recovery release status
+    if: always()
+    needs: [audit, smoke, migration_check, publish_github, publish_npm]
+    runs-on: ubuntu-24.04
+    env:
+      GITHUB_RESULT: ${{ needs.publish_github.result }}
+      NPM_RESULT: ${{ needs.publish_npm.result }}
+    steps:
+      - name: Require both destinations
+        run: |
+          echo "GitHub: $GITHUB_RESULT; npm: $NPM_RESULT" >> "$GITHUB_STEP_SUMMARY"
+          test "$GITHUB_RESULT" = success && test "$NPM_RESULT" = success
