@@ -28,7 +28,8 @@ export async function createAppFixture(
   const ready = Promise.withResolvers<void>()
   const events = createEventStream()
   const calls = createFetch(input.fetch, events)
-  const server = Bun.serve({ port: 0, fetch: (request) => calls.fetch(request) })
+  // The fixture's SSE stream stays open during quiet tests; the real server sends heartbeats.
+  const server = Bun.serve({ port: 0, idleTimeout: 0, fetch: (request) => calls.fetch(request) })
   const config = { value: structuredClone(input.config ?? { animations: false }) }
   const task = Effect.runPromise(
     run({
