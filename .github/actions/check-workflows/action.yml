@@ -15,7 +15,9 @@ runs:
         echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $directory/actionlint.tar.gz" | sha256sum --check -
         tar -xzf "$directory/actionlint.tar.gz" -C "$directory" actionlint
         "$directory/actionlint" -shellcheck= -pyflakes= .github/workflows/*.yml
-        if grep -nE 'anomalyco/|sst/opencode|opencode\.ai/install|OPENCODE_APP_SECRET|OPENCODE_API_KEY' .github/workflows/*.yml; then
+        # The catalog workflow may read the public models.dev source, but may not target upstream releases or credentials.
+        if grep -nE 'anomalyco/|sst/opencode|opencode\.ai/install|OPENCODE_APP_SECRET|OPENCODE_API_KEY' .github/workflows/*.yml \
+          | grep -vE '^\.github/workflows/models-catalog\.yml:[0-9]+:[[:space:]]*git clone --depth 1 --single-branch --branch dev https://github\.com/anomalyco/models\.dev\.git "\$RUNNER_TEMP/models-dev"$'; then
           echo '::error::Active Redcode workflows must not target or authenticate as upstream OpenCode.'
           exit 1
         fi

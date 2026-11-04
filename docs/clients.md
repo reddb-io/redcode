@@ -32,8 +32,11 @@ and `*` marks unavailable cost provenance. A zero contribution with unresolved c
 `unknown`; provider-reported zero remains `$0.00`. Cost coverage counts accounting records, not
 requests or invoices. `--json` preserves the API's numeric amounts and coverage metadata.
 
-Model catalogs require models.dev V2. The committed snapshot and the sole public source use
-`https://models.dev/experimental/v2.0/api.json`; configured sources must return V2 as well. Incompatible
+Model catalogs require models.dev V2. The server tries configured sources, models.dev, a Redcode-hosted
+GitHub raw mirror and a GitHub release asset, in that order. CLI, Desktop and browser clients share the
+connected server's catalog, cache and bundled snapshot. The GitHub copies are refreshed from models.dev
+and are fallback mirrors, not independent provider data. If all sources fail, the last valid cache or
+bundled snapshot remains available. Configured sources must return V2 as well. Incompatible
 caches are discarded, and an invalid explicitly configured file fails instead of switching sources.
 There are no V1 normalizers, public V1 fallbacks or pinned compatibility aliases. Public catalog
 metadata accepts only `format: 2`. Unsupported media or decision APIs remain descriptive and do not

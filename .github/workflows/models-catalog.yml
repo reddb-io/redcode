@@ -1,0 +1,102 @@
+name: Refresh public models catalog mirror
+
+on:
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+    inputs:
+      source:
+        description: "Source to validate and publish"
+        type: choice
+        options: [auto, repository]
+        default: auto
+
+permissions:
+  contents: read
+
+concurrency:
+  group: models-catalog-mirror
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: github.repository == 'reddb-io/redcode' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-bun
+      - name: Build and validate the complete models.dev V2 catalog
+        shell: bash
+        env:
+          CATALOG_SOURCE: ${{ inputs.source || 'auto' }}
+        run: |
+          set -euo pipefail
+          if [ "$CATALOG_SOURCE" != repository ] && curl --fail --location --retry 3 --max-time 60 \
+            'https://models.dev/experimental/v2.0/api.json?type=all' \
+            --output "$RUNNER_TEMP/models.json" && \
+            bun packages/core/script/update-models-snapshot.ts --verify-file="$RUNNER_TEMP/models.json"; then
+            echo 'Using the validated models.dev API.'
+          else
+            echo 'The API is unavailable or invalid; generating V2 from the upstream repository.'
+            git clone --depth 1 --single-branch --branch dev https://github.com/anomalyco/models.dev.git "$RUNNER_TEMP/models-dev"
+            (
+              cd "$RUNNER_TEMP/models-dev"
+              bun install --frozen-lockfile --ignore-scripts --filter @models.dev/core
+              bun -e 'import { generateV2 } from "./packages/core/src/generate-v2.ts"; import path from "node:path"; const catalog = await generateV2(path.resolve("providers")); await Bun.write(process.env.RUNNER_TEMP + "/models.json", JSON.stringify(catalog));'
+            )
+          fi
+          bun packages/core/script/update-models-snapshot.ts --verify-file="$RUNNER_TEMP/models.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: validated-models-catalog
+          path: ${{ runner.temp }}/models.json
+          if-no-files-found: error
+
+  publish:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: ./.github/actions/setup-bun
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: validated-models-catalog
+          path: ${{ runner.temp }}
+      - name: Verify catalog in the publishing job
+        run: bun packages/core/script/update-models-snapshot.ts --verify-file="$RUNNER_TEMP/models.json"
+      - name: Update raw GitHub mirror
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin refs/heads/models-catalog-cache:refs/remotes/origin/models-catalog-cache
+          git worktree add --detach "$RUNNER_TEMP/models-catalog-cache" refs/remotes/origin/models-catalog-cache
+          cp "$RUNNER_TEMP/models.json" "$RUNNER_TEMP/models-catalog-cache/models.json"
+          git -C "$RUNNER_TEMP/models-catalog-cache" config user.name 'github-actions[bot]'
+          git -C "$RUNNER_TEMP/models-catalog-cache" config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git -C "$RUNNER_TEMP/models-catalog-cache" add models.json
+          if ! git -C "$RUNNER_TEMP/models-catalog-cache" diff --cached --quiet; then
+            git -C "$RUNNER_TEMP/models-catalog-cache" commit -m 'chore: refresh models catalog mirror'
+            git -C "$RUNNER_TEMP/models-catalog-cache" push origin HEAD:refs/heads/models-catalog-cache
+          fi
+      - name: Update release asset and verify published bytes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! gh release view models-catalog >/dev/null 2>&1; then
+            gh release create models-catalog --target "$GITHUB_SHA" --prerelease --latest=false \
+              --title 'Models catalog mirror' \
+              --notes 'Automatically refreshed mirror of the models.dev V2 catalog. This is not an application release.'
+          fi
+          gh release upload models-catalog "$RUNNER_TEMP/models.json" --clobber
+          mkdir "$RUNNER_TEMP/published-catalog"
+          gh release download models-catalog --pattern models.json --dir "$RUNNER_TEMP/published-catalog"
+          cmp "$RUNNER_TEMP/models.json" "$RUNNER_TEMP/published-catalog/models.json"

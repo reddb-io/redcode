@@ -7,6 +7,7 @@ import { ModelsDevCatalog } from "../src/models-dev/catalog.js"
 const target = new URL("../src/models-dev/snapshot.txt", import.meta.url)
 const manifest = new URL("../src/models-dev/snapshot.meta.json", import.meta.url)
 const file = process.argv.find((arg) => arg.startsWith("--file="))?.slice("--file=".length)
+const verifyFile = process.argv.find((arg) => arg.startsWith("--verify-file="))?.slice("--verify-file=".length)
 const source = new URL(
   process.env.REDCODE_MODELS_URL || process.env.OPENCODE_MODELS_URL || "https://models.dev/experimental/v2.0/api.json",
 )
@@ -14,9 +15,16 @@ if (!source.pathname.endsWith(".json")) source.pathname = `${source.pathname.rep
 if (!source.searchParams.has("type")) source.searchParams.set("type", "all")
 
 const checking = process.argv.includes("--check")
-const response = checking || file ? undefined : await fetch(source, { signal: AbortSignal.timeout(30_000) })
+const response =
+  checking || file || verifyFile ? undefined : await fetch(source, { signal: AbortSignal.timeout(30_000) })
 if (response && !response.ok) throw new Error(`Catalog request failed: HTTP ${response.status}`)
-const text = checking ? await Bun.file(target).text() : file ? await Bun.file(file).text() : await response!.text()
+const text = checking
+  ? await Bun.file(target).text()
+  : verifyFile
+    ? await Bun.file(verifyFile).text()
+    : file
+      ? await Bun.file(file).text()
+      : await response!.text()
 const catalog = Schema.decodeUnknownSync(Schema.fromJsonString(ModelsDevCatalog.Document))(text)
 const models = Object.values(catalog).flatMap((provider) => Object.values(provider.models))
 const counts = {
@@ -27,6 +35,13 @@ const counts = {
 if (counts.providers < 100 || counts.models < 1_000 || counts.decisionModels === 0)
   throw new Error("Refusing an incomplete snapshot: expected the full provider catalog including decision models")
 const digest = new Bun.CryptoHasher("sha256").update(text).digest("hex")
+
+if (verifyFile) {
+  console.log(
+    `Verified ${counts.providers} providers, ${counts.models} models, ${counts.decisionModels} decision models; SHA-256 ${digest}`,
+  )
+  process.exit(0)
+}
 
 if (checking) {
   const metadata = Schema.decodeUnknownSync(

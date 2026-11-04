@@ -400,7 +400,7 @@ describe("ModelsDev Service", () => {
       yield* ModelsDev.Service.use((service) => service.get()).pipe(
         Effect.provide(buildLayer(state, cache, { url: "", fetch: true, snapshot: false })),
       )
-      expect((yield* Ref.get(state)).calls[0]?.url).toBe("https://models.dev/experimental/v2.0/api.json")
+      expect((yield* Ref.get(state)).calls[0]?.url).toBe("https://models.dev/experimental/v2.0/api.json?type=all")
     }),
   )
 
@@ -654,9 +654,43 @@ describe("ModelsDev catalog sources", () => {
     ).toEqual(["https://mirror.example/api.json", ...ModelsDev.DEFAULT_SOURCES])
     expect(ModelsDev.sources(["https://cdn.example/catalog.json", "https://models.dev"])).toEqual([
       "https://cdn.example/catalog.json",
-      "https://models.dev/experimental/v2.0/api.json",
+      ...ModelsDev.DEFAULT_SOURCES,
     ])
   })
+
+  for (const successIndex of [1, 2])
+    it.live(`uses GitHub fallback ${successIndex} when earlier catalog sources are blocked`, () =>
+      Effect.gen(function* () {
+        const cache = makeCache()
+        const calls: string[] = []
+        const client = HttpClient.make((request) =>
+          Effect.sync(() => {
+            calls.push(request.url)
+            const available = request.url === ModelsDev.DEFAULT_SOURCES[successIndex]
+            return HttpClientResponse.fromWeb(
+              request,
+              new Response(available ? JSON.stringify(fixture2) : "<html>blocked</html>", {
+                status: available ? 200 : 403,
+              }),
+            )
+          }),
+        )
+        const layer = Layer.fresh(
+          AppNodeBuilder.build(LayerNode.group([ModelsDev.node, Bus.node]), [
+            ModelsDev.node.replace(ModelsDev.configured({ fetch: true, snapshot: false })),
+            LayerNodePlatform.httpClient.replace(Layer.succeed(HttpClient.HttpClient, client)),
+            KV.node.replace(makeMockKV(cache)),
+          ]),
+        )
+        expect(yield* ModelsDev.Service.use((service) => service.get()).pipe(Effect.provide(layer))).toEqual(
+          fixture2Snapshot,
+        )
+        expect(calls).toEqual(ModelsDev.DEFAULT_SOURCES.slice(0, successIndex + 1))
+        expect(ModelsDev.decodeState(cache.values.get("models-dev:sources")).source).toBe(
+          ModelsDev.DEFAULT_SOURCES[successIndex],
+        )
+      }),
+    )
 
   test("backs a blocked source off for 1h, then 6h, then 24h", () => {
     const hour = 3_600_000
@@ -712,9 +746,12 @@ describe("ModelsDev catalog sources", () => {
       )
       const result = yield* ModelsDev.Service.use((service) => service.get()).pipe(Effect.provide(layer))
       expect(result).toEqual(fixture2Snapshot)
-      expect(calls).toEqual(["https://blocked.example/api.json", "https://models.dev/experimental/v2.0/api.json"])
+      expect(calls).toEqual([
+        "https://blocked.example/api.json",
+        "https://models.dev/experimental/v2.0/api.json?type=all",
+      ])
       const state = ModelsDev.decodeState(cache.values.get("models-dev:sources"))
-      expect(state.source).toBe("https://models.dev/experimental/v2.0/api.json")
+      expect(state.source).toBe("https://models.dev/experimental/v2.0/api.json?type=all")
       expect(state.sources["https://blocked.example/api.json"]).toMatchObject({ failures: 1, reason: "HTTP 403" })
     }),
   )
