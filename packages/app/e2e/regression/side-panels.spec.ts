@@ -31,6 +31,11 @@ test("delivery follows the session family and preserves recorded task acceptance
   await toggle.click()
   const delivery = page.getByRole("region", { name: "Delivery", exact: true })
   await expect(delivery.getByText("Deliver a verified task workflow", { exact: true })).toBeVisible()
+  await delivery.getByRole("button", { name: "Lineage graph", exact: true }).click()
+  const lineage = delivery.locator('[data-graph-fallback="svg"]')
+  await expect(lineage.locator(`[data-node-id="${fixture.sourceID}"]`)).toBeVisible()
+  await expect(lineage.locator(`[data-node-id="${fixture.childID}"]`)).toBeVisible()
+  await expect(lineage.locator("[data-graph-edge]")).toHaveCount(1)
   await expect(delivery.getByRole("progressbar", { name: "Task completion", exact: true })).toHaveAttribute(
     "aria-valuenow",
     "2",
@@ -502,10 +507,16 @@ test("delivery automations persist conversation schedules, review admissions and
   expect(state.triggers).toHaveLength(2)
   expect(state.triggers[0]).toEqual(state.triggers[1])
   expect(state.runs).toHaveLength(1)
+  await details.getByRole("button", { name: "Run now", exact: true }).click()
+  await running.getByRole("button", { name: "Confirm", exact: true }).click()
+  await expect(running).toHaveCount(0)
+  await expect(details.locator("[data-activity-event]")).toHaveCount(2)
+  await expect(details.locator(`[data-activity-event="${state.runs[0].id}"]`)).toBeVisible()
   state.unavailable = true
   await delivery.getByRole("button", { name: "Refresh automations", exact: true }).click()
   await expect(delivery.getByRole("alert")).toContainText("Automations could not be refreshed")
   await expect(details.getByRole("button", { name: "Run now", exact: true })).toBeDisabled()
+  await expect(details.locator("[data-activity-event]")).toHaveCount(0)
   await expect(details).toContainText("Prompt admitted")
   state.unavailable = false
   await delivery.getByRole("button", { name: "Refresh automations", exact: true }).click()

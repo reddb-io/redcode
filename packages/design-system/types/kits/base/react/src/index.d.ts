@@ -78,6 +78,7 @@ export { Slider, type SliderProps } from "./Slider";
 export { OneTimeCodeInput, type OneTimeCodeInputProps, } from "./OneTimeCodeInput";
 export { Swap, type SwapProps } from "./Swap";
 export { CodeBlock, type CodeBlockProps, type CodeToken, type CodeTokenizer, } from "./CodeBlock";
+export { jsonCodeGrammar } from "../../src/core/json-code";
 export { MathExpression, type MathExpressionProps } from "./MathExpression";
 export { InlineEdit, type InlineEditProps } from "./InlineEdit";
 export { Reveal, type RevealProps, type RevealDirection } from "./Reveal";

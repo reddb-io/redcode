@@ -1,3 +1,5 @@
+export { ProjectionChart, type ProjectionChartProps } from "./ProjectionChart";
+export { ActivityTimeline, type ActivityTimelineProps } from "./ActivityTimeline";
 export { BreakdownBar, type BreakdownBarProps } from "./BreakdownBar";
 export { Diagram, type DiagramProps } from "./Diagram";
 export { EntityRelationship, type EntityRelationshipProps, } from "./EntityRelationship";
@@ -47,3 +49,11 @@ export { Candlestick, type CandlestickProps } from "./Candlestick";
 export { PieChart, type PieChartProps } from "./PieChart";
 export { DonutChart, type DonutChartProps } from "./DonutChart";
 export { BarChart, type BarChartProps } from "./BarChart";
+export { DiffExplorer, type DiffExplorerProps } from "./DiffExplorer";
+export { StatsExplorer, type StatsExplorerProps } from "./StatsExplorer";
+export { KeyValueExplorer, type KeyValueExplorerProps } from "./KeyValueExplorer";
+export { EventSeriesExplorer, type EventSeriesExplorerProps } from "./EventSeriesExplorer";
+export { VectorExplorer, type VectorExplorerProps } from "./VectorExplorer";
+export { QueueExplorer, type QueueExplorerProps } from "./QueueExplorer";
+export { TableExplorer, type TableExplorerProps } from "./TableExplorer";
+export { GraphExplorer, type GraphExplorerProps } from "./GraphExplorer";

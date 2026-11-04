@@ -5,6 +5,7 @@ import { searchEmpty } from "./search-empty.js";
 import { collectionEmpty } from "./collection-empty.js";
 import { projectEmpty } from "./project-empty.js";
 import { operationComplete } from "./operation-complete.js";
+import { operationFailed } from "./operation-failed.js";
 import { fileUpload } from "./file-upload.js";
 import { fileDownload } from "./file-download.js";
 import { processing } from "./processing.js";
@@ -38,7 +39,7 @@ import { queueEmpty } from "./queue-empty.js";
 import { queueEmptyCompact } from "./queue-empty-compact.js";
 import { documentCollectionEmpty } from "./document-collection-empty.js";
 import { documentCollectionEmptyCompact } from "./document-collection-empty-compact.js";
-const STATE_ILLUSTRATIONS = [pageMissing, accessLocked, connectionLost, searchEmpty, collectionEmpty, projectEmpty, operationComplete, fileUpload, fileDownload, processing, connectionRestored, sessionExpired, capacityFull, maintenance, dataEmpty, invitationSent, documentDraft, documentDraftCompact, documentReview, documentReviewCompact, documentApproved, documentApprovedCompact, documentHistory, documentHistoryCompact, teamEmpty, teamEmptyCompact, inboxClear, inboxClearCompact, notificationsQuiet, notificationsQuietCompact, integrationEmpty, integrationEmptyCompact, tableEmpty, tableEmptyCompact, graphEmpty, graphEmptyCompact, queueEmpty, queueEmptyCompact, documentCollectionEmpty, documentCollectionEmptyCompact];
+const STATE_ILLUSTRATIONS = [pageMissing, accessLocked, connectionLost, searchEmpty, collectionEmpty, projectEmpty, operationComplete, operationFailed, fileUpload, fileDownload, processing, connectionRestored, sessionExpired, capacityFull, maintenance, dataEmpty, invitationSent, documentDraft, documentDraftCompact, documentReview, documentReviewCompact, documentApproved, documentApprovedCompact, documentHistory, documentHistoryCompact, teamEmpty, teamEmptyCompact, inboxClear, inboxClearCompact, notificationsQuiet, notificationsQuietCompact, integrationEmpty, integrationEmptyCompact, tableEmpty, tableEmptyCompact, graphEmpty, graphEmptyCompact, queueEmpty, queueEmptyCompact, documentCollectionEmpty, documentCollectionEmptyCompact];
 export {
   STATE_ILLUSTRATIONS
 };

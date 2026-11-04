@@ -9,7 +9,7 @@ import { EntityJourney, type JourneyStage } from "@reddb-io/design-system/app/En
 import { EntityInspector } from "@reddb-io/design-system/app/EntityInspector"
 import { WorkspaceTabs } from "@reddb-io/design-system/app/WorkspaceTabs"
 import { ErrorBoundary } from "@reddb-io/design-system/app/ErrorBoundary"
-import { StatusBreakdown } from "@reddb-io/design-system/data/StatusBreakdown"
+import { breakdownItems } from "@reddb-io/design-system/data/BreakdownBar"
 import { SessionTodo } from "@opencode/schema/session-todo"
 import type { createAgentTaskServices } from "./agents-tasks"
 
@@ -59,6 +59,22 @@ function AgentTasksContent(props: { services: ReturnType<typeof createAgentTaskS
     binding?.contractCurrent
   const completed = view.tasks.filter((item) => item.status === "completed").length
   const status = (value: string) => language.t(STATUSES[value as keyof typeof STATUSES] ?? "agentTasks.status.unknown")
+  const distribution = breakdownItems(
+    (
+      [
+        ["pending", "--reddb-color-ink-muted"],
+        ["in_progress", "--reddb-color-feedback-info-foreground"],
+        ["blocked", "--reddb-color-feedback-warning-foreground"],
+        ["completed", "--reddb-color-feedback-success-foreground"],
+        ["cancelled", "--reddb-color-ink-muted"],
+      ] as const
+    ).map(([id, color]) => ({
+      id,
+      color,
+      label: status(id),
+      value: view.tasks.filter((item) => item.status === id).length,
+    })),
+  )
   const stages: JourneyStage[] = [
     {
       id: "execution",
@@ -158,20 +174,32 @@ function AgentTasksContent(props: { services: ReturnType<typeof createAgentTaskS
               max={Math.max(1, view.tasks.length)}
               summary
               formatValue={() => language.plural("agentTasks.completed", completed, { total: view.tasks.length })}
-              className="mt-3 max-w-xl"
+              className={`mt-3 max-w-xl ${!view.loading && view.tasks.length > 0 ? "[&_[data-progress-track]]:hidden" : ""}`}
             />
+            {!view.loading && view.tasks.length > 0 && (
+              <section aria-label={language.t("agentTasks.distribution")} className="mt-1 max-w-xl">
+                <div aria-hidden="true" className="flex h-1.5 overflow-hidden rounded-full bg-muted">
+                  {distribution.map((item) => (
+                    <span key={item.id} style={{ width: `${item.fraction * 100}%`, background: item.paint }} />
+                  ))}
+                </div>
+                <ul className="m-0 mt-2 flex list-none flex-wrap gap-x-4 gap-y-1 p-0">
+                  {distribution.map((item) => (
+                    <li key={item.id} className="inline-flex items-center gap-1.5 text-caption text-ink-muted">
+                      <span
+                        aria-hidden="true"
+                        className="size-1.5 shrink-0 rounded-full"
+                        style={{ background: item.paint }}
+                      />
+                      <span>{item.label}</span>
+                      <span className="tabular-nums text-foreground">{item.value.toLocaleString(language.intl)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
           </section>
           {!view.loading && view.tasks.length === 0 && <p role="status">{language.t("agentTasks.empty")}</p>}
-          <StatusBreakdown
-            label={language.t("agentTasks.progress")}
-            interactive={false}
-            emptyLabel={language.t("agentTasks.empty")}
-            items={(["pending", "in_progress", "blocked", "completed", "cancelled"] as const).map((id) => ({
-              id,
-              label: status(id),
-              count: view.tasks.filter((item) => item.status === id).length,
-            }))}
-          />
           <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(180px,1fr)_minmax(0,2fr)]">
             <ul aria-label={language.t("agentTasks.dependencies")} className="min-w-0 space-y-4">
               {view.tasks.map((item, index) => (

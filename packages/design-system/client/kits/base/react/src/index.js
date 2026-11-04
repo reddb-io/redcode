@@ -81,6 +81,7 @@ import { Swap } from "./Swap.js";
 import {
   CodeBlock
 } from "./CodeBlock.js";
+import { jsonCodeGrammar } from "../../src/core/json-code.js";
 import { MathExpression } from "./MathExpression.js";
 import { InlineEdit } from "./InlineEdit.js";
 import { Reveal } from "./Reveal.js";
@@ -261,6 +262,7 @@ export {
   appearanceStorageKey,
   applyAppearance,
   createNavigationDisclosures,
+  jsonCodeGrammar,
   observeActivity,
   ringThickness,
   tokenColor,

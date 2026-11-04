@@ -41,6 +41,7 @@ function TimeSeries(props) {
     timeRange,
     activeX: suppliedActiveX = null,
     onActiveXChange,
+    onSelect,
     label = "Time series",
     variant = "line",
     curve = "smooth",
@@ -118,7 +119,7 @@ function TimeSeries(props) {
       hiddenSeries.includes(id) ? hiddenSeries.filter((value) => value !== id) : [...hiddenSeries, id]
     );
   }
-  function explorePointer(event) {
+  function explorePointer(event, commit = false) {
     if (!explores || samples.length === 0) return;
     setKeyboard(false);
     const box2 = event.currentTarget.getBoundingClientRect();
@@ -129,12 +130,19 @@ function TimeSeries(props) {
         (event.clientX - box2.left - padding.left) / Math.max(1, drawingWidth - padding.left - padding.right)
       )
     );
-    setActiveX(+samples[nearestTimeIndex(samples, domain[0] + fraction * (domain[1] - domain[0]))]);
+    const value = +samples[nearestTimeIndex(samples, domain[0] + fraction * (domain[1] - domain[0]))];
+    setActiveX(value);
+    if (commit) onSelect?.(value);
   }
   function exploreKey(event) {
     if (!explores || samples.length === 0) return;
     if (event.key === "Escape") {
       setActiveX(null);
+      return;
+    }
+    if (onSelect && (event.key === "Enter" || event.key === " ")) {
+      event.preventDefault();
+      onSelect(+samples[index]);
       return;
     }
     const next = event.key === "Home" ? 0 : event.key === "End" ? samples.length - 1 : ["ArrowRight", "ArrowUp"].includes(event.key) ? index + 1 : ["ArrowLeft", "ArrowDown"].includes(event.key) ? index - 1 : void 0;
@@ -205,8 +213,8 @@ function TimeSeries(props) {
             "aria-valuenow": explores ? index : void 0,
             "aria-valuetext": explores ? announcement : void 0,
             className: `relative min-h-0 shrink-0 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus ${height === "fill" ? "flex-1" : chartAdaptiveHeight(layout, legacyRows, size, height)}`,
-            onPointerMove: explorePointer,
-            onPointerDown: explorePointer,
+            onPointerMove: (event) => explorePointer(event),
+            onPointerDown: (event) => explorePointer(event, true),
             onKeyDown: exploreKey,
             onBlur: () => setKeyboard(false),
             children: chart.Engine ? (() => {

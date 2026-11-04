@@ -1,5 +1,5 @@
 /** @jsxImportSource react */
-import { useState, useSyncExternalStore } from "react"
+import { lazy, Suspense, useState, useSyncExternalStore } from "react"
 import type { ComponentProps } from "react"
 import { Maximize2, Receipt, RefreshCw } from "lucide-react"
 import { Button } from "@reddb-io/design-system/base/Button"
@@ -17,6 +17,8 @@ import { ErrorBoundary } from "@reddb-io/design-system/app/ErrorBoundary"
 import type { SharedSource } from "@/runtime/react/source"
 import type { SharedLanguage } from "@/runtime/react/language"
 import type { SessionStatsInfo, Project } from "@opencode/client/promise"
+
+const CostProjection = lazy(() => import("./cost-projection.react"))
 
 type Services = {
   snapshot: SharedSource<{
@@ -40,6 +42,7 @@ export function AgentUsageView(props: { services: Services }) {
   const language = view.language
   const [activeX, setActiveX] = useState<number | null>(null)
   const [selectedToken, setSelectedToken] = useState<string | null>(null)
+  const [projectionOpen, setProjectionOpen] = useState(false)
   const points = view.data?.series ?? []
   const tokens = (value: NonNullable<typeof view.data>["tokens"]) =>
     value.input + value.output + value.reasoning + value.cache.read + value.cache.write
@@ -66,6 +69,34 @@ export function AgentUsageView(props: { services: Services }) {
     { id: "cache-read", label: language.t("usage.cacheRead"), value: view.data?.tokens.cache.read ?? 0, series: 5 },
     { id: "cache-write", label: language.t("usage.cacheWrite"), value: view.data?.tokens.cache.write ?? 0, series: 6 },
   ])
+  const coverageItems = coverage
+    ? breakdownItems([
+        {
+          id: "reported",
+          label: language.t("usage.coverageReported"),
+          value: coverage.reported,
+          color: "--reddb-color-feedback-success-foreground",
+        },
+        {
+          id: "estimated",
+          label: language.t("usage.coverageEstimated"),
+          value: coverage.estimated,
+          color: "--reddb-color-feedback-info-foreground",
+        },
+        {
+          id: "unknown",
+          label: language.t("usage.coverageUnknown"),
+          value: coverage.unknown,
+          color: "--reddb-color-feedback-warning-foreground",
+        },
+        {
+          id: "legacy",
+          label: language.t("usage.coverageLegacy"),
+          value: coverage.legacy,
+          color: "--reddb-color-ink-muted",
+        },
+      ])
+    : []
   return (
     <div className="@container/usage-dashboard flex min-w-0 flex-col gap-4 text-body">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -158,7 +189,7 @@ export function AgentUsageView(props: { services: Services }) {
               ].map((metric) => (
                 <KpiCard
                   key={metric.id}
-                  className="grid-cols-[minmax(0,1fr)_4rem] rounded-none border-0 bg-transparent px-5 py-4 @lg/usage-dashboard:grid-cols-1 @3xl/usage-dashboard:grid-cols-[minmax(0,1fr)_4rem] [&_[data-kpi-value]]:whitespace-nowrap [&_[data-kpi-value]]:text-3xl [&_[data-kpi-value]]:font-medium [&_[data-kpi-value]]:tracking-tight [&_[data-kpi-sparkline]]:w-full @lg/usage-dashboard:[&_[data-kpi-sparkline]]:hidden @3xl/usage-dashboard:[&_[data-kpi-sparkline]]:block"
+                  className="grid-cols-[minmax(0,1fr)_4rem] rounded-none border-0 bg-transparent px-4 py-2 @lg/usage-dashboard:grid-cols-1 @lg/usage-dashboard:px-5 @lg/usage-dashboard:py-4 @3xl/usage-dashboard:grid-cols-[minmax(0,1fr)_4rem] [&_[data-kpi-value]]:whitespace-nowrap [&_[data-kpi-value]]:text-3xl [&_[data-kpi-value]]:font-medium [&_[data-kpi-value]]:tracking-tight [&_[data-kpi-sparkline]]:w-full @lg/usage-dashboard:[&_[data-kpi-sparkline]]:hidden @3xl/usage-dashboard:[&_[data-kpi-sparkline]]:block"
                   label={metric.label}
                   value={metric.format(metric.value)}
                   sparkline={
@@ -325,7 +356,7 @@ export function AgentUsageView(props: { services: Services }) {
                       </div>
                     </div>
                     {coverage && (
-                      <p className="mb-0 mt-3 text-caption text-ink-muted">
+                      <p className="sr-only">
                         {language.t("usage.provenance", {
                           reported: coverage.reported,
                           estimated: coverage.estimated,
@@ -334,6 +365,33 @@ export function AgentUsageView(props: { services: Services }) {
                         })}
                       </p>
                     )}
+                    {accounted > 0 && (
+                      <div className="mt-3">
+                        <div aria-hidden="true" className="flex h-1.5 overflow-hidden rounded-full bg-muted">
+                          {coverageItems.map((item) => (
+                            <span key={item.id} style={{ width: `${item.fraction * 100}%`, background: item.paint }} />
+                          ))}
+                        </div>
+                        <ul
+                          aria-label={language.t("usage.coverageBreakdown")}
+                          className="m-0 mt-2 grid list-none grid-cols-2 gap-x-3 gap-y-1 p-0"
+                        >
+                          {coverageItems.map((item) => (
+                            <li key={item.id} className="flex min-w-0 items-center gap-1.5 text-caption text-ink-muted">
+                              <span
+                                aria-hidden="true"
+                                className="size-1.5 shrink-0 rounded-full"
+                                style={{ background: item.paint }}
+                              />
+                              <span className="min-w-0">{item.label}</span>
+                              <span className="ml-auto tabular-nums text-foreground">
+                                {item.value.toLocaleString(language.intl)}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </section>
                 </div>
               </div>
@@ -341,6 +399,24 @@ export function AgentUsageView(props: { services: Services }) {
           </div>
 
           {!points.length && <p role="status">{language.t("usage.empty")}</p>}
+          {points.length > 0 && view.connected && !view.error && !view.loading && (
+            <details
+              className="rounded-lg border border-muted px-4 py-3"
+              onToggle={(event) => setProjectionOpen(event.currentTarget.open)}
+            >
+              <summary className="cursor-pointer text-body font-medium">{language.t("usage.projection.title")}</summary>
+              {projectionOpen && (
+                <div className="mt-2 min-w-0">
+                  <p className="mb-2 mt-0 text-caption text-ink-muted">
+                    {language.t("usage.projection.note", { days: view.days })}
+                  </p>
+                  <Suspense fallback={<p role="status">{language.t("common.loading")}</p>}>
+                    <CostProjection points={points} days={view.days} language={language} />
+                  </Suspense>
+                </div>
+              )}
+            </details>
+          )}
           <section className="min-w-0">
             <h3 className="mb-3 mt-0 text-body font-medium">{language.t("usage.daily")}</h3>
             <div className="max-h-60 overflow-auto rounded-lg border border-muted">

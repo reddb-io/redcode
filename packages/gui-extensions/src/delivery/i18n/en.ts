@@ -5,6 +5,8 @@ export default {
   objective: "Objective",
   noObjective: "No shared objective recorded for this session.",
   agents: "Session lineage",
+  lineageGraph: "Lineage graph",
+  loadingLineageGraph: "Loading lineage graph…",
   agentDetails: "Selected agent",
   openAgent: "Open conversation",
   native: "Redcode session",

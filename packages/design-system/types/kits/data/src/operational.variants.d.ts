@@ -14,6 +14,7 @@ export declare const operationalView: import("tailwind-variants").TVReturnType<{
             note?: import("tailwind-variants").ClassValue;
             overlay?: import("tailwind-variants").ClassValue;
             count?: import("tailwind-variants").ClassValue;
+            event?: import("tailwind-variants").ClassValue;
             engine?: import("tailwind-variants").ClassValue;
             probe?: import("tailwind-variants").ClassValue;
             scene?: import("tailwind-variants").ClassValue;
@@ -30,7 +31,6 @@ export declare const operationalView: import("tailwind-variants").TVReturnType<{
             eventMeta?: import("tailwind-variants").ClassValue;
             eventMessage?: import("tailwind-variants").ClassValue;
             entityList?: import("tailwind-variants").ClassValue;
-            event?: import("tailwind-variants").ClassValue;
             metrics?: import("tailwind-variants").ClassValue;
         };
     };
@@ -50,6 +50,7 @@ export declare const operationalView: import("tailwind-variants").TVReturnType<{
             note?: import("tailwind-variants").ClassValue;
             overlay?: import("tailwind-variants").ClassValue;
             count?: import("tailwind-variants").ClassValue;
+            event?: import("tailwind-variants").ClassValue;
             engine?: import("tailwind-variants").ClassValue;
             probe?: import("tailwind-variants").ClassValue;
             scene?: import("tailwind-variants").ClassValue;
@@ -66,7 +67,6 @@ export declare const operationalView: import("tailwind-variants").TVReturnType<{
             eventMeta?: import("tailwind-variants").ClassValue;
             eventMessage?: import("tailwind-variants").ClassValue;
             entityList?: import("tailwind-variants").ClassValue;
-            event?: import("tailwind-variants").ClassValue;
             metrics?: import("tailwind-variants").ClassValue;
         };
     };
@@ -118,6 +118,7 @@ export declare const operationalView: import("tailwind-variants").TVReturnType<{
             note?: import("tailwind-variants").ClassValue;
             overlay?: import("tailwind-variants").ClassValue;
             count?: import("tailwind-variants").ClassValue;
+            event?: import("tailwind-variants").ClassValue;
             engine?: import("tailwind-variants").ClassValue;
             probe?: import("tailwind-variants").ClassValue;
             scene?: import("tailwind-variants").ClassValue;
@@ -134,7 +135,6 @@ export declare const operationalView: import("tailwind-variants").TVReturnType<{
             eventMeta?: import("tailwind-variants").ClassValue;
             eventMessage?: import("tailwind-variants").ClassValue;
             entityList?: import("tailwind-variants").ClassValue;
-            event?: import("tailwind-variants").ClassValue;
             metrics?: import("tailwind-variants").ClassValue;
         };
     };

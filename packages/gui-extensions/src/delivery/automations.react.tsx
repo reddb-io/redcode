@@ -11,6 +11,7 @@ import { Textarea } from "@reddb-io/design-system/base/Textarea"
 import { Select } from "@reddb-io/design-system/base/Select"
 import { Field } from "@reddb-io/design-system/base/Field"
 import { Checkbox } from "@reddb-io/design-system/base/Checkbox"
+import { ActivityTimeline } from "@reddb-io/design-system/data/ActivityTimeline"
 import { DateTime, Option, Schema } from "effect"
 import type { DeliveryAutomations } from "./automations"
 
@@ -44,6 +45,9 @@ export function DeliveryAutomationsView(props: {
   const date = (at: number, timeZone?: string) =>
     new Intl.DateTimeFormat(undefined, { dateStyle: "short", timeStyle: "short", timeZone }).format(at)
   const timeZone = task?.schedule.type === "fixed_time" ? task.schedule.timeZone : undefined
+  const firstAdmission = Math.min(...view.history.map((run) => run.scheduledAt))
+  const lastAdmission = Math.max(...view.history.map((run) => run.scheduledAt))
+  const admissionPadding = Math.max(1000, (lastAdmission - firstAdmission) * 0.05)
   return (
     <div className="flex min-w-0 flex-col gap-[var(--reddb-spatial-layout-gap-md)]">
       <p className="m-0 text-caption text-ink-muted">{copy.autoNote}</p>
@@ -161,6 +165,36 @@ export function DeliveryAutomationsView(props: {
           <p className="m-0 text-caption text-ink-muted">{copy.autoPauseNote}</p>
           <h4 className="mb-2 text-eyebrow text-ink-muted">{copy.autoHistory}</h4>
           {view.historyFailed && <p role="alert">{copy.autoHistoryFailed}</p>}
+          {/* The list below owns accessible run details; the compact timeline is a decorative overview. */}
+          {!view.historyFailed &&
+            !view.historyLoading &&
+            view.connected &&
+            !view.unavailable &&
+            view.history.length > 1 && (
+              <div aria-hidden="true" inert className="mb-3 [&_button]:hidden [&_ol]:min-w-0">
+                <ActivityTimeline
+                  label={copy.autoHistory}
+                  endLabel={copy.autoHistory}
+                  className="[&_[data-activity-event]]:!w-1 [&_[data-activity-event]]:rounded-full [&_[data-activity-track]]:rounded-full [&_[data-activity-track]]:bg-elevation-sunken-surface"
+                  domain={[firstAdmission - admissionPadding, lastAdmission + admissionPadding]}
+                  rows={[
+                    {
+                      id: task.id,
+                      label: task.title,
+                      summary: date(firstAdmission, timeZone),
+                      detail: date(lastAdmission, timeZone),
+                      events: view.history.map((run) => ({
+                        id: run.id,
+                        label: copy[`autoStatus.${run.status}`],
+                        start: run.scheduledAt,
+                        end: run.scheduledAt,
+                        series: run.status === "failed" ? 4 : run.status === "admitted" ? 1 : 2,
+                      })),
+                    },
+                  ]}
+                />
+              </div>
+            )}
           {view.historyLoading && !view.historyFailed ? (
             <p role="status">{copy.autoHistoryLoading}</p>
           ) : (

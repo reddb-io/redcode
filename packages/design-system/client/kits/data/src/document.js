@@ -54,21 +54,31 @@ function documentRaw(document) {
     return String(document);
   }
 }
-function filterDocuments(documents, query) {
+function presentDocument(document, index) {
+  return { summary: extractDocumentSummary(document, index), body: documentBody(document), fields: documentFields(document), raw: documentRaw(document) };
+}
+function filterDocuments(documents, query, present = presentDocument) {
   const needle = query.trim().toLocaleLowerCase();
   return documents.map((document, index) => ({
     document,
     index,
-    summary: extractDocumentSummary(document, index)
-  })).filter((item) => {
+    // The default list only needs a summary; avoid serializing every raw
+    // document before a search or detail view actually needs it.
+    presentation: present === presentDocument ? void 0 : present(document, index)
+  })).map(({ document, index, presentation }) => ({
+    document,
+    index,
+    presentation,
+    summary: presentation?.summary ?? extractDocumentSummary(document, index)
+  })).filter(({ document, summary, presentation }) => {
     if (!needle) return true;
-    const haystack = [
-      item.summary.title,
-      item.summary.subtitle,
-      ...documentFields(item.document).map((field) => `${field.key} ${field.text}`)
-    ].join("\n").toLocaleLowerCase();
-    return haystack.includes(needle);
-  });
+    const searchable = presentation?.searchText ?? (presentation?.fields ?? documentFields(document)).map((field) => `${field.key} ${field.text}`).join("\n");
+    return [summary.title, summary.subtitle, searchable].join("\n").toLocaleLowerCase().includes(needle);
+  }).map(({ document, index, summary }) => ({ document, index, summary }));
+}
+function visibleDocumentIndex(items, selected) {
+  if (selected === null) return null;
+  return items.some((item) => item.index === selected) ? selected : items[0]?.index ?? null;
 }
 export {
   documentBody,
@@ -76,5 +86,7 @@ export {
   documentRaw,
   extractDocumentSummary,
   filterDocuments,
-  formatDocumentValue
+  formatDocumentValue,
+  presentDocument,
+  visibleDocumentIndex
 };

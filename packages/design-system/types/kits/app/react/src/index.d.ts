@@ -62,3 +62,4 @@ export type { ShortcutGroup, ShortcutCommand } from "../../src/core/shortcut-hel
 export type { SidebarRailSizing } from "../../src/core/contracts/sidebarrail";
 export { createWorkspaceSession, type WorkspaceSession } from "../../src/core/workspace-session";
 export { ApplicationWorkspace, type ApplicationWorkspaceProps } from "./ApplicationWorkspace";
+export { OutcomeScreen, type OutcomeScreenProps } from "./OutcomeScreen";

@@ -6,16 +6,22 @@ function CompositeChartPlot({ model, layout, hiddenSeries, cursor, presentation 
   const geometry = useMemo(() => compositeGeometry(model, layout, hiddenSeries), [model, layout, hiddenSeries]), clipId = `${useId()}-plot`;
   const cursorPosition = cursor === void 0 ? void 0 : geometry.cursor(cursor);
   return /* @__PURE__ */ jsxs("svg", { width: layout.width, height: layout.height, viewBox: `0 0 ${layout.width} ${layout.height}`, "aria-hidden": "true", children: [
-    /* @__PURE__ */ jsx("defs", { children: /* @__PURE__ */ jsx("clipPath", { id: clipId, children: /* @__PURE__ */ jsx("rect", { width: layout.plotWidth, height: layout.plotHeight }) }) }),
+    /* @__PURE__ */ jsxs("defs", { children: [
+      /* @__PURE__ */ jsx("clipPath", { id: clipId, children: /* @__PURE__ */ jsx("rect", { width: layout.plotWidth, height: layout.plotHeight }) }),
+      geometry.layers.map((layer, index) => layer.gradient && /* @__PURE__ */ jsxs("linearGradient", { id: `${clipId}-area-${index}`, x1: "0", y1: "0", x2: "0", y2: "1", children: [
+        /* @__PURE__ */ jsx("stop", { offset: "0%", stopColor: layer.paint, stopOpacity: "0.24" }),
+        /* @__PURE__ */ jsx("stop", { offset: "100%", stopColor: layer.paint, stopOpacity: "0" })
+      ] }, layer.id))
+    ] }),
     /* @__PURE__ */ jsxs("g", { transform: `translate(${layout.padding.left} ${layout.padding.top})`, children: [
       presentation === "full" && /* @__PURE__ */ jsx("g", { "data-chart-grid": true, stroke: "var(--reddb-color-muted)", children: layout.primaryTicks.map((tick) => /* @__PURE__ */ jsx("line", { x1: layout.horizontal ? tick.position : 0, x2: layout.horizontal ? tick.position : layout.plotWidth, y1: layout.horizontal ? 0 : tick.position, y2: layout.horizontal ? layout.plotHeight : tick.position }, tick.value)) }),
       /* @__PURE__ */ jsxs("g", { clipPath: `url(#${clipId})`, children: [
-        geometry.layers.map((layer) => /* @__PURE__ */ jsxs("g", { "data-composite-layer": layer.id, "data-composite-kind": layer.kind, "data-composite-axis": layer.axis, children: [
-          layer.fill && /* @__PURE__ */ jsx("path", { d: layer.fill, fill: layer.paint, fillOpacity: 0.2 }),
-          layer.rects.map((rect, index) => /* @__PURE__ */ jsx("rect", { ...rect, fill: rect.paint ?? layer.paint, "data-composite-column": true }, index)),
-          model.options?.dataLabels === "value" && layer.rects.map((rect, index) => {
+        geometry.layers.map((layer, index) => /* @__PURE__ */ jsxs("g", { "data-composite-layer": layer.id, "data-composite-kind": layer.kind, "data-composite-axis": layer.axis, children: [
+          layer.fill && /* @__PURE__ */ jsx("path", { d: layer.fill, fill: layer.gradient ? `url(#${clipId}-area-${index})` : layer.paint, fillOpacity: layer.gradient ? 1 : 0.2 }),
+          layer.rects.map((rect, index2) => /* @__PURE__ */ jsx("rect", { ...rect, fill: rect.paint ?? layer.paint, "data-composite-column": true }, index2)),
+          model.options?.dataLabels === "value" && layer.rects.map((rect, index2) => {
             const reading = compositeColumnLabel(rect, layout, model.options.columnMode === "stacked", layer.format ?? formatChartNumber);
-            return reading.visible ? /* @__PURE__ */ jsx("text", { "data-column-label": true, x: reading.x, y: reading.y, textAnchor: "middle", dominantBaseline: "middle", fill: "var(--reddb-color-foreground)", stroke: "var(--reddb-color-background)", strokeWidth: 3, paintOrder: "stroke", className: "text-xs", children: reading.text }, index) : null;
+            return reading.visible ? /* @__PURE__ */ jsx("text", { "data-column-label": true, x: reading.x, y: reading.y, textAnchor: "middle", dominantBaseline: "middle", fill: "var(--reddb-color-foreground)", stroke: "var(--reddb-color-background)", strokeWidth: 3, paintOrder: "stroke", className: "text-xs", children: reading.text }, index2) : null;
           }),
           layer.candles.map((candle) => /* @__PURE__ */ jsxs("g", { "data-candle": candle.direction, strokeWidth: model.options?.strokeWidth ?? 1, children: [
             /* @__PURE__ */ jsx("line", { x1: candle.center, x2: candle.center, y1: candle.high, y2: candle.low, stroke: layer.paint }),
@@ -23,7 +29,10 @@ function CompositeChartPlot({ model, layout, hiddenSeries, cursor, presentation 
           ] }, candle.key)),
           layer.path && /* @__PURE__ */ jsx("path", { d: layer.path, fill: "none", stroke: layer.paint, strokeWidth: model.options?.strokeWidth ?? 1.5, strokeDasharray: layer.dash })
         ] }, layer.id)),
-        geometry.references.map((reference) => /* @__PURE__ */ jsx("line", { "data-composite-reference": reference.id, x1: reference.x1, x2: reference.x2, y1: reference.y1, y2: reference.y2, stroke: reference.paint, strokeDasharray: "4 3", children: /* @__PURE__ */ jsx("title", { children: reference.label }) }, reference.id)),
+        geometry.references.map((reference) => /* @__PURE__ */ jsxs("g", { children: [
+          /* @__PURE__ */ jsx("line", { "data-composite-reference": reference.id, x1: reference.x1, x2: reference.x2, y1: reference.y1, y2: reference.y2, stroke: reference.paint, strokeDasharray: "4 3", children: /* @__PURE__ */ jsx("title", { children: reference.label }) }),
+          reference.showLabel && reference.kind === "sample" && !layout.horizontal && /* @__PURE__ */ jsx("text", { "data-reference-label": reference.id, x: reference.x1, y: 12, textAnchor: reference.x1 > layout.plotWidth / 2 ? "end" : "start", fill: "var(--reddb-color-ink-muted)", className: "text-xs", children: reference.label })
+        ] }, reference.id)),
         cursorPosition !== void 0 && /* @__PURE__ */ jsx("line", { "data-chart-cursor": true, x1: layout.horizontal ? 0 : cursorPosition, x2: layout.horizontal ? layout.plotWidth : cursorPosition, y1: layout.horizontal ? cursorPosition : 0, y2: layout.horizontal ? cursorPosition : layout.plotHeight, stroke: "var(--reddb-color-ink-muted)", strokeDasharray: "3 3" })
       ] }),
       model.options?.showTotals && geometry.totals.filter((total) => layout.horizontal || layout.plotWidth * model.interval / (model.sampleDomain[1] - model.sampleDomain[0]) > (total.format ?? formatChartNumber)(total.value).length * 7 + 4).map((total) => /* @__PURE__ */ jsx("text", { "data-stack-total": true, stroke: "var(--reddb-color-background)", strokeWidth: 3, paintOrder: "stroke", x: total.x, y: Math.min(layout.plotHeight - 8, Math.max(-14, total.y + (total.value >= 0 ? -6 : 14))), textAnchor: "middle", fill: "var(--reddb-color-foreground)", className: "text-xs", children: (total.format ?? formatChartNumber)(total.value) }, `${total.axis}:${total.key}:${total.value >= 0}`)),

@@ -197,7 +197,7 @@ function IntervalPlot(props) {
                         {
                           x: item.depth * 12 + 4,
                           y: y + 12,
-                          fill: selected === item.id ? ink : mutedInk,
+                          fill: ink,
                           className: "text-xs",
                           children: short(
                             item.label,

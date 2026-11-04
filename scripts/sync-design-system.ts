@@ -40,9 +40,13 @@ symlinkSync(
 if (process.platform === "win32") {
   const compiler = join(producer.path, "scripts/producer/src/compile-delivery.ts")
   const content = readFileSync(compiler, "utf8")
-  const link = 'symlinkSync(join(toolRoot, "node_modules"), link, "dir")'
-  if (!content.includes(link)) throw new Error("The pinned React compiler's dependency link has changed")
-  writeFileSync(compiler, content.replace(link, link.replace('"dir"', '"junction"')))
+  const links = [
+    'symlinkSync(join(toolRoot, "node_modules"), link, "dir")',
+    'symlinkSync(join(toolRoot, "node_modules"), join(root, "node_modules"), "dir")',
+  ]
+  if (links.some((link) => !content.includes(link)))
+    throw new Error("The pinned React compiler's dependency links have changed")
+  writeFileSync(compiler, links.reduce((text, link) => text.replace(link, link.replace('"dir"', '"junction"')), content))
 }
 
 // The receipt hashes bytes. Keep the producer's temporary clone canonical on Windows too.

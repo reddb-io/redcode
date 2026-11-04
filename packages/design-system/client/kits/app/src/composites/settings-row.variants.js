@@ -1,4 +1,5 @@
 import { tv } from "tailwind-variants";
+import { typeRoleMerge } from "@reddb-io/design-system/base/recipes";
 const settingsRow = tv({
   slots: {
     root: "@container/settings-row min-w-0 border-b border-muted py-[var(--reddb-spatial-inset-md)] last:border-b-0",
@@ -9,10 +10,13 @@ const settingsRow = tv({
     control: "min-w-0",
     end: "grid min-w-0 content-start gap-[var(--reddb-spatial-gap-sm)]",
     actions: "flex min-w-0 flex-wrap items-center gap-[var(--reddb-spatial-gap-sm)] @sm/settings-row:justify-end",
+    hint: "font-mono text-caption text-ink-muted",
+    heading: "flex min-w-0 flex-wrap items-baseline gap-[var(--reddb-spatial-gap-md)]",
+    wideActions: "flex min-w-0 flex-wrap items-center gap-[var(--reddb-spatial-gap-sm)] pt-[var(--reddb-spatial-layout-gap-sm)]",
     required: "ms-[var(--reddb-spatial-gap-sm)]",
     error: "m-0 break-words text-caption text-feedback-danger-foreground"
   }
-});
+}, typeRoleMerge);
 export {
   settingsRow
 };

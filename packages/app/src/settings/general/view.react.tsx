@@ -4,6 +4,7 @@ import { Button } from "@reddb-io/design-system/base/Button"
 import { Select } from "@reddb-io/design-system/base/Select"
 import { Switch } from "@reddb-io/design-system/base/Switch"
 import { Slider } from "@reddb-io/design-system/base/Slider"
+import { Input } from "@reddb-io/design-system/base/Input"
 import { SettingsHeader, SettingsList, SettingsRow } from "../shared.react"
 import { SharedSlot } from "@/runtime/react/slot.react"
 import { formatKeybind } from "@/shell/commands/keys"
@@ -183,17 +184,42 @@ export function General(props: {
                 description={language.t("settings.general.row.navigationGap.description")}
               >
                 {(association) => (
-                  <Slider
-                    {...association}
-                    label={language.t("settings.general.row.navigationGap.title")}
-                    value={values.navigationGap}
-                    min={0}
-                    max={16}
-                    step={1}
-                    fieldClass="w-40 [&>label]:sr-only"
-                    formatValue={(value) => language.t("settings.general.row.navigationGap.value", { value })}
-                    onValueChange={settings.general.setNavigationGap}
-                  />
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Slider
+                      {...association}
+                      label={language.t("settings.general.row.navigationGap.title")}
+                      value={values.navigationGap}
+                      min={0}
+                      max={16}
+                      step={1}
+                      fieldClass="w-40 [&>label]:sr-only"
+                      outputClass="sr-only"
+                      formatValue={(value) => language.t("settings.general.row.navigationGap.value", { value })}
+                      onValueChange={settings.general.setNavigationGap}
+                    />
+                    <Input
+                      key={values.navigationGap}
+                      type="number"
+                      controlSize="sm"
+                      className="w-16 tabular-nums"
+                      aria-label={language.t("settings.general.row.navigationGap.exact")}
+                      min={0}
+                      max={16}
+                      step={1}
+                      defaultValue={values.navigationGap}
+                      onBlur={(event) => {
+                        const input = event.currentTarget
+                        if (!input.value || !input.validity.valid) {
+                          input.value = String(values.navigationGap)
+                          return
+                        }
+                        settings.general.setNavigationGap(input.valueAsNumber)
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") event.currentTarget.blur()
+                      }}
+                    />
+                  </div>
                 )}
               </SettingsRow>
             )}

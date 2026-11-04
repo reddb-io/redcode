@@ -28,6 +28,7 @@ export declare function compositeGeometry(model: CompositeModel, layout: Composi
         axis: "primary" | "secondary";
         paint: string;
         dash?: string;
+        gradient?: boolean;
         points: ResolvedCompositePoint[];
         samples: Map<number, ResolvedCompositePoint>;
     }[];
@@ -50,6 +51,7 @@ export declare function compositeGeometry(model: CompositeModel, layout: Composi
         kind: "value" | "sample";
         value: number;
         axis: "primary" | "secondary";
+        showLabel?: boolean;
     }[];
     cursor: (key: number) => number;
 };

@@ -11,11 +11,12 @@ import { RadialProgress } from "@reddb-io/design-system/base/RadialProgress"
 import type { ColorToken } from "@reddb-io/design-system/base/recipes"
 import { ErrorBoundary } from "@reddb-io/design-system/app/ErrorBoundary"
 import { CompositeChart } from "@reddb-io/design-system/data/CompositeChart"
+import { Sparkline } from "@reddb-io/design-system/data/Sparkline"
 import { createChartStream } from "@reddb-io/design-system/data/stream"
 import type { SharedSource } from "@/runtime/react/source"
 import type { SharedLanguage } from "@/runtime/react/language"
 
-type Observation = { x: number; cpu: number | null; memory: number | null; process: number | null }
+type Observation = { x: number; cpu: number | null; memory: number | null; free: number | null; process: number | null }
 
 export function HostHistory(props: {
   source: SharedSource<{
@@ -49,6 +50,7 @@ export function HostHistory(props: {
         stale || sample.memory.totalBytes === null || sample.memory.freeBytes === null
           ? null
           : (sample.memory.totalBytes - sample.memory.freeBytes) / 1024 ** 3,
+      free: stale || sample.memory.freeBytes === null ? null : sample.memory.freeBytes / 1024 ** 3,
       process: stale ? null : sample.process.residentBytes / 1024 ** 3,
     })
     stream.flush()
@@ -56,6 +58,14 @@ export function HostHistory(props: {
   const last = snapshot.data.at(-1)?.x
   const timeRange = last === undefined ? undefined : ([last - windowMs, last] as const)
   const sample = view.available ? view.sample : undefined
+  const recent = (field: "cpu" | "free" | "process") => {
+    const points = snapshot.data.slice(-32).map((point) => point[field])
+    const gap = points.findLastIndex((point) => point === null)
+    return points.slice(gap + 1).filter((point): point is number => point !== null)
+  }
+  const cpuTrend = recent("cpu")
+  const memoryTrend = recent("free")
+  const processTrend = recent("process")
   const bytes = (value: number | null) =>
     value === null
       ? language.t("agents.hosts.unknown")
@@ -85,20 +95,27 @@ export function HostHistory(props: {
             <div className="mb-3 grid min-w-0 gap-3 @sm/resources:grid-cols-2">
               <Card padding="sm">
                 <div className="flex min-w-0 items-center justify-between gap-3">
-                  <Statistic
-                    className="flex-1"
-                    label={language.t("agents.hosts.cpu")}
-                    value={
-                      sample.cpu.utilization === null
-                        ? language.t("agents.hosts.unknown")
-                        : Math.round(sample.cpu.utilization * 100)
-                    }
-                    formatValue={(value) =>
-                      sample.cpu.utilization === null ? String(value) : language.t("agents.hosts.percent", { value })
-                    }
-                    description={sample.cpu.utilization === null ? language.t("agents.hosts.sampling") : undefined}
-                    animate
-                  />
+                  <div className="min-w-0 flex-1">
+                    <Statistic
+                      className="flex-1"
+                      label={language.t("agents.hosts.cpu")}
+                      value={
+                        sample.cpu.utilization === null
+                          ? language.t("agents.hosts.unknown")
+                          : Math.round(sample.cpu.utilization * 100)
+                      }
+                      formatValue={(value) =>
+                        sample.cpu.utilization === null ? String(value) : language.t("agents.hosts.percent", { value })
+                      }
+                      description={sample.cpu.utilization === null ? language.t("agents.hosts.sampling") : undefined}
+                      animate
+                    />
+                    {cpuTrend.length > 1 && (
+                      <div aria-hidden="true" className="mt-1 w-20 max-w-full">
+                        <Sparkline values={cpuTrend} height={20} strokeWidth={1} series={1} loading="eager" />
+                      </div>
+                    )}
+                  </div>
                   {sample.cpu.utilization !== null && (
                     <ResourceGauge
                       label={language.t("agents.hosts.cpu")}
@@ -112,17 +129,24 @@ export function HostHistory(props: {
               </Card>
               <Card padding="sm">
                 <div className="flex min-w-0 items-center justify-between gap-3">
-                  <Statistic
-                    className="flex-1"
-                    label={language.t("agents.hosts.runtimeMemory")}
-                    value={sample.memory.freeBytes ?? language.t("agents.hosts.unknown")}
-                    formatValue={() => bytes(sample.memory.freeBytes)}
-                    description={language.t("agents.hosts.memoryPair", {
-                      free: bytes(sample.memory.freeBytes),
-                      total: bytes(sample.memory.totalBytes),
-                    })}
-                    animate
-                  />
+                  <div className="min-w-0 flex-1">
+                    <Statistic
+                      className="flex-1"
+                      label={language.t("agents.hosts.runtimeMemory")}
+                      value={sample.memory.freeBytes ?? language.t("agents.hosts.unknown")}
+                      formatValue={() => bytes(sample.memory.freeBytes)}
+                      description={language.t("agents.hosts.memoryPair", {
+                        free: bytes(sample.memory.freeBytes),
+                        total: bytes(sample.memory.totalBytes),
+                      })}
+                      animate
+                    />
+                    {memoryTrend.length > 1 && (
+                      <div aria-hidden="true" className="mt-1 w-20 max-w-full">
+                        <Sparkline values={memoryTrend} height={20} strokeWidth={1} series={2} loading="eager" />
+                      </div>
+                    )}
+                  </div>
                   {sample.memory.freeBytes !== null &&
                     sample.memory.totalBytes !== null &&
                     sample.memory.totalBytes > 0 && (
@@ -138,13 +162,19 @@ export function HostHistory(props: {
               </Card>
               <Card padding="sm">
                 <div className="flex min-w-0 items-center justify-between gap-3">
-                  <Statistic
-                    className="flex-1"
-                    label={language.t("agents.hosts.process")}
-                    value={sample.process.residentBytes}
-                    formatValue={() => bytes(sample.process.residentBytes)}
-                    animate
-                  />
+                  <div className="min-w-0 flex-1">
+                    <Statistic
+                      label={language.t("agents.hosts.process")}
+                      value={sample.process.residentBytes}
+                      formatValue={() => bytes(sample.process.residentBytes)}
+                      animate
+                    />
+                    {processTrend.length > 1 && (
+                      <div aria-hidden="true" className="mt-1 w-20 max-w-full">
+                        <Sparkline values={processTrend} height={20} strokeWidth={1} series={3} loading="eager" />
+                      </div>
+                    )}
+                  </div>
                   <span aria-hidden="true" className="text-ink-muted">
                     <Icon icon={Activity} size="lg" />
                   </span>

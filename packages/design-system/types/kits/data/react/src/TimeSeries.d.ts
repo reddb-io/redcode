@@ -8,6 +8,8 @@ export interface TimeSeriesProps extends TimeSeriesContract {
     onHiddenSeriesChange?: (ids: readonly string[]) => void;
     /** Reports linked inspection as an epoch timestamp, or null to clear it. */
     onActiveXChange?: (value: number | null) => void;
+    /** Commits a sample with a pointer press or Enter/Space, independently of hover inspection. */
+    onSelect?: (value: number) => void;
     /** Extra classes, merged onto the chart's root `figure`. */
     className?: string;
 }

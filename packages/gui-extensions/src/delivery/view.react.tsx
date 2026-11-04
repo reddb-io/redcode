@@ -20,6 +20,7 @@ import { DeliveryAutomationsView } from "./automations.react"
 import type { DeliveryAutomations } from "./automations"
 
 const DeliveryTaskFlow = lazy(() => import("./workflow.react"))
+const DeliveryLineageGraph = lazy(() => import("./lineage-graph.react"))
 
 type View = {
   key: string
@@ -60,6 +61,7 @@ export function DeliveryView(props: {
 
 function DeliveryContent(props: Parameters<typeof DeliveryView>[0]) {
   const view = props.view
+  const [showLineageGraph, setShowLineageGraph] = useState(false)
   const copy = view.copy
   const [selected, setSelected] = useState<string | null>(view.current)
   const [expanded, setExpanded] = useState<readonly string[]>([view.root])
@@ -218,6 +220,21 @@ function DeliveryContent(props: Parameters<typeof DeliveryView>[0]) {
                 )}
               </dl>
               <section aria-label={copy.agents}>
+                {view.sessions.length > 1 && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    aria-pressed={showLineageGraph}
+                    onClick={() => setShowLineageGraph(!showLineageGraph)}
+                  >
+                    {copy.lineageGraph}
+                  </Button>
+                )}
+                {showLineageGraph && view.sessions.length > 1 && (
+                  <Suspense fallback={<p role="status">{copy.loadingLineageGraph}</p>}>
+                    <DeliveryLineageGraph label={copy.agents} sessions={view.sessions} />
+                  </Suspense>
+                )}
                 <TreeView
                   label={copy.agents}
                   nodes={nodes(undefined)}

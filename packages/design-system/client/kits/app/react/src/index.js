@@ -63,6 +63,7 @@ import { ErrorBoundary } from "./ErrorBoundary.js";
 import { ShortcutHelp } from "./ShortcutHelp.js";
 import { createWorkspaceSession } from "../../src/core/workspace-session.js";
 import { ApplicationWorkspace } from "./ApplicationWorkspace.js";
+import { OutcomeScreen } from "./OutcomeScreen.js";
 export {
   ActionPanel,
   ActivityFeed,
@@ -90,6 +91,7 @@ export {
   NodeBadge,
   OrderHistory,
   OrderSummary,
+  OutcomeScreen,
   PageHeading,
   PhaseSummary,
   Pill,

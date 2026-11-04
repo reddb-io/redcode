@@ -43,8 +43,12 @@ interface CompositeSeriesIdentity {
 export interface CompositeValueSeries extends CompositeSeriesIdentity {
     /** Geometry of this layer, independent of every other series. */
     kind: "line" | "area" | "column";
-    /** Caller-owned observations; last duplicate coordinate wins. */
+    /** Caller-owned observations; last duplicate coordinate wins unless preserveDuplicateX is enabled. */
     data: readonly CompositePoint[];
+    /** Fade an area fill towards its baseline. */
+    gradient?: boolean;
+    /** Preserve same-time points in input order to show vertical resets; inspection reads the last value. Only line and area layers support this. */
+    preserveDuplicateX?: boolean;
     /** Straight segments by default; dash distinguishes trend or target lines. */
     dash?: "solid" | "dashed" | "dotted";
 }
@@ -73,6 +77,8 @@ interface ReferenceIdentity {
     label: string;
     /** DS Series Role; defaults to six. */
     series?: ChartSeries;
+    /** Show the reference label at the plot edge when space permits. */
+    showLabel?: boolean;
 }
 /** A reference level or observation marker. Its direction follows the chosen orientation. */
 export type CompositeReference = ReferenceIdentity & ({
@@ -97,6 +103,7 @@ export interface ResolvedCompositeSeries {
     axis: "primary" | "secondary";
     paint: string;
     dash?: string;
+    gradient?: boolean;
     points: ResolvedCompositePoint[];
     samples: Map<number, ResolvedCompositePoint>;
 }
@@ -137,6 +144,7 @@ export interface CompositeModel {
         kind: "value" | "sample";
         value: number;
         axis: "primary" | "secondary";
+        showLabel?: boolean;
     }[];
 }
 export declare const compositePaint: (series?: ChartSeries) => string;

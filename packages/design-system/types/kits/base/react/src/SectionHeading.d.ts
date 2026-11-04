@@ -13,7 +13,9 @@ export interface SectionHeadingProps extends Omit<ComponentPropsWithRef<"div">, 
     size?: SectionHeadingSize;
     /** Draw the divider and retain its spacing. */
     rule?: boolean;
+    /** Decorative content placed before the heading text. */
+    leading?: ReactNode;
     /** Trailing caller-owned actions. */
     actions?: ReactNode;
 }
-export declare function SectionHeading({ title, description, titleId, level, size, rule, actions, className, ...rest }: SectionHeadingProps): import("react").JSX.Element;
+export declare function SectionHeading({ title, description, titleId, level, size, rule, leading, actions, className, ...rest }: SectionHeadingProps): import("react").JSX.Element;

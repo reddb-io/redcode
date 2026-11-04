@@ -9,7 +9,7 @@ host's density when one is set; otherwise it uses tiny on narrow viewports and
 compact on wider ones. Editable text and toolbar controls retain the DS touch
 floor on devices with a coarse pointer.
 
-The current delivery pins `v2026.10.49`, selects React and uses the official
+The current delivery pins `v2026.11.6`, selects React and uses the official
 compiled distribution. Settings and the migrated shell surfaces consume native
 React controls through canonical Base, App and Data imports. Shared service adapters
 retain the existing router, persistence, server subscriptions and extension owners.
@@ -41,6 +41,34 @@ producer adaptation in the receipt; the pinned checkout and Kit sources are unch
 
 Run `bun run check` and the affected application regression tests after updating.
 Do not edit vendored components or generated theme files by hand.
+
+The v2026.11.6 Data kit adds candidates for future desktop work. `StatsExplorer`
+accepts caller-supplied numeric observations and units, making it a candidate for
+the existing host metrics panel. `ActivityTimeline` can visualize recorded task
+or automation activity, and `GraphExplorer` could complement agent lineage when
+the host supplies navigable nodes and relationships. `QueueExplorer` is a candidate
+for inspecting queued work with caller-owned actions, provided the Redcode queue
+can be mapped faithfully to its message and event contract. `ProjectionChart` explicitly
+distinguishes recorded and forecast data; use it only if Redcode has a defensible
+projection and labels its uncertainty. Validate density, narrow layouts, keyboard
+navigation, streaming costs and actual data availability before adopting these
+components. The existing compact `CompositeChart`, `Sparkline`, `KpiCard` and
+`RadialProgress` remain available; a new component is not an automatic replacement.
+For numeric parameters, the Base kit's `Slider` supplies a visible value, units
+through `formatValue`, keyboard control and field validation. Pair it with exact
+numeric input where fine adjustment matters, and use actual product bounds rather
+than inventing limits merely to fit a slider.
+
+Delivery now offers an opt-in compact `Graph` of the actual session family while
+the adjacent tree retains keyboard selection. The automation panel uses
+`ActivityTimeline` to mark recorded admission times; its existing list owns
+accessible details. The usage dashboard offers an optional `ProjectionChart`:
+it extrapolates the selected period's recorded daily average for seven days and
+explicitly describes missing costs, changing estimates, and the partial current
+day. Worker batch rows show the coordinator's recorded queue reason. The current
+`GraphExplorer` and `QueueExplorer` add database-specific controls and English-only
+copy that do not yet match these workflows; do not fabricate database metadata or
+hide functional controls to force those explorers into the product.
 
 Delivery's optional task flow uses the Data kit's native `WorkflowDiagram` in a separate lazy
 chunk. It draws recorded prerequisites and exposes task criteria and assigned conversations

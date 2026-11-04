@@ -121,7 +121,7 @@ function WorkspaceTabs({
                           })
                         }),
                         children: [
-                          /* @__PURE__ */ jsx("span", { children: item.label }),
+                          /* @__PURE__ */ jsx("span", { className: "min-w-0 truncate", title: item.label, children: item.label }),
                           (item.dirty || item.busy) && /* @__PURE__ */ jsxs(Fragment, { children: [
                             /* @__PURE__ */ jsxs("span", { className: s.status(), "aria-hidden": "true", children: [
                               item.dirty ? "\u2022" : "",

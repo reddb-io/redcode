@@ -187,6 +187,14 @@ test("reconciles task contributions through the DS and preserves an uncertain ap
   await expect(workspace.getByText("Deliver a verified task workflow", { exact: true })).toBeVisible()
   await expect(workspace.getByText("Context version aaaaaaaaaaaa", { exact: true })).toBeVisible()
   await expect(workspace.getByRole("progressbar", { name: "Task completion" })).toHaveAttribute("aria-valuenow", "2")
+  const taskStates = workspace.getByRole("region", { name: "Task states", exact: true })
+  await expect(taskStates.getByRole("listitem")).toHaveText([
+    "Pending1",
+    "In progress0",
+    "Blocked0",
+    "Completed2",
+    "Cancelled0",
+  ])
   await workspace.getByRole("button", { name: "Reconcile delegated results Pending", exact: true }).click()
   const detail = workspace.getByRole("region", { name: "Task details", exact: true })
   const convergence = detail.getByRole("region", { name: "Result convergence", exact: true })
@@ -223,6 +231,13 @@ test("reconciles task contributions through the DS and preserves an uncertain ap
   await page.screenshot({ path: test.info().outputPath("agent-tasks-desktop.png"), fullPage: true })
   mock.accept()
   await workspace.getByRole("button", { name: "Refresh", exact: true }).click()
+  await expect(taskStates.getByRole("listitem")).toHaveText([
+    "Pending0",
+    "In progress0",
+    "Blocked0",
+    "Completed3",
+    "Cancelled0",
+  ])
   await expect(detail.getByText("The combined candidate passed the project checks", { exact: true })).toBeVisible()
   await expect(
     integration.getByText("The task changed since this preview. Review the bound candidate again.", { exact: true }),
@@ -1086,12 +1101,16 @@ test("sends resource requirements with a worker task and displays its queued rea
       tasks: [{ id: batch.manifest.tasks[0].id, state: "queued", queueReason: "memory-capacity" }],
     },
   })
-  await workspace
+  const queued = workspace
     .getByRole("article")
     .filter({ has: page.getByText("Run resource-aware tests", { exact: true }) })
-    .getByRole("button", { name: "Execution details", exact: true })
-    .click()
-  await expect(workspace.getByText("Waiting for enough unreserved free RAM.", { exact: true })).toBeVisible()
+  await expect(queued.getByText("Waiting for enough unreserved free RAM.", { exact: true })).toBeVisible()
+  await queued.getByRole("button", { name: "Execution details", exact: true }).click()
+  await expect(
+    workspace
+      .getByRole("region", { name: "Task details", exact: true })
+      .getByText("Waiting for enough unreserved free RAM.", { exact: true }),
+  ).toBeVisible()
   await expect(
     workspace
       .getByRole("region", { name: "Task details", exact: true })
@@ -1430,6 +1449,15 @@ test("maps only recorded worker assignments and shares task selection without di
   const workspace = page.getByRole("region", { name: "Agents", exact: true })
   const overview = workspace.getByRole("region", { name: "Batch overview: batch-distribution", exact: true })
   await expect(overview.getByText("1 / 6 completed", { exact: true })).toBeVisible()
+  const distribution = overview.getByRole("list", { name: "Task states for the entire batch", exact: true })
+  await expect(distribution.getByRole("listitem")).toHaveText([
+    "Completed1",
+    "Running1",
+    "Queued1",
+    "Needs input1",
+    "Failed1",
+    "Not reported1",
+  ])
   await expect(overview.getByRole("article")).toHaveCount(6)
   await expect(workspace.getByLabel("What should the worker do?", { exact: true })).toBeHidden()
   const search = workspace.getByLabel("Search tasks", { exact: true })
@@ -1469,6 +1497,13 @@ test("maps only recorded worker assignments and shares task selection without di
     },
   })
   await expect(overview.getByText("2 / 6 completed", { exact: true })).toBeVisible()
+  await expect(distribution.getByRole("listitem")).toHaveText([
+    "Completed2",
+    "Running1",
+    "Queued1",
+    "Failed1",
+    "Not reported1",
+  ])
   await expect(editor).toBeFocused()
   await expect(editor).toHaveValue("Keep this instruction draft")
   await workspace.getByRole("tab", { name: "Workers", exact: true }).click()
@@ -1614,6 +1649,7 @@ test("shows unknown initial CPU usage and hides stale resources after a failed r
       .toBeCloseTo(percent, 8)
     await expect(host.getByText(`${percent}%`, { exact: true })).toBeVisible()
   }
+  await expect(host.locator('[data-chart-kind="sparkline"]')).toHaveCount(3)
   await page.screenshot({ path: test.info().outputPath("host-resource-meters.png"), animations: "disabled" })
   const stale = page.waitForResponse(
     (response) => new URL(response.url()).pathname === "/api/resources" && response.status() === 200,
@@ -1622,6 +1658,7 @@ test("shows unknown initial CPU usage and hides stale resources after a failed r
   await stale
   await expect(host.getByRole("alert")).toContainText("Previous measurements are not live")
   await expect(host.getByRole("meter")).toHaveCount(0)
+  await expect(host.locator('[data-chart-kind="sparkline"]')).toHaveCount(0)
   resources.sampledAt += 25000
   const recovered = page.waitForResponse(
     (response) => new URL(response.url()).pathname === "/api/resources" && response.status() === 200,
@@ -2085,10 +2122,24 @@ test("shows native daily usage with linked charts, explicit coverage and project
   await page.goto("/agents?view=usage")
   const workspace = page.getByRole("region", { name: "Agents", exact: true })
   await expect(workspace.getByRole("group", { name: "Recorded cost: $1.25. Tokens: 120.", exact: true })).toBeVisible()
-  await expect(
-    workspace.getByText("Accounting records: 1 reported, 1 estimated, 1 unknown, 0 legacy.", { exact: true }),
-  ).toBeVisible()
+  const projection = workspace
+    .locator("details")
+    .filter({ has: page.getByText("Seven-day cost projection", { exact: true }) })
+  await projection.locator("summary").click()
+  await expect(projection.locator("[data-projection-chart]")).toContainText("$2.50")
+  await expect(projection).toContainText("Unknown and legacy costs may be missing")
+  await projection.scrollIntoViewIfNeeded()
+  await page.screenshot({ path: test.info().outputPath("native-cost-projection.png"), animations: "disabled" })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(projection.locator("[data-projection-chart]")).toBeVisible()
+  expect((await projection.locator("[data-projection-chart]").boundingBox())!.width).toBeLessThanOrEqual(390)
+  await projection.scrollIntoViewIfNeeded()
+  await page.screenshot({ path: test.info().outputPath("native-cost-projection-mobile.png"), animations: "disabled" })
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await projection.locator("summary").click()
   const coverage = workspace.getByRole("region", { name: "Cost coverage", exact: true })
+  const coverageBreakdown = coverage.getByRole("list", { name: "Accounting record types", exact: true })
+  await expect(coverageBreakdown.getByRole("listitem")).toHaveText(["Reported1", "Estimated1", "Unknown1", "Legacy0"])
   const ring = coverage.getByRole("progressbar", { name: "Reported or estimated records", exact: true })
   await expect(ring).toHaveAttribute("aria-valuenow", "2")
   await expect(ring).toHaveAttribute("aria-valuemax", "3")
@@ -2190,6 +2241,12 @@ test("shows native daily usage with linked charts, explicit coverage and project
     await workspace.getByRole("button", { name: "Refresh", exact: true }).click()
     await refreshed
     if (next?.unknown) {
+      await expect(coverageBreakdown.getByRole("listitem")).toHaveText([
+        "Reported0",
+        "Estimated0",
+        "Unknown3",
+        "Legacy0",
+      ])
       await expect(ring).toHaveAttribute("aria-valuenow", "0")
       await expect(ring).toHaveAttribute("aria-valuemax", "3")
       await expect(ring).toHaveAttribute("aria-valuetext", "0%")
@@ -2197,6 +2254,7 @@ test("shows native daily usage with linked charts, explicit coverage and project
     }
     await expect(coverage).toContainText("No accounting coverage is available for this period.")
     await expect(ring).toHaveCount(0)
+    await expect(coverageBreakdown).toHaveCount(0)
   }
   await expect(workspace.getByText("Accounting records:", { exact: false })).toHaveCount(0)
   usage.state.fail = true

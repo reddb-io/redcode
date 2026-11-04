@@ -7,7 +7,7 @@ import {
   useRef,
   useState
 } from "react";
-import { Input, ToggleButton } from "@reddb-io/design-system/base";
+import { Input, ToggleButton, Button } from "@reddb-io/design-system/base";
 import {
   applyGraphLevelOfDetail,
   collapseGraphCommunities,
@@ -18,6 +18,12 @@ import {
   searchGraphNodes,
   shapeGraphData
 } from "../../src/graph.js";
+import {
+  attachGraphViewport,
+  graphViewBox,
+  graphZoomRatio
+} from "../../src/graph-viewport.js";
+import { graphOverlays, graphPath } from "../../src/graph-overlays.js";
 import {
   GRAPH_COLOR_TOKENS,
   GRAPH_EDGE_LABEL_MAX_LENGTH,
@@ -62,6 +68,9 @@ function Graph(props) {
     width = 640,
     height = 400,
     renderer = "auto",
+    grouped = false,
+    bundled = false,
+    controls = false,
     searchable = true,
     focusedNode,
     onFocusedNodeChange,
@@ -74,6 +83,38 @@ function Graph(props) {
     showDetails = false,
     className = ""
   } = props;
+  const [zoomRatio, setZoomRatio] = useState(1), [pan, setPan] = useState({ x: 0, y: 0 }), [hovered, setHovered] = useState(null);
+  const svgRoot = useRef(null), viewportSnapshot = useRef({
+    width,
+    height,
+    view: { ratio: zoomRatio, ...pan }
+  });
+  viewportSnapshot.current = {
+    width,
+    height,
+    view: { ratio: zoomRatio, ...pan }
+  };
+  useEffect(
+    () => svgRoot.current ? attachGraphViewport(
+      svgRoot.current,
+      () => viewportSnapshot.current,
+      (view) => {
+        setZoomRatio(view.ratio);
+        setPan({ x: view.x, y: view.y });
+      }
+    ) : void 0,
+    []
+  );
+  function zoom(next) {
+    const ratio = graphZoomRatio(next);
+    setZoomRatio(ratio);
+    controller?.zoom(ratio);
+  }
+  function fit() {
+    setPan({ x: 0, y: 0 });
+    setZoomRatio(1);
+    controller?.fit();
+  }
   const [query, setQuery] = useState(""), [localFocus, setLocalFocus] = useState(null), [engineState, setEngineState] = useState(
     "loading"
   ), [controller, setController] = useState(), [reducedMotion, setReducedMotion] = useState(false), [nodeMargin, setNodeMargin] = useState(4), [localCollapsedCommunities, setLocalCollapsedCommunities] = useState(
@@ -115,19 +156,23 @@ function Graph(props) {
     [arrangement, width, height, localExpandedSubtrees]
   );
   const visible = useMemo(() => detail.data, [detail]);
+  const overlays = useMemo(
+    () => graphOverlays(visible, { grouped, bundled }),
+    [visible, grouped, bundled]
+  );
   const results = useMemo(
     () => searchGraphNodes(visible.nodes, query),
     [visible, query]
   );
   const activeFocus = focusedNode === void 0 ? localFocus : focusedNode;
   const focused = useMemo(
-    () => reduceGraphFocus(visible, activeFocus ?? null, 0, {
+    () => reduceGraphFocus(visible, activeFocus ?? hovered, 0, {
       width,
       height,
       padding: 40,
       nodeMargin
     }),
-    [visible, activeFocus, width, height, nodeMargin]
+    [visible, activeFocus, hovered, width, height, nodeMargin]
   );
   function nodeById(id) {
     return visible.nodes.find((node) => node.id === id);
@@ -323,6 +368,8 @@ function Graph(props) {
   const latest = useRef({
     visible,
     activeFocus,
+    grouped,
+    bundled,
     layout,
     interaction,
     nodeById,
@@ -333,6 +380,8 @@ function Graph(props) {
   latest.current = {
     visible,
     activeFocus,
+    grouped,
+    bundled,
     layout,
     interaction,
     nodeById,
@@ -361,8 +410,8 @@ function Graph(props) {
     return () => preference.removeEventListener?.("change", update);
   }, []);
   useEffect(() => {
-    controller?.setData(visible, { layout });
-  }, [controller, visible, layout]);
+    controller?.setData(visible, { layout, grouped, bundled });
+  }, [controller, visible, layout, grouped, bundled]);
   useEffect(() => {
     controller?.focusNode(activeFocus ?? null);
   }, [controller, activeFocus]);
@@ -391,7 +440,11 @@ function Graph(props) {
             current.expandCommunity(node.collapsedCommunity);
           else current.focus(id);
         },
-        { layout: snapshot.layout }
+        {
+          layout: snapshot.layout,
+          grouped: snapshot.grouped,
+          bundled: snapshot.bundled
+        }
       );
       engine.focusNode(snapshot.activeFocus ?? null);
       setController(engine);
@@ -464,6 +517,19 @@ function Graph(props) {
             ]
           }
         ) }) : null,
+        controls && /* @__PURE__ */ jsxs("div", { className: "flex flex-wrap gap-[var(--reddb-spatial-gap-sm)] p-[var(--reddb-spatial-inset-sm)]", children: [
+          /* @__PURE__ */ jsx(Button, { onClick: () => zoom(zoomRatio / 1.4), "aria-label": "Zoom in", children: "Zoom in" }),
+          /* @__PURE__ */ jsx(Button, { onClick: () => zoom(zoomRatio * 1.4), "aria-label": "Zoom out", children: "Zoom out" }),
+          /* @__PURE__ */ jsx(Button, { onClick: fit, children: "Fit graph" })
+        ] }),
+        overlays.bundleSkipped && /* @__PURE__ */ jsx(
+          "p",
+          {
+            role: "status",
+            className: "p-[var(--reddb-spatial-inset-sm)] text-ink-muted",
+            children: "Bundling is available for up to 1,500 edges. Showing individual edges."
+          }
+        ),
         /* @__PURE__ */ jsxs("div", { className: "relative w-full", style: { height: `${height}px` }, children: [
           /* @__PURE__ */ jsx(
             "div",
@@ -480,18 +546,33 @@ function Graph(props) {
           /* @__PURE__ */ jsxs(
             "svg",
             {
+              ref: svgRoot,
               "data-graph-fallback": "svg",
               role: "group",
               "aria-label": label,
               "aria-hidden": engineState === "ready",
-              viewBox: `0 0 ${width} ${height}`,
+              viewBox: graphViewBox(width, height, { ratio: zoomRatio, ...pan }),
               onClick: () => focus(null),
               className: [
-                "h-full w-full bg-[var(--reddb-color-background)]",
+                "h-full w-full touch-none bg-[var(--reddb-color-background)]",
                 engineState === "ready" ? "invisible" : ""
               ].filter(Boolean).join(" "),
               children: [
                 /* @__PURE__ */ jsx("title", { children: label }),
+                /* @__PURE__ */ jsx("g", { "aria-hidden": "true", "data-graph-groups": true, children: overlays.boxes.map((box) => /* @__PURE__ */ jsx(
+                  "rect",
+                  {
+                    x: svgX({ x: box.minX }),
+                    y: svgY({ y: box.minY }),
+                    width: svgX({ x: box.maxX }) - svgX({ x: box.minX }),
+                    height: svgY({ y: box.maxY }) - svgY({ y: box.minY }),
+                    fill: box.color,
+                    fillOpacity: ".08",
+                    stroke: box.color,
+                    strokeOpacity: ".5"
+                  },
+                  box.id
+                )) }),
                 focused.edges.map((edge, index) => {
                   const source = nodeById(edge.source);
                   const target = nodeById(edge.target);
@@ -507,7 +588,18 @@ function Graph(props) {
                       onClick: (event) => handleEdgeClick(event, edge.id),
                       onFocus: () => interaction("edge", "focus", edge.id),
                       onKeyDown: (event) => handleEdgeKeydown(event, edge.id),
-                      children: /* @__PURE__ */ jsx(
+                      children: overlays.paths.has(edge.id) ? /* @__PURE__ */ jsx(
+                        "path",
+                        {
+                          d: graphPath(overlays.paths.get(edge.id), (point) => ({
+                            x: svgX(point),
+                            y: svgY(point)
+                          })),
+                          fill: "none",
+                          stroke: edge.color,
+                          strokeWidth: Math.max(1, edge.weight)
+                        }
+                      ) : /* @__PURE__ */ jsx(
                         "line",
                         {
                           x1: svgX(source),
@@ -525,6 +617,8 @@ function Graph(props) {
                   return /* @__PURE__ */ jsx(Fragment2, { children: /* @__PURE__ */ jsx("g", { "data-graph-node": true, "data-focused": activeFocus === node.id, children: /* @__PURE__ */ jsx(
                     "circle",
                     {
+                      onPointerEnter: () => setHovered(node.id),
+                      onPointerLeave: () => setHovered(null),
                       "data-node-id": node.id,
                       "data-supernode-community": node.collapsedCommunity,
                       "data-summary-subtree": node.collapsedSubtree,

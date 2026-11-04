@@ -6,6 +6,7 @@ import { searchEmpty } from "./illustrations/search-empty.js";
 import { collectionEmpty } from "./illustrations/collection-empty.js";
 import { projectEmpty } from "./illustrations/project-empty.js";
 import { operationComplete } from "./illustrations/operation-complete.js";
+import { operationFailed } from "./illustrations/operation-failed.js";
 import { fileUpload } from "./illustrations/file-upload.js";
 import { fileDownload } from "./illustrations/file-download.js";
 import { processing } from "./illustrations/processing.js";
@@ -72,6 +73,7 @@ export {
   notificationsQuiet,
   notificationsQuietCompact,
   operationComplete,
+  operationFailed,
   pageMissing,
   processing,
   projectEmpty,

@@ -6,9 +6,10 @@ import { listRow } from "@reddb-io/design-system/contracts/list-row"
 import { nodeBadge } from "@reddb-io/design-system/contracts/node-badge"
 import { progress } from "@reddb-io/design-system/contracts/progress"
 import { toggleButton } from "@reddb-io/design-system/contracts/toggle-button"
+import { breakdownItems } from "@reddb-io/design-system/data/BreakdownBar"
 import { Icon } from "@opencode/ui/icon"
 import { Key } from "@solid-primitives/keyed"
-import { createMemo, Show } from "solid-js"
+import { createMemo, For, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useLanguage } from "@/runtime/i18n/language"
 import { workerTaskTone } from "./worker-task-inspector"
@@ -48,6 +49,33 @@ export function WorkerBatchOverview(props: {
     if (entry?.state === "waiting") return language.t("remoteWorkers.overview.needsInput")
     return entry ? language.t(`remoteWorkers.state.${entry.state}`) : language.t("remoteWorkers.details.unreported")
   }
+  const distribution = createMemo(() => {
+    const states = [
+      "succeeded",
+      "running",
+      "dispatching",
+      "queued",
+      "waiting",
+      "failed",
+      "interrupted",
+      "unknown",
+      "unreported",
+    ] as const
+    return breakdownItems(
+      states.flatMap((id) => {
+        const matching = tasks().filter((item) => (item.entry?.state ?? "unreported") === id)
+        if (!matching.length) return []
+        const tone = workerTaskTone(matching[0]?.entry?.state)
+        const color: `--${string}` =
+          tone === "neutral" ? "--reddb-color-ink-muted" : `--reddb-color-feedback-${tone}-foreground`
+        return [{ id, label: stateLabel(matching[0]?.entry), value: matching.length, color }]
+      }),
+    )
+  })
+  const queueReason = (entry?: WorkerEntry) =>
+    !props.stale && entry?.state === "queued" && entry.queueReason
+      ? language.t(`remoteWorkers.queue.${entry.queueReason}`)
+      : undefined
   const taskRow = (item: () => ReturnType<typeof tasks>[number]) => {
     const row = () => listRow({ interactive: true, selected: props.selected === item().task.id })
     return (
@@ -60,7 +88,9 @@ export function WorkerBatchOverview(props: {
           })}
           disabled={props.busy}
           aria-label={language.t("remoteWorkers.details.open")}
-          aria-description={`${item().task.prompt} · ${stateLabel(item().entry)}`}
+          aria-description={[item().task.prompt, stateLabel(item().entry), queueReason(item().entry)]
+            .filter(Boolean)
+            .join(" · ")}
           aria-pressed={props.selected === item().task.id}
           onClick={(event) => props.select(item().task.id, event.currentTarget)}
         >
@@ -76,6 +106,9 @@ export function WorkerBatchOverview(props: {
                 </span>
               </Show>
             </span>
+            <Show when={queueReason(item().entry)}>
+              {(reason) => <span class="text-caption text-ink-muted">{reason()}</span>}
+            </Show>
           </span>
           <Icon name="chevron-right" size="small" class="shrink-0 text-ink-muted" />
         </button>
@@ -95,15 +128,32 @@ export function WorkerBatchOverview(props: {
           </span>
         </div>
         <div
-          class={meter.track()}
+          class="sr-only"
           role="progressbar"
           aria-label={language.t("remoteWorkers.overview.progress")}
           aria-valuenow={completed()}
           aria-valuemin={0}
-          aria-valuemax={tasks().length}
-        >
-          <div class={meter.indicator()} style={{ width: `${(completed() / tasks().length) * 100}%` }} />
+          aria-valuemax={Math.max(1, tasks().length)}
+        />
+        <div aria-hidden="true" class="flex h-1.5 overflow-hidden rounded-full bg-muted">
+          <For each={distribution()}>
+            {(item) => <span style={{ width: `${item.fraction * 100}%`, background: item.paint }} />}
+          </For>
         </div>
+        <ul
+          aria-label={language.t("remoteWorkers.overview.distribution")}
+          class="m-0 mt-2 flex list-none flex-wrap gap-x-3 gap-y-1 p-0"
+        >
+          <For each={distribution()}>
+            {(item) => (
+              <li class="inline-flex items-center gap-1.5 text-caption text-ink-muted">
+                <span aria-hidden="true" class="size-1.5 rounded-full" style={{ background: item.paint }} />
+                <span>{item.label}</span>
+                <span class="font-medium tabular-nums text-foreground">{item.value}</span>
+              </li>
+            )}
+          </For>
+        </ul>
       </div>
       <Show when={props.stale}>
         <p role="status" class="text-body text-feedback-warning">

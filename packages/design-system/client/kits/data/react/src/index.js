@@ -1,3 +1,5 @@
+import { ProjectionChart } from "./ProjectionChart.js";
+import { ActivityTimeline } from "./ActivityTimeline.js";
 import { BreakdownBar } from "./BreakdownBar.js";
 import { Diagram } from "./Diagram.js";
 import {
@@ -49,7 +51,16 @@ import { Candlestick } from "./Candlestick.js";
 import { PieChart } from "./PieChart.js";
 import { DonutChart } from "./DonutChart.js";
 import { BarChart } from "./BarChart.js";
+import { DiffExplorer } from "./DiffExplorer.js";
+import { StatsExplorer } from "./StatsExplorer.js";
+import { KeyValueExplorer } from "./KeyValueExplorer.js";
+import { EventSeriesExplorer } from "./EventSeriesExplorer.js";
+import { VectorExplorer } from "./VectorExplorer.js";
+import { QueueExplorer } from "./QueueExplorer.js";
+import { TableExplorer } from "./TableExplorer.js";
+import { GraphExplorer } from "./GraphExplorer.js";
 export {
+  ActivityTimeline,
   BarChart,
   BreakdownBar,
   Candlestick,
@@ -57,20 +68,24 @@ export {
   CompositeChart,
   Diagram,
   Diff,
+  DiffExplorer,
   DocumentViewer,
   DonutChart,
   EntityRelationship,
   EventLog,
+  EventSeriesExplorer,
   ExplodedLayers,
   Gantt,
   GeoMap,
   Graph,
+  GraphExplorer,
   Heatmap,
   HexViewer,
   Histogram,
   IsometricBlock,
   IsometricScene,
   JsonTree,
+  KeyValueExplorer,
   KpiCard,
   MatrixHeatmap,
   MetricChart,
@@ -78,7 +93,9 @@ export {
   ObjectStack,
   PanZoomViewport,
   PieChart,
+  ProjectionChart,
   Quadrant,
+  QueueExplorer,
   QueueView,
   Radar,
   Sankey,
@@ -88,13 +105,16 @@ export {
   SequenceDiagram,
   Sparkline,
   StateGrid,
+  StatsExplorer,
   StatusBreakdown,
   Table,
+  TableExplorer,
   TerminalSession,
   TimeSeries,
   TraceWaterfall,
   TreeView,
   Treemap,
+  VectorExplorer,
   VirtualList,
   Waterfall,
   WorkflowDiagram,

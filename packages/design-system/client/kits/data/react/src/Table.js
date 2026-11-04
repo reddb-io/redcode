@@ -13,6 +13,7 @@ import {
   Input,
   quietControl
 } from "@reddb-io/design-system/base";
+import { dataTableClasses as appearance } from "../../src/table-appearance.js";
 import {
   filterRows,
   paginateRows,
@@ -283,12 +284,12 @@ function Table(props) {
     "div",
     {
       "data-data-table": true,
-      className: `grid gap-[var(--reddb-spatial-layout-gap-sm)] text-foreground ${containerClass}`.trim(),
+      className: `${appearance.root} ${containerClass}`.trim(),
       children: [
         filterableColumns.length > 0 || columnVisibility || actions ? /* @__PURE__ */ jsx(Fragment, { children: /* @__PURE__ */ jsxs(
           "div",
           {
-            className: "flex flex-wrap items-end gap-[var(--reddb-spatial-layout-gap-sm)]",
+            className: appearance.tools,
             "data-table-tools": true,
             children: [
               filterableColumns.map((column, index) => {
@@ -380,7 +381,7 @@ function Table(props) {
             role: "region",
             "aria-label": `${caption} data`,
             tabIndex: 0,
-            className: `max-w-full overflow-auto rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus ${virtualize ? "relative" : ""}`.trim(),
+            className: `${appearance.scroll} ${virtualize ? "relative" : ""}`.trim(),
             onScroll: (event) => setScrollTop(event.currentTarget.scrollTop),
             style: {
               maxHeight: virtualize ? `${virtualize.viewportHeight}px` : void 0
@@ -405,7 +406,7 @@ function Table(props) {
                   /* @__PURE__ */ jsx(
                     "thead",
                     {
-                      className: "sticky top-0 z-10 border-b border-muted bg-background",
+                      className: appearance.header,
                       children: /* @__PURE__ */ jsx("tr", { children: visibleColumns.map((column, index) => {
                         return /* @__PURE__ */ jsx(Fragment2, { children: /* @__PURE__ */ jsx(
                           "th",
@@ -413,7 +414,7 @@ function Table(props) {
                             scope: "col",
                             "aria-sort": sortValue(column),
                             "data-align": column.align ?? "start",
-                            className: `px-[var(--reddb-spatial-inset-md)] py-[var(--reddb-spatial-inset-sm)] align-middle font-medium ${alignClass(column)}`.trim(),
+                            className: `${appearance.head} px-[var(--reddb-spatial-inset-md)] py-[var(--reddb-spatial-inset-sm)] align-middle font-medium ${alignClass(column)}`.trim(),
                             children: column.sortable ? /* @__PURE__ */ jsx(Fragment, { children: /* @__PURE__ */ jsx(
                               "button",
                               {
@@ -453,7 +454,7 @@ function Table(props) {
                               "data-table-row-selected": rowSelected ? "" : void 0,
                               "aria-rowindex": dataIndex + 2,
                               "aria-selected": selectable ? rowSelected : void 0,
-                              className: `border-b border-muted ${selectable ? "cursor-pointer" : ""} ${rowSelected ? "bg-foreground/10 font-medium" : selectable ? "hover:bg-foreground/8" : ""}`.trim(),
+                              className: `${appearance.row} ${selectable ? "cursor-pointer" : ""} ${rowSelected ? "bg-foreground/10 font-medium" : "hover:bg-foreground/8"}`.trim(),
                               children: visibleColumns.map((column, columnPosition) => {
                                 const original = row[column.key];
                                 const value = valueWithChanges(
@@ -472,7 +473,7 @@ function Table(props) {
                                     "aria-readonly": !canEdit(row, column),
                                     "data-align": column.align ?? "start",
                                     tabIndex: active.row === rowPosition && active.column === columnPosition ? 0 : -1,
-                                    className: `px-[var(--reddb-spatial-inset-md)] py-[var(--reddb-spatial-inset-sm)] align-middle focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus ${alignClass(column)}`.trim(),
+                                    className: `${appearance.cell} px-[var(--reddb-spatial-inset-md)] py-[var(--reddb-spatial-inset-sm)] align-middle focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus ${alignClass(column)}`.trim(),
                                     onClick: (event) => {
                                       setActive({
                                         row: rowPosition,

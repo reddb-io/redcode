@@ -9,4 +9,4 @@ export interface SettingsRowProps extends SettingsRowContract {
     /** Additional classes on the row's container. */
     className?: string;
 }
-export declare function SettingsRow({ label, description, error, required, id, children, actions, className }: SettingsRowProps): import("react").JSX.Element;
+export declare function SettingsRow({ label, hint, wide, description, error, required, id, children, actions, className }: SettingsRowProps): import("react").JSX.Element;

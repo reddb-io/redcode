@@ -44,6 +44,8 @@ function resolveCompositeChart(data, orientation = "vertical", primaryAxis, seco
     if (item.axis === "secondary" && !secondaryAxis?.label.trim()) throw new Error("CompositeChart: secondary layers require a named secondaryAxis.");
     if (item.kind === "candlestick" && orientation === "horizontal") throw new Error("CompositeChart: candles require vertical orientation.");
     const samples2 = /* @__PURE__ */ new Map();
+    const points = [];
+    if ("preserveDuplicateX" in item && item.preserveDuplicateX && item.kind === "column") throw new Error("CompositeChart: duplicate coordinates can only be preserved for line or area layers.");
     for (const point of item.data) {
       const x = coordinate(point.x);
       if (!Number.isFinite(x)) continue;
@@ -52,8 +54,9 @@ function resolveCompositeChart(data, orientation = "vertical", primaryAxis, seco
         const valid = [point.open, point.high, point.low, point.close].every(Number.isFinite) && point.low <= Math.min(point.open, point.close) && point.high >= Math.max(point.open, point.close);
         samples2.set(x, { x, value: valid ? point.close : null, ...valid ? { candle: point } : {} });
       } else samples2.set(x, { x, value: typeof point.y === "number" && Number.isFinite(point.y) ? point.y : null, paint: point.color ? chartColor({ color: point.color, series: item.series }) : void 0 });
+      points.push(samples2.get(x));
     }
-    return { format: (item.axis === "secondary" ? secondaryAxis : primaryAxis)?.format, id: item.id, label: item.label, kind: item.kind, axis: item.axis ?? "primary", paint: chartColor(item, options.palette, automatic), dash: compositeDash("dash" in item ? item.dash : void 0), samples: samples2, points: [...samples2.values()].sort((a, b) => a.x - b.x) };
+    return { format: (item.axis === "secondary" ? secondaryAxis : primaryAxis)?.format, id: item.id, label: item.label, kind: item.kind, axis: item.axis ?? "primary", paint: chartColor(item, options.palette, automatic), dash: compositeDash("dash" in item ? item.dash : void 0), gradient: "gradient" in item ? item.gradient : void 0, samples: samples2, points: ("preserveDuplicateX" in item && item.preserveDuplicateX ? points : [...samples2.values()]).sort((a, b) => a.x - b.x) };
   });
   const ordered = series.map((item, index) => ({ item, order: data[index].order ?? index })).sort((a, b) => a.order - b.order).map((entry) => entry.item);
   const allSamples = [...original].sort((a, b) => a[0] - b[0]).map(([key, value]) => ({ key, value }));
@@ -70,7 +73,7 @@ function resolveCompositeChart(data, orientation = "vertical", primaryAxis, seco
     const value = reference.kind === "value" ? reference.value : coordinate(reference.x);
     const axis = reference.kind === "value" ? reference.axis ?? "primary" : "primary";
     if (axis === "secondary" && !secondaryAxis?.label.trim()) throw new Error("CompositeChart: secondary references require a named secondaryAxis.");
-    return Number.isFinite(value) ? [{ id: reference.id, label: reference.label, paint: compositePaint(reference.series ?? 6), kind: reference.kind, value, axis }] : [];
+    return Number.isFinite(value) ? [{ id: reference.id, label: reference.label, paint: compositePaint(reference.series ?? 6), kind: reference.kind, value, axis, showLabel: reference.showLabel }] : [];
   });
   const stacked = (axis, declared) => {
     if (options.columnMode !== "stacked") return valueDomain(series, axis, declared);

@@ -25,6 +25,8 @@ export declare const sectionHeading: import("tailwind-variants").TVReturnType<{
     };
 }, {
     root: string;
+    group: string;
+    leading: string;
     text: string;
     title: string;
     description: string;
@@ -55,6 +57,8 @@ export declare const sectionHeading: import("tailwind-variants").TVReturnType<{
     };
 }, {
     root: string;
+    group: string;
+    leading: string;
     text: string;
     title: string;
     description: string;
@@ -85,6 +89,8 @@ export declare const sectionHeading: import("tailwind-variants").TVReturnType<{
     };
 }, {
     root: string;
+    group: string;
+    leading: string;
     text: string;
     title: string;
     description: string;

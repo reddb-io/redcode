@@ -1,52 +1,60 @@
 "use client";
 import { Fragment, jsx, jsxs } from "react/jsx-runtime";
-import { Fragment as Fragment2, useState } from "react";
-import { Heading, Input, Tabs } from "@reddb-io/design-system/base";
+import { Fragment as Fragment2, useRef, useState } from "react";
+import { Button, Heading, Input, Tabs } from "@reddb-io/design-system/base";
 import { quietControl } from "@reddb-io/design-system/base";
+import {
+  filterDocuments,
+  presentDocument,
+  visibleDocumentIndex
+} from "../../src/document.js";
 import {
   documentBody,
   documentFields,
   documentRaw,
   extractDocumentSummary,
-  filterDocuments
-} from "../../src/document.js";
-import {
-  documentBody as documentBody2,
-  documentFields as documentFields2,
-  documentRaw as documentRaw2,
-  extractDocumentSummary as extractDocumentSummary2,
   filterDocuments as filterDocuments2,
-  formatDocumentValue
+  formatDocumentValue,
+  presentDocument as presentDocument2,
+  visibleDocumentIndex as visibleDocumentIndex2
 } from "../../src/document.js";
 function DocumentViewer(props) {
   const {
     documents,
+    present = presentDocument,
     label = "Documents",
     selected: controlledSelected,
     onSelect,
     mode: controlledMode,
     onModeChange,
+    empty,
     className = ""
   } = props;
   const [query, setQuery] = useState("");
+  const filterInput = useRef(null);
   const [localSelected, setLocalSelected] = useState(0);
   const [localMode, setLocalMode] = useState("body");
-  const items = filterDocuments(documents, query);
+  const items = filterDocuments(documents, query, present);
   const activeMode = controlledMode ?? localMode;
-  const activeIndex = resolveSelectedIndex(
+  const activeIndex = visibleDocumentIndex(items, resolveSelectedIndex(
     controlledSelected === void 0 ? localSelected : controlledSelected
-  );
+  ));
   const activeDocument = activeIndex === null ? void 0 : documents[activeIndex];
-  const activeSummary = activeDocument && activeIndex !== null ? extractDocumentSummary(activeDocument, activeIndex) : void 0;
+  const activePresentation = activeDocument && activeIndex !== null ? present(activeDocument, activeIndex) : void 0;
+  const activeSummary = activePresentation?.summary;
   function resolveSelectedIndex(selected) {
     if (selected === null) return null;
     if (typeof selected === "number") {
       return selected >= 0 && selected < documents.length ? selected : null;
     }
     const index = documents.findIndex(
-      (document, documentIndex) => extractDocumentSummary(document, documentIndex).id === selected
+      (document, documentIndex) => present(document, documentIndex).summary.id === selected
     );
     return index < 0 ? null : index;
+  }
+  function clearFilter() {
+    setQuery("");
+    filterInput.current?.focus();
   }
   function select(item) {
     setLocalSelected(item.index);
@@ -86,6 +94,7 @@ function DocumentViewer(props) {
                       children: /* @__PURE__ */ jsx(
                         Input,
                         {
+                          ref: filterInput,
                           value: query,
                           onValueChange: setQuery,
                           "aria-label": "Filter documents",
@@ -96,13 +105,13 @@ function DocumentViewer(props) {
                       )
                     }
                   ),
-                  /* @__PURE__ */ jsx(
+                  items.length ? /* @__PURE__ */ jsx(
                     "div",
                     {
                       role: "listbox",
                       "aria-label": `${label} list`,
                       className: "max-h-full overflow-y-auto p-[var(--reddb-spatial-inset-sm)]",
-                      children: items.length ? items.map((item, index) => {
+                      children: items.map((item, index) => {
                         return /* @__PURE__ */ jsx(Fragment2, { children: /* @__PURE__ */ jsxs(
                           "button",
                           {
@@ -127,15 +136,12 @@ function DocumentViewer(props) {
                             ]
                           }
                         ) }, item.index);
-                      }) : /* @__PURE__ */ jsx(Fragment, { children: /* @__PURE__ */ jsx(
-                        "p",
-                        {
-                          className: "m-0 px-[var(--reddb-spatial-inset-sm)] py-[var(--reddb-spatial-inset-md)] text-sm text-ink-muted",
-                          children: " No documents match. "
-                        }
-                      ) })
+                      })
                     }
-                  )
+                  ) : /* @__PURE__ */ jsx("div", { "data-document-empty": true, className: "px-[var(--reddb-spatial-inset-sm)] py-[var(--reddb-spatial-inset-md)] text-sm text-ink-muted", children: empty ? empty({ clear: clearFilter }) : /* @__PURE__ */ jsxs(Fragment, { children: [
+                    /* @__PURE__ */ jsx("p", { className: "m-0", children: "No documents match." }),
+                    query ? /* @__PURE__ */ jsx(Button, { size: "sm", onClick: clearFilter, children: "Clear filter" }) : null
+                  ] }) })
                 ]
               }
             ),
@@ -174,13 +180,13 @@ function DocumentViewer(props) {
                       {
                         "data-document-body": true,
                         className: "whitespace-pre-wrap break-words",
-                        children: documentBody(activeDocument)
+                        children: activePresentation.body
                       }
                     ) }) : /* @__PURE__ */ jsx(Fragment, { children: value === "fields" ? /* @__PURE__ */ jsx(Fragment, { children: /* @__PURE__ */ jsx(
                       "dl",
                       {
                         className: "m-0 grid gap-[var(--reddb-spatial-gap-sm)]",
-                        children: documentFields(activeDocument).map(
+                        children: activePresentation.fields.map(
                           (field, index) => {
                             return /* @__PURE__ */ jsx(Fragment2, { children: /* @__PURE__ */ jsxs(
                               "div",
@@ -192,7 +198,7 @@ function DocumentViewer(props) {
                                   /* @__PURE__ */ jsx(
                                     "dd",
                                     {
-                                      className: "m-0 min-w-0 break-words font-mono text-sm",
+                                      className: "m-0 min-w-0 whitespace-pre-wrap break-words font-mono text-sm",
                                       children: field.text
                                     }
                                   )
@@ -207,7 +213,7 @@ function DocumentViewer(props) {
                       {
                         "data-document-raw": true,
                         className: "m-0 min-w-max whitespace-pre font-mono text-sm",
-                        children: documentRaw(activeDocument)
+                        children: activePresentation.raw
                       }
                     ) }) }) }) : /* @__PURE__ */ jsx(Fragment, { children: /* @__PURE__ */ jsx("p", { className: "m-0 text-ink-muted", children: "Select a document to inspect it." }) }) });
                   }
@@ -224,10 +230,12 @@ var DocumentViewer_default = DocumentViewer;
 export {
   DocumentViewer,
   DocumentViewer_default as default,
-  documentBody2 as documentBody,
-  documentFields2 as documentFields,
-  documentRaw2 as documentRaw,
-  extractDocumentSummary2 as extractDocumentSummary,
+  documentBody,
+  documentFields,
+  documentRaw,
+  extractDocumentSummary,
   filterDocuments2 as filterDocuments,
-  formatDocumentValue
+  formatDocumentValue,
+  presentDocument2 as presentDocument,
+  visibleDocumentIndex2 as visibleDocumentIndex
 };
