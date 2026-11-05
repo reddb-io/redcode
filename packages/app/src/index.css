@@ -3,6 +3,17 @@
 @import "@opencode/ui/styles/tokens";
 @import "tw-animate-css";
 
+/* The recording state uses the stop glyph while retaining the DS live meter. */
+[data-voice-input][aria-pressed="true"] > svg[data-icon] { display: none; }
+[data-voice-input][aria-pressed="true"]::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  flex: none;
+  border-radius: 1px;
+  background: currentColor;
+}
+
 /* The Design System resets container tokens, so session width belongs to the app shell. */
 :root {
   --redcode-session-width: 72rem;

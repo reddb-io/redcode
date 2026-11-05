@@ -10,6 +10,7 @@ export declare const tabs: import("tailwind-variants").TVReturnType<{
             content?: import("tailwind-variants").ClassValue;
             root?: import("tailwind-variants").ClassValue;
             list?: import("tailwind-variants").ClassValue;
+            bar?: import("tailwind-variants").ClassValue;
             trigger?: import("tailwind-variants").ClassValue;
         };
     };
@@ -19,11 +20,13 @@ export declare const tabs: import("tailwind-variants").TVReturnType<{
             content?: import("tailwind-variants").ClassValue;
             root?: import("tailwind-variants").ClassValue;
             list?: import("tailwind-variants").ClassValue;
+            bar?: import("tailwind-variants").ClassValue;
             trigger?: import("tailwind-variants").ClassValue;
         };
     };
 } | {}, {
     root: string;
+    bar: string;
     list: string;
     trigger: string;
     content: string;
@@ -33,16 +36,19 @@ export declare const tabs: import("tailwind-variants").TVReturnType<{
             content?: import("tailwind-variants").ClassValue;
             root?: import("tailwind-variants").ClassValue;
             list?: import("tailwind-variants").ClassValue;
+            bar?: import("tailwind-variants").ClassValue;
             trigger?: import("tailwind-variants").ClassValue;
         };
     };
 } | {}, {
     root: string;
+    bar: string;
     list: string;
     trigger: string;
     content: string;
 }, import("tailwind-variants").TVReturnType<unknown, {
     root: string;
+    bar: string;
     list: string;
     trigger: string;
     content: string;

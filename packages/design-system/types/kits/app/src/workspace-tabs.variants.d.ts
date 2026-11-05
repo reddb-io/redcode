@@ -6,6 +6,8 @@ export declare const workspaceTabsAppearance: import("tailwind-variants").TVRetu
     };
 }, {
     root: string;
+    header: string;
+    create: string;
     frame: string;
     list: string;
     trigger: string;
@@ -22,6 +24,8 @@ export declare const workspaceTabsAppearance: import("tailwind-variants").TVRetu
     };
 }, {
     root: string;
+    header: string;
+    create: string;
     frame: string;
     list: string;
     trigger: string;
@@ -38,6 +42,8 @@ export declare const workspaceTabsAppearance: import("tailwind-variants").TVRetu
     };
 }, {
     root: string;
+    header: string;
+    create: string;
     frame: string;
     list: string;
     trigger: string;

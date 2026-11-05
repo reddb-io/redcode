@@ -2,6 +2,7 @@ import { tv } from "tailwind-variants";
 const tabs = tv({
   slots: {
     root: "min-w-0",
+    bar: "flex min-w-0 flex-wrap items-center gap-[var(--reddb-spatial-gap-sm)] border-b border-muted",
     list: "flex flex-wrap gap-[var(--reddb-spatial-gap-sm)] border-b border-muted",
     // The active tab wears the shared selection language (DESIGN.md,
     // "Interactive states"): a neutral surface, full-weight ink, and a 2px

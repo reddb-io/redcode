@@ -9,7 +9,7 @@ host's density when one is set; otherwise it uses tiny on narrow viewports and
 compact on wider ones. Editable text and toolbar controls retain the DS touch
 floor on devices with a coarse pointer.
 
-The current delivery pins `v2026.11.6`, selects React and uses the official
+The current delivery pins `v2026.11.12`, selects React and uses the official
 compiled distribution. Settings and the migrated shell surfaces consume native
 React controls through canonical Base, App and Data imports. Shared service adapters
 retain the existing router, persistence, server subscriptions and extension owners.
@@ -41,6 +41,19 @@ producer adaptation in the receipt; the pinned checkout and Kit sources are unch
 
 Run `bun run check` and the affected application regression tests after updating.
 Do not edit vendored components or generated theme files by hand.
+
+The v2026.11.12 Base kit adds `VoiceInput` and `AudioMeter`. `VoiceInput` is a
+controlled microphone button with a six-segment level indicator while recording;
+the host owns microphone permission, capture, recording state and errors. The composer
+bridges it to the existing Solid voice owner and shows a stop glyph while recording,
+separate cancellation and the current draft protection.
+`AudioMeter` accepts a measured 0–1 level, or caller-supplied signed time-domain
+samples for a waveform, with a compact option and accessible meter semantics.
+Voice settings use it with the existing measured level;
+a waveform requires collecting real samples rather than inferring them from that
+scalar. The TUI browser recorder is self-contained HTML and cannot directly import
+this React delivery, so it needs a separately supported adapter. Neither component
+implements recording, playback, provider selection or transcription.
 
 The v2026.11.6 Data kit adds candidates for future desktop work. `StatsExplorer`
 accepts caller-supplied numeric observations and units, making it a candidate for

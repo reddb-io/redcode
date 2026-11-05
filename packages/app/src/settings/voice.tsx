@@ -15,6 +15,7 @@ import { usePlatform } from "@/runtime/platform/platform"
 import { VoiceRecorder, voiceAudioBase64 } from "@opencode/util/voice-recorder"
 import { VoiceRealtime } from "@opencode/util/voice-realtime"
 import { createVoiceInput, type VoiceState } from "@opencode/util/voice-input"
+import { SharedAudioMeter } from "@/runtime/react/audio"
 
 export function SettingsVoice(props: {
   servers: Accessor<SettingsServer[]>
@@ -527,13 +528,8 @@ function VoiceSettingsTest(props: { api?: ServerApi; device: string; enabled: bo
         <Button type="button" size="small" variant="outline" disabled={monitor.loading || busy()} onClick={() => monitor.active ? stopMonitor() : void startMonitor()}>
           {language.t(monitor.active ? "voice.test.stopMonitor" : "voice.test.monitor")}
         </Button>
-        <div class="voice-meter" aria-hidden="true">
-          <For each={Array.from({ length: 12 }, (_, index) => index)}>{(index) => (
-            <span classList={{ active: (monitor.active ? monitor.level : state.level) * 12 > index }} />
-          )}</For>
-        </div>
-        <meter min="0" max="1" value={monitor.active ? monitor.level : state.level} aria-label={language.t("voice.level")} class="sr-only" />
       </div>
+      <SharedAudioMeter value={monitor.active ? monitor.level : state.level} label={language.t("voice.level")} />
       <Show when={monitor.error}><p role="alert" class="text-body text-feedback-danger-foreground">{monitor.error}</p></Show>
       <p class="text-body text-ink-muted">{language.t(props.enabled ? "voice.test.ready" : "voice.test.saveFirst")}</p>
       <div class="flex flex-wrap gap-2">

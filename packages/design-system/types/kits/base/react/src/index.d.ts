@@ -126,3 +126,5 @@ export { StateIllustration, type StateIllustrationProps } from "./StateIllustrat
 export { ContentState, type ContentStateProps } from "./ContentState";
 export { CONTENT_STATES, type ContentLoadState } from "../../src/core/contracts/contentstate";
 export { SKELETON_SHAPES, type SkeletonShape } from "../../src/skeleton.variants";
+export { AudioMeter, type AudioMeterProps } from "./AudioMeter";
+export { VoiceInput, type VoiceInputProps } from "./VoiceInput";

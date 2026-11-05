@@ -7,6 +7,10 @@ export interface TabsProps extends TabsContract {
     children?: (item: {
         value: string;
     }) => ReactNode;
+    /** Optional content placed before the tablist, outside its keyboard navigation. */
+    leading?: ReactNode;
+    /** Optional actions placed beside the tablist. */
+    actions?: ReactNode;
     /** Additional root classes. */
     className?: string;
 }

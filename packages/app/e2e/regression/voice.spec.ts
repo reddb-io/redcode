@@ -43,7 +43,7 @@ test("voice settings add ElevenLabs and test the selected microphone and transcr
   await testPanel.getByRole("button", { name: "Check microphone level" }).click()
   expect(await captured.device).toBe(device)
   await expect(testPanel.getByRole("button", { name: "Stop microphone check" })).toBeVisible()
-  await expect.poll(async () => Number(await testPanel.getByLabel("Microphone level").getAttribute("value"))).toBeGreaterThan(0)
+  await expect(testPanel.getByRole("meter", { name: "Microphone level" }).locator("[data-audio-segment].bg-feedback-success-foreground").first()).toBeVisible()
   await testPanel.getByRole("button", { name: "Record test" }).click()
   await expect(testPanel.getByRole("button", { name: "Stop and transcribe test" })).toBeVisible()
   await page.waitForTimeout(1000)
@@ -122,11 +122,27 @@ test("realtime dictation shows partial speech and inserts only the final transcr
   expect(prompts).toEqual([])
 })
 
+test("composer voice input cancels a recording without transcribing or changing the draft", async ({ page }) => {
+  const { editor } = await openDraft(page, { name: "VoiceCancel" })
+  let transcriptions = 0
+  await page.route((url) => url.pathname === "/api/config", (route) => route.fulfill({ json: [{ type: "document", info: { voice: {
+    provider: "openai", model: "gpt-4o-mini-transcribe", connection: { type: "credential", id: "cred_voice" },
+  } } }] }))
+  await page.route((url) => url.pathname === "/api/voice/transcribe", (route) => { transcriptions++; return route.fulfill({ json: { data: { text: "unexpected" } } }) })
+  await editor.fill("Pedido original")
+  await page.getByRole("button", { name: "Record voice", exact: true }).click()
+  await expect(page.getByRole("button", { name: "Stop and transcribe", exact: true })).toHaveAttribute("aria-pressed", "true")
+  await page.getByRole("button", { name: "Cancel recording", exact: true }).click()
+  await expect(page.getByRole("button", { name: "Record voice", exact: true })).toHaveAttribute("aria-pressed", "false")
+  await expect(editor).toHaveText("Pedido original")
+  expect(transcriptions).toBe(0)
+})
+
 test("voice settings explicitly select a connection and microphone capture only edits the draft", async ({ page }) => {
   const errors: string[] = []
   page.on("pageerror", (error) => errors.push(error.message))
   const prompts: string[] = []
-  const { editor } = await openDraft(page, { name: "VoiceDraft", onPrompt: ({ sessionID }) => prompts.push(sessionID) })
+  const { editor } = await openDraft(page, { name: "VoiceDraft", seed: { theme: { id: "oc-2", scheme: "dark" } }, onPrompt: ({ sessionID }) => prompts.push(sessionID) })
   let voice: unknown
   await page.route(
     (url) => url.pathname === "/api/config",

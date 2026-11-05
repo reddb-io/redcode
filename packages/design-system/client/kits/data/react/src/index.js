@@ -59,6 +59,8 @@ import { VectorExplorer } from "./VectorExplorer.js";
 import { QueueExplorer } from "./QueueExplorer.js";
 import { TableExplorer } from "./TableExplorer.js";
 import { GraphExplorer } from "./GraphExplorer.js";
+import { DeveloperPanel } from "./DeveloperPanel.js";
+import { DeveloperRequestInspector } from "./DeveloperRequestInspector.js";
 export {
   ActivityTimeline,
   BarChart,
@@ -66,6 +68,8 @@ export {
   Candlestick,
   CodeField,
   CompositeChart,
+  DeveloperPanel,
+  DeveloperRequestInspector,
   Diagram,
   Diff,
   DiffExplorer,

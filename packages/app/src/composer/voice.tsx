@@ -14,6 +14,7 @@ import { useWorkspaceLocation } from "@/workspaces/location"
 import { useSettings } from "@/settings/model"
 import type { ComposerAdapter } from "./adapter"
 import { createComposerEditorActions } from "./editor/actions"
+import { SharedVoiceInput } from "@/runtime/react/audio"
 
 // Keep unsent speech with the conversation that owned it when its composer unmounts or navigates.
 const recoveredVoice = new Map<string, string>()
@@ -119,9 +120,6 @@ export function ComposerVoiceControl(props: { voice: ReturnType<typeof createCom
               ? language.t(`voice.error.${state.error}`)
               : language.t(`voice.${state.phase === "preparing" ? "preparing" : "transcribing"}`)}
         </span>
-        <Show when={state.phase === "recording"}>
-          <meter min="0" max="1" value={state.level} aria-label={language.t("voice.level")} class="h-1 w-10" />
-        </Show>
         <Show when={state.live}>
           <span class="max-w-48 truncate text-caption text-ink-muted sm:max-w-80" title={state.live}>{state.live}</span>
         </Show>
@@ -137,22 +135,16 @@ export function ComposerVoiceControl(props: { voice: ReturnType<typeof createCom
         </Show>
         <IconButton
           type="button"
-          icon={<Icon name="close" size="small" />}
+          icon={<Icon name="trash" size="small" />}
           size="small"
           aria-label={language.t("voice.cancel")}
+          title={language.t("voice.cancel")}
           onClick={props.voice.cancel}
         />
       </Show>
-      <IconButton
-        type="button"
-        size="small"
-        icon={<Icon name={state.phase === "recording" ? "stop" : "microphone"} size="small" />}
-        aria-label={label()}
-        title={label()}
-        aria-pressed={state.phase === "recording"}
-        disabled={props.disabled || state.phase === "preparing" || state.phase === "transcribing"}
-        onClick={() => void (state.phase === "recording" ? props.voice.finish() : props.voice.start())}
-      />
+      <SharedVoiceInput recording={state.phase === "recording"} level={state.level} label={label()}
+        disabled={!!props.disabled || state.phase === "preparing" || state.phase === "transcribing"}
+        onChange={(recording) => void (recording ? props.voice.start() : props.voice.finish())} />
     </div>
   )
 }

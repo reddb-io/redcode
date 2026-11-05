@@ -57,3 +57,5 @@ export { VectorExplorer, type VectorExplorerProps } from "./VectorExplorer";
 export { QueueExplorer, type QueueExplorerProps } from "./QueueExplorer";
 export { TableExplorer, type TableExplorerProps } from "./TableExplorer";
 export { GraphExplorer, type GraphExplorerProps } from "./GraphExplorer";
+export { DeveloperPanel, type DeveloperPanelProps } from "./DeveloperPanel";
+export { DeveloperRequestInspector, type DeveloperRequestInspectorProps } from "./DeveloperRequestInspector";

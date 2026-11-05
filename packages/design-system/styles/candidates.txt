@@ -11,11 +11,13 @@
 !follow
 !forward
 !from
+!hasRequests
 !header
 !incoming
 !inert
 !initial
 !label
+!maximized
 !moreOpen
 !onenqueue
 !paused
@@ -225,9 +227,13 @@
 @lg/entity-journey:grid-rows-subgrid
 @lg/entity-journey:row-span-4
 @lg/radio-cards:grid-cols-2
+@lg:basis-auto
 @lg:border-b-0
 @lg:border-r
 @lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]
+@lg:grid-cols-[minmax(16rem,2fr)_minmax(0,3fr)]
+@lg:grid-rows-1
+@lg:order-none
 @license
 @md/change-review:grid-cols-2
 @md/description-list:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]
@@ -267,6 +273,15 @@
 [&>[data-indicator-marker]]:translate-y-0
 [&>[data-kpi-card]]:grid-rows-subgrid
 [&>[data-kpi-card]]:row-span-2
+[&>button]:shrink-0
+[&>div>[data-tabs-header]]:gap-0
+[&>div>[data-tabs-header]]:items-end
+[&>div>[data-tabs-header]]:pe-0
+[&>div>[data-tabs-header]]:ps-[var(--reddb-spatial-inset-sm)]
+[&>div]:flex
+[&>div]:flex-col
+[&>div]:h-full
+[&>div]:min-h-0
 [&>label]:sr-only
 [&>li]:max-w-full
 [&>li]:min-w-0
@@ -275,6 +290,7 @@
 [&>span]:truncate
 [&>time]:shrink-0
 [&[aria-haspopup][aria-expanded=true]]:bg-foreground/10
+[&[hidden]]:hidden
 [&[multiple]]:h-auto
 [&_.lc-axis-tick-label]:font-regular
 [&_.lc-axis-tick-label]:text-ink-muted
@@ -287,9 +303,13 @@
 [&_[data-ds-chart]]:[--color-primary:var(--reddb-color-feedback-warning-foreground)]
 [&_[data-ds-chart]]:[--color-primary:var(--reddb-color-on-primary)]
 [&_[data-nav-label]]:max-w-full
+[&_[data-tabs-header]]:bg-elevation-raised-surface
+[&_[data-tabs-header]]:px-[var(--reddb-spatial-inset-sm)]
+[&_[data-toolbar-item]]:text-caption
 [&_[data-tooltip-root]]:w-full
 [&_a]:scroll-mb-[var(--_reddb-navigation-bottom-height,0px)]
 [&_button]:scroll-mb-[var(--_reddb-navigation-bottom-height,0px)]
+[&_button]:text-caption
 [&_dd]:break-words
 [&_dd]:text-end
 [&_input]:scroll-mb-[var(--_reddb-navigation-bottom-height,0px)]
@@ -510,6 +530,7 @@ active:bg-foreground/12
 active:bg-primary-active
 activeChanges
 activeConsumers
+activeContext
 activeDocument
 activeElement
 activeFilters
@@ -631,6 +652,7 @@ among
 amount
 amounts
 amp
+amplitudes
 an
 analytical
 anatomy
@@ -790,6 +812,7 @@ aside
 ask
 asked
 asking
+asks
 aspect
 aspect-[1/2]
 aspect-[12/7]
@@ -806,6 +829,7 @@ associated
 associatedForm
 association
 associations
+assuming
 assumptions
 asterisk
 async
@@ -820,6 +844,9 @@ attributes
 attribution
 attrs
 audible
+audio
+audioMeter
+audioWaveform
 authenticate
 author
 authorization
@@ -898,6 +925,7 @@ before:absolute
 before:aspect-square
 before:bg-ink-muted
 before:content-['']
+before:content-[\'\']
 before:h-[var(--reddb-spatial-switch-thumb-size)]
 before:inset-x-0
 before:inset-y-0
@@ -1003,6 +1031,7 @@ border-[var(--reddb-color-feedback-success-border)]
 border-[var(--reddb-color-feedback-warning-border)]
 border-[var(--reddb-color-primary)]
 border-b
+border-b-0
 border-b-2
 border-b-transparent
 border-background
@@ -1134,6 +1163,7 @@ calendar
 calendarClass
 calendarLabel
 call
+callback
 callbacks
 called
 caller
@@ -1374,6 +1404,7 @@ collapsed:readonly
 collapsedCommunities
 collapsedCommunity
 collapsedSubtree
+collapsedToolbar
 collapses
 collapsing
 collator
@@ -1448,6 +1479,7 @@ completion
 completions
 component
 components
+compose
 composed
 composes
 composing
@@ -1525,8 +1557,13 @@ contentWidth
 contents
 context
 context-specific
+contextBody
+contextContent
+contextItems
 contextMenu
+contextToolbar
 contextmenu
+contexts
 contextual
 contextualMenu
 continuation
@@ -1580,6 +1617,7 @@ copied
 copiedLabel
 copies
 copy
+copyDetails
 copyErrorLabel
 copyLabel
 copyState
@@ -1615,6 +1653,7 @@ createConfirmationSession
 createContext
 createElement
 createId
+createLabel
 createModalController
 createNavigationDisclosures
 createWorkspaceExecution
@@ -1665,6 +1704,7 @@ curveMonotoneX
 curves
 custom
 custom-property
+customBody
 cut
 cw
 cx
@@ -1748,6 +1788,8 @@ data-application-workspace-content
 data-application-workspace-navigation
 data-application-workspace-toolbar
 data-aspect-ratio
+data-audio-meter
+data-audio-segment
 data-avatar
 data-avatar-fallback
 data-avatar-icon
@@ -1897,6 +1939,9 @@ data-density
 data-depth
 data-description-item
 data-description-list
+data-developer-panel
+data-developer-request-summary
+data-developer-toolbar
 data-dialog-body
 data-dialog-close
 data-dialog-description
@@ -2012,6 +2057,7 @@ data-logo-mark
 data-logo-on
 data-mark-id
 data-math-expression
+data-maximized
 data-media-object
 data-media-object-content
 data-media-object-media
@@ -2264,6 +2310,7 @@ data-table-run-select
 data-table-scroll
 data-table-tools
 data-tabs
+data-tabs-header
 data-tabs-owner
 data-task-card
 data-task-id
@@ -2309,6 +2356,7 @@ data-virtual-key
 data-virtual-list
 data-visible-node-count
 data-visualization
+data-voice-input
 data-wide
 data-window-mockup
 data-window-mockup-chrome
@@ -2456,11 +2504,13 @@ design
 desired
 desiredScale
 desktop
+desktopOnly
 destination
 destinations
 destroy
 destructive
 detail
+detailBody
 detailHref
 detailLabel
 detailed
@@ -2474,6 +2524,10 @@ determine
 determines
 deterministic
 dev
+developer
+developerPanelClasses
+developerPanelHeightForKey
+developerRequestStatusTone
 development
 deviation
 device
@@ -2533,6 +2587,7 @@ displace
 displacement
 display
 display-only
+display-ready
 displayLabel
 displayQueueValue
 displayed
@@ -2638,6 +2693,7 @@ duplicate
 duplicates
 dur
 duration
+durationMs
 durations
 during
 dx
@@ -2715,6 +2771,7 @@ enableEdgeEvents
 enabled
 enabled:checked:hover:after:bg-primary-active
 enabled:hover:after:border-foreground
+enabling
 enclosing
 encoded
 end
@@ -3246,6 +3303,7 @@ grid-cols-[repeat(auto-fit,minmax(min(100%,14rem),1fr))]
 grid-cols-subgrid
 grid-rows-[auto_minmax(0,1fr)]
 grid-rows-[minmax(0,1fr)]
+grid-rows-[minmax(0,1fr)_minmax(0,2fr)]
 grid-rows-subgrid
 grid/flex
 gridColumn
@@ -3296,10 +3354,12 @@ h-32
 h-4
 h-5
 h-[1em]
+h-[min(50vh,35rem)]
 h-[var(--reddb-spatial-control-height-lg)]
 h-[var(--reddb-spatial-control-height-md)]
 h-[var(--reddb-spatial-control-height-sm)]
 h-[var(--reddb-spatial-gap-md)]
+h-[var(--reddb-spatial-gap-sm)]
 h-[var(--reddb-spatial-icon-size-md)]
 h-[var(--reddb-spatial-icon-size-sm)]
 h-[var(--reddb-spatial-inset-sm)]
@@ -3326,6 +3386,7 @@ halved
 hand
 handing
 handle
+handleHeader
 handlers
 handles
 handling
@@ -3352,6 +3413,7 @@ hasLegend
 hasMedia
 hasMediaSlot
 hasRail
+hasRequests
 hasValue
 hash
 hashchange
@@ -3360,6 +3422,7 @@ head
 headCell
 headClass
 header
+headerActions
 headerClass
 headerContainer
 headerElement
@@ -3425,6 +3488,7 @@ horizontal
 horizontalColor
 horizontalInverse
 host
+host-defined
 host-supplied
 hour
 hours
@@ -3588,6 +3652,7 @@ initialFocus
 initialHiddenSeries
 initialIndex
 initialLayout
+initialOpen
 initialOptions
 initialSelected
 initialValue
@@ -3944,6 +4009,8 @@ list-disc
 list-none
 listClass
 listRow
+listRows
+listToolbar
 listbox
 listboxId
 listed
@@ -4017,6 +4084,7 @@ m167
 m172
 m188
 m194
+m21
 m213
 m220
 m222
@@ -4037,6 +4105,7 @@ m278
 m282
 m292
 m299
+m3
 m304
 m310
 m317
@@ -4101,6 +4170,7 @@ matrix
 matters
 max
 max-h-64
+max-h-[100dvh]
 max-h-[25%]
 max-h-[50dvh]
 max-h-[min(70dvh,var(--bits-combobox-content-available-height))]
@@ -4127,7 +4197,9 @@ max-md:z-40
 max-min
 max-w-2xl
 max-w-7xl
+max-w-[10ch]
 max-w-[24ch]
+max-w-[8ch]
 max-w-[calc(100vw-2*var(--reddb-spatial-inset-md))]
 max-w-[calc(var(--reddb-spatial-control-height-md)*8)]
 max-w-[min(42ch,calc(100vw_-_var(--reddb-spatial-inset-lg)))]
@@ -4176,6 +4248,7 @@ mb-[var(--reddb-spatial-gap-sm)]
 mb-[var(--reddb-spatial-layout-gap-sm)]
 md
 md:block
+md:flex
 md:grid-cols-[0_0_minmax(0,1fr)]
 md:grid-cols-[0_minmax(12rem,1fr)_minmax(0,3fr)]
 md:grid-cols-[auto_0_minmax(0,1fr)]
@@ -4240,6 +4313,7 @@ meta
 metaKey
 metadata
 meter
+method
 metric
 metricColumn
 metricLabel
@@ -4247,6 +4321,7 @@ metricNameColumn
 metricStatistics
 metricValue
 metrics
+mic
 micro-label
 microtasks
 mid
@@ -4276,6 +4351,8 @@ min-w-[calc(var(--reddb-spatial-control-height-md)*15)]
 min-w-[calc(var(--reddb-spatial-control-height-md)*20)]
 min-w-[calc(var(--reddb-spatial-control-height-md)+2*var(--reddb-spatial-inset-sm)+1px)]
 min-w-[min(32ch,calc(100vw-var(--reddb-spatial-inset-lg)*2))]
+min-w-[var(--reddb-spatial-control-height-lg)]
+min-w-[var(--reddb-spatial-control-height-md)]
 min-w-[var(--reddb-spatial-control-height-sm)]
 min-w-[var(--reddb-spatial-icon-size-md)]
 min-w-[var(--reddb-spatial-target-min)]
@@ -4396,6 +4473,7 @@ mutedInk
 mutually
 mx
 mx-[var(--reddb-spatial-gap-sm)]
+mx-[var(--reddb-spatial-inset-sm)]
 mx-auto
 my-1
 my-[var(--reddb-spatial-gap-sm)]
@@ -4452,6 +4530,7 @@ network
 neutral
 never
 new
+new-document
 newCenter
 newValue
 newer
@@ -4509,6 +4588,7 @@ non-negative
 non-numeric
 non-overlapping
 non-primary
+non-scaling-stroke
 non-text
 non-whitespace
 nondominated
@@ -4655,6 +4735,7 @@ onPointerLeave
 onPointerMove
 onPointerUp
 onPressedChange
+onRequestsChange
 onScroll
 onSelect
 onSelectedChange
@@ -4859,6 +4940,8 @@ panZoom
 pane
 panel
 panelClass
+panelControls
+panelId
 panelLink
 panelLinks
 panelOpen
@@ -4970,6 +5053,7 @@ persistent
 persists
 person
 phase
+phases
 phone
 phoneInput
 phoneMockup
@@ -5093,6 +5177,7 @@ presentDocument
 presentation
 presentations
 presenter
+presenting
 presents
 preserve
 preserveAspectRatio
@@ -5360,6 +5445,7 @@ reconciles
 record
 recorded
 recordedLabel
+recording
 records
 recover
 recoverable
@@ -5372,6 +5458,7 @@ rects
 recursive
 recursively
 red
+redaction
 redistributes
 reduce
 reduced
@@ -5484,7 +5571,10 @@ reproduced
 reproduces
 request
 request-only
+requestActions
+requestBody
 requestClose
+requestHeaders
 requestOpen
 requested
 requestedBins
@@ -5512,6 +5602,7 @@ residual
 resizable
 resize
 resize-y
+resizedHeight
 resizes
 resolution
 resolvable
@@ -5527,6 +5618,7 @@ resource
 respect
 respects
 response
+responseHeaders
 responsive
 responsiveNavigationLayout
 rest
@@ -5817,6 +5909,7 @@ selectors
 selects
 self
 self-center
+self-end
 self-stretch
 semantic
 semantics
@@ -5876,7 +5969,9 @@ setCompact
 setCompletion
 setComposer
 setContainer
+setContext
 setController
+setCopyMessage
 setCopyState
 setCurrent
 setData
@@ -5924,6 +6019,8 @@ setLocalPage
 setLocalSelected
 setLocalSort
 setLocalized
+setMaximized
+setMeasure
 setMeasuredRowHeight
 setMetric
 setMode
@@ -5951,6 +6048,7 @@ setRenameDraft
 setRenamingId
 setRequest
 setRequested
+setResizedHeight
 setResponse
 setRhythm
 setRotating
@@ -5965,6 +6063,7 @@ setStart
 setState
 setSurface
 setSuspended
+setTab
 setText
 setTo
 setTop
@@ -5989,6 +6088,7 @@ shadow-elevation-raised
 shadow-elevation-sunken
 shadow-lg
 shadow-sm
+shadow-xl
 shadowed
 shape
 shaped
@@ -6235,6 +6335,7 @@ start-edge
 start/end
 startAngle
 startLabel
+startMs
 startName
 startValue
 startX
@@ -6264,6 +6365,7 @@ statusAnchor
 statusBreakdown
 statusCounts
 statusIndicator
+statuses
 stay
 stays
 step
@@ -6363,6 +6465,7 @@ summarises
 summarizeExplorerEntries
 summary
 summary/detail
+summaryTarget
 sums
 sun
 supernodes
@@ -6417,8 +6520,10 @@ system-coloured
 t
 t0
 tab
+tabActions
 tabDay
 tabIndex
+tabItems
 tabindex
 table
 table-empty
@@ -6577,11 +6682,13 @@ tighter
 tile
 time
 time-axis
+time-domain
 time-series
 time-sorted
 timeColumn
 timeDomain
 timeField
+timeLabel
 timeRange
 timeRangeField
 timeSeriesDatasets
@@ -6599,6 +6706,7 @@ timestamped
 timestamps
 timezone
 timezone-independent
+timing
 tint
 tinted
 tiny
@@ -6837,6 +6945,7 @@ useValue
 used
 useful
 user
+user-resized
 userScroll
 userSpaceOnUse
 uses
@@ -6870,6 +6979,7 @@ variant
 variants
 vector
 vectorColumn
+vectorEffect
 vectors
 vendorable
 verification
@@ -6940,6 +7050,7 @@ w-[max(20rem,var(--bits-popover-anchor-width))]
 w-[max(var(--reddb-spatial-target-min),calc(var(--reddb-spatial-switch-track-height)*1.75))]
 w-[min(32rem,calc(100vw-2rem))]
 w-[var(--bits-combobox-anchor-width)]
+w-[var(--reddb-spatial-control-height-lg)]
 w-[var(--reddb-spatial-control-height-md)]
 w-[var(--reddb-spatial-control-height-sm)]
 w-[var(--reddb-spatial-gap-sm)]
@@ -6965,6 +7076,7 @@ warns
 was
 wasOpen
 wave
+waveform
 way
 ways
 wears
@@ -7103,6 +7215,7 @@ z-10
 z-20
 z-30
 z-50
+z-[60]
 zIndex
 zero
 zero-based

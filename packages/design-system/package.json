@@ -269,6 +269,10 @@
       "types": "./types/kits/base/react/src/AspectRatio.d.ts",
       "default": "./client/kits/base/react/src/AspectRatio.js"
     },
+    "./base/AudioMeter": {
+      "types": "./types/kits/base/react/src/AudioMeter.d.ts",
+      "default": "./client/kits/base/react/src/AudioMeter.js"
+    },
     "./base/Avatar": {
       "types": "./types/kits/base/react/src/Avatar.d.ts",
       "default": "./client/kits/base/react/src/Avatar.js"
@@ -677,6 +681,10 @@
       "types": "./types/kits/base/react/src/TwoColumnSlide.d.ts",
       "default": "./client/kits/base/react/src/TwoColumnSlide.js"
     },
+    "./base/VoiceInput": {
+      "types": "./types/kits/base/react/src/VoiceInput.d.ts",
+      "default": "./client/kits/base/react/src/VoiceInput.js"
+    },
     "./base/WindowMockup": {
       "types": "./types/kits/base/react/src/WindowMockup.d.ts",
       "default": "./client/kits/base/react/src/WindowMockup.js"
@@ -717,6 +725,14 @@
     "./data/CompositeChart": {
       "types": "./types/kits/data/react/src/CompositeChart.d.ts",
       "default": "./client/kits/data/react/src/CompositeChart.js"
+    },
+    "./data/DeveloperPanel": {
+      "types": "./types/kits/data/react/src/DeveloperPanel.d.ts",
+      "default": "./client/kits/data/react/src/DeveloperPanel.js"
+    },
+    "./data/DeveloperRequestInspector": {
+      "types": "./types/kits/data/react/src/DeveloperRequestInspector.d.ts",
+      "default": "./client/kits/data/react/src/DeveloperRequestInspector.js"
     },
     "./data/Diagram": {
       "types": "./types/kits/data/react/src/Diagram.d.ts",

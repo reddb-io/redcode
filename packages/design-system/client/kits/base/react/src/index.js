@@ -142,6 +142,8 @@ import { StateIllustration } from "./StateIllustration.js";
 import { ContentState } from "./ContentState.js";
 import { CONTENT_STATES } from "../../src/core/contracts/contentstate.js";
 import { SKELETON_SHAPES } from "../../src/skeleton.variants.js";
+import { AudioMeter } from "./AudioMeter.js";
+import { VoiceInput } from "./VoiceInput.js";
 export {
   APPEARANCE_AXES,
   Accordion,
@@ -149,6 +151,7 @@ export {
   AlertDialog,
   AppearanceSwitch,
   AspectRatio,
+  AudioMeter,
   Avatar,
   Badge,
   Breadcrumbs,
@@ -257,6 +260,7 @@ export {
   Tooltip,
   Transfer,
   TwoColumnSlide,
+  VoiceInput,
   WindowMockup,
   appearanceAttribute,
   appearanceStorageKey,
