@@ -297,4 +297,3 @@ jobs:
           path: ${{ runner.temp }}/vault-coverage
           if-no-files-found: warn
           retention-days: 7
-
