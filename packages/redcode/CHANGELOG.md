@@ -1,5 +1,12 @@
 # @reddb-io/redcode
 
+## 0.87.4
+
+### Patch Changes
+
+- Handle large fragmented MCP stdio messages reliably, share persistent session terminals across the desktop, web, and TUI, preserve input ordering, and support persistent terminals on Windows.
+- Preserve the review panel and its visual state when switching to another session and back.
+
 ## 0.87.3
 
 ### Patch Changes
