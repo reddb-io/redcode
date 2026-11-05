@@ -6,7 +6,7 @@ import {
   PTY_CONNECT_TOKEN_HEADER,
   PTY_CONNECT_TOKEN_HEADER_VALUE,
 } from "@opencode/protocol/groups/persistent-pty"
-import { Deferred, Effect, Semaphore } from "effect"
+import { Deferred, Effect, Queue, Stream } from "effect"
 import { HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { HttpApiBuilder, HttpApiSchema } from "effect/unstable/httpapi"
 import { Socket } from "effect/unstable/socket"
@@ -134,7 +134,10 @@ export const PersistentPtyHandler = HttpApiBuilder.group(Api, "server.experiment
               Effect.andThen(Deferred.await(closed)),
             ),
           )
-          const input = yield* Semaphore.make(1)
+          // runRaw invokes the callback in arrival order but forks the returned Effects. Queue synchronously here so
+          // scheduling or daemon round trips cannot reorder keystrokes from one attachment.
+          const input = yield* Queue.bounded<Uint8Array>(256)
+          let inputBytes = 0
           let attachment: PersistentPty.Attachment | undefined
           // Bun's native ws upgrade must start before asynchronous daemon I/O.
           const onOpen = Effect.gen(function* () {
@@ -186,34 +189,39 @@ export const PersistentPtyHandler = HttpApiBuilder.group(Api, "server.experiment
             attachment.activate()
           })
 
+          yield* Stream.runForEach(Stream.fromQueue(input), (data) =>
+            Effect.suspend(() => {
+              inputBytes -= data.byteLength
+              if (!attachment) return Effect.void
+              if (!framedInput)
+                return pty
+                  .input(ctx.params.ptyID, attachmentID, attachment.info.size.cols, attachment.info.size.rows, data)
+                  .pipe(Effect.ignore)
+              if (data.byteLength < 5) return Effect.void
+              const view = new DataView(data.buffer, data.byteOffset, data.byteLength)
+              const type = data[0]
+              const cols = view.getUint16(1)
+              const rows = view.getUint16(3)
+              if ((type !== 0 && type !== 1) || cols === 0 || rows === 0) return Effect.void
+              if (type === 0) return pty.control(ctx.params.ptyID, attachmentID, cols, rows).pipe(Effect.ignore)
+              return pty.input(ctx.params.ptyID, attachmentID, cols, rows, data.subarray(5)).pipe(Effect.ignore)
+            }),
+          ).pipe(Effect.forkScoped)
           yield* runPtySocket(
             outbox.drain,
             socket.runRaw(
-              (message) =>
-                input.withPermit(
-                  Effect.suspend(() => {
-                    if (!attachment) return Effect.void
-                    const data = typeof message === "string" ? Buffer.from(message) : message
-                    if (!framedInput)
-                      return pty
-                        .input(
-                          ctx.params.ptyID,
-                          attachmentID,
-                          attachment.info.size.cols,
-                          attachment.info.size.rows,
-                          data,
-                        )
-                        .pipe(Effect.ignore)
-                    if (data.byteLength < 5) return Effect.void
-                    const view = new DataView(data.buffer, data.byteOffset, data.byteLength)
-                    const type = data[0]
-                    const cols = view.getUint16(1)
-                    const rows = view.getUint16(3)
-                    if ((type !== 0 && type !== 1) || cols === 0 || rows === 0) return Effect.void
-                    if (type === 0) return pty.control(ctx.params.ptyID, attachmentID, cols, rows).pipe(Effect.ignore)
-                    return pty.input(ctx.params.ptyID, attachmentID, cols, rows, data.subarray(5)).pipe(Effect.ignore)
-                  }),
-                ),
+              (message) => {
+                const data = typeof message === "string" ? Buffer.from(message) : message
+                if (
+                  data.byteLength > 4 * 1024 * 1024 ||
+                  inputBytes + data.byteLength > 8 * 1024 * 1024 ||
+                  !Queue.offerUnsafe(input, data)
+                ) {
+                  outbox.offer(new Socket.CloseEvent(4008, "terminal input buffer full"))
+                  return
+                }
+                inputBytes += data.byteLength
+              },
               { onOpen },
             ),
             () => attachment?.detach(),

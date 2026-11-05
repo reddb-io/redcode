@@ -54,6 +54,7 @@ export function SideRegion(props: {
   dock?: RegionEntry
   fileTree: boolean
   present?: boolean
+  keepPanel?: boolean
   size: Sizing
 }) {
   const layout = useLayout()
@@ -88,6 +89,13 @@ export function SideRegion(props: {
   const [toolbars, setToolbars] = createStore<Partial<Record<WorkbenchGroup, HTMLElement>>>({})
   const [column, setColumn] = createSignal<HTMLDivElement>()
   const empty = createMemo(() => top.entries().length === 0 && bottom.entries().length === 0)
+  const [retainedGroup, setRetainedGroup] = createSignal<WorkbenchGroup>()
+  // Keep the group containing the last visible pinned panel, even while its strip is absent.
+  createEffect(() => {
+    if (!tabsOpen()) return
+    const group = (["top", "bottom"] as const).find((name) => props.region.groups[name].selected()?.tab.pinned)
+    if (group) setRetainedGroup(group)
+  })
 
   // The top group holds the launcher while the column has nothing else to show.
   const has = createMemo(() => ({
@@ -225,7 +233,7 @@ export function SideRegion(props: {
   }
 
   const group = (name: WorkbenchGroup) => (
-    <Show when={has()[name]}>
+    <Show when={has()[name] || (props.keepPanel && retainedGroup() === name)}>
       <WorkbenchGroupView
         name={name}
         group={props.region.groups[name]}
@@ -234,7 +242,7 @@ export function SideRegion(props: {
         screen={props.screen}
         sidebar={props.sidebar}
         size={props.size}
-        hidden={!display()[name]}
+        hidden={!has()[name] || !display()[name]}
         leading={name === "top" || !display().top}
         shown={() => tabsOpen() && display()[name]}
         present={columnVisible}
@@ -268,19 +276,20 @@ export function SideRegion(props: {
         }}
         style={{ width: panelWidth() }}
       >
-        <Show when={visible()}>
+        <Show when={visible() || props.keepPanel}>
           <div
             data-slot="session-review-content"
             class="h-full flex gap-2 shrink-0"
             style={{ width: "var(--session-side-content-width, 100%)" }}
           >
-            <Show when={columnVisible()}>
+            <Show when={columnVisible() || props.keepPanel}>
               <div
                 ref={setColumn}
                 data-component="workbench"
                 data-split={display().split}
                 data-maximized={state().maximized}
                 class={splitView({ orientation: "vertical", class: "relative min-w-0 h-full flex-1" }).root()}
+                classList={{ hidden: !columnVisible() }}
               >
                 {group("top")}
                 <Show when={display().split}>

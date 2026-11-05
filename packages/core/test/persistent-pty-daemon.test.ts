@@ -4,11 +4,62 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import net from "node:net"
 import os from "node:os"
 import path from "node:path"
-import { Effect } from "effect"
+import { binaryPath } from "@opencode-ai/pty"
+import { Effect, Schedule } from "effect"
 import { makeDaemonTransport } from "../src/persistent-pty/daemon"
 import { it } from "./lib/effect"
 
 const pong = { type: "pong", instance_id: "test", pid: process.pid, protocol: 7 }
+
+const windows = process.platform === "win32" ? it.live : it.live.skip
+windows(
+  "starts an isolated native Windows PTY daemon and preserves its terminal on reattach",
+  () =>
+    Effect.gen(function* () {
+      expect(binaryPath).toBeDefined()
+      const directory = yield* temporaryDirectory()
+      const daemon = yield* makeDaemonTransport(directory, () => Promise.resolve(binaryPath!))
+      yield* Effect.addFinalizer(() => daemon.shutdown.pipe(Effect.ignore))
+      const created = yield* daemon.request(
+        {
+          op: "create",
+          program: process.env.ComSpec ?? "C:\\Windows\\System32\\cmd.exe",
+          args: ["/d", "/q", "/k", "echo REDCODE_PTY_READY"],
+          cwd: directory,
+          title: "Windows PTY",
+          group_id: "ses_windows_fixture",
+          env: {},
+          cols: 80,
+          rows: 24,
+        },
+        true,
+      )
+      expect(created.type).toBe("created")
+      if (created.type !== "created") throw new Error("terminal was not created")
+      const handoff = yield* daemon.handoff
+      expect(handoff).not.toBeNull()
+      if (!handoff) throw new Error("terminal handoff was not prepared")
+      const secondClient = yield* makeDaemonTransport(directory, () => Promise.resolve(binaryPath!), handoff)
+      yield* Effect.addFinalizer(() => secondClient.shutdown.pipe(Effect.ignore))
+      const listed = yield* secondClient.request({ op: "list" })
+      expect(listed.type).toBe("terminals")
+      if (listed.type !== "terminals") throw new Error("terminal list was unavailable")
+      expect(listed.terminals.map((terminal) => terminal.id)).toContain(created.terminal.id)
+      const snapshot = yield* secondClient.request({ op: "snapshot", id: created.terminal.id }).pipe(
+        Effect.repeat({
+          while: (value) => value.type === "snapshot" && !value.text.includes("REDCODE_PTY_READY"),
+          schedule: Schedule.spaced("50 millis"),
+        }),
+        Effect.timeout("10 seconds"),
+      )
+      expect(snapshot.type).toBe("snapshot")
+      if (snapshot.type !== "snapshot") throw new Error("terminal snapshot was unavailable")
+      expect(snapshot.text).toContain("REDCODE_PTY_READY")
+      const removed = yield* secondClient.request({ op: "terminate", id: created.terminal.id })
+      expect(removed.type).toBe("ok")
+    }),
+  20_000,
+)
 
 it.live("rediscovers a same-protocol daemon after its registration rotates", () =>
   Effect.gen(function* () {

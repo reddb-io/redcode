@@ -8,11 +8,131 @@ import { Session } from "@opencode/schema/session"
 import { Effect, Exit, Schema, Scope } from "effect"
 import { HttpServer } from "effect/unstable/http"
 import { OpenCode } from "../../client/src/promise/index"
+import { persistentPtyFrame } from "../../client/src/solid/pty"
 import { it } from "../../core/test/lib/effect"
 import { ServerProcess } from "../src/process"
+import ptyBinding from "../../core/src/persistent-pty/pty-binding"
 
-const binary = process.env.OPENCODE_PTY_BIN ?? "/root/projects/opencode-pty/target/debug/opencode-pty"
-const smoke = existsSync(binary) ? it.live : it.live.skip
+const binary =
+  process.env.OPENCODE_PTY_BIN ??
+  (process.platform === "win32" && typeof ptyBinding === "string"
+    ? ptyBinding
+    : "/root/projects/opencode-pty/target/debug/opencode-pty")
+const smoke = process.platform !== "win32" && existsSync(binary) ? it.live : it.live.skip
+const windowsSmoke = process.platform === "win32" ? it.live : it.live.skip
+
+windowsSmoke(
+  "shares an isolated Windows persistent terminal through HTTP and WebSocket clients",
+  () =>
+    Effect.gen(function* () {
+      const fixture = yield* testDirectory("override")
+      const server = yield* ServerProcess.start<never, never>({
+        hostname: "127.0.0.1",
+        port: 0,
+        password: "secret",
+        app: { version: "test-version" },
+        database: { path: fixture.database },
+        fs: { filewatcher: false },
+      })
+      const base = HttpServer.formatAddress(server.address)
+      const client = OpenCode.make({ baseUrl: base, headers: { authorization: `Basic ${btoa("opencode:secret")}` } })
+      yield* Effect.addFinalizer(() =>
+        Effect.promise(() => client.experimental.persistentPty.shutdown()).pipe(Effect.ignore),
+      )
+      const sessionID = "ses_windows_pty"
+      const created = yield* Effect.promise(() =>
+        client.experimental.persistentPty.create({
+          sessionID,
+          command: process.env.ComSpec ?? "C:\\Windows\\System32\\cmd.exe",
+          args: ["/d", "/q", "/k", "echo REDCODE_WINDOWS_READY"],
+          cwd: fixture.root,
+          title: "Windows terminal",
+          env: {},
+          size: { cols: 80, rows: 24 },
+        }),
+      )
+      expect(
+        (yield* Effect.promise(() => client.experimental.persistentPty.list({ sessionID }))).map((item) => item.id),
+      ).toContain(created.id)
+      expect(yield* waitForText(base, created.id, "REDCODE_WINDOWS_READY")).toContain("REDCODE_WINDOWS_READY")
+      const controller = yield* Effect.acquireRelease(
+        Effect.promise(() => openTerminalSocket(base, created.id, "windows-controller")),
+        (connection) => Effect.sync(() => connection.socket.close()),
+      )
+      const observer = yield* Effect.acquireRelease(
+        Effect.promise(() => openTerminalSocket(base, created.id, "windows-observer", "observer")),
+        (connection) => Effect.sync(() => connection.socket.close()),
+      )
+      controller.socket.send(
+        persistentPtyFrame({ cols: 80, rows: 24 }, new TextEncoder().encode("echo REDCODE_SHARED_OUTPUT\r")),
+      )
+      yield* Effect.promise(() => waitForSocketOutput([controller, observer], "REDCODE_SHARED_OUTPUT"))
+      for (const character of "echo RDX1234567890\r") {
+        controller.socket.send(persistentPtyFrame({ cols: 80, rows: 24 }, new TextEncoder().encode(character)))
+      }
+      yield* Effect.promise(async () => {
+        for (let attempt = 0; attempt < 100; attempt++) {
+          const snapshot = await client.experimental.persistentPty.snapshot({ ptyID: created.id })
+          if (snapshot.text.includes("\nRDX1234567890")) return
+          await Bun.sleep(20)
+        }
+        throw new Error("Fast terminal keystrokes were not executed in order")
+      })
+      yield* Effect.promise(() => client.experimental.persistentPty.remove({ ptyID: created.id }))
+      expect(yield* Effect.promise(() => client.experimental.persistentPty.list({ sessionID }))).toEqual([])
+    }),
+  30_000,
+)
+
+windowsSmoke(
+  "retains a Windows terminal across an isolated server handoff",
+  () =>
+    Effect.gen(function* () {
+      const fixture = yield* testDirectory("override")
+      const scope = yield* Scope.Scope
+      const originalScope = yield* Scope.fork(scope)
+      const options = {
+        hostname: "127.0.0.1",
+        port: 0,
+        password: "secret",
+        app: { version: "test-version" },
+        database: { path: fixture.database },
+        fs: { filewatcher: false },
+      }
+      const original = yield* ServerProcess.start<never, never>(options).pipe(
+        Effect.provideService(Scope.Scope, originalScope),
+      )
+      const base = HttpServer.formatAddress(original.address)
+      const sessionID = "ses_windows_handoff"
+      const created = Schema.decodeUnknownSync(PersistentPty.Info)(
+        (yield* request(base, "POST", `/api/experimental/session/${sessionID}/terminal`, {
+          command: process.env.ComSpec ?? "C:\\Windows\\System32\\cmd.exe",
+          args: ["/d", "/q", "/k", "echo REDCODE_BEFORE_HANDOFF"],
+          cwd: fixture.root,
+          title: "Windows terminal",
+          env: {},
+        })).data,
+      )
+      expect(yield* waitForText(base, created.id, "REDCODE_BEFORE_HANDOFF")).toContain("REDCODE_BEFORE_HANDOFF")
+      const handoff = Schema.decodeUnknownSync(PersistentPty.Handoff)(
+        (yield* request(base, "POST", "/api/experimental/persistent-pty/handoff")).handoff,
+      )
+      yield* Scope.close(originalScope, Exit.void)
+      const replacementScope = yield* Scope.fork(scope)
+      const replacement = yield* ServerProcess.start<never, never>({ ...options, pty: { handoff } }).pipe(
+        Effect.provideService(Scope.Scope, replacementScope),
+      )
+      const next = HttpServer.formatAddress(replacement.address)
+      expect((yield* request(next, "GET", `/api/experimental/session/${sessionID}/terminal`)).data).toMatchObject([
+        { id: created.id, pid: created.pid, status: "running" },
+      ])
+      expect(yield* waitForText(next, created.id, "REDCODE_BEFORE_HANDOFF")).toContain("REDCODE_BEFORE_HANDOFF")
+      yield* request(next, "DELETE", `/api/experimental/persistent-pty/${created.id}`)
+      yield* request(next, "POST", "/api/experimental/persistent-pty/shutdown")
+      yield* Scope.close(replacementScope, Exit.void)
+    }),
+  30_000,
+)
 
 smoke(
   "reads the latest controlled terminal with optional physical line counts through the SDK",

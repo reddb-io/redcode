@@ -412,6 +412,7 @@ export function RegionContent(props: {
   screen: SessionScreen
   frame: Omit<PanelFrame, "visible" | "open"> & { shown: Accessor<boolean> }
 }) {
+  const host = useExtensionHost()
   // The dock renders once for the whole column; see `DockHost`.
   const listed = createMemo(() => props.group.entries().filter((entry) => entry.provider.region !== "dock"))
 
@@ -419,10 +420,17 @@ export function RegionContent(props: {
     Array.from(new Set(listed().flatMap((entry) => (entry.tab.group ? [groupKey(entry)] : [])))),
   )
 
-  const single = createMemo(() => {
+  // Pinned content stays mounted while the region is hidden, but leaves when its provider is removed.
+  const single = createMemo<RegionEntry | undefined>((previous) => {
     const entry = props.group.selected()
 
-    return entry && !entry.tab.group && entry.provider.region !== "dock" ? entry.key : undefined
+    if (entry && !entry.tab.group && entry.provider.region !== "dock") return entry
+    if (
+      !props.frame.shown() &&
+      previous?.tab.pinned &&
+      host.items(Panel).some((item) => item.extension === previous.extension && item.value === previous.provider)
+    )
+      return previous
   })
 
   return (
@@ -482,9 +490,9 @@ export function RegionContent(props: {
           )
         }}
       </For>
-      <Show when={single()} keyed>
+      <Show when={single()?.key} keyed>
         {(key) => {
-          const entry = createMemo(() => listed().find((item) => item.key === key))
+          const entry = createMemo(() => listed().find((item) => item.key === key) ?? single())
 
           return (
             <Show when={entry()?.extension} keyed>
@@ -496,9 +504,15 @@ export function RegionContent(props: {
                   tabIndex={entry()?.tab.tabbable ? 0 : undefined}
                   data-slot="tabs-content"
                   class="flex flex-col h-full overflow-hidden contain-strict"
+                  classList={{ hidden: props.group.selected()?.key !== key }}
+                  inert={props.group.selected()?.key !== key || undefined}
                 >
                   <PanelContext.Provider
-                    value={{ ...props.frame, visible: props.frame.shown, open: () => props.openFor(extension) }}
+                    value={{
+                      ...props.frame,
+                      visible: () => props.frame.shown() && props.group.selected()?.key === key,
+                      open: () => props.openFor(extension),
+                    }}
                   >
                     <Contribution extension={extension}>
                       {() =>

@@ -643,6 +643,11 @@ test("review and terminal follow the session tab and stay mounted", async ({ pag
   await expect(terminalPanel).toHaveCSS("height", "300px")
   await expect(page.locator("#session-side-panel-review-tab")).toHaveText("Files Changed 2740")
   await expect.poll(() => pty.sockets.length).toBe(1)
+  const filter = page.getByRole("searchbox", { name: "Filter files" })
+  await filter.fill("generated-0027")
+  await expect(
+    page.locator('#review-panel [data-component="file-tree-v2"]').getByRole("button", { name: "generated-0027.ts" }),
+  ).toBeVisible()
   await mark(review)
   await mark(terminal)
 
@@ -667,6 +672,7 @@ test("review and terminal follow the session tab and stay mounted", async ({ pag
   await expect(terminalPanel).toHaveCSS("height", "300px")
   await expectMarked(review)
   await expectMarked(terminal)
+  await expect(filter).toHaveValue("generated-0027")
   expect(pty.sockets).toHaveLength(1)
   expect(pty.sockets[0]!.url.searchParams.get("location[directory]")).toBe(directory)
   expect(pty.sockets[0]!.url.searchParams.get("ticket")).toBe("e2e-ticket")
@@ -696,7 +702,28 @@ test("review and terminal follow the session tab and stay mounted", async ({ pag
   await expect(tree.getByRole("button", { name: "generated-2739.ts" })).toBeVisible()
 })
 
-test("terminal stacks under review by default and spans the bottom when configured", async ({ page }) => {
+test("keeps review hidden while the side terminal remains usable", async ({ page }) => {
+  await page.setViewportSize({ width: 1400, height: 900 })
+  await openSession(page, { name: "ReviewDock", pty: {}, vcsDiff: [fileDiff("src/example.ts")] })
+  const toggle = page.getByRole("button", { name: "Toggle review" })
+  const review = page.locator('#review-panel [data-component="session-review-v2"]')
+  const terminal = page.locator('[data-component="terminal"]')
+  await toggle.click()
+  await expect(review).toBeVisible()
+  await mark(review)
+  await page.keyboard.press("Control+Backquote")
+  await expect(terminal).toBeVisible()
+  await toggle.click()
+  await expect(review).toBeHidden()
+  await expect(terminal).toBeVisible()
+  await expectMarked(review)
+  await toggle.click()
+  await expect(review).toBeVisible()
+  await expect(terminal).toBeVisible()
+  await expectMarked(review)
+})
+
+test("the workbench stacks and resizes review and terminal groups", async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 })
 
   // A large nested branch diff; its first file is the sentinel that proves the virtualized tree stays mounted.
@@ -712,13 +739,16 @@ test("terminal stacks under review by default and spans the bottom when configur
 
   await openSession(page, { name: "SideStack", pty: {}, vcsDiff: diffs })
   const toggle = page.getByRole("button", { name: "Toggle review" })
-  const reviewPanel = page.locator("#review-panel")
+  const workbench = page.locator('[data-component="workbench"]')
+  const reviewGroup = workbench.getByRole("region", { name: "Top panel group" })
+  const terminalGroup = workbench.getByRole("region", { name: "Bottom panel group" })
+  const divider = workbench.getByRole("separator", { name: "Resize panel groups" })
   const terminalPanel = page.locator("#terminal-panel")
   const review = page.locator('[data-component="session-review-v2"]')
   const terminal = page.locator('[data-component="terminal"]')
 
   await toggle.click()
-  await expect(reviewPanel).toBeVisible()
+  await expect(reviewGroup).toBeVisible()
   await expectTreeSentinel(page)
 
   for (const direction of ["ltr", "rtl"] as const) {
@@ -731,17 +761,20 @@ test("terminal stacks under review by default and spans the bottom when configur
   await page.keyboard.press("Control+Backquote")
   await expect(terminalPanel).toBeVisible()
   await expect(terminal).toBeVisible()
+  await expect(workbench).toHaveAttribute("data-split", "true")
+  await expect(divider).toBeVisible()
   await expect
     .poll(async () => {
-      const top = (await reviewPanel.boundingBox())!
-      const bottom = (await terminalPanel.boundingBox())!
-      const gap = bottom.y - top.y - top.height
+      const top = await reviewGroup.boundingBox()
+      const bottom = await terminalGroup.boundingBox()
+      const split = await divider.boundingBox()
+      if (!top || !bottom || !split) return false
 
       return (
         Math.abs(top.x - bottom.x) <= 1 &&
         Math.abs(top.x + top.width - bottom.x - bottom.width) <= 1 &&
-        gap >= 7 &&
-        gap <= 9
+        top.y + top.height <= split.y + 1 &&
+        split.y + split.height <= bottom.y + 1
       )
     })
     .toBe(true)
@@ -749,42 +782,47 @@ test("terminal stacks under review by default and spans the bottom when configur
   await mark(review)
   await mark(terminal)
 
-  // Closing review mid-motion: the terminal grows upward with its bottom fixed and its content top-anchored.
-  const stacked = await stackGeometry(page)
-  await holdTransitions(page)
+  // The workbench divider changes the relative group sizes without remounting either panel.
+  const ratio = Number(await divider.getAttribute("aria-valuenow"))
+  const topHeight = (await reviewGroup.boundingBox())!.height
+  const bottomHeight = (await terminalGroup.boundingBox())!.height
+  await divider.focus()
+  await page.keyboard.press("ArrowDown")
+  await expect(divider).toHaveAttribute("aria-valuenow", String(ratio + 5))
+  await expect.poll(async () => (await reviewGroup.boundingBox())!.height).toBeGreaterThan(topHeight)
+  await expect.poll(async () => (await terminalGroup.boundingBox())!.height).toBeLessThan(bottomHeight)
+  await expectMarked(review)
+  await expectMarked(terminal)
+
+  // With review closed, the terminal fills the workbench; reopening restores both surfaces.
   await toggle.click()
-  const closing = await stackGeometry(page, 0.5)
-  await releaseTransitions(page)
-  await expect(reviewPanel).toBeHidden()
+  await expect(review).toBeHidden()
   await expect(terminalPanel).toBeVisible()
-  const alone = await stackGeometry(page)
-  expect(closing.moving).toEqual(expect.arrayContaining(["session-side-region", "session-side-terminal-region"]))
-  expect(closing.terminalRegion).toBeGreaterThan(stacked.terminalRegion + 1)
-  expect(closing.terminalRegion).toBeLessThan(alone.terminalRegion - 1)
-  expect(Math.abs(closing.terminalBottom - stacked.terminalBottom)).toBeLessThanOrEqual(1)
-  expect(closing.anchor).toBeLessThanOrEqual(8)
-  expect(closing.terminalGap).toBeLessThanOrEqual(1)
+  await expect(workbench).toHaveAttribute("data-split", "false")
+  await expect(divider).toHaveCount(0)
+  await expect.poll(async () => {
+    const group = await terminalGroup.boundingBox()
+    const column = await workbench.boundingBox()
+    return !!group && !!column && Math.abs(group.height - column.height) <= 1
+  }).toBe(true)
 
   await toggle.click()
-  await expect(reviewPanel).toBeVisible()
+  await expect(review).toBeVisible()
+  await expect(workbench).toHaveAttribute("data-split", "true")
   await expectMarked(review)
   await expectTreeSentinel(page)
 
-  // Hiding the terminal mid-motion: both surfaces fill their regions and the clipped terminal keeps its size.
-  const open = await stackGeometry(page)
-  await holdTransitions(page)
+  // Closing the terminal leaves review filling the workbench, with the terminal parked for reuse.
   await page.keyboard.press("Control+Backquote")
-  const hiding = await stackGeometry(page, 0.5)
-  await releaseTransitions(page)
   await expect(terminalPanel).toBeHidden()
-  expect(hiding.moving).toEqual(expect.arrayContaining(["session-side-region", "session-side-terminal-region"]))
-  expect(hiding.terminalRegion).toBeLessThan(open.terminalRegion - 1)
-  expect(hiding.terminalRegion).toBeGreaterThan(1)
-  expect(hiding.reviewGap).toBeLessThanOrEqual(1)
-  expect(hiding.terminalGap).toBeLessThanOrEqual(1)
-  expect(Math.abs(hiding.content.width - open.content.width)).toBeLessThanOrEqual(1)
-  expect(Math.abs(hiding.content.height - open.content.height)).toBeLessThanOrEqual(1)
-  await expect(page.locator('[data-slot="side-terminal-panel-clip"]')).toHaveCSS("overflow", "clip")
+  await expect(review).toBeVisible()
+  await expect(workbench).toHaveAttribute("data-split", "false")
+  await expect(divider).toHaveCount(0)
+  await expect.poll(async () => {
+    const group = await reviewGroup.boundingBox()
+    const column = await workbench.boundingBox()
+    return !!group && !!column && Math.abs(group.height - column.height) <= 1
+  }).toBe(true)
   await expectMarked(terminal)
   await page.setViewportSize({ width: 1200, height: 700 })
   await page.keyboard.press("Control+Backquote")
@@ -795,15 +833,22 @@ test("terminal stacks under review by default and spans the bottom when configur
   await page.keyboard.press("Control+Backquote")
   await expect(terminalPanel).toBeHidden()
 
-  await page.evaluate(() => {
-    const settings = JSON.parse(localStorage.getItem("settings.v3") ?? "{}")
-    localStorage.setItem(
-      "settings.v3",
-      JSON.stringify({ ...settings, general: { ...settings.general, terminalPlacement: "bottom" } }),
-    )
+})
+
+test("a bottom-placed terminal spans the session below the review panel", async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 700 })
+  await openSession(page, {
+    name: "BottomTerminal",
+    pty: {},
+    vcsDiff: [fileDiff(".github/actions/setup-bun/action.yml")],
+    seed: { settings: { general: { terminalPlacement: "bottom" } } },
   })
-  await page.reload()
+  const reviewPanel = page.locator("#review-panel")
+  const terminalPanel = page.locator("#terminal-panel")
+  const terminal = page.locator('[data-component="terminal"]')
+  await page.getByRole("button", { name: "Toggle review" }).click()
   await expect(reviewPanel).toBeVisible()
+  await expectTreeSentinel(page)
   await page.keyboard.press("Control+Backquote")
   await expect(terminalPanel).toBeVisible()
   await expect
@@ -811,15 +856,16 @@ test("terminal stacks under review by default and spans the bottom when configur
       page.evaluate(() => {
         const review = document.querySelector("#review-panel")?.getBoundingClientRect()
         const terminal = document.querySelector("#terminal-panel")?.getBoundingClientRect()
+        const chat = document.querySelector('[data-slot="session-chat-panel"]')?.getBoundingClientRect()
         const sidebar = document.querySelector('#review-panel [data-slot="session-review-v2-sidebar"]')
 
         // The side region appears before its lazy review content after reload.
-        if (!review || !terminal || !sidebar) return false
+        if (!review || !terminal || !chat || !sidebar) return false
         const gap = terminal.top - review.bottom
 
         return (
-          terminal.left <= 9 &&
-          terminal.right >= window.innerWidth - 9 &&
+          Math.abs(terminal.left - chat.left) <= 1 &&
+          Math.abs(terminal.right - review.right) <= 1 &&
           gap >= 7 &&
           gap <= 9 &&
           sidebar.getBoundingClientRect().width >= 240
@@ -909,87 +955,6 @@ async function expectTreeSentinel(page: Page) {
   const rows = await tree.locator('[data-slot="file-tree-v2-row"]').count()
   expect(rows).toBeGreaterThan(0)
   expect(rows).toBeLessThanOrEqual(60)
-}
-
-// Pauses each CSS transition as it starts, so a real toggle can be measured mid-motion.
-function holdTransitions(page: Page) {
-  return page.evaluate(() => {
-    const host = window as Window & { e2eHold?: { active: boolean } }
-
-    if (!host.e2eHold) {
-      const hold = { active: false }
-      host.e2eHold = hold
-      document.addEventListener("transitionrun", (event) => {
-        if (!hold.active || !(event.target instanceof Element)) return
-        event.target
-          .getAnimations()
-          .filter((item) => item instanceof CSSTransition && item.transitionProperty === event.propertyName)
-          .forEach((item) => item.pause())
-      })
-    }
-
-    host.e2eHold.active = true
-  })
-}
-
-function releaseTransitions(page: Page) {
-  return page.evaluate(() => {
-    ;(window as Window & { e2eHold?: { active: boolean } }).e2eHold!.active = false
-    document
-      .getAnimations()
-      .filter((item) => item instanceof CSSTransition && item.playState === "paused")
-      .forEach((item) => item.finish())
-  })
-}
-
-// With `progress`, waits for the held region height transitions and seeks every held transition to that point first.
-async function stackGeometry(page: Page, progress?: number) {
-  const held = () =>
-    page.evaluate(() =>
-      document
-        .getAnimations()
-        .filter(
-          (item) =>
-            item instanceof CSSTransition && item.playState === "paused" && item.transitionProperty === "height",
-        )
-        .map((item) => ((item.effect as KeyframeEffect).target as Element).getAttribute("data-slot")),
-    )
-
-  if (progress !== undefined) {
-    await expect.poll(held).toEqual(expect.arrayContaining(["session-side-region", "session-side-terminal-region"]))
-  }
-
-  return page.evaluate((progress) => {
-    const transitions = document
-      .getAnimations()
-      .filter((item): item is CSSTransition => item instanceof CSSTransition && item.playState === "paused")
-
-    const region = transitions.find(
-      (item) => ((item.effect as KeyframeEffect).target as Element).getAttribute("data-slot") === "session-side-region",
-    )
-
-    if (progress !== undefined) {
-      const time = Number(region!.effect!.getTiming().duration) * progress
-      transitions.forEach((item) => (item.currentTime = time))
-    }
-
-    const box = (selector: string) => document.querySelector(selector)?.getBoundingClientRect()
-    const reviewRegion = box('[data-slot="session-side-region"]')!
-    const terminalRegion = box('[data-slot="session-side-terminal-region"]')!
-    const review = box("#review-panel")
-    const terminal = box("#terminal-panel")!
-    const content = box('[data-slot="terminal-panel-content"]')!
-
-    return {
-      moving: transitions.map((item) => ((item.effect as KeyframeEffect).target as Element).getAttribute("data-slot")),
-      terminalRegion: terminalRegion.height,
-      terminalBottom: terminal.bottom,
-      anchor: Math.abs(terminal.top - content.top),
-      reviewGap: review ? Math.abs(reviewRegion.height - review.height) : 0,
-      terminalGap: Math.abs(terminalRegion.height - terminal.height),
-      content: { width: content.width, height: content.height },
-    }
-  }, progress)
 }
 
 function sideContentOffset(page: Page, direction: "ltr" | "rtl") {

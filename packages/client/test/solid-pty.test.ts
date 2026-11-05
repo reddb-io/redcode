@@ -1,6 +1,24 @@
 import { describe, expect, test } from "bun:test"
 import { OpenCode } from "../src/promise"
-import { createPersistentPtyClient, createPtyClient } from "../src/solid"
+import { createPersistentPtyClient, createPtyClient, decodePersistentPtyMessage } from "../src/solid"
+import { Option } from "effect"
+
+test("persistent terminal messages validate the common control protocol", () => {
+  const attached = decodePersistentPtyMessage(
+    JSON.stringify({
+      type: "attached",
+      inputProtocol: 1,
+      info: { size: { cols: 80, rows: 24 } },
+      role: "controller",
+      extra: true,
+    }),
+  )
+  expect(Option.isSome(attached)).toBe(true)
+  expect(Option.isSome(decodePersistentPtyMessage('{"type":"controller_changed","attachmentID":null}'))).toBe(true)
+  expect(Option.isNone(decodePersistentPtyMessage('{"type":"resized","cols":80}'))).toBe(true)
+  expect(Option.isNone(decodePersistentPtyMessage('{"type":"resized","cols":0,"rows":24,"checkpoint":""}'))).toBe(true)
+  expect(Option.isNone(decodePersistentPtyMessage("not json"))).toBe(true)
+})
 
 describe("createPtyClient", () => {
   test("mints an authenticated ticket before opening the terminal socket", async () => {
@@ -142,5 +160,23 @@ describe("createPersistentPtyClient", () => {
     expect(socketURL?.toString()).toBe(
       "wss://server.example/base/api/experimental/persistent-pty/pty_1/connect?ticket=ticket-1&cursor=0&attachment_id=attachment_1&takeover=false&input_protocol=1",
     )
+  })
+
+  test("can attach as an observer without taking control from another client", async () => {
+    let socketURL: URL | undefined
+    const api = OpenCode.make({
+      baseUrl: "http://localhost:4096",
+      fetch: async () => Response.json({ data: { ticket: "ticket", expires_in: 60 } }),
+    })
+    const client = createPersistentPtyClient(api, {
+      url: "http://localhost:4096",
+      openSocket(url) {
+        socketURL = url
+        return { binaryType: "blob" } as unknown as WebSocket
+      },
+    })
+    await client.connect({ ptyID: "pty_1", cursor: 0, attachmentID: "viewer", role: "observer" })
+    expect(socketURL?.searchParams.get("role")).toBe("observer")
+    expect(socketURL?.searchParams.get("takeover")).toBe("false")
   })
 })

@@ -8,11 +8,17 @@ test("collects each SEA asset key once", async () => {
   const keys = assets.map((asset) => asset.key)
 
   expect(new Set(keys).size).toBe(keys.length)
-  if (process.platform !== "win32") expect(keys.filter((key) => key === "opencode-pty/opencode-pty")).toHaveLength(1)
+  const executable = process.platform === "win32" ? "opencode-pty/opencode-pty.exe" : "opencode-pty/opencode-pty"
+  expect(keys.filter((key) => key === executable)).toHaveLength(1)
   expect(assets.filter((asset) => asset.key === shellParserWasmAssets.runtime)).toEqual([
     {
       key: shellParserWasmAssets.runtime,
       source: fileURLToPath(import.meta.resolve(shellParserWasmAssets.runtime)),
     },
   ])
+})
+
+test("includes the persistent terminal daemon for both Windows architectures", () => {
+  expect(nodeTarget("win32", "x64").opencodePtyAsset).toBe("opencode-pty/opencode-pty.exe")
+  expect(nodeTarget("win32", "arm64").opencodePtyAsset).toBe("opencode-pty/opencode-pty.exe")
 })

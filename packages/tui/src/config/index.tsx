@@ -343,8 +343,7 @@ export function resolve(
       ...input.session,
       new_location: input.session?.new_location ?? "launch",
       permissions: input.session?.permissions ?? "prompt",
-      // Persistent terminal panes need the opencode-pty daemon, which does not ship Windows binaries.
-      terminal: process.platform !== "win32",
+      terminal: true,
       tps: input.session?.tps ?? true,
     },
     tabs: {

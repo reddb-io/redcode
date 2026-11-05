@@ -57,9 +57,8 @@ export function createTerminalModel(input: { storage: Storage; sessions: Session
   }
 
   return {
-    load(session: Pick<MountedSession, "server" | "directory">) {
-      // Terminals are workspace-scoped so tabs persist while switching sessions in the same directory.
-      const key = workspaceKey(session.server.id, session.directory)
+    load(session: MountedSession) {
+      const key = `${workspaceKey(session.server.id, session.directory)}\0${session.id}`
       const existing = cache.get(key)
 
       if (existing) {
@@ -77,7 +76,7 @@ export function createTerminalModel(input: { storage: Storage; sessions: Session
       const directory = session.directory
 
       const entry = createRoot(
-        (dispose) => ({ value: createWorkspace({ storage: input.storage, server, directory, key }), dispose }),
+        (dispose) => ({ value: createWorkspace({ storage: input.storage, server, directory, key, session }), dispose }),
         owner,
       )
 
@@ -114,7 +113,9 @@ export function createTerminalModel(input: { storage: Storage; sessions: Session
       get: (key: string) => handoff.terminal.get(key),
     },
     remove(value: { readonly server: string; readonly directory: string }) {
-      cache.get(workspaceKey(value.server, value.directory))?.value.clear()
+      for (const [key, entry] of cache) {
+        if (key.startsWith(`${workspaceKey(value.server, value.directory)}\0`)) entry.value.clear()
+      }
       // Also drops terminals saved before extensions, which opening the store would otherwise import.
       input.storage.remove(STORE, { scope: { server: value.server, directory: value.directory }, from: LEGACY })
     },
@@ -128,7 +129,13 @@ export function createTerminalModel(input: { storage: Storage; sessions: Session
   }
 }
 
-function createWorkspace(input: { storage: Storage; server: ServerRef; directory: string; key: string }) {
+function createWorkspace(input: {
+  storage: Storage
+  server: ServerRef
+  directory: string
+  key: string
+  session: MountedSession
+}) {
   const location = { directory: input.directory }
 
   const stored = input.storage.store(STORE, {
@@ -139,9 +146,89 @@ function createWorkspace(input: { storage: Storage; server: ServerRef; directory
   })
 
   // Empty until the stored terminals load; changes made before then apply over them in order.
-  const all = createMemo(() => stored.value?.all ?? [])
-  const active = createMemo(() => stored.value?.active)
-  const [ui, setUi] = createStore<{ focus?: FocusRequest; creationError?: string }>({})
+  const [ui, setUi] = createStore<{
+    focus?: FocusRequest
+    creationError?: string
+    mode: "checking" | "persistent" | "legacy" | "unavailable"
+    remote: LocalPTY[]
+    selected?: string
+  }>({ mode: "checking", remote: [] })
+  const all = createMemo(() => [...(stored.value?.all ?? []), ...ui.remote])
+  const active = createMemo(() => {
+    const id = ui.selected ?? stored.value?.active
+    return all().some((item) => item.id === id) ? id : all()[0]?.id
+  })
+  let sequence = 0
+  let disposed = false
+  let lastFailure: Error | undefined
+  const initialLoad = Promise.withResolvers<void>()
+  onCleanup(() => {
+    disposed = true
+    initialLoad.resolve()
+  })
+  const refresh = async () => {
+    if (input.session.pending) return
+    const current = ++sequence
+    try {
+      const list = await input.server.client.experimental.persistentPty.list({ sessionID: input.session.id })
+      if (disposed || current !== sequence) return
+      lastFailure = undefined
+      const next = list
+        .filter((item) => item.status === "running")
+        .map((item) => ({
+          id: item.id,
+          title: item.title,
+          titleNumber: numberFromTitle(item.title) ?? 0,
+          persistent: true,
+        }))
+      const unchanged =
+        next.length === ui.remote.length &&
+        next.every((item, index) => {
+          const previous = ui.remote[index]
+          return previous?.id === item.id && previous.title === item.title
+        })
+      batch(() => {
+        if (!unchanged) setUi("remote", next)
+        setUi("mode", "persistent")
+      })
+      initialLoad.resolve()
+    } catch (error) {
+      if (disposed || current !== sequence) return
+      const cause = error instanceof Error ? error.cause : undefined
+      const unsupported = typeof cause === "object" && cause !== null && "status" in cause && cause.status === 404
+      setUi("mode", unsupported ? "legacy" : "unavailable")
+      lastFailure = error instanceof Error ? error : new Error(String(error))
+      initialLoad.resolve()
+      if (!unsupported) console.error("Failed to load persistent terminals", error)
+    }
+  }
+  createKeyed(
+    () => (input.session.pending ? undefined : input.server.data),
+    (data) => {
+      void refresh()
+      const reconnect = data.on("server.connected", () => void refresh())
+      const added = data.on("persistent-pty.added", (event) => {
+        if (event.data.sessionID === input.session.id) void refresh()
+      })
+      const removed = data.on("persistent-pty.removed", (event) => {
+        if (event.data.sessionID === input.session.id) void refresh()
+      })
+      let polling = false
+      const timer = setInterval(() => {
+        if (!ui.remote.length || polling) return
+        polling = true
+        void refresh().finally(() => {
+          polling = false
+        })
+      }, 2_000)
+      onCleanup(() => {
+        clearInterval(timer)
+        reconnect()
+        added()
+        removed()
+      })
+    },
+  )
   const focus = { request: 0 }
 
   const requestFocus = (id?: string, pending = false) => {
@@ -236,6 +323,7 @@ function createWorkspace(input: { storage: Storage; server: ServerRef; directory
   )
 
   const update = (pty: Partial<LocalPTY> & { id: string }) => {
+    if (ui.remote.some((item) => item.id === pty.id)) return
     const index = all().findIndex((x) => x.id === pty.id)
     const previous = index >= 0 ? all()[index] : undefined
 
@@ -264,6 +352,7 @@ function createWorkspace(input: { storage: Storage; server: ServerRef; directory
   }
 
   const clone = async (id: string) => {
+    if (ui.remote.some((item) => item.id === id)) return
     const index = all().findIndex((x) => x.id === id)
     const pty = all()[index]
 
@@ -299,11 +388,13 @@ function createWorkspace(input: { storage: Storage; server: ServerRef; directory
   }
 
   return {
-    key: input.key,
+    get key() {
+      return ui.mode === "legacy" ? workspaceKey(input.server.id, input.directory) : input.key
+    },
     // An accessor, so storing the workspace in a Solid store never unwraps the host's server data.
     server: () => input.server,
     directory: input.directory,
-    ready: () => stored.ready(),
+    ready: () => stored.ready() && ui.mode !== "checking",
     all,
     active,
     creationError: () => ui.creationError,
@@ -316,6 +407,22 @@ function createWorkspace(input: { storage: Storage; server: ServerRef; directory
       const focusRequest = requestFocus(undefined, true)
 
       const doCreate = async () => {
+        if (ui.mode === "checking") await initialLoad.promise
+        if (disposed || ui.mode === "checking") return undefined
+        if (ui.mode === "unavailable") {
+          await refresh()
+          if (ui.mode === "unavailable") throw lastFailure
+        }
+        if (ui.mode === "persistent") {
+          const info = await input.server.client.experimental.persistentPty.create({
+            sessionID: input.session.id,
+            cwd: input.directory,
+            args: [],
+            title: defaultTitle(nextNumber),
+            env: {},
+          })
+          return { id: info.id, title: info.title, persistent: true }
+        }
         return input.server.client.pty
           .create({ location, title: defaultTitle(nextNumber) })
           .then((result) => result.data)
@@ -335,13 +442,20 @@ function createWorkspace(input: { storage: Storage; server: ServerRef; directory
             id,
             title: data?.title ?? defaultTitle(nextNumber),
             titleNumber: nextNumber,
+            persistent: "persistent" in data && data.persistent === true,
           }
 
           batch(() => {
-            stored.update((draft) => {
-              draft.all.push(newTerminal)
-              draft.active = id
-            })
+            if (newTerminal.persistent) {
+              setUi("remote", (list) => [...list.filter((item) => item.id !== id), newTerminal])
+              setUi("selected", id)
+            } else {
+              stored.update((draft) => {
+                draft.all.push(newTerminal)
+                draft.active = id
+              })
+              setUi("selected", undefined)
+            }
 
             if (ui.focus?.request === focusRequest) {
               setUi("focus", { request: focusRequest, id, pending: false })
@@ -356,6 +470,7 @@ function createWorkspace(input: { storage: Storage; server: ServerRef; directory
     },
     update,
     trim(id: string) {
+      if (ui.remote.some((item) => item.id === id)) return
       const index = all().findIndex((x) => x.id === id)
 
       if (index === -1) return
@@ -371,6 +486,11 @@ function createWorkspace(input: { storage: Storage; server: ServerRef; directory
     },
     clone,
     open(id: string) {
+      if (ui.remote.some((item) => item.id === id)) {
+        setUi("selected", id)
+        return
+      }
+      setUi("selected", undefined)
       stored.update((draft) => {
         draft.active = id
       })
@@ -384,6 +504,13 @@ function createWorkspace(input: { storage: Storage; server: ServerRef; directory
       cancelFocus()
     },
     async close(id: string) {
+      if (ui.remote.some((item) => item.id === id)) {
+        await input.server.client.experimental.persistentPty
+          .remove({ ptyID: id })
+          .then(() => refresh())
+          .catch((error) => console.error("Failed to close persistent terminal", error))
+        return
+      }
       const index = all().findIndex((f) => f.id === id)
 
       if (index !== -1) {
@@ -401,6 +528,7 @@ function createWorkspace(input: { storage: Storage; server: ServerRef; directory
       })
     },
     move(id: string, to: number) {
+      if (ui.remote.some((item) => item.id === id) || to >= (stored.value?.all.length ?? 0)) return
       const index = all().findIndex((f) => f.id === id)
 
       if (index === -1) return

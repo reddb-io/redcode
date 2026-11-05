@@ -35,7 +35,7 @@
     "@octokit/graphql": "9.0.2",
     "@octokit/rest": "catalog:",
     "@octokit/webhooks-types": "7.6.1",
-    "@opencode-ai/pty": "0.1.13",
+    "@opencode-ai/pty": "0.3.1",
     "@opencode/client": "workspace:*",
     "@opencode/core": "workspace:*",
     "@opencode/plugin": "workspace:*",

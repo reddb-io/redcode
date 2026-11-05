@@ -62,6 +62,7 @@ export function SortableTerminalTab(props: {
   }
 
   const edit = (e?: Event) => {
+    if (props.terminal.persistent) return
     if (e) {
       e.stopPropagation()
       e.preventDefault()
@@ -173,7 +174,9 @@ export function SortableTerminalTab(props: {
               requestAnimationFrame(() => edit())
             }}
           >
-            <Menu.Item onSelect={() => (editRequested = true)}>{extension.t("common.rename")}</Menu.Item>
+            <Show when={!props.terminal.persistent}>
+              <Menu.Item onSelect={() => (editRequested = true)}>{extension.t("common.rename")}</Menu.Item>
+            </Show>
             <Menu.Item onSelect={close}>{extension.t("common.close")}</Menu.Item>
           </Menu.Context.Content>
         </Menu.Context.Portal>

@@ -17,7 +17,7 @@ async function install(
   await privateDirectory(root)
   const directory = path.join(root, `${input.version}-${input.sha256.slice(0, 16)}`)
   await privateDirectory(directory)
-  const destination = path.join(directory, "opencode-pty")
+  const destination = path.join(directory, process.platform === "win32" ? "opencode-pty.exe" : "opencode-pty")
   if (await validateIfPresent(destination, input.sha256)) return destination
 
   const bytes = new Uint8Array(await Bun.file(input.path).arrayBuffer())

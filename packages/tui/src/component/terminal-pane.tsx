@@ -2,6 +2,8 @@ import { EmbeddedTerminalRenderable, type RGBA } from "@opentui/core"
 import { rgbToOklch, type ResolvedThemeTokens } from "@opencode/theme/tui"
 import { extend, useRenderer } from "@opentui/solid"
 import { createEffect, createSignal, onCleanup, onMount, Show } from "solid-js"
+import { decodePersistentPtyMessage, persistentPtyFrame } from "@opencode/client/solid"
+import { Option } from "effect"
 import { useClient } from "../context/client"
 import { Keymap } from "../context/keymap"
 import { useTheme, useThemes } from "../context/theme"
@@ -47,6 +49,9 @@ export function TerminalPane(props: {
   let wantsControl = false
   let disposed = false
   let exited = false
+  let retryTimer: ReturnType<typeof setTimeout> | undefined
+  let retries = 0
+  let incompatible = false
   let size: TerminalSize | undefined
   let canonicalSize: TerminalSize | undefined
   let terminalSize: TerminalSize | undefined
@@ -75,7 +80,7 @@ export function TerminalPane(props: {
       return
     }
     if (!size) return
-    send(interactionFrame(size))
+    send(persistentPtyFrame(size))
   }
 
   createEffect(() => {
@@ -87,7 +92,7 @@ export function TerminalPane(props: {
       pendingInput.push(data)
       return
     }
-    if (size) send(interactionFrame(size, data))
+    if (size) send(persistentPtyFrame(size, data))
   }
 
   const processStream = () => {
@@ -161,16 +166,41 @@ export function TerminalPane(props: {
   })
 
   onMount(() => {
-    void connect().catch((error) => setFailure(errorMessage(error)))
+    void reconnect()
   })
 
   onCleanup(() => {
     disposed = true
+    if (retryTimer !== undefined) clearTimeout(retryTimer)
     waitingSize?.resolve()
     socket?.close()
     offKeys()
     props.onFocusRequest?.(undefined)
   })
+
+  const reconnect = async () => {
+    if (disposed || exited || incompatible) return
+    attached = false
+    controller = false
+    restored = false
+    stream.length = 0
+    try {
+      await connect()
+    } catch (error) {
+      if (disposed) return
+      console.error("Failed to reconnect persistent terminal", errorMessage(error))
+      scheduleReconnect()
+    }
+  }
+
+  const scheduleReconnect = () => {
+    if (disposed || exited || incompatible || retryTimer !== undefined) return
+    const delay = Math.min(250 * 2 ** Math.min(retries++, 4), 4_000)
+    retryTimer = setTimeout(() => {
+      retryTimer = undefined
+      void reconnect()
+    }, delay)
+  }
 
   async function connect() {
     const snapshot = await client.api.experimental.persistentPty.snapshot({ ptyID: props.ptyID })
@@ -178,7 +208,7 @@ export function TerminalPane(props: {
     setCanonicalSize(snapshot.info.size)
     await waitForTerminalSize(snapshot.info.size)
     if (disposed) return
-    terminal?.write(Buffer.from(snapshot.checkpoint, "base64"))
+    terminal?.write(Buffer.concat([Buffer.from("\x1bc"), Buffer.from(snapshot.checkpoint, "base64")]))
     applyTerminalTheme()
     const next = await client.persistentPty.connect({
       ptyID: props.ptyID,
@@ -202,21 +232,14 @@ export function TerminalPane(props: {
         return
       }
       if (typeof event.data !== "string") return
-      const message: unknown = JSON.parse(event.data)
-      if (!message || typeof message !== "object" || !("type" in message)) return
+      const decoded = decodePersistentPtyMessage(event.data)
+      if (Option.isNone(decoded)) return
+      const message = decoded.value
       if (message.type === "exited") {
         exited = true
         return
       }
-      if (
-        message.type === "resized" &&
-        "cols" in message &&
-        typeof message.cols === "number" &&
-        "rows" in message &&
-        typeof message.rows === "number" &&
-        "checkpoint" in message &&
-        typeof message.checkpoint === "string"
-      ) {
+      if (message.type === "resized") {
         enqueue({
           type: "resize",
           size: { cols: message.cols, rows: message.rows },
@@ -225,54 +248,42 @@ export function TerminalPane(props: {
         return
       }
       if (message.type === "replay_complete") {
+        retries = 0
         enqueue({ type: "ready" })
         return
       }
-      if (
-        message.type === "controller_changed" &&
-        "attachmentID" in message &&
-        (typeof message.attachmentID === "string" || message.attachmentID === undefined)
-      ) {
+      if (message.type === "controller_changed") {
         const previous = controller
         controller = message.attachmentID === attachmentID
         if (controller && !previous && restored) interact()
         return
       }
       if (message.type !== "attached") return
-      if (!("inputProtocol" in message) || message.inputProtocol !== 1) {
+      if (message.inputProtocol !== 1) {
+        incompatible = true
         setFailure("Persistent terminal server is out of date; restart Redcode")
         next.close()
         return
       }
-      if (
-        "info" in message &&
-        message.info &&
-        typeof message.info === "object" &&
-        "size" in message.info &&
-        message.info.size &&
-        typeof message.info.size === "object" &&
-        "cols" in message.info.size &&
-        typeof message.info.size.cols === "number" &&
-        "rows" in message.info.size &&
-        typeof message.info.size.rows === "number"
-      )
-        enqueue({ type: "resize", size: { cols: message.info.size.cols, rows: message.info.size.rows } })
-      controller = "role" in message && message.role === "controller"
+      enqueue({ type: "resize", size: message.info.size })
+      controller = message.role === "controller"
       attached = true
     })
     next.addEventListener("error", () => {
       if (disposed) return
-      const focused = terminal?.focused
-      terminal = undefined
-      setFailure("Terminal connection failed")
-      if (focused) props.onDisconnect?.()
+      next.close()
     })
     next.addEventListener("close", () => {
       if (disposed) return
+      if (socket === next) socket = undefined
+      attached = false
+      restored = false
+      if (!exited && !incompatible) {
+        scheduleReconnect()
+        return
+      }
       const focused = terminal?.focused
-      terminal = undefined
       // The removal event arrives separately; keep the terminal visible until then.
-      if (!exited) setFailure("Terminal disconnected")
       if (focused) props.onDisconnect?.()
     })
     socket = next
@@ -390,14 +401,4 @@ function hex(color: RGBA) {
     .slice(0, 3)
     .map((value) => value.toString(16).padStart(2, "0"))
     .join("")}`
-}
-
-function interactionFrame(size: { cols: number; rows: number }, data?: Uint8Array) {
-  const frame = new Uint8Array(5 + (data?.byteLength ?? 0))
-  const view = new DataView(frame.buffer)
-  frame[0] = data ? 1 : 0
-  view.setUint16(1, size.cols)
-  view.setUint16(3, size.rows)
-  if (data) frame.set(data, 5)
-  return frame
 }

@@ -23,7 +23,7 @@ const setup: Setup<typeof Terminal> = (ctx) => {
 
   // The workspace each later route change leaves.
   const left = createMemo(
-    on(workspace, (next, previous) => (previous && next !== previous ? previous : undefined), { defer: true }),
+    on(workspace, (next, previous) => (previous && next?.key !== previous.key ? previous : undefined), { defer: true }),
   )
 
   // A workspace the route leaves drops its restore buffers.

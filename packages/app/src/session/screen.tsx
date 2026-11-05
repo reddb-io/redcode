@@ -122,6 +122,7 @@ function SessionScreenContent(props: {
     sideWidthMotion: false,
     timelineScrollbarHidden: false,
     sideColumnPresent: false,
+    sidePanelCached: false,
     sideDockCached: false,
     togglesWidth: 28,
     mobileDockCached: false,
@@ -178,6 +179,13 @@ function SessionScreenContent(props: {
 
     // A column that closes while the file tree stays has no exit animation to wait for.
     if (!screen.side.column.open() && sideVisible()) setStore("sideColumnPresent", false)
+  })
+  createEffect(() => {
+    // A pinned panel that has been shown keeps its DOM while another session closes the column.
+    if (!isDesktop()) return setStore("sidePanelCached", false)
+    if (!session.layout.view().side.opened()) return
+    if (region.groups.top.selected()?.tab.pinned || region.groups.bottom.selected()?.tab.pinned)
+      setStore("sidePanelCached", true)
   })
 
   // The dock's narrow-screen view follows the dock's open state; other views are a selection.
@@ -426,7 +434,9 @@ function SessionScreenContent(props: {
             </Show>
           </div>
 
-          <Show when={sidePresence.present() || store.sideColumnPresent || store.sideDockCached}>
+          <Show
+            when={sidePresence.present() || store.sideColumnPresent || store.sideDockCached || store.sidePanelCached}
+          >
             <div
               ref={(element) => setElements("side", element)}
               data-slot="session-side-panel-presence"
@@ -457,6 +467,7 @@ function SessionScreenContent(props: {
                   dock={workbenchDock()}
                   fileTree={screen.files.open()}
                   present={store.sideColumnPresent}
+                  keepPanel={store.sidePanelCached}
                   size={screen.size}
                 />
               </div>

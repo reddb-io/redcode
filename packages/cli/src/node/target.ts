@@ -13,7 +13,7 @@ export function nodeTarget(platform: string, arch: string) {
   const parcelWatcherPackage = `@parcel/watcher-${targetPlatform}-${targetArch}${targetPlatform === "linux" ? "-glibc" : ""}`
   const fffPackage = `@ff-labs/fff-bin-${targetPlatform}-${targetArch}${targetPlatform === "linux" ? "-gnu" : ""}`
   const fffFfiPackage = `@yuuang/ffi-rs-${targetPlatform}-${targetArch}${targetPlatform === "linux" ? "-gnu" : targetPlatform === "win32" ? "-msvc" : ""}`
-  const opencodePtyAsset = targetPlatform === "win32" ? undefined : "opencode-pty/opencode-pty"
+  const opencodePtyAsset = `opencode-pty/opencode-pty${targetPlatform === "win32" ? ".exe" : ""}`
 
   return {
     platform: targetPlatform,

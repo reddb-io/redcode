@@ -39,6 +39,7 @@ const PTY = Schema.Struct({
   buffer: optional(Schema.String),
   scrollY: optional(Schema.Finite),
   cursor: optional(Schema.Finite),
+  persistent: optional(Schema.Boolean),
 })
 
 export type LocalPTY = typeof PTY.Type

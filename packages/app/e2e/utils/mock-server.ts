@@ -528,6 +528,13 @@ export async function mockOpenCodeServer(page: Page, config: MockServerConfig) {
     })
   })
 
+  // Most fixtures model a server from before persistent session terminals. Individual tests can override this route.
+  await page.route(/\/api\/experimental\/session\/[^/]+\/terminal(?:\?.*)?$/, (route) => {
+    if (!answers(page, server, new URL(route.request().url()))) return route.fallback()
+    if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers: corsHeaders })
+    return route.fulfill({ status: 404, headers: corsHeaders, json: { message: "Not found" } })
+  })
+
   if (config.pairing) {
     const pairing = { ...config.pairing, redeemed: false }
 

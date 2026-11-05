@@ -5,7 +5,8 @@ import { resolveThemeVariant } from "@opencode/ui/theme/resolve"
 import { resolveThemeVariantV2 } from "@opencode/ui/theme/v2/resolve"
 import type { HexColor, ResolvedV2Theme } from "@opencode/ui/theme/types"
 import { showToast } from "@opencode/ui/toast"
-import { createPtyClient } from "@opencode/client/solid"
+import { uuid } from "@opencode/util/uuid"
+import { createPersistentPtyClient, createPtyClient, decodePersistentPtyMessage } from "@opencode/client/solid"
 import type { FitAddon, Terminal as Term } from "ghostty-web"
 import { Option, Predicate, Schema } from "effect"
 import { type ComponentProps, createMemo, createSignal, onCleanup, onMount, splitProps } from "solid-js"
@@ -16,6 +17,7 @@ import { SerializeAddon } from "./serialize"
 import { disposeIfDisposable, getHoveredLinkText, setOptionIfSupported } from "./runtime-adapters"
 import { terminalKeyInput } from "./terminal-key-event"
 import { terminalWriter } from "./writer"
+import { persistentConnection } from "./persistent-connection"
 
 // Serialization on unmount is a synchronous O(rows x cols) walk on the main thread and the
 // result is written to localStorage or desktop state for every terminal in the workspace.
@@ -295,6 +297,11 @@ export const Terminal = (props: TerminalProps) => {
   const scrollY = local.pty.scrollY
   let ws: WebSocket | undefined
   let term: Term | undefined
+  let persistent: ReturnType<typeof persistentConnection> | undefined
+  const attachmentID = uuid()
+  let applyingCanonical = false
+  let protocolIncompatible = false
+  let offlineOverflow = false
   let serializeAddon: SerializeAddon
   let fitAddon: FitAddon
   let handleResize: () => void
@@ -337,6 +344,10 @@ export const Terminal = (props: TerminalProps) => {
   }
 
   const pushSize = async (cols: number, rows: number) => {
+    if (local.pty.persistent) {
+      persistent?.size({ cols, rows })
+      return
+    }
     return server.client.pty
       .update({
         ptyID: id,
@@ -495,6 +506,7 @@ export const Terminal = (props: TerminalProps) => {
     }
 
     focusTerminal()
+    persistent?.interact()
   }
 
   const handleLinkClick = (event: MouseEvent) => {
@@ -549,6 +561,46 @@ export const Terminal = (props: TerminalProps) => {
       }
 
       term = t
+      if (local.pty.persistent) {
+        persistent = persistentConnection({
+          attachmentID,
+          write: (bytes, done) =>
+            t.write(bytes, () => {
+              reveal()
+              done()
+            }),
+          resize: (size) => {
+            applyingCanonical = true
+            try {
+              t.resize(size.cols, size.rows)
+            } finally {
+              applyingCanonical = false
+            }
+          },
+          send: (frame) => {
+            if (ws?.readyState === WebSocket.OPEN) ws.send(frame)
+          },
+          overflow: () => {
+            if (ws?.readyState === WebSocket.OPEN) return ws.close(4008)
+            if (offlineOverflow) return
+            offlineOverflow = true
+            showToast({
+              variant: "error",
+              title: extension.t("connectionLost.title"),
+              description: extension.t("connectionLost.description"),
+            })
+          },
+          incompatible: () => {
+            protocolIncompatible = true
+            showToast({
+              variant: "error",
+              title: extension.t("connectionLost.title"),
+              description: extension.t("connectionLost.description"),
+            })
+            ws?.close(1000)
+          },
+        })
+      }
       setOptionIfSupported(t, "colorScheme", theme.mode() === "dark" ? "dark" : "light")
       output = terminalWriter((data, done) =>
         t.write(data, () => {
@@ -621,12 +673,17 @@ export const Terminal = (props: TerminalProps) => {
       }
 
       const onResize = t.onResize((size) => {
+        if (applyingCanonical) return
         scheduleSize(size.cols, size.rows)
       })
 
       cleanups.push(() => disposeIfDisposable(onResize))
 
       const onData = t.onData((data) => {
+        if (persistent) {
+          persistent.input(data)
+          return
+        }
         if (ws?.readyState === WebSocket.OPEN) ws.send(data)
       })
 
@@ -683,6 +740,75 @@ export const Terminal = (props: TerminalProps) => {
 
       const once = { value: false }
       const decoder = new TextDecoder()
+
+      if (persistent) {
+        const connection = persistent
+        let exited = false
+        const retryPersistent = () => {
+          if (disposed || exited || reconn !== undefined) return
+          connection.reconnect()
+          const ms = Math.min(250 * 2 ** Math.min(tries++, 4), 4_000)
+          reconn = setTimeout(() => {
+            reconn = undefined
+            void connectPersistent().catch(retryPersistent)
+          }, ms)
+        }
+        const connectPersistent = async () => {
+          if (disposed || exited) return
+          drop?.()
+          const snapshot = await server.client.experimental.persistentPty.snapshot({ ptyID: id })
+          if (disposed) return
+          offlineOverflow = false
+          connection.restore({ size: snapshot.info.size, checkpoint: snapshot.checkpoint })
+          if (offlineOverflow) return
+          const socket = await createPersistentPtyClient(server.client, { url: server.url }).connect({
+            ptyID: id,
+            cursor: snapshot.info.output.tail,
+            attachmentID,
+            takeover: false,
+            role: "observer",
+          })
+          if (disposed) {
+            socket.close()
+            return
+          }
+          ws = socket
+          const handleOpen = () => {
+            local.onConnect?.()
+          }
+          const handleMessage = (event: MessageEvent) => {
+            if (event.data instanceof ArrayBuffer) return connection.output(new Uint8Array(event.data))
+            if (typeof event.data !== "string") return
+            const decoded = decodePersistentPtyMessage(event.data)
+            if (Option.isSome(decoded)) {
+              if (decoded.value.type === "exited") exited = true
+              if (decoded.value.type === "replay_complete") tries = 0
+            }
+            connection.message(event.data)
+          }
+          const stop = () => {
+            socket.removeEventListener("open", handleOpen)
+            socket.removeEventListener("message", handleMessage)
+            socket.removeEventListener("close", handleClose)
+            socket.removeEventListener("error", handleError)
+            if (ws === socket) ws = undefined
+            if (drop === stop) drop = undefined
+            if (socket.readyState !== WebSocket.CLOSED && socket.readyState !== WebSocket.CLOSING) socket.close(1000)
+          }
+          const handleClose = () => {
+            stop()
+            if (!disposed && !exited && !protocolIncompatible) retryPersistent()
+          }
+          const handleError = () => socket.close()
+          drop = stop
+          socket.addEventListener("open", handleOpen)
+          socket.addEventListener("message", handleMessage)
+          socket.addEventListener("close", handleClose)
+          socket.addEventListener("error", handleError)
+        }
+        void connectPersistent().catch(retryPersistent)
+        return
+      }
 
       const fail = (err: Error) => {
         if (disposed) return
@@ -857,7 +983,7 @@ export const Terminal = (props: TerminalProps) => {
         title: extension.t("connectionLost.title"),
         description: err instanceof Error ? err.message : extension.t("connectionLost.description"),
       })
-      local.onConnectError?.(err)
+      // A renderer or asset failure says nothing about the shell's state. Cloning here could start a second process.
     })
   })
 
@@ -869,12 +995,14 @@ export const Terminal = (props: TerminalProps) => {
     if (sizeTimer !== undefined) clearTimeout(sizeTimer)
 
     if (reconn !== undefined) clearTimeout(reconn)
+    persistent?.dispose()
     drop?.()
 
     if (ws && ws.readyState !== WebSocket.CLOSED && ws.readyState !== WebSocket.CLOSING) ws.close(1000)
 
     const finalize = () => {
-      persistTerminal({ term, addon: serializeAddon, cursor, id, onCleanup: props.onCleanup })
+      if (!local.pty.persistent)
+        persistTerminal({ term, addon: serializeAddon, cursor, id, onCleanup: props.onCleanup })
       cleanup()
     }
 
