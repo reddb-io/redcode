@@ -50,7 +50,7 @@ test("exposes every standard HTTP API group", () => {
     "worktreeLifecycle",
   ])
   expect(Object.keys(client.debug)).toEqual(["rg", "todos", "guards", "location"])
-  expect(Object.keys(client.automation)).toEqual(["list", "create", "control", "run", "history", "remove"])
+  expect(Object.keys(client.automation)).toEqual(["list", "create", "createConditional", "control", "run", "history", "remove"])
   expect(Object.keys(client.debug.location)).toEqual(["list", "evict"])
   expect(Object.keys(client.message)).toEqual(["list"])
   expect(Object.keys(client.integration)).toEqual([

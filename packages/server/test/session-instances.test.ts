@@ -283,7 +283,9 @@ it.live(
         expect(yield* Effect.promise<unknown>(() => forms.json())).toEqual({ data: [entry.form] })
         const permissions = yield* request(`/api/session/${entry.session.id}/permission`)
         expect(permissions.status).toBe(200)
-        expect(yield* Effect.promise<unknown>(() => permissions.json())).toEqual({ data: [entry.permission] })
+        expect(yield* Effect.promise<unknown>(() => permissions.json())).toEqual({
+          data: [{ ...entry.permission, created: expect.any(Number) }],
+        })
 
         // These IDs exist in the selected instance, but belong to the other Session.
         expect((yield* request(`/api/session/${entry.session.id}/form/${entry.foreignForm.id}`)).status).toBe(404)
