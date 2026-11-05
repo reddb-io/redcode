@@ -1,5 +1,19 @@
 # @reddb-io/redcode
 
+## 0.87.5
+
+### Patch Changes
+
+- Show MCP startup, model response, permission, monitor, delegated-agent and background-task waits with elapsed time in the desktop, web and TUI sessions, including monitors that continue after the conversation becomes idle.
+- Let conversation automations check an HTTP endpoint or process before admitting a scheduled prompt, optionally trigger only on a matching transition, and recover the recorded decision after a server restart.
+- Load model selection catalogs in one bootstrap request and defer MCP resource inventory until needed.
+- Add delegation between native Redcode sessions and configured Codex and Claude harnesses, with durable task ownership, restart recovery, and automatic result delivery.
+- Start scoped initial reads in parallel with location resolution when the directory is already known.
+- Share explicitly opted-in modern non-OAuth MCP connections between projects with credential isolation, and create conditional automations from the TUI.
+- Wait briefly for starting MCP servers before preparing a session's tools, and offer web users a coordinated update when a new app version is ready.
+- Reuse the same prompt-size estimate throughout each session step, reducing repeated work in long conversations.
+- Share initial model, provider and integration catalog reads across desktop views, and update the vendored RedDB design system.
+
 ## 0.87.4
 
 ### Patch Changes
