@@ -1,5 +1,12 @@
 # @reddb-io/redcode
 
+## 0.87.8
+
+### Patch Changes
+
+- Update the vendored RedDB design system to v2026.11.12, including the new voice input and audio meter components.
+- Use the Design System audio meter in voice settings and its compact voice control in the desktop and web composer, retaining stop and cancel actions.
+
 ## 0.87.7
 
 ### Patch Changes
