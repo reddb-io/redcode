@@ -1,6 +1,21 @@
 export * as SessionStore from "./store.js"
 
-import { and, asc, desc, eq, gt, isNotNull, isNull, like, lt, notInArray, or, sql, type SQL } from "drizzle-orm"
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  inArray,
+  isNotNull,
+  isNull,
+  like,
+  lt,
+  notInArray,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm"
 import { Context, Effect, Layer, Schema } from "effect"
 import { ExecutionOwner } from "../execution-owner.js"
 import { executionGate } from "../worker-lease.js"
@@ -91,7 +106,10 @@ export interface Interface {
    * Clears orphaned child claims except children owned by recoverable
    * background subagent jobs.
    */
-  readonly releaseChildClaims: (recoverable: ReadonlyArray<Session.ID>) => Effect.Effect<void>
+  readonly releaseChildClaims: (
+    recoverable: ReadonlyArray<Session.ID>,
+    scope?: ReadonlyArray<Session.ID>,
+  ) => Effect.Effect<void>
   /**
    * Durably counts one more resume of an orphaned claim, returning the new
    * total — or undefined when the Session no longer exists.
@@ -343,7 +361,8 @@ const layer = Layer.effect(
           .run()
           .pipe(Effect.orDie)
       }),
-      releaseChildClaims: Effect.fn("SessionStore.releaseChildClaims")(function* (recoverable) {
+      releaseChildClaims: Effect.fn("SessionStore.releaseChildClaims")(function* (recoverable, scope) {
+        if (scope && scope.length === 0) return
         const rows = yield* db
           .select({ id: SessionTable.id, owner: SessionTable.execution_owner })
           .from(SessionTable)
@@ -351,6 +370,7 @@ const layer = Layer.effect(
             and(
               isNotNull(SessionTable.time_suspended),
               isNotNull(SessionTable.parent_id),
+              scope ? inArray(SessionTable.id, Array.from(scope)) : undefined,
               recoverable.length > 0 ? notInArray(SessionTable.id, Array.from(recoverable)) : undefined,
             ),
           )

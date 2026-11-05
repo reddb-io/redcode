@@ -295,6 +295,8 @@ export async function mockDeliveryAutomations(page: Page) {
     triggers: [] as { sessionID: string; id: string; runID: Automation.RunID }[],
     removals: [] as { sessionID: string; id: string }[],
     unavailable: false,
+    conditionalSupported: true,
+    conditionalAttempts: 0,
     failRun: false,
   }
   await page.route(
@@ -309,11 +311,16 @@ export async function mockDeliveryAutomations(page: Page) {
         if (state.unavailable) return route.fulfill({ status: 503, json: { message: "Schedules unavailable" } })
         return route.fulfill({ json: { data: state.items.filter((item) => item.sessionID === sessionID) } })
       }
-      if (method === "POST" && !automationID) {
+      if (method === "POST" && automationID === "conditional") {
+        state.conditionalAttempts++
+        if (!state.conditionalSupported) return route.fulfill({ status: 404, json: { message: "Not found" } })
+      }
+      if (method === "POST" && (!automationID || automationID === "conditional")) {
         const input = Schema.decodeUnknownSync(Automation.Input)(route.request().postDataJSON())
         state.creates.push({ sessionID, input })
         const item: AutomationInfo = {
           ...input,
+          condition: input.condition ? JSON.parse(JSON.stringify(input.condition)) : undefined,
           schedule:
             input.schedule.type === "fixed_time"
               ? { ...input.schedule, weekdays: [...input.schedule.weekdays] }

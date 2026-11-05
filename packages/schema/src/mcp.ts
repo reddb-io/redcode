@@ -62,6 +62,9 @@ export class OAuthConfig extends Schema.Class<OAuthConfig>("Mcp.OAuthConfig")({
 
 export class RemoteConfig extends Schema.Class<RemoteConfig>("Mcp.RemoteConfig")({
   type: Schema.Literal("remote"),
+  pool: Schema.Boolean.pipe(optional).annotate({
+    description: "Share an explicitly non-OAuth modern MCP connection between projects on this server.",
+  }),
   media: Media.pipe(optional),
   url: Schema.String,
   headers: Schema.Record(Schema.String, Schema.String).pipe(optional),

@@ -12,6 +12,7 @@ import {
   completedAssistantInfo,
   directory,
   messageUpdated,
+  mockTimelineMonitors,
   partUpdated,
   reasoningPart,
   renderedPartID,
@@ -549,6 +550,103 @@ for (const shellDefault of ["collapsed", "expanded"] as const) {
 }
 
 test.describe("Working", () => {
+  test("shows real MCP, model and permission waits with elapsed time until they end", async ({ page }) => {
+    const timeline = await setupTimeline(page, {
+      messages: [userMessage(), assistantMessage([], { completed: false })],
+      sessionStatus: { [sessionID]: { type: "busy" } },
+    })
+    const created = Date.now() - 65_000
+    await timeline.send({
+      id: "evt_phases_started",
+      type: "session.wait.changed",
+      created,
+      location: { directory },
+      data: {
+        sessionID,
+        waits: [
+          { id: "mcp_wait", kind: "mcp", started: created, target: "tool registration" },
+          { id: "model_wait", kind: "model", started: created, target: "provider/model" },
+        ],
+      },
+    })
+    await timeline.send({
+      id: "evt_permission_asked",
+      type: "permission.asked",
+      created,
+      location: { directory },
+      data: { id: "per_fixture", sessionID, action: "shell", resources: ["pwd"], created },
+    })
+    const phases = page.locator('[data-component="session-phase-wait"]')
+    await expect(phases).toHaveCount(3)
+    await expect(phases.filter({ hasText: "Waiting for MCP: tool registration" })).toContainText(/1m \d+s/)
+    await expect(phases.filter({ hasText: "Waiting for model response: provider/model" })).toContainText(/1m \d+s/)
+    await expect(phases.filter({ hasText: "Waiting for permission: shell" })).toContainText(/1m \d+s/)
+    await timeline.send({
+      id: "evt_phases_ended",
+      type: "session.wait.changed",
+      created: Date.now(),
+      location: { directory },
+      data: { sessionID, waits: [] },
+    })
+    await timeline.send({
+      id: "evt_permission_replied",
+      type: "permission.replied",
+      created: Date.now(),
+      location: { directory },
+      data: { sessionID, requestID: "per_fixture", reply: "once" },
+    })
+    await expect(phases).toHaveCount(0)
+  })
+
+  test("keeps a background monitor visible while the conversation is idle until it settles", async ({ page }) => {
+    const timeline = await setupTimeline(page, {
+      messages: [userMessage(), assistantMessage([], { completed: true })],
+      sessionStatus: { [sessionID]: { type: "idle" } },
+    })
+    const monitor = await mockTimelineMonitors(page)
+    await timeline.send({
+      id: "evt_monitor_started",
+      type: "monitor.started",
+      created: Date.now(),
+      location: { directory },
+      data: { sessionID, monitorID: "mon_build", command: "Build readiness" },
+    })
+    const status = page.locator('[data-component="session-background-monitor"]')
+    await expect(status).toContainText("Monitoring Build readiness (mon_build) in the background")
+    await expect(status).toContainText(/1m \d+s/)
+    monitor.running = false
+    await timeline.send({
+      id: "evt_monitor_finished",
+      type: "monitor.finished",
+      created: Date.now(),
+      location: { directory },
+      data: { sessionID, monitorID: "mon_build", command: "Build readiness", status: "succeeded" },
+    })
+    await expect(status).toHaveCount(0)
+  })
+
+  test("shows concurrent explicit waits and removes each when its operation finishes", async ({ page }) => {
+    const timeline = await setupTimeline(page, {
+      messages: [userMessage(), assistantMessage([], { completed: false })],
+      sessionStatus: { [sessionID]: { type: "busy" } },
+    })
+    const monitor = { action: "wait", id: "mon_build" }
+    const agent = { agent: "reviewer", description: "Review changes", prompt: "Review" }
+    await timeline.send(partUpdated(toolPart("prt_wait_monitor", "monitor", "running", monitor)))
+    await timeline.send(partUpdated(toolPart("prt_wait_agent", "subagent", "running", agent)))
+    const waits = page.locator('[data-component="session-agent-wait"]')
+    await expect(waits).toHaveCount(2)
+    await expect(page.getByRole("button", { name: /Waiting for monitor mon_build/ })).toContainText(/\d+[smh]/)
+    await expect(page.getByRole("button", { name: /Waiting for agent reviewer/ })).toContainText(/\d+[smh]/)
+    await page.getByRole("button", { name: /Waiting for monitor mon_build/ }).click()
+    await expect(page.locator('[data-timeline-part-id="prt_wait_monitor"]')).toBeVisible()
+    await timeline.send(partUpdated(toolPart("prt_wait_monitor", "monitor", "completed", monitor)))
+    await expect(waits).toHaveCount(1)
+    await expect(page.getByRole("button", { name: /Waiting for agent reviewer/ })).toBeVisible()
+    await timeline.send(partUpdated(toolPart("prt_wait_agent", "subagent", "completed", agent)))
+    await expect(waits).toHaveCount(0)
+  })
+
   test("shows Working between busy and reasoning states", async ({ page }) => {
     const timeline = await setupTimeline(page, {
       messages: [userMessage()],

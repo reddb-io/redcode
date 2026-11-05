@@ -155,10 +155,10 @@ const probe = `(() => ({
   domInteractive: performance.getEntriesByType('navigation')[0]?.domInteractive,
   prepaint: !!document.getElementById('oc-prepaint'),
   visible: document.visibilityState === 'visible',
-  shell: !!document.querySelector('#root [data-titlebar-tab-link], #root [data-action="vertical-tabs-home"]'),
+  shell: !!document.querySelector('#root [data-component="navigation-rail"]'),
   editor: !!document.querySelector('#root [data-component="composer-editor"][contenteditable="true"]'),
   rows: document.querySelectorAll('#root [data-timeline-row]').length,
-  home: !!document.querySelector('#root [data-action="home-new-session"], #root [data-action="home-add-project-row"]'),
+  home: !!document.querySelector('#root main [aria-label^="Projects:"]'),
   url: location.pathname + location.search,
 }))()`
 
@@ -447,6 +447,8 @@ async function launch(build: { label: string; exe: string }, run: number): Promi
     if (seen.shellVisible && quietSince && Date.now() - quietSince >= settleMs) break
     await sleep(50)
   }
+
+  if (!seen.shellVisible) throw new Error("Desktop shell did not become ready within 60 seconds")
 
   const rendererIdleMs = quietSince ? quietSince - spawnAt : undefined
   const rendererProfilePath = rendererProfile ? join(outDir, `renderer-${Date.now()}.cpuprofile`) : undefined

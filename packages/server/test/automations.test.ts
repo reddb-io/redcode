@@ -86,5 +86,14 @@ it.live("automation API preserves authentication, session ownership and explicit
     expect((yield* request(`${prefix}/${input.id}/history`)).status).toBe(404)
     const empty = yield* request(prefix)
     expect(yield* Effect.promise(() => empty.json())).toEqual({ data: [] })
+    // The distinct endpoint cannot silently degrade to an unconditional schedule on an old server.
+    expect((yield* request(`${prefix}/conditional`, "POST", { ...input, id: Automation.ID.create() })).status).toBe(400)
+    const conditionalID = Automation.ID.create()
+    const condition = { probe: { type: "process", pid: process.pid, state: "running" }, when: "matches" }
+    const conditional = yield* request(`${prefix}/conditional`, "POST", { ...input, id: conditionalID, condition })
+    expect(conditional.status).toBe(200)
+    expect(yield* Effect.promise(() => conditional.json())).toMatchObject({ data: { condition } })
+    const conditionalRun = yield* request(`${prefix}/${conditionalID}/run`, "POST", { id: Automation.RunID.create() })
+    expect(yield* Effect.promise(() => conditionalRun.json())).toMatchObject({ data: { status: "admitted" } })
   }),
 )

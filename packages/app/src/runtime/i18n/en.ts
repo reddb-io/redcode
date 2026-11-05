@@ -1,6 +1,9 @@
 import { DESKTOP_NATIVE_ENGLISH } from "./desktop-native"
 
 export const dict = {
+  "webUpdate.ready.title": "Update ready",
+  "webUpdate.ready.description": "A new version is ready. Updating reloads all open Redcode web windows.",
+  "webUpdate.ready.action": "Update now",
   "infrastructure.title": "Servers & workers",
   "infrastructure.description":
     "Connect to a server, access it from your devices and choose where it distributes work.",

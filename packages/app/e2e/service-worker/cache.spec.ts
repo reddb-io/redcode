@@ -31,11 +31,19 @@ const fixture = test.extend<{ site: Site }, { builds: Record<string, Record<stri
           await mkdir(join(root, "public", "nested"), { recursive: true })
           await Promise.all(
             Object.entries({
-              "index.html": `<html><head></head><body><h1>Loading</h1><label>Draft<textarea></textarea></label><button>Load lazy</button><output></output><script type="module" src="/main.js"></script></body></html>`,
-              "main.js": `document.querySelector("h1").textContent = "${version}";
+              "index.html": `<html><head></head><body><h1>Loading</h1><label>Draft<textarea></textarea></label><button>Load lazy</button><button id="update" hidden>Update</button><output></output><script type="module" src="/main.js"></script></body></html>`,
+              "main.js": `import { startWebUpdate } from "./update.ts";
+            document.querySelector("h1").textContent = "${version}";
+            if (new URLSearchParams(location.search).has("updater")) {
+              const draft = document.querySelector("textarea");
+              draft.value = sessionStorage.getItem("draft") || "";
+              addEventListener("pagehide", () => sessionStorage.setItem("draft", draft.value));
+              startWebUpdate({ ready: apply => { const button = document.querySelector("#update"); button.hidden = false; button.onclick = apply; } });
+            }
             document.querySelector("button").onclick = async () => {
               document.querySelector("output").textContent = await (await import("./lazy.js")).load()
             };`,
+              "update.ts": await readFile(new URL("../../src/runtime/platform/web-update.ts", import.meta.url)),
               "lazy.js": `export async function load() { return (await import("./nested.js")).value }`,
               "nested.js": `export const value = "${version} nested lazy loaded"`,
               "public/nested/data.json": JSON.stringify({ version }),
@@ -212,6 +220,28 @@ async function waiting(page: Page) {
 }
 
 fixture(
+  "offers an update and moves controlled tabs to the new build with their drafts",
+  async ({ page, context, site }) => {
+    await install(page, `${site.url}/?updater=1`)
+    const other = await context.newPage()
+    await other.goto(`${site.url}/?updater=1`)
+    await expect(other.getByRole("heading")).toHaveText("old")
+    await page.getByLabel("Draft").fill("First draft")
+    await other.getByLabel("Draft").fill("Second draft")
+    site.deploy()
+    await update(page)
+    await waiting(page)
+    await expect(page.getByRole("button", { name: "Update", exact: true })).toBeVisible()
+    await expect(other.getByRole("heading")).toHaveText("old")
+    await page.getByRole("button", { name: "Update", exact: true }).click()
+    await expect(page.getByRole("heading")).toHaveText("new")
+    await expect(other.getByRole("heading")).toHaveText("new")
+    await expect(page.getByLabel("Draft")).toHaveValue("First draft")
+    await expect(other.getByLabel("Draft")).toHaveValue("Second draft")
+  },
+)
+
+fixture(
   "opens an uncached route offline and executes never-used nested lazy chunks",
   async ({ page, context, site }) => {
     await install(page, site.url)
@@ -286,7 +316,9 @@ fixture(
         replacement.evaluate(() => {
           // This runs in the service worker, whose global scope holds its registration.
           const registration =
-            "registration" in self && self.registration instanceof ServiceWorkerRegistration ? self.registration : undefined
+            "registration" in self && self.registration instanceof ServiceWorkerRegistration
+              ? self.registration
+              : undefined
 
           return { waiting: !!registration?.waiting, active: registration?.active?.state }
         }),
@@ -480,7 +512,10 @@ test("the production build installs as an app behind an authenticating proxy", a
   const url = `http://127.0.0.1:${address.port}`
   // Chrome Headless Shell has no install checks and reports no errors for any page, and an incognito context always
   // reports one, so check in a persistent Chrome profile.
-  const context = await chromium.launchPersistentContext("", { channel: "chromium" })
+  const context = await chromium.launchPersistentContext("", {
+    channel: "chromium",
+    ...(process.env.PLAYWRIGHT_PWA_CHROME ? { executablePath: process.env.PLAYWRIGHT_PWA_CHROME } : {}),
+  })
 
   try {
     await context.addCookies([{ name: "session", value: "signed-in", url }])

@@ -34,6 +34,8 @@ const RequestFields = {
 
 export const Request = Schema.Struct({
   id: ID,
+  /** Time the request was created; absent on servers predating this field. */
+  created: Schema.Finite.pipe(optional),
   ...RequestFields,
 }).annotate({ identifier: "Permission.Request" })
 export interface Request extends Schema.Schema.Type<typeof Request> {}

@@ -7,6 +7,7 @@ import { Dialog, DialogFooter, DialogHeader, DialogTitleGroup } from "@opencode/
 import { DiffChanges } from "@opencode/ui/diff-changes"
 import { Icon } from "@opencode/ui/icon"
 import { getDirectory, getFilename } from "@opencode/util/path"
+import type { AgentWait } from "@opencode/util/agent-waits"
 import { For, Show, createMemo, createSignal } from "solid-js"
 import { formatElapsed, now } from "../components/clock"
 import { useData } from "../context"
@@ -212,6 +213,82 @@ export function LiveTurnStatus(props: { kind: LiveActivityKind; since: number })
         {formatElapsed(now() - props.since, i18n)}
       </span>
     </div>
+  )
+}
+
+/** A confirmed blocking operation; clicking it reveals its tool call in the timeline. */
+export function AgentWaitStatus(props: { wait: AgentWait; onReveal: () => void }) {
+  const i18n = useI18n()
+  const keys = {
+    monitor: ["ui.sessionWait.monitor", "ui.sessionWait.monitorTarget"],
+    agent: ["ui.sessionWait.agent", "ui.sessionWait.agentTarget"],
+    task: ["ui.sessionWait.task", "ui.sessionWait.taskTarget"],
+  } as const
+  const label = () =>
+    props.wait.target
+      ? i18n.t(keys[props.wait.kind][1], { target: props.wait.target })
+      : i18n.t(keys[props.wait.kind][0])
+  return (
+    <button
+      type="button"
+      data-component="session-agent-wait"
+      data-wait-part-id={props.wait.partID}
+      title={i18n.t("ui.sessionWait.reveal")}
+      class="flex min-w-0 max-w-full items-center gap-2 rounded font-mono text-[13px] leading-text-compact text-ink-muted hover:text-foreground"
+      onClick={props.onReveal}
+    >
+      <span class="min-w-0 truncate">{label()}</span>
+      <span class="shrink-0 tabular-nums">{formatElapsed(now() - props.wait.since, i18n)}</span>
+    </button>
+  )
+}
+
+export function BackgroundMonitorStatus(props: { label: string; since: number }) {
+  const i18n = useI18n()
+  return (
+    <div
+      data-component="session-background-monitor"
+      class="flex min-w-0 max-w-full items-center gap-2 font-mono text-[13px] leading-text-compact text-ink-muted"
+    >
+      <span class="min-w-0 truncate">{i18n.t("ui.sessionWait.monitoring", { target: props.label })}</span>
+      <span class="shrink-0 tabular-nums">{formatElapsed(now() - props.since, i18n)}</span>
+    </div>
+  )
+}
+
+export function SessionPhaseWaitStatus(props: {
+  kind: "mcp" | "model" | "permission"
+  target?: string
+  since?: number
+  onReveal?: () => void
+}) {
+  const i18n = useI18n()
+  const label = () => {
+    if (props.kind === "permission") return i18n.t("ui.sessionWait.permission", { target: props.target ?? "" })
+    if (props.kind === "mcp")
+      return props.target ? i18n.t("ui.sessionWait.mcpTarget", { target: props.target }) : i18n.t("ui.sessionWait.mcp")
+    return props.target
+      ? i18n.t("ui.sessionWait.modelTarget", { target: props.target })
+      : i18n.t("ui.sessionWait.model")
+  }
+  return (
+    <Show when={props.kind === "permission" || props.since === undefined || now() - props.since >= 1000}>
+      <div
+        data-component="session-phase-wait"
+        class="flex min-w-0 max-w-full items-center gap-2 font-mono text-[13px] leading-text-compact text-ink-muted"
+      >
+        <Show when={props.onReveal} fallback={<span class="min-w-0 truncate">{label()}</span>}>
+          {(reveal) => (
+            <button type="button" class="min-w-0 truncate hover:text-foreground" onClick={() => reveal()()}>
+              {label()}
+            </button>
+          )}
+        </Show>
+        <Show when={props.since !== undefined}>
+          <span class="shrink-0 tabular-nums">{formatElapsed(now() - props.since!, i18n)}</span>
+        </Show>
+      </div>
+    </Show>
   )
 }
 

@@ -1,0 +1,925 @@
+{
+  "builds": [
+    {
+      "label": "",
+      "exe": "<isolated packaged desktop>"
+    }
+  ],
+  "service": "cold",
+  "runs": 5,
+  "warmup": 1,
+  "fresh": false,
+  "home": "<isolated benchmark home>",
+  "summaries": {
+    "A": {
+      "processCreated": {
+        "median": 5,
+        "min": 5,
+        "max": 6
+      },
+      "nodeStart": {
+        "median": 32,
+        "min": 31,
+        "max": 39
+      },
+      "nodeBootstrapped": {
+        "median": 42,
+        "min": 40,
+        "max": 48
+      },
+      "entryStart": {
+        "median": 139,
+        "min": 132,
+        "max": 167
+      },
+      "electronReady": {
+        "median": 206,
+        "min": 180,
+        "max": 226
+      },
+      "rendererAssetsServed": {
+        "median": 400,
+        "min": 373,
+        "max": 925
+      },
+      "bundleEvaluated": {
+        "median": 419,
+        "min": 389,
+        "max": 946
+      },
+      "onboardingDecided": {
+        "median": 423,
+        "min": 392,
+        "max": 950
+      },
+      "loggingReady": {
+        "median": 426,
+        "min": 394,
+        "max": 952
+      },
+      "appStarting": {
+        "median": 427,
+        "min": 395,
+        "max": 953
+      },
+      "storageOpen": {
+        "median": 439,
+        "min": 403,
+        "max": 964
+      },
+      "initializationDone": {
+        "median": 441,
+        "min": 405,
+        "max": 966
+      },
+      "layersReady": {
+        "median": 444,
+        "min": 407,
+        "max": 969
+      },
+      "serviceReady": {
+        "median": 1217,
+        "min": 1099,
+        "max": 1775
+      },
+      "rendererProcess": {
+        "median": 287,
+        "min": 248,
+        "max": 791
+      },
+      "windowVisible": {
+        "median": 285,
+        "min": 247,
+        "max": 790
+      },
+      "domInteractive": {
+        "median": 439,
+        "min": 363,
+        "max": 872
+      },
+      "firstPaint": {
+        "median": 524,
+        "min": 453,
+        "max": 1047
+      },
+      "documentVisible": {
+        "median": 510,
+        "min": 365,
+        "max": 875
+      },
+      "shellVisible": {
+        "median": 1352,
+        "min": 1193,
+        "max": 1871
+      },
+      "homeReady": {
+        "median": 1352,
+        "min": 1193,
+        "max": 1871
+      },
+      "screenPainted": {
+        "median": 464,
+        "min": 438,
+        "max": 1087
+      },
+      "screenSettled": {
+        "median": 1405,
+        "min": 1328,
+        "max": 1950
+      },
+      "rendererIdle": {
+        "median": 1353,
+        "min": 1229,
+        "max": 1945
+      },
+      "rendererTaskMs": {
+        "median": 436,
+        "min": 396,
+        "max": 449
+      },
+      "rendererScriptMs": {
+        "median": 214,
+        "min": 195,
+        "max": 234
+      }
+    }
+  },
+  "phases": {
+    "A": {
+      "electron native init": 26,
+      "node bootstrap": 10,
+      "electron js init → entry": 97,
+      "entry → chromium ready": 59,
+      "ready → window shown": 77,
+      "window → renderer assets served": 126,
+      "main bundle load + evaluate": 19,
+      "bundle → onboarding decided": 3,
+      "onboarding → logging ready": 3,
+      "logging → first log line": 1,
+      "first log line → storage open": 11,
+      "storage → initialization done": 2,
+      "initialization → layers ready": 3,
+      "layers → renderer process": -147,
+      "renderer boot → first paint": 256,
+      "first paint → shell": 824,
+      "shell → idle": 2
+    }
+  },
+  "samples": [
+    {
+      "build": "",
+      "run": 1,
+      "profiled": false,
+      "msSinceSpawn": {
+        "processCreated": 5,
+        "nodeStart": 31,
+        "nodeBootstrapped": 41,
+        "entryStart": 167,
+        "electronReady": 226,
+        "rendererAssetsServed": 442,
+        "bundleEvaluated": 460,
+        "onboardingDecided": 462,
+        "loggingReady": 465,
+        "appStarting": 466,
+        "storageOpen": 474,
+        "initializationDone": 476,
+        "layersReady": 479,
+        "serviceReady": 1217,
+        "rendererProcess": 305,
+        "windowVisible": 303,
+        "domInteractive": 439,
+        "firstPaint": 477,
+        "documentVisible": 439,
+        "shellVisible": 1352,
+        "homeReady": 1352,
+        "screenPainted": 464,
+        "screenSettled": 1453,
+        "rendererIdle": 1353
+      },
+      "final": {
+        "url": "/index.html",
+        "timelineRows": 0
+      },
+      "rendererCpu": {
+        "taskMs": 396,
+        "scriptMs": 195
+      },
+      "renderer": {
+        "taskMs": 396,
+        "scriptMs": 195,
+        "layoutMs": 34,
+        "styleMs": 27,
+        "layouts": 7,
+        "styleRecalcs": 13,
+        "domNodes": 890,
+        "jsHeapMB": 20
+      },
+      "rendererTimeline": {
+        "navigation": {
+          "fetchStart": 20.899999976158142,
+          "responseEnd": 73.39999997615814,
+          "domInteractive": 133.69999998807907,
+          "domContentLoaded": 269.89999997615814,
+          "load": 274.5
+        },
+        "resources": {
+          "count": 9,
+          "scripts": 0,
+          "firstStart": 938.5,
+          "lastEnd": 2266.600000023842,
+          "bytes": 0
+        },
+        "paint": {
+          "first-paint": 172,
+          "first-contentful-paint": 308
+        },
+        "marks": [],
+        "measures": []
+      },
+      "processes": [
+        {
+          "pid": 6172,
+          "name": "Redcode Dev.exe",
+          "rssMB": 156
+        },
+        {
+          "pid": 30520,
+          "name": "Redcode Dev.exe gpu-process",
+          "rssMB": 123
+        },
+        {
+          "pid": 17528,
+          "name": "Redcode Dev.exe utility",
+          "rssMB": 49
+        },
+        {
+          "pid": 26208,
+          "name": "Redcode Dev.exe renderer",
+          "rssMB": 150
+        },
+        {
+          "pid": 22324,
+          "name": "Redcode Dev.exe crashpad-handler",
+          "rssMB": 79
+        }
+      ],
+      "mainCpuMs": 265,
+      "timeline": [
+        [
+          466,
+          "main",
+          "app starting"
+        ],
+        [
+          479,
+          "main",
+          "layers ready"
+        ],
+        [
+          480,
+          "main",
+          "main window visible"
+        ],
+        [
+          501,
+          "main",
+          "starting background service"
+        ],
+        [
+          502,
+          "main",
+          "CLI executable resolved"
+        ],
+        [
+          507,
+          "main",
+          "CLI command started"
+        ],
+        [
+          571,
+          "network",
+          "net log started"
+        ],
+        [
+          1029,
+          "crash",
+          "crash reporter started"
+        ],
+        [
+          1203,
+          "main",
+          "CLI command completed"
+        ],
+        [
+          1217,
+          "main",
+          "background service ready"
+        ]
+      ]
+    },
+    {
+      "build": "",
+      "run": 2,
+      "profiled": false,
+      "msSinceSpawn": {
+        "processCreated": 6,
+        "nodeStart": 39,
+        "nodeBootstrapped": 48,
+        "entryStart": 146,
+        "electronReady": 206,
+        "rendererAssetsServed": 400,
+        "bundleEvaluated": 419,
+        "onboardingDecided": 423,
+        "loggingReady": 426,
+        "appStarting": 427,
+        "storageOpen": 439,
+        "initializationDone": 441,
+        "layersReady": 444,
+        "serviceReady": 1227,
+        "rendererProcess": 281,
+        "windowVisible": 279,
+        "domInteractive": 363,
+        "firstPaint": 453,
+        "documentVisible": 365,
+        "shellVisible": 1378,
+        "homeReady": 1378,
+        "screenPainted": 452,
+        "screenSettled": 1405,
+        "rendererIdle": 1380
+      },
+      "final": {
+        "url": "/index.html",
+        "timelineRows": 0
+      },
+      "rendererCpu": {
+        "taskMs": 436,
+        "scriptMs": 214
+      },
+      "renderer": {
+        "taskMs": 436,
+        "scriptMs": 214,
+        "layoutMs": 32,
+        "styleMs": 29,
+        "layouts": 7,
+        "styleRecalcs": 14,
+        "domNodes": 890,
+        "jsHeapMB": 20
+      },
+      "rendererTimeline": {
+        "navigation": {
+          "fetchStart": 15.900000035762787,
+          "responseEnd": 47.40000003576279,
+          "domInteractive": 82.30000001192093,
+          "domContentLoaded": 245.70000004768372,
+          "load": 250.60000002384186
+        },
+        "resources": {
+          "count": 8,
+          "scripts": 0,
+          "firstStart": 974.4000000357628,
+          "lastEnd": 1263.1000000238419,
+          "bytes": 0
+        },
+        "paint": {
+          "first-paint": 172,
+          "first-contentful-paint": 288
+        },
+        "marks": [],
+        "measures": []
+      },
+      "processes": [
+        {
+          "pid": 12748,
+          "name": "Redcode Dev.exe",
+          "rssMB": 157
+        },
+        {
+          "pid": 9856,
+          "name": "Redcode Dev.exe gpu-process",
+          "rssMB": 126
+        },
+        {
+          "pid": 20948,
+          "name": "Redcode Dev.exe utility",
+          "rssMB": 49
+        },
+        {
+          "pid": 28864,
+          "name": "Redcode Dev.exe renderer",
+          "rssMB": 150
+        },
+        {
+          "pid": 9956,
+          "name": "Redcode Dev.exe crashpad-handler",
+          "rssMB": 79
+        }
+      ],
+      "mainCpuMs": 343,
+      "timeline": [
+        [
+          427,
+          "main",
+          "app starting"
+        ],
+        [
+          444,
+          "main",
+          "layers ready"
+        ],
+        [
+          446,
+          "main",
+          "main window visible"
+        ],
+        [
+          470,
+          "main",
+          "starting background service"
+        ],
+        [
+          471,
+          "main",
+          "CLI executable resolved"
+        ],
+        [
+          478,
+          "main",
+          "CLI command started"
+        ],
+        [
+          563,
+          "network",
+          "net log started"
+        ],
+        [
+          990,
+          "crash",
+          "crash reporter started"
+        ],
+        [
+          1212,
+          "main",
+          "CLI command completed"
+        ],
+        [
+          1227,
+          "main",
+          "background service ready"
+        ]
+      ]
+    },
+    {
+      "build": "",
+      "run": 3,
+      "profiled": false,
+      "msSinceSpawn": {
+        "processCreated": 6,
+        "nodeStart": 32,
+        "nodeBootstrapped": 42,
+        "entryStart": 139,
+        "electronReady": 206,
+        "rendererAssetsServed": 375,
+        "bundleEvaluated": 395,
+        "onboardingDecided": 397,
+        "loggingReady": 402,
+        "appStarting": 402,
+        "storageOpen": 415,
+        "initializationDone": 417,
+        "layersReady": 419,
+        "serviceReady": 1137,
+        "rendererProcess": 287,
+        "windowVisible": 285,
+        "domInteractive": 416,
+        "firstPaint": 543,
+        "documentVisible": 510,
+        "shellVisible": 1275,
+        "homeReady": 1275,
+        "screenPainted": 438,
+        "screenSettled": 1344,
+        "rendererIdle": 1277
+      },
+      "final": {
+        "url": "/index.html",
+        "timelineRows": 0
+      },
+      "rendererCpu": {
+        "taskMs": 403,
+        "scriptMs": 204
+      },
+      "renderer": {
+        "taskMs": 403,
+        "scriptMs": 204,
+        "layoutMs": 29,
+        "styleMs": 28,
+        "layouts": 6,
+        "styleRecalcs": 13,
+        "domNodes": 890,
+        "jsHeapMB": 20
+      },
+      "rendererTimeline": {
+        "navigation": {
+          "fetchStart": 14.699999988079071,
+          "responseEnd": 51.09999996423721,
+          "domInteractive": 129,
+          "domContentLoaded": 357.5,
+          "load": 361.19999998807907
+        },
+        "resources": {
+          "count": 8,
+          "scripts": 0,
+          "firstStart": 876.1999999880791,
+          "lastEnd": 1150.0999999642372,
+          "bytes": 0
+        },
+        "paint": {
+          "first-paint": 256,
+          "first-contentful-paint": 392
+        },
+        "marks": [],
+        "measures": []
+      },
+      "processes": [
+        {
+          "pid": 9628,
+          "name": "Redcode Dev.exe",
+          "rssMB": 156
+        },
+        {
+          "pid": 15208,
+          "name": "Redcode Dev.exe gpu-process",
+          "rssMB": 124
+        },
+        {
+          "pid": 28104,
+          "name": "Redcode Dev.exe utility",
+          "rssMB": 49
+        },
+        {
+          "pid": 12800,
+          "name": "Redcode Dev.exe renderer",
+          "rssMB": 153
+        },
+        {
+          "pid": 10796,
+          "name": "Redcode Dev.exe crashpad-handler",
+          "rssMB": 79
+        }
+      ],
+      "mainCpuMs": 280,
+      "timeline": [
+        [
+          402,
+          "main",
+          "app starting"
+        ],
+        [
+          419,
+          "main",
+          "layers ready"
+        ],
+        [
+          420,
+          "main",
+          "main window visible"
+        ],
+        [
+          442,
+          "main",
+          "starting background service"
+        ],
+        [
+          444,
+          "main",
+          "CLI executable resolved"
+        ],
+        [
+          448,
+          "main",
+          "CLI command started"
+        ],
+        [
+          512,
+          "network",
+          "net log started"
+        ],
+        [
+          976,
+          "crash",
+          "crash reporter started"
+        ],
+        [
+          1118,
+          "main",
+          "CLI command completed"
+        ],
+        [
+          1137,
+          "main",
+          "background service ready"
+        ]
+      ]
+    },
+    {
+      "build": "",
+      "run": 4,
+      "profiled": false,
+      "msSinceSpawn": {
+        "processCreated": 5,
+        "nodeStart": 32,
+        "nodeBootstrapped": 42,
+        "entryStart": 132,
+        "electronReady": 180,
+        "rendererAssetsServed": 373,
+        "bundleEvaluated": 389,
+        "onboardingDecided": 392,
+        "loggingReady": 394,
+        "appStarting": 395,
+        "storageOpen": 403,
+        "initializationDone": 405,
+        "layersReady": 407,
+        "serviceReady": 1099,
+        "rendererProcess": 248,
+        "windowVisible": 247,
+        "domInteractive": 511,
+        "firstPaint": 524,
+        "documentVisible": 513,
+        "shellVisible": 1193,
+        "homeReady": 1193,
+        "screenPainted": 488,
+        "screenSettled": 1328,
+        "rendererIdle": 1229
+      },
+      "final": {
+        "url": "/index.html",
+        "timelineRows": 0
+      },
+      "rendererCpu": {
+        "taskMs": 437,
+        "scriptMs": 234
+      },
+      "renderer": {
+        "taskMs": 437,
+        "scriptMs": 234,
+        "layoutMs": 32,
+        "styleMs": 27,
+        "layouts": 7,
+        "styleRecalcs": 15,
+        "domNodes": 890,
+        "jsHeapMB": 20
+      },
+      "rendererTimeline": {
+        "navigation": {
+          "fetchStart": 17,
+          "responseEnd": 52.60000002384186,
+          "domInteractive": 262.80000001192093,
+          "domContentLoaded": 368.7000000476837,
+          "load": 372.30000001192093
+        },
+        "resources": {
+          "count": 10,
+          "scripts": 0,
+          "firstStart": 879.4000000357628,
+          "lastEnd": 2129.800000011921,
+          "bytes": 0
+        },
+        "paint": {
+          "first-paint": 276,
+          "first-contentful-paint": 392
+        },
+        "marks": [],
+        "measures": []
+      },
+      "processes": [
+        {
+          "pid": 25880,
+          "name": "Redcode Dev.exe",
+          "rssMB": 156
+        },
+        {
+          "pid": 20232,
+          "name": "Redcode Dev.exe gpu-process",
+          "rssMB": 127
+        },
+        {
+          "pid": 9500,
+          "name": "Redcode Dev.exe utility",
+          "rssMB": 49
+        },
+        {
+          "pid": 19464,
+          "name": "Redcode Dev.exe renderer",
+          "rssMB": 151
+        },
+        {
+          "pid": 20644,
+          "name": "Redcode Dev.exe crashpad-handler",
+          "rssMB": 81
+        }
+      ],
+      "mainCpuMs": 280,
+      "timeline": [
+        [
+          395,
+          "main",
+          "app starting"
+        ],
+        [
+          407,
+          "main",
+          "layers ready"
+        ],
+        [
+          408,
+          "main",
+          "main window visible"
+        ],
+        [
+          427,
+          "main",
+          "starting background service"
+        ],
+        [
+          428,
+          "main",
+          "CLI executable resolved"
+        ],
+        [
+          432,
+          "main",
+          "CLI command started"
+        ],
+        [
+          493,
+          "network",
+          "net log started"
+        ],
+        [
+          960,
+          "crash",
+          "crash reporter started"
+        ],
+        [
+          1083,
+          "main",
+          "CLI command completed"
+        ],
+        [
+          1099,
+          "main",
+          "background service ready"
+        ]
+      ]
+    },
+    {
+      "build": "",
+      "run": 5,
+      "profiled": false,
+      "msSinceSpawn": {
+        "processCreated": 5,
+        "nodeStart": 31,
+        "nodeBootstrapped": 40,
+        "entryStart": 134,
+        "electronReady": 186,
+        "rendererAssetsServed": 925,
+        "bundleEvaluated": 946,
+        "onboardingDecided": 950,
+        "loggingReady": 952,
+        "appStarting": 953,
+        "storageOpen": 964,
+        "initializationDone": 966,
+        "layersReady": 969,
+        "serviceReady": 1775,
+        "rendererProcess": 791,
+        "windowVisible": 790,
+        "domInteractive": 872,
+        "firstPaint": 1047,
+        "documentVisible": 875,
+        "shellVisible": 1871,
+        "homeReady": 1871,
+        "screenPainted": 1087,
+        "screenSettled": 1950,
+        "rendererIdle": 1945
+      },
+      "final": {
+        "url": "/index.html",
+        "timelineRows": 0
+      },
+      "rendererCpu": {
+        "taskMs": 449,
+        "scriptMs": 217
+      },
+      "renderer": {
+        "taskMs": 449,
+        "scriptMs": 217,
+        "layoutMs": 35,
+        "styleMs": 34,
+        "layouts": 6,
+        "styleRecalcs": 13,
+        "domNodes": 890,
+        "jsHeapMB": 20
+      },
+      "rendererTimeline": {
+        "navigation": {
+          "fetchStart": 13.800000011920929,
+          "responseEnd": 63,
+          "domInteractive": 80.89999997615814,
+          "domContentLoaded": 226.60000002384186,
+          "load": 230.89999997615814
+        },
+        "resources": {
+          "count": 10,
+          "scripts": 0,
+          "firstStart": 1010.5,
+          "lastEnd": 2311.600000023842,
+          "bytes": 0
+        },
+        "paint": {
+          "first-paint": 256,
+          "first-contentful-paint": 288
+        },
+        "marks": [],
+        "measures": []
+      },
+      "processes": [
+        {
+          "pid": 26456,
+          "name": "Redcode Dev.exe",
+          "rssMB": 156
+        },
+        {
+          "pid": 15624,
+          "name": "Redcode Dev.exe gpu-process",
+          "rssMB": 134
+        },
+        {
+          "pid": 14840,
+          "name": "Redcode Dev.exe utility",
+          "rssMB": 49
+        },
+        {
+          "pid": 28800,
+          "name": "Redcode Dev.exe renderer",
+          "rssMB": 150
+        },
+        {
+          "pid": 25348,
+          "name": "Redcode Dev.exe crashpad-handler",
+          "rssMB": 80
+        }
+      ],
+      "mainCpuMs": 312,
+      "timeline": [
+        [
+          953,
+          "main",
+          "app starting"
+        ],
+        [
+          969,
+          "main",
+          "layers ready"
+        ],
+        [
+          971,
+          "main",
+          "main window visible"
+        ],
+        [
+          996,
+          "main",
+          "starting background service"
+        ],
+        [
+          997,
+          "main",
+          "CLI executable resolved"
+        ],
+        [
+          1003,
+          "main",
+          "CLI command started"
+        ],
+        [
+          1091,
+          "network",
+          "net log started"
+        ],
+        [
+          1516,
+          "crash",
+          "crash reporter started"
+        ],
+        [
+          1759,
+          "main",
+          "CLI command completed"
+        ],
+        [
+          1775,
+          "main",
+          "background service ready"
+        ]
+      ]
+    }
+  ]
+}

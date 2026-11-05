@@ -41,6 +41,7 @@ import { ReasoningObserver } from "../reasoning-observer.js"
 import { SessionOutputGuard } from "../output-guard.js"
 import { toSessionError } from "../to-session-error.js"
 import { SessionUsage } from "../usage.js"
+import { SessionWait } from "../wait.js"
 import { SessionRunnerModel } from "./model.js"
 import { createLLMEventPublisher } from "./publish-llm-event.js"
 import { SessionRunnerRetry } from "./retry.js"
@@ -189,52 +190,62 @@ export const make = Effect.gen(function* () {
     // A local execution starts only after its Tool.Called publication completes.
     let overflowFailure: ProviderErrorEvent | undefined
     // Read to the end, not just the finish event, so the next request can reuse this response.
-    const providerStream = llm.stream(input.prepared.request, input.prepared.options).pipe(
-      Stream.runForEach((event) =>
-        Effect.gen(function* () {
-          lastEventAt = yield* Clock.currentTimeMillis
-          reasoning.observe(event)
-          if (overflowFailure || publisher.hasProviderError()) return
-          // Wait outside uninterruptible publication so capture can still be cancelled.
-          if (!publisher.hasStarted()) yield* Fiber.join(pendingStartSnapshot)
-          const malformed = outputGuard.observe(event)
-          if (malformed)
-            return yield* new AIError({
-              reason: new InvalidProviderOutputError({ message: SessionOutputGuard.message(malformed) }),
-            })
-          if (
-            LLMEvent.is.providerError(event) &&
-            isContextOverflowFailure(event) &&
-            !publisher.record().outputStarted
-          ) {
-            overflowFailure = event
-            return
-          }
-          yield* publisher.publish(event)
-          if (event.type !== "tool-call" || event.providerExecuted) return
-          activeTools++
-          toolRuns.push({
-            call: event,
-            fiber: yield* Effect.uninterruptibleMask((restore) =>
-              restore(executeTool(event)).pipe(
-                Effect.flatMap(toolOutput.truncate),
-                Effect.flatMap((outcome) => publisher.toolExecution(event.id, event.name, outcome)),
-                Effect.catchTag("Tool.Error", (error) =>
-                  publisher.failTool(event.id, toSessionError(error), error.metadata).pipe(Effect.asVoid),
-                ),
-                Effect.ensuring(
-                  Effect.sync(() => {
-                    activeTools--
-                    lastEventAt = Date.now()
-                    reasoning.progress()
-                  }),
-                ),
-              ),
-            ).pipe(Effect.forkScoped),
-          })
-        }),
-      ),
-      Effect.ensuring(publisher.flush()),
+    const providerStream = Effect.acquireUseRelease(
+      SessionWait.start(bus, {
+        sessionID: input.sessionID,
+        kind: "model",
+        target: `${input.model.ref.providerID}/${input.model.ref.id}`,
+      }),
+      (endModelWait) =>
+        llm.stream(input.prepared.request, input.prepared.options).pipe(
+          Stream.runForEach((event) =>
+            Effect.gen(function* () {
+              yield* endModelWait
+              lastEventAt = yield* Clock.currentTimeMillis
+              reasoning.observe(event)
+              if (overflowFailure || publisher.hasProviderError()) return
+              // Wait outside uninterruptible publication so capture can still be cancelled.
+              if (!publisher.hasStarted()) yield* Fiber.join(pendingStartSnapshot)
+              const malformed = outputGuard.observe(event)
+              if (malformed)
+                return yield* new AIError({
+                  reason: new InvalidProviderOutputError({ message: SessionOutputGuard.message(malformed) }),
+                })
+              if (
+                LLMEvent.is.providerError(event) &&
+                isContextOverflowFailure(event) &&
+                !publisher.record().outputStarted
+              ) {
+                overflowFailure = event
+                return
+              }
+              yield* publisher.publish(event)
+              if (event.type !== "tool-call" || event.providerExecuted) return
+              activeTools++
+              toolRuns.push({
+                call: event,
+                fiber: yield* Effect.uninterruptibleMask((restore) =>
+                  restore(executeTool(event)).pipe(
+                    Effect.flatMap(toolOutput.truncate),
+                    Effect.flatMap((outcome) => publisher.toolExecution(event.id, event.name, outcome)),
+                    Effect.catchTag("Tool.Error", (error) =>
+                      publisher.failTool(event.id, toSessionError(error), error.metadata).pipe(Effect.asVoid),
+                    ),
+                    Effect.ensuring(
+                      Effect.sync(() => {
+                        activeTools--
+                        lastEventAt = Date.now()
+                        reasoning.progress()
+                      }),
+                    ),
+                  ),
+                ).pipe(Effect.forkScoped),
+              })
+            }),
+          ),
+          Effect.ensuring(publisher.flush()),
+        ),
+      (endModelWait) => endModelWait,
     )
     const watchdog = Effect.gen(function* () {
       if (!Number.isFinite(input.stallLimits.warnMs) && !Number.isFinite(input.stallLimits.abortMs))

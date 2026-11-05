@@ -1,6 +1,7 @@
 export * as SessionContext from "./context.js"
 
 import { Intelligence } from "../intelligence.js"
+import { Bus } from "../bus.js"
 import { IntelligenceEvaluation } from "../intelligence/evaluation.js"
 import { IntelligenceClassification } from "../intelligence/classification.js"
 import { Model } from "../model.js"
@@ -33,7 +34,24 @@ import { SessionImportedContext } from "./imported-context.js"
 import { SessionRunnerModel } from "./runner/model.js"
 import { SessionSchema } from "./schema.js"
 import { SessionStore } from "./store.js"
+import { SessionWait } from "./wait.js"
 import { SessionToolOutputPrune } from "./tool-output-prune.js"
+
+/** Report MCP startup only while the session actually waits for the initial tool registry. */
+export const waitForTools = (
+  bus: Pick<Bus.Interface, "publish">,
+  mcpTools: McpTool.Interface,
+  sessionID: SessionSchema.ID,
+) =>
+  Effect.gen(function* () {
+    const starting = yield* mcpTools.starting
+    if (!starting.length) return yield* mcpTools.flush
+    yield* Effect.acquireUseRelease(
+      SessionWait.start(bus, { sessionID, kind: "mcp", target: "tool registration" }),
+      () => mcpTools.flush,
+      (end) => end,
+    )
+  })
 
 export interface Selection {
   readonly session: SessionSchema.Info
@@ -96,6 +114,7 @@ const layer = Layer.effect(
     const location = yield* Location.Service
     const mcpInstructions = yield* McpInstructions.Service
     const mcpTools = yield* McpTool.Service
+    const bus = yield* Bus.Service
     const models = yield* SessionRunnerModel.Service
     const request = yield* SessionModelRequest.Service
     const referenceInstructions = yield* ReferenceInstructions.Service
@@ -141,7 +160,7 @@ const layer = Layer.effect(
       if (session.location.directory !== location.directory || session.location.workspaceID !== location.workspaceID)
         return yield* Effect.interrupt
 
-      yield* mcpTools.flush
+      yield* waitForTools(bus, mcpTools, sessionID)
       const agent = yield* agents.select(session.agent)
       if (!agent.info) return yield* new AgentNotFoundError({ sessionID: session.id, agent: session.agent ?? agent.id })
       // Discovery and execution must agree on the permissions of the selected agent.
@@ -248,6 +267,7 @@ export const node = makeLocationNode({
     Location.node,
     McpInstructions.node,
     McpTool.node,
+    Bus.node,
     ReferenceInstructions.node,
     SessionRunnerModel.node,
     SessionModelRequest.node,

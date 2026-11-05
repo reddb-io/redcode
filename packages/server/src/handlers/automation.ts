@@ -17,6 +17,11 @@ export const AutomationHandler = HttpApiBuilder.group(Api, "server.automation", 
         Effect.map((data) => ({ data })),
       ),
     )
+    .handle("session.automation.createConditional", (ctx) =>
+      errors(AutomationRuntime.Service.use((service) => service.create(ctx.params.sessionID, ctx.payload))).pipe(
+        Effect.map((data) => ({ data })),
+      ),
+    )
     .handle("session.automation.control", (ctx) =>
       errors(
         AutomationRuntime.Service.use((service) =>

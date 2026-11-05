@@ -32,6 +32,10 @@ export function DeliveryAutomationsView(props: {
     timeOfDay: string
     timeZone: string
     weekdays: number[]
+    condition: "always" | "http" | "process"
+    target: string
+    when: "matches" | "not_matches"
+    mode: "on_match" | "on_change"
   } | null>(null)
   const [confirmation, setConfirmation] = useState<{
     type: "run" | "remove"
@@ -75,6 +79,10 @@ export function DeliveryAutomationsView(props: {
             timeOfDay: "09:00",
             timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
             weekdays: [1, 2, 3, 4, 5, 6, 7],
+            condition: "always",
+            target: "",
+            when: "matches",
+            mode: "on_match",
           })
         }}
       >
@@ -110,6 +118,21 @@ export function DeliveryAutomationsView(props: {
             className="my-3 [&_dd]:break-words"
             items={[
               { term: copy.autoSchedule, detail: task.scheduleLabel },
+              ...(task.condition
+                ? [
+                    {
+                      term: copy.autoCondition,
+                      detail: `${task.condition.probe.type === "http" ? task.condition.probe.url : (task.condition.probe.name ?? String(task.condition.probe.pid))} · ${task.condition.when === "matches" ? copy.autoConditionMatches : copy.autoConditionNotMatches}`,
+                    },
+                    {
+                      term: copy.autoConditionFrequency,
+                      detail:
+                        task.condition.mode === "on_change"
+                          ? copy.autoConditionTransition
+                          : copy.autoConditionEveryMatch,
+                    },
+                  ]
+                : []),
               {
                 term: copy.autoNext,
                 detail: task.enabled && task.nextAt !== null ? date(task.nextAt, timeZone) : copy.autoNoNext,
@@ -261,6 +284,26 @@ export function DeliveryAutomationsView(props: {
             onSubmit={(event) => {
               event.preventDefault()
               const at = new Date(draft.at).getTime()
+              const condition =
+                draft.condition === "always"
+                  ? undefined
+                  : draft.condition === "http"
+                    ? { probe: { type: "http" as const, url: draft.target.trim() }, when: draft.when, mode: draft.mode }
+                    : {
+                        probe: { type: "process" as const, name: draft.target.trim(), state: "running" as const },
+                        when: draft.when,
+                        mode: draft.mode,
+                      }
+              let validTarget = true
+              if (condition?.probe.type === "http") {
+                try {
+                  const url = new URL(condition.probe.url)
+                  validTarget =
+                    (url.protocol === "http:" || url.protocol === "https:") && !url.username && !url.password
+                } catch {
+                  validTarget = false
+                }
+              }
               const schedule = Schema.decodeUnknownOption(Automation.Schedule)(
                 draft.type === "once"
                   ? { type: "once", at }
@@ -277,6 +320,8 @@ export function DeliveryAutomationsView(props: {
                 disabled ||
                 !draft.title.trim() ||
                 !draft.prompt.trim() ||
+                !validTarget ||
+                (draft.condition !== "always" && !draft.target.trim()) ||
                 Option.isNone(schedule) ||
                 (draft.type === "fixed_time" && Option.isNone(DateTime.zoneMakeNamed(draft.timeZone))) ||
                 (draft.type === "once" && at <= Date.now()) ||
@@ -294,6 +339,7 @@ export function DeliveryAutomationsView(props: {
                     title: draft.title,
                     prompt: draft.prompt,
                     schedule: schedule.value,
+                    ...(condition ? { condition } : {}),
                   },
                 })
                 .then(
@@ -345,6 +391,77 @@ export function DeliveryAutomationsView(props: {
                 />
               )}
             </Field>
+            <Field label={copy.autoCondition}>
+              {(control) => (
+                <Select
+                  {...control}
+                  disabled={view.pending}
+                  value={draft.condition}
+                  options={[
+                    { value: "always", label: copy.autoConditionAlways },
+                    { value: "http", label: copy.autoConditionHttp },
+                    { value: "process", label: copy.autoConditionProcess },
+                  ]}
+                  onValueChange={(value) => {
+                    if (value === "always" || value === "http" || value === "process")
+                      setDraft({ ...draft, condition: value, target: "" })
+                  }}
+                />
+              )}
+            </Field>
+            {draft.condition !== "always" && (
+              <>
+                <Field label={copy.autoConditionFrequency}>
+                  {(control) => (
+                    <Select
+                      {...control}
+                      disabled={view.pending}
+                      value={draft.mode}
+                      options={[
+                        { value: "on_match", label: copy.autoConditionEveryMatch },
+                        { value: "on_change", label: copy.autoConditionTransition },
+                      ]}
+                      onValueChange={(mode) => {
+                        if (mode === "on_match" || mode === "on_change") setDraft({ ...draft, mode })
+                      }}
+                    />
+                  )}
+                </Field>
+                {draft.mode === "on_change" && (
+                  <p className="m-0 text-caption text-ink-muted">{copy.autoConditionTransitionNote}</p>
+                )}
+                <Field label={copy.autoConditionVerdict}>
+                  {(control) => (
+                    <Select
+                      {...control}
+                      disabled={view.pending}
+                      value={draft.when}
+                      options={[
+                        { value: "matches", label: copy.autoConditionMatches },
+                        { value: "not_matches", label: copy.autoConditionNotMatches },
+                      ]}
+                      onValueChange={(when) => {
+                        if (when === "matches" || when === "not_matches") setDraft({ ...draft, when })
+                      }}
+                    />
+                  )}
+                </Field>
+                <Field label={draft.condition === "http" ? copy.autoConditionUrl : copy.autoConditionProcessName}>
+                  {(control) => (
+                    <Input
+                      {...control}
+                      required
+                      disabled={view.pending}
+                      value={draft.target}
+                      onValueChange={(target) => setDraft({ ...draft, target })}
+                    />
+                  )}
+                </Field>
+                <p className="m-0 text-caption text-ink-muted">
+                  {copy.autoConditionNote} {copy.autoConditionOldServer}
+                </p>
+              </>
+            )}
             {draft.type === "interval" ? (
               <Field label={copy.autoMinutes}>
                 {(control) => (

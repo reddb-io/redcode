@@ -3,6 +3,7 @@ export * as Automation from "./automation.js"
 import { Schema } from "effect"
 import { SessionID } from "./session-id.js"
 import { SessionMessage } from "./session-message.js"
+import { Monitor } from "./monitor.js"
 import { statics } from "./schema.js"
 
 export const ID = Schema.String.check(Schema.isPattern(/^auto_[\w-]+$/)).pipe(
@@ -35,11 +36,30 @@ export const Schedule = Schema.Union([
   }),
 ]).annotate({ identifier: "Automation.Schedule" })
 export type Schedule = typeof Schedule.Type
+/** A bounded, read-only observation made before a scheduled prompt is admitted. */
+export const Condition = Schema.Struct({
+  probe: Schema.Union([
+    Schema.Struct({
+      type: Schema.Literal("http"),
+      url: Schema.String,
+      method: Schema.optional(Schema.Literals(["GET", "HEAD"])),
+      expect_status: Schema.optional(Schema.Union([Schema.Int, Schema.Array(Schema.Int)])),
+      json_path: Schema.optional(Schema.String),
+      equals: Schema.optional(Schema.Union([Schema.String, Schema.Finite, Schema.Boolean])),
+      contains: Schema.optional(Schema.String),
+    }),
+    Monitor.ProcessProbe,
+  ]),
+  when: Schema.Literals(["matches", "not_matches"]),
+  mode: Schema.optional(Schema.Literals(["on_match", "on_change"])),
+}).annotate({ identifier: "Automation.Condition" })
+export type Condition = typeof Condition.Type
 export const Input = Schema.Struct({
   id: ID,
   title: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(160)),
   prompt: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(16_000)),
   schedule: Schedule,
+  condition: Schema.optional(Condition),
 }).annotate({ identifier: "Automation.Input" })
 export interface Input extends Schema.Schema.Type<typeof Input> {}
 export const Info = Schema.Struct({

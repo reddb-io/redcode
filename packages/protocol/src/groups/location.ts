@@ -1,4 +1,7 @@
 import { Location } from "@opencode/schema/location"
+import { Model } from "@opencode/schema/model"
+import { Provider } from "@opencode/schema/provider"
+import { Integration } from "@opencode/schema/integration"
 import { Context, Schema } from "effect"
 import { HttpApiEndpoint, HttpApiGroup, HttpApiMiddleware, HttpApiSchema, OpenApi } from "effect/unstable/httpapi"
 import { ServiceUnavailableError } from "../errors.js"
@@ -44,6 +47,28 @@ export const makeLocationGroup = <LocationId extends HttpApiMiddleware.AnyId, Lo
             identifier: "location.get",
             summary: "Get location",
             description: "Resolve the requested location or the server default location.",
+          }),
+        ),
+    )
+    .add(
+      HttpApiEndpoint.get("location.bootstrap", "/api/location/bootstrap", {
+        query: LocationQuery,
+        success: Location.response(
+          Schema.Struct({
+            models: Schema.Array(Model.Info),
+            providers: Schema.Array(Provider.Info),
+            integrations: Schema.Array(Integration.Info),
+          }),
+        ),
+        error: ServiceUnavailableError,
+      })
+        .middleware(locationMiddleware)
+        .annotateMerge(locationQueryOpenApi)
+        .annotateMerge(
+          OpenApi.annotations({
+            identifier: "location.bootstrap",
+            summary: "Load model selection catalogs",
+            description: "Load available models, providers and integrations for a location in one request.",
           }),
         ),
     )

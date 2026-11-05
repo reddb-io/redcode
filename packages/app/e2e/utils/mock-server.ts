@@ -1120,6 +1120,18 @@ function mockHandlers(
         // Discovery against a static inventory changes nothing, and the app refreshes whenever worktree settings open.
         worktreeRefresh: () => noContent,
         location: (ctx) => Effect.sync(() => location(config, requestDirectory(config, ctx.request))),
+        locationBootstrap: (ctx) =>
+          Effect.sync(() => {
+            const provider = resolve(config.provider)
+            return {
+              location: location(config, requestDirectory(config, ctx.request)),
+              data: {
+                models: currentModels(provider),
+                providers: currentProviders(provider),
+                integrations: config.integrations ?? [],
+              },
+            }
+          }),
         permissionRequests: () =>
           Effect.suspend(() =>
             config.permissionListFailures?.()
@@ -1358,6 +1370,7 @@ function mockHandlers(
               ),
             ),
           }),
+        sessionMonitors: () => Effect.succeed({ data: [] }),
         sessionGet: (ctx) =>
           Effect.suspend(() => {
             config.onSession?.(ctx.params.sessionID)

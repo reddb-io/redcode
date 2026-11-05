@@ -86,3 +86,42 @@ it.live(
     }),
   15_000,
 )
+
+it.live(
+  "grouped location bootstrap returns the same active selection catalogs as individual routes",
+  () =>
+    Effect.gen(function* () {
+      const tmp = yield* tmpdirScoped("redcode-bootstrap-")
+      const context = yield* Layer.build(
+        createRoutes({
+          password: "secret",
+          database: { path: ":memory:" },
+          models: { fetch: false },
+          fs: { filewatcher: false },
+          config: { directory: tmp.path, project: false, global: false, content: "{}" },
+        }).pipe(Layer.provide(HttpServer.layerServices)),
+      )
+      const handler = Context.get(context, HttpRouter.HttpRouter)
+        .asHttpEffect()
+        .pipe(HttpEffect.toWebHandlerWith(context))
+      const get = (route: string) =>
+        Effect.promise(async () => {
+          const url = new URL(route, "http://opencode.local")
+          url.searchParams.set("location[directory]", tmp.path)
+          const response = await handler(
+            new Request(url, { headers: { authorization: `Basic ${btoa("opencode:secret")}` } }),
+          )
+          expect(response.status).toBe(200)
+          return response.json()
+        })
+      const grouped = yield* get("/api/location/bootstrap")
+      const [models, providers, integrations] = yield* Effect.all([
+        get("/api/model"),
+        get("/api/provider"),
+        get("/api/integration"),
+      ])
+      expect(grouped.location).toEqual(models.location)
+      expect(grouped.data).toEqual({ models: models.data, providers: providers.data, integrations: integrations.data })
+    }),
+  30_000,
+)

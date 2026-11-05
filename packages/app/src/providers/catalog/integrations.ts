@@ -13,7 +13,7 @@ export function useIntegrations(directory: Accessor<string | undefined>) {
       const ref = value ? { directory: value } : undefined
 
       if (!ref) await data.location.syncInfo()
-      await data.location.integration.sync(ref ?? data.location.default())
+      await data.location.catalog.sync(ref ?? data.location.default())
     })().catch(() => undefined)
   })
 

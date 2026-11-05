@@ -36,7 +36,9 @@ import type {
   SessionMessageUser,
   SessionInfo,
   ModelInfo,
+  PermissionRequest,
 } from "@opencode/client"
+import type { SessionWait } from "@opencode/schema/session-wait"
 import { useLocal } from "../../context/local"
 import { Locale } from "../../util/locale"
 import { FilePath } from "../../ui/file-path"
@@ -63,6 +65,7 @@ import { announcedOrdinals } from "@opencode/util/design-round-summary"
 import { useDialog } from "../../ui/dialog"
 import { DialogSelect } from "../../ui/dialog-select"
 import { useGoalCommand } from "../../component/goal-command"
+import { useAutomationCommand } from "../../component/automation-command"
 import { IntelligenceGoalCommand } from "@opencode/core/intelligence/goal-command"
 import { ProviderFailure } from "@opencode/core/session/provider-failure"
 import { DialogPrompt } from "../../ui/dialog-prompt"
@@ -136,6 +139,8 @@ import { findMessageBoundary, messageNavigationSlack } from "./message-navigatio
 import { stringWidth } from "../../util/string-width"
 import { useArgs } from "../../context/args"
 import { withTimestampedFallback } from "@opencode/util/session-title-fallback"
+import { agentWaits } from "@opencode/util/agent-waits"
+import { monitorLabel } from "@opencode/util/monitor-label"
 import { Redact } from "@opencode/util/redact"
 import { useSessionTabs, type ScrollAnchor } from "../../context/session-tabs"
 import { createSingleFlight } from "../../util/single-flight"
@@ -1071,6 +1076,7 @@ export function Session(props: {
   ]
 
   const goalCommand = useGoalCommand()
+  const automationCommand = useAutomationCommand()
   const vault = useVaultActions()
   const baseCommands = createMemo(() => [
     {
@@ -1118,6 +1124,17 @@ export function Session(props: {
       run: () => {
         openMonitors()
         dialog.clear()
+      },
+    },
+    {
+      title: "Create conditional automation",
+      description: "Schedule a prompt when an HTTP or process condition is met",
+      id: "session.automation.create",
+      group: "Session",
+      slash: { name: "automation" },
+      run: () => {
+        dialog.clear()
+        void automationCommand.run(route.sessionID)
       },
     },
     {
@@ -1872,6 +1889,16 @@ export function Session(props: {
                 </box>
               </Show>
             </box>
+            <SessionWaits
+              messages={messages()}
+              active={data.session.status(route.sessionID) === "running"}
+              monitors={monitors.list()}
+              onOpenMonitors={openMonitors}
+              phases={client.connection.status() === "connected" ? data.session.waits(route.sessionID) : []}
+              permissions={[route.sessionID, ...descendantSessionIDs()].flatMap(
+                (id) => data.session.permission.list(id) ?? [],
+              )}
+            />
             {/* The sidebar footer already shows the location; this copy is for when the sidebar is not visible. */}
             <Show when={!props.sidebarVisible}>
               <box flexShrink={0} paddingBottom={1}>
@@ -2216,6 +2243,82 @@ function turnTokenToolSummary(tool: SessionMessageAssistantTool) {
   const primary = input.find(([key]) => key === primaryKey)?.[1]
   const details = input.filter(([key]) => key !== primaryKey).map(([key, value]) => `${key}: ${String(value)}`)
   return [primary === undefined ? "" : String(primary), ...details].filter(Boolean).join("  ")
+}
+
+function SessionWaits(props: {
+  messages: SessionMessageInfo[]
+  active: boolean
+  monitors: ReturnType<ReturnType<typeof createSessionMonitors>["list"]>
+  onOpenMonitors: () => void
+  phases: readonly SessionWait.Info[]
+  permissions: readonly PermissionRequest[]
+}) {
+  const theme = useTheme()
+  const waits = createMemo(() => {
+    if (!props.active) return []
+    const start = props.messages.findLastIndex((message) => message.type === "user")
+    return agentWaits(
+      props.messages
+        .slice(Math.max(0, start))
+        .filter((message): message is SessionMessageAssistant => message.type === "assistant"),
+    )
+  })
+  const [now, setNow] = createSignal(Date.now())
+  const observing = createMemo(() => {
+    const waiting = new Set(waits().flatMap((wait) => (wait.kind === "monitor" && wait.target ? [wait.target] : [])))
+    return props.monitors.filter((monitor) => monitor.status === "running" && !waiting.has(monitor.id))
+  })
+  createEffect(() => {
+    if (
+      !waits().length &&
+      !observing().length &&
+      !props.phases.length &&
+      !props.permissions.some((item) => item.created !== undefined)
+    )
+      return
+    setNow(Date.now())
+    const timer = setInterval(() => setNow(Date.now()), 1_000)
+    onCleanup(() => clearInterval(timer))
+  })
+  const labels = { monitor: "monitor", agent: "agent", task: "task" } as const
+  return (
+    <box flexShrink={0}>
+      <For each={props.phases.filter((phase) => now() - phase.started >= 1000)}>
+        {(phase) => (
+          <text fg={theme.text.muted} wrapMode="none" truncate>
+            {`${phase.kind === "mcp" ? "Waiting for MCP" : "Waiting for model response"}${phase.target ? `: ${phase.target}` : ""} · ${Locale.duration(Math.max(0, now() - phase.started))}`}
+          </text>
+        )}
+      </For>
+      <For each={props.permissions}>
+        {(permission) => (
+          <text fg={theme.text.feedback.warning.base} wrapMode="none" truncate>
+            {`Waiting for permission: ${permission.action}${permission.created === undefined ? "" : ` · ${Locale.duration(Math.max(0, now() - permission.created))}`}`}
+          </text>
+        )}
+      </For>
+      <For each={waits()}>
+        {(wait) => (
+          <text id={`session-wait-${wait.partID}`} fg={theme.text.muted} wrapMode="none" truncate>
+            {`Waiting for ${labels[wait.kind]}${wait.target ? ` ${wait.target}` : ""} · ${Locale.duration(Math.max(0, now() - wait.since))}`}
+          </text>
+        )}
+      </For>
+      <For each={observing()}>
+        {(monitor) => (
+          <text
+            id={`session-monitor-${monitor.id}`}
+            fg={theme.text.muted}
+            wrapMode="none"
+            truncate
+            onMouseUp={props.onOpenMonitors}
+          >
+            {`Monitoring ${monitorLabel(monitor)} · ${Locale.duration(Math.max(0, now() - monitor.created))}`}
+          </text>
+        )}
+      </For>
+    </box>
+  )
 }
 
 function BackgroundToolHint(props: { messages: SessionMessageInfo[] }) {

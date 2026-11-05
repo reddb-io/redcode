@@ -513,6 +513,12 @@ test("starts a native Claude harness and preserves question input across host re
   const backgroundWait = workspace.getByRole("checkbox", { name: "Enable native background wait tool", exact: true })
   await expect(backgroundWait).not.toBeChecked()
   await backgroundWait.check()
+  const delegation = workspace.getByRole("checkbox", {
+    name: "Allow delegation to configured coding agents",
+    exact: true,
+  })
+  await expect(delegation).not.toBeChecked()
+  await delegation.check()
   await workspace.getByRole("tab", { name: "Agent setup", exact: true }).click()
   const executable = workspace
     .getByRole("article", { name: "Claude Code", exact: true })
@@ -534,6 +540,7 @@ test("starts a native Claude harness and preserves question input across host re
     driver: "claude",
     directory: fixture.directory,
     backgroundWait: true,
+    delegation: true,
   })
   await expect(workspace).toContainText("Native background wait tool enabled")
   await expect(workspace.getByRole("log", { name: "Harness output" })).toContainText("Native harness output")

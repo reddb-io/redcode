@@ -1,5 +1,5 @@
 import { describe, expect } from "bun:test"
-import { Effect, Layer, Stream } from "effect"
+import { Deferred, Effect, Fiber, Layer, Stream } from "effect"
 import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
 import { LayerNode } from "@opencode/util/effect/layer-node"
 import { Bus } from "@opencode/core/bus"
@@ -7,10 +7,12 @@ import { Image } from "@opencode/core/image"
 import { Mcp } from "@opencode/core/mcp/index"
 import { Permission } from "@opencode/core/permission"
 import { Session } from "@opencode/core/session"
+import { SessionWait } from "@opencode/core/session/wait"
 import { Tool } from "@opencode/core/tool"
 import { McpTool } from "@opencode/core/tool/mcp"
 import { Vault } from "@opencode/core/vault/vault"
 import { Project } from "@opencode/schema/project"
+import { Event } from "@opencode/schema/event"
 import { Config } from "@opencode/core/config"
 import { Location } from "@opencode/core/location"
 import { AbsolutePath } from "@opencode/core/schema"
@@ -29,6 +31,7 @@ const sessionID = Session.ID.make("ses_mcp_vault")
 const invocations: Array<Parameters<Mcp.Interface["callTool"]>[0]> = []
 const asked: Permission.AssertInput[] = []
 let decline: string | undefined
+let gate: { started: Deferred.Deferred<void>; release: Deferred.Deferred<void> } | undefined
 
 const mcp = Layer.mock(Mcp.Service, {
   tools: () =>
@@ -49,8 +52,12 @@ const mcp = Layer.mock(Mcp.Service, {
       } satisfies Mcp.Tool,
     ]),
   callTool: (input) =>
-    Effect.sync(() => {
+    Effect.gen(function* () {
       invocations.push(input)
+      if (gate) {
+        yield* Deferred.succeed(gate.started, undefined)
+        yield* Deferred.await(gate.release)
+      }
       if (input.name === "login")
         return {
           server: Mcp.ServerName.make(input.server),
@@ -88,7 +95,13 @@ const it = testEffect(
       Layer.succeed(Location.Service, Location.Service.of(location({ directory: AbsolutePath.make(process.cwd()) }))),
     ),
     Permission.node.replace(permissions),
-    Bus.node.replace(Layer.mock(Bus.Service, { subscribe: () => Stream.never })),
+    Bus.node.replace(
+      Layer.mock(Bus.Service, {
+        subscribe: () => Stream.never,
+        publish: (definition, data) =>
+          Effect.succeed({ id: Event.ID.create(), type: definition.type, data } as Event.Payload<typeof definition>),
+      }),
+    ),
     Image.node.replace(imagePassthrough),
   ]),
 )
@@ -97,6 +110,7 @@ const reset = () => {
   invocations.length = 0
   asked.length = 0
   decline = undefined
+  gate = undefined
 }
 
 const bound = () => {
@@ -120,6 +134,32 @@ const run = (name: string, input: Record<string, unknown>, id: string, binding: 
   })
 
 describe("MCP vault references", () => {
+  it.effect("reports the actual MCP tool while its server response is pending", () =>
+    Effect.gen(function* () {
+      reset()
+      gate = { started: yield* Deferred.make<void>(), release: yield* Deferred.make<void>() }
+      const running = yield* run("demo_call", {}, "call-mcp-wait", bound()).pipe(Effect.forkChild)
+      yield* Deferred.await(gate.started)
+      expect(SessionWait.list(sessionID)).toMatchObject([{ kind: "mcp", target: "demo_call" }])
+      yield* Deferred.succeed(gate.release, undefined)
+      yield* Fiber.join(running)
+      expect(SessionWait.list(sessionID)).toEqual([])
+      reset()
+    }),
+  )
+
+  it.effect("removes the MCP wait when the call is interrupted", () =>
+    Effect.gen(function* () {
+      reset()
+      gate = { started: yield* Deferred.make<void>(), release: yield* Deferred.make<void>() }
+      const running = yield* run("demo_call", {}, "call-mcp-interrupted", bound()).pipe(Effect.forkChild)
+      yield* Deferred.await(gate.started)
+      expect(SessionWait.list(sessionID)).toHaveLength(1)
+      yield* Fiber.interrupt(running)
+      expect(SessionWait.list(sessionID)).toEqual([])
+      reset()
+    }),
+  )
   it.effect("resolves references only in the arguments sent to the server, after asking for that server", () =>
     Effect.gen(function* () {
       reset()

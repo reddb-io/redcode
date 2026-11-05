@@ -22,6 +22,8 @@ import type {
   AutomationListOutput,
   AutomationCreateInput,
   AutomationCreateOutput,
+  AutomationCreateConditionalInput,
+  AutomationCreateConditionalOutput,
   AutomationControlInput,
   AutomationControlOutput,
   AutomationRunInput,
@@ -32,6 +34,8 @@ import type {
   AutomationRemoveOutput,
   LocationGetInput,
   LocationGetOutput,
+  LocationBootstrapInput,
+  LocationBootstrapOutput,
   LocationReloadOutput,
   AgentListInput,
   AgentListOutput,
@@ -631,12 +635,36 @@ const EndpointAutomationCreate = (raw: RawClient["server.automation"]) => (input
   preserveEffect<AutomationCreateOutput>()(
     raw["session.automation.create"]({
       params: { sessionID: input["sessionID"] },
-      payload: { id: input["id"], title: input["title"], prompt: input["prompt"], schedule: input["schedule"] },
+      payload: {
+        id: input["id"],
+        title: input["title"],
+        prompt: input["prompt"],
+        schedule: input["schedule"],
+        condition: input["condition"],
+      },
     }).pipe(
       Effect.mapError(mapClientError),
       Effect.map((value) => value.data),
     ),
   )
+
+const EndpointAutomationCreateConditional =
+  (raw: RawClient["server.automation"]) => (input: AutomationCreateConditionalInput) =>
+    preserveEffect<AutomationCreateConditionalOutput>()(
+      raw["session.automation.createConditional"]({
+        params: { sessionID: input["sessionID"] },
+        payload: {
+          id: input["id"],
+          title: input["title"],
+          prompt: input["prompt"],
+          schedule: input["schedule"],
+          condition: input["condition"],
+        },
+      }).pipe(
+        Effect.mapError(mapClientError),
+        Effect.map((value) => value.data),
+      ),
+    )
 
 const EndpointAutomationControl = (raw: RawClient["server.automation"]) => (input: AutomationControlInput) =>
   preserveEffect<AutomationControlOutput>()(
@@ -680,6 +708,7 @@ const EndpointAutomationRemove = (raw: RawClient["server.automation"]) => (input
 const adaptGroupAutomation = (raw: RawClient["server.automation"]) => ({
   list: EndpointAutomationList(raw),
   create: EndpointAutomationCreate(raw),
+  createConditional: EndpointAutomationCreateConditional(raw),
   control: EndpointAutomationControl(raw),
   run: EndpointAutomationRun(raw),
   history: EndpointAutomationHistory(raw),
@@ -691,11 +720,17 @@ const EndpointLocationGet = (raw: RawClient["server.location"]) => (input?: Loca
     raw["location.get"]({ query: { location: input?.["location"] } }).pipe(Effect.mapError(mapClientError)),
   )
 
+const EndpointLocationBootstrap = (raw: RawClient["server.location"]) => (input?: LocationBootstrapInput) =>
+  preserveEffect<LocationBootstrapOutput>()(
+    raw["location.bootstrap"]({ query: { location: input?.["location"] } }).pipe(Effect.mapError(mapClientError)),
+  )
+
 const EndpointLocationReload = (raw: RawClient["server.location"]) => () =>
   preserveEffect<LocationReloadOutput>()(raw["location.reload"]({}).pipe(Effect.mapError(mapClientError)))
 
 const adaptGroupLocation = (raw: RawClient["server.location"]) => ({
   get: EndpointLocationGet(raw),
+  bootstrap: EndpointLocationBootstrap(raw),
   reload: EndpointLocationReload(raw),
 })
 
@@ -2926,6 +2961,7 @@ const EndpointHarnessOpen = (raw: RawClient["server.harness"]) => (input: Harnes
         directory: input["directory"],
         model: input["model"],
         backgroundWait: input["backgroundWait"],
+        delegation: input["delegation"],
       },
     }).pipe(Effect.mapError(mapClientError)),
   )

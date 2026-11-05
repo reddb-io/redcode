@@ -92,6 +92,14 @@ export type AutomationSchedule =
   | { type: "interval"; everyMs: number }
   | { type: "fixed_time"; timeOfDay: string; timeZone: string; weekdays: Array<number> }
 
+export type MonitorProcessProbe = {
+  type: "process"
+  name?: string | undefined
+  match?: "name" | "cmdline" | undefined
+  pid?: number | undefined
+  state: "running" | "exited"
+}
+
 export type AutomationRun = {
   id: string
   automationID: string
@@ -108,9 +116,58 @@ export type LocationPublicInfo = { directory: string; project: { id: string; dir
 
 export type LocationPublicRef = { directory: string }
 
+export type RouterUpstream = { id: string; slug?: string; name: string; category?: string; subscription?: boolean }
+
+export type RouterHop = { slug: string; name: string }
+
+export type ModelReasoningField = "reasoning" | "reasoning_content" | "reasoning_text" | (string & {})
+
+export type ModelMaxTokensField = "max_completion_tokens" | "max_tokens"
+
 export type ProviderCompaction = { type: "summary" } | { type: "native" }
 
+export type ModelCapabilities = {
+  tools: boolean
+  temperature?: boolean
+  reasoning?: boolean
+  input: Array<string>
+  output: Array<string>
+}
+
+export type ModelCatalogApi = {
+  baseURL: string
+  sdk?: { aisdk?: string; opencodeai?: string }
+  capabilities: { [x: string]: JsonValue }
+  compatibility?: { [x: string]: JsonValue }
+}
+
+export type MoneyUSDPerMillionTokens = number
+
+export type ModelStatus = "alpha" | "beta" | "deprecated" | "active"
+
+export type RouterKeyRole = "standard" | "admin"
+
+export type ProviderCatalog = {
+  status: "loading" | "ready" | "stale" | "error"
+  updatedAt?: number
+  message?: string
+  httpStatus?: number
+  code?: string
+  requestID?: string
+}
+
 export type ProviderTransport = "http" | "websocket"
+
+export type IntegrationCommandMethod = { id: string; type: "command"; label: string; command: Array<string> }
+
+export type IntegrationEnvMethod = { type: "env"; names: Array<string> }
+
+export type ConnectionCredentialInfo = {
+  type: "credential"
+  id: string
+  label: string
+  method: "key" | "oauth" | "external"
+}
 
 export type AgentColor = string
 
@@ -249,7 +306,7 @@ export type SessionProviderContextProvenance = {
   endpoint: string
 }
 
-export type SessionActive = { type: "running" }
+export type SessionWait = { id: string; kind: "mcp" | "model"; started: number; target?: string }
 
 export type SessionObservationInfo = {
   sessionID: string
@@ -267,14 +324,6 @@ export type MonitorFileProbe = {
   path: string
   state: "exists" | "missing" | "changed"
   min_size?: number | undefined
-}
-
-export type MonitorProcessProbe = {
-  type: "process"
-  name?: string | undefined
-  match?: "name" | "cmdline" | undefined
-  pid?: number | undefined
-  state: "running" | "exited"
 }
 
 export type MonitorProbeResult = {
@@ -647,33 +696,6 @@ export type SessionInterruptResponse = { interrupted: boolean }
 
 export type FormValue = string | number | "Infinity" | "-Infinity" | "NaN" | boolean | Array<string>
 
-export type RouterUpstream = { id: string; slug?: string; name: string; category?: string; subscription?: boolean }
-
-export type RouterHop = { slug: string; name: string }
-
-export type ModelReasoningField = "reasoning" | "reasoning_content" | "reasoning_text" | (string & {})
-
-export type ModelMaxTokensField = "max_completion_tokens" | "max_tokens"
-
-export type ModelCapabilities = {
-  tools: boolean
-  temperature?: boolean
-  reasoning?: boolean
-  input: Array<string>
-  output: Array<string>
-}
-
-export type ModelCatalogApi = {
-  baseURL: string
-  sdk?: { aisdk?: string; opencodeai?: string }
-  capabilities: { [x: string]: JsonValue }
-  compatibility?: { [x: string]: JsonValue }
-}
-
-export type MoneyUSDPerMillionTokens = number
-
-export type ModelStatus = "alpha" | "beta" | "deprecated" | "active"
-
 export type ConnectionCheckRequest = {
   url: string
   method: string
@@ -684,17 +706,6 @@ export type ConnectionCheckRequest = {
   failure?: "timeout" | "network" | "body" | undefined
 }
 
-export type RouterKeyRole = "standard" | "admin"
-
-export type ProviderCatalog = {
-  status: "loading" | "ready" | "stale" | "error"
-  updatedAt?: number
-  message?: string
-  httpStatus?: number
-  code?: string
-  requestID?: string
-}
-
 export type ProviderRemovalResult = {
   providerID: string
   dryRun: boolean
@@ -702,17 +713,6 @@ export type ProviderRemovalResult = {
   configPath: string
   referencingFiles: Array<string>
   envVariables: Array<string>
-}
-
-export type IntegrationCommandMethod = { id: string; type: "command"; label: string; command: Array<string> }
-
-export type IntegrationEnvMethod = { type: "env"; names: Array<string> }
-
-export type ConnectionCredentialInfo = {
-  type: "credential"
-  id: string
-  label: string
-  method: "key" | "oauth" | "external"
 }
 
 export type IntegrationAttempt = {
@@ -1277,6 +1277,7 @@ export type SessionRevert = { messageID: string; partID?: string; snapshot?: str
 
 export type PermissionRequest = {
   id: string
+  created?: number
   sessionID: string
   action: string
   resources: Array<string>
@@ -1356,16 +1357,20 @@ export type FormMultiselectField = {
   default?: Array<string>
 }
 
-export type AutomationInfo = {
-  id: string
-  title: string
-  prompt: string
-  schedule: AutomationSchedule
-  sessionID: string
-  enabled: boolean
-  nextAt: number | null
-  created: number
-  updated: number
+export type AutomationCondition = {
+  probe:
+    | {
+        type: "http"
+        url: string
+        method?: "GET" | "HEAD" | undefined
+        expect_status?: number | Array<number> | undefined
+        json_path?: string | undefined
+        equals?: string | number | boolean | undefined
+        contains?: string | undefined
+      }
+    | MonitorProcessProbe
+  when: "matches" | "not_matches"
+  mode?: "on_match" | "on_change" | undefined
 }
 
 export type SessionMessageLocationSwitched = {
@@ -1398,9 +1403,45 @@ export type V2EventServerConnected = {
   data: {}
 }
 
+export type RouterOffer = {
+  id: string
+  pinID?: string
+  provider: RouterUpstream
+  via: Array<RouterHop>
+  available: boolean
+  price?: { input?: number; output?: number }
+  free: boolean
+}
+
+export type ModelCompatibility = {
+  reasoningField?: ModelReasoningField
+  requireReasoning?: boolean
+  maxTokensField?: ModelMaxTokensField
+  requireFinishReason?: boolean
+  requireAssistantAfterTool?: boolean
+  supportsPromptCacheKey?: boolean
+  supportsEffortUpdates?: boolean
+  forcedToolChoice?: boolean
+}
+
 export type ModelSettings = { compaction?: ProviderCompaction } & { [x: string]: any }
 
 export type ConfigModelSettings = { compaction?: ProviderCompaction } & { [x: string]: JsonValue | null }
+
+export type ModelCost = {
+  tier?: { type: "context"; size: number }
+  input: MoneyUSDPerMillionTokens
+  output: MoneyUSDPerMillionTokens
+  cache: { read: MoneyUSDPerMillionTokens; write: MoneyUSDPerMillionTokens }
+}
+
+export type RouterConnection = {
+  kind: "red-router" | "9router"
+  instanceID?: string
+  version?: string
+  role?: RouterKeyRole
+  mcp?: string
+}
 
 export type ProviderSettings = {
   timeout?: number | false
@@ -1417,6 +1458,8 @@ export type ConfigProviderSettings = {
   compaction?: ProviderCompaction
   transport?: ProviderTransport
 } & { [x: string]: JsonValue | null }
+
+export type ConnectionInfo = ConnectionCredentialInfo | ConnectionEnvInfo
 
 export type PluginInfo = { id?: string; source: PluginSource; features: PluginFeatures; state: PluginState }
 
@@ -1495,7 +1538,7 @@ export type SessionMessageIdle = {
 
 export type SessionProviderContext = { version: 1; provenance: SessionProviderContextProvenance; messages: JsonValue }
 
-export type ActiveSessionsResponse = { data: { [x: string]: SessionActive } }
+export type SessionActive = { type: "running"; waits?: Array<SessionWait> | null }
 
 export type MonitorEvidence = {
   exit: number | null
@@ -2136,6 +2179,7 @@ export type PermissionAsked = {
   location?: LocationRef
   data: {
     id: string
+    created?: number
     sessionID: string
     action: string
     resources: Array<string>
@@ -2144,6 +2188,15 @@ export type PermissionAsked = {
     source?: PermissionSource
     message?: string
   }
+}
+
+export type SessionWaitChanged = {
+  id: string
+  created: number
+  metadata?: { [x: string]: any }
+  type: "session.wait.changed"
+  location?: LocationRef
+  data: { sessionID: string; waits: Array<SessionWait> }
 }
 
 export type PluginUpdated = {
@@ -2564,47 +2617,9 @@ export type ToolContent1 = ToolTextContent | ToolFileContent1
 
 export type FormAnswer = { [x: string]: FormValue }
 
-export type RouterOffer = {
-  id: string
-  pinID?: string
-  provider: RouterUpstream
-  via: Array<RouterHop>
-  available: boolean
-  price?: { input?: number; output?: number }
-  free: boolean
-}
-
-export type ModelCompatibility = {
-  reasoningField?: ModelReasoningField
-  requireReasoning?: boolean
-  maxTokensField?: ModelMaxTokensField
-  requireFinishReason?: boolean
-  requireAssistantAfterTool?: boolean
-  supportsPromptCacheKey?: boolean
-  supportsEffortUpdates?: boolean
-  forcedToolChoice?: boolean
-}
-
-export type ModelCost = {
-  tier?: { type: "context"; size: number }
-  input: MoneyUSDPerMillionTokens
-  output: MoneyUSDPerMillionTokens
-  cache: { read: MoneyUSDPerMillionTokens; write: MoneyUSDPerMillionTokens }
-}
-
 export type GenerateTextResponse = { data: { text: string; requests?: Array<ConnectionCheckRequest> | undefined } }
 
 export type ConnectionCheckReport = { ok: boolean; message: string; requests: Array<ConnectionCheckRequest> }
-
-export type RouterConnection = {
-  kind: "red-router" | "9router"
-  instanceID?: string
-  version?: string
-  role?: RouterKeyRole
-  mcp?: string
-}
-
-export type ConnectionInfo = ConnectionCredentialInfo | ConnectionEnvInfo
 
 export type McpServer = {
   name: string
@@ -3007,6 +3022,7 @@ export type HarnessRun = {
   detail?: string
   queued: number
   backgroundWait?: boolean
+  delegation?: boolean
   capabilities: { steer: boolean; resume: boolean; interrupt: boolean }
 }
 
@@ -3130,6 +3146,19 @@ export type FormField =
   | FormMultiselectField
   | FormExternalField
 
+export type AutomationInfo = {
+  id: string
+  title: string
+  prompt: string
+  schedule: AutomationSchedule
+  condition?: AutomationCondition | undefined
+  sessionID: string
+  enabled: boolean
+  nextAt: number | null
+  created: number
+  updated: number
+}
+
 export type SessionInboxMove = {
   id: string
   sessionID: string
@@ -3142,6 +3171,20 @@ export type SessionInboxMove = {
 export type ModelVariant = {
   id: string
   settings?: ModelSettings
+  headers?: { [x: string]: string }
+  body?: { [x: string]: any }
+}
+
+export type ProviderInfo = {
+  id: string
+  canonical?: string
+  integrationID?: string
+  name: string
+  activation: "auto" | "enabled" | "disabled"
+  package: string
+  router?: RouterConnection
+  catalog?: ProviderCatalog
+  settings?: ProviderSettings
   headers?: { [x: string]: string }
   body?: { [x: string]: any }
 }
@@ -3193,6 +3236,8 @@ export type SessionMessageToolStateError = {
   content?: [ToolContent, ...Array<ToolContent>]
   metadata?: { [x: string]: JsonValue }
 }
+
+export type ActiveSessionsResponse = { data: { [x: string]: SessionActive } }
 
 export type MonitorPublicInfo = {
   id: string
@@ -3401,20 +3446,6 @@ export type CredentialKey = {
   key: string
   metadata?: { [x: string]: JsonValue }
   configuration?: FormAnswer
-}
-
-export type ProviderInfo = {
-  id: string
-  canonical?: string
-  integrationID?: string
-  name: string
-  activation: "auto" | "enabled" | "disabled"
-  package: string
-  router?: RouterConnection
-  catalog?: ProviderCatalog
-  settings?: ProviderSettings
-  headers?: { [x: string]: string }
-  body?: { [x: string]: any }
 }
 
 export type FormField1 =
@@ -3732,6 +3763,7 @@ export type ConfigEntry =
                 }
               | {
                   type: "remote"
+                  pool?: boolean
                   media?: McpMedia
                   url: string
                   headers?: { [x: string]: string }
@@ -4430,6 +4462,7 @@ export type V2Event =
   | ReferenceUpdated
   | PermissionAsked
   | PermissionReplied
+  | SessionWaitChanged
   | PluginUpdated
   | ProjectUpdated
   | WorktreeUpdated
@@ -4800,6 +4833,29 @@ export type AutomationCreateInput = {
           readonly timeZone: string
           readonly weekdays: ReadonlyArray<number>
         }
+    readonly condition?:
+      | {
+          readonly probe:
+            | {
+                readonly type: "http"
+                readonly url: string
+                readonly method?: "GET" | "HEAD" | undefined
+                readonly expect_status?: number | ReadonlyArray<number> | undefined
+                readonly json_path?: string | undefined
+                readonly equals?: string | number | boolean | undefined
+                readonly contains?: string | undefined
+              }
+            | {
+                readonly type: "process"
+                readonly name?: string | undefined
+                readonly match?: "name" | "cmdline" | undefined
+                readonly pid?: number | undefined
+                readonly state: "running" | "exited"
+              }
+          readonly when: "matches" | "not_matches"
+          readonly mode?: "on_match" | "on_change" | undefined
+        }
+      | undefined
   }["id"]
   readonly title: {
     readonly id: string
@@ -4814,6 +4870,29 @@ export type AutomationCreateInput = {
           readonly timeZone: string
           readonly weekdays: ReadonlyArray<number>
         }
+    readonly condition?:
+      | {
+          readonly probe:
+            | {
+                readonly type: "http"
+                readonly url: string
+                readonly method?: "GET" | "HEAD" | undefined
+                readonly expect_status?: number | ReadonlyArray<number> | undefined
+                readonly json_path?: string | undefined
+                readonly equals?: string | number | boolean | undefined
+                readonly contains?: string | undefined
+              }
+            | {
+                readonly type: "process"
+                readonly name?: string | undefined
+                readonly match?: "name" | "cmdline" | undefined
+                readonly pid?: number | undefined
+                readonly state: "running" | "exited"
+              }
+          readonly when: "matches" | "not_matches"
+          readonly mode?: "on_match" | "on_change" | undefined
+        }
+      | undefined
   }["title"]
   readonly prompt: {
     readonly id: string
@@ -4828,6 +4907,29 @@ export type AutomationCreateInput = {
           readonly timeZone: string
           readonly weekdays: ReadonlyArray<number>
         }
+    readonly condition?:
+      | {
+          readonly probe:
+            | {
+                readonly type: "http"
+                readonly url: string
+                readonly method?: "GET" | "HEAD" | undefined
+                readonly expect_status?: number | ReadonlyArray<number> | undefined
+                readonly json_path?: string | undefined
+                readonly equals?: string | number | boolean | undefined
+                readonly contains?: string | undefined
+              }
+            | {
+                readonly type: "process"
+                readonly name?: string | undefined
+                readonly match?: "name" | "cmdline" | undefined
+                readonly pid?: number | undefined
+                readonly state: "running" | "exited"
+              }
+          readonly when: "matches" | "not_matches"
+          readonly mode?: "on_match" | "on_change" | undefined
+        }
+      | undefined
   }["prompt"]
   readonly schedule: {
     readonly id: string
@@ -4842,10 +4944,251 @@ export type AutomationCreateInput = {
           readonly timeZone: string
           readonly weekdays: ReadonlyArray<number>
         }
+    readonly condition?:
+      | {
+          readonly probe:
+            | {
+                readonly type: "http"
+                readonly url: string
+                readonly method?: "GET" | "HEAD" | undefined
+                readonly expect_status?: number | ReadonlyArray<number> | undefined
+                readonly json_path?: string | undefined
+                readonly equals?: string | number | boolean | undefined
+                readonly contains?: string | undefined
+              }
+            | {
+                readonly type: "process"
+                readonly name?: string | undefined
+                readonly match?: "name" | "cmdline" | undefined
+                readonly pid?: number | undefined
+                readonly state: "running" | "exited"
+              }
+          readonly when: "matches" | "not_matches"
+          readonly mode?: "on_match" | "on_change" | undefined
+        }
+      | undefined
   }["schedule"]
+  readonly condition?: {
+    readonly id: string
+    readonly title: string
+    readonly prompt: string
+    readonly schedule:
+      | { readonly type: "once"; readonly at: number }
+      | { readonly type: "interval"; readonly everyMs: number }
+      | {
+          readonly type: "fixed_time"
+          readonly timeOfDay: string
+          readonly timeZone: string
+          readonly weekdays: ReadonlyArray<number>
+        }
+    readonly condition?:
+      | {
+          readonly probe:
+            | {
+                readonly type: "http"
+                readonly url: string
+                readonly method?: "GET" | "HEAD" | undefined
+                readonly expect_status?: number | ReadonlyArray<number> | undefined
+                readonly json_path?: string | undefined
+                readonly equals?: string | number | boolean | undefined
+                readonly contains?: string | undefined
+              }
+            | {
+                readonly type: "process"
+                readonly name?: string | undefined
+                readonly match?: "name" | "cmdline" | undefined
+                readonly pid?: number | undefined
+                readonly state: "running" | "exited"
+              }
+          readonly when: "matches" | "not_matches"
+          readonly mode?: "on_match" | "on_change" | undefined
+        }
+      | undefined
+  }["condition"]
 }
 
 export type AutomationCreateOutput = { data: AutomationInfo }["data"]
+
+export type AutomationCreateConditionalInput = {
+  readonly sessionID: { readonly sessionID: string }["sessionID"]
+  readonly id: {
+    readonly id: string
+    readonly title: string
+    readonly prompt: string
+    readonly schedule:
+      | { readonly type: "once"; readonly at: number }
+      | { readonly type: "interval"; readonly everyMs: number }
+      | {
+          readonly type: "fixed_time"
+          readonly timeOfDay: string
+          readonly timeZone: string
+          readonly weekdays: ReadonlyArray<number>
+        }
+    readonly condition: {
+      readonly probe:
+        | {
+            readonly type: "http"
+            readonly url: string
+            readonly method?: "GET" | "HEAD" | undefined
+            readonly expect_status?: number | ReadonlyArray<number> | undefined
+            readonly json_path?: string | undefined
+            readonly equals?: string | number | boolean | undefined
+            readonly contains?: string | undefined
+          }
+        | {
+            readonly type: "process"
+            readonly name?: string | undefined
+            readonly match?: "name" | "cmdline" | undefined
+            readonly pid?: number | undefined
+            readonly state: "running" | "exited"
+          }
+      readonly when: "matches" | "not_matches"
+      readonly mode?: "on_match" | "on_change" | undefined
+    }
+  }["id"]
+  readonly title: {
+    readonly id: string
+    readonly title: string
+    readonly prompt: string
+    readonly schedule:
+      | { readonly type: "once"; readonly at: number }
+      | { readonly type: "interval"; readonly everyMs: number }
+      | {
+          readonly type: "fixed_time"
+          readonly timeOfDay: string
+          readonly timeZone: string
+          readonly weekdays: ReadonlyArray<number>
+        }
+    readonly condition: {
+      readonly probe:
+        | {
+            readonly type: "http"
+            readonly url: string
+            readonly method?: "GET" | "HEAD" | undefined
+            readonly expect_status?: number | ReadonlyArray<number> | undefined
+            readonly json_path?: string | undefined
+            readonly equals?: string | number | boolean | undefined
+            readonly contains?: string | undefined
+          }
+        | {
+            readonly type: "process"
+            readonly name?: string | undefined
+            readonly match?: "name" | "cmdline" | undefined
+            readonly pid?: number | undefined
+            readonly state: "running" | "exited"
+          }
+      readonly when: "matches" | "not_matches"
+      readonly mode?: "on_match" | "on_change" | undefined
+    }
+  }["title"]
+  readonly prompt: {
+    readonly id: string
+    readonly title: string
+    readonly prompt: string
+    readonly schedule:
+      | { readonly type: "once"; readonly at: number }
+      | { readonly type: "interval"; readonly everyMs: number }
+      | {
+          readonly type: "fixed_time"
+          readonly timeOfDay: string
+          readonly timeZone: string
+          readonly weekdays: ReadonlyArray<number>
+        }
+    readonly condition: {
+      readonly probe:
+        | {
+            readonly type: "http"
+            readonly url: string
+            readonly method?: "GET" | "HEAD" | undefined
+            readonly expect_status?: number | ReadonlyArray<number> | undefined
+            readonly json_path?: string | undefined
+            readonly equals?: string | number | boolean | undefined
+            readonly contains?: string | undefined
+          }
+        | {
+            readonly type: "process"
+            readonly name?: string | undefined
+            readonly match?: "name" | "cmdline" | undefined
+            readonly pid?: number | undefined
+            readonly state: "running" | "exited"
+          }
+      readonly when: "matches" | "not_matches"
+      readonly mode?: "on_match" | "on_change" | undefined
+    }
+  }["prompt"]
+  readonly schedule: {
+    readonly id: string
+    readonly title: string
+    readonly prompt: string
+    readonly schedule:
+      | { readonly type: "once"; readonly at: number }
+      | { readonly type: "interval"; readonly everyMs: number }
+      | {
+          readonly type: "fixed_time"
+          readonly timeOfDay: string
+          readonly timeZone: string
+          readonly weekdays: ReadonlyArray<number>
+        }
+    readonly condition: {
+      readonly probe:
+        | {
+            readonly type: "http"
+            readonly url: string
+            readonly method?: "GET" | "HEAD" | undefined
+            readonly expect_status?: number | ReadonlyArray<number> | undefined
+            readonly json_path?: string | undefined
+            readonly equals?: string | number | boolean | undefined
+            readonly contains?: string | undefined
+          }
+        | {
+            readonly type: "process"
+            readonly name?: string | undefined
+            readonly match?: "name" | "cmdline" | undefined
+            readonly pid?: number | undefined
+            readonly state: "running" | "exited"
+          }
+      readonly when: "matches" | "not_matches"
+      readonly mode?: "on_match" | "on_change" | undefined
+    }
+  }["schedule"]
+  readonly condition: {
+    readonly id: string
+    readonly title: string
+    readonly prompt: string
+    readonly schedule:
+      | { readonly type: "once"; readonly at: number }
+      | { readonly type: "interval"; readonly everyMs: number }
+      | {
+          readonly type: "fixed_time"
+          readonly timeOfDay: string
+          readonly timeZone: string
+          readonly weekdays: ReadonlyArray<number>
+        }
+    readonly condition: {
+      readonly probe:
+        | {
+            readonly type: "http"
+            readonly url: string
+            readonly method?: "GET" | "HEAD" | undefined
+            readonly expect_status?: number | ReadonlyArray<number> | undefined
+            readonly json_path?: string | undefined
+            readonly equals?: string | number | boolean | undefined
+            readonly contains?: string | undefined
+          }
+        | {
+            readonly type: "process"
+            readonly name?: string | undefined
+            readonly match?: "name" | "cmdline" | undefined
+            readonly pid?: number | undefined
+            readonly state: "running" | "exited"
+          }
+      readonly when: "matches" | "not_matches"
+      readonly mode?: "on_match" | "on_change" | undefined
+    }
+  }["condition"]
+}
+
+export type AutomationCreateConditionalOutput = { data: AutomationInfo }["data"]
 
 export type AutomationControlInput = {
   readonly sessionID: { readonly sessionID: string; readonly automationID: string }["sessionID"]
@@ -4882,6 +5225,15 @@ export type LocationGetInput = {
 }
 
 export type LocationGetOutput = LocationPublicInfo
+
+export type LocationBootstrapInput = {
+  readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]
+}
+
+export type LocationBootstrapOutput = {
+  location: LocationPublicRef
+  data: { models: Array<ModelInfo>; providers: Array<ProviderInfo>; integrations: Array<IntegrationInfo> }
+}
 
 export type LocationReloadOutput = void
 
@@ -10241,6 +10593,7 @@ export type McpAddInput = {
         }
       | {
           readonly type: "remote"
+          readonly pool?: boolean
           readonly media?: {
             readonly [x: string]: {
               readonly operations: ReadonlyArray<"generate" | "edit" | "reference">
@@ -12157,25 +12510,36 @@ export type HarnessOpenInput = {
     readonly directory: string
     readonly model?: string
     readonly backgroundWait?: boolean
+    readonly delegation?: boolean
   }["driver"]
   readonly directory: {
     readonly driver: "claude" | "codex"
     readonly directory: string
     readonly model?: string
     readonly backgroundWait?: boolean
+    readonly delegation?: boolean
   }["directory"]
   readonly model?: {
     readonly driver: "claude" | "codex"
     readonly directory: string
     readonly model?: string
     readonly backgroundWait?: boolean
+    readonly delegation?: boolean
   }["model"]
   readonly backgroundWait?: {
     readonly driver: "claude" | "codex"
     readonly directory: string
     readonly model?: string
     readonly backgroundWait?: boolean
+    readonly delegation?: boolean
   }["backgroundWait"]
+  readonly delegation?: {
+    readonly driver: "claude" | "codex"
+    readonly directory: string
+    readonly model?: string
+    readonly backgroundWait?: boolean
+    readonly delegation?: boolean
+  }["delegation"]
 }
 
 export type HarnessOpenOutput = HarnessRun

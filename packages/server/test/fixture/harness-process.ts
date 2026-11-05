@@ -183,6 +183,21 @@ for await (const line of createInterface({ input: process.stdin })) {
       send({ id: value.id, result: { turn: { id: state.turn } } })
       send({ method: "turn/started", params: { threadId: state.thread, turn: { id: state.turn } } })
       const text = value.params.input[0].text
+      if (text.startsWith("delegate:")) {
+        send({
+          id: 910,
+          method: "item/tool/call",
+          params: {
+            threadId: state.thread,
+            turnId: state.turn,
+            callId: "delegate-call",
+            namespace: null,
+            tool: "redcode_delegate_task",
+            arguments: { requestID: "fixture-delegation", driver: text.slice(9), task: "review" },
+          },
+        })
+        continue
+      }
       if (text.startsWith("wait-")) {
         startWait(text)
         if (text === "wait-foreign-thread") complete()
@@ -280,10 +295,28 @@ for await (const line of createInterface({ input: process.stdin })) {
       })
       if (state.waiting !== "wait-cancel") complete()
     }
+    if (value.id === 910 && value.result) {
+      send({
+        method: "item/agentMessage/delta",
+        params: {
+          threadId: state.thread,
+          turnId: state.turn,
+          delta: `DELEGATE_RESULT ${value.result.contentItems[0].text}`,
+        },
+      })
+      complete()
+    }
   }
   if (driver === "claude") {
     if (value.type === "control_request") {
       send({ type: "control_response", response: { subtype: "success", request_id: value.request_id, response: {} } })
+      if (value.request.subtype === "initialize" && value.request.sdkMcpServers?.includes("redcode")) {
+        send({
+          type: "control_request",
+          request_id: "delegation-mcp-list",
+          request: { subtype: "mcp_message", server_name: "redcode", message: { jsonrpc: "2.0", id: 2, method: "tools/list" } },
+        })
+      }
       if (value.request.subtype === "initialize" && value.request.sdkMcpServers?.includes("redcode_wait")) {
         send({
           type: "control_request",
@@ -309,6 +342,26 @@ for await (const line of createInterface({ input: process.stdin })) {
       state.prompt = value.uuid
       send({ type: "system", subtype: "init", session_id: "claude-fixture" })
       const text = value.message.content
+      if (text.startsWith("delegate:")) {
+        send({
+          type: "control_request",
+          request_id: "delegate-call",
+          request: {
+            subtype: "mcp_message",
+            server_name: "redcode",
+            message: {
+              jsonrpc: "2.0",
+              id: 910,
+              method: "tools/call",
+              params: {
+                name: "redcode_delegate_task",
+                arguments: { requestID: "fixture-delegation", driver: text.slice(9), task: "review" },
+              },
+            },
+          },
+        })
+        continue
+      }
       if (text.startsWith("wait-")) {
         startWait(text)
         continue
@@ -375,7 +428,20 @@ for await (const line of createInterface({ input: process.stdin })) {
       if (!["permission", "question", "hold"].includes(text)) complete()
     }
     if (value.type === "control_response") {
-      if (["wait-mcp-init", "wait-mcp-list"].includes(value.response.request_id)) continue
+      if (["wait-mcp-init", "wait-mcp-list", "delegation-mcp-list"].includes(value.response.request_id)) continue
+      if (value.response.request_id === "delegate-call") {
+        send({
+          type: "assistant",
+          message: {
+            content: [
+              { type: "text", text: `DELEGATE_RESULT ${value.response.response.mcp_response.result.content[0].text}` },
+            ],
+          },
+          parent_tool_use_id: null,
+        })
+        complete()
+        continue
+      }
       if (value.response.request_id === "wait-call") {
         send({
           type: "assistant",

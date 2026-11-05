@@ -604,6 +604,44 @@ test("delivery automations persist conversation schedules, review admissions and
   expect(state.historyReads).toEqual(historyReads)
 })
 
+test("conditional automations require a supporting server and retain the selected probe", async ({ page }) => {
+  await page.setViewportSize({ width: 1560, height: 1000 })
+  await seed(page, { theme: { id: "oc-2", scheme: "dark" } })
+  await mockStressTimeline(page)
+  await installStressSessionTabs(page, { sessionIDs: [fixture.sourceID, fixture.childID] })
+  await mockAgentTasks(page)
+  const state = await mockDeliveryAutomations(page)
+  state.conditionalSupported = false
+  await page.goto(sessionHref(fixture.childID))
+  await page.getByRole("button", { name: "Open delivery overview", exact: true }).click()
+  const delivery = page.getByRole("region", { name: "Delivery", exact: true })
+  await delivery.getByRole("tab", { name: "Automations", exact: true }).click()
+  await delivery.getByRole("button", { name: "Create automation", exact: true }).click()
+  const form = page.getByRole("dialog", { name: "Create automation", exact: true })
+  await form.getByRole("textbox", { name: "Automation name" }).fill("Watch health")
+  await form.getByRole("textbox", { name: "Scheduled prompt" }).fill("Inspect the service")
+  await form.getByRole("combobox", { name: "Run only when" }).selectOption("http")
+  await form.getByRole("combobox", { name: "When to run" }).selectOption("on_change")
+  await expect(form).toContainText("first check establishes a baseline")
+  await form.getByRole("textbox", { name: "HTTP or HTTPS URL" }).fill("https://example.com/health")
+  await form.getByRole("button", { name: "Create automation", exact: true }).click()
+  await expect(form.getByRole("alert")).toContainText("automation action failed")
+  expect(state.conditionalAttempts).toBe(1)
+  expect(state.creates).toHaveLength(0)
+  state.conditionalSupported = true
+  await form.getByRole("button", { name: "Create automation", exact: true }).click()
+  await expect(form).toHaveCount(0)
+  expect(state.conditionalAttempts).toBe(2)
+  expect(state.creates[0].input.condition).toEqual({
+    when: "matches",
+    mode: "on_change",
+    probe: { type: "http", url: "https://example.com/health" },
+  })
+  const row = delivery.getByRole("listitem").filter({ hasText: "Watch health" })
+  await row.getByRole("button", { name: "Inspect automation" }).click()
+  await expect(delivery.getByRole("region", { name: "Automation details" })).toContainText("https://example.com/health")
+})
+
 test("review and terminal follow the session tab and stay mounted", async ({ page }) => {
   await page.setViewportSize({ width: 1800, height: 900 })
   const a = { id: "ses_side_a", title: "Alpha session" }
@@ -800,11 +838,13 @@ test("the workbench stacks and resizes review and terminal groups", async ({ pag
   await expect(terminalPanel).toBeVisible()
   await expect(workbench).toHaveAttribute("data-split", "false")
   await expect(divider).toHaveCount(0)
-  await expect.poll(async () => {
-    const group = await terminalGroup.boundingBox()
-    const column = await workbench.boundingBox()
-    return !!group && !!column && Math.abs(group.height - column.height) <= 1
-  }).toBe(true)
+  await expect
+    .poll(async () => {
+      const group = await terminalGroup.boundingBox()
+      const column = await workbench.boundingBox()
+      return !!group && !!column && Math.abs(group.height - column.height) <= 1
+    })
+    .toBe(true)
 
   await toggle.click()
   await expect(review).toBeVisible()
@@ -818,11 +858,13 @@ test("the workbench stacks and resizes review and terminal groups", async ({ pag
   await expect(review).toBeVisible()
   await expect(workbench).toHaveAttribute("data-split", "false")
   await expect(divider).toHaveCount(0)
-  await expect.poll(async () => {
-    const group = await reviewGroup.boundingBox()
-    const column = await workbench.boundingBox()
-    return !!group && !!column && Math.abs(group.height - column.height) <= 1
-  }).toBe(true)
+  await expect
+    .poll(async () => {
+      const group = await reviewGroup.boundingBox()
+      const column = await workbench.boundingBox()
+      return !!group && !!column && Math.abs(group.height - column.height) <= 1
+    })
+    .toBe(true)
   await expectMarked(terminal)
   await page.setViewportSize({ width: 1200, height: 700 })
   await page.keyboard.press("Control+Backquote")
@@ -832,7 +874,6 @@ test("the workbench stacks and resizes review and terminal groups", async ({ pag
   expect(await page.evaluate(() => window.scrollX)).toBe(0)
   await page.keyboard.press("Control+Backquote")
   await expect(terminalPanel).toBeHidden()
-
 })
 
 test("a bottom-placed terminal spans the session below the review panel", async ({ page }) => {

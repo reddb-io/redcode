@@ -56,6 +56,7 @@ import { Monitor } from "@opencode/schema/monitor"
 import { MonitorRuntime } from "@opencode/core/monitor"
 import { SessionProjector } from "@opencode/core/session/projector"
 import { SessionExecution } from "@opencode/core/session/execution"
+import { SessionWait } from "@opencode/core/session/wait"
 import { SessionRunCoordinator } from "@opencode/core/session/run-coordinator"
 import { SessionRunner } from "@opencode/core/session/runner/index"
 import { SessionRunnerLLM } from "@opencode/core/session/runner/llm"
@@ -506,7 +507,7 @@ const layer = Layer.unwrap(
       Plugin.node.replace(Layer.mock(Plugin.Service, { awaitActivation: Effect.void })),
       SessionModelTransport.node.replace(modelTransport),
       McpInstructions.node.replace(mcpInstructions),
-      Mcp.node.replace(Layer.mock(Mcp.Service, { tools: () => Effect.succeed([]) })),
+      Mcp.node.replace(Layer.mock(Mcp.Service, { tools: () => Effect.succeed([]), servers: () => Effect.succeed([]) })),
     ]
     const execution = Layer.effect(
       SessionExecution.Service,
@@ -1987,6 +1988,25 @@ describe("SessionRunnerLLM", () => {
     expect((yield* s.session.get(sessionID)).title).toBe("Generated title")
     yield* Fiber.interrupt(fiber)
   })
+
+  scenario(
+    "exposes the model wait while the provider is silent and clears it on interruption",
+    function* (s) {
+      yield* s.admit("Wait for the provider")
+      yield* s.llm.push(TestLLM.text("Result", "text_wait_result"))
+      const gate = yield* s.llm.gate
+      const runner = yield* SessionRunner.Service
+      const fiber = yield* runner.drain({ sessionID, force: true }).pipe(Effect.forkChild)
+      yield* Effect.race(
+        gate.started,
+        Fiber.join(fiber).pipe(Effect.andThen(Effect.die("Runner ended before provider"))),
+      )
+      expect(SessionWait.list(sessionID).map((wait) => wait.kind)).toContain("model")
+      yield* Fiber.interrupt(fiber)
+      expect(SessionWait.list(sessionID)).toEqual([])
+    },
+    20_000,
+  )
 
   scenario("a waiting goal recovered from another process requires an explicit resume", function* (s) {
     const goals = yield* SessionGoal.Service
@@ -8385,12 +8405,14 @@ scenario("records conditional catalog usage and unresolved request facts through
     },
   }
   s.currentModel = LanguageModel.update(s.currentModel, { defaults: { providerOptions: { serviceTier: "priority" } } })
-  yield* s.llm.push(TestLLM.complete(
-    { reason: { normalized: "stop" }, usage: { nonCachedInputTokens: 250, outputTokens: 10 } },
-    LLMEvent.textStart({ id: "priced" }),
-    LLMEvent.textDelta({ id: "priced", text: "Priced result" }),
-    LLMEvent.textEnd({ id: "priced" }),
-  ))
+  yield* s.llm.push(
+    TestLLM.complete(
+      { reason: { normalized: "stop" }, usage: { nonCachedInputTokens: 250, outputTokens: 10 } },
+      LLMEvent.textStart({ id: "priced" }),
+      LLMEvent.textDelta({ id: "priced", text: "Priced result" }),
+      LLMEvent.textEnd({ id: "priced" }),
+    ),
+  )
   yield* s.runPrompt("Compute a result")
   const priced = (yield* s.context).findLast((message) => message.type === "assistant")
   expect(priced?.type).toBe("assistant")
@@ -8398,18 +8420,28 @@ scenario("records conditional catalog usage and unresolved request facts through
   expect(priced.cost).toBeCloseTo(0.00216)
   expect(priced.costAssessment).toEqual({ status: "estimated", catalogDigest: "runner-pricing-source" })
 
-  s.currentModel = LanguageModel.make({ id: s.currentModel.id, provider: s.currentModel.provider, route: OpenAIChat.route })
-  yield* s.llm.push(TestLLM.complete(
-    { reason: { normalized: "stop" }, usage: { nonCachedInputTokens: 250, outputTokens: 10 } },
-    LLMEvent.textStart({ id: "unpriced" }),
-    LLMEvent.textDelta({ id: "unpriced", text: "Result with an unresolved tier" }),
-    LLMEvent.textEnd({ id: "unpriced" }),
-  ))
+  s.currentModel = LanguageModel.make({
+    id: s.currentModel.id,
+    provider: s.currentModel.provider,
+    route: OpenAIChat.route,
+  })
+  yield* s.llm.push(
+    TestLLM.complete(
+      { reason: { normalized: "stop" }, usage: { nonCachedInputTokens: 250, outputTokens: 10 } },
+      LLMEvent.textStart({ id: "unpriced" }),
+      LLMEvent.textDelta({ id: "unpriced", text: "Result with an unresolved tier" }),
+      LLMEvent.textEnd({ id: "unpriced" }),
+    ),
+  )
   yield* s.runPrompt("Compute another result")
   const unpriced = (yield* s.context).findLast((message) => message.type === "assistant")
   expect(unpriced?.type).toBe("assistant")
   if (unpriced?.type !== "assistant") throw new Error("Expected assistant accounting")
   expect(unpriced.cost).toBe(Money.USD.zero)
-  expect(unpriced.costAssessment).toEqual({ status: "unknown", reason: "unresolved-multiplier", catalogDigest: "runner-pricing-source" })
+  expect(unpriced.costAssessment).toEqual({
+    status: "unknown",
+    reason: "unresolved-multiplier",
+    catalogDigest: "runner-pricing-source",
+  })
   expect((yield* s.session.get(sessionID)).cost).toBeCloseTo(0.00216)
 })

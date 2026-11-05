@@ -201,6 +201,7 @@ const Group = HttpApiGroup.make("mock")
     }),
   )
   .add(HttpApiEndpoint.get("location", "/api/location", { success: Json }))
+  .add(HttpApiEndpoint.get("locationBootstrap", "/api/location/bootstrap", { success: Json }))
   .add(HttpApiEndpoint.post("locationReload", "/api/location/reload", { success: NoContent }))
   .add(
     HttpApiEndpoint.get("permissionRequests", "/api/permission/request", {
@@ -294,6 +295,9 @@ const Group = HttpApiGroup.make("mock")
   .add(HttpApiEndpoint.get("lspStatus", "/api/lsp", { query: Query, success: Json }))
   .add(HttpApiEndpoint.post("sessionCreate", "/api/session", { payload: JsonPayload, success: Json }))
   .add(HttpApiEndpoint.get("sessionActive", "/api/session/active", { success: Json }))
+  .add(
+    HttpApiEndpoint.get("sessionMonitors", "/api/session/:sessionID/monitor", { params: SessionParams, success: Json }),
+  )
   .add(
     HttpApiEndpoint.get("sessionGet", "/api/session/:sessionID", {
       params: SessionParams,

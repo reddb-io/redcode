@@ -73,7 +73,9 @@ export function createSessionMonitors(props: { sessionID: () => string; onOpen: 
           setStore("list", reconcile(next, { key: "id" }))
           setStore({ error: undefined, now: Date.now() })
         },
-        (error: unknown) => setStore("error", errorMessage(error)),
+        (error: unknown) => {
+          if (sessionID === props.sessionID()) setStore("error", errorMessage(error))
+        },
       )
       .finally(() => {
         reading.active = false
@@ -83,7 +85,21 @@ export function createSessionMonitors(props: { sessionID: () => string; onOpen: 
       })
   }
 
-  createEffect(on(props.sessionID, refresh))
+  createEffect(
+    on(props.sessionID, () => {
+      // Never render the previous conversation's monitors while the next read is in flight.
+      setStore({ list: [], error: undefined })
+      refresh()
+    }),
+  )
+  createEffect(
+    on(
+      () => client.connection.status(),
+      (status, previous) => {
+        if (status === "connected" && previous && previous !== "connected") refresh()
+      },
+    ),
+  )
   createEffect(() => {
     if (!store.visible || !store.list.some((info) => info.status === "running")) return
     const timer = setInterval(() => {

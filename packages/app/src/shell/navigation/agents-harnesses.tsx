@@ -34,6 +34,7 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
     model: "",
     customModel: false,
     backgroundWait: false,
+    delegation: false,
     executable: { claude: "", codex: "" },
     busy: false,
     error: "",
@@ -497,6 +498,7 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                       directory: directory(),
                       ...(state.model.trim() ? { model: state.model.trim() } : {}),
                       ...(state.backgroundWait ? { backgroundWait: true } : {}),
+                      ...(state.delegation ? { delegation: true } : {}),
                     })
                     if (lifetime.active) inspect(run.id)
                   })
@@ -574,6 +576,16 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                         {language.t("harness.backgroundWait")}
                       </label>
                       <p class="mt-1 text-ink-muted">{language.t("harness.backgroundWaitNote")}</p>
+                      <label class="mt-3 flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={state.delegation}
+                          disabled={state.busy}
+                          onChange={(event) => setState("delegation", event.currentTarget.checked)}
+                        />
+                        {language.t("harness.delegation")}
+                      </label>
+                      <p class="mt-1 text-ink-muted">{language.t("harness.delegationNote")}</p>
                     </div>
                   </Show>
                   <label class="@md/harness-workspace:col-span-2">

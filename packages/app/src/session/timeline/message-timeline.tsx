@@ -1,5 +1,6 @@
-import { createEffect, createMemo, createSignal, on, onCleanup, Show, type Accessor, type JSX } from "solid-js"
+import { createEffect, createMemo, createSignal, For, on, onCleanup, Show, type Accessor, type JSX } from "solid-js"
 import { createStore } from "solid-js/store"
+import { useQuery, useQueryClient } from "@tanstack/solid-query"
 import { Predicate } from "effect"
 import { createAnimatedPresence } from "@/runtime/animated-presence"
 import type { SessionUserActions } from "@opencode/session-ui/actions"
@@ -17,7 +18,14 @@ import { useWorkspaceLocation } from "@/workspaces/location"
 import { Timeline } from "@opencode/session-ui/timeline/projection"
 import { createSessionTimelineRowRenderer } from "@opencode/session-ui/timeline/row"
 import { liveActivity } from "@opencode/session-ui/timeline/turn"
-import { LiveTurnStatus } from "@opencode/session-ui/timeline/turn-parts"
+import {
+  AgentWaitStatus,
+  BackgroundMonitorStatus,
+  LiveTurnStatus,
+  SessionPhaseWaitStatus,
+} from "@opencode/session-ui/timeline/turn-parts"
+import { agentWaits } from "@opencode/util/agent-waits"
+import { monitorLabel } from "@opencode/util/monitor-label"
 import { useForkFromMessage } from "../commands/fork-dialog"
 import { getReadyMarkdown, preloadMarkdown } from "@opencode/session-ui/markdown-cache"
 import { createTimelineController, type TimelineController, type TimelineSessionSource } from "./controller"
@@ -436,6 +444,45 @@ function MessageTimelineView(
       user?.type === "user" ? user.time.created : Date.now(),
     )
   })
+  const waits = createMemo(() => {
+    const active = projection.activeMessageID()
+    if (sessionStatus().type !== "busy" || !active) return []
+    return agentWaits(projection.assistantMessagesByParent().get(active) ?? [])
+  })
+  const phases = createMemo(() => (props.view.server.connected && sessionID() ? data.session.waits(sessionID()!) : []))
+  const permissions = createMemo(() => (sessionID() ? (data.session.permission.list(sessionID()!) ?? []) : []))
+  const queryClient = useQueryClient()
+  const monitors = useQuery(() => {
+    const owner = props.view.server
+    const id = sessionID() ?? ""
+    return {
+      queryKey: ["delivery-monitors", owner.id, id],
+      enabled: props.active !== false && owner.connected && !!id,
+      queryFn: ({ signal }) => owner.client.session.monitor.list({ sessionID: id }, { signal }),
+      retry: false,
+    }
+  })
+  createEffect(() => {
+    const events = sdk().event
+    const changed = (event: { data: { sessionID: string } }) => {
+      if (event.data.sessionID !== sessionID()) return
+      const queryKey = ["delivery-monitors", props.view.server.id, event.data.sessionID]
+      void queryClient
+        .cancelQueries({ queryKey, exact: true })
+        .then(() => queryClient.invalidateQueries({ queryKey, exact: true }))
+    }
+    const unsubscribe = [
+      events.on("monitor.started", changed),
+      events.on("monitor.finished", changed),
+      events.on("monitor.expired", changed),
+    ]
+    onCleanup(() => unsubscribe.forEach((dispose) => dispose()))
+  })
+  const observing = createMemo(() => {
+    if (props.active === false || !props.view.server.connected || monitors.isError) return []
+    const waiting = new Set(waits().flatMap((wait) => (wait.kind === "monitor" && wait.target ? [wait.target] : [])))
+    return (monitors.data ?? []).filter((monitor) => monitor.status === "running" && !waiting.has(monitor.id))
+  })
 
   const runningMenu = (title?: string) => (
     <SessionRunningMenu
@@ -452,7 +499,16 @@ function MessageTimelineView(
     <VirtualizedTimeline
       workspaceSession={workspaceSession}
       bottomSpacer={
-        <Show when={showWorking() || backgroundHintPresence.present()}>
+        <Show
+          when={
+            showWorking() ||
+            backgroundHintPresence.present() ||
+            waits().length > 0 ||
+            observing().length > 0 ||
+            phases().length > 0 ||
+            permissions().length > 0
+          }
+        >
           <div
             classList={{
               "min-w-0 w-full max-w-full": true,
@@ -480,6 +536,31 @@ function MessageTimelineView(
                 </div>
               </Show>
             </div>
+            <div class={`flex flex-col gap-1 ${turnPadding()}`}>
+              <For each={phases()}>
+                {(phase) => <SessionPhaseWaitStatus kind={phase.kind} target={phase.target} since={phase.started} />}
+              </For>
+              <For each={permissions()}>
+                {(permission) => (
+                  <SessionPhaseWaitStatus
+                    kind="permission"
+                    target={permission.action}
+                    since={permission.created}
+                    onReveal={
+                      permission.source?.type === "tool"
+                        ? () => virtualized.revealPart(permission.source!.id)
+                        : undefined
+                    }
+                  />
+                )}
+              </For>
+              <For each={waits()}>
+                {(wait) => <AgentWaitStatus wait={wait} onReveal={() => virtualized.revealPart(wait.partID)} />}
+              </For>
+              <For each={observing()}>
+                {(monitor) => <BackgroundMonitorStatus label={monitorLabel(monitor)} since={monitor.created} />}
+              </For>
+            </div>
           </div>
         </Show>
       }
@@ -493,11 +574,7 @@ function MessageTimelineView(
       overlay={
         <Show when={sessionID()} keyed>
           {(_id) => (
-            <SessionOutputsOverlay
-              messages={props.session.history.messages}
-              view={props.view}
-              header={showHeader()}
-            />
+            <SessionOutputsOverlay messages={props.session.history.messages} view={props.view} header={showHeader()} />
           )}
         </Show>
       }

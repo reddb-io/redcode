@@ -108,6 +108,17 @@ displayed in that saved zone. Each dispatch queues the prompt through the durabl
 and uses the conversation's current agent,
 model and permissions. It follows the conversation's current location when execution starts.
 
+An optional condition checks an HTTP endpoint or a process on the server before admitting the
+prompt, without calling a model. Choose whether the observation should match or not match, and
+whether to run on every matching check or only when it becomes true. The first transition check
+records a baseline and does not run the prompt; a later false-to-true transition admits it once.
+The condition also applies to **Run now**. HTTP conditions do not accept credentials or custom
+headers; an observation error pauses the schedule. The server persists the observation and its
+admission decision so recovery can reuse them. Creating a conditional automation requires a server
+that supports the dedicated conditional endpoint; older servers cannot silently discard the condition.
+In the TUI, `/automation` guides creation of a conditional automation and asks for review before
+submitting it. It supports intervals, one-time schedules and a weekly calendar.
+
 The server must run for schedules to fire. After suspension or restart, a missed interval produces
 one admission and schedules the next interval from that dispatch, without replaying a backlog.
 An overdue one-time schedule fires when the server returns. **Pause schedule** prevents future
@@ -124,7 +135,8 @@ interruption keeps its admission receipt even if recovery happens outside the gr
 
 Inspect **Recent admissions** to distinguish pending dispatch, admitted prompts, failed admission
 and suppressed admission. Admission confirms that the prompt reached the session inbox; it does
-not prove the agent completed its work. A failed or suppressed admission pauses the schedule.
+not prove the agent completed its work. A failed admission or one suppressed by the conversation's
+state pauses the schedule; an unmet condition is recorded as skipped without pausing it.
 Archived conversations, staged reverts and paused or blocked goals suppress new admission.
 Recovery records an existing admission without creating another prompt or waking a paused goal.
 
@@ -246,6 +258,33 @@ tool discovery. The model receives a compact catalog and can search connected MC
 Each tool call keeps its permission checks. Execution time, tool-call count and output size remain
 bounded. `experimental.code_mode` configures execution limits; the obsolete `enabled` field is
 ignored. S1 catalog ranking is a separate opt-in.
+
+Remote MCP connections can be shared between projects by setting `pool: true` on a server under
+`mcp.servers`, together with `oauth: false` and `protocol: "2026-07-28"`. Sharing currently applies
+only to matching remote configurations without URL userinfo; OAuth, legacy and local stdio servers
+retain private connections. The complete URL, including its query, and all configured headers are
+hashed into the connection identity, so different credentials cannot share a connection. A shared
+connection closes when its last project releases it.
+Input requests are routed to the calling session; requests without an unambiguous owner are cancelled.
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "shared-tools": {
+        "type": "remote",
+        "url": "https://example.com/mcp",
+        "oauth": false,
+        "protocol": "2026-07-28",
+        "pool": true
+      }
+    }
+  }
+}
+```
+
+The server name and complete connection settings must match between projects. The connection is
+shared; each project still keeps its own discovered tool catalog and permissions.
 
 ## Modes
 

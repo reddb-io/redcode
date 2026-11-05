@@ -1,0 +1,12 @@
+[
+  {"id":"review-codex","prompt":"Peça ao Codex para revisar esta alteração e me traga o resultado nesta conversa.","expected":[{"name":"delegate_task","target":"codex"}]},
+  {"id":"review-claude","prompt":"Delegue ao Claude uma revisão independente e continue trabalhando enquanto ele analisa.","expected":[{"name":"delegate_task","target":"claude"}]},
+  {"id":"review-redcode","prompt":"Use um subagente Redcode para investigar os testes, sem criar um chat separado.","expected":[{"name":"delegate_task","target":"redcode"}]},
+  {"id":"council","prompt":"Peça revisões independentes ao Codex e ao Claude para esta tarefa.","expected":[{"name":"delegate_task","target":"codex"},{"name":"delegate_task","target":"claude"}]},
+  {"id":"task-status","prompt":"Confira se a tarefa delegada task-123 já terminou.","expected":[{"name":"task_status"}]},
+  {"id":"task-cancel","prompt":"Cancele a tarefa delegada task-123.","expected":[{"name":"task_cancel"}]},
+  {"id":"new-chat","prompt":"Abra uma conversa nova para eu acompanhar diretamente a investigação.","expected":[{"name":"thread_create"}]},
+  {"id":"no-delegation","prompt":"Explique em uma frase o que é uma worktree.","expected":[]},
+  {"id":"question-not-delegation","prompt":"Estou pensando se vale a pena delegar uma revisão. Quais seriam os benefícios?","expected":[]},
+  {"id":"unavailable-provider","prompt":"O Claude não está configurado neste servidor. Não instale nem faça login automaticamente. Explique o que falta para delegar a ele.","expected":[]}
+]

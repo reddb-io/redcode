@@ -52,6 +52,261 @@ test("automation contracts reject invalid identifiers and sub-minute intervals",
     expect(Schema.decodeUnknownOption(Automation.Schedule)(value)._tag).toBe("None")
 })
 
+test("conditional runs check a monitor probe before admitting a prompt and keep the recorded decision", async () => {
+  await using tmp = await tmpdir()
+  let status = 503
+  const server = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => new Response("", { status }) })
+  try {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const sessions = yield* Session.Service
+        const automations = yield* AutomationRuntime.Service
+        const database = yield* Database.Service
+        const owner = yield* Effect.scoped(ExecutionOwner.make)
+        const session = yield* sessions.create({ location: { directory: AbsolutePath.make(tmp.path) } })
+        const task = yield* automations.create(session.id, {
+          id: Automation.ID.create(),
+          title: "Watch endpoint",
+          prompt: "Investigate",
+          schedule: { type: "interval", everyMs: 60_000 },
+          condition: { probe: { type: "http", url: server.url.href, expect_status: 200 }, when: "matches" },
+        })
+        const first = Automation.RunID.create()
+        const skipped = yield* automations.run(session.id, task.id, first)
+        expect(skipped.status).toBe("skipped")
+        expect(yield* sessions.inbox(session.id)).toHaveLength(0)
+        status = 200
+        expect((yield* automations.run(session.id, task.id, first)).status).toBe("skipped")
+        expect((yield* automations.run(session.id, task.id, Automation.RunID.create())).status).toBe("admitted")
+        expect(yield* sessions.inbox(session.id)).toHaveLength(1)
+
+        // Simulate a restart after an affirmative observation but before prompt admission.
+        status = 503
+        const id = Automation.RunID.create()
+        const now = Date.now()
+        yield* database.db
+          .insert(AutomationRunTable)
+          .values({
+            id,
+            automation_id: task.id,
+            owner,
+            trigger: "manual",
+            scheduled_at: now,
+            status: "pending",
+            condition_result: { matched: true, summary: "saved observation" },
+            error: null,
+            created_at: now,
+            updated_at: now,
+          })
+          .run()
+        expect((yield* automations.run(session.id, task.id, id)).status).toBe("admitted")
+        expect(yield* sessions.inbox(session.id)).toHaveLength(2)
+      }).pipe(Effect.provide(services()), Effect.scoped),
+    )
+  } finally {
+    server.stop(true)
+  }
+})
+
+test("recovers a persisted conditional verdict after the scheduler restarts", async () => {
+  await using tmp = await tmpdir()
+  const server = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => new Response("", { status: 503 }) })
+  const layer = () => services(`${tmp.path}/conditional.sqlite`)
+  try {
+    const saved = await Effect.runPromise(
+      Effect.gen(function* () {
+        const sessions = yield* Session.Service
+        const automations = yield* AutomationRuntime.Service
+        const database = yield* Database.Service
+        const owner = yield* Effect.scoped(ExecutionOwner.make)
+        const session = yield* sessions.create({ location: { directory: AbsolutePath.make(tmp.path) } })
+        const task = yield* automations.create(session.id, {
+          id: Automation.ID.create(),
+          title: "Restart check",
+          prompt: "Report",
+          schedule: { type: "interval", everyMs: 60_000 },
+          condition: { probe: { type: "http", url: server.url.href, expect_status: 200 }, when: "matches" },
+        })
+        const id = Automation.RunID.create()
+        const now = Date.now()
+        yield* database.db
+          .insert(AutomationRunTable)
+          .values({
+            id,
+            automation_id: task.id,
+            owner,
+            trigger: "manual",
+            scheduled_at: now,
+            status: "pending",
+            condition_result: { matched: true, summary: "previously matched" },
+            error: null,
+            created_at: now,
+            updated_at: now,
+          })
+          .run()
+        return { sessionID: session.id, taskID: task.id, runID: id }
+      }).pipe(Effect.provide(layer()), Effect.scoped),
+    )
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const automations = yield* AutomationRuntime.Service
+        const sessions = yield* Session.Service
+        yield* automations.tick()
+        const history = yield* automations.history(saved.sessionID, saved.taskID).pipe(
+          Effect.tap(() => Effect.yieldNow),
+          Effect.repeat({ until: (runs) => runs[0]?.status === "admitted", times: 1000 }),
+        )
+        expect(history[0].id).toBe(saved.runID)
+        expect(history[0].status).toBe("admitted")
+        expect(yield* sessions.inbox(saved.sessionID)).toHaveLength(1)
+      }).pipe(Effect.provide(layer()), Effect.scoped),
+    )
+  } finally {
+    server.stop(true)
+  }
+})
+
+test("invalid conditions are rejected and probe errors pause the schedule without admitting work", async () => {
+  await using tmp = await tmpdir()
+  const server = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => new Response("not json") })
+  try {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const sessions = yield* Session.Service
+        const automations = yield* AutomationRuntime.Service
+        const session = yield* sessions.create({ location: { directory: AbsolutePath.make(tmp.path) } })
+        const input = {
+          id: Automation.ID.create(),
+          title: "Check",
+          prompt: "Report",
+          schedule: { type: "interval" as const, everyMs: 60_000 },
+        }
+        const invalid = yield* automations
+          .create(session.id, {
+            ...input,
+            condition: { probe: { type: "http", url: "https://user:password@example.com" }, when: "matches" },
+          })
+          .pipe(Effect.result)
+        expect(invalid._tag).toBe("Failure")
+        const task = yield* automations.create(session.id, {
+          ...input,
+          condition: {
+            probe: { type: "http", url: server.url.href, json_path: "$.status", equals: "ready" },
+            when: "matches",
+          },
+        })
+        const run = yield* automations.run(session.id, task.id, Automation.RunID.create())
+        expect(run.status).toBe("failed")
+        expect(run.error).toContain("body is not JSON")
+        expect((yield* automations.list(session.id))[0].enabled).toBe(false)
+        expect(yield* sessions.inbox(session.id)).toHaveLength(0)
+      }).pipe(Effect.provide(services()), Effect.scoped),
+    )
+  } finally {
+    server.stop(true)
+  }
+})
+
+test("scheduled process conditions skip without pausing or admitting a prompt", async () => {
+  await using tmp = await tmpdir()
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const sessions = yield* Session.Service
+      const automations = yield* AutomationRuntime.Service
+      const session = yield* sessions.create({ location: { directory: AbsolutePath.make(tmp.path) } })
+      const task = yield* automations.create(session.id, {
+        id: Automation.ID.create(),
+        title: "Observe process",
+        prompt: "Report",
+        schedule: { type: "interval", everyMs: 60_000 },
+        condition: { probe: { type: "process", pid: process.pid, state: "running" }, when: "not_matches" },
+      })
+      setSystemTime(new Date(task.nextAt!))
+      yield* automations.tick()
+      const runs = yield* automations.history(session.id, task.id).pipe(
+        Effect.tap(() => Effect.yieldNow),
+        Effect.repeat({ until: (rows) => rows[0]?.status === "skipped", times: 1000 }),
+      )
+      expect(runs[0].status).toBe("skipped")
+      expect((yield* automations.list(session.id))[0].enabled).toBe(true)
+      expect(yield* sessions.inbox(session.id)).toHaveLength(0)
+    }).pipe(Effect.provide(services()), Effect.scoped),
+  )
+})
+
+test("transition conditions wake once when an observed condition becomes true", async () => {
+  await using tmp = await tmpdir()
+  let status = 503
+  const server = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => new Response("", { status }) })
+  try {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const sessions = yield* Session.Service
+        const automations = yield* AutomationRuntime.Service
+        const session = yield* sessions.create({ location: { directory: AbsolutePath.make(tmp.path) } })
+        const task = yield* automations.create(session.id, {
+          id: Automation.ID.create(),
+          title: "Transitions",
+          prompt: "Report",
+          schedule: { type: "interval", everyMs: 60_000 },
+          condition: { probe: { type: "http", url: server.url.href }, when: "matches", mode: "on_change" },
+        })
+        const run = () => automations.run(session.id, task.id, Automation.RunID.create())
+        expect((yield* run()).status).toBe("skipped")
+        status = 200
+        const concurrent = yield* Effect.all([run(), run()], { concurrency: "unbounded" })
+        expect(concurrent.map((item) => item.status).sort()).toEqual(["admitted", "skipped"])
+        expect((yield* run()).status).toBe("skipped")
+        status = 503
+        expect((yield* run()).status).toBe("skipped")
+        status = 200
+        expect((yield* run()).status).toBe("admitted")
+        expect(yield* sessions.inbox(session.id)).toHaveLength(2)
+      }).pipe(Effect.provide(services()), Effect.scoped),
+    )
+  } finally {
+    server.stop(true)
+  }
+})
+
+test("transition baselines survive a scheduler restart", async () => {
+  await using tmp = await tmpdir()
+  let status = 503
+  const server = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => new Response("", { status }) })
+  const layer = () => services(`${tmp.path}/transitions.sqlite`)
+  try {
+    const saved = await Effect.runPromise(
+      Effect.gen(function* () {
+        const sessions = yield* Session.Service
+        const automations = yield* AutomationRuntime.Service
+        const session = yield* sessions.create({ location: { directory: AbsolutePath.make(tmp.path) } })
+        const task = yield* automations.create(session.id, {
+          id: Automation.ID.create(),
+          title: "Transition restart",
+          prompt: "Report",
+          schedule: { type: "interval", everyMs: 60_000 },
+          condition: { probe: { type: "http", url: server.url.href }, when: "matches", mode: "on_change" },
+        })
+        expect((yield* automations.run(session.id, task.id, Automation.RunID.create())).status).toBe("skipped")
+        return { sessionID: session.id, taskID: task.id }
+      }).pipe(Effect.provide(layer()), Effect.scoped),
+    )
+    status = 200
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const automations = yield* AutomationRuntime.Service
+        const sessions = yield* Session.Service
+        expect((yield* automations.run(saved.sessionID, saved.taskID, Automation.RunID.create())).status).toBe(
+          "admitted",
+        )
+        expect(yield* sessions.inbox(saved.sessionID)).toHaveLength(1)
+      }).pipe(Effect.provide(layer()), Effect.scoped),
+    )
+  } finally {
+    server.stop(true)
+  }
+})
+
 test("calendar occurrences preserve local weekdays and DST gap and fold policy independently of the host zone", () => {
   for (const row of [
     {

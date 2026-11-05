@@ -35,6 +35,7 @@ import { Skill } from "./skill.js"
 import { SessionCompactionEvent } from "./session-compaction-event.js"
 import { SessionEvent } from "./session-event.js"
 import { SessionStatusEvent } from "./session-status-event.js"
+import { SessionWait } from "./session-wait.js"
 import { TuiEvent } from "./tui-event.js"
 import { VcsEvent } from "./vcs-event.js"
 import { WorkspaceEvent } from "./workspace-event.js"
@@ -60,6 +61,7 @@ const featureDefinitions = Event.inventory(
   ...FileSystem.Event.Definitions,
   ...Reference.Event.Definitions,
   ...Permission.Event.Definitions,
+  SessionWait.Changed,
   ...Plugin.Event.Definitions,
   ...Project.Event.Definitions,
   ...Worktree.Event.Definitions,

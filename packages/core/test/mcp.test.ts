@@ -27,8 +27,11 @@ import { Integration } from "@opencode/core/integration"
 import { Environment } from "@opencode/core/environment/index"
 import { EnvironmentUnavailable } from "@opencode/core/environment/unavailable"
 import { Location } from "@opencode/core/location"
+import { LocationServiceMap } from "@opencode/core/location-service-map"
+import { Plugin } from "@opencode/core/plugin"
 import { Mcp } from "@opencode/core/mcp/index"
 import { McpClient } from "@opencode/core/mcp/client"
+import { McpPool } from "@opencode/core/mcp/pool"
 import { McpStdio } from "@opencode/core/mcp/stdio"
 import { Permission } from "@opencode/core/permission"
 import { AbsolutePath } from "@opencode/core/schema"
@@ -65,6 +68,7 @@ import { Image } from "@opencode/core/image"
 import { advance, drain } from "./lib/clock"
 import { testEffect } from "./lib/effect"
 import { imagePassthrough } from "./lib/image"
+import { offlineModels } from "./fixture/models"
 import { location, tempLocationLayer } from "./fixture/location"
 import { tmpdirScoped } from "./fixture/tmpdir"
 import { hostEnvironmentLayer, recordingEnvironmentLayer } from "./fixture/environment"
@@ -102,6 +106,8 @@ function resourceServer(
     listChanged?: boolean
     emptyElicitation?: boolean
     formElicitation?: boolean
+    beforeFormRequest?: () => Promise<void>
+    beforeFormResult?: () => Promise<void>
     urlElicitation?: boolean
     respond?: (request: Request) => Response | undefined | Promise<Response | undefined>
   } = {},
@@ -207,14 +213,17 @@ function resourceServer(
               },
             }
             const responses = ctx.mcpReq.inputResponses
-            if (input.modern && !responses)
+            if (input.modern && !responses) {
+              await input.beforeFormRequest?.()
               return inputRequired({ inputRequests: { confirm: inputRequired.elicit(params) } })
+            }
             const response = inputResponse(responses, "confirm")
             const result = input.modern
               ? response.kind === "elicit"
                 ? { action: response.action, content: response.content }
                 : { action: "cancel" }
               : await protocol.elicitInput(params, { relatedRequestId: ctx.mcpReq.id, signal: ctx.mcpReq.signal })
+            await input.beforeFormResult?.()
             return { content: [{ type: "text", text: JSON.stringify(result) }], structuredContent: result }
           })
         }
@@ -312,9 +321,11 @@ function resourceMcpLayer(
     subscribe?: Bus.Interface["subscribe"]
     environment?: Layer.Layer<Environment.Service>
     published?: string[]
+    directory?: string
+    pool?: Layer.Layer<McpPool.Service>
   },
 ) {
-  const directory = AbsolutePath.make(import.meta.dir)
+  const directory = AbsolutePath.make(overrides?.directory ?? import.meta.dir)
   const unusedIntegration = () => Effect.die("unused integration service")
   return Layer.effectDiscard(
     Effect.gen(function* () {
@@ -329,6 +340,7 @@ function resourceMcpLayer(
     }),
   ).pipe(
     Layer.provideMerge(Mcp.layer(options)),
+    Layer.provideMerge(overrides?.pool ?? McpPool.layer),
     Layer.provideMerge(Form.layer),
     Layer.provide(
       Layer.mergeAll(
@@ -540,7 +552,11 @@ const permissions = Layer.mock(Permission.Service, {
       yield* decision
     }),
 })
-const events = Layer.mock(Bus.Service, { subscribe: () => Stream.never })
+const events = Layer.mock(Bus.Service, {
+  subscribe: () => Stream.never,
+  publish: (definition, data) =>
+    Effect.succeed({ id: ID.create(), type: definition.type, data } as Payload<typeof definition>),
+})
 const it = testEffect(
   AppNodeBuilder.build(LayerNode.group([Tool.node, McpTool.node]), [
     Location.node.replace(tempLocationLayer),
@@ -566,6 +582,564 @@ test("MCP tool names match V1 sanitization", () => {
   expect(McpTool.namespace("context 7")).toBe("context_7")
   expect(McpTool.name("context 7", "resolve.library/id")).toBe("context_7_resolve_library_id")
 })
+
+test("MCP pooling requires an explicit non-OAuth modern configuration", () => {
+  const base = {
+    type: "remote" as const,
+    url: "https://mcp.example",
+    pool: true,
+    oauth: false as const,
+    protocol: "2026-07-28" as const,
+  }
+  expect(McpPool.eligible(new ConfigMCP.Remote(base))).toBe(true)
+  expect(McpPool.eligible(new ConfigMCP.Remote({ ...base, headers: { authorization: "secret" } }))).toBe(true)
+  expect(McpPool.eligible(new ConfigMCP.Remote({ ...base, oauth: {} }))).toBe(false)
+  expect(McpPool.eligible(new ConfigMCP.Remote({ ...base, protocol: "legacy" }))).toBe(false)
+  expect(McpPool.eligible(new ConfigMCP.Remote({ ...base, url: "https://user:pass@mcp.example" }))).toBe(false)
+  expect(McpPool.eligible(new ConfigMCP.Remote({ ...base, pool: false }))).toBe(false)
+})
+
+testEffect(Layer.empty).live(
+  "projects using the same MCP authorization header share a connection until the last holder releases it",
+  () =>
+    Effect.gen(function* () {
+      const server = yield* resourceServer({ modern: true })
+      const pool = Context.get(yield* Layer.build(McpPool.layer), McpPool.Service)
+      const shared = Layer.succeed(McpPool.Service, pool)
+      const ready = yield* Deferred.make<void>()
+      const releaseFirst = yield* Deferred.make<void>()
+      const releaseSecond = yield* Deferred.make<void>()
+      let joined = 0
+      const read = (directory: string, release: Deferred.Deferred<void>, call: boolean) =>
+        Effect.gen(function* () {
+          const mcp = yield* Mcp.Service
+          expect((yield* mcp.tools({ waitForStartup: true })).map((tool) => tool.name)).toContain("echo")
+          if (++joined === 2) yield* Deferred.succeed(ready, undefined)
+          yield* Deferred.await(release)
+          if (call) expect((yield* mcp.callTool({ server: "resources", name: "echo" })).isError).toBe(false)
+        }).pipe(
+          Effect.provide(
+            resourceMcpLayer(
+              new ConfigMCP.Remote({
+                type: "remote",
+                url: server.url,
+                oauth: false,
+                protocol: "2026-07-28",
+                pool: true,
+                headers: { authorization: "Bearer same-account" },
+              }),
+              undefined,
+              undefined,
+              { directory, pool: shared },
+            ),
+          ),
+          Effect.scoped,
+        )
+      const first = yield* read(import.meta.dir, releaseFirst, false).pipe(Effect.forkChild({ startImmediately: true }))
+      const second = yield* read(path.dirname(import.meta.dir), releaseSecond, true).pipe(
+        Effect.forkChild({ startImmediately: true }),
+      )
+      yield* Deferred.await(ready).pipe(Effect.timeout("10 seconds"))
+      expect(pool.stats()).toEqual({ connections: 1, holders: 2 })
+      yield* Deferred.succeed(releaseFirst, undefined)
+      yield* Fiber.join(first)
+      expect(pool.stats()).toEqual({ connections: 1, holders: 1 })
+      yield* Deferred.succeed(releaseSecond, undefined)
+      yield* Fiber.join(second)
+      expect(pool.stats()).toEqual({ connections: 0, holders: 0 })
+    }),
+  20_000,
+)
+
+testEffect(Layer.empty).live(
+  "the server's real Location graph shares the same MCP pool across projects",
+  () =>
+    Effect.gen(function* () {
+      const server = yield* resourceServer({ modern: true })
+      const tmp = yield* tmpdirScoped()
+      const directories = [path.join(tmp.path, "first"), path.join(tmp.path, "second")]
+      yield* Effect.promise(() => Promise.all(directories.map((dir) => fs.mkdir(dir))))
+      const config = Config.testLayer([
+        new Document({
+          type: "document",
+          info: new Info({
+            mcp: new ConfigMCP.Info({
+              servers: {
+                resources: new ConfigMCP.Remote({
+                  type: "remote",
+                  url: server.url,
+                  oauth: false,
+                  protocol: "2026-07-28",
+                  pool: true,
+                }),
+              },
+            }),
+          }),
+        }),
+      ])
+      yield* Effect.gen(function* () {
+        const locations = yield* LocationServiceMap.Service
+        const pool = yield* McpPool.Service
+        const ready = yield* Deferred.make<void>()
+        const release = yield* Deferred.make<void>()
+        let joined = 0
+        const read = (directory: string) =>
+          Effect.gen(function* () {
+            yield* (yield* Plugin.Service).awaitActivation
+            const mcp = yield* Mcp.Service
+            expect((yield* mcp.tools({ waitForStartup: true })).map((tool) => tool.name)).toContain("echo")
+            if (++joined === 2) yield* Deferred.succeed(ready, undefined)
+            yield* Deferred.await(release)
+          }).pipe(
+            Effect.provide(locations.get(Location.Ref.make({ directory: AbsolutePath.make(directory) }))),
+            Effect.scoped,
+          )
+        const both = yield* Effect.all(directories.map(read), { concurrency: "unbounded", discard: true }).pipe(
+          Effect.forkChild({ startImmediately: true }),
+        )
+        yield* Deferred.await(ready).pipe(
+          Effect.raceFirst(Fiber.join(both).pipe(Effect.andThen(Effect.die("Locations finished before joining")))),
+          Effect.timeout("15 seconds"),
+        )
+        expect(pool.stats()).toEqual({ connections: 1, holders: 2 })
+        yield* Deferred.succeed(release, undefined)
+        yield* Fiber.join(both)
+      }).pipe(
+        Effect.provide(
+          AppNodeBuilder.build(LayerNode.group([LocationServiceMap.node, McpPool.node]), [
+            Config.node.replace(config),
+            offlineModels,
+          ]),
+        ),
+      )
+    }),
+  30_000,
+)
+
+testEffect(Layer.empty).live(
+  "pooled MCP elicitations remain in the project and session that made each call",
+  () =>
+    Effect.gen(function* () {
+      const server = yield* resourceServer({ modern: true, resources: false, formElicitation: true })
+      const pool = Context.get(yield* Layer.build(McpPool.layer), McpPool.Service)
+      const shared = Layer.succeed(McpPool.Service, pool)
+      const gate = yield* Deferred.make<void>()
+      let joined = 0
+      const run = (directory: string, id: string, answer: boolean) =>
+        Effect.gen(function* () {
+          const created = yield* Deferred.make<Form.Info>()
+          return yield* Effect.gen(function* () {
+            const mcp = yield* Mcp.Service
+            const forms = yield* Form.Service
+            yield* mcp.tools({ waitForStartup: true })
+            if (++joined === 2) yield* Deferred.succeed(gate, undefined)
+            yield* Deferred.await(gate)
+            const sessionID = Session.ID.make(id)
+            const call = yield* mcp
+              .callTool({ server: "resources", name: "form-elicitation", sessionID, args: { label: id } })
+              .pipe(Effect.forkChild({ startImmediately: true }))
+            const form = yield* Deferred.await(created).pipe(Effect.timeout("5 seconds"))
+            expect(form.sessionID).toBe(sessionID)
+            yield* forms.reply({ id: form.id, answer: { confirmed: answer } })
+            const result = yield* Fiber.join(call)
+            expect(result.structured).toEqual({ action: "accept", content: { confirmed: answer } })
+          }).pipe(
+            Effect.provide(
+              resourceMcpLayer(
+                new ConfigMCP.Remote({
+                  type: "remote",
+                  url: server.url,
+                  oauth: false,
+                  protocol: "2026-07-28",
+                  pool: true,
+                }),
+                (form) => Deferred.succeed(created, form).pipe(Effect.asVoid),
+                undefined,
+                { directory, pool: shared },
+              ),
+            ),
+          )
+        }).pipe(Effect.scoped)
+      yield* Effect.all(
+        [run(import.meta.dir, "ses_pool_first", true), run(path.dirname(import.meta.dir), "ses_pool_second", false)],
+        { concurrency: "unbounded", discard: true },
+      )
+      expect(pool.stats()).toEqual({ connections: 0, holders: 0 })
+    }),
+  20_000,
+)
+
+testEffect(Layer.empty).live(
+  "pooled MCP input with the same session in concurrent projects is cancelled rather than misrouted",
+  () =>
+    Effect.gen(function* () {
+      let started = 0
+      let release!: () => void
+      const gate = new Promise<void>((resolve) => (release = resolve))
+      let finishing = 0
+      let releaseResults!: () => void
+      const resultGate = new Promise<void>((resolve) => (releaseResults = resolve))
+      const server = yield* resourceServer({
+        modern: true,
+        resources: false,
+        formElicitation: true,
+        beforeFormRequest: async () => {
+          if (++started === 2) release()
+          await gate
+        },
+        beforeFormResult: async () => {
+          if (++finishing === 2) releaseResults()
+          await resultGate
+        },
+      })
+      const pool = Context.get(yield* Layer.build(McpPool.layer), McpPool.Service)
+      const shared = Layer.succeed(McpPool.Service, pool)
+      const ready = yield* Deferred.make<void>()
+      let joined = 0
+      const run = (directory: string) =>
+        Effect.gen(function* () {
+          const mcp = yield* Mcp.Service
+          const forms = yield* Form.Service
+          yield* mcp.tools({ waitForStartup: true })
+          if (++joined === 2) yield* Deferred.succeed(ready, undefined)
+          yield* Deferred.await(ready)
+          const result = yield* mcp.callTool({
+            server: "resources",
+            name: "form-elicitation",
+            sessionID: Session.ID.make("ses_pool_collision"),
+          })
+          expect(result.structured).toEqual({ action: "cancel", content: undefined })
+          expect(yield* forms.list()).toEqual([])
+        }).pipe(
+          Effect.provide(
+            resourceMcpLayer(
+              new ConfigMCP.Remote({
+                type: "remote",
+                url: server.url,
+                oauth: false,
+                protocol: "2026-07-28",
+                pool: true,
+              }),
+              undefined,
+              undefined,
+              { directory, pool: shared },
+            ),
+          ),
+          Effect.scoped,
+        )
+      yield* Effect.all([run(import.meta.dir), run(path.dirname(import.meta.dir))], {
+        concurrency: "unbounded",
+        discard: true,
+      })
+      expect(pool.stats()).toEqual({ connections: 0, holders: 0 })
+    }),
+  20_000,
+)
+
+testEffect(Layer.empty).live(
+  "different MCP authorization headers keep separate connections and credentials",
+  () =>
+    Effect.gen(function* () {
+      const seen = new Set<string>()
+      const server = yield* resourceServer({
+        modern: true,
+        respond: (request) => {
+          const token = request.headers.get("authorization")
+          if (token) seen.add(token)
+          return undefined
+        },
+      })
+      const pool = Context.get(yield* Layer.build(McpPool.layer), McpPool.Service)
+      const shared = Layer.succeed(McpPool.Service, pool)
+      const ready = yield* Deferred.make<void>()
+      const release = yield* Deferred.make<void>()
+      let joined = 0
+      const read = (directory: string, token: string) =>
+        Effect.gen(function* () {
+          const mcp = yield* Mcp.Service
+          expect((yield* mcp.tools({ waitForStartup: true })).map((tool) => tool.name)).toContain("echo")
+          if (++joined === 2) yield* Deferred.succeed(ready, undefined)
+          yield* Deferred.await(release)
+        }).pipe(
+          Effect.provide(
+            resourceMcpLayer(
+              new ConfigMCP.Remote({
+                type: "remote",
+                url: server.url,
+                oauth: false,
+                protocol: "2026-07-28",
+                pool: true,
+                headers: { authorization: token },
+              }),
+              undefined,
+              undefined,
+              { directory, pool: shared },
+            ),
+          ),
+          Effect.scoped,
+        )
+      const both = yield* Effect.all(
+        [read(import.meta.dir, "Bearer first"), read(path.dirname(import.meta.dir), "Bearer second")],
+        {
+          concurrency: "unbounded",
+          discard: true,
+        },
+      ).pipe(Effect.forkChild({ startImmediately: true }))
+      yield* Deferred.await(ready).pipe(Effect.timeout("10 seconds"))
+      expect(seen).toEqual(new Set(["Bearer first", "Bearer second"]))
+      expect(pool.stats()).toEqual({ connections: 2, holders: 2 })
+      yield* Deferred.succeed(release, undefined)
+      yield* Fiber.join(both)
+      expect(pool.stats()).toEqual({ connections: 0, holders: 0 })
+    }),
+  20_000,
+)
+
+testEffect(Layer.empty).live(
+  "different MCP URL credentials never share pooled connections",
+  () =>
+    Effect.gen(function* () {
+      const server = yield* resourceServer({ modern: true })
+      const pool = Context.get(yield* Layer.build(McpPool.layer), McpPool.Service)
+      const shared = Layer.succeed(McpPool.Service, pool)
+      const ready = yield* Deferred.make<void>()
+      const release = yield* Deferred.make<void>()
+      let joined = 0
+      const read = (directory: string, token: string) =>
+        Effect.gen(function* () {
+          const mcp = yield* Mcp.Service
+          expect((yield* mcp.tools({ waitForStartup: true })).map((tool) => tool.name)).toContain("echo")
+          if (++joined === 2) yield* Deferred.succeed(ready, undefined)
+          yield* Deferred.await(release)
+        }).pipe(
+          Effect.provide(
+            resourceMcpLayer(
+              new ConfigMCP.Remote({
+                type: "remote",
+                url: `${server.url}?token=${token}`,
+                oauth: false,
+                protocol: "2026-07-28",
+                pool: true,
+              }),
+              undefined,
+              undefined,
+              { directory, pool: shared },
+            ),
+          ),
+          Effect.scoped,
+        )
+      const both = yield* Effect.all([read(import.meta.dir, "first"), read(path.dirname(import.meta.dir), "second")], {
+        concurrency: "unbounded",
+        discard: true,
+      }).pipe(Effect.forkChild({ startImmediately: true }))
+      yield* Deferred.await(ready).pipe(Effect.timeout("10 seconds"))
+      expect(pool.stats()).toEqual({ connections: 2, holders: 2 })
+      yield* Deferred.succeed(release, undefined)
+      yield* Fiber.join(both)
+      expect(pool.stats()).toEqual({ connections: 0, holders: 0 })
+    }),
+  20_000,
+)
+
+testEffect(Layer.empty).live(
+  "pooled MCP input without an attributable session is cancelled",
+  () =>
+    Effect.gen(function* () {
+      const server = yield* resourceServer({ modern: true, resources: false, formElicitation: true })
+      yield* Effect.gen(function* () {
+        const mcp = yield* Mcp.Service
+        const forms = yield* Form.Service
+        yield* mcp.tools({ waitForStartup: true })
+        const result = yield* mcp.callTool({
+          server: "resources",
+          name: "form-elicitation",
+          args: { label: "anonymous" },
+        })
+        expect(result.structured).toEqual({ action: "cancel", content: undefined })
+        expect(yield* forms.list()).toEqual([])
+      }).pipe(
+        Effect.provide(
+          resourceMcpLayer(
+            new ConfigMCP.Remote({ type: "remote", url: server.url, oauth: false, protocol: "2026-07-28", pool: true }),
+          ),
+        ),
+      )
+    }),
+  20_000,
+)
+
+testEffect(Layer.empty).live(
+  "waits for initial MCP discovery before taking the first tool snapshot",
+  () =>
+    Effect.gen(function* () {
+      let release!: () => void
+      const gate = new Promise<void>((resolve) => (release = resolve))
+      let ready = false
+      const slow = Layer.mock(Mcp.Service, {
+        servers: () =>
+          Effect.succeed([{ name: "resources", status: ready ? { status: "connected" } : { status: "pending" } }]),
+        tools: (options) =>
+          Effect.gen(function* () {
+            if (options?.waitForStartup) yield* Effect.promise(() => gate)
+            return ready
+              ? [{ server: Mcp.ServerName.make("resources"), name: "echo", inputSchema: { type: "object" } }]
+              : []
+          }),
+      })
+      yield* Effect.gen(function* () {
+        const mcp = yield* Mcp.Service
+        const registration = yield* McpTool.Service
+        const registry = yield* Tool.Service
+        expect(yield* registration.starting).toEqual(["resources"])
+        expect(yield* mcp.tools()).toEqual([])
+        const flush = yield* registration.flush.pipe(Effect.forkChild)
+        yield* Effect.sleep("100 millis")
+        expect(flush.pollUnsafe()).toBeUndefined()
+        ready = true
+        release()
+        yield* Fiber.join(flush)
+        expect(yield* registration.starting).toEqual([])
+        const snapshot = yield* registry.snapshot(undefined, { codeMode: false })
+        expect(snapshot.definitions.map((item) => item.name)).toContain("resources_echo")
+      }).pipe(
+        Effect.ensuring(Effect.sync(() => release())),
+        Effect.provide(
+          McpTool.layer.pipe(
+            Layer.provideMerge(
+              AppNodeBuilder.build(Tool.node, [
+                Image.node.replace(imagePassthrough),
+                Location.node.replace(tempLocationLayer),
+                Config.node.replace(Config.testLayer([])),
+              ]),
+            ),
+            Layer.provideMerge(slow),
+            Layer.provideMerge(
+              Layer.mergeAll(
+                Layer.mock(Permission.Service, { assert: () => Effect.void }),
+                Layer.mock(Bus.Service, { subscribe: () => Stream.never }),
+              ),
+            ),
+          ),
+        ),
+      )
+    }),
+  20_000,
+)
+
+testEffect(Layer.empty).live(
+  "waits for a real slow MCP handshake without blocking ordinary catalog reads",
+  () =>
+    Effect.gen(function* () {
+      let release!: () => void
+      let notify!: () => void
+      const gate = new Promise<void>((resolve) => (release = resolve))
+      const started = new Promise<void>((resolve) => (notify = resolve))
+      const server = yield* resourceServer({
+        respond: async (request) => {
+          if (request.method !== "POST") return undefined
+          const body = (await request.clone().json()) as { method?: string }
+          if (body.method !== "initialize") return undefined
+          notify()
+          await gate
+          return undefined
+        },
+      })
+      yield* Effect.gen(function* () {
+        const mcp = yield* Mcp.Service
+        yield* Effect.promise(() => started)
+        expect(yield* mcp.tools()).toEqual([])
+        const waiting = yield* mcp.tools({ waitForStartup: true }).pipe(Effect.forkChild({ startImmediately: true }))
+        yield* Effect.sleep("2100 millis")
+        expect(waiting.pollUnsafe()).toBeUndefined()
+        release()
+        expect((yield* Fiber.join(waiting)).map((tool) => tool.name)).toContain("echo")
+      }).pipe(
+        Effect.ensuring(Effect.sync(() => release())),
+        Effect.provide(
+          resourceMcpLayer(
+            new ConfigMCP.Remote({
+              type: "remote",
+              url: server.url,
+              oauth: false,
+              timeout: new ConfigMCP.Timeout({ startup: 5_000 }),
+            }),
+          ),
+        ),
+      )
+    }),
+  20_000,
+)
+
+testEffect(Layer.empty).live(
+  "does not keep waiting for an MCP after its startup budget",
+  () =>
+    Effect.gen(function* () {
+      let release!: () => void
+      let notify!: () => void
+      const gate = new Promise<void>((resolve) => (release = resolve))
+      const started = new Promise<void>((resolve) => (notify = resolve))
+      const server = yield* resourceServer({
+        respond: async (request) => {
+          if (request.method !== "POST") return undefined
+          const body = (await request.clone().json()) as { method?: string }
+          if (body.method !== "initialize") return undefined
+          notify()
+          await gate
+          return undefined
+        },
+      })
+      yield* Effect.gen(function* () {
+        const mcp = yield* Mcp.Service
+        yield* Effect.promise(() => started)
+        const before = Date.now()
+        expect(yield* mcp.tools({ waitForStartup: true })).toEqual([])
+        expect(Date.now() - before).toBeLessThan(1500)
+      }).pipe(
+        Effect.ensuring(Effect.sync(() => release())),
+        Effect.provide(
+          resourceMcpLayer(
+            new ConfigMCP.Remote({
+              type: "remote",
+              url: server.url,
+              oauth: false,
+              timeout: new ConfigMCP.Timeout({ startup: 250 }),
+            }),
+          ),
+        ),
+      )
+    }),
+  20_000,
+)
+
+testEffect(Layer.empty).live(
+  "separate locations currently discover the same MCP catalog independently",
+  () =>
+    Effect.gen(function* () {
+      const server = yield* resourceServer({ modern: true })
+      const read = (directory: string) =>
+        Effect.gen(function* () {
+          const mcp = yield* Mcp.Service
+          const tools = yield* mcp.tools({ waitForStartup: true })
+          expect(tools.map((tool) => tool.name)).toContain("echo")
+        }).pipe(
+          Effect.provide(
+            resourceMcpLayer(
+              new ConfigMCP.Remote({ type: "remote", url: server.url, oauth: false, protocol: "2026-07-28" }),
+              undefined,
+              undefined,
+              { directory },
+            ),
+          ),
+          Effect.scoped,
+        )
+      yield* Effect.all([read(import.meta.dir), read(path.dirname(import.meta.dir))], {
+        concurrency: "unbounded",
+        discard: true,
+      })
+      expect(server.state.toolLists).toBe(2)
+    }),
+  20_000,
+)
 
 testEffect(Layer.empty).live("Design calls a connected MCP through direct tools and Code Mode", () =>
   Effect.gen(function* () {
@@ -637,7 +1211,11 @@ testEffect(Layer.empty).live("Design calls a connected MCP through direct tools 
           Layer.provideMerge(
             Layer.mergeAll(
               Layer.mock(Permission.Service, { assert: () => Effect.void }),
-              Layer.mock(Bus.Service, { subscribe: () => Stream.never }),
+              Layer.mock(Bus.Service, {
+                subscribe: () => Stream.never,
+                publish: (definition, data) =>
+                  Effect.succeed({ id: ID.create(), type: definition.type, data } as Payload<typeof definition>),
+              }),
             ),
           ),
         ),
@@ -2718,7 +3296,7 @@ shutdownIt.effect("discards in-flight and queued MCP notifications after its lay
     yield* Effect.addFinalizer(() =>
       Deferred.succeed(release, undefined).pipe(Effect.andThen(State.shutdown(Scope.close(root, Exit.void)))),
     )
-    const context = yield* Layer.buildWithScope(Mcp.layer(), root)
+    const context = yield* Layer.buildWithScope(Mcp.layer().pipe(Layer.provide(McpPool.layer)), root)
     const service = Context.get(context, Mcp.Service)
     const observed: string[] = []
     let block = false
@@ -2780,7 +3358,10 @@ describe.each(["connect", "disconnect"] as const)("%s during initial MCP startup
       yield* Effect.addFinalizer(() =>
         Deferred.succeed(release, undefined).pipe(Effect.andThen(State.shutdown(Scope.close(root, Exit.void)))),
       )
-      const service = Context.get(yield* Layer.buildWithScope(Mcp.layer(), root), Mcp.Service)
+      const service = Context.get(
+        yield* Layer.buildWithScope(Mcp.layer().pipe(Layer.provide(McpPool.layer)), root),
+        Mcp.Service,
+      )
       // Hold reconciliation after entries exist and before their asynchronous startup is scheduled.
       yield* Effect.acquireRelease(
         bus.listen((event) =>
@@ -2817,7 +3398,10 @@ shutdownIt.live("closes independent stdio servers together before escalating ter
     const temporary = yield* tmpdirScoped()
     const root = yield* Scope.make()
     yield* Effect.addFinalizer(() => State.shutdown(Scope.close(root, Exit.void)))
-    const service = Context.get(yield* Layer.buildWithScope(Mcp.layer(), root), Mcp.Service)
+    const service = Context.get(
+      yield* Layer.buildWithScope(Mcp.layer().pipe(Layer.provide(McpPool.layer)), root),
+      Mcp.Service,
+    )
     yield* service
       .transform((editor) => {
         for (const [name, peer] of [

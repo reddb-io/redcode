@@ -6,13 +6,15 @@ import type { Attention } from "@opencode/schema/attention"
 import type { Session } from "@opencode/schema/session"
 import type { Automation } from "@opencode/schema/automation"
 import type { Location } from "@opencode/schema/location"
+import type { Provider } from "@opencode/schema/provider"
+import type { Model } from "@opencode/schema/model"
+import type { Integration } from "@opencode/schema/integration"
 import type { Agent } from "@opencode/schema/agent"
 import type { Plugin } from "@opencode/schema/plugin"
 import type { AbsolutePath } from "@opencode/schema/schema"
 import type { Brand } from "effect"
 import type { Project } from "@opencode/schema/project"
 import type { RelativePath } from "@opencode/schema/schema"
-import type { Model } from "@opencode/schema/model"
 import type { DateTime } from "effect"
 import type { Permission } from "@opencode/schema/permission"
 import type { SessionMessage } from "@opencode/schema/session-message"
@@ -29,9 +31,7 @@ import type { FileDiff } from "@opencode/schema/file-diff"
 import type { InstructionEntry } from "@opencode/schema/instruction-entry"
 import type { EventLog } from "@opencode/schema/event-log"
 import type { Shell } from "@opencode/schema/shell"
-import type { Provider } from "@opencode/schema/provider"
 import type { Form } from "@opencode/schema/form"
-import type { Integration } from "@opencode/schema/integration"
 import type { Mcp } from "@opencode/schema/mcp"
 import type { PermissionSaved } from "@opencode/schema/permission-saved"
 import type { FileSystem } from "@opencode/schema/filesystem"
@@ -150,11 +150,25 @@ export type AutomationCreateInput = {
   readonly title: string
   readonly prompt: string
   readonly schedule: Automation.Schedule
+  readonly condition?: Automation.Condition | undefined
 }
 export type AutomationCreateOutput = Automation.Info
 export type AutomationCreateOperation<E = never> = (
   input: AutomationCreateInput,
 ) => Effect.Effect<AutomationCreateOutput, E>
+
+export type AutomationCreateConditionalInput = {
+  readonly sessionID: Session.ID
+  readonly id: Automation.ID
+  readonly title: string
+  readonly prompt: string
+  readonly schedule: Automation.Schedule
+  readonly condition: Automation.Condition
+}
+export type AutomationCreateConditionalOutput = Automation.Info
+export type AutomationCreateConditionalOperation<E = never> = (
+  input: AutomationCreateConditionalInput,
+) => Effect.Effect<AutomationCreateConditionalOutput, E>
 
 export type AutomationControlInput = {
   readonly sessionID: Session.ID
@@ -189,6 +203,7 @@ export type AutomationRemoveOperation<E = never> = (
 export interface AutomationApi<E = never> {
   readonly list: AutomationListOperation<E>
   readonly create: AutomationCreateOperation<E>
+  readonly createConditional: AutomationCreateConditionalOperation<E>
   readonly control: AutomationControlOperation<E>
   readonly run: AutomationRunOperation<E>
   readonly history: AutomationHistoryOperation<E>
@@ -199,11 +214,25 @@ export type LocationGetInput = { readonly location?: { readonly directory?: stri
 export type LocationGetOutput = Location.PublicInfo
 export type LocationGetOperation<E = never> = (input?: LocationGetInput) => Effect.Effect<LocationGetOutput, E>
 
+export type LocationBootstrapInput = { readonly location?: { readonly directory?: string | undefined } | undefined }
+export type LocationBootstrapOutput = {
+  readonly location: Location.PublicRef
+  readonly data: {
+    readonly models: ReadonlyArray<Model.Info>
+    readonly providers: ReadonlyArray<Provider.Info>
+    readonly integrations: ReadonlyArray<Integration.Info>
+  }
+}
+export type LocationBootstrapOperation<E = never> = (
+  input?: LocationBootstrapInput,
+) => Effect.Effect<LocationBootstrapOutput, E>
+
 export type LocationReloadOutput = void
 export type LocationReloadOperation<E = never> = () => Effect.Effect<LocationReloadOutput, E>
 
 export interface LocationApi<E = never> {
   readonly get: LocationGetOperation<E>
+  readonly bootstrap: LocationBootstrapOperation<E>
   readonly reload: LocationReloadOperation<E>
 }
 
@@ -474,7 +503,19 @@ export type SessionExportInput = { readonly sessionID: Session.ID; readonly sani
 export type SessionExportOutput = { readonly info: Session.Info; readonly messages: ReadonlyArray<SessionMessage.Info> }
 export type SessionExportOperation<E = never> = (input: SessionExportInput) => Effect.Effect<SessionExportOutput, E>
 
-export type SessionActiveOutput = { readonly [x: Session.ID]: { readonly type: "running" } }
+export type SessionActiveOutput = {
+  readonly [x: Session.ID]: {
+    readonly type: "running"
+    readonly waits?:
+      | ReadonlyArray<{
+          readonly id: string
+          readonly kind: "mcp" | "model"
+          readonly started: number
+          readonly target?: string | undefined
+        }>
+      | undefined
+  }
+}
 export type SessionActiveOperation<E = never> = () => Effect.Effect<SessionActiveOutput, E>
 
 export type SessionGetInput = { readonly sessionID: Session.ID }
@@ -6605,6 +6646,7 @@ export type HarnessOpenInput = {
   readonly directory: AbsolutePath
   readonly model?: string | undefined
   readonly backgroundWait?: boolean | undefined
+  readonly delegation?: boolean | undefined
 }
 export type HarnessOpenOutput = Harness.Run
 export type HarnessOpenOperation<E = never> = (input: HarnessOpenInput) => Effect.Effect<HarnessOpenOutput, E>

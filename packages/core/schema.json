@@ -1,8 +1,8 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "49b3c811-e828-4021-b226-129ce31fc77e",
-  "prevIds": ["e5e68abc-8f8d-4d5c-96c4-82dafc958200"],
+  "id": "acd56a13-8dc9-4fcd-9a6a-887196561bfc",
+  "prevIds": ["951521b4-3bbe-4243-a74d-f94974cbe92e"],
   "ddl": [
     {
       "name": "console_auth_provider",
@@ -1755,6 +1755,16 @@
       "table": "session_automation_run"
     },
     {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "condition_result",
+      "entityType": "columns",
+      "table": "session_automation_run"
+    },
+    {
       "type": "integer",
       "notNull": true,
       "autoincrement": false,
@@ -1821,6 +1831,26 @@
       "default": null,
       "generated": null,
       "name": "schedule",
+      "entityType": "columns",
+      "table": "session_automation"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "condition",
+      "entityType": "columns",
+      "table": "session_automation"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "condition_last",
       "entityType": "columns",
       "table": "session_automation"
     },

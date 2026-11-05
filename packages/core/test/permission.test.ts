@@ -436,6 +436,7 @@ describe("Permission", () => {
     Effect.gen(function* () {
       yield* setup()
       const { service, fiber, request } = yield* waitForRequest()
+      expect(typeof request.created).toBe("number")
       expect(yield* service.list()).toEqual([request])
       expect(yield* service.forSession(request.sessionID)).toEqual([request])
       expect(yield* service.forSession(Session.ID.make("ses_other"))).toEqual([])

@@ -112,13 +112,12 @@ Codex events from another thread/active turn are ignored.
 
 Sending the same instruction ID again uses first-admission-wins behavior. Reusing it in another run
 is rejected. Queued input is stored on the host, and interruption cancels queued instructions. After
-host restart or process loss, the run displays **Needs reconciliation**; it is not automatically
-replayed. **Resume native session** reattaches using a recorded native ID; input whose delivery was
-ambiguous is not resent. Check the result before asking the agent to continue.
+host restart or process loss, a run normally displays **Needs reconciliation**. A delegation parent
+with outstanding work can instead resume automatically as described below. **Resume native session**
+reattaches using a recorded native ID; input whose delivery was ambiguous is not resent.
 
-An unknown execution must be reconciled first: check the original machine and confirm in the screen
-that its process has stopped. The server refuses resume/release until that operator confirmation.
-Redcode does not claim to have killed a process it no longer owns.
+Other unknown executions must be reconciled first: check the original machine and confirm in the screen
+that its process has stopped. Redcode does not claim to have killed a process it no longer owns.
 
 **Close owned process** stops only the process tree launched for that run, preserving its native
 history and Redcode output. It waits for process closure before releasing the attachment.
@@ -126,6 +125,41 @@ The external sessions remain separate from native Redcode Session IDs and the na
 engine. Selecting a remote host runs the adapter there; automatic worker-batch placement still uses
 the native Redcode harness. External provider subagent controls and provider-independent rollback
 are outside this delivery.
+
+When starting a Codex or Claude harness, **Allow delegation to configured coding agents** enables
+Redcode's delegation tools for that run. An agent can start a task in Redcode or in a configured
+Codex or Claude harness on the same host and checkout, inspect its output or interrupt it. Codex and
+Claude children are separate harness runs and do not automatically enable further delegation.
+A Redcode child is a native Session linked to the external parent by task metadata; it uses saved
+Redcode model settings and asks for permission for tool actions. Its permission requests appear in
+that native Session. External harnesses must already have been explicitly configured in Executors;
+Redcode does not install a harness or sign in on the agent's behalf.
+
+Delegation requests are keyed by a caller-supplied request ID. Retrying the same ID for the same
+parent retains the original child; another parent cannot access it. Completed outcomes remain
+available after a host restart. An admission interrupted by a restart is reported as unknown and is
+not automatically replayed. Pending permissions and questions still require attention in the
+child's session. Interrupting the parent does not automatically interrupt its child. Completed
+results are delivered automatically when the parent is ready; they remain pending while it is
+interrupted. A native Session can also delegate to a configured Codex or Claude harness with the
+`external_delegate` tool, subject to its normal permission rules. Its result is admitted to the
+parent Session as a durable synthetic message.
+Codex and Claude execute with their own harness permission settings; they do not inherit individual
+file or command restrictions from the native Redcode Session.
+For organization-managed servers, native Sessions cannot delegate to host harness accounts until
+the initiating user's infrastructure authorization can be preserved with the Session. An
+administrator can still open an explicitly configured harness through the existing host controls.
+If the host stops while a delegated native Session is running, Redcode reconnects the task to that
+Session after the normal restart recovery and delivers its result when the parent is ready. The
+original prompt is not sent again. An eligible Codex or Claude parent with outstanding delegated work
+is also reattached automatically using its recorded native ID, once the previous recorded process and
+host owner have stopped. Pending results then flow into the resumed parent. Redcode waits if the old
+process is still running or its identity cannot be verified; a parent explicitly interrupted or closed
+by the user is not restarted. Records created before process tracking and ambiguous process starts
+still require manual reconciliation. An instruction or result whose delivery became ambiguous is not
+resent automatically; inspect it before retrying. An admission that cannot be reconciled remains unknown.
+Foreground servers recover only Sessions belonging to outstanding delegations and their descendants;
+the managed background service and embedded fetch server also recover other suspended Sessions.
 
 ## Create, review, integrate and archive
 

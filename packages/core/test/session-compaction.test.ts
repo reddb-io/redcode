@@ -316,6 +316,21 @@ it.effect("auto compaction estimates current content against the buffered prompt
     const inputLimited = { context: 400_000, input: 272_000, output: 128_000 }
     expect(yield* due(input(244_799, inputLimited))).toBe(false)
     expect(yield* due(input(244_800, inputLimited))).toBe(true)
+    // The runner's estimate belongs to this exact loaded context and is reused for the decision.
+    expect(
+      yield* compaction.compact({
+        reason: "auto",
+        context: input(244_800, inputLimited),
+        estimate: { measured: 0, estimated: 0 },
+      }),
+    ).toMatchObject({ status: "skipped" })
+    expect(
+      (yield* compaction.compact({
+        reason: "auto",
+        context: input(1, inputLimited),
+        estimate: { measured: 244_800, estimated: 0 },
+      })).status,
+    ).not.toBe("skipped")
     const native = (tokens: number, limit: { context: number; input?: number; output: number } = inputLimited) => {
       const selected = input(tokens, limit)
       return { ...selected, model: { ...selected.model, compaction: { type: "native" as const } } }
@@ -351,6 +366,9 @@ it.effect("auto compaction estimates current content against the buffered prompt
       time: { created: DateTime.makeUnsafe(0) },
     })
     const grown = { ...input(89_000, contextLimited), messages: [{ ...assistant, content: [tool] }] }
+    const raw = SessionCompaction.estimatePrompt(grown)
+    const adjusted = SessionCompaction.estimatePrompt(grown, 1.25)
+    expect(SessionCompaction.estimateContext(grown, 1.25, raw)).toBe(adjusted.measured + adjusted.estimated)
     expect(SessionCompaction.estimateContext(grown)).toBe(90_000)
     expect(yield* due(grown)).toBe(true)
 

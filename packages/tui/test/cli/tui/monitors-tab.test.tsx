@@ -84,6 +84,7 @@ async function renderMonitors(initial: MonitorPublicInfo[], width = 100) {
   let dispatch!: ReturnType<typeof Keymap.use>["dispatch"]
   const [open, setOpen] = createSignal(true)
   const [tab, setTab] = createSignal<ComposerTab>()
+  const [sessionID, setSessionID] = createSignal("parent")
   const events = createEventStream()
   const calls = createFetch((url) => {
     if (url.pathname !== "/api/session/parent") return undefined
@@ -110,7 +111,7 @@ async function renderMonitors(initial: MonitorPublicInfo[], width = 100) {
       const pop = keymap.mode.push("composer")
       onCleanup(pop)
     })
-    monitors = createSessionMonitors({ sessionID: () => "parent", onOpen: () => setOpen(true), api })
+    monitors = createSessionMonitors({ sessionID, onOpen: () => setOpen(true), api })
     return (
       <box>
         <ComposerContext.Provider
@@ -169,6 +170,7 @@ async function renderMonitors(initial: MonitorPublicInfo[], width = 100) {
     toast: () => toast.currentToast,
     dispatch: (command: string) => dispatch(command),
     setOpen,
+    setSessionID,
     emit: events.emit,
     /** Capture one list response before an event or cancellation, then release it after that update. */
     deferRead: () => {
@@ -193,6 +195,32 @@ async function renderMonitors(initial: MonitorPublicInfo[], width = 100) {
     },
   }
 }
+
+test("switching sessions clears the previous monitor while the new inventory is loading", async () => {
+  const view = await renderMonitors([monitor({ id: "old", command: "old session" })])
+  try {
+    const pending = view.deferRead()
+    view.store.list = [monitor({ id: "new", command: "new session", sessionID: "child" })]
+    view.setSessionID("child")
+    const release = await pending
+    expect(view.monitors().list()).toEqual([])
+    await release()
+    await wait(() =>
+      view
+        .monitors()
+        .list()
+        .some((item) => item.id === "new"),
+    )
+    expect(
+      view
+        .monitors()
+        .list()
+        .map((item) => item.id),
+    ).toEqual(["new"])
+  } finally {
+    view.app.renderer.destroy()
+  }
+})
 
 test("the Monitors tab lists live monitors and omits settled results", async () => {
   const view = await renderMonitors([

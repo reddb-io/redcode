@@ -26,6 +26,7 @@ export const Open = Schema.Struct({
   directory: AbsolutePath,
   model: optional(Schema.NonEmptyString),
   backgroundWait: optional(Schema.Boolean),
+  delegation: optional(Schema.Boolean),
 }).annotate({ identifier: "Harness.Open" })
 export interface Open extends Schema.Schema.Type<typeof Open> {}
 export const State = Schema.Literals([
@@ -50,6 +51,7 @@ export const Run = Schema.Struct({
   detail: optional(Schema.String),
   queued: Schema.Int,
   backgroundWait: optional(Schema.Boolean),
+  delegation: optional(Schema.Boolean),
   capabilities: Schema.Struct({ steer: Schema.Boolean, resume: Schema.Boolean, interrupt: Schema.Boolean }),
 }).annotate({ identifier: "Harness.Run" })
 export interface Run extends Schema.Schema.Type<typeof Run> {}

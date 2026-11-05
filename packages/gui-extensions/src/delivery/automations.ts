@@ -45,8 +45,14 @@ export function createDeliveryAutomations(props: {
     mutationFn: async (input: { server: ServerRef; sessionID: string; change: AutomationChange }) => {
       const client = input.server.client.automation
       const action = input.change
-      if (action.type === "create")
+      if (action.type === "create") {
+        if (action.input.condition)
+          return client.createConditional(
+            { sessionID: input.sessionID, ...action.input, condition: action.input.condition },
+            { signal: ctx.signal },
+          )
         return client.create({ sessionID: input.sessionID, ...action.input }, { signal: ctx.signal })
+      }
       if (action.type === "control")
         return client.control(
           { sessionID: input.sessionID, automationID: action.id, enabled: action.enabled },

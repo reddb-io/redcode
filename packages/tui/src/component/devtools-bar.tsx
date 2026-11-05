@@ -152,6 +152,8 @@ export function DevToolsBar() {
       (location.current
         ? { directory: location.current.directory }
         : undefined)
+    // Resource catalogs are loaded on demand; include them in an explicit debug export.
+    await data.location.mcp.resource.sync(sessionLocation).catch(() => undefined)
     const details = server()
     const backend = {
       connected: connected(),

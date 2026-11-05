@@ -28,6 +28,19 @@ export const makeAutomationGroup = <I extends HttpApiMiddleware.AnyId, S>(middle
       ),
     )
     .add(
+      HttpApiEndpoint.post("session.automation.createConditional", "/api/session/:sessionID/automation/conditional", {
+        params: { sessionID: Session.ID },
+        payload: Schema.Struct({ ...Automation.Input.fields, condition: Automation.Condition }),
+        success: Schema.Struct({ data: Automation.Info }),
+        error,
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "session.automation.createConditional",
+          summary: "Schedule a conditionally admitted conversation prompt",
+        }),
+      ),
+    )
+    .add(
       HttpApiEndpoint.post("session.automation.control", "/api/session/:sessionID/automation/:automationID/control", {
         params,
         payload: Schema.Struct({ enabled: Schema.Boolean }),

@@ -176,6 +176,7 @@ export const connect = Effect.fnUntraced(function* (
   authProvider?: OAuthClientProvider,
   elicitation?: ElicitationHandler,
   clientInfo: Implementation = { name: "opencode", version: "unknown" },
+  pooled = false,
 ) {
   type ToolCall = { readonly sessionID?: Session.ID; readonly signal: AbortSignal }
   const current = new AsyncLocalStorage<ToolCall>()
@@ -227,7 +228,7 @@ export const connect = Effect.fnUntraced(function* (
         ...(elicitation ? { elicitation: { form: { applyDefaults: true }, url: {} } } : {}),
         // Legacy era only: roots are deprecated as of 2026-07-28 and modern servers cannot request them.
         // Some legacy servers refuse to run without one (https://github.com/anomalyco/opencode/issues/2308).
-        roots: {},
+        ...(pooled ? {} : { roots: {} }),
       },
       versionNegotiation: negotiation(config.protocol),
       listChanged: {
@@ -242,7 +243,7 @@ export const connect = Effect.fnUntraced(function* (
       lastError = describe(error)
       runFork(Effect.logWarning("mcp transport error", { server, error: lastError }))
     }
-    client.setRequestHandler("roots/list", () => ({ roots: [{ uri: pathToFileURL(directory).href }] }))
+    if (!pooled) client.setRequestHandler("roots/list", () => ({ roots: [{ uri: pathToFileURL(directory).href }] }))
     if (elicitation) {
       client.setRequestHandler("elicitation/create", (request, ctx) => {
         // HTTP response streams and modern input_required handlers retain the originating call's

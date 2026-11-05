@@ -1,4 +1,5 @@
 import { Session } from "@opencode/core/session"
+import { SessionWait } from "@opencode/core/session/wait"
 import { RpcSessionListInput, SessionsCursor } from "@opencode/protocol/groups/session"
 import { InvalidCursorError } from "@opencode/protocol/errors"
 import { DateTime, Effect } from "effect"
@@ -39,5 +40,9 @@ export const listSessions = Effect.fn("SessionRead.list")(function* (
 
 export const activeSessions = Effect.fn("SessionRead.active")(function* (session: Session.Interface) {
   const active = yield* session.active
-  return { data: Object.fromEntries(Array.from(active, (sessionID) => [sessionID, { type: "running" as const }])) }
+  return {
+    data: Object.fromEntries(
+      Array.from(active, (sessionID) => [sessionID, { type: "running" as const, waits: SessionWait.list(sessionID) }]),
+    ),
+  }
 })

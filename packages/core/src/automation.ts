@@ -14,6 +14,7 @@ import { SessionInbox } from "./session/inbox.js"
 import { SessionExecution } from "./session/execution.js"
 import { AutomationRunTable, AutomationTable } from "./automation/sql.js"
 import { AutomationSchedule } from "./automation/schedule.js"
+import { AutomationCondition } from "./automation/condition.js"
 
 export class NotFound extends Schema.TaggedError<NotFound>()("Automation.NotFound", { message: Schema.String }) {}
 export class Invalid extends Schema.TaggedError<Invalid>()("Automation.Invalid", { message: Schema.String }) {}
@@ -25,6 +26,7 @@ function info(row: typeof AutomationTable.$inferSelect): Automation.Info {
     title: row.title,
     prompt: row.prompt,
     schedule: row.schedule,
+    ...(row.condition ? { condition: row.condition } : {}),
     enabled: row.enabled,
     nextAt: row.next_at,
     created: row.created_at,
@@ -112,6 +114,58 @@ export const make = Effect.gen(function* () {
             error: "Calendar occurrence missed by more than 10 minutes",
             pause: false,
           }
+        if (task.condition) {
+          let result = run.condition_result
+          if (!result) {
+            const observation = yield* Effect.tryPromise({
+              try: () => AutomationCondition.observe(task.condition!),
+              catch: (error) => (error instanceof Error ? error : new Error(String(error))),
+            }).pipe(Effect.result)
+            if (observation._tag === "Failure")
+              return {
+                status: "failed" as const,
+                error: `Condition failed: ${observation.failure.message}`.slice(0, 1000),
+                pause: true,
+              }
+            // Serialize transition state and the verdict: concurrent manual and scheduled runs
+            // cannot both claim the same change, and recovery never repeats a recorded decision.
+            result = yield* database.db
+              .transaction((tx) =>
+                Effect.gen(function* () {
+                  const current = yield* tx.select().from(AutomationTable).where(eq(AutomationTable.id, task.id)).get()
+                  const matched = observation.success.matched
+                  const change = task.condition?.mode === "on_change"
+                  const first = current?.condition_last === null || current === undefined
+                  const verdict = {
+                    matched: change ? !first && current!.condition_last === false && matched : matched,
+                    summary:
+                      change && first
+                        ? `Initial observation: ${observation.success.summary}`
+                        : observation.success.summary,
+                  }
+                  if (current && change)
+                    yield* tx
+                      .update(AutomationTable)
+                      .set({ condition_last: matched, updated_at: Date.now() })
+                      .where(eq(AutomationTable.id, task.id))
+                      .run()
+                  yield* tx
+                    .update(AutomationRunTable)
+                    .set({ condition_result: verdict, updated_at: Date.now() })
+                    .where(and(eq(AutomationRunTable.id, run.id), eq(AutomationRunTable.status, "pending")))
+                    .run()
+                  return verdict
+                }),
+              )
+              .pipe(Effect.orDie)
+          }
+          if (!result.matched)
+            return {
+              status: "skipped" as const,
+              error: `Condition not met: ${result.summary}`.slice(0, 1000),
+              pause: false,
+            }
+        }
         yield* sessions.prompt({
           sessionID: task.session_id,
           id: inboxID,
@@ -198,6 +252,7 @@ export const make = Effect.gen(function* () {
             trigger: "scheduled" as const,
             scheduled_at: row.next_at,
             status: missed ? ("missed" as const) : ("pending" as const),
+            condition_result: null,
             owner,
             error: missed ? "Calendar occurrence missed by more than 10 minutes" : null,
             created_at: now,
@@ -310,6 +365,10 @@ export const make = Effect.gen(function* () {
         })
       if (!input.title.trim() || !input.prompt.trim())
         return yield* new Invalid({ message: "Title and prompt must not be blank" })
+      if (input.condition) {
+        const problem = AutomationCondition.problem(input.condition)
+        if (problem) return yield* new Invalid({ message: `Invalid condition: ${problem}` })
+      }
       const now = Date.now()
       if (input.schedule.type === "once" && input.schedule.at <= now)
         return yield* new Invalid({ message: "Choose a future execution time" })
@@ -325,6 +384,7 @@ export const make = Effect.gen(function* () {
           title: input.title.trim(),
           prompt: input.prompt,
           schedule: input.schedule,
+          condition: input.condition ?? null,
           enabled: true,
           next_at: nextAt,
           created_at: now,

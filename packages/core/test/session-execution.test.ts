@@ -489,6 +489,57 @@ describe("SessionExecution lifecycle", () => {
 })
 
 describe("SessionRestart background recovery", () => {
+  it.effect("selected recovery resumes only the selected family and leaves unrelated claims and jobs alone", () =>
+    Effect.gen(function* () {
+      const database = yield* Database.Service
+      const jobs = yield* Job.Service
+      const selected = Session.ID.make("ses_selected_recovery")
+      const child = Session.ID.make("ses_selected_child")
+      const unrelated = Session.ID.make("ses_unrelated_recovery")
+      const unrelatedChild = Session.ID.make("ses_unrelated_child")
+      yield* seedSessions(database, [selected, unrelated], { time_suspended: Date.now() })
+      yield* seedSessions(database, [child], { parent_id: selected, time_suspended: Date.now() })
+      yield* seedSessions(database, [unrelatedChild], { parent_id: unrelated, time_suspended: Date.now() })
+      yield* seedBackground(jobs, child, [{ id: "selected-shell", shellID: "sh-selected", command: "selected" }])
+      yield* seedBackground(jobs, unrelatedChild, [
+        { id: "unrelated-shell", shellID: "sh-unrelated", command: "unrelated" },
+      ])
+      const resumed = yield* Deferred.make<void>()
+      const drained: Session.ID[] = []
+      const scope = yield* Scope.make()
+      yield* Effect.addFinalizer(() => Scope.close(scope, Exit.void))
+      const restarted = yield* Job.make.pipe(Effect.provideService(Scope.Scope, scope))
+      const context = yield* buildExecution(
+        scope,
+        ({ sessionID }) =>
+          Effect.sync(() => void drained.push(sessionID)).pipe(
+            Effect.andThen(Deferred.succeed(resumed, undefined)),
+            Effect.asVoid,
+          ),
+        undefined,
+        restarted,
+      )
+      yield* Context.get(context, SessionRestart.Service).resumeSelectedSessions([selected])
+      yield* Deferred.await(resumed)
+      yield* Context.get(context, SessionExecution.Service).awaitIdle(selected)
+      expect(drained).toEqual([selected])
+      expect(yield* claims(database)).toMatchObject({
+        [selected]: false,
+        [child]: false,
+        [unrelated]: true,
+        [unrelatedChild]: true,
+      })
+      expect(yield* restarted.pendingBackground).toHaveLength(1)
+      expect((yield* restarted.pendingBackground)[0].recovery).toMatchObject({
+        kind: "shell",
+        sessionID: unrelatedChild,
+      })
+      expect(yield* SessionInbox.list(database.db, child)).toMatchObject([
+        { payload: { metadata: { source: "shell", state: "cancelled" } } },
+      ])
+    }),
+  )
+
   it.effect("keeps shell owners idle until a user prompt delivers recovered notices exactly once", () =>
     Effect.gen(function* () {
       const database = yield* Database.Service
@@ -899,7 +950,7 @@ describe("SessionRestart background recovery", () => {
     }
   }
 
-  it.effect("resumes a background subagent and notifies its parent exactly once", () =>
+  it.effect("selected recovery resumes a background subagent and notifies its parent exactly once", () =>
     Effect.gen(function* () {
       const database = yield* Database.Service
       const jobs = yield* Job.Service
@@ -950,12 +1001,12 @@ describe("SessionRestart background recovery", () => {
       )
       const restart = Context.get(context, SessionRestart.Service)
       const execution = Context.get(context, SessionExecution.Service)
-      yield* restart.resumeSuspendedSessions
+      yield* restart.resumeSelectedSessions([parent])
       yield* Deferred.await(resumed)
       yield* Deferred.await(parentResumed)
       yield* execution.awaitIdle(parent)
 
-      yield* restart.resumeSuspendedSessions
+      yield* restart.resumeSelectedSessions([parent])
       expect(drained.toSorted()).toEqual([child, parent].toSorted())
       expect(yield* claims(database)).toEqual({ [parent]: false, [child]: true, [unrelated]: false })
       expect(yield* attempts(database, child)).toBe(1)
@@ -974,7 +1025,7 @@ describe("SessionRestart background recovery", () => {
         },
       ])
       expect(yield* restarted.pendingBackground).toEqual([])
-      yield* restart.resumeSuspendedSessions
+      yield* restart.resumeSelectedSessions([parent])
       expect(yield* SessionInbox.list(database.db, parent)).toHaveLength(1)
     }),
   )

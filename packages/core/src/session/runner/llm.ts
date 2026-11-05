@@ -1512,7 +1512,8 @@ const layer = Layer.effect(
         // Reuse boundary preparation once; retries refresh context without delivering more input.
         const loaded = initial ?? (yield* prepareContext(sessionID).pipe(Effect.flatMap(context.load)))
         initial = undefined
-        const compacted = yield* compaction.compact({ reason: "auto", context: loaded })
+        const estimate = SessionCompaction.estimatePrompt(loaded)
+        const compacted = yield* compaction.compact({ reason: "auto", context: loaded, estimate })
         if (compacted.status === "failed") return yield* new StepFailedError({ error: compacted.error })
         if (compacted.status === "completed") {
           assistantMessageID = SessionMessage.ID.create()
@@ -1648,7 +1649,7 @@ const layer = Layer.effect(
             // Keep tool definitions on the final Step to preserve the provider's cached prefix.
             toolChoice: stepLimitReached || (verifying && verification.remaining === 1) ? "none" : undefined,
             webSocket: "session",
-            inputTokens: SessionCompaction.estimatePrompt(loaded),
+            inputTokens: estimate,
           })
           .pipe(
             // Slow tools keep the prepared request alive; discard the hook's unbounded transcript copy.
@@ -1719,7 +1720,7 @@ const layer = Layer.effect(
           recoverOverflow: Effect.fnUntraced(function* (failure: unknown) {
             yield* learnOverflow(loaded, prepared.request, failure)
             if (!recoverOverflow) return false
-            return (yield* compaction.compact({ reason: "overflow", context: loaded })).status === "completed"
+            return (yield* compaction.compact({ reason: "overflow", context: loaded, estimate })).status === "completed"
           }),
           accepted: Effect.fnUntraced(function* (accepted: number) {
             const observed = yield* limits.get(loaded.model.ref.providerID, loaded.model.ref.id, declared)

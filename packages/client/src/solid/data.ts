@@ -43,6 +43,7 @@ import { Worktree } from "@opencode/schema/worktree"
 import { SessionID } from "@opencode/schema/session-id"
 import { SessionMessage } from "@opencode/schema/session-message"
 import {
+  ClientError,
   isFormAlreadySettledError,
   isFormNotFoundError,
   isPermissionNotFoundError,
@@ -50,6 +51,7 @@ import {
 } from "../promise"
 import { createStore, produce, reconcile } from "solid-js/store"
 import type { SessionInbox } from "@opencode/schema/session-inbox"
+import type { SessionWait } from "@opencode/schema/session-wait"
 import { batch, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
 
 export type DataSessionStatus = "idle" | "running"
@@ -119,6 +121,7 @@ type Store = {
     // session ID in that family, including the key itself once its info arrives.
     family: Record<string, string[]>
     active: Record<string, DataSessionStatus>
+    waits: Record<string, readonly SessionWait.Info[]>
     message: Record<string, SessionMessageInfo[]>
     messageCursor: Record<string, string | undefined>
     messageLoading: Record<string, boolean>
@@ -240,6 +243,7 @@ export function createData(config: CreateDataInput) {
       spend: {},
       family: {},
       active: {},
+      waits: {},
       message: {},
       messageCursor: {},
       messageLoading: {},
@@ -276,11 +280,16 @@ export function createData(config: CreateDataInput) {
     })
   }
   let activeUpdates: Map<string, DataSessionStatus | undefined> | undefined
+  let waitUpdates: Map<string, readonly SessionWait.Info[]> | undefined
   const pendingUpdates = new Map<string, Map<string, SessionInboxInfo | SessionInbox.Delivery | undefined>>()
 
   function setSessionActive(sessionID: string, status: DataSessionStatus) {
     activeUpdates?.set(sessionID, status)
     setStore("session", "active", sessionID, status)
+    if (status === "idle") {
+      waitUpdates?.set(sessionID, [])
+      setStore("session", "waits", sessionID, [])
+    }
   }
 
   function removePending(sessionID: string, inboxID?: string) {
@@ -572,10 +581,11 @@ export function createData(config: CreateDataInput) {
     messageLoads.delete(sessionID)
     // Keep unacknowledged submissions and the visible rows for retained inbox items.
     const pending = keepPending
-      ? store.session.pending[sessionID] ?? []
-      : store.session.pending[sessionID]?.filter((item) => outbox.has(item.id)) ?? []
+      ? (store.session.pending[sessionID] ?? [])
+      : (store.session.pending[sessionID]?.filter((item) => outbox.has(item.id)) ?? [])
     const pendingIDs = new Set(pending.map((item) => item.id))
-    const messages = store.session.message[sessionID]?.filter((item) => outbox.has(item.id) || pendingIDs.has(item.id)) ?? []
+    const messages =
+      store.session.message[sessionID]?.filter((item) => outbox.has(item.id) || pendingIDs.has(item.id)) ?? []
     messageIndex.delete(sessionID)
     if (messages.length) messageIndex.set(sessionID, new Map(messages.map((item, index) => [item.id, index])))
     setStore(
@@ -613,6 +623,7 @@ export function createData(config: CreateDataInput) {
         delete draft.info[sessionID]
         delete draft.spend[sessionID]
         delete draft.active[sessionID]
+        delete draft.waits[sessionID]
         delete draft.message[sessionID]
         delete draft.messageCursor[sessionID]
         delete draft.messageLoading[sessionID]
@@ -632,8 +643,12 @@ export function createData(config: CreateDataInput) {
     switch (event.type) {
       case "server.connected": {
         refreshSpending()
+        // A reconnect snapshot, not the previous connection's timers, is authoritative.
+        setStore("session", "waits", {})
         const updates = new Map<string, DataSessionStatus | undefined>()
+        const waits = new Map<string, readonly SessionWait.Info[]>()
         activeUpdates = updates
+        waitUpdates = waits
         refresh(() =>
           api()
             .session.active()
@@ -647,9 +662,16 @@ export function createData(config: CreateDataInput) {
               })
               activeUpdates = undefined
               setStore("session", "active", reconcile(Object.fromEntries(snapshot)))
+              const observed = new Map<string, readonly SessionWait.Info[]>(
+                Object.entries(active).map(([id, value]) => [id, value.waits ?? []]),
+              )
+              waits.forEach((value, id) => observed.set(id, value))
+              waitUpdates = undefined
+              setStore("session", "waits", reconcile(Object.fromEntries(observed)))
             })
             .catch(() => {
               if (activeUpdates === updates) activeUpdates = undefined
+              if (waitUpdates === waits) waitUpdates = undefined
             }),
         )
         refresh(() =>
@@ -1073,6 +1095,10 @@ export function createData(config: CreateDataInput) {
       case "session.execution.started":
         setSessionActive(event.data.sessionID, "running")
         return
+      case "session.wait.changed":
+        waitUpdates?.set(event.data.sessionID, event.data.waits)
+        setStore("session", "waits", event.data.sessionID, reconcile(event.data.waits))
+        return
       case "session.compaction.started":
         if (event.data.inputID) removePending(event.data.sessionID, event.data.inputID)
         message.insert(event.data.sessionID, {
@@ -1345,10 +1371,14 @@ export function createData(config: CreateDataInput) {
         result.location.mcp.server.invalidate(location)
         settle(`mcp.status:${locationKey(location)}`, () => result.location.mcp.server.sync(location))
         break
-      case "mcp.resources.changed":
+      case "mcp.resources.changed": {
+        const loaded =
+          store.location[locationKey(location)]?.mcpResource !== undefined ||
+          sync.has(`location.mcpResource:${locationKey(location)}`)
         result.location.mcp.resource.invalidate(location)
-        refresh(() => result.location.mcp.resource.sync(location))
+        if (loaded) refresh(() => result.location.mcp.resource.sync(location))
         break
+      }
     }
   }
 
@@ -1386,6 +1416,48 @@ export function createData(config: CreateDataInput) {
     }
   }
 
+  function bootstrapCatalog(location: LocationRef) {
+    const key = locationKey(location)
+    const fields = ["model", "provider", "integration"] as const
+    // Individual refreshes and in-flight reads keep their own invalidation semantics.
+    if (fields.some((field) => sync.has(`location.${field}:${key}`)))
+      return Promise.all(fields.map((field) => result.location[field].sync(location)))
+    let pending: ReturnType<OpenCodeClient["location"]["bootstrap"]> | undefined
+    const load = () => (pending ??= api().location.bootstrap({ location: locationQuery(location) }))
+    return Promise.all(
+      fields.map((field) =>
+        sync.run(`location.${field}:${key}`, async () => {
+          try {
+            const response = await load()
+            const canonical = locationKey(response.location)
+            setStore("location", canonical, { [field]: response.data[`${field}s`] })
+            if (field !== "integration" && canonical !== key)
+              setStore("location", key, { [field]: response.data[`${field}s`] })
+          } catch (error) {
+            if (!missingBootstrap(error)) throw error
+            const response =
+              field === "model"
+                ? await api().model.list({ location: locationQuery(location) })
+                : field === "provider"
+                  ? await api().provider.list({ location: locationQuery(location) })
+                  : await api().integration.list({ location: locationQuery(location) })
+            const canonical = locationKey(response.location)
+            setStore("location", canonical, { [field]: response.data })
+            if (field !== "integration" && canonical !== key) setStore("location", key, { [field]: response.data })
+          }
+        }),
+      ),
+    )
+  }
+
+  const mcpResources = locationResource(
+    "mcpResource",
+    async (location) => {
+      const response = await api().mcp.resource.catalog({ location })
+      return { location: response.location, data: response.data.resources }
+    },
+    { alias: true },
+  )
   const vcs = locationResource("vcs", (location) => api().vcs.get({ location }))
   const shells = locationResource("shell", async (location) => {
     const response = await api().shell.list({ location })
@@ -1470,6 +1542,9 @@ export function createData(config: CreateDataInput) {
       },
       status(sessionID: string) {
         return store.session.active[sessionID] ?? "idle"
+      },
+      waits(sessionID: string) {
+        return store.session.waits[sessionID] ?? []
       },
       active() {
         return Object.entries(store.session.active).flatMap(([sessionID, status]) =>
@@ -1961,6 +2036,11 @@ export function createData(config: CreateDataInput) {
       invalidate: shells.invalidate,
     },
     location: {
+      catalog: {
+        sync(ref?: LocationRef) {
+          return bootstrapCatalog(ref ?? defaultLocation())
+        },
+      },
       info(ref?: LocationRef) {
         return store.location[locationKey(ref ?? defaultLocation())]?.info
       },
@@ -1980,17 +2060,19 @@ export function createData(config: CreateDataInput) {
         })
       },
       async sync(ref?: LocationRef) {
-        await result.location.syncInfo(ref)
+        // An explicit directory is already suitable for scoped requests. Resolve it in parallel
+        // instead of adding a network round trip ahead of every other read. The implicit default
+        // still waits because syncInfo can replace it with the server's canonical directory.
+        const info = result.location.syncInfo(ref)
+        if (!ref) await info
         const location = ref ?? defaultLocation()
         await Promise.all([
+          info,
           result.location.vcs.sync(location),
           result.location.agent.sync(location),
           result.location.command.sync(location),
-          result.location.integration.sync(location),
+          result.location.catalog.sync(location),
           result.location.mcp.server.sync(location),
-          result.location.mcp.resource.sync(location),
-          result.location.model.sync(location),
-          result.location.provider.sync(location),
           result.location.reference.sync(location),
           result.location.skill.sync(location),
           result.shell.sync(location),
@@ -2024,10 +2106,16 @@ export function createData(config: CreateDataInput) {
       integration: locationResource("integration", (location) => api().integration.list({ location })),
       mcp: {
         server: locationResource("mcpServer", (location) => api().mcp.list({ location })),
-        resource: locationResource("mcpResource", async (location) => {
-          const response = await api().mcp.resource.catalog({ location })
-          return { location: response.location, data: response.data.resources }
-        }),
+        resource: {
+          ...mcpResources,
+          list(ref?: LocationRef) {
+            const location = ref ?? defaultLocation()
+            const value = mcpResources.list(location)
+            if (value === undefined && !sync.has(`location.mcpResource:${locationKey(location)}`))
+              refresh(() => mcpResources.sync(location))
+            return value
+          },
+        },
       },
       model: locationResource("model", (location) => api().model.list({ location }), { alias: true }),
       provider: locationResource("provider", (location) => api().provider.list({ location }), { alias: true }),
@@ -2062,3 +2150,11 @@ export function createData(config: CreateDataInput) {
 }
 
 export type Data = ReturnType<typeof createData>
+
+function missingBootstrap(error: unknown) {
+  if (error instanceof ClientError && error.reason === "UnexpectedStatus") {
+    const cause = error.cause
+    return typeof cause === "object" && cause !== null && "status" in cause && cause.status === 404
+  }
+  return error instanceof Error && error.name === "NotFoundError"
+}

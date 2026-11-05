@@ -1,4 +1,5 @@
 import { SessionMessage } from "@opencode/schema/session-message"
+import { SessionWait } from "@opencode/schema/session-wait"
 import { SessionObservation } from "@opencode/schema/session-observation"
 import { SessionInbox } from "@opencode/schema/session-inbox"
 import { PromptInput } from "@opencode/schema/prompt-input"
@@ -150,6 +151,7 @@ export type SessionsCursor = typeof SessionsCursor.Type
 
 const SessionActive = Schema.Struct({
   type: Schema.Literal("running"),
+  waits: Schema.Array(SessionWait.Info).pipe(Schema.optional),
 }).annotate({ identifier: "SessionActive" })
 
 const PublicSessionInfo = Schema.Struct({

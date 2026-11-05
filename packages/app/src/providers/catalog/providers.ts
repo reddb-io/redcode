@@ -24,7 +24,7 @@ export function useProviders(directory: Accessor<string | undefined>) {
     void (async () => {
       if (!ref) await data.location.syncInfo()
       const resolved = ref ?? data.location.default()
-      await Promise.all([data.location.provider.sync(resolved), data.location.model.sync(resolved)])
+      await data.location.catalog.sync(resolved)
     })().catch(() => undefined)
   })
   const integrations = useIntegrations(directory)

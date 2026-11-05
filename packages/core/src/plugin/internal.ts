@@ -104,6 +104,8 @@ import { TaskReconcileTool } from "../tool/plugin/task-reconcile.js"
 import { TodoTool } from "../tool/plugin/todo.js"
 import { SkillTool } from "../tool/plugin/skill.js"
 import { SubagentTool } from "../tool/plugin/subagent.js"
+import { ExternalDelegationTool } from "../tool/plugin/external-delegation.js"
+import { ExternalDelegation } from "../external-delegation.js"
 import { Tool } from "../tool.js"
 import { ToolOutput } from "../tool-output.js"
 import { WebFetchTool } from "../tool/plugin/webfetch.js"
@@ -210,6 +212,7 @@ const services = [
   SessionCompaction.Service,
   SessionInstructions.Service,
   SubagentJob.Service,
+  ExternalDelegation.Service,
   Shell.Service,
   ShellSelect.Service,
   Snapshot.Service,
@@ -285,6 +288,7 @@ export const requirements = LayerNode.group([
   SessionCompaction.node,
   SessionInstructions.node,
   SubagentJob.node,
+  ExternalDelegation.node,
   Shell.node,
   ShellSelect.node,
   Snapshot.node,
@@ -355,6 +359,7 @@ const pre = [
   TaskReconcileTool.Plugin,
   SkillTool.Plugin,
   SubagentTool.Plugin,
+  ExternalDelegationTool.Plugin,
   WebFetchTool.Plugin,
   WebSearchTool.Plugin,
   WriteTool.Plugin,

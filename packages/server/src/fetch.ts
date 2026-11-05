@@ -3,6 +3,7 @@ export * as ServerFetch from "./fetch"
 import { Context, Effect, Layer } from "effect"
 import { HttpEffect, HttpMiddleware, HttpRouter, HttpServer } from "effect/unstable/http"
 import { SessionRestart } from "@opencode/core/session/execution/restart"
+import { Harnesses } from "./harness"
 import type { LayerNode } from "@opencode/util/effect/layer-node"
 import { isAllowedCorsOrigin } from "./cors"
 import { createRoutes } from "./routes"
@@ -52,7 +53,9 @@ export const make = Effect.fn("ServerFetch.make")(function* (options: ServerOpti
   // Forked so the returned handler is never delayed; resumed drains are already
   // logged and durably recorded by the execution layer.
   yield* Effect.forkDetach(
-    resume(Context.get(context, SessionRestart.Service)).pipe(
+    resume(Context.get(context, SessionRestart.Service), () =>
+      Context.get(context, Harnesses.Service).recoverDelegations(),
+    ).pipe(
       Effect.provide(Layer.succeedContext(context)),
       Effect.catchCause((cause) => Effect.logError("Session restart continuity failed", { cause })),
     ),

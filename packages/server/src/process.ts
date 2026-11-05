@@ -3,6 +3,7 @@ export * as ServerProcess from "./process"
 import { NodeHttpServer } from "@effect/platform-node"
 import { Bus } from "@opencode/core/bus"
 import { SessionRestart } from "@opencode/core/session/execution/restart"
+import { Harnesses } from "./harness"
 import { InstallationEvent } from "@opencode/schema/installation-event"
 import { hasPtyConnectTicketURL } from "@opencode/protocol/groups/pty"
 import { hasPersistentPtyConnectTicketURL } from "@opencode/protocol/groups/persistent-pty"
@@ -22,7 +23,7 @@ import { createRoutes } from "./routes"
 import { PtySockets } from "./pty-sockets"
 import { ServerInfo } from "./server-info"
 import { Status } from "./service-status"
-import { resume } from "./restart-continuity"
+import { resume, resumeDelegations } from "./restart-continuity"
 import type { ServerOptions } from "./options"
 import type { RemoteAccessHost } from "./remote-access"
 
@@ -136,9 +137,11 @@ export const start = Effect.fn("ServerProcess.start")(function* <E, R>(
       routes as unknown as Layer.Layer<Layer.Success<typeof routes>, Layer.Error<typeof routes>>,
       applicationScope,
     )
-    if (lifecycle) {
+    {
+      const restart = Context.get(context, SessionRestart.Service)
+      const harness = Context.get(context, Harnesses.Service)
       yield* installRestartContinuity(
-        resume(Context.get(context, SessionRestart.Service)).pipe(
+        (lifecycle ? resume(restart, () => harness.recoverDelegations()) : resumeDelegations(restart, harness)).pipe(
           Effect.provide(Layer.succeedContext(context)),
           Effect.catchCause((cause) => Effect.logError("Session restart continuity failed", { cause })),
         ),
@@ -305,9 +308,8 @@ function unavailable(status: Status.State) {
 }
 
 /**
- * The managed server owns restart continuity: at boot it resumes Sessions whose execution claim was
- * never released. Claims are written when execution starts (see SessionExecution), so recovery covers
- * graceful restarts and unclean deaths alike — no shutdown hook participates.
+ * At boot, recover claimed Sessions. Managed servers sweep all sessions; foreground servers select
+ * only sessions with pending delegations. Claims cover graceful restarts and unclean deaths alike.
  */
 const installRestartContinuity = Effect.fnUntraced(function* (continuity: Effect.Effect<void>) {
   yield* Effect.forkScoped(continuity)

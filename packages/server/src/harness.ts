@@ -2,6 +2,7 @@ export * as Harnesses from "./harness"
 
 import { mkdir, realpath } from "node:fs/promises"
 import path from "node:path"
+import { hostname } from "node:os"
 import spawn from "cross-spawn"
 import { Harness } from "@opencode/schema/harness"
 import { UsageReporter } from "@opencode/schema/usage-reporter"
@@ -12,8 +13,15 @@ import { makeGlobalNode } from "@opencode/util/effect/app-node"
 import { Context, Effect, Layer, Option, Schema } from "effect"
 import { object, string, wire, stopOwnedProcess, type Frame, type Wire } from "./harness-wire"
 import { createHarnessTasks } from "./harness-tasks"
-import { backgroundWaitTool, createHarnessTools } from "./harness-tools"
+import { createHarnessDelegation } from "./harness-delegation"
+import { backgroundWaitTool, createHarnessTools, delegationTools } from "./harness-tools"
 import { App } from "@opencode/core/app"
+import { Session } from "@opencode/core/session"
+import { SessionMessage } from "@opencode/core/session/message"
+import { SessionStore } from "@opencode/core/session/store"
+import { SubagentCompletion } from "@opencode/core/session/subagent-completion"
+import { ExternalDelegation } from "@opencode/core/external-delegation"
+import { Location } from "@opencode/schema/location"
 
 const CodexModelPage = Schema.Struct({
   data: Schema.Array(
@@ -63,8 +71,39 @@ type Live = {
   tools?: ReturnType<typeof createHarnessTools>
 }
 
-/** Persistence belongs to the execution host. Native IDs survive restart; processes are never replayed automatically. */
-export async function createHarnesses(directory: string, app = App.make({ name: "redcode" })) {
+// Tokens distinguish independent server scopes hosted by the same OS process.
+const harnessOwners = new Set<string>()
+type HarnessOwner = { host: string; owner_pid: number; owner_token: string; child_pid: number | null; eligible: number }
+const processAlive = (pid: number) => {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code !== "ESRCH"
+  }
+}
+const ownerAlive = (owner: HarnessOwner, host: string) =>
+  owner.host !== host ||
+  (owner.owner_pid === process.pid ? harnessOwners.has(owner.owner_token) : processAlive(owner.owner_pid))
+
+/** Persistence belongs to the execution host; resumed parents never replay ambiguous input. */
+export async function createHarnesses(
+  directory: string,
+  app = App.make({ name: "redcode" }),
+  native?: {
+    deliver: (sessionID: string, requestID: string, result: string) => Promise<void>
+    start?: (parent: string, child: string, directory: string, task: string) => Promise<void>
+    run?: (
+      child: string,
+      signal: AbortSignal,
+    ) => Promise<{ status: "completed" | "failed" | "interrupted"; text: string }>
+    recover?: (
+      child: string,
+      signal: AbortSignal,
+    ) => Promise<{ status: "completed" | "failed" | "interrupted"; text: string } | undefined>
+    interrupt?: (child: string) => Promise<boolean>
+  },
+) {
   const { Database } = await import("bun:sqlite")
   await mkdir(directory, { recursive: true })
   const db = new Database(path.join(directory, "harness.sqlite"), { create: true })
@@ -74,12 +113,28 @@ export async function createHarnesses(directory: string, app = App.make({ name: 
     CREATE TABLE IF NOT EXISTS event (cursor INTEGER PRIMARY KEY AUTOINCREMENT, run TEXT NOT NULL, kind TEXT NOT NULL, text TEXT NOT NULL);
     CREATE INDEX IF NOT EXISTS event_run ON event(run,cursor);
     CREATE TABLE IF NOT EXISTS prompt (id TEXT PRIMARY KEY, run TEXT NOT NULL, text TEXT NOT NULL, status TEXT NOT NULL);`)
+  db.exec(`CREATE TABLE IF NOT EXISTS harness_process (
+    run TEXT PRIMARY KEY, host TEXT NOT NULL, owner_pid INTEGER NOT NULL, owner_token TEXT NOT NULL,
+    child_pid INTEGER, eligible INTEGER NOT NULL DEFAULT 0
+  )`)
+  const ownerToken = crypto.randomUUID()
+  const localHost = hostname()
+  harnessOwners.add(ownerToken)
+  const processOwner = (id: string) =>
+    db
+      .query<
+        HarnessOwner,
+        [string]
+      >("SELECT host,owner_pid,owner_token,child_pid,eligible FROM harness_process WHERE run=?")
+      .get(id)
   db.exec(
     "CREATE TABLE IF NOT EXISTS metric (id TEXT PRIMARY KEY, data TEXT NOT NULL, reported INTEGER NOT NULL DEFAULT 0)",
   )
   const tasks = createHarnessTasks(db)
   const live = new Map<string, Live>()
   const lifetime = { closed: false }
+  const recovering = new Set<Promise<void>>()
+  let recoveryTimer: ReturnType<typeof setInterval> | undefined
   const providers = new Map<Harness.Driver, Harness.Provider>()
   const logins = new Map<Harness.Driver, Harness.Login>()
   const loginWires = new Map<
@@ -177,9 +232,17 @@ export async function createHarnesses(directory: string, app = App.make({ name: 
   const executable = (driver: Harness.Driver) =>
     db.query<{ executable: string }, [string]>("SELECT executable FROM config WHERE driver=?").get(driver)
       ?.executable ?? driver
-  runs().forEach((run) => tasks.unavailable(run.id))
   runs()
-    .filter((run) => !["closed", "failed", "interrupted"].includes(run.state))
+    .filter((run) => {
+      const owner = processOwner(run.id)
+      return !owner || !ownerAlive(owner, localHost)
+    })
+    .forEach((run) => tasks.unavailable(run.id))
+  runs()
+    .filter((run) => {
+      const owner = processOwner(run.id)
+      return !["closed", "failed", "interrupted"].includes(run.state) && (!owner || !ownerAlive(owner, localHost))
+    })
     .forEach((run) =>
       write({
         ...run,
@@ -371,6 +434,11 @@ export async function createHarnesses(directory: string, app = App.make({ name: 
       if (method === "turn/completed") {
         connection.tools?.cancel()
         const turn = object(params.turn)
+        delegation.settle(
+          id,
+          turn.status === "failed" ? "failed" : turn.status === "interrupted" ? "interrupted" : "completed",
+          string(object(turn.error).message) || undefined,
+        )
         metric(
           id,
           `turn:${string(turn.id) || connection.turn}`,
@@ -386,6 +454,7 @@ export async function createHarnesses(directory: string, app = App.make({ name: 
           detail: string(object(turn.error).message) || undefined,
         })
         void drain(id)
+        if (turn.status !== "failed" && turn.status !== "interrupted") void delegation.flush(id).catch(() => {})
       }
       return
     }
@@ -422,6 +491,11 @@ export async function createHarnesses(directory: string, app = App.make({ name: 
         })
     }
     if (value.type === "result") {
+      delegation.settle(
+        id,
+        value.is_error ? "failed" : "completed",
+        value.is_error ? string(value.result) || "Claude execution failed" : undefined,
+      )
       connection.tools?.cancel()
       if (string(value.session_id) && string(value.session_id) !== read(id).nativeID)
         update(id, { nativeID: string(value.session_id) })
@@ -476,12 +550,18 @@ export async function createHarnesses(directory: string, app = App.make({ name: 
         detail: value.is_error ? string(value.result) || "Claude execution failed" : undefined,
       })
       void drain(id)
+      if (!value.is_error) void delegation.flush(id).catch(() => {})
     }
   }
   const launch = async (run: Harness.Run) => {
     if (live.has(run.id)) throw new Error("Harness is already attached")
     const canonical = await realpath(run.directory)
+    if (lifetime.closed) throw new Error("Host is shutting down")
     if (canonical !== run.directory) throw new Error("Checkout moved; select its current canonical path")
+    // The NULL child PID is a write-ahead marker: a crash during spawn is ambiguous.
+    db.query(
+      "INSERT OR REPLACE INTO harness_process(run,host,owner_pid,owner_token,child_pid,eligible) VALUES (?,?,?,?,NULL,?)",
+    ).run(run.id, localHost, process.pid, ownerToken, run.delegation ? 1 : 0)
     update(run.id, { state: "starting", detail: undefined })
     const args =
       run.driver === "codex"
@@ -513,16 +593,32 @@ export async function createHarnesses(directory: string, app = App.make({ name: 
         if (read(run.id).state !== "closed") update(run.id, { state: "unknown", detail })
       },
     })
+    if (connection.pid)
+      db.query("UPDATE harness_process SET child_pid=? WHERE run=? AND owner_token=?").run(
+        connection.pid,
+        run.id,
+        ownerToken,
+      )
     live.set(run.id, {
       wire: connection,
       turn: "",
       pending: new Map(),
       sending: false,
-      ...(run.backgroundWait
+      ...(run.backgroundWait || run.delegation
         ? {
             tools: createHarnessTools({
               driver: run.driver,
+              waitEnabled: !!run.backgroundWait,
               wait: (taskID, timeoutMs, signal) => tasks.wait(run.id, taskID, timeoutMs, signal),
+              ...(run.delegation
+                ? {
+                    delegation: {
+                      delegate: (args: unknown) => delegation.delegate(run.id, args),
+                      status: (taskID: string) => delegation.status(run.id, taskID),
+                      cancel: (taskID: string) => delegation.cancel(run.id, taskID),
+                    },
+                  }
+                : {}),
               send: (frame) => {
                 if (
                   !lifetime.closed &&
@@ -538,7 +634,7 @@ export async function createHarnesses(directory: string, app = App.make({ name: 
     })
     try {
       if (run.driver === "codex") {
-        await codexInit(connection, run.backgroundWait)
+        await codexInit(connection, !!run.backgroundWait || !!run.delegation)
         const result = await connection.request(
           run.nativeID ? "thread/resume" : "thread/start",
           {
@@ -547,8 +643,13 @@ export async function createHarnesses(directory: string, app = App.make({ name: 
             ...(run.model ? { model: run.model } : {}),
             approvalPolicy: "on-request",
             sandbox: "workspace-write",
-            ...(!run.nativeID && run.backgroundWait
-              ? { dynamicTools: [{ type: "function", ...backgroundWaitTool }] }
+            ...(!run.nativeID && (run.backgroundWait || run.delegation)
+              ? {
+                  dynamicTools: [
+                    ...(run.backgroundWait ? [{ type: "function", ...backgroundWaitTool }] : []),
+                    ...(run.delegation ? delegationTools.map((tool) => ({ type: "function", ...tool })) : []),
+                  ],
+                }
               : {}),
           },
           run.driver,
@@ -560,7 +661,17 @@ export async function createHarnesses(directory: string, app = App.make({ name: 
       if (run.driver === "claude")
         await connection.request(
           "initialize",
-          { hooks: {}, ...(run.backgroundWait ? { sdkMcpServers: ["redcode_wait"] } : {}) },
+          {
+            hooks: {},
+            ...(run.backgroundWait || run.delegation
+              ? {
+                  sdkMcpServers: [
+                    ...(run.backgroundWait ? ["redcode_wait"] : []),
+                    ...(run.delegation ? ["redcode"] : []),
+                  ],
+                }
+              : {}),
+          },
           run.driver,
         )
       return update(run.id, { state: "ready" })
@@ -619,6 +730,7 @@ export async function createHarnesses(directory: string, app = App.make({ name: 
       update(id, { state: "unknown", detail: String(error) })
     } finally {
       connection.sending = false
+      void delegation.flush(id).catch(() => {})
     }
   }
   const service = {
@@ -806,6 +918,7 @@ export async function createHarnesses(directory: string, app = App.make({ name: 
       const run = read(id)
       const connection = live.get(id)
       if (!connection) throw new Error("Harness process is unavailable")
+      db.query("UPDATE harness_process SET eligible=0 WHERE run=?").run(id)
       connection.tools?.cancel()
       db.query("UPDATE prompt SET status='cancelled' WHERE run=? AND status='queued'").run(id)
       if (run.driver === "codex" && connection.turn)
@@ -876,12 +989,19 @@ export async function createHarnesses(directory: string, app = App.make({ name: 
       if (run.state === "unknown") throw new Error("Confirm that the original process stopped before resuming")
       if (!run.nativeID) throw new Error("No native resume identity was recorded; start a new harness")
       if (live.has(id) && ["ready", "interrupted"].includes(run.state)) {
+        db.query("UPDATE harness_process SET eligible=? WHERE run=? AND owner_token=?").run(
+          run.delegation ? 1 : 0,
+          id,
+          ownerToken,
+        )
         const next = update(id, { state: "ready" })
         void drain(id)
+        void delegation.flush(id).catch(() => {})
         return next
       }
       const next = await launch(run)
       void drain(id)
+      void delegation.flush(id).catch(() => {})
       return next
     },
     async close(id: string) {
@@ -890,6 +1010,7 @@ export async function createHarnesses(directory: string, app = App.make({ name: 
           "No owned process can be stopped. Reconcile the original process before releasing this checkout",
         )
       update(id, { state: "closed" })
+      db.query("UPDATE harness_process SET eligible=0 WHERE run=?").run(id)
       live.get(id)?.tools?.cancel()
       db.query("UPDATE prompt SET status='cancelled' WHERE run=? AND status='queued'").run(id)
       await live.get(id)?.wire.close()
@@ -910,29 +1031,283 @@ export async function createHarnesses(directory: string, app = App.make({ name: 
     async dispose() {
       live.forEach((_connection, id) => tasks.unavailable(id))
       lifetime.closed = true
+      if (recoveryTimer) clearInterval(recoveryTimer)
+      const stopping = delegation.stop()
       const logins = [...loginWires.values()]
       loginWires.clear()
       await Promise.all(logins.map((connection) => connection.close()))
       await Promise.all([...live.values()].map((connection) => connection.wire.close()))
       live.clear()
+      await Promise.allSettled([...recovering])
+      await stopping
+      harnessOwners.delete(ownerToken)
       db.close()
     },
   }
-  return service
+  const delegation = createHarnessDelegation(db, {
+    parent: (id) => {
+      const run = read(id)
+      if (!live.has(id) || !["running", "waiting"].includes(run.state))
+        throw new Error("Delegation requires an active owned harness run")
+      return run
+    },
+    configured: (driver) => !!db.query("SELECT driver FROM config WHERE driver=?").get(driver),
+    open: async (id, parent, driver) => {
+      const run: Harness.Run = {
+        id,
+        driver,
+        directory: parent.directory,
+        state: "starting",
+        createdAt: new Date().toISOString(),
+        queued: 0,
+        capabilities: { steer: driver === "codex", resume: true, interrupt: true },
+      }
+      write(run)
+      await launch(run)
+    },
+    prompt: (id, text) => service.prompt(id, { id: `delegation:${id}`, text, delivery: "queue" }),
+    read: service.read,
+    interrupt: service.interrupt,
+    ...(native?.start && native.run && native.interrupt
+      ? {
+          native: {
+            start: native.start,
+            run: native.run,
+            recover: native.recover ?? (async () => undefined),
+            interrupt: native.interrupt,
+          },
+        }
+      : {}),
+    deliver: async (parent, id, result) => {
+      if (lifetime.closed) return false
+      if (parent.startsWith("session:")) {
+        if (!native) return false
+        await native.deliver(parent.slice("session:".length), id, result)
+        return true
+      }
+      const connection = live.get(parent)
+      if (!connection || connection.sending || read(parent).state !== "ready" || queued(parent) !== 0) return false
+      const receipt = createHash("sha256").update(id).digest("hex")
+      await service.prompt(parent, {
+        id: `delegation-result:${receipt}`,
+        text: `<delegated_task_result>\n${result}\n</delegated_task_result>`,
+        delivery: "queue",
+      })
+      return (
+        db
+          .query<{ status: string }, [string]>("SELECT status FROM prompt WHERE id=?")
+          .get(`delegation-result:${receipt}`)?.status === "sent"
+      )
+    },
+  })
+  // Preserve startup roots before a durable outbox can be acknowledged by flushNative.
+  const recoveryAtStartup = delegation.recoverySessions()
+  delegation.flushNative()
+  const recoverParents = () => {
+    if (lifetime.closed) return
+    for (const id of delegation.recoverableParents()) {
+      const run = read(id)
+      if (run.state !== "unknown" || !run.nativeID || !run.delegation || live.has(id)) continue
+      const owner = processOwner(id)
+      if (!owner || !owner.eligible || owner.host !== localHost || ownerAlive(owner, localHost)) continue
+      // No PID means a crash between spawn and recording ownership. Never guess.
+      if (!owner.child_pid || processAlive(owner.child_pid)) continue
+      const claimed = db
+        .query(
+          "UPDATE harness_process SET owner_pid=?,owner_token=? WHERE run=? AND owner_token=? AND child_pid=? AND eligible=1",
+        )
+        .run(process.pid, ownerToken, id, owner.owner_token, owner.child_pid)
+      if (!claimed.changes) continue
+      const work = (async () => {
+        try {
+          await launch(run)
+          if (lifetime.closed) return
+          void drain(id)
+          await delegation.flush(id)
+        } catch (error) {
+          if (!lifetime.closed) {
+            update(id, {
+              state: "unknown",
+              detail: `Automatic resume failed: ${error instanceof Error ? error.message : String(error)}`,
+            })
+            db.query("UPDATE harness_process SET owner_token=? WHERE run=? AND owner_token=?").run(
+              `${ownerToken}:released`,
+              id,
+              ownerToken,
+            )
+          }
+        }
+      })()
+      recovering.add(work)
+      void work.finally(() => recovering.delete(work))
+    }
+  }
+  const recoverDelegations = () => {
+    delegation.recoverNative()
+    recoverParents()
+    if (!recoveryTimer && !lifetime.closed) {
+      recoveryTimer = setInterval(recoverParents, 3000)
+      recoveryTimer.unref?.()
+    }
+  }
+  return Object.assign(service, {
+    delegate: delegation.delegate,
+    delegationStatus: delegation.status,
+    cancelDelegation: delegation.cancel,
+    recoverDelegations,
+    recoverySessions: () => [...new Set([...recoveryAtStartup, ...delegation.recoverySessions()])],
+    delegateFromSession: (sessionID: string, directory: string, request: ExternalDelegation.Request) =>
+      delegation.delegate(`session:${sessionID}`, request, { directory: AbsolutePath.make(directory) }),
+    sessionDelegationStatus: (sessionID: string, taskID: string) => delegation.status(`session:${sessionID}`, taskID),
+    cancelSessionDelegation: (sessionID: string, taskID: string) => delegation.cancel(`session:${sessionID}`, taskID),
+  })
 }
 
 export class Service extends Context.Service<Service, Awaited<ReturnType<typeof createHarnesses>>>()(
   "@opencode/Harnesses",
 ) {}
-const layer = Layer.effect(
-  Service,
-  Effect.gen(function* () {
-    const global = yield* Global.Service
-    const app = yield* App.Metadata
-    return yield* Effect.acquireRelease(
-      Effect.promise(() => createHarnesses(path.join(global.state, "harnesses"), app)),
-      (service) => Effect.promise(() => service.dispose()),
-    )
-  }),
-)
-export const node = makeGlobalNode({ service: Service, layer, deps: [Global.node, App.node] })
+const layer = (options: { sessionDelegation: boolean }) =>
+  Layer.effect(
+    Service,
+    Effect.gen(function* () {
+      const global = yield* Global.Service
+      const app = yield* App.Metadata
+      const sessions = yield* Session.Service
+      const store = yield* SessionStore.Service
+      const gateway = yield* ExternalDelegation.Service
+      const service = yield* Effect.acquireRelease(
+        Effect.promise(() =>
+          createHarnesses(path.join(global.state, "harnesses"), app, {
+            deliver: async (sessionID, requestID, result) => {
+              if (!options.sessionDelegation) throw new Error("Native harness delegation is unavailable on this server")
+              const id = Session.ID.make(sessionID)
+              const session = await Effect.runPromise(sessions.get(id))
+              const active = await Effect.runPromise(sessions.active)
+              await Effect.runPromise(
+                sessions.synthetic({
+                  sessionID: id,
+                  id: SessionMessage.ID.make(`msg_external_${createHash("sha256").update(requestID).digest("hex")}`),
+                  description: "Delegated task result",
+                  text: `<delegated_task_result>\n${result}\n</delegated_task_result>`,
+                  metadata: { source: "external-delegation", taskID: requestID },
+                  ...(session.outcome === "interrupted" && !active.has(id) ? { resume: false } : {}),
+                }),
+              )
+            },
+            start: async (parent, child, directory, task) => {
+              const sessionID = Session.ID.make(child)
+              await Effect.runPromise(
+                sessions.create({
+                  id: sessionID,
+                  location: Location.Ref.make({ directory: AbsolutePath.make(directory) }),
+                  title: "Delegated task",
+                  metadata: { externalDelegationParent: parent },
+                  permissions: [{ action: "*", resource: "*", effect: "ask" }],
+                }),
+              )
+              await Effect.runPromise(
+                sessions.prompt({
+                  sessionID,
+                  id: SessionMessage.ID.make(`msg_external_prompt_${createHash("sha256").update(child).digest("hex")}`),
+                  text: task,
+                  resume: false,
+                }),
+              )
+            },
+            run: async (child, signal) => {
+              const sessionID = Session.ID.make(child)
+              let failure: unknown
+              try {
+                await Effect.runPromise(sessions.resume(sessionID), { signal })
+              } catch (error) {
+                if (signal.aborted) throw error
+                failure = error
+                await Effect.runPromise(sessions.wait(sessionID), { signal })
+              }
+              const session = await Effect.runPromise(sessions.get(sessionID))
+              if (failure && session.outcome !== "interrupted") throw failure
+              const messages = await Effect.runPromise(sessions.messages({ sessionID, order: "desc", limit: 20 }))
+              const response = messages.find(
+                (message) => message.type === "assistant" && message.time.completed !== undefined,
+              )
+              return {
+                status:
+                  session.outcome === "succeeded"
+                    ? "completed"
+                    : session.outcome === "interrupted"
+                      ? "interrupted"
+                      : "failed",
+                text: SubagentCompletion.text(response),
+              }
+            },
+            recover: async (child, signal) => {
+              const sessionID = Session.ID.make(child)
+              const messageID = SessionMessage.ID.make(
+                `msg_external_prompt_${createHash("sha256").update(child).digest("hex")}`,
+              )
+              for (;;) {
+                const observed = await Effect.runPromise(store.observation(sessionID, messageID), { signal })
+                if (!observed || observed.admission === "missing") return undefined
+                // The core restart sweep owns suspended turns and preserves its retry budget.
+                if (observed.execution !== "idle") {
+                  await Effect.runPromise(Effect.sleep("100 millis"), { signal })
+                  continue
+                }
+                if (!observed.outcome) {
+                  if (observed.admission !== "pending") return undefined
+                  // Admission was durable but execution never acquired its first claim.
+                  await Effect.runPromise(sessions.resume(sessionID), { signal })
+                  continue
+                }
+                const messages = await Effect.runPromise(sessions.messages({ sessionID, order: "desc", limit: 20 }), {
+                  signal,
+                })
+                const response = messages.find(
+                  (message) => message.type === "assistant" && message.time.completed !== undefined,
+                )
+                return {
+                  status:
+                    observed.outcome === "succeeded"
+                      ? "completed"
+                      : observed.outcome === "interrupted"
+                        ? "interrupted"
+                        : "failed",
+                  text: SubagentCompletion.text(response),
+                }
+              }
+            },
+            interrupt: async (child) => {
+              const sessionID = Session.ID.make(child)
+              const interrupted = await Effect.runPromise(sessions.interrupt(sessionID))
+              if (interrupted) await Effect.runPromise(sessions.wait(sessionID))
+              return interrupted
+            },
+          }),
+        ),
+        (service) =>
+          Effect.promise(async () => {
+            gateway.set(undefined)
+            await service.dispose()
+          }),
+      )
+      if (options.sessionDelegation)
+        gateway.set({
+          delegate: async (sessionID, directory, request) => {
+            const session = await Effect.runPromise(sessions.get(Session.ID.make(sessionID)))
+            if ((await realpath(session.location.directory)) !== (await realpath(directory)))
+              throw new Error("The session location changed; retry from its current checkout")
+            return service.delegateFromSession(sessionID, directory, request)
+          },
+          status: service.sessionDelegationStatus,
+          cancel: service.cancelSessionDelegation,
+        })
+      return service
+    }),
+  )
+export const configured = (options: { sessionDelegation: boolean }) =>
+  makeGlobalNode({
+    service: Service,
+    layer: layer(options),
+    deps: [Global.node, App.node, Session.node, SessionStore.node, ExternalDelegation.node],
+  })
+export const node = configured({ sessionDelegation: true })

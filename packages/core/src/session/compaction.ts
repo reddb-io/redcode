@@ -74,7 +74,11 @@ export type Editor = {
 
 export type Trigger =
   /** `overflow`: the provider just rejected this context as too long. */
-  | { readonly reason: "auto" | "overflow"; readonly context: SessionContext.Loaded }
+  | {
+      readonly reason: "auto" | "overflow"
+      readonly context: SessionContext.Loaded
+      readonly estimate?: PromptEstimate
+    }
   /** `inputID` is the `/compact` inbox item, whose message shows the outcome; `focus` steers its summary. */
   | {
       readonly reason: "manual"
@@ -535,7 +539,8 @@ export const layer = Layer.effect(
         settings.summaryMaxTokens ?? Number.POSITIVE_INFINITY,
       )
       const room = Math.floor(cap * EFFECTIVE_SHARE) - overhead - summaryRoom
-      const measured = trigger.reason === "auto" ? measure(context, observed) : undefined
+      const estimate = trigger.reason === "manual" ? undefined : trigger.estimate
+      const measured = trigger.reason === "auto" ? measure(context, observed, estimate) : undefined
       if (trigger.reason === "auto" && (!settings.auto || measured === undefined || measured < ceiling)) {
         yield* observe(context, settings, ceiling, measured, room)
         return { status: "skipped" }
@@ -556,7 +561,7 @@ export const layer = Layer.effect(
         cap,
         overhead,
         room,
-        size: measured ?? estimateContext(context, observed?.ratio),
+        size: measured ?? estimateContext(context, observed?.ratio, estimate),
         providerID: context.model.ref.providerID,
         modelID: context.model.ref.id,
       }
@@ -632,7 +637,11 @@ export const layer = Layer.effect(
     })
 
     /** The context size an automatic check compares with the threshold; undefined when it must not measure yet. */
-    const measure = (context: SessionContext.Loaded, observed: ModelLimit.Observed | undefined) => {
+    const measure = (
+      context: SessionContext.Loaded,
+      observed: ModelLimit.Observed | undefined,
+      estimate?: PromptEstimate,
+    ) => {
       const messages = context.messages
       // A compaction just completed; let the runner rebuild the request from it first.
       const last = messages.at(-1)
@@ -640,7 +649,7 @@ export const layer = Layer.effect(
       // An encrypted native window estimates as nothing, so wait for a response to measure it.
       const measured = messages.findLastIndex((message) => hasMeasuredPrompt(message, context.model.ref))
       if (measured < messages.findLastIndex(SessionProviderContext.isCheckpoint)) return undefined
-      return estimateContext(context, observed?.ratio)
+      return estimateContext(context, observed?.ratio, estimate)
     }
 
     /** The context the summary is written in: the S2 transformations model when one is configured. */
@@ -1734,9 +1743,11 @@ export const recentUserMessages = (
   return recent.slice(-turns)
 }
 
-export const estimateContext = (context: SessionContext.Loaded, ratio = 1) => {
-  const prompt = estimatePrompt(context, ratio)
-  return prompt.measured + prompt.estimated
+export type PromptEstimate = { readonly measured: number; readonly estimated: number }
+
+export const estimateContext = (context: SessionContext.Loaded, ratio = 1, supplied?: PromptEstimate) => {
+  const prompt = supplied ?? estimatePrompt(context)
+  return prompt.measured + Math.ceil(prompt.estimated * ratio)
 }
 
 /** The prompt size: `measured` is what the provider reported at the latest response, `estimated` is the text since. */

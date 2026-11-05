@@ -1,6 +1,7 @@
 export * as McpTool from "./mcp.js"
 
 import { ToolFailure } from "@opencode/ai"
+import { isDeepStrictEqual } from "node:util"
 import { McpEvent } from "@opencode/schema/mcp-event"
 import { Context, Effect, Fiber, type JsonSchema, Layer, PubSub, Semaphore, Stream } from "effect"
 import { makeLocationNode } from "@opencode/util/effect/app-node"
@@ -12,6 +13,7 @@ import { ProviderRouter } from "../provider-router.js"
 import { Tool } from "../tool.js"
 import { Vault } from "../vault/vault.js"
 import { VaultHosts } from "../vault/hosts.js"
+import { SessionWait } from "../session/wait.js"
 
 /**
  * Registry namespace and permission action names for MCP tools.
@@ -22,6 +24,7 @@ export const name = (server: string, tool: string) => `${namespace(server)}_${to
 export interface Interface {
   /** Wait for the initial MCP tool registration to settle. */
   readonly flush: Effect.Effect<void>
+  readonly starting: Effect.Effect<readonly string[]>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/McpTool") {}
@@ -35,12 +38,13 @@ export const layer = Layer.effect(
     const permission = yield* Permission.Service
     const lock = Semaphore.makeUnsafe(1)
     let discovered: Mcp.Tool[] = []
+    let dirty = false
 
     // Register once after initial discovery; only subsequent updates need a debounced reload.
     const initial = yield* lock
       .withPermit(
         Effect.gen(function* () {
-          discovered = yield* mcp.tools()
+          discovered = yield* mcp.tools({ waitForStartup: true })
           yield* tools.transform((editor) => {
             for (const tool of discovered) {
               editor.add({
@@ -92,20 +96,27 @@ export const layer = Layer.effect(
                           }),
                       ),
                     )
-                    const called = yield* mcp
-                      .callTool({
-                        server: tool.server,
-                        name: tool.name,
-                        args: vaulted.values.size === 0 ? args : Vault.fillRecord(args, vaulted.values),
+                    const called = yield* Effect.acquireUseRelease(
+                      SessionWait.start(bus, {
                         sessionID: context.sessionID,
-                      })
-                      .pipe(
-                        Effect.catchTags({
-                          "MCP.NotFoundError": (error) =>
-                            new ToolFailure({ message: `MCP server "${error.server}" is not available` }),
-                          "MCP.ToolCallError": (error) => new ToolFailure({ message: error.message }),
+                        kind: "mcp",
+                        target: name(tool.server, tool.name),
+                      }),
+                      () =>
+                        mcp.callTool({
+                          server: tool.server,
+                          name: tool.name,
+                          args: vaulted.values.size === 0 ? args : Vault.fillRecord(args, vaulted.values),
+                          sessionID: context.sessionID,
                         }),
-                      )
+                      (end) => end,
+                    ).pipe(
+                      Effect.catchTags({
+                        "MCP.NotFoundError": (error) =>
+                          new ToolFailure({ message: `MCP server "${error.server}" is not available` }),
+                        "MCP.ToolCallError": (error) => new ToolFailure({ message: error.message }),
+                      }),
+                    )
                     // Secrets the server returns, such as a token it issued, are stored and read as references.
                     const binding = yield* Vault.Current
                     const captured = binding
@@ -177,7 +188,10 @@ export const layer = Layer.effect(
       .pipe(Effect.forkScoped)
     const reconcile = lock.withPermit(
       Effect.gen(function* () {
-        discovered = yield* mcp.tools()
+        dirty = false
+        const next = yield* mcp.tools()
+        if (isDeepStrictEqual(discovered, next)) return
+        discovered = next
         yield* tools.reload()
       }),
     )
@@ -186,7 +200,11 @@ export const layer = Layer.effect(
     // once. The bus subscription stays eager; only the already-open sliding subscription is debounced.
     const changes = yield* PubSub.sliding<void>(1)
     yield* bus.subscribe(McpEvent.ToolsChanged).pipe(
-      Stream.runForEach(() => PubSub.publish(changes, undefined)),
+      Stream.runForEach(() =>
+        Effect.sync(() => {
+          dirty = true
+        }).pipe(Effect.andThen(PubSub.publish(changes, undefined))),
+      ),
       Effect.forkScoped({ startImmediately: true }),
     )
     const updates = yield* PubSub.subscribe(changes)
@@ -195,7 +213,18 @@ export const layer = Layer.effect(
       Stream.runForEach(() => reconcile),
       Effect.forkScoped({ startImmediately: true }),
     )
-    return Service.of({ flush: Effect.asVoid(Fiber.await(initial)) })
+    return Service.of({
+      starting: Effect.suspend(() => mcp.servers()).pipe(
+        Effect.map((servers) =>
+          servers.filter((server) => server.status.status === "pending").map((server) => server.name),
+        ),
+      ),
+      flush: Effect.gen(function* () {
+        yield* Fiber.await(initial)
+        // A ToolsChanged event is debounced; reconcile before the model takes its snapshot.
+        if (dirty) yield* reconcile
+      }),
+    })
   }),
 )
 

@@ -20,6 +20,33 @@ import { expectSessionReady } from "./waits"
 
 export const directory = "C:/OpenCode/TimelineStability"
 
+/** Mutable session-owned monitor inventory for timeline lifecycle scenarios. */
+export async function mockTimelineMonitors(page: Page) {
+  const state = { running: true }
+  const created = Date.now() - 65_000
+  await page.route(`**/api/session/${sessionID}/monitor`, (route) =>
+    route.fulfill({
+      json: {
+        data: [
+          {
+            id: "mon_build",
+            sessionID,
+            command: "Build readiness",
+            workdir: directory,
+            options: { mode: "poll", interval_ms: 5000, deadline_ms: 120000 },
+            status: state.running ? "running" : "succeeded",
+            created,
+            updated: Date.now(),
+            attempts: 1,
+            delivery: "pending",
+          },
+        ],
+      },
+    }),
+  )
+  return state
+}
+
 export const projectID = "proj_timeline_stability"
 
 export const sessionID = "ses_timeline_stability"

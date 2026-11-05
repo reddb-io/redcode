@@ -273,6 +273,7 @@ const schema: Omit<DatabaseMigration.Migration, "id"> = {
           \`status\` text NOT NULL,
           \`owner\` text NOT NULL,
           \`error\` text,
+          \`condition_result\` text,
           \`created_at\` integer NOT NULL,
           \`updated_at\` integer NOT NULL,
           CONSTRAINT \`fk_session_automation_run_automation_id_session_automation_id_fk\` FOREIGN KEY (\`automation_id\`) REFERENCES \`session_automation\`(\`id\`) ON DELETE CASCADE
@@ -285,6 +286,8 @@ const schema: Omit<DatabaseMigration.Migration, "id"> = {
           \`title\` text NOT NULL,
           \`prompt\` text NOT NULL,
           \`schedule\` text NOT NULL,
+          \`condition\` text,
+          \`condition_last\` integer,
           \`enabled\` integer NOT NULL,
           \`next_at\` integer,
           \`created_at\` integer NOT NULL,

@@ -14,6 +14,7 @@ import zh from "@/runtime/i18n/zh"
 import { authFromToken } from "@/runtime/server/api"
 import pkg from "../package.json"
 import { ServerConnection } from "@/runtime/server/registry"
+import { WebUpdateNotice } from "@/runtime/platform/web-update-notice"
 
 const getLocale = () => {
   if (typeof navigator === "undefined") return "en" as const
@@ -50,10 +51,6 @@ const clearAuthToken = () => {
 }
 
 const web = createWebPlatform(pkg.version)
-
-if (import.meta.env.PROD && "serviceWorker" in navigator) {
-  window.addEventListener("load", () => void navigator.serviceWorker.register("/sw.js"), { once: true })
-}
 
 if (import.meta.env.VITE_SENTRY_DSN) {
   init({
@@ -105,6 +102,7 @@ if (root instanceof HTMLElement && root.dataset.opencodeMounted === undefined) {
               servers={server ? [server] : []}
             >
               <KeyboardInsets />
+              <WebUpdateNotice />
               {standalone && <PwaRoutePersistence />}
             </AppInterface>
           </AppBaseProviders>

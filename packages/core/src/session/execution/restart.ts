@@ -44,6 +44,8 @@ export interface Interface {
    * the resume path leaves the same orphaned claim for the next boot.
    */
   readonly resumeSuspendedSessions: Effect.Effect<void>
+  /** Recovers only the selected Sessions and their descendants. */
+  readonly resumeSelectedSessions: (roots: ReadonlyArray<SessionSchema.ID>) => Effect.Effect<void>
 }
 
 /**
@@ -59,7 +61,8 @@ export interface Interface {
  * durable local ownership gate before resuming. This also protects embedders
  * and independently started servers sharing the database on the same host.
  * A foreign-host owner is kept intact; this is not a distributed lease.
- * The service is inert until called by managed-server boot or an embedder.
+ * The service is inert until called by server boot or an embedder. Foreground
+ * servers may limit the sweep to a specific set of session families.
  */
 export class Service extends Context.Service<Service, Interface>()("@opencode/SessionRestart") {}
 
@@ -208,11 +211,25 @@ export const layer = (options?: Options) =>
         )
       })
 
-      return Service.of({
-        resumeSuspendedSessions: Effect.gen(function* () {
+      const sweep = (roots?: ReadonlyArray<SessionSchema.ID>) =>
+        Effect.gen(function* () {
+          const family = roots ? new Set(roots) : undefined
+          if (family) {
+            const queue = [...family]
+            for (let i = 0; i < queue.length; i++) {
+              for (const child of yield* store.list({ parentID: queue[i] })) {
+                if (family.has(child.id)) continue
+                family.add(child.id)
+                queue.push(child.id)
+              }
+            }
+          }
           const active = yield* execution.active
           const pending = (yield* jobs.pendingBackground).filter(
-            (job) => job.status !== "running" || !job.owner || !ExecutionOwner.alive(job.owner),
+            (job) =>
+              (job.status !== "running" || !job.owner || !ExecutionOwner.alive(job.owner)) &&
+              (!family ||
+                family.has(job.recovery.kind === "shell" ? job.recovery.sessionID : job.recovery.parentSessionID)),
           )
           const children = pending.flatMap((background) =>
             background.status === "running" && background.recovery.kind === "subagent"
@@ -221,9 +238,11 @@ export const layer = (options?: Options) =>
           )
           // Early notices wait for recovery's accounting, including Sessions that exhaust their budget.
           const suspended = new Set(
-            [...(yield* store.listSuspended()), ...children].filter((sessionID) => !active.has(sessionID)),
+            [...(yield* store.listSuspended()), ...children].filter(
+              (sessionID) => !active.has(sessionID) && (!family || family.has(sessionID)),
+            ),
           )
-          yield* store.releaseChildClaims(children)
+          yield* store.releaseChildClaims(children, family ? [...family] : undefined)
           yield* Effect.forEach(
             // Admit shell outcomes before a recovered child can start its first model request.
             pending.toSorted((a, b) => Number(a.recovery.kind === "subagent") - Number(b.recovery.kind === "subagent")),
@@ -240,7 +259,9 @@ export const layer = (options?: Options) =>
           // Background completion can wake a parent, so inspect local ownership only after recovery.
           const resumed = yield* execution.active
           yield* Effect.forEach(
-            (yield* store.listSuspended()).filter((sessionID) => !resumed.has(sessionID)),
+            (yield* store.listSuspended()).filter(
+              (sessionID) => !resumed.has(sessionID) && (!family || family.has(sessionID)),
+            ),
             (sessionID) =>
               execution
                 .resume(sessionID)
@@ -249,7 +270,10 @@ export const layer = (options?: Options) =>
           )
           // Async observers consult this set at delivery; later completions wake parents normally.
           suspended.clear()
-        }),
+        })
+      return Service.of({
+        resumeSuspendedSessions: sweep(),
+        resumeSelectedSessions: (roots) => sweep(roots),
       })
     }),
   )

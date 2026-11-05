@@ -51,6 +51,7 @@ import { ModelsDev } from "@opencode/core/models-dev"
 import { SessionRestart } from "@opencode/core/session/execution/restart"
 import { PluginUpdate } from "@opencode/core/plugin/update"
 import { SdkPlugins } from "@opencode/core/plugin/sdk"
+import { ExternalDelegation } from "@opencode/core/external-delegation"
 import { WellKnown } from "@opencode/core/wellknown"
 import { Workspace } from "@opencode/core/workspace"
 import { Watcher } from "@opencode/core/filesystem/watcher"
@@ -123,6 +124,7 @@ const applicationServiceNodes = [
   SessionImport.node,
   SessionShare.node,
   SdkPlugins.node,
+  ExternalDelegation.node,
   PluginUpdate.node,
   PermissionSaved.node,
   PtyTicket.node,
@@ -192,6 +194,7 @@ function makeRoutes<AuthError, AuthServices>(
   workerConnection?: { readonly url: () => string; readonly ready: () => boolean },
 ) {
   const standard: LayerNode.Replacements = [
+    Harnesses.node.replace(Harnesses.configured({ sessionDelegation: !options.access })),
     Database.node.replace(Database.configured(options.database)),
     PersistentPty.node.replace(PersistentPty.configured(options.pty)),
     Bus.node.replace(Bus.configured({ persist: options.events?.persist })),
