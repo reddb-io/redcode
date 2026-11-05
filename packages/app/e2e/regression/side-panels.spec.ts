@@ -236,7 +236,9 @@ test("delivery monitors isolate conversations, refresh evidence and stop only th
   await page.goto(sessionHref(fixture.childID))
   const toggle = page.getByRole("button", { name: "Open delivery overview", exact: true })
   await expect(toggle).toBeEnabled()
-  expect(state.reads).toEqual([])
+  // The timeline now loads the current session's monitors before the panel opens.
+  await expect.poll(() => state.reads).toContain(fixture.childID)
+  expect(new Set(state.reads)).toEqual(new Set([fixture.childID]))
   await toggle.click()
   const delivery = page.getByRole("region", { name: "Delivery", exact: true })
   await delivery.getByRole("tab", { name: "Monitors", exact: true }).click()
