@@ -1,5 +1,15 @@
 # @reddb-io/redcode
 
+## 0.87.6
+
+### Patch Changes
+
+- Allow configuring the compaction buffer as a percentage of the current model's input window, while preserving existing token-based settings.
+- Show measured model generation speed on completed responses in the desktop and web conversation.
+- Add session artifacts to Delivery with local snapshots, retained revisions, isolated previews and agent publication.
+- Clarify voice provider setup in Portuguese and avoid non-speech sound annotations in ElevenLabs coding dictation.
+- Add optional ElevenLabs Scribe realtime dictation to the desktop, web and TUI voice recorder, with partial transcripts and batch recovery.
+
 ## 0.87.5
 
 ### Patch Changes
