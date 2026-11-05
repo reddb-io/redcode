@@ -10,6 +10,88 @@ test.use({
   permissions: ["microphone"],
 })
 
+test("voice settings add ElevenLabs and test the selected microphone and transcription", async ({ page }) => {
+  const { settings } = await openSettings(page, { name: "VoiceSettingsTest", seed: { theme: { id: "oc-2", scheme: "dark" } } })
+  let voice: unknown
+  let uploaded = Buffer.alloc(0)
+  let fail = false
+  await page.route((url) => url.pathname === "/api/config", (route) => route.fulfill({ json: voice ? [{ type: "document", info: { voice } }] : [] }))
+  await page.route((url) => url.pathname === "/api/voice/connections", (route) => route.request().method() === "POST"
+    ? route.fulfill({ json: { data: { id: "cred_eleven", label: "ElevenLabs", integrationID: "redcode-voice" } } })
+    : route.fulfill({ json: { data: [] } }))
+  await page.route("**/api/experimental/config", (route) => { voice = route.request().postDataJSON().voice; return route.fulfill({ status: 204 }) })
+  await page.route((url) => url.pathname === "/api/voice/transcribe", (route) => {
+    uploaded = Buffer.from(route.request().postDataJSON().audio, "base64")
+    if (fail) return route.fulfill({ status: 502, json: { message: "Voice provider unavailable" } })
+    return route.fulfill({ json: { data: { text: "teste da ElevenLabs" } } })
+  })
+  await settings.getByRole("tab", { name: "Voice", exact: true }).click()
+  const mic = settings.getByRole("combobox", { name: "Microphone", exact: true })
+  const device = await mic.getByRole("option", { name: "Fake Audio Input 1" }).getAttribute("value")
+  expect(device).toBeTruthy()
+  await mic.selectOption(device!)
+  await settings.getByLabel("Transcription provider").selectOption("elevenlabs")
+  await settings.getByRole("button", { name: "Add ElevenLabs API key" }).click()
+  await expect(settings.getByLabel("Connection name", { exact: true })).toHaveValue("ElevenLabs")
+  await settings.getByLabel("Voice API key", { exact: true }).fill("test-key")
+  const testPanel = settings.getByRole("region", { name: "Test microphone and transcription" })
+  await expect(testPanel.getByRole("button", { name: "Record test" })).toBeDisabled()
+  await settings.getByRole("button", { name: "Save voice settings" }).click()
+  await expect(testPanel.getByRole("button", { name: "Record test" })).toBeEnabled()
+  expect(voice).toMatchObject({ provider: "elevenlabs", connection: { type: "credential", id: "cred_eleven" } })
+  const captured = await observeMicrophone(page)
+  await testPanel.getByRole("button", { name: "Check microphone level" }).click()
+  expect(await captured.device).toBe(device)
+  await expect(testPanel.getByRole("button", { name: "Stop microphone check" })).toBeVisible()
+  await expect.poll(async () => Number(await testPanel.getByLabel("Microphone level").getAttribute("value"))).toBeGreaterThan(0)
+  await testPanel.getByRole("button", { name: "Record test" }).click()
+  await expect(testPanel.getByRole("button", { name: "Stop and transcribe test" })).toBeVisible()
+  await page.waitForTimeout(1000)
+  await testPanel.getByRole("button", { name: "Stop and transcribe test" }).click()
+  await expect(testPanel.getByText("teste da ElevenLabs")).toBeVisible()
+  expect(uploaded.toString("ascii", 0, 4)).toBe("RIFF")
+  fail = true
+  await testPanel.getByRole("button", { name: "Record test" }).click()
+  await expect(testPanel.getByRole("button", { name: "Stop and transcribe test" })).toBeVisible()
+  await page.waitForTimeout(500)
+  await testPanel.getByRole("button", { name: "Stop and transcribe test" }).click()
+  await expect(testPanel.getByRole("alert")).toBeVisible()
+  fail = false
+  await testPanel.getByRole("button", { name: "Retry" }).click()
+  await expect(testPanel.getByText("teste da ElevenLabs")).toBeVisible()
+})
+
+test("voice settings test uses the saved realtime mode", async ({ page }) => {
+  const frames: { commit?: boolean }[] = []
+  await page.routeWebSocket("ws://127.0.0.1:65534/**", (socket) => {
+    socket.send(JSON.stringify({ message_type: "session_started" }))
+    socket.onMessage((value) => {
+      const frame = JSON.parse(String(value))
+      frames.push(frame)
+      socket.send(JSON.stringify(frame.commit
+        ? { message_type: "committed_transcript", text: "transcrição em tempo real" }
+        : { message_type: "partial_transcript", text: "transcrição parcial" }))
+    })
+  })
+  const { settings } = await openSettings(page, { name: "VoiceSettingsRealtime" })
+  await page.route((url) => url.pathname === "/api/config", (route) => route.fulfill({ json: [{ type: "document", info: { voice: {
+    provider: "elevenlabs", model: "scribe_v2", mode: "realtime", connection: { type: "credential", id: "cred_eleven" },
+  } } }] }))
+  await page.route((url) => url.pathname === "/api/voice/connections", (route) => route.fulfill({ json: { data: [
+    { id: "cred_eleven", label: "ElevenLabs", integrationID: "redcode-voice" },
+  ] } }))
+  await page.route((url) => url.pathname === "/api/voice/realtime", (route) => route.fulfill({ json: {
+    data: { token: "temporary-test-token", url: "ws://127.0.0.1:65534/voice" },
+  } }))
+  await settings.getByRole("tab", { name: "Voice", exact: true }).click()
+  const panel = settings.getByRole("region", { name: "Test microphone and transcription" })
+  await panel.getByRole("button", { name: "Record test" }).click()
+  await expect(panel.getByText("transcrição parcial")).toBeVisible()
+  await panel.getByRole("button", { name: "Stop and transcribe test" }).click()
+  await expect(panel.getByText("transcrição em tempo real")).toBeVisible()
+  expect(frames.some((frame) => frame.commit)).toBe(true)
+})
+
 test("realtime dictation shows partial speech and inserts only the final transcript", async ({ page }) => {
   const frames: { audio_base_64: string; sample_rate: number; commit?: boolean }[] = []
   await page.routeWebSocket("ws://127.0.0.1:65534/**", (socket) => {
@@ -101,6 +183,7 @@ test("voice settings explicitly select a connection and microphone capture only 
   await microphone.selectOption(device!)
   await expect(settings.getByRole("button", { name: "Save voice settings" })).toBeDisabled()
   await settings.getByLabel("Saved API key connection").selectOption("cred_voice")
+  await settings.getByText("Advanced settings", { exact: true }).click()
   await expect(settings.getByLabel("Endpoint URL (optional for built-in providers)")).toBeVisible()
   await expect(settings.getByLabel("Language code (empty for automatic detection)")).toBeVisible()
   await page.screenshot({ path: "../../tmp/voice-settings.png" })
@@ -147,6 +230,7 @@ test("voice settings explicitly select a connection and microphone capture only 
   await settings.getByLabel("Connection name", { exact: true }).fill("My dictation")
   await settings.getByLabel("Voice API key", { exact: true }).fill("fixture-private-key")
   await expect(settings.getByLabel("Voice API key", { exact: true })).toHaveAttribute("type", "password")
+  await settings.getByText("Advanced settings", { exact: true }).click()
   await settings.getByLabel("Language code (empty for automatic detection)").fill("pt")
   const saved = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/experimental/config")
   await settings.getByRole("button", { name: "Save voice settings" }).click()

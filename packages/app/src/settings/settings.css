@@ -583,6 +583,45 @@
   color: var(--reddb-color-ink-muted);
 }
 
+.voice-settings { display: flex; flex-direction: column; gap: 14px; }
+.voice-card {
+  display: flex; flex-direction: column; gap: 14px; min-width: 0;
+  padding: 18px; border: 1px solid var(--reddb-color-elevation-base-border);
+  border-radius: var(--reddb-radius-lg); background: var(--v2-background-bg-base);
+}
+.voice-card-heading { display: flex; align-items: flex-start; gap: 12px; }
+.voice-card-heading h3 { margin: 0; font-size: 14px; line-height: 20px; font-weight: 600; color: var(--reddb-color-foreground); }
+.voice-card-heading p { margin: 3px 0 0; font-size: 12px; line-height: 18px; color: var(--reddb-color-ink-muted); }
+.voice-card-step {
+  display: grid; place-items: center; flex: 0 0 28px; height: 28px; border-radius: 8px;
+  background: color-mix(in srgb, var(--reddb-color-foreground) 7%, transparent);
+  color: var(--reddb-color-ink-muted); font-size: 10px; font-weight: 600; letter-spacing: .04em;
+}
+.voice-card label { color: var(--reddb-color-foreground); font-size: 12px; font-weight: 500; }
+.voice-field {
+  width: 100%; min-width: 0; height: 36px; padding: 0 10px;
+  border: 1px solid var(--reddb-color-elevation-base-border); border-radius: 7px;
+  background: color-mix(in srgb, var(--reddb-color-foreground) 3%, var(--v2-background-bg-base));
+  color: var(--reddb-color-foreground); font: inherit; font-size: 13px;
+}
+.voice-field:focus-visible { outline: 2px solid var(--reddb-color-foreground); outline-offset: 2px; }
+.voice-form { display: flex; flex-direction: column; gap: 12px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.voice-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.voice-actions, .voice-meter-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.voice-settings button { min-height: 30px; padding: 0 10px; border: 1px solid var(--reddb-color-elevation-base-border); border-radius: 7px; background: color-mix(in srgb, var(--reddb-color-foreground) 5%, var(--v2-background-bg-base)); color: var(--reddb-color-foreground); font-size: 12px; cursor: pointer; }
+.voice-settings button:hover:not(:disabled) { background: color-mix(in srgb, var(--reddb-color-foreground) 10%, var(--v2-background-bg-base)); }
+.voice-settings button:disabled { opacity: .45; cursor: default; }
+.voice-settings .voice-add-key { align-self: flex-start; }
+.voice-advanced { border-top: 1px solid var(--reddb-color-elevation-base-border); padding-top: 12px; }
+.voice-advanced summary { cursor: pointer; font-size: 12px; color: var(--reddb-color-ink-muted); }
+.voice-advanced-fields { display: flex; flex-direction: column; gap: 12px; padding-top: 12px; }
+.voice-test-card { background: color-mix(in srgb, var(--reddb-color-foreground) 2%, var(--v2-background-bg-base)); }
+.voice-meter { display: flex; align-items: center; gap: 3px; height: 24px; padding: 0 8px; }
+.voice-meter span { width: 5px; height: 12px; border-radius: 3px; background: color-mix(in srgb, var(--reddb-color-foreground) 15%, transparent); transition: background 120ms ease; }
+.voice-meter span.active { background: #2bbf87; }
+.voice-test-card > p { margin: 0; font-size: 12px; line-height: 18px; }
+@media (max-width: 560px) { .voice-grid { grid-template-columns: minmax(0, 1fr); } }
+
 .settings-section-stack {
   display: flex;
   width: 100%;

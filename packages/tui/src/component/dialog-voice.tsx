@@ -86,7 +86,7 @@ export async function showVoiceSettings(input: {
                 },
               ]
             : []),
-          { title: "Add a voice API key…", value: "add", onSelect: addConnection },
+          { title: form.provider === "elevenlabs" ? "Add an ElevenLabs API key…" : "Add a voice API key…", value: "add", onSelect: addConnection },
         ]}
         onCancel={menu}
       />
@@ -150,7 +150,7 @@ export async function showVoiceSettings(input: {
       .then(
         () => {
           input.dialog.clear()
-          input.toast.show({ variant: "success", message: "Voice settings saved. Use /voice to record." })
+          input.toast.show({ variant: "success", message: "Voice settings saved. Use /voice to test your microphone and transcription." })
         },
         () => {
           setForm("saving", false)

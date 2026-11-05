@@ -9,7 +9,7 @@ export function voicePage() {
 :root{color-scheme:dark;font:13px/20px system-ui;background:#111215;color:#eee}body{max-width:560px;margin:8vh auto;padding:24px}h1{font-size:20px;font-weight:550}p{color:#aaa}button,textarea,select{font:inherit;color:inherit;background:#202228;border:1px solid #45464e;border-radius:8px;padding:8px 12px}button{cursor:pointer}button:disabled{opacity:.4;cursor:default}textarea{box-sizing:border-box;width:100%;height:180px;margin:20px 0;resize:vertical}nav{display:flex;gap:8px;flex-wrap:wrap}meter{width:100%;height:4px;margin:12px 0}#status{min-height:24px}select{max-width:100%;margin-bottom:16px}.primary{background:#d71d4b;border-color:#d71d4b}small{color:#aaa}</style>
 <h1>Voice input</h1><p>Record on this device. Your Redcode server transcribes with your selected provider. Review the text before adding it to your draft.</p>
 <label>Microphone <select id="device"><option value="">System default</option></select></label>
-<div id="status" role="status">Ready · up to five minutes</div><p id="live" aria-live="polite"></p><meter id="level" min="0" max="1" value="0" aria-label="Microphone level"></meter>
+<nav><button id="monitor">Check microphone level</button></nav><div id="status" role="status">Ready · up to five minutes</div><p id="live" aria-live="polite"></p><meter id="level" min="0" max="1" value="0" aria-label="Microphone level"></meter>
 <nav><button id="record" class="primary">Record</button><button id="stop" disabled>Stop and transcribe</button><button id="retry" hidden>Retry transcription</button><button id="cancel">Cancel</button></nav>
 <label>Transcript<textarea id="text" placeholder="Your transcript will appear here"></textarea></label>
 <nav><button id="accept" disabled>Add to draft</button><button id="copy">Copy text</button></nav><p><small>Nothing is submitted to the coding agent. Keep this page open until the transcript is accepted.</small></p>
@@ -32,6 +32,21 @@ function voicePageClient(
   const accept = element<HTMLButtonElement>("accept")
   const device = element<HTMLSelectElement>("device")
   const status = element("status")
+  const monitor = element<HTMLButtonElement>("monitor")
+  let monitorStream: MediaStream | undefined
+  let monitorContext: AudioContext | undefined
+  let monitorTimer: ReturnType<typeof setInterval> | undefined
+  let monitorGeneration = 0
+  const stopMonitor = () => {
+    monitorGeneration++
+    clearInterval(monitorTimer)
+    monitorStream?.getTracks().forEach((track) => track.stop())
+    monitorStream = undefined
+    void monitorContext?.close().catch(() => undefined)
+    monitorContext = undefined
+    monitor.textContent = "Check microphone level"
+    element<HTMLMeterElement>("level").value = 0
+  }
   const request = async (route: string, body?: string, signal?: AbortSignal) => {
     const response = await fetch(route, {
       method: "POST",
@@ -55,6 +70,7 @@ function voicePageClient(
     },
     change: (state) => {
       record.disabled = ["preparing", "recording", "transcribing"].includes(state.phase)
+      monitor.disabled = record.disabled
       stop.disabled = state.phase !== "recording"
       device.disabled = record.disabled
       retry.hidden = !state.retry
@@ -90,11 +106,42 @@ function voicePageClient(
     if (listed) return
     listed = true
     const entries = await navigator.mediaDevices.enumerateDevices().catch(() => [])
+    const selected = device.value
+    device.replaceChildren(new Option("System default", ""))
     entries
       .filter((entry) => entry.kind === "audioinput" && entry.deviceId !== "default" && !!entry.label)
       .forEach((entry) => device.add(new Option(entry.label, entry.deviceId)))
+    device.value = selected
   }
+  monitor.onclick = () => {
+    if (monitorStream) { stopMonitor(); return }
+    const current = ++monitorGeneration
+    monitor.disabled = true
+    void (async () => {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: device.value ? { deviceId: { exact: device.value } } : true })
+      if (current !== monitorGeneration) { stream.getTracks().forEach((track) => track.stop()); return }
+      monitorStream = stream
+      const context = new AudioContext()
+      monitorContext = context
+      await context.resume()
+      if (current !== monitorGeneration) return
+      const analyser = context.createAnalyser()
+      analyser.fftSize = 256
+      context.createMediaStreamSource(stream).connect(analyser)
+      const samples = new Float32Array(analyser.fftSize)
+      monitorTimer = setInterval(() => {
+        analyser.getFloatTimeDomainData(samples)
+        element<HTMLMeterElement>("level").value = Math.min(1, Math.sqrt(samples.reduce((sum, value) => sum + value * value, 0) / samples.length) * 4)
+      }, 100)
+      monitor.textContent = "Stop microphone check"
+      listed = false
+      await devices()
+    })().catch((error: unknown) => { stopMonitor(); status.textContent = error instanceof Error ? error.message : String(error) }).finally(() => { monitor.disabled = false })
+  }
+  device.onchange = stopMonitor
+  window.addEventListener("pagehide", stopMonitor)
   record.onclick = () => {
+    stopMonitor()
     void voice.start(device.value || undefined)
   }
   stop.onclick = () => {
@@ -104,6 +151,7 @@ function voicePageClient(
     void voice.retry()
   }
   element("cancel").onclick = () => {
+    stopMonitor()
     voice.cancel()
     void request("/cancel")
       .then(() => {

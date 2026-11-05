@@ -76,7 +76,7 @@ test("configures voice inside the TUI with a masked new key and reopens saved se
     await app.waitForFrame((frame) => frame.includes("scribe_v2"))
     app.mockInput.pressArrow("down")
     app.mockInput.pressEnter()
-    await app.waitForFrame((frame) => frame.includes("Add a voice API key"))
+    await app.waitForFrame((frame) => frame.includes("Add an ElevenLabs API key"))
     app.mockInput.pressArrow("down")
     app.mockInput.pressEnter()
     await app.waitFor(() => app.renderer.currentFocusedEditor instanceof TextareaRenderable)

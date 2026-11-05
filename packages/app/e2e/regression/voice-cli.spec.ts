@@ -42,6 +42,9 @@ test("the self-contained CLI recorder captures real browser audio and returns re
   })
   try {
     await page.goto(await url.promise)
+    await page.getByRole("button", { name: "Check microphone level" }).click()
+    await expect(page.getByRole("button", { name: "Stop microphone check" })).toBeVisible()
+    await expect.poll(async () => Number(await page.getByLabel("Microphone level").getAttribute("value"))).toBeGreaterThan(0)
     await page.getByRole("button", { name: "Record", exact: true }).click()
     await expect(page.getByRole("status")).toHaveText(/Recording · [1-9]\d*s/)
     await page.getByRole("button", { name: "Stop and transcribe" }).click()

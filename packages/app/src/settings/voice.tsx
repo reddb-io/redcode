@@ -1,4 +1,4 @@
-import { createMemo, createResource, createSignal, For, onCleanup, onMount, Show, type Accessor } from "solid-js"
+import { createEffect, createMemo, createResource, createSignal, For, on, onCleanup, onMount, Show, type Accessor } from "solid-js"
 import { createStore } from "solid-js/store"
 import { Voice } from "@opencode/schema/voice"
 import { Credential } from "@opencode/schema/credential"
@@ -12,6 +12,9 @@ import { showToast } from "@/shell/notifications/toast"
 import { errorStatus } from "@/shell/errors/description"
 import { useSettings } from "@/settings/model"
 import { usePlatform } from "@/runtime/platform/platform"
+import { VoiceRecorder, voiceAudioBase64 } from "@opencode/util/voice-recorder"
+import { VoiceRealtime } from "@opencode/util/voice-realtime"
+import { createVoiceInput, type VoiceState } from "@opencode/util/voice-input"
 
 export function SettingsVoice(props: {
   servers: Accessor<SettingsServer[]>
@@ -119,6 +122,9 @@ function VoiceSettings(props: { api?: ServerApi }) {
     loadError: undefined as "unsupported" | "failed" | undefined,
     loadDetail: "",
   })
+  const [saved, setSaved] = createSignal("")
+  const [configured, setConfigured] = createSignal(false)
+  const fingerprint = () => JSON.stringify([form.provider, form.mode, form.model, form.connection, form.baseURL, form.language, form.key, form.label])
   const [data, { mutate, refetch }] = createResource(async () => {
     if (!api) return
     setForm({ loadError: undefined, loadDetail: "" })
@@ -146,6 +152,8 @@ function VoiceSettings(props: { api?: ServerApi }) {
         baseURL: voice.baseURL ?? "",
         language: voice.language ?? "",
       })
+    setConfigured(!!voice)
+    setSaved(fingerprint())
     return connections
   })
   const save = async () => {
@@ -189,14 +197,18 @@ function VoiceSettings(props: { api?: ServerApi }) {
       .then(
         () => {
           setForm("saving", false)
+          setConfigured(true)
+          setSaved(fingerprint())
           showToast({ title: language.t("voice.settings.saved") })
         },
         (error: unknown) => setForm({ saving: false, failed: error instanceof Error ? error.message : String(error) }),
       )
   }
-  const field = "h-8 w-full rounded-md border border-stroke-base bg-surface-base px-2 text-body"
+  const field = "voice-field"
   return (
-    <div class="flex flex-col gap-3">
+    <div class="voice-settings">
+      <section class="voice-card">
+        <div class="voice-card-heading"><span class="voice-card-step">01</span><div><h3>{language.t("voice.microphone")}</h3><p>{language.t("voice.test.deviceHint")}</p></div></div>
         <label class="flex flex-col gap-1 text-body">
           {language.t("voice.microphone")}
           <select
@@ -222,8 +234,7 @@ function VoiceSettings(props: { api?: ServerApi }) {
             </For>
           </select>
         </label>
-        <p class="text-body text-ink-muted">{language.t("voice.microphone.description")}</p>
-        <div class="flex flex-wrap gap-2">
+        <div class="voice-actions">
           <Button
             type="button"
             size="small"
@@ -256,13 +267,17 @@ function VoiceSettings(props: { api?: ServerApi }) {
         <Show when={!microphone.loading && !microphone.error && !microphone.devices.length}>
           <p class="text-body text-ink-muted">{language.t("voice.microphone.empty")}</p>
         </Show>
+      </section>
+      <section class="voice-card">
+        <div class="voice-card-heading"><span class="voice-card-step">02</span><div><h3>{language.t("voice.test.providerTitle")}</h3><p>{language.t("voice.test.providerHint")}</p></div></div>
         <Show when={data.loading}>
           <p role="status" class="text-body text-ink-muted">
             {language.t("common.loading")}
           </p>
         </Show>
         <Show when={!form.loadError && data.latest}>
-          <fieldset disabled={form.saving || data.loading} class="flex min-w-0 flex-col gap-3">
+          <fieldset disabled={form.saving || data.loading} class="voice-form">
+            <div class="voice-grid">
             <label class="flex flex-col gap-1 text-body">
               {language.t("voice.provider")}
               <select
@@ -300,6 +315,7 @@ function VoiceSettings(props: { api?: ServerApi }) {
                 </select>
               </label>
             </Show>
+            </div>
             <label class="flex flex-col gap-1 text-body">
               {language.t("voice.connection")}
               <select
@@ -322,6 +338,9 @@ function VoiceSettings(props: { api?: ServerApi }) {
                 </Show>
               </select>
             </label>
+            <Button type="button" size="small" variant="outline" class="voice-add-key" onClick={() => setForm({ connection: "new", key: "", label: form.provider === "elevenlabs" ? "ElevenLabs" : "Voice" })}>
+              {form.provider === "elevenlabs" ? language.t("voice.connection.addElevenLabs") : language.t("voice.newConnection")}
+            </Button>
             <Show when={form.connection === "new"}>
               <label class="flex flex-col gap-1 text-body">
                 {language.t("voice.connectionLabel")}
@@ -344,6 +363,9 @@ function VoiceSettings(props: { api?: ServerApi }) {
                 />
               </label>
             </Show>
+            <details class="voice-advanced" open={form.provider === "openai-compatible"}>
+              <summary>{language.t("voice.test.advanced")}</summary>
+              <div class="voice-advanced-fields">
             <label class="flex flex-col gap-1 text-body">
               {language.t("voice.model")}
               <input
@@ -369,6 +391,8 @@ function VoiceSettings(props: { api?: ServerApi }) {
                 onInput={(event) => setForm("language", event.currentTarget.value)}
               />
             </label>
+              </div>
+            </details>
             <Show when={form.failed}>
               <p role="alert" class="text-body">
                 {language.t("common.requestFailed")}
@@ -414,6 +438,121 @@ function VoiceSettings(props: { api?: ServerApi }) {
           {language.t("voice.save")}
         </Button>
       </div>
+      </section>
+      <VoiceSettingsTest api={api} device={settings.voice.device()} enabled={!!api && configured() && !!saved() && saved() === fingerprint() && !form.saving && !form.loadError} />
     </div>
+  )
+}
+
+function VoiceSettingsTest(props: { api?: ServerApi; device: string; enabled: boolean }) {
+  const language = useLanguage()
+  const platform = usePlatform()
+  const [state, setState] = createStore<VoiceState>({ phase: "idle", seconds: 0, level: 0, retry: false })
+  const [transcript, setTranscript] = createSignal("")
+  const [detail, setDetail] = createSignal("")
+  const [monitor, setMonitor] = createStore({ active: false, loading: false, level: 0, error: "" })
+  let monitorStream: MediaStream | undefined
+  let monitorContext: AudioContext | undefined
+  let timer: ReturnType<typeof setInterval> | undefined
+  let generation = 0
+  const stopMonitor = () => {
+    generation++
+    clearInterval(timer)
+    monitorStream?.getTracks().forEach((track) => track.stop())
+    monitorStream = undefined
+    void monitorContext?.close().catch(() => undefined)
+    monitorContext = undefined
+    setMonitor({ active: false, loading: false, level: 0 })
+  }
+  const startMonitor = async () => {
+    stopMonitor()
+    const current = generation
+    setMonitor({ loading: true, error: "" })
+    try {
+      if (platform.requestMicrophone && !(await platform.requestMicrophone())) throw new Error(language.t("voice.microphone.denied"))
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: props.device ? { deviceId: { exact: props.device } } : true })
+      if (current !== generation) { stream.getTracks().forEach((track) => track.stop()); return }
+      monitorStream = stream
+      const context = new AudioContext()
+      monitorContext = context
+      await context.resume()
+      if (current !== generation) return
+      const analyser = context.createAnalyser()
+      analyser.fftSize = 256
+      context.createMediaStreamSource(stream).connect(analyser)
+      const samples = new Float32Array(analyser.fftSize)
+      timer = setInterval(() => {
+        analyser.getFloatTimeDomainData(samples)
+        setMonitor("level", Math.min(1, Math.sqrt(samples.reduce((sum, value) => sum + value * value, 0) / samples.length) * 4))
+      }, 100)
+      setMonitor({ loading: false, active: true })
+    } catch (error) {
+      if (current !== generation) return
+      stopMonitor()
+      setMonitor("error", error instanceof Error ? error.message : String(error))
+    }
+  }
+  const voice = createVoiceInput({
+    recorder: () => new VoiceRecorder(),
+    realtime: (update) => new VoiceRealtime(update),
+    read: () => ({ owner: "settings-test", revision: "" }),
+    prepare: async () => {
+      if (!props.api) throw new Error("unavailable")
+      if (platform.requestMicrophone && !(await platform.requestMicrophone())) throw new DOMException("Microphone permission denied", "NotAllowedError")
+      const entries = await props.api.config.get()
+      const selected = entries.flatMap((entry) => entry.type === "document" && entry.info.voice ? [entry.info.voice] : []).at(-1)
+      if (!selected) throw new Error("unavailable")
+      if (selected.provider === "elevenlabs" && selected.mode === "realtime") return props.api.voice.realtime({}).catch((error: unknown) => {
+        setDetail(error instanceof Error ? error.message : String(error))
+        throw error
+      })
+    },
+    transcribe: async (audio, signal) => {
+      if (!props.api) throw new Error("unavailable")
+      return await props.api.voice.transcribe({ audio: await voiceAudioBase64(audio) }, { signal }).then(
+        (result) => result.text,
+        (error: unknown) => { setDetail(error instanceof Error ? error.message : String(error)); throw error },
+      )
+    },
+    insert: setTranscript,
+    change: setState,
+  })
+  createEffect(on(() => props.device, () => { stopMonitor(); voice.cancel() }, { defer: true }))
+  const busy = () => ["preparing", "recording", "transcribing"].includes(state.phase)
+  onCleanup(() => { stopMonitor(); voice.cancel() })
+  return (
+    <section class="voice-card voice-test-card" aria-label={language.t("voice.test.title")}>
+      <div class="voice-card-heading"><span class="voice-card-step">03</span><div><h3>{language.t("voice.test.title")}</h3><p>{language.t("voice.test.description")}</p></div></div>
+      <div class="voice-meter-row">
+        <Button type="button" size="small" variant="outline" disabled={monitor.loading || busy()} onClick={() => monitor.active ? stopMonitor() : void startMonitor()}>
+          {language.t(monitor.active ? "voice.test.stopMonitor" : "voice.test.monitor")}
+        </Button>
+        <div class="voice-meter" aria-hidden="true">
+          <For each={Array.from({ length: 12 }, (_, index) => index)}>{(index) => (
+            <span classList={{ active: (monitor.active ? monitor.level : state.level) * 12 > index }} />
+          )}</For>
+        </div>
+        <meter min="0" max="1" value={monitor.active ? monitor.level : state.level} aria-label={language.t("voice.level")} class="sr-only" />
+      </div>
+      <Show when={monitor.error}><p role="alert" class="text-body text-feedback-danger-foreground">{monitor.error}</p></Show>
+      <p class="text-body text-ink-muted">{language.t(props.enabled ? "voice.test.ready" : "voice.test.saveFirst")}</p>
+      <div class="flex flex-wrap gap-2">
+        <Button type="button" size="small" variant="outline" disabled={state.phase !== "recording" && (!props.enabled || busy())} onClick={() => {
+          if (state.phase === "recording") { void voice.finish(); return }
+          stopMonitor(); setTranscript(""); setDetail(""); void voice.start(props.device || undefined)
+        }}>
+          {language.t(state.phase === "recording" ? "voice.test.stop" : "voice.test.record")}
+        </Button>
+        <Show when={busy() || state.phase === "error"}>
+          <Button type="button" size="small" variant="ghost" onClick={voice.cancel}>{language.t("voice.cancel")}</Button>
+        </Show>
+        <Show when={state.retry}><Button type="button" size="small" variant="ghost" onClick={() => void voice.retry()}>{language.t("voice.retry")}</Button></Show>
+      </div>
+      <Show when={busy()}><p role="status" class="text-body text-ink-muted">{state.phase === "recording" ? `${language.t("voice.test.recording")} ${state.seconds}s` : language.t(state.phase === "preparing" ? "voice.preparing" : "voice.transcribing")}</p></Show>
+      <Show when={state.live}><p class="text-body text-ink-muted">{state.live}</p></Show>
+      <Show when={state.error}><p role="alert" class="text-body text-feedback-danger-foreground">{language.t(`voice.error.${state.error === "capture" && detail() ? "transcription" : state.error}`)}</p></Show>
+      <Show when={state.error && detail()}><p class="break-words text-body text-ink-muted">{detail()}</p></Show>
+      <Show when={transcript() || state.transcript}><div class="rounded-md border border-stroke-base p-2 text-body"><strong>{language.t("voice.test.result")}</strong><p>{transcript() || state.transcript}</p></div></Show>
+    </section>
   )
 }
