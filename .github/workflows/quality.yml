@@ -1,0 +1,300 @@
+name: Optional quality
+on:
+  workflow_dispatch:
+    inputs:
+      suite:
+        type: choice
+        description: Quality suite to run
+        options: [checks, unit, browser, windows, coverage, all]
+        default: checks
+      upstream_full:
+        type: boolean
+        description: Include inherited upstream unit suites
+        default: false
+      include_windows:
+        type: boolean
+        description: Include Windows in the unit-test matrix
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: optional-quality-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  GH_REPO: reddb-io/redcode
+  NPM_CONFIG_REGISTRY: https://registry.npmjs.org
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.source.outputs.version }}
+      sha: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - id: source
+        run: echo "version=$(node -p 'require("./packages/redcode/package.json").version')" >> "$GITHUB_OUTPUT"
+
+  verify:
+    if: inputs.suite == 'all' || inputs.suite == 'checks'
+    name: typecheck
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-bun
+      - uses: ./.github/actions/check-workflows
+      - name: Validate version
+        env:
+          REDCODE_VERSION: ${{ needs.plan.outputs.version }}
+        shell: bash
+        run: |
+          [[ "$REDCODE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+      - name: Verify independent Redcode release metadata
+        env:
+          REDCODE_BUILD: "1"
+          REDCODE_CHANNEL: latest
+          REDCODE_RELEASE: "1"
+        run: |
+          export REDCODE_VERSION=$(bun -p 'require("./packages/redcode/package.json").version')
+          bun -e '
+            const { Script } = await import("./packages/script/src/index.ts")
+            if (Script.version !== process.env.REDCODE_VERSION || Script.channel !== "latest" || !Script.release)
+              throw new Error("Redcode release metadata does not match its own manifest")
+          '
+      - name: Validate Changesets
+        run: |
+          git branch main origin/main
+          bun run release:status
+      - name: Lint and typecheck
+        run: |
+          bun run lint
+          # Keep the large core, SDK and GUI typechecks from competing for runner memory.
+          bun turbo typecheck --concurrency=1
+      - name: Verify committed model catalog
+        working-directory: packages/core
+        run: bun run update-models-snapshot --check
+      - name: Evaluate passive reasoning repetition detection
+        working-directory: packages/core
+        run: bun run script/reasoning-observation-eval.ts --check
+      - name: Verify generated OpenAPI
+        working-directory: packages/protocol
+        run: bun run check:generated
+      - name: Verify generated client
+        working-directory: packages/client
+        run: bun run check:generated
+
+
+  browser:
+    if: inputs.suite == 'all' || inputs.suite == 'browser'
+    name: browser journeys
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+      - uses: ./.github/actions/setup-bun
+      - name: Use the primary Ubuntu package mirror
+        run: |
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            printf '%s\n' 'https://archive.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt
+          fi
+      - name: Install Chromium
+        working-directory: packages/app
+        run: bun x playwright install --with-deps chromium
+      - name: Typecheck browser contracts
+        working-directory: packages/app
+        run: bun run typecheck:e2e
+      - name: Exercise critical React journeys in a production build
+        working-directory: packages/app
+        env:
+          PLAYWRIGHT_BUILD: "1"
+          PLAYWRIGHT_PORT: "4777"
+          PLAYWRIGHT_HTML_OUTPUT_DIR: e2e/playwright-report/journeys
+        run: >-
+          bun x playwright test
+          e2e/regression/home.spec.ts e2e/regression/settings.spec.ts
+          e2e/regression/agents.spec.ts e2e/regression/session-request-docks.spec.ts
+          e2e/regression/timeline-stream.spec.ts e2e/regression/design-embedded-review.spec.ts
+          e2e/regression/session-location-sync.spec.ts
+          e2e/regression/navigation.spec.ts e2e/regression/side-panels.spec.ts
+          e2e/regression/voice.spec.ts e2e/regression/voice-cli.spec.ts
+          e2e/regression/reasoning-models.spec.ts e2e/regression/timeline-cache.spec.ts
+          e2e/regression/composer.spec.ts e2e/regression/mobile-model-pickers.spec.ts
+          e2e/regression/terminal-input.spec.ts e2e/regression/terminal-toolbar.spec.ts
+          e2e/regression/oauth-callback.spec.ts
+          e2e/regression/provider-catalog.spec.ts
+          --grep 'the session context menu|Home archives|project LSPs|server sign-in keeps|reconciles task contributions|reconciliation fails and recovers|question drafts retain|a pending permission dock|Vault masks and clears|MCP input preserves|reports writing while assistant text streams|ends running compactions as interrupted|refreshes a session moved during disconnection|canvas zoom and pan|desktop density|appearance options|React settings keep|navigation shares|delivery|voice settings|CLI recorder|chooses a discovered System One model|keeps the saved evaluator|recreates a closed timeline|reloads the final closed session|conversation width stays aligned|goal commands manage|a goal in a new session|a failed goal start|populates the model picker|navigates a virtualized|desktop models retain|desktop free models|renders the callback|reports errors and resolves|keeps workbench and terminal controls|terminal creation failures|closing the last restored terminal|terminal controls stay clear'
+          --workers=1 --retries=0 --reporter=line,html
+      - name: Exercise the browser against an isolated real backend
+        working-directory: packages/app
+        run: bun x playwright test --config e2e/live.config.ts
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: browser-journey-results
+          path: |
+            packages/app/e2e/test-results
+            packages/app/e2e/playwright-report
+          if-no-files-found: warn
+          retention-days: 7
+
+
+  windows-harness:
+    name: windows harness
+    if: inputs.suite == 'all' || inputs.suite == 'windows'
+    needs: plan
+    runs-on: windows-2025
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
+      OPENCODE_EXPERIMENTAL_DISABLE_FILEWATCHER: "true"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+      - uses: ./.github/actions/setup-bun
+      - name: Configure isolated test storage
+        run: |
+          windows_harness_root="$RUNNER_TEMP/harness-checks"
+          printf '%s\n' \
+            "REDCODE_TEST_HOME=$windows_harness_root" \
+            "OPENCODE_TEST_HOME=$windows_harness_root" \
+            "OPENCODE_CONFIG_DIR=$windows_harness_root/config" \
+            "XDG_CONFIG_HOME=$windows_harness_root/config" \
+            "XDG_DATA_HOME=$windows_harness_root/data" \
+            "XDG_STATE_HOME=$windows_harness_root/state" \
+            "XDG_CACHE_HOME=$windows_harness_root/cache" >> "$GITHUB_ENV"
+      - name: Configure test git identity
+        shell: bash
+        run: |
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+      - name: Verify project environments
+        working-directory: packages/server
+        run: |
+          # Repeat successful runs to exercise completion/read contention; fail on the first error.
+          for attempt in {1..10}; do
+            GITHUB_ACTIONS=false bun run test test/project-environments.test.ts --timeout 90000
+          done
+      - name: Verify CLI version startup
+        working-directory: packages/cli
+        run: GITHUB_ACTIONS=false bun run test test/version.test.ts --timeout 30000
+      - name: Verify OAuth refresh and embedded image worker
+        working-directory: packages/core
+        run: GITHUB_ACTIONS=false bun run test test/credential-refresh-process.test.ts test/integration-refresh.test.ts test/photon-worker.test.ts --timeout 30000
+
+
+  tests:
+    if: inputs.suite == 'all' || inputs.suite == 'unit'
+    needs: plan
+    name: unit (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      # The expensive Windows unit lane is explicitly selected.
+      matrix:
+        include: ${{ fromJSON(!inputs.include_windows && '[{"name":"linux","host":"ubuntu-24.04"}]' || '[{"name":"linux","host":"ubuntu-24.04"},{"name":"windows","host":"windows-2025"}]') }}
+    runs-on: ${{ matrix.host }}
+    timeout-minutes: ${{ matrix.name == 'windows' && 45 || 30 }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      NODE_OPTIONS: ${{ matrix.name == 'windows' && '--max-old-space-size=4096' || '' }}
+      OPENCODE_EXPERIMENTAL_DISABLE_FILEWATCHER: ${{ matrix.name == 'windows' && 'true' || 'false' }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+      - uses: ./.github/actions/setup-bun
+      - name: Configure test git identity
+        run: |
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+      - name: Install test dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ripgrep
+          if [ "${{ inputs.upstream_full }}" = 'true' ]; then
+            sudo apt-get install --yes ffmpeg
+          fi
+      - name: Install Chromium for Design integration
+        if: runner.os == 'Linux'
+        working-directory: packages/core
+        run: bun node_modules/playwright-core/cli.js install --with-deps chromium
+      - name: Verify Design review responsiveness and revision selection
+        if: runner.os == 'Linux'
+        working-directory: packages/core
+        run: bun script/design-review-smoke.ts
+      - name: Test Redcode product contracts
+        run: |
+          if [ "${{ inputs.upstream_full }}" = 'true' ]; then
+            GITHUB_ACTIONS=false bun turbo test --concurrency=2
+          else
+            bun run script/test-redcode.ts
+          fi
+      - name: Verify compiled service lifecycle
+        working-directory: packages/cli
+        timeout-minutes: 10
+        env:
+          SERVICE_SMOKE_ARTIFACTS: ${{ runner.temp }}/service-smoke
+        run: |
+          bun run script/build.ts --single --skip-install --skip-web-ui
+          bun run script/service-smoke.ts
+      - name: Preserve service lifecycle failure logs
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: service-smoke-${{ matrix.name }}
+          path: ${{ runner.temp }}/service-smoke
+          if-no-files-found: ignore
+          retention-days: 7
+
+
+  vault-coverage:
+    if: inputs.suite == 'all' || inputs.suite == 'coverage'
+    # Secret-handling tests and their coverage must pass before publication.
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+      - uses: ./.github/actions/setup-bun
+      - name: Configure test git identity
+        run: |
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+      - name: Install test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ripgrep
+      - name: Test the coverage merge
+        working-directory: script/coverage
+        run: bun test ./vault.test.ts
+      - name: Measure vault coverage
+        run: bun script/coverage/vault.ts --out "$RUNNER_TEMP/vault-coverage"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: vault-coverage
+          path: ${{ runner.temp }}/vault-coverage
+          if-no-files-found: warn
+          retention-days: 7
+

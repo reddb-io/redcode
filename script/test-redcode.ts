@@ -2,7 +2,7 @@ import path from "node:path"
 import os from "node:os"
 import { mkdtemp, rm } from "node:fs/promises"
 
-// Product contracts owned by this fork. The complete inherited suite remains opt-in in redcode.yml.
+// Product contracts owned by this fork. The complete inherited suite remains opt-in in quality.yml.
 const suites = {
   core: [
     "test/agent.test.ts",
