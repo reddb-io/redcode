@@ -1,5 +1,11 @@
 # @reddb-io/redcode
 
+## 0.87.7
+
+### Patch Changes
+
+- Make ElevenLabs voice connections easier to add and let users check microphone levels and test transcription in settings and the CLI recorder.
+
 ## 0.87.6
 
 ### Patch Changes
