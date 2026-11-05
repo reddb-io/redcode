@@ -78,6 +78,12 @@ import type {
   SessionUnshareOutput,
   SessionRebindShareInput,
   SessionRebindShareOutput,
+  SessionArtifactListInput,
+  SessionArtifactListOutput,
+  SessionArtifactPublishInput,
+  SessionArtifactPublishOutput,
+  SessionArtifactContentInput,
+  SessionArtifactContentOutput,
   SessionMonitorListInput,
   SessionMonitorListOutput,
   SessionMonitorGetInput,
@@ -398,6 +404,8 @@ import type {
   VoiceConnectOutput,
   VoiceTranscribeInput,
   VoiceTranscribeOutput,
+  VoiceRealtimeInput,
+  VoiceRealtimeOutput,
   HookStatusInput,
   HookStatusOutput,
   HookTrustInput,
@@ -947,6 +955,42 @@ const EndpointSessionRebindShare = (raw: RawClient["server.session"]) => (input:
     raw["session.rebindShare"]({
       params: { sessionID: input["sessionID"] },
       payload: { credentialID: input["credentialID"], orgID: input["orgID"] },
+    }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
+const EndpointSessionArtifactList = (raw: RawClient["server.session"]) => (input: SessionArtifactListInput) =>
+  preserveEffect<SessionArtifactListOutput>()(
+    raw["session.artifact.list"]({ params: { sessionID: input["sessionID"] } }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
+const EndpointSessionArtifactPublish = (raw: RawClient["server.session"]) => (input: SessionArtifactPublishInput) =>
+  preserveEffect<SessionArtifactPublishOutput>()(
+    raw["session.artifact.publish"]({
+      params: { sessionID: input["sessionID"] },
+      payload: {
+        source: input["source"],
+        title: input["title"],
+        entry: input["entry"],
+        id: input["id"],
+        expectedRevision: input["expectedRevision"],
+      },
+    }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
+const EndpointSessionArtifactContent = (raw: RawClient["server.session"]) => (input: SessionArtifactContentInput) =>
+  preserveEffect<SessionArtifactContentOutput>()(
+    raw["session.artifact.content"]({
+      params: { sessionID: input["sessionID"], artifactID: input["artifactID"], revisionID: input["revisionID"] },
+      query: { file: input["file"] },
     }).pipe(
       Effect.mapError(mapClientError),
       Effect.map((value) => value.data),
@@ -1601,6 +1645,11 @@ const adaptGroupSession = (raw: RawClient["server.session"]) => ({
   share: EndpointSessionShare(raw),
   unshare: EndpointSessionUnshare(raw),
   rebindShare: EndpointSessionRebindShare(raw),
+  artifact: {
+    list: EndpointSessionArtifactList(raw),
+    publish: EndpointSessionArtifactPublish(raw),
+    content: EndpointSessionArtifactContent(raw),
+  },
   monitor: {
     list: EndpointSessionMonitorList(raw),
     get: EndpointSessionMonitorGet(raw),
@@ -2571,10 +2620,19 @@ const EndpointVoiceTranscribe = (raw: RawClient["server.voice"]) => (input: Voic
     ),
   )
 
+const EndpointVoiceRealtime = (raw: RawClient["server.voice"]) => (input?: VoiceRealtimeInput) =>
+  preserveEffect<VoiceRealtimeOutput>()(
+    raw["voice.realtime"]({ query: { location: input?.["location"] } }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
 const adaptGroupVoice = (raw: RawClient["server.voice"]) => ({
   connections: EndpointVoiceConnections(raw),
   connect: EndpointVoiceConnect(raw),
   transcribe: EndpointVoiceTranscribe(raw),
+  realtime: EndpointVoiceRealtime(raw),
 })
 
 const EndpointHookStatus = (raw: RawClient["server.hook"]) => (input?: HookStatusInput) =>

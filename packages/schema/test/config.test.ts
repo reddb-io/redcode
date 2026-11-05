@@ -100,6 +100,17 @@ describe("Config.Entry", () => {
     ).not.toHaveProperty("turns")
   })
 
+  test("accepts compaction reserves as tokens or a percentage of the model window", () => {
+    const decode = Schema.decodeUnknownSync(Config.Info)
+    for (const buffer of [0, 20_000, "1%", "12.5%", "99.9%"]) {
+      const input = { compaction: { buffer } }
+      expect(Schema.encodeSync(Config.Info)(decode(input))).toEqual(input)
+    }
+    for (const buffer of ["0%", "100%", "-1%", "1", "12.%", "01%", -1, 1.5]) {
+      expect(() => decode({ compaction: { buffer } })).toThrow()
+    }
+  })
+
   test("accepts disabled, fixed, and random web search selection", () => {
     const decode = Schema.decodeUnknownSync(Config.Info)
 

@@ -106,6 +106,7 @@ function VoiceSettings(props: { api?: ServerApi }) {
   onCleanup(() => navigator.mediaDevices?.removeEventListener("devicechange", refreshMicrophones))
   const [form, setForm] = createStore({
     provider: "openai" as Voice.Settings["provider"],
+    mode: "batch" as NonNullable<Voice.Settings["mode"]>,
     model: "gpt-4o-mini-transcribe",
     connection: "",
     binding: "",
@@ -134,6 +135,7 @@ function VoiceSettings(props: { api?: ServerApi }) {
     if (voice)
       setForm({
         ...voice,
+        mode: voice.mode ?? "batch",
         connection:
           voice.connection?.type === "credential"
             ? voice.connection.id
@@ -171,6 +173,7 @@ function VoiceSettings(props: { api?: ServerApi }) {
       .update({
         voice: {
           provider: form.provider,
+          ...(form.provider === "elevenlabs" && form.mode === "realtime" ? { mode: "realtime" as const } : {}),
           model: form.model.trim(),
           ...(connection
             ? {
@@ -269,6 +272,7 @@ function VoiceSettings(props: { api?: ServerApi }) {
                   const provider = event.currentTarget.value as Voice.Settings["provider"]
                   setForm({
                     provider,
+                    mode: "batch",
                     model:
                       provider === "elevenlabs"
                         ? "scribe_v2"
@@ -287,6 +291,15 @@ function VoiceSettings(props: { api?: ServerApi }) {
                 <option value="openai-compatible">{language.t("voice.compatible")}</option>
               </select>
             </label>
+            <Show when={form.provider === "elevenlabs"}>
+              <label class="flex flex-col gap-1 text-body">
+                {language.t("voice.mode")}
+                <select class={field} value={form.mode} onChange={(event) => setForm("mode", event.currentTarget.value as "batch" | "realtime")}>
+                  <option value="batch">{language.t("voice.mode.batch")}</option>
+                  <option value="realtime">{language.t("voice.mode.realtime")}</option>
+                </select>
+              </label>
+            </Show>
             <label class="flex flex-col gap-1 text-body">
               {language.t("voice.connection")}
               <select

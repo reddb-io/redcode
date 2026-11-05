@@ -10,11 +10,20 @@ export class Keep extends Schema.Class<Keep>("Config.Compaction.Keep")({
   }),
 }) {}
 
+/** A share of the model window from 1% up to, but not including, 100%. */
+export const Percent = Schema.String.check(Schema.isPattern(/^([1-9]\d?(\.\d+)?)%$/u)).annotate({
+  identifier: "Config.Compaction.Percent",
+})
+export type Percent = typeof Percent.Type
+
 export class Info extends Schema.Class<Info>("Config.Compaction")({
   auto: Schema.Boolean.pipe(optional),
   prune: Schema.Boolean.pipe(optional),
   keep: Keep.pipe(optional),
-  buffer: NonNegativeInt.pipe(optional),
+  buffer: Schema.Union([Percent, NonNegativeInt]).pipe(optional).annotate({
+    description:
+      'Room reserved below the model input limit as a token count or a percentage from "1%" to less than "100%".',
+  }),
   summary_max_tokens: PositiveInt.pipe(optional),
   background: Schema.Boolean.pipe(optional).annotate({
     description:

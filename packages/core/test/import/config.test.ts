@@ -435,6 +435,10 @@ describe("ConfigImport", () => {
     ])
     expect(decoded({ compaction: { prune: false } }).compaction?.prune).toBe(false)
     expect(decoded({ compaction: { background: true } }).compaction?.background).toBe(true)
+    expect(normalized({ compaction: { buffer: "12.5%" } }).encoded.compaction).toEqual({ buffer: "12.5%" })
+    expect(normalized({ compaction: { buffer: "100%" } }).diagnostics.map((item) => [item.kind, item.path])).toEqual([
+      ["invalid", ["compaction", "buffer"]],
+    ])
   })
 
   test("distinguishes empty, mixed, and wholly malformed enabled provider lists", () => {

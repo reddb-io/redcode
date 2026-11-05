@@ -105,6 +105,7 @@ import { TodoTool } from "../tool/plugin/todo.js"
 import { SkillTool } from "../tool/plugin/skill.js"
 import { SubagentTool } from "../tool/plugin/subagent.js"
 import { ExternalDelegationTool } from "../tool/plugin/external-delegation.js"
+import { SessionArtifactTool } from "../tool/plugin/session-artifact.js"
 import { ExternalDelegation } from "../external-delegation.js"
 import { Tool } from "../tool.js"
 import { ToolOutput } from "../tool-output.js"
@@ -360,6 +361,7 @@ const pre = [
   SkillTool.Plugin,
   SubagentTool.Plugin,
   ExternalDelegationTool.Plugin,
+  SessionArtifactTool.Plugin,
   WebFetchTool.Plugin,
   WebSearchTool.Plugin,
   WriteTool.Plugin,

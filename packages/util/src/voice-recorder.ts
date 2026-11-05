@@ -7,12 +7,15 @@ export class VoiceRecorder {
   private limit?: ReturnType<typeof setTimeout>
   private chunks: Blob[] = []
   private completed?: Promise<Blob>
+  private processor?: ScriptProcessorNode
+  private flushSamples?: () => void
 
   async start(input: {
     signal: AbortSignal
     device?: string
     update: (value: { seconds: number; level: number }) => void
     finish: () => void
+    samples?: (pcm: Uint8Array) => void
   }) {
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") throw new Error("unavailable")
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -36,7 +39,44 @@ export class VoiceRecorder {
       input.signal.throwIfAborted()
       const analyser = this.context.createAnalyser()
       analyser.fftSize = 256
-      this.context.createMediaStreamSource(stream).connect(analyser)
+      const source = this.context.createMediaStreamSource(stream)
+      source.connect(analyser)
+      if (input.samples) {
+        const processor = this.context.createScriptProcessor(4096, 1, 1)
+        const muted = this.context.createGain()
+        muted.gain.value = 0
+        source.connect(processor)
+        processor.connect(muted)
+        muted.connect(this.context.destination)
+        this.processor = processor
+        let phase = 0
+        let sum = 0
+        let count = 0
+        let samples: number[] = []
+        const flush = () => {
+          if (!samples.length) return
+          const bytes = new Uint8Array(samples.length * 2)
+          const view = new DataView(bytes.buffer)
+          samples.forEach((sample, index) => view.setInt16(index * 2, sample, true))
+          samples = []
+          input.samples!(bytes)
+        }
+        this.flushSamples = flush
+        processor.onaudioprocess = (event) => {
+          for (const sample of event.inputBuffer.getChannelData(0)) {
+            sum += sample
+            count++
+            phase += 16_000
+            while (phase >= this.context!.sampleRate) {
+              const value = Math.max(-1, Math.min(1, sum / count))
+              samples.push(Math.round(value * (value < 0 ? 0x8000 : 0x7fff)))
+              phase -= this.context!.sampleRate
+              if (samples.length >= 3200) flush()
+            }
+            if (phase < 16_000) { sum = 0; count = 0 }
+          }
+        }
+      }
       const samples = new Float32Array(analyser.fftSize)
       const started = performance.now()
       const mimeType = ["audio/webm;codecs=opus", "audio/mp4", "audio/webm"].find((type) =>
@@ -126,6 +166,13 @@ export class VoiceRecorder {
   private releaseMicrophone() {
     clearInterval(this.timer)
     clearTimeout(this.limit)
+    if (this.processor) {
+      this.processor.onaudioprocess = null
+      this.processor.disconnect()
+      this.processor = undefined
+      this.flushSamples?.()
+      this.flushSamples = undefined
+    }
     if (this.recorder?.state === "recording") this.recorder.stop()
     this.stream?.getTracks().forEach((track) => {
       track.onended = null

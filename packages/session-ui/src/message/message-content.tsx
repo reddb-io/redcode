@@ -7,6 +7,7 @@ import { Markdown } from "../components/markdown"
 import { ImagePreview } from "@opencode/ui/image-preview"
 import { getFilename } from "@opencode/util/path"
 import { Redact } from "@opencode/util/redact"
+import { GenerationTiming } from "@opencode/util/generation-timing"
 import { AttachmentCard } from "./attachment-card"
 import { CommentCard } from "./comment-card"
 import { TimelineSeparator } from "../components/timeline-separator"
@@ -282,7 +283,11 @@ export function CurrentUserMessageDisplay(props: {
   const metaHead = createMemo(() => {
     const agent = props.agent
 
-    return [waiting() ? i18n.t("ui.message.pending") : "", agent ? agent[0]?.toUpperCase() + agent.slice(1) : "", model()]
+    return [
+      waiting() ? i18n.t("ui.message.pending") : "",
+      agent ? agent[0]?.toUpperCase() + agent.slice(1) : "",
+      model(),
+    ]
       .filter(Boolean)
       .join("\u00A0\u00B7\u00A0")
   })
@@ -682,6 +687,7 @@ export function AssistantTextContent(props: {
   }
 
   const model = createMemo(() => modelLabel(data, i18n, props.message.model))
+  const timing = createMemo(() => GenerationTiming.step(props.message))
 
   const duration = createMemo(() => {
     const completed = props.message.time.completed
@@ -734,7 +740,11 @@ export function AssistantTextContent(props: {
           <PacedMarkdown text={props.text} cacheKey={props.id} streaming={props.message.time.completed === undefined} />
         </div>
         <Show when={props.showCopy}>
-          <div data-slot="text-part-copy-wrapper" data-interrupted={interrupted() ? "" : undefined}>
+          <div
+            data-slot="text-part-copy-wrapper"
+            data-interrupted={interrupted() ? "" : undefined}
+            data-has-rate={timing()?.speed !== undefined ? "" : undefined}
+          >
             <MessageActionButton
               icon={copied() ? "check" : "copy"}
               label={copied() ? i18n.t("ui.message.copied") : i18n.t("ui.message.copyResponse")}
@@ -746,6 +756,17 @@ export function AssistantTextContent(props: {
               <span data-slot="text-part-meta" class="text-caption text-ink-muted cursor-default">
                 {meta()}
               </span>
+            </Show>
+            <Show when={timing()?.speed}>
+              {(speed) => (
+                <span
+                  data-slot="text-part-generation-rate"
+                  class="text-caption text-ink-muted cursor-default tabular-nums"
+                  title={i18n.t(timing()?.hidden ? "ui.message.generationRateVisible" : "ui.message.generationRate")}
+                >
+                  · {GenerationTiming.formatRate(speed(), i18n.locale())}
+                </span>
+              )}
             </Show>
           </div>
         </Show>

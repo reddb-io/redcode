@@ -31,4 +31,9 @@ export const VoiceGroup = HttpApiGroup.make("server.voice").add(
         summary: "Transcribe a recording into an editable draft",
       }),
     ),
+  HttpApiEndpoint.post("voice.realtime", "/api/voice/realtime", {
+    query: LocationQuery,
+    success: Schema.Struct({ data: Voice.RealtimeAccess }),
+    error: [InvalidRequestError, ServiceUnavailableError],
+  }).annotateMerge(locationQueryOpenApi).annotateMerge(OpenApi.annotations({ identifier: "voice.realtime", summary: "Create a single-use realtime dictation token" })),
 )

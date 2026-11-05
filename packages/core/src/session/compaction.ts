@@ -59,8 +59,8 @@ export type Settings = {
   auto: boolean
   /** Prepare the automatic summary shortly before it is due. */
   background?: boolean
-  /** Tokens kept free below the model's limits before compacting. Unset keeps 10% free. */
-  buffer?: number
+  /** Tokens or a percentage kept free below the model's input limit before compacting. */
+  buffer?: number | string
   /** Tokens of recent conversation kept verbatim beside the summary. Unset scales with the window. */
   keep?: number
   /** Maximum number of recent user exchanges kept verbatim. */
@@ -1800,13 +1800,14 @@ export const estimatePrompt = (context: SessionContext.Loaded, ratio = 1) => {
  * is more. The summary request is capped at the same size, so its output limit is whatever the reserve leaves. A window
  * too small to give up `RESERVE_MIN` keeps 10%.
  */
-const calculateCeiling = (limit: SessionContext.Loaded["model"]["limit"], buffer: number | undefined) => {
+const calculateCeiling = (limit: SessionContext.Loaded["model"]["limit"], buffer: Settings["buffer"]) => {
   // Unknown limits are reported as 0. An unknown input limit falls back to the context window; with no window at
   // all, only a provider rejection can limit the request.
   const window = limit.input || limit.context
   if (window <= 0) return Number.POSITIVE_INFINITY
   // A reserve inherited from a larger model must not leave the current model with no prompt budget.
-  if (buffer !== undefined && buffer < window) return window - buffer
+  const reserve = typeof buffer === "string" ? Math.floor((window * Number.parseFloat(buffer)) / 100) : buffer
+  if (reserve !== undefined && reserve < window) return window - reserve
   return window - Math.max(Math.floor(window * 0.1), window >= 2 * RESERVE_MIN ? RESERVE_MIN : 0)
 }
 

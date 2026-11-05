@@ -113,6 +113,8 @@ const suites = {
     "test/session-execution.test.ts",
     "test/session-wait.test.ts",
     "test/session-wait-observation.test.ts",
+    "test/session-artifacts.test.ts",
+    "test/tool-session-artifact.test.ts",
     "test/session-run-coordinator.test.ts",
     "test/session-goal-judge.test.ts",
     "test/session-budget.test.ts",
@@ -208,6 +210,7 @@ const suites = {
   ],
   server: [
     "test/voice.test.ts",
+    "test/voice-elevenlabs.test.ts",
     "test/pty-socket.test.ts",
     "test/agent-tools.test.ts",
     "test/fs.test.ts",
@@ -226,6 +229,7 @@ const suites = {
     "test/session-tasks.test.ts",
     "test/session-monitors.test.ts",
     "test/session-wait-read.test.ts",
+    "test/session-artifacts.test.ts",
     "test/automations.test.ts",
     "test/hooks.test.ts",
     "test/design-access.test.ts",
@@ -273,6 +277,7 @@ const suites = {
     "test/updater-main.test.ts",
     "./src/terminal/writer.test.ts",
     "./src/delivery/resources-model.test.ts",
+    "./src/delivery/artifact-preview.test.ts",
   ],
   tui: [
     "test/herdr.test.tsx",

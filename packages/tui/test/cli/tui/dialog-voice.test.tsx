@@ -69,6 +69,11 @@ test("configures voice inside the TUI with a masked new key and reopens saved se
   app.renderer.start()
   try {
     await app.waitForFrame((frame) => frame.includes("Save voice settings"))
+    app.mockInput.pressEnter()
+    await app.waitForFrame((frame) => frame.includes("ElevenLabs"))
+    app.mockInput.pressArrow("down")
+    app.mockInput.pressEnter()
+    await app.waitForFrame((frame) => frame.includes("scribe_v2"))
     app.mockInput.pressArrow("down")
     app.mockInput.pressEnter()
     await app.waitForFrame((frame) => frame.includes("Add a voice API key"))
@@ -101,10 +106,18 @@ test("configures voice inside the TUI with a masked new key and reopens saved se
     app.mockInput.pressArrow("down")
     app.mockInput.pressArrow("down")
     app.mockInput.pressEnter()
+    await app.waitForFrame((frame) => frame.includes("Realtime (ElevenLabs Scribe)"))
+    app.mockInput.pressArrow("down")
+    app.mockInput.pressEnter()
+    await app.waitForFrame((frame) => frame.includes("Realtime (ElevenLabs Scribe)") && frame.includes("Save voice settings"))
+    await app.waitFor(() => app.renderer.currentFocusedEditor instanceof InputRenderable)
+    for (let index = 0; index < 6; index++) app.mockInput.pressArrow("down")
+    app.mockInput.pressEnter()
     await app.waitFor(() => saved !== undefined)
     expect(saved).toEqual({
-      provider: "openai",
-      model: "gpt-4o-mini-transcribe",
+      provider: "elevenlabs",
+      mode: "realtime",
+      model: "scribe_v2",
       connection: { type: "credential", id: "cred_voice" },
       language: "pt",
     })

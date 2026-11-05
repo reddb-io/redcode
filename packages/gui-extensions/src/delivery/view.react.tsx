@@ -18,6 +18,8 @@ import { DeliveryHooksView } from "./hooks.react"
 import type { DeliveryHooks } from "./hooks"
 import { DeliveryAutomationsView } from "./automations.react"
 import type { DeliveryAutomations } from "./automations"
+import { DeliveryArtifactsView } from "./artifacts.react"
+import type { DeliveryArtifacts } from "./artifacts"
 
 const DeliveryTaskFlow = lazy(() => import("./workflow.react"))
 const DeliveryLineageGraph = lazy(() => import("./lineage-graph.react"))
@@ -51,6 +53,8 @@ export function DeliveryView(props: {
   hookActions: DeliveryHooks["actions"]
   automations: ReturnType<DeliveryAutomations["snapshot"]>
   automationActions: DeliveryAutomations["actions"]
+  artifacts: ReturnType<DeliveryArtifacts["snapshot"]>
+  artifactActions: DeliveryArtifacts["actions"]
   section(value: DeliverySection): void
   refresh(): void
   open(id: string): void
@@ -115,13 +119,15 @@ function DeliveryContent(props: Parameters<typeof DeliveryView>[0]) {
             !view.connected ||
             (props.resources.section === "overview"
               ? view.refreshing
-              : props.resources.section === "monitors"
-                ? props.monitors.refreshing
-                : props.resources.section === "hooks"
-                  ? props.hooks.refreshing
-                  : props.resources.section === "automations"
-                    ? props.automations.refreshing
-                    : props.resources.refreshing)
+              : props.resources.section === "artifacts"
+                ? props.artifacts.refreshing
+                : props.resources.section === "monitors"
+                  ? props.monitors.refreshing
+                  : props.resources.section === "hooks"
+                    ? props.hooks.refreshing
+                    : props.resources.section === "automations"
+                      ? props.automations.refreshing
+                      : props.resources.refreshing)
           }
           onClick={props.refresh}
         >
@@ -129,15 +135,17 @@ function DeliveryContent(props: Parameters<typeof DeliveryView>[0]) {
             copy[
               props.resources.section === "overview"
                 ? "refresh"
-                : props.resources.section === "monitors"
-                  ? "refreshMonitors"
-                  : props.resources.section === "hooks"
-                    ? "refreshHooks"
-                    : props.resources.section === "automations"
-                      ? "refreshAutomations"
-                      : props.resources.section === "skills"
-                        ? "refreshSkills"
-                        : "refreshResources"
+                : props.resources.section === "artifacts"
+                  ? "refreshArtifacts"
+                  : props.resources.section === "monitors"
+                    ? "refreshMonitors"
+                    : props.resources.section === "hooks"
+                      ? "refreshHooks"
+                      : props.resources.section === "automations"
+                        ? "refreshAutomations"
+                        : props.resources.section === "skills"
+                          ? "refreshSkills"
+                          : "refreshResources"
             ]
           }
         </Button>
@@ -155,6 +163,7 @@ function DeliveryContent(props: Parameters<typeof DeliveryView>[0]) {
         value={props.resources.section}
         items={[
           { value: "overview", label: copy.overview },
+          { value: "artifacts", label: copy.artifacts },
           { value: "resources", label: copy.resources },
           { value: "skills", label: copy.skills },
           { value: "monitors", label: copy.monitors },
@@ -164,6 +173,7 @@ function DeliveryContent(props: Parameters<typeof DeliveryView>[0]) {
         onValueChange={(value) => {
           if (
             value === "overview" ||
+            value === "artifacts" ||
             value === "resources" ||
             value === "skills" ||
             value === "monitors" ||
@@ -174,7 +184,9 @@ function DeliveryContent(props: Parameters<typeof DeliveryView>[0]) {
         }}
       >
         {(item) =>
-          item.value === "overview" ? (
+          item.value === "artifacts" ? (
+            <DeliveryArtifactsView view={props.artifacts} actions={props.artifactActions} copy={copy} />
+          ) : item.value === "overview" ? (
             <div className="flex min-w-0 flex-col gap-[var(--reddb-spatial-layout-gap-md)] text-body">
               <p className="m-0 text-caption text-ink-muted">{copy.description}</p>
               {(!view.connected || view.unavailable) && (

@@ -42,6 +42,47 @@ const completed = {
 } satisfies SessionMessageAssistant
 
 test.describe("static projection", () => {
+  test("shows measured generation speed in the response footer and omits unavailable rates", async ({ page }) => {
+    const first = userMessage([userText("Measured response")])
+    const measured = assistantMessage([textPart("prt_rate", "Measured answer")])
+    measured.time = { created: 1000, first: 2000, streamed: 4000, completed: 4100 }
+    measured.tokens = { input: 10, output: 100, reasoning: 0, cache: { read: 0, write: 0 } }
+    const second = userMessage([userText("Old response")], { id: "msg_2000_old" })
+    const old = assistantMessage([textPart("prt_old", "Old answer")], {
+      id: "msg_2001_old",
+      parentID: "msg_2000_old",
+    })
+    const third = userMessage([userText("Hidden reasoning")], { id: "msg_3000_hidden" })
+    const hidden = assistantMessage([textPart("prt_hidden", "Visible answer")], {
+      id: "msg_3001_hidden",
+      parentID: "msg_3000_hidden",
+    })
+    hidden.time = { created: 1000, first: 2000, streamed: 4000, completed: 4100 }
+    hidden.tokens = { input: 10, output: 100, reasoning: 100, cache: { read: 0, write: 0 } }
+    await setupTimeline(page, { messages: [first, measured, second, old, third, hidden] })
+
+    const measuredResponse = page.locator('[data-component="text-part"]').filter({ hasText: "Measured answer" })
+    const rate = measuredResponse.locator('[data-slot="text-part-generation-rate"]')
+    await expect(rate).toBeVisible()
+    await expect(rate).toHaveText("· 50 tk/s")
+    await expect(rate).toHaveAttribute("title", "Generation speed for the last model step")
+    await expect(
+      page
+        .locator('[data-component="text-part"]')
+        .filter({ hasText: "Old answer" })
+        .locator('[data-slot="text-part-generation-rate"]'),
+    ).toHaveCount(0)
+    const visibleRate = page
+      .locator('[data-component="text-part"]')
+      .filter({ hasText: "Visible answer" })
+      .locator('[data-slot="text-part-generation-rate"]')
+    await expect(visibleRate).toHaveText("· 50 tk/s")
+    await expect(visibleRate).toHaveAttribute(
+      "title",
+      "Generation speed for visible output in the last model step; hidden reasoning is excluded",
+    )
+  })
+
   test("renders current protocol notices in CLI order", async ({ page }) => {
     const ownerWarnings: string[] = []
     page.on("console", (message) => {

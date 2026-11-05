@@ -657,6 +657,20 @@ calibrated to ignore normal work: an edit acknowledgement is not a repeat, and c
 growth. There are no default cost limits. `/budget` sets a limit only when you ask for one, and a
 model can never set its own.
 
+## Session artifacts
+
+The Delivery panel's **Artifacts** tab publishes a snapshot of a folder inside the current session's workspace.
+Provide a title, a workspace-relative folder and its entry file, such as `reports/demo` and `index.html`.
+Select an artifact and publish another revision to preserve the previous snapshot; concurrent updates against
+an older revision are rejected. The agent can also use `session_artifact` to list and publish artifacts in its
+own conversation, subject to its publication permission. Files are retained on the serving Redcode server;
+moving a session to another server does not currently copy them.
+
+The panel can open HTML, text and common images and download individual files. HTML runs in an isolated frame
+with scripts and external requests disabled. Relative images, stylesheets and fonts in the snapshot can be
+embedded for preview, with up to 64 referenced assets; interactive demos that require JavaScript are not supported.
+Artifacts are separate from Design reviews and do not create a Design approval or publish to an external host.
+
 ## Compaction
 
 <img src="features/compaction.svg" alt="Compaction" width="100%" />
@@ -669,6 +683,11 @@ redaction as the vault, so a secret pasted earlier in the chat does not come bac
 Summary compaction uses the explicit S2 transformations model when configured. Otherwise it can use
 the `compaction` agent's configured model, falling back to the session model if that optional model is
 unavailable. Native provider compaction continues to use its original backend.
+
+The optional `compaction.buffer` setting reserves room before automatic compaction. It accepts a non-negative
+token count or a percentage of the current model's input limit, such as `"20%"` (compact near 80% full).
+Percentages range from `"1%"` to less than `"100%"` and may include decimals, for example `"12.5%"`.
+The existing default applies when the setting is omitted.
 
 When the session directory is inside Git, the completed checkpoint also includes a fresh **Repository Status**:
 the active worktree's path and kind (main or linked), branch (or detached HEAD), and changed-file counts.

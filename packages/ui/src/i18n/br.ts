@@ -234,6 +234,9 @@ export const dict = {
   "ui.message.forkMessage": "Bifurcar para nova sessão",
   "ui.message.revertMessage": "Redefinir para este ponto",
   "ui.message.copyResponse": "Copiar resposta",
+  "ui.message.generationRate": "Velocidade de geração da última etapa do modelo",
+  "ui.message.generationRateVisible":
+    "Velocidade do texto visível na última etapa do modelo; raciocínio oculto não é incluído",
   "ui.message.copied": "Copiado!",
   "ui.message.interrupted": "Interrompido",
   "ui.message.queued": "Na fila",

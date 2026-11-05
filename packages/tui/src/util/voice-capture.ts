@@ -11,6 +11,7 @@ const decodeText = Schema.decodeUnknownOption(
 export function startVoiceCapture(input: {
   signal: AbortSignal
   transcribe: (audio: string, signal: AbortSignal) => Promise<string>
+  realtime?: (signal: AbortSignal) => Promise<Voice.RealtimeAccess>
   accept: (text: string) => boolean
 }) {
   const token = crypto.randomUUID()
@@ -32,7 +33,7 @@ export function startVoiceCapture(input: {
             "Cache-Control": "no-store",
             "Referrer-Policy": "no-referrer",
             "Content-Security-Policy":
-              "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'",
+              "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self' wss: ws://127.0.0.1:* ws://localhost:* ws://[::1]:*; frame-ancestors 'none'",
             "Permissions-Policy": "microphone=(self), camera=()",
           },
         })
@@ -45,6 +46,13 @@ export function startVoiceCapture(input: {
       if (url.pathname === "/cancel") {
         cancel()
         return Response.json({})
+      }
+      if (url.pathname === "/prepare") {
+        if (!input.realtime) return Response.json({})
+        return input.realtime(AbortSignal.any([lifetime.signal, request.signal])).then(
+          (access) => Response.json({ access }, { headers: { "Cache-Control": "no-store" } }),
+          () => new Response(null, { status: 502 }),
+        )
       }
       const json: unknown = await request.json().catch(() => undefined)
       if (url.pathname === "/accept") {

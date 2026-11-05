@@ -316,7 +316,8 @@ export function Prompt(props: PromptProps) {
             return
           }
           const entries = await client.api.config.get()
-          if (!entries.some((entry) => entry.type === "document" && entry.info.voice)) {
+          const voiceSettings = entries.flatMap((entry) => entry.type === "document" && entry.info.voice ? [entry.info.voice] : []).at(-1)
+          if (!voiceSettings) {
             await showVoiceSettings({ api: client.api, dialog, toast })
             return
           }
@@ -328,6 +329,9 @@ export function Prompt(props: PromptProps) {
           const capture = startVoiceCapture({
             signal: new AbortController().signal,
             transcribe: async (audio, signal) => (await client.api.voice.transcribe({ audio }, { signal })).text,
+            ...(voiceSettings.provider === "elevenlabs" && voiceSettings.mode === "realtime"
+              ? { realtime: (signal: AbortSignal) => client.api.voice.realtime({}, { signal }) }
+              : {}),
             accept: (text) => {
               if (
                 promptRef.current !== target ||

@@ -13,6 +13,85 @@ import {
   mockDeliveryResources,
 } from "../utils/delivery-fixture"
 
+test("delivery publishes session artifact revisions and previews HTML in a sandbox", async ({ page }) => {
+  await page.setViewportSize({ width: 1560, height: 1000 })
+  await seed(page, { theme: { id: "oc-2", scheme: "dark" } })
+  await mockStressTimeline(page)
+  await installStressSessionTabs(page)
+  await mockAgentTasks(page)
+  const artifact = {
+    id: "art_123",
+    sessionID: fixture.sourceID,
+    title: "Report",
+    created: 1,
+    updated: 1,
+    revisions: [
+      {
+        id: "rev_one",
+        created: 1,
+        entry: "index.html",
+        files: { "index.html": "hash", "style.css": "hash2", "pixel.png": "hash3" },
+      },
+    ],
+  }
+  let items: (typeof artifact)[] = []
+  const writes: unknown[] = []
+  await page.route(`**/api/session/${fixture.sourceID}/artifact**`, async (route) => {
+    if (route.request().method() === "POST") {
+      writes.push(route.request().postDataJSON())
+      items = [artifact]
+      return route.fulfill({ json: { data: artifact } })
+    }
+    return route.fulfill({ json: { data: items } })
+  })
+  await page.route(`**/api/session/${fixture.sourceID}/artifact/*/*/content?*`, (route) => {
+    const file = new URL(route.request().url()).searchParams.get("file")
+    const contents: Record<string, string> = {
+      "index.html":
+        '<meta http-equiv="refresh" content="0;url=https://outside.invalid/"><link rel="stylesheet" href="style.css"><h1>Report body</h1><img alt="Local image" src="pixel.png"><script>document.body.dataset.executed="yes"</script>',
+      "style.css": "h1 { color: rgb(1, 2, 3) }",
+      "pixel.png": "pixel",
+    }
+    return route.fulfill({ json: { data: btoa(contents[file ?? ""] ?? "") } })
+  })
+  await page.goto(sessionHref(fixture.sourceID))
+  await page.getByRole("button", { name: "Open delivery overview", exact: true }).click()
+  const delivery = page.getByRole("region", { name: "Delivery", exact: true })
+  await delivery.getByRole("tab", { name: "Artifacts", exact: true }).click()
+  await delivery.getByLabel("Title", { exact: true }).fill("Report")
+  await delivery.getByLabel("Workspace folder", { exact: true }).fill("reports/demo")
+  await delivery.getByRole("button", { name: "Create artifact", exact: true }).click()
+  await expect(delivery.getByRole("button", { name: "Report", exact: true })).toBeVisible()
+  expect(writes).toEqual([{ source: "reports/demo", title: "Report", entry: "index.html" }])
+  await delivery.getByRole("button", { name: "Report", exact: true }).click()
+  const frame = delivery.locator('iframe[title="Artifact preview"]')
+  await expect(frame).toHaveAttribute("sandbox", "")
+  await expect(frame).not.toHaveAttribute("srcdoc", /outside\.invalid/)
+  await expect(frame.contentFrame().getByRole("heading", { name: "Report body" })).toBeVisible()
+  await expect(frame.contentFrame().getByRole("heading", { name: "Report body" })).toHaveCSS("color", "rgb(1, 2, 3)")
+  await expect(frame.contentFrame().getByAltText("Local image")).toHaveAttribute("src", /^data:image\/png;base64,/)
+  await expect(frame.contentFrame().locator("body")).not.toHaveAttribute("data-executed", "yes")
+  await delivery.getByRole("button", { name: "Publish revision", exact: true }).click()
+  await expect.poll(() => writes.length).toBe(2)
+  expect(writes[1]).toMatchObject({ id: "art_123", expectedRevision: "rev_one" })
+})
+
+test("delivery explains when an older server does not support artifacts", async ({ page }) => {
+  await page.setViewportSize({ width: 1560, height: 1000 })
+  await seed(page, { theme: { id: "oc-2", scheme: "dark" } })
+  await mockStressTimeline(page)
+  await installStressSessionTabs(page)
+  await mockAgentTasks(page)
+  await page.route(`**/api/session/${fixture.sourceID}/artifact`, (route) =>
+    route.fulfill({ status: 404, json: { message: "Not found" } }),
+  )
+  await page.goto(sessionHref(fixture.sourceID))
+  await page.getByRole("button", { name: "Open delivery overview", exact: true }).click()
+  const delivery = page.getByRole("region", { name: "Delivery", exact: true })
+  await delivery.getByRole("tab", { name: "Artifacts", exact: true }).click()
+  await expect(delivery.getByRole("alert")).toContainText("This server may not support them yet")
+})
+
 test("delivery follows the session family and preserves recorded task acceptance", async ({ page }) => {
   await page.setViewportSize({ width: 1560, height: 1000 })
   await seed(page, { theme: { id: "oc-2", scheme: "dark" } })

@@ -350,6 +350,9 @@ const source = {
   "ui.message.pending": "Pending",
   "ui.message.deletePending": "Delete",
   "ui.message.copyResponse": "Copy response",
+  "ui.message.generationRate": "Generation speed for the last model step",
+  "ui.message.generationRateVisible":
+    "Generation speed for visible output in the last model step; hidden reasoning is excluded",
   "ui.message.copied": "Copied",
   "ui.message.thought": "Thought",
   "ui.message.duration.seconds": "{{count}}s",

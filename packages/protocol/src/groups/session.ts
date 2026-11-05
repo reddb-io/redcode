@@ -1,6 +1,7 @@
 import { SessionMessage } from "@opencode/schema/session-message"
 import { SessionWait } from "@opencode/schema/session-wait"
 import { SessionObservation } from "@opencode/schema/session-observation"
+import { SessionArtifact } from "@opencode/schema/session-artifact"
 import { SessionInbox } from "@opencode/schema/session-inbox"
 import { PromptInput } from "@opencode/schema/prompt-input"
 import { Session } from "@opencode/schema/session"
@@ -494,6 +495,54 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI ext
             "Associate an imported share with its Console credential and organization, then verify it by synchronizing.",
         }),
       ),
+    )
+    .add(
+      HttpApiEndpoint.get("session.artifact.list", "/api/session/:sessionID/artifact", {
+        params: { sessionID: Session.ID },
+        success: Schema.Struct({ data: Schema.Array(SessionArtifact.Info) }),
+        error: [SessionNotFoundError, InvalidRequestError],
+      })
+        .middleware(sessionLocationMiddleware)
+        .annotateMerge(
+          OpenApi.annotations({
+            identifier: "session.artifact.list",
+            summary: "List session artifacts",
+          }),
+        ),
+    )
+    .add(
+      HttpApiEndpoint.post("session.artifact.publish", "/api/session/:sessionID/artifact", {
+        params: { sessionID: Session.ID },
+        payload: SessionArtifact.Publish,
+        success: Schema.Struct({ data: SessionArtifact.Info }),
+        error: [SessionNotFoundError, InvalidRequestError, ConflictError],
+      })
+        .middleware(sessionLocationMiddleware)
+        .annotateMerge(
+          OpenApi.annotations({
+            identifier: "session.artifact.publish",
+            summary: "Publish a local artifact revision",
+          }),
+        ),
+    )
+    .add(
+      HttpApiEndpoint.get(
+        "session.artifact.content",
+        "/api/session/:sessionID/artifact/:artifactID/:revisionID/content",
+        {
+          params: { sessionID: Session.ID, artifactID: Schema.String, revisionID: Schema.String },
+          query: { file: Schema.String },
+          success: Schema.Struct({ data: Schema.String }),
+          error: [SessionNotFoundError, InvalidRequestError],
+        },
+      )
+        .middleware(sessionLocationMiddleware)
+        .annotateMerge(
+          OpenApi.annotations({
+            identifier: "session.artifact.content",
+            summary: "Read a file from an artifact revision as base64",
+          }),
+        ),
     )
     .add(
       HttpApiEndpoint.get("session.monitor.list", "/api/session/:sessionID/monitor", {

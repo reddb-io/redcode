@@ -117,8 +117,11 @@ export const dict = {
   "voice.connectionLabel": "Connection name",
   "voice.apiKey": "Voice API key",
   "voice.description":
-    "Record locally for up to five minutes. Audio is sent to the provider you choose. The transcript stays in your draft until you send it. Settings belong to this server and are shared with the CLI.",
+    "Choose a transcription provider separately from your coding model. Record locally for up to five minutes; audio is sent to the selected provider during realtime dictation or after you stop in batch mode. The transcript stays in your draft until you send it. Settings belong to this server and are shared with the CLI.",
   "voice.provider": "Transcription provider",
+  "voice.mode": "Transcription mode",
+  "voice.mode.batch": "After recording",
+  "voice.mode.realtime": "Realtime (ElevenLabs Scribe)",
   "voice.compatible": "OpenAI-compatible endpoint",
   "voice.connection": "Saved API key connection",
   "voice.environment": "Configured environment binding: {{name}}",
@@ -622,7 +625,8 @@ export const dict = {
   "usage.projection.now": "As of now",
   "usage.projection.recorded": "Recorded cost",
   "usage.projection.projected": "Projection",
-  "usage.projection.note": "Estimate based on the average recorded daily cost over the selected {{days}} days, including today so far. It assumes the same pace for the next seven days and is not a budget or a prediction. Unknown and legacy costs may be missing; estimated prices can change.",
+  "usage.projection.note":
+    "Estimate based on the average recorded daily cost over the selected {{days}} days, including today so far. It assumes the same pace for the next seven days and is not a budget or a prediction. Unknown and legacy costs may be missing; estimated prices can change.",
   "usage.date": "Date",
   "usage.unknown": "Unknown or legacy records",
   "usage.costCoverage": "Cost coverage",
@@ -701,7 +705,8 @@ export const dict = {
   "harness.model.recommended": "Recommended by the agent",
   "harness.backgroundWait": "Enable native background wait tool",
   "harness.delegation": "Allow delegation to configured coding agents",
-  "harness.delegationNote": "The agent can delegate in this checkout to Redcode or a configured Codex or Claude harness. The child has its own permissions.",
+  "harness.delegationNote":
+    "The agent can delegate in this checkout to Redcode or a configured Codex or Claude harness. The child has its own permissions.",
   "harness.backgroundWaitNote":
     "Adds a read-only wait tool to this run, limited to its recorded tasks and 30 seconds per call. Waiting never stops native tasks. Codex uses an experimental API.",
   "harness.backgroundWaitEnabled": "Native background wait tool enabled for this run.",
@@ -1380,18 +1385,24 @@ export const dict = {
   "server.access.rowDescription": "Use a QR code or link to open this server on your phone or another computer.",
   "server.access.open": "Open on another device",
   "server.access.description": "Access {{server}} from a phone or another computer using a one-time link.",
-  "server.access.network": "The other device must be able to reach this server over your network, VPN or a configured remote address.",
-  "server.access.serversDescription": "Connect this app to a server to use its projects and sessions, or open a connected server on another device.",
+  "server.access.network":
+    "The other device must be able to reach this server over your network, VPN or a configured remote address.",
+  "server.access.serversDescription":
+    "Connect this app to a server to use its projects and sessions, or open a connected server on another device.",
   "server.access.link": "Access link",
-  "server.access.instructions": "Scan the QR code or open the link in a browser on the other device. You can also paste the link when adding a server in Redcode.",
+  "server.access.instructions":
+    "Scan the QR code or open the link in a browser on the other device. You can also paste the link when adding a server in Redcode.",
   "server.access.remoteHint": "For access outside the local network, create an HTTPS tunnel and access link:",
-  "server.access.invalidLink": "Paste the full access link from redcode pair or from Settings → Server → Open on another device.",
+  "server.access.invalidLink":
+    "Paste the full access link from redcode pair or from Settings → Server → Open on another device.",
   "server.access.generate": "Create access link",
   "server.access.copy": "Copy access link",
   "server.access.qr": "One-time server access QR code",
   "server.access.expired": "This link expired. Create a new link to open this server on another device.",
-  "server.access.cancelHint": "Cancelling prevents this link from being used. Devices that already used it stay connected.",
-  "server.access.generateFailed": "Could not create an access link. Check this server’s connection and version, then try again.",
+  "server.access.cancelHint":
+    "Cancelling prevents this link from being used. Devices that already used it stay connected.",
+  "server.access.generateFailed":
+    "Could not create an access link. Check this server’s connection and version, then try again.",
   "server.share.section": "Pairing",
   "server.share.title": "Connect another device",
   "server.share.rowDescription": "Create a one-time link to work on this server from another computer.",

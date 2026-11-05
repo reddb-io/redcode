@@ -72,6 +72,12 @@ import type {
   SessionUnshareOutput,
   SessionRebindShareInput,
   SessionRebindShareOutput,
+  SessionArtifactListInput,
+  SessionArtifactListOutput,
+  SessionArtifactPublishInput,
+  SessionArtifactPublishOutput,
+  SessionArtifactContentInput,
+  SessionArtifactContentOutput,
   SessionMonitorListInput,
   SessionMonitorListOutput,
   SessionMonitorGetInput,
@@ -396,6 +402,8 @@ import type {
   VoiceConnectOutput,
   VoiceTranscribeInput,
   VoiceTranscribeOutput,
+  VoiceRealtimeInput,
+  VoiceRealtimeOutput,
   HookStatusInput,
   HookStatusOutput,
   HookTrustInput,
@@ -1443,6 +1451,49 @@ export function make(options: ClientOptions) {
           },
           requestOptions,
         ).then((value) => value.data),
+      artifact: {
+        list: (input: SessionArtifactListInput, requestOptions?: RequestOptions) =>
+          request<{ readonly data: SessionArtifactListOutput }>(
+            {
+              method: "GET",
+              path: `/api/session/${encodeURIComponent(input.sessionID)}/artifact`,
+              successStatus: 200,
+              declaredStatuses: [400, 401, 403, 404, 409],
+              empty: false,
+            },
+            requestOptions,
+          ).then((value) => value.data),
+        publish: (input: SessionArtifactPublishInput, requestOptions?: RequestOptions) =>
+          request<{ readonly data: SessionArtifactPublishOutput }>(
+            {
+              method: "POST",
+              path: `/api/session/${encodeURIComponent(input.sessionID)}/artifact`,
+              body: {
+                source: input["source"],
+                title: input["title"],
+                entry: input["entry"],
+                id: input["id"],
+                expectedRevision: input["expectedRevision"],
+              },
+              successStatus: 200,
+              declaredStatuses: [400, 401, 403, 404, 409],
+              empty: false,
+            },
+            requestOptions,
+          ).then((value) => value.data),
+        content: (input: SessionArtifactContentInput, requestOptions?: RequestOptions) =>
+          request<{ readonly data: SessionArtifactContentOutput }>(
+            {
+              method: "GET",
+              path: `/api/session/${encodeURIComponent(input.sessionID)}/artifact/${encodeURIComponent(input.artifactID)}/${encodeURIComponent(input.revisionID)}/content`,
+              query: { file: input["file"] },
+              successStatus: 200,
+              declaredStatuses: [400, 401, 403, 404, 409],
+              empty: false,
+            },
+            requestOptions,
+          ).then((value) => value.data),
+      },
       monitor: {
         list: (input: SessionMonitorListInput, requestOptions?: RequestOptions) =>
           request<{ readonly data: SessionMonitorListOutput }>(
@@ -3439,6 +3490,18 @@ export function make(options: ClientOptions) {
             path: `/api/voice/transcribe`,
             query: { location: input["location"] },
             body: { audio: input["audio"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 404, 409, 503],
+            empty: false,
+          },
+          requestOptions,
+        ).then((value) => value.data),
+      realtime: (input?: VoiceRealtimeInput, requestOptions?: RequestOptions) =>
+        request<{ readonly data: VoiceRealtimeOutput }>(
+          {
+            method: "POST",
+            path: `/api/voice/realtime`,
+            query: { location: input?.["location"] },
             successStatus: 200,
             declaredStatuses: [400, 401, 403, 404, 409, 503],
             empty: false,

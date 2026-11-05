@@ -7,6 +7,7 @@ import { createDeliveryResources } from "./resources"
 import { createDeliveryMonitors } from "./monitors"
 import { createDeliveryHooks } from "./hooks"
 import { createDeliveryAutomations } from "./automations"
+import { createDeliveryArtifacts } from "./artifacts"
 import type { DeliverySection } from "./resources-model"
 import en from "./i18n/en"
 
@@ -25,6 +26,17 @@ export default function DeliveryPanel(props: { session: MountedSession; visible:
     },
   })
   const root = createMemo(() => props.session.server.data.session.root(props.session.id))
+  const artifacts = createDeliveryArtifacts({
+    get session() {
+      return props.session
+    },
+    get visible() {
+      return props.visible
+    },
+    get section() {
+      return section()
+    },
+  })
   const monitors = createDeliveryMonitors({
     get session() {
       return props.session
@@ -122,8 +134,11 @@ export default function DeliveryPanel(props: { session: MountedSession; visible:
         hookActions: hooks.actions,
         automations: automations.snapshot(),
         automationActions: automations.actions,
+        artifacts: artifacts.snapshot(),
+        artifactActions: artifacts.actions,
         section: setSection,
         refresh: () => {
+          if (section() === "artifacts") return artifacts.actions.refresh()
           if (section() === "automations") return automations.actions.refresh()
           if (section() === "hooks") return hooks.actions.refresh()
           if (section() === "monitors") return monitors.actions.refresh()

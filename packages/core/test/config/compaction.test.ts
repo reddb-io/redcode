@@ -140,7 +140,7 @@ describe("ConfigCompactionPlugin.Plugin", () => {
         }),
         new Document({
           type: "document",
-          info: new Info({ compaction: new ConfigCompaction.Info({ buffer: 10_000 }) }),
+          info: new Info({ compaction: new ConfigCompaction.Info({ buffer: "12.5%" }) }),
         }),
       ])
       yield* bus.publish(Event.Updated, {})
@@ -156,7 +156,7 @@ describe("ConfigCompactionPlugin.Plugin", () => {
       yield* config.setEntries([
         new Document({
           type: "document",
-          info: new Info({ compaction: new ConfigCompaction.Info({ auto: true, buffer: 20_000 }) }),
+          info: new Info({ compaction: new ConfigCompaction.Info({ auto: true, buffer: "20%" }) }),
         }),
       ])
       yield* bus.publish(Event.Updated, {})

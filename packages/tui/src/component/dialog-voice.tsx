@@ -22,6 +22,7 @@ export async function showVoiceSettings(input: {
     .at(-1)
   const [form, setForm] = createStore({
     provider: settings?.provider ?? "openai",
+    mode: settings?.mode ?? "batch" as "batch" | "realtime",
     model: settings?.model ?? "gpt-4o-mini-transcribe",
     connection: settings?.connection,
     baseURL: settings?.baseURL ?? "",
@@ -139,6 +140,7 @@ export async function showVoiceSettings(input: {
       .update({
         voice: {
           provider: form.provider,
+          ...(form.provider === "elevenlabs" && form.mode === "realtime" ? { mode: "realtime" as const } : {}),
           model: form.model,
           ...(form.connection ? { connection: form.connection } : {}),
           ...(form.baseURL ? { baseURL: form.baseURL } : {}),
@@ -177,6 +179,7 @@ export async function showVoiceSettings(input: {
                   onSelect={(entry) => {
                     setForm({
                       provider: entry.value,
+                      mode: "batch",
                       model:
                         entry.value === "elevenlabs"
                           ? "scribe_v2"
@@ -220,6 +223,18 @@ export async function showVoiceSettings(input: {
             description: form.language || "Automatic detection",
             onSelect: () => edit("language", "Language code (empty for automatic detection)"),
           },
+          ...(form.provider === "elevenlabs" ? [{
+            title: "Transcription mode",
+            value: "mode",
+            description: form.mode === "realtime" ? "Realtime (ElevenLabs Scribe)" : "After recording",
+            onSelect: () => input.dialog.replace(() => <DialogSelect
+              title="Transcription mode"
+              current={form.mode}
+              options={[{ title: "After recording", value: "batch" as const }, { title: "Realtime (ElevenLabs Scribe)", value: "realtime" as const }]}
+              onCancel={menu}
+              onSelect={(entry) => { setForm("mode", entry.value); menu() }}
+            />),
+          }] : []),
           { title: "Save voice settings", value: "save", onSelect: () => void save() },
         ]}
       />

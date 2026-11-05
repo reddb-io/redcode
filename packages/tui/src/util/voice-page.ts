@@ -1,5 +1,6 @@
 import { VoiceRecorder, voiceAudioBase64 } from "@opencode/util/voice-recorder"
 import { createVoiceInput } from "@opencode/util/voice-input"
+import { VoiceRealtime } from "@opencode/util/voice-realtime"
 
 /** Self-contained so compiled CLI builds need neither a web bundle nor network-hosted assets. */
 export function voicePage() {
@@ -8,17 +9,18 @@ export function voicePage() {
 :root{color-scheme:dark;font:13px/20px system-ui;background:#111215;color:#eee}body{max-width:560px;margin:8vh auto;padding:24px}h1{font-size:20px;font-weight:550}p{color:#aaa}button,textarea,select{font:inherit;color:inherit;background:#202228;border:1px solid #45464e;border-radius:8px;padding:8px 12px}button{cursor:pointer}button:disabled{opacity:.4;cursor:default}textarea{box-sizing:border-box;width:100%;height:180px;margin:20px 0;resize:vertical}nav{display:flex;gap:8px;flex-wrap:wrap}meter{width:100%;height:4px;margin:12px 0}#status{min-height:24px}select{max-width:100%;margin-bottom:16px}.primary{background:#d71d4b;border-color:#d71d4b}small{color:#aaa}</style>
 <h1>Voice input</h1><p>Record on this device. Your Redcode server transcribes with your selected provider. Review the text before adding it to your draft.</p>
 <label>Microphone <select id="device"><option value="">System default</option></select></label>
-<div id="status" role="status">Ready · up to five minutes</div><meter id="level" min="0" max="1" value="0" aria-label="Microphone level"></meter>
+<div id="status" role="status">Ready · up to five minutes</div><p id="live" aria-live="polite"></p><meter id="level" min="0" max="1" value="0" aria-label="Microphone level"></meter>
 <nav><button id="record" class="primary">Record</button><button id="stop" disabled>Stop and transcribe</button><button id="retry" hidden>Retry transcription</button><button id="cancel">Cancel</button></nav>
 <label>Transcript<textarea id="text" placeholder="Your transcript will appear here"></textarea></label>
 <nav><button id="accept" disabled>Add to draft</button><button id="copy">Copy text</button></nav><p><small>Nothing is submitted to the coding agent. Keep this page open until the transcript is accepted.</small></p>
-<script>(${voicePageClient.toString()})(${VoiceRecorder.toString()},${createVoiceInput.toString()},${voiceAudioBase64.toString()});</script></html>`
+<script>(${voicePageClient.toString()})(${VoiceRecorder.toString()},${createVoiceInput.toString()},${voiceAudioBase64.toString()},${VoiceRealtime.toString()});</script></html>`
 }
 
 function voicePageClient(
   Recorder: typeof VoiceRecorder,
   createInput: typeof createVoiceInput,
   encodeAudio: typeof voiceAudioBase64,
+  Realtime: typeof VoiceRealtime,
 ) {
   const token = location.hash.slice(1)
   history.replaceState(null, "", location.pathname)
@@ -38,12 +40,13 @@ function voicePageClient(
       signal,
     })
     if (!response.ok) throw new Error(String(response.status))
-    return response.json() as Promise<{ text?: string }>
+    return response.json() as Promise<{ text?: string; access?: { token: string; url: string; language?: string } }>
   }
   const voice = createInput({
     recorder: () => new Recorder(),
+    realtime: (update) => new Realtime(update),
     read: () => ({ owner: "cli", revision: text.value }),
-    prepare: async () => undefined,
+    prepare: async () => (await request("/prepare")).access,
     transcribe: async (audio, signal) =>
       (await request("/transcribe", JSON.stringify({ audio: await encodeAudio(audio) }), signal)).text ?? "",
     insert: (value) => {
@@ -57,6 +60,7 @@ function voicePageClient(
       retry.hidden = !state.retry
       accept.disabled = record.disabled || !text.value.trim()
       element<HTMLMeterElement>("level").value = state.level
+      element("live").textContent = state.live ?? ""
       const errors = {
         permission: "Microphone access denied. Allow it in browser and system settings.",
         unavailable: "Microphone unavailable. Use a browser with microphone support.",

@@ -18,6 +18,7 @@ export interface Interface {
   readonly connections: () => Effect.Effect<Voice.SavedConnection[]>
   readonly connect: (input: Voice.ConnectInput) => Effect.Effect<Voice.SavedConnection>
   readonly transcribe: (audio: string) => Effect.Effect<string, Invalid | Unavailable>
+  readonly realtime: () => Effect.Effect<Voice.RealtimeAccess, Invalid | Unavailable>
 }
 export class Service extends Context.Service<Service, Interface>()("@redcode/Voice") {}
 
@@ -43,6 +44,32 @@ export const layer = Layer.effect(
           activate: false,
         })
         return { id: entry.id, label: entry.label, integrationID: entry.integrationID }
+      }),
+      realtime: Effect.fn("Voice.realtime")(function* () {
+        const settings = Config.latest(yield* config.entries(), "voice")
+        if (!settings || settings.provider !== "elevenlabs" || settings.mode !== "realtime")
+          return yield* new Invalid({ message: "Enable ElevenLabs realtime dictation in Voice settings" })
+        if (settings.baseURL && !validEndpoint(settings.baseURL))
+          return yield* new Invalid({ message: "Dictation requires an HTTPS endpoint, or HTTP on localhost" })
+        const credential = settings.connection?.type === "credential" ? yield* credentials.get(settings.connection.id) : undefined
+        const key = settings.connection?.type === "env" ? process.env[settings.connection.name] : credential?.value.type === "key" ? credential.value.key : undefined
+        if (!key) return yield* new Invalid({ message: "Choose an explicit ElevenLabs voice API key" })
+        const base = new URL(settings.baseURL ?? "https://api.elevenlabs.io")
+        const endpoint = new URL("/v1/single-use-token/realtime_scribe", base)
+        const token = yield* Effect.tryPromise({
+          try: async (signal) => {
+            const response = await fetch(endpoint, { method: "POST", headers: { "xi-api-key": key }, redirect: "error", signal })
+            if (!response.ok) throw new Error("Token request failed")
+            const data: unknown = await response.json()
+            if (!data || typeof data !== "object" || !("token" in data) || typeof data.token !== "string" || !data.token)
+              throw new Error("Invalid token response")
+            return data.token
+          },
+          catch: () => new Unavailable({ message: "Could not start realtime dictation. Check the selected ElevenLabs key and quota" }),
+        }).pipe(Effect.timeoutOrElse({ duration: "15 seconds", orElse: () => Effect.fail(new Unavailable({ message: "Realtime dictation timed out" })) }))
+        base.protocol = base.protocol === "https:" ? "wss:" : "ws:"
+        base.pathname = "/v1/speech-to-text/realtime"
+        return { token, url: base.toString(), ...(settings.language ? { language: settings.language } : {}) }
       }),
       transcribe: Effect.fn("Voice.transcribe")(function* (audio) {
         const settings = Config.latest(yield* config.entries(), "voice")
@@ -106,6 +133,8 @@ export const layer = Layer.effect(
           model: provider.transcription(settings.model),
           audio: Media.bytes(bytes, "audio/wav"),
           ...(settings.language ? { language: settings.language } : {}),
+          // Dictation is inserted into a coding prompt, so ambient sound annotations are not useful text.
+          ...(settings.provider === "elevenlabs" ? { providerOptions: { tag_audio_events: false } } : {}),
         }).pipe(
           Effect.provide(TranscriptionClient.layer),
           Effect.provideService(RequestExecutor.Service, executor),

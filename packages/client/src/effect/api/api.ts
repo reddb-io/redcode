@@ -546,6 +546,60 @@ export type SessionRebindShareOperation<E = never> = (
   input: SessionRebindShareInput,
 ) => Effect.Effect<SessionRebindShareOutput, E>
 
+export type SessionArtifactListInput = { readonly sessionID: Session.ID }
+export type SessionArtifactListOutput = ReadonlyArray<{
+  readonly id: string
+  readonly sessionID: string
+  readonly title: string
+  readonly created: number
+  readonly updated: number
+  readonly revisions: ReadonlyArray<{
+    readonly id: string
+    readonly created: number
+    readonly entry: string
+    readonly files: { readonly [x: string]: string }
+  }>
+}>
+export type SessionArtifactListOperation<E = never> = (
+  input: SessionArtifactListInput,
+) => Effect.Effect<SessionArtifactListOutput, E>
+
+export type SessionArtifactPublishInput = {
+  readonly sessionID: Session.ID
+  readonly source: string
+  readonly title?: string | undefined
+  readonly entry: string
+  readonly id?: string | undefined
+  readonly expectedRevision?: string | undefined
+}
+export type SessionArtifactPublishOutput = {
+  readonly id: string
+  readonly sessionID: string
+  readonly title: string
+  readonly created: number
+  readonly updated: number
+  readonly revisions: ReadonlyArray<{
+    readonly id: string
+    readonly created: number
+    readonly entry: string
+    readonly files: { readonly [x: string]: string }
+  }>
+}
+export type SessionArtifactPublishOperation<E = never> = (
+  input: SessionArtifactPublishInput,
+) => Effect.Effect<SessionArtifactPublishOutput, E>
+
+export type SessionArtifactContentInput = {
+  readonly sessionID: Session.ID
+  readonly artifactID: string
+  readonly revisionID: string
+  readonly file: string
+}
+export type SessionArtifactContentOutput = string
+export type SessionArtifactContentOperation<E = never> = (
+  input: SessionArtifactContentInput,
+) => Effect.Effect<SessionArtifactContentOutput, E>
+
 export type SessionMonitorListInput = { readonly sessionID: Session.ID }
 export type SessionMonitorListOutput = ReadonlyArray<{
   readonly id: string
@@ -4676,6 +4730,11 @@ export interface SessionApi<E = never> {
   readonly share: SessionShareOperation<E>
   readonly unshare: SessionUnshareOperation<E>
   readonly rebindShare: SessionRebindShareOperation<E>
+  readonly artifact: {
+    readonly list: SessionArtifactListOperation<E>
+    readonly publish: SessionArtifactPublishOperation<E>
+    readonly content: SessionArtifactContentOperation<E>
+  }
   readonly monitor: {
     readonly list: SessionMonitorListOperation<E>
     readonly get: SessionMonitorGetOperation<E>
@@ -5853,6 +5912,7 @@ export type ConfigUpdateInput = {
   readonly shell?: string | null
   readonly voice?: {
     readonly provider: "openai" | "elevenlabs" | "deepgram" | "openai-compatible"
+    readonly mode?: "batch" | "realtime"
     readonly model: string
     readonly connection?:
       | { readonly type: "credential"; readonly id: Credential.ID }
@@ -5901,10 +5961,15 @@ export type VoiceTranscribeOperation<E = never> = (
   input: VoiceTranscribeInput,
 ) => Effect.Effect<VoiceTranscribeOutput, E>
 
+export type VoiceRealtimeInput = { readonly location?: { readonly directory?: string | undefined } | undefined }
+export type VoiceRealtimeOutput = { readonly token: string; readonly url: string; readonly language?: string }
+export type VoiceRealtimeOperation<E = never> = (input?: VoiceRealtimeInput) => Effect.Effect<VoiceRealtimeOutput, E>
+
 export interface VoiceApi<E = never> {
   readonly connections: VoiceConnectionsOperation<E>
   readonly connect: VoiceConnectOperation<E>
   readonly transcribe: VoiceTranscribeOperation<E>
+  readonly realtime: VoiceRealtimeOperation<E>
 }
 
 export type HookStatusInput = { readonly location?: { readonly directory?: string | undefined } | undefined }

@@ -8,6 +8,7 @@ test("the local recorder authenticates delivery and keeps a changed draft recove
   const capture = startVoiceCapture({
     signal: controller.signal,
     transcribe: async () => "spoken",
+    realtime: async () => ({ token: "one-use-token", url: "wss://api.elevenlabs.io/v1/speech-to-text/realtime" }),
     accept: (text) => {
       if (!ready) return false
       received.push(text)
@@ -26,6 +27,10 @@ test("the local recorder authenticates delivery and keeps a changed draft recove
     expect((await page.text()).includes(url.hash.slice(1))).toBe(false)
     const send = (route: string, value: unknown, extra = headers) =>
       fetch(new URL(route, url), { method: "POST", headers: extra, body: JSON.stringify(value) })
+    expect((await send("/prepare", {}, { ...headers, origin: "https://untrusted.test" })).status).toBe(403)
+    const prepared = await send("/prepare", {})
+    expect(prepared.headers.get("cache-control")).toBe("no-store")
+    expect(await prepared.json()).toEqual({ access: { token: "one-use-token", url: "wss://api.elevenlabs.io/v1/speech-to-text/realtime" } })
     expect((await send("/accept", { text: "bad" }, { ...headers, origin: "https://untrusted.test" })).status).toBe(403)
     expect((await send("/accept", { text: "bad" }, { ...headers, authorization: "Bearer wrong" })).status).toBe(403)
     expect((await send("/accept", { text: "spoken" })).status).toBe(409)

@@ -939,6 +939,8 @@ export type McpMedia = {
 
 export type McpProtocol = "legacy" | "auto" | "2026-07-28"
 
+export type ConfigCompactionPercent = string
+
 export type ConfigWorktree = {
   directory?: string | null
   auto?: boolean | null
@@ -955,6 +957,8 @@ export type ConfigModels = { sources?: Array<string> }
 export type ConfigShellOption = { path: string; name: string; acceptable: boolean }
 
 export type VoiceSavedConnection = { id: string; label: string; integrationID: string }
+
+export type VoiceRealtimeAccess = { token: string; url: string; language?: string }
 
 export type HookTrust = { trusted: boolean; fingerprint: string }
 
@@ -3110,6 +3114,7 @@ export type ModelRef = { id: string; providerID: string; variant?: string; conne
 
 export type VoiceSettings = {
   provider: "openai" | "elevenlabs" | "deepgram" | "openai-compatible"
+  mode?: "batch" | "realtime"
   model: string
   connection?: ConnectionRef
   baseURL?: string
@@ -3788,7 +3793,7 @@ export type ConfigEntry =
           auto?: boolean
           prune?: boolean
           keep?: { tokens?: number; turns?: number }
-          buffer?: number
+          buffer?: ConfigCompactionPercent | number
           summary_max_tokens?: number
           background?: boolean
         }
@@ -6915,6 +6920,90 @@ export type SessionRebindShareInput = {
 }
 
 export type SessionRebindShareOutput = { data: SessionInfo1 }["data"]
+
+export type SessionArtifactListInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
+
+export type SessionArtifactListOutput = {
+  data: Array<{
+    id: string
+    sessionID: string
+    title: string
+    created: number
+    updated: number
+    revisions: Array<{ id: string; created: number; entry: string; files: { [x: string]: string } }>
+  }>
+}["data"]
+
+export type SessionArtifactPublishInput = {
+  readonly sessionID: { readonly sessionID: string }["sessionID"]
+  readonly source: {
+    readonly source: string
+    readonly title?: string | undefined
+    readonly entry: string
+    readonly id?: string | undefined
+    readonly expectedRevision?: string | undefined
+  }["source"]
+  readonly title?: {
+    readonly source: string
+    readonly title?: string | undefined
+    readonly entry: string
+    readonly id?: string | undefined
+    readonly expectedRevision?: string | undefined
+  }["title"]
+  readonly entry: {
+    readonly source: string
+    readonly title?: string | undefined
+    readonly entry: string
+    readonly id?: string | undefined
+    readonly expectedRevision?: string | undefined
+  }["entry"]
+  readonly id?: {
+    readonly source: string
+    readonly title?: string | undefined
+    readonly entry: string
+    readonly id?: string | undefined
+    readonly expectedRevision?: string | undefined
+  }["id"]
+  readonly expectedRevision?: {
+    readonly source: string
+    readonly title?: string | undefined
+    readonly entry: string
+    readonly id?: string | undefined
+    readonly expectedRevision?: string | undefined
+  }["expectedRevision"]
+}
+
+export type SessionArtifactPublishOutput = {
+  data: {
+    id: string
+    sessionID: string
+    title: string
+    created: number
+    updated: number
+    revisions: Array<{ id: string; created: number; entry: string; files: { [x: string]: string } }>
+  }
+}["data"]
+
+export type SessionArtifactContentInput = {
+  readonly sessionID: {
+    readonly sessionID: string
+    readonly artifactID: string
+    readonly revisionID: string
+  }["sessionID"]
+  readonly artifactID: {
+    readonly sessionID: string
+    readonly artifactID: string
+    readonly revisionID: string
+  }["artifactID"]
+  readonly revisionID: {
+    readonly sessionID: string
+    readonly artifactID: string
+    readonly revisionID: string
+  }["revisionID"]
+  readonly file: { readonly file: string }["file"]
+}
+
+export type SessionArtifactContentOutput = { data: string }["data"]
 
 export type SessionMonitorListInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
 
@@ -11667,6 +11756,7 @@ export type ConfigUpdateInput = {
     readonly shell?: string | null
     readonly voice?: {
       readonly provider: "openai" | "elevenlabs" | "deepgram" | "openai-compatible"
+      readonly mode?: "batch" | "realtime"
       readonly model: string
       readonly connection?:
         | { readonly type: "credential"; readonly id: string }
@@ -11679,6 +11769,7 @@ export type ConfigUpdateInput = {
     readonly shell?: string | null
     readonly voice?: {
       readonly provider: "openai" | "elevenlabs" | "deepgram" | "openai-compatible"
+      readonly mode?: "batch" | "realtime"
       readonly model: string
       readonly connection?:
         | { readonly type: "credential"; readonly id: string }
@@ -11711,6 +11802,12 @@ export type VoiceTranscribeInput = {
 }
 
 export type VoiceTranscribeOutput = { data: { text: string } }["data"]
+
+export type VoiceRealtimeInput = {
+  readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]
+}
+
+export type VoiceRealtimeOutput = { data: VoiceRealtimeAccess }["data"]
 
 export type HookStatusInput = {
   readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]

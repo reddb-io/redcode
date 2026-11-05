@@ -10,6 +10,36 @@ test.use({
   permissions: ["microphone"],
 })
 
+test("realtime dictation shows partial speech and inserts only the final transcript", async ({ page }) => {
+  const frames: { audio_base_64: string; sample_rate: number; commit?: boolean }[] = []
+  await page.routeWebSocket("ws://127.0.0.1:65534/**", (socket) => {
+    socket.send(JSON.stringify({ message_type: "session_started" }))
+    socket.onMessage((value) => {
+      const frame = JSON.parse(String(value))
+      frames.push(frame)
+      socket.send(JSON.stringify(frame.commit
+        ? { message_type: "committed_transcript", text: "teste por voz" }
+        : { message_type: "partial_transcript", text: "teste parcial" }))
+    })
+  })
+  const prompts: string[] = []
+  const { editor } = await openDraft(page, { name: "VoiceRealtime", onPrompt: ({ sessionID }) => prompts.push(sessionID) })
+  await page.route((url) => url.pathname === "/api/config", (route) => route.fulfill({ json: [
+    { type: "document", info: { voice: { provider: "elevenlabs", model: "scribe_v2", mode: "realtime" } } },
+  ] }))
+  await page.route((url) => url.pathname === "/api/voice/realtime", (route) => route.fulfill({ json: {
+    data: { token: "temporary-test-token", url: "ws://127.0.0.1:65534/voice" },
+  } }))
+  await editor.fill("Pedido:")
+  await page.getByRole("button", { name: "Record voice", exact: true }).click()
+  await expect(page.getByText("teste parcial", { exact: true })).toBeVisible()
+  await expect(editor).toHaveText("Pedido:")
+  await page.getByRole("button", { name: "Stop and transcribe", exact: true }).click()
+  await expect(editor).toHaveText("Pedido: teste por voz ")
+  expect(frames.some((frame) => !frame.commit && frame.sample_rate === 16000 && frame.audio_base_64.length > 0)).toBe(true)
+  expect(prompts).toEqual([])
+})
+
 test("voice settings explicitly select a connection and microphone capture only edits the draft", async ({ page }) => {
   const errors: string[] = []
   page.on("pageerror", (error) => errors.push(error.message))
@@ -126,6 +156,20 @@ test("voice settings explicitly select a connection and microphone capture only 
   expect(voice).toMatchObject({ connection: { type: "credential", id: "cred_new_voice" }, language: "pt" })
   await expect(settings.getByLabel("Saved API key connection")).toHaveValue("cred_new_voice")
   await expect(settings.getByLabel("Language code (empty for automatic detection)")).toHaveValue("pt")
+  await settings.getByLabel("Transcription provider").selectOption("elevenlabs")
+  await expect(settings.getByLabel("Transcription model")).toHaveValue("scribe_v2")
+  await settings.getByLabel("Saved API key connection").selectOption("cred_new_voice")
+  const scribeSaved = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === "/api/experimental/config",
+  )
+  await settings.getByRole("button", { name: "Save voice settings" }).click()
+  expect((await scribeSaved).status()).toBe(204)
+  expect(voice).toMatchObject({
+    provider: "elevenlabs",
+    model: "scribe_v2",
+    connection: { type: "credential", id: "cred_new_voice" },
+    language: "pt",
+  })
   expect(errors).toEqual([])
 })
 
@@ -198,24 +242,37 @@ test("voice settings follow the current server and let the user choose another",
   })
   await seed(page, { servers: [REMOTE_SERVER], tabs: [{ session: remote.id, server: REMOTE_SERVER }] })
   const writes: string[] = []
-  await page.route((url) => url.pathname === "/api/config", (route) => {
-    const origin = new URL(route.request().url()).origin
-    return route.fulfill({
-      json: [{
-        type: "document",
-        info: { voice: {
-          provider: "openai-compatible",
-          model: origin === REMOTE_SERVER ? "remote-model" : "local-model",
-          baseURL: "https://voice.example/v1",
-        } },
-      }],
-    })
-  })
-  await page.route((url) => url.pathname === "/api/voice/connections", (route) => route.fulfill({ json: { data: [] } }))
-  await page.route((url) => url.pathname === "/api/experimental/config", (route) => {
-    writes.push(new URL(route.request().url()).origin)
-    return route.fulfill({ status: 204 })
-  })
+  await page.route(
+    (url) => url.pathname === "/api/config",
+    (route) => {
+      const origin = new URL(route.request().url()).origin
+      return route.fulfill({
+        json: [
+          {
+            type: "document",
+            info: {
+              voice: {
+                provider: "openai-compatible",
+                model: origin === REMOTE_SERVER ? "remote-model" : "local-model",
+                baseURL: "https://voice.example/v1",
+              },
+            },
+          },
+        ],
+      })
+    },
+  )
+  await page.route(
+    (url) => url.pathname === "/api/voice/connections",
+    (route) => route.fulfill({ json: { data: [] } }),
+  )
+  await page.route(
+    (url) => url.pathname === "/api/experimental/config",
+    (route) => {
+      writes.push(new URL(route.request().url()).origin)
+      return route.fulfill({ status: 204 })
+    },
+  )
   await page.goto(sessionHref(remote.id, REMOTE_SERVER))
   await expectSessionTitle(page, remote.title)
   await page.getByRole("button", { name: "Settings", exact: true }).click()

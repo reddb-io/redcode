@@ -1,6 +1,7 @@
 import { Session } from "@opencode/core/session"
 import { SessionExecution } from "@opencode/core/session/execution"
 import { SessionStore } from "@opencode/core/session/store"
+import { SessionArtifacts } from "@opencode/core/session/artifacts"
 import { Bus } from "@opencode/core/bus"
 import { MonitorRuntime } from "@opencode/core/monitor"
 import { Monitor } from "@opencode/schema/monitor"
@@ -65,6 +66,7 @@ function missingForm(id: Form.ID) {
 
 export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handlers) =>
   Effect.gen(function* () {
+    const artifacts = SessionArtifacts.createStore()
     const session = yield* Session.Service
     const execution = yield* SessionExecution.Service
     const store = yield* SessionStore.Service
@@ -360,6 +362,55 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
               .rebind(ctx.params.sessionID, ctx.payload.credentialID, ctx.payload.orgID)
               .pipe(Effect.mapError((error) => new InvalidRequestError({ message: error.message }))),
           }
+        }),
+      )
+      .handle(
+        "session.artifact.list",
+        Effect.fn(function* (ctx) {
+          yield* session.get(ctx.params.sessionID).pipe(Effect.catchTag("Session.NotFoundError", missingSession))
+          return {
+            data: yield* Effect.tryPromise({
+              try: () => artifacts.list(ctx.params.sessionID),
+              catch: (error) => new InvalidRequestError({ message: String(error) }),
+            }),
+          }
+        }),
+      )
+      .handle(
+        "session.artifact.publish",
+        Effect.fn(function* (ctx) {
+          const owner = yield* session
+            .get(ctx.params.sessionID)
+            .pipe(Effect.catchTag("Session.NotFoundError", missingSession))
+          return {
+            data: yield* Effect.tryPromise({
+              try: () =>
+                artifacts.publish({
+                  ...ctx.payload,
+                  sessionID: ctx.params.sessionID,
+                  directory: owner.location.directory,
+                }),
+              catch: (error) =>
+                error instanceof SessionArtifacts.Error && error.code === "conflict"
+                  ? new ConflictError({ message: error.message, resource: ctx.payload.id })
+                  : new InvalidRequestError({
+                      message: error instanceof globalThis.Error ? error.message : String(error),
+                    }),
+            }),
+          }
+        }),
+      )
+      .handle(
+        "session.artifact.content",
+        Effect.fn(function* (ctx) {
+          yield* session.get(ctx.params.sessionID).pipe(Effect.catchTag("Session.NotFoundError", missingSession))
+          const bytes = yield* Effect.tryPromise({
+            try: () =>
+              artifacts.content(ctx.params.sessionID, ctx.params.artifactID, ctx.params.revisionID, ctx.query.file),
+            catch: (error) =>
+              new InvalidRequestError({ message: error instanceof globalThis.Error ? error.message : String(error) }),
+          })
+          return { data: Buffer.from(bytes).toString("base64") }
         }),
       )
       .handle(

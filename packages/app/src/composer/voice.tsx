@@ -3,6 +3,7 @@ import { createStore } from "solid-js/store"
 import { useLocation } from "@solidjs/router"
 import { createVoiceInput, type VoiceState } from "@opencode/util/voice-input"
 import { VoiceRecorder, voiceAudioBase64 } from "@opencode/util/voice-recorder"
+import { VoiceRealtime } from "@opencode/util/voice-realtime"
 import { Button } from "@opencode/ui/button"
 import { IconButton } from "@opencode/ui/icon-button"
 import { Icon } from "@opencode/ui/icon"
@@ -13,6 +14,9 @@ import { useWorkspaceLocation } from "@/workspaces/location"
 import { useSettings } from "@/settings/model"
 import type { ComposerAdapter } from "./adapter"
 import { createComposerEditorActions } from "./editor/actions"
+
+// Keep unsent speech with the conversation that owned it when its composer unmounts or navigates.
+const recoveredVoice = new Map<string, string>()
 
 export function createComposerVoice(adapter: ComposerAdapter) {
   const server = useServer()
@@ -25,13 +29,15 @@ export function createComposerVoice(adapter: ComposerAdapter) {
   const cursor = { value: 0 }
   const voice = createVoiceInput({
     recorder: () => new VoiceRecorder(),
+    realtime: (update) => new VoiceRealtime(update),
     read: () => ({
       owner: `${server.key}:${sdk().directory}:${adapter.kind === "active-session" ? adapter.session().id : "new"}`,
       revision: JSON.stringify([adapter.state.current(), adapter.state.mode.current(), adapter.state.context.items()]),
     }),
     prepare: async () => {
       const entries = await server.ctx.sdk.api.config.get({ location: { directory: sdk().directory } })
-      if (!entries.some((entry) => entry.type === "document" && entry.info.voice)) {
+      const selected = entries.flatMap((entry) => entry.type === "document" && entry.info.voice ? [entry.info.voice] : []).at(-1)
+      if (!selected) {
         throw new Error("unavailable")
       }
       cursor.value =
@@ -39,6 +45,8 @@ export function createComposerVoice(adapter: ComposerAdapter) {
         draft.state.prompt.reduce((length, part) => length + ("content" in part ? part.content.length : 0), 0)
       if (platform.requestMicrophone && !(await platform.requestMicrophone()))
         throw new DOMException("Microphone permission denied", "NotAllowedError")
+      if (selected.provider === "elevenlabs" && selected.mode === "realtime")
+        return server.ctx.sdk.api.voice.realtime({ location: { directory: sdk().directory } })
     },
     transcribe: async (audio, signal) =>
       (
@@ -57,17 +65,31 @@ export function createComposerVoice(adapter: ComposerAdapter) {
     },
     change: setState,
   })
-  onCleanup(voice.cancel)
   // A composer can survive navigation; its own identity still ends the recording.
   const owner = createMemo(
     () =>
-      `${route.pathname}${route.search}:${sdk().directory}:${adapter.kind === "active-session" ? adapter.session().id : "new"}`,
+      `${server.key}:${route.pathname}${route.search}:${sdk().directory}:${adapter.kind === "active-session" ? adapter.session().id : "new"}`,
   )
+  const remember = (key: string) => {
+    const text = state.transcript || state.live
+    if (!text) return
+    recoveredVoice.delete(key)
+    recoveredVoice.set(key, text)
+    if (recoveredVoice.size > 20) recoveredVoice.delete(recoveredVoice.keys().next().value!)
+  }
+  const restore = (key: string) => {
+    const text = recoveredVoice.get(key)
+    if (text) setState({ phase: "error", error: "changed", transcript: text, retry: false })
+  }
   const capturedOwner = { value: owner() }
+  restore(capturedOwner.value)
+  onCleanup(() => { remember(capturedOwner.value); voice.cancel() })
   createEffect(() => {
     if (owner() !== capturedOwner.value) {
+      remember(capturedOwner.value)
       voice.cancel()
       capturedOwner.value = owner()
+      restore(capturedOwner.value)
     }
   })
   return {
@@ -75,7 +97,7 @@ export function createComposerVoice(adapter: ComposerAdapter) {
     busy: () => ["preparing", "recording", "transcribing"].includes(state.phase),
     start: () => voice.start(settings.voice.device() || undefined),
     finish: voice.finish,
-    cancel: voice.cancel,
+    cancel: () => { recoveredVoice.delete(owner()); voice.cancel() },
     retry: voice.retry,
     copy: () =>
       state.transcript &&
@@ -99,6 +121,9 @@ export function ComposerVoiceControl(props: { voice: ReturnType<typeof createCom
         </span>
         <Show when={state.phase === "recording"}>
           <meter min="0" max="1" value={state.level} aria-label={language.t("voice.level")} class="h-1 w-10" />
+        </Show>
+        <Show when={state.live}>
+          <span class="max-w-48 truncate text-caption text-ink-muted sm:max-w-80" title={state.live}>{state.live}</span>
         </Show>
         <Show when={state.retry && state.error !== "changed"}>
           <Button type="button" size="small" variant="ghost" onClick={() => void props.voice.retry()}>
