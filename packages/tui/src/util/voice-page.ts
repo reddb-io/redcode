@@ -54,7 +54,10 @@ function voicePageClient(
       body,
       signal,
     })
-    if (!response.ok) throw new Error(String(response.status))
+    if (!response.ok) {
+      const detail = await response.json().catch(() => undefined) as { message?: string } | undefined
+      throw new Error(detail?.message ?? `Redcode recorder request failed (HTTP ${response.status}).`)
+    }
     return response.json() as Promise<{ text?: string; access?: { token: string; url: string; language?: string } }>
   }
   const voice = createInput({
@@ -86,7 +89,7 @@ function voicePageClient(
         empty: "No speech detected. Record again.",
       }
       status.textContent = state.error
-        ? errors[state.error]
+        ? `${errors[state.error]}${state.detail ? ` ${state.detail}` : ""}`
         : state.phase === "recording"
           ? `Recording · ${state.seconds}s`
           : state.phase === "transcribing"

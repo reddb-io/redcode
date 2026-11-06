@@ -51,7 +51,7 @@ export function startVoiceCapture(input: {
         if (!input.realtime) return Response.json({})
         return input.realtime(AbortSignal.any([lifetime.signal, request.signal])).then(
           (access) => Response.json({ access }, { headers: { "Cache-Control": "no-store" } }),
-          () => new Response(null, { status: 502 }),
+          (error: unknown) => Response.json({ message: error instanceof Error ? error.message : "Realtime transcription request failed" }, { status: 502 }),
         )
       }
       const json: unknown = await request.json().catch(() => undefined)
@@ -72,7 +72,7 @@ export function startVoiceCapture(input: {
         .transcribe(decoded.value.audio, AbortSignal.any([lifetime.signal, request.signal]))
         .then(
           (text) => Response.json({ text }),
-          () => new Response(null, { status: 502 }),
+          (error: unknown) => Response.json({ message: error instanceof Error ? error.message : "Transcription request failed" }, { status: 502 }),
         )
         .finally(() => {
           transcribing = false

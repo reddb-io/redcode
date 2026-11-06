@@ -20,6 +20,16 @@ export function Providers(props: { services: ProviderSettingsServices }) {
   useEffect(() => controller.reconcile(), [snapshot, state.disconnecting])
   const language = snapshot.language
   const group = controller.consoleGroup()
+  const [voiceProvider, setVoiceProvider] = useState<string>()
+  useEffect(() => {
+    let mounted = true
+    void snapshot.api.config.get().then((entries) => {
+      if (!mounted) return
+      const voice = entries.flatMap((entry) => entry.type === "document" && entry.info.voice ? [entry.info.voice] : []).at(-1)
+      setVoiceProvider(voice?.provider)
+    }).catch(() => { if (mounted) setVoiceProvider(undefined) })
+    return () => { mounted = false }
+  }, [snapshot.api])
   return (
     <>
       <SettingsHeader
@@ -27,6 +37,13 @@ export function Providers(props: { services: ProviderSettingsServices }) {
         description={language.t("settings.providers.description")}
       />
       <div className="settings-tab-body settings-tab-body--sectioned settings-providers">
+        {voiceProvider && <section className="settings-section" aria-label={language.t("voice.providers.section")}>
+          <h3 className="settings-section-title">{language.t("voice.providers.section")}</h3>
+          <SettingsList variant="catalog"><div className="settings-provider-row">
+            <div className="settings-provider-lead"><span className="settings-provider-name">{voiceProvider === "elevenlabs" ? "ElevenLabs" : voiceProvider}</span></div>
+            {props.services.openVoice && <Button size="sm" variant="secondary" onClick={props.services.openVoice}>{language.t("voice.providers.manage")}</Button>}
+          </div></SettingsList>
+        </section>}
         <div className="settings-section" data-component="connected-providers-section">
           <h3 className="settings-section-title">{language.t("settings.providers.section.connected")}</h3>
           <SettingsList variant="catalog">

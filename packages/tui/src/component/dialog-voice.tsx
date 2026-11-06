@@ -33,6 +33,7 @@ export async function showVoiceSettings(input: {
   const providers = [
     { value: "openai", title: "OpenAI" },
     { value: "elevenlabs", title: "ElevenLabs" },
+    { value: "openrouter", title: "OpenRouter" },
     { value: "deepgram", title: "Deepgram" },
     { value: "openai-compatible", title: "OpenAI-compatible endpoint" },
   ] satisfies { value: Voice.Settings["provider"]; title: string }[]
@@ -122,6 +123,56 @@ export async function showVoiceSettings(input: {
       />
     ))
   }
+  function manageKeys() {
+    input.dialog.replace(() => <DialogSelect title="Manage saved voice keys" options={form.connections
+      .filter((entry) => entry.integrationID === "redcode-voice")
+      .map((entry) => ({ title: entry.label, value: entry.id, onSelect: () => keyActions(entry) }))} onCancel={menu} />)
+  }
+  function selectModel() {
+    input.dialog.replace(() => <DialogSelect title="Transcription model" onCancel={menu} options={[
+      { title: "Enter model ID manually…", value: "manual", onSelect: () => edit("model", "Transcription model") },
+      { title: "Load models from provider…", value: "load", onSelect: () => {
+        input.dialog.replace(() => <DialogSelect title="Loading voice models…" locked options={[]} />)
+        void input.api.voice.models({ provider: form.provider, ...(form.connection ? { connection: form.connection } : {}), ...(form.baseURL ? { baseURL: form.baseURL } : {}) }).then(
+          (models) => input.dialog.replace(() => <DialogSelect title="Search transcription models" onCancel={selectModel} options={[
+            { title: "Enter model ID manually…", value: "manual", onSelect: () => edit("model", "Transcription model") },
+            ...models.map((model) => ({ title: model.name, description: model.id, value: model.id, onSelect: () => { setForm("model", model.id); menu() } })),
+          ]} />),
+          (error: unknown) => { input.toast.show({ variant: "error", message: error instanceof Error ? error.message : String(error) }); selectModel() },
+        )
+      } },
+    ]} />)
+  }
+  function keyActions(entry: (typeof form.connections)[number]) {
+    input.dialog.replace(() => <DialogSelect title={`Voice key: ${entry.label}`} onCancel={manageKeys} options={[
+      { title: "Replace API key", value: "replace", onSelect: () => input.dialog.replace(() => <DialogSecret
+        title="New voice API key" onCancel={() => keyActions(entry)} onConfirm={(key) => {
+          if (!key.trim()) return
+          void input.api.credential.update({ credentialID: entry.id, value: { type: "key", key: key.trim() } }).then(
+            () => { input.toast.show({ variant: "success", message: "Voice key updated" }); manageKeys() },
+            () => { input.toast.show({ variant: "error", message: "Could not update voice key" }); keyActions(entry) },
+          )
+        }} />) },
+      { title: "Delete API key", description: "May affect other projects using this key", value: "delete", onSelect: () => input.dialog.replace(() => <DialogSelect
+        title={`Delete ${entry.label}? This can affect other projects.`} onCancel={() => keyActions(entry)} options={[
+          { title: "Cancel", value: "cancel", onSelect: () => keyActions(entry) },
+          { title: "Confirm delete", value: "confirm", onSelect: () => { void (async () => {
+            const entries = await input.api.config.get()
+            const active = entries.flatMap((item) => item.type === "document" && item.info.voice ? [item.info.voice] : []).at(-1)
+            if (active?.connection?.type === "credential" && active.connection.id === entry.id) {
+              const cleared = { ...active }
+              delete cleared.connection
+              await input.api.config.update({ voice: cleared })
+            }
+            await input.api.credential.remove({ credentialID: entry.id })
+            setForm("connections", (items) => items.filter((item) => item.id !== entry.id))
+            if (form.connection?.type === "credential" && form.connection.id === entry.id) setForm("connection", undefined)
+            input.toast.show({ variant: "success", message: "Voice key deleted" })
+            menu()
+          })().catch(() => { input.toast.show({ variant: "error", message: "Could not delete voice key" }); keyActions(entry) }) } },
+        ]} />) },
+    ]} />)
+  }
   async function save() {
     if (form.saving) return
     if (
@@ -183,6 +234,8 @@ export async function showVoiceSettings(input: {
                       model:
                         entry.value === "elevenlabs"
                           ? "scribe_v2"
+                          : entry.value === "openrouter"
+                            ? "elevenlabs/scribe-v2"
                           : entry.value === "deepgram"
                             ? "nova-3"
                             : "gpt-4o-mini-transcribe",
@@ -208,8 +261,8 @@ export async function showVoiceSettings(input: {
           {
             title: "Transcription model",
             value: "model",
-            description: form.model,
-            onSelect: () => edit("model", "Transcription model"),
+            description: form.provider === "elevenlabs" && form.mode === "realtime" ? `${form.model} (batch fallback; realtime uses Scribe v2 Realtime)` : form.model,
+            onSelect: selectModel,
           },
           {
             title: "Endpoint URL",
@@ -236,6 +289,7 @@ export async function showVoiceSettings(input: {
             />),
           }] : []),
           { title: "Save voice settings", value: "save", onSelect: () => void save() },
+          { title: "Manage saved voice keys", value: "manage", description: "Replace or delete dedicated voice keys", onSelect: manageKeys },
         ]}
       />
     ))

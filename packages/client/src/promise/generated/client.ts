@@ -400,6 +400,8 @@ import type {
   VoiceConnectionsOutput,
   VoiceConnectInput,
   VoiceConnectOutput,
+  VoiceModelsInput,
+  VoiceModelsOutput,
   VoiceTranscribeInput,
   VoiceTranscribeOutput,
   VoiceRealtimeInput,
@@ -3479,6 +3481,19 @@ export function make(options: ClientOptions) {
             body: { label: input["label"], key: input["key"] },
             successStatus: 200,
             declaredStatuses: [400, 401, 403, 404, 409],
+            empty: false,
+          },
+          requestOptions,
+        ).then((value) => value.data),
+      models: (input: VoiceModelsInput, requestOptions?: RequestOptions) =>
+        request<{ readonly data: VoiceModelsOutput }>(
+          {
+            method: "POST",
+            path: `/api/voice/models`,
+            query: { location: input["location"] },
+            body: { provider: input["provider"], connection: input["connection"], baseURL: input["baseURL"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 404, 409, 503],
             empty: false,
           },
           requestOptions,

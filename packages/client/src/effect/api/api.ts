@@ -5911,7 +5911,7 @@ export type ConfigShellsOperation<E = never> = () => Effect.Effect<ConfigShellsO
 export type ConfigUpdateInput = {
   readonly shell?: string | null
   readonly voice?: {
-    readonly provider: "openai" | "elevenlabs" | "deepgram" | "openai-compatible"
+    readonly provider: "openai" | "openrouter" | "elevenlabs" | "deepgram" | "openai-compatible"
     readonly mode?: "batch" | "realtime"
     readonly model: string
     readonly connection?:
@@ -5952,6 +5952,17 @@ export type VoiceConnectOutput = {
 }
 export type VoiceConnectOperation<E = never> = (input: VoiceConnectInput) => Effect.Effect<VoiceConnectOutput, E>
 
+export type VoiceModelsInput = {
+  readonly location?: { readonly directory?: string | undefined } | undefined
+  readonly provider: "openai" | "openrouter" | "elevenlabs" | "deepgram" | "openai-compatible"
+  readonly connection?:
+    | { readonly type: "credential"; readonly id: Credential.ID }
+    | { readonly type: "env"; readonly name: string }
+  readonly baseURL?: string
+}
+export type VoiceModelsOutput = ReadonlyArray<{ readonly id: string; readonly name: string }>
+export type VoiceModelsOperation<E = never> = (input: VoiceModelsInput) => Effect.Effect<VoiceModelsOutput, E>
+
 export type VoiceTranscribeInput = {
   readonly location?: { readonly directory?: string | undefined } | undefined
   readonly audio: string
@@ -5968,6 +5979,7 @@ export type VoiceRealtimeOperation<E = never> = (input?: VoiceRealtimeInput) => 
 export interface VoiceApi<E = never> {
   readonly connections: VoiceConnectionsOperation<E>
   readonly connect: VoiceConnectOperation<E>
+  readonly models: VoiceModelsOperation<E>
   readonly transcribe: VoiceTranscribeOperation<E>
   readonly realtime: VoiceRealtimeOperation<E>
 }

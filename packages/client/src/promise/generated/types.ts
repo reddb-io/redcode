@@ -3113,7 +3113,7 @@ export type ProjectEnvironmentInfo = {
 export type ModelRef = { id: string; providerID: string; variant?: string; connection?: ConnectionRef }
 
 export type VoiceSettings = {
-  provider: "openai" | "elevenlabs" | "deepgram" | "openai-compatible"
+  provider: "openai" | "openrouter" | "elevenlabs" | "deepgram" | "openai-compatible"
   mode?: "batch" | "realtime"
   model: string
   connection?: ConnectionRef
@@ -11755,7 +11755,7 @@ export type ConfigUpdateInput = {
   readonly shell?: {
     readonly shell?: string | null
     readonly voice?: {
-      readonly provider: "openai" | "elevenlabs" | "deepgram" | "openai-compatible"
+      readonly provider: "openai" | "openrouter" | "elevenlabs" | "deepgram" | "openai-compatible"
       readonly mode?: "batch" | "realtime"
       readonly model: string
       readonly connection?:
@@ -11768,7 +11768,7 @@ export type ConfigUpdateInput = {
   readonly voice?: {
     readonly shell?: string | null
     readonly voice?: {
-      readonly provider: "openai" | "elevenlabs" | "deepgram" | "openai-compatible"
+      readonly provider: "openai" | "openrouter" | "elevenlabs" | "deepgram" | "openai-compatible"
       readonly mode?: "batch" | "realtime"
       readonly model: string
       readonly connection?:
@@ -11795,6 +11795,33 @@ export type VoiceConnectInput = {
 }
 
 export type VoiceConnectOutput = { data: VoiceSavedConnection }["data"]
+
+export type VoiceModelsInput = {
+  readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]
+  readonly provider: {
+    readonly provider: "openai" | "openrouter" | "elevenlabs" | "deepgram" | "openai-compatible"
+    readonly connection?:
+      | { readonly type: "credential"; readonly id: string }
+      | { readonly type: "env"; readonly name: string }
+    readonly baseURL?: string
+  }["provider"]
+  readonly connection?: {
+    readonly provider: "openai" | "openrouter" | "elevenlabs" | "deepgram" | "openai-compatible"
+    readonly connection?:
+      | { readonly type: "credential"; readonly id: string }
+      | { readonly type: "env"; readonly name: string }
+    readonly baseURL?: string
+  }["connection"]
+  readonly baseURL?: {
+    readonly provider: "openai" | "openrouter" | "elevenlabs" | "deepgram" | "openai-compatible"
+    readonly connection?:
+      | { readonly type: "credential"; readonly id: string }
+      | { readonly type: "env"; readonly name: string }
+    readonly baseURL?: string
+  }["baseURL"]
+}
+
+export type VoiceModelsOutput = { data: Array<{ id: string; name: string }> }["data"]
 
 export type VoiceTranscribeInput = {
   readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]

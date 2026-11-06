@@ -123,7 +123,7 @@ test("realtime falls back to retained audio and preserves the partial transcript
     prepare: async () => ({ token: "single-use", url: "wss://example.invalid" }),
     realtime: (publish) => {
       update = publish
-      return { start: async () => undefined, send: () => undefined, finish: async () => ({ text: "partial speech", complete: false }), cancel: () => undefined, text: "partial speech" }
+      return { start: async () => undefined, send: () => undefined, finish: async () => ({ text: "partial speech", complete: false, detail: "WebSocket closed (code 1006)" }), cancel: () => undefined, text: "partial speech" }
     },
     transcribe: async () => { if (++calls === 1) throw new Error("offline"); return "complete speech" },
     insert: (text) => inserted.push(text),
@@ -133,7 +133,7 @@ test("realtime falls back to retained audio and preserves the partial transcript
   update?.("partial speech")
   expect(voice.state.live).toBe("partial speech")
   await voice.finish()
-  expect(voice.state).toMatchObject({ phase: "error", transcript: "partial speech", retry: true })
+  expect(voice.state).toMatchObject({ phase: "error", transcript: "partial speech", retry: true, detail: "WebSocket closed (code 1006) · offline" })
   expect(inserted).toEqual([])
   await voice.retry()
   expect(inserted).toEqual(["complete speech"])

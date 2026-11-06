@@ -19,7 +19,7 @@ export const ConnectInput = Schema.Struct({
 export type ConnectInput = typeof ConnectInput.Type
 
 export const Settings = Schema.Struct({
-  provider: Schema.Literals(["openai", "elevenlabs", "deepgram", "openai-compatible"]),
+  provider: Schema.Literals(["openai", "openrouter", "elevenlabs", "deepgram", "openai-compatible"]),
   mode: Schema.optionalKey(Schema.Literals(["batch", "realtime"])),
   model: Schema.NonEmptyString,
   connection: Schema.optionalKey(Connection.Ref),
@@ -27,6 +27,13 @@ export const Settings = Schema.Struct({
   language: Schema.optionalKey(Schema.String),
 }).annotate({ identifier: "Voice.Settings" })
 export type Settings = typeof Settings.Type
+
+export const ModelsInput = Schema.Struct({
+  provider: Settings.fields.provider,
+  connection: Schema.optionalKey(Connection.Ref),
+  baseURL: Schema.optionalKey(Schema.String),
+})
+export const Model = Schema.Struct({ id: Schema.String, name: Schema.String })
 
 export const RealtimeAccess = Schema.Struct({
   token: Schema.NonEmptyString,

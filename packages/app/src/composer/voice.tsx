@@ -120,6 +120,12 @@ export function ComposerVoiceControl(props: { voice: ReturnType<typeof createCom
               ? language.t(`voice.error.${state.error}`)
               : language.t(`voice.${state.phase === "preparing" ? "preparing" : "transcribing"}`)}
         </span>
+        <Show when={state.phase === "error" && state.detail}>
+          <details class="relative text-caption text-ink-muted">
+            <summary class="cursor-pointer">{language.t("voice.error.details")}</summary>
+            <div class="absolute bottom-full right-0 z-50 mb-2 w-80 max-w-[80vw] whitespace-normal break-words rounded-md border border-stroke-base bg-surface-base p-3 text-body text-ink-base" role="alert">{state.detail}</div>
+          </details>
+        </Show>
         <Show when={state.live}>
           <span class="max-w-48 truncate text-caption text-ink-muted sm:max-w-80" title={state.live}>{state.live}</span>
         </Show>

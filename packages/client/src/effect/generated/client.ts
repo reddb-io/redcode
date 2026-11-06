@@ -402,6 +402,8 @@ import type {
   VoiceConnectionsOutput,
   VoiceConnectInput,
   VoiceConnectOutput,
+  VoiceModelsInput,
+  VoiceModelsOutput,
   VoiceTranscribeInput,
   VoiceTranscribeOutput,
   VoiceRealtimeInput,
@@ -2612,6 +2614,17 @@ const EndpointVoiceConnect = (raw: RawClient["server.voice"]) => (input: VoiceCo
     ),
   )
 
+const EndpointVoiceModels = (raw: RawClient["server.voice"]) => (input: VoiceModelsInput) =>
+  preserveEffect<VoiceModelsOutput>()(
+    raw["voice.models"]({
+      query: { location: input["location"] },
+      payload: { provider: input["provider"], connection: input["connection"], baseURL: input["baseURL"] },
+    }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
 const EndpointVoiceTranscribe = (raw: RawClient["server.voice"]) => (input: VoiceTranscribeInput) =>
   preserveEffect<VoiceTranscribeOutput>()(
     raw["voice.transcribe"]({ query: { location: input["location"] }, payload: { audio: input["audio"] } }).pipe(
@@ -2631,6 +2644,7 @@ const EndpointVoiceRealtime = (raw: RawClient["server.voice"]) => (input?: Voice
 const adaptGroupVoice = (raw: RawClient["server.voice"]) => ({
   connections: EndpointVoiceConnections(raw),
   connect: EndpointVoiceConnect(raw),
+  models: EndpointVoiceModels(raw),
   transcribe: EndpointVoiceTranscribe(raw),
   realtime: EndpointVoiceRealtime(raw),
 })

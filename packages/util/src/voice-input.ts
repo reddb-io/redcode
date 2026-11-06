@@ -8,6 +8,7 @@ export type VoiceState = {
   error?: "permission" | "unavailable" | "capture" | "transcription" | "changed" | "empty"
   transcript?: string
   live?: string
+  detail?: string
   retry: boolean
 }
 
@@ -26,6 +27,7 @@ export function createVoiceInput(input: {
   let captured: ReturnType<typeof input.read> | undefined
   let audio: Blob | undefined
   let recovery = ""
+  let realtimeFailure = ""
   let live: ReturnType<NonNullable<typeof input.realtime>> | undefined
   let state: VoiceState = { phase: "idle", seconds: 0, level: 0, retry: false }
   const change = (value: Partial<VoiceState>) => {
@@ -47,13 +49,14 @@ export function createVoiceInput(input: {
   }
   const transcribe = async (current: AbortController) => {
     if (!audio) return
-    change({ phase: "transcribing", error: undefined, level: 0, retry: false })
+    change({ phase: "transcribing", error: undefined, detail: undefined, level: 0, retry: false })
     try {
       const text = (await input.transcribe(audio, current.signal)).trim()
       if (current !== operation || current.signal.aborted) return
       insert(text)
-    } catch {
+    } catch (error) {
       if (current === operation && !current.signal.aborted) {
+        if (error instanceof Error) change({ detail: [realtimeFailure, error.message].filter(Boolean).join(" · ") })
         if (recovery) change({ transcript: recovery })
         failed("transcription")
       }
@@ -74,6 +77,7 @@ export function createVoiceInput(input: {
         live = undefined
         if (result.complete && result.text.trim()) { insert(result.text.trim()); return }
         recovery = result.text.trim()
+        realtimeFailure = result.detail ?? ""
       }
       await transcribe(current)
     } catch {
@@ -103,7 +107,9 @@ export function createVoiceInput(input: {
       captured = input.read()
       audio = undefined
       recovery = ""
-      change({ phase: "preparing", seconds: 0, level: 0, error: undefined, transcript: undefined, live: undefined, retry: false })
+      realtimeFailure = ""
+      change({ phase: "preparing", seconds: 0, level: 0, error: undefined, detail: undefined, transcript: undefined, live: undefined, retry: false })
+      let captureStarted = false
       try {
         const access = await input.prepare()
         if (current !== operation || current.signal.aborted) return
@@ -122,6 +128,7 @@ export function createVoiceInput(input: {
         const capture = input.recorder()
         recorder = capture
         const stream = live
+        captureStarted = true
         await capture.start({
           signal: current.signal,
           device,
@@ -140,6 +147,7 @@ export function createVoiceInput(input: {
         change({ phase: "recording" })
       } catch (error) {
         if (current !== operation || current.signal.aborted) return
+        if (error instanceof Error) change({ detail: error.message })
         recorder?.cancel()
         live?.cancel()
         live = undefined
@@ -148,7 +156,7 @@ export function createVoiceInput(input: {
             ? "permission"
             : error instanceof Error && error.message === "unavailable"
               ? "unavailable"
-              : "capture",
+              : captureStarted ? "capture" : "transcription",
         )
       }
     },
@@ -166,7 +174,8 @@ export function createVoiceInput(input: {
       recorder = undefined
       audio = undefined
       recovery = ""
-      change({ phase: "idle", seconds: 0, level: 0, error: undefined, transcript: undefined, live: undefined, retry: false })
+      realtimeFailure = ""
+      change({ phase: "idle", seconds: 0, level: 0, error: undefined, detail: undefined, transcript: undefined, live: undefined, retry: false })
     },
   }
 }

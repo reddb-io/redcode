@@ -28,10 +28,12 @@ export type ProviderSettingsServices = {
   refresh: () => Promise<void>
   notify: (toast: Parameters<typeof showToast>[0]) => void
   select: (id: string) => void
+  openVoice?: () => void
 }
 export function createProviderSettingsServices(props: {
   directory: string | undefined
   onSelectProvider?: (providerID: string) => void
+  onVoice?: () => void
 }): ProviderSettingsServices {
   const dialog = useDialog()
   const language = useLanguage()
@@ -97,11 +99,13 @@ export function createProviderSettingsServices(props: {
       )),
     notify: (toast) => showToast(toast),
     select: (id) => props.onSelectProvider?.(id),
+    openVoice: props.onVoice,
   }
 }
 export function SettingsProviders(props: {
   directory: string | undefined
   onSelectProvider?: (providerID: string) => void
+  onVoice?: () => void
 }) {
   const services = createProviderSettingsServices(props)
   return <ReactView component={Providers} props={{ services }} />

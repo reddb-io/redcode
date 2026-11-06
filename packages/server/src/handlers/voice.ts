@@ -22,6 +22,17 @@ export const VoiceHandler = HttpApiBuilder.group(Api, "server.voice", (handlers)
       }),
     )
     .handle(
+      "voice.models",
+      Effect.fn(function* (request) {
+        const voice = yield* Voice.Service
+        const models = yield* voice.models(request.payload).pipe(Effect.catchTags({
+          "Voice.Invalid": (error) => new InvalidRequestError({ message: error.message }),
+          "Voice.Unavailable": (error) => new ServiceUnavailableError({ message: error.message }),
+        }))
+        return { data: models }
+      }),
+    )
+    .handle(
       "voice.realtime",
       Effect.fn(function* () {
         const voice = yield* Voice.Service

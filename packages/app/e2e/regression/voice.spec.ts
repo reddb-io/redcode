@@ -10,6 +10,94 @@ test.use({
   permissions: ["microphone"],
 })
 
+test("configured voice provider appears in provider settings with a link to manage it", async ({ page }) => {
+  const { settings } = await openSettings(page, { name: "VoiceProviderDiscovery" })
+  await page.route((url) => url.pathname === "/api/config", (route) => route.fulfill({ json: [{ type: "document", info: { voice: {
+    provider: "elevenlabs", model: "scribe_v2", connection: { type: "credential", id: "cred_scribe" },
+  } } }] }))
+  await page.route((url) => url.pathname === "/api/voice/connections", (route) => route.fulfill({ json: { data: [
+    { id: "cred_scribe", label: "ElevenLabs", integrationID: "redcode-voice" },
+  ] } }))
+  await settings.getByRole("tab", { name: "Providers", exact: true }).click()
+  const section = settings.getByRole("region", { name: "Voice transcription" })
+  await expect(section).toContainText("ElevenLabs")
+  await section.getByRole("button", { name: "Manage voice settings" }).click()
+  await expect(settings.getByLabel("Transcription provider")).toHaveValue("elevenlabs")
+})
+
+test("voice keys can be rotated and deleted without exposing shared provider keys", async ({ page }) => {
+  const { settings } = await openSettings(page, { name: "VoiceKeyManagement" })
+  let voice: Record<string, unknown> = { provider: "elevenlabs", model: "scribe_v2", connection: { type: "credential", id: "cred_scribe" } }
+  const updates: unknown[] = []
+  const deletions: string[] = []
+  await page.route((url) => url.pathname === "/api/config", (route) => route.fulfill({ json: [{ type: "document", info: { voice } }] }))
+  await page.route((url) => url.pathname === "/api/voice/connections", (route) => route.fulfill({ json: { data: [
+    { id: "cred_scribe", label: "ElevenLabs", integrationID: "redcode-voice" },
+    { id: "cred_shared", label: "Shared model key", integrationID: "openai" },
+  ] } }))
+  await page.route("**/api/experimental/config", (route) => { voice = route.request().postDataJSON().voice; return route.fulfill({ status: 204 }) })
+  await page.route((url) => url.pathname === "/api/credential/cred_scribe", (route) => {
+    if (route.request().method() === "PATCH") updates.push(route.request().postDataJSON())
+    if (route.request().method() === "DELETE") deletions.push("cred_scribe")
+    return route.fulfill({ status: 204 })
+  })
+  await settings.getByRole("tab", { name: "Voice", exact: true }).click()
+  await settings.getByText("Manage saved voice keys", { exact: true }).click()
+  const manager = settings.locator("details").filter({ hasText: "Manage saved voice keys" })
+  await expect(manager).not.toContainText("Shared model key")
+  await manager.getByRole("button", { name: "Replace key", exact: true }).click()
+  await manager.getByLabel("New API key", { exact: true }).fill("replacement-secret")
+  await manager.getByRole("button", { name: "Save replacement key" }).click()
+  await expect.poll(() => updates).toEqual([{ value: { type: "key", key: "replacement-secret" } }])
+  await expect(manager.getByLabel("New API key", { exact: true })).toHaveCount(0)
+  await manager.getByRole("button", { name: "Delete key", exact: true }).click()
+  await expect(manager).toContainText("other projects")
+  await manager.getByRole("button", { name: "Confirm delete key" }).click()
+  await expect.poll(() => deletions).toEqual(["cred_scribe"])
+  expect(voice.connection).toBeUndefined()
+  await expect(manager).toHaveCount(0)
+})
+
+test("changes to an existing voice configuration are saved automatically", async ({ page }) => {
+  const { settings } = await openSettings(page, { name: "VoiceAutoSave" })
+  let voice: Record<string, unknown> = { provider: "elevenlabs", model: "scribe_v2", connection: { type: "credential", id: "cred_scribe" } }
+  await page.route((url) => url.pathname === "/api/config", (route) => route.fulfill({ json: [{ type: "document", info: { voice } }] }))
+  await page.route((url) => url.pathname === "/api/voice/connections", (route) => route.fulfill({ json: { data: [
+    { id: "cred_scribe", label: "ElevenLabs", integrationID: "redcode-voice" },
+  ] } }))
+  await page.route("**/api/experimental/config", (route) => { voice = route.request().postDataJSON().voice; return route.fulfill({ status: 204 }) })
+  await settings.getByRole("tab", { name: "Voice", exact: true }).click()
+  await settings.getByRole("combobox", { name: /^Transcription mode/ }).selectOption("realtime")
+  await expect.poll(() => voice.mode).toBe("realtime")
+  await expect(settings.getByText("Voice settings saved automatically.")).toBeVisible()
+})
+
+test("OpenRouter voice models can be loaded, searched, selected and entered manually", async ({ page }) => {
+  const { settings } = await openSettings(page, { name: "VoiceModels" })
+  let voice: Record<string, unknown> = { provider: "openrouter", model: "elevenlabs/scribe-v2", connection: { type: "credential", id: "cred_router" } }
+  let request: unknown
+  await page.route((url) => url.pathname === "/api/config", (route) => route.fulfill({ json: [{ type: "document", info: { voice } }] }))
+  await page.route((url) => url.pathname === "/api/voice/connections", (route) => route.fulfill({ json: { data: [
+    { id: "cred_router", label: "Router", integrationID: "openrouter" },
+  ] } }))
+  await page.route((url) => url.pathname === "/api/voice/models", (route) => {
+    request = route.request().postDataJSON()
+    return route.fulfill({ json: { data: [{ id: "speech/one", name: "First speech" }, { id: "speech/two", name: "Second speech" }] } })
+  })
+  await page.route("**/api/experimental/config", (route) => { voice = route.request().postDataJSON().voice; return route.fulfill({ status: 204 }) })
+  await settings.getByRole("tab", { name: "Voice", exact: true }).click()
+  await settings.getByRole("button", { name: "Load provider models" }).click()
+  expect(request).toMatchObject({ provider: "openrouter", connection: { type: "credential", id: "cred_router" } })
+  await expect(settings.getByRole("list", { name: "Available voice models" }).getByRole("listitem")).toHaveCount(2)
+  await settings.getByLabel("Search available models").fill("second")
+  await expect(settings.getByRole("list", { name: "Available voice models" }).getByRole("listitem")).toHaveCount(1)
+  await settings.getByRole("button", { name: /Second speech/ }).click()
+  await expect(settings.getByLabel("Transcription model", { exact: true })).toHaveValue("speech/two")
+  await expect.poll(() => voice.model).toBe("speech/two")
+  await settings.getByLabel("Transcription model", { exact: true }).fill("new/manual-model")
+  await expect.poll(() => voice.model).toBe("new/manual-model")
+})
+
 test("voice settings add ElevenLabs and test the selected microphone and transcription", async ({ page }) => {
   const { settings } = await openSettings(page, { name: "VoiceSettingsTest", seed: { theme: { id: "oc-2", scheme: "dark" } } })
   let voice: unknown
@@ -22,7 +110,7 @@ test("voice settings add ElevenLabs and test the selected microphone and transcr
   await page.route("**/api/experimental/config", (route) => { voice = route.request().postDataJSON().voice; return route.fulfill({ status: 204 }) })
   await page.route((url) => url.pathname === "/api/voice/transcribe", (route) => {
     uploaded = Buffer.from(route.request().postDataJSON().audio, "base64")
-    if (fail) return route.fulfill({ status: 502, json: { message: "Voice provider unavailable" } })
+    if (fail) return route.fulfill({ status: 503, json: { _tag: "ServiceUnavailableError", message: "Dictation: POST https://api.elevenlabs.io/v1/speech-to-text — HTTP 403. Access denied; check key permissions and network policy." } })
     return route.fulfill({ json: { data: { text: "teste da ElevenLabs" } } })
   })
   await settings.getByRole("tab", { name: "Voice", exact: true }).click()
@@ -56,6 +144,10 @@ test("voice settings add ElevenLabs and test the selected microphone and transcr
   await page.waitForTimeout(500)
   await testPanel.getByRole("button", { name: "Stop and transcribe test" }).click()
   await expect(testPanel.getByRole("alert")).toBeVisible()
+  await expect(testPanel).toContainText("HTTP 403")
+  await expect(testPanel).toContainText("api.elevenlabs.io/v1/speech-to-text")
+  await expect(testPanel.getByRole("button", { name: "Cancel", exact: true })).toHaveCount(0)
+  await expect(testPanel.getByRole("button", { name: "Stop and transcribe test" })).toHaveCount(0)
   fail = false
   await testPanel.getByRole("button", { name: "Retry" }).click()
   await expect(testPanel.getByText("teste da ElevenLabs")).toBeVisible()

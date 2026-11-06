@@ -11,10 +11,12 @@ it.live(
       const tmp = yield* Effect.acquireDisposable(Effect.promise(() => tmpdir("redcode-scribe-")))
       const calls: unknown[] = []
       const tokens: unknown[] = []
+      let failure = 0
       const upstream = Bun.serve({
         hostname: "127.0.0.1",
         port: 0,
         async fetch(request) {
+          if (failure) return new Response("sensitive upstream body fixture-scribe-key", { status: failure })
           if (new URL(request.url).pathname === "/v1/single-use-token/realtime_scribe") {
             tokens.push({ key: request.headers.get("xi-api-key"), method: request.method })
             return Response.json({ token: "single-use-test-token" })
@@ -95,6 +97,17 @@ it.live(
           size: audio.length,
         },
       ])
+      for (const status of [401, 403, 502, 429]) {
+        failure = status
+        const rejected = yield* Effect.promise(() => request("/api/voice/transcribe", { audio: audio.toString("base64") }))
+        expect(rejected.status).toBe(503)
+        const body = yield* Effect.promise(() => rejected.text())
+        expect(body).toContain(`HTTP ${status}`)
+        expect(body).toContain("/v1/speech-to-text")
+        expect(body).not.toContain("fixture-scribe-key")
+        expect(body).not.toContain("sensitive upstream body")
+      }
+      failure = 0
       const batchToken = yield* Effect.promise(() => request("/api/voice/realtime", {}))
       expect(batchToken.status).toBe(400)
       expect(tokens).toEqual([])
@@ -107,6 +120,30 @@ it.live(
       expect(resultAccess).toEqual({ data: { token: "single-use-test-token", url: `ws://${upstream.url.host}/v1/speech-to-text/realtime`, language: "pt" } })
       expect(JSON.stringify(resultAccess)).not.toContain("fixture-scribe-key")
       expect(tokens).toEqual([{ key: "fixture-scribe-key", method: "POST" }])
+      failure = 403
+      const denied = yield* Effect.promise(() => request("/api/voice/realtime", {}))
+      expect(denied.status).toBe(503)
+      const deniedBody = yield* Effect.promise(() => denied.text())
+      expect(deniedBody).toContain("HTTP 403")
+      expect(deniedBody).toContain("/v1/single-use-token/realtime_scribe")
+      expect(deniedBody).not.toContain("fixture-scribe-key")
+      expect((yield* Effect.promise(() => request("/api/experimental/config", {
+        voice: { provider: "elevenlabs", mode: "realtime", model: "scribe_v2", baseURL: "http://127.0.0.1:1", connection: { type: "credential", id: connection.data.id } },
+      }, "PATCH"))).status).toBe(204)
+      const unreachable = yield* Effect.promise(() => request("/api/voice/transcribe", { audio: audio.toString("base64") }))
+      expect(unreachable.status).toBe(503)
+      const unreachableBody = yield* Effect.promise(() => unreachable.text())
+      expect(unreachableBody).toContain("no HTTP response")
+      expect(unreachableBody).toContain("127.0.0.1:1")
+      expect(unreachableBody).not.toContain("fixture-scribe-key")
+      expect((yield* Effect.promise(() => request("/api/experimental/config", {
+        voice: { provider: "elevenlabs", mode: "realtime", model: "scribe_v2" },
+      }, "PATCH"))).status).toBe(204)
+      const configURL = new URL("/api/config", server.base)
+      configURL.searchParams.set("location[directory]", tmp.path)
+      const config = yield* Effect.promise(() => fetch(configURL, { headers: server.headers }))
+      const configBody = yield* Effect.promise(() => config.json())
+      expect(JSON.stringify(configBody)).not.toContain(connection.data.id)
     }),
   { timeout: 60_000 },
 )

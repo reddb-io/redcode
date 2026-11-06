@@ -18,6 +18,12 @@ export const VoiceGroup = HttpApiGroup.make("server.voice").add(
   })
     .annotateMerge(locationQueryOpenApi)
     .annotateMerge(OpenApi.annotations({ identifier: "voice.connect", summary: "Store a dedicated voice API key" })),
+  HttpApiEndpoint.post("voice.models", "/api/voice/models", {
+    query: LocationQuery,
+    payload: Voice.ModelsInput,
+    success: Schema.Struct({ data: Schema.Array(Voice.Model) }),
+    error: [InvalidRequestError, ServiceUnavailableError],
+  }).annotateMerge(locationQueryOpenApi).annotateMerge(OpenApi.annotations({ identifier: "voice.models", summary: "Discover voice models for an explicitly selected provider" })),
   HttpApiEndpoint.post("voice.transcribe", "/api/voice/transcribe", {
     query: LocationQuery,
     payload: Schema.Struct({ audio: Voice.Audio }),

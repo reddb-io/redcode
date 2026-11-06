@@ -1,6 +1,6 @@
 import { SettingsPanel } from "@/settings/panel"
 import { useDialog } from "@opencode/ui/context/dialog"
-import { createEffect, createMemo, lazy, Show, Suspense, Switch, Match, type Accessor } from "solid-js"
+import { createEffect, createMemo, createSignal, lazy, Show, Suspense, Switch, Match, type Accessor } from "solid-js"
 import { sharedSource, observeShared } from "@/runtime/react/source"
 import { sharedMount } from "@/runtime/react/mount"
 import { ReactView } from "@/runtime/react/view"
@@ -91,6 +91,7 @@ const nestedProjectTabs = [
 
 export function SettingsScreen() {
   const surface = useSettingsSurface()
+  const [voiceServer, setVoiceServer] = createSignal<string>()
   const dialog = useDialog()
   const servers = useSettingsServers()
   const loaded = useSettingsServersLoaded()
@@ -150,10 +151,10 @@ export function SettingsScreen() {
   const content = sharedMount(() => (
     <Switch>
       <Match when={surface.view().type === "root"}>
-        <RootSettings />
+        <RootSettings preferredVoice={voiceServer} onVoiceServer={setVoiceServer} />
       </Match>
       <Match when={surface.view().type === "server"}>
-        <Show when={targetServer()}>{(server) => <ServerSettings entry={server()} />}</Show>
+        <Show when={targetServer()}>{(server) => <ServerSettings entry={server()} onVoiceServer={setVoiceServer} />}</Show>
       </Match>
       <Match when={surface.view().type === "project"}>
         <Show when={targetServer()?.connection} keyed>
@@ -172,7 +173,7 @@ export function SettingsScreen() {
   )
 }
 
-function RootSettings() {
+function RootSettings(props: { preferredVoice: Accessor<string | undefined>; onVoiceServer: (key: string) => void }) {
   const language = useLanguage()
   const dialog = useDialog()
   const surface = useSettingsSurface()
@@ -312,7 +313,7 @@ function RootSettings() {
         <SettingsAppearance />
       </SettingsPanel>
       <SettingsPanel value="voice" class="settings-panel">
-        <SettingsVoice servers={inventory} source={sourceServer} />
+        <SettingsVoice servers={inventory} source={sourceServer} preferred={props.preferredVoice} />
       </SettingsPanel>
       <SettingsPanel value="notifications" class="settings-panel">
         <SettingsNotifications />
@@ -364,6 +365,7 @@ function RootSettings() {
             <SettingsPanel value="providers" class="settings-panel">
               <SettingsProviders
                 directory={undefined}
+                onVoice={() => { props.onVoiceServer(ServerConnection.key(server)); surface.select("voice") }}
                 onSelectProvider={(providerID) => {
                   state.update({ modelProvider: providerID })
                   surface.select("models")
@@ -394,7 +396,7 @@ function RootSettings() {
   )
 }
 
-function ServerSettings(props: { entry: SettingsServer }) {
+function ServerSettings(props: { entry: SettingsServer; onVoiceServer: (key: string) => void }) {
   const language = useLanguage()
   const surface = useSettingsSurface()
   const activeDirectory = useSettingsDirectory(() => props.entry.connection)
@@ -471,6 +473,7 @@ function ServerSettings(props: { entry: SettingsServer }) {
             <SettingsPanel value="providers" class="settings-panel">
               <SettingsProviders
                 directory={undefined}
+                onVoice={() => { props.onVoiceServer(props.entry.key); surface.open("voice") }}
                 onSelectProvider={(providerID) => {
                   state.update({ modelProvider: providerID })
                   surface.select("models")
