@@ -1,5 +1,11 @@
 # @reddb-io/redcode
 
+## 0.87.11
+
+### Patch Changes
+
+- Add a memory view for desktop processes, servers, workers, terminals, agents and tasks, with demand-driven collection and bounded local history for up to 24 hours.
+
 ## 0.87.10
 
 ### Patch Changes
