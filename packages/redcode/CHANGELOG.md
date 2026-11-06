@@ -1,5 +1,16 @@
 # @reddb-io/redcode
 
+## 0.87.10
+
+### Patch Changes
+
+- Avoid repeatedly attempting to watch missing configuration directories while retaining automatic reload when they are created.
+- Add breathing room between user messages and responses in desktop and web conversations.
+- Avoid rebuilding provider and model catalogs for unconfigured routers and unchanged DigitalOcean inventories during background polling.
+- Reduce unnecessary provider and model catalog rebuild notifications, avoid copying unchanged hooked request bodies, and use indexed reads for session diff boundaries.
+- Make stalled server request diagnostics readable in desktop logs without recording URL query parameters.
+- Avoid ResizeObserver feedback loops when streaming messages grow or long prompts are measured in the desktop and web timeline.
+
 ## 0.87.9
 
 ### Patch Changes
