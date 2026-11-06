@@ -5,6 +5,8 @@ export const IpcTransportPort = "desktop-rpc-port"
 export const DragCancelEvent = "opencode:drag-cancel"
 
 export const WindowSnapshotChannel = "desktop-window-snapshot"
+export const DesktopMemoryChannel = "desktop-memory-sample"
+export type DesktopMemorySample = { pid: number; createdAt: number; type: string; residentBytes: number | null }[]
 
 // The main process decodes RPC payloads with the JSON codec, and JSON has no undefined: an
 // optional field the caller left as `undefined` decodes only when its key is absent. Structured

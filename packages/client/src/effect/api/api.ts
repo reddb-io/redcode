@@ -66,6 +66,20 @@ export type ServerConfigureRemoteAccessOperation<E = never> = (
 export type ServerDisableRemoteAccessOutput = RemoteAccess.Status
 export type ServerDisableRemoteAccessOperation<E = never> = () => Effect.Effect<ServerDisableRemoteAccessOutput, E>
 
+export type ServerMemoryOutput = {
+  readonly sampledAt: number
+  readonly complete: boolean
+  readonly entries: ReadonlyArray<{
+    readonly kind: "terminal" | "agent" | "task"
+    readonly id: string
+    readonly title: string
+    readonly pid: number | null
+    readonly residentBytes: number | null
+    readonly reason: "shared" | "unavailable" | "exited" | null
+  }>
+}
+export type ServerMemoryOperation<E = never> = () => Effect.Effect<ServerMemoryOutput, E>
+
 export type ServerResourcesOutput = HostResources.Snapshot
 export type ServerResourcesOperation<E = never> = () => Effect.Effect<ServerResourcesOutput, E>
 
@@ -131,6 +145,7 @@ export interface ServerApi<E = never> {
   readonly remoteAccess: ServerRemoteAccessOperation<E>
   readonly configureRemoteAccess: ServerConfigureRemoteAccessOperation<E>
   readonly disableRemoteAccess: ServerDisableRemoteAccessOperation<E>
+  readonly memory: ServerMemoryOperation<E>
   readonly resources: ServerResourcesOperation<E>
   readonly attention: ServerAttentionOperation<E>
   readonly info: ServerInfoOperation<E>
@@ -6542,6 +6557,21 @@ export type WorkersControlInput = { readonly id: Worker.Name; readonly payload: 
 export type WorkersControlOutput = void
 export type WorkersControlOperation<E = never> = (input: WorkersControlInput) => Effect.Effect<WorkersControlOutput, E>
 
+export type WorkersMemoryInput = { readonly id: Worker.Name }
+export type WorkersMemoryOutput = {
+  readonly sampledAt: number
+  readonly complete: boolean
+  readonly entries: ReadonlyArray<{
+    readonly kind: "terminal" | "agent" | "task"
+    readonly id: string
+    readonly title: string
+    readonly pid: number | null
+    readonly residentBytes: number | null
+    readonly reason: "shared" | "unavailable" | "exited" | null
+  }>
+}
+export type WorkersMemoryOperation<E = never> = (input: WorkersMemoryInput) => Effect.Effect<WorkersMemoryOutput, E>
+
 export type WorkersResourcesInput = { readonly id: Worker.Name }
 export type WorkersResourcesOutput = HostResources.Snapshot
 export type WorkersResourcesOperation<E = never> = (
@@ -6611,6 +6641,7 @@ export interface WorkersApi<E = never> {
   readonly revokeInvitation: WorkersRevokeInvitationOperation<E>
   readonly enroll: WorkersEnrollOperation<E>
   readonly control: WorkersControlOperation<E>
+  readonly memory: WorkersMemoryOperation<E>
   readonly resources: WorkersResourcesOperation<E>
   readonly attention: WorkersAttentionOperation<E>
   readonly answer: WorkersAnswerOperation<E>

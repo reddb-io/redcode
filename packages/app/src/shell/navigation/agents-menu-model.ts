@@ -1,7 +1,7 @@
 export const AGENT_GROUPS = [
   { label: "agents.group.execution", views: ["sessions", "tasks", "inbox", "harness", "usage"] },
   { label: "agents.group.workspaces", views: ["project-environments", "environments", "worktrees"] },
-  { label: "agents.group.infrastructure", views: ["servers", "hosts"] },
+  { label: "agents.group.infrastructure", views: ["servers", "hosts", "memory"] },
 ] as const
 export const AGENT_VIEWS = AGENT_GROUPS.flatMap((group) => [...group.views])
 export type AgentView = (typeof AGENT_VIEWS)[number]
@@ -16,4 +16,5 @@ export const AGENT_LABELS = {
   environments: "environments.title",
   worktrees: "agentWorktrees.title",
   hosts: "agents.hosts.title",
+  memory: "agents.memory.title",
 } as const

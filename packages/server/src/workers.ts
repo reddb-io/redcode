@@ -19,6 +19,7 @@ import { UnauthorizedError } from "@opencode/protocol/errors"
 import { ConsoleForbiddenError } from "@opencode/protocol/console"
 import { optional } from "@opencode/schema/schema"
 import { HostResources } from "@opencode/schema/host-resources"
+import { Memory } from "@opencode/schema/memory"
 
 export interface Interface {
   readonly invite: (input: Worker.InvitationRequest, scope?: ServerAccess.Principal) => Promise<Worker.Invitation>
@@ -37,6 +38,7 @@ export interface Interface {
   readonly attention: (id: string, scope?: ServerAccess.Principal) => Promise<Worker.Inbox>
   readonly answer: (id: string, answer: Worker.Answer, scope?: ServerAccess.Principal) => Promise<void>
   readonly resources: (id: string, scope?: ServerAccess.Principal) => Promise<HostResources.Snapshot>
+  readonly memory: (id: string, scope?: ServerAccess.Principal) => Promise<Memory.Snapshot>
   readonly control: (id: string, control: Worker.Control, scope?: ServerAccess.Principal) => Promise<void>
 }
 export class Service extends Context.Service<Service, Interface>()("@opencode/Workers") {}
@@ -372,6 +374,13 @@ function layer(directory?: string, accessOptions?: InfrastructureAccess.Options,
           const worker = (await WorkerPool.readConfig(config)).workers.find((worker) => worker.id === id)
           if (!worker || !(await permitted(worker, scope))) throw denied()
           return WorkerPool.resources(worker, await environment(), local?.client)
+        },
+        memory: async (id, scope) => {
+          ready()
+          const worker = (await WorkerPool.readConfig(config)).workers.find((worker) => worker.id === id)
+          if (!worker || !(await permitted(worker, scope)) || (scope && scope.access.ownerRole !== "admin"))
+            throw denied()
+          return WorkerPool.memory(worker, await environment(), local?.client)
         },
         list: async (scope) => {
           if (state.error) return { available: false, reason: state.error, workers: [], batches: [] }

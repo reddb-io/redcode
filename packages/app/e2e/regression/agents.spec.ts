@@ -1685,6 +1685,123 @@ test("shows unknown initial CPU usage and hides stale resources after a failed r
   await page.screenshot({ path: test.info().outputPath("agents-hosts.png"), animations: "disabled" })
 })
 
+test("keeps a bounded resource history in the memory view", async ({ page }) => {
+  await mockStressTimeline(page, {
+    resources: () => ({
+      sampledAt: Date.now(),
+      cpu: { count: 4, utilization: 0.2 },
+      memory: { totalBytes: 8 * 1024 ** 3, freeBytes: 6 * 1024 ** 3 },
+      process: { pid: 42, residentBytes: 128 * 1024 ** 2 },
+      platform: "linux x64",
+    }),
+  })
+  await installStressSessionTabs(page, { sessionIDs: [] })
+  await mockRemoteWorkers(page)
+  await page.route("**/api/memory", (route) =>
+    route.fulfill({
+      json: {
+        sampledAt: Date.now(),
+        complete: true,
+        entries: [
+          {
+            kind: "terminal",
+            id: "pty_test",
+            title: "Test terminal",
+            pid: 42,
+            residentBytes: 128 * 1024 ** 2,
+            reason: null,
+          },
+          {
+            kind: "agent",
+            id: "session_test",
+            title: "session_test",
+            pid: null,
+            residentBytes: null,
+            reason: "shared",
+          },
+          { kind: "task", id: "sh_test", title: "Test task", pid: 43, residentBytes: null, reason: "unavailable" },
+        ],
+      },
+    }),
+  )
+  await page.goto("/agents?view=memory")
+  const host = page.getByRole("article", { name: "Coordinator host", exact: true })
+  await expect(page.getByRole("heading", { name: "Memory", exact: true })).toBeVisible()
+  await expect(host.getByText("Terminal · Test terminal · PID 42")).toBeVisible()
+  await expect(host.getByText("Shared with server")).toBeVisible()
+  await expect(host.getByText("Task · Test task · PID 43")).toBeVisible()
+  await host.getByRole("combobox", { name: "Keep history" }).selectOption("86400000")
+  await page.reload()
+  await expect(host.getByRole("combobox", { name: "Keep history" })).toHaveValue("86400000")
+  await expect(host.locator("data").filter({ hasText: "0.13 GiB" })).toBeVisible()
+  await expect(host.getByText("Terminal · Test terminal · PID 42")).toBeVisible()
+  await expect(host.getByText("Show recorded memory", { exact: true }).first()).toBeVisible()
+})
+
+test("shows execution memory from the selected worker", async ({ page }) => {
+  await mockStressTimeline(page)
+  await installStressSessionTabs(page, { sessionIDs: [] })
+  await mockRemoteWorkers(page, {
+    workers: [
+      {
+        worker: {
+          id: "worker-a",
+          url: "http://worker.example",
+          passwordEnv: "WORKER_KEY",
+          directories: ["/work"],
+          tags: [],
+        },
+        connection: "online",
+      },
+    ],
+  })
+  await page.route("**/api/memory", (route) =>
+    route.fulfill({ json: { sampledAt: Date.now(), complete: true, entries: [] } }),
+  )
+  await page.route("**/api/workers/worker-a/memory", (route) =>
+    route.fulfill({
+      json: {
+        sampledAt: Date.now(),
+        complete: true,
+        entries: [
+          {
+            kind: "agent",
+            id: "agent-worker",
+            title: "Remote agent",
+            pid: 102,
+            residentBytes: 268435456,
+            reason: null,
+          },
+        ],
+      },
+    }),
+  )
+  await page.goto("/agents?view=memory")
+  await page.getByRole("button", { name: /worker-a/ }).click()
+  const host = page.getByRole("article", { name: "worker-a", exact: true })
+  await expect(host.getByText("Agent · Remote agent · PID 102")).toBeVisible()
+  await expect(host.getByText("0.25 GiB", { exact: true })).toBeVisible()
+})
+
+test("keeps host measurements available when the server does not support execution memory", async ({ page }) => {
+  await mockStressTimeline(page, {
+    resources: () => ({
+      sampledAt: Date.now(),
+      cpu: { count: 4, utilization: 0.2 },
+      memory: { totalBytes: 8 * 1024 ** 3, freeBytes: 6 * 1024 ** 3 },
+      process: { pid: 42, residentBytes: 128 * 1024 ** 2 },
+      platform: "linux x64",
+    }),
+  })
+  await installStressSessionTabs(page, { sessionIDs: [] })
+  await mockRemoteWorkers(page)
+  await page.route("**/api/memory", (route) => route.fulfill({ status: 404, json: { message: "Not found" } }))
+  await page.goto("/agents?view=memory")
+  const host = page.getByRole("article", { name: "Coordinator host", exact: true })
+  await expect(host.getByText("Execution memory is unavailable.", { exact: false })).toBeVisible()
+  await expect(host.getByText("6.00 GiB / 8.00 GiB", { exact: true })).toBeVisible()
+})
+
 test("explains unconfirmed worker execution and recovers the saved assignment without loading its conversation", async ({
   page,
 }) => {

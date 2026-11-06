@@ -25,6 +25,7 @@ const AgentTasks = lazy(() => import("./agents-tasks"))
 import { ReactView } from "@/runtime/react/view"
 import { useCommand } from "@/shell/commands/command"
 import { AgentShortcuts } from "./agents-shortcuts.react"
+import { DesktopMemory } from "./desktop-memory"
 
 const AgentUsage = lazy(() => import("./agents-usage"))
 const AgentHosts = lazy(() => import("./agents-hosts"))
@@ -134,6 +135,9 @@ export default function Agents() {
           <Show when={scope.servers().length === 0}>
             <p role="status">{language.t("agents.scope.missing")}</p>
           </Show>
+          <Show when={scope.view() === "memory"}>
+            <DesktopMemory />
+          </Show>
           <Key each={scope.view() === "servers" ? scope.servers().slice(0, 1) : []} by={ServerConnection.key}>
             {(server) => (
               <section class="flex h-full min-h-0 flex-col">
@@ -180,6 +184,9 @@ export default function Agents() {
                     </Match>
                     <Match when={scope.view() === "hosts"}>
                       <AgentHosts server={server} />
+                    </Match>
+                    <Match when={scope.view() === "memory"}>
+                      <AgentHosts server={server} memory />
                     </Match>
                     <Match when={scope.view() === "harness"}>
                       <AgentHarnesses server={server} />

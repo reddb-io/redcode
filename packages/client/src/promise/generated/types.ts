@@ -8,6 +8,19 @@ export type RemoteAccessStatus = {
   detail?: string
 }
 
+export type MemorySnapshot = {
+  sampledAt: number
+  complete: boolean
+  entries: Array<{
+    kind: "terminal" | "agent" | "task"
+    id: string
+    title: string
+    pid: number | null
+    residentBytes: number | null
+    reason: "shared" | "unavailable" | "exited" | null
+  }>
+}
+
 export type HostResourcesSnapshot = {
   sampledAt: number
   platform: string
@@ -4800,6 +4813,8 @@ export type ServerConfigureRemoteAccessInput = {
 export type ServerConfigureRemoteAccessOutput = RemoteAccessStatus
 
 export type ServerDisableRemoteAccessOutput = RemoteAccessStatus
+
+export type ServerMemoryOutput = MemorySnapshot
 
 export type ServerResourcesOutput = HostResourcesSnapshot
 
@@ -12171,6 +12186,10 @@ export type WorkersControlInput = {
 }
 
 export type WorkersControlOutput = void
+
+export type WorkersMemoryInput = { readonly id: { readonly id: string }["id"] }
+
+export type WorkersMemoryOutput = MemorySnapshot
 
 export type WorkersResourcesInput = { readonly id: { readonly id: string }["id"] }
 

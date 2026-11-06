@@ -5,6 +5,7 @@ import { ConsoleForbiddenError } from "../console.js"
 import { RemoteAccess } from "@opencode/schema/remote-access"
 import { Attention } from "@opencode/schema/attention"
 import { HostResources } from "@opencode/schema/host-resources"
+import { Memory } from "@opencode/schema/memory"
 
 export const ServerInfo = Schema.Struct({
   capabilities: Schema.optional(
@@ -109,6 +110,14 @@ export const ServerGroup = HttpApiGroup.make("server.server")
       success: RemoteAccess.Status,
       error: [InvalidRequestError, ConsoleForbiddenError],
     }),
+  )
+  .add(
+    HttpApiEndpoint.get("server.memory", "/api/memory", {
+      success: Memory.Snapshot,
+      error: [ConsoleForbiddenError],
+    }).annotateMerge(
+      OpenApi.annotations({ identifier: "server.memory", summary: "Sample owned execution memory on demand" }),
+    ),
   )
   .add(
     HttpApiEndpoint.get("server.resources", "/api/resources", {

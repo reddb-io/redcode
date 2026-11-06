@@ -6,6 +6,7 @@ import { database, runtime } from "../src/system-info"
 import { createHostResources, cpuUtilization, cgroupCpuUtilization, cgroupMeasurements } from "../src/host-resources"
 import { Effect, Schema } from "effect"
 import { SystemInfo } from "@opencode/protocol/groups/server"
+import { Memory } from "@opencode/schema/memory"
 import { ServerFetch } from "../src/fetch"
 import { it } from "../../core/test/lib/effect"
 
@@ -35,6 +36,69 @@ it.live("memory diagnostics report the server heap without booting project runti
       expect(snapshot.activity).toEqual({ cachedLocations: 0, activeExecutions: 0 })
     }
   }).pipe(Effect.scoped),
+)
+
+it.live("execution memory requires authentication and works without booting locations", () =>
+  Effect.gen(function* () {
+    const handler = yield* ServerFetch.make({
+      database: { path: ":memory:" },
+      config: { project: false, global: false },
+      models: { fetch: false },
+      fs: { filewatcher: false },
+      password: "secret",
+    })
+    const anonymous = yield* Effect.promise(() => handler(new Request("http://opencode.local/api/memory")))
+    expect(anonymous.status).toBe(401)
+    const response = yield* Effect.promise(() =>
+      handler(
+        new Request("http://opencode.local/api/memory", {
+          headers: { authorization: `Basic ${btoa("opencode:secret")}` },
+        }),
+      ),
+    )
+    expect(response.status).toBe(200)
+    const snapshot = Schema.decodeUnknownSync(Memory.Snapshot)(yield* Effect.promise(() => response.json()))
+    expect(snapshot.entries).toEqual([])
+  }).pipe(Effect.scoped),
+)
+
+it.live(
+  "execution memory attributes a running shell to its actual process",
+  () =>
+    Effect.gen(function* () {
+      const handler = yield* ServerFetch.make({
+        database: { path: ":memory:" },
+        config: { project: false, global: false },
+        models: { fetch: false },
+        fs: { filewatcher: false },
+        password: "secret",
+      })
+      const headers = { authorization: `Basic ${btoa("opencode:secret")}`, "content-type": "application/json" }
+      const command = process.platform === "win32" ? "ping 127.0.0.1 -n 20" : "sleep 20"
+      const started = yield* Effect.promise(() =>
+        handler(
+          new Request("http://opencode.local/api/shell", {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ command }),
+          }),
+        ),
+      )
+      expect(started.status).toBe(200)
+      const body = (yield* Effect.promise(() => started.json())) as { data: { id: string; pid: number } }
+      const response = yield* Effect.promise(() =>
+        handler(new Request("http://opencode.local/api/memory", { headers })),
+      )
+      expect(response.status).toBe(200)
+      const snapshot = Schema.decodeUnknownSync(Memory.Snapshot)(yield* Effect.promise(() => response.json()))
+      const task = snapshot.entries.find((entry) => entry.id === body.data.id)
+      expect(task?.pid).toBe(body.data.pid)
+      expect(task?.residentBytes).toBeGreaterThan(0)
+      yield* Effect.promise(() =>
+        handler(new Request(`http://opencode.local/api/shell/${body.data.id}`, { method: "DELETE", headers })),
+      )
+    }).pipe(Effect.scoped),
+  30_000,
 )
 
 describe("system info", () => {

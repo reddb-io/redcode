@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron"
 import {
   DragCancelEvent,
+  DesktopMemoryChannel,
   IpcTransportPort,
   WindowSnapshotChannel,
   storageSnapshotNames,
@@ -29,4 +30,5 @@ contextBridge.exposeInMainWorld("electron", {
   storageSnapshot: snapshot.then((snapshot) => snapshot.storage),
   extensions: snapshot.then((snapshot) => snapshot.extensions),
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
+  getMemorySample: () => ipcRenderer.invoke(DesktopMemoryChannel),
 })

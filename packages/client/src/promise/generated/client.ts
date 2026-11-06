@@ -3,6 +3,7 @@ import type {
   ServerConfigureRemoteAccessInput,
   ServerConfigureRemoteAccessOutput,
   ServerDisableRemoteAccessOutput,
+  ServerMemoryOutput,
   ServerResourcesOutput,
   ServerAttentionOutput,
   ServerInfoOutput,
@@ -450,6 +451,8 @@ import type {
   WorkersEnrollOutput,
   WorkersControlInput,
   WorkersControlOutput,
+  WorkersMemoryInput,
+  WorkersMemoryOutput,
   WorkersResourcesInput,
   WorkersResourcesOutput,
   WorkersAttentionInput,
@@ -762,6 +765,17 @@ export function make(options: ClientOptions) {
           {
             method: "DELETE",
             path: `/api/remote-access`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 409],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      memory: (requestOptions?: RequestOptions) =>
+        request<ServerMemoryOutput>(
+          {
+            method: "GET",
+            path: `/api/memory`,
             successStatus: 200,
             declaredStatuses: [400, 401, 403, 409],
             empty: false,
@@ -3799,6 +3813,17 @@ export function make(options: ClientOptions) {
             successStatus: 200,
             declaredStatuses: [400, 401, 403, 409],
             empty: true,
+          },
+          requestOptions,
+        ),
+      memory: (input: WorkersMemoryInput, requestOptions?: RequestOptions) =>
+        request<WorkersMemoryOutput>(
+          {
+            method: "GET",
+            path: `/api/workers/${encodeURIComponent(input.id)}/memory`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 409],
+            empty: false,
           },
           requestOptions,
         ),

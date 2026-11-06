@@ -4,6 +4,7 @@ import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema, OpenApi } from "effect/un
 import { InvalidRequestError, UnauthorizedError } from "../errors.js"
 import { ConsoleForbiddenError } from "../console.js"
 import { HostResources } from "@opencode/schema/host-resources"
+import { Memory } from "@opencode/schema/memory"
 
 /** Public instructions and capability redemption only; every other worker operation requires host authentication. */
 export function isWorkerEnrollmentRequest(method: string, url: URL) {
@@ -68,6 +69,15 @@ export const WorkersGroup = HttpApiGroup.make("server.workers")
         identifier: "workers.control",
         summary: "Control the native harness of an assigned worker task",
       }),
+    ),
+  )
+  .add(
+    HttpApiEndpoint.get("workers.memory", "/api/workers/:id/memory", {
+      params: { id: Worker.Name },
+      success: Memory.Snapshot,
+      error: [InvalidRequestError, ConsoleForbiddenError],
+    }).annotateMerge(
+      OpenApi.annotations({ identifier: "workers.memory", summary: "Sample an authorized worker's execution memory" }),
     ),
   )
   .add(

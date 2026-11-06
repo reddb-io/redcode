@@ -734,6 +734,25 @@ export async function createHarnesses(
     }
   }
   const service = {
+    memoryOwners() {
+      return [...live.entries()].flatMap(([id, connection]) => {
+        const run = read(id)
+        const pid = connection.wire.pid
+        return [
+          {
+            id,
+            title: `${run.driver} · ${id}`,
+            pid: pid ?? null,
+            tasksLimited: tasks.memoryLimited(id),
+            tasks: tasks.memory(id).map((task) => ({
+              id: task.id,
+              title: task.title,
+              processID: task.processID ?? undefined,
+            })),
+          },
+        ]
+      })
+    },
     metrics() {
       return db
         .query<{ id: string; data: string }, []>("SELECT id,data FROM metric WHERE reported=0 ORDER BY rowid LIMIT 200")

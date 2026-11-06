@@ -829,6 +829,14 @@ export async function resources(
   return client(worker, environment, local).server.resources({ signal: AbortSignal.timeout(5_000) })
 }
 
+export async function memory(
+  worker: Worker.Registration,
+  environment: Readonly<Record<string, string | undefined>>,
+  local?: () => OpenCodeClient,
+) {
+  return client(worker, environment, local).server.memory({ signal: AbortSignal.timeout(15_000) })
+}
+
 /** Reuse the native Session harness with first-admission-wins prompt IDs and original task placement. */
 export async function control(input: BatchInput, control: Worker.Control) {
   if (control.kind === "cancel") {

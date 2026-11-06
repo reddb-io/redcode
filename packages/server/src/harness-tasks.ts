@@ -94,6 +94,18 @@ export function createHarnessTasks(db: Database) {
       )
   return {
     list,
+    memory(run: string) {
+      return db
+        .query<{ id: string; title: string; processID: string | null }, [string]>(
+          `SELECT id, json_extract(data, '$.title') AS title, json_extract(data, '$.processID') AS processID
+         FROM (SELECT id, data FROM native_task WHERE run=? ORDER BY rowid DESC LIMIT 200)
+         WHERE json_extract(data, '$.status')='running' LIMIT 100`,
+        )
+        .all(run)
+    },
+    memoryLimited(run: string) {
+      return !!db.query<{ id: string }, [string]>("SELECT id FROM native_task WHERE run=? ORDER BY rowid DESC LIMIT 1 OFFSET 200").get(run)
+    },
     unavailable,
     wait(run: string, taskID: string, timeoutMs: number, signal: AbortSignal) {
       const task = read(run, taskID)

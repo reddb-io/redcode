@@ -335,6 +335,7 @@ it.live(
           "/api/config",
           "/api/event",
           "/api/resources",
+          "/api/memory",
           "/api/attention",
           "/api/harness",
           "/api/worktree/archives?projectID=unavailable",
@@ -347,6 +348,7 @@ it.live(
       }
       expect((yield* Effect.promise(() => call("/api/info", f.owner.token))).status).toBe(200)
       expect((yield* Effect.promise(() => call("/api/harness", f.owner.token))).status).toBe(200)
+      expect((yield* Effect.promise(() => call("/api/memory", f.owner.token))).status).toBe(200)
       expect((yield* Effect.promise(() => call("/api/fs/list", user.token, f.workspace.id))).status).toBe(403)
       const workerResource = yield* Effect.promise(() =>
         f.json(`/infrastructure/${f.infrastructure.id}/resources`, f.owner.token, "POST", { name: "Worker" }),
@@ -397,6 +399,9 @@ it.live(
       expect(
         (yield* Effect.promise(() => call("/api/workers/allowed/resources", user.token, f.workspace.id))).status,
       ).toBe(200)
+      expect(
+        (yield* Effect.promise(() => call("/api/workers/allowed/memory", user.token, f.workspace.id))).status,
+      ).toBe(403)
       expect(
         (yield* Effect.promise(() => call("/api/workers/private/resources", user.token, f.workspace.id))).status,
       ).toBe(403)

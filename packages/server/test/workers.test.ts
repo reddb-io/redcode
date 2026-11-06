@@ -454,6 +454,9 @@ it.live(
       )
       expect(resources.process.pid).toBe(process.pid)
       expect(resources.cpu.utilization).toBeNull()
+      const memory = yield* Effect.promise(() => WorkerPool.memory(registration, input.environment))
+      expect(memory.sampledAt).toBeGreaterThan(0)
+      expect(Array.isArray(memory.entries)).toBe(true)
       yield* Effect.promise(() =>
         Bun.write(report, JSON.stringify({ fingerprint: "fixture", tasks: [{ ...task, directory: "/different" }] })),
       )

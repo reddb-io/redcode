@@ -1,4 +1,4 @@
-import type { HostResourcesSnapshot } from "@opencode/client/promise"
+import type { HostResourcesSnapshot, MemorySnapshot } from "@opencode/client/promise"
 import { input } from "@reddb-io/design-system/contracts/input"
 import { listRow } from "@reddb-io/design-system/contracts/list-row"
 import { sidebarPanel } from "@reddb-io/design-system/contracts/sidebar-panel"
@@ -14,12 +14,13 @@ import { ReactView } from "@/runtime/react/view"
 import { sharedSource } from "@/runtime/react/source"
 import { sharedLanguage } from "@/runtime/react/language"
 import { HostHistory } from "./host-history.react"
+import { ExecutionMemory } from "./execution-memory"
 import { useLanguage } from "@/runtime/i18n/language"
 import { ServerConnection } from "@/runtime/server/registry"
 import { useGlobal } from "@/runtime/server/runtime"
 import { useNavigation } from "./controller"
 
-export default function AgentHosts(props: { server: ServerConnection.Any }) {
+export default function AgentHosts(props: { server: ServerConnection.Any; memory?: boolean }) {
   const global = useGlobal()
   const ctx = () => global.ensureServerCtx(props.server)
   const language = useLanguage()
@@ -166,6 +167,14 @@ export default function AgentHosts(props: { server: ServerConnection.Any }) {
                     ? ctx().sdk.api.workers.resources({ id: state.selected }, { signal })
                     : ctx().sdk.api.server.resources({ signal })
                 }
+                memory={
+                  props.memory
+                    ? (signal) =>
+                        state.selected
+                          ? ctx().sdk.api.workers.memory({ id: state.selected }, { signal })
+                          : ctx().sdk.api.server.memory({ signal })
+                    : undefined
+                }
               />
             </Show>
             <details class="text-body text-ink-muted">
@@ -216,6 +225,7 @@ function Resources(props: {
   connected: boolean
   cacheKey: string
   load: (signal: AbortSignal) => Promise<HostResourcesSnapshot>
+  memory?: (signal: AbortSignal) => Promise<MemorySnapshot>
 }) {
   const language = useLanguage()
   const query = useQuery(() => ({
@@ -238,6 +248,9 @@ function Resources(props: {
   return (
     <article aria-label={props.name} class="py-[var(--reddb-spatial-inset-sm)]">
       <ReactView component={HostHistory} props={{ source: history, refresh: () => void query.refetch() }} />
+      <Show when={props.memory}>
+        {(load) => <ExecutionMemory identity={props.cacheKey} connected={props.connected} load={load()} />}
+      </Show>
     </article>
   )
 }

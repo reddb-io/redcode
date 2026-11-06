@@ -17,6 +17,7 @@ import { ServerPairing } from "../pairing"
 import { database, runtime } from "../system-info"
 import { attention } from "../attention"
 import { createHostResources } from "../host-resources"
+import { executionMemory } from "../execution-memory"
 
 export const ServerHandler = HttpApiBuilder.group(Api, "server.server", (handlers) =>
   Effect.gen(function* () {
@@ -38,6 +39,16 @@ export const ServerHandler = HttpApiBuilder.group(Api, "server.server", (handler
       })
 
     return handlers
+      .handle("server.memory", () =>
+        Effect.gen(function* () {
+          const principal = yield* ServerAccess.Current
+          if (principal && principal.access.ownerRole !== "admin")
+            return yield* new ConsoleForbiddenError({
+              message: "Infrastructure administration is required for execution memory",
+            })
+          return yield* executionMemory()
+        }),
+      )
       .handle("server.remoteAccess", () =>
         remote(async (host) => host?.status() ?? { available: false, state: "disabled" as const }),
       )

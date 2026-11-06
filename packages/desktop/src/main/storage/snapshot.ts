@@ -1,5 +1,5 @@
 import { app, ipcMain } from "electron"
-import { WindowSnapshotChannel, type WindowSnapshot } from "../../shared/ipc-transport"
+import { DesktopMemoryChannel, WindowSnapshotChannel, type WindowSnapshot } from "../../shared/ipc-transport"
 import { isRendererUrl } from "../windows/scheme"
 import { readWindowSnapshot } from "./window-snapshot"
 
@@ -15,6 +15,15 @@ export function setStorageSnapshotProvider(next: Provider) {
 }
 
 export function registerStorageSnapshotHandler() {
+  ipcMain.handle(DesktopMemoryChannel, (event) => {
+    if (!isRendererUrl(event.senderFrame?.url)) return []
+    return app.getAppMetrics().map((metric) => ({
+      pid: metric.pid,
+      createdAt: metric.creationTime,
+      type: metric.type,
+      residentBytes: metric.memory?.workingSetSize == null ? null : metric.memory.workingSetSize * 1024,
+    }))
+  })
   // SAFETY: Electron delivers untrusted IPC arguments; accept only an array whose every element is a string here.
   // oxlint-disable-next-line anti-slop/no-unknown-parameters -- see SAFETY above
   ipcMain.handle(WindowSnapshotChannel, (event, names: unknown): WindowSnapshot => {

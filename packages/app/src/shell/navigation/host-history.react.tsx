@@ -1,5 +1,5 @@
 /** @jsxImportSource react */
-import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react"
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react"
 import { Cpu, MemoryStick, Activity, Layers } from "lucide-react"
 import type { HostResourcesSnapshot } from "@opencode/client/promise"
 import { Button } from "@reddb-io/design-system/base/Button"
@@ -15,8 +15,17 @@ import { Sparkline } from "@reddb-io/design-system/data/Sparkline"
 import { createChartStream } from "@reddb-io/design-system/data/stream"
 import type { SharedSource } from "@/runtime/react/source"
 import type { SharedLanguage } from "@/runtime/react/language"
+import { loadHistory, recordHistory, setHistoryRetention, type ResourcePoint, type Retention } from "./resource-history"
 
-type Observation = { x: number; cpu: number | null; memory: number | null; free: number | null; process: number | null }
+type Observation = ResourcePoint
+const unavailableStorage = { getItem: () => null, setItem: () => {} }
+function historyStorage() {
+  try {
+    return window.localStorage
+  } catch {
+    return unavailableStorage
+  }
+}
 
 export function HostHistory(props: {
   source: SharedSource<{
@@ -31,20 +40,32 @@ export function HostHistory(props: {
 }) {
   const view = useSyncExternalStore(props.source.subscribe, props.source.getSnapshot)
   const language = view.language
+  const saved = useMemo(() => loadHistory(historyStorage(), view.identity), [view.identity])
+  const [retention, setRetention] = useState<Retention>(saved.retention)
+  const lastSaved = useRef<{ identity: string; minute: number } | undefined>(undefined)
   const stream = useMemo(
-    () => createChartStream<Observation>({ maxPoints: 600, windowMs: 600_000, intervalMs: 0 }),
-    [view.identity],
+    () =>
+      createChartStream<Observation>({ initial: saved.points, maxPoints: 1440, windowMs: 86_400_000, intervalMs: 0 }),
+    [view.identity, saved],
   )
   const snapshot = useSyncExternalStore(stream.subscribe, stream.getSnapshot, stream.getServerSnapshot)
+  const live = useMemo(
+    () => createChartStream<Observation>({ maxPoints: 120, windowMs: 600_000, intervalMs: 0 }),
+    [view.identity],
+  )
+  const liveSnapshot = useSyncExternalStore(live.subscribe, live.getSnapshot, live.getServerSnapshot)
   const [activeX, setActiveX] = useState<number | null>(null)
   const [windowMs, setWindowMs] = useState(600_000)
   useEffect(() => () => stream.dispose(), [stream])
+  useEffect(() => () => live.dispose(), [live])
+  useEffect(() => setRetention(saved.retention), [saved])
   useEffect(() => {
     const sample = view.sample
     if (!sample) return
     const stale = !view.available
-    stream.upsert({
-      x: stale ? Date.now() : sample.sampledAt,
+    const point = {
+      // History follows the viewer's clock; remote machines need not have synchronized clocks.
+      x: Math.floor(Date.now() / 60_000) * 60_000,
       cpu: stale || sample.cpu.utilization === null ? null : sample.cpu.utilization * 100,
       memory:
         stale || sample.memory.totalBytes === null || sample.memory.freeBytes === null
@@ -52,14 +73,21 @@ export function HostHistory(props: {
           : (sample.memory.totalBytes - sample.memory.freeBytes) / 1024 ** 3,
       free: stale || sample.memory.freeBytes === null ? null : sample.memory.freeBytes / 1024 ** 3,
       process: stale ? null : sample.process.residentBytes / 1024 ** 3,
-    })
+    }
+    stream.upsert(point)
     stream.flush()
-  }, [stream, view.sample, view.available])
+    live.upsert({ ...point, x: Date.now() })
+    live.flush()
+    if (!stale && (lastSaved.current?.identity !== view.identity || lastSaved.current.minute !== point.x)) {
+      recordHistory(historyStorage(), view.identity, point)
+      lastSaved.current = { identity: view.identity, minute: point.x }
+    }
+  }, [stream, live, view.sample, view.available, view.identity])
   const last = snapshot.data.at(-1)?.x
   const timeRange = last === undefined ? undefined : ([last - windowMs, last] as const)
   const sample = view.available ? view.sample : undefined
   const recent = (field: "cpu" | "free" | "process") => {
-    const points = snapshot.data.slice(-32).map((point) => point[field])
+    const points = liveSnapshot.data.slice(-32).map((point) => point[field])
     const gap = points.findLastIndex((point) => point === null)
     return points.slice(gap + 1).filter((point): point is number => point !== null)
   }
@@ -205,7 +233,15 @@ export function HostHistory(props: {
           <Button
             variant="secondary"
             aria-pressed={snapshot.paused}
-            onClick={() => (snapshot.paused ? stream.resume() : stream.pause())}
+            onClick={() => {
+              if (snapshot.paused) {
+                stream.resume()
+                live.resume()
+              } else {
+                stream.pause()
+                live.pause()
+              }
+            }}
           >
             {language.t(snapshot.paused ? "agents.hosts.live" : "agents.hosts.pause")}
           </Button>
@@ -214,9 +250,29 @@ export function HostHistory(props: {
             <Select value={String(windowMs)} onValueChange={(value) => setWindowMs(Number(value))}>
               <option value={60_000}>{language.t("agents.hosts.oneMinute")}</option>
               <option value={600_000}>{language.t("agents.hosts.tenMinutes")}</option>
+              <option value={3_600_000}>{language.t("agents.memory.oneHourWindow")}</option>
+              <option value={21_600_000}>{language.t("agents.memory.sixHourWindow")}</option>
+              <option value={86_400_000}>{language.t("agents.memory.dayWindow")}</option>
             </Select>
           </label>
-          <p className="text-caption text-ink-muted">{language.t("agents.hosts.localHistory")}</p>
+          <label>
+            {language.t("agents.memory.retention")}
+            <Select
+              value={String(retention)}
+              onValueChange={(value) => {
+                const next = Number(value) as Retention
+                setHistoryRetention(historyStorage(), next)
+                window.dispatchEvent(new Event("redcode:memory-retention"))
+                setRetention(next)
+              }}
+            >
+              <option value={0}>{language.t("agents.memory.sessionOnly")}</option>
+              <option value={3_600_000}>{language.t("agents.memory.oneHour")}</option>
+              <option value={21_600_000}>{language.t("agents.memory.sixHours")}</option>
+              <option value={86_400_000}>{language.t("agents.memory.twentyFourHours")}</option>
+            </Select>
+          </label>
+          <p className="text-caption text-ink-muted">{language.t("agents.memory.retentionNote")}</p>
         </div>
         <div className="grid min-w-0 gap-3 @3xl/resources:grid-cols-2">
           <CompositeChart

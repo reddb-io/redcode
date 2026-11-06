@@ -9,6 +9,7 @@ import type {
   ServerConfigureRemoteAccessInput,
   ServerConfigureRemoteAccessOutput,
   ServerDisableRemoteAccessOutput,
+  ServerMemoryOutput,
   ServerResourcesOutput,
   ServerAttentionOutput,
   ServerInfoOutput,
@@ -452,6 +453,8 @@ import type {
   WorkersEnrollOutput,
   WorkersControlInput,
   WorkersControlOutput,
+  WorkersMemoryInput,
+  WorkersMemoryOutput,
   WorkersResourcesInput,
   WorkersResourcesOutput,
   WorkersAttentionInput,
@@ -595,6 +598,9 @@ const EndpointServerDisableRemoteAccess = (raw: RawClient["server.server"]) => (
     raw["server.disableRemoteAccess"]({}).pipe(Effect.mapError(mapClientError)),
   )
 
+const EndpointServerMemory = (raw: RawClient["server.server"]) => () =>
+  preserveEffect<ServerMemoryOutput>()(raw["server.memory"]({}).pipe(Effect.mapError(mapClientError)))
+
 const EndpointServerResources = (raw: RawClient["server.server"]) => () =>
   preserveEffect<ServerResourcesOutput>()(raw["server.resources"]({}).pipe(Effect.mapError(mapClientError)))
 
@@ -624,6 +630,7 @@ const adaptGroupServer = (raw: RawClient["server.server"]) => ({
   remoteAccess: EndpointServerRemoteAccess(raw),
   configureRemoteAccess: EndpointServerConfigureRemoteAccess(raw),
   disableRemoteAccess: EndpointServerDisableRemoteAccess(raw),
+  memory: EndpointServerMemory(raw),
   resources: EndpointServerResources(raw),
   attention: EndpointServerAttention(raw),
   info: EndpointServerInfo(raw),
@@ -2829,6 +2836,11 @@ const EndpointWorkersControl = (raw: RawClient["server.workers"]) => (input: Wor
     ),
   )
 
+const EndpointWorkersMemory = (raw: RawClient["server.workers"]) => (input: WorkersMemoryInput) =>
+  preserveEffect<WorkersMemoryOutput>()(
+    raw["workers.memory"]({ params: { id: input["id"] } }).pipe(Effect.mapError(mapClientError)),
+  )
+
 const EndpointWorkersResources = (raw: RawClient["server.workers"]) => (input: WorkersResourcesInput) =>
   preserveEffect<WorkersResourcesOutput>()(
     raw["workers.resources"]({ params: { id: input["id"] } }).pipe(Effect.mapError(mapClientError)),
@@ -2913,6 +2925,7 @@ const adaptGroupWorkers = (raw: RawClient["server.workers"]) => ({
   revokeInvitation: EndpointWorkersRevokeInvitation(raw),
   enroll: EndpointWorkersEnroll(raw),
   control: EndpointWorkersControl(raw),
+  memory: EndpointWorkersMemory(raw),
   resources: EndpointWorkersResources(raw),
   attention: EndpointWorkersAttention(raw),
   answer: EndpointWorkersAnswer(raw),
