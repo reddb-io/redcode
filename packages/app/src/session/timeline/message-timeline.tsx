@@ -35,7 +35,12 @@ import { isWorkspaceDirectory } from "@/workspaces/paths"
 import { parseCommentNote, readPromptPresentation } from "@/composer/comment-note"
 import { useCommand } from "@/shell/commands/command"
 import { useSessionLayout } from "@/session/session-layout"
-import { SessionAncestorTrail, SessionProjectMenu, SessionTitleHeader } from "../session-identity-header"
+import {
+  SessionAncestorTrail,
+  SessionProjectMenu,
+  SessionTitleHeader,
+  useOpenSessionRoute,
+} from "../session-identity-header"
 import { SessionHeaderSpacer } from "@/session/header/session-header"
 import { SessionRunningMenu } from "@/session/header/session-running-menu"
 import { DesignNotice } from "@opencode/schema/design-notice"
@@ -43,8 +48,9 @@ import { DesignApprovalCard, DesignFeedbackCard } from "../design/cards"
 import { designOrdinals } from "../design/state"
 import { announceRestricted, RestrictedNotice } from "./restricted-notice"
 import { SessionOutputsOverlay } from "../summary/outputs"
+import { SubagentActivity, type ActiveSubagent } from "./subagent-activity"
 
-type BlockingTask = { type: "shell" | "subagent"; partID: string; id?: string; label?: string }
+type BlockingTask = { type: "shell" | "subagent"; partID: string; id?: string; label?: string; agent?: string }
 
 type SessionBackground = {
   blocking: Accessor<BlockingTask[]>
@@ -54,6 +60,7 @@ type SessionBackground = {
     blocking: Accessor<BlockingTask[]>
     tasks: Accessor<readonly BackgroundTask[]>
   }
+  activity: { blocking: Accessor<BlockingTask[]>; tasks: Accessor<readonly BackgroundTask[]> }
   move: () => Promise<void>
 }
 
@@ -495,6 +502,35 @@ function MessageTimelineView(
     />
   )
 
+  const openSession = useOpenSessionRoute()
+  const subagents = createMemo<ActiveSubagent[]>(() => {
+    if (props.active === false || props.data.timelineDetail().subagents.placement === "hidden") return []
+    const foreground = props.background.activity.blocking().flatMap((task) =>
+      task.type === "subagent"
+        ? [
+            {
+              sessionID: task.id,
+              title: task.label,
+              agent: task.agent ?? (task.id ? data.session.get(task.id)?.agent : undefined),
+            },
+          ]
+        : [],
+    )
+    const present = new Set(foreground.flatMap((item) => (item.sessionID ? [item.sessionID] : [])))
+    const background = props.background.activity.tasks().flatMap((task) =>
+      task.type === "subagent" && !present.has(task.id)
+        ? [
+            {
+              sessionID: task.id,
+              title: task.label,
+              agent: task.agent ?? data.session.get(task.id)?.agent,
+            },
+          ]
+        : [],
+    )
+    return [...foreground, ...background]
+  })
+
   return (
     <VirtualizedTimeline
       workspaceSession={workspaceSession}
@@ -506,7 +542,8 @@ function MessageTimelineView(
             waits().length > 0 ||
             observing().length > 0 ||
             phases().length > 0 ||
-            permissions().length > 0
+            permissions().length > 0 ||
+            subagents().length > 0
           }
         >
           <div
@@ -515,28 +552,39 @@ function MessageTimelineView(
               "md:max-w-session md:mx-auto": props.centered,
             }}
           >
-            <div
-              class={`flex h-9 items-center gap-2 pt-3 font-mono text-[13px] font-medium leading-text-compact text-ink-muted ${turnPadding()}`}
-            >
-              <Show when={activity()}>
-                {(activity) => <LiveTurnStatus kind={activity().kind} since={activity().since} />}
-              </Show>
-              <Show when={backgroundHintPresence.present()}>
-                <div
-                  ref={setBackgroundHintRef}
-                  data-component="session-background-hint-row"
-                  class="duration-150 motion-reduce:animate-none"
-                  classList={{
-                    "animate-in fade-in": backgroundHintPresence.animate() && backgroundHintPresence.show(),
-                    "animate-out fade-out fill-mode-forwards":
-                      backgroundHintPresence.animate() && !backgroundHintPresence.show(),
-                  }}
-                >
-                  <BackgroundMoveHint onMove={props.background.move} />
-                </div>
-              </Show>
-            </div>
+            <Show when={activity() || backgroundHintPresence.present()}>
+              <div
+                class={`flex h-9 items-center gap-2 pt-3 font-mono text-[13px] font-medium leading-text-compact text-ink-muted ${turnPadding()}`}
+              >
+                <Show when={activity()}>
+                  {(activity) => <LiveTurnStatus kind={activity().kind} since={activity().since} />}
+                </Show>
+                <Show when={backgroundHintPresence.present()}>
+                  <div
+                    ref={setBackgroundHintRef}
+                    data-component="session-background-hint-row"
+                    class="duration-150 motion-reduce:animate-none"
+                    classList={{
+                      "animate-in fade-in": backgroundHintPresence.animate() && backgroundHintPresence.show(),
+                      "animate-out fade-out fill-mode-forwards":
+                        backgroundHintPresence.animate() && !backgroundHintPresence.show(),
+                    }}
+                  >
+                    <BackgroundMoveHint onMove={props.background.move} />
+                  </div>
+                </Show>
+              </div>
+            </Show>
             <div class={`flex flex-col gap-1 ${turnPadding()}`}>
+              <Show when={subagents().length > 0}>
+                <SubagentActivity
+                  items={subagents()}
+                  open={(id) => {
+                    const current = sessionID()
+                    if (current) openSession(current, id)
+                  }}
+                />
+              </Show>
               <For each={phases()}>
                 {(phase) => <SessionPhaseWaitStatus kind={phase.kind} target={phase.target} since={phase.started} />}
               </For>

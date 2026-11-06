@@ -1774,6 +1774,13 @@ export const dict = {
   "session.restricted.confirm.description":
     'Every later request to the model carries "{{placeholder}}" instead of this message, including any instruction in it. It cannot be put back from here. The original stays in your local history.',
   "session.running.working.one": "{{count}} working",
+  "session.subagents.label": "Active subagents",
+  "session.subagents.active.one": "{{count}} subagent working",
+  "session.subagents.active.other": "{{count}} subagents working",
+  "session.subagents.starting": "Starting",
+  "session.subagents.working": "Working",
+  "session.subagents.open": "Open subagent conversation: {{title}}",
+  "session.subagents.openAction": "Open",
   "session.running.working.other": "{{count}} working",
   "session.running.running.one": "{{count}} running",
   "session.running.running.other": "{{count}} running",

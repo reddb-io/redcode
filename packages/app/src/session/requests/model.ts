@@ -122,6 +122,14 @@ export function createSessionRequestModel() {
     status: data.session.status,
     shells: () => data.shell.list({ directory: sdk().directory }),
   })
+  // The header shows siblings in a child session. Its own descendants need their own scope.
+  const descendants = createSessionBackground({
+    sessionID: () => (primary() ? undefined : params.id),
+    messages: data.session.message.list,
+    sessions: data.session.list,
+    status: data.session.status,
+    shells: () => data.shell.list({ directory: sdk().directory }),
+  })
 
   // Moving to the background and the extensions' background list stay with the primary session's own work.
   const blocking = createMemo(() => (primary() ? running.blocking() : []))
@@ -183,6 +191,10 @@ export function createSessionRequestModel() {
       blocking,
       tasks,
       running: { sessionID: owner, blocking: running.blocking, tasks: running.tasks },
+      activity: {
+        blocking: () => (primary() ? running.blocking() : descendants.blocking()),
+        tasks: () => (primary() ? running.tasks() : descendants.tasks()),
+      },
       move: moveToBackground,
     },
     decide,

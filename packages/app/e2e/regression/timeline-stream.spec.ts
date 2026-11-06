@@ -31,6 +31,63 @@ import {
 
 const detailed = timelinePresets[2].value
 
+test("shows an active subagent as it starts, links its session, and clears it after completion", async ({ page }) => {
+  const input = { description: "Investigate the issue", agent: "explore", prompt: "Inspect it" }
+  const child = "ses_activity_child"
+  const timeline = await setupTimeline(page, {
+    settings: { timelineDetail: detailed },
+    messages: [
+      userMessage(),
+      assistantMessage([toolPart("prt_active_agent", "subagent", "running", input)], { completed: false }),
+    ],
+  })
+  const activity = page.getByRole("region", { name: "Active subagents" })
+  await expect(activity.getByText("Starting", { exact: true })).toBeVisible()
+  await expect(activity.getByRole("button", { name: /Open subagent conversation/ })).toHaveCount(0)
+  await timeline.send(
+    partUpdated(toolPart("prt_active_agent", "subagent", "running", input, { metadata: { sessionID: child } })),
+  )
+  await expect(
+    activity.getByRole("button", { name: "Open subagent conversation: Investigate the issue" }),
+  ).toBeVisible()
+  await timeline.send(
+    partUpdated(toolPart("prt_active_agent", "subagent", "completed", input, { metadata: { sessionID: child } })),
+  )
+  await expect(activity).toHaveCount(0)
+})
+
+test("keeps background subagents visible while the parent is idle", async ({ page }) => {
+  const child = "ses_background_activity"
+  const input = { description: "Review the patch", agent: "review", prompt: "Review it" }
+  await setupTimeline(page, {
+    settings: { timelineDetail: detailed },
+    messages: [
+      userMessage(),
+      assistantMessage([
+        toolPart("prt_background_activity", "subagent", "completed", input, {
+          metadata: { sessionID: child, status: "running" },
+        }),
+      ]),
+    ],
+    sessions: [session(), session({ id: child, parentID: sessionID, title: "Review the patch", agent: "review" })],
+    sessionStatus: { [sessionID]: { type: "idle" }, [child]: { type: "busy" } },
+  })
+  const activity = page.getByRole("region", { name: "Active subagents" })
+  await expect(activity.getByRole("button", { name: "Open subagent conversation: Review the patch" })).toBeVisible()
+})
+
+test("respects the setting that hides subagents", async ({ page }) => {
+  const input = { description: "Hidden subagent", agent: "explore", prompt: "Inspect it" }
+  await setupTimeline(page, {
+    settings: { timelineDetail: timelinePresets[4].value },
+    messages: [
+      userMessage(),
+      assistantMessage([toolPart("prt_hidden_agent", "subagent", "running", input)], { completed: false }),
+    ],
+  })
+  await expect(page.getByRole("region", { name: "Active subagents" })).toHaveCount(0)
+})
+
 test("grows a streaming row without ResizeObserver loop errors", async ({ page }) => {
   await page.addInitScript(() => {
     window.addEventListener("error", (event) => {
@@ -1130,8 +1187,12 @@ test.describe("background shortcut", () => {
       .locator('[data-timeline-part-ids="call_backgrounded,call_shell_backgrounded,call_blocking"]')
       .locator(':scope > [data-component="collapsible"] > [data-slot="collapsible-trigger"]')
 
-    await expect(used).toHaveText(/^Used\s*3\s*Agent, Shell$/)
+    await expect(used).toHaveText("Ran 1 command, ran 2 agents")
     await expect(used).toHaveAttribute("aria-expanded", "false")
+    const activity = page.getByRole("region", { name: "Active subagents" })
+    await expect(activity.getByText("2 subagents working")).toBeVisible()
+    await expect(activity.getByRole("button", { name: "Open subagent conversation: Foreground task" })).toBeVisible()
+    await expect(activity.getByRole("button", { name: "Open subagent conversation: Background task" })).toBeVisible()
     await page.getByRole("button", { name: "3 running", exact: true }).click()
     const list = page.getByRole("menu", { name: "3 running", exact: true })
     await expect(list.getByRole("menuitem")).toHaveText([

@@ -57,7 +57,9 @@ test("keeps the parent title anchored when opening a subagent", async ({ page })
     await page.evaluate((direction) => (document.documentElement.dir = direction), direction)
     await expectSessionTitle(page, parentTitle)
 
-    const start = await titleInlineStart(page.locator("[data-session-title]").getByRole("heading", { name: parentTitle }))
+    const start = await titleInlineStart(
+      page.locator("[data-session-title]").getByRole("heading", { name: parentTitle }),
+    )
 
     await page.getByRole("button", { name: "Used 1 Agent", exact: true }).click()
     await page.locator(`a[href="${sessionHref(childID)}"]`).click()
@@ -77,39 +79,84 @@ test("keeps the parent title anchored when opening a subagent", async ({ page })
 
 test("navigates from a running subagent card and hides background controls in the child", async ({ page }) => {
   const runningChildID = "ses_running_child"
+  const nestedChildID = "ses_running_grandchild"
+  const childMessages: SessionMessageInfo[] = [
+    { id: "msg_child_user", type: "user", text: "Inspect the code", time: { created: 10 } },
+    {
+      id: "msg_child_reply",
+      type: "assistant",
+      agent: "explore",
+      model: { id: "model", providerID: "provider" },
+      content: [
+        { type: "text", text: "Inspecting the implementation." },
+        {
+          type: "tool",
+          id: "call_nested",
+          name: "subagent",
+          state: {
+            status: "running",
+            input: { description: "Check nested work" },
+            metadata: { sessionID: nestedChildID },
+          },
+          time: { created: 12 },
+        },
+      ],
+      time: { created: 11 },
+    },
+  ]
+  const parentMessages: SessionMessageInfo[] = [
+    { id: "msg_user", type: "user", text: "Run it", time: { created: 1 } },
+    {
+      id: "msg_assistant",
+      type: "assistant",
+      agent: "build",
+      model: { id: "model", providerID: "provider" },
+      content: [
+        {
+          type: "tool",
+          id: "call_subagent",
+          name: "subagent",
+          state: {
+            status: "running",
+            input: { description: "Inspect code" },
+            metadata: { status: "running", sessionID: runningChildID },
+          },
+          time: { created: 2 },
+        },
+      ],
+      time: { created: 2 },
+    },
+  ]
   await setupTimeline(page, {
     settings: { timelineDetail: { ...timelinePresets[2].value, subagents: { placement: "separate" } } },
-    sessionMessages: [
-      { id: "msg_user", type: "user", text: "Run it", time: { created: 1 } },
-      {
-        id: "msg_assistant",
-        type: "assistant",
-        agent: "build",
-        model: { id: "model", providerID: "provider" },
-        content: [
-          {
-            type: "tool",
-            id: "call_subagent",
-            name: "subagent",
-            state: {
-              status: "running",
-              input: { description: "Inspect code" },
-              metadata: { status: "running", sessionID: runningChildID },
-            },
-            time: { created: 2 },
-          },
-        ],
-        time: { created: 2 },
-      },
+    sessionMessages: parentMessages,
+    sessions: [
+      session(),
+      session({ id: runningChildID, parentID: sessionID, title: "Sleep for 5 minutes" }),
+      session({ id: nestedChildID, parentID: runningChildID, title: "Check nested work" }),
     ],
-    sessions: [session(), session({ id: runningChildID, parentID: sessionID, title: "Sleep for 5 minutes" })],
-    sessionStatus: { [sessionID]: { type: "busy" }, [runningChildID]: { type: "busy" } },
+    sessionStatus: {
+      [sessionID]: { type: "busy" },
+      [runningChildID]: { type: "busy" },
+      [nestedChildID]: { type: "busy" },
+    },
+    pageMessages: (id) => ({
+      items: id === runningChildID ? childMessages : id === nestedChildID ? [] : parentMessages,
+    }),
   })
   const hint = page.getByRole("button", { name: /move running work to the background/i })
   await expect(hint).toBeVisible()
-  await page.locator('[data-component="task-tool-card"]').click()
+  const activity = page.getByRole("region", { name: "Active subagents" })
+  await expect(activity.getByText("1 subagent working")).toBeVisible()
+  await activity.getByRole("button", { name: "Open subagent conversation: Inspect code" }).click()
   await expect(page).toHaveURL(new RegExp(`/session/${runningChildID}$`))
+  await expect(page.getByText("Inspecting the implementation.")).toBeVisible()
   await expect(hint).toHaveCount(0)
+  await page
+    .getByRole("region", { name: "Active subagents" })
+    .getByRole("button", { name: "Open subagent conversation: Check nested work" })
+    .click()
+  await expect(page).toHaveURL(new RegExp(`/session/${nestedChildID}$`))
 })
 
 test("opens a directly linked nested subagent in its root session tab", async ({ page }) => {
