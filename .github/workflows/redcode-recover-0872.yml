@@ -2,6 +2,11 @@ name: redcode-0.87.2-recovery
 
 on:
   workflow_dispatch:
+    inputs:
+      preview_platforms:
+        type: boolean
+        description: Show selected platforms without running builds, tests or publication
+        default: false
 
 permissions:
   contents: read
@@ -12,7 +17,71 @@ env:
   NPM_CONFIG_REGISTRY: https://registry.npmjs.org
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
+  ENABLE_LINUX_X64: ${{ vars.ENABLE_LINUX_X64 || 'true' }}
+  ENABLE_LINUX_ARM64: ${{ vars.ENABLE_LINUX_ARM64 || 'true' }}
+  ENABLE_WINDOWS_X64: ${{ vars.ENABLE_WINDOWS_X64 || 'true' }}
+  ENABLE_WINDOWS_ARM64: ${{ vars.ENABLE_WINDOWS_ARM64 || 'false' }}
+  ENABLE_MACOS_X64: ${{ vars.ENABLE_MACOS_X64 || 'false' }}
+  ENABLE_MACOS_ARM64: ${{ vars.ENABLE_MACOS_ARM64 || 'false' }}
+  ENABLE_LINUX_ARMV7: ${{ vars.ENABLE_LINUX_ARMV7 || 'false' }}
+  ENABLE_LINUX_X86: ${{ vars.ENABLE_LINUX_X86 || 'false' }}
 jobs:
+  platforms:
+    name: Select platforms
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions: {}
+    outputs:
+      linux_x64: ${{ steps.select.outputs.linux_x64 }}
+      linux_arm64: ${{ steps.select.outputs.linux_arm64 }}
+      windows_x64: ${{ steps.select.outputs.windows_x64 }}
+      windows_arm64: ${{ steps.select.outputs.windows_arm64 }}
+      macos_x64: ${{ steps.select.outputs.macos_x64 }}
+      macos_arm64: ${{ steps.select.outputs.macos_arm64 }}
+      linux_armv7: ${{ steps.select.outputs.linux_armv7 }}
+      linux_x86: ${{ steps.select.outputs.linux_x86 }}
+      any: ${{ steps.select.outputs.any }}
+      docker_platforms: ${{ steps.select.outputs.docker_platforms }}
+    steps:
+      - id: select
+        name: Filter platforms before allocating runners
+        shell: python
+        env:
+          PLATFORM_DEFAULTS: '{"linux_x64":true,"linux_arm64":true,"windows_x64":true,"windows_arm64":false,"macos_x64":false,"macos_arm64":false,"linux_armv7":false,"linux_x86":false}'
+          PLATFORM_AVAILABLE: '["linux_x64", "windows_x64"]'
+          PLATFORM_MATRICES: |
+            {}
+        run: |
+          import json
+          import os
+
+          defaults = json.loads(os.environ["PLATFORM_DEFAULTS"])
+          enabled = {}
+          for key in defaults:
+              name = "ENABLE_" + key.upper()
+              value = os.environ[name].lower()
+              if value not in ("true", "false"):
+                  raise SystemExit(f"{name} must be true or false, got {value!r}")
+              enabled[key] = value == "true"
+
+          matrices = json.loads(os.environ["PLATFORM_MATRICES"])
+          available = json.loads(os.environ["PLATFORM_AVAILABLE"])
+          output = {key: str(value).lower() for key, value in enabled.items()}
+          output["any"] = str(any(enabled[key] for key in available)).lower()
+          for job, entries in matrices.items():
+              selected = [entry["row"] for entry in entries if enabled[entry["flag"]]]
+              output["enabled_" + job] = str(bool(selected)).lower()
+              # A placeholder keeps GitHub's matrix schema valid when the job is skipped.
+              output["matrix_" + job] = json.dumps({"include": selected or [entries[0]["row"]]}, separators=(",", ":"))
+          docker = [target for key, target in (("linux_x64", "linux/amd64"), ("linux_arm64", "linux/arm64")) if enabled[key]]
+          output["docker_platforms"] = ",".join(docker)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as handle:
+              for key, value in output.items():
+                  handle.write(f"{key}={value}\n")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as handle:
+              handle.write("### Selected platforms\n\n")
+              for key in available:
+                  handle.write(f"- {key}: {str(enabled[key]).lower()}\n")
   audit:
     name: verify original release gates
     runs-on: ubuntu-24.04
@@ -40,9 +109,14 @@ jobs:
       - name: Verify version
         run: test "$(node -p 'require("./packages/redcode/package.json").version')" = '0.87.2'
 
+    needs:
+      - platforms
+    if: ${{ !inputs.preview_platforms && (needs.platforms.outputs.linux_x64 == 'true') }}
   migration_check:
     name: recheck Windows migration snapshot
-    needs: audit
+    needs:
+      - audit
+      - platforms
     runs-on: windows-2025
     timeout-minutes: 15
     defaults:
@@ -61,9 +135,12 @@ jobs:
         working-directory: packages/cli
         run: bun test test/migrate.test.ts -t 'history conversion reads a consistent WAL snapshot' --timeout 90000
 
+    if: ${{ !inputs.preview_platforms && (needs.platforms.outputs.windows_x64 == 'true') }}
   smoke:
     name: smoke original release archive
-    needs: audit
+    needs:
+      - audit
+      - platforms
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     outputs:
@@ -111,9 +188,14 @@ jobs:
           path: ${{ runner.temp }}/smoke-artifacts
           if-no-files-found: warn
 
+    if: ${{ !inputs.preview_platforms && (needs.platforms.outputs.linux_x64 == 'true') }}
   publish_github:
     name: publish (GitHub)
-    needs: [audit, smoke, migration_check]
+    needs:
+      - audit
+      - smoke
+      - migration_check
+      - platforms
     runs-on: ubuntu-latest
     # Each release carries the desktop app per platform, about 1.5 GB of uploads and downloads.
     timeout-minutes: 90
@@ -201,9 +283,14 @@ jobs:
           gh release edit "v$REDCODE_VERSION" --draft=false
           test "$(gh release view "v$REDCODE_VERSION" --json isDraft --jq .isDraft)" = 'false'
 
+    if: ${{ !inputs.preview_platforms && (always() && !cancelled() && needs.audit.result == 'success' && needs.smoke.result == 'success' && (needs.migration_check.result == 'success' || (needs.platforms.outputs.windows_x64 == 'false' && needs.migration_check.result == 'skipped'))) }}
   publish_npm:
     name: publish (npm)
-    needs: [audit, smoke, migration_check]
+    needs:
+      - audit
+      - smoke
+      - migration_check
+      - platforms
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: red-release
@@ -298,10 +385,17 @@ jobs:
           grep -F 'not included in the npm package' "$root/desktop.txt"
           test "$(npm view "@reddb-io/redcode@$REDCODE_VERSION" version --prefer-online)" = "$REDCODE_VERSION"
 
+    if: ${{ !inputs.preview_platforms && (always() && !cancelled() && needs.audit.result == 'success' && needs.smoke.result == 'success' && (needs.migration_check.result == 'success' || (needs.platforms.outputs.windows_x64 == 'false' && needs.migration_check.result == 'skipped'))) }}
   status:
     name: recovery release status
-    if: always()
-    needs: [audit, smoke, migration_check, publish_github, publish_npm]
+    if: ${{ !inputs.preview_platforms && (always() && needs.platforms.outputs.linux_x64 == 'true') }}
+    needs:
+      - audit
+      - smoke
+      - migration_check
+      - publish_github
+      - publish_npm
+      - platforms
     runs-on: ubuntu-24.04
     env:
       GITHUB_RESULT: ${{ needs.publish_github.result }}

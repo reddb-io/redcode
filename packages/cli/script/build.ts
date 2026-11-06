@@ -56,7 +56,7 @@ const allTargets: {
   { os: "win32", arch: "x64", avx2: false },
 ]
 
-const targets =
+const candidates =
   requestedTarget !== undefined
     ? allTargets.filter((item) => targetName(item) === requestedTarget)
     : singleFlag
@@ -66,7 +66,11 @@ const targets =
           return item.abi === undefined
         })
       : allTargets
-if (!targets.length) throw new Error(`Unknown build target: ${requestedTarget}`)
+const targets = candidates.filter((item) => {
+  const os = item.os === "win32" ? "WINDOWS" : item.os === "darwin" ? "MACOS" : "LINUX"
+  return process.env[`ENABLE_${os}_${item.arch.toUpperCase()}`] !== "false"
+})
+if (!targets.length) throw new Error(`No enabled build targets: ${requestedTarget ?? "all"}`)
 
 if (!skipInstall)
   await $`bun install --os="*" --cpu="*" @opentui/core@${pkg.dependencies["@opentui/core"]} @opencode-ai/pty@${pkg.dependencies["@opencode-ai/pty"]}`

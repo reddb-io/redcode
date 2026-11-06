@@ -16,6 +16,10 @@ on:
         required: true
         default: false
         type: boolean
+      preview_platforms:
+        type: boolean
+        description: Show selected platforms without running builds, tests or publication
+        default: false
 concurrency:
   group: redcode-${{ github.event_name == 'workflow_dispatch' && 'release' || github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
@@ -28,9 +32,208 @@ env:
   NPM_CONFIG_REGISTRY: https://registry.npmjs.org
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
+  ENABLE_LINUX_X64: ${{ vars.ENABLE_LINUX_X64 || 'true' }}
+  ENABLE_LINUX_ARM64: ${{ vars.ENABLE_LINUX_ARM64 || 'true' }}
+  ENABLE_WINDOWS_X64: ${{ vars.ENABLE_WINDOWS_X64 || 'true' }}
+  ENABLE_WINDOWS_ARM64: ${{ vars.ENABLE_WINDOWS_ARM64 || 'false' }}
+  ENABLE_MACOS_X64: ${{ vars.ENABLE_MACOS_X64 || 'false' }}
+  ENABLE_MACOS_ARM64: ${{ vars.ENABLE_MACOS_ARM64 || 'false' }}
+  ENABLE_LINUX_ARMV7: ${{ vars.ENABLE_LINUX_ARMV7 || 'false' }}
+  ENABLE_LINUX_X86: ${{ vars.ENABLE_LINUX_X86 || 'false' }}
 jobs:
+  platforms:
+    name: Select platforms
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions: {}
+    outputs:
+      linux_x64: ${{ steps.select.outputs.linux_x64 }}
+      linux_arm64: ${{ steps.select.outputs.linux_arm64 }}
+      windows_x64: ${{ steps.select.outputs.windows_x64 }}
+      windows_arm64: ${{ steps.select.outputs.windows_arm64 }}
+      macos_x64: ${{ steps.select.outputs.macos_x64 }}
+      macos_arm64: ${{ steps.select.outputs.macos_arm64 }}
+      linux_armv7: ${{ steps.select.outputs.linux_armv7 }}
+      linux_x86: ${{ steps.select.outputs.linux_x86 }}
+      any: ${{ steps.select.outputs.any }}
+      docker_platforms: ${{ steps.select.outputs.docker_platforms }}
+      matrix_sidecar: ${{ steps.select.outputs.matrix_sidecar }}
+      enabled_sidecar: ${{ steps.select.outputs.enabled_sidecar }}
+      matrix_desktop: ${{ steps.select.outputs.matrix_desktop }}
+      enabled_desktop: ${{ steps.select.outputs.enabled_desktop }}
+    steps:
+      - id: select
+        name: Filter platforms before allocating runners
+        shell: python
+        env:
+          PLATFORM_DEFAULTS: '{"linux_x64":true,"linux_arm64":true,"windows_x64":true,"windows_arm64":false,"macos_x64":false,"macos_arm64":false,"linux_armv7":false,"linux_x86":false}'
+          PLATFORM_AVAILABLE: '["linux_arm64", "linux_x64", "macos_arm64", "macos_x64", "windows_arm64", "windows_x64"]'
+          PLATFORM_MATRICES: |
+            {
+              "sidecar": [
+                {
+                  "flag": "linux_x64",
+                  "row": {
+                    "name": "linux-x64",
+                    "host": "ubuntu-latest",
+                    "target": "x86_64-linux-gnu.2.29",
+                    "file": "redcode-rpc-sidecar-linux-x64"
+                  }
+                },
+                {
+                  "flag": "linux_arm64",
+                  "row": {
+                    "name": "linux-arm64",
+                    "host": "ubuntu-latest",
+                    "target": "aarch64-linux-gnu.2.29",
+                    "file": "redcode-rpc-sidecar-linux-arm64"
+                  }
+                },
+                {
+                  "flag": "linux_x64",
+                  "row": {
+                    "name": "linux-x64-musl",
+                    "host": "ubuntu-latest",
+                    "target": "x86_64-linux-musl",
+                    "file": "redcode-rpc-sidecar-linux-x64-musl"
+                  }
+                },
+                {
+                  "flag": "linux_arm64",
+                  "row": {
+                    "name": "linux-arm64-musl",
+                    "host": "ubuntu-latest",
+                    "target": "aarch64-linux-musl",
+                    "file": "redcode-rpc-sidecar-linux-arm64-musl"
+                  }
+                },
+                {
+                  "flag": "windows_x64",
+                  "row": {
+                    "name": "windows-x64",
+                    "host": "ubuntu-latest",
+                    "target": "x86_64-windows-gnu",
+                    "file": "redcode-rpc-sidecar-windows-x64.exe"
+                  }
+                },
+                {
+                  "flag": "windows_arm64",
+                  "row": {
+                    "name": "windows-arm64",
+                    "host": "ubuntu-latest",
+                    "target": "aarch64-windows-gnu",
+                    "file": "redcode-rpc-sidecar-windows-arm64.exe"
+                  }
+                },
+                {
+                  "flag": "macos_x64",
+                  "row": {
+                    "name": "darwin-x64",
+                    "host": "macos-15-intel",
+                    "target": "",
+                    "file": "redcode-rpc-sidecar-darwin-x64"
+                  }
+                },
+                {
+                  "flag": "macos_arm64",
+                  "row": {
+                    "name": "darwin-arm64",
+                    "host": "macos-15",
+                    "target": "",
+                    "file": "redcode-rpc-sidecar-darwin-arm64"
+                  }
+                }
+              ],
+              "desktop": [
+                {
+                  "flag": "linux_x64",
+                  "row": {
+                    "name": "linux-x64",
+                    "host": "ubuntu-latest",
+                    "os": "linux",
+                    "arch": "x64"
+                  }
+                },
+                {
+                  "flag": "linux_arm64",
+                  "row": {
+                    "name": "linux-arm64",
+                    "host": "ubuntu-24.04-arm",
+                    "os": "linux",
+                    "arch": "arm64"
+                  }
+                },
+                {
+                  "flag": "macos_x64",
+                  "row": {
+                    "name": "darwin-x64",
+                    "host": "macos-15-intel",
+                    "os": "mac",
+                    "arch": "x64"
+                  }
+                },
+                {
+                  "flag": "macos_arm64",
+                  "row": {
+                    "name": "darwin-arm64",
+                    "host": "macos-15",
+                    "os": "mac",
+                    "arch": "arm64"
+                  }
+                },
+                {
+                  "flag": "windows_x64",
+                  "row": {
+                    "name": "windows-x64",
+                    "host": "windows-2025",
+                    "os": "win",
+                    "arch": "x64"
+                  }
+                },
+                {
+                  "flag": "windows_arm64",
+                  "row": {
+                    "name": "windows-arm64",
+                    "host": "windows-11-arm",
+                    "os": "win",
+                    "arch": "arm64"
+                  }
+                }
+              ]
+            }
+        run: |
+          import json
+          import os
+
+          defaults = json.loads(os.environ["PLATFORM_DEFAULTS"])
+          enabled = {}
+          for key in defaults:
+              name = "ENABLE_" + key.upper()
+              value = os.environ[name].lower()
+              if value not in ("true", "false"):
+                  raise SystemExit(f"{name} must be true or false, got {value!r}")
+              enabled[key] = value == "true"
+
+          matrices = json.loads(os.environ["PLATFORM_MATRICES"])
+          available = json.loads(os.environ["PLATFORM_AVAILABLE"])
+          output = {key: str(value).lower() for key, value in enabled.items()}
+          output["any"] = str(any(enabled[key] for key in available)).lower()
+          for job, entries in matrices.items():
+              selected = [entry["row"] for entry in entries if enabled[entry["flag"]]]
+              output["enabled_" + job] = str(bool(selected)).lower()
+              # A placeholder keeps GitHub's matrix schema valid when the job is skipped.
+              output["matrix_" + job] = json.dumps({"include": selected or [entries[0]["row"]]}, separators=(",", ":"))
+          docker = [target for key, target in (("linux_x64", "linux/amd64"), ("linux_arm64", "linux/arm64")) if enabled[key]]
+          output["docker_platforms"] = ",".join(docker)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as handle:
+              for key, value in output.items():
+                  handle.write(f"{key}={value}\n")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as handle:
+              handle.write("### Selected platforms\n\n")
+              for key in available:
+                  handle.write(f"- {key}: {str(enabled[key]).lower()}\n")
   plan:
-    if: github.repository == 'reddb-io/redcode'
+    if: ${{ !inputs.preview_platforms && ((github.repository == 'reddb-io/redcode') && (needs.platforms.outputs.any == 'true')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -102,46 +305,16 @@ jobs:
             echo "Publish: $PUBLISH"
           } >> "$GITHUB_STEP_SUMMARY"
 
+    needs:
+      - platforms
   sidecar:
-    if: github.event_name == 'workflow_dispatch'
-    needs: plan
+    if: ${{ !inputs.preview_platforms && ((github.event_name == 'workflow_dispatch') && (needs.platforms.outputs.enabled_sidecar == 'true')) }}
+    needs:
+      - plan
+      - platforms
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - { name: linux-x64, host: ubuntu-latest, target: x86_64-linux-gnu.2.29, file: redcode-rpc-sidecar-linux-x64 }
-          - {
-              name: linux-arm64,
-              host: ubuntu-latest,
-              target: aarch64-linux-gnu.2.29,
-              file: redcode-rpc-sidecar-linux-arm64,
-            }
-          - {
-              name: linux-x64-musl,
-              host: ubuntu-latest,
-              target: x86_64-linux-musl,
-              file: redcode-rpc-sidecar-linux-x64-musl,
-            }
-          - {
-              name: linux-arm64-musl,
-              host: ubuntu-latest,
-              target: aarch64-linux-musl,
-              file: redcode-rpc-sidecar-linux-arm64-musl,
-            }
-          - {
-              name: windows-x64,
-              host: ubuntu-latest,
-              target: x86_64-windows-gnu,
-              file: redcode-rpc-sidecar-windows-x64.exe,
-            }
-          - {
-              name: windows-arm64,
-              host: ubuntu-latest,
-              target: aarch64-windows-gnu,
-              file: redcode-rpc-sidecar-windows-arm64.exe,
-            }
-          - { name: darwin-x64, host: macos-15-intel, target: "", file: redcode-rpc-sidecar-darwin-x64 }
-          - { name: darwin-arm64, host: macos-15, target: "", file: redcode-rpc-sidecar-darwin-arm64 }
+      matrix: ${{ fromJSON(needs.platforms.outputs.matrix_sidecar) }}
     runs-on: ${{ matrix.host }}
     timeout-minutes: 35
     steps:
@@ -191,7 +364,7 @@ jobs:
           compression-level: 0
 
   design:
-    if: github.event_name == 'workflow_dispatch'
+    if: ${{ !inputs.preview_platforms && (github.event_name == 'workflow_dispatch') }}
     needs: plan
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -222,20 +395,15 @@ jobs:
           compression-level: 0
 
   desktop:
-    if: github.event_name == 'workflow_dispatch'
-    needs: plan
+    if: ${{ !inputs.preview_platforms && ((github.event_name == 'workflow_dispatch') && (needs.platforms.outputs.enabled_desktop == 'true')) }}
+    needs:
+      - plan
+      - platforms
     name: desktop (${{ matrix.name }})
     strategy:
       fail-fast: false
       # Each app is built on its own OS and architecture, so node-pty and Electron match without cross-compiling.
-      matrix:
-        include:
-          - { name: linux-x64, host: ubuntu-latest, os: linux, arch: x64 }
-          - { name: linux-arm64, host: ubuntu-24.04-arm, os: linux, arch: arm64 }
-          - { name: darwin-x64, host: macos-15-intel, os: mac, arch: x64 }
-          - { name: darwin-arm64, host: macos-15, os: mac, arch: arm64 }
-          - { name: windows-x64, host: windows-2025, os: win, arch: x64 }
-          - { name: windows-arm64, host: windows-11-arm, os: win, arch: arm64 }
+      matrix: ${{ fromJSON(needs.platforms.outputs.matrix_desktop) }}
     runs-on: ${{ matrix.host }}
     timeout-minutes: 45
     defaults:
@@ -297,8 +465,13 @@ jobs:
           retention-days: 7
 
   build:
-    if: github.event_name == 'workflow_dispatch'
-    needs: [plan, sidecar, design, desktop]
+    if: ${{ !inputs.preview_platforms && (github.event_name == 'workflow_dispatch') }}
+    needs:
+      - plan
+      - sidecar
+      - design
+      - desktop
+      - platforms
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
@@ -340,10 +513,13 @@ jobs:
           for file in "$RUNNER_TEMP"/desktop-artifact/desktop-*.tar; do
             tar -xf "$file" -C "$RUNNER_TEMP/desktop-dist"
           done
-          for target in linux-x64 linux-arm64 darwin-x64 darwin-arm64 windows-x64 windows-arm64; do
+          mapfile -t targets < <(jq -r '.include[].name' <<< "$DESKTOP_MATRIX")
+          for target in "${targets[@]}"; do
             test -d "$RUNNER_TEMP/desktop-dist/$target"
           done
           echo "REDCODE_DESKTOP_DIST=$RUNNER_TEMP/desktop-dist" >> "$GITHUB_ENV"
+        env:
+          DESKTOP_MATRIX: ${{ needs.platforms.outputs.matrix_desktop }}
       - name: Build Redcode native packages
         working-directory: packages/redcode
         env:
@@ -372,9 +548,11 @@ jobs:
             grep -E "^$agent \\(" /tmp/redcode-agents.txt
           done
           test "$("$binary" __design-app --version)" = "$REDCODE_VERSION"
+        if: env.ENABLE_LINUX_X64 == 'true'
       - name: Exercise the embedded Design child process
         working-directory: packages/design-app
         run: bun script/smoke.ts ../redcode/dist/redcode-linux-x64/bin/redcode --embedded
+        if: env.ENABLE_LINUX_X64 == 'true'
       - name: Archive full and server distributions
         working-directory: packages/redcode
         run: bun run archive
@@ -383,28 +561,31 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          tar -tzvf release/redcode-linux-x64.tar.gz > /tmp/redcode-linux-x64.txt
-          grep -E '^-rwx.* desktop/io\.reddb\.redcode$' /tmp/redcode-linux-x64.txt
-          grep -E ' desktop/resources/app\.asar$' /tmp/redcode-linux-x64.txt
-          tar -tzf release/redcode-darwin-arm64.tar.gz | grep -Fx 'desktop/Redcode.app/Contents/MacOS/Redcode'
-          unzip -Z1 release/redcode-windows-x64.zip | grep -Fx 'desktop/Redcode.exe'
-          # Server/worker archives carry the same engine without Electron.
-          for archive in release/redcode-server-*.tar.gz; do
-            if tar -tzf "$archive" | grep '^desktop/' > /dev/null; then
-              echo "Server archive carries a desktop app: $archive" >&2
-              exit 1
+          shopt -s nullglob
+          for archive in release/redcode-*.tar.gz release/redcode-*.zip; do
+            case "$archive" in
+              *whiteboard*) continue ;;
+              *.zip) listing=$(unzip -Z1 "$archive") ;;
+              *) listing=$(tar -tzf "$archive") ;;
+            esac
+            case "$archive" in
+              *server-*|*musl*)
+                if grep '^desktop/' <<< "$listing"; then
+                  echo "Unexpected desktop app in $archive" >&2
+                  exit 1
+                fi ;;
+              *darwin*) grep -Fx 'desktop/Redcode.app/Contents/MacOS/Redcode' <<< "$listing" ;;
+              *windows*) grep -Fx 'desktop/Redcode.exe' <<< "$listing" ;;
+              *)
+                grep -Fx 'desktop/io.reddb.redcode' <<< "$listing"
+                grep -Fx 'desktop/resources/app.asar' <<< "$listing"
+                tar -tzvf "$archive" | grep -E '^-rwx.* desktop/io\.reddb\.redcode$' ;;
+            esac
+            if [[ "$archive" == *.zip ]]; then
+              grep -Fx 'redcode.exe' <<< "$listing"
+              grep -Fx 'redcode-rpc-sidecar.exe' <<< "$listing"
             fi
           done
-          unzip -Z1 release/redcode-server-windows-x64.zip > /tmp/redcode-server-windows.txt
-          grep -Fx 'redcode.exe' /tmp/redcode-server-windows.txt
-          grep -Fx 'redcode-rpc-sidecar.exe' /tmp/redcode-server-windows.txt
-          if grep '^desktop/' /tmp/redcode-server-windows.txt; then exit 1; fi
-          # musl has no desktop app.
-          if tar -tzf release/redcode-linux-x64-musl.tar.gz | grep '^desktop/' > /dev/null; then
-            echo 'The musl archive must not carry the desktop app' >&2
-            exit 1
-          fi
-          # npm rejects the desktop app as too large; it ships only in the archives.
           if compgen -G 'dist/redcode-desktop-*' > /dev/null; then
             echo 'The npm packages must not carry the desktop app' >&2
             exit 1
@@ -438,11 +619,15 @@ jobs:
           retention-days: 7
           compression-level: 0
 
+        if: env.ENABLE_LINUX_X64 == 'true'
   smoke:
     # Exercise the exact shipped archive in a fresh home before publication, without model credentials.
     name: smoke (built binary)
-    if: inputs.run_smoke
-    needs: [plan, build]
+    if: ${{ !inputs.preview_platforms && (inputs.run_smoke && needs.platforms.outputs.linux_x64 == 'true') }}
+    needs:
+      - plan
+      - build
+      - platforms
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
@@ -499,8 +684,13 @@ jobs:
 
   publish_github:
     name: publish (GitHub)
-    if: always() && !cancelled() && needs.plan.result == 'success' && needs.build.result == 'success' && needs.design.result == 'success' && (!inputs.run_smoke || needs.smoke.result == 'success') && (inputs.publish && github.repository == 'reddb-io/redcode' && github.ref == 'refs/heads/main')
-    needs: [plan, build, design, smoke]
+    if: ${{ !inputs.preview_platforms && (always() && !cancelled() && needs.plan.result == 'success' && needs.build.result == 'success' && needs.design.result == 'success' && (!inputs.run_smoke || needs.platforms.outputs.linux_x64 == 'false' || needs.smoke.result == 'success') && (inputs.publish && github.repository == 'reddb-io/redcode' && github.ref == 'refs/heads/main')) }}
+    needs:
+      - plan
+      - build
+      - design
+      - smoke
+      - platforms
     runs-on: ubuntu-latest
     # Each release carries the desktop app per platform, about 1.5 GB of uploads and downloads.
     timeout-minutes: 90
@@ -561,6 +751,7 @@ jobs:
           gh release download "v$REDCODE_VERSION" --dir "$root/assets"
           (cd "$root/assets" && sha256sum --check SHA256SUMS)
           test -f "$root/assets/redcode-whiteboard-$REDCODE_VERSION.tar.gz"
+          if [[ "$ENABLE_LINUX_X64" == true ]]; then
           mkdir "$root/cli-native"
           tar -xzf "$root/assets/redcode-linux-x64.tar.gz" -C "$root/cli-native"
           test "$("$root/cli-native/redcode" --version)" = "redcode v$REDCODE_VERSION"
@@ -573,6 +764,7 @@ jobs:
           test -x "$root/cli-native/desktop/io.reddb.redcode"
           app=$(REDCODE_TEST_HOME="$root/home" "$root/cli-native/redcode" desktop --path | tail -n 1)
           test "$app" = "$root/cli-native/desktop/io.reddb.redcode"
+          fi
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PAT || github.token }}
@@ -583,8 +775,13 @@ jobs:
 
   publish_npm:
     name: publish (npm)
-    if: always() && !cancelled() && needs.plan.result == 'success' && needs.build.result == 'success' && needs.design.result == 'success' && (!inputs.run_smoke || needs.smoke.result == 'success') && (inputs.publish && github.repository == 'reddb-io/redcode' && github.ref == 'refs/heads/main')
-    needs: [plan, build, design, smoke]
+    if: ${{ !inputs.preview_platforms && (always() && !cancelled() && needs.plan.result == 'success' && needs.build.result == 'success' && needs.design.result == 'success' && (!inputs.run_smoke || needs.platforms.outputs.linux_x64 == 'false' || needs.smoke.result == 'success') && (inputs.publish && github.repository == 'reddb-io/redcode' && github.ref == 'refs/heads/main')) }}
+    needs:
+      - plan
+      - build
+      - design
+      - smoke
+      - platforms
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: red-release
@@ -663,6 +860,7 @@ jobs:
             fi
             sleep 30
           done
+          if [[ "$ENABLE_LINUX_X64" == true ]]; then
           npm install --prefer-online --prefix "$root/install" --ignore-scripts --no-audit --no-fund "@reddb-io/redcode@$REDCODE_VERSION"
           test "$("$root/install/node_modules/.bin/redcode" --version)" = "redcode v$REDCODE_VERSION"
           test -x "$root/install/node_modules/@reddb-io/redcode-linux-x64-baseline/bin/redcode-rpc-sidecar"
@@ -675,11 +873,12 @@ jobs:
           fi
           grep -F 'not included in the npm package' "$root/desktop.txt"
           test "$(npm view "@reddb-io/redcode@$REDCODE_VERSION" version --prefer-online)" = "$REDCODE_VERSION"
+          fi
 
   release_status:
     name: release status
-    if: always() && inputs.publish && github.repository == 'reddb-io/redcode' && github.ref == 'refs/heads/main'
-    needs: [plan, publish_github, publish_npm]
+    if: ${{ !inputs.preview_platforms && (always() && inputs.publish && github.repository == 'reddb-io/redcode' && github.ref == 'refs/heads/main') && needs.platforms.outputs.any == 'true' }}
+    needs: [plan, publish_github, publish_npm, platforms]
     runs-on: ubuntu-latest
     permissions: {}
     steps:
