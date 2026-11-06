@@ -1,6 +1,6 @@
 export * as SessionDiff from "./diff.js"
 
-import { and, asc, eq, gt, inArray, lt, or, sql } from "drizzle-orm"
+import { and, asc, eq, gt, lt, sql } from "drizzle-orm"
 import { Context, Effect, Schema } from "effect"
 import { Location } from "@opencode/schema/location"
 import { Database } from "../database/database.js"
@@ -56,46 +56,47 @@ export const turn = Effect.fn("SessionDiff.turn")(function* (
       field: input.from ? "from" : "to",
       message: "Session scope cannot be combined with a message range",
     })
-  const rows = yield* db
-    .select({ id: SessionMessageTable.id, type: SessionMessageTable.type, seq: SessionMessageTable.seq })
-    .from(SessionMessageTable)
-    .where(
-      and(
-        eq(SessionMessageTable.session_id, sessionID),
-        or(
-          inArray(SessionMessageTable.type, ["user", "idle"]),
-          input.from ? eq(SessionMessageTable.id, input.from) : undefined,
-          input.to ? eq(SessionMessageTable.id, input.to) : undefined,
-        ),
-      ),
-    )
-    .orderBy(asc(SessionMessageTable.seq))
-    .all()
-    .pipe(Effect.orDie)
-  const users = rows.filter((row) => row.type === "user")
-  const markers = rows.filter((row) => row.type === "idle")
+  // Read the type/sequence covering index, without visiting large message rows.
+  const boundaries = (type: "user" | "idle") =>
+    db
+      .select({ seq: SessionMessageTable.seq })
+      .from(SessionMessageTable)
+      .where(and(eq(SessionMessageTable.session_id, sessionID), eq(SessionMessageTable.type, type)))
+      .orderBy(asc(SessionMessageTable.seq))
+      .all()
+      .pipe(Effect.map((rows) => rows.map((row) => row.seq)), Effect.orDie)
+  const users = yield* boundaries("user")
+  const markers = yield* boundaries("idle")
   const resolve = Effect.fn(function* (field: "from" | "to", id: SessionMessage.ID) {
-    const row = rows.find((row) => row.id === id)
+    const row = yield* db
+      .select({ id: SessionMessageTable.id, type: SessionMessageTable.type, seq: SessionMessageTable.seq })
+      .from(SessionMessageTable)
+      .where(and(eq(SessionMessageTable.id, id), eq(SessionMessageTable.session_id, sessionID)))
+      .get()
+      .pipe(Effect.orDie)
     if (!row) return yield* new MessageNotFoundError({ sessionID, messageID: id })
     if (row.type !== "user")
       return yield* new TurnRangeError({ sessionID, field, message: `Message ${id} is not a user message` })
     return row
   })
-  const anchor = input.from
-    ? yield* resolve("from", input.from)
-    : input.scope === "session"
-      ? users[0]
-      : users[users.length - 1]
-  if (!anchor) return []
-  const last = input.to ? yield* resolve("to", input.to) : input.scope === "session" ? users[users.length - 1]! : anchor
-  if (last.seq < anchor.seq)
-    return yield* new TurnRangeError({ sessionID, field: "to", message: `Message ${last.id} precedes ${anchor.id}` })
+  const anchor = input.from ? (yield* resolve("from", input.from)).seq : input.scope === "session" ? users[0] : users.at(-1)
+  if (anchor === undefined) return []
+  const last = input.to ? (yield* resolve("to", input.to)).seq : input.scope === "session" ? users.at(-1)! : anchor
+  if (last < anchor) {
+    const anchorRow = yield* db
+      .select({ id: SessionMessageTable.id })
+      .from(SessionMessageTable)
+      .where(and(eq(SessionMessageTable.session_id, sessionID), eq(SessionMessageTable.seq, anchor)))
+      .get()
+      .pipe(Effect.orDie)
+    return yield* new TurnRangeError({ sessionID, field: "to", message: `Message ${input.to} precedes ${anchorRow?.id}` })
+  }
   // Without any marker, history predates idle markers and a prompt's turn ends at the next prompt.
   const legacy = markers.length === 0
   // The turn opens with the first prompt after the previous idle marker; the anchor itself is the latest candidate.
-  const opened = markers.findLast((row) => row.seq < anchor.seq)?.seq ?? -1
-  const start = legacy ? anchor.seq : (users.find((row) => row.seq > opened)?.seq ?? anchor.seq)
-  const end = legacy ? users.find((row) => row.seq > last.seq)?.seq : markers.find((row) => row.seq > last.seq)?.seq
+  const opened = markers.findLast((seq) => seq < anchor) ?? -1
+  const start = legacy ? anchor : (users.find((seq) => seq > opened) ?? anchor)
+  const end = legacy ? users.find((seq) => seq > last) : markers.find((seq) => seq > last)
   const switches = yield* db
     .select({
       seq: SessionMessageTable.seq,

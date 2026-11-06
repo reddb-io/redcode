@@ -18,6 +18,7 @@ import { Plugin } from "@opencode/core/plugin"
 import { PluginHost } from "@opencode/core/plugin/host"
 import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
 import { Provider } from "@opencode/core/provider"
+import { Model } from "@opencode/core/model"
 import { Reference } from "@opencode/core/reference"
 import { Skill } from "@opencode/core/skill"
 import { ShellSelect } from "@opencode/core/shell/select"
@@ -221,6 +222,40 @@ describe("config plugin reloads", () => {
     ),
   )
 
+  it.live("watches an existing ancestor of a missing config directory and loads it when created", () =>
+    Effect.acquireDisposable(Effect.promise(() => tmpdir())).pipe(
+      Effect.flatMap((tmp) => {
+        const missing = path.join(tmp.path, "missing")
+        const file = path.join(missing, "nested", "custom.json")
+        const subscriptions: { target: string; type: string; publish: (update: Watcher.Update) => void }[] = []
+        const invalid: string[] = []
+        const native = Watcher.Native.of({
+          subscribe: (input) =>
+            Effect.promise(async () => {
+              const watched = input.type === "file" ? path.dirname(input.target) : input.target
+              if (!(await fs.stat(watched).then((stat) => stat.isDirectory(), () => false))) invalid.push(watched)
+              subscriptions.push(input)
+              return { unsubscribe: () => Promise.resolve() }
+            }),
+        })
+        return Effect.gen(function* () {
+          const plugins = yield* Plugin.Service
+          const references = yield* Reference.Service
+          const host = yield* PluginHost.make(plugins)
+          yield* ConfigReferencePlugin.Plugin.effect(host)
+          yield* waitUntil(Effect.sync(() => subscriptions.some((item) => item.target === missing)))
+          expect(invalid).toEqual([])
+          yield* Effect.promise(async () => {
+            await fs.mkdir(path.dirname(file), { recursive: true })
+            await fs.writeFile(file, JSON.stringify({ references: { docs: "./docs" } }))
+          })
+          subscriptions.find((item) => item.target === missing)?.publish({ path: missing, type: "create" })
+          yield* waitUntil(references.list().pipe(Effect.map((items) => items.some((item) => item.name === "docs"))))
+        }).pipe(Effect.provide(liveConfig(tmp.path, native, { global: false, file })))
+      }),
+    ),
+  )
+
   for (const input of [
     { file: "opencode.json", empty: false },
     { file: "../opencode.jsonc", empty: false },
@@ -378,7 +413,35 @@ describe("config plugin reloads", () => {
       Effect.provideService(Global.Service, Global.Service.of(Global.make())),
     ),
   )
+
+  it.live("reloads model-only configuration changes without a provider change", () =>
+    Effect.gen(function* () {
+      const plugins = yield* Plugin.Service
+      const models = yield* Model.Service
+      const bus = yield* Bus.Service
+      const config = yield* Config.Test
+      const host = yield* PluginHost.make(plugins)
+      yield* ConfigProviderPlugin.Plugin.effect(host)
+      const provider = Provider.ID.make("first")
+      const model = Model.ID.make("chat")
+      expect((yield* models.get(provider, model))?.name).toBe("First model")
+      yield* config.setEntries([configDocument("Renamed model")])
+      yield* bus.publish(Event.Updated, {})
+      yield* waitUntil(models.get(provider, model).pipe(Effect.map((item) => item?.name === "Renamed model")))
+    }).pipe(
+      Effect.provide(Config.testLayer([configDocument("First model")])),
+      Effect.provideService(Global.Service, Global.Service.of(Global.make())),
+    ),
+  )
 })
+
+function configDocument(modelName: string) {
+  return new Document({
+    type: "document",
+    path: AbsolutePath.make(document),
+    info: decode({ providers: { first: { models: { chat: { name: modelName } } } } }),
+  })
+}
 
 function liveConfig(
   directory: string,

@@ -310,12 +310,20 @@ export function CurrentUserMessageDisplay(props: {
   }
   // Long prompts fold to about eight lines; the toggle appears only when the text overflows.
   const observeClamp = (element: HTMLDivElement) => {
+    let frame: number | undefined
     const observer = new ResizeObserver(() => {
-      if (state.expanded) return
-      setState("clamped", element.scrollHeight > element.clientHeight + 1)
+      if (frame !== undefined) cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => {
+        frame = undefined
+        if (state.expanded) return
+        setState("clamped", element.scrollHeight > element.clientHeight + 1)
+      })
     })
     observer.observe(element)
-    onCleanup(() => observer.disconnect())
+    onCleanup(() => {
+      observer.disconnect()
+      if (frame !== undefined) cancelAnimationFrame(frame)
+    })
   }
   const revert = async () => {
     if (!props.actions?.revert || state.reverting) return

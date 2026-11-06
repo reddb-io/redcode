@@ -31,6 +31,67 @@ const modelLayer = AppNodeBuilder.build(
 const it = testEffect(modelLayer)
 
 describe("Provider and Model", () => {
+  it.effect("reuses unchanged catalog snapshots while publishing real model and function changes", () =>
+    Effect.gen(function* () {
+      const providers = yield* Provider.Service
+      const models = yield* Model.Service
+      const bus = yield* Bus.Service
+      const providerID = Provider.ID.make("custom-fetch")
+      const templateID = Provider.ID.make("template-fetch")
+      const modelID = Model.ID.make("chat")
+      const first = async () => new Response("first")
+      const second = async () => new Response("second")
+      let fetcher = first
+      let context = 4096
+      const counts = new Map<string, number>()
+      yield* Effect.acquireRelease(
+        bus.listen((event) => Effect.sync(() => counts.set(event.type, (counts.get(event.type) ?? 0) + 1))),
+        (unsubscribe) => unsubscribe,
+      )
+      yield* providers.transform((editor) => {
+        editor.update(providerID, (provider) => {
+          provider.activation = "enabled"
+        })
+        editor.update(templateID, (provider) => {
+          provider.activation = "disabled"
+          provider.settings = { fetch: fetcher }
+        })
+        editor.models.update(providerID, modelID, () => {})
+      })
+      yield* models.transform((editor) => {
+        editor.update(providerID, modelID, (model) => {
+          model.limit.context = context
+        })
+      })
+      yield* settle(Effect.sync(() => (counts.get(Model.Event.Updated.type) ?? 0) >= 1))
+      const initial = yield* providers.snapshot()
+      const available = yield* models.available()
+      counts.clear()
+      yield* providers.reload()
+      yield* models.reload()
+      yield* Effect.yieldNow
+      expect(yield* providers.snapshot()).toBe(initial)
+      expect(yield* models.available()).toBe(available)
+      expect(counts.get(Provider.Event.Updated.type) ?? 0).toBe(0)
+      expect(counts.get(Model.Event.Updated.type) ?? 0).toBe(0)
+
+      fetcher = second
+      yield* providers.reload()
+      expect((yield* providers.get(templateID))?.settings?.fetch).toBe(second)
+      expect(yield* providers.snapshot()).not.toBe(initial)
+      expect(counts.get(Provider.Event.Updated.type)).toBe(1)
+      yield* Effect.yieldNow
+      counts.clear()
+      context = 8192
+      yield* models.reload()
+      expect((yield* models.get(providerID, modelID))?.limit.context).toBe(8192)
+      expect(counts.get(Model.Event.Updated.type)).toBe(1)
+      expect(Provider.sameValue({ fetch: first }, { fetch: second })).toBe(false)
+      expect(Provider.sameValue({ value: undefined }, {})).toBe(false)
+      expect(Provider.sameValue({ value: Number.NaN }, { value: Number.NaN })).toBe(true)
+      expect(Provider.sameValue(new Set(["a"]), new Set(["a"]))).toBe(false)
+    }),
+  )
   ;["variant", "empty-key", "metadata", "aisdk"].forEach((path) =>
     it.effect(`keeps nested model values editable after ${path} model resolution`, () =>
       Effect.gen(function* () {
@@ -358,7 +419,7 @@ describe("Provider and Model", () => {
     }).pipe(Effect.scoped, Effect.provide(localProviderLayer))
   })
 
-  it.effect("projects environment connections without a catalog plugin", () =>
+  it.effect("does not activate a provider just because a catalog environment variable exists", () =>
     Effect.acquireUseRelease(
       Effect.sync(() => {
         const previous = process.env.CATALOG_TEST_API_KEY
@@ -378,7 +439,7 @@ describe("Provider and Model", () => {
           )
           yield* providers.transform((editor) => editor.update(providerID, () => {}))
 
-          expect((yield* providers.available()).map((provider) => provider.id)).toContain(providerID)
+          expect((yield* providers.available()).map((provider) => provider.id)).not.toContain(providerID)
         }),
       (previous) =>
         Effect.sync(() => {

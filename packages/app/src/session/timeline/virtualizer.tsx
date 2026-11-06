@@ -65,7 +65,7 @@ type Input = {
   scroll: Accessor<{ overflow: boolean; jump: boolean }>
   onResumeScroll: () => void
   setScrollRef: (element: HTMLDivElement | undefined) => void
-  setContentRef: (element: HTMLDivElement) => void
+  onContentResize: () => void
   onScheduleScrollState: (element: HTMLDivElement) => void
   onPin: () => void
   onUnpin: () => void
@@ -498,7 +498,6 @@ export function createTimelineVirtualizer(input: Input) {
 
     if (root) input.setScrollRef(root)
 
-    if (virtualContent) input.setContentRef(virtualContent)
     queueMicrotask(() => {
       if (!active() || !root?.isConnected) return
       // A detached view can miss its nonzero ResizeObserver delivery. Publish
@@ -537,6 +536,14 @@ export function createTimelineVirtualizer(input: Input) {
       virtualizer.scrollToEnd()
     })
   })
+
+  // The virtualizer already knows the content height. Observing its element as
+  // well can trigger a ResizeObserver loop when row measurements change it.
+  createEffect(
+    on([active, () => virtualizer.getTotalSize() - rendering.scrollAdjustment], () => {
+      if (active()) input.onContentResize()
+    }),
+  )
 
   let coldPending = coldBottomMount
   let settleQueued = false
@@ -895,11 +902,7 @@ export function createTimelineVirtualizer(input: Input) {
           </Show>
           <div
             data-timeline-virtual-content
-            ref={(element) => {
-              virtualContent = element
-
-              if (active()) input.setContentRef(element)
-            }}
+            ref={virtualContent}
             style={{
               height: `${virtualizer.getTotalSize() - rendering.scrollAdjustment}px`,
               position: "relative",

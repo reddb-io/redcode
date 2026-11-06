@@ -16,6 +16,7 @@ import {
   type CatalogLimits,
 } from "../../plugin/provider/catalog-limits.js"
 import { Provider } from "../../provider.js"
+import { State } from "../../state.js"
 import { Variant } from "../../variant.js"
 import { ConfigModelReasoning } from "../model-reasoning.js"
 import { ConfigEntryObserver } from "./entry-observer.js"
@@ -51,7 +52,13 @@ export const Plugin = define({
     const loaded = yield* ConfigEntryObserver.observe(
       config,
       ctx.event,
-      warnWithoutCatalog.pipe(Effect.andThen(ctx.integration.reload()), Effect.andThen(ctx.provider.reload())),
+      State.batch(
+        warnWithoutCatalog.pipe(
+          Effect.andThen(ctx.integration.reload()),
+          Effect.andThen(ctx.provider.reload()),
+          Effect.andThen(ctx.model.reload()),
+        ),
+      ),
     )
     yield* warnWithoutCatalog
     yield* bus.subscribe(ModelsDev.Event.Refreshed).pipe(

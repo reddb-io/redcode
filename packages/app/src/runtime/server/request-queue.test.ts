@@ -214,11 +214,11 @@ describe("createRequestQueue", () => {
         data: {
           limit: 2,
           inflight: [
-            { method: "GET", url: "http://server/api/worktree?location[directory]=%2Fa", ms: 2_200 },
-            { method: "GET", url: "http://server/api/worktree?location[directory]=%2Fb", ms: 2_150 },
+            { method: "GET", url: "http://server/api/worktree", ms: 2_200 },
+            { method: "GET", url: "http://server/api/worktree", ms: 2_150 },
           ],
           queued: [
-            { method: "GET", url: "http://server/api/worktree?location[directory]=%2Fc", ms: 2_100 },
+            { method: "GET", url: "http://server/api/worktree", ms: 2_100 },
             { method: "GET", url: "http://server/api/info", ms: 2_000 },
           ],
         },

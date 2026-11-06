@@ -320,12 +320,9 @@ function routerPlugin(options: {
         loaded.connection = connection
         if (switched) yield* ctx.provider.reload()
         if (mcpServer() !== mcpBefore) yield* ctx.mcp.reload()
-        if (!connection) {
-          loaded.models = []
-          loaded.digest = undefined
-          yield* ctx.provider.reload()
-          return
-        }
+        // A disconnect was already cleared and published above. Polling an
+        // unconfigured router must not rebuild every provider in the location.
+        if (!connection) return
         const cacheKey = `${options.id}:models:${Hash.sha256(`${connection.baseURL}\n${connection.key}`)}`
         // Hydrate on cold start or account switch. Re-reading the same catalog on every poll
         // rebuilt all definitions and notified clients even when the router returned no changes.

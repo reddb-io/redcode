@@ -20,7 +20,6 @@ export function createSessionTimelineInteraction(session: SessionModel) {
     follow: { sessionKey: string; pinned: boolean }
     refs: {
       scroller: HTMLDivElement | undefined
-      content: HTMLDivElement | undefined
       dock: HTMLDivElement | undefined
     }
   }>({
@@ -36,7 +35,6 @@ export function createSessionTimelineInteraction(session: SessionModel) {
     },
     refs: {
       scroller: undefined,
-      content: undefined,
       dock: undefined,
     },
   })
@@ -324,13 +322,6 @@ export function createSessionTimelineInteraction(session: SessionModel) {
     ),
   )
   createResizeObserver(
-    () => state.refs.content,
-    () => {
-      if (scroller) scheduleScrollState(scroller)
-      fill()
-    },
-  )
-  createResizeObserver(
     () => state.refs.dock,
     ({ height }) => {
       const next = Math.ceil(height)
@@ -378,10 +369,9 @@ export function createSessionTimelineInteraction(session: SessionModel) {
       pinned,
       selectionInteraction,
       scheduleScrollState,
-      setContentRef: (element: HTMLDivElement | undefined) => {
-        setState("refs", "content", element)
-
+      contentResized: () => {
         if (scroller) scheduleScrollState(scroller)
+        fill()
       },
       setDockRef: (element: HTMLDivElement | undefined) => {
         setState("refs", "dock", element)

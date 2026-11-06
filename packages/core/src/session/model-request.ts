@@ -419,17 +419,24 @@ export const layer = Layer.effect(
         hasHttpHooks
           ? (req, handler) =>
               Effect.gen(function* () {
-                const before = yield* hooks.trigger("session", "http.request", {
-                  ...scope,
-                  request: yield* HttpClientRequest.toWeb(req),
-                })
-                let sent = HttpClientRequest.fromWeb(before.request)
-                if (before.request.body)
-                  sent = HttpClientRequest.bodyUint8Array(
-                    sent,
-                    new Uint8Array(yield* Effect.promise(() => before.request.clone().arrayBuffer())),
-                    before.request.headers.get("content-type") ?? undefined,
-                  )
+                const webRequest = yield* HttpClientRequest.toWeb(req)
+                const before = yield* hooks.trigger("session", "http.request", { ...scope, request: webRequest })
+                // Header-only hooks cannot replace the immutable body. Reuse it instead of
+                // holding a second copy of the full conversation throughout the request.
+                const converted = HttpClientRequest.fromWeb(before.request)
+                const sent =
+                  before.request === webRequest
+                    ? HttpClientRequest.setBody(converted, req.body).pipe(
+                        // setBody derives content headers; the hook's explicit changes take precedence.
+                        HttpClientRequest.updateHeaders(() => converted.headers),
+                      )
+                    : before.request.body
+                      ? HttpClientRequest.bodyUint8Array(
+                          converted,
+                          new Uint8Array(yield* Effect.promise(() => before.request.clone().arrayBuffer())),
+                          before.request.headers.get("content-type") ?? undefined,
+                        )
+                      : converted
                 const res = yield* handler(sent)
                 const after = yield* hooks.trigger("session", "http.response", {
                   ...scope,

@@ -13,6 +13,7 @@ import {
   directory,
   messageUpdated,
   mockTimelineMonitors,
+  partDelta,
   partUpdated,
   reasoningPart,
   renderedPartID,
@@ -29,6 +30,38 @@ import {
 } from "../utils/timeline"
 
 const detailed = timelinePresets[2].value
+
+test("grows a streaming row without ResizeObserver loop errors", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.addEventListener("error", (event) => {
+      if (!event.message.startsWith("ResizeObserver loop")) return
+      document.documentElement.dataset.resizeObserverLoops = String(
+        Number(document.documentElement.dataset.resizeObserverLoops ?? 0) + 1,
+      )
+    })
+  })
+  const timeline = await setupTimeline(page, {
+    messages: [userMessage(), assistantMessage([textPart("prt_growth", "Streaming.")], { completed: false })],
+  })
+  const text = page.locator(`[data-timeline-part-id="${renderedPartID("prt_growth")}"]`)
+  for (const line of [1, 2, 3, 4, 5, 6]) {
+    await timeline.send(partDelta("prt_growth", `\n\nParagraph ${line}.`))
+    await expect(text).toContainText(`Paragraph ${line}.`)
+  }
+  await expect(text.locator("p")).toHaveCount(7)
+  expect(await page.evaluate(() => document.documentElement.dataset.resizeObserverLoops)).toBeUndefined()
+})
+
+test("long user messages can be expanded and collapsed", async ({ page }) => {
+  await setupTimeline(page, { messages: [userMessage([userText("A long message.\n".repeat(20))])] })
+  const expand = page.getByRole("button", { name: "Expand message" })
+  await expect(expand).toHaveAttribute("aria-expanded", "false")
+  await expand.click()
+  const collapse = page.getByRole("button", { name: "Collapse message" })
+  await expect(collapse).toHaveAttribute("aria-expanded", "true")
+  await collapse.click()
+  await expect(expand).toHaveAttribute("aria-expanded", "false")
+})
 
 const user = { id: "msg_user", type: "user", text: "Run it", time: { created: 1 } } satisfies SessionMessageInfo
 

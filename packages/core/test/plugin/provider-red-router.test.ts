@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { Credential } from "@opencode/core/credential"
+import { Bus } from "@opencode/core/bus"
 import { Integration } from "@opencode/core/integration"
 import { KV } from "@opencode/core/kv"
 import { Mcp } from "@opencode/core/mcp/index"
@@ -8,12 +9,13 @@ import { Plugin } from "@opencode/core/plugin"
 import { PluginHooks } from "@opencode/core/plugin/hooks"
 import { PluginHost } from "@opencode/core/plugin/host"
 import { catalogLimits } from "@opencode/core/plugin/provider/catalog-limits"
-import { catalogChanges, RedRouterPlugin, routerModel } from "@opencode/core/plugin/provider/red-router"
+import { catalogChanges, NineRouterPlugin, RedRouterPlugin, routerModel } from "@opencode/core/plugin/provider/red-router"
 import { Provider } from "@opencode/core/provider"
 import { ProviderRouter } from "@opencode/core/provider-router"
 import { Agent } from "@opencode/schema/agent"
 import { SessionID } from "@opencode/schema/session-id"
-import { Effect, Schedule } from "effect"
+import { Effect, Schedule, Stream } from "effect"
+import { TestClock } from "effect/testing"
 import { withEnv } from "../fixture/env"
 import { emptyMcp } from "../fixture/mcp"
 import { advance, drain } from "../lib/clock"
@@ -43,6 +45,25 @@ const addPlugin = Effect.fn(function* () {
 })
 
 describe("RedRouterPlugin", () => {
+  it.effect("does not rebuild the catalog when unconfigured routers poll", () =>
+    Effect.gen(function* () {
+      const bus = yield* Bus.Service
+      const plugin = yield* Plugin.Service
+      const host = yield* PluginHost.make(plugin)
+      let updates = 0
+      yield* bus.subscribe(Provider.Event.Updated).pipe(
+        Stream.runForEach(() => Effect.sync(() => updates++)),
+        Effect.forkScoped({ startImmediately: true }),
+      )
+      yield* RedRouterPlugin.effect(host)
+      yield* NineRouterPlugin.effect(host)
+      yield* drain
+      updates = 0
+      yield* TestClock.adjust("5 minutes")
+      yield* drain
+      expect(updates).toBe(0)
+    }),
+  )
   test("keeps Jev Router in S2 and excludes typed decision evaluators", () => {
     const names = { providers: new Map<string, string>(), models: new Map<string, string>(), limits: known() }
     const map = (item: Parameters<typeof routerModel>[0]) => routerModel(item, Provider.ID.make("red-router"), names)

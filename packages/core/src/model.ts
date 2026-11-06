@@ -176,14 +176,13 @@ const layer = Layer.effect(
       notify: () => notify,
     })
     yield* Effect.addFinalizer(() => State.shutdown(state.reload()))
-    let cached:
-      | {
-          data: Data
-          all: readonly Info[]
-          available: readonly Info[]
-          byProvider: ReadonlyMap<Provider.ID, ReadonlyMap<ID, Info>>
-        }
-      | undefined
+    type Snapshot = {
+      readonly defaultModel: Data["defaultModel"]
+      readonly all: readonly Info[]
+      readonly available: readonly Info[]
+      readonly byProvider: ReadonlyMap<Provider.ID, ReadonlyMap<ID, Info>>
+    }
+    let cached: { data: Data; value: Snapshot } | undefined
     // An unedited model keeps its shared definition object across rebuilds, so its merged output is reusable.
     const merged = new WeakMap<Info, { provider: Provider.Info | undefined; model: Info }>()
     const read = Effect.fn("Model.snapshot")(function* () {
@@ -194,7 +193,7 @@ const layer = Layer.effect(
           state.invalidate()
         }
         const data = state.get()
-        if (cached?.data === data) return cached
+        if (cached?.data === data) return cached.value
         // A failed model transform can remove its plugin's provider/integration registrations.
         // Re-materialize from the surviving inputs, not from the failed candidate's seed.
         if (current !== (yield* providers.snapshot())) continue
@@ -218,8 +217,10 @@ const layer = Layer.effect(
                     headers: Provider.mergeHeaders(provider?.headers, model.headers),
                     body: Provider.mergeOverlay(provider?.body, model.body),
                   } satisfies Info
-                  merged.set(model, { provider, model: value })
-                  return [id, value]
+                  const previous = cached?.value.byProvider.get(providerID)?.get(id)
+                  const resolved = previous && Provider.sameValue(previous, value) ? previous : value
+                  merged.set(model, { provider, model: resolved })
+                  return [id, resolved]
                 }),
               ),
             ]
@@ -228,8 +229,19 @@ const layer = Layer.effect(
         const all = Array.from(byProvider.values())
           .flatMap((models) => Array.from(models.values()))
           .sort(preference)
-        cached = freeze({ data, all, available: all.filter((model) => model.enabled), byProvider }, true)
-        return cached
+        if (
+          cached &&
+          cached.value.defaultModel?.providerID === data.defaultModel?.providerID &&
+          cached.value.defaultModel?.modelID === data.defaultModel?.modelID &&
+          cached.value.all.length === all.length &&
+          cached.value.all.every((model, index) => model === all[index])
+        ) {
+          cached = { data, value: cached.value }
+          return cached.value
+        }
+        const value = freeze({ defaultModel: data.defaultModel, all, available: all.filter((model) => model.enabled), byProvider }, true)
+        cached = { data, value }
+        return value
       }
     })
     const prepare = providers.snapshot().pipe(
@@ -242,7 +254,7 @@ const layer = Layer.effect(
       ),
     )
     const reload = () => prepare.pipe(Effect.andThen(state.reload()))
-    let published: typeof cached
+    let published: Snapshot | undefined
     const notify: Effect.Effect<void> = Effect.gen(function* () {
       const value = yield* read()
       if (value === published) return
@@ -269,7 +281,7 @@ const layer = Layer.effect(
       available: Effect.fn("Model.available")(() => read().pipe(Effect.map((value) => value.available))),
       default: Effect.fn("Model.default")(function* () {
         const value = yield* read()
-        const requested = value.data.defaultModel
+        const requested = value.defaultModel
         const model = requested && value.byProvider.get(requested.providerID)?.get(requested.modelID)
         return model?.enabled ? model : value.available[0]
       }),

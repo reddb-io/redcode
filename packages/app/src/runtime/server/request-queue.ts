@@ -51,13 +51,16 @@ export function createRequestQueue(input: {
   // Call the browser fetch unbound; `input.fetch(...)` would make `this` the options object.
   const base = input.fetch
   const now = input.now ?? Date.now
-  const log = input.log ?? ((message, data) => console.warn(`[server-request-queue] ${message}`, data))
+  const log = input.log ?? ((message, data) => console.warn(`[server-request-queue] ${message} ${JSON.stringify(data)}`))
   const inflight = new Set<Entry>()
   const waiting: Array<{ entry: Entry; start: () => void }> = []
   let warned = -Infinity
   let watcher: ReturnType<typeof setTimeout> | undefined
 
-  const describe = (entry: Entry) => ({ method: entry.method, url: entry.url, ms: now() - entry.at })
+  const describe = (entry: Entry) => {
+    const url = new URL(entry.url)
+    return { method: entry.method, url: `${url.origin}${url.pathname}`, ms: now() - entry.at }
+  }
 
   // Debug exports include the console, so list what the server is busy with while requests wait.
   const watch = () => {

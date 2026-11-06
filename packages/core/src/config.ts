@@ -289,7 +289,23 @@ export const layer = (options?: Options) =>
       const requestReload = PubSub.publish(reloads, undefined).pipe(Effect.asVoid)
       const watched = yield* FiberMap.make<string>()
       const reconcile = Effect.fn("Config.reconcileWatches")(function* (sources: ConfigDiscovery.Sources) {
-        const plan = ConfigWatch.plan(sources, [globalService.data, globalService.cache, globalService.state])
+        const desired = ConfigWatch.plan(sources, [globalService.data, globalService.cache, globalService.state])
+        const plan = new Map<string, Watcher.WatchInput>()
+        for (const target of desired.values()) {
+          let missing = target.path
+          while (!(yield* fs.isDir(missing))) {
+            const parent = path.dirname(missing)
+            if (parent === missing) break
+            missing = parent
+          }
+          // Watch the first missing component from its existing parent. Once it
+          // appears, discovery moves the watch deeper or installs the real one.
+          const resolved: Watcher.WatchInput =
+            missing === target.path
+              ? target
+              : { type: "file", path: path.join(missing, path.relative(missing, target.path).split(path.sep)[0]!) }
+          plan.set(JSON.stringify(resolved), resolved)
+        }
         for (const key of Array.from(watched, ([key]) => key)) {
           if (!plan.has(key)) yield* FiberMap.remove(watched, key)
         }

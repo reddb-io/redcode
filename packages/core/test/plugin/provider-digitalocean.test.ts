@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test"
-import { Clock, Effect, Schedule } from "effect"
+import { Clock, Effect, Schedule, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http"
 import { Credential } from "@opencode/core/credential"
+import { Bus } from "@opencode/core/bus"
 import { Integration } from "@opencode/core/integration"
 import { Model } from "@opencode/core/model"
 import { Plugin } from "@opencode/core/plugin"
@@ -73,6 +74,48 @@ const status = Effect.fn(function* (attempt: Integration.Attempt) {
 })
 
 describe("DigitalOceanPlugin", () => {
+  it.effect("does not rebuild the catalog when an unconfigured account polls", () =>
+    Effect.gen(function* () {
+      const bus = yield* Bus.Service
+      const fixture = yield* discovery
+      let updates = 0
+      yield* bus.subscribe(Provider.Event.Updated).pipe(
+        Stream.runForEach(() => Effect.sync(() => updates++)),
+        Effect.forkScoped({ startImmediately: true }),
+      )
+      yield* fixture.install
+      yield* drain
+      updates = 0
+      yield* TestClock.adjust("5 minutes")
+      yield* drain
+      expect(fixture.remote.requests).toHaveLength(0)
+      expect(updates).toBe(0)
+    }),
+  )
+
+  it.effect("keeps polling a connected account without publishing an unchanged inventory", () =>
+    Effect.gen(function* () {
+      const fixture = yield* discovery
+      yield* oauthCredential()
+      yield* fixture.install
+      yield* drain
+      const bus = yield* Bus.Service
+      let updates = 0
+      yield* bus.subscribe(Provider.Event.Updated).pipe(
+        Stream.runForEach(() => Effect.sync(() => updates++)),
+        Effect.forkScoped({ startImmediately: true }),
+      )
+      yield* TestClock.adjust("5 minutes")
+      yield* drain
+      expect(fixture.remote.requests).toHaveLength(2)
+      expect(updates).toBe(0)
+      fixture.remote.body = { model_routers: [{ name: "beta" }] }
+      yield* TestClock.adjust("5 minutes")
+      yield* drain
+      expect(yield* fixture.models.get(providerID, Model.ID.make("router:beta"))).toBeDefined()
+      expect(updates).toBeGreaterThan(0)
+    }),
+  )
   test("is registered alongside the other provider plugins", () => {
     expect(ProviderPlugins.map((item) => item.id)).toContain("opencode.provider.digitalocean")
   })

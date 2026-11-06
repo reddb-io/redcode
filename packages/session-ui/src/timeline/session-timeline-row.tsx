@@ -506,6 +506,7 @@ export function createSessionTimelineRowRenderer(input: {
       classList={{
         "min-w-0 w-full max-w-full": true,
         "md:max-w-session md:mx-auto": input.centered?.(),
+        "pb-2": Predicate.isTagged(props.row, "UserMessage"),
         "pt-2": !step(props.row) && Predicate.isTagged(props.row, "AssistantPart") && props.row.spacing === "tool",
         "pt-4": !step(props.row) && Predicate.isTagged(props.row, "AssistantPart") && props.row.spacing === "content",
         "pt-6": Predicate.isTagged(props.row, "Error"),
@@ -729,7 +730,7 @@ export function createSessionTimelineRowRenderer(input: {
   }
 
   const render = (row: Accessor<TimelineRow.TimelineRow>, onSizeChange?: () => void) => {
-    if (Predicate.isTagged(row(), "TurnGap")) return <div data-timeline-row="TurnGap" aria-hidden="true" class="h-6" />
+    if (Predicate.isTagged(row(), "TurnGap")) return <div data-timeline-row="TurnGap" aria-hidden="true" class="h-8" />
 
     if (Predicate.isTagged(row(), "UserMessage")) {
       const current = () => {

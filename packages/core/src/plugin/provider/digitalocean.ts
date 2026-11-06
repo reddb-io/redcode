@@ -168,7 +168,16 @@ export const DigitalOceanPlugin = define({
         })
       }
     })
-    const refresh = () => loading.withPermit(load().pipe(Effect.andThen(ctx.provider.reload())))
+    const refresh = () =>
+      loading.withPermit(
+        Effect.gen(function* () {
+          const before = loaded.routers.map((router) => router.name)
+          yield* load()
+          if (before.length === loaded.routers.length && before.every((name, index) => name === loaded.routers[index]?.name))
+            return
+          yield* ctx.provider.reload()
+        }),
+      )
     yield* bus.subscribe(Credential.Event.Switched).pipe(
       Stream.filter((event) => event.data.integrationID === integrationID),
       Stream.runForEach(refresh),
