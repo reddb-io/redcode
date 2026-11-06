@@ -1,5 +1,11 @@
 # @reddb-io/redcode
 
+## 0.87.12
+
+### Patch Changes
+
+- Show active subagents in the conversation with direct access to their sessions, including background and nested work.
+
 ## 0.87.11
 
 ### Patch Changes
