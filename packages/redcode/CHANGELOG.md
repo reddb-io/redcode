@@ -1,5 +1,11 @@
 # @reddb-io/redcode
 
+## 0.87.13
+
+### Patch Changes
+
+- Add a direct Memory shortcut on Home and restore compatibility with legacy session permission rules.
+
 ## 0.87.12
 
 ### Patch Changes
