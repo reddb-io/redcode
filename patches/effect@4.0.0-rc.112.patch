@@ -1,0 +1,70 @@
+diff --git a/dist/internal/effect.js b/dist/internal/effect.js
+--- a/dist/internal/effect.js
++++ b/dist/internal/effect.js
+@@ -870,15 +870,18 @@ const makeFn = (name, bodyOrOptions, defError, pipeables, addSpan, spanOptions)
+     const callError = new globalThis.Error();
+     setStackTraceLimit(prevLimit);
+-    return updateService(addSpan ? useSpan(name, spanOptions, span => provideParentSpan(result, span)) : result, CurrentStackFrame, prev => ({
+-      name,
+-      stack: fnStackCleaner(() => callError.stack),
+-      parent: {
+-        name: `${name} (definition)`,
+-        stack: fnStackCleaner(() => defError.stack),
+-        parent: prev
+-      }
+-    }));
++    return updateService(addSpan ? useSpan(name, spanOptions, span => provideParentSpan(result, span)) : result, CurrentStackFrame, makeCallFrame(name, callError, defError));
+   });
+ };
++// Built outside the traced function so the frame's stack closures cannot capture
++// that call's `arguments`. Detached fibers may retain this frame indefinitely.
++const makeCallFrame = (name, callError, defError) => prev => ({
++  name,
++  stack: fnStackCleaner(() => callError.stack),
++  parent: {
++    name: `${name} (definition)`,
++    stack: fnStackCleaner(() => defError.stack),
++    parent: prev
++  }
++});
+ /** @internal */
+ export const fnUntracedEager = (body, ...pipeables) => defineFunctionLength(body.length, pipeables.length === 0 ? function () {
+diff --git a/src/internal/effect.ts b/src/internal/effect.ts
+--- a/src/internal/effect.ts
++++ b/src/internal/effect.ts
+@@ -1289,17 +1289,26 @@ const makeFn = (
+         result,
+       CurrentStackFrame,
+-      (prev) => ({
+-        name,
+-        stack: fnStackCleaner(() => callError.stack),
+-        parent: {
+-          name: `${name} (definition)`,
+-          stack: fnStackCleaner(() => defError.stack),
+-          parent: prev
+-        }
+-      })
++      makeCallFrame(name, callError, defError)
+     )
+   })
+ }
+ 
++// Built outside the traced function so the frame's stack closures cannot capture
++// that call's `arguments`. Detached fibers may retain this frame indefinitely.
++const makeCallFrame = (
++  name: string,
++  callError: Error,
++  defError: Error
++) =>
++(prev: StackFrame | undefined): StackFrame => ({
++  name,
++  stack: fnStackCleaner(() => callError.stack),
++  parent: {
++    name: `${name} (definition)`,
++    stack: fnStackCleaner(() => defError.stack),
++    parent: prev
++  }
++})
++
+ /** @internal */
+ export const fnUntracedEager: Effect.fn.Untraced = (

@@ -13,9 +13,34 @@ import { Money } from "@opencode/schema/money"
 import { Permission } from "@opencode/schema/permission"
 
 const decodeRevert = Schema.decodeUnknownSync(PersistedRevert)
-const decodePermissions = Schema.decodeUnknownSync(Permission.Ruleset)
+const isPermissionRule = Schema.is(Permission.Rule)
 
-export function fromRow(row: typeof SessionTable.$inferSelect): SessionSchema.Info {
+function permissions(value: unknown, invalid?: (count: number) => void) {
+  if (value === undefined || value === null) return undefined
+  if (!Array.isArray(value)) {
+    invalid?.(1)
+    return undefined
+  }
+  let dropped = 0
+  const rules = value.flatMap((item) => {
+    const rule =
+      typeof item === "object" && item !== null &&
+      "permission" in item && "pattern" in item && "action" in item &&
+      !("resource" in item) && !("effect" in item)
+        ? { action: item.permission, resource: item.pattern, effect: item.action }
+        : item
+    if (isPermissionRule(rule)) return [rule]
+    dropped += 1
+    return []
+  })
+  if (dropped) invalid?.(dropped)
+  return rules
+}
+
+export function fromRow(
+  row: typeof SessionTable.$inferSelect,
+  options: { invalidPermissions?: (count: number) => void } = {},
+): SessionSchema.Info {
   return SessionSchema.Info.make({
     id: SessionSchema.ID.make(row.id),
     projectID: Project.ID.make(row.project_id),
@@ -55,21 +80,8 @@ export function fromRow(row: typeof SessionTable.$inferSelect): SessionSchema.In
     subpath: row.path ? RelativePath.make(row.path) : undefined,
     metadata: row.metadata ?? undefined,
     // Older OpenCode sessions stored rules as { permission, pattern, action }.
-    // Translate only that exact representation; preserve the scope and effect.
-    permissions: row.permission
-      ? decodePermissions(
-          row.permission.map((rule) => {
-            const legacy: unknown = rule
-            if (
-              typeof legacy === "object" && legacy !== null &&
-              "permission" in legacy && "pattern" in legacy && "action" in legacy &&
-              !("resource" in legacy) && !("effect" in legacy)
-            )
-              return { action: legacy.permission, resource: legacy.pattern, effect: legacy.action }
-            return rule
-          }),
-        )
-      : undefined,
+    // Translate that exact representation and quarantine malformed rules instead of breaking every session listing.
+    permissions: permissions(row.permission, options.invalidPermissions),
     revert: row.revert ? decodeRevert(row.revert) : undefined,
     outcome: row.idle_outcome ?? undefined,
     time: {

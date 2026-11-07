@@ -16,7 +16,7 @@ const methodID = Integration.MethodID.make("oauth")
 
 const remote = (url: string) => new ConfigMCP.Remote({ type: "remote", url, oauth: { client_id: "client" } })
 
-const credential = (input: { access: string; refresh: string; expires?: number; url: string }) =>
+const credential = (input: { access: string; refresh: string; expires?: number; url: string; issuer?: string | null }) =>
   new Credential.Info({
     id: Credential.ID.make("cred_test"),
     integrationID,
@@ -27,7 +27,11 @@ const credential = (input: { access: string; refresh: string; expires?: number; 
       access: input.access,
       refresh: input.refresh,
       expires: input.expires ?? Date.now() - 1000,
-      metadata: { serverUrl: input.url, tokenType: "Bearer" },
+      metadata: {
+        serverUrl: input.url,
+        tokenType: "Bearer",
+        ...(input.issuer === null ? {} : { issuer: input.issuer ?? new URL(input.url).origin }),
+      },
     },
   })
 
@@ -219,6 +223,15 @@ describe("MCP OAuth", () => {
     const stored = store.rows.get(Credential.ID.make("cred_test"))?.value
     expect(stored?.type === "oauth" && stored.access).toBe("next")
     expect(stored?.type === "oauth" && stored.metadata?.issuer).toBe(server.url.href)
+  })
+
+  test("requires a new login for a legacy credential without an issuer", async () => {
+    const url = authServer.url.href
+    const store = memoryCredentials([credential({ access: "legacy", refresh: "legacy-refresh", url, issuer: null })])
+    const oauthProvider = await connectProvider(remote(url), store)
+
+    expect(store.rows.size).toBe(0)
+    expect(await oauthProvider.tokens()).toBeUndefined()
   })
 
   test("reports needs_auth for an unauthorized server without registering a client", async () => {
@@ -449,7 +462,9 @@ describe("MCP OAuth", () => {
     expect(authorization.searchParams.get("resource")).toBe(url)
 
     const { server, tokenRequests } = authorizationServer({})
-    const store = memoryCredentials([credential({ access: "expired", refresh: "refresh", url })])
+    const store = memoryCredentials([
+      credential({ access: "expired", refresh: "refresh", url, issuer: server.url.origin }),
+    ])
     const oauthProvider = await connectProvider(
       new ConfigMCP.Remote({
         type: "remote",

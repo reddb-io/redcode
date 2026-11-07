@@ -22,10 +22,42 @@ async function openHome(page: Page, input: Parameters<typeof mockStressTimeline>
 }
 
 test("opens memory monitoring directly from Home", async ({ page }) => {
-  await openHome(page)
+  await mockStressTimeline(page, {
+    resources: () => ({
+      sampledAt: Date.now(),
+      platform: "linux x64",
+      cpu: { count: 8, utilization: 0.25 },
+      memory: { totalBytes: 16 * 1024 ** 3, freeBytes: 10 * 1024 ** 3 },
+      process: { pid: 42, residentBytes: 2.25 * 1024 ** 3 },
+    }),
+  })
+  await page.route("**/api/memory", (route) =>
+    route.fulfill({
+      json: {
+        sampledAt: Date.now(),
+        complete: true,
+        entries: [
+          {
+            kind: "agent",
+            id: "agent-1",
+            title: "Investigate memory",
+            pid: 43,
+            residentBytes: 768 * 1024 ** 2,
+            reason: null,
+          },
+        ],
+      },
+    }),
+  )
+  await seed(page, {
+    projects: { local: [{ worktree: fixture.directory, expanded: true }] },
+    lastProject: { local: fixture.directory },
+  })
   await mockRemoteWorkers(page)
-  await page.route("**/api/memory", (route) => route.fulfill({ status: 404, json: { message: "Not found" } }))
-  await page.getByRole("button", { name: "Memory", exact: true }).click()
+  await page.goto("/")
+  await expect(page.getByRole("region", { name: "Runtime" })).toContainText("2.25 GiB")
+  await expect(page.getByRole("region", { name: "Runtime" })).toContainText("Investigate memory")
+  await page.getByRole("button", { name: "Open memory", exact: true }).click()
   await expect(page.getByRole("heading", { name: "Memory", exact: true })).toBeVisible()
 })
 
@@ -508,8 +540,9 @@ test("the project menu imports from another coding agent, starting in the projec
     sources: [{ source: "pi", name: "Pi", available: true, sessions: 1 }],
     sessions: [],
   })
-  // The sidemenu's project menu; Home's project rows list the same extension items.
-  await page.locator('[data-action="navigation-project-menu"]').click()
+  // Home exposes project-scoped extension actions from its project rows.
+  await page.getByRole("button", { name: "By project", exact: true }).click()
+  await page.locator('[data-action="navigation-project-menu"]').first().click()
   await page.getByRole("menuitem", { name: "Import from another agent…", exact: true }).click()
 
   const dialog = page.getByRole("dialog")

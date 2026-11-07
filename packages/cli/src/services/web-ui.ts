@@ -42,6 +42,8 @@ function serveUI(request: HttpServerRequest.HttpServerRequest, url: URL, assets:
       ? cspForHtml(typeof file === "string" ? file : Buffer.from(file).toString())
       : csp(),
     "x-content-type-options": "nosniff",
+    // Keep server URLs, pairing paths and any legacy query values out of cross-origin Referer headers.
+    "referrer-policy": "no-referrer",
   }
   return Effect.succeed(
     request.method === "HEAD"

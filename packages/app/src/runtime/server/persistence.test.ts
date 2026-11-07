@@ -10,7 +10,7 @@ function serverSchema(canonical?: () => string | undefined) {
 }
 
 describe("server persistence schema", () => {
-  test("migrates legacy auth and writes only current server objects", () => {
+  test("migrates legacy auth fields and writes only current server objects", () => {
     const schema = serverSchema()
 
     const input = {
@@ -37,7 +37,6 @@ describe("server persistence schema", () => {
           type: "http",
           displayName: "Remote",
           label: "Production",
-          authToken: true,
           http: { url: "https://nested.example", password: "second" },
         },
       ],

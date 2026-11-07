@@ -235,7 +235,7 @@ export const { use: useServers, provider: ServersProvider } = createSimpleContex
       const url_ = normalizeServerUrl(input.http.url)
 
       if (!url_) return
-      const conn: ServerConnection.Http = { ...input, authToken: undefined, http: { ...input.http, url: url_ } }
+      const conn: ServerConnection.Http = { ...input, http: { ...input.http, url: url_ } }
 
       return batch(() => {
         const existing = store.list.findIndex((x) => x.http.url === url_)

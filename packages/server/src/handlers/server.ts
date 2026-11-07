@@ -146,6 +146,8 @@ export const ServerHandler = HttpApiBuilder.group(Api, "server.server", (handler
               path: "/",
               httpOnly: true,
               sameSite: "lax",
+              // Public access terminates TLS at the Redcode relay and forwards the original scheme.
+              secure: request.headers["x-forwarded-proto"]?.split(",")[0]?.trim().toLowerCase() === "https",
               maxAge: Duration.seconds(ServerAuth.SESSION_TTL_SECONDS),
             }),
           )

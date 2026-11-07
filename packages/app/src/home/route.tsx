@@ -11,6 +11,7 @@ import { createHomeSessionSearchController } from "./sessions/search"
 import { createHomeSessionsController } from "./sessions/controller"
 import { HomeSessions } from "./sessions/region"
 import { useNavigate } from "@solidjs/router"
+import { HomeRuntime } from "./runtime"
 
 export function Home() {
   const navigate = useNavigate()
@@ -22,6 +23,7 @@ export function Home() {
 
   const source = sharedSource(() => sharedLanguage(projects.copy.language))
   const projectView = sharedMount(() => <HomeProjects projects={projects} dropdown />)
+  const runtimeView = sharedMount(() => <HomeRuntime home={home} open={() => navigate("/agents?view=memory")} />)
   const sessionView = sharedMount(() => <HomeSessions sessions={sessions} search={search} scroll={scroll} />)
   return (
     <ReactView
@@ -29,9 +31,9 @@ export function Home() {
       props={{
         source,
         projects: projectView,
+        runtime: runtimeView,
         sessions: sessionView,
         scroll,
-        openMemory: () => navigate("/agents?view=memory"),
         bindViewport: (element) => {
           if (element) scroll.viewport.setViewport(element)
         },

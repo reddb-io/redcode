@@ -37,7 +37,9 @@ const refreshKey = (url: string | URL, init: RequestInit | undefined) => {
 
 // Bun's and Node's fetch types both apply here and the SDK's FetchLike wants Bun's Response, so the
 // overload is picked by annotation and clone() is pinned to the type it was called on.
-const base: FetchLike = (url, init) => fetch(url, { ...init, timeout: false })
+// OAuth exchanges may carry client secrets, authorization codes and refresh tokens. Refuse redirects
+// so an untrusted MCP endpoint cannot move those credentials (or the request body) to another origin.
+const base: FetchLike = (url, init) => fetch(url, { ...init, redirect: "error", timeout: false })
 const share = (pending: ReturnType<FetchLike>) => pending.then((response) => response.clone() as typeof response)
 
 const send: FetchLike = (url, init) => {
@@ -280,6 +282,16 @@ export const connectProvider = Effect.fnUntraced(function* (input: {
   const found = (yield* credentials.list(input.integrationID)).at(-1)
   if (!found || found.value.type !== "oauth") return provider({ config: input.config, store: memoryStore() })
   const id = found.id
+  const issuer = found.value.metadata?.issuer
+  const serverUrl = found.value.metadata?.serverUrl
+  if (typeof issuer !== "string" || serverUrl !== input.config.url) {
+    yield* Effect.logWarning("mcp oauth legacy credential requires a new login", {
+      credentialID: id,
+      reason: typeof issuer !== "string" ? "missing_issuer" : "server_changed",
+    })
+    yield* credentials.remove(id)
+    return provider({ config: input.config, store: memoryStore() })
+  }
   const methodID = found.value.methodID
   const read = async () => {
     const stored = await run(credentials.get(id))

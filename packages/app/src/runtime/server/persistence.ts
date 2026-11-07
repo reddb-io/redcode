@@ -11,7 +11,6 @@ export const ServerHttpBase = Persistence.struct({
 export const ServerHttp = Persistence.struct({
   type: Schema.Literal("http"),
   http: ServerHttpBase,
-  authToken: Schema.optional(Schema.Boolean),
   displayName: Schema.optional(Schema.String),
   label: Schema.optional(Schema.String),
 })

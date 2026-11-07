@@ -11,7 +11,6 @@ import { isStandalone, PwaRoutePersistence, restorePwaRoute } from "@/runtime/pl
 import { KeyboardInsets } from "@/runtime/platform/keyboard"
 import en from "@/runtime/i18n/en"
 import zh from "@/runtime/i18n/zh"
-import { authFromToken } from "@/runtime/server/api"
 import pkg from "../package.json"
 import { ServerConnection } from "@/runtime/server/registry"
 import { WebUpdateNotice } from "@/runtime/platform/web-update-notice"
@@ -74,9 +73,10 @@ if (import.meta.env.VITE_SENTRY_DSN) {
 if (root instanceof HTMLElement && root.dataset.opencodeMounted === undefined) {
   // Lazy chunks can import the entry chunk back under a distinct URL, so claim the root before async startup.
   root.dataset.opencodeMounted = ""
+  // Legacy links may still contain a reusable credential. Never consume it: remove it before any
+  // asynchronous startup work and let the normal pairing/sign-in flow establish a scoped session.
+  clearAuthToken()
   void loadInitialLocale().then((locale) => {
-    const auth = authFromToken(new URLSearchParams(location.search).get("auth_token"))
-    clearAuthToken()
     const standalone = isStandalone()
     root.dataset.standalone = String(standalone)
 
@@ -85,11 +85,7 @@ if (root instanceof HTMLElement && root.dataset.opencodeMounted === undefined) {
     const server: ServerConnection.Http | undefined = web.currentServerUrl
       ? {
           type: "http",
-          authToken: !!auth,
-          http: {
-            url: web.currentServerUrl,
-            ...auth,
-          },
+          http: { url: web.currentServerUrl },
         }
       : undefined
 

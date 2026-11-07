@@ -19,13 +19,19 @@ export const defectLayer = (channel = "local") => {
         const ref = `err_${crypto.randomUUID().slice(0, 8)}`
         return Effect.gen(function* () {
           const request = yield* HttpServerRequest.HttpServerRequest
+          const endpoint = new URL(request.url, "http://redcode.local").pathname.replace(
+            /^\/auth\/connect\/[^/]+$/,
+            "/auth/connect/[redacted]",
+          )
           yield* Effect.logError("unhandled server defect", { cause }).pipe(
-            Effect.annotateLogs({ ref, method: request.method, url: request.url }),
+            // Query strings can contain pairing codes or legacy credentials. The path is enough to
+            // locate the failing handler without persisting secrets in a diagnostic log.
+            Effect.annotateLogs({ ref, method: request.method, url: endpoint }),
           )
           return HttpServerResponse.jsonUnsafe(
             {
               _tag: "UnknownError",
-              message: `Unexpected server error: ${firstLine(defect)} (ref ${ref}; details in ${log})`,
+              message: `Unexpected server error on ${request.method} ${endpoint}: ${diagnosis(defect)} (ref ${ref}; details in ${log})`,
               ref,
               log,
             },
@@ -49,4 +55,21 @@ function unhandledDefect(cause: Cause.Cause<unknown>) {
 function firstLine(defect: unknown) {
   const text = defect instanceof Error ? defect.message || defect.name : String(defect)
   return text.split("\n")[0]?.trim() || "unknown defect"
+}
+
+function diagnosis(defect: unknown) {
+  const message = firstLine(defect)
+  if (!/^schema validation failed/i.test(message)) return message
+  const parts = Array.from(message.matchAll(/"path":\[((?:"[^"]*"|\d+)(?:,(?:"[^"]*"|\d+))*)\]/g))
+    .slice(0, 6)
+    .flatMap((match) =>
+      Array.from(match[1]!.matchAll(/"([^"]*)"|(\d+)/g)).map((token) => token[1] ?? Number(token[2])),
+    )
+  if (!parts.length) return "Schema validation failed"
+  const path = parts.reduce(
+    (value, part) =>
+      typeof part === "number" ? `${value}[${part}]` : value ? `${value}.${part}` : part,
+    "",
+  )
+  return `Schema validation failed at ${path}`
 }

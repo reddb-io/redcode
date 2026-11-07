@@ -42,17 +42,18 @@ try {
   if (info.id === undefined || info.password === undefined) throw new Error("Registration is missing service identity")
   const credential = btoa(`opencode:${info.password}`)
   const headers = { authorization: "Basic " + credential }
-  const token = encodeURIComponent(credential)
   const serverInfo = await waitForReady(info.url, headers)
   if (serverInfo.pid !== info.pid) throw new Error("Server info does not match registration")
-  const tokenInfo = await fetch(new URL(`/api/info?auth_token=${token}`, info.url), {
+  const tokenInfo = await fetch(new URL("/api/info", info.url), {
+    headers,
     signal: AbortSignal.timeout(5_000),
   })
-  if (tokenInfo.status !== 200) throw new Error("Compiled service rejected query authentication")
-  const tokenOpenApi = await fetch(new URL(`/openapi.json?auth_token=${token}`, info.url), {
+  if (tokenInfo.status !== 200) throw new Error("Compiled service rejected header authentication")
+  const tokenOpenApi = await fetch(new URL("/openapi.json", info.url), {
+    headers,
     signal: AbortSignal.timeout(5_000),
   })
-  if (tokenOpenApi.status !== 200) throw new Error("Compiled application rejected query authentication")
+  if (tokenOpenApi.status !== 200) throw new Error("Compiled application rejected header authentication")
   if ((await pluginIDs(info.url, headers)).includes("smoke")) throw new Error("Smoke plugin existed before creation")
   const plugin = path.join(root, ".opencode", "plugins", "smoke.ts")
   await fs.writeFile(plugin, pluginSource())

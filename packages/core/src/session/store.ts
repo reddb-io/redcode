@@ -217,7 +217,15 @@ const layer = Layer.effect(
       }),
       get: Effect.fnUntraced(function* (sessionID) {
         const row = yield* db.select().from(SessionTable).where(eq(SessionTable.id, sessionID)).get().pipe(Effect.orDie)
-        return row ? fromRow(row) : undefined
+        if (!row) return undefined
+        let invalid = 0
+        const session = fromRow(row, { invalidPermissions: (count) => (invalid = count) })
+        if (invalid)
+          yield* Effect.logWarning("ignored invalid persisted session permission rules", {
+            sessionID: row.id,
+            rules: invalid,
+          })
+        return session
       }),
       cacheRoot: Effect.fnUntraced(function* (sessionID) {
         const row = yield* db
@@ -274,7 +282,20 @@ const layer = Layer.effect(
         const rows = yield* (input.limit === undefined ? query.all() : query.limit(input.limit).all()).pipe(
           Effect.orDie,
         )
-        return (direction === "previous" ? rows.toReversed() : rows).map((row) => fromRow(row))
+        const invalid: Array<{ sessionID: string; rules: number }> = []
+        const sessions = (direction === "previous" ? rows.toReversed() : rows).map((row) =>
+          fromRow(row, {
+            invalidPermissions: (rules) => invalid.push({ sessionID: row.id, rules }),
+          }),
+        )
+        if (invalid.length)
+          yield* Effect.logWarning("ignored invalid persisted session permission rules", {
+            sessions: invalid.length,
+            rules: invalid.reduce((total, item) => total + item.rules, 0),
+            sessionIDs: invalid.slice(0, 20).map((item) => item.sessionID),
+            limited: invalid.length > 20,
+          })
+        return sessions
       }),
       messages: Effect.fn("SessionStore.messages")(function* (input) {
         const direction = input.cursor?.direction ?? "next"

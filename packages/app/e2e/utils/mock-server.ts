@@ -145,6 +145,7 @@ export interface MockServerConfig {
   budget?: (sessionID: string) => SessionBudgetView
   attention?: Resolvable<AttentionSnapshot>
   resources?: Resolvable<HostResourcesSnapshot>
+  memory?: Resolvable<unknown>
   server?: string
   provider: Resolvable<MockProviderCatalog>
   integrations?: unknown[]
@@ -978,6 +979,12 @@ function mockHandlers(
                   memory: { totalBytes: 8 * 1024 ** 3, freeBytes: 6 * 1024 ** 3 },
                   process: { pid: 42, residentBytes: 128 * 1024 ** 2 },
                 },
+          ),
+        memory: () =>
+          Effect.succeed(
+            config.memory
+              ? resolve(config.memory)
+              : { sampledAt: Date.now(), complete: true, entries: [] },
           ),
         attention: () => Effect.succeed(config.attention ? resolve(config.attention) : { data: [], unavailable: [] }),
         info: () =>

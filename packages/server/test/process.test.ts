@@ -135,6 +135,12 @@ it.live("authenticates API requests behind the frontend transform while allowing
       }),
     )
 
+    const queryCredential = btoa("opencode:secret")
+    const queryAuth = yield* Effect.promise(() =>
+      fetch(new URL(`/api/info?auth_token=${encodeURIComponent(queryCredential)}`, HttpServer.formatAddress(server.address))),
+    )
+    expect(queryAuth.status).toBe(401)
+
     yield* Effect.forEach(["/", "/workspace/example", "/_assets/app.js", "/icons/icon.svg", "/sw.js"], (pathname) =>
       Effect.gen(function* () {
         yield* Effect.forEach(["GET", "HEAD"], (method) =>
@@ -205,7 +211,15 @@ it.live("pairing links sign in browsers with a cookie and API clients with a tok
     expect(setCookie).toContain(`opencode_session_${new URL(base).port}=`)
     expect(setCookie).toContain("HttpOnly")
     expect(setCookie).toContain("SameSite=Lax")
+    expect(setCookie).not.toContain("Secure")
     const cookie = setCookie.split(";")[0]
+
+    const secureBrowser = yield* pair
+    const secureRedirect = yield* request(`/auth/connect/${secureBrowser.code}`, {
+      headers: { accept: "text/html", "x-forwarded-proto": "https" },
+    })
+    expect(secureRedirect.status).toBe(302)
+    expect(secureRedirect.headers.get("set-cookie")).toContain("Secure")
 
     const reused = yield* request(`/auth/connect/${browser.code}`, { headers: { accept: "text/html" } })
     expect(reused.status).toBe(401)

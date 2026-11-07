@@ -1,8 +1,6 @@
 /** @jsxImportSource react */
 import { useSyncExternalStore } from "react"
 import { ScrollArea } from "@reddb-io/design-system/base/ScrollArea"
-import { Button } from "@reddb-io/design-system/base/Button"
-import { Icon } from "@/runtime/react/icon.react"
 import { SharedSlot } from "@/runtime/react/slot.react"
 import type { SharedLanguage } from "@/runtime/react/language"
 import type { SharedSource } from "@/runtime/react/source"
@@ -12,9 +10,9 @@ import type { HomeScrollController } from "./scroll"
 export function HomeView(props: {
   source: SharedSource<SharedLanguage>
   projects: SharedMount
+  runtime: SharedMount
   sessions: SharedMount
   scroll: HomeScrollController
-  openMemory: () => void
   bindViewport: (element: HTMLDivElement | null) => void
 }) {
   const language = useSyncExternalStore(props.source.subscribe, props.source.getSnapshot)
@@ -26,12 +24,8 @@ export function HomeView(props: {
     >
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <h1 className="sr-only">{language.t("home.title")}</h1>
-        <div className="relative z-40 mx-auto flex w-full max-w-[60rem] shrink-0 items-center justify-between gap-3 px-3 pt-3 md:px-6 md:pt-6 lg:px-10">
+        <div className="relative z-40 mx-auto flex w-full max-w-[60rem] shrink-0 items-center gap-3 px-3 pt-3 md:px-6 md:pt-6 lg:px-10">
           <SharedSlot mount={props.projects} />
-          <Button variant="ghost" size="sm" className="shrink-0" onClick={props.openMemory}>
-            <Icon name="server" size="small" />
-            {language.t("agents.memory.title")}
-          </Button>
         </div>
         <ScrollArea
           ref={props.bindViewport}
@@ -42,6 +36,7 @@ export function HomeView(props: {
           onScroll={(event) => props.scroll.viewport.update(event.currentTarget.scrollTop)}
         >
           <div className="mx-auto flex min-h-full w-full max-w-[60rem] flex-col px-3 md:px-6 lg:px-10">
+            <SharedSlot mount={props.runtime} />
             <SharedSlot mount={props.sessions} />
           </div>
         </ScrollArea>

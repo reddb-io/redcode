@@ -99,10 +99,11 @@ describe("SessionProjector", () => {
         { permission: "bash", pattern: "git status", action: "allow" },
         { permission: "edit", pattern: "private/**", action: "deny" },
         { action: "read", resource: "src/**", effect: "ask" },
+        { action: "write", effect: "allow" },
       ])
       yield* db.run(sql`update session_v2 set permission = ${legacy} where id = ${sessionID}`)
       const store = yield* SessionStore.Service
-      const stored = yield* store.get(sessionID)
+      const stored = (yield* store.list()).find((item) => item.id === sessionID)
       expect(stored?.permissions).toEqual([
         { action: "bash", resource: "git status", effect: "allow" },
         { action: "edit", resource: "private/**", effect: "deny" },

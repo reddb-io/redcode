@@ -1,8 +1,8 @@
-diff --git a/dist/index.cjs b/dist/index.cjs
-index 635f1c0134274c89e7efbcae2adf3d9ecba575ee..5eaa7b451c8c7e12e51f61c2a835ff6f7a8ea0ae 100644
---- a/dist/index.cjs
-+++ b/dist/index.cjs
-@@ -977,7 +977,6 @@ async function discoverMetadataWithFallback(serverUrl, wellKnownType, fetchFn, o
+diff --git a/dist/public-C-9H-ftO.cjs b/dist/public-C-9H-ftO.cjs
+index 2427ea1fbf85eccf15bfb804aa80a8d7381232e7..4598d7ce6e0ba82641b08eb50cb0c8cac4198550 100644
+--- a/dist/public-C-9H-ftO.cjs
++++ b/dist/public-C-9H-ftO.cjs
+@@ -1038,7 +1038,6 @@ async function discoverMetadataWithFallback(serverUrl, wellKnownType, fetchFn, o
  	else {
  		const wellKnownPath = buildWellKnownPath(wellKnownType, issuer.pathname);
  		url = new URL(wellKnownPath, opts?.metadataServerUrl ?? issuer);
@@ -10,19 +10,19 @@ index 635f1c0134274c89e7efbcae2adf3d9ecba575ee..5eaa7b451c8c7e12e51f61c2a835ff6f
  	}
  	let response = await tryMetadataDiscovery(url, protocolVersion, fetchFn);
  	if (!opts?.metadataUrl && shouldAttemptFallback(response, issuer.pathname)) response = await tryMetadataDiscovery(new URL(`/.well-known/${wellKnownType}`, issuer), protocolVersion, fetchFn);
-@@ -1158,7 +1157,6 @@ async function startAuthorization(authorizationServerUrl, { metadata, clientInfo
+@@ -1222,7 +1221,6 @@ async function startAuthorization(authorizationServerUrl, { metadata, clientInfo
  	authorizationUrl.searchParams.set("redirect_uri", String(redirectUrl));
  	if (state) authorizationUrl.searchParams.set("state", state);
  	if (scope) authorizationUrl.searchParams.set("scope", scope);
 -	if (scope?.split(" ").includes("offline_access")) authorizationUrl.searchParams.append("prompt", "consent");
- 	if (resource) authorizationUrl.searchParams.set("resource", resource.href);
+ 	if (resource) authorizationUrl.searchParams.set("resource", resourceIndicatorToString(resource));
  	return {
  		authorizationUrl,
-diff --git a/dist/index.mjs b/dist/index.mjs
-index f02ce3ca394e826fc27c9848dbe9a214bf6ba7a9..73a93a066c3540e131fa0770a74b4a7e8d9343a0 100644
---- a/dist/index.mjs
-+++ b/dist/index.mjs
-@@ -974,7 +974,6 @@ async function discoverMetadataWithFallback(serverUrl, wellKnownType, fetchFn, o
+diff --git a/dist/public-CvV4ZHkX.mjs b/dist/public-CvV4ZHkX.mjs
+index fdb69ef9ee42ad4e1019cb4c9c727617286fe916..084a797c1198295ece9e10cb88b97705af893e1e 100644
+--- a/dist/public-CvV4ZHkX.mjs
++++ b/dist/public-CvV4ZHkX.mjs
+@@ -1035,7 +1035,6 @@ async function discoverMetadataWithFallback(serverUrl, wellKnownType, fetchFn, o
  	else {
  		const wellKnownPath = buildWellKnownPath(wellKnownType, issuer.pathname);
  		url = new URL(wellKnownPath, opts?.metadataServerUrl ?? issuer);
@@ -30,11 +30,11 @@ index f02ce3ca394e826fc27c9848dbe9a214bf6ba7a9..73a93a066c3540e131fa0770a74b4a7e
  	}
  	let response = await tryMetadataDiscovery(url, protocolVersion, fetchFn);
  	if (!opts?.metadataUrl && shouldAttemptFallback(response, issuer.pathname)) response = await tryMetadataDiscovery(new URL(`/.well-known/${wellKnownType}`, issuer), protocolVersion, fetchFn);
-@@ -1155,7 +1154,6 @@ async function startAuthorization(authorizationServerUrl, { metadata, clientInfo
+@@ -1219,7 +1218,6 @@ async function startAuthorization(authorizationServerUrl, { metadata, clientInfo
  	authorizationUrl.searchParams.set("redirect_uri", String(redirectUrl));
  	if (state) authorizationUrl.searchParams.set("state", state);
  	if (scope) authorizationUrl.searchParams.set("scope", scope);
 -	if (scope?.split(" ").includes("offline_access")) authorizationUrl.searchParams.append("prompt", "consent");
- 	if (resource) authorizationUrl.searchParams.set("resource", resource.href);
+ 	if (resource) authorizationUrl.searchParams.set("resource", resourceIndicatorToString(resource));
  	return {
  		authorizationUrl,
