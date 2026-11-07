@@ -1,7 +1,9 @@
 diff --git a/dist/internal/effect.js b/dist/internal/effect.js
+index afc7ae9..bc35e9b 100644
 --- a/dist/internal/effect.js
 +++ b/dist/internal/effect.js
-@@ -870,15 +870,18 @@ const makeFn = (name, bodyOrOptions, defError, pipeables, addSpan, spanOptions)
+@@ -866,17 +866,24 @@ const makeFn = (name, bodyOrOptions, defError, pipeables, addSpan, spanOptions)
+     setStackTraceLimit(2);
      const callError = new globalThis.Error();
      setStackTraceLimit(prevLimit);
 -    return updateService(addSpan ? useSpan(name, spanOptions, span => provideParentSpan(result, span)) : result, CurrentStackFrame, prev => ({
@@ -13,7 +15,11 @@ diff --git a/dist/internal/effect.js b/dist/internal/effect.js
 -        parent: prev
 -      }
 -    }));
-+    return updateService(addSpan ? useSpan(name, spanOptions, span => provideParentSpan(result, span)) : result, CurrentStackFrame, makeCallFrame(name, callError, defError));
++    return updateService(
++      addSpan ? useSpan(name, spanOptions, span => provideParentSpan(result, span)) : result,
++      CurrentStackFrame,
++      makeCallFrame(name, callError, defError)
++    );
    });
  };
 +// Built outside the traced function so the frame's stack closures cannot capture
@@ -29,10 +35,13 @@ diff --git a/dist/internal/effect.js b/dist/internal/effect.js
 +});
  /** @internal */
  export const fnUntracedEager = (body, ...pipeables) => defineFunctionLength(body.length, pipeables.length === 0 ? function () {
+   return fromIteratorEagerUnsafe(() => body.apply(this, arguments));
 diff --git a/src/internal/effect.ts b/src/internal/effect.ts
+index bb6e4bc..571a357 100644
 --- a/src/internal/effect.ts
 +++ b/src/internal/effect.ts
-@@ -1289,17 +1289,26 @@ const makeFn = (
+@@ -1280,19 +1280,28 @@ const makeFn = (
+         useSpan(name, spanOptions!, (span) => provideParentSpan(result, span)) :
          result,
        CurrentStackFrame,
 -      (prev) => ({
@@ -68,3 +77,4 @@ diff --git a/src/internal/effect.ts b/src/internal/effect.ts
 +
  /** @internal */
  export const fnUntracedEager: Effect.fn.Untraced = (
+   body: Function,
