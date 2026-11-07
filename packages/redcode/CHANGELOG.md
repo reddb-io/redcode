@@ -1,5 +1,12 @@
 # @reddb-io/redcode
 
+## 0.87.14
+
+### Patch Changes
+
+- Surface compact runtime memory diagnostics on Home, prevent detached Effect fibers from retaining call arguments, tolerate malformed permissions from older sessions, and make unexpected server errors actionable without exposing request data.
+- Harden remote server, pairing, and MCP connections by removing URL credentials, redacting query strings from defect logs, securing relay cookies, refusing OAuth redirects, and upgrading issuer-bound MCP dependencies.
+
 ## 0.87.13
 
 ### Patch Changes
