@@ -3,6 +3,7 @@ import type { ModelsDev } from "../../models-dev.js"
 
 export type Limit = { readonly context: number; readonly output: number }
 export type CatalogLimits = ReadonlyMap<string, Limit>
+export type CatalogModels = ReadonlyMap<string, ModelsDev.Snapshot["models"][number]>
 
 /**
  * The limits for a model that neither its endpoint, its configuration nor the models catalog describes: a guess that
@@ -13,6 +14,7 @@ export type CatalogLimits = ReadonlyMap<string, Limit>
 export const undescribedLimit: Limit = { context: ModelLimit.conservative(128_000), output: 8_192 }
 
 const limitsBySnapshot = new WeakMap<readonly ModelsDev.Snapshot[], CatalogLimits>()
+const modelsBySnapshot = new WeakMap<readonly ModelsDev.Snapshot[], CatalogModels>()
 
 /**
  * The context and output limits the models catalog knows, by model id. The first provider that lists an id with a
@@ -32,6 +34,20 @@ export function catalogLimits(catalog: readonly ModelsDev.Snapshot[]): CatalogLi
   return limits
 }
 
+/** Full catalog metadata by model id, for endpoints that list an id but omit capabilities and limits. */
+export function catalogModels(catalog: readonly ModelsDev.Snapshot[]): CatalogModels {
+  const cached = modelsBySnapshot.get(catalog)
+  if (cached) return cached
+  const models = new Map(
+    catalog
+      .flatMap((item) => item.models)
+      .map((model) => [String(model.id), model] as const)
+      .toReversed(),
+  )
+  modelsBySnapshot.set(catalog, models)
+  return models
+}
+
 /**
  * What the catalog knows about a model an endpoint lists, though the endpoint did not describe it. An exact id wins;
  * gateways and routers prefix upstream ids (`openai/gpt-4o`, `cc/claude-sonnet`), so leading segments are dropped
@@ -40,33 +56,45 @@ export function catalogLimits(catalog: readonly ModelsDev.Snapshot[]): CatalogLi
  * Nothing shorter than the model's own name is ever matched, so `glm-5.3-flash` never resolves to `glm-5.3`.
  */
 export function knownLimit(limits: CatalogLimits, id: string) {
+  return known(limits, id)
+}
+
+/** Full metadata for a known endpoint model, using the same conservative id matching as `knownLimit`. */
+export function knownModel(models: CatalogModels, id: string) {
+  return known(models, id)
+}
+
+type Index<T> = {
+  readonly full: ReadonlyMap<string, T>
+  readonly suffix: ReadonlyMap<string, T>
+}
+
+const indexByEntries = new WeakMap<object, Index<unknown>>()
+
+function known<T>(entries: ReadonlyMap<string, T>, id: string) {
   const forms = segments(id)
-  const exact = forms.map((form) => limits.get(form)).find((entry) => entry !== undefined)
+  const exact = forms.map((form) => entries.get(form)).find((entry) => entry !== undefined)
   if (exact) return exact
-  const index = normalisedIndex(limits)
+  const index = normalisedIndex(entries)
   return forms
     .map((form) => normalise(form))
     .map((form) => index.full.get(form) ?? index.suffix.get(form))
     .find((entry) => entry !== undefined)
 }
 
-type Index = { readonly full: ReadonlyMap<string, Limit>; readonly suffix: ReadonlyMap<string, Limit> }
-
-const indexByLimits = new WeakMap<CatalogLimits, Index>()
-
 /** The catalog's ids normalised, in full and with their own leading segments dropped; the first id wins each form. */
-function normalisedIndex(limits: CatalogLimits): Index {
-  const cached = indexByLimits.get(limits)
-  if (cached) return cached
-  const full = new Map<string, Limit>()
-  const suffix = new Map<string, Limit>()
-  for (const [id, entry] of limits) {
+function normalisedIndex<T>(entries: ReadonlyMap<string, T>): Index<T> {
+  const cached = indexByEntries.get(entries)
+  if (cached) return cached as Index<T>
+  const full = new Map<string, T>()
+  const suffix = new Map<string, T>()
+  for (const [id, entry] of entries) {
     const [own, ...rest] = segments(id).map((form) => normalise(form))
     if (!full.has(own)) full.set(own, entry)
     for (const form of rest) if (!suffix.has(form)) suffix.set(form, entry)
   }
   const index = { full, suffix }
-  indexByLimits.set(limits, index)
+  indexByEntries.set(entries, index as Index<unknown>)
   return index
 }
 

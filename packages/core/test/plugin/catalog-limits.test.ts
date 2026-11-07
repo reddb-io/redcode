@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import { ModelLimit } from "@opencode/core/model-limit"
 import { ModelsDev } from "@opencode/core/models-dev"
-import { catalogLimits, knownLimit, undescribedLimit } from "@opencode/core/plugin/provider/catalog-limits"
+import { catalogLimits, catalogModels, knownLimit, knownModel, undescribedLimit } from "@opencode/core/plugin/provider/catalog-limits"
 
 // Id shapes the bundled catalog really uses for one model, as listed by different providers.
 const limits = new Map([
@@ -48,7 +48,8 @@ describe("knownLimit", () => {
   })
 
   test("resolves the reported models through the bundled catalog", async () => {
-    const bundled = catalogLimits(await Effect.runPromise(ModelsDev.bundled))
+    const snapshot = await Effect.runPromise(ModelsDev.bundled)
+    const bundled = catalogLimits(snapshot)
     expect(bundled.size).toBeGreaterThan(1_000)
     expect(catalogLimits(await Effect.runPromise(ModelsDev.bundled))).toBe(bundled)
     for (const id of [
@@ -68,6 +69,10 @@ describe("knownLimit", () => {
       expect(known?.context, id).toBeGreaterThan(undescribedLimit.context)
     }
     expect(knownLimit(bundled, "no-such-model-anywhere")).toBeUndefined()
+    const gpt = knownModel(catalogModels(snapshot), "gateway/openai/gpt-4.1")
+    expect(gpt?.limit.context).toBe(1_047_576)
+    expect(gpt?.capabilities.input).toContain("image")
+    expect(gpt?.capabilities.tools).toBe(true)
   })
 
   test("the guess for a model nobody described is the conservative 128k window", () => {

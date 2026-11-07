@@ -10,9 +10,12 @@ import { Config } from "../../config.js"
 import { Model } from "../../model.js"
 import { ModelsDev } from "../../models-dev.js"
 import {
+  catalogModels,
   catalogLimits,
   knownLimit,
+  knownModel,
   undescribedLimit,
+  type CatalogModels,
   type CatalogLimits,
 } from "../../plugin/provider/catalog-limits.js"
 import { Provider } from "../../provider.js"
@@ -35,7 +38,11 @@ export const Plugin = define({
     const bus = yield* Bus.Service
     // A configured model that no catalog or discovery describes takes its limits from the current models catalog on
     // every fold, so a model the catalog learns later is not stuck with a guess (see `undescribedLimit`).
-    const catalog = { limits: catalogLimits(yield* modelsDev.get()) }
+    const initialCatalog = yield* modelsDev.get()
+    const catalog = {
+      limits: catalogLimits(initialCatalog),
+      models: catalogModels(initialCatalog),
+    }
     // Evaluated after `loaded` exists: the observer only runs it on later configuration updates.
     const warnWithoutCatalog: Effect.Effect<void> = Effect.suspend(() => {
       const undescribed = configuredProviders(loaded.entries).flatMap(([id, provider]) =>
@@ -64,7 +71,12 @@ export const Plugin = define({
     yield* bus.subscribe(ModelsDev.Event.Refreshed).pipe(
       Stream.runForEach(() =>
         modelsDev.get().pipe(
-          Effect.tap((data) => Effect.sync(() => (catalog.limits = catalogLimits(data)))),
+          Effect.tap((data) =>
+            Effect.sync(() => {
+              catalog.limits = catalogLimits(data)
+              catalog.models = catalogModels(data)
+            }),
+          ),
           Effect.andThen(warnWithoutCatalog),
           Effect.andThen(ctx.model.reload()),
         ),
@@ -107,11 +119,14 @@ export const Plugin = define({
         }
       >(),
     }
+    // Persist provenance across provider reloads. Otherwise a model created by configuration becomes its own
+    // apparent source on the next fold and freezes `Model.Info.default` (currently 200k) as if the endpoint reported it.
+    const undescribed = new Set<string>()
     yield* ctx.provider.transform((providers) => {
       const next: typeof sources.models = new Map()
       // Models that configuration alone brought into being: no catalog, discovery or canonical provider describes
       // them, so their limits are resolved in the model fold below.
-      const undescribed = new Set<string>()
+      const nextUndescribed = new Set<string>()
       const packages = new Map<string, string | undefined>()
       for (const [id, item] of configuredProviders(loaded.entries)) {
         const providerID = id
@@ -143,9 +158,11 @@ export const Plugin = define({
           const baseID = source?.models.has(config.modelID ?? id) ? (config.modelID ?? id) : id
           const base = source?.models.get(baseID)
           const inherit = changed || !current?.models.has(id)
-          const described = base !== undefined && !undescribed.has(`${sourceID}/${baseID}`)
-          if (described) undescribed.delete(`${providerID}/${id}`)
-          else undescribed.add(`${providerID}/${id}`)
+          const described =
+            base !== undefined &&
+            !undescribed.has(`${sourceID}/${baseID}`) &&
+            !nextUndescribed.has(`${sourceID}/${baseID}`)
+          if (!described) nextUndescribed.add(`${providerID}/${id}`)
           // Bind the source at this point in the provider fold. Later source edits/removal
           // and its credential availability must not change an already-defined alias.
           definitions.set(id, { inherit, base: base && structuredClone(base), described })
@@ -158,6 +175,8 @@ export const Plugin = define({
         }
         next.set(item, { providerID, generic: GENERIC_PACKAGES.has(declaredPackage ?? ""), models: definitions })
       }
+      undescribed.clear()
+      for (const id of nextUndescribed) undescribed.add(id)
       sources.defaultModel = Config.latest(loaded.entries, "model")
       sources.models = next
     })
@@ -190,6 +209,17 @@ export const Plugin = define({
               Object.assign(model, structuredClone(source.base))
               if (item.package !== undefined) model.package = undefined
               if (item.settings?.baseURL !== undefined && model.settings) delete model.settings.baseURL
+            }
+            const metadata = source && !source.described ? resolveModel(catalog.models, [model.modelID, id]) : undefined
+            if (metadata) {
+              if (metadata.canonicalModelID !== undefined) model.canonicalModelID = metadata.canonicalModelID
+              if (metadata.family !== undefined) model.family = metadata.family
+              model.capabilities = {
+                ...metadata.capabilities,
+                input: [...metadata.capabilities.input],
+                output: [...metadata.capabilities.output],
+              }
+              model.time = structuredClone(metadata.time)
             }
             if (config.family !== undefined) model.family = config.family
             if (config.name !== undefined) model.name = config.name
@@ -349,4 +379,8 @@ function resolveLimit(
     ...(declared.input === undefined ? {} : { input: declared.input }),
     output: declared.output ?? Math.min(fallback.output, context),
   }
+}
+
+function resolveModel(models: CatalogModels, ids: readonly string[]) {
+  return ids.map((id) => knownModel(models, id)).find((entry) => entry !== undefined)
 }

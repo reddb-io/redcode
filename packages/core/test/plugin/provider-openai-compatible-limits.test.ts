@@ -8,6 +8,7 @@ import { Database } from "@opencode/core/database/database"
 import { Integration } from "@opencode/core/integration"
 import { Location } from "@opencode/core/location"
 import { LocationServiceMap } from "@opencode/core/location-services"
+import { Mcp } from "@opencode/core/mcp/index"
 import { Model } from "@opencode/core/model"
 import { ModelResolver } from "@opencode/core/model-resolver"
 import { LLM } from "@opencode/ai"
@@ -15,13 +16,14 @@ import { LLMClient, RequestExecutor } from "@opencode/ai/route"
 import { ModelLimit } from "@opencode/core/model-limit"
 import { ModelsDev } from "@opencode/core/models-dev"
 import { Plugin } from "@opencode/core/plugin"
-import { catalogLimits, knownLimit } from "@opencode/core/plugin/provider/catalog-limits"
+import { catalogLimits, catalogModels, knownLimit, knownModel } from "@opencode/core/plugin/provider/catalog-limits"
 import { deriveProviderID } from "@opencode/core/plugin/provider/openai-compatible"
 import { Provider } from "@opencode/core/provider"
 import { AbsolutePath } from "@opencode/core/schema"
 import { LayerNode } from "@opencode/util/effect/layer-node"
 import { Global } from "@opencode/util/global"
 import { tempGlobalLayer } from "../fixture/global"
+import { emptyMcpLayer } from "../fixture/mcp"
 import { offlineModels } from "../fixture/models"
 import { tmpdirScoped } from "../fixture/tmpdir"
 import { testEffect } from "../lib/effect"
@@ -39,6 +41,7 @@ const server = Bun.serve({
           { id: "glm-5.3-flash" },
           { id: "zai/glm-5.3-flash", max_input_tokens: 900_000, max_output_tokens: 128_000 },
           { id: "mimo-v2.6-pro" },
+          { id: "gpt-4.1" },
           { id: "reported", context_length: 64_000, max_completion_tokens: 4_000 },
           { id: "nobody-knows-this-one" },
         ],
@@ -64,6 +67,7 @@ afterAll(() => server.stop(true))
 const it = testEffect(
   AppNodeBuilder.build(LayerNode.group([Database.node, Bus.node, LocationServiceMap.node]), [
     Global.node.replace(tempGlobalLayer),
+    Mcp.node.replace(emptyMcpLayer),
     offlineModels,
   ]),
 )
@@ -77,7 +81,9 @@ describe("OpenAI-compatible endpoints where the server runs the wizard", () => {
       const ref = Location.Ref.make({ directory: AbsolutePath.make(dir.path) })
       const baseURL = `${server.url.origin}/v1`
       const providerID = Provider.ID.make(deriveProviderID(baseURL))
-      const catalog = catalogLimits(yield* ModelsDev.bundled)
+      const snapshot = yield* ModelsDev.bundled
+      const catalog = catalogLimits(snapshot)
+      const metadata = catalogModels(snapshot)
       const expected = (id: string) => {
         const known = knownLimit(catalog, id)
         if (!known) throw new Error(`The bundled catalog no longer knows ${id}; pick another model for this test`)
@@ -119,6 +125,7 @@ describe("OpenAI-compatible endpoints where the server runs the wizard", () => {
         expect(saved.models?.["glm-5.3-flash"]?.limit).toBeUndefined()
         expect(saved.models?.["zai/glm-5.3-flash"]?.limit).toEqual({ input: 900_000, output: 128_000 })
         expect(saved.models?.["mimo-v2.6-pro"]?.limit).toBeUndefined()
+        expect(saved.models?.["gpt-4.1"]?.limit).toBeUndefined()
         expect(saved.models?.["nobody-knows-this-one"]?.limit).toBeUndefined()
         expect((yield* loaded("reported")).limit).toEqual({ context: 64_000, output: 4_000 })
         expect((yield* loaded("glm-5.3-flash")).limit).toEqual(expected("glm-5.3-flash"))
@@ -137,8 +144,22 @@ describe("OpenAI-compatible endpoints where the server runs the wizard", () => {
         )
         expect(result.text).toBe("selected model")
         expect((yield* loaded("mimo-v2.6-pro")).limit).toEqual(expected("mimo-v2.6-pro"))
+        const gpt = yield* loaded("gpt-4.1")
+        const knownGPT = knownModel(metadata, "gpt-4.1")
+        if (!knownGPT) return yield* Effect.fail(new Error("The bundled catalog no longer knows gpt-4.1"))
+        expect(knownGPT.limit.context).toBeGreaterThan(1_000_000)
+        expect(gpt.limit).toEqual(expected("gpt-4.1"))
+        expect(gpt.capabilities).toEqual(knownGPT.capabilities)
+        // Rewriting the provider forces the configuration folds to run again. The generated model must not become
+        // its own "described" source and freeze Model.Info.default's 200k context on that second pass.
+        if (!config.saveProvider) return yield* Effect.fail(new Error("The test configuration cannot save providers"))
+        yield* config.saveProvider(providerID, saved as unknown as Record<string, unknown>)
+        const reloadedGPT = yield* loaded("gpt-4.1")
+        expect(reloadedGPT.limit).toEqual(expected("gpt-4.1"))
+        expect(reloadedGPT.capabilities).toEqual(knownGPT.capabilities)
         expect((yield* loaded("nobody-knows-this-one")).limit).toEqual({ context: guess, output: 8_192 })
       }).pipe(Effect.scoped, Effect.provide(LocationServiceMap.Service.get(ref)))
     }),
+    20_000,
   )
 })
