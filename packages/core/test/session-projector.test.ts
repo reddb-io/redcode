@@ -26,6 +26,7 @@ import { SessionExecution } from "@opencode/core/session/execution"
 import { fromRow } from "@opencode/core/session/info"
 import { SessionInbox } from "@opencode/core/session/inbox"
 import { SessionStore } from "@opencode/core/session/store"
+import { SessionSchema } from "@opencode/core/session/schema"
 import { Shell } from "@opencode/schema/shell"
 import { InstructionStateTable, SessionInboxTable, SessionMessageTable, SessionTable } from "@opencode/core/session/sql"
 import { testEffect } from "./lib/effect"
@@ -91,6 +92,26 @@ const seedSession = (overrides?: Partial<typeof SessionTable.$inferInsert>) =>
   })
 
 describe("SessionProjector", () => {
+  it.effect("loads old session permission rules without changing their scope or effect", () =>
+    Effect.gen(function* () {
+      const db = yield* seedSession()
+      const legacy = JSON.stringify([
+        { permission: "bash", pattern: "git status", action: "allow" },
+        { permission: "edit", pattern: "private/**", action: "deny" },
+        { action: "read", resource: "src/**", effect: "ask" },
+      ])
+      yield* db.run(sql`update session_v2 set permission = ${legacy} where id = ${sessionID}`)
+      const store = yield* SessionStore.Service
+      const stored = yield* store.get(sessionID)
+      expect(stored?.permissions).toEqual([
+        { action: "bash", resource: "git status", effect: "allow" },
+        { action: "edit", resource: "private/**", effect: "deny" },
+        { action: "read", resource: "src/**", effect: "ask" },
+      ])
+      if (!stored) return yield* Effect.die("Session row missing")
+      expect(() => Schema.encodeSync(SessionSchema.Info)(stored)).not.toThrow()
+    }),
+  )
   it.effect("does not settle a pending manual compaction on an auto failure", () =>
     Effect.gen(function* () {
       const db = yield* seedSession()

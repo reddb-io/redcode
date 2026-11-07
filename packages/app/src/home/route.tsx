@@ -10,8 +10,10 @@ import { createHomeScrollController } from "./scroll"
 import { createHomeSessionSearchController } from "./sessions/search"
 import { createHomeSessionsController } from "./sessions/controller"
 import { HomeSessions } from "./sessions/region"
+import { useNavigate } from "@solidjs/router"
 
 export function Home() {
+  const navigate = useNavigate()
   const home = createHomeController()
   const projects = createHomeProjectsController(home)
   const sessions = createHomeSessionsController(home)
@@ -29,6 +31,7 @@ export function Home() {
         projects: projectView,
         sessions: sessionView,
         scroll,
+        openMemory: () => navigate("/agents?view=memory"),
         bindViewport: (element) => {
           if (element) scroll.viewport.setViewport(element)
         },

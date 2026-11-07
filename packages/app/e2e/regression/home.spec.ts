@@ -5,6 +5,7 @@ import { mockOpenCodeServer } from "../utils/mock-server"
 import { fixture, mockStressTimeline } from "../utils/session-fixture"
 import { mockRemoteServer } from "../utils/workspace"
 import { APP_READY_TIMEOUT, expectAppVisible } from "../utils/waits"
+import { mockRemoteWorkers } from "../utils/worker-fixture"
 
 test.use({ serviceWorkers: "block" })
 
@@ -19,6 +20,14 @@ async function openHome(page: Page, input: Parameters<typeof mockStressTimeline>
   })
   await page.goto("/")
 }
+
+test("opens memory monitoring directly from Home", async ({ page }) => {
+  await openHome(page)
+  await mockRemoteWorkers(page)
+  await page.route("**/api/memory", (route) => route.fulfill({ status: 404, json: { message: "Not found" } }))
+  await page.getByRole("button", { name: "Memory", exact: true }).click()
+  await expect(page.getByRole("heading", { name: "Memory", exact: true })).toBeVisible()
+})
 
 test("the session context menu renames, exports, and deletes a Home session", async ({ page }) => {
   await openHome(page)

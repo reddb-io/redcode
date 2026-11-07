@@ -10,8 +10,10 @@ import { SessionSchema } from "./schema.js"
 import type { SessionTable } from "./sql.js"
 import { PersistedRevert } from "@opencode/schema/session-revert"
 import { Money } from "@opencode/schema/money"
+import { Permission } from "@opencode/schema/permission"
 
 const decodeRevert = Schema.decodeUnknownSync(PersistedRevert)
+const decodePermissions = Schema.decodeUnknownSync(Permission.Ruleset)
 
 export function fromRow(row: typeof SessionTable.$inferSelect): SessionSchema.Info {
   return SessionSchema.Info.make({
@@ -52,7 +54,22 @@ export function fromRow(row: typeof SessionTable.$inferSelect): SessionSchema.In
     }),
     subpath: row.path ? RelativePath.make(row.path) : undefined,
     metadata: row.metadata ?? undefined,
-    permissions: row.permission ?? undefined,
+    // Older OpenCode sessions stored rules as { permission, pattern, action }.
+    // Translate only that exact representation; preserve the scope and effect.
+    permissions: row.permission
+      ? decodePermissions(
+          row.permission.map((rule) => {
+            const legacy: unknown = rule
+            if (
+              typeof legacy === "object" && legacy !== null &&
+              "permission" in legacy && "pattern" in legacy && "action" in legacy &&
+              !("resource" in legacy) && !("effect" in legacy)
+            )
+              return { action: legacy.permission, resource: legacy.pattern, effect: legacy.action }
+            return rule
+          }),
+        )
+      : undefined,
     revert: row.revert ? decodeRevert(row.revert) : undefined,
     outcome: row.idle_outcome ?? undefined,
     time: {
