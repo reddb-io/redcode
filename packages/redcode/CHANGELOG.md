@@ -1,5 +1,11 @@
 # @reddb-io/redcode
 
+## 0.87.15
+
+### Patch Changes
+
+- Keep dynamic provider models enriched from the unified catalog across reloads, including context windows, canonical identity, modalities, and tool capabilities when an endpoint only reports the model ID.
+
 ## 0.87.14
 
 ### Patch Changes
