@@ -3,6 +3,10 @@ name: redcode
 on:
   workflow_dispatch:
     inputs:
+      workers_only:
+        type: boolean
+        description: Qualify company sidecar and Design builders without desktop, assembly or publication
+        default: false
       run_smoke:
         type: boolean
         description: Run the extra built-binary Design smoke before publication
@@ -21,7 +25,7 @@ on:
         description: Show selected platforms without running builds, tests or publication
         default: false
 concurrency:
-  group: redcode-${{ github.event_name == 'workflow_dispatch' && 'release' || github.event.pull_request.number || github.ref }}
+  group: redcode-${{ inputs.workers_only && 'worker-qualification' || (github.event_name == 'workflow_dispatch' && 'release' || github.event.pull_request.number || github.ref) }}
   cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 permissions:
@@ -246,10 +250,16 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         env:
           EXPECTED_VERSION: ${{ inputs.version }}
+          WORKERS_ONLY: ${{ inputs.workers_only }}
+          PUBLISH: ${{ inputs.publish }}
         run: |
           set -euo pipefail
           test "$GITHUB_REPOSITORY" = 'reddb-io/redcode'
           test "$GITHUB_REF" = 'refs/heads/main'
+          if [ "$WORKERS_ONLY" = true ] && [ "$PUBLISH" = true ]; then
+            echo '::error::Worker qualification requires publish=false.'
+            exit 1
+          fi
           if [ -n "$EXPECTED_VERSION" ]; then
             [[ "$EXPECTED_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
           fi
@@ -257,16 +267,16 @@ jobs:
         with:
           fetch-depth: ${{ github.event_name == 'workflow_dispatch' && '0' || '1' }}
           token: ${{ inputs.publish && secrets.RELEASE_PAT || github.token }}
-      - name: Select commit for push and pull request checks
-        if: github.event_name != 'workflow_dispatch'
+      - name: Select source for checks and worker qualification
+        if: github.event_name != 'workflow_dispatch' || inputs.workers_only
         id: current
         run: |
           echo "version=$(node -p 'require("./packages/redcode/package.json").version')" >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - uses: ./.github/actions/setup-bun
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' && !inputs.workers_only
       - name: Prepare Changesets release on main
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' && !inputs.workers_only
         id: prepare
         env:
           EXPECTED_VERSION: ${{ inputs.version }}
@@ -315,12 +325,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.platforms.outputs.matrix_sidecar) }}
-    runs-on: ${{ matrix.host }}
+    runs-on: ${{ github.repository == 'reddb-io/redcode' && github.ref == 'refs/heads/main' && matrix.host == 'ubuntu-latest' && 'reddb-public-linux-x64' || matrix.host }}
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           ref: ${{ needs.plan.outputs.sha }}
+      - uses: ./.github/actions/setup-runner
+        if: runner.environment == 'self-hosted'
       - uses: ./.github/actions/setup-bun
         with:
           install-flags: --filter=@reddb-io/redcode-rpc-sidecar
@@ -366,7 +378,7 @@ jobs:
   design:
     if: ${{ !inputs.preview_platforms && (github.event_name == 'workflow_dispatch') }}
     needs: plan
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.repository == 'reddb-io/redcode' && github.ref == 'refs/heads/main' && 'reddb-public-linux-x64' || 'ubuntu-latest' }}
     timeout-minutes: 60
     env:
       REDCODE_DESIGN_APP_VERSION: ${{ needs.plan.outputs.version }}
@@ -374,6 +386,8 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           ref: ${{ needs.plan.outputs.sha }}
+      - uses: ./.github/actions/setup-runner
+        if: runner.environment == 'self-hosted'
       - uses: ./.github/actions/setup-bun
       - name: Build the optional whiteboard bundle
         working-directory: packages/design-app
@@ -395,7 +409,7 @@ jobs:
           compression-level: 0
 
   desktop:
-    if: ${{ !inputs.preview_platforms && ((github.event_name == 'workflow_dispatch') && (needs.platforms.outputs.enabled_desktop == 'true')) }}
+    if: ${{ !inputs.workers_only && !inputs.preview_platforms && ((github.event_name == 'workflow_dispatch') && (needs.platforms.outputs.enabled_desktop == 'true')) }}
     needs:
       - plan
       - platforms
@@ -465,7 +479,7 @@ jobs:
           retention-days: 7
 
   build:
-    if: ${{ !inputs.preview_platforms && (github.event_name == 'workflow_dispatch') }}
+    if: ${{ !inputs.workers_only && !inputs.preview_platforms && (github.event_name == 'workflow_dispatch') }}
     needs:
       - plan
       - sidecar
@@ -623,7 +637,7 @@ jobs:
   smoke:
     # Exercise the exact shipped archive in a fresh home before publication, without model credentials.
     name: smoke (built binary)
-    if: ${{ !inputs.preview_platforms && (inputs.run_smoke && needs.platforms.outputs.linux_x64 == 'true') }}
+    if: ${{ !inputs.workers_only && !inputs.preview_platforms && (inputs.run_smoke && needs.platforms.outputs.linux_x64 == 'true') }}
     needs:
       - plan
       - build
@@ -684,7 +698,7 @@ jobs:
 
   publish_github:
     name: publish (GitHub)
-    if: ${{ !inputs.preview_platforms && (always() && !cancelled() && needs.plan.result == 'success' && needs.build.result == 'success' && needs.design.result == 'success' && (!inputs.run_smoke || needs.platforms.outputs.linux_x64 == 'false' || needs.smoke.result == 'success') && (inputs.publish && github.repository == 'reddb-io/redcode' && github.ref == 'refs/heads/main')) }}
+    if: ${{ !inputs.workers_only && !inputs.preview_platforms && (always() && !cancelled() && needs.plan.result == 'success' && needs.build.result == 'success' && needs.design.result == 'success' && (!inputs.run_smoke || needs.platforms.outputs.linux_x64 == 'false' || needs.smoke.result == 'success') && (inputs.publish && github.repository == 'reddb-io/redcode' && github.ref == 'refs/heads/main')) }}
     needs:
       - plan
       - build
@@ -775,7 +789,7 @@ jobs:
 
   publish_npm:
     name: publish (npm)
-    if: ${{ !inputs.preview_platforms && (always() && !cancelled() && needs.plan.result == 'success' && needs.build.result == 'success' && needs.design.result == 'success' && (!inputs.run_smoke || needs.platforms.outputs.linux_x64 == 'false' || needs.smoke.result == 'success') && (inputs.publish && github.repository == 'reddb-io/redcode' && github.ref == 'refs/heads/main')) }}
+    if: ${{ !inputs.workers_only && !inputs.preview_platforms && (always() && !cancelled() && needs.plan.result == 'success' && needs.build.result == 'success' && needs.design.result == 'success' && (!inputs.run_smoke || needs.platforms.outputs.linux_x64 == 'false' || needs.smoke.result == 'success') && (inputs.publish && github.repository == 'reddb-io/redcode' && github.ref == 'refs/heads/main')) }}
     needs:
       - plan
       - build
@@ -877,7 +891,7 @@ jobs:
 
   release_status:
     name: release status
-    if: ${{ !inputs.preview_platforms && (always() && inputs.publish && github.repository == 'reddb-io/redcode' && github.ref == 'refs/heads/main') && needs.platforms.outputs.any == 'true' }}
+    if: ${{ !inputs.workers_only && !inputs.preview_platforms && (always() && inputs.publish && github.repository == 'reddb-io/redcode' && github.ref == 'refs/heads/main') && needs.platforms.outputs.any == 'true' }}
     needs: [plan, publish_github, publish_npm, platforms]
     runs-on: ubuntu-latest
     permissions: {}

@@ -84,3 +84,32 @@ Inspect the `Select platforms` job summary to see the effective selection.
 
 Select `preview_platforms: true` in Run workflow to execute only the lightweight
 platform selector. Builds, tests and publication are all skipped in this mode.
+
+
+## Company workers
+
+Reviewed main workflows use `reddb-public-linux-x64` for Linux-hosted Zig
+sidecar cross-compilation, the Design web bundle, lint/typecheck and vault
+coverage. Only `reddb-io/redcode` at `refs/heads/main` selects that runner.
+The GitHub runner group separately restricts admission to these two workflow
+paths on main. Forks, PR refs, tags and other branches are excluded.
+
+One public job at a time shares the existing two dedicated CI nodes with
+red-ui/red-router and the private CI group; at most two jobs execute in total.
+Each public job has 3 CPU, 12 GiB RAM and an 8 GiB workspace, with no privileged
+container or Docker socket. The explicit setup action installs build tools and
+zstd in each disposable Ubuntu runner before the existing pinned Bun setup.
+
+Native desktop builds/tests, browser and service lifecycle checks, the final
+multiplatform assembler, release planning and publishers remain hosted.
+The assembler alone uploaded about 3.45 GB of native packages and 3.11 GB of
+release archives in a qualified run, before desktop inputs and dependencies;
+it needs a separate disk qualification before moving to the 8 GiB workspace.
+Platform switches, native target coverage and publication gates are preserved.
+
+Dispatch `redcode.yml` with `workers_only=true,publish=false` to qualify the
+sidecars and Design bundle without allocating desktop jobs, assembling archives
+or publishing. This has its own concurrency group and does not cancel or join
+an active release. Dispatch `quality.yml` with `suite=workers` to run the
+lint/typecheck and vault coverage jobs. Normal release dispatches leave
+`workers_only=false` and continue to require their existing verification gates.

@@ -5,7 +5,7 @@ on:
       suite:
         type: choice
         description: Quality suite to run
-        options: [checks, unit, browser, windows, coverage, all]
+        options: [checks, unit, browser, windows, coverage, workers, all]
         default: checks
       upstream_full:
         type: boolean
@@ -124,18 +124,20 @@ jobs:
       - platforms
     if: ${{ !inputs.preview_platforms && (needs.platforms.outputs.any == 'true') }}
   verify:
-    if: ${{ !inputs.preview_platforms && ((inputs.suite == 'all' || inputs.suite == 'checks') && (needs.platforms.outputs.linux_x64 == 'true')) }}
+    if: ${{ !inputs.preview_platforms && ((inputs.suite == 'all' || inputs.suite == 'workers' || inputs.suite == 'checks') && (needs.platforms.outputs.linux_x64 == 'true')) }}
     name: typecheck
     needs:
       - plan
       - platforms
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.repository == 'reddb-io/redcode' && github.ref == 'refs/heads/main' && 'reddb-public-linux-x64' || 'ubuntu-latest' }}
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           ref: ${{ needs.plan.outputs.sha }}
           fetch-depth: 0
+      - uses: ./.github/actions/setup-runner
+        if: runner.environment == 'self-hosted'
       - uses: ./.github/actions/setup-bun
       - uses: ./.github/actions/check-workflows
       - name: Validate version
@@ -357,12 +359,12 @@ jobs:
 
 
   vault-coverage:
-    if: ${{ !inputs.preview_platforms && ((inputs.suite == 'all' || inputs.suite == 'coverage') && (needs.platforms.outputs.linux_x64 == 'true')) }}
+    if: ${{ !inputs.preview_platforms && ((inputs.suite == 'all' || inputs.suite == 'workers' || inputs.suite == 'coverage') && (needs.platforms.outputs.linux_x64 == 'true')) }}
     # Secret-handling tests and their coverage must pass before publication.
     needs:
       - plan
       - platforms
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.repository == 'reddb-io/redcode' && github.ref == 'refs/heads/main' && 'reddb-public-linux-x64' || 'ubuntu-latest' }}
     timeout-minutes: 30
     defaults:
       run:
@@ -371,6 +373,8 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           ref: ${{ needs.plan.outputs.sha }}
+      - uses: ./.github/actions/setup-runner
+        if: runner.environment == 'self-hosted'
       - uses: ./.github/actions/setup-bun
       - name: Configure test git identity
         run: |
