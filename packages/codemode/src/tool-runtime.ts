@@ -12,7 +12,7 @@ import {
   outputTypeScript,
 } from "./tool-schema.js"
 import { isNamespace, type Namespace } from "./namespace.js"
-import { isTool, type Tool } from "./tool.js"
+import { isTool, type Tool, type ToolContext } from "./tool.js"
 import type { Tools } from "./tools.js"
 
 export const compareText = (left: string, right: string) => (left < right ? -1 : left > right ? 1 : 0)
@@ -23,7 +23,7 @@ type ServicesOf<T, Depth extends ReadonlyArray<unknown>> = Depth["length"] exten
   ? never
   : T extends {
         readonly _tag: "CodeModeTool"
-        readonly execute: (input: unknown) => Effect.Effect<unknown, unknown, infer R>
+        readonly execute: (input: unknown, context?: ToolContext) => Effect.Effect<unknown, unknown, infer R>
       }
     ? R
     : T extends object
@@ -37,7 +37,12 @@ export type ToolCall = {
 }
 
 /** A tool call the program is making, with its decoded input. */
-export type ToolInvocation = { readonly name: string; readonly input: unknown }
+export type ToolInvocation = {
+  readonly name: string
+  readonly input: unknown
+  /** The call's stable idempotency key, `<runId>:<callId>`. */
+  readonly key: string
+}
 
 /** A call the program is making to an extension global, with its arguments. */
 export type ExtensionInvocation = {
@@ -388,6 +393,8 @@ export const make = <R>(
 ): ToolRuntime<R> => {
   const calls: Array<ToolCall> = []
   const root = prepared.root
+  const runId = crypto.randomUUID()
+  let nextCallId = 0
 
   const recordCall = (call: ToolCall): void => {
     if (maxToolCalls !== undefined && calls.length >= maxToolCalls) {
@@ -411,12 +418,13 @@ export const make = <R>(
           ),
       })
       yield* Effect.sync(() => recordCall({ name }))
+      const context = { key: `${runId}:${nextCallId++}` } satisfies ToolContext
       return yield* hooked(
-        { name, input },
+        { name, input, key: context.key },
         hooks["tool.before"],
         hooks["tool.after"],
         Effect.gen(function* () {
-          const raw = yield* Effect.suspend(() => tool.execute(input)).pipe(
+          const raw = yield* Effect.suspend(() => tool.execute(input, context)).pipe(
             Effect.catchCause((cause) => {
               if (Cause.hasInterruptsOnly(cause)) return Effect.interrupt
               return Effect.fail(

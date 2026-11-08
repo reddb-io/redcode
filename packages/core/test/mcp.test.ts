@@ -235,7 +235,10 @@ function resourceServer(
               sessionID: request.params._meta?.["ai.opencode/sessionID"],
               progressToken: request.params._meta?.progressToken,
             })
-            return Promise.resolve({ content: [] })
+            const structured = request.params.arguments?.structured
+            const text = request.params.arguments?.text
+            const content = typeof text === "string" ? [{ type: "text" as const, text }] : []
+            return Promise.resolve(structured === undefined ? { content } : { content, structuredContent: structured })
           })
         }
         protocol.setRequestHandler("prompts/list", () => Promise.resolve({ prompts: [{ name: "greet" }] }))
@@ -2126,6 +2129,56 @@ describe.each([
   ["legacy", undefined],
   ["modern", "2026-07-28"],
 ] as const)("MCP connection over the %s protocol", (era, protocol) => {
+  test("returns successful results that miss or violate the tool's output schema", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const server = yield* resourceServer({ modern: era === "modern", resources: false })
+          server.state.toolPages = {
+            initial: {
+              tools: [
+                {
+                  name: "delete",
+                  inputSchema: { type: "object" },
+                  outputSchema: { type: "object", properties: {} },
+                },
+                {
+                  name: "collaborators",
+                  inputSchema: { type: "object" },
+                  outputSchema: {
+                    type: "object",
+                    properties: { role: { type: "string", enum: ["owner", "editor"] } },
+                    required: ["role"],
+                  },
+                },
+              ],
+            },
+          }
+          const connection = yield* connect(
+            "lenient-output",
+            new ConfigMCP.Remote({ type: "remote", url: server.url, oauth: false, protocol }),
+            import.meta.dir,
+          )
+          yield* connection.tools()
+
+          expect(yield* connection.callTool({ name: "delete", args: { text: "Meeting deleted." } })).toEqual({
+            isError: false,
+            structured: undefined,
+            content: [{ type: "text", text: "Meeting deleted." }],
+          })
+          expect(yield* connection.callTool({ name: "delete" })).toEqual({
+            isError: false,
+            structured: undefined,
+            content: [],
+          })
+          expect(
+            yield* connection.callTool({ name: "collaborators", args: { structured: { role: "commenter" } } }),
+          ).toMatchObject({ isError: false, structured: { role: "commenter" } })
+        }),
+      ),
+    )
+  })
+
   test("skips tools rejected by the negotiated SDK schema and keeps valid tools callable", async () => {
     await Effect.runPromise(
       Effect.scoped(

@@ -5,6 +5,7 @@ import os from "node:os"
 import { Context, Effect, Layer, Option, PubSub, Schema, Stream } from "effect"
 import { ChildProcess } from "effect/unstable/process"
 import { AgentTools } from "@opencode/schema/agent-tools"
+import { ExecutionCapability } from "@opencode/schema/execution-capability"
 import { AbsolutePath } from "@opencode/schema/schema"
 import { AppProcess } from "@opencode/util/process"
 import { FSUtil } from "@opencode/util/fs-util"
@@ -25,6 +26,63 @@ export interface Interface {
 }
 
 export class Service extends Context.Service<Service, Interface>()("@redcode/AgentTools") {}
+
+const capabilityInfo: Record<
+  AgentTools.ID,
+  Pick<ExecutionCapability.Info, "name" | "kind" | "risk" | "operations">
+> = {
+  rift: {
+    name: "Rift workspaces",
+    kind: "workspace",
+    risk: "privileged",
+    operations: ["workspace.snapshot"],
+  },
+  "browser-control": {
+    name: "Existing browser profile",
+    kind: "browser",
+    risk: "privileged",
+    operations: ["browser.observe", "browser.navigate", "browser.interact", "browser.execute"],
+  },
+  "terminal-control": {
+    name: "Terminal applications",
+    kind: "terminal",
+    risk: "interactive",
+    operations: ["terminal.observe", "terminal.input"],
+  },
+  "computer-use": {
+    name: "Desktop applications",
+    kind: "desktop",
+    risk: "privileged",
+    operations: ["desktop.observe", "desktop.interact"],
+  },
+}
+
+/** Convert configured host tools into explicit instances without claiming they passed a live operational test. */
+export function capabilitySnapshot(snapshot: AgentTools.Snapshot): ReadonlyArray<ExecutionCapability.Info> {
+  return snapshot.tools.map((tool) => {
+    const info = capabilityInfo[tool.id]
+    const status: ExecutionCapability.Status = !tool.supported || !tool.installed
+      ? "unavailable"
+      : !tool.settings.enabled
+        ? "disabled"
+        : "available"
+    return ExecutionCapability.Info.make({
+      id: ExecutionCapability.ID.make(`agent-tool:${tool.id}`),
+      ...info,
+      source: tool.settings.command ? "custom" : "managed",
+      status,
+      target: {
+        type: "server",
+        id: snapshot.host.name,
+        name: snapshot.host.name,
+        platform: snapshot.host.platform,
+        arch: snapshot.host.arch,
+      },
+      ...(tool.diagnosis ? { detail: tool.diagnosis } : {}),
+      ...(tool.checkedAt ? { checkedAt: tool.checkedAt } : {}),
+    })
+  })
+}
 
 // Optional tools are installed explicitly into the existing managed package cache.
 // Pin releases so opening settings or restarting a host never checks a registry.
@@ -57,7 +115,7 @@ export function distribution(id: AgentTools.ID, host: { platform: string; arch: 
       probe: ["doctor"],
     }
   return {
-    package: "open-computer-use@1.1.0",
+    package: "open-computer-use@1.1.4",
     supported: native && ["linux", "darwin", "win32"].includes(host.platform),
     entry:
       host.platform === "darwin"
@@ -69,7 +127,7 @@ export function distribution(id: AgentTools.ID, host: { platform: string; arch: 
             host.platform === "win32" ? "open-computer-use.exe" : "open-computer-use",
           ),
     mcp: ["mcp"],
-    probe: ["--version"],
+    probe: ["doctor", "--json"],
   }
 }
 

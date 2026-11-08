@@ -1,21 +1,21 @@
 import type { ToolDefinition } from "@opencode/ai"
 import { Tool } from "@opencode/schema/tool"
 import type { StandardJSONSchemaV1, StandardSchemaV1 } from "@standard-schema/spec"
-import { Cache, Effect, JsonSchema, Schema, SchemaIssue, SchemaRepresentation } from "effect"
+import { Effect, JsonSchema, Result, Schema, SchemaIssue, SchemaRepresentation } from "effect"
 import { $ZodType, toJSONSchema } from "zod/v4/core"
 
 const formatEffectIssues = SchemaIssue.makeFormatterStandardSchemaV1()
 
-const jsonSchemas = Effect.runSync(
-  Cache.make<JsonSchema.JsonSchema, Schema.Codec<unknown> | undefined>({
-    capacity: 100,
-    lookup: (schema) =>
-      Effect.try({
-        try: () => jsonSchema(schema),
-        catch: () => undefined,
-      }).pipe(Effect.orElseSucceed(() => undefined)),
-  }),
-)
+// Codecs for raw JSON Schema inputs are built once per immutable schema object. Effect Cache retains the lookup
+// fiber, including the caller stack and Location-scoped services captured by it, after the entry is evicted.
+const jsonSchemas = new WeakMap<object, Schema.Codec<unknown> | undefined>()
+
+const codecFor = (schema: JsonSchema.JsonSchema) => {
+  if (jsonSchemas.has(schema)) return jsonSchemas.get(schema)
+  const codec = Result.try(() => jsonSchema(schema)).pipe(Result.getOrUndefined)
+  jsonSchemas.set(schema, codec)
+  return codec
+}
 
 export const definition = (tool: Tool.Info<any, any>): ToolDefinition => ({
   type: "tool",
@@ -73,7 +73,7 @@ const validateInput = (
 ): Effect.Effect<StandardSchemaV1.Result<unknown>> => {
   if (isStandardSchema(schema)) return validateStandard(schema, value)
   return Effect.gen(function* () {
-    const codec = Schema.isSchema(schema) ? schema : yield* Cache.get(jsonSchemas, schema)
+    const codec = Schema.isSchema(schema) ? schema : codecFor(schema)
     if (codec === undefined) return { value }
     return yield* Schema.decodeUnknownEffect(codec)(value, { errors: "all" }).pipe(
       Effect.match({

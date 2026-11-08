@@ -30,6 +30,12 @@ describe("file path helpers", () => {
     expect(windows.normalize("file:///C:/repo/src/app.ts")).toBe("src/app.ts")
   })
 
+  test("keeps virtual skill URIs absolute", () => {
+    const path = createPathHelpers(() => "/repo")
+    expect(path.normalize("skill://review/references/style.md")).toBe("skill://review/references/style.md")
+    expect(path.absolute("skill://review/references/style.md")).toBe(true)
+  })
+
   test.each([
     ["/repo", "src/components///", "src/components"],
     ["C:\\repo", "frontend\\", "frontend"],

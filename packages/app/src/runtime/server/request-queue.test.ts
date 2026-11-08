@@ -130,6 +130,18 @@ describe("createRequestQueue", () => {
     expect(input.queue.inflight()).toBe(0)
   })
 
+  test("disposing cancels queued and in-flight requests and rejects later ones", async () => {
+    const input = setup({ limit: 1 })
+    const inflight = input.queue.fetch("http://server/api/a")
+    const queued = input.queue.fetch("http://server/api/b")
+    input.queue.dispose()
+    const errors = await Promise.all([inflight, queued].map((request) => request.catch((cause: unknown) => cause)))
+
+    expect(errors.map((error) => error instanceof DOMException && error.name)).toEqual(["AbortError", "AbortError"])
+    expect(input.queue.inflight()).toBe(0)
+    await expect(input.queue.fetch("http://server/api/c")).rejects.toBeInstanceOf(DOMException)
+  })
+
   test("a request the server never answers times out and frees its slot", async () => {
     const input = setup({ limit: 1, headersTimeoutMs: 10 })
     const dead = input.queue.fetch("http://server/api/dead")
@@ -214,11 +226,11 @@ describe("createRequestQueue", () => {
         data: {
           limit: 2,
           inflight: [
-            { method: "GET", url: "http://server/api/worktree", ms: 2_200 },
-            { method: "GET", url: "http://server/api/worktree", ms: 2_150 },
+            { method: "GET", url: "http://server/api/worktree?location[directory]=%2Fa", ms: 2_200 },
+            { method: "GET", url: "http://server/api/worktree?location[directory]=%2Fb", ms: 2_150 },
           ],
           queued: [
-            { method: "GET", url: "http://server/api/worktree", ms: 2_100 },
+            { method: "GET", url: "http://server/api/worktree?location[directory]=%2Fc", ms: 2_100 },
             { method: "GET", url: "http://server/api/info", ms: 2_000 },
           ],
         },

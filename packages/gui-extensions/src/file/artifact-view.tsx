@@ -1,4 +1,15 @@
-import { createMemo, createSignal, ErrorBoundary, For, Match, onCleanup, Show, Switch, untrack, type JSX } from "solid-js"
+import {
+  createMemo,
+  createSignal,
+  ErrorBoundary,
+  For,
+  Match,
+  onCleanup,
+  Show,
+  Switch,
+  untrack,
+  type JSX,
+} from "solid-js"
 import { createStore } from "solid-js/store"
 import { Dynamic } from "solid-js/web"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
@@ -11,7 +22,15 @@ import { MarkdownProvider, useMarkdown } from "@opencode/session-ui/context/mark
 import { artifactKind, type ArtifactKind } from "@opencode/util/artifact"
 import { getDirectory, getFilename } from "@opencode/util/path"
 import { createKeyed, useExtension, type FileContent, type MountedSession } from "../sdk"
-import { blobUrlFromContent, bytesFromContent, contentBytes, parseDelimited, resolveArtifactPath } from "./artifact"
+import {
+  blobUrlFromContent,
+  bytesFromContent,
+  contentBytes,
+  parseDelimited,
+  resolveArtifactPath,
+  splitFrontmatter,
+  type FrontmatterProperty,
+} from "./artifact"
 import { current, useShared } from "./context"
 import { FileViewer } from "./contract"
 import { workspaceFileUrl } from "./path"
@@ -437,6 +456,7 @@ function ArtifactMarkdown(props: { session: MountedSession; path: string; text: 
   const dir = createMemo(() => (props.path.includes("/") || props.path.includes("\\") ? getDirectory(props.path) : ""))
   // Absolute references bypass the file's directory; relative ones resolve against it.
   const resolve = (href: string) => (/^([a-z]:)?\//i.test(href) ? href : (resolveArtifactPath(dir(), href) ?? href))
+  const split = createMemo(() => splitFrontmatter(props.text))
 
   return (
     <MarkdownProvider
@@ -444,10 +464,38 @@ function ArtifactMarkdown(props: { session: MountedSession; path: string; text: 
       openLocalFile={(href) => void links.open({ href, base: dir(), session: props.session })}
       localFileExists={(href) => untrack(() => links.exists({ href, base: dir(), session: props.session }))}
     >
-      <div class="mx-auto w-full max-w-3xl px-8 py-6">
-        <Markdown text={props.text} cacheKey={props.cacheKey} />
+      <div data-slot="artifact-markdown-page" class="mx-auto w-full max-w-3xl px-8 py-6">
+        <Show when={split().properties}>{(properties) => <ArtifactProperties properties={properties()} />}</Show>
+        <Markdown text={split().body} cacheKey={props.cacheKey} />
       </div>
     </MarkdownProvider>
+  )
+}
+
+function ArtifactProperties(props: { properties: FrontmatterProperty[] }) {
+  const ctx = useExtension()
+  const [expanded, setExpanded] = createSignal(false)
+  // Long frontmatter shows its first entries until the reader asks for the rest.
+  const shown = () => (expanded() || props.properties.length <= 8 ? props.properties : props.properties.slice(0, 6))
+
+  return (
+    <div data-slot="artifact-properties">
+      <dl aria-label={ctx.t("view.properties")}>
+        <For each={shown()}>
+          {(property) => (
+            <>
+              <dt>{property.key}</dt>
+              <dd data-code={property.code ? "" : undefined}>{property.value}</dd>
+            </>
+          )}
+        </For>
+      </dl>
+      <Show when={shown().length < props.properties.length}>
+        <button type="button" data-slot="artifact-properties-more" onClick={() => setExpanded(true)}>
+          {ctx.t("view.properties.showAll", { count: props.properties.length })}
+        </button>
+      </Show>
+    </div>
   )
 }
 

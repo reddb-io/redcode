@@ -1,4 +1,4 @@
-import { describe, expect } from "bun:test"
+import { describe, expect, test } from "bun:test"
 import { Effect, Fiber } from "effect"
 import {
   AIError,
@@ -13,6 +13,7 @@ import { Database } from "@opencode/core/database/database"
 import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
 import { ProjectTable } from "@opencode/core/project/sql"
 import { SessionRunnerRetry } from "@opencode/core/session/runner/retry"
+import { toSessionError } from "@opencode/core/session/to-session-error"
 import { SessionTable } from "@opencode/core/session/sql"
 import { Agent } from "@opencode/schema/agent"
 import { Model } from "@opencode/schema/model"
@@ -41,6 +42,15 @@ const input = (cause: AIError) => ({
   model,
   hook: () => Effect.void,
   retry: true,
+})
+const unreachable = new AIError({
+  reason: new TransportError({
+    message: "getaddrinfo ENOTFOUND router.example.test",
+    transport: "http",
+    operation: "request",
+    code: "ENOTFOUND",
+    url: "https://router.example.test/v1/responses",
+  }),
 })
 
 const seed = Effect.fn(function* () {
@@ -122,6 +132,17 @@ describe("SessionRunnerRetry.exhausted", () => {
 })
 
 describe("SessionRunnerRetry.policy", () => {
+  it.effect("does not spend the general transient allowance while the provider host is unreachable", () =>
+    Effect.gen(function* () {
+      const decide = yield* SessionRunnerRetry.policy(id)
+      for (let index = 0; index < 25; index++) expect((yield* decide(input(unreachable))).retry).toBeTrue()
+
+      const transient = new AIError({ reason: new ProviderInternalError({ message: "internal" }) })
+      const decisions = yield* Effect.forEach(Array.from({ length: 20 }), () => decide(input(transient)))
+      expect(decisions.every((decision) => decision.retry)).toBeTrue()
+    }),
+  )
+
   it.effect("limits transport timeout retries while retaining the general transient allowance", () =>
     Effect.gen(function* () {
       const timedOut = new AIError({
@@ -196,6 +217,15 @@ describe("SessionRunnerRetry.policy", () => {
       expect(decision).toEqual({ retry: true, attempt: 2, delay: 5 * 60_000 })
     }),
   )
+})
+
+test("names an unreachable provider host in the session error", () => {
+  expect(SessionRunnerRetry.isUnreachable(unreachable)).toBeTrue()
+  expect(toSessionError(unreachable)).toMatchObject({
+    type: "provider.transport",
+    message:
+      "Can't reach router.example.test. Check the network connection. (getaddrinfo ENOTFOUND router.example.test)",
+  })
 })
 
 describe("SessionRunnerRetry.make", () => {

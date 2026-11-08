@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import path from "path"
 import { ShellSelect } from "@opencode/core/shell/select"
+import { ShellResult } from "@opencode/core/shell/result"
 import { FSUtil } from "@opencode/util/fs-util"
 import { which } from "@opencode/core/util/which"
 import fs from "node:fs/promises"
@@ -51,7 +52,7 @@ describe("shell", () => {
   test("builds command args per shell family", () => {
     expect(ShellSelect.args("/bin/sh", "echo hi")).toEqual(["-c", "echo hi"])
     expect(ShellSelect.args("/usr/bin/fish", "echo hi")).toEqual(["-c", "echo hi"])
-    expect(ShellSelect.args("/bin/zsh", "echo hi")).toEqual(["-c", "echo hi"])
+    expect(ShellSelect.args("/bin/zsh", "echo hi")).toEqual(["+o", "nomatch", "-c", "echo hi"])
     expect(ShellSelect.args("/bin/bash", "echo hi")).toEqual(["-c", "echo hi"])
     expect(ShellSelect.args("pwsh", "Write-Output hi")).toEqual([
       "-NoLogo",
@@ -60,6 +61,17 @@ describe("shell", () => {
       "-Command",
       "Write-Output hi",
     ])
+  })
+
+  test("describes exit codes, signals, and timeouts precisely", () => {
+    expect(ShellResult.notice({ exit: 0 })).toBeUndefined()
+    expect(ShellResult.notice({ exit: 7 })).toBe("Exit code: 7")
+    expect(ShellResult.notice({ signal: "SIGTERM" })).toBe("Exit code: 143 (SIGTERM)")
+    expect(ShellResult.notice({ signal: "SIGKILL" })).toBe("Exit code: 137 (SIGKILL)")
+    expect(ShellResult.notice({ signal: "SIGNOPE" })).toBe("Exit code: unknown")
+    expect(ShellResult.notice({ signal: "SIGTERM", timeout: true }, 120_000)).toBe(
+      "Command timed out after 120 seconds. If it needs longer and isn't waiting for input, rerun with a larger timeout.\nExit code: 143 (SIGTERM)",
+    )
   })
 
   if (process.platform !== "win32") {

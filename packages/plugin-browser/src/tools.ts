@@ -6,9 +6,10 @@ import { Effect, Encoding, Result, Schema } from "effect"
 import type { BrowserConnection } from "./connection.js"
 import { BrowserFiles } from "./files.js"
 import { Browser } from "./rpc.js"
+import { BrowserTunnel } from "./tunnel.js"
 
 export const register = Effect.fn("BrowserTools.register")(function* (
-  ctx: Pick<Context, "tool" | "location">,
+  ctx: Pick<Context, "tool" | "location" | "permission">,
   connection: BrowserConnection.Connection,
 ) {
   const execute = Effect.fn("BrowserTools.execute")(function* (
@@ -21,11 +22,41 @@ export const register = Effect.fn("BrowserTools.register")(function* (
       catch: (error) => new Tool.Error({ message: invalidURL, error }),
     })
     const target = yield* connection.target(tool.sessionID, action)
+    const approved = isManagerAction(action) ? managerTarget(action, target.tab) : yield* target.inspect()
+    const paths = serverFileResources(action)
+    const resources = [
+      ...new Set([...(approved.resources.length ? approved.resources : ["browser://session"]), ...paths]),
+    ]
+    const permission = permissionAction(action)
+    yield* ctx.permission.assert({
+      sessionID: tool.sessionID,
+      agent: tool.agent,
+      action: permission,
+      resources,
+      save: resources,
+      metadata: { operation: action.type, target: approved.key },
+      source: { type: "tool", messageID: tool.messageID, id: tool.id },
+    })
+    const explicitPrivate = resources.filter(isPrivateNetworkResource)
+    const resolvedPrivate =
+      action.type === "tabs.open" || action.type === "navigate" ? yield* BrowserTunnel.privateResources(resources) : []
+    const privateNetwork = [...new Set([...explicitPrivate, ...resolvedPrivate])]
+    if (privateNetwork.length)
+      yield* ctx.permission.assert({
+        sessionID: tool.sessionID,
+        agent: tool.agent,
+        action: "browser.network.private",
+        resources: privateNetwork,
+        save: privateNetwork,
+        metadata: { operation: action.type, target: approved.key },
+        source: { type: "tool", messageID: tool.messageID, id: tool.id },
+      })
+    yield* target.authorizePrivate(privateNetwork)
     const uploads =
       action.type === "files.upload" || action.type === "files.drop"
         ? yield* BrowserFiles.read(action.paths, ctx.location.directory)
         : []
-    const response = yield* target.request(uploads)
+    const response = yield* target.request(uploads, approved)
     const output = yield* Effect.fromResult(decodeResult(operation, response))
     return yield* exportResult(output, response.files)
   })
@@ -56,6 +87,97 @@ export const register = Effect.fn("BrowserTools.register")(function* (
     })
     .pipe(Effect.orDie)
 })
+
+const managerActions = new Set<Browser.Action["type"]>([
+  "tabs.list",
+  "tabs.open",
+  "tabs.focus",
+  "tabs.close",
+  "preview",
+])
+
+function isManagerAction(action: Browser.Action) {
+  return managerActions.has(action.type)
+}
+
+function managerTarget(action: Browser.Action, tab: Browser.Tab | undefined): Browser.Target {
+  if (action.type === "tabs.open") {
+    const resource = action.url ?? "about:blank"
+    return { resources: [resource], key: JSON.stringify([action.type, resource]) }
+  }
+  if (action.type === "preview") return { resources: [action.path], key: JSON.stringify([action.type, action.path]) }
+  if (action.type === "tabs.list") return { resources: ["browser://tabs"], key: action.type }
+  const resource = tab?.url ?? "browser://tabs"
+  return {
+    resources: [resource],
+    key: JSON.stringify([action.type, tab?.id ?? null, tab?.generation ?? null, resource]),
+  }
+}
+
+export function permissionAction(action: Browser.Action): string {
+  if (action.type === "evaluate") return "browser.execute"
+  if (action.type === "preview" || action.type.startsWith("files.")) return "browser.files"
+  if (
+    action.type === "click" ||
+    action.type === "hover" ||
+    action.type === "drag" ||
+    action.type === "fill" ||
+    action.type === "fill_form" ||
+    action.type === "select" ||
+    action.type === "check" ||
+    action.type === "press" ||
+    action.type === "scroll" ||
+    action.type === "dialog"
+  )
+    return "browser.interact"
+  if (
+    action.type === "tabs.open" ||
+    action.type === "tabs.focus" ||
+    action.type === "tabs.close" ||
+    action.type === "navigate" ||
+    action.type === "back" ||
+    action.type === "forward" ||
+    action.type === "reload" ||
+    action.type === "stop"
+  )
+    return "browser.navigate"
+  if (
+    action.type === "trace.start" ||
+    action.type === "trace.stop" ||
+    action.type === "cpu.start" ||
+    action.type === "cpu.stop" ||
+    action.type === "heap.snapshot" ||
+    action.type === "lighthouse"
+  )
+    return "browser.profile"
+  return "browser.observe"
+}
+
+function serverFileResources(action: Browser.Action): ReadonlyArray<string> {
+  if (action.type === "preview") return [action.path]
+  if (action.type === "files.upload" || action.type === "files.drop") return action.paths
+  return []
+}
+
+export function isPrivateNetworkResource(resource: string): boolean {
+  let url: URL
+  try {
+    url = new URL(resource)
+  } catch {
+    return false
+  }
+  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "")
+  if (host === "localhost" || host === "::1" || host.endsWith(".localhost")) return true
+  if (/^127\./.test(host) || /^10\./.test(host) || /^192\.168\./.test(host) || /^169\.254\./.test(host)) return true
+  const match = /^(\d{1,3})\.(\d{1,3})\./.exec(host)
+  if (match?.[1] === "172") {
+    const second = Number(match[2])
+    if (second >= 16 && second <= 31) return true
+  }
+  return (
+    host === "0.0.0.0" || host === "::" || host.startsWith("fc") || host.startsWith("fd") || host.startsWith("fe80:")
+  )
+}
 
 function decodeResult(operation: Browser.Operation, result: Browser.Result) {
   return Result.gen(function* () {

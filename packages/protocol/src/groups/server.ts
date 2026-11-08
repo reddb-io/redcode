@@ -6,6 +6,8 @@ import { RemoteAccess } from "@opencode/schema/remote-access"
 import { Attention } from "@opencode/schema/attention"
 import { HostResources } from "@opencode/schema/host-resources"
 import { Memory } from "@opencode/schema/memory"
+import { ClientPresence } from "@opencode/schema/client-presence"
+import { ModelPerformance } from "@opencode/schema/model-performance"
 
 export const ServerInfo = Schema.Struct({
   capabilities: Schema.optional(
@@ -70,6 +72,8 @@ export const SystemInfo = Schema.Struct({
   ]),
   /** Rows stored, when the database could be counted. */
   counts: Schema.optionalKey(Schema.Struct({ sessions: Schema.Finite, messages: Schema.Finite })),
+  /** Live clients with an open event stream, de-duplicated by client identity. */
+  clients: Schema.optionalKey(ClientPresence.Snapshot),
 }).annotate({ identifier: "SystemInfo" })
 export type SystemInfo = typeof SystemInfo.Type
 
@@ -163,6 +167,18 @@ export const ServerGroup = HttpApiGroup.make("server.server")
         summary: "Get system info",
         description:
           "Return the server's version, runtime, data paths, database (local size or remote host) and memory. Never a credential.",
+      }),
+    ),
+  )
+  .add(
+    HttpApiEndpoint.get("server.performance", "/api/performance", {
+      success: ModelPerformance.Snapshot,
+    }).annotateMerge(
+      OpenApi.annotations({
+        identifier: "server.performance",
+        summary: "Get model performance",
+        description:
+          "Summarize time to first output, generation throughput, and failures from up to 5,000 persisted model responses in the last 24 hours.",
       }),
     ),
   )

@@ -86,7 +86,9 @@ test("Git initialization belongs to its session and refreshes after a session sw
   await expect(pending).toHaveCount(0)
 })
 
-test("a rejected Git init releases its session's button without showing an error in another session", async ({ page }) => {
+test("a rejected Git init releases its session's button without showing an error in another session", async ({
+  page,
+}) => {
   await openSession(page, {
     name: "ReviewInitFailure",
     project: { vcs: undefined },
@@ -493,6 +495,74 @@ test("rereads a file each time an artifact link opens it", async ({ page }) => {
   await expect(tab).toHaveAttribute("aria-selected", "true")
   await expect(panel.getByText("second draft", { exact: true })).toBeVisible()
   await expect(panel.getByText("first draft", { exact: true })).toHaveCount(0)
+})
+
+test("shows Markdown frontmatter as compact artifact properties", async ({ page }) => {
+  const notes = [
+    "---",
+    "description: Release checklist",
+    "mode: primary",
+    "model: opencode/test",
+    "temperature: 0.2",
+    "steps: 12",
+    "color: accent",
+    "hidden: false",
+    'title: "Release"',
+    "tools:",
+    "  write: false",
+    "---",
+    "",
+    "# Notes",
+    "",
+    "A document with a visible top edge.",
+  ].join("\n")
+  const messages = [
+    { id: "msg_prompt", type: "user", text: "Open the release notes", time: { created: 1 } },
+    {
+      id: "msg_reply",
+      type: "assistant",
+      agent: "build",
+      model: { id: "test", providerID: "opencode" },
+      content: [{ type: "text", text: "Review [notes.md](notes.md)." }],
+      time: { created: 2, completed: 3 },
+    },
+  ] satisfies SessionMessageInfo[]
+
+  await openSession(page, {
+    name: "ArtifactFrontmatter",
+    fileList: () => [],
+    fileContent: (path) => (path === "notes.md" ? { content: notes } : ""),
+    pageMessages: () => ({ items: messages }),
+  })
+  await page.getByRole("link", { name: "notes.md", exact: true }).click()
+  const paper = page.locator('#review-panel [data-slot="artifact-markdown-page"]')
+
+  await expect(paper.getByRole("heading", { name: "Notes", exact: true })).toBeVisible()
+  await expect(paper.locator("code.language-yaml")).toHaveCount(0)
+  await expect(paper.getByRole("term")).toHaveText(["description", "mode", "model", "temperature", "steps", "color"])
+  await paper.getByRole("button", { name: "Show all 9 properties", exact: true }).click()
+  await expect(paper.getByRole("term")).toHaveText([
+    "description",
+    "mode",
+    "model",
+    "temperature",
+    "steps",
+    "color",
+    "hidden",
+    "title",
+    "tools",
+  ])
+  await expect(paper.getByRole("definition")).toHaveText([
+    "Release checklist",
+    "primary",
+    "opencode/test",
+    "0.2",
+    "12",
+    "accent",
+    "false",
+    "Release",
+    "write: false",
+  ])
 })
 
 /** What the image case's frame probe records on the window. */

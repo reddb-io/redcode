@@ -6,6 +6,7 @@ import { Integration } from "../integration.js"
 import { AgentNotFoundError, StepFailedError } from "./error.js"
 import { ProviderFailure } from "./provider-failure.js"
 import { SessionRunnerModel } from "./runner/model.js"
+import { SessionRunnerRetry } from "./runner/retry.js"
 
 /** The provider and model a request went to, known where the runner resolved them. */
 export interface Route {
@@ -25,6 +26,7 @@ export function toSessionError(cause: unknown, route?: Route): SessionError.Erro
       case "ContentPolicy":
         return providerError("provider.content-filter", cause.reason, route)
       case "Transport":
+        if (SessionRunnerRetry.isUnreachable(cause)) return unreachable(cause.reason, route)
         return providerError("provider.transport", cause.reason, route)
       case "ProviderInternal":
         return providerError("provider.internal", cause.reason, route)
@@ -71,6 +73,20 @@ export function toSessionError(cause: unknown, route?: Route): SessionError.Erro
     return { type: "provider.no-route", message: cause.message }
   if (cause instanceof Integration.AuthorizationError) return { type: "provider.auth", message: cause.message }
   return { type: "unknown", message: cause instanceof Error ? cause.message : String(cause) }
+}
+
+function unreachable(reason: AIError["reason"], route: Route | undefined): SessionError.Error {
+  const raw = "url" in reason ? reason.url : undefined
+  let host: string | undefined
+  try {
+    host = raw ? new URL(raw).hostname : undefined
+  } catch {
+    host = undefined
+  }
+  return {
+    ...providerError("provider.transport", reason, route),
+    message: `Can't reach ${host || "the provider"}. Check the network connection. (${reason.message})`,
+  }
 }
 
 export function contentFilterError(summary: string, reason: FinishReasonDetails): SessionError.Error {

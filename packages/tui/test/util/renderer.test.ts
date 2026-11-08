@@ -1,5 +1,18 @@
 import { expect, test } from "bun:test"
-import { destroyRenderer } from "../../src/util/renderer"
+import { destroyRenderer, setTerminalTitle } from "../../src/util/renderer"
+
+test("removes control characters from terminal titles", () => {
+  const calls: string[] = []
+  setTerminalTitle(
+    {
+      setTerminalTitle(title) {
+        calls.push(title)
+      },
+    },
+    "Fix parser bug\nin tokenizer\u0000now",
+  )
+  expect(calls).toEqual(["Fix parser bug in tokenizer now"])
+})
 
 test("clears the terminal title before destroying the renderer", () => {
   const calls: string[] = []

@@ -53,6 +53,8 @@ const GLOW_RELEASE_PEAK = 1.25
 const GLOW_TAIL = 12
 const GLOW_OPACITY = 0.16
 const DEFAULT_FOREGROUND = RGBA.defaultForeground()
+// The sweep front crosses a 32-cell tab at up to about 24 cells per second, so 20 fps moves it about one cell.
+const FRAME_INTERVAL = 1000 / 20
 export const intensityAt = (index: number, front: number, head: number, tail: number) => {
   const distance = front - index
   return distance < 0 ? smootherstep(clamp(1 + distance / head)) : smootherstep(clamp(1 - distance / tail))
@@ -419,6 +421,9 @@ class PulseState {
 }
 
 class TabPulseRenderable extends Renderable {
+  private timer: ReturnType<typeof globalThis.setTimeout> | undefined
+  private updatedFrame = -1
+  private pending = 0
   private _enabled: boolean
   private inner: PulseState
   private outer: PulseState
@@ -448,11 +453,7 @@ class TabPulseRenderable extends Renderable {
     const edge = options.edge
     const outerActive = options.outerActive ?? active
     const outerGlow = options.outerGlow ?? glow
-    super(ctx, {
-      ...options,
-      height: 1,
-      live: enabled && (active || (edge !== undefined && outerActive)),
-    })
+    super(ctx, { ...options, height: 1 })
     this._enabled = enabled
     this.inner = new PulseState({
       enabled,
@@ -502,7 +503,6 @@ class TabPulseRenderable extends Renderable {
     this._enabled = value
     this.inner.setEnabled(value)
     this.outer.setEnabled(value && this._edge !== undefined)
-    this.live = this.inner.live || this.outer.live
     this.requestRender()
   }
 
@@ -539,7 +539,6 @@ class TabPulseRenderable extends Renderable {
   }
 
   private changed() {
-    this.live = this.inner.live || this.outer.live
     this.requestRender()
   }
 
@@ -583,7 +582,6 @@ class TabPulseRenderable extends Renderable {
     if (value === this._edge) return
     this._edge = value
     this.outer.setEnabled(this._enabled && value !== undefined)
-    this.live = this.inner.live || this.outer.live
     this.requestRender()
   }
 
@@ -629,11 +627,39 @@ class TabPulseRenderable extends Renderable {
     this.requestRender()
   }
 
+  private stop() {
+    if (this.timer === undefined) return
+    globalThis.clearTimeout(this.timer)
+    this.timer = undefined
+  }
+
   protected override onUpdate(deltaTime: number): void {
-    if (!this.live) return
-    this.inner.advance(deltaTime)
-    this.outer.advance(deltaTime)
-    this.live = this.inner.live || this.outer.live
+    this.stop()
+    if (!this.inner.live && !this.outer.live) {
+      this.pending = 0
+      return
+    }
+    if (this.updatedFrame === this._ctx.frameId - 1) this.pending += deltaTime
+    this.updatedFrame = this._ctx.frameId
+    const step = Math.floor((this.pending + 1) / FRAME_INTERVAL) * FRAME_INTERVAL
+    if (step > 0) {
+      this.pending -= step
+      this.inner.advance(step)
+      this.outer.advance(step)
+      if (!this.inner.live && !this.outer.live) return
+    }
+    this.timer = globalThis.setTimeout(
+      () => {
+        this.timer = undefined
+        this.requestRender()
+      },
+      Math.max(FRAME_INTERVAL - this.pending, FRAME_INTERVAL * 0.9),
+    )
+  }
+
+  protected override destroySelf() {
+    this.stop()
+    super.destroySelf()
   }
 
   protected override renderSelf(buffer: OptimizedBuffer): void {

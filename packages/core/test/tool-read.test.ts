@@ -11,6 +11,7 @@ import { LSP } from "@opencode/core/lsp/lsp"
 import { Image } from "@opencode/core/image"
 import { Permission } from "@opencode/core/permission"
 import { Session } from "@opencode/core/session"
+import { Skill } from "@opencode/core/skill"
 import { AbsolutePath, RelativePath } from "@opencode/core/schema"
 import { Global } from "@opencode/util/global"
 import { FileAccess } from "@opencode/core/file-access"
@@ -35,6 +36,7 @@ const readToolNode = makeLocationNode({
     Image.node,
     Permission.node,
     SessionInstructions.node,
+    Skill.node,
     LSP.node,
     FSUtil.node,
     Location.node,
@@ -120,7 +122,7 @@ const unavailableImage = Layer.mock(Image.Service, {
 })
 const readLayer = (imageLayer: Layer.Layer<Image.Service>) =>
   Layer.mergeAll(
-    AppNodeBuilder.build(LayerNode.group([Tool.node, readToolNode]), [
+    AppNodeBuilder.build(LayerNode.group([Tool.node, readToolNode, Skill.node]), [
       ReadToolFileSystem.node.replace(reader),
       Permission.node.replace(permission),
       Config.node.replace(config),
@@ -955,6 +957,73 @@ describe("ReadTool", () => {
           call: { type: "tool-call", id: "call-direct-binary", name: "read", input: { path: "late-binary" } },
         }),
       ).toEqual({ status: "error", error: { type: "unknown", message: "Cannot read binary file: late-binary" } })
+    }),
+  )
+
+  it.effect("reads virtual skill files and directories without touching the location filesystem", () =>
+    Effect.gen(function* () {
+      const skills = yield* Skill.Service
+      const registry = yield* Tool.Service
+      yield* skills.transform((editor) =>
+        editor.add(
+          Skill.Info.make({
+            id: Skill.ID.make("guide"),
+            name: Skill.Name.make("Guide"),
+            description: "Guide",
+            path: AbsolutePath.make(Skill.uri("guide", "SKILL.md")),
+            content: "# Guide\nRead references/style.md",
+          }),
+          { "references/style.md": "Line 1\nLine 2" },
+        ),
+      )
+
+      const file = yield* executeTool(registry, {
+        sessionID,
+        ...toolIdentity,
+        call: {
+          type: "tool-call",
+          id: "call-skill-file",
+          name: "read",
+          input: { path: "skill://guide/references/style.md", offset: 2, limit: 1 },
+        },
+      })
+      expect(file).toMatchObject({
+        status: "completed",
+        content: [{ type: "text", text: "Read file skill://guide/references/style.md, lines 2-2\n2: Line 2" }],
+      })
+
+      const root = yield* executeTool(registry, {
+        sessionID,
+        ...toolIdentity,
+        call: { type: "tool-call", id: "call-skill-dir", name: "read", input: { path: "skill://guide/" } },
+      })
+      expect(root).toMatchObject({
+        status: "completed",
+        content: [{ type: "text", text: "Read directory skill://guide/, entries 1-2\nreferences/\nSKILL.md" }],
+      })
+
+      expect(
+        yield* executeTool(registry, {
+          sessionID,
+          ...toolIdentity,
+          call: {
+            type: "tool-call",
+            id: "call-skill-traversal",
+            name: "read",
+            input: { path: "skill://guide/../SKILL.md" },
+          },
+        }),
+      ).toEqual({
+        status: "error",
+        error: { type: "tool.execution", message: "File not found: skill://guide/../SKILL.md" },
+      })
+      expect(readCalls).toEqual([])
+      expect(assertions).toMatchObject([
+        { sessionID, action: "skill", resources: ["guide"], save: ["guide"] },
+        { sessionID, action: "read", resources: ["skill://guide/references/style.md"], save: ["*"] },
+        { sessionID, action: "skill", resources: ["guide"], save: ["guide"] },
+        { sessionID, action: "read", resources: ["skill://guide"], save: ["*"] },
+      ])
     }),
   )
 })

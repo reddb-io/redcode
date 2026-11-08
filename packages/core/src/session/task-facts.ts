@@ -518,7 +518,7 @@ const make = Effect.gen(function* () {
           .orderBy(asc(SessionMessageTable.seq))
           .all()
           .pipe(Effect.orDie)
-        const messages = yield* Effect.forEach(rows, SessionHistory.decodeMessageRow)
+        const messages = yield* Effect.forEach(rows, (row) => SessionHistory.decodeMessageRow(db, row))
         return [
           ...project(messages, child.directory, child.id).filter((result) => result.kind === "edit"),
           ...(yield* delegatedEdits(child.id, true)),
@@ -544,7 +544,7 @@ const make = Effect.gen(function* () {
       .orderBy(asc(SessionMessageTable.seq))
       .all()
       .pipe(Effect.orDie)
-    const messages = yield* Effect.forEach(rows, SessionHistory.decodeMessageRow)
+    const messages = yield* Effect.forEach(rows, (row) => SessionHistory.decodeMessageRow(db, row))
     const pending = (yield* SessionInbox.list(db, sessionID))
       .filter((item): item is SessionInbox.User => item.type === "user")
       .map(

@@ -12,6 +12,7 @@ import { Agent } from "../agent.js"
 import { AISDK } from "../aisdk.js"
 import { Command } from "../command.js"
 import { Credential } from "../credential.js"
+import { ExecutionCapability } from "../execution-capability.js"
 import { ConsoleOrganization } from "../console-organization.js"
 import { Bus } from "../bus.js"
 import { Integration } from "../integration.js"
@@ -63,6 +64,7 @@ export const make = Effect.fn("PluginHost.make")(function* (
   const bus = yield* Bus.Service
   const integration = yield* Integration.Service
   const credentials = yield* Credential.Service
+  const capabilities = yield* ExecutionCapability.Service
   const http = yield* HttpClient.HttpClient
   const kv = yield* KV.Service
   const mcp = yield* Mcp.Service
@@ -274,6 +276,9 @@ export const make = Effect.fn("PluginHost.make")(function* (
             ),
           ),
     },
+    capability: {
+      lease: capabilities.lease,
+    },
     experimental: {
       terminal: {
         read: (input) => persistentPty.read(input.sessionID, input.lines),
@@ -439,6 +444,15 @@ export const make = Effect.fn("PluginHost.make")(function* (
     },
     permission: {
       hook: (name, callback) => hooks.register("permission", name, callback),
+      assert: (input) =>
+        permission.assert(input).pipe(
+          Effect.mapError((error) =>
+            new Tool.Error({
+              message: error instanceof Error ? error.message : "Permission request failed",
+              error,
+            }),
+          ),
+        ),
       list: (input) => permission.forSession(input.sessionID),
       get: (input) =>
         permission
@@ -616,6 +630,7 @@ export const requirements = LayerNode.group([
   Bus.node,
   Integration.node,
   Credential.node,
+  ExecutionCapability.node,
   httpClient,
   KV.node,
   Mcp.node,

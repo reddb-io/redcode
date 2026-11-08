@@ -25,6 +25,7 @@ import { SessionEvent } from "./event.js"
 import { SessionMessage } from "./message.js"
 import { SessionSchema } from "./schema.js"
 import { SessionInboxTable, SessionMessageTable } from "./sql.js"
+import { SessionBlob } from "./blob.js"
 
 type DatabaseService = Database.Interface["db"]
 
@@ -127,7 +128,8 @@ const promotedFromMessage = Effect.fn("SessionInbox.promotedFromMessage")(functi
   if (row === undefined) return undefined
   if (row.session_id !== sessionID || (row.type !== "user" && row.type !== "synthetic"))
     return yield* new LifecycleConflict({ id })
-  const message = decodeMessage({ ...row.data, id: row.id, type: row.type })
+  const hydrated = yield* SessionBlob.hydrateRow(db, row)
+  const message = decodeMessage({ ...hydrated.data, id: hydrated.id, type: hydrated.type })
   const base = { id, sessionID, time: { created: message.time.created }, delivery }
   if (message.type === "user")
     return User.make({

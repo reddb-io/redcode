@@ -1830,7 +1830,14 @@ export function createData(config: CreateDataInput) {
               (item) => !ids.has(item.id) && (outbox.has(item.id) || admitted.has(item.id)),
             )
             const messages = local.length === 0 ? fetched : [...fetched, ...local]
+            // Projected history contains only delivered input. Seeing a pending id here means its
+            // inbox.delivered event was missed while the event stream was reconnecting.
+            const delivered = [...admitted].filter((id) => ids.has(id))
             batch(() => {
+              delivered.forEach((id) => {
+                outbox.delete(id)
+                removePending(sessionID, id)
+              })
               messageIndex.set(sessionID, new Map(messages.map((message, index) => [message.id, index])))
               setStore("session", "message", sessionID, reconcile(messages))
               setStore("session", "messageCursor", sessionID, response.cursor.next ?? undefined)

@@ -120,7 +120,7 @@ describe("buildPromptRequest", () => {
           'the "button.primary" element in browser tab tab_00000000-0000-4000-8000-000000000000 at http://localhost:5173/settings (role button; accessible name "Save"; selector "#settings > button.primary"; browser ref @e42, usable as ref in any browser tool including browser.evaluate until the page navigates)',
         href: "tab_00000000-0000-4000-8000-000000000000#e42",
       },
-      comment: "Match @src/button.css",
+      comment: "Match @src/button.css and notify @here",
     }
 
     const result = buildPromptRequest({
@@ -129,10 +129,11 @@ describe("buildPromptRequest", () => {
       images: [],
       text: "tidy up",
       sessionDirectory: "/repo",
+      existingMentions: new Set(["src/button.css"]),
     })
 
     expect(result.text).toBe(
-      'tidy up\nThe user made the following comment regarding the "button.primary" element in browser tab tab_00000000-0000-4000-8000-000000000000 at http://localhost:5173/settings (role button; accessible name "Save"; selector "#settings > button.primary"; browser ref @e42, usable as ref in any browser tool including browser.evaluate until the page navigates): Match @src/button.css',
+      'tidy up\nThe user made the following comment regarding the "button.primary" element in browser tab tab_00000000-0000-4000-8000-000000000000 at http://localhost:5173/settings (role button; accessible name "Save"; selector "#settings > button.primary"; browser ref @e42, usable as ref in any browser tool including browser.evaluate until the page navigates): Match @src/button.css and notify @here',
     )
     expect(result.comments).toEqual([note])
     // A note has no file of its own; only files it mentions are attached.

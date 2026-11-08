@@ -5,6 +5,7 @@ import { Effect, Option, Stream } from "effect"
 import { type HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { Api } from "../api"
+import { ContentHeaders } from "../content-headers"
 import { response } from "../location"
 
 export const FileSystemHandler = HttpApiBuilder.group(Api, "server.fs", (handlers) =>
@@ -21,7 +22,7 @@ export const FileSystemHandler = HttpApiBuilder.group(Api, "server.fs", (handler
                 (error) => new FileNotFoundError({ path: error.path, message: `File not found: ${error.path}` }),
               ),
             )
-          return serveFile(ctx.request, file)
+          return serveFile(ctx.request, file, ContentHeaders.download({ path, mime: file.mime }))
         }),
       )
       .handle("fs.list", (ctx) =>
@@ -65,7 +66,11 @@ function decodeRequestPath(url: string) {
   })
 }
 
-function serveFile(request: HttpServerRequest.HttpServerRequest, file: FileSystem.File) {
+function serveFile(
+  request: HttpServerRequest.HttpServerRequest,
+  file: FileSystem.File,
+  content: ReturnType<typeof ContentHeaders.download>,
+) {
   const etag = `W/"${file.size.toString(16)}-${Option.match(file.mtime, {
     onNone: () => "0",
     onSome: (mtime) => mtime.getTime().toString(16),
@@ -77,13 +82,8 @@ function serveFile(request: HttpServerRequest.HttpServerRequest, file: FileSyste
     etag,
     ...(lastModified === undefined ? {} : { "last-modified": lastModified }),
   }
-  // Repository documents share the API origin. Keep HTML/SVG opaque and inert, including cached bodies.
-  const documentHeaders = {
-    "content-security-policy": "sandbox",
-    "x-content-type-options": "nosniff",
-  }
   if (isNotModified(request, etag, lastModified))
-    return HttpServerResponse.empty({ status: 304, headers: { ...validators, ...documentHeaders } })
+    return HttpServerResponse.empty({ status: 304, headers: { ...validators, ...content } })
 
   const rangeHeader = request.method === "GET" ? request.headers["range"] : undefined
   const range =
@@ -93,7 +93,7 @@ function serveFile(request: HttpServerRequest.HttpServerRequest, file: FileSyste
   if (range === "unsatisfiable")
     return HttpServerResponse.empty({
       status: 416,
-      headers: { ...documentHeaders, "accept-ranges": "bytes", "content-range": `bytes */${file.size}` },
+      headers: { ...content, "accept-ranges": "bytes", "content-range": `bytes */${file.size}` },
     })
 
   const offset = range?.start ?? 0
@@ -103,9 +103,8 @@ function serveFile(request: HttpServerRequest.HttpServerRequest, file: FileSyste
     contentLength: length,
     headers: {
       ...validators,
-      ...documentHeaders,
+      ...content,
       "accept-ranges": "bytes",
-      "content-type": file.mime,
       ...(range === undefined ? {} : { "content-range": `bytes ${range.start}-${range.end}/${file.size}` }),
     },
   })

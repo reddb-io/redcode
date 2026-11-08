@@ -10,6 +10,7 @@ import { App } from "@opencode/core/app"
 import { Config } from "@opencode/core/config"
 import { ConfigPolicyPlugin } from "@opencode/core/config/plugin/policy"
 import { Credential } from "@opencode/core/credential"
+import { InstructionDiscovery } from "@opencode/core/instruction-discovery"
 import { Integration } from "@opencode/core/integration"
 import { ManagedPolicy } from "@opencode/core/managed-policy"
 import { Mcp } from "@opencode/core/mcp/index"
@@ -19,6 +20,7 @@ import { Plugin } from "@opencode/core/plugin"
 import { PluginHost } from "@opencode/core/plugin/host"
 import { OpencodePlugin } from "@opencode/core/plugin/provider/opencode"
 import { Provider } from "@opencode/core/provider"
+import { Skill } from "@opencode/core/skill"
 import { WebSearch } from "@opencode/core/websearch"
 import { withEnv } from "../fixture/env"
 import { emptyMcp } from "../fixture/mcp"
@@ -181,6 +183,59 @@ describe("OpencodePlugin", () => {
         }),
       ({ server }) => Effect.promise(() => server.stop(true)),
     ),
+  )
+
+  it.effect("keeps Console policies when instruction or skill catalogs fail", () =>
+    Effect.gen(function* () {
+      const credentials = yield* Credential.Service
+      const managed = yield* ManagedPolicy.Service
+      const discovery = yield* InstructionDiscovery.Service
+      const sudo: ConfigPolicy.Info = { action: "tool.use", resource: "shell:sudo *", effect: "deny" }
+      const state: { lists: "down" | "ok" | "malformed" } = { lists: "down" }
+      const http = HttpClient.make((request) => {
+        const path = new URL(request.url).pathname
+        const response = (() => {
+          if (path === "/api/v2/config") return Response.json({ providers: {}, experimental: { policies: [sudo] } })
+          if (path === "/api/v2/skills")
+            return state.lists === "down"
+              ? new Response("Unavailable", { status: 503 })
+              : Response.json({ skills: [] })
+          if (path === "/api/v2/instructions") {
+            if (state.lists === "down") return new Response("Unavailable", { status: 503 })
+            if (state.lists === "malformed") return Response.json({ instructions: [{ id: "style" }] })
+            return Response.json({ instructions: [{ id: "style", content: "Use tabs." }] })
+          }
+          return new Response(null, { status: 404 })
+        })()
+        return Effect.succeed(HttpClientResponse.fromWeb(request, response))
+      })
+      const instructions = discovery.list().pipe(
+        Effect.map((files) =>
+          Array.isArray(files)
+            ? files.filter((file) => file.path.startsWith("OpenCode Console")).map((file) => file.content)
+            : [],
+        ),
+      )
+      yield* credentials.create({
+        integrationID: Integration.ID.make("opencode"),
+        value: Credential.Key.make({ type: "key", key: "secret", metadata: { server: "https://console.test" } }),
+      })
+
+      yield* addPlugin().pipe(Effect.provideService(HttpClient.HttpClient, http))
+      expect(managed.current()).toEqual({ statements: [sudo], organization: undefined })
+      expect(yield* instructions).toEqual([])
+
+      state.lists = "ok"
+      yield* TestClock.adjust("1 minute")
+      yield* drain
+      expect(yield* instructions).toEqual(["Use tabs."])
+
+      state.lists = "malformed"
+      yield* TestClock.adjust("1 minute")
+      yield* drain
+      expect(yield* instructions).toEqual(["Use tabs."])
+      expect(managed.current()).toEqual({ statements: [sudo], organization: undefined })
+    }),
   )
 
   it.effect("registers account and service account methods", () =>
@@ -402,9 +457,13 @@ describe("OpencodePlugin", () => {
                   label: initial.label,
                 }),
               ).toEqual(stored.value)
-              expect(requests).toEqual(["/auth/device/token", "/api/v2/config"])
-              // The refresh and the config fetch both say which OpenCode is asking.
-              expect(agents).toEqual(["opencode/beta/1.2.3/test", "opencode/beta/1.2.3/test"])
+              expect(requests).toEqual([
+                "/auth/device/token",
+                "/api/v2/config",
+                ...(scenario.orgID === "org-missing" ? [] : ["/api/v2/instructions", "/api/v2/skills"]),
+              ])
+              // The refresh and every Console fetch say which Redcode is asking.
+              expect(agents).toEqual(requests.map(() => "opencode/beta/1.2.3/test"))
             }).pipe(Effect.provideService(App.Metadata, App.make({ name: "test", version: "1.2.3", channel: "beta" }))),
           ({ server }) => Effect.promise(() => server.stop(true)),
         ),
@@ -454,8 +513,10 @@ describe("OpencodePlugin", () => {
           server: Bun.serve({
             port: 0,
             fetch: (request) => {
+              const path = new URL(request.url).pathname
               authorization.push(request.headers.get("authorization"))
-              requests.push(`${request.method} ${new URL(request.url).pathname}`)
+              requests.push(`${request.method} ${path}`)
+              if (path !== "/api/v2/config") return new Response(null, { status: 404 })
               const origin = new URL(request.url).origin
               return Response.json({
                 providers: {
@@ -548,8 +609,12 @@ describe("OpencodePlugin", () => {
           })
 
           yield* addPlugin()
-          expect(authorization).toEqual(["Bearer secret"])
-          expect(requests).toEqual(["GET /api/v2/config"])
+          expect(authorization).toEqual(["Bearer secret", "Bearer secret", "Bearer secret"])
+          expect(requests).toEqual([
+            "GET /api/v2/config",
+            "GET /api/v2/instructions",
+            "GET /api/v2/skills",
+          ])
 
           const provider = required(yield* providers.get(Provider.ID.make("remote")))
           expect(provider).toMatchObject({
@@ -610,7 +675,7 @@ describe("OpencodePlugin", () => {
 
           yield* credentials.update(initial.id, { label: "Renamed" })
           yield* Effect.yieldNow
-          expect(authorization).toEqual(["Bearer secret"])
+          expect(authorization).toEqual(["Bearer secret", "Bearer secret", "Bearer secret"])
 
           const replacement = yield* credentials.create({
             integrationID: Integration.ID.make("opencode"),
@@ -622,14 +687,28 @@ describe("OpencodePlugin", () => {
           })
           yield* eventually(
             Effect.sync(() => authorization.length),
-            (count) => count === 2,
+            (count) => count === 6,
           )
-          expect(authorization).toEqual(["Bearer secret", "Bearer replacement"])
-          expect(requests).toEqual(["GET /api/v2/config", "GET /api/v2/config"])
+          expect(authorization).toEqual([
+            "Bearer secret",
+            "Bearer secret",
+            "Bearer secret",
+            "Bearer replacement",
+            "Bearer replacement",
+            "Bearer replacement",
+          ])
+          expect(requests).toEqual([
+            "GET /api/v2/config",
+            "GET /api/v2/instructions",
+            "GET /api/v2/skills",
+            "GET /api/v2/config",
+            "GET /api/v2/instructions",
+            "GET /api/v2/skills",
+          ])
 
           yield* credentials.remove(initial.id)
           yield* Effect.yieldNow
-          expect(authorization).toEqual(["Bearer secret", "Bearer replacement"])
+          expect(authorization).toHaveLength(6)
           expect((yield* credentials.list(Integration.ID.make("opencode"))).at(-1)?.id).toBe(replacement.id)
         }),
       ({ server }) => Effect.promise(() => server.stop(true)),
@@ -642,7 +721,8 @@ describe("OpencodePlugin", () => {
         const state = { advertised: false, failing: false, requests: 0 }
         const server = Bun.serve({
           port: 0,
-          fetch: () => {
+          fetch: (request) => {
+            if (new URL(request.url).pathname !== "/api/v2/config") return new Response(null, { status: 404 })
             state.requests++
             if (state.failing) return new Response("Unavailable", { status: 502 })
             return Response.json({
@@ -883,6 +963,7 @@ describe("OpencodePlugin", () => {
         const server = Bun.serve({
           port: 0,
           fetch: (request) => {
+            if (new URL(request.url).pathname !== "/api/v2/config") return new Response(null, { status: 404 })
             state.requests++
             if (state.status !== 200) return new Response("Unavailable", { status: state.status })
             const policies = state.policies[request.headers.get("x-org-id") ?? ""]
@@ -1071,6 +1152,18 @@ describe("OpencodePlugin", () => {
               orgID: "org_test",
             },
             {
+              method: "GET",
+              path: "/api/v2/instructions",
+              authorization: "Bearer secret",
+              orgID: "org_test",
+            },
+            {
+              method: "GET",
+              path: "/api/v2/skills",
+              authorization: "Bearer secret",
+              orgID: "org_test",
+            },
+            {
               method: "POST",
               path: "/api/websearch",
               authorization: "Bearer secret",
@@ -1134,7 +1227,7 @@ describe("OpencodePlugin", () => {
             providers.every((provider) => provider.id !== WebSearch.ID.make("opencode")),
           )
           expect(yield* websearch.default()).toBeUndefined()
-          expect(requests.at(-1)).toMatchObject({
+          expect(requests.filter((request) => request.path === "/api/v2/config").at(-1)).toMatchObject({
             method: "GET",
             path: "/api/v2/config",
             authorization: "Bearer switched",
@@ -1197,6 +1290,8 @@ describe("OpencodePlugin", () => {
           )
           expect(requests).toEqual([
             "https://opencode.ai/console/api/v2/config",
+            "https://opencode.ai/console/api/v2/instructions",
+            "https://opencode.ai/console/api/v2/skills",
             "https://opencode.ai/console/api/websearch",
           ])
         }),
@@ -1246,11 +1341,22 @@ describe("OpencodePlugin", () => {
           yield* addPlugin()
 
           expect((yield* websearch.query({ query: "private search" }).pipe(Effect.flip))._tag).toBe("WebSearch.Request")
-          expect(requests).toEqual(["/console/api/v2/config", "/console/api/websearch"])
+          expect(requests).toEqual([
+            "/console/api/v2/config",
+            "/console/api/v2/instructions",
+            "/console/api/v2/skills",
+            "/console/api/websearch",
+          ])
 
           state.crossOrigin = true
           expect((yield* websearch.query({ query: "private search" }).pipe(Effect.flip))._tag).toBe("WebSearch.Request")
-          expect(requests).toEqual(["/console/api/v2/config", "/console/api/websearch", "/console/api/websearch"])
+          expect(requests).toEqual([
+            "/console/api/v2/config",
+            "/console/api/v2/instructions",
+            "/console/api/v2/skills",
+            "/console/api/websearch",
+            "/console/api/websearch",
+          ])
         }),
       ({ server }) => Effect.promise(() => server.stop(true)),
     ),
@@ -1272,6 +1378,8 @@ describe("OpencodePlugin", () => {
                 },
               })
             }
+            if (url.pathname === "/api/v2/instructions" || url.pathname === "/api/v2/skills")
+              return new Response(null, { status: 404 })
             return new Response(
               new ReadableStream({
                 start(controller) {
@@ -1309,6 +1417,77 @@ describe("OpencodePlugin", () => {
           )
           // Callers can retain errors, so response cleanup must not depend on garbage collection.
           expect(error).toBeInstanceOf(WebSearch.RequestError)
+        }),
+      ({ server }) => Effect.promise(() => server.stop(true)),
+    ),
+  )
+
+  it.live("loads Console instructions and virtual skills while requesting both lists concurrently", () =>
+    Effect.acquireUseRelease(
+      Effect.sync(() => {
+        const requested: string[] = []
+        const skillsRequested = Promise.withResolvers<void>()
+        const server = Bun.serve({
+          port: 0,
+          fetch: async (request) => {
+            const path = new URL(request.url).pathname
+            requested.push(path)
+            if (path === "/api/v2/config") return Response.json({ providers: {} })
+            if (path === "/api/v2/instructions") {
+              await skillsRequested.promise
+              return Response.json({ instructions: [{ id: "style", content: "Use tabs." }] })
+            }
+            if (path === "/api/v2/skills") {
+              skillsRequested.resolve()
+              return Response.json({ skills: [{ slug: "deploy", version: "1" }] })
+            }
+            if (path === "/api/v2/skills/deploy") {
+              expect(request.headers.get("authorization")).toBe("Bearer secret")
+              return Response.json({
+                slug: "deploy",
+                files: [
+                  {
+                    path: "SKILL.md",
+                    content: "---\nname: Deploy\ndescription: Deploys the service.\n---\n# Deploy",
+                  },
+                  { path: "references/runbook.md", content: "Ship it safely." },
+                ],
+              })
+            }
+            return new Response(null, { status: 404 })
+          },
+        })
+        return { requested, server }
+      }),
+      ({ requested, server }) =>
+        Effect.gen(function* () {
+          const credentials = yield* Credential.Service
+          const discovery = yield* InstructionDiscovery.Service
+          const skills = yield* Skill.Service
+          yield* credentials.create({
+            integrationID: Integration.ID.make("opencode"),
+            value: Credential.Key.make({ type: "key", key: "secret", metadata: { server: server.url.origin } }),
+          })
+          yield* addPlugin()
+
+          const files = yield* discovery.list()
+          expect(Array.isArray(files) ? files.map((file) => file.content) : []).toContain("Use tabs.")
+          const skill = yield* eventually(skills.get(Skill.ID.make("deploy")), (item) => item !== undefined)
+          expect(skill).toMatchObject({
+            id: "deploy",
+            name: "Deploy",
+            description: "Deploys the service.",
+            path: "skill://deploy/SKILL.md",
+          })
+          expect(Array.from((yield* skills.files(Skill.ID.make("deploy"))) ?? [])).toEqual([
+            ["references/runbook.md", "Ship it safely."],
+          ])
+          expect(requested.slice(0, 3).toSorted()).toEqual([
+            "/api/v2/config",
+            "/api/v2/instructions",
+            "/api/v2/skills",
+          ])
+          expect(requested).toContain("/api/v2/skills/deploy")
         }),
       ({ server }) => Effect.promise(() => server.stop(true)),
     ),

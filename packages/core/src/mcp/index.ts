@@ -115,6 +115,10 @@ type ServerEntry = {
   registration?: State.Registration
 }
 
+// A server may opt into a longer handshake budget. Keep the short default so ordinary model calls
+// are not held by an unconfigured or hung MCP, but honor an explicit startup contract.
+const STARTUP_GRACE_MS = 2_000
+
 // Unsolicited elicitations and callers without a Session retain the Location-scoped owner.
 const GLOBAL_ELICITATION_SESSION_ID = "global"
 const URL_ELICITATION_FIELD_KEY = "elicitation"
@@ -353,7 +357,6 @@ export const layer = (options?: Options) =>
 
       const refreshPrompts = (name: ServerName, entry: ServerEntry, connection: McpClient.Connection) =>
         connection.prompts().pipe(
-          Effect.orElseSucceed(() => []),
           Effect.map((prompts) => {
             entry.prompts = prompts.map((prompt): Prompt => ({ ...prompt, server: name }))
           }),
@@ -785,7 +788,8 @@ export const layer = (options?: Options) =>
             yield* Effect.forEach(
               Array.from(entries.values()).filter((entry) => entry.status.status === "pending"),
               (entry) => {
-                const remaining = entry.startedAt + (entry.config.timeout?.startup ?? 2_000) - Date.now()
+                const grace = entry.config.timeout?.startup ?? STARTUP_GRACE_MS
+                const remaining = entry.startedAt + grace - Date.now()
                 return remaining > 0
                   ? entry.startup.await.pipe(Effect.timeoutOption(remaining), Effect.asVoid)
                   : Effect.void

@@ -4,7 +4,7 @@ import { define } from "@opencode/plugin/effect/plugin"
 import { Document, Info, type Entry } from "@opencode/schema/config"
 import { ConfigAgent } from "@opencode/schema/config/agent"
 import path from "path"
-import { Effect, Option, PubSub, Schema, Stream } from "effect"
+import { Effect, Result, SchemaIssue, SchemaParser, PubSub, Stream } from "effect"
 import { Agent } from "../../agent.js"
 import { Config } from "../../config.js"
 import { ConfigMarkdown } from "../markdown.js"
@@ -15,6 +15,8 @@ import type { FileAccess } from "../../file-access.js"
 import type { ReadTool } from "../../tool/plugin/read.js"
 import type { EditTool } from "../../tool/plugin/edit.js"
 import { AbsolutePath } from "../../schema.js"
+import { ConfigAgentV1 } from "../../v1/config/agent.js"
+import { ConfigMigrateV1 } from "../../v1/config/migrate.js"
 
 const sourcePatterns = [
   { pattern: "{agent,agents}/**/*.md", primary: false },
@@ -22,8 +24,11 @@ const sourcePatterns = [
 ] as const
 // Keep in sync with the sourcePatterns patterns and the name-strip regex in decode.
 const sourceDirectories = ["agent", "agents", "mode", "modes"] as const
-const decodeAgent = Schema.decodeUnknownOption(ConfigAgent.Info, { onExcessProperty: "error" })
-const decodeConfig = Schema.decodeUnknownOption(Info)
+const decodeAgent = SchemaParser.decodeUnknownResult(ConfigAgent.Info)
+const decodeLegacyAgent = SchemaParser.decodeUnknownResult(ConfigAgentV1.Info)
+const formatIssue = SchemaIssue.makeFormatterDefault()
+const agentKeys = new Set(["variant", ...Object.keys(ConfigAgent.Info.fields)])
+const nativeKeys = ["permissions", "request", "system", "disabled"]
 type PathAction = FileAccess.ExternalDirectoryAuthorization["action"] | typeof ReadTool.name | typeof EditTool.name
 const pathActions = ["external_directory", "read", "edit"] as const satisfies readonly PathAction[]
 
@@ -39,7 +44,7 @@ export const Plugin = define({
       const files = yield* discover(fs, entry.path)
       return yield* Effect.forEach(files, (file) =>
         fs.readFileStringSafe(file.filepath).pipe(
-          Effect.map((content) => (content ? decode(file, content) : undefined)),
+          Effect.flatMap((content) => (content ? decode(file, content) : Effect.succeed(undefined))),
           Effect.orElseSucceed(() => undefined),
         ),
       ).pipe(Effect.map((documents) => documents.filter((document): document is Document => document !== undefined)))
@@ -160,7 +165,7 @@ function expandHome(resource: string, home: string) {
 function discover(fs: FSUtil.Interface, directory: string) {
   return Effect.forEach(sourcePatterns, (source) =>
     fs
-      .scan(source.pattern, { cwd: directory, absolute: true, dot: true, symlink: true })
+      .scan(source.pattern, { cwd: directory, absolute: true, dot: true, symlink: true, ignore: FSUtil.ignoreGlobs })
       .pipe(
         Effect.map((files) => files.toSorted().map((filepath) => ({ directory, filepath, primary: source.primary }))),
       ),
@@ -170,25 +175,53 @@ function discover(fs: FSUtil.Interface, directory: string) {
   )
 }
 
-function decode(file: { directory: string; filepath: string; primary: boolean }, content: string) {
+const decode = Effect.fnUntraced(function* (
+  file: { directory: string; filepath: string; primary: boolean },
+  content: string,
+) {
   const markdown = ConfigMarkdown.parseOption(content)
-  if (!markdown) return
+  if (!markdown) {
+    yield* Effect.logWarning("agent file skipped", { filepath: file.filepath, reason: "markdown" })
+    return
+  }
   const name = path
     .relative(file.directory, file.filepath)
     .replaceAll("\\", "/")
     .replace(/^(agent|agents|mode|modes)\//, "")
     .replace(/\.md$/, "")
   const body = markdown.content.trim()
-  const agent = Option.getOrUndefined(decodeAgent({ ...markdown.data, system: body }))
-  if (!agent)
-    throw new Error(
-      `Invalid agent configuration at ${file.filepath}. Use redcode migrate inspect --kind config before converting older files.`,
-    )
-  const info = Option.getOrUndefined(
-    decodeConfig({
-      agents: { [name]: file.primary ? { ...agent, mode: "primary" } : agent },
-    }),
-  )
-  if (!info) return
+  const keys = Object.keys(markdown.data)
+  const unsupported = keys.filter((key) => !agentKeys.has(key))
+  const legacy = unsupported.length > 0 && !keys.some((key) => nativeKeys.includes(key))
+  if (!legacy && unsupported.length > 0)
+    yield* Effect.logWarning("ignored unsupported agent fields", { path: file.filepath, fields: unsupported })
+  const data =
+    typeof markdown.data.model === "string" &&
+    !markdown.data.model.includes("#") &&
+    typeof markdown.data.variant === "string" &&
+    /^[^#]+$/.test(markdown.data.variant)
+      ? { ...markdown.data, model: `${markdown.data.model}#${markdown.data.variant}` }
+      : markdown.data
+  const decoded = (() => {
+    if (!legacy) return decodeAgent({ ...data, system: body }, { errors: "all" })
+    const previous = decodeLegacyAgent({ name, ...markdown.data, prompt: body }, { errors: "all" })
+
+    if (Result.isFailure(previous)) return Result.fail(previous.failure)
+
+    // The migrator deliberately returns the encoded wire shape; decode it once more to restore branded V2 fields.
+    return decodeAgent(ConfigMigrateV1.migrateAgent(previous.success), { errors: "all" })
+  })()
+  if (Result.isFailure(decoded)) {
+    yield* Effect.logWarning("agent file skipped", {
+      filepath: file.filepath,
+      reason: "frontmatter",
+      issue: formatIssue(decoded.failure),
+    })
+    return
+  }
+  const agent = decoded.success
+  const info = Info.make({
+    agents: { [name]: file.primary ? ConfigAgent.Info.make({ ...agent, mode: "primary" }) : agent },
+  })
   return new Document({ type: "document", path: AbsolutePath.make(file.filepath), info })
-}
+})

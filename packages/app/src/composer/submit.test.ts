@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { createSignal } from "solid-js"
 import { unwrap } from "solid-js/store"
 import type { ModelSelection } from "@/providers/models/selection"
 import type { SessionMessageUser } from "@opencode/client/promise"
@@ -108,6 +109,7 @@ function session(input: {
   command?: ComposerSession["api"]["command"]
   switchAgent?: ComposerSession["api"]["switchAgent"]
   switchModel?: ComposerSession["api"]["switchModel"]
+  files?: string[]
 }): ComposerSession {
   return {
     id: "session-1",
@@ -138,6 +140,12 @@ function session(input: {
         },
       },
     },
+    file: {
+      list: async (request) => ({
+        location: { directory: request?.location?.directory ?? "C:/repo" },
+        data: (input.files ?? []).map((path) => ({ path, name: path, type: "file" as const, ignored: false })),
+      }),
+    },
     data: {
       location: { command: { list: () => [] } },
       session: {
@@ -162,6 +170,40 @@ function session(input: {
 }
 
 describe("Composer submission", () => {
+  test("shows a prompt immediately while the model catalog loads, then sends it under the same id", async () => {
+    const state = createMemoryComposerState({ prompt: "send when ready" }).capture()
+    const [loading, setLoading] = createSignal(true)
+    const lazySelection = { ...selection, current: () => (loading() ? undefined : selectedModel) }
+    const ctl = () => ({ ...controls(), model: { selection: lazySelection, paid: true, loading: loading() } })
+    const held = Promise.withResolvers<SessionMessageUser>()
+    const sending = Promise.withResolvers<SessionMessageUser>()
+    const admitted = Promise.withResolvers<void>()
+    const target = session({
+      calls: [],
+      handoff: {
+        hold: held.resolve,
+        set: sending.resolve,
+        settle() {},
+        clear() {},
+      },
+      prompt: async () => admitted.resolve(),
+    })
+    const submission = submitInput(active(state, target, ctl))
+    const running = submission.submit(new Event("submit"))
+    const optimistic = await held.promise
+
+    expect(optimistic.text).toBe("send when ready")
+    expect(optimistic.metadata?.model).toBeUndefined()
+    expect(unwrap(state.current())).toMatchObject([{ type: "text", content: "send when ready" }])
+
+    setLoading(false)
+    await admitted.promise
+    await running
+    const dispatched = await sending.promise
+    expect(dispatched.id).toBe(optimistic.id)
+    expect(dispatched.metadata?.model).toMatchObject({ modelID: "model-1", providerID: "provider-1" })
+  })
+
   test("applies the selection and runs a client argument command without admitting it to the session", async () => {
     const state = createMemoryComposerState().capture()
 
@@ -471,7 +513,7 @@ describe("Composer submission", () => {
 
     const target = session({
       calls: [],
-      handoff: { set: handedOff.resolve, clear() {} },
+      handoff: { set: handedOff.resolve, settle() {}, clear() {} },
       prompt: async () => admitted.resolve(),
     })
 

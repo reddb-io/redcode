@@ -16,6 +16,8 @@ import { useGlobal } from "@/runtime/server/runtime"
 import { errorMessage } from "@/shell/layout/helpers"
 import { AgentTasksView } from "./agents-tasks.react"
 
+const AGENT_TASK_SESSION_LIMIT = 500
+
 export default function AgentTasks(props: { server: ServerConnection.Any; open: (session: SessionInfo) => void }) {
   const services = createAgentTaskServices(props)
   return <ReactView component={AgentTasksView} props={{ services }} />
@@ -44,14 +46,11 @@ export function createAgentTaskServices(props: { server: ServerConnection.Any; o
     queryKey: ["agent-task-sessions", host],
     enabled: connected(),
     queryFn: async ({ signal }) => {
-      const items: SessionInfo[] = []
-      let cursor: string | undefined
-      for (;;) {
-        const page = await api.session.list({ limit: 1000, order: "desc", cursor }, { signal })
-        items.push(...page.data)
-        if (!page.cursor.next) return items
-        cursor = page.cursor.next
-      }
+      const page = await api.session.list(
+        { limit: AGENT_TASK_SESSION_LIMIT, order: "desc", archived: "exclude" },
+        { signal },
+      )
+      return page.data
     },
     retry: false,
     staleTime: 30_000,

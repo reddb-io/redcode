@@ -11,6 +11,7 @@ export function ProjectTile(props: {
   project: ProjectTileProject
   size?: "sm" | "md" | "lg" | "xl"
   unread?: boolean
+  failed?: boolean
   outline?: boolean
   class?: string
 }) {
@@ -37,7 +38,7 @@ export function ProjectTile(props: {
         </Show>
       </span>
       <Show when={props.unread}>
-        <span data-slot="project-tile-unread" />
+        <span data-slot="project-tile-unread" data-failed={props.failed ? "" : undefined} />
       </Show>
     </span>
   )

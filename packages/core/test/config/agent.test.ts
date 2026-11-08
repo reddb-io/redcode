@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import fs from "fs/promises"
 import path from "path"
-import { Cause, Exit, Effect, Fiber, Schema, Stream } from "effect"
+import { Effect, Fiber, Schema, Stream } from "effect"
 import { Agent } from "@opencode/core/agent"
 import { Bus } from "@opencode/core/bus"
 import { Config } from "@opencode/core/config"
@@ -87,16 +87,6 @@ describe("ConfigAgentPlugin.Plugin", () => {
       model: "example/chat#high",
     },
   ]) {
-    if (/(^|\n)variant:/.test(item.frontmatter)) {
-      it.live(`requires explicit conversion for Markdown ${item.name}`, () =>
-        Effect.gen(function* () {
-          const result = yield* loadMarkdownAgent(item.frontmatter).pipe(Effect.exit)
-          expect(Exit.isFailure(result)).toBe(true)
-          if (Exit.isFailure(result)) expect(String(Cause.squash(result.cause))).toContain("redcode migrate")
-        }),
-      )
-      continue
-    }
     for (const native of [false, true]) {
       it.live(`loads Markdown ${item.name}${native ? " with native request and permissions" : ""}`, () =>
         Effect.gen(function* () {
@@ -442,6 +432,11 @@ permissions:
           yield* Effect.promise(async () => {
             await fs.mkdir(path.join(tmp.path, "agents", "team"), { recursive: true })
             await fs.mkdir(path.join(tmp.path, "modes"), { recursive: true })
+            await fs.mkdir(path.join(tmp.path, "agents", ".opencode", "node_modules", "probe"), { recursive: true })
+            await fs.writeFile(
+              path.join(tmp.path, "agents", ".opencode", "node_modules", "probe", "README.md"),
+              "# Dependency README",
+            )
             await fs.writeFile(
               path.join(tmp.path, "agents", "reviewer.md"),
               `---
@@ -506,6 +501,7 @@ Use current fields.`,
           })
           expect(yield* agents.get(Agent.ID.make("disabled"))).toBeUndefined()
           expect(yield* agents.get(Agent.ID.make("empty"))).toBeUndefined()
+          expect(yield* agents.get(Agent.ID.make(".opencode/node_modules/probe/README"))).toBeUndefined()
           expect(yield* agents.get(Agent.ID.make("plan"))).toMatchObject({ system: "Make a plan.", mode: "primary" })
         }),
       ),

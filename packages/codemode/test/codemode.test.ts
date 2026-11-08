@@ -167,7 +167,8 @@ describe("CodeMode call hooks", () => {
   }
   // Every hook logs its event, so the order across tools and extensions is visible.
   const observe = (events: Array<string>): CodeMode.Hooks => ({
-    "tool.before": (call) => Effect.sync(() => void events.push(`tool.before ${JSON.stringify(call)}`)),
+    "tool.before": (call) =>
+      Effect.sync(() => void events.push(`tool.before ${JSON.stringify({ name: call.name, input: call.input })}`)),
     "tool.after": (call, result) => Effect.sync(() => void events.push(`tool.after ${call.name} ${ended(result)}`)),
     "extension.before": (call) => Effect.sync(() => void events.push(`extension.before ${JSON.stringify(call)}`)),
     "extension.after": (call, result) =>
@@ -199,6 +200,74 @@ describe("CodeMode call hooks", () => {
       'tool.before {"name":"context.lookup","input":{"query":"boom"}}',
       "tool.after context.lookup failure:Lookup refused",
     ])
+  })
+
+  test("passes one stable run-scoped key through the tool and both hooks", async () => {
+    const contexts: Array<string> = []
+    const before: Array<CodeMode.ToolInvocation> = []
+    const after: Array<CodeMode.ToolInvocation> = []
+    const echo = Tool.make({
+      description: "Echo with its call key",
+      input: Schema.Struct({ value: Schema.String }),
+      output: Schema.String,
+      execute: ({ value }, context) => Effect.sync(() => void contexts.push(context.key)).pipe(Effect.as(value)),
+    })
+    const runtime = CodeMode.make({
+      tools: { echo },
+      hooks: {
+        "tool.before": (call) => Effect.sync(() => void before.push(call)),
+        "tool.after": (call) => Effect.sync(() => void after.push(call)),
+      },
+    })
+
+    expect(await Effect.runPromise(runtime.execute(`return [await tools.echo({ value: "a" }), await tools.echo({ value: "b" })]`))).toMatchObject({
+      ok: true,
+      value: ["a", "b"],
+    })
+    expect(contexts).toHaveLength(2)
+    expect(contexts[0]).toMatch(/^[0-9a-f-]+:0$/)
+    expect(contexts[1]).toBe(contexts[0]?.replace(/:0$/, ":1"))
+    expect(before.map((call) => call.key)).toEqual(contexts)
+    expect(after.map((call) => call.key)).toEqual(contexts)
+  })
+
+  test("supports idempotent and durable execution wrappers on the legacy engine", async () => {
+    const lifecycle: Array<string> = []
+    const safe = Tool.make({
+      description: "Safe retry",
+      input: Schema.Struct({ value: Schema.String }),
+      output: Schema.String,
+      execute: Tool.idempotent(({ value }, context) => Effect.succeed(`${value}:${context.key}`)),
+    })
+    const job = Tool.make({
+      description: "External job",
+      input: Schema.Struct({ value: Schema.String }),
+      output: Schema.String,
+      execute: Tool.durable({
+        start: ({ value }: { value: string }, context) =>
+          Effect.sync(() => {
+            lifecycle.push(`start:${context.key}`)
+            return { value }
+          }),
+        wait: (data, context) =>
+          Effect.sync(() => {
+            lifecycle.push(`wait:${context.key}`)
+            return data.value
+          }),
+        cancel: () => Effect.sync(() => void lifecycle.push("cancel")),
+      }),
+    })
+    const runtime = CodeMode.make({ tools: { safe, job } })
+    const result = await Effect.runPromise(
+      runtime.execute(`return [await tools.safe({ value: "ok" }), await tools.job({ value: "done" })]`),
+    )
+
+    expect(safe.mode?._tag).toBe("CodeModeIdempotent")
+    expect(job.mode?._tag).toBe("CodeModeDurable")
+    expect(result).toMatchObject({ ok: true, value: [expect.stringMatching(/^ok:[0-9a-f-]+:0$/), "done"] })
+    expect(lifecycle).toHaveLength(2)
+    expect(lifecycle[0]?.replace("start:", "")).toBe(lifecycle[1]?.replace("wait:", ""))
+    expect(lifecycle).not.toContain("cancel")
   })
 
   test("surround each call to an extension global, with its arguments, but not functions inside results", async () => {
@@ -898,7 +967,7 @@ describe("CodeMode public contract", () => {
     const result = await Effect.runPromise(limited.execute(`search({}); return search({})`))
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.error.kind).toBe("ToolCallLimitExceeded")
-    expect(observed).toEqual([{ name: "search", input: {} }])
+    expect(observed).toEqual([{ name: "search", input: {}, key: expect.any(String) }])
   })
 
   test("search is an opaque, shadowable global like other built-ins", async () => {

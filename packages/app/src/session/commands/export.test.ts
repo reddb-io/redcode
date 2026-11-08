@@ -12,6 +12,10 @@ describe("sessionExportFilename", () => {
   ])("names %o as %s", (session, filename) => {
     expect(sessionExportFilename(session)).toBe(filename)
   })
+
+  test("shortens long titles to fit the filename limit", () => {
+    expect(sessionExportFilename({ id: "ses_123", title: "a".repeat(300) })).toBe(`${"a".repeat(250)}.json`)
+  })
 })
 
 describe("fetchSessionExport", () => {
@@ -24,8 +28,8 @@ describe("fetchSessionExport", () => {
     const api = {
       session: { get: async () => info },
       message: {
-        list: async (input: { cursor?: string }) => {
-          calls.push(input)
+        list: async (input: { cursor?: string }, options?: unknown) => {
+          calls.push([input, options])
 
           if (!input.cursor) return { data: [first], cursor: { next: "page-2" } }
 
@@ -39,8 +43,8 @@ describe("fetchSessionExport", () => {
     expect(result).toEqual({ info, messages: [first, second] })
     expect(result).not.toHaveProperty("cursor")
     expect(calls).toEqual([
-      { sessionID: "ses_1", limit: 200, order: "asc" },
-      { sessionID: "ses_1", limit: 200, cursor: "page-2" },
+      [{ sessionID: "ses_1", limit: 200, order: "asc" }, { mediaRefs: false }],
+      [{ sessionID: "ses_1", limit: 200, cursor: "page-2" }, { mediaRefs: false }],
     ])
   })
 })

@@ -2,7 +2,8 @@ export * as ConfigMigrateV1 from "./migrate.js"
 
 import { Info } from "@opencode/schema/config"
 import { ConfigAgent } from "@opencode/schema/config/agent"
-import { Schema } from "effect"
+import { ConfigModel } from "@opencode/schema/config/model"
+import { Option, Schema } from "effect"
 import { ConfigV1 } from "./config.js"
 import { ConfigAgentV1 } from "./agent.js"
 import { ConfigCommandV1 } from "./command.js"
@@ -18,6 +19,7 @@ const decodeInfo = Schema.decodeUnknownSync(Schema.fromJsonString(Info), decodeO
 const encodeInfo = Schema.encodeSync(Info)
 const decodeAgent = Schema.decodeUnknownSync(Schema.fromJsonString(ConfigAgent.Info), decodeOptions)
 const encodeAgent = Schema.encodeSync(ConfigAgent.Info)
+const decodeSelection = Schema.decodeUnknownOption(ConfigModel.Selection)
 export function migrate(info: typeof ConfigV1.Info.Type) {
   return encodeInfo(
     decodeInfo(
@@ -180,13 +182,14 @@ export function commands(info?: Readonly<Record<string, ConfigCommandV1.Info>>) 
   )
 }
 
-function modelSelection(input?: string, variant?: string) {
-  if (input === undefined || !/^[^/#]+\/[^#]+$/.test(input)) return undefined
-  const separator = input.indexOf("/")
+export function modelSelection(input?: string, variant?: string) {
+  const selection = Option.getOrUndefined(decodeSelection(input))
+  if (selection === undefined) return undefined
+  const selected = selection.variant ?? variant
   return {
-    providerID: providerID(input.slice(0, separator)),
-    model: input.slice(separator + 1),
-    ...(variant === undefined || variant.length === 0 || variant.includes("#") ? {} : { variant }),
+    providerID: providerID(selection.providerID),
+    model: selection.model,
+    ...(selected === undefined || selected.length === 0 || selected.includes("#") ? {} : { variant: selected }),
   }
 }
 
@@ -370,9 +373,9 @@ function migrateModel(info: typeof ConfigProviderV1.Model.Type, npm: string | un
     status: info.status,
     disabled: info.status === "deprecated" ? true : undefined,
     limit: info.limit && {
-      context: int(info.limit.context),
+      context: info.limit.context === undefined ? undefined : int(info.limit.context),
       input: info.limit.input === undefined ? undefined : int(info.limit.input),
-      output: int(info.limit.output),
+      output: info.limit.output === undefined ? undefined : int(info.limit.output),
     },
   }
 }

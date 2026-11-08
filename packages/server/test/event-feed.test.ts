@@ -69,6 +69,29 @@ describe("EventFeed", () => {
     }),
   )
 
+  it.effect("counts live client surfaces and de-duplicates reconnects by client identity", () =>
+    Effect.gen(function* () {
+      const source = makeSource()
+      const feed = yield* EventFeed.make(source.observe)
+      yield* feed.subscribeClient({ id: "desktop-one", surface: "desktop", version: "test" })
+      yield* feed.subscribeClient({ id: "desktop-one", surface: "desktop", version: "test" })
+      yield* feed.subscribeClient({ id: "tui-one", surface: "tui" })
+      yield* feed.subscribe
+
+      expect(yield* feed.snapshot).toEqual({
+        total: 3,
+        desktop: 1,
+        web: 0,
+        tui: 1,
+        cli: 0,
+        api: 0,
+        automation: 0,
+        worker: 0,
+        unknown: 1,
+      })
+    }),
+  )
+
   it.effect("fails only the subscriber that exceeds its lag capacity", () =>
     Effect.gen(function* () {
       const source = makeSource()

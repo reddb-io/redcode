@@ -52,6 +52,28 @@ export const FileAttachment = Schema.Struct({
     })),
   )
 
+/** A content-addressed attachment stored by the server. */
+export const MediaRef = Schema.String.check(Schema.isPattern(/^media:[0-9a-f]{64}$/u)).annotate({
+  identifier: "Prompt.MediaRef",
+})
+export type MediaRef = typeof MediaRef.Type
+
+const { data: _, ...fileAttachmentFields } = FileAttachment.fields
+
+export interface MediaFileAttachment extends Schema.Schema.Type<typeof MediaFileAttachment> {}
+export const MediaFileAttachment = Schema.Struct({
+  ...fileAttachmentFields,
+  uri: MediaRef,
+  bytes: Schema.Int.pipe(optional),
+  width: Schema.Int.pipe(optional),
+  height: Schema.Int.pipe(optional),
+}).annotate({ identifier: "Prompt.MediaFileAttachment" })
+
+export const Attachment = Schema.Union([FileAttachment, MediaFileAttachment]).annotate({
+  identifier: "Prompt.Attachment",
+})
+export type Attachment = typeof Attachment.Type
+
 export interface AgentAttachment extends Schema.Schema.Type<typeof AgentAttachment> {}
 export const AgentAttachment = Schema.Struct({
   name: Schema.String,

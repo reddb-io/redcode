@@ -8,7 +8,7 @@ import { Content } from "./tool.js"
 import { Location } from "./location.js"
 import { Model } from "./model.js"
 import { Project } from "./project.js"
-import { Prompt } from "./prompt.js"
+import { Attachment, Prompt } from "./prompt.js"
 import { DateTimeUtcFromMillis, PositiveInt, RelativePath, statics } from "./schema.js"
 import { ascending } from "./identifier.js"
 import { Event } from "./event.js"
@@ -80,6 +80,17 @@ export const User = Schema.Struct({
   skills: Prompt.fields.skills,
   type: Schema.tag("user"),
 }).annotate({ identifier: "Session.Message.User" })
+
+/** Experimental wire variant whose attachment bytes remain on the server. */
+export interface MediaUser extends Schema.Schema.Type<typeof MediaUser> {}
+export const MediaUser = Schema.Struct({
+  ...Base,
+  text: Prompt.fields.text,
+  files: Schema.Array(Attachment).pipe(optional),
+  agents: Prompt.fields.agents,
+  skills: Prompt.fields.skills,
+  type: Schema.tag("user"),
+}).annotate({ identifier: "Session.Message.MediaUser" })
 
 export interface Synthetic extends Schema.Schema.Type<typeof Synthetic> {}
 export const Synthetic = Schema.Struct({
@@ -326,3 +337,18 @@ export type Info =
   | Compaction
   | Idle
 export type Type = Info["type"]
+
+export const MediaInfo = Schema.Union([
+  AgentSelected,
+  ModelSelected,
+  LocationSwitched,
+  MediaUser,
+  Synthetic,
+  System,
+  Skill,
+  Shell,
+  Assistant,
+  Compaction,
+  Idle,
+]).annotate({ identifier: "Session.Message.MediaInfo" })
+export type MediaInfo = typeof MediaInfo.Type

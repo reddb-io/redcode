@@ -53,6 +53,34 @@ export function HomeRuntime(props: { home: HomeController; open: () => void }) {
     retry: false,
     refetchInterval: (query) => (query.state.status === "error" ? false : 30_000),
   }))
+  const system = useQuery(() => ({
+    queryKey: ["server-system", `${key()}:`],
+    queryFn: ({ signal }) => context()!.sdk.api.server.system({ signal }),
+    enabled: !!context() && connected(),
+    retry: false,
+    refetchInterval: 15_000,
+  }))
+  const performance = useQuery(() => ({
+    queryKey: ["model-performance", `${key()}:`],
+    queryFn: ({ signal }) => context()!.sdk.api.server.performance({ signal }),
+    enabled: !!context() && connected(),
+    retry: false,
+    refetchInterval: (query) => (query.state.status === "error" ? false : 30_000),
+  }))
+  const active = useQuery(() => ({
+    queryKey: ["session-active", `${key()}:`],
+    queryFn: ({ signal }) => context()!.sdk.api.session.active({ signal }),
+    enabled: !!context() && connected(),
+    retry: false,
+    refetchInterval: 5_000,
+  }))
+  const workers = useQuery(() => ({
+    queryKey: ["workers", `${key()}:`],
+    queryFn: ({ signal }) => context()!.sdk.api.workers.list({ signal }),
+    enabled: !!context() && connected(),
+    retry: false,
+    refetchInterval: 15_000,
+  }))
   const native = (window as Window & { electron?: { getMemorySample?: () => Promise<DesktopMemorySample> } }).electron
   const desktop = useQuery(() => ({
     queryKey: ["desktop-memory"],
@@ -91,11 +119,24 @@ export function HomeRuntime(props: { home: HomeController; open: () => void }) {
     const history = connection ? loadHistory(storage(), identity).points : []
     const trend = history.flatMap((point) => (point.process === null ? [] : [point.process]))
     const entries = memory.data?.entries ?? []
-    const top = entries
-      .filter((entry) => entry.residentBytes !== null)
-      .toSorted((a, b) => (b.residentBytes ?? 0) - (a.residentBytes ?? 0))[0]
     const desktopBytes = desktop.data?.reduce((total, item) => total + (item.residentBytes ?? 0), 0)
     const serverBytes = resources.data?.process.residentBytes
+    const activeIDs = Object.keys(active.data ?? {})
+    const subagents = activeIDs.filter((id) => context()?.data.session.get(id)?.parentID).length
+    const machines = props.home.server.list()
+    const focused = server()
+    const onlineMachines = machines.filter((machine) => {
+      if (focused && ServerConnection.key(machine) === ServerConnection.key(focused)) return connected()
+      return props.home.server.health(machine)?.healthy === true
+    }).length
+    const workerList = workers.data?.workers ?? []
+    const serverLatency = focused ? props.home.server.health(focused)?.latencyMs : undefined
+    const workerLatencies = workerList
+      .flatMap((worker) => (worker.connection === "online" && worker.latencyMs !== undefined ? [worker.latencyMs] : []))
+      .toSorted((a, b) => a - b)
+    const workerLatency = workerLatencies.length
+      ? workerLatencies[Math.floor((workerLatencies.length - 1) / 2)]
+      : undefined
     const growth = trend.length >= 3 ? trend.at(-1)! - trend[0]! : 0
     const alert: RuntimeAlert = !connected()
       ? "disconnected"
@@ -117,7 +158,18 @@ export function HomeRuntime(props: { home: HomeController; open: () => void }) {
       serverBytes,
       desktopBytes: native?.getMemorySample && desktop.data ? desktopBytes : undefined,
       executions: memory.isError ? undefined : entries.length,
-      top,
+      sessions: activeIDs.length - subagents,
+      sessionTotal: system.data?.counts?.sessions,
+      agents: activeIDs.length,
+      subagents,
+      machines: machines.length,
+      onlineMachines,
+      workers: workerList.length,
+      onlineWorkers: workerList.filter((worker) => worker.connection === "online").length,
+      serverLatency,
+      workerLatency,
+      clients: system.data?.clients,
+      performance: performance.isError ? undefined : performance.data,
       totalBytes: resources.data?.memory.totalBytes ?? undefined,
       cpuPercent:
         resources.data?.cpu.utilization === null || resources.data?.cpu.utilization === undefined

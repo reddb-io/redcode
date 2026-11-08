@@ -7,7 +7,7 @@ import { Model } from "@opencode/schema/model"
 import { Provider } from "@opencode/schema/provider"
 import { AppProcess } from "@opencode/util/process"
 import path from "path"
-import { Effect, Option, PubSub, Schema, Stream } from "effect"
+import { Effect, Result, SchemaIssue, SchemaParser, PubSub, Stream } from "effect"
 import { ChildProcess } from "effect/unstable/process"
 import { Agent } from "../../agent.js"
 import { HookRuntime } from "../../hook.js"
@@ -19,7 +19,8 @@ import { ShellSelect } from "../../shell/select.js"
 import { FSUtil } from "@opencode/util/fs-util"
 import { ConfigMarkdown } from "../markdown.js"
 
-const decodeCommand = Schema.decodeUnknownOption(ConfigCommand.Info)
+const decodeCommand = SchemaParser.decodeUnknownResult(ConfigCommand.Info)
+const formatIssue = SchemaIssue.makeFormatterDefault()
 
 export const Plugin = define({
   id: "opencode.config.command",
@@ -171,7 +172,9 @@ function loadDirectory(fs: FSUtil.Interface, directory: string) {
       .pipe(Effect.orElseSucceed(() => [] as string[]))
     return yield* Effect.forEach(files.toSorted(), (filepath) =>
       fs.readFileStringSafe(filepath).pipe(
-        Effect.map((content) => (content === undefined ? undefined : decode(directory, filepath, content))),
+        Effect.flatMap((content) =>
+          content === undefined ? Effect.succeed(undefined) : decode(directory, filepath, content),
+        ),
         Effect.orElseSucceed(() => undefined),
       ),
     ).pipe(
@@ -182,20 +185,30 @@ function loadDirectory(fs: FSUtil.Interface, directory: string) {
   })
 }
 
-function decode(directory: string, filepath: string, content: string) {
+const decode = Effect.fnUntraced(function* (directory: string, filepath: string, content: string) {
   const markdown = ConfigMarkdown.parseOption(content)
-  if (!markdown) return
-  const info = Option.getOrUndefined(decodeCommand({ ...markdown.data, template: markdown.content.trim() }))
-  if (!info) return
+  if (!markdown) {
+    yield* Effect.logWarning("command file skipped", { filepath, reason: "markdown" })
+    return
+  }
+  const decoded = decodeCommand({ ...markdown.data, template: markdown.content.trim() }, { errors: "all" })
+  if (Result.isFailure(decoded)) {
+    yield* Effect.logWarning("command file skipped", {
+      filepath,
+      reason: "frontmatter",
+      issue: formatIssue(decoded.failure),
+    })
+    return
+  }
   return {
     name: path
       .relative(directory, filepath)
       .replaceAll("\\", "/")
       .replace(/^(command|commands)\//, "")
       .replace(/\.md$/, ""),
-    info,
+    info: decoded.success,
   }
-}
+})
 
 function evaluateTemplate(
   template: string,
@@ -210,14 +223,14 @@ function evaluateTemplate(
     const args = parseArguments(input)
     const placeholders = template.match(placeholderRegex) ?? []
     const last = Math.max(0, ...placeholders.map((item) => Number(item.slice(1))))
-    const expanded = template.replaceAll(placeholderRegex, (_, index) => {
+    const withArguments = template.replaceAll(argumentRegex, (match, index) => {
+      if (match === "$ARGUMENTS") return input
       const position = Number(index)
       const argIndex = position - 1
       if (argIndex >= args.length) return ""
       if (position === last) return args.slice(argIndex).join(" ")
       return args[argIndex]
     })
-    const withArguments = expanded.replaceAll("$ARGUMENTS", () => input)
     const text =
       placeholders.length === 0 && !template.includes("$ARGUMENTS") && input.trim()
         ? `${withArguments}\n\n${input}`.trim()
@@ -256,6 +269,7 @@ function parseArguments(input: string) {
 }
 
 const argsRegex = /(?:\[Image\s+\d+\]|"[^"]*"|'[^']*'|[^\s"']+)/gi
-const placeholderRegex = /\$(\d+)/g
+const placeholderRegex = /\$([1-9]\d*)/g
+const argumentRegex = /\$(?:ARGUMENTS|([1-9]\d*))/g
 const quoteTrimRegex = /^["']|["']$/g
 const shellRegex = /!`([^`]+)`/g

@@ -144,14 +144,15 @@ it.effect("groups available models by provider with paging", () =>
   }),
 )
 
-const approvals = { assertions: [] as Permission.AssertInput[], denyEdit: false }
+const approvals = { assertions: [] as Permission.AssertInput[], denyEdit: false, denyExternal: false }
 const worktreeIt = testEffect(
   makePluginTestLayer(
     permissionLayer({
       assert: (input) =>
         Effect.sync(() => approvals.assertions.push(input)).pipe(
           Effect.andThen(
-            approvals.denyEdit && input.action === "edit"
+            (approvals.denyEdit && input.action === "edit") ||
+              (approvals.denyExternal && input.action === "external_directory")
               ? Effect.fail(
                   new Permission.BlockedError({ rules: [], permission: input.action, resources: input.resources }),
                 )
@@ -210,6 +211,27 @@ worktreeIt.live("creates, lists, and removes worktrees for the plugin's project"
       )
     const directory = path.join(parent.path, "task")
 
+    // Relative destinations resolve from the target session and stay inside the project without an external prompt.
+    approvals.assertions.length = 0
+    expect(yield* run("session_move", { directory: "." })).toEqual({
+      sessionID: session.id,
+      directory: location.directory,
+    })
+    expect(approvals.assertions).toEqual([])
+
+    // An unregistered destination outside the project must be approved before the session can move there.
+    const external = path.join(parent.path, "unregistered")
+    approvals.denyExternal = true
+    expect(yield* call("session_move", { directory: external })).toMatchObject({ metadata: { error: true } })
+    approvals.denyExternal = false
+    expect(approvals.assertions).toMatchObject([
+      {
+        action: "external_directory",
+        resources: [path.join(external, "*").replaceAll("\\", "/")],
+        sessionID: session.id,
+      },
+    ])
+
     expect(yield* run("worktree_create", { name: " task " })).toEqual({ directory })
     expect(yield* Effect.promise(() => fs.stat(directory).then((stat) => stat.isDirectory()))).toBe(true)
     expect((yield* run("worktree_list", {})).worktrees).toContainEqual({ directory, strategy: "git" })
@@ -254,5 +276,62 @@ worktreeIt.live("creates, lists, and removes worktrees for the plugin's project"
       { action: "edit", resources: [resource], save: ["*"], sessionID: session.id },
     ])
     expect((yield* run("worktree_list", {})).worktrees).not.toContainEqual({ directory, strategy: "git" })
+  }),
+)
+
+worktreeIt.live("moves sessions to registered project worktrees without external approval", () =>
+  Effect.gen(function* () {
+    approvals.assertions.length = 0
+    approvals.denyExternal = true
+    yield* Effect.addFinalizer(() =>
+      Effect.sync(() => {
+        approvals.denyExternal = false
+        approvals.assertions.length = 0
+      }),
+    )
+
+    const plugins = yield* Plugin.Service
+    const sessions = yield* Session.Service
+    const location = yield* Location.Service
+    const database = yield* Database.Service
+    const destination = yield* tmpdirScoped()
+    yield* database.db
+      .insert(ProjectTable)
+      .values({
+        id: location.project.id,
+        worktree: location.directory,
+        sandboxes: [],
+        time_created: 1,
+        time_updated: 1,
+      })
+      .onConflictDoUpdate({ target: ProjectTable.id, set: { worktree: location.directory } })
+      .run()
+      .pipe(Effect.orDie)
+    yield* database.db
+      .insert(WorktreeTable)
+      .values({ project_id: location.project.id, directory: AbsolutePath.make(destination.path) })
+      .run()
+      .pipe(Effect.orDie)
+    yield* OpenCodeTools.Plugin.effect(yield* PluginHost.make(plugins))
+    const session = yield* sessions.create({ location: Location.Ref.make({ directory: location.directory }) })
+    const registry = yield* Tool.Service
+    const result = yield* executeTool(registry, {
+      sessionID: session.id,
+      ...toolIdentity,
+      call: {
+        type: "tool-call",
+        id: "call-session-move-worktree",
+        name: "execute",
+        input: {
+          code: `return await tools.opencode.session_move(${JSON.stringify({ directory: destination.path })})`,
+        },
+      },
+    })
+
+    expect(JSON.parse(result.content?.[0]?.type === "text" ? result.content[0].text : "")).toEqual({
+      sessionID: session.id,
+      directory: destination.path,
+    })
+    expect(approvals.assertions).toEqual([])
   }),
 )

@@ -28,7 +28,8 @@ describe("checkServerHealth", () => {
       return info("2.0.0")
     }) as typeof globalThis.fetch
 
-    expect(await checkServerHealth({ ...server, password }, fetch)).toEqual({ healthy: true, version: "2.0.0" })
+    const health = await checkServerHealth({ ...server, password }, fetch)
+    expect(health).toMatchObject({ healthy: true, version: "2.0.0", latencyMs: expect.any(Number) })
     expect(requests).toEqual([
       { path: "/api/info", authorization: password ? `Basic ${btoa(`opencode:${password}`)}` : null },
     ])
@@ -138,7 +139,7 @@ describe("checkServerHealth", () => {
     })
 
     expect(count).toBe(3)
-    expect(result).toEqual({ healthy: true, version: "1.2.3" })
+    expect(result).toMatchObject({ healthy: true, version: "1.2.3", latencyMs: expect.any(Number) })
   })
 
   test("returns unhealthy when retries are exhausted", async () => {

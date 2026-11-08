@@ -21,7 +21,12 @@ export default Runtime.handler(
     const entrypoints = Host.resolve(installed)
     const target = configurationTarget(entrypoints.server, entrypoints.tui)
     if (!target)
-      return yield* Effect.fail(new Error(`Plugin package has no server or TUI entrypoint: ${input.package}`))
+      return yield* Effect.fail(
+        new Error(
+          `Plugin package has no supported server or TUI entrypoint: ${input.package}. ` +
+            "GUI-only npm plugins are not executed by this Redcode build; desktop extensions use the .ocdx runtime.",
+        ),
+      )
 
     if (target === "server") {
       const global = yield* Global.Service

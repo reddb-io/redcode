@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import type { PromptFileAttachment } from "@opencode/client/promise"
+import type { PromptFileAttachment, PromptMediaFileAttachment } from "@opencode/client/promise"
 import { attached, typeLabel } from "./message-file"
 
 function file(source: PromptFileAttachment["source"], mention = false): PromptFileAttachment {
@@ -17,6 +17,13 @@ describe("message-file", () => {
     expect(attached(file({ type: "uri", uri: "data:text/plain;base64,SGVsbG8=" }))).toBe(true)
     expect(attached(file({ type: "uri", uri: "file:///repo/README.md" }))).toBe(false)
     expect(attached(file({ type: "inline" }, true))).toBe(false)
+    expect(
+      attached({
+        uri: `media:${"a".repeat(64)}`,
+        mime: "image/png",
+        source: { type: "inline" },
+      } satisfies PromptMediaFileAttachment),
+    ).toBe(true)
   })
 
   test("labels attachment types from the basename extension", () => {

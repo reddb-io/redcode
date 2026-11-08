@@ -1,4 +1,4 @@
-import { Duration, Effect, Equal, Option, Schema, SchemaGetter, Semaphore, Stream } from "effect"
+import { Duration, Effect, Equal, FiberHandle, Option, Schema, SchemaGetter, Semaphore, Stream } from "effect"
 import type { Scope } from "effect"
 import type { IntegrationOAuthMethodRegistration } from "@opencode/plugin/effect/integration"
 import { define } from "@opencode/plugin/effect/plugin"
@@ -17,6 +17,12 @@ import { ConfigPolicy } from "@opencode/schema/config/policy"
 import { ConfigProvider } from "@opencode/schema/config/provider"
 import { Mcp } from "@opencode/schema/mcp"
 import { Money } from "@opencode/schema/money"
+import { SkillFile } from "../../config/plugin/skill-file.js"
+import { InstructionDiscovery } from "../../instruction-discovery.js"
+import { AbsolutePath } from "../../schema.js"
+import { Skill } from "../../skill.js"
+import { SkillDiscovery } from "../../skill/discovery.js"
+import { OpencodeWatches } from "./opencode-watches.js"
 
 const defaultServer = "https://opencode.ai/console"
 const clientID = "opencode-cli"
@@ -53,6 +59,21 @@ const RemoteResponse = Schema.Struct({
     ),
   }).pipe(Schema.optional),
 })
+const ConsoleInstructions = Schema.Struct({
+  instructions: Schema.Array(Schema.Struct({ id: Schema.String, content: Schema.String })),
+})
+const ConsoleSkills = Schema.Struct({
+  skills: Schema.Array(Schema.Struct({ slug: Schema.String, version: Schema.String })),
+})
+const SkillBundle = Schema.Struct({
+  slug: Schema.String,
+  files: Schema.Array(Schema.Struct({ path: Schema.String, content: Schema.String })),
+})
+type ConsoleSkill = { readonly skill: Skill.Info; readonly files: Record<string, string> }
+type ConsoleConfig = NonNullable<Effect.Success<ReturnType<typeof fetchConfig>>> & {
+  readonly instructions: (typeof ConsoleInstructions.Type)["instructions"]
+  readonly skills: (typeof ConsoleSkills.Type)["skills"]
+}
 const Device = Schema.Struct({
   device_code: Schema.String,
   user_code: Schema.String,
@@ -141,7 +162,14 @@ function oauth(http: HttpClient.HttpClient) {
   } satisfies IntegrationOAuthMethodRegistration
 }
 
-export const OpencodePlugin = define<HttpClient.HttpClient | Bus.Service | ManagedPolicy.Service | Scope.Scope>({
+export const OpencodePlugin = define<
+  | HttpClient.HttpClient
+  | Bus.Service
+  | ManagedPolicy.Service
+  | InstructionDiscovery.Service
+  | Skill.Service
+  | Scope.Scope
+>({
   id: "opencode.provider.opencode",
   effect: Effect.fn(function* (ctx) {
     const bus = yield* Bus.Service
@@ -150,32 +178,80 @@ export const OpencodePlugin = define<HttpClient.HttpClient | Bus.Service | Manag
     // and whether it evaluates the policies it is being sent.
     const http = HttpClient.mapRequest(client, HttpClientRequest.setHeader("User-Agent", App.useragent(ctx.app)))
     const managed = yield* ManagedPolicy.Service
+    const discovery = yield* InstructionDiscovery.Service
+    const skillService = yield* Skill.Service
     const loading = Semaphore.makeUnsafe(1)
+    const watches = yield* OpencodeWatches.make(ctx, http)
     type ActiveConnection = Effect.Success<ReturnType<typeof ctx.integration.connection.active>>
-    let snapshot: {
-      config: typeof RemoteResponse.Type | undefined
+    type Snapshot = {
+      config: ConsoleConfig | undefined
       connection: ActiveConnection
       organization: string | undefined
       // Console MCP servers carry the credential in their headers, so a rotated token changes the snapshot.
       mcp:
         | { servers: NonNullable<typeof RemoteResponse.Type.mcp>["servers"]; headers: Record<string, string> }
         | undefined
-    } = { config: undefined, connection: undefined, organization: undefined, mcp: undefined }
+    }
+    const empty = (connection?: NonNullable<ActiveConnection>): Snapshot => ({
+      config: undefined,
+      connection,
+      organization: undefined,
+      mcp: undefined,
+    })
+    let snapshot: Snapshot = empty()
+    let instructions: InstructionDiscovery.File[] = []
+    let consoleSkills: { owner: string; items: ConsoleSkill[] } = { owner: "", items: [] }
+    const owner = (from: typeof snapshot) =>
+      `${IntegrationConnection.key(from.connection) ?? ""}:${from.organization ?? ""}`
+    const skillDownload = yield* FiberHandle.make<void, never>()
+    const skillCache = new Map<string, { version: string; item: ConsoleSkill }>()
 
     const load = Effect.fn("OpencodePlugin.load")(function* () {
       const connection = yield* ctx.integration.connection.active("opencode")
-      if (!connection) return { config: undefined, connection, organization: undefined, mcp: undefined }
+      if (!connection) return empty()
       return yield* ctx.integration.connection.resolve(connection).pipe(
         Effect.flatMap((credential) => {
-          if (!credential || credential.type === "external")
-            return Effect.succeed({ config: undefined, connection, organization: undefined, mcp: undefined })
+          if (!credential || credential.type === "external") return Effect.succeed(empty(connection))
           return fetchConfig(http, credential).pipe(
-            Effect.map((config) => ({
-              config,
-              connection,
-              organization: typeof credential.metadata?.orgName === "string" ? credential.metadata.orgName : undefined,
-              mcp: config?.mcp && { servers: config.mcp.servers, headers: credentialHeaders(credential) },
-            })),
+            Effect.flatMap((config) => {
+              if (!config) return Effect.succeed(empty(connection))
+              const previous =
+                IntegrationConnection.key(connection) === IntegrationConnection.key(snapshot.connection)
+                  ? snapshot.config
+                  : undefined
+              return Effect.all(
+                {
+                  instructions: fetchList(http, credential, "/api/v2/instructions", ConsoleInstructions).pipe(
+                    Effect.map((body) => body?.instructions ?? []),
+                    Effect.catch((cause) =>
+                      Effect.logWarning("failed to load Console instructions", { cause }).pipe(
+                        Effect.as(previous?.instructions ?? []),
+                      ),
+                    ),
+                  ),
+                  skills: fetchList(http, credential, "/api/v2/skills", ConsoleSkills).pipe(
+                    Effect.map((body) => body?.skills ?? []),
+                    Effect.catch((cause) =>
+                      Effect.logWarning("failed to load Console skills", { cause }).pipe(
+                        Effect.as(previous?.skills ?? []),
+                      ),
+                    ),
+                  ),
+                },
+                { concurrency: 2 },
+              ).pipe(
+                Effect.map((lists) => {
+                  const merged: ConsoleConfig = { ...config, ...lists }
+                  return {
+                    config: merged,
+                    connection,
+                    organization:
+                      typeof credential.metadata?.orgName === "string" ? credential.metadata.orgName : undefined,
+                    mcp: merged.mcp && { servers: merged.mcp.servers, headers: credentialHeaders(credential) },
+                  } satisfies Snapshot
+                }),
+              )
+            }),
           )
         }),
         Effect.catch((cause) =>
@@ -185,7 +261,7 @@ export const OpencodePlugin = define<HttpClient.HttpClient | Bus.Service | Manag
             Effect.as(
               IntegrationConnection.key(connection) === IntegrationConnection.key(snapshot.connection)
                 ? { config: snapshot.config, connection, organization: snapshot.organization, mcp: snapshot.mcp }
-                : { config: undefined, connection, organization: undefined, mcp: undefined },
+                : empty(connection),
             ),
           ),
         ),
@@ -194,6 +270,79 @@ export const OpencodePlugin = define<HttpClient.HttpClient | Bus.Service | Manag
     // Statements ride on the snapshot, so a credential switch, disconnect, or 404 replaces them too.
     const publish = (next: typeof snapshot) =>
       managed.set({ statements: next.config?.experimental?.policies ?? [], organization: next.organization })
+    const syncWatches = Effect.fnUntraced(
+      function* (next: typeof snapshot) {
+        const connection = next.config?.watches === true ? next.connection : undefined
+        const credential = connection && (yield* ctx.integration.connection.resolve(connection))
+        if (!connection || !credential || credential.type === "external") return yield* watches.sync(undefined)
+        const server = yield* normalizeServer(serverUrl(credential))
+        yield* watches.sync({
+          key: JSON.stringify([server, credential.metadata?.orgID, IntegrationConnection.key(connection)]),
+          server,
+          headers: ctx.integration.connection.resolve(connection).pipe(
+            Effect.flatMap((current) =>
+              current && current.type !== "external"
+                ? Effect.succeed(credentialHeaders(current))
+                : Effect.fail(new Error("OpenCode Console is not connected")),
+            ),
+          ),
+        })
+      },
+      Effect.catch((cause) => Effect.logWarning("failed to start Console event watches", { cause })),
+    )
+    const loadSkills = Effect.fnUntraced(
+      function* (
+        connection: ActiveConnection,
+        listed: ReadonlyArray<{ readonly slug: string; readonly version: string }>,
+      ) {
+        if (!connection || listed.length === 0) return []
+        const credential = yield* ctx.integration.connection.resolve(connection)
+        if (!credential || credential.type === "external") return []
+        const server = yield* normalizeServer(serverUrl(credential))
+        const workspace = JSON.stringify([server, credential.metadata?.orgID, IntegrationConnection.key(connection)])
+        const loaded = yield* Effect.forEach(
+          listed,
+          (listedSkill) => {
+            const key = `${workspace}:${listedSkill.slug}`
+            const previous = skillCache.get(key)
+            if (previous?.version === listedSkill.version) return Effect.succeed(previous.item)
+            return downloadSkill(http, server, listedSkill.slug, credentialHeaders(credential)).pipe(
+              Effect.tap((item) => Effect.sync(() => skillCache.set(key, { version: listedSkill.version, item }))),
+              Effect.catch((cause) =>
+                Effect.logWarning("failed to load Console skill", { slug: listedSkill.slug, cause }).pipe(
+                  Effect.as(previous?.item),
+                ),
+              ),
+            )
+          },
+          { concurrency: 8 },
+        )
+        return loaded.filter((item): item is ConsoleSkill => item !== undefined)
+      },
+      Effect.catch((cause) => Effect.logWarning("failed to load Console skills", { cause }).pipe(Effect.as(undefined))),
+    )
+    const syncInstructionsAndSkills = (next: typeof snapshot) => {
+      instructions = (next.config?.instructions ?? []).map(
+        (item) =>
+          new InstructionDiscovery.File({
+            path: AbsolutePath.make(`OpenCode Console instruction ${item.id}`),
+            content: item.content,
+          }),
+      )
+      if (!next.config) consoleSkills = { owner: "", items: [] }
+      // Downloads remain off the startup path. A newer refresh interrupts the older download, and a failed
+      // replacement keeps the last successfully cached version.
+      return FiberHandle.run(
+        skillDownload,
+        loadSkills(next.connection, next.config?.skills ?? []).pipe(
+          Effect.flatMap((loaded) => {
+            if (!loaded) return Effect.void
+            consoleSkills = { owner: owner(next), items: loaded }
+            return skillService.reload()
+          }),
+        ),
+      )
+    }
 
     yield* ctx.integration.transform((editor) => {
       editor.update("opencode", (integration) => {
@@ -205,6 +354,8 @@ export const OpencodePlugin = define<HttpClient.HttpClient | Bus.Service | Manag
 
     snapshot = yield* load()
     yield* publish(snapshot)
+    yield* syncWatches(snapshot)
+    yield* syncInstructionsAndSkills(snapshot)
     yield* ctx.provider.transform((providers) => {
       for (const [providerID, item] of Object.entries(snapshot.config?.providers ?? {})) {
         const source = providers.get(item.canonical ?? providerID)
@@ -378,14 +529,24 @@ export const OpencodePlugin = define<HttpClient.HttpClient | Bus.Service | Manag
         editor.set(name, auth === "console" ? { ...config, headers: { ...config.headers, ...mcp.headers } } : config)
       }
     })
+    yield* discovery.transform((editor) => instructions.forEach((file) => editor.add(file)))
+    yield* skillService.transform((editor) => {
+      if (consoleSkills.owner !== owner(snapshot)) return
+      consoleSkills.items.forEach((item) => editor.add(item.skill, item.files))
+    })
 
     const apply = Effect.fn("OpencodePlugin.apply")(function* (next: typeof snapshot) {
       snapshot = next
       yield* publish(next)
-      yield* Effect.all([ctx.provider.reload(), ctx.websearch.reload(), ctx.mcp.reload()], {
-        concurrency: 3,
+      yield* syncWatches(next)
+      yield* syncInstructionsAndSkills(next)
+      yield* Effect.all(
+        [ctx.provider.reload(), ctx.websearch.reload(), ctx.mcp.reload(), discovery.reload(), skillService.reload()],
+        {
+        concurrency: 5,
         discard: true,
-      })
+        },
+      )
     })
     const refresh = () => loading.withPermit(load().pipe(Effect.andThen(apply)))
     yield* bus.subscribe(Credential.Event.Switched).pipe(
@@ -409,20 +570,48 @@ export const OpencodePlugin = define<HttpClient.HttpClient | Bus.Service | Manag
 })
 
 function fetchConfig(http: HttpClient.HttpClient, value: Credential.Key | Credential.OAuth) {
+  return Effect.gen(function* () {
+    const server = serverUrl(value)
+    const headers = credentialHeaders(value)
+    const response = yield* http.execute(
+      HttpClientRequest.get(`${server}/api/v2/config`).pipe(
+        HttpClientRequest.acceptJson,
+        HttpClientRequest.setHeaders(headers),
+      ),
+    )
+    if (response.status === 404) return undefined
+    const config = yield* HttpClientResponse.filterStatusOk(response).pipe(
+      Effect.flatMap(HttpClientResponse.schemaBodyJson(RemoteResponse)),
+    )
+    return {
+      ...config,
+      watches: response.headers[OpencodeWatches.header] !== undefined,
+    }
+  }).pipe(Effect.timeout(Duration.seconds(5)))
+}
+
+// A missing list or a list forbidden to this credential is empty. Transport, server and schema errors fail so the
+// caller can retain the last valid list without holding back the Console config and its organization policies.
+function fetchList<A>(
+  http: HttpClient.HttpClient,
+  value: Credential.Key | Credential.OAuth,
+  path: string,
+  schema: Schema.Decoder<A>,
+) {
+  const server = serverUrl(value)
   return http
     .execute(
-      HttpClientRequest.get(`${serverUrl(value)}/api/v2/config`).pipe(
+      HttpClientRequest.get(`${server}${path}`).pipe(
         HttpClientRequest.acceptJson,
         HttpClientRequest.setHeaders(credentialHeaders(value)),
       ),
     )
     .pipe(
       Effect.flatMap((response) => {
-        if (response.status === 404) return Effect.undefined
-        return HttpClientResponse.filterStatusOk(response).pipe(
-          Effect.flatMap(HttpClientResponse.schemaBodyJson(RemoteResponse)),
-        )
+        if (response.status === 404 || response.status === 403) return Effect.succeed(undefined)
+        return HttpClientResponse.filterStatusOk(response).pipe(Effect.flatMap(HttpClientResponse.schemaBodyJson(schema)))
       }),
+      Effect.timeout(Duration.seconds(5)),
     )
 }
 
@@ -443,6 +632,82 @@ function withoutCredentials<Value>(body: Readonly<Record<string, Value>> | undef
     body &&
     Object.fromEntries(Object.entries(body).filter(([key]) => !["apiKey", "authToken", "accessToken"].includes(key)))
   )
+}
+
+const MAX_SKILL_REDIRECTS = 5
+const SKILL_REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308])
+const CREDENTIAL_HEADERS = new Set(["authorization", "cookie", "proxy-authorization", "x-org-id"])
+
+function followSkillDownload(
+  http: HttpClient.HttpClient,
+  url: string,
+  headers: Record<string, string>,
+  redirects = 0,
+): Effect.Effect<HttpClientResponse.HttpClientResponse, unknown, Scope.Scope> {
+  const request = HttpClientRequest.get(url).pipe(
+    HttpClientRequest.acceptJson,
+    HttpClientRequest.setHeaders(headers),
+  )
+  return HttpClient.withScope(http)
+    .execute(request)
+    .pipe(
+      Effect.provideService(FetchHttpClient.RequestInit, { redirect: "manual" }),
+      Effect.flatMap((response) => {
+        const location = response.headers.location
+        if (!SKILL_REDIRECT_STATUSES.has(response.status) || !location)
+          return HttpClientResponse.filterStatusOk(response)
+        if (redirects >= MAX_SKILL_REDIRECTS)
+          return Effect.fail(new Error(`Too many redirects (more than ${MAX_SKILL_REDIRECTS})`))
+        const target = yieldRedirectTarget(url, location)
+        return Effect.flatMap(target, (next) => {
+          const nextHeaders =
+            next.origin === new URL(url).origin
+              ? headers
+              : Object.fromEntries(Object.entries(headers).filter(([name]) => !CREDENTIAL_HEADERS.has(name)))
+          return HttpClientResponse.stream(Effect.succeed(response)).pipe(
+            Stream.runDrain,
+            Effect.ignore,
+            Effect.andThen(followSkillDownload(http, next.href, nextHeaders, redirects + 1)),
+          )
+        })
+      }),
+    )
+}
+
+function yieldRedirectTarget(source: string, location: string) {
+  return Effect.try({
+    try: () => {
+      const target = new URL(location, source)
+      if (target.protocol !== "http:" && target.protocol !== "https:")
+        throw new Error(`redirect to unsupported protocol ${target.protocol}`)
+      return target
+    },
+    catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
+  })
+}
+
+function downloadSkill(http: HttpClient.HttpClient, server: string, slug: string, headers: Record<string, string>) {
+  return Effect.gen(function* () {
+    if (!SkillDiscovery.isSafeSegment(slug)) return yield* Effect.fail(new Error(`unsafe skill slug: ${slug}`))
+    const bundle = yield* followSkillDownload(
+      http,
+      `${server}/api/v2/skills/${encodeURIComponent(slug)}`,
+      headers,
+    ).pipe(Effect.flatMap(HttpClientResponse.schemaBodyJson(SkillBundle)), Effect.scoped, Effect.timeout("30 seconds"))
+    if (bundle.slug !== slug) return yield* Effect.fail(new Error(`expected skill ${slug}, received ${bundle.slug}`))
+    const unsafe = bundle.files.find((file) => !SkillDiscovery.isSafeRelativePath(file.path))
+    if (unsafe) return yield* Effect.fail(new Error(`unsafe skill file path: ${unsafe.path}`))
+    const main = bundle.files.find((file) => file.path === "SKILL.md")
+    if (!main) return yield* Effect.fail(new Error(`skill ${slug} has no SKILL.md`))
+    const parsed = SkillFile.parse(`/${slug}`, `/${slug}/SKILL.md`, main.content)
+    if (parsed._tag !== "Parsed") return yield* Effect.fail(new Error(`skill ${slug} has an invalid SKILL.md`))
+    return {
+      skill: { ...parsed.skill, path: AbsolutePath.make(Skill.uri(slug, "SKILL.md")) },
+      files: Object.fromEntries(
+        bundle.files.filter((file) => file.path !== "SKILL.md").map((file) => [file.path, file.content]),
+      ),
+    } satisfies ConsoleSkill
+  })
 }
 
 function normalizeServer(input: unknown) {

@@ -10,6 +10,7 @@ import { Form } from "../src/form.js"
 import { Harness } from "../src/harness.js"
 import { Mcp } from "../src/mcp.js"
 import { Model } from "../src/model.js"
+import { ModelPerformance } from "../src/model-performance.js"
 import { Project } from "../src/project.js"
 import { SkillAttachment } from "../src/prompt.js"
 import { Provider } from "../src/provider.js"
@@ -17,6 +18,8 @@ import { Pty } from "../src/pty.js"
 import { Session } from "../src/session.js"
 import { SessionMessage } from "../src/session-message.js"
 import { SessionInbox } from "../src/session-inbox.js"
+import { ClientPresence } from "../src/client-presence.js"
+import { SessionOrigin } from "../src/session-origin.js"
 import { FileDiff } from "../src/file-diff.js"
 import { Money } from "../src/money.js"
 import { Skill } from "../src/skill.js"
@@ -220,6 +223,9 @@ describe("contract hygiene", () => {
       Model.Cost,
       Model.Settings,
       Model.Variant,
+      ModelPerformance.Provider,
+      ModelPerformance.ModelEntry,
+      ModelPerformance.Snapshot,
       Project.Current,
       Worktree.Directory,
       Worktree.List,
@@ -241,6 +247,9 @@ describe("contract hygiene", () => {
       SessionInbox.Compaction,
       SessionInbox.Move,
       SessionInbox.Info,
+      ClientPresence.Surface,
+      ClientPresence.Snapshot,
+      SessionOrigin.Info,
       Vcs.Branch,
       Vcs.Info,
     ].map((schema) => schema.ast.annotations?.identifier)

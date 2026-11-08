@@ -475,8 +475,19 @@ function SessionRow(props: {
           <span id={statusID} className="contents">
             <SharedSlot mount={props.record.status} />
           </span>
-          <span data-component="home-session-title" dir="auto" className="min-w-0 truncate">
-            {props.record.title}
+          <span data-component="home-session-title" className="flex min-w-0 items-center gap-2">
+            <span dir="auto" className="min-w-0 truncate">
+              {props.record.title}
+            </span>
+            <span
+              data-slot="home-session-origin"
+              className="shrink-0 rounded border border-muted px-1 py-px text-[10px] font-normal text-ink-muted"
+              aria-label={props.view.language.t("home.sessions.originLabel", {
+                origin: props.view.language.t(`home.sessions.origin.${props.record.origin}`),
+              })}
+            >
+              {props.view.language.t(`home.sessions.origin.${props.record.origin}`)}
+            </span>
           </span>
           {columns}
         </ContextMenu>

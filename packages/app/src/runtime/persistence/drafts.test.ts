@@ -1,5 +1,13 @@
 import { describe, expect, test } from "bun:test"
-import { createDraftStore, draftTextChunk, draftTextThreshold, resolveBlobUrl } from "./drafts"
+import {
+  createDraftStore,
+  createLegacyBlobReference,
+  blobDataUrl,
+  draftTextChunk,
+  draftTextThreshold,
+  resolveBlobUrl,
+  setMediaBlobLoader,
+} from "./drafts"
 
 function memoryDriver() {
   const documents = new Map<string, string>()
@@ -267,6 +275,43 @@ describe("draft store image retention", () => {
     expect(await released(store, 1, orphan.url)).toBe(true)
   })
 
+  test("a pasted file stays readable after its temporary file disappears", async () => {
+    class DiskFile extends File {
+      gone = false
+
+      private check() {
+        if (this.gone) throw new DOMException("file is gone", "NotReadableError")
+      }
+
+      override arrayBuffer() {
+        this.check()
+        return super.arrayBuffer()
+      }
+
+      override text() {
+        this.check()
+        return super.text()
+      }
+
+      override stream() {
+        this.check()
+        return super.stream()
+      }
+
+      override slice(...args: Parameters<File["slice"]>) {
+        this.check()
+        return super.slice(...args)
+      }
+    }
+
+    const { memory, store } = fresh()
+    const file = new DiskFile([new Uint8Array([1, 2, 3])], "clipboard.png", { type: "image/png" })
+    const reference = await store.putBlob(file)
+    file.gone = true
+    expect(new Uint8Array(await memory.blobs.get(reference.id)!.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]))
+    expect(await blobDataUrl(reference, "image/png")).toBe("data:image/png;base64,AQID")
+  })
+
   test("an image referenced within the grace is kept", async () => {
     const { store } = fresh(50)
     const pasted = await store.putBlob(image(2))
@@ -335,5 +380,24 @@ describe("draft store image retention", () => {
   test("a reference to bytes the store no longer holds resolves to nothing", async () => {
     fresh()
     expect(await resolveBlobUrl({ id: "gone" })).toBeUndefined()
+  })
+
+  test("copies a server media reference into local draft storage", async () => {
+    const hash = "b".repeat(64)
+    const uri = `media:${hash}`
+    const { memory, store } = fresh()
+    setMediaBlobLoader("test-server", async (ref) =>
+      ref === uri ? "data:image/png;base64,AQID" : undefined,
+    )
+    try {
+      const reference = createLegacyBlobReference(uri)
+      expect(reference).toEqual({ id: uri, url: "" })
+      await store.setDocument("media", { prompt: [{ type: "image", blob: reference }] })
+      const stored = JSON.parse(memory.documents.get("media")!)
+      expect(stored.prompt[0].blob.id).not.toBe(uri)
+      expect(memory.blobs.has(stored.prompt[0].blob.id)).toBe(true)
+    } finally {
+      setMediaBlobLoader("test-server", undefined)
+    }
   })
 })

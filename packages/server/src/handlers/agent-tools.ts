@@ -1,4 +1,5 @@
 import { AgentTools } from "@opencode/core/agent-tools"
+import { ExecutionCapability } from "@opencode/core/execution-capability"
 import { Effect } from "effect"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { InvalidRequestError } from "@opencode/protocol/errors"
@@ -9,6 +10,7 @@ import { Api } from "../api"
 export const AgentToolsHandler = HttpApiBuilder.group(Api, "server.agentTools", (handlers) =>
   Effect.gen(function* () {
     const tools = yield* AgentTools.Service
+    const capabilities = yield* ExecutionCapability.Service
     const call = <A, E>(effect: Effect.Effect<A, E>) =>
       Effect.gen(function* () {
         const principal = yield* ServerAccess.Current
@@ -26,7 +28,15 @@ export const AgentToolsHandler = HttpApiBuilder.group(Api, "server.agentTools", 
         )
       })
     return handlers
-      .handle("agentTools.list", () => call(tools.list()))
+      .handle("agentTools.list", () =>
+        call(
+          Effect.gen(function* () {
+            const snapshot = yield* tools.list()
+            const live = yield* capabilities.list()
+            return { ...snapshot, capabilities: [...AgentTools.capabilitySnapshot(snapshot), ...live] }
+          }),
+        ),
+      )
       .handle("agentTools.configure", (ctx) => call(tools.configure(ctx.payload)))
       .handle("agentTools.install", (ctx) => call(tools.install(ctx.params.id)))
       .handle("agentTools.probe", (ctx) => call(tools.probe(ctx.params.id)))

@@ -102,7 +102,7 @@ export namespace FSUtil {
         })
       })
 
-      const resolve = Effect.fn("FileSystem.resolve")(function* (input: string) {
+      const resolve = Effect.fnUntraced(function* (input: string) {
         const resolved = path.resolve(windowsPath(input))
         return yield* fs.realPath(resolved).pipe(
           Effect.catchReason("PlatformError", "NotFound", () => Effect.succeed(resolved)),
@@ -272,6 +272,10 @@ export namespace FSUtil {
       .replace(/^\/cygdrive\/([a-zA-Z])(?:\/|$)/, (_, drive) => `${drive.toUpperCase()}:/`)
       .replace(/^\/mnt\/([a-zA-Z])(?:\/|$)/, (_, drive) => `${drive.toUpperCase()}:/`)
   }
+
+  export const ignoredDirectories = ["node_modules", ".git", ".venv", "venv", "__pycache__"]
+
+  export const ignoreGlobs = [...ignoredDirectories, `**/{${ignoredDirectories.join(",")}}/**`]
 
   export function overlaps(a: string, b: string) {
     return contains(a, b) || contains(b, a)

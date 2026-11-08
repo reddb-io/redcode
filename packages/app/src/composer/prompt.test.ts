@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import type { SessionMessageUser } from "@opencode/client/promise"
+import type { PromptMediaFileAttachment, SessionMessageUser } from "@opencode/client/promise"
 import { extractPromptContext, extractPromptFromMessage } from "./prompt"
 import { buildPromptRequest } from "./request"
 import { contextItemKey } from "./schema"
@@ -47,6 +47,20 @@ describe("extractPromptFromMessage", () => {
       comments: [{ type: "file", path: "src/app.ts", comment: "check this", commentOrigin: "review" }],
       files: [],
     })
+  })
+
+  test("restores an opted-in media reference without pretending it is a browser URL", () => {
+    const uri = `media:${"a".repeat(64)}` as PromptMediaFileAttachment["uri"]
+    const prompt = extractPromptFromMessage({
+      id: "msg_media",
+      text: "see image",
+      files: [{ uri, mime: "image/png", source: { type: "inline" }, name: "capture.png" }],
+    })
+
+    expect(prompt).toMatchObject([
+      { type: "text", content: "see image" },
+      { type: "image", filename: "capture.png", mime: "image/png", blob: { id: uri, url: "" } },
+    ])
   })
 
   test("keeps the directory of a file mention without an at-sign", () => {

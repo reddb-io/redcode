@@ -202,8 +202,17 @@ function PaletteRow(props: {
             <Keybind keys={formatKeybindParts(item.keybind, props.language.t)} />
           )}
           {item.type === "session" && !!item.updated && (
-            <span className="command-palette-meta">
-              {getRelativeTime(new Date(item.updated).toISOString(), props.language.t)}
+            <span
+              className="command-palette-meta"
+              title={new Intl.DateTimeFormat(props.language.intl, {
+                day: "numeric",
+                month: "short",
+                year: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+              }).format(item.updated)}
+            >
+              {getRelativeTime(new Date(item.updated).toISOString(), props.language.t, props.language.intl)}
             </span>
           )}
         </>

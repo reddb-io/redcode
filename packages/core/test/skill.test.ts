@@ -3,6 +3,7 @@ import { Deferred, Effect, Fiber, Layer, Schedule, Stream } from "effect"
 import { Agent } from "@opencode/core/agent"
 import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
 import { LayerNode } from "@opencode/util/effect/layer-node"
+import { FSUtil } from "@opencode/util/fs-util"
 import { Bus } from "@opencode/core/bus"
 import { Config } from "@opencode/core/config"
 import { ManagedPolicy } from "@opencode/core/managed-policy"
@@ -17,7 +18,7 @@ import { registerIntegrationPolicy } from "./fixture/policy"
 const configLayer = Config.testLayer()
 const it = testEffect(
   AppNodeBuilder.build(
-    LayerNode.group([Skill.node, SkillInstructions.node, Agent.node, Bus.node, ManagedPolicy.node]),
+    LayerNode.group([Skill.node, SkillInstructions.node, Agent.node, Bus.node, ManagedPolicy.node, FSUtil.node]),
     [Config.node.replace(configLayer)],
   ).pipe(Layer.provideMerge(configLayer)),
 )
@@ -219,6 +220,45 @@ describe("Skill", () => {
       )
       const agent = yield* agents.get(Agent.ID.make("reviewer"))
       expect(Skill.available([info("deploy", "Deploy")], agent!.permissions)).toEqual([])
+    }),
+  )
+
+  it.effect("stores and prepares virtual skill files without reading the disk", () =>
+    Effect.gen(function* () {
+      const skills = yield* Skill.Service
+      const virtual = Skill.Info.make({
+        ...info("review", "Review"),
+        path: AbsolutePath.make(Skill.uri("review", "SKILL.md")),
+      })
+      yield* skills.transform((editor) =>
+        editor.add(virtual, {
+          "SKILL.md": "ignored",
+          "references/b.md": "B",
+          "references/a.md": "A",
+        }),
+      )
+
+      const files = yield* skills.files(Skill.ID.make("review"))
+      expect(Array.from(files ?? [])).toEqual([
+        ["references/a.md", "A"],
+        ["references/b.md", "B"],
+      ])
+      const fs = yield* FSUtil.Service
+      const prepared = yield* Skill.prepare(
+        { ...fs, scan: () => Effect.die(new Error("unexpected disk scan")) },
+        virtual,
+        files,
+      )
+      expect(prepared).toEqual({
+        directory: "skill://review",
+        output: Skill.toModelOutput(virtual, [
+          "skill://review/references/a.md",
+          "skill://review/references/b.md",
+        ]),
+      })
+
+      yield* skills.transform((editor) => editor.remove("review"))
+      expect(yield* skills.files(Skill.ID.make("review"))).toBeUndefined()
     }),
   )
 })

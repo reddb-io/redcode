@@ -26,6 +26,7 @@ import { Project } from "@opencode/schema/project"
 import { AbsolutePath, RelativePath } from "../schema.js"
 import type { SessionSchema } from "./schema.js"
 import { ProjectTable } from "../project/sql.js"
+import { SessionBlob } from "./blob.js"
 
 type DatabaseService = Database.Interface["db"]
 type MessageEvent = Exclude<
@@ -205,21 +206,30 @@ const projectFork = Effect.fn("SessionProjector.projectFork")(function* (
       .pipe(Effect.orDie)
     if (rows.length === 0) break
 
+    const copied = rows.map((row) => ({
+      id: SessionMessage.ID.make(`${SessionMessage.ID.fromEvent(event.id)}_${row.seq}`),
+      session_id: event.data.sessionID,
+      type: row.type,
+      seq: row.seq,
+      time_created: row.time_created,
+      time_updated: row.time_updated,
+      data: row.data,
+    }))
     yield* db
       .insert(SessionMessageTable)
-      .values(
-        rows.map((row) => ({
-          id: SessionMessage.ID.make(`${SessionMessage.ID.fromEvent(event.id)}_${row.seq}`),
-          session_id: event.data.sessionID,
-          type: row.type,
-          seq: row.seq,
-          time_created: row.time_created,
-          time_updated: row.time_updated,
-          data: row.data,
-        })),
-      )
+      .values(copied)
       .run()
       .pipe(Effect.orDie)
+    yield* Effect.forEach(
+      copied,
+      (row) =>
+        SessionBlob.syncRefs(
+          db,
+          { sessionID: event.data.sessionID, messageID: row.id, seq: row.seq },
+          row.data,
+        ),
+      { discard: true },
+    )
 
     cursor = rows.at(-1)!.seq
   }
@@ -387,10 +397,15 @@ function run(db: DatabaseService, event: MessageEvent) {
   })
 }
 
-function insertMessage(db: DatabaseService, event: SessionEvent.DurableEvent, message: SessionMessage.Info) {
+const insertMessage = Effect.fnUntraced(function* (
+  db: DatabaseService,
+  event: SessionEvent.DurableEvent,
+  message: SessionMessage.Info,
+) {
   const encoded = encodeMessage(message)
-  const { id, type, ...data } = encoded
-  return db
+  const { id, type, ...inline } = encoded
+  const data = yield* SessionBlob.externalize(db, inline)
+  yield* db
     .insert(SessionMessageTable)
     .values({
       id: SessionMessage.ID.make(id),
@@ -402,7 +417,12 @@ function insertMessage(db: DatabaseService, event: SessionEvent.DurableEvent, me
     })
     .run()
     .pipe(Effect.orDie)
-}
+  yield* SessionBlob.syncRefs(
+    db,
+    { sessionID: event.data.sessionID, messageID: SessionMessage.ID.make(id), seq: event.durable.seq },
+    data,
+  )
+})
 
 function projectIdle(
   db: DatabaseService,
@@ -555,7 +575,10 @@ const layer = Layer.effectDiscard(
       }),
     )
     yield* bus.project(SessionEvent.Deleted, (event) =>
-      db.delete(SessionTable).where(eq(SessionTable.id, event.data.sessionID)).run().pipe(Effect.orDie),
+      Effect.gen(function* () {
+        yield* SessionBlob.releaseSession(db, event.data.sessionID)
+        yield* db.delete(SessionTable).where(eq(SessionTable.id, event.data.sessionID)).run().pipe(Effect.orDie)
+      }),
     )
     yield* bus.project(SessionEvent.AgentSelected, (event) =>
       Effect.gen(function* () {
@@ -774,6 +797,7 @@ const layer = Layer.effectDiscard(
           .get()
           .pipe(Effect.orDie)
         if (!boundary) return yield* Effect.die(new Error(`Revert boundary message not found: ${event.data.to}`))
+        yield* SessionBlob.releaseFrom(db, event.data.sessionID, boundary.seq)
         yield* db
           .delete(SessionMessageTable)
           .where(

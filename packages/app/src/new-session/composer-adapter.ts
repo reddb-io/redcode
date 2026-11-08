@@ -1,6 +1,5 @@
 import { Predicate } from "effect"
 import { base64Encode } from "@opencode/util/encode"
-import type { SessionMessageUser } from "@opencode/client/promise"
 import { Session } from "@opencode/schema/session"
 import { startTransition } from "solid-js"
 import type { ComposerSelection, NewSessionComposerAdapter } from "@/composer/adapter"
@@ -11,18 +10,22 @@ import { createComposerProjectControls } from "./project/controller"
 import { useLanguage } from "@/runtime/i18n/language"
 import { useLocal } from "@/providers/models/selection"
 import { useData, useServer } from "@/runtime/server/current"
-import { type ServerSDK, useServerSDK } from "@/runtime/server/client"
+import { useServerSDK } from "@/runtime/server/client"
 import { useTabs } from "@/shell/tabs/tabs"
-import { useWorkspaceLocation } from "@/workspaces/location"
 import { createWorktree } from "@/workspaces/create"
 import { showToast } from "@/shell/notifications/toast"
-import { SessionRouteKey, SessionStateKey } from "@/runtime/server/scope"
-import { clearSessionMessageHandoff, setSessionMessageHandoff } from "@/session/handoff"
 import type { DraftMcpControls } from "./mcp"
+import {
+  createNewSessionPhaseRunner,
+  NEW_SESSION_CREATE_TIMEOUT_MS,
+  NEW_SESSION_MCP_TIMEOUT_MS,
+  NEW_SESSION_WORKTREE_TIMEOUT_MS,
+} from "./phase-runner"
 
 export function createNewSessionComposerAdapter(props: {
   draftID: string
   worktree: () => string
+  root: () => string
   branch: () => string | undefined
   submitted: () => void
   mcp: DraftMcpControls
@@ -34,7 +37,6 @@ export function createNewSessionComposerAdapter(props: {
   const server = useServer()
   const serverSDK = useServerSDK()
   const tabs = useTabs()
-  const location = useWorkspaceLocation()
   const language = useLanguage()
   const model = createComposerModelSelection({ agent: () => local.agent.current() })
   const controls = createComposerControls({ model })
@@ -50,12 +52,9 @@ export function createNewSessionComposerAdapter(props: {
     working: () => false,
     submitted: props.submitted,
     async start(selection, submission, message) {
+      const phases = createNewSessionPhaseRunner()
       const draftID = props.draftID
-      const currentDirectory = location().directory
-
-      const projectDirectory =
-        data.location.info({ directory: currentDirectory })?.project.canonical ?? currentDirectory
-
+      const projectDirectory = props.root()
       const worktree = props.worktree()
       const branch = props.branch()
       const mcp = props.mcp.capture()
@@ -66,15 +65,30 @@ export function createNewSessionComposerAdapter(props: {
           ? tabs.prepareSession(draftID, { server: server.key, sessionId: id }, { message, selection })
           : undefined
 
-      await pending?.ready
+      const directoryRequest = Promise.resolve().then(async () => {
+        await pending?.ready
 
-      const sessionDirectory = await resolveSessionDirectory({
-        projectDirectory,
-        worktree,
-        branch,
-        data,
-        serverSDK,
-        language,
+        return resolveSessionDirectory({
+          projectDirectory,
+          worktree,
+          branch,
+          data,
+          serverSDK,
+          language,
+        })
+      })
+
+      const sessionDirectory = await (worktree === "create"
+        ? phases.run("worktree", directoryRequest, NEW_SESSION_WORKTREE_TIMEOUT_MS)
+        : directoryRequest
+      ).catch((error) => {
+        showToast({
+          variant: "error",
+          title: language.t("prompt.toast.worktreeCreateFailed.title"),
+          description: errorMessage(language, error),
+        })
+
+        return undefined
       })
 
       if (!sessionDirectory) {
@@ -90,7 +104,19 @@ export function createNewSessionComposerAdapter(props: {
         await pending.rollback(sessionDirectory)
       }
 
-      if (!(await props.mcp.prepare(sessionDirectory, mcp))) {
+      const mcpReady = await phases
+        .run("mcp", props.mcp.prepare(sessionDirectory, mcp), NEW_SESSION_MCP_TIMEOUT_MS)
+        .catch((error) => {
+          showToast({
+            variant: "error",
+            title: language.t("session.summary.mcp.prepareFailed"),
+            description: errorMessage(language, error),
+          })
+
+          return false
+        })
+
+      if (!mcpReady) {
         await rollback()
 
         if (pending) props.mcp.remember(sessionDirectory, mcp)
@@ -110,7 +136,10 @@ export function createNewSessionComposerAdapter(props: {
         location: { directory: sessionDirectory },
       })
 
-      const creation = created.request.then(
+      const request = phases.run("session", created.request, NEW_SESSION_CREATE_TIMEOUT_MS, () =>
+        data.session.remove(created.id).catch(() => undefined),
+      )
+      const creation = request.then(
         () => ({ ok: true as const }),
         (error) => {
           showToast({
@@ -155,11 +184,6 @@ export function createNewSessionComposerAdapter(props: {
         return run()
       }
 
-      const sessionKey = SessionStateKey.from(
-        serverSDK.scope,
-        SessionRouteKey.fromRoute(base64Encode(sessionDirectory), created.id),
-      )
-
       const cleanupReady = startTransition(() => {
         if (!pending) tabs.updateDraft(draftID, { worktree: undefined, branch: undefined })
         local.session.promote(sessionDirectory, created.id, {
@@ -185,7 +209,7 @@ export function createNewSessionComposerAdapter(props: {
         session: {
           id: created.id,
           directory: sessionDirectory,
-          handoff: createMessageHandoff(sessionKey, created.id, serverSDK.event),
+          handoff: server.ctx.handoff.forSession(created.id),
           api: {
             command: (input) => afterCreation(() => serverSDK.api.session.command(input)),
             shell: (input) => afterCreation(() => serverSDK.api.session.shell(input)),
@@ -193,6 +217,7 @@ export function createNewSessionComposerAdapter(props: {
             switchModel: (input) => afterCreation(() => serverSDK.api.session.switchModel(input)),
             revert: { commit: (input) => afterCreation(() => serverSDK.api.session.revert.commit(input)) },
           },
+          file: serverSDK.api.file,
           data: {
             location: data.location,
             session: {
@@ -232,21 +257,31 @@ export function createNewSessionComposerAdapter(props: {
         },
         variant: selected.model.selection.variant.current(),
       }
-      const currentDirectory = location().directory
-      const projectDirectory = data.location.info({ directory: currentDirectory })?.project.canonical ?? currentDirectory
+      const projectDirectory = props.root()
       const identity = JSON.stringify([projectDirectory, props.worktree(), props.branch(), selection])
       if (goalSession?.identity !== identity) goalSession = undefined
       if (!goalSession) {
-        const sessionDirectory = await resolveSessionDirectory({
+        const phases = createNewSessionPhaseRunner()
+        const worktree = props.worktree()
+        const directoryRequest = resolveSessionDirectory({
           projectDirectory,
-          worktree: props.worktree(),
+          worktree,
           branch: props.branch(),
           data,
           serverSDK,
           language,
         })
+        const sessionDirectory = await (worktree === "create"
+          ? phases.run("worktree", directoryRequest, NEW_SESSION_WORKTREE_TIMEOUT_MS)
+          : directoryRequest)
         if (!sessionDirectory) throw new Error(language.t("goal.workspaceFailed"))
-        if (!(await props.mcp.prepare(sessionDirectory, props.mcp.capture())))
+        if (
+          !(await phases.run(
+            "mcp",
+            props.mcp.prepare(sessionDirectory, props.mcp.capture()),
+            NEW_SESSION_MCP_TIMEOUT_MS,
+          ))
+        )
           throw new Error(language.t("goal.workspaceFailed"))
         const created = data.session.create({
           id: Session.ID.create(),
@@ -259,7 +294,9 @@ export function createNewSessionComposerAdapter(props: {
           },
           location: { directory: sessionDirectory },
         })
-        await created.request
+        await phases.run("session", created.request, NEW_SESSION_CREATE_TIMEOUT_MS, () =>
+          data.session.remove(created.id).catch(() => undefined),
+        )
         goalSession = { id: created.id, directory: sessionDirectory, selection, identity }
       }
       await reasoning.apply(goalSession.id)
@@ -283,28 +320,6 @@ export function createNewSessionComposerAdapter(props: {
       target.context.replace(state.context.items())
       tabs.updateDraft(props.draftID, { worktree: undefined, branch: undefined })
       tabs.promoteDraft(props.draftID, { server: server.key, sessionId: goalSession.id })
-    },
-  }
-}
-
-function createMessageHandoff(key: string, sessionID: string, event: ServerSDK["event"]) {
-  let unsubscribe: VoidFunction | undefined
-
-  return {
-    set(message: SessionMessageUser) {
-      unsubscribe?.()
-      setSessionMessageHandoff(key, message)
-      unsubscribe = event.on("session.inbox.enqueued", (item) => {
-        if (item.data.sessionID !== sessionID || item.data.inboxID !== message.id) return
-        unsubscribe?.()
-        unsubscribe = undefined
-        clearSessionMessageHandoff(key, message.id)
-      })
-    },
-    clear(messageID: string) {
-      unsubscribe?.()
-      unsubscribe = undefined
-      clearSessionMessageHandoff(key, messageID)
     },
   }
 }

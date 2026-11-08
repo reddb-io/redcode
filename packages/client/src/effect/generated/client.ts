@@ -14,6 +14,7 @@ import type {
   ServerAttentionOutput,
   ServerInfoOutput,
   ServerSystemOutput,
+  ServerPerformanceOutput,
   ServerPairOutput,
   ServerCancelPairInput,
   ServerCancelPairOutput,
@@ -347,6 +348,8 @@ import type {
   ExperimentalPersistentPtyRemoveOutput,
   ExperimentalPersistentPtyConnectTokenInput,
   ExperimentalPersistentPtyConnectTokenOutput,
+  ExperimentalMediaGetInput,
+  ExperimentalMediaGetOutput,
   ShellListInput,
   ShellListOutput,
   ShellCreateInput,
@@ -613,6 +616,9 @@ const EndpointServerInfo = (raw: RawClient["server.server"]) => () =>
 const EndpointServerSystem = (raw: RawClient["server.server"]) => () =>
   preserveEffect<ServerSystemOutput>()(raw["server.system"]({}).pipe(Effect.mapError(mapClientError)))
 
+const EndpointServerPerformance = (raw: RawClient["server.server"]) => () =>
+  preserveEffect<ServerPerformanceOutput>()(raw["server.performance"]({}).pipe(Effect.mapError(mapClientError)))
+
 const EndpointServerPair = (raw: RawClient["server.server"]) => () =>
   preserveEffect<ServerPairOutput>()(raw["server.pair"]({}).pipe(Effect.mapError(mapClientError)))
 
@@ -635,6 +641,7 @@ const adaptGroupServer = (raw: RawClient["server.server"]) => ({
   attention: EndpointServerAttention(raw),
   info: EndpointServerInfo(raw),
   system: EndpointServerSystem(raw),
+  performance: EndpointServerPerformance(raw),
   pair: EndpointServerPair(raw),
   cancelPair: EndpointServerCancelPair(raw),
   connect: EndpointServerConnect(raw),
@@ -2375,6 +2382,11 @@ const EndpointExperimentalPersistentPtyConnectToken =
       ),
     )
 
+const EndpointExperimentalMediaGet = (raw: RawClient["server.experimental"]) => (input: ExperimentalMediaGetInput) =>
+  preserveEffect<ExperimentalMediaGetOutput>()(
+    raw["media.get"]({ params: { hash: input["hash"] } }).pipe(Effect.mapError(mapClientError)),
+  )
+
 const adaptGroupExperimental = (raw: RawClient["server.experimental"]) => ({
   persistentPty: {
     read: EndpointExperimentalPersistentPtyRead(raw),
@@ -2388,6 +2400,7 @@ const adaptGroupExperimental = (raw: RawClient["server.experimental"]) => ({
     remove: EndpointExperimentalPersistentPtyRemove(raw),
     connectToken: EndpointExperimentalPersistentPtyConnectToken(raw),
   },
+  media: { get: EndpointExperimentalMediaGet(raw) },
 })
 
 const EndpointShellList = (raw: RawClient["server.shell"]) => (input?: ShellListInput) =>

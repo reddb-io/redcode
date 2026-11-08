@@ -12,7 +12,7 @@ import { setCursorPosition } from "@/composer/editor/dom"
 import { promptLength } from "@/composer/prompt-parts"
 import { useCommand } from "@/shell/commands/command"
 import { useLanguage } from "@/runtime/i18n/language"
-import { useData } from "@/runtime/server/current"
+import { useData, useServer } from "@/runtime/server/current"
 import { useServerSDK } from "@/runtime/server/client"
 import { showToast } from "@/shell/notifications/toast"
 import { useLocal } from "@/providers/models/selection"
@@ -90,11 +90,18 @@ export function createActiveSessionRegion(input: {
   )
 
   const openAttachment: NonNullable<SessionUserActions["openAttachment"]> = (file) => {
-    const url = file.source.type === "uri" ? file.source.uri : `data:${file.mime};base64,${file.data}`
+    const url =
+      file.source.type === "uri"
+        ? file.source.uri
+        : "data" in file
+          ? `data:${file.mime};base64,${file.data}`
+          : undefined
 
-    const download = () => {
+    const download = async () => {
+      const href = url ?? ("uri" in file ? await server.media.load(file.uri, file.mime) : undefined)
+      if (!href) return
       const anchor = document.createElement("a")
-      anchor.href = url
+      anchor.href = href
       anchor.download = getFilename(file.name) || "attachment"
       anchor.click()
     }
@@ -102,10 +109,10 @@ export function createActiveSessionRegion(input: {
     const path = file.name ?? ""
     const absolute = path.startsWith("/") || path.startsWith("\\\\") || /^[a-zA-Z]:[\\/]/.test(path)
 
-    if (!platform.revealPath || !absolute) return download()
+    if (!platform.revealPath || !absolute) return void download()
     void platform.revealPath(path).then((revealed) => {
-      if (!revealed) download()
-    }, download)
+      if (!revealed) void download()
+    }, () => void download())
   }
 
   const focus = () => {
@@ -195,11 +202,13 @@ export function createActiveSessionRegion(input: {
     showToast({ title: language.t("common.requestFailed") })
   }
 
+  const handoffs = useServer().ctx.handoff
   const pendingSteer: NonNullable<SessionUserActions["pending"]> = {
     status: (messageID) => {
       const sessionID = input.session.identity.params.id
 
-      return sessionID ? data.session.pending.status(sessionID, messageID) : undefined
+      if (!sessionID) return
+      return handoffs.held(sessionID, messageID) ? "sending" : data.session.pending.status(sessionID, messageID)
     },
     queue: ({ sessionID, messageID }) =>
       server.api.session.inbox
@@ -240,7 +249,11 @@ export function createActiveSessionRegion(input: {
     state,
     parentID: input.session.data.parentID,
     centered: input.screen.centered,
-    onResponseSubmit: input.timeline.actions.resume,
+    // Readers far enough up to see Jump to latest keep their place; anyone closer follows their submitted prompt.
+    onResponseSubmit: () => {
+      const scroll = input.timeline.scroll
+      if (input.timeline.view.pinned() || !(scroll.overflow && scroll.jump)) input.timeline.actions.resume()
+    },
     openParent,
     setPromptRef: (element: HTMLDivElement) => {
       promptRef = element

@@ -83,6 +83,7 @@ const CONTINUE_AFTER_INCOMPLETE_STREAM =
   "The previous response was interrupted. Continue from where you left off without repeating completed content."
 /** Messages read back when judging a goal or reviewing a final response. */
 const RECENT = 60
+type DrainInput = Parameters<Interface["drain"]>[0]
 
 /**
  * The prompt metadata sources of a message a person typed, the only ones a typed Design change request is
@@ -219,7 +220,8 @@ const layer = Layer.effect(
       return IntelligenceCodeRepair.state([user, marker, ...after])
     })
 
-    const drain = Effect.fn("SessionRunner.drain")(function* (input: Parameters<Interface["drain"]>[0]) {
+    // Each drain is one assistant turn and starts its own trace, whatever fiber woke it.
+    const drain = Effect.fn("SessionRunner.drain", { root: true })(function* (input: DrainInput) {
       const sessionID = input.sessionID
       let force = input.force
       let continuing = input.continuation !== undefined
@@ -1508,6 +1510,7 @@ const layer = Layer.effect(
       let initial: SessionContext.Loaded | undefined = first
       let recoverOverflow = true
       let recoverContinuation = true
+      let retryAttempt: number | undefined
       while (true) {
         // Reuse boundary preparation once; retries refresh context without delivering more input.
         const loaded = initial ?? (yield* prepareContext(sessionID).pipe(Effect.flatMap(context.load)))
@@ -1707,6 +1710,7 @@ const layer = Layer.effect(
           agent: loaded.agent.id,
           model: loaded.model,
           prepared,
+          retryAttempt,
           retry: (cause, error, proposed) =>
             retry.decide({
               cause,
@@ -1738,6 +1742,7 @@ const layer = Layer.effect(
           stallLimits,
           toolTimeout,
         })
+        retryAttempt = undefined
         const completed = yield* SessionStep.Outcome.$match(outcome, {
           Completed: Effect.fnUntraced(function* (outcome) {
             if (outcome.guardStop) {
@@ -1748,13 +1753,16 @@ const layer = Layer.effect(
             }
             return outcome.needsContinuation
           }),
-          Retry: (outcome) =>
-            retry.wait({
+          Retry: Effect.fnUntraced(function* (outcome) {
+            retryAttempt = outcome.decision.attempt
+            yield* retry.wait({
               decision: outcome.decision,
               error: outcome.error,
               assistantMessageID,
-            }),
+            })
+          }),
           Continue: Effect.fnUntraced(function* (outcome) {
+            retryAttempt = outcome.decision.attempt
             yield* retry.wait({
               decision: outcome.decision,
               error: outcome.error,
@@ -1794,7 +1802,7 @@ const layer = Layer.effect(
         .all()
         .pipe(Effect.orDie)
       for (const row of rows) {
-        const message = yield* SessionHistory.decodeMessageRow(row)
+        const message = yield* SessionHistory.decodeMessageRow(db, row)
         if (message.type !== "compaction") continue
         yield* bus.publish(SessionEvent.Compaction.Failed, {
           sessionID,
@@ -1832,7 +1840,11 @@ const layer = Layer.effect(
 
     // Work prepared in the background for a later compaction does not outlive the drain that started it.
     return Service.of({
-      drain: (input) => drain(input).pipe(Effect.ensuring(compaction.discard(input.sessionID))),
+      drain: (input) =>
+        drain(input).pipe(
+          Effect.annotateSpans("session.id", input.sessionID),
+          Effect.ensuring(compaction.discard(input.sessionID)),
+        ),
     })
   }),
 )

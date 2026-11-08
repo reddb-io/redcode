@@ -3,11 +3,11 @@ import type { Effect, Stream } from "effect"
 import type { RemoteAccess } from "@opencode/schema/remote-access"
 import type { HostResources } from "@opencode/schema/host-resources"
 import type { Attention } from "@opencode/schema/attention"
+import type { Model } from "@opencode/schema/model"
 import type { Session } from "@opencode/schema/session"
 import type { Automation } from "@opencode/schema/automation"
 import type { Location } from "@opencode/schema/location"
 import type { Provider } from "@opencode/schema/provider"
-import type { Model } from "@opencode/schema/model"
 import type { Integration } from "@opencode/schema/integration"
 import type { Agent } from "@opencode/schema/agent"
 import type { Plugin } from "@opencode/schema/plugin"
@@ -125,8 +125,46 @@ export type ServerSystemOutput = {
     | { readonly kind: "remote"; readonly protocol: string; readonly host: string }
     | { readonly kind: "memory" }
   readonly counts?: { readonly sessions: number; readonly messages: number }
+  readonly clients?: {
+    readonly total: number
+    readonly desktop: number
+    readonly web: number
+    readonly tui: number
+    readonly cli: number
+    readonly api: number
+    readonly automation: number
+    readonly worker: number
+    readonly unknown: number
+  }
 }
 export type ServerSystemOperation<E = never> = () => Effect.Effect<ServerSystemOutput, E>
+
+export type ServerPerformanceOutput = {
+  readonly sampledAt: number
+  readonly from: number
+  readonly requests: number
+  readonly errors: number
+  readonly latencyP50?: number | undefined
+  readonly latencyP95?: number | undefined
+  readonly throughputP50?: number | undefined
+  readonly providers: ReadonlyArray<{
+    readonly providerID: string
+    readonly requests: number
+    readonly errors: number
+    readonly latencyP50?: number | undefined
+    readonly latencyP95?: number | undefined
+    readonly throughputP50?: number | undefined
+  }>
+  readonly models: ReadonlyArray<{
+    readonly model: Model.Ref
+    readonly requests: number
+    readonly errors: number
+    readonly latencyP50?: number | undefined
+    readonly latencyP95?: number | undefined
+    readonly throughputP50?: number | undefined
+  }>
+}
+export type ServerPerformanceOperation<E = never> = () => Effect.Effect<ServerPerformanceOutput, E>
 
 export type ServerPairOutput = { readonly code: string; readonly expires_in: number }
 export type ServerPairOperation<E = never> = () => Effect.Effect<ServerPairOutput, E>
@@ -150,6 +188,7 @@ export interface ServerApi<E = never> {
   readonly attention: ServerAttentionOperation<E>
   readonly info: ServerInfoOperation<E>
   readonly system: ServerSystemOperation<E>
+  readonly performance: ServerPerformanceOperation<E>
   readonly pair: ServerPairOperation<E>
   readonly cancelPair: ServerCancelPairOperation<E>
   readonly connect: ServerConnectOperation<E>
@@ -5622,6 +5661,12 @@ export type ExperimentalPersistentPtyConnectTokenOperation<E = never> = (
   input: ExperimentalPersistentPtyConnectTokenInput,
 ) => Effect.Effect<ExperimentalPersistentPtyConnectTokenOutput, E>
 
+export type ExperimentalMediaGetInput = { readonly hash: string }
+export type ExperimentalMediaGetOutput = globalThis.Uint8Array
+export type ExperimentalMediaGetOperation<E = never> = (
+  input: ExperimentalMediaGetInput,
+) => Effect.Effect<ExperimentalMediaGetOutput, E>
+
 export interface ExperimentalApi<E = never> {
   readonly persistentPty: {
     readonly read: ExperimentalPersistentPtyReadOperation<E>
@@ -5635,6 +5680,7 @@ export interface ExperimentalApi<E = never> {
     readonly remove: ExperimentalPersistentPtyRemoveOperation<E>
     readonly connectToken: ExperimentalPersistentPtyConnectTokenOperation<E>
   }
+  readonly media: { readonly get: ExperimentalMediaGetOperation<E> }
 }
 
 export type ShellListInput = { readonly location?: { readonly directory?: string | undefined } | undefined }

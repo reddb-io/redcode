@@ -1,4 +1,4 @@
-import { Context, Duration, Effect, Exit, Layer, LayerMap, MutableHashMap, Option } from "effect"
+import { Context, Duration, Effect, Exit, Layer, LayerMap, MutableHashMap, Option, RcMap } from "effect"
 import { LayerNode } from "@opencode/util/effect/layer-node"
 import { Instance } from "./instance.js"
 import { Location } from "./location.js"
@@ -76,6 +76,7 @@ export function buildLocationServiceMap(
         Instance.node.replace(
           Layer.succeed(Instance.Service, {
             provide: (session) => Effect.provide(map.get(session.location)),
+            live: (session) => RcMap.has(map.rcMap, LocationServiceMap.canonical(session.location)),
           }),
         ),
         ...replacements,

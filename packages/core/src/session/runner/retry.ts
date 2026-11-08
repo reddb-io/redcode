@@ -82,12 +82,36 @@ const schedule = Schedule.max([
   }),
 )
 
+// These failures happen before the provider can be reached. A router restart, dropped VPN or network
+// transition commonly outlasts the general transient allowance, so preserve that allowance and give
+// connectivity its own bounded recovery window.
+const UNREACHABLE_CODES = new Set(["ENOTFOUND", "EAI_AGAIN", "ENETUNREACH", "EHOSTUNREACH", "ENETDOWN"])
+export const UNREACHABLE_WINDOW = Duration.hours(1)
+const UNREACHABLE_GAP_MAX = 30_000
+
+export const isUnreachable = (error: AIError) =>
+  error.reason._tag === "Transport" &&
+  error.reason.code !== undefined &&
+  UNREACHABLE_CODES.has(error.reason.code)
+
+const unreachableSchedule = Schedule.max([
+  Schedule.min([Schedule.exponential("2 seconds"), Schedule.spaced(Duration.millis(UNREACHABLE_GAP_MAX))]),
+  Schedule.during(UNREACHABLE_WINDOW),
+]).pipe(
+  Schedule.jittered,
+  Schedule.setInputType<Input>(),
+  Schedule.modifyDelay(({ duration }) =>
+    Effect.succeed(Duration.millis(Math.min(Math.ceil(Duration.toMillis(duration)), UNREACHABLE_GAP_MAX))),
+  ),
+)
+
 // Each timeout already spent minutes waiting; do not use the general twenty-retry allowance.
 const MAX_TIMEOUT_RETRIES = 3
 
 export const policy = (sessionID: SessionSchema.ID) =>
   Effect.gen(function* () {
     const step = yield* Schedule.toStep(schedule)
+    const unreachable = yield* Schedule.toStep(unreachableSchedule)
     let attempt = 1
     let timeouts = 0
     return (input: Input) =>
@@ -115,7 +139,8 @@ export const policy = (sessionID: SessionSchema.ID) =>
                 },
               }
             : { retry: false }
-        const next = yield* step(now, input).pipe(Pull.catchDone(() => Effect.succeed(undefined)))
+        const selected = input.retry && isUnreachable(input.cause) ? unreachable : step
+        const next = yield* selected(now, input).pipe(Pull.catchDone(() => Effect.succeed(undefined)))
         if (!next) return stop
         const [, duration] = next
         attempt++

@@ -3,6 +3,7 @@ import { registerOpencodeSpinner } from "./component/register-spinner"
 import { Effect, Latch, Option } from "effect"
 import { Service, type Endpoint } from "@opencode/client/effect/service"
 import { OpenCode, type SessionInfo } from "@opencode/client"
+import { ClientPresence } from "@opencode/schema/client-presence"
 import { name, short } from "@opencode/util/product"
 import { Global } from "@opencode/util/global"
 import { ClipboardProvider, useClipboard } from "./context/clipboard"
@@ -103,7 +104,7 @@ import { CommandPaletteDialog } from "./component/command-palette"
 import { COMMAND_PALETTE_COMMAND, Keymap, type KeymapCommand } from "./context/keymap"
 
 import { DialogVariant } from "./component/dialog-variant"
-import { destroyRenderer } from "./util/renderer"
+import { destroyRenderer, setTerminalTitle } from "./util/renderer"
 import { cliErrorMessage, errorFormat } from "./util/error"
 import { AttentionProvider } from "./context/attention"
 import { StorageProvider, useStorage } from "./context/storage"
@@ -216,7 +217,7 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
   const config = Config.resolve(yield* Effect.tryPromise(() => input.config.get()), {
     terminalSuspend: process.platform !== "win32",
   })
-  const options = { baseUrl: input.server.endpoint.url, headers: Service.headers(input.server.endpoint) }
+  const options = { baseUrl: input.server.endpoint.url, headers: clientHeaders(input.server.endpoint, input.app.version) }
   const api = OpenCode.make(options)
   const location = yield* Effect.tryPromise(() => api.file.list({ location: { directory: process.cwd() } })).pipe(
     Effect.map((response) => response.location),
@@ -230,7 +231,7 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
     ? {
         reconnect: async (signal: AbortSignal) => {
           const endpoint = await managed.reconnect(signal)
-          const next = { baseUrl: endpoint.url, headers: Service.headers(endpoint) }
+          const next = { baseUrl: endpoint.url, headers: clientHeaders(endpoint, input.app.version) }
           return { api: OpenCode.make(next), url: endpoint.url, headers: next.headers }
         },
         restart: managed.restart,
@@ -474,6 +475,17 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
   })
 })
 
+const tuiClientID = `tui-${process.pid}-${crypto.randomUUID()}`
+
+function clientHeaders(endpoint: Endpoint, version: string) {
+  return {
+    ...(Service.headers(endpoint) ?? {}),
+    [ClientPresence.SURFACE_HEADER]: "tui",
+    [ClientPresence.CLIENT_ID_HEADER]: tuiClientID,
+    [ClientPresence.VERSION_HEADER]: version,
+  }
+}
+
 function App(props: Pick<TuiInput, "resume">) {
   const log = useLog({ component: "app" })
   const app = useTuiApp()
@@ -642,23 +654,23 @@ function App(props: Pick<TuiInput, "resume">) {
     if (!terminalTitleEnabled()) return
 
     if (route.data.type === "home") {
-      renderer.setTerminalTitle(name)
+      setTerminalTitle(renderer, name)
       return
     }
 
     if (route.data.type === "session") {
       const title = session?.title
       if (!title || isFallbackTitle(title)) {
-        renderer.setTerminalTitle(name)
+        setTerminalTitle(renderer, name)
         return
       }
 
-      renderer.setTerminalTitle(`${short} | ${title.length > 40 ? title.slice(0, 37) + "…" : title}`)
+      setTerminalTitle(renderer, `${short} | ${title.length > 40 ? title.slice(0, 37) + "…" : title}`)
       return
     }
 
     if (route.data.type === "plugin") {
-      renderer.setTerminalTitle(`${short} | ${route.data.name}`)
+      setTerminalTitle(renderer, `${short} | ${route.data.name}`)
     }
   })
 
@@ -1251,7 +1263,7 @@ function App(props: Pick<TuiInput, "resume">) {
         palette: undefined,
         run: () => {
           const next = !terminalTitleEnabled()
-          if (!next) renderer.setTerminalTitle("")
+          if (!next) setTerminalTitle(renderer, "")
           void config
             .update((draft) => {
               draft.terminal = { ...draft.terminal, title: next }

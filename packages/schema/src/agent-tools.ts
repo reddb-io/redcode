@@ -2,6 +2,7 @@ export * as AgentTools from "./agent-tools.js"
 
 import { Schema } from "effect"
 import { AbsolutePath, optional, PositiveInt } from "./schema.js"
+import { ExecutionCapability } from "./execution-capability.js"
 
 export const ID = Schema.Literals(["rift", "browser-control", "terminal-control", "computer-use"]).annotate({
   identifier: "AgentTools.ID",
@@ -38,6 +39,8 @@ export interface Status extends Schema.Schema.Type<typeof Status> {}
 export const Snapshot = Schema.Struct({
   host: Schema.Struct({ name: Schema.String, platform: Schema.String, arch: Schema.String }),
   tools: Schema.Array(Status),
+  /** Operational capability instances; absent on servers predating capability discovery. */
+  capabilities: optional(Schema.Array(ExecutionCapability.Info)),
 }).annotate({ identifier: "AgentTools.Snapshot" })
 export interface Snapshot extends Schema.Schema.Type<typeof Snapshot> {}
 

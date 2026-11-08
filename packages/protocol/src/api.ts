@@ -19,7 +19,7 @@ import { PluginGroup } from "./groups/plugin.js"
 import { ServerGroup } from "./groups/server.js"
 import { DebugGroup } from "./groups/debug.js"
 import { makePtyGroup } from "./groups/pty.js"
-import { PersistentPtyGroup } from "./groups/persistent-pty.js"
+import { ExperimentalGroup } from "./groups/experimental.js"
 import { ShellGroup } from "./groups/shell.js"
 import { ReferenceGroup } from "./groups/reference.js"
 import { Authorization } from "./middleware/authorization.js"
@@ -108,7 +108,7 @@ type ApiGroups<
   | typeof DebugGroup
   | typeof WorktreeGroup
   | typeof GenerateGroup
-  | typeof PersistentPtyGroup
+  | typeof ExperimentalGroup
   | typeof CredentialGroup
   | typeof IntelligenceGroup
   | typeof WorkersGroup
@@ -205,7 +205,7 @@ const makeApiFromGroup = <
     .add(RpcGroup.middleware(locationMiddleware))
     .add(eventGroup)
     .add(makePtyGroup(locationMiddleware))
-    .add(PersistentPtyGroup)
+    .add(ExperimentalGroup)
     .add(ShellGroup.middleware(locationMiddleware))
     .add(ReferenceGroup.middleware(locationMiddleware))
     .add(WorktreeGroup)

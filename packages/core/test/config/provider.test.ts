@@ -930,6 +930,11 @@ describe("ConfigProviderPlugin.Plugin", () => {
       legacy: { models: { chat: { cost: { input: 0, output: 0 } } } },
       native: { models: { chat: { cost: { input: 0, output: 0 } } } },
     },
+    {
+      name: "context-only limits",
+      legacy: { models: { chat: { limit: { context: 1_000_000 } } } },
+      native: { models: { chat: { limit: { context: 1_000_000 } } } },
+    },
   ]) {
     it.effect(`matches native configuration for migrated ${scenario.name}`, () =>
       Effect.gen(function* () {

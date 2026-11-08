@@ -18,8 +18,55 @@ type Snapshot = {
   serverBytes: number | undefined
   desktopBytes: number | undefined
   executions: number | undefined
-  top:
-    | { kind: "terminal" | "agent" | "task"; id: string; title: string; residentBytes: number | null }
+  sessions: number
+  sessionTotal: number | undefined
+  agents: number
+  subagents: number
+  machines: number
+  onlineMachines: number
+  workers: number
+  onlineWorkers: number
+  serverLatency: number | undefined
+  workerLatency: number | undefined
+  clients:
+    | {
+        total: number
+        desktop: number
+        web: number
+        tui: number
+        cli: number
+        api: number
+        automation: number
+        worker: number
+        unknown: number
+      }
+    | undefined
+  performance:
+    | {
+        sampledAt: number
+        from: number
+        requests: number
+        errors: number
+        latencyP50?: number
+        latencyP95?: number
+        throughputP50?: number
+        providers: {
+          providerID: string
+          requests: number
+          errors: number
+          latencyP50?: number
+          latencyP95?: number
+          throughputP50?: number
+        }[]
+        models: {
+          model: { providerID: string; id: string; variant?: string }
+          requests: number
+          errors: number
+          latencyP50?: number
+          latencyP95?: number
+          throughputP50?: number
+        }[]
+      }
     | undefined
   totalBytes: number | undefined
   cpuPercent: number | undefined
@@ -38,6 +85,18 @@ export function HomeRuntimeView(props: { source: SharedSource<Snapshot>; open: (
       ? language.t("agents.hosts.unknown")
       : language.t("agents.hosts.memoryValue", { value: (value / 1024 ** 3).toFixed(2) })
   const memory = (value: number) => language.t("agents.hosts.memoryValue", { value: value.toFixed(2) })
+  const latency = (value: number | undefined) =>
+    value === undefined
+      ? language.t("agents.hosts.unknown")
+      : value < 1_000
+        ? language.t("home.performance.milliseconds", { value: Math.round(value) })
+        : language.t("home.performance.seconds", { value: (value / 1_000).toFixed(value < 10_000 ? 1 : 0) })
+  const rate = (value: number | undefined) =>
+    value === undefined
+      ? language.t("agents.hosts.unknown")
+      : language.t("home.performance.tokensPerSecond", {
+          value: new Intl.NumberFormat(language.intl, { maximumFractionDigits: value < 10 ? 1 : 0 }).format(value),
+        })
   const alert = view.alert ? language.t(`home.runtime.alert.${view.alert}`, { value: view.growth.toFixed(2) }) : undefined
   const hasChart = view.history.length > 1
   const period = hasChart
@@ -95,26 +154,120 @@ export function HomeRuntimeView(props: { source: SharedSource<Snapshot>; open: (
         <KpiCard className={kpiClass} label={language.t("home.runtime.desktopMemory")} value={bytes(view.desktopBytes)} />
         <KpiCard
           className={kpiClass}
+          label={language.t("home.runtime.sessions")}
+          value={view.sessions}
+          description={
+            view.sessionTotal === undefined
+              ? undefined
+              : language.plural("home.runtime.sessionsDescription", view.sessionTotal, { count: view.sessionTotal })
+          }
+        />
+        <KpiCard
+          className={kpiClass}
+          label={language.t("home.runtime.agents")}
+          value={view.agents}
+          description={language.plural("home.runtime.agentsDescription", view.subagents, { count: view.subagents })}
+        />
+        <KpiCard
+          className={kpiClass}
+          label={language.t("home.runtime.machines")}
+          value={`${view.onlineMachines}/${view.machines}`}
+          description={
+            view.serverLatency === undefined
+              ? language.t("home.runtime.connectedDescription")
+              : language.t("home.runtime.selectedLatency", { value: latency(view.serverLatency) })
+          }
+        />
+        <KpiCard
+          className={kpiClass}
+          label={language.t("home.runtime.workers")}
+          value={`${view.onlineWorkers}/${view.workers}`}
+          description={
+            view.workerLatency === undefined
+              ? language.t("home.runtime.onlineDescription")
+              : language.t("home.runtime.workerLatency", { value: latency(view.workerLatency) })
+          }
+        />
+        <KpiCard
+          className={kpiClass}
+          label={language.t("home.runtime.clients")}
+          value={view.clients?.total ?? language.t("agents.hosts.unknown")}
+          description={
+            view.clients
+              ? language.t("home.runtime.clientsDescription", {
+                  desktop: view.clients.desktop,
+                  web: view.clients.web,
+                  tui: view.clients.tui,
+                })
+              : undefined
+          }
+        />
+        <KpiCard
+          className={kpiClass}
           label={language.t("home.runtime.executions")}
           value={view.executions ?? language.t("agents.hosts.unknown")}
           description={
             view.cpuPercent === undefined ? undefined : language.t("home.runtime.cpuNow", { value: view.cpuPercent.toFixed(1) })
           }
         />
-        <KpiCard
-          className={kpiClass}
-          label={language.t("home.runtime.largest")}
-          value={view.top ? bytes(view.top.residentBytes ?? undefined) : language.t("home.runtime.none")}
-          description={
-            view.top
-              ? language.t("home.runtime.largestDescription", {
-                  kind: language.t(`agents.memory.kind.${view.top.kind}`),
-                  title: view.top.title,
-                })
-              : undefined
-          }
-        />
       </div>
+
+      {view.performance && view.performance.requests > 0 && (
+        <div className="mt-2 rounded-lg border border-muted px-3 py-2">
+          <div className="mb-2 flex min-w-0 items-baseline justify-between gap-3">
+            <h3 className="m-0 text-caption font-medium">{language.t("home.performance.title")}</h3>
+            <span className="truncate text-caption text-ink-muted">
+              {language.plural("home.performance.responses", view.performance.requests, {
+                count: view.performance.requests,
+                errors: view.performance.errors,
+              })}
+            </span>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <KpiCard
+              className={kpiClass}
+              label={language.t("home.performance.latencyP50")}
+              value={latency(view.performance.latencyP50)}
+            />
+            <KpiCard
+              className={kpiClass}
+              label={language.t("home.performance.latencyP95")}
+              value={latency(view.performance.latencyP95)}
+            />
+            <KpiCard
+              className={kpiClass}
+              label={language.t("home.performance.throughputP50")}
+              value={rate(view.performance.throughputP50)}
+            />
+          </div>
+          <div className="mt-2 grid gap-x-5 gap-y-2 @3xl:grid-cols-2">
+            <PerformanceList
+              title={language.t("home.performance.providers")}
+              items={view.performance.providers.slice(0, 3).map((item) => ({
+                id: item.providerID,
+                label: item.providerID,
+                requests: item.requests,
+                errors: item.errors,
+                latency: latency(item.latencyP50),
+                rate: rate(item.throughputP50),
+              }))}
+              language={language}
+            />
+            <PerformanceList
+              title={language.t("home.performance.models")}
+              items={view.performance.models.slice(0, 3).map((item) => ({
+                id: `${item.model.providerID}/${item.model.id}${item.model.variant ? `#${item.model.variant}` : ""}`,
+                label: item.model.variant ? `${item.model.id} · ${item.model.variant}` : item.model.id,
+                requests: item.requests,
+                errors: item.errors,
+                latency: latency(item.latencyP50),
+                rate: rate(item.throughputP50),
+              }))}
+              language={language}
+            />
+          </div>
+        </div>
+      )}
 
       {hasChart && (
         <ErrorBoundary
@@ -190,5 +343,34 @@ export function HomeRuntimeView(props: { source: SharedSource<Snapshot>; open: (
         </p>
       )}
     </section>
+  )
+}
+
+function PerformanceList(props: {
+  title: string
+  items: { id: string; label: string; requests: number; errors: number; latency: string; rate: string }[]
+  language: SharedLanguage
+}) {
+  return (
+    <div className="min-w-0">
+      <h4 className="m-0 mb-1 text-eyebrow uppercase text-ink-muted">{props.title}</h4>
+      <div className="grid gap-0.5">
+        {props.items.map((item) => (
+          <div key={item.id} className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 py-0.5 text-caption">
+            <span className="truncate" title={item.id}>{item.label}</span>
+            <span className="tabular-nums text-ink-muted">{item.latency}</span>
+            <span
+              className={item.errors > 0 ? "tabular-nums text-feedback-warning-foreground" : "tabular-nums text-ink-muted"}
+              title={props.language.plural("home.performance.requests", item.requests, {
+                count: item.requests,
+                errors: item.errors,
+              })}
+            >
+              {item.rate}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }

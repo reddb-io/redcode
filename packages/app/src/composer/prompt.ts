@@ -1,6 +1,6 @@
 import type { FileAttachmentPart, ImageAttachmentPart, PathAttachmentPart, Prompt } from "@/composer/state"
 import { createLegacyBlobReference } from "@/runtime/persistence/drafts"
-import type { SessionMessageUser } from "@opencode/client/promise"
+import type { PromptAttachment, SessionMessageUser } from "@opencode/client/promise"
 import { commentContextItem, readPromptPresentation } from "./comment-note"
 import { buildPromptRequest } from "./request"
 import { contextItemKey, type FileContextItem } from "./schema"
@@ -60,7 +60,10 @@ function selectionFromFileUrl(url: string): Extract<Inline, { type: "file" }>["s
 }
 
 // A user message or a pending inbox item: the materialized transcript row shares the inbox payload's shape.
-export type PromptSource = Pick<SessionMessageUser, "id" | "text" | "files" | "agents" | "skills" | "metadata">
+export type PromptSource = Omit<
+  Pick<SessionMessageUser, "id" | "text" | "files" | "agents" | "skills" | "metadata">,
+  "files"
+> & { files?: ReadonlyArray<PromptAttachment> }
 
 // Restores the composer content that produced a prompt, losing nothing it carried. File references
 // without a mention return as context through extractPromptContext; unmentioned agents and skills
@@ -89,7 +92,15 @@ export function extractPromptFromMessage(
 
   for (const file of message.files ?? []) {
     const mention = file.mention
-    const uri = file.source.type === "uri" ? file.source.uri : `data:${file.mime};base64,${file.data}`
+    const source = file.source
+    const mediaUri = "uri" in file ? file.uri : undefined
+    const data = "data" in file ? file.data : undefined
+    const uri =
+      source.type === "uri"
+        ? source.uri
+        : mediaUri !== undefined
+          ? mediaUri
+          : `data:${file.mime};base64,${data ?? ""}`
 
     if (mention) {
       inline.push({
@@ -108,18 +119,16 @@ export function extractPromptFromMessage(
     }
 
     // A file reference returns as a context chip through extractPromptContext.
-    if (file.source.type === "uri" && file.source.uri.startsWith("file:")) continue
+    if (source.type === "uri" && source.uri.startsWith("file:")) continue
 
     // Stored files carry their bytes, and an empty file has empty data; only a local handoff row
     // leaves data empty because its bytes live at a blob URL.
-    const stored = file.source.type === "inline" || !!file.data
+    const stored = source.type === "inline" || !!data
 
     const dataUrl =
-      file.source.type === "uri" && file.source.uri.startsWith("data:")
-        ? file.source.uri
-        : stored
-          ? `data:${file.mime};base64,${file.data}`
-          : undefined
+      source.type === "uri" && source.uri.startsWith("data:")
+        ? source.uri
+        : (mediaUri ?? (stored ? `data:${file.mime};base64,${data ?? ""}` : undefined))
 
     if (!dataUrl) continue
     attachments.push({

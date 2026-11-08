@@ -3,7 +3,7 @@ import { LocationServiceMap } from "@opencode/core/location-services"
 import { Session } from "@opencode/core/session"
 import { LocationNotFoundError, InvalidRequestError, SessionNotFoundError } from "@opencode/protocol/errors"
 import { Effect, Layer } from "effect"
-import { HttpRouter, HttpServerRequest } from "effect/unstable/http"
+import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { HttpApiMiddleware } from "effect/unstable/httpapi"
 import { locationErrors, requestRef, sessionInfo, type LocationServices } from "../location"
 
@@ -21,7 +21,7 @@ export const formLocationLayer = Layer.effect(
     const instances = yield* Instance.Service
     const locations = yield* LocationServiceMap.Service
 
-    return FormLocationMiddleware.of((effect) =>
+    return FormLocationMiddleware.of((effect, options) =>
       Effect.gen(function* () {
         const route = yield* HttpRouter.RouteContext
         if (route.params.sessionID === "global") {
@@ -33,6 +33,9 @@ export const formLocationLayer = Layer.effect(
         }
 
         const session = yield* sessionInfo(sessions, route.params.sessionID)
+        // Forms are in memory. Polling an idle or deleted subagent cannot find one and must not boot its Location.
+        if (options.endpoint.identifier === "session.form.list" && instances.live && !(yield* instances.live(session)))
+          return HttpServerResponse.jsonUnsafe({ data: [] })
         return yield* effect.pipe(instances.provide(session), locationErrors)
       }),
     )

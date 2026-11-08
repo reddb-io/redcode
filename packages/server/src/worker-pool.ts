@@ -23,6 +23,7 @@ import {
 } from "@opencode/client/promise"
 import { FileDiff } from "@opencode/schema/file-diff"
 import { Session } from "@opencode/schema/session"
+import { ClientPresence } from "@opencode/schema/client-presence"
 import { SessionMessage } from "@opencode/schema/session-message"
 import { Flock } from "@opencode/util/flock"
 import { sameDirectory } from "@opencode/util/path"
@@ -117,7 +118,9 @@ export async function health(
   environment: Readonly<Record<string, string | undefined>> = process.env,
   local?: () => OpenCodeClient,
 ) {
-  return client(worker, environment, local).server.system({ signal: AbortSignal.timeout(5_000) })
+  const started = performance.now()
+  const system = await client(worker, environment, local).server.system({ signal: AbortSignal.timeout(5_000) })
+  return { ...system, latencyMs: Math.max(0, performance.now() - started) }
 }
 
 /** One local coordinator owns a batch. Workers own independent Sessions and databases. */
@@ -903,6 +906,8 @@ function reservation(value: unknown) {
 function fenceHeaders(entry: Entry, coordinator: string) {
   if (!entry.lease) throw new Error("The task has no confirmed worker lease")
   return {
+    [ClientPresence.SURFACE_HEADER]: "worker",
+    [ClientPresence.CLIENT_ID_HEADER]: workerClientID,
     "x-redcode-worker-fence": JSON.stringify({
       owner: entry.lease.owner,
       holder: coordinator,
@@ -910,6 +915,8 @@ function fenceHeaders(entry: Entry, coordinator: string) {
     }),
   }
 }
+
+const workerClientID = `worker-${process.pid}-${crypto.randomUUID()}`
 
 function terminal(entry: Entry) {
   return ["succeeded", "failed", "interrupted"].includes(entry.state)
@@ -975,7 +982,11 @@ function client(
   if (!password) throw new Error(`Set ${worker.passwordEnv} to this worker's server password or pairing token`)
   return OpenCode.make({
     baseUrl: placement(worker),
-    headers: { authorization: `Basic ${btoa(`opencode:${password}`)}` },
+    headers: {
+      authorization: `Basic ${btoa(`opencode:${password}`)}`,
+      [ClientPresence.SURFACE_HEADER]: "worker",
+      [ClientPresence.CLIENT_ID_HEADER]: workerClientID,
+    },
     ...(worker.environmentID && worker.environmentProxy
       ? {
           fetch: Object.assign(

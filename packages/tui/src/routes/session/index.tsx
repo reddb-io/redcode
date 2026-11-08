@@ -14,7 +14,7 @@ import {
   type Accessor,
 } from "solid-js"
 import path from "node:path"
-import { EOL, tmpdir } from "node:os"
+import { EOL } from "node:os"
 import { mkdir, writeFile } from "node:fs/promises"
 import { useRoute, useRouteData } from "../../context/route"
 import { createStore } from "solid-js/store"
@@ -1650,7 +1650,7 @@ export function Session(props: {
           }
 
           const filepath = path.join(
-            tmpdir(),
+            paths.cwd,
             `session-${crypto.randomUUID()}.${options.format === "markdown" ? "md" : "json"}`,
           )
           await writeExport(filepath, content)
@@ -1755,6 +1755,7 @@ export function Session(props: {
   }))
 
   Keymap.createLayer(() => ({
+    mode: "composer",
     enabled: () => renderer.currentFocusedEditor === null,
     bindings: baseAndUnfocusedCommands.map((command) => command.id),
   }))
@@ -2757,6 +2758,7 @@ function RevertMessage(props: {
         paddingTop={1}
         paddingBottom={1}
         paddingLeft={2}
+        paddingRight={2}
         backgroundColor={hover() ? theme.decrease(theme.background.raised.base) : theme.background.raised.base}
       >
         <text fg={theme.text.muted}>
@@ -2773,7 +2775,7 @@ function RevertMessage(props: {
                     maxWidth={Math.max(
                       2,
                       ctx.width -
-                        5 -
+                        7 -
                         (file.additions > 0 ? stringWidth(`+${file.additions}`) + 1 : 0) -
                         (file.deletions > 0 ? stringWidth(`-${file.deletions}`) + 1 : 0),
                     )}
@@ -2888,6 +2890,7 @@ function UserMessage(props: { message: SessionMessageUser }) {
           paddingTop={1}
           paddingBottom={1}
           paddingLeft={2}
+          paddingRight={2}
           backgroundColor={hover() ? theme.decrease(theme.background.raised.base) : theme.background.raised.base}
           flexShrink={0}
         >
@@ -2982,7 +2985,7 @@ function QueuedPromptDock(props: { prompts: { id: string; text: string }[]; onOp
         paddingTop={1}
         paddingBottom={1}
         paddingLeft={2}
-        paddingRight={1}
+        paddingRight={2}
         backgroundColor={hover() ? theme.decrease(theme.background.raised.base) : theme.background.raised.base}
         flexDirection="row"
       >
@@ -3424,6 +3427,7 @@ function BlockTool(props: BlockToolProps) {
       paddingTop={1}
       paddingBottom={1}
       paddingLeft={2}
+      paddingRight={2}
       gap={1}
       backgroundColor={hover() ? theme.decrease(background()) : background()}
       customBorderChars={SplitBorder.customBorderChars}
@@ -3475,7 +3479,7 @@ function BlockTool(props: BlockToolProps) {
             </Show>
             <FilePath
               value={path().value}
-              maxWidth={Math.max(2, ctx.width - 4 - stringWidth(path().label) - (props.spinner ? 2 : 0))}
+              maxWidth={Math.max(2, ctx.width - 6 - stringWidth(path().label) - (props.spinner ? 2 : 0))}
               fg={permission() ? theme.text.feedback.warning.base : (props.headerColor ?? theme.text.muted)}
             />
           </box>
@@ -3602,7 +3606,7 @@ function ShellDisplay(props: {
     return stripAnsi(props.output?.trim() ?? "")
   })
   const maxLines = 10
-  const maxChars = createMemo(() => maxLines * Math.max(20, ctx.width - 6 - (isRunning() ? 2 : 0)))
+  const maxChars = createMemo(() => maxLines * Math.max(20, ctx.width - 8 - (isRunning() ? 2 : 0)))
   const prefix = createMemo(() => (workdir() && workdir() !== "." ? `cd ${workdir()} && ` : ""))
   const input = createMemo(() => (props.command ? `${isRunning() ? "" : "$ "}${prefix()}${props.command}` : ""))
   const collapsed = createMemo(() => collapseShellOutput(input(), output(), maxLines, maxChars()))
@@ -3977,7 +3981,7 @@ function Edit(props: ToolProps) {
       <Match when={file()}>
         {(item) => (
           <BlockTool path={{ label: "← Edit", value: pathFormatter.format(path()) }} part={props.part}>
-            <box paddingLeft={1}>
+            <box paddingLeft={1} paddingRight={1}>
               <PatchDiff
                 diff={item().patch}
                 hunkFg={theme.diff.text.hunkHeader}
@@ -4067,7 +4071,7 @@ function ApplyPatch(props: ToolProps) {
                     </text>
                   }
                 >
-                  <box paddingLeft={1}>
+                  <box paddingLeft={1} paddingRight={1}>
                     <PatchDiff
                       diff={file.patch}
                       hunkFg={theme.diff.text.hunkHeader}
@@ -4108,7 +4112,7 @@ function ApplyPatch(props: ToolProps) {
               >
                 <FilePath
                   value={file.resource}
-                  maxWidth={Math.max(2, ctx.width - 3)}
+                  maxWidth={Math.max(2, ctx.width - 5)}
                   fg={file.type === "delete" ? theme.diff.text.removed : theme.text.muted}
                 />
               </BlockTool>

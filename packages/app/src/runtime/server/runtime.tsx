@@ -30,6 +30,7 @@ import { useSettings } from "@/settings/model"
 import { timelinePreset } from "@opencode/session-ui/timeline/detail"
 import type { SessionInfo } from "@opencode/client/promise"
 import { resolveProjectForSession, resolveSessionDetailsProject } from "@/shell/layout/helpers"
+import { createSessionMessageHandoffs } from "@/session/handoff"
 
 export const { use: useGlobal, provider: GlobalProvider } = createSimpleContext({
   name: "Global",
@@ -236,6 +237,7 @@ function createServerController(
   })
 
   const sync = createServerSyncContext(sdk, data)
+  const handoff = createSessionMessageHandoffs({ sdk, data })
   announceCatalogUpdates(sdk, language)
   createPermissionAutoApprover({ sdk, data })
   const notification = createServerNotificationState({ sdk, data, key: connKey, coordinator: notificationCoordinator })
@@ -294,6 +296,7 @@ function createServerController(
     data,
     sdk,
     sync,
+    handoff,
     isLocal,
     projects: {
       ...projects,

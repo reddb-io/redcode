@@ -17,6 +17,7 @@ import { createServer } from "node:http"
 import type { Duplex } from "node:stream"
 import { ServerAuth } from "./auth"
 import { isAllowedCorsOrigin } from "./cors"
+import { RequestSite } from "./request-site"
 import { authorizedRequest, unauthorizedResponse } from "./middleware/authorization"
 import { withoutParentSpan } from "./request-tracing"
 import { createRoutes } from "./routes"
@@ -98,6 +99,7 @@ export const start = Effect.fn("ServerProcess.start")(function* <E, R>(
   yield* bound.http
     .serve(
       (transform ? transform(app) : app).pipe(
+        RequestSite.middleware(options),
         HttpMiddleware.compression(),
         HttpMiddleware.cors({ allowedOrigins: (origin) => isAllowedCorsOrigin(origin, options), maxAge: 86_400 }),
       ),
@@ -126,6 +128,8 @@ export const start = Effect.fn("ServerProcess.start")(function* <E, R>(
     ),
   )
 
+  // Route handlers and background fibers capture this context. Build without the startup span so requests and
+  // session turns do not remain children of one process-lifetime trace.
   const boot = Effect.gen(function* () {
     const routes = createRoutes({ ...options, password }, urls, [], {
       ptySockets,
@@ -159,6 +163,7 @@ export const start = Effect.fn("ServerProcess.start")(function* <E, R>(
       updated: (version: string) => bus.publish(InstallationEvent.Updated, { version }).pipe(Effect.asVoid),
     }
   }).pipe(
+    withoutParentSpan,
     Effect.catchCause((cause) => {
       if (!lifecycle || Cause.hasInterruptsOnly(cause)) return Effect.failCause(cause)
       return status

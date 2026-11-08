@@ -19,6 +19,12 @@ Choose a capability and install its managed version. Complete its required setup
 
 The page distinguishes **Not installed**, **Installed · Disabled for agents** and **Installed · Enabled for agents**. Installing does not enable a tool. Each supported tool shows the setup required on its execution host; browser approval and operating-system permissions must be completed there and are not verified by the installed or enabled status.
 
+The **Operational capabilities** section is deliberately stricter than the install cards. It shows where a capability executes (server, connected client or worker), its risk tier, supported operations and whether it is merely configured or actually ready. A connected Redcode Browser is leased only for the lifetime of its session attachment, so a stale desktop connection cannot remain advertised as ready.
+
+Plugins and Agent tools are complementary. A plugin is a package that can contribute tools, hooks, providers, MCP connections, commands or UI; Agent tools is Redcode's curated installer for optional external executors. A plugin that provides an operational browser, desktop, terminal or workspace should lease that capability through `context.capability.lease(...)`. Redcode attaches the plugin ID automatically, groups equivalent capability kinds in settings and still keeps different execution targets as separate instances. The lease is withdrawn when the plugin unloads, so a disabled or failed plugin cannot remain advertised as ready.
+
+Open **Settings → Extensions → Plugins** to inspect server plugins, their source, entrypoints, activation failures and package updates. Desktop app extensions appear in a separate section because their enable state controls native UI on this computer, not tools on the connected server. TUI-only plugins remain manageable with `/plugins`. GUI-only npm entrypoints are not silently treated as server plugins; Redcode's current native desktop archive runtime uses `.ocdx` packages instead.
+
 Changes apply to active projects on the selected host. Enabling a control capability registers its MCP connection and an agent workflow; disabling it removes those registrations. The packages remain in the managed cache. Opening settings does not check for updates, install packages or launch diagnostic processes.
 
 Explicit workspace placements with a separate execution environment do not inherit host-cache commands. Configure the worker's own Redcode server to use that worker's tools.
@@ -27,7 +33,7 @@ On Console-managed infrastructure, only an infrastructure **owner admin** can co
 
 ## Configure in the terminal
 
-In the TUI, open `/agent-tools`. Select a capability and use the listed actions to install, enable, diagnose or edit its command and timeout. The dialog displays the connected host, installation status and browser extension directory.
+In the TUI, open `/agent-tools`. Select a capability and use the listed actions to install, enable, diagnose or edit its command and timeout. The dialog displays the connected host, installation status and browser extension directory. Choose **operational capabilities** (`Ctrl+Y`) to inspect every live provider, its plugin, execution target, readiness and operations; `Esc` returns to setup.
 
 The CLI provides the same operations:
 
@@ -39,6 +45,8 @@ redcode tools probe browser-control
 redcode tools configure browser-control --timeout 120000
 redcode tools disable browser-control
 ```
+
+`redcode tools list` prints both the configured Agent tools and, when supported by the connected server, the operational capability inventory with its provider and execution target. Servers from before capability discovery simply omit that second section.
 
 For an existing installation, supply its MCP stdio command:
 
@@ -85,6 +93,6 @@ A Rift snapshot preserves the source's current state and cannot choose a differe
 
 Windows snapshot creation, Linux ARM64 and 32-bit Raspberry Pi hosts are not enabled by this integration. Native copy-on-write operations still require a filesystem supported by Rift; installing its executable alone does not establish filesystem compatibility.
 
-The managed packages are pinned to `rift-snapshot@0.0.13`, `@opencode-ai/browser-control@0.8.4`, Terminal Control's platform package at `1.2.1` and `open-computer-use@1.1.0`. They remain outside the main Redcode binaries.
+The managed packages are pinned to `rift-snapshot@0.0.13`, `@opencode-ai/browser-control@0.8.4`, Terminal Control's platform package at `1.2.1` and `open-computer-use@1.1.4`. They remain outside the main Redcode binaries. Computer Use diagnostics run its structured `doctor --json` check instead of treating a version string as proof that the desktop integration is operational.
 
 Upstream references: [Rift](https://github.com/anomalyco/rift), [Browser Control](https://github.com/anomalyco/browser-control), [Terminal Control](https://github.com/anomalyco/terminal-control) and [Computer Use](https://github.com/anomalyco/computer-use).

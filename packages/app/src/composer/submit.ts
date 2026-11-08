@@ -1,13 +1,14 @@
 import { SessionMessage } from "@opencode/schema/session-message"
 import type { SessionMessageUser } from "@opencode/client/promise"
-import type { Accessor } from "solid-js"
+import { createEffect, createRoot, getOwner, onCleanup, untrack, type Accessor } from "solid-js"
 import type { PromptComment } from "./comment-note"
 import type { PromptHistoryComment } from "./history/entry"
 import type { ImageAttachmentPart, Prompt } from "./state"
 import { clonePrompt, promptLength } from "./prompt-parts"
 import type { ComposerAdapter, ComposerDelivery, ComposerSelection, ComposerSession } from "./adapter"
 import { createComposerSubmission } from "./submission-state"
-import { buildPromptRequest, noteComment } from "./request"
+import { buildPromptRequest, commentMentions, noteComment } from "./request"
+import { getDirectory, getFilename } from "@opencode/util/path"
 import { setCursorPosition } from "./editor/dom"
 import { blobDataUrl, resolveBlobUrl } from "@/runtime/persistence/drafts"
 import { isAttachment } from "./prompt-parts"
@@ -55,8 +56,57 @@ type ComposerSubmitInput = {
 }
 
 export function createComposerSubmit(input: ComposerSubmitInput) {
+  type CatalogHold = {
+    readonly messageID: string
+    readonly signature: string
+    readonly session?: ComposerSession
+    readonly resolve: (outcome: "loaded" | "cancelled") => void
+  }
+  let held: CatalogHold | undefined
+
+  const checkHold = (loading: boolean, signature: string) => {
+    const current = held
+
+    if (!current) return
+    if (current.signature !== signature) return current.resolve("cancelled")
+    if (!loading) current.resolve("loaded")
+  }
+
+  const disposeHoldWatch = createRoot((dispose) => {
+    createEffect(() => {
+      const loading = input.adapter.controls().model.loading
+      const signature = submissionSignature(input)
+      untrack(() => checkHold(loading, signature))
+    })
+
+    return dispose
+  })
+  if (getOwner()) onCleanup(disposeHoldWatch)
+
+  const waitForCatalog = (value: {
+    messageID: string
+    signature: string
+    session?: ComposerSession
+    message?: SessionMessageUser
+  }) => {
+    const pending = Promise.withResolvers<"loaded" | "cancelled">()
+    const current: CatalogHold = { ...value, resolve: pending.resolve }
+    held = current
+    value.session?.handoff?.hold?.(value.message!)
+    checkHold(input.adapter.controls().model.loading, submissionSignature(input))
+
+    return pending.promise.then((outcome) => {
+      if (held === current) held = undefined
+      if (outcome === "cancelled") value.session?.handoff?.clear(value.messageID)
+
+      return outcome
+    })
+  }
+
   const submit = async (event: globalThis.Event, options?: { alternate?: boolean }) => {
     event.preventDefault()
+
+    if (held) return
 
     const prompt = clonePrompt(input.adapter.state.current())
     const text = submissionText(prompt)
@@ -105,8 +155,22 @@ export function createComposerSubmit(input: ComposerSubmitInput) {
         ? stripQueueCommand(submission.prompt)
         : undefined
     const read = queued
-      ? readSubmission(input, queued, submission.context, submissionText(queued), false)
-      : readSubmission(input, submission.prompt, submission.context, text, options?.alternate ?? false)
+      ? await readAfterCatalog(input, {
+          prompt: queued,
+          context: submission.context,
+          text: submissionText(queued),
+          alternate: false,
+          signature: submissionSignature(input),
+          waitForCatalog,
+        })
+      : await readAfterCatalog(input, {
+          prompt: submission.prompt,
+          context: submission.context,
+          text,
+          alternate: options?.alternate ?? false,
+          signature: submissionSignature(input),
+          waitForCatalog,
+        })
     if (!read) {
       // An empty `/queue` sends nothing, and must not stop the running turn either.
       if (!queued && input.adapter.working() && input.adapter.kind === "active-session") void input.adapter.interrupt()
@@ -164,7 +228,11 @@ export function createComposerSubmit(input: ComposerSubmitInput) {
           if (optimisticBusy && input.adapter.kind === "active-session")
             session.data.session.setStatus(session.id, "running")
         }).then(
-          () => ({ ok: true as const }),
+          () => {
+            session.handoff?.settle(value.id)
+
+            return { ok: true as const }
+          },
           (error) => ({ ok: false as const, error }),
         )
 
@@ -211,8 +279,91 @@ export function createComposerSubmit(input: ComposerSubmitInput) {
 
   return {
     submit,
-    stop: () => (input.adapter.kind === "active-session" ? input.adapter.interrupt() : Promise.resolve()),
+    stop: () => {
+      if (held) {
+        held.resolve("cancelled")
+
+        return Promise.resolve()
+      }
+
+      return input.adapter.kind === "active-session" ? input.adapter.interrupt() : Promise.resolve()
+    },
   }
+}
+
+async function readAfterCatalog(
+  input: ComposerSubmitInput,
+  value: {
+    prompt: Prompt
+    context: ComposerSubmission["context"]
+    text: string
+    alternate: boolean
+    signature: string
+    waitForCatalog: (value: {
+      messageID: string
+      signature: string
+      session?: ComposerSession
+      message?: SessionMessageUser
+    }) => Promise<"loaded" | "cancelled">
+  },
+) {
+  const selection = currentSelection(input)
+
+  if (selection || !input.adapter.controls().model.loading)
+    return readSubmission(input, value.prompt, value.context, value.text, value.alternate)
+
+  if (!hasSubmission(input.mode(), value.prompt, value.context, value.text)) return
+
+  const messageID = SessionMessage.ID.create()
+  const delivery = input.delivery?.(value.alternate) ?? "steer"
+  const session =
+    input.adapter.kind === "active-session" &&
+    input.mode() === "normal" &&
+    delivery === "steer" &&
+    !parseSlashCommand(value.text)
+      ? input.adapter.session()
+      : undefined
+  const outcome = await value.waitForCatalog({
+    messageID,
+    signature: value.signature,
+    session,
+    message: session
+      ? handoffMessage({
+          id: messageID,
+          prompt: value.prompt,
+          context: value.context,
+          images: value.prompt.filter((part): part is ImageAttachmentPart => part.type === "image"),
+        })
+      : undefined,
+  })
+
+  if (outcome === "cancelled") return
+  const read = readSubmission(input, value.prompt, value.context, value.text, value.alternate, messageID)
+
+  // The optimistic row is replaced by `handoff.set` when the send starts. If loading finished without a usable
+  // selection, remove it instead of leaving an unsent row in the timeline.
+  if (!read) session?.handoff?.clear(messageID)
+
+  return read
+}
+
+function hasSubmission(
+  mode: "normal" | "shell",
+  prompt: Prompt,
+  context: ComposerSubmission["context"],
+  text: string,
+) {
+  if (mode === "shell" && !text.trim()) return false
+
+  return !!text.trim() || prompt.some(isAttachment) || context.some((item) => !!item.comment?.trim())
+}
+
+function submissionSignature(input: ComposerSubmitInput) {
+  return JSON.stringify({
+    mode: input.mode(),
+    prompt: input.adapter.state.current(),
+    context: input.adapter.state.context.items(),
+  })
 }
 
 function clearClientCommand(input: ComposerSubmitInput, prompt: Prompt) {
@@ -234,11 +385,15 @@ function submissionText(prompt: Prompt) {
   return prompt.map((part) => ("content" in part ? part.content : "")).join("")
 }
 
-function handoffMessage(value: ComposerSubmission): SessionMessageUser {
+function handoffMessage(
+  value: Pick<ComposerSubmission, "id" | "prompt" | "context" | "images"> & { selection?: ComposerSelection },
+): SessionMessageUser {
+  const text = submissionText(value.prompt)
+
   return {
     id: value.id,
     type: "user",
-    text: value.text,
+    text,
     files: value.images.map((image) => ({
       data: "",
       mime: image.mime,
@@ -246,7 +401,7 @@ function handoffMessage(value: ComposerSubmission): SessionMessageUser {
       name: image.sourcePath ?? image.filename,
     })),
     metadata: {
-      displayText: value.text,
+      displayText: text,
       attachments: value.prompt.flatMap((part) =>
         part.type === "path" ? [{ name: part.filename, mime: part.mime, path: part.path }] : [],
       ),
@@ -267,8 +422,7 @@ function handoffMessage(value: ComposerSubmission): SessionMessageUser {
           },
         ]
       }),
-      agent: value.selection.agent,
-      model: selectionModel(value.selection),
+      ...(value.selection && { agent: value.selection.agent, model: selectionModel(value.selection) }),
     },
     time: { created: Date.now() },
   }
@@ -280,6 +434,7 @@ function readSubmission(
   context: ComposerSubmission["context"],
   text: string,
   alternate: boolean,
+  id?: SessionMessage.ID,
 ): ComposerSubmission | undefined {
   const mode = input.mode()
 
@@ -310,7 +465,7 @@ function readSubmission(
       : undefined
 
   return {
-    id: retryID ?? SessionMessage.ID.create(),
+    id: retryID ?? id ?? SessionMessage.ID.create(),
     mode,
     prompt,
     context,
@@ -553,13 +708,36 @@ async function buildSubmissionRequest(session: ComposerSession, value: ComposerS
     })),
   )
 
+  const mentions = commentMentions(value.context)
+
   return buildPromptRequest({
     prompt: value.prompt,
     context: value.context,
     images,
     text: value.text,
     sessionDirectory: session.directory,
+    existingMentions: mentions.length > 0 ? await existingMentions(session, mentions) : undefined,
   })
+}
+
+// A comment's `@word` can be prose (for example, `@here`). Check directory entries without transferring file data.
+async function existingMentions(session: ComposerSession, mentions: string[]) {
+  const existing = new Set<string>()
+
+  await Promise.all(
+    [...new Set(mentions)].map(async (path) => {
+      const target = path.replace(/[\\/]+$/, "")
+      const parent = /[\\/]/.test(target) ? getDirectory(target) : undefined
+      const found = await session.file
+        .list({ path: parent, location: { directory: session.directory } })
+        .then((result) => result.data.some((entry) => getFilename(entry.path) === getFilename(target)))
+        .catch(() => false)
+
+      if (found) existing.add(path)
+    }),
+  )
+
+  return existing
 }
 
 function failSubmission(

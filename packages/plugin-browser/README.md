@@ -86,8 +86,13 @@ authenticated plugin RPC route. The desktop-only `/proxy` entrypoint adapts
 Chromium's HTTP/CONNECT proxy traffic, including WebSockets, to those methods.
 Network bytes never go onto the global event stream. Attachment closure releases
 the sockets; failed writes are not replayed and there is no direct-network fallback.
-The tunnel relays whatever a loaded page requests and is not filtered per request:
-page traffic has the server host's network reach, including its loopback and LAN.
+The tunnel resolves each destination once, validates every returned address and
+connects to the selected numeric address. Private, loopback, link-local,
+metadata and reserved ranges are denied unless the session approved
+`browser.network.private` for that exact hostname and port. The approval is scoped to the
+desktop attachment. Redirects and subresources cannot silently expand it to a
+different LAN host, and DNS cannot retarget a validated socket through a second
+lookup. Finished, interrupted and failed tunnels release their bounded pool slot.
 
 Remote endpoints can use HTTPS and the existing server credentials. A reverse
 proxy must allow long-lived event and attachment requests; the attachment RPC
@@ -101,6 +106,14 @@ summaries report shallow size, not computed retained size, and do not prove leak
 
 All page-derived data is untrusted, including structured outputs. Schema
 validation does not make page text an instruction or grant it authority.
+
+Before an operation runs, the desktop inspects its current target without
+performing the action. The server asks through a risk-specific permission:
+`browser.observe`, `browser.navigate`, `browser.interact`, `browser.files`,
+`browser.execute`, or `browser.profile`. Explicit loopback, link-local and
+private-network targets also require `browser.network.private`. The approved
+target key is sent back with the command so a navigation or element change
+while permission is pending cancels the action instead of retargeting it.
 
 ## Recovering from errors
 
@@ -118,8 +131,11 @@ File errors distinguish server-local upload paths from desktop capture files.
 Pending/failed downloads and unavailable response bodies are not empty files.
 Oversized output requires a smaller request or capture, not an identical retry.
 
-Per-URL and server-file permission checks belong to the final permission layer
-(#46530). This base plugin layer intentionally does not enforce those rules.
+URL and server-file resources participate in the session permission layer.
+Navigation resolves hostnames before asking for private-network approval; the
+server tunnel repeats and pins validation at connection time. Network firewalls
+remain useful defense in depth, especially for capabilities supplied by custom
+MCP servers that do not use this browser tunnel.
 
 Disable through normal configuration:
 

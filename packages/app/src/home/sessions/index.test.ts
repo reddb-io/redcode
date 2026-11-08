@@ -39,44 +39,29 @@ const history = (directory: string, count: number) =>
 const ids = (sessions: SessionInfo[]) => sessions.map((item) => item.id)
 
 describe("Home session index", () => {
-  test("follows cursors across pages and bounds the result per directory", async () => {
+  test("loads one bounded page and retains the newest rows per directory", async () => {
     const all = history("/repo", HOME_SESSION_PAGE_LIMIT + 1)
     const calls: Array<{ cursor?: string; parentID: null }> = []
 
     const result = await loadHomeSessionIndex(async (input) => {
       calls.push(input)
 
-      if (!input.cursor) return { data: all.slice(0, HOME_SESSION_PAGE_LIMIT), cursor: { next: "next" } }
-
-      return { data: all.slice(HOME_SESSION_PAGE_LIMIT), cursor: {} }
+      return { data: all.slice(0, HOME_SESSION_PAGE_LIMIT), cursor: { next: "next" } }
     })
 
-    expect(calls.map((call) => call.cursor)).toEqual([undefined, "next"])
+    expect(calls.map((call) => call.cursor)).toEqual([undefined])
     expect(calls.every((call) => call.parentID === null)).toBe(true)
     // Newest rows in server order, plus the recent window beyond the limit.
     expect(ids(result)).toEqual(ids(all.slice(0, HOME_SESSION_INDEX_LIMIT + SESSION_RECENT_LIMIT)))
   })
 
-  test("folds pages so every directory keeps its newest sessions", async () => {
-    const busy = history("/busy", HOME_SESSION_PAGE_LIMIT + 300)
-
-    const quiet = history("/quiet", 3).map((item) => ({
-      ...item,
-      time: { created: item.time.created - 6000 * minute, updated: item.time.updated - 6000 * minute },
-    }))
-
-    // Server order is global by updated time: /quiet is older than all of /busy
-    // and only arrives on the second page.
-    const result = await loadHomeSessionIndex(async (input) => {
-      if (!input.cursor) return { data: busy.slice(0, HOME_SESSION_PAGE_LIMIT), cursor: { next: "next" } }
-
-      return { data: [...busy.slice(HOME_SESSION_PAGE_LIMIT), ...quiet], cursor: {} }
+  test("does not follow a cursor into older global history", async () => {
+    let calls = 0
+    await loadHomeSessionIndex(async () => {
+      calls++
+      return { data: history("/busy", HOME_SESSION_PAGE_LIMIT), cursor: { next: "older" } }
     })
-
-    expect(ids(result.filter((item) => item.location.directory === "/quiet"))).toEqual(ids(quiet))
-    expect(ids(result.filter((item) => item.location.directory === "/busy"))).toEqual(
-      ids(busy.slice(0, HOME_SESSION_INDEX_LIMIT + SESSION_RECENT_LIMIT)),
-    )
+    expect(calls).toBe(1)
   })
 
   test("drops archived sessions before they can occupy a retained slot", async () => {

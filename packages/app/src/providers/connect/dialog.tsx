@@ -322,7 +322,10 @@ export function createProviderConnectionServices(props: {
         variant: "success",
         icon: "circle-check",
         title: language.t("provider.connect.toast.connected.title", { provider: provider().name }),
-        description: language.t("provider.connect.toast.connected.description", { provider: provider().name }),
+        description:
+          connectionModels().length > 0
+            ? language.t("provider.connect.toast.connected.description", { provider: provider().name })
+            : undefined,
       })
     },
   })

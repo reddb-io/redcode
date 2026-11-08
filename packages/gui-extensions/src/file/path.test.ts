@@ -12,6 +12,7 @@ describe("resolveOpenInAppPath", () => {
     expect(resolveOpenInAppPath("C:/workspace", "D:\\src\\file.ts")).toBe("D:\\src\\file.ts")
     expect(resolveOpenInAppPath("C:/workspace", "\\\\server\\share\\file.ts")).toBe("\\\\server\\share\\file.ts")
     expect(resolveOpenInAppPath("C:/workspace", "\\src\\file.ts")).toBe("\\src\\file.ts")
+    expect(resolveOpenInAppPath("C:/workspace", "skill://review/SKILL.md")).toBe("skill://review/SKILL.md")
   })
 })
 

@@ -111,3 +111,7 @@
   box-shadow: 0 0 0 2px var(--reddb-color-background);
   pointer-events: none;
 }
+
+[data-slot="project-tile-unread"][data-failed] {
+  background: var(--reddb-color-feedback-danger-foreground);
+}

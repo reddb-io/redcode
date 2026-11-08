@@ -2,7 +2,9 @@ import type { SessionInfo, SessionsResponse } from "@opencode/client/promise"
 import { pathKey } from "@/workspaces/path-key"
 import { SESSION_RECENT_LIMIT, SESSION_RECENT_WINDOW } from "@/runtime/server/global-sync/types"
 
-export const HOME_SESSION_PAGE_LIMIT = 5_000
+// Bootstrap only the newest root sessions. Older history remains available through server-backed
+// search, while a selected quiet project gets a scoped directory read from the Home controller.
+export const HOME_SESSION_PAGE_LIMIT = 500
 
 export const HOME_SESSION_LIMIT = 64
 
@@ -27,34 +29,16 @@ export async function loadHomeSessionIndex(
   signal?: AbortSignal,
   archived = false,
 ) {
-  const now = Date.now()
-  let retained: SessionInfo[] = []
-  let cursor: string | undefined
-
-  for (;;) {
-    const response = await list(
-      {
-        limit: HOME_SESSION_PAGE_LIMIT,
-        order: "desc",
-        parentID: null,
-        archived: archived ? "only" : "exclude",
-        ...(cursor ? { cursor } : {}),
-      },
-      { signal },
-    )
-
-    // Fold each page in as it arrives: pages are newest first, so later pages
-    // can only fill directories that still have room. Peak allocation is one
-    // page plus the retained subset, not the whole history.
-    retained = retainHomeSessions(
-      [...retained, ...parseHomeSessionIndex(response.data, archived)],
-      HOME_SESSION_INDEX_LIMIT,
-      now,
-    )
-
-    if (response.data.length < HOME_SESSION_PAGE_LIMIT || !response.cursor.next) return retained
-    cursor = response.cursor.next
-  }
+  const response = await list(
+    {
+      limit: HOME_SESSION_PAGE_LIMIT,
+      order: "desc",
+      parentID: null,
+      archived: archived ? "only" : "exclude",
+    },
+    { signal },
+  )
+  return retainHomeSessions(parseHomeSessionIndex(response.data, archived), HOME_SESSION_INDEX_LIMIT, Date.now())
 }
 
 // Keep this filter for locally known sessions merged into the fetched index.

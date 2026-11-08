@@ -1,10 +1,12 @@
 export { Agent } from "./agent.js"
 export { AgentTools } from "./agent-tools.js"
+export { ExecutionCapability } from "./execution-capability.js"
 export { Command } from "./command.js"
 export { Config } from "./config.js"
 export { Console } from "./console.js"
 export { Connection } from "./connection.js"
 export { ConnectionCheck } from "./connection-check.js"
+export { ClientPresence } from "./client-presence.js"
 export { Credential } from "./credential.js"
 export { Event } from "./event.js"
 export { FileSystem } from "./filesystem.js"
@@ -16,6 +18,7 @@ export { LLM } from "./llm.js"
 export { Location } from "./location.js"
 export { Mcp } from "./mcp.js"
 export { Model } from "./model.js"
+export { ModelPerformance } from "./model-performance.js"
 export { Monitor } from "./monitor.js"
 export { Money } from "./money.js"
 export { Permission } from "./permission.js"
@@ -30,6 +33,7 @@ export { Rpc } from "./rpc.js"
 export { Router } from "./router.js"
 export { WebSearch } from "./websearch.js"
 export { Session } from "./session.js"
+export { SessionOrigin } from "./session-origin.js"
 export { Vcs } from "./vcs.js"
 export { SessionInbox } from "./session-inbox.js"
 export { SessionGoal } from "./session-goal.js"
@@ -56,7 +60,16 @@ export { PtyTicket } from "./pty-ticket.js"
 export { Question } from "./question.js"
 export { Workspace } from "./workspace.js"
 export { Worker } from "./worker.js"
-export { Prompt, PromptMention, FileSource, FileAttachment, AgentAttachment } from "./prompt.js"
+export {
+  Prompt,
+  PromptMention,
+  FileSource,
+  FileAttachment,
+  MediaRef,
+  MediaFileAttachment,
+  Attachment,
+  AgentAttachment,
+} from "./prompt.js"
 export { PromptInput } from "./prompt-input.js"
 export * from "./schema.js"
 export { CostAssessment } from "./cost-assessment.js"

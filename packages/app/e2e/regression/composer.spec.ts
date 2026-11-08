@@ -45,7 +45,9 @@ test("a goal in a new session starts in the selected project without sending a p
   const { editor } = await openDraft(page, {
     name: "NewDesktopGoal",
     onPrompt: ({ sessionID }) => prompts.push(sessionID),
-    onSessionCreate: (body) => { creations.push(body) },
+    onSessionCreate: (body) => {
+      creations.push(body)
+    },
   })
   const fixture = await mockGoal(page)
   await editor.fill("/goal Build a reliable import")
@@ -53,7 +55,9 @@ test("a goal in a new session starts in the selected project without sending a p
   await expect.poll(() => fixture.requests.filter((request) => request.path === "goal").length).toBe(1)
   const created = fixture.requests.find((request) => request.path === "goal")!
   expect(created.body.objective).toBe("Build a reliable import")
-  expect(creations).toEqual([expect.objectContaining({ id: created.sessionID, location: { directory: "C:/OpenCode/NewDesktopGoal" } })])
+  expect(creations).toEqual([
+    expect.objectContaining({ id: created.sessionID, location: { directory: "C:/OpenCode/NewDesktopGoal" } }),
+  ])
   await expect(page).toHaveURL(new RegExp(`/session/${created.sessionID}$`))
   expect(prompts).toEqual([])
 })
@@ -62,7 +66,9 @@ test("a failed goal start keeps the objective and retries the same new session",
   const sessions: string[] = []
   const { editor } = await openDraft(page, {
     name: "GoalRetry",
-    onSessionCreate: (body) => { if (typeof body.id === "string") sessions.push(body.id) },
+    onSessionCreate: (body) => {
+      if (typeof body.id === "string") sessions.push(body.id)
+    },
   })
   const fixture = await mockGoal(page, { failStart: true })
   await editor.fill("/goal Deliver the feature")
@@ -280,6 +286,50 @@ test("a key-up never moves the caret back after later navigation", async ({ page
   })
 
   expect(offset).toBe("first line".length)
+})
+
+test.describe("touch keyboard", () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true })
+
+  test("Return adds a line while the touch dock sends and keeps voice available", async ({ page }) => {
+    const prompts: unknown[] = []
+    const { editor } = await openSession(page, {
+      name: "ComposerTouchReturn",
+      sessions: [
+        {
+          id: "ses_composer_touch_return",
+          title: "ComposerTouchReturn",
+          agent: "build",
+          model: { id: "test", providerID: "opencode" },
+        },
+      ],
+      onPrompt: ({ body }) => prompts.push(body),
+    })
+    const bar = page.locator('[data-slot="composer-touch-bar"]')
+
+    await expect(bar).toBeVisible()
+    await expect(editor).toHaveAttribute("enterkeyhint", "enter")
+    await expect(bar.getByRole("button", { name: "Record voice", exact: true })).toBeVisible()
+
+    await editor.fill("first line")
+    await editor.press("Enter")
+    await editor.pressSequentially("second line")
+    await expect.poll(() => editor.innerText()).toBe("first line\nsecond line")
+    expect(prompts).toEqual([])
+
+    await bar.getByRole("button", { name: "Send", exact: true }).tap()
+    await expect.poll(() => prompts).toEqual([expect.objectContaining({ text: "first line\nsecond line" })])
+    await expect(editor).toBeEmpty()
+
+    await editor.fill("from a tablet keyboard")
+    await editor.press("ControlOrMeta+Enter")
+    await expect
+      .poll(() => prompts)
+      .toEqual([
+        expect.objectContaining({ text: "first line\nsecond line" }),
+        expect.objectContaining({ text: "from a tablet keyboard" }),
+      ])
+  })
 })
 
 for (const [width, direction] of [

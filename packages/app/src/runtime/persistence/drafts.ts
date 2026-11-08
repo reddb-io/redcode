@@ -1,5 +1,6 @@
 import type { AsyncStorage } from "@solid-primitives/storage"
 import { Option, Schema } from "effect"
+import { mediaHashFromUri } from "@/runtime/server/media"
 
 export type BlobReference = { id: string; url: string }
 
@@ -52,13 +53,41 @@ const aliases = new Map<string, string>()
 // that renders or sends an image resolves its URL through here, so a history full of large
 // attachments costs nothing at startup.
 let loader: ((id: string) => Promise<string | undefined>) | undefined
+type MediaBlobLoader = (uri: string) => Promise<string | undefined>
+const mediaLoaders = new Map<string, MediaBlobLoader>()
+
+export function setMediaBlobLoader(key: string, next: MediaBlobLoader | undefined) {
+  mediaLoaders.delete(key)
+  if (next) mediaLoaders.set(key, next)
+}
+
+async function loadMediaBlobUrl(uri: string) {
+  for (const candidate of [...mediaLoaders.values()].reverse()) {
+    const url = await candidate(uri).catch(() => undefined)
+    if (url) return url
+  }
+  return undefined
+}
+
+async function loadMediaBlob(uri: string) {
+  const url = await loadMediaBlobUrl(uri)
+  if (!url) return undefined
+  return fetch(url).then(
+    (response) => (response.ok ? response.blob() : undefined),
+    () => undefined,
+  )
+}
 
 /** The object URL for an image reference, loading its bytes from the draft store on first use. */
 export function resolveBlobUrl(blob: { id: string; url?: string }) {
-  if (blob.url) return Promise.resolve(blob.url)
+  if (blob.url && !mediaHashFromUri(blob.url)) return Promise.resolve(blob.url)
   const existing = retained.get(aliases.get(blob.id) ?? blob.id)
 
   if (existing) return Promise.resolve(existing.url)
+
+  if (mediaHashFromUri(blob.id)) return loadMediaBlobUrl(blob.id)
+
+  if (blob.url) return Promise.resolve(blob.url)
 
   return loader?.(blob.id) ?? Promise.resolve(undefined)
 }
@@ -145,7 +174,16 @@ async function blobID(blob: Blob) {
   return id
 }
 
-export async function createBlobReference(blob: Blob): Promise<BlobReference> {
+// Browser clipboard Files can point at temporary files deleted on the next copy. Detach their bytes
+// immediately so previews, autosave and send do not depend on that external lifetime.
+async function detach(blob: Blob) {
+  return typeof File !== "undefined" && blob instanceof File
+    ? new Blob([await blob.arrayBuffer()], { type: blob.type })
+    : blob
+}
+
+export async function createBlobReference(source: Blob): Promise<BlobReference> {
+  const blob = await detach(source)
   const id = await blobID(blob)
 
   return { id, url: blobUrl(id, blob) }
@@ -176,7 +214,8 @@ export function createDraftStore(driver: Driver, options: { grace?: number } = {
 
   loader = loadBlobUrl
 
-  const putBlob = async (blob: Blob) => {
+  const putBlob = async (source: Blob) => {
+    const blob = await detach(source)
     const id = await driver.putBlob(blob)
 
     return { id, url: blobUrl(id, blob, grace) }
@@ -267,11 +306,21 @@ export function createDraftStore(driver: Driver, options: { grace?: number } = {
         return { ...item, blob: { id } }
       }
 
+      if (typeof blob.id === "string" && mediaHashFromUri(blob.id) && !retained.has(aliases.get(blob.id) ?? "")) {
+        const data = await loadMediaBlob(blob.id)
+        if (!data) return { ...item, blob: { id: blob.id } }
+        const id = await driver.putBlob(data)
+        blobUrl(id, data, grace)
+        aliases.set(blob.id, id)
+        sources.set(id, { blob: async () => data })
+        return { ...item, blob: { id } }
+      }
+
       if (typeof blob.id === "string") {
         // A live reference keeps the id it was created with; publish the id its bytes now live under.
         const id = aliases.get(blob.id) ?? blob.id
         const kept = retained.get(id)?.blob
-        const url = typeof blob.url === "string" ? blob.url : retained.get(id)?.url
+        const url = typeof blob.url === "string" && !mediaHashFromUri(blob.url) ? blob.url : retained.get(id)?.url
 
         if (kept) sources.set(id, { blob: async () => kept })
         else if (url) sources.set(id, { blob: () => fetch(url).then((response) => response.blob()) })
@@ -554,6 +603,7 @@ export async function blobDataUrl(blob: BlobReference, mime: string) {
   const kept = retained.get(aliases.get(blob.id) ?? blob.id)
   const url = kept ? undefined : await resolveBlobUrl(blob)
 
+  if (!kept && !url && mediaHashFromUri(blob.id)) return blob.id
   if (!kept && !url) throw new Error(`Attachment ${blob.id} has no stored bytes`)
   const data = kept ? kept.blob : await fetch(url!).then((response) => response.blob())
 
@@ -569,5 +619,5 @@ export async function blobDataUrl(blob: BlobReference, mime: string) {
 }
 
 export function createLegacyBlobReference(dataUrl: string): BlobReference {
-  return { id: dataUrl, url: dataUrl }
+  return { id: dataUrl, url: mediaHashFromUri(dataUrl) ? "" : dataUrl }
 }

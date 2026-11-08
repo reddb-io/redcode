@@ -44,6 +44,8 @@ export function createSessionQueue(input: {
   const mutation = useMutation(() => ({
     mutationFn: async (
       change:
+        | { type: "steer"; id: string }
+        | { type: "remove"; id: string }
         | { type: "reorder"; inboxIDs: string[] }
         | { type: "undo"; item: QueuedPrompt; prompt: Prompt; context: ContextItem[] }
         | {
@@ -57,6 +59,16 @@ export function createSessionQueue(input: {
             delivery: ComposerDelivery
           },
     ) => {
+      if (change.type === "steer")
+        return server.api.session.inbox.update({
+          sessionID: input.sessionID,
+          inboxID: change.id,
+          delivery: "steer",
+        })
+
+      if (change.type === "remove")
+        return server.api.session.inbox.cancel({ sessionID: input.sessionID, inboxID: change.id })
+
       if (change.type === "reorder") return rewrite(change.inboxIDs)
 
       if (change.type === "undo") {
@@ -196,17 +208,17 @@ export function createSessionQueue(input: {
   }
 
   const steer = (id: string) => {
+    if (mutation.isPending) return Promise.resolve()
     if (state.editing?.id === id) cancelEdit()
 
-    return server.api.session.inbox
-      .update({ sessionID: input.sessionID, inboxID: id, delivery: "steer" })
-      .catch(() => notify())
+    return mutation.mutateAsync({ type: "steer", id }).then(() => undefined, () => undefined)
   }
 
   const remove = (id: string) => {
+    if (mutation.isPending) return Promise.resolve()
     if (state.editing?.id === id) cancelEdit()
 
-    return server.api.session.inbox.cancel({ sessionID: input.sessionID, inboxID: id }).catch(() => notify())
+    return mutation.mutateAsync({ type: "remove", id }).then(() => undefined, () => undefined)
   }
 
   const undo = (id: string) => {

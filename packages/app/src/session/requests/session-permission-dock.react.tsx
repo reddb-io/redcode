@@ -20,10 +20,28 @@ export function SessionPermissionDockView(props: { services: ReturnType<typeof c
           </div>
         </div>
         <div data-slot="permission-content">
-          {view.description && (
+          <div data-slot="permission-row">
+            <span data-slot="permission-spacer" aria-hidden="true" />
+            {view.description ? (
+              <div data-slot="permission-hint">{view.description}</div>
+            ) : (
+              <code data-slot="permission-action">{view.action}</code>
+            )}
+          </div>
+          {view.message && (
             <div data-slot="permission-row">
               <span data-slot="permission-spacer" aria-hidden="true" />
-              <div data-slot="permission-hint">{view.description}</div>
+              <div data-slot="permission-hint">{view.message}</div>
+            </div>
+          )}
+          {!!view.input.length && (
+            <div data-slot="permission-row">
+              <span data-slot="permission-spacer" aria-hidden="true" />
+              <div data-slot="permission-input" data-scrollable>
+                {view.input.map((line, index) => (
+                  <code key={index}>{line}</code>
+                ))}
+              </div>
             </div>
           )}
           {!!view.resources.length && (

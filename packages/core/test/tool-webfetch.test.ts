@@ -6,6 +6,7 @@ import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
 import { LayerNode } from "@opencode/util/effect/layer-node"
 import { LayerNodePlatform } from "@opencode/util/effect/app-node-platform"
 import { Permission } from "@opencode/core/permission"
+import { Config } from "@opencode/core/config"
 import { Session } from "@opencode/core/session"
 import { Tool } from "@opencode/core/tool"
 import { Vault } from "@opencode/core/vault/vault"
@@ -13,10 +14,12 @@ import { Project } from "@opencode/schema/project"
 import { WebFetchTool } from "@opencode/core/tool/plugin/webfetch"
 import { makeLocationNode } from "@opencode/util/effect/app-node"
 import { Image } from "@opencode/core/image"
+import { Location } from "@opencode/core/location"
 import { testEffect } from "./lib/effect"
 import { imagePassthrough } from "./lib/image"
 import { permissionLayer } from "./lib/permission"
 import { toolIdentity, executeTool, registerToolPlugin, toolDefinitions } from "./lib/tool"
+import { tempLocationLayer } from "./fixture/location"
 
 const webFetchToolNode = makeLocationNode({
   name: "test/webfetch-tool-plugin",
@@ -49,6 +52,8 @@ const permission = permissionLayer({
 })
 const toolLayer = (replacements: LayerNode.Replacements = []) =>
   AppNodeBuilder.build(LayerNode.group([Tool.node, webFetchToolNode]), [
+    Location.node.replace(tempLocationLayer),
+    Config.node.replace(Config.testLayer()),
     Permission.node.replace(permission),
     Image.node.replace(imagePassthrough),
     ...replacements,
@@ -464,6 +469,29 @@ describe("WebFetchTool registration", () => {
     }),
   )
 
+  it.effect("matches permission rules against the written URL without its fragment", () =>
+    Effect.gen(function* () {
+      reset()
+      const registry = yield* Tool.Service
+      const url = "https://Example.com/page#top"
+
+      expect(yield* executeTool(registry, call({ url, format: "text" }))).toMatchObject({
+        status: "completed",
+        output: { url },
+      })
+      expect(assertions).toMatchObject([
+        {
+          sessionID,
+          action: "webfetch",
+          resources: ["https://Example.com/page"],
+          save: ["*"],
+          metadata: { url, format: "text" },
+        },
+      ])
+      expect(requests[0]?.url).not.toContain("#top")
+    }),
+  )
+
   live.effect("follows redirects while approving only the requested URL", () => {
     const received: Array<Record<string, string | null>> = []
     return Effect.acquireUseRelease(
@@ -662,6 +690,8 @@ describe("WebFetchTool registration", () => {
         registry,
         call({ url: "https://1.1.1.1/slow", format: "text", timeout: 1 }),
       ).pipe(Effect.forkChild)
+      // Let registration and request setup install the timeout before advancing the test clock.
+      yield* Effect.yieldNow
       yield* TestClock.adjust(Duration.seconds(1))
 
       expect(yield* Fiber.join(fiber)).toEqual({

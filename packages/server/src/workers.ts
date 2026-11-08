@@ -258,7 +258,7 @@ function layer(directory?: string, accessOptions?: InfrastructureAccess.Options,
               connections.set(worker.id, {
                 worker,
                 connection: health ? "online" : "offline",
-                ...(health ? { platform: health.platform } : {}),
+                ...(health ? { platform: health.platform, latencyMs: health.latencyMs } : {}),
               })
             }),
           )
@@ -306,7 +306,12 @@ function layer(directory?: string, accessOptions?: InfrastructureAccess.Options,
           }
           const health = await WorkerPool.health(worker, {}, local.client)
           await WorkerPool.add(config, worker)
-          const status: Worker.Status = { worker, connection: "online", platform: health.platform }
+          const status: Worker.Status = {
+            worker,
+            connection: "online",
+            platform: health.platform,
+            latencyMs: health.latencyMs,
+          }
           connections.set(worker.id, status)
           return status
         }
@@ -348,7 +353,12 @@ function layer(directory?: string, accessOptions?: InfrastructureAccess.Options,
           await run(credential.remove(stored.id))
           throw error
         })
-        const status: Worker.Status = { worker, connection: "online", platform: health.platform }
+        const status: Worker.Status = {
+          worker,
+          connection: "online",
+          platform: health.platform,
+          latencyMs: health.latencyMs,
+        }
         connections.set(worker.id, status)
         return status
       }
@@ -473,7 +483,7 @@ function layer(directory?: string, accessOptions?: InfrastructureAccess.Options,
           const status: Worker.Status = {
             worker: authorized,
             connection: health ? "online" : "offline",
-            ...(health ? { platform: health.platform } : {}),
+            ...(health ? { platform: health.platform, latencyMs: health.latencyMs } : {}),
           }
           connections.set(id, status)
           return status

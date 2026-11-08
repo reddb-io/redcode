@@ -78,22 +78,25 @@ export type ServerInfo = {
   paths: { tmp: string }
 }
 
-export type SystemInfo = {
-  version: string
-  runtime: string
-  platform: string
-  pid: number
-  started: number
-  memory: number
-  processMemory?: { heapUsed: number; heapTotal: number; external: number; arrayBuffers: number }
-  activity?: { cachedLocations: number; activeExecutions: number }
-  urls: Array<string>
-  paths: { config: string; data: string; state: string; cache: string; log: string; tmp: string }
-  database:
-    | { kind: "local"; path: string; size?: number; wal?: number }
-    | { kind: "remote"; protocol: string; host: string }
-    | { kind: "memory" }
-  counts?: { sessions: number; messages: number }
+export type ClientPresenceSnapshot = {
+  total: number
+  desktop: number
+  web: number
+  tui: number
+  cli: number
+  api: number
+  automation: number
+  worker: number
+  unknown: number
+}
+
+export type ModelPerformanceProvider = {
+  providerID: string
+  requests: number
+  errors: number
+  latencyP50?: number
+  latencyP95?: number
+  throughputP50?: number
 }
 
 export type PairingCode = { code: string; expires_in: number }
@@ -1198,6 +1201,24 @@ export type AgentToolsID = "rift" | "browser-control" | "terminal-control" | "co
 
 export type AgentToolsSettings = { enabled: boolean; command?: Array<string>; timeout?: number; copyAll?: boolean }
 
+export type ExecutionCapabilityKind = "browser" | "desktop" | "terminal" | "workspace" | "other"
+
+export type ExecutionCapabilitySource = "builtin" | "managed" | "custom" | "client-mcp" | "worker"
+
+export type ExecutionCapabilityStatus = "unavailable" | "disabled" | "available" | "connecting" | "ready" | "degraded"
+
+export type ExecutionCapabilityRisk = "observe" | "interactive" | "privileged"
+
+export type ExecutionCapabilityTarget = {
+  type: "server" | "client" | "worker"
+  id: string
+  name: string
+  platform?: string
+  arch?: string
+}
+
+export type ExecutionCapabilityProvider = { type: "plugin"; id: string; name?: string }
+
 export type UsageReporterConfig = {
   enabled: boolean
   transport: "webhook" | "reddb"
@@ -1372,6 +1393,25 @@ export type FormMultiselectField = {
   maxItems?: number
   custom?: boolean
   default?: Array<string>
+}
+
+export type SystemInfo = {
+  version: string
+  runtime: string
+  platform: string
+  pid: number
+  started: number
+  memory: number
+  processMemory?: { heapUsed: number; heapTotal: number; external: number; arrayBuffers: number }
+  activity?: { cachedLocations: number; activeExecutions: number }
+  urls: Array<string>
+  paths: { config: string; data: string; state: string; cache: string; log: string; tmp: string }
+  database:
+    | { kind: "local"; path: string; size?: number; wal?: number }
+    | { kind: "remote"; protocol: string; host: string }
+    | { kind: "memory" }
+  counts?: { sessions: number; messages: number }
+  clients?: ClientPresenceSnapshot
 }
 
 export type AutomationCondition = {
@@ -3079,6 +3119,21 @@ export type AgentToolsStatus = {
   checkedAt?: number | "Infinity" | "-Infinity" | "NaN"
 }
 
+export type ExecutionCapabilityInfo = {
+  id: string
+  name: string
+  kind: ExecutionCapabilityKind
+  source: ExecutionCapabilitySource
+  status: ExecutionCapabilityStatus
+  risk: ExecutionCapabilityRisk
+  target: ExecutionCapabilityTarget
+  provider?: ExecutionCapabilityProvider
+  sessionID?: string
+  operations: Array<string>
+  detail?: string
+  checkedAt?: number
+}
+
 export type UsageReporterDelivery = {
   id: string
   status: "pending" | "sending" | "delivered" | "dead"
@@ -3537,6 +3592,7 @@ export type HarnessDetail = {
 export type AgentToolsSnapshot = {
   host: { name: string; platform: string; arch: string }
   tools: Array<AgentToolsStatus>
+  capabilities?: Array<ExecutionCapabilityInfo>
 }
 
 export type UsageReporterSnapshot = {
@@ -3595,6 +3651,15 @@ export type IntelligenceSettings = {
   principal?: ModelRef
   fast?: ModelRef
   evaluator?: IntelligenceEvaluator
+}
+
+export type ModelPerformanceModel = {
+  model: ModelRef
+  requests: number
+  errors: number
+  latencyP50?: number
+  latencyP95?: number
+  throughputP50?: number
 }
 
 export type SessionStatsModelUsage = {
@@ -4111,6 +4176,7 @@ export type WorkerStatus = {
   worker: WorkerRegistration
   connection: "unchecked" | "online" | "offline"
   platform?: string
+  latencyMs?: number
 }
 
 export type WorkerBatch = {
@@ -4136,6 +4202,18 @@ export type IntelligenceStatus = {
   evaluators: Array<IntelligenceEvaluatorOption>
   effective: { reasoning: IntelligenceReasoning; source: "session" | "flag" | "config" | "default" }
   router?: IntelligenceDetectedRouter
+}
+
+export type ModelPerformanceSnapshot = {
+  sampledAt: number
+  from: number
+  requests: number
+  errors: number
+  latencyP50?: number
+  latencyP95?: number
+  throughputP50?: number
+  providers: Array<ModelPerformanceProvider>
+  models: Array<ModelPerformanceModel>
 }
 
 export type SessionStatsDaily = {
@@ -4823,6 +4901,8 @@ export type ServerAttentionOutput = AttentionSnapshot
 export type ServerInfoOutput = ServerInfo
 
 export type ServerSystemOutput = SystemInfo
+
+export type ServerPerformanceOutput = ModelPerformanceSnapshot
 
 export type ServerPairOutput = PairingCode
 
@@ -11394,6 +11474,10 @@ export type ExperimentalPersistentPtyConnectTokenInput = {
 }
 
 export type ExperimentalPersistentPtyConnectTokenOutput = { data: PtyTicketConnectToken }["data"]
+
+export type ExperimentalMediaGetInput = { readonly hash: { readonly hash: string }["hash"] }
+
+export type ExperimentalMediaGetOutput = globalThis.Uint8Array
 
 export type ShellListInput = {
   readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]

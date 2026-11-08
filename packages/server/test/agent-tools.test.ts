@@ -2,7 +2,9 @@ import path from "node:path"
 import { expect } from "bun:test"
 import { OpenCode } from "@opencode/client/promise"
 import { AgentTools } from "@opencode/core/agent-tools"
+import { ExecutionCapability as CapabilityRegistry } from "@opencode/core/execution-capability"
 import { LocationServiceMap } from "@opencode/core/location-service-map"
+import { ExecutionCapability } from "@opencode/schema/execution-capability"
 import { Location } from "@opencode/schema/location"
 import { AbsolutePath } from "@opencode/schema/schema"
 import { Worktree } from "@opencode/schema/worktree"
@@ -63,6 +65,37 @@ it.live(
       const location = { directory: tmp.path }
       const snapshot = yield* Effect.promise(() => api.agentTools.list())
       expect(snapshot.tools).toHaveLength(4)
+      expect(snapshot.capabilities).toHaveLength(4)
+      expect(
+        snapshot.capabilities?.every((item) => item.target.type === "server" && item.status === "unavailable"),
+      ).toBe(true)
+      const capabilityRegistry = Context.get(context, CapabilityRegistry.Service)
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          yield* capabilityRegistry.lease(
+            ExecutionCapability.Info.make({
+              id: ExecutionCapability.ID.make("browser:test-session"),
+              name: "Test browser",
+              kind: "browser",
+              source: "builtin",
+              status: "ready",
+              risk: "interactive",
+              target: { type: "client", id: "desktop-test", name: "Test desktop" },
+              operations: ["observe"],
+            }),
+          )
+          expect(
+            (yield* Effect.promise(() => api.agentTools.list())).capabilities?.find(
+              (item) => item.id === "browser:test-session",
+            ),
+          ).toMatchObject({ status: "ready", target: { type: "client" } })
+        }),
+      )
+      expect(
+        (yield* Effect.promise(() => api.agentTools.list())).capabilities?.some(
+          (item) => item.id === "browser:test-session",
+        ),
+      ).toBe(false)
       expect(snapshot.tools.every((item) => !item.settings.enabled && !item.installed)).toBe(true)
       expect(attempts).toEqual([])
       expect(yield* Effect.promise(() => Bun.file(launches).exists())).toBe(false)
@@ -84,6 +117,15 @@ it.live(
       yield* Effect.promise(() =>
         api.agentTools.configure({ id: "browser-control", settings: { enabled: true, command, timeout: 12345 } }),
       )
+      expect(
+        (yield* Effect.promise(() => api.agentTools.list())).capabilities?.find(
+          (item) => item.id === "agent-tool:browser-control",
+        ),
+      ).toMatchObject({
+        source: "custom",
+        status: "available",
+        target: { type: "server" },
+      })
       yield* Effect.promise(() => api.integration.list({ location }))
       const skills = yield* Effect.promise(() => api.skill.list({ location }))
       expect(skills.data.some((skill) => skill.name === "browser-control")).toBe(true)

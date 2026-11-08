@@ -160,7 +160,7 @@ export function createServerSyncContextInner(serverSDK: ServerSDK, data: Data) {
       })
     },
     connected: (info) => {
-      if (bootstrap.data !== undefined && !bootstrap.isFetching) void bootstrap.refetch()
+      if (info.restart) void bootstrap.refetch({ cancelRefetch: true })
       // The refresh queue re-syncs two directories at a time, held ones first. Syncing every active
       // directory here as well sent the whole catalog fan-out for all of them at once.
       reconnectOrder(Object.keys(children.children).filter(children.active), children.pinned).forEach((directory) =>

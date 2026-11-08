@@ -5,7 +5,11 @@ import type { PromptHistoryComment, PromptHistoryEntry } from "../schema"
 
 export type { PromptHistoryComment, PromptHistoryEntry } from "../schema"
 
-export const MAX_HISTORY = 100
+// Attachments keep their bytes pinned while history references them. Keep them only in the newest block,
+// while retaining a larger, cheap text-only history for frequent prompt reuse.
+const MAX_RECENT_HISTORY = 100
+
+export const MAX_HISTORY = 200
 
 export type PromptHistoryStoredEntry = PromptHistoryEntry
 
@@ -29,7 +33,6 @@ export function prependHistoryEntry(
   entries: PromptHistoryStoredEntry[],
   prompt: Prompt,
   comments: PromptHistoryComment[] = [],
-  max = MAX_HISTORY,
 ) {
   const text = prompt
     .map((part) => ("content" in part ? part.content : ""))
@@ -50,7 +53,9 @@ export function prependHistoryEntry(
 
   if (last && isPromptEqual(last, entry)) return entries
 
-  return [entry, ...entries].slice(0, max)
+  return [entry, ...entries]
+    .filter((item, index) => index < MAX_RECENT_HISTORY || !item.prompt.some(isAttachment))
+    .slice(0, MAX_HISTORY)
 }
 
 // A send that failed puts its prompt back in the composer, so the entry recorded for it would

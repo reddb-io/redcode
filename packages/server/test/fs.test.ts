@@ -99,8 +99,13 @@ it.live(
         })
       const full = yield* request("page.html")
       expect(full.status).toBe(200)
-      expect(full.headers.get("content-type")).toBe("text/html")
-      expect(full.headers.get("content-security-policy")).toBe("sandbox")
+      expect(full.headers.get("content-type")).toBe("text/plain; charset=utf-8")
+      expect(full.headers.get("content-disposition")).toBe(
+        `attachment; filename="page.html"; filename*=UTF-8''page.html`,
+      )
+      expect(full.headers.get("content-security-policy")).toBe(
+        "default-src 'none'; img-src 'self'; media-src 'self'; sandbox",
+      )
       expect(full.headers.get("x-content-type-options")).toBe("nosniff")
       expect(yield* Effect.promise(() => full.text())).toBe(document)
       const etag = full.headers.get("etag")
@@ -118,7 +123,10 @@ it.live(
           Effect.gen(function* () {
             const response = yield* request(entry.name, entry.init)
             expect(response.status).toBe(entry.status)
-            expect(response.headers.get("content-security-policy")).toBe("sandbox")
+            expect(response.headers.get("content-security-policy")).toBe(
+              "default-src 'none'; img-src 'self'; media-src 'self'; sandbox",
+            )
+            expect(response.headers.get("content-disposition")).toContain(`filename="${entry.name}"`)
             expect(response.headers.get("x-content-type-options")).toBe("nosniff")
             const body = yield* Effect.promise(() => response.text())
             if (entry.status === 206) expect(body).toBe(document.slice(0, 15))
@@ -172,6 +180,7 @@ it.live(
       expect(full.headers.get("accept-ranges")).toBe("bytes")
       expect(full.headers.get("content-length")).toBe("10")
       expect(full.headers.get("content-type")).toBe("video/mp4")
+      expect(full.headers.get("content-disposition")).toContain('filename="clip.mp4"')
       expect(full.headers.get("content-encoding")).toBeNull()
       expect(full.headers.get("cache-control")).toBe("no-cache, no-transform")
       const etag = full.headers.get("etag")
@@ -186,6 +195,7 @@ it.live(
       expect(head.headers.get("accept-ranges")).toBe("bytes")
       expect(head.headers.get("content-length")).toBe("10")
       expect(head.headers.get("content-type")).toBe("video/mp4")
+      expect(head.headers.get("content-disposition")).toContain('filename="clip.mp4"')
       expect(head.headers.get("content-range")).toBeNull()
       expect(head.headers.get("etag")).toBe(etag)
       expect(head.headers.get("last-modified")).toBe(lastModified)
@@ -209,6 +219,7 @@ it.live(
             expect(partial.headers.get("content-range")).toBe(expectedContentRange)
             expect(partial.headers.get("content-length")).toBe(String(expectedBody.length))
             expect(partial.headers.get("content-type")).toBe("video/mp4")
+            expect(partial.headers.get("content-disposition")).toContain('filename="clip.mp4"')
             expect(partial.headers.get("cache-control")).toBe("no-cache, no-transform")
             expect(partial.headers.get("etag")).toBe(etag)
             expect(partial.headers.get("last-modified")).toBe(lastModified)

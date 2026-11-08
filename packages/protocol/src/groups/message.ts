@@ -63,6 +63,33 @@ export const PublicSessionMessage = Schema.Union([
   SessionMessage.Idle,
 ]).annotate({ identifier: "Session.Message.Info" })
 
+/** Experimental transcript shape for clients that keep attachment bytes on the server. */
+export const PublicMediaSessionMessage = Schema.Union([
+  SessionMessage.AgentSelected,
+  SessionMessage.ModelSelected,
+  PublicLocationSwitched,
+  SessionMessage.MediaUser,
+  SessionMessage.Synthetic,
+  SessionMessage.System,
+  SessionMessage.Skill,
+  SessionMessage.Shell,
+  SessionMessage.Assistant,
+  SessionMessage.Compaction,
+  SessionMessage.Idle,
+]).annotate({ identifier: "Session.Message.MediaInfo" })
+
+const MessagesCursor = Schema.Struct({
+  previous: Schema.String.pipe(Schema.optional),
+  next: Schema.String.pipe(Schema.optional),
+})
+
+export const SessionMediaMessagesResponse = Schema.Struct({
+  data: Schema.Array(PublicMediaSessionMessage),
+  cursor: MessagesCursor,
+})
+
+export const SessionMediaMessageResponse = Schema.Struct({ data: PublicMediaSessionMessage })
+
 export const MessageGroup = HttpApiGroup.make("server.message")
   .add(
     HttpApiEndpoint.get("session.messages", "/api/session/:sessionID/message", {
@@ -70,10 +97,7 @@ export const MessageGroup = HttpApiGroup.make("server.message")
       query: SessionMessagesQuery,
       success: Schema.Struct({
         data: Schema.Array(PublicSessionMessage),
-        cursor: Schema.Struct({
-          previous: Schema.String.pipe(Schema.optional),
-          next: Schema.String.pipe(Schema.optional),
-        }),
+        cursor: MessagesCursor,
       }).annotate({ identifier: "SessionMessagesResponse" }),
       error: [InvalidCursorError, SessionNotFoundError, UnknownError],
     }).annotateMerge(

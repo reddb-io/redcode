@@ -18,11 +18,14 @@ import { database, runtime } from "../system-info"
 import { attention } from "../attention"
 import { createHostResources } from "../host-resources"
 import { executionMemory } from "../execution-memory"
+import { EventFeed } from "../event-feed"
+import { modelPerformance } from "../model-performance"
 
 export const ServerHandler = HttpApiBuilder.group(Api, "server.server", (handlers) =>
   Effect.gen(function* () {
     const pairing = yield* ServerPairing.Service
     const auth = yield* ServerAuth.Config
+    const feed = yield* EventFeed.Service
     const resources = createHostResources()
     const remote = <A>(operation: (host: RemoteAccessHost.Interface | undefined) => Promise<A>) =>
       Effect.gen(function* () {
@@ -120,10 +123,12 @@ export const ServerHandler = HttpApiBuilder.group(Api, "server.server", (handler
               tmp: global.tmp,
             },
             database: yield* Effect.promise(() => database(info.database)),
+            clients: yield* feed.snapshot,
             ...(counted ? { counts: counted } : {}),
           }
         }),
       )
+      .handle("server.performance", () => modelPerformance())
       .handle("server.pair", () => pairing.issue())
       .handle("server.cancelPair", (ctx) => pairing.consume(ctx.params.code).pipe(Effect.asVoid))
       .handle(

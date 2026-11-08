@@ -1,5 +1,6 @@
 import { expect } from "bun:test"
 import { Session } from "@opencode/schema/session"
+import { SessionOrigin } from "@opencode/schema/session-origin"
 import { Effect, Schema } from "effect"
 import { it } from "../../core/test/lib/effect"
 import { ServerFetch } from "../src/fetch"
@@ -20,7 +21,12 @@ it.live("updates session metadata through PATCH", () =>
         const response = await handler(
           new Request(`http://opencode.local${path}`, {
             method,
-            headers: { "content-type": "application/json" },
+            headers: {
+              "content-type": "application/json",
+              "x-redcode-surface": "desktop",
+              "x-redcode-client-id": "window-one",
+              "x-redcode-client-version": "test-version",
+            },
             body: body === undefined ? undefined : JSON.stringify(body),
           }),
         )
@@ -29,12 +35,20 @@ it.live("updates session metadata through PATCH", () =>
       })
 
     const created = Schema.decodeUnknownSync(SessionResponse)(
-      yield* request("/api/session", "POST", { metadata: { source: "create", stale: true } }),
+      yield* request("/api/session", "POST", {
+        metadata: { source: "create", stale: true, [SessionOrigin.MetadataKey]: { surface: "worker", createdAt: 0 } },
+      }),
     )
     yield* request(`/api/session/${created.data.id}`, "PATCH", { metadata: { source: "patch" } })
     const updated = Schema.decodeUnknownSync(SessionResponse)(yield* request(`/api/session/${created.data.id}`, "GET"))
 
-    expect(updated.data.metadata).toEqual({ source: "patch" })
+    expect(updated.data.metadata?.source).toBe("patch")
+    expect(Schema.decodeUnknownSync(SessionOrigin.Info)(updated.data.metadata?.[SessionOrigin.MetadataKey])).toEqual({
+      surface: "desktop",
+      clientID: "window-one",
+      version: "test-version",
+      createdAt: expect.any(Number),
+    })
   }).pipe(Effect.scoped),
 )
 

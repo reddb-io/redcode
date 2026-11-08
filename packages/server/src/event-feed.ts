@@ -2,6 +2,7 @@ export * as EventFeed from "./event-feed"
 
 import { Bus } from "@opencode/core/bus"
 import { Event } from "@opencode/schema/event"
+import { ClientPresence } from "@opencode/schema/client-presence"
 import { isOpenCodeEvent, type OpenCodeEvent } from "@opencode/protocol/groups/event"
 import { Cause, Context, Effect, Layer, Queue, Schema, Scope, Stream } from "effect"
 
@@ -20,8 +21,17 @@ export class EncodingError extends Schema.TaggedError<EncodingError>()("EventFee
 
 export type Error = SubscriberOverflowError | EncodingError
 
+export type Client = {
+  readonly id?: string
+  readonly surface: ClientPresence.Surface
+  readonly version?: string
+}
+
 export interface Interface {
+  /** Backward-compatible anonymous event subscription. */
   readonly subscribe: Effect.Effect<Stream.Stream<string, Error>, never, Scope.Scope>
+  readonly subscribeClient: (client: Client) => Effect.Effect<Stream.Stream<string, Error>, never, Scope.Scope>
+  readonly snapshot: Effect.Effect<ClientPresence.Snapshot>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/server/EventFeed") {}
@@ -36,11 +46,12 @@ export const make = Effect.fn("EventFeed.make")(function* (
 ) {
   const capacity = options?.capacity ?? SubscriberCapacity
   const render = options?.encode ?? frame
-  const subscribers = new Set<Queue.Queue<string, Error>>()
+  const subscribers = new Map<Queue.Queue<string, Error>, Client & { readonly id: string }>()
+  let anonymous = 0
 
   const fail = (error: Error) =>
     Effect.sync(() => {
-      const current = Array.from(subscribers)
+      const current = Array.from(subscribers.keys())
       subscribers.clear()
       for (const subscriber of current) Queue.failCauseUnsafe(subscriber, Cause.fail(error))
     })
@@ -61,7 +72,7 @@ export const make = Effect.fn("EventFeed.make")(function* (
       ),
     )
     if (encoded === undefined) return
-    for (const subscriber of subscribers) {
+    for (const subscriber of subscribers.keys()) {
       if (Queue.offerUnsafe(subscriber, encoded)) continue
       subscribers.delete(subscriber)
       Queue.failCauseUnsafe(subscriber, Cause.fail(new SubscriberOverflowError({ capacity })))
@@ -71,12 +82,35 @@ export const make = Effect.fn("EventFeed.make")(function* (
   const unsubscribe = yield* observe(publish)
   yield* Effect.addFinalizer(() => unsubscribe)
 
+  const subscribeClient = (client: Client = { surface: "unknown" }) =>
+      Effect.acquireRelease(
+        Queue.dropping<string, Error>(capacity).pipe(
+          Effect.tap((queue) =>
+            Effect.sync(() => subscribers.set(queue, { ...client, id: client.id || `anonymous-${++anonymous}` })),
+          ),
+        ),
+        (queue) =>
+          Effect.sync(() => subscribers.delete(queue)).pipe(Effect.andThen(Queue.shutdown(queue)), Effect.asVoid),
+      ).pipe(Effect.map(Stream.fromQueue))
+
   return Service.of({
-    subscribe: Effect.acquireRelease(
-      Queue.dropping<string, Error>(capacity).pipe(Effect.tap((queue) => Effect.sync(() => subscribers.add(queue)))),
-      (queue) =>
-        Effect.sync(() => subscribers.delete(queue)).pipe(Effect.andThen(Queue.shutdown(queue)), Effect.asVoid),
-    ).pipe(Effect.map(Stream.fromQueue)),
+    subscribe: subscribeClient(),
+    subscribeClient,
+    snapshot: Effect.sync(() => {
+      const clients = [...new Map(Array.from(subscribers.values()).map((client) => [client.id, client])).values()]
+      const count = (surface: ClientPresence.Surface) => clients.filter((client) => client.surface === surface).length
+      return ClientPresence.Snapshot.make({
+        total: clients.length,
+        desktop: count("desktop"),
+        web: count("web"),
+        tui: count("tui"),
+        cli: count("cli"),
+        api: count("api"),
+        automation: count("automation"),
+        worker: count("worker"),
+        unknown: count("unknown"),
+      })
+    }),
   })
 })
 

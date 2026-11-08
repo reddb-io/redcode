@@ -150,10 +150,17 @@ export interface Interface {
   readonly messages: (
     input: SessionStore.MessagesInput,
   ) => Effect.Effect<SessionMessage.Info[], NotFoundError | MessageDecodeError>
+  readonly messagesWithRefs: (
+    input: SessionStore.MessagesInput,
+  ) => Effect.Effect<SessionMessage.MediaInfo[], NotFoundError | MessageDecodeError>
   readonly message: (input: {
     sessionID: SessionSchema.ID
     messageID: SessionMessage.ID
   }) => Effect.Effect<SessionMessage.Info | undefined>
+  readonly messageWithRefs: (input: {
+    sessionID: SessionSchema.ID
+    messageID: SessionMessage.ID
+  }) => Effect.Effect<SessionMessage.MediaInfo | undefined, NotFoundError>
   readonly context: (
     sessionID: SessionSchema.ID,
   ) => Effect.Effect<SessionMessage.Info[], NotFoundError | MessageDecodeError>
@@ -457,7 +464,16 @@ const layer = Layer.effect(
         yield* result.get(input.sessionID)
         return yield* store.messages(input)
       }),
+      messagesWithRefs: Effect.fn("Session.messagesWithRefs")(function* (input) {
+        yield* result.get(input.sessionID)
+        return yield* store.messagesWithRefs(input)
+      }),
       message: (input) => sessions.forSession(input.sessionID).message(input.messageID),
+      messageWithRefs: Effect.fn("Session.messageWithRefs")(function* (input) {
+        yield* result.get(input.sessionID)
+        const found = yield* store.messageWithRefs(input.messageID)
+        return found?.sessionID === input.sessionID ? found.message : undefined
+      }),
       context: Effect.fn("Session.context")(function* (sessionID) {
         yield* result.get(sessionID)
         return yield* store.context(sessionID)

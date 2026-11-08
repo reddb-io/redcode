@@ -22,7 +22,6 @@ import { usePlatform } from "@/runtime/platform/platform"
 import { applyTimelineMessageHandoff, timelineChildTitle, visibleTimelineMessages } from "./controller-projection"
 import { createTimelineProjection } from "./projection"
 import { useServer } from "@/runtime/server/current"
-import { getSessionMessageHandoff } from "@/session/handoff"
 import type { ReasoningMode } from "@opencode/session-ui/timeline/projection"
 
 const emptyMessages: SessionMessageInfo[] = []
@@ -74,7 +73,7 @@ export function createTimelineController(input: { session: TimelineSessionSource
   const handedOffMessages = createMemo(() =>
     applyTimelineMessageHandoff(
       input.session.history.messages(),
-      getSessionMessageHandoff(input.session.identity.sessionKey()),
+      server.ctx.handoff.get(input.session.identity.sessionID())?.message,
     ),
   )
 

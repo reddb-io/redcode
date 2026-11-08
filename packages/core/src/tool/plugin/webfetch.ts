@@ -118,11 +118,13 @@ export const Plugin = {
           output: Output,
           execute: (input, context) =>
             Effect.gen(function* () {
+              // Permission rules match the URL exactly as written, except for the fragment that HTTP never sends.
+              const requested = input.url.split("#")[0]
               // A vault reference resolves only here, in process: approval, the stored input and the result keep it.
-              const vaulted = yield* Vault.resolveAll(Vault.references(input.url))
+              const vaulted = yield* Vault.resolveAll(Vault.references(requested))
               if ("missing" in vaulted)
                 return yield* new ToolFailure({ message: Vault.unknownReference(vaulted.missing) })
-              const url = Vault.fill(input.url, vaulted.values)
+              const url = Vault.fill(requested, vaulted.values)
               yield* Effect.try({
                 try: () => assertHttpUrl(new URL(url)),
                 catch: (error) => error,
@@ -130,20 +132,20 @@ export const Plugin = {
 
               yield* permission.assert({
                 action: name,
-                resources: [input.url],
+                resources: [requested],
                 save: ["*"],
                 metadata: input,
                 sessionID: context.sessionID,
                 agent: context.agent,
                 source: { type: "tool", messageID: context.messageID, id: context.id },
               })
-              const destination = VaultHosts.url(input.url)
+              const destination = VaultHosts.url(requested)
               yield* VaultHosts.approve({
                 permission,
                 context,
                 names: Array.from(vaulted.values.keys()),
                 destinations: destination,
-                detail: { url: input.url },
+                detail: { url: requested },
               })
 
               const { body, contentType } = yield* Effect.gen(function* () {

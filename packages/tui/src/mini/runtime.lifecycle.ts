@@ -37,6 +37,7 @@ import type {
 } from "./types"
 import { resolveMiniSettings } from "./runtime.boot"
 import { formatModelLabel } from "./variant.shared"
+import { setTerminalTitle } from "../util/renderer"
 
 const FOOTER_HEIGHT = 4
 
@@ -174,8 +175,8 @@ export async function createRuntimeLifecycle(input: LifecycleInput): Promise<Lif
   if (mono) renderer.on(CliRenderEvents.EXTERNAL_OUTPUT, monoSnapshot)
   const setTitle = (title?: string) => {
     if (input.host.platform !== "linux") return
-    if (!title || isFallbackTitle(title)) return renderer.setTerminalTitle("Redcode")
-    renderer.setTerminalTitle(`RC | ${title.length > 40 ? title.slice(0, 37) + "…" : title}`)
+    if (!title || isFallbackTitle(title)) return setTerminalTitle(renderer, "Redcode")
+    setTerminalTitle(renderer, `RC | ${title.length > 40 ? title.slice(0, 37) + "…" : title}`)
   }
   setTitle(input.sessionTitle)
   const theme = await resolveRunTheme(renderer, tuiConfig.theme, mono)
@@ -334,7 +335,7 @@ export async function createRuntimeLifecycle(input: LifecycleInput): Promise<Lif
       footer.close()
       await footer.idle().catch(() => {})
       footer.destroy()
-      if (input.host.platform === "linux") renderer.setTerminalTitle("")
+      if (input.host.platform === "linux") setTerminalTitle(renderer, "")
       shutdown(renderer)
       if (!wroteExit) {
         input.host.stdout.write("\n")

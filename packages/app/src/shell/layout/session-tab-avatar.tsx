@@ -22,6 +22,7 @@ export function SessionTabAvatar(props: {
       project={props.project}
       directory={props.directory}
       unread={state.unread()}
+      failed={state.failed()}
       loading={state.loading()}
     />
   )
@@ -31,12 +32,15 @@ export function SessionTabAvatarView(props: {
   project?: LocalProject
   directory: string
   unread: boolean
+  failed?: boolean
   loading: boolean
 }) {
   return (
     <Show
       when={props.loading}
-      fallback={<ProjectTile project={props.project ?? { worktree: props.directory }} unread={props.unread} />}
+      fallback={
+        <ProjectTile project={props.project ?? { worktree: props.directory }} unread={props.unread} failed={props.failed} />
+      }
     >
       <SessionProgressIndicatorV2 />
     </Show>

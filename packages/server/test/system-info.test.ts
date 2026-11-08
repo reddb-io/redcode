@@ -34,6 +34,17 @@ it.live("memory diagnostics report the server heap without booting project runti
       expect(snapshot.processMemory?.external).toBeGreaterThanOrEqual(0)
       expect(snapshot.processMemory?.arrayBuffers).toBeGreaterThanOrEqual(0)
       expect(snapshot.activity).toEqual({ cachedLocations: 0, activeExecutions: 0 })
+      expect(snapshot.clients).toEqual({
+        total: 0,
+        desktop: 0,
+        web: 0,
+        tui: 0,
+        cli: 0,
+        api: 0,
+        automation: 0,
+        worker: 0,
+        unknown: 0,
+      })
     }
   }).pipe(Effect.scoped),
 )

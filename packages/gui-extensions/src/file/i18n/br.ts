@@ -7,6 +7,8 @@ export default {
   "tab.notFound": "Arquivo não encontrado: {{name}}",
   "mobile.title": "Arquivos",
   "mobile.openTabs": "Arquivos abertos",
+  "view.properties": "Propriedades do documento",
+  "view.properties.showAll": "Mostrar todas as {{count}} propriedades",
   "open.in": "Abrir em",
   "open.ariaLabel": "Abrir em {{app}}",
   "open.menu": "Opções de abertura",

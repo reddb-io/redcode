@@ -1,4 +1,4 @@
-import type { PromptFileAttachment } from "@opencode/client/promise"
+import type { PromptAttachment } from "@opencode/client/promise"
 
 export type SessionUserComment =
   | {
@@ -26,7 +26,7 @@ export type SessionUserAttachmentReference = {
 }
 
 export type SessionUserActions = {
-  openAttachment?: (file: PromptFileAttachment) => void
+  openAttachment?: (file: PromptAttachment) => void
   revert?: (input: { sessionID: string; messageID: string }) => Promise<void> | void
   /** Starts a new session from the history before this prompt, with the prompt back in the composer. */
   fork?: (input: { sessionID: string; messageID: string }) => Promise<void> | void
@@ -37,7 +37,7 @@ export type SessionUserActions = {
    * it shows as waiting only while `steering` behind delivered work or `stranded` by an execution that ended.
    */
   pending?: {
-    status: (messageID: string) => "starting" | "steering" | "stranded" | "queued" | undefined
+    status: (messageID: string) => "starting" | "steering" | "stranded" | "queued" | "sending" | undefined
     queue: (input: { sessionID: string; messageID: string }) => Promise<void>
     remove: (input: { sessionID: string; messageID: string }) => Promise<void>
   }

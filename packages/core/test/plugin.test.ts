@@ -6,15 +6,50 @@ import { Command } from "@opencode/core/command"
 import { Bus } from "@opencode/core/bus"
 import { Credential } from "@opencode/core/credential"
 import { Integration } from "@opencode/core/integration"
+import { ExecutionCapability } from "@opencode/core/execution-capability"
 import { Plugin } from "@opencode/core/plugin"
 import { PluginModule } from "@opencode/core/plugin/module"
 import { Watcher } from "@opencode/core/filesystem/watcher"
 import { fromPromise } from "@opencode/plugin/promise/adapter"
 import { Session } from "@opencode/schema/session"
+import { ExecutionCapability as CapabilityContract } from "@opencode/schema/execution-capability"
 import { testEffect } from "./lib/effect"
 import { PluginTestLayer } from "./plugin/fixture"
 
 const it = testEffect(PluginTestLayer)
+
+it.effect("attributes leased capabilities to the plugin and removes them when it unloads", () =>
+  Effect.gen(function* () {
+    const plugins = yield* Plugin.Service
+    const capabilities = yield* ExecutionCapability.Service
+    yield* plugins.activate([
+      {
+        id: "browser-provider",
+        revision: "1",
+        effect: (context) =>
+          context.capability.lease(
+            CapabilityContract.Info.make({
+              id: CapabilityContract.ID.make("browser:test"),
+              name: "Test browser",
+              kind: "browser",
+              source: "custom",
+              status: "ready",
+              risk: "interactive",
+              target: { type: "server", id: "test", name: "Test host" },
+              operations: ["browser.observe"],
+            }),
+          ),
+      },
+    ])
+
+    expect(yield* capabilities.list()).toMatchObject([
+      { provider: { type: "plugin", id: "browser-provider" } },
+    ])
+
+    yield* plugins.activate([])
+    expect(yield* capabilities.list()).toEqual([])
+  }),
+)
 
 for (const scenario of [
   {

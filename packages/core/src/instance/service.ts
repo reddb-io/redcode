@@ -13,6 +13,8 @@ export interface Interface {
   readonly provide: (
     session: Session.Info,
   ) => <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E | Error, Exclude<R, Services>>
+  /** Whether `provide` would reuse capabilities that are already built or currently booting. */
+  readonly live?: (session: Session.Info) => Effect.Effect<boolean>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/Instance") {}

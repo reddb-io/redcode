@@ -907,6 +907,21 @@ describe("Config", () => {
     })
   })
 
+  test("preserves inline variants in v1 model references", () => {
+    const migrated = ConfigMigrateV1.migrate({
+      small_model: "anthropic/claude-haiku-4-5#low",
+      agent: { reviewer: { model: "anthropic/claude#high", variant: "low" } },
+      command: { review: { template: "review", model: "anthropic/claude#high" } },
+    })
+    expect(migrated.agents).toMatchObject({
+      reviewer: { model: { providerID: "anthropic", model: "claude", variant: "high" } },
+      title: { model: { providerID: "anthropic", model: "claude-haiku-4-5", variant: "low" } },
+    })
+    expect(migrated.commands).toMatchObject({
+      review: { model: { providerID: "anthropic", model: "claude", variant: "high" } },
+    })
+  })
+
   test("migrates the v1 update policy", () => {
     expect(ConfigMigrateV1.migrate({ autoupdate: false }).update).toBe("disable")
     expect(ConfigMigrateV1.migrate({ autoupdate: "notify" }).update).toBe("notify")

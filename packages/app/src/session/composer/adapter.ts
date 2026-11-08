@@ -2,7 +2,7 @@ import type { Accessor } from "solid-js"
 import type { ActiveComposerAdapter, ComposerControls } from "@/composer/adapter"
 import { useComposerState } from "@/composer/persistence"
 import { createComposerReasoning } from "@/composer/reasoning/state"
-import { useData } from "@/runtime/server/current"
+import { useData, useServer } from "@/runtime/server/current"
 import { useServerSDK } from "@/runtime/server/client"
 import { useWorkspaceLocation } from "@/workspaces/location"
 
@@ -19,6 +19,7 @@ export function createActiveComposerAdapter(input: {
   const state = prompt.capture()
   const data = useData()
   const server = useServerSDK()
+  const currentServer = useServer()
   const location = useWorkspaceLocation()
 
   const adapter: ActiveComposerAdapter = {
@@ -33,7 +34,9 @@ export function createActiveComposerAdapter(input: {
     session: () => ({
       id,
       directory: location().directory,
+      handoff: currentServer.ctx.handoff.forSession(id),
       api: server.api.session,
+      file: server.api.file,
       data,
       current: () => data.session.get(id),
       admitted: (messageID) => data.session.input.has(id, messageID) || !!data.session.message.get(id, messageID),

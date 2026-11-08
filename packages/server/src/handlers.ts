@@ -44,7 +44,7 @@ import { WorkerEnvironmentsHandler } from "./handlers/worker-environments"
 import { ProjectEnvironmentsHandler } from "./handlers/project-environments"
 
 export const handlers = Layer.mergeAll(
-  ServerHandler,
+  Layer.merge(ServerHandler, EventHandler).pipe(Layer.provide(EventFeed.layer)),
   DebugHandler,
   LocationHandler,
   AgentHandler,
@@ -66,7 +66,6 @@ export const handlers = Layer.mergeAll(
   CommandHandler,
   SkillHandler,
   RpcHandler,
-  EventHandler.pipe(Layer.provide(EventFeed.layer)),
   PtyHandler,
   PersistentPtyHandler,
   ShellHandler,

@@ -5,6 +5,7 @@ import { Effect } from "effect"
 import { supportsForeignKeyToggle } from "#sqlite"
 import type { EffectDrizzleSqlite } from "./drizzle.js"
 import { migrations } from "./migration.gen.js"
+import legacyCredentials from "./migration/20260805200742_import_legacy_credentials.js"
 import schema from "./schema.gen.js"
 import { Global } from "@opencode/util/global"
 
@@ -51,6 +52,9 @@ export function apply(db: Database) {
           if (tables.length > 0) return yield* Effect.die(new Error("Database is not empty and has no session table"))
           yield* Effect.logInfo("database schema bootstrap started", { migrations: migrations.length })
           yield* schema.up(tx)
+          // A fresh database skips historical migration bodies after applying the current schema. Credentials are
+          // the exception: they live outside SQLite in legacy auth.json, so import them before marking all steps done.
+          yield* legacyCredentials.up(tx)
           yield* tx.run(
             sql`CREATE TABLE ${sql.identifier("migration")} (id TEXT PRIMARY KEY, time_completed INTEGER NOT NULL)`,
           )

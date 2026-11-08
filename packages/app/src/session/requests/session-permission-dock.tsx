@@ -5,6 +5,16 @@ import { sharedSource } from "@/runtime/react/source"
 import { ReactView } from "@/runtime/react/view"
 import { SessionPermissionDockView } from "./session-permission-dock.react"
 
+export function permissionInputLines(metadata: PermissionRequest["metadata"]) {
+  const input = metadata?.input
+  if (!input || typeof input !== "object" || Array.isArray(input)) return []
+
+  return Object.entries(input).map(([key, value]) => {
+    if (typeof value === "string") return `${key}: ${value}`
+    return `${key}: ${JSON.stringify(value)}`
+  })
+}
+
 export function createSessionPermissionServices(props: {
   request: PermissionRequest
   responding: boolean
@@ -17,7 +27,10 @@ export function createSessionPermissionServices(props: {
       const description = language.t(key as Parameters<typeof language.t>[0])
       return {
         language: sharedLanguage(language),
+        action: props.request.action,
         description: description === key ? "" : description,
+        message: props.request.message,
+        input: permissionInputLines(props.request.metadata),
         resources: [...props.request.resources],
         responding: props.responding,
       }

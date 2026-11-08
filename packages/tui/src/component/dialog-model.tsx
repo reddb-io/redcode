@@ -56,7 +56,7 @@ export function DialogModel(props: { providerID?: string }) {
   const options = createMemo(() => {
     const needle = query().trim()
     const showSections = showExtra() && needle.length === 0
-    const favorites = connected() ? local.model.favorite() : []
+    const favorites = local.model.favorite()
     const recents = local.model.recent()
 
     function toOptions(items: typeof favorites, category: string) {
@@ -180,6 +180,9 @@ export function DialogModel(props: { providerID?: string }) {
       )
     }
 
+    if (!connected())
+      return withOffers(ModelPresentation.prioritizeFavorites(modelOptions, favoritePriority))
+
     return [...favoriteOptions, ...recentOptions, ...withOffers(modelOptions)]
   })
 
@@ -266,7 +269,6 @@ export function DialogModel(props: { providerID?: string }) {
         {
           command: "model.dialog.favorite",
           title: "Favorite",
-          hidden: !connected(),
           disabled: (option) => option?.value.pinned === false,
           onTrigger: (option) => {
             local.model.toggleFavorite({ providerID: option.value.providerID, modelID: option.value.modelID })

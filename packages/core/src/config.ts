@@ -147,14 +147,19 @@ export const layer = (options?: Options) =>
           return
         }
         const result = ConfigNormalize.compatible(input)
-        yield* Effect.forEach(result.diagnostics, (diagnostic) =>
-          Effect.logWarning("configuration normalization diagnostic", {
+        // Reloads repeat routine compatibility notes for otherwise valid config. Keep rejected documents and
+        // malformed values visible, while moving informational conversions out of the default server log stream.
+        yield* Effect.forEach(result.diagnostics, (diagnostic) => {
+          const log =
+            result.type === "rejected" || diagnostic.kind === "invalid" ? Effect.logWarning : Effect.logDebug
+
+          return log("configuration normalization diagnostic", {
             source,
             path: diagnostic.path[0] === "$" ? "$" : `$.${diagnostic.path.join(".")}`,
             kind: diagnostic.kind,
             action: diagnostic.message,
-          }),
-        )
+          })
+        })
         if (result.type === "rejected")
           return yield* Effect.die(
             new Error(

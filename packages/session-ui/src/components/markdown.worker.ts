@@ -11,8 +11,12 @@ import {
   type BundledLanguage,
   type ThemedToken,
 } from "shiki"
-import type { MarkdownToken, MarkdownWorkerRequest, MarkdownWorkerResponse } from "./markdown-worker-protocol"
-import { createLatestWorkerQueue } from "./markdown-worker-queue"
+import {
+  diffProjectionBlocks,
+  type MarkdownToken,
+  type MarkdownWorkerRequest,
+  type MarkdownWorkerResponse,
+} from "./markdown-worker-protocol"
 import { project, type Projection } from "./markdown-stream"
 
 type Stream = {
@@ -26,18 +30,6 @@ const streams = new Map<string, Stream>()
 const projections = new Map<string, Projection>()
 
 let highlighter: ReturnType<typeof createHighlighter> | undefined
-
-const highlightQueue = createLatestWorkerQueue<Extract<MarkdownWorkerRequest, { type: "highlight" }>>({
-  run: highlight,
-  supersede: (request) => post({ type: "superseded", id: request.id, key: request.key }),
-  dispose: (key) => void streams.delete(key),
-})
-
-const projectQueue = createLatestWorkerQueue<Extract<MarkdownWorkerRequest, { type: "project" }>>({
-  run: runProject,
-  supersede: (request) => post({ type: "superseded", id: request.id, key: request.key }),
-  dispose: (key) => void projections.delete(key),
-})
 
 const parser = createMarkdownParser(async (code, language) => {
   const instance = await getHighlighter()
@@ -53,8 +45,8 @@ const parser = createMarkdownParser(async (code, language) => {
 
 self.onmessage = (event: MessageEvent<MarkdownWorkerRequest>) => {
   if (event.data.type === "dispose") {
-    highlightQueue.dispose(event.data.key)
-    projectQueue.dispose(event.data.key)
+    if (event.data.target === "highlight") streams.delete(event.data.key)
+    if (event.data.target === "project") projections.delete(event.data.key)
 
     return
   }
@@ -66,12 +58,12 @@ self.onmessage = (event: MessageEvent<MarkdownWorkerRequest>) => {
   }
 
   if (event.data.type === "project") {
-    projectQueue.highlight(event.data)
+    void runProject(event.data)
 
     return
   }
 
-  highlightQueue.highlight(event.data)
+  void highlight(event.data)
 }
 
 async function parse(request: Extract<MarkdownWorkerRequest, { type: "parse" }>) {
@@ -84,10 +76,17 @@ async function parse(request: Extract<MarkdownWorkerRequest, { type: "parse" }>)
 
 async function runProject(request: Extract<MarkdownWorkerRequest, { type: "project" }>) {
   try {
-    const projection = project(projections.get(request.key), request.text, request.live)
+    const previous = projections.get(request.key)
+    const projection = project(previous, request.text, request.live)
+    post({
+      type: "project",
+      id: request.id,
+      key: request.key,
+      ...diffProjectionBlocks(previous?.blocks, projection.blocks),
+    })
     projections.set(request.key, projection)
-    post({ type: "project", id: request.id, key: request.key, projection })
   } catch (error) {
+    projections.delete(request.key)
     post({
       type: "error",
       id: request.id,

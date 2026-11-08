@@ -66,6 +66,8 @@ interface Input {
   readonly agent: Agent.ID
   readonly model: SessionRunnerModel.Resolved
   readonly prepared: Omit<SessionModelRequest.Prepared, "event">
+  /** Set when this attempt runs because an earlier one in the logical step scheduled a retry. */
+  readonly retryAttempt?: number
   readonly retry: (
     cause: AIError,
     error: SessionError.Error,
@@ -111,6 +113,13 @@ export const make = Effect.gen(function* () {
     )
     // Capture overlaps the provider request, but must finish before any local tool executes.
     const pendingStartSnapshot = yield* snapshots.capture().pipe(Effect.forkScoped)
+    const started = yield* Clock.currentTimeMillis
+    let firstOutputAt: number | undefined
+    yield* Effect.annotateCurrentSpan({
+      "gen_ai.provider.name": input.model.ref.providerID,
+      "gen_ai.request.model": input.model.ref.id,
+      ...(input.retryAttempt === undefined ? {} : { "opencode.retry.attempt": input.retryAttempt }),
+    })
     const publisher = createLLMEventPublisher(bus, {
       onText: (text) =>
         hooks.run({ event: "MessageDisplay", session_id: input.sessionID, message: text }).pipe(Effect.asVoid),
@@ -120,7 +129,7 @@ export const make = Effect.gen(function* () {
       model: input.model.ref,
       providerMetadataKey: input.model.model.route.providerMetadataKey ?? input.model.model.provider,
       pendingSnapshot: Fiber.join(pendingStartSnapshot),
-      started: yield* Clock.currentTimeMillis,
+      started,
     })
     const toolRuns: Array<{
       readonly call: ToolCall
@@ -220,6 +229,8 @@ export const make = Effect.gen(function* () {
                 return
               }
               yield* publisher.publish(event)
+              if (firstOutputAt === undefined && publisher.record().outputStarted)
+                firstOutputAt = yield* Clock.currentTimeMillis
               if (event.type !== "tool-call" || event.providerExecuted) return
               activeTools++
               toolRuns.push({
@@ -327,6 +338,20 @@ export const make = Effect.gen(function* () {
           llmFailure && !recorded.providerFailed
             ? toSessionError(llmFailure, { provider: input.model.ref.providerID, model: input.model.ref.id })
             : undefined
+        const tokens = recorded.finish?.usage
+        yield* Effect.annotateCurrentSpan({
+          ...(firstOutputAt === undefined ? {} : { "opencode.llm.first_output_ms": firstOutputAt - started }),
+          ...(recorded.finish === undefined ? {} : { "gen_ai.response.finish_reasons": [recorded.finish.finish] }),
+          ...(tokens?.inputTokens === undefined ? {} : { "gen_ai.usage.input_tokens": tokens.inputTokens }),
+          ...(tokens?.outputTokens === undefined ? {} : { "gen_ai.usage.output_tokens": tokens.outputTokens }),
+          ...(tokens?.cacheReadInputTokens === undefined
+            ? {}
+            : { "gen_ai.usage.cache_read.input_tokens": tokens.cacheReadInputTokens }),
+          ...(tokens?.cacheWriteInputTokens === undefined
+            ? {}
+            : { "gen_ai.usage.cache_creation.input_tokens": tokens.cacheWriteInputTokens }),
+          ...(llmFailure === undefined ? {} : { "error.type": llmFailure.reason._tag }),
+        })
         if (llmError)
           yield* Effect.logWarning("provider request failed", {
             sessionID: input.sessionID,
@@ -427,6 +452,7 @@ export const make = Effect.gen(function* () {
                   : { cost: Money.USD.make(routed.costUSD), costAssessment: { status: "reported" as const } }),
               }
             : undefined
+          if (usage) yield* Effect.annotateCurrentSpan("opencode.usage.cost_usd", usage.cost)
           if (record.failure) yield* publisher.publishStepFailure({ ...usage, snapshot, files })
           if (record.finish && usage && !record.failure)
             yield* bus.publish(

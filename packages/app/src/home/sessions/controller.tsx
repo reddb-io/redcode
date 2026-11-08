@@ -6,10 +6,20 @@ import { sharedLanguage } from "@/runtime/react/language"
 import { ReactView } from "@/runtime/react/view"
 import { DeleteHomeSessionDialog } from "./delete-dialog.react"
 import { skipToken, useQuery, useQueryClient } from "@tanstack/solid-query"
-import { type Accessor, createEffect, createMemo, createSignal, type JSX, startTransition, untrack } from "solid-js"
+import {
+  type Accessor,
+  createEffect,
+  createMemo,
+  createSignal,
+  onCleanup,
+  type JSX,
+  startTransition,
+  untrack,
+} from "solid-js"
 import { notifySessionTabsRemoved } from "@/shell/titlebar/session-events"
 import { useCommand } from "@/shell/commands/command"
 import {
+  HOME_SESSION_INDEX_LIMIT,
   HOME_SESSION_LIMIT,
   loadHomeSessionIndex,
   mergeHomeSessionIndex,
@@ -101,9 +111,60 @@ export function createHomeSessionsController(home: HomeController) {
   })
   const [archived, setArchived] = createSignal(false)
   const index = createHomeSessionIndex(home.server.focused, home.server.focusedContext, archived)
+
+  // A globally old but selected project may not occur in the bounded bootstrap page. Read only its
+  // directories so opening a quiet project still shows its newest sessions without scanning history.
+  const [scopedSessions, setScopedSessions] = createSignal<SessionInfo[]>([])
+  let scopedKey: string | undefined
+
+  createEffect(() => {
+    const selected = projectDirectories()
+    const conn = home.server.focused()
+    const ctx = home.server.focusedContext()
+    if (!selected || !conn || !ctx) {
+      scopedKey = undefined
+      setScopedSessions([])
+      return
+    }
+    const key = `${ServerConnection.key(conn)}\0${archived()}\0${selected.map(pathKey).join("\0")}`
+    if (key === scopedKey) return
+    scopedKey = key
+    const controller = new AbortController()
+    setScopedSessions([])
+    void Promise.allSettled(
+      selected.map((directory) =>
+        ctx.sdk.api.session.list(
+          {
+            directory,
+            limit: HOME_SESSION_INDEX_LIMIT,
+            order: "desc",
+            parentID: null,
+            archived: archived() ? "only" : "exclude",
+          },
+          { signal: controller.signal },
+        ),
+      ),
+    ).then((results) => {
+      if (controller.signal.aborted) return
+      setScopedSessions(results.flatMap((result) => (result.status === "fulfilled" ? result.value.data : [])))
+    })
+    onCleanup(() => controller.abort())
+  })
+
+  const indexedSessions = createMemo(() => {
+    const ctx = home.server.focusedContext()
+    if (!ctx) return []
+    return retainHomeSessions(
+      ctx.data.session.apply(
+        mergeHomeSessionIndex([...index.sessions(), ...scopedSessions()], ctx.data.session.list(), archived()),
+      ),
+      HOME_SESSION_LIMIT,
+      Date.now(),
+    )
+  })
   const allRecords = createMemo(() =>
     buildHomeSessionRecords({
-      sessions: index.sessions,
+      sessions: indexedSessions,
       projectDirectories,
       projects: home.project.list,
       resolveProject: (session) => home.server.focusedContext()?.projects.forSession(session),

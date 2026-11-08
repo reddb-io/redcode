@@ -74,6 +74,7 @@ import { WorkerEnvironments } from "./worker-environments"
 import { ProjectEnvironments } from "./project-environments"
 import { Harnesses } from "./harness"
 import { AgentTools } from "@opencode/core/agent-tools"
+import { ExecutionCapability } from "@opencode/core/execution-capability"
 import { harnessUsageNode } from "./harness-usage"
 import { InfrastructureAccess } from "./infrastructure-access"
 import { layer } from "./location"
@@ -138,6 +139,7 @@ const applicationServiceNodes = [
   ProjectEnvironments.node,
   Harnesses.node,
   AgentTools.node,
+  ExecutionCapability.node,
   harnessUsageNode,
   LocationServiceMap.node,
   LocationActivity.node,

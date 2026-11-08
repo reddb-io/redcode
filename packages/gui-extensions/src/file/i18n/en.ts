@@ -15,6 +15,8 @@ export default {
   "view.table.columns.one": "{{count}} column",
   "view.table.columns.other": "{{count}} columns",
   "view.table.truncated": "Showing the first {{shown}} of {{total}} rows.",
+  "view.properties": "Document properties",
+  "view.properties.showAll": "Show all {{count}} properties",
   "view.fontSample": "Sphinx of black quartz, judge my vow.",
   "open.in": "Open in",
   "open.ariaLabel": "Open in {{app}}",

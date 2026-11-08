@@ -88,6 +88,8 @@ export function SessionUIProvider(
       sessionID={params.id}
       shellRunning={(id) => !!data.shell.get(id)}
       shellOutput={(input) => serverSDK.api.shell.output(input)}
+      readMedia={(uri, mime, signal) => serverSDK.media.load(uri, mime, signal)}
+      peekMedia={(uri) => serverSDK.media.peek(uri)}
       onNavigateToSession={navigateToSession}
       onSessionHref={href}
     >

@@ -216,6 +216,10 @@ const overflowCommand = (bytes: number) =>
 const lineOverflowCommand = isWindows
   ? "[Console]::Out.Write('one' + [Environment]::NewLine + 'two' + [Environment]::NewLine + 'three')"
   : "printf 'one\\ntwo\\nthree'"
+const catCommand = (file: string) =>
+  isWindows
+    ? `$bytes = [IO.File]::ReadAllBytes('${file}'); $out = [Console]::OpenStandardOutput(); $out.Write($bytes, 0, $bytes.Length); $out.Flush()`
+    : `cat '${file}'`
 const progressOverflowCommand = (bytes: number, release: string) =>
   `node -e "const fs = require('fs'); process.stdout.write('x'.repeat(${bytes})); const done = () => { if (fs.existsSync('${release}')) process.exit(0) }; fs.watch('.', done); done()"`
 
@@ -1445,7 +1449,7 @@ describe("ShellTool", () => {
               expect(settled.status).toBe("completed")
               expect(settled.metadata).toMatchObject({ exit: 7, truncated: false })
               expect(settled.content?.[0]).toEqual({ type: "text", text: "body" })
-              expect(settled.content?.[1]).toMatchObject(Expected.text(expect.stringContaining("Exited with code 7")))
+              expect(settled.content?.[1]).toEqual({ type: "text", text: "Exit code: 7" })
             }),
           ),
         )
@@ -1480,6 +1484,57 @@ describe("ShellTool", () => {
         (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]().then(() => undefined)),
       ),
     { timeout: 15_000 },
+  )
+
+  const truncatedText = (tmp: string, contents: string | Uint8Array, callID: string) =>
+    Effect.gen(function* () {
+      const file = path.join(tmp, `${callID}.txt`)
+      yield* Effect.promise(() => Bun.write(file, contents))
+      const settled = yield* withSession(tmp, (registry) =>
+        executeTool(registry, call({ command: catCommand(file) }, callID)),
+      )
+      expect(settled.metadata).toMatchObject({ exit: 0, truncated: true })
+      const content = settled.content?.[0]
+      if (!content || content.type !== "text") throw new Error("Expected text content")
+      return content.text
+    })
+
+  it.live("drops a partial first line so truncation line numbers stay exact", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => {
+        reset()
+        const lines = Array.from({ length: 10 }, (_, index) => `${index + 1}`.padEnd(10 * 1024, "x"))
+        return truncatedText(tmp.path, lines.join("\n") + "\n", "call-long-lines").pipe(
+          Effect.andThen((text) =>
+            Effect.sync(() => {
+              expect(text).toStartWith("7xxx")
+              expect(text).toContain(`${lines[9]}\n\n[showing lines 7-10 of 10; full output saved to `)
+            }),
+          ),
+        )
+      },
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]().then(() => undefined)),
+    ),
+  )
+
+  it.live("starts a truncated view on a whole UTF-8 character", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => {
+        reset()
+        const contents = "a".repeat(100) + "€" + "b".repeat(ToolOutput.MAX_BYTES - 1)
+        return truncatedText(tmp.path, contents, "call-utf8-cut").pipe(
+          Effect.andThen((text) =>
+            Effect.sync(() => {
+              expect(text).toStartWith("b".repeat(ToolOutput.MAX_BYTES - 1) + "\n\n")
+              expect(text).not.toContain("\uFFFD")
+            }),
+          ),
+        )
+      },
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]().then(() => undefined)),
+    ),
   )
 
   it.live("uses configured line limits", () =>
@@ -1600,7 +1655,7 @@ describe("ShellTool", () => {
             expect((yield* shell.list()).map((info) => info.id)).toContain(id)
             expect((yield* shell.wait(id)).status).toBe("timeout")
             expect((yield* Fiber.join(admitted)).valueOrUndefined?.data.item.payload).toMatchObject({
-              text: expect.stringContaining("Timed out before completion"),
+              text: expect.stringContaining("Command timed out after 0.05 seconds"),
               description: idleCommand,
               metadata: {
                 source: "shell",
@@ -1637,7 +1692,7 @@ describe("ShellTool", () => {
             const shellID = settled.metadata?.shellID
             expect(typeof shellID).toBe("string")
             expect((yield* Fiber.join(admitted)).valueOrUndefined?.data.item.payload).toMatchObject({
-              text: expect.stringContaining("Exited with code 7"),
+              text: expect.stringContaining("Exit code: 7"),
               description: bodyExitCommand,
               metadata: {
                 source: "shell",
@@ -1687,7 +1742,7 @@ describe("ShellTool", () => {
               {
                 id: settled.metadata?.shellID,
                 status: "completed",
-                output: "(no output)\n\nExited with code 7",
+                output: "(no output)\n\nExit code: 7",
               },
             ])
           }),

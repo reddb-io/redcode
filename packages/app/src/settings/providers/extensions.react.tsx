@@ -1,11 +1,12 @@
 /** @jsxImportSource react */
-import type { LSPStatus } from "@opencode/client/promise"
+import type { LSPStatus, PluginInfo } from "@opencode/client/promise"
+import type { Installed } from "@opencode/gui-extensions/sdk/bridge"
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react"
 import { Tabs } from "@reddb-io/design-system/base/Tabs"
 import { Switch } from "@reddb-io/design-system/base/Switch"
 import { Button } from "@reddb-io/design-system/base/Button"
 import { Disclosure } from "@reddb-io/design-system/base/Disclosure"
-import { pluginLabels } from "@/providers/catalog/plugin"
+import { pluginLabel } from "@/providers/catalog/plugin"
 import { SettingsHeader, SettingsList, type SettingsLanguage } from "../shared.react"
 import { SettingsIcon } from "../icon.react"
 import { configuredLanguageServers } from "../workspaces/project-lsp"
@@ -15,31 +16,27 @@ import "../workspaces/project.css"
 type Services = ReturnType<typeof createExtensionsServices>
 const tabs = ["mcps", "plugins", "skills", "lsps"] as const
 const skillKey = (item: { name: string; path: string }) => `${item.name}\n${item.path}`
+const failureMessage = (error: unknown) => (error instanceof Error ? error.message : String(error))
 export function Extensions(props: { services: Services }) {
   const services = props.services
   const state = useSyncExternalStore(services.snapshot.subscribe, services.snapshot.getSnapshot)
   const language = state.language
-  const [plugins, setPlugins] = useState<{ global: string[]; project: string[] }>({ global: [], project: [] })
+  const [pluginBusy, setPluginBusy] = useState(false)
+  const [pluginError, setPluginError] = useState("")
+  const checkPlugins = () => {
+    if (pluginBusy) return
+    setPluginBusy(true)
+    setPluginError("")
+    void services
+      .checkPlugins()
+      .catch((error) => setPluginError(failureMessage(error)))
+      .finally(() => setPluginBusy(false))
+  }
   useEffect(() => {
     if (!state.connected) return
-    const owner = { active: true }
     void services.load()
-    void Promise.all([
-      state.api.plugin.list().then((result) => pluginLabels(result.data)),
-      state.directory
-        ? state.api.plugin
-            .list({ location: { directory: state.directory } })
-            .then((result) => pluginLabels(result.data))
-        : Promise.resolve([]),
-    ])
-      .then(([global, project]) => {
-        if (owner.active) setPlugins({ global, project })
-      })
-      .catch(() => undefined)
-    return () => {
-      owner.active = false
-    }
-  }, [state.api, state.connected, state.directory, services])
+    return services.onPluginUpdate(() => undefined)
+  }, [state.connected, state.directory, services])
   const project = !!state.directory
   const mcps = project
     ? state.mcps
@@ -50,7 +47,13 @@ export function Extensions(props: { services: Services }) {
   const skills = project
     ? state.skills.filter((item) => !state.globalSkills.some((shared) => skillKey(shared) === skillKey(item)))
     : state.skills
-  const localPlugins = project ? plugins.project.filter((name) => !plugins.global.includes(name)) : plugins.global
+  const globalPlugins = state.plugins.filter((plugin) => plugin.source.type !== "builtin")
+  const globalPluginNames = new Set(globalPlugins.map(pluginLabel))
+  const localPlugins = project
+    ? state.projectPlugins.filter(
+        (plugin) => plugin.source.type !== "builtin" && !globalPluginNames.has(pluginLabel(plugin)),
+      )
+    : globalPlugins
   const mcpRows = (items: { name: string; enabled: boolean }[]) =>
     items.map((item) => (
       <ExtensionRow key={item.name} icon="mcp" name={item.name} project={project}>
@@ -65,8 +68,20 @@ export function Extensions(props: { services: Services }) {
         />
       </ExtensionRow>
     ))
-  const pluginRows = (items: string[]) =>
-    items.map((name) => <ExtensionRow key={name} icon="cube" name={name} project={project} />)
+  const pluginRows = (items: PluginInfo[], scoped = project) =>
+    items.map((plugin) => (
+      <PluginRow
+        key={pluginLabel(plugin)}
+        plugin={plugin}
+        project={project}
+        language={language}
+        update={() =>
+          plugin.source.type === "package"
+            ? services.updatePlugin(plugin.source.target, scoped)
+            : Promise.resolve()
+        }
+      />
+    ))
   const skillRows = (items: { name: string; path: string }[]) =>
     items.map((item) => <ExtensionRow key={skillKey(item)} icon="post-skill" name={item.name} project={project} />)
   return (
@@ -77,6 +92,11 @@ export function Extensions(props: { services: Services }) {
           project ? "project.settings.extensions.description" : "settings.extensions.description",
         )}
       />
+      {pluginError ? (
+        <p className="mx-4 mt-2 whitespace-pre-wrap text-12-regular text-text-danger-base" role="alert">
+          {pluginError}
+        </p>
+      ) : null}
       <div className="settings-tab-body">
         <Tabs
           label={language.t("settings.tab.extensions")}
@@ -108,6 +128,10 @@ export function Extensions(props: { services: Services }) {
                     action={
                       item.value === "skills" ? (
                         <SkillsLink language={language} />
+                      ) : item.value === "plugins" ? (
+                        <Button variant="ghost" disabled={pluginBusy} onClick={checkPlugins}>
+                          {language.t("settings.extensions.plugins.check")}
+                        </Button>
                       ) : (
                         <span>{language.t("settings.extensions.manageConfig")}</span>
                       )
@@ -120,6 +144,10 @@ export function Extensions(props: { services: Services }) {
                     </span>
                     {item.value === "skills" ? (
                       <SkillsLink language={language} />
+                    ) : item.value === "plugins" ? (
+                      <Button variant="ghost" disabled={pluginBusy} onClick={checkPlugins}>
+                        {language.t("settings.extensions.plugins.check")}
+                      </Button>
                     ) : (
                       <span className="text-13-regular text-ink-muted">
                         {language.t("settings.extensions.manageConfig")}
@@ -144,7 +172,7 @@ export function Extensions(props: { services: Services }) {
                       (item.value === "mcps"
                         ? globalMcps
                         : item.value === "plugins"
-                          ? plugins.global
+                          ? globalPlugins
                           : state.globalSkills
                       ).length
                     }
@@ -157,16 +185,159 @@ export function Extensions(props: { services: Services }) {
                           })),
                         )
                       : item.value === "plugins"
-                        ? pluginRows(plugins.global)
+                        ? pluginRows(globalPlugins, false)
                         : skillRows(state.globalSkills)}
                   </SharedSection>
                 )}
+                {!project && item.value === "plugins" && state.desktopExtensions.length > 0 ? (
+                  <DesktopExtensions
+                    items={state.desktopExtensions}
+                    packaged={state.desktopPackaged}
+                    services={services}
+                    language={language}
+                  />
+                ) : null}
               </div>
             )
           }
         </Tabs>
       </div>
     </>
+  )
+}
+function PluginRow(props: {
+  plugin: PluginInfo
+  project: boolean
+  language: SettingsLanguage
+  update: () => Promise<void>
+}) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState("")
+  const plugin = props.plugin
+  const source =
+    plugin.source.type === "package"
+      ? [plugin.source.target, plugin.source.version].filter(Boolean).join(" · ")
+      : plugin.source.type === "local"
+        ? plugin.source.path
+        : plugin.source.type
+  const features = [
+    plugin.features.server ? props.language.t("settings.extensions.plugins.feature.server") : undefined,
+    plugin.features.tui ? "TUI" : undefined,
+    plugin.features.rpc ? "RPC" : undefined,
+  ].filter(Boolean)
+  const description = (
+    <span className="flex flex-col gap-0.5">
+      <span>{[source, ...features].join(" · ")}</span>
+      {plugin.state.status === "failed" ? (
+        <span className="text-text-danger-base whitespace-pre-wrap">{plugin.state.error}</span>
+      ) : null}
+      {error ? <span className="text-text-danger-base whitespace-pre-wrap">{error}</span> : null}
+    </span>
+  )
+  const update = () => {
+    if (busy) return
+    setBusy(true)
+    setError("")
+    void props
+      .update()
+      .catch((cause) => setError(failureMessage(cause)))
+      .finally(() => setBusy(false))
+  }
+  return (
+    <ExtensionRow
+      icon="cube"
+      name={pluginLabel(plugin)}
+      project={props.project}
+      description={description}
+    >
+      <div className="flex items-center gap-2">
+        <span className="text-11-regular text-ink-muted">
+          {plugin.state.status === "failed"
+            ? props.language.t("settings.extensions.plugins.failed")
+            : plugin.source.type === "package" && plugin.source.updating
+              ? props.language.t("settings.extensions.plugins.updating")
+              : props.language.t("settings.extensions.plugins.active")}
+        </span>
+        {plugin.source.type === "package" && plugin.source.outdated ? (
+          <Button variant="ghost" disabled={busy || !!plugin.source.updating} onClick={update}>
+            {props.language.t("settings.extensions.plugins.update")}
+          </Button>
+        ) : null}
+      </div>
+    </ExtensionRow>
+  )
+}
+function DesktopExtensions(props: {
+  items: readonly Installed[]
+  packaged: boolean
+  services: Services
+  language: SettingsLanguage
+}) {
+  const [busy, setBusy] = useState("")
+  const [error, setError] = useState("")
+  const run = (id: string, action: () => Promise<void>) => {
+    if (busy) return
+    setBusy(id)
+    setError("")
+    void action()
+      .catch((cause) => setError(failureMessage(cause)))
+      .finally(() => setBusy(""))
+  }
+  return (
+    <section className="project-settings-shared" aria-label={props.language.t("settings.extensions.desktop.title")}>
+      <div className="project-settings-extension-section-header">
+        <div className="project-settings-extension-section-copy">
+          <span>{props.language.t("settings.extensions.desktop.title")}</span>
+          <span className="project-settings-extension-empty-description">
+            {props.language.t("settings.extensions.desktop.description")}
+          </span>
+        </div>
+      </div>
+      {error ? (
+        <p className="whitespace-pre-wrap text-12-regular text-text-danger-base" role="alert">
+          {error}
+        </p>
+      ) : null}
+      <SettingsList variant="catalog">
+        {props.items.map((item) => (
+          <ExtensionRow
+            key={item.id}
+            icon="desktop"
+            name={item.name}
+            description={
+              <span className="flex flex-col gap-0.5">
+                <span>
+                  {item.id} · {item.version}
+                  {item.builtin ? ` · ${props.language.t("settings.extensions.desktop.builtin")}` : ""}
+                </span>
+                {item.error ? <span className="text-text-danger-base whitespace-pre-wrap">{item.error}</span> : null}
+              </span>
+            }
+          >
+            <div className="flex items-center gap-2">
+              {!props.packaged ? (
+                <Button
+                  variant="ghost"
+                  disabled={busy === item.id}
+                  onClick={() => run(item.id, () => props.services.reloadDesktopExtension(item.id))}
+                >
+                  {props.language.t("settings.extensions.desktop.reload")}
+                </Button>
+              ) : null}
+              <Switch
+                label={item.name}
+                fieldClass="settings-react-switch"
+                checked={item.enabled}
+                disabled={busy === item.id}
+                onCheckedChange={(enabled) =>
+                  run(item.id, () => props.services.setDesktopExtension(item.id, enabled))
+                }
+              />
+            </div>
+          </ExtensionRow>
+        ))}
+      </SettingsList>
+    </section>
   )
 }
 function SkillsLink(props: { language: SettingsLanguage }) {

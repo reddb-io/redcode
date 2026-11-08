@@ -3,6 +3,7 @@ import { AISDK } from "@opencode/core/aisdk"
 import { Command } from "@opencode/core/command"
 import { Config } from "@opencode/core/config"
 import { Credential } from "@opencode/core/credential"
+import { ExecutionCapability } from "@opencode/core/execution-capability"
 import { Database } from "@opencode/core/database/database"
 import { LayerNodePlatform } from "@opencode/util/effect/app-node-platform"
 import { AppProcess } from "@opencode/util/process"
@@ -14,6 +15,7 @@ import { HookRuntime } from "@opencode/core/hook"
 import { Form } from "@opencode/core/form"
 import { Generate } from "@opencode/core/generate"
 import { Integration } from "@opencode/core/integration"
+import { InstructionDiscovery } from "@opencode/core/instruction-discovery"
 import { KV } from "@opencode/core/kv"
 import { Location } from "@opencode/core/location"
 import { ManagedPolicy } from "@opencode/core/managed-policy"
@@ -88,6 +90,7 @@ export const makePluginTestLayer = (permission = permissionLayer) =>
       Location.node,
       Npm.node,
       Credential.node,
+      ExecutionCapability.node,
       Database.node,
       Bus.node,
       Form.node,
@@ -103,6 +106,7 @@ export const makePluginTestLayer = (permission = permissionLayer) =>
       Command.node,
       Config.node,
       Integration.node,
+      InstructionDiscovery.node,
       KV.node,
       ManagedPolicy.node,
       Mcp.node,

@@ -1,6 +1,7 @@
 /** @jsxImportSource react */
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react"
 import { AgentTools } from "@opencode/schema/agent-tools"
+import { ExecutionCapability } from "@opencode/schema/execution-capability"
 import { Schema } from "effect"
 import { card } from "@reddb-io/design-system/contracts/card"
 import { Button } from "@reddb-io/design-system/base/Button"
@@ -98,6 +99,11 @@ export function AgentToolsSettings(props: { source: ReturnType<typeof createAgen
                   </ol>
                 </div>
               </section>
+              <CapabilityOverview
+                language={language}
+                capabilities={value.capabilities ?? []}
+                appearance={appearance}
+              />
               <Button variant="secondary" size="sm" disabled={!!state.busy} onClick={() => void refetch()}>
                 {language.t("agentTools.refresh")}
               </Button>
@@ -135,6 +141,96 @@ export function AgentToolsSettings(props: { source: ReturnType<typeof createAgen
           ) : null)(snapshot)}
       </div>
     </>
+  )
+}
+
+function CapabilityOverview(props: {
+  language: SettingsLanguage
+  capabilities: ReadonlyArray<ExecutionCapability.Info>
+  appearance: ReturnType<typeof card>
+}) {
+  const ready = props.capabilities.filter((item) => item.status === "ready").length
+  const available = props.capabilities.filter((item) => item.status === "available").length
+  const groups = (["browser", "desktop", "terminal", "workspace", "other"] as const)
+    .map((kind) => ({ kind, items: props.capabilities.filter((item) => item.kind === kind) }))
+    .filter((group) => group.items.length)
+  return (
+    <section className={props.appearance.root()} aria-label={props.language.t("agentTools.capabilities.title")}>
+      <div className={props.appearance.header()}>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h3 className={props.appearance.title()}>{props.language.t("agentTools.capabilities.title")}</h3>
+          <span className="text-12-regular text-ink-muted tabular-nums">
+            {props.language.t("agentTools.capabilities.summary", {
+              ready,
+              available,
+              total: props.capabilities.length,
+            })}
+          </span>
+        </div>
+        <p className={props.appearance.description()}>{props.language.t("agentTools.capabilities.description")}</p>
+      </div>
+      <div className={props.appearance.body({ class: "flex flex-col gap-0 space-y-0" })}>
+        {groups.length ? (
+          groups.map((group) => (
+            <div key={group.kind} className="border-b border-border-weak-base py-2.5 last:border-b-0">
+              <div className="mb-1.5 flex items-baseline justify-between gap-3">
+                <span className="text-12-medium">
+                  {props.language.t(`agentTools.capabilities.kind.${group.kind}`)}
+                </span>
+                <span className="text-11-regular text-ink-muted tabular-nums">
+                  {props.language.t("agentTools.capabilities.providers", { count: group.items.length })}
+                </span>
+              </div>
+              <div className="flex flex-col gap-2">
+                {group.items.map((item) => (
+                  <div key={item.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-1 pl-2">
+                    <div className="min-w-0">
+                      <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                        <span className="text-13-medium truncate">{item.name}</span>
+                        {item.provider?.type === "plugin" ? (
+                          <span className="text-11-regular text-ink-muted">
+                            {props.language.t("agentTools.capabilities.plugin", {
+                              name: item.provider.name ?? item.provider.id,
+                            })}
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="text-12-regular text-ink-muted truncate">
+                        {props.language.t("agentTools.capabilities.target", {
+                          name: item.target.name,
+                          type: props.language.t(`agentTools.capabilities.target.${item.target.type}`),
+                        })}
+                      </p>
+                      <p className="text-11-regular text-ink-muted truncate">
+                        {item.operations.join(" · ")}
+                        {item.sessionID
+                          ? ` · ${props.language.t("agentTools.capabilities.session", { session: item.sessionID })}`
+                          : ""}
+                      </p>
+                    </div>
+                    <div className="flex flex-col items-end gap-0.5 text-right">
+                      <span className="text-12-medium">
+                        {props.language.t(`agentTools.capabilities.status.${item.status}`)}
+                      </span>
+                      <span className="text-11-regular text-ink-muted">
+                        {props.language.t(`agentTools.capabilities.source.${item.source}`)}
+                      </span>
+                    </div>
+                    {item.detail ? (
+                      <p className="col-span-2 max-h-12 overflow-auto whitespace-pre-wrap text-11-regular text-ink-muted">
+                        {item.detail}
+                      </p>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))
+        ) : (
+          <p className="py-2 text-12-regular text-ink-muted">{props.language.t("agentTools.capabilities.empty")}</p>
+        )}
+      </div>
+    </section>
   )
 }
 

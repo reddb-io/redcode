@@ -8,6 +8,8 @@ import { createStore, reconcile } from "solid-js/store"
 export type ServerHealth = {
   healthy: boolean
   version?: string
+  /** Round-trip time of the latest successful `/api/info` probe. */
+  latencyMs?: number
   incompatible?: boolean
   checking?: boolean
   unauthorized?: boolean
@@ -116,13 +118,16 @@ export async function checkServerHealth(
   }
 
   const attempt = async (count: number): Promise<ServerHealth> => {
+    const started = performance.now()
     const current = await OpenCode.make({
       baseUrl: server.url,
       fetch,
       headers,
     })
       .server.info({ signal })
-      .then((status) => ({ data: { healthy: true as const, version: status.version } }))
+      .then((status) => ({
+        data: { healthy: true as const, version: status.version, latencyMs: Math.max(0, performance.now() - started) },
+      }))
       .catch((error) => ({ error }))
 
     if ("data" in current) return current.data

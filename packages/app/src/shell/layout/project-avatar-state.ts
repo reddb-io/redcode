@@ -52,6 +52,12 @@ export function useSessionTabAvatarState(
     () => needsAttention() || (serverCtx()?.notification.session.unseenCount(sessionId()) ?? 0) > 0,
   )
 
+  const failed = createMemo(() => {
+    const ctx = serverCtx()
+    if (!ctx || needsAttention()) return false
+    return sessions().some((session) => ctx.notification.session.unseenHasError(session.id))
+  })
+
   const loading = createMemo(() => {
     const data = serverCtx()?.data
 
@@ -69,5 +75,5 @@ export function useSessionTabAvatarState(
     return busy(sessionId())
   })
 
-  return { unread, loading }
+  return { unread, failed, loading }
 }

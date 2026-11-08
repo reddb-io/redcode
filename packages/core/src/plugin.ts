@@ -63,7 +63,17 @@ const layer = Layer.effect(
         })
       })
       const exit = yield* Effect.suspend(() =>
-        plugin.effect({ ...host, storage: PluginHost.storage(kv, plugin.id) }),
+        plugin.effect({
+          ...host,
+          storage: PluginHost.storage(kv, plugin.id),
+          capability: {
+            lease: (capability) =>
+              host.capability.lease({
+                ...capability,
+                provider: { type: "plugin", id: plugin.id },
+              }),
+          },
+        }),
       ).pipe(
         grouped,
         inherit,

@@ -56,6 +56,9 @@ export type ComposerSession = {
   directory: string
   handoff?: {
     set: (message: SessionMessageUser) => void
+    /** Shows a prompt while the Location catalog is still loading; no server request is in flight yet. */
+    hold?: (message: SessionMessageUser) => void
+    settle: (messageID: string) => void
     clear: (messageID: string) => void
   }
   api: {
@@ -76,6 +79,11 @@ export type ComposerSession = {
         input: Parameters<ServerSDK["api"]["session"]["revert"]["commit"]>[0],
       ) => ReturnType<ServerSDK["api"]["session"]["revert"]["commit"]>
     }
+  }
+  file: {
+    list: (
+      input: Parameters<ServerSDK["api"]["file"]["list"]>[0],
+    ) => ReturnType<ServerSDK["api"]["file"]["list"]>
   }
   data: {
     location: { command: Pick<Data["location"]["command"], "list"> }

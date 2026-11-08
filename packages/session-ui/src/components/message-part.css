@@ -953,6 +953,38 @@
     padding: 0;
   }
 
+  [data-slot="permission-action"] {
+    font-family: var(--reddb-font-family-mono);
+    font-size: 13px;
+    font-weight: var(--reddb-font-weight-medium);
+    line-height: var(--line-height-base);
+    color: var(--reddb-color-foreground);
+    overflow-wrap: anywhere;
+  }
+
+  [data-slot="permission-input"] {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-height: 160px;
+    padding: var(--reddb-spatial-gap-sm) var(--reddb-spatial-inset-sm);
+    overflow-y: auto;
+    border: 1px solid var(--reddb-color-elevation-base-border);
+    border-radius: var(--reddb-radius-md);
+    background: var(--reddb-color-elevation-sunken-surface);
+    scrollbar-width: thin;
+
+    code {
+      font-family: var(--reddb-font-family-mono);
+      font-size: 12px;
+      font-weight: var(--reddb-font-weight-regular);
+      line-height: 1.5;
+      color: var(--reddb-color-ink-muted);
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+  }
+
   [data-slot="permission-patterns"] {
     display: flex;
     flex-direction: column;

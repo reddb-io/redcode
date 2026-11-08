@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, index, primaryKey, real, uniqueIndex } from "drizzle-orm/sqlite-core"
+import { blob, sqliteTable, text, integer, index, primaryKey, real, uniqueIndex } from "drizzle-orm/sqlite-core"
 import { sql } from "drizzle-orm"
 import { directoryColumn, pathColumn } from "../database/path.js"
 import { ProjectTable } from "../project/sql.js"
@@ -169,6 +169,38 @@ export const InstructionBlobTable = sqliteTable("instruction_blob", {
   hash: text().$type<Instruction.Hash>().primaryKey(),
   value: text({ mode: "json" }).$type<Schema.Json>(),
 })
+
+/** Content-addressed attachment bytes. Public message reads hydrate these back to the legacy inline shape. */
+export const BlobTable = sqliteTable("blob", {
+  hash: text().primaryKey(),
+  mime: text().notNull(),
+  bytes: integer().notNull(),
+  data: blob({ mode: "buffer" }).notNull(),
+  time_created: integer()
+    .notNull()
+    .$default(() => Date.now()),
+})
+
+/** A blob is readable only while a projected session message references it. */
+export const BlobRefTable = sqliteTable(
+  "blob_ref",
+  {
+    session_id: text()
+      .$type<SessionSchema.ID>()
+      .notNull()
+      .references(() => SessionTable.id, { onDelete: "cascade" }),
+    message_id: text().$type<SessionMessage.ID>().notNull(),
+    hash: text()
+      .notNull()
+      .references(() => BlobTable.hash, { onDelete: "cascade" }),
+    seq: integer().notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.session_id, table.message_id, table.hash] }),
+    index("blob_ref_hash_idx").on(table.hash),
+    index("blob_ref_session_seq_idx").on(table.session_id, table.seq),
+  ],
+)
 
 export const InstructionStateTable = sqliteTable("instruction_state", {
   session_id: text()

@@ -1099,6 +1099,11 @@ const NETWORK_ERROR_CODES = new Set([
   "ECONNREFUSED",
   "ETIMEDOUT",
   "EPIPE",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "ENETUNREACH",
+  "EHOSTUNREACH",
+  "ENETDOWN",
   "ConnectionRefused",
   "ConnectionClosed",
   "FailedToOpenSocket",
@@ -1154,6 +1159,7 @@ function apiCallError(error: APICallError) {
     cause: error,
   })
   if (error.statusCode !== undefined || !error.isRetryable) return failure
+  const code = networkFailure(error.cause)?.code
   return new AIError({
     reason: new TransportError({
       message: failure.message,
@@ -1163,6 +1169,7 @@ function apiCallError(error: APICallError) {
       transport: "http",
       operation: "request",
       url: error.url,
+      ...(code === undefined ? {} : { code }),
     }),
   })
 }

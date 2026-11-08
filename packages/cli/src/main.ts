@@ -17,6 +17,7 @@ import { Npm } from "@opencode/util/npm"
 import { Heap } from "./heap"
 import { CpuProfile } from "./cpu-profile"
 import { BootTrace } from "./boot-trace"
+import { ShutdownDeadline } from "./shutdown-deadline"
 
 if (process.env.OPENCODE_SSH_ASKPASS_PORT) {
   const { askpass } = await import("./ssh-askpass")
@@ -177,6 +178,7 @@ BootTrace.mark("modules.loaded", { version: OPENCODE_VERSION, channel: OPENCODE_
 Effect.gen(function* () {
   yield* Heap.listen
   yield* CpuProfile.listen
+  yield* ShutdownDeadline.install()
   const runFork = Effect.runForkWith(yield* Effect.context<never>())
   const uncaughtException = (cause: Error, origin: "uncaughtException" | "unhandledRejection") => {
     runFork(Effect.logError("uncaught exception", { cause, origin }))

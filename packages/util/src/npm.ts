@@ -16,7 +16,15 @@ export class InstallFailedError extends Schema.TaggedError<InstallFailedError>()
   add: Schema.Array(Schema.String).pipe(Schema.optional),
   dir: Schema.String,
   cause: Schema.optional(Schema.Defect()),
-}) {}
+}) {
+  override get message() {
+    const summary = `Failed to install ${this.add?.join(", ") || this.dir}`
+    if (!(this.cause instanceof Error)) return summary
+    const stderr = "stderr" in this.cause && typeof this.cause.stderr === "string" ? this.cause.stderr.trim() : ""
+    if (!stderr) return `${summary}: ${this.cause.message}`
+    return `${summary}: ${this.cause.message}\n${stderr}`
+  }
+}
 
 export interface Package {
   readonly directory: string

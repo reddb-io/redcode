@@ -4,6 +4,7 @@ import { DateTime, Effect, Fiber, Scope } from "effect"
 import { Agent } from "../agent.js"
 import type { Model } from "@opencode/schema/model"
 import type { Permission } from "@opencode/schema/permission"
+import { SessionOrigin } from "@opencode/schema/session-origin"
 import { Event } from "@opencode/schema/event"
 import { FSUtil } from "@opencode/util/fs-util"
 import { Bus } from "../bus.js"
@@ -114,8 +115,12 @@ export const make = Effect.fn("Session.make")(function* () {
     sessionID: SessionSchema.ID,
     input: { metadata: SessionSchema.Metadata },
   ) {
-    yield* get(sessionID)
-    yield* bus.publish(SessionEvent.MetadataUpdated, { sessionID, metadata: input.metadata })
+    const session = yield* get(sessionID)
+    const origin = session.metadata?.[SessionOrigin.MetadataKey]
+    yield* bus.publish(SessionEvent.MetadataUpdated, {
+      sessionID,
+      metadata: origin === undefined ? input.metadata : { ...input.metadata, [SessionOrigin.MetadataKey]: origin },
+    })
   })
   const setPermissions = Effect.fn("Session.setPermissions")(function* (
     sessionID: SessionSchema.ID,

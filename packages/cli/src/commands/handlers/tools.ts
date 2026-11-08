@@ -21,12 +21,7 @@ export default Runtime.handler(
     const api = client.agentTools
     const snapshot = yield* Effect.tryPromise({ try: (signal) => api.list({ signal }), catch: (error) => error })
     if (action === "list") {
-      process.stdout.write(`${snapshot.host.name} (${snapshot.host.platform}/${snapshot.host.arch})\n`)
-      snapshot.tools.forEach((tool) =>
-        process.stdout.write(
-          `${tool.id}\t${tool.settings.enabled ? "enabled" : "disabled"}\t${!tool.supported ? "unsupported" : tool.installed ? "installed" : "not installed"}\n`,
-        ),
-      )
+      process.stdout.write(formatList(snapshot))
       return
     }
     const id = yield* Schema.decodeUnknownEffect(AgentTools.ID)(Option.getOrUndefined(input.id)).pipe(
@@ -68,3 +63,38 @@ export default Runtime.handler(
     process.stdout.write(JSON.stringify(result, null, 2) + "\n")
   }),
 )
+
+type ListSnapshot = {
+  readonly host: { readonly name: string; readonly platform: string; readonly arch: string }
+  readonly tools: ReadonlyArray<{
+    readonly id: string
+    readonly settings: { readonly enabled: boolean }
+    readonly supported: boolean
+    readonly installed: boolean
+  }>
+  readonly capabilities?: ReadonlyArray<{
+    readonly kind: string
+    readonly status: string
+    readonly name: string
+    readonly target: { readonly type: string; readonly name: string }
+    readonly provider?: { readonly type: string; readonly id: string }
+  }>
+}
+
+export function formatList(snapshot: ListSnapshot) {
+  const lines = [`${snapshot.host.name} (${snapshot.host.platform}/${snapshot.host.arch})`, "Agent tools"]
+  for (const tool of snapshot.tools)
+    lines.push(
+      `${tool.id}\t${tool.settings.enabled ? "enabled" : "disabled"}\t${!tool.supported ? "unsupported" : tool.installed ? "installed" : "not installed"}`,
+    )
+  if (snapshot.capabilities?.length) {
+    lines.push("", "Operational capabilities")
+    for (const capability of snapshot.capabilities) {
+      const provider = capability.provider?.type === "plugin" ? `\tplugin:${capability.provider.id}` : ""
+      lines.push(
+        `${capability.kind}\t${capability.status}\t${capability.name}\t${capability.target.type}:${capability.target.name}${provider}`,
+      )
+    }
+  }
+  return lines.join("\n") + "\n"
+}

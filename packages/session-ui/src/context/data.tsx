@@ -40,6 +40,9 @@ export type NavigateToSessionFn = (sessionID: string) => void
 
 export type SessionHrefFn = (sessionID: string) => string
 
+export type ReadMediaUrlFn = (uri: string, mime: string, signal?: AbortSignal) => Promise<string | undefined>
+export type PeekMediaUrlFn = (uri: string) => string | undefined
+
 export const { use: useData, provider: DataProvider } = createSimpleContext({
   name: "Data",
   init: (props: {
@@ -48,6 +51,8 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
     sessionID?: string
     shellRunning?: (id: string) => boolean
     shellOutput?: (input: ShellOutputInput) => Promise<ShellOutputOutput>
+    readMedia?: ReadMediaUrlFn
+    peekMedia?: PeekMediaUrlFn
     onNavigateToSession?: NavigateToSessionFn
     onSessionHref?: SessionHrefFn
   }) => {
@@ -65,6 +70,8 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
       sessionHref: props.onSessionHref,
       shellRunning: props.shellRunning,
       shellOutput: props.shellOutput,
+      readMedia: props.readMedia,
+      peekMedia: props.peekMedia,
     }
   },
 })

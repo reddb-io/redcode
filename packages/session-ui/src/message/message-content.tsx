@@ -1,4 +1,16 @@
-import { createEffect, createMemo, createSignal, For, onCleanup, Show, type ComponentProps, type JSX } from "solid-js"
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  Match,
+  onCleanup,
+  Show,
+  Switch,
+  untrack,
+  type ComponentProps,
+  type JSX,
+} from "solid-js"
 import { createStore } from "solid-js/store"
 import { useData } from "../context"
 import { useDialog } from "@opencode/ui/context/dialog"
@@ -23,14 +35,22 @@ import { Card } from "@opencode/ui/card"
 import { quietControl } from "@reddb-io/design-system/contracts/quiet-control"
 import type {
   PromptAgentAttachment,
-  PromptFileAttachment,
+  PromptAttachment,
   SessionMessageAssistant,
   SessionMessageAssistantReasoning,
   SessionMessageCompaction,
   SessionMessageUser,
 } from "@opencode/client/promise"
 import type { SessionUserActions, SessionUserAttachmentReference, SessionUserComment } from "../actions"
-import { attached, typeLabel } from "../components/message-file"
+import { attached, imageAttachmentPlaceholderStyle, typeLabel } from "../components/message-file"
+import {
+  DISPOSED_ATTACHMENT_MEDIA_EVENT,
+  INITIAL_ATTACHMENT_MEDIA_STATE,
+  resolveAttachmentMediaTarget,
+  transitionAttachmentMedia,
+  viewAttachmentMedia,
+  type AttachmentMediaEvent,
+} from "./attachment-media-machine"
 
 export async function writeClipboard(text: string): Promise<boolean> {
   const body = typeof document === "undefined" ? undefined : document.body
@@ -271,10 +291,13 @@ export function CurrentUserMessageDisplay(props: {
   })
   const status = createMemo(() => props.actions?.pending?.status(props.message.id))
   const pending = createMemo(() => status() !== undefined && status() !== "queued")
-  const waiting = createMemo(() => status() === "steering" || status() === "stranded")
-  const attachments = createMemo(() => (props.message.files ?? []).filter(attached))
+  const actionablePending = createMemo(() => pending() && status() !== "sending")
+  const waiting = createMemo(() => status() === "steering" || status() === "stranded" || status() === "sending")
+  // Opted-in reads may leave attachment bytes behind a `media:` reference.
+  const files = createMemo(() => (props.message.files ?? []) as PromptAttachment[])
+  const attachments = createMemo(() => files().filter(attached))
   const references = createMemo(() => props.references ?? [])
-  const inlineFiles = createMemo(() => (props.message.files ?? []).filter((file) => !!file.mention))
+  const inlineFiles = createMemo(() => files().filter((file) => !!file.mention))
   const agents = createMemo(() => props.message.agents ?? [])
   const comments = createMemo(() => props.comments ?? [])
   const model = createMemo(() => modelLabel(data, i18n, props.model))
@@ -293,9 +316,10 @@ export function CurrentUserMessageDisplay(props: {
   })
 
   const stamp = createMemo(() => timefmt().format(props.message.time.created))
+  const copyText = () => props.message.text
 
   const copy = async () => {
-    if (!props.text || !(await writeClipboard(props.text))) return
+    if (!copyText() || !(await writeClipboard(copyText()))) return
     setState("copied", true)
     setTimeout(() => setState("copied", false), 2000)
   }
@@ -357,9 +381,59 @@ export function CurrentUserMessageDisplay(props: {
         </For>
         <For each={attachments()}>
           {(file) => {
-            const url = () => (file.source.type === "uri" ? file.source.uri : `data:${file.mime};base64,${file.data}`)
+            const mediaTarget = createMemo(() =>
+              resolveAttachmentMediaTarget(file, { peekMedia: data.peekMedia, hasReader: !!data.readMedia }),
+            )
+            const [mediaState, setMediaState] = createSignal(INITIAL_ATTACHMENT_MEDIA_STATE)
+            let mediaController: AbortController | undefined
+            let mediaTimer: ReturnType<typeof setTimeout> | undefined
+
+            const dispatchMedia = (event: AttachmentMediaEvent) => {
+              const step = transitionAttachmentMedia(untrack(mediaState), event)
+              setMediaState(step.state)
+              step.effects.forEach((effect) => {
+                if (effect.type === "cancel") {
+                  clearTimeout(mediaTimer)
+                  mediaTimer = undefined
+                  mediaController?.abort()
+                  mediaController = undefined
+                  return
+                }
+                const controller = new AbortController()
+                const readMedia = data.readMedia
+                mediaController = controller
+                mediaTimer = setTimeout(
+                  () => dispatchMedia({ type: "read.timed-out", attempt: effect.attempt }),
+                  effect.timeoutMs,
+                )
+                void Promise.resolve()
+                  .then(() => readMedia?.(effect.uri, effect.mime, controller.signal))
+                  .then(
+                    (loaded) =>
+                      dispatchMedia(
+                        loaded
+                          ? { type: "read.succeeded", attempt: effect.attempt, src: loaded }
+                          : { type: "read.failed", attempt: effect.attempt },
+                      ),
+                    () => dispatchMedia({ type: "read.failed", attempt: effect.attempt }),
+                  )
+              })
+            }
+
+            createEffect(() => dispatchMedia({ type: "target.synced", target: mediaTarget() }))
+            onCleanup(() => dispatchMedia(DISPOSED_ATTACHMENT_MEDIA_EVENT))
+
+            const mediaView = createMemo(() => viewAttachmentMedia(mediaState(), mediaTarget()))
             const name = () => file.name ?? i18n.t("ui.message.attachment.alt")
             const image = () => file.mime.startsWith("image/")
+            const width = () => ("width" in file ? file.width : undefined)
+            const height = () => ("height" in file ? file.height : undefined)
+            const placeholderStyle = () =>
+              imageAttachmentPlaceholderStyle({
+                width: width(),
+                height: height(),
+                loaded: mediaView().status === "ready",
+              })
 
             return (
               <Show
@@ -368,10 +442,42 @@ export function CurrentUserMessageDisplay(props: {
                   <div
                     data-slot="user-message-attachment"
                     data-type="image"
-                    data-clickable="true"
-                    onClick={() => dialog.show(() => <ImagePreview src={url()} alt={name()} />)}
+                    data-clickable={mediaView().clickable ? "true" : undefined}
+                    data-placeholder={mediaView().placeholder ? "true" : undefined}
+                    data-width={width()}
+                    data-height={height()}
+                    style={placeholderStyle()}
+                    onClick={() => {
+                      const src = mediaView().src
+                      if (src) return dialog.show(() => <ImagePreview src={src} alt={name()} />)
+                      if (mediaView().canRetry)
+                        dispatchMedia({ type: "retry.requested", target: mediaTarget() })
+                    }}
                   >
-                    <img data-slot="user-message-attachment-image" src={url()} alt={name()} />
+                    <Switch>
+                      <Match when={mediaView().src}>
+                        {(src) => (
+                          <img
+                            data-slot="user-message-attachment-image"
+                            src={src()}
+                            width={width()}
+                            height={height()}
+                            alt={name()}
+                          />
+                        )}
+                      </Match>
+                      <Match when={mediaView().status === "failed"}>
+                        <div
+                          data-slot="user-message-attachment-icon"
+                          role="img"
+                          aria-label={i18n.t("ui.fileMedia.state.error", {
+                            kind: i18n.t("ui.fileMedia.kind.image"),
+                          })}
+                        >
+                          <Icon name="outline-photo" size="small" />
+                        </div>
+                      </Match>
+                    </Switch>
                   </div>
                 }
               >
@@ -459,7 +565,7 @@ export function CurrentUserMessageDisplay(props: {
               {stamp()}
             </span>
           </span>
-          <Show when={pending()}>
+          <Show when={actionablePending()}>
             <MessageActionButton
               icon="arrow-down-to-line"
               label={i18n.t("ui.message.moveToQueue")}
@@ -529,7 +635,7 @@ export function CurrentUserMessageDisplay(props: {
 
 function CurrentHighlightedText(props: {
   text: string
-  files: PromptFileAttachment[]
+  files: PromptAttachment[]
   agents: PromptAgentAttachment[]
 }) {
   const segments = createMemo(() => {

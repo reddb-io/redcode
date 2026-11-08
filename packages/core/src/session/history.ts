@@ -8,10 +8,12 @@ import { Instructions } from "../instructions/index.js"
 import { InstructionState } from "./instruction-state.js"
 import { SessionProviderContext } from "./provider-context.js"
 import { SessionMessageTable } from "./sql.js"
+import { SessionBlob } from "./blob.js"
 
 type DatabaseService = Database.Interface["db"]
 
 const decode = Schema.decodeUnknownEffect(SessionMessage.Info)
+const decodeMedia = Schema.decodeUnknownEffect(SessionMessage.MediaInfo)
 
 /**
  * Which completed compactions bound a history read. Local summaries always do. Native
@@ -59,8 +61,12 @@ export const latestCompaction = Effect.fnUntraced(function* (
     .pipe(Effect.orDie)
 })
 
-export const decodeMessageRow = (row: typeof SessionMessageTable.$inferSelect) =>
-  decode({ ...row.data, id: row.id, type: row.type }).pipe(
+export const decodeMessageRow = Effect.fnUntraced(function* (
+  db: DatabaseService,
+  row: typeof SessionMessageTable.$inferSelect,
+) {
+  const hydrated = yield* SessionBlob.hydrateRow(db, row)
+  return yield* decode({ ...hydrated.data, id: hydrated.id, type: hydrated.type }).pipe(
     Effect.tap((message) =>
       SessionProviderContext.isCheckpoint(message)
         ? SessionProviderContext.validate(message.providerContext)
@@ -74,6 +80,23 @@ export const decodeMessageRow = (row: typeof SessionMessageTable.$inferSelect) =
         }),
     ),
   )
+})
+
+export const decodeMessageRowWithRefs = Effect.fnUntraced(function* (
+  db: DatabaseService,
+  row: typeof SessionMessageTable.$inferSelect,
+) {
+  const kept = yield* SessionBlob.keepRow(db, row)
+  return yield* decodeMedia({ ...kept.data, id: kept.id, type: kept.type }).pipe(
+    Effect.mapError(
+      () =>
+        new MessageDecodeError({
+          sessionID: SessionSchema.ID.make(row.session_id),
+          messageID: SessionMessage.ID.make(row.id),
+        }),
+    ),
+  )
+})
 
 const messageEntries = Effect.fnUntraced(function* (
   db: DatabaseService,
@@ -94,7 +117,7 @@ const messageEntries = Effect.fnUntraced(function* (
     .all()
     .pipe(Effect.orDie)
   const entries = yield* Effect.forEach(rows, (row) =>
-    decodeMessageRow(row).pipe(Effect.map((message) => ({ seq: row.seq, message }))),
+    decodeMessageRow(db, row).pipe(Effect.map((message) => ({ seq: row.seq, message }))),
   )
   // Re-expansion may cross a native checkpoint whose completion already advanced the instruction
   // epoch: the baseline supersedes the chronological updates before it. Forks seed their baseline
@@ -180,7 +203,7 @@ export const synthetics = Effect.fn("SessionHistory.synthetics")(function* (
     .orderBy(asc(SessionMessageTable.seq))
     .all()
     .pipe(Effect.orDie)
-  return yield* Effect.forEach(rows, decodeMessageRow)
+  return yield* Effect.forEach(rows, (row) => decodeMessageRow(db, row))
 })
 
 /** Returns the session's first user message. */
@@ -196,7 +219,7 @@ export const firstUserMessage = Effect.fn("SessionHistory.firstUserMessage")(fun
     .get()
     .pipe(Effect.orDie)
   if (!row) return undefined
-  const message = yield* decodeMessageRow(row).pipe(Effect.orElseSucceed(() => undefined))
+  const message = yield* decodeMessageRow(db, row).pipe(Effect.orElseSucceed(() => undefined))
   return message?.type === "user" ? message : undefined
 })
 

@@ -126,7 +126,7 @@ export function Shell(props: {
               paddingBottom:
                 view.mobile || state.settings
                   ? "0px"
-                  : "var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))",
+                  : "var(--shell-safe-area-bottom, var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)))",
               "--settings-bottom-inset": state.bottomTitlebar
                 ? "40px"
                 : view.mobile
@@ -138,6 +138,17 @@ export function Shell(props: {
           <SharedSlot mount={props.slots.content} />
         </main>
       </div>
+      <div
+        data-slot="composer-touch-bar-mount"
+        className="shrink-0"
+        style={
+          {
+            "--composer-touch-safe-area": view.mobile
+              ? "0px"
+              : "var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))",
+          } as CSSProperties
+        }
+      />
       <SharedSlot mount={props.slots.bottom} />
       {view.mobile && <MobileNavigationDock view={view} navigation={navigation} safeArea={!state.bottomTitlebar} />}
       <SharedSlot mount={props.slots.notifications} />

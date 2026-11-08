@@ -151,6 +151,8 @@ export const Status = Schema.Struct({
   worker: Registration,
   connection: Schema.Literals(["unchecked", "online", "offline"]),
   platform: optional(Text),
+  /** Round-trip time of the latest successful coordinator health probe. */
+  latencyMs: optional(Schema.Finite),
 }).annotate({ identifier: "Worker.Status" })
 export interface Status extends Schema.Schema.Type<typeof Status> {}
 export const Batch = Schema.Struct({

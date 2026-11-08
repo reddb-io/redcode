@@ -10,6 +10,10 @@ import { getCursorPosition, setCursorPosition } from "./editor/dom"
 import { useSessionLayout } from "@/session/session-layout"
 import { createSessionOwnership } from "@/session/session-ownership"
 import { useWorkspaceLocation } from "@/workspaces/location"
+import { useServerSDK } from "@/runtime/server/client"
+import { formatServerError } from "@/runtime/server/errors"
+import { dismissToast } from "@/shell/notifications/toast"
+import { createConfigReloadState, transitionConfigReload, type ConfigReloadEvent } from "./reload-machine"
 
 const withCategory = (category: string) => {
   return (option: Omit<CommandOption, "category">): CommandOption => ({
@@ -24,6 +28,7 @@ export const useComposerCommands = (input: { model?: ModelSelection } = {}) => {
   const language = useLanguage()
   const local = useLocal()
   const workspace = useWorkspaceLocation()
+  const sdk = useServerSDK()
   const { sessionKey } = useSessionLayout()
   const sessionOwnership = createSessionOwnership(sessionKey)
   const model = input.model ?? local.model
@@ -31,6 +36,45 @@ export const useComposerCommands = (input: { model?: ModelSelection } = {}) => {
   const modelCommand = withCategory(language.t("command.category.model"))
   const agentCommand = withCategory(language.t("command.category.agent"))
   const providerCommand = withCategory(language.t("command.category.provider"))
+  const serverCommand = withCategory(language.t("command.category.server"))
+
+  let reloadState = createConfigReloadState()
+  let reloadToast: number | undefined
+
+  const reloadConfig = (event: ConfigReloadEvent) => {
+    const next = transitionConfigReload(reloadState, event)
+    reloadState = next.state
+    next.effects.forEach((effect) => {
+      if (effect.type === "reload.run")
+        return void sdk.api.location.reload().then(
+          () => reloadConfig({ type: "reload.succeeded", attempt: effect.attempt }),
+          (cause: unknown) => reloadConfig({ type: "reload.failed", attempt: effect.attempt, cause }),
+        )
+
+      if (effect.type === "toast.pending.show")
+        return void (reloadToast = showToast({
+          variant: "loading",
+          title: language.t("command.config.reload.pending"),
+          persistent: true,
+        }))
+
+      if (effect.type === "toast.pending.dismiss") {
+        if (reloadToast !== undefined) dismissToast(reloadToast)
+        reloadToast = undefined
+
+        return
+      }
+
+      if (effect.type === "toast.succeeded")
+        return void showToast({ variant: "success", title: language.t("command.config.reload.done") })
+
+      showToast({
+        variant: "error",
+        title: language.t("command.config.reload.failed"),
+        description: formatServerError(effect.cause, language.t),
+      })
+    })
+  }
 
   // Mirrors the TUI's `/connect`, which the Console's setup steps tell people to run.
   const connectProvider = async () => {
@@ -151,6 +195,13 @@ export const useComposerCommands = (input: { model?: ModelSelection } = {}) => {
       description: language.t("command.provider.connect.redcodeDescription"),
       slash: "connect",
       onSelect: connectProvider,
+    }),
+    serverCommand({
+      id: "config.reload",
+      title: language.t("command.config.reload"),
+      description: language.t("command.config.reload.description"),
+      slash: "reload",
+      onSelect: () => reloadConfig({ type: "reload.requested" }),
     }),
     agentCommand({
       id: "agent.cycle",

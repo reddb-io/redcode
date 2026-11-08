@@ -42,7 +42,7 @@ test("an attention glow becomes idle after ignition", async () => {
 
   try {
     await app.renderOnce()
-    expect(app.renderer.root.liveCount).toBe(1)
+    expect(app.renderer.root.liveCount).toBe(0)
     await Bun.sleep(650)
     await app.renderOnce()
     expect(app.renderer.root.liveCount).toBe(0)

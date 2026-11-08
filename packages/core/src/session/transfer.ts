@@ -22,6 +22,7 @@ import { SessionEvent } from "./event.js"
 import { SessionMessage } from "./message.js"
 import { SessionProjector } from "./projector.js"
 import { SessionMessageTable, SessionTable } from "./sql.js"
+import { SessionBlob } from "./blob.js"
 
 export const Data = SessionTransfer.Data
 export type Data = SessionTransfer.Data
@@ -111,7 +112,22 @@ const layer = Layer.effect(
               commit: (seq) =>
                 Effect.gen(function* () {
                   if (messages.length > 0) {
-                    yield* db.insert(SessionMessageTable).values(messages).run().pipe(Effect.orDie)
+                    const stored = yield* Effect.forEach(messages, (message) =>
+                      SessionBlob.externalize(db, message.data).pipe(
+                        Effect.map((data) => ({ ...message, data })),
+                      ),
+                    )
+                    yield* db.insert(SessionMessageTable).values(stored).run().pipe(Effect.orDie)
+                    yield* Effect.forEach(
+                      stored,
+                      (message) =>
+                        SessionBlob.syncRefs(
+                          db,
+                          { sessionID, messageID: message.id, seq: message.seq },
+                          message.data,
+                        ),
+                      { discard: true },
+                    )
                     yield* Bus.reserveSequence(db, sessionID, seq + messages.length)
                   }
                   yield* db

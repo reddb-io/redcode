@@ -8,13 +8,32 @@ import { getUserShell, loadShellEnv } from "../service/shell-env"
 import { getStore } from "../storage/store"
 import { registerRendererProtocol, setDockIcon, setProtocolReporter } from "../windows"
 import { scoped } from "../native/logging"
+import { nativeT } from "../native/translations"
 import { ShellIntegration } from "./shell-integration"
 
 // electron-context-menu attaches to every existing and future window, so it can load once the first
 // window is up instead of holding up startup with its dependency tree.
 export const installContextMenu = Effect.gen(function* () {
   const { default: contextMenu } = yield* Effect.promise(() => import("electron-context-menu"))
-  contextMenu({ showSaveImageAs: true, showLookUpSelection: false, showSearchWithGoogle: false })
+  contextMenu({
+    showSaveImageAs: true,
+    showLookUpSelection: false,
+    showSearchWithGoogle: false,
+    labels: {
+      get cut() {
+        return nativeT("desktop.menu.cut")
+      },
+      get copy() {
+        return nativeT("desktop.menu.copy")
+      },
+      get paste() {
+        return nativeT("desktop.menu.paste")
+      },
+      get selectAll() {
+        return nativeT("desktop.menu.selectAll")
+      },
+    },
+  })
 })
 
 export const prepareApplicationEnvironment = Effect.gen(function* () {
@@ -77,17 +96,14 @@ const loadSystemCertificates = Effect.try({
 }).pipe(Effect.catch((error) => Effect.logWarning("failed to load system certificates", { error })))
 
 function ensureLoopbackNoProxy() {
-  const loopback = ["127.0.0.1", "localhost", "::1"]
+  const noProxy = [
+    ...new Set(
+      [process.env.NO_PROXY, process.env.no_proxy, "127.0.0.1,localhost,::1"].flatMap((value) =>
+        (value ?? "").split(",").flatMap((entry) => entry.trim() || []),
+      ),
+    ),
+  ].join(",")
 
-  ;["NO_PROXY", "no_proxy"].forEach((key) => {
-    const items = (process.env[key] ?? "")
-      .split(",")
-      .map((value) => value.trim())
-      .filter(Boolean)
-
-    loopback.forEach((host) => {
-      if (!items.some((value) => value.toLowerCase() === host)) items.push(host)
-    })
-    process.env[key] = items.join(",")
-  })
+  process.env.NO_PROXY = noProxy
+  process.env.no_proxy = noProxy
 }

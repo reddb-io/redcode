@@ -20,7 +20,9 @@ import {
 } from "./content-cache"
 import { createFileViewCache } from "./view-cache"
 import { useServerSDK } from "@/runtime/server/client"
+import { useData } from "@/runtime/server/current"
 import { formatServerError } from "@/runtime/server/errors"
+import { artifactMime } from "@opencode/util/artifact"
 import { createFileTreeStore } from "./tree-store"
 import { invalidateFromWatcher } from "./watcher"
 import {
@@ -42,6 +44,7 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
     const sdk = useWorkspaceLocation()
     const params = useParams()
     const serverSDK = useServerSDK()
+    const data = useData()
     const language = useLanguage()
     const extensions = useExtensionAttachment()
 
@@ -182,15 +185,24 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
 
       // Files outside the workspace are read from their own directory, like markdown images.
       // The trailing separator from getDirectory keeps "/" and "C:/" valid, like readLocalImage.
+      const isVirtualSkill = file.startsWith("skill://") || file.startsWith("/builtin/")
       const request = path.absolute(file)
         ? { path: getFilename(file), location: { directory: getDirectory(file) } }
         : { path: file, location: { directory } }
 
-      const promise = serverSDK.api.file
-        .read(request)
-        .then((data) => {
+      const read = async () => {
+        if (!isVirtualSkill) return fileContentFromBytes(file, await serverSDK.api.file.read(request))
+        if (data.location.skill.list({ directory }) === undefined) await data.location.skill.sync({ directory })
+        const skill = (data.location.skill.list({ directory }) ?? data.location.skill.list())?.find(
+          (item) => item.path === file,
+        )
+        if (!skill) throw new Error(`Virtual skill not found: ${file}`)
+        return { type: "text" as const, content: skill.content, mimeType: artifactMime(file) }
+      }
+
+      const promise = read()
+        .then((content) => {
           if (scope() !== directory) return
-          const content = fileContentFromBytes(file, data)
           setLoaded(file, content)
           touchFileContent(file, approxBytes(content))
           evictContent(new Set([file]))
@@ -217,6 +229,15 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
       const file = path.normalize(input)
 
       if (!file) return Promise.resolve(false)
+
+      if (file.startsWith("skill://") || file.startsWith("/builtin/")) {
+        const directory = scope()
+        const find = () =>
+          (data.location.skill.list({ directory }) ?? data.location.skill.list())?.some((item) => item.path === file) ??
+          false
+        if (data.location.skill.list({ directory }) !== undefined) return Promise.resolve(find())
+        return data.location.skill.sync({ directory }).then(find, () => false)
+      }
 
       const parent = /[\\/]/.test(file) ? getDirectory(file) : undefined
 

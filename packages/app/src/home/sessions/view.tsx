@@ -1,4 +1,6 @@
 import type { SessionInfo } from "@opencode/client/promise"
+import { SessionOrigin } from "@opencode/schema/session-origin"
+import { Option, Schema } from "effect"
 import { createEffect, getOwner, on, runWithOwner, untrack } from "solid-js"
 import type { useLanguage } from "@/runtime/i18n/language"
 import type { ServerConnection } from "@/runtime/server/registry"
@@ -16,6 +18,8 @@ import {
 import { HomeSessionStatus } from "./status"
 import { HomeSessionsNativeView } from "./view.react"
 import "./view.css"
+
+const decodeOrigin = Schema.decodeUnknownOption(SessionOrigin.Info)
 
 export type HomeSessionsViewProps = {
   language: ReturnType<typeof useLanguage>
@@ -96,6 +100,8 @@ export function createHomeSessionsViewServices(props: HomeSessionsViewProps) {
     project: { ...record.project, icon: record.project.icon ? { ...record.project.icon } : undefined },
     key: homeSessionSearchKey(record),
     title: sessionLabel(record.session),
+    origin:
+      Option.getOrUndefined(decodeOrigin(record.session.metadata?.[SessionOrigin.MetadataKey]))?.surface ?? "unknown",
     location: { ...props.location(record) },
     pinned: props.isPinned(record.session),
     status: status(record),

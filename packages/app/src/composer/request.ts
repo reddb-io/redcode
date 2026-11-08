@@ -42,6 +42,8 @@ type BuildPromptRequestInput = {
   images: (Omit<ImageAttachmentPart, "blob"> & { dataUrl: string })[]
   text: string
   sessionDirectory: string
+  /** Comment mentions that resolve to existing files. Other `@words` remain plain text. */
+  existingMentions?: ReadonlySet<string>
 }
 
 const absolute = (directory: string, path: string) => {
@@ -67,6 +69,11 @@ const parseCommentMentions = (comment: string) => {
 
     return [path]
   })
+}
+
+/** Paths named with `@` inside comments, before checking whether they exist. */
+export function commentMentions(context: ContextItem[]) {
+  return context.flatMap((item) => (item.comment ? parseCommentMentions(item.comment) : []))
 }
 
 const isFileAttachment = (part: Prompt[number]): part is FileAttachmentPart => part.type === "file"
@@ -124,6 +131,8 @@ export function buildPromptRequest(input: BuildPromptRequestInput): PromptReques
 
   const mentioned = (comment: string) =>
     parseCommentMentions(comment).flatMap((path) => {
+      if (input.existingMentions && !input.existingMentions.has(path)) return []
+
       const uri = `file://${encodeFilePath(absolute(input.sessionDirectory, path))}`
 
       if (used.has(uri)) return []

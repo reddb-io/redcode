@@ -180,6 +180,12 @@ export function createComposerEditor(input: {
       return
     }
 
+    if (command.type === "draft.removeTextBefore") {
+      draft.removeTextBefore(command.value)
+
+      return
+    }
+
     if (command.type === "mention.add") {
       if (command.item.mention) draft.addMention(command.item.mention, command.range)
 
@@ -237,6 +243,13 @@ export function createComposerEditor(input: {
   }
 
   const onKeyDown = (event: KeyboardEvent) => {
+    // Escape, Enter and Tab cancel, confirm or cycle IME candidates; Safari can report them as keyCode 229.
+    if (
+      event.isComposing ||
+      (event.keyCode === 229 && (event.key === "Escape" || event.key === "Enter" || event.key === "Tab"))
+    )
+      return true
+
     if (
       state.mode === "normal" &&
       (event.metaKey || event.ctrlKey) &&

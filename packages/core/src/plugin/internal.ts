@@ -9,6 +9,7 @@ import { Context, Effect, Scope } from "effect"
 import { HttpClient } from "effect/unstable/http"
 import { Agent } from "../agent.js"
 import { AgentTools } from "../agent-tools.js"
+import { ExecutionCapability } from "../execution-capability.js"
 import { AgentToolsPlugin } from "./agent-tools.js"
 import { Model } from "../model.js"
 import { Provider } from "../provider.js"
@@ -157,6 +158,7 @@ import { WellKnownPlugin } from "../wellknown/plugin.js"
 const services = [
   Agent.Service,
   AgentTools.Service,
+  ExecutionCapability.Service,
   AppProcess.Service,
   Provider.Service,
   Model.Service,
@@ -233,6 +235,7 @@ export type Requirements = Context.Service.Identifier<(typeof services)[number]>
 export const requirements = LayerNode.group([
   Agent.node,
   AgentTools.node,
+  ExecutionCapability.node,
   AppProcess.node,
   Provider.node,
   Model.node,

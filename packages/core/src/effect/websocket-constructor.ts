@@ -2,7 +2,7 @@
 import { NodeWS } from "@effect/platform-node/NodeSocket"
 import { HttpProxyAgent } from "http-proxy-agent"
 import { HttpsProxyAgent } from "https-proxy-agent"
-import { Layer } from "effect"
+import { Effect, Layer } from "effect"
 import { Headers } from "effect/unstable/http"
 import { Socket } from "effect/unstable/socket"
 
@@ -48,7 +48,7 @@ const proxy = (value: string, environment: Environment = process.env) => {
   )
 }
 
-const constructorOptions = (input: string | Array<string> | undefined): WebSocketOptions => {
+const constructorOptions = (input: string | Array<string> | WebSocketOptions | undefined): WebSocketOptions => {
   if (typeof input === "string" || Array.isArray(input)) return { protocols: input }
   // AI routes pass handshake options through Effect's browser-shaped constructor.
   return (input ?? {}) as WebSocketOptions
@@ -60,7 +60,7 @@ const proxyAgent = (url: string, selectedProxy: string | undefined) => {
   return new HttpProxyAgent(selectedProxy)
 }
 
-const layer = Layer.succeed(Socket.WebSocketConstructor, (url, input) => {
+const open = (url: string, input?: string | Array<string> | WebSocketOptions) => {
   const config = constructorOptions(input)
   const selectedProxy = proxy(url)
   // Keep trust on the runtime store so NODE_EXTRA_CA_CERTS remains additive.
@@ -85,6 +85,17 @@ const layer = Layer.succeed(Socket.WebSocketConstructor, (url, input) => {
     : new NodeWS.WebSocket(url, native)
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- ws implements the WebSocket surface consumed by the AI transport.
   return socket as unknown as globalThis.WebSocket
-})
+}
 
-export const WebSocketConstructor = { layer, proxy } as const
+const layer = Layer.succeed(Socket.WebSocketConstructor, (url, input) => open(url, input))
+
+/** Opens an Effect socket with authenticated WebSocket upgrade headers. */
+const authenticated = (url: string, headers: Readonly<Record<string, string>>) =>
+  Socket.fromWebSocket(
+    Effect.acquireRelease(
+      Effect.sync(() => open(url, { headers: Headers.fromInput(headers) })),
+      (socket) => Effect.sync(() => socket.close(1000)),
+    ),
+  )
+
+export const WebSocketConstructor = { authenticated, layer, proxy } as const

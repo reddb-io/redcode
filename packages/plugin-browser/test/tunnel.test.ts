@@ -12,7 +12,9 @@ test("TCP relay preserves bounded binary chunks and half-close", async () => {
   await once(server.listen(0, "127.0.0.1"), "listening")
   const address = server.address()
   if (!address || typeof address === "string") throw new Error("No TCP address")
-  const tunnel = BrowserTunnel.make()
+  const tunnel = BrowserTunnel.make({
+    allowPrivateTarget: (host, port) => host === "127.0.0.1" && port === address.port,
+  })
   try {
     const id = await Effect.runPromise(tunnel.open({ host: "127.0.0.1", port: address.port }))
     const received = (async () => {
@@ -42,7 +44,9 @@ test("cancelled reads release their listener and attachment disposal closes sock
   await once(server.listen(0, "127.0.0.1"), "listening")
   const address = server.address()
   if (!address || typeof address === "string") throw new Error("No TCP address")
-  const tunnel = BrowserTunnel.make()
+  const tunnel = BrowserTunnel.make({
+    allowPrivateTarget: (host, port) => host === "127.0.0.1" && port === address.port,
+  })
   try {
     const id = await Effect.runPromise(tunnel.open({ host: "127.0.0.1", port: address.port }))
     const peer = await accepted.promise
@@ -74,7 +78,7 @@ test("HTTP proxy requires local credentials and resolves targets only through it
   })
   const port = target.port
   if (port === undefined) throw new Error("No HTTP port")
-  const tunnel = BrowserTunnel.make()
+  const tunnel = BrowserTunnel.make({ allowPrivateTarget: (host) => host === "127.0.0.1" })
   const destinations: Browser.TunnelTarget[] = []
   const proxy = await BrowserProxy.make({
     open: (destination, signal) => {

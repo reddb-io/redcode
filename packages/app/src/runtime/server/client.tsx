@@ -3,12 +3,15 @@ import { createClientConnection, createPtyClient, type ClientConnectionStatus } 
 import { createGlobalEmitter } from "@solid-primitives/event-bus"
 import { type Accessor, createEffect, on, onCleanup } from "solid-js"
 import { createApiForServer, type ServerApi } from "@/runtime/server/api"
+import { createMediaCache, type MediaCache } from "@/runtime/server/media"
+import { setMediaBlobLoader } from "@/runtime/persistence/drafts"
 import { usePlatform } from "@/runtime/platform/platform"
 import { ServerConnection } from "./registry"
 import { createRefCountMap } from "@/runtime/server/refcount"
 import { createRequestQueue } from "@/runtime/server/request-queue"
 import { ServerScope } from "@/runtime/server/scope"
 import { useServer } from "./current"
+import { createEndpointSyncState, transitionEndpointSync, type EndpointSyncEvent } from "./server-sync/endpoint-machine"
 
 type OpenCodeEventMap = { [Type in OpenCodeEvent["type"]]: Extract<OpenCodeEvent, { type: Type }> }
 
@@ -62,7 +65,9 @@ type ServerSDKBase = {
   server: ServerConnection.Any
   scope: ServerScope
   url: string
+  http: ServerConnection.HttpBase
   api: ServerApi
+  media: MediaCache
   pty: ReturnType<typeof createPtyClient>
   connection: {
     status: Accessor<ServerConnectionStatus>
@@ -74,23 +79,45 @@ type ServerSDKBase = {
 
 function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerScope): ServerSDKBase {
   const platform = usePlatform()
-  const transport = createServerTransport({ http: server.http, fetch: platform.fetch })
-
-  if (server.type === "extension") {
-    createEffect(
-      on(
-        () => `${server.http.url}\0${server.http.password ?? ""}`,
-        () => transport.update(server.http),
-        { defer: true },
-      ),
-    )
-  }
+  const transport = createServerTransport({ http: server.http, fetch: platform.fetch, client: clientIdentity(platform) })
+  const media = createMediaCache(() => transport.api)
+  const serverKey = String(ServerConnection.key(server))
+  setMediaBlobLoader(serverKey, (uri) => media.load(uri))
+  onCleanup(() => {
+    setMediaBlobLoader(serverKey, undefined)
+    media.dispose()
+  })
 
   const events = createOpenCodeEventSource()
   const reconnect = server.type === "extension" || server.type === "sidecar" ? server.reconnect : undefined
+  let endpoint = createEndpointSyncState(transport.http)
+
+  function dispatchEndpoint(event: EndpointSyncEvent) {
+    const result = transitionEndpointSync(endpoint, event)
+    endpoint = result.state
+    result.effects.forEach((effect) => {
+      if (effect.type === "transport.update") return void transport.update(effect.http)
+      connection.internal.resync("Server endpoint changed")
+    })
+  }
 
   const connection = createClientConnection(transport.api, {
-    reconnect: reconnect ? async (signal) => transport.update(await reconnect(signal)) : undefined,
+    reconnect: reconnect
+      ? async (signal) => {
+          dispatchEndpoint({ type: "resolve.started" })
+
+          if (endpoint.type !== "resolving") return transport.api
+          const attempt = endpoint.attempt
+          const resolution = reconnect(signal)
+          void resolution.catch(() => dispatchEndpoint({ type: "resolve.failed", attempt }))
+
+          return resolution.then((http) => {
+            dispatchEndpoint({ type: "resolve.succeeded", attempt, http })
+
+            return transport.api
+          })
+        }
+      : undefined,
     flushInterval: 16,
     pageLifecycle: true,
     onEvent(event) {
@@ -104,15 +131,33 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
     },
   })
 
+  if (server.type === "extension" || server.type === "sidecar") {
+    createEffect(
+      on(
+        () => `${server.http.url}\0${server.http.password ?? ""}`,
+        () => dispatchEndpoint({ type: "endpoint.reported", http: server.http }),
+        { defer: true },
+      ),
+    )
+  }
+  onCleanup(() => {
+    dispatchEndpoint({ type: "disposed" })
+    transport.dispose()
+  })
+
   return {
     server,
     scope,
     get url() {
       return transport.url
     },
+    get http() {
+      return transport.http
+    },
     get api() {
       return transport.api
     },
+    media,
     get pty() {
       return transport.pty
     },
@@ -121,16 +166,23 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
   }
 }
 
-export function createServerTransport(input: { http: ServerConnection.HttpBase; fetch?: typeof globalThis.fetch }): {
+export function createServerTransport(input: {
+  http: ServerConnection.HttpBase
+  fetch?: typeof globalThis.fetch
+  client?: { id: string; surface: "desktop" | "web"; version?: string }
+}): {
   update(http: ServerConnection.HttpBase): ServerApi
   readonly url: string
+  readonly http: ServerConnection.HttpBase
   readonly api: ServerApi
   readonly pty: ReturnType<typeof createPtyClient>
+  dispose(): void
 } {
   const queue = createRequestQueue({ fetch: input.fetch ?? globalThis.fetch })
 
-  const build = (http: ServerConnection.HttpBase) => {
-    const api = createApiForServer({ server: http, fetch: queue.fetch })
+  const build = (endpoint: ServerConnection.HttpBase) => {
+    const http = { url: endpoint.url, password: endpoint.password }
+    const api = createApiForServer({ server: http, fetch: queue.fetch, client: input.client })
 
     return { http, api, pty: createPtyClient(api, { url: http.url }) }
   }
@@ -139,6 +191,7 @@ export function createServerTransport(input: { http: ServerConnection.HttpBase; 
 
   return {
     update(http: ServerConnection.HttpBase) {
+      if (sameEndpoint(http, state.current.http)) return state.current.api
       state.current = build(http)
 
       return state.current.api
@@ -146,13 +199,42 @@ export function createServerTransport(input: { http: ServerConnection.HttpBase; 
     get url() {
       return state.current.http.url
     },
+    get http() {
+      return state.current.http
+    },
     get api() {
       return state.current.api
     },
     get pty() {
       return state.current.pty
     },
+    dispose: queue.dispose,
   }
+}
+
+function sameEndpoint(a: ServerConnection.HttpBase, b: ServerConnection.HttpBase) {
+  return a.url === b.url && a.password === b.password
+}
+
+function clientIdentity(platform: ReturnType<typeof usePlatform>) {
+  if (platform.platform === "desktop")
+    return { id: platform.windowID, surface: platform.platform, version: platform.version }
+  const key = "redcode.client.id"
+  const existing = (() => {
+    try {
+      return window.localStorage.getItem(key)
+    } catch {
+      return null
+    }
+  })()
+  const id = existing || crypto.randomUUID()
+  if (!existing)
+    try {
+      window.localStorage.setItem(key, id)
+    } catch {
+      // Private browsing may expose storage but reject writes; the runtime identity remains stable for this page.
+    }
+  return { id, surface: platform.platform, version: platform.version }
 }
 
 export type ServerSDK = ServerSDKBase & {

@@ -11,6 +11,7 @@ import {
   StreamableHTTPClientTransport,
   UnauthorizedError,
   UnsupportedProtocolVersionError,
+  type CallToolRequestOptions,
   isJSONRPCResultResponse,
   type CallToolResult as SdkCallToolResult,
   type ElicitRequestFormParams,
@@ -391,6 +392,7 @@ export const connect = Effect.fnUntraced(function* (
       }),
     )
     const catalog = { timeout: config.timeout?.catalog ?? DEFAULT_CATALOG_TIMEOUT }
+    const listed = new Map<string, Tool>()
     const execution = config.timeout?.execution ?? DEFAULT_EXECUTION_TIMEOUT
     const request = <A>(what: string, run: (signal: AbortSignal) => Promise<A>) =>
       Effect.tryPromise({ try: run, catch: failure }).pipe(
@@ -413,7 +415,11 @@ export const connect = Effect.fnUntraced(function* (
         !client.getServerCapabilities()?.tools
           ? Effect.succeed([])
           : list("list MCP tools", (signal) => client.listTools(undefined, { ...catalog, signal })).pipe(
-              Effect.map((r) => r.tools),
+              Effect.map((result) => {
+                listed.clear()
+                for (const tool of result.tools) listed.set(tool.name, tool)
+                return result.tools
+              }),
             ),
       prompts: () =>
         !client.getServerCapabilities()?.prompts
@@ -457,7 +463,19 @@ export const connect = Effect.fnUntraced(function* (
                   ...(input.sessionID === undefined ? {} : { _meta: { "ai.opencode/sessionID": input.sessionID } }),
                 },
                 // Requesting progress keeps long calls alive under the SDK's timeout; execution is the hard wall.
-                { signal: call.signal, timeout: execution, onprogress: () => {} },
+                {
+                  signal: call.signal,
+                  timeout: execution,
+                  onprogress: () => {},
+                  // Servers sometimes return a successful result that misses or violates their own
+                  // output schema. Reporting that completed side effect as a failed call is worse than
+                  // accepting the server's actual result, so retain the input definition while omitting
+                  // output validation for execution.
+                  toolDefinition: {
+                    ...(listed.get(input.name) ?? { name: input.name, inputSchema: { type: "object" } }),
+                    outputSchema: undefined,
+                  } as CallToolRequestOptions["toolDefinition"],
+                },
               ),
             )
             .finally(() => {

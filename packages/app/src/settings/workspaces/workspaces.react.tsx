@@ -58,7 +58,7 @@ export function Workspaces(props: { services: WorkspacesServices }) {
     )
   }
   const time = (updated: number | undefined) =>
-    updated ? getRelativeTime(new Date(updated).toISOString(), language.t) : undefined
+    updated ? getRelativeTime(new Date(updated).toISOString(), language.t, language.intl) : undefined
   const [menu, setMenu] = useState(false)
   return (
     <>

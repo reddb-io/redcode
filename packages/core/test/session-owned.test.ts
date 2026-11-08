@@ -154,6 +154,7 @@ const setup = Effect.fnUntraced(function* (options?: {
       options?.skills?.(ref) ??
         Layer.mock(Skill.Service, {
           get: (id) => Effect.succeed(id === skillInfo.id ? skillInfo : undefined),
+          files: () => Effect.undefined,
         }),
       options?.snapshot?.(ref) ?? Layer.mock(Snapshot.Service, {}),
       Layer.mock(Plugin.Service, {
@@ -378,7 +379,10 @@ describe("Session-owned handles", () => {
     Effect.gen(function* () {
       const fixture = yield* setup({
         skills: (ref) =>
-          Layer.mock(Skill.Service, { get: () => Effect.succeed({ ...skillInfo, content: ref.directory }) }),
+          Layer.mock(Skill.Service, {
+            get: () => Effect.succeed({ ...skillInfo, content: ref.directory }),
+            files: () => Effect.undefined,
+          }),
       })
       const handle = fixture.sessions.forSession(sessionID)
       const { skill } = handle

@@ -36,6 +36,7 @@ export type ComposerInteractionEvent =
 export type ComposerInteractionCommand =
   | { type: "draft.setText"; value: string }
   | { type: "draft.addText"; value: string }
+  | { type: "draft.removeTextBefore"; value: string }
   | { type: "mention.add"; item: ComposerSuggestion; range?: { start: number; end: number } }
   | { type: "popover.filter"; popover: "command" | "context"; query: string }
   | { type: "suggestion.select"; id: string }
@@ -134,13 +135,19 @@ function inputChanged(
     ])
   }
 
-  return changed(
-    { ...state, popover: state.popover.type === "command-menu" ? state.popover : { type: "closed" }, focus: "editor" },
-    setText,
-  )
+  return changed({ ...state, popover: { type: "closed" }, focus: "editor" }, setText)
 }
 
 function openCommands(state: ComposerInteractionState, persisted: ComposerPersistedState): ComposerEditorTransition {
+  if (state.popover.type === "command-inline" || state.popover.type === "command-menu") {
+    const typed = state.popover.type === "command-inline" && promptText(persisted) === "/"
+
+    return changed({ ...state, popover: { type: "closed" }, focus: "editor" }, [
+      ...(typed ? [{ type: "draft.setText" as const, value: "" }] : []),
+      { type: "focus.editor" },
+    ])
+  }
+
   if (!populated(persisted)) {
     return changed({ ...state, popover: { type: "command-inline", query: "" }, focus: "editor" }, [
       { type: "draft.addText", value: "/" },
@@ -156,6 +163,13 @@ function openCommands(state: ComposerInteractionState, persisted: ComposerPersis
 }
 
 function openContext(state: ComposerInteractionState): ComposerEditorTransition {
+  if (state.popover.type === "context") {
+    return changed({ ...state, popover: { type: "closed" }, focus: "editor" }, [
+      ...(state.popover.query ? [] : [{ type: "draft.removeTextBefore" as const, value: "@" }]),
+      { type: "focus.editor" },
+    ])
+  }
+
   return changed({ ...state, popover: { type: "context", query: "" }, focus: "editor" }, [
     { type: "draft.addText", value: "@" },
     { type: "popover.filter", popover: "context", query: "" },
@@ -236,6 +250,10 @@ function keyDown(
     }
 
     return unchanged(state)
+  }
+
+  if (event.key === "Backspace" && state.popover.type === "command-menu" && !state.popover.query) {
+    return changed({ ...state, popover: { type: "closed" }, focus: "editor" }, [{ type: "focus.editor" }], true)
   }
 
   if (event.key === "Escape") {

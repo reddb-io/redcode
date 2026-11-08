@@ -5,6 +5,8 @@ import { SessionArtifacts } from "@opencode/core/session/artifacts"
 import { Bus } from "@opencode/core/bus"
 import { MonitorRuntime } from "@opencode/core/monitor"
 import { Monitor } from "@opencode/schema/monitor"
+import { ClientPresence } from "@opencode/schema/client-presence"
+import { SessionOrigin } from "@opencode/schema/session-origin"
 import { SessionTaskReconciliation } from "@opencode/core/session/task-reconciliation"
 import { SessionTaskGraph } from "@opencode/core/session/task-graph"
 import { SessionTaskAssignments } from "@opencode/core/session/task-assignments"
@@ -30,9 +32,12 @@ import { InstructionEntry } from "@opencode/core/session/instruction-entry"
 import { Form } from "@opencode/core/form"
 import { Permission } from "@opencode/core/permission"
 import { Instance } from "@opencode/core/instance/service"
-import { DateTime, Effect, Stream } from "effect"
+import { DateTime, Effect, Schema, Stream } from "effect"
+import { HttpServerResponse } from "effect/unstable/http"
 import { HttpApiBuilder, HttpApiSchema } from "effect/unstable/httpapi"
+import { SessionMediaMessageResponse } from "@opencode/protocol/groups/message"
 import { Api } from "../api"
+import { wantsMediaRefs } from "../media-uri"
 import {
   ConflictError,
   DesignNotFoundError,
@@ -209,6 +214,8 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
       .handle(
         "session.create",
         Effect.fn(function* (ctx) {
+          const requestedSurface = ctx.request.headers[ClientPresence.SURFACE_HEADER]
+          const surface = Schema.is(ClientPresence.Surface)(requestedSurface) ? requestedSurface : "api"
           return {
             data: yield* session
               .create({
@@ -216,7 +223,19 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
                 title: ctx.payload.title,
                 agent: ctx.payload.agent,
                 model: ctx.payload.model,
-                metadata: ctx.payload.metadata,
+                metadata: {
+                  ...ctx.payload.metadata,
+                  [SessionOrigin.MetadataKey]: SessionOrigin.Info.make({
+                    surface,
+                    ...(ctx.request.headers[ClientPresence.CLIENT_ID_HEADER]
+                      ? { clientID: ctx.request.headers[ClientPresence.CLIENT_ID_HEADER] }
+                      : {}),
+                    ...(ctx.request.headers[ClientPresence.VERSION_HEADER]
+                      ? { version: ctx.request.headers[ClientPresence.VERSION_HEADER] }
+                      : {}),
+                    createdAt: Date.now(),
+                  }),
+                },
                 permissions: ctx.payload.permissions,
                 ...(ctx.payload.parentID === undefined
                   ? { location: ctx.payload.location ?? { directory: AbsolutePath.make(process.cwd()) } }
@@ -1279,8 +1298,18 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
         "session.message",
         Effect.fn(function* (ctx) {
           yield* session.get(ctx.params.sessionID).pipe(Effect.catchTag("Session.NotFoundError", missingSession))
-          const message = yield* session.message(ctx.params)
-          if (message) return { data: message }
+          if (wantsMediaRefs(ctx.request)) {
+            const message = yield* session
+              .messageWithRefs(ctx.params)
+              .pipe(Effect.catchTag("Session.NotFoundError", missingSession))
+            if (message)
+              return yield* HttpServerResponse.schemaJson(SessionMediaMessageResponse)({ data: message }).pipe(
+                Effect.orDie,
+              )
+          } else {
+            const message = yield* session.message(ctx.params)
+            if (message) return { data: message }
+          }
           return yield* new MessageNotFoundError({
             sessionID: ctx.params.sessionID,
             messageID: ctx.params.messageID,

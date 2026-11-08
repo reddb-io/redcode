@@ -43,6 +43,10 @@ type AgentInstruction = {
   busy: boolean
 }
 
+// Active sessions move to the front as their durable state changes. Keep the fleet view bounded; older history is
+// still available through server-backed session search instead of being downloaded whenever this screen opens.
+const AGENT_SESSION_LIMIT = 500
+
 /** A metadata-only fleet view; transcripts load only when the user opens a session. */
 export default function Agents() {
   const language = useLanguage()
@@ -253,14 +257,11 @@ function ServerAgents(props: {
     queryKey: ["agents-sessions", ServerConnection.key(props.server)],
     enabled: props.context.sdk.connection.status() === "connected",
     queryFn: async ({ signal }: { signal: AbortSignal }) => {
-      const sessions: SessionInfo[] = []
-      let cursor: string | undefined
-      for (;;) {
-        const page = await props.context.sdk.api.session.list({ limit: 1000, order: "desc", cursor }, { signal })
-        sessions.push(...page.data)
-        if (!page.cursor.next) return sessions
-        cursor = page.cursor.next
-      }
+      const page = await props.context.sdk.api.session.list(
+        { limit: AGENT_SESSION_LIMIT, order: "desc", archived: "exclude" },
+        { signal },
+      )
+      return page.data
     },
     retry: false,
     staleTime: 30000,
