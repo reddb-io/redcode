@@ -7,10 +7,15 @@ import { isOpenCodeEvent, type OpenCodeEvent } from "@opencode/protocol/groups/e
 import { Cause, Context, Effect, Layer, Queue, Schema, Scope, Stream } from "effect"
 
 export const SubscriberCapacity = 4_096
+export const SubscriberByteCapacity = 4 * 1024 * 1024
 
 export class SubscriberOverflowError extends Schema.TaggedError<SubscriberOverflowError>()(
   "EventFeed.SubscriberOverflow",
-  { capacity: Schema.Int },
+  {
+    capacity: Schema.Int,
+    byteCapacity: Schema.Int,
+    attemptedBytes: Schema.Int,
+  },
 ) {}
 
 export class EncodingError extends Schema.TaggedError<EncodingError>()("EventFeed.EncodingError", {
@@ -42,18 +47,33 @@ export function frame(event: OpenCodeEvent) {
 
 export const make = Effect.fn("EventFeed.make")(function* (
   observe: (subscriber: Bus.Subscriber) => Effect.Effect<Bus.Unsubscribe>,
-  options?: { readonly capacity?: number; readonly encode?: (event: OpenCodeEvent) => string },
+  options?: {
+    readonly capacity?: number
+    readonly byteCapacity?: number
+    readonly encode?: (event: OpenCodeEvent) => string
+  },
 ) {
   const capacity = options?.capacity ?? SubscriberCapacity
+  const byteCapacity = options?.byteCapacity ?? SubscriberByteCapacity
   const render = options?.encode ?? frame
-  const subscribers = new Map<Queue.Queue<string, Error>, Client & { readonly id: string }>()
+  type Subscriber = {
+    readonly queue: Queue.Queue<string, Error>
+    readonly client: Client & { readonly id: string }
+    bufferedBytes: number
+  }
+  const subscribers = new Map<Queue.Queue<string, Error>, Subscriber>()
   let anonymous = 0
+
+  // JavaScript stores strings as one or two bytes per code unit. Counting two
+  // gives each slow client a conservative, deterministic memory budget without
+  // allocating another encoded copy just to measure it.
+  const retainedBytes = (value: string) => value.length * 2
 
   const fail = (error: Error) =>
     Effect.sync(() => {
-      const current = Array.from(subscribers.keys())
+      const current = Array.from(subscribers.values())
       subscribers.clear()
-      for (const subscriber of current) Queue.failCauseUnsafe(subscriber, Cause.fail(error))
+      for (const subscriber of current) Queue.failCauseUnsafe(subscriber.queue, Cause.fail(error))
     })
 
   const publish = Effect.fnUntraced(function* (event: Event.Payload) {
@@ -72,10 +92,18 @@ export const make = Effect.fn("EventFeed.make")(function* (
       ),
     )
     if (encoded === undefined) return
-    for (const subscriber of subscribers.keys()) {
-      if (Queue.offerUnsafe(subscriber, encoded)) continue
-      subscribers.delete(subscriber)
-      Queue.failCauseUnsafe(subscriber, Cause.fail(new SubscriberOverflowError({ capacity })))
+    const bytes = retainedBytes(encoded)
+    for (const [queue, subscriber] of subscribers) {
+      const attemptedBytes = subscriber.bufferedBytes + bytes
+      if (attemptedBytes <= byteCapacity && Queue.offerUnsafe(queue, encoded)) {
+        subscriber.bufferedBytes = attemptedBytes
+        continue
+      }
+      subscribers.delete(queue)
+      Queue.failCauseUnsafe(
+        queue,
+        Cause.fail(new SubscriberOverflowError({ capacity, byteCapacity, attemptedBytes })),
+      )
     }
   })
 
@@ -85,19 +113,36 @@ export const make = Effect.fn("EventFeed.make")(function* (
   const subscribeClient = (client: Client = { surface: "unknown" }) =>
       Effect.acquireRelease(
         Queue.dropping<string, Error>(capacity).pipe(
-          Effect.tap((queue) =>
-            Effect.sync(() => subscribers.set(queue, { ...client, id: client.id || `anonymous-${++anonymous}` })),
+          Effect.map((queue) => ({
+            queue,
+            client: { ...client, id: client.id || `anonymous-${++anonymous}` },
+            bufferedBytes: 0,
+          })),
+          Effect.tap((subscriber) => Effect.sync(() => subscribers.set(subscriber.queue, subscriber))),
+        ),
+        (subscriber) =>
+          Effect.sync(() => subscribers.delete(subscriber.queue)).pipe(
+            Effect.andThen(Queue.shutdown(subscriber.queue)),
+            Effect.asVoid,
+          ),
+      ).pipe(
+        Effect.map((subscriber) =>
+          Stream.fromQueue(subscriber.queue).pipe(
+            Stream.map((value) => {
+              subscriber.bufferedBytes = Math.max(0, subscriber.bufferedBytes - retainedBytes(value))
+              return value
+            }),
           ),
         ),
-        (queue) =>
-          Effect.sync(() => subscribers.delete(queue)).pipe(Effect.andThen(Queue.shutdown(queue)), Effect.asVoid),
-      ).pipe(Effect.map(Stream.fromQueue))
+      )
 
   return Service.of({
     subscribe: subscribeClient(),
     subscribeClient,
     snapshot: Effect.sync(() => {
-      const clients = [...new Map(Array.from(subscribers.values()).map((client) => [client.id, client])).values()]
+      const clients = [
+        ...new Map(Array.from(subscribers.values()).map(({ client }) => [client.id, client])).values(),
+      ]
       const count = (surface: ClientPresence.Surface) => clients.filter((client) => client.surface === surface).length
       return ClientPresence.Snapshot.make({
         total: clients.length,

@@ -1050,7 +1050,7 @@ export async function createHarnesses(
     async dispose() {
       live.forEach((_connection, id) => tasks.unavailable(id))
       lifetime.closed = true
-      if (recoveryTimer) clearInterval(recoveryTimer)
+      if (recoveryTimer) clearTimeout(recoveryTimer)
       const stopping = delegation.stop()
       const logins = [...loginWires.values()]
       loginWires.clear()
@@ -1123,20 +1123,26 @@ export async function createHarnesses(
   const recoveryAtStartup = delegation.recoverySessions()
   delegation.flushNative()
   const recoverParents = () => {
-    if (lifetime.closed) return
+    if (lifetime.closed) return false
+    let pending = false
     for (const id of delegation.recoverableParents()) {
       const run = read(id)
       if (run.state !== "unknown" || !run.nativeID || !run.delegation || live.has(id)) continue
       const owner = processOwner(id)
       if (!owner || !owner.eligible || owner.host !== localHost || ownerAlive(owner, localHost)) continue
       // No PID means a crash between spawn and recording ownership. Never guess.
-      if (!owner.child_pid || processAlive(owner.child_pid)) continue
+      if (!owner.child_pid) continue
+      if (processAlive(owner.child_pid)) {
+        pending = true
+        continue
+      }
       const claimed = db
         .query(
           "UPDATE harness_process SET owner_pid=?,owner_token=? WHERE run=? AND owner_token=? AND child_pid=? AND eligible=1",
         )
         .run(process.pid, ownerToken, id, owner.owner_token, owner.child_pid)
       if (!claimed.changes) continue
+      pending = true
       const work = (async () => {
         try {
           await launch(run)
@@ -1160,14 +1166,19 @@ export async function createHarnesses(
       recovering.add(work)
       void work.finally(() => recovering.delete(work))
     }
+    return pending
+  }
+  const scheduleRecovery = () => {
+    if (recoveryTimer || lifetime.closed) return
+    recoveryTimer = setTimeout(() => {
+      recoveryTimer = undefined
+      if (recoverParents() || recovering.size > 0) scheduleRecovery()
+    }, 3000)
+    recoveryTimer.unref?.()
   }
   const recoverDelegations = () => {
     delegation.recoverNative()
-    recoverParents()
-    if (!recoveryTimer && !lifetime.closed) {
-      recoveryTimer = setInterval(recoverParents, 3000)
-      recoveryTimer.unref?.()
-    }
+    if (recoverParents() || recovering.size > 0) scheduleRecovery()
   }
   return Object.assign(service, {
     delegate: delegation.delegate,

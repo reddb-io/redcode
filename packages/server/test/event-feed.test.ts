@@ -136,6 +136,63 @@ describe("EventFeed", () => {
     }),
   )
 
+  it.effect("bounds retained event bytes for a slow subscriber", () =>
+    Effect.gen(function* () {
+      const source = makeSource()
+      const feed = yield* EventFeed.make(source.observe, {
+        capacity: 10,
+        byteCapacity: 12,
+        encode: () => "1234",
+      })
+      const slow = yield* feed.subscribe
+
+      yield* source.publish(event("one"))
+      yield* source.publish(event("two"))
+
+      const result = yield* slow.pipe(Stream.runCollect, Effect.exit)
+      expect(Exit.isFailure(result)).toBeTrue()
+      if (Exit.isSuccess(result)) return
+      const error = Option.getOrUndefined(Exit.findErrorOption(result))
+      expect(error).toBeInstanceOf(EventFeed.SubscriberOverflowError)
+      if (!(error instanceof EventFeed.SubscriberOverflowError)) return
+      expect(error.byteCapacity).toBe(12)
+      expect(error.attemptedBytes).toBe(16)
+    }),
+  )
+
+  it.effect("releases a subscriber byte budget as frames are consumed", () =>
+    Effect.gen(function* () {
+      const source = makeSource()
+      const feed = yield* EventFeed.make(source.observe, {
+        capacity: 10,
+        byteCapacity: 8,
+        encode: () => "1234",
+      })
+      const stream = yield* feed.subscribe
+      const first = yield* Deferred.make<void>()
+      const received = new Array<string>()
+      const fiber = yield* stream.pipe(
+        Stream.take(2),
+        Stream.runForEach((value) =>
+          Effect.sync(() => {
+            received.push(value)
+            return received.length
+          }).pipe(
+            Effect.flatMap((count) => (count === 1 ? Deferred.succeed(first, undefined) : Effect.void)),
+          ),
+        ),
+        Effect.forkScoped,
+      )
+
+      yield* source.publish(event("one"))
+      yield* Deferred.await(first)
+      yield* source.publish(event("two"))
+
+      yield* Fiber.join(fiber)
+      expect(received).toEqual(["1234", "1234"])
+    }),
+  )
+
   it.effect("delivers global credential events to public subscribers", () =>
     Effect.gen(function* () {
       const source = makeSource()
