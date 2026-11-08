@@ -110,7 +110,22 @@ export type ServerSystemOutput = {
     readonly external: number
     readonly arrayBuffers: number
   }
-  readonly activity?: { readonly cachedLocations: number; readonly activeExecutions: number }
+  readonly activity?: {
+    readonly cachedLocations: number
+    readonly activeExecutions: number
+    readonly eventFeed?: {
+      readonly subscribers: number
+      readonly queuedBytes: number
+      readonly peakQueuedBytes: number
+      readonly frames: number
+      readonly encodedBytes: number
+      readonly largestFrameBytes: number
+      readonly frameBytesP50: number
+      readonly frameBytesP95: number
+      readonly frameBytesP99: number
+      readonly overflows: number
+    }
+  }
   readonly urls: ReadonlyArray<string>
   readonly paths: {
     readonly config: string

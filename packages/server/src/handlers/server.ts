@@ -112,6 +112,7 @@ export const ServerHandler = HttpApiBuilder.group(Api, "server.server", (handler
             activity: {
               cachedLocations: Array.from(yield* RcMap.keys(locations.rcMap)).length,
               activeExecutions: Array.from(yield* execution.active).length,
+              eventFeed: yield* feed.diagnostics,
             },
             urls: info.urls(),
             paths: {

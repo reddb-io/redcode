@@ -48,7 +48,26 @@ export const SystemInfo = Schema.Struct({
     }),
   ),
   /** Counts only; reading this snapshot never starts a project runtime or an execution. */
-  activity: Schema.optionalKey(Schema.Struct({ cachedLocations: Schema.Int, activeExecutions: Schema.Int })),
+  activity: Schema.optionalKey(
+    Schema.Struct({
+      cachedLocations: Schema.Int,
+      activeExecutions: Schema.Int,
+      eventFeed: Schema.optionalKey(
+        Schema.Struct({
+          subscribers: Schema.Int,
+          queuedBytes: Schema.Int,
+          peakQueuedBytes: Schema.Int,
+          frames: Schema.Int,
+          encodedBytes: Schema.Int,
+          largestFrameBytes: Schema.Int,
+          frameBytesP50: Schema.Int,
+          frameBytesP95: Schema.Int,
+          frameBytesP99: Schema.Int,
+          overflows: Schema.Int,
+        }),
+      ),
+    }),
+  ),
   urls: Schema.Array(Schema.String),
   paths: Schema.Struct({
     config: Schema.String,

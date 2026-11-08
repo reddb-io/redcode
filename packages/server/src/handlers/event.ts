@@ -6,6 +6,8 @@ import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { Api } from "../api"
 import { EventFeed } from "../event-feed"
 
+const heartbeatFrame = new TextEncoder().encode(": heartbeat\n\n")
+
 export const EventHandler = HttpApiBuilder.group(Api, "server.event", (handlers) =>
   Effect.gen(function* () {
     const feed = yield* EventFeed.Service
@@ -25,11 +27,11 @@ export const EventHandler = HttpApiBuilder.group(Api, "server.event", (handlers)
         const output = Stream.unwrap(
           feed
             .subscribeClient(client)
-            .pipe(Effect.map((live) => Stream.make(EventFeed.frame(connected)).pipe(Stream.concat(live)))),
+            .pipe(Effect.map((live) => Stream.make(EventFeed.frameBytes(connected)).pipe(Stream.concat(live)))),
         )
-        const heartbeat = Stream.tick("15 seconds").pipe(Stream.map(() => ": heartbeat\n\n"))
+        const heartbeat = Stream.tick("15 seconds").pipe(Stream.map(() => heartbeatFrame))
         return HttpServerResponse.stream(
-          output.pipe(Stream.merge(heartbeat, { haltStrategy: "left" }), Stream.encodeText),
+          output.pipe(Stream.merge(heartbeat, { haltStrategy: "left" })),
           {
             contentType: "text/event-stream",
             headers: {

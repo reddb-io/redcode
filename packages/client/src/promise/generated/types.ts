@@ -1403,7 +1403,22 @@ export type SystemInfo = {
   started: number
   memory: number
   processMemory?: { heapUsed: number; heapTotal: number; external: number; arrayBuffers: number }
-  activity?: { cachedLocations: number; activeExecutions: number }
+  activity?: {
+    cachedLocations: number
+    activeExecutions: number
+    eventFeed?: {
+      subscribers: number
+      queuedBytes: number
+      peakQueuedBytes: number
+      frames: number
+      encodedBytes: number
+      largestFrameBytes: number
+      frameBytesP50: number
+      frameBytesP95: number
+      frameBytesP99: number
+      overflows: number
+    }
+  }
   urls: Array<string>
   paths: { config: string; data: string; state: string; cache: string; log: string; tmp: string }
   database:

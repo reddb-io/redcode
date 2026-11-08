@@ -26,7 +26,7 @@ function frames(value: Uint8Array) {
   return output
 }
 
-async function execute(url: string, input: string, env: Record<string, string> = {}) {
+async function execute(url: string, input: string | string[], env: Record<string, string> = {}) {
   const proc = Bun.spawn(command, {
     cwd: root,
     env: { ...process.env, ...env, REDCODE_RPC_URL: url },
@@ -34,8 +34,10 @@ async function execute(url: string, input: string, env: Record<string, string> =
     stdout: "pipe",
     stderr: "pipe",
   })
-  const write = proc.stdin.write(input)
-  if (typeof write !== "number") await write
+  for (const chunk of typeof input === "string" ? [input] : input) {
+    const write = proc.stdin.write(chunk)
+    if (typeof write !== "number") await write
+  }
   proc.stdin.end()
   const [exitCode, stdout, stderr] = await Promise.all([
     proc.exited,
@@ -133,6 +135,26 @@ describe(`RPC sidecar (${command[0].endsWith("cli.ts") ? "source" : "native"})`,
     expect(result.exitCode).toBe(0)
     expect(maximum).toBe(1)
     expect(frames(result.stdout).map((body) => JSON.parse(body).id)).toEqual([1, 2])
+  })
+
+  test("reuses its input buffer across fragmented and adjacent frames", async () => {
+    const received: number[] = []
+    using endpoint = server(async (request) => {
+      const body = (await request.json()) as { id: number; padding: string }
+      received.push(body.id)
+      return Response.json({ jsonrpc: "2.0", result: body.padding.length, id: body.id })
+    })
+    const first = JSON.stringify({ jsonrpc: "2.0", method: "health.get", id: 1, padding: "x".repeat(256 * 1024) })
+    const second = JSON.stringify({ jsonrpc: "2.0", method: "health.get", id: 2, padding: "done" })
+    const input = frame(first) + frame(second)
+    const result = await execute(endpoint.url, input.match(/[\s\S]{1,113}/g) ?? [])
+
+    expect(result.exitCode).toBe(0)
+    expect(received).toEqual([1, 2])
+    expect(frames(result.stdout).map((body) => JSON.parse(body))).toEqual([
+      { jsonrpc: "2.0", result: 256 * 1024, id: 1 },
+      { jsonrpc: "2.0", result: 4, id: 2 },
+    ])
   })
 
   test("does not emit a frame for notifications", async () => {

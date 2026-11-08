@@ -1,5 +1,7 @@
 export const MaxHeaderBytes = 8 * 1024
 export const MaxBodyBytes = 1024 * 1024
+const InitialBufferBytes = MaxHeaderBytes
+const ShrinkAfterFrames = 32
 
 export async function main() {
   process.on("SIGINT", () => process.exit(130))
@@ -28,10 +30,11 @@ export function rpcUrl(input: string | undefined) {
   return url
 }
 
-async function post(url: URL, body: Uint8Array) {
+async function post(url: URL, body: Uint8Array<ArrayBuffer>) {
+  const contentType = dialect(body)
   const headers: Record<string, string> = {
-    "content-type": dialect(body),
-    accept: dialect(body),
+    "content-type": contentType,
+    accept: contentType,
   }
   const authorization = "REDCODE_AUTHORIZATION" in process.env ? process.env.REDCODE_AUTHORIZATION : undefined
   const password = process.env.REDCODE_SERVER_PASSWORD || process.env.OPENCODE_SERVER_PASSWORD || process.env.OPENCODE_PASSWORD
@@ -45,7 +48,7 @@ async function post(url: URL, body: Uint8Array) {
   const response = await fetch(url, {
     method: "POST",
     headers,
-    body: new Uint8Array(body),
+    body,
     redirect: "manual",
   })
   if (response.status >= 300 && response.status < 400)
@@ -74,33 +77,66 @@ async function post(url: URL, body: Uint8Array) {
 }
 
 function frameParser() {
-  let buffer = new Uint8Array()
+  let buffer = new Uint8Array(InitialBufferBytes)
+  let start = 0
+  let end = 0
   let length: number | undefined
+  let smallFrames = 0
+
+  const reserve = (additional: number) => {
+    const unread = end - start
+    if (start > 0 && unread + additional <= buffer.byteLength) {
+      for (let index = 0; index < unread; index++) buffer[index] = buffer[start + index]
+      start = 0
+      end = unread
+    }
+    const needed = unread + additional
+    if (needed <= buffer.byteLength) return
+    let capacity = buffer.byteLength
+    while (capacity < needed) capacity *= 2
+    const next = new Uint8Array(capacity)
+    next.set(buffer.subarray(start, end))
+    buffer = next
+    start = 0
+    end = unread
+  }
 
   return {
     push(chunk: Uint8Array) {
-      const bodies: Uint8Array[] = []
-      buffer = join([buffer, chunk], buffer.byteLength + chunk.byteLength)
+      const bodies: Uint8Array<ArrayBuffer>[] = []
+      reserve(chunk.byteLength)
+      buffer.set(chunk, end)
+      end += chunk.byteLength
       while (true) {
         if (length === undefined) {
-          const boundary = headerBoundary(buffer)
+          const boundary = headerBoundary(buffer, start, end)
           if (boundary < 0) {
-            if (buffer.byteLength > MaxHeaderBytes) throw new Error("RPC frame header exceeds 8 KiB")
+            if (end - start > MaxHeaderBytes) throw new Error("RPC frame header exceeds 8 KiB")
             break
           }
-          if (boundary > MaxHeaderBytes) throw new Error("RPC frame header exceeds 8 KiB")
-          length = contentLength(new TextDecoder().decode(buffer.slice(0, boundary)))
-          buffer = buffer.slice(boundary + 4)
+          if (boundary - start > MaxHeaderBytes) throw new Error("RPC frame header exceeds 8 KiB")
+          length = contentLength(new TextDecoder().decode(buffer.subarray(start, boundary)))
+          start = boundary + 4
         }
-        if (buffer.byteLength < length) break
-        bodies.push(buffer.slice(0, length))
-        buffer = buffer.slice(length)
+        if (end - start < length) break
+        bodies.push(buffer.slice(start, start + length))
+        smallFrames = length <= InitialBufferBytes / 2 ? smallFrames + 1 : 0
+        start += length
         length = undefined
+        if (start !== end) continue
+        start = 0
+        end = 0
+        if (smallFrames >= ShrinkAfterFrames && buffer.byteLength > InitialBufferBytes) {
+          buffer = new Uint8Array(InitialBufferBytes)
+          smallFrames = 0
+        }
+        break
       }
+      if (start > 0) reserve(0)
       return bodies
     },
     finish() {
-      if (length !== undefined || buffer.byteLength > 0) throw new Error("Incomplete RPC frame")
+      if (length !== undefined || end > start) throw new Error("Incomplete RPC frame")
     },
   }
 }
@@ -117,8 +153,8 @@ function contentLength(header: string) {
   return length
 }
 
-function headerBoundary(buffer: Uint8Array) {
-  for (let index = 0; index <= buffer.byteLength - 4; index++) {
+function headerBoundary(buffer: Uint8Array, start: number, end: number) {
+  for (let index = start; index <= end - 4; index++) {
     if (buffer[index] === 13 && buffer[index + 1] === 10 && buffer[index + 2] === 13 && buffer[index + 3] === 10)
       return index
   }
@@ -126,8 +162,11 @@ function headerBoundary(buffer: Uint8Array) {
 }
 
 function dialect(body: Uint8Array) {
-  const first = new TextDecoder().decode(body).trimStart()[0]
-  return first === "{" || first === "[" ? "application/json" : "application/toon"
+  for (const byte of body) {
+    if (byte === 9 || byte === 10 || byte === 13 || byte === 32) continue
+    return byte === 123 || byte === 91 ? "application/json" : "application/toon"
+  }
+  return "application/toon"
 }
 
 function join(chunks: Uint8Array[], size: number) {
@@ -142,11 +181,22 @@ function join(chunks: Uint8Array[], size: number) {
 
 function write(body: Uint8Array) {
   const header = new TextEncoder().encode(`Content-Length: ${body.byteLength}\r\n\r\n`)
-  const frame = join([header, body], header.byteLength + body.byteLength)
   return new Promise<void>((resolve, reject) => {
-    process.stdout.write(frame, (error) => {
-      if (error) reject(error)
-      else resolve()
-    })
+    let pending = 2
+    let settled = false
+    const done = (error?: Error | null) => {
+      if (settled) return
+      if (error) {
+        settled = true
+        reject(error)
+        return
+      }
+      pending -= 1
+      if (pending > 0) return
+      settled = true
+      resolve()
+    }
+    process.stdout.write(header, done)
+    process.stdout.write(body, done)
   })
 }
