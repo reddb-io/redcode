@@ -10,6 +10,7 @@ import { Config } from "../../config.js"
 import { Model } from "../../model.js"
 import type { PluginInternal } from "../internal.js"
 import { foldSettings } from "./configured.js"
+import { cached, remember } from "./discovery-cache.js"
 
 const providerID = "lmstudio"
 
@@ -97,13 +98,17 @@ export function make(origin?: string, interval: Duration.Input = "30 seconds") {
         if (!current.endpoint) return undefined
         return yield* discoveryLock.withPermit(
           Effect.gen(function* () {
-            const cached = discovery.get(current.endpoint)
-            if (cached && cached.apiKey === current.apiKey && Date.now() - cached.checked < Duration.toMillis(interval))
-              return { source: current, models: cached.models }
-            discovery.set(current.endpoint, {
+            const previous = cached(discovery, current.endpoint)
+            if (
+              previous &&
+              previous.apiKey === current.apiKey &&
+              Date.now() - previous.checked < Duration.toMillis(interval)
+            )
+              return { source: current, models: previous.models }
+            remember(discovery, current.endpoint, {
               checked: Date.now(),
               apiKey: current.apiKey,
-              models: cached && cached.apiKey === current.apiKey ? cached.models : undefined,
+              models: previous && previous.apiKey === current.apiKey ? previous.models : undefined,
             })
             const request = current.apiKey
               ? HttpClientRequest.get(current.endpoint).pipe(
@@ -117,7 +122,7 @@ export function make(origin?: string, interval: Duration.Input = "30 seconds") {
             const models = response.models
               .filter((model) => model.type === "llm" && model.key.length > 0)
               .toSorted((a, b) => a.key.localeCompare(b.key))
-            discovery.set(current.endpoint, { checked: Date.now(), apiKey: current.apiKey, models })
+            remember(discovery, current.endpoint, { checked: Date.now(), apiKey: current.apiKey, models })
             return { source: current, models }
           }),
         )

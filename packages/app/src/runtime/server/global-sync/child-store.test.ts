@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, mock, test } from "bun:test"
 import { createRoot, getOwner } from "solid-js"
 import { createStore } from "solid-js/store"
-import type { State } from "./types"
+import { DIR_IDLE_TTL_MS, type State } from "./types"
 import type { QueryOptionsApi } from "../sync"
 import { ServerScope } from "@/runtime/server/scope"
 import type { Data } from "@opencode/client/solid"
@@ -60,6 +60,7 @@ const queryOptionsApi = {
 function setup(input: { connected?: () => boolean } = {}) {
   const bootstraps: string[] = []
   const mcpLoads: string[] = []
+  const disposed: string[] = []
   const offset = querySingles.length
 
   return createRoot((dispose) => {
@@ -76,14 +77,14 @@ function setup(input: { connected?: () => boolean } = {}) {
       isLoadingSessions: () => false,
       onBootstrap: (directory) => bootstraps.push(directory),
       onMcp: (directory) => mcpLoads.push(directory),
-      onDispose() {},
+      onDispose: (directory) => disposed.push(directory),
       translate: (key) => key,
       queryOptions: queryOptionsApi,
       data,
       global: { path },
     })
 
-    return { manager, bootstraps, mcpLoads, queries: () => querySingles.slice(offset), dispose }
+    return { manager, bootstraps, mcpLoads, disposed, queries: () => querySingles.slice(offset), dispose }
   })
 }
 
@@ -216,6 +217,25 @@ describe("createChildStoreManager", () => {
       connection.connected = true
       expect(queries()[0]?.().enabled).toBe(true)
     } finally {
+      dispose()
+    }
+  })
+
+  test("sweeps an unpinned child after its idle deadline", () => {
+    const originalNow = Date.now
+    let now = 1_000
+    Date.now = () => now
+    const { manager, disposed, dispose } = setup()
+
+    try {
+      manager.ensureChild("/idle")
+      expect(manager.children["/idle"]).toBeDefined()
+      now += DIR_IDLE_TTL_MS + 1
+      manager.sweep()
+      expect(manager.children["/idle"]).toBeUndefined()
+      expect(disposed).toEqual(["/idle"])
+    } finally {
+      Date.now = originalNow
       dispose()
     }
   })

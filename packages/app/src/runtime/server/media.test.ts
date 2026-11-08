@@ -44,4 +44,35 @@ describe("media cache", () => {
       URL.revokeObjectURL = originalRevoke
     }
   })
+
+  test("bounds decoded media by LRU entries and bytes", async () => {
+    const revoked: string[] = []
+    const originalCreate = URL.createObjectURL
+    const originalRevoke = URL.revokeObjectURL
+    let created = 0
+    URL.createObjectURL = () => `blob:media-${++created}`
+    URL.revokeObjectURL = (url) => revoked.push(url)
+    try {
+      const api = {
+        experimental: { media: { get: async () => new Uint8Array([1, 2, 3]) } },
+      }
+      const live = createMediaCache(() => api as never, { maxEntries: 2, maxBytes: 6 })
+      const first = `media:${"1".repeat(64)}`
+      const second = `media:${"2".repeat(64)}`
+      const third = `media:${"3".repeat(64)}`
+      await live.load(first)
+      await live.load(second)
+      expect(live.peek(first)).toBe("blob:media-1")
+      await live.load(third)
+      expect(live.peek(first)).toBe("blob:media-1")
+      expect(live.peek(second)).toBeUndefined()
+      expect(live.peek(third)).toBe("blob:media-3")
+      expect(revoked).toEqual(["blob:media-2"])
+      live.dispose()
+      expect(revoked).toEqual(["blob:media-2", "blob:media-1", "blob:media-3"])
+    } finally {
+      URL.createObjectURL = originalCreate
+      URL.revokeObjectURL = originalRevoke
+    }
+  })
 })

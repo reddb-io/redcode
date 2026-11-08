@@ -18,6 +18,17 @@ const PROBE_OPTIONS: SpawnSyncOptionsWithStringEncoding = {
 
 export const identifiable = process.platform === "linux" || process.platform === "darwin"
 const probes = new Map<number, { at: number; value: Identity | undefined }>()
+const PROBE_CACHE_LIMIT = 512
+
+function rememberProbe(pid: number, value: { at: number; value: Identity | undefined }) {
+  probes.delete(pid)
+  probes.set(pid, value)
+  while (probes.size > PROBE_CACHE_LIMIT) {
+    const oldest = probes.keys().next().value
+    if (oldest === undefined) break
+    probes.delete(oldest)
+  }
+}
 
 /** A definite process identity, definite absence, or an unknown result that cannot justify cleanup. */
 export function processInfo(pid: number, platform: NodeJS.Platform = process.platform): Probe {
@@ -35,7 +46,11 @@ export function processInfo(pid: number, platform: NodeJS.Platform = process.pla
     }
   }
   const cached = probes.get(pid)
-  if (cached && Date.now() - cached.at < 5_000) return cached.value
+  if (cached && Date.now() - cached.at < 5_000) {
+    probes.delete(pid)
+    probes.set(pid, cached)
+    return cached.value
+  }
   const result = runner.spawn("ps", ["-o", "pgid=", "-o", "lstart=", "-p", String(pid)], PROBE_OPTIONS)
   if (result.error || result.signal || typeof result.stdout !== "string") return "unknown"
   const match = /^\s*(\d+)\s+(\S.*?)\s*$/.exec(result.stdout)
@@ -45,7 +60,7 @@ export function processInfo(pid: number, platform: NodeJS.Platform = process.pla
       ? undefined
       : "unknown"
   if (value === "unknown") return value
-  probes.set(pid, { at: Date.now(), value })
+  rememberProbe(pid, { at: Date.now(), value })
   return value
 }
 

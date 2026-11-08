@@ -10,6 +10,7 @@ import { Config } from "../../config.js"
 import { Model } from "../../model.js"
 import type { PluginInternal } from "../internal.js"
 import { foldSettings } from "./configured.js"
+import { cached, remember } from "./discovery-cache.js"
 
 const providerID = "ollama"
 
@@ -122,14 +123,14 @@ export function make(origin?: string, interval: Duration.Input = "30 seconds") {
         if (!current.tagsEndpoint || !current.showEndpoint) return undefined
         return yield* discoveryLock.withPermit(
           Effect.gen(function* () {
-            const cached = discovery.get(current.tagsEndpoint)
-            if (cached && cached.apiKey === current.apiKey && Date.now() - cached.checked < Duration.toMillis(interval))
-              return { source: current, models: cached.models }
+            const saved = cached(discovery, current.tagsEndpoint)
+            if (saved && saved.apiKey === current.apiKey && Date.now() - saved.checked < Duration.toMillis(interval))
+              return { source: current, models: saved.models }
             const previous: Discovery =
-              cached && cached.apiKey === current.apiKey
-                ? cached
+              saved && saved.apiKey === current.apiKey
+                ? saved
                 : { checked: 0, apiKey: current.apiKey, shows: new Map() }
-            discovery.set(current.tagsEndpoint, { ...previous, checked: Date.now(), apiKey: current.apiKey })
+            remember(discovery, current.tagsEndpoint, { ...previous, checked: Date.now(), apiKey: current.apiKey })
             const tagsRequest = current.apiKey
               ? HttpClientRequest.get(current.tagsEndpoint).pipe(
                   HttpClientRequest.acceptJson,
@@ -168,7 +169,7 @@ export function make(origin?: string, interval: Duration.Input = "30 seconds") {
               (model): model is DiscoveredModel =>
                 model !== undefined && (model.show.capabilities?.includes("completion") ?? false),
             )
-            discovery.set(current.tagsEndpoint, {
+            remember(discovery, current.tagsEndpoint, {
               checked: Date.now(),
               apiKey: current.apiKey,
               models: filtered,

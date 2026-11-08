@@ -10,6 +10,7 @@ import { Config } from "../../config.js"
 import { Model } from "../../model.js"
 import type { PluginInternal } from "../internal.js"
 import { foldSettings } from "./configured.js"
+import { cached, remember } from "./discovery-cache.js"
 
 const providerID = "vllm"
 
@@ -80,13 +81,17 @@ export function make(origin?: string, interval: Duration.Input = "30 seconds") {
         return yield* discoveryLock.withPermit(
           Effect.gen(function* () {
             const endpoint = `${current.healthEndpoint}\n${current.modelsEndpoint}`
-            const cached = discovery.get(endpoint)
-            if (cached && cached.apiKey === current.apiKey && Date.now() - cached.checked < Duration.toMillis(interval))
-              return { source: current, models: cached.models }
-            discovery.set(endpoint, {
+            const previous = cached(discovery, endpoint)
+            if (
+              previous &&
+              previous.apiKey === current.apiKey &&
+              Date.now() - previous.checked < Duration.toMillis(interval)
+            )
+              return { source: current, models: previous.models }
+            remember(discovery, endpoint, {
               checked: Date.now(),
               apiKey: current.apiKey,
-              models: cached && cached.apiKey === current.apiKey ? cached.models : undefined,
+              models: previous && previous.apiKey === current.apiKey ? previous.models : undefined,
             })
             const request = (endpoint: string) =>
               current.apiKey
@@ -102,7 +107,7 @@ export function make(origin?: string, interval: Duration.Input = "30 seconds") {
             const models = response.data
               .filter((model) => model.owned_by === providerID && model.id.length > 0)
               .toSorted((a, b) => a.id.localeCompare(b.id))
-            discovery.set(endpoint, { checked: Date.now(), apiKey: current.apiKey, models })
+            remember(discovery, endpoint, { checked: Date.now(), apiKey: current.apiKey, models })
             return { source: current, models }
           }),
         )

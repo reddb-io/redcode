@@ -520,6 +520,81 @@ test("refreshes global credential events across every loaded location", async ()
   }
 })
 
+test("evicts heavy location caches and rejects stale reads and later global events", async () => {
+  const listeners = new Set<Parameters<CreateDataInput["event"]["listen"]>[0]>()
+  const first = Promise.withResolvers<void>()
+  const requested = Promise.withResolvers<void>()
+  const location = { directory: "/large-catalog" }
+  let requests = 0
+  const api = OpenCode.make({
+    baseUrl: "http://opencode.local",
+    fetch: async (input, init) => {
+      const request = input instanceof Request ? input : new Request(input, init)
+      if (new URL(request.url).pathname !== "/api/provider") throw new Error(`Unexpected request: ${request.url}`)
+      requests++
+      if (requests === 1) {
+        requested.resolve()
+        await first.promise
+      }
+      return Response.json({
+        location,
+        data: [
+          {
+            id: "company",
+            name: requests === 1 ? "Stale" : "Fresh",
+            activation: "enabled",
+            package: "aisdk:@ai-sdk/openai",
+          },
+        ],
+      })
+    },
+  })
+  const setup = createRoot((dispose) => ({
+    data: createData({
+      api: () => api,
+      directory: "/project",
+      event: {
+        on: () => () => {},
+        listen(handler) {
+          listeners.add(handler)
+          return () => listeners.delete(handler)
+        },
+      },
+      connection: { status: () => "connected" },
+    }),
+    dispose,
+  }))
+
+  try {
+    const pending = setup.data.location.provider.sync(location)
+    await requested.promise
+    setup.data.location.evict(location)
+    first.resolve()
+    await pending
+    expect(setup.data.location.provider.list(location)).toBeUndefined()
+
+    const shell = {
+      id: "sh_evicted",
+      status: "running" as const,
+      command: "echo ignored",
+      cwd: location.directory,
+      shell: "/bin/sh",
+      file: "/shell-output",
+      metadata: {},
+      time: { started: 1 },
+    }
+    const event: OpenCodeEvent = { type: "shell.created", location, data: { info: shell } }
+    listeners.forEach((listener) => listener({ name: event.type, details: event }))
+    expect(setup.data.shell.list(location)).toEqual([])
+
+    await setup.data.location.provider.sync(location)
+    expect(requests).toBe(2)
+    expect(setup.data.location.provider.list(location)?.[0]?.name).toBe("Fresh")
+  } finally {
+    setup.dispose()
+  }
+})
+
 for (const resource of ["provider", "model"] as const) {
   test(`refreshes ${resource} values only at the location named by ${resource}.updated`, async () => {
     const listeners = new Set<Parameters<CreateDataInput["event"]["listen"]>[0]>()

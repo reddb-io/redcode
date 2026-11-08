@@ -140,6 +140,7 @@ export function createServerSyncContextInner(serverSDK: ServerSDK, data: Data) {
     onDispose: (directory) => {
       const key = directoryKey(directory)
       queue.clear(key)
+      data.location.evict({ directory: key })
     },
     translate: language.t,
     queryOptions: queryOptionsApi,

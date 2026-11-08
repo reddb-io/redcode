@@ -259,6 +259,22 @@ export function createData(config: CreateDataInput) {
   })
 
   const [defaultLocation, setDefaultLocation] = createSignal<LocationRef>({ directory: config.directory })
+  // A Location can carry a large provider/model catalog plus MCP, skill and shell state.
+  // Keep a token only while a surface owns that Location. Deleting the token both marks
+  // it inactive for global events and prevents an older in-flight read from repopulating
+  // the cache after the owning project store was evicted.
+  const locationTokens = new Map<string, object>()
+  const activateLocation = (location: LocationRef) => {
+    const key = locationKey(location)
+    const current = locationTokens.get(key)
+    if (current) return { key, token: current }
+    const token = {}
+    locationTokens.set(key, token)
+    return { key, token }
+  }
+  const locationActive = (key: string, token?: object) =>
+    token === undefined ? locationTokens.has(key) : locationTokens.get(key) === token
+  activateLocation(defaultLocation())
   const sessions = createMemo(() =>
     Object.values(store.session.info).toSorted((a, b) => b.time.updated - a.time.updated),
   )
@@ -1295,6 +1311,9 @@ export function createData(config: CreateDataInput) {
 
     if (!event.location) return
     const location = event.location
+    // The event stream is global. Do not recreate a heavy Location cache after its
+    // last UI owner released it (or for a Location this client never opened).
+    if (event.type !== "form.created" && !locationActive(locationKey(location))) return
     switch (event.type) {
       case "provider.updated":
         refreshCatalog("provider", location)
@@ -1399,17 +1418,21 @@ export function createData(config: CreateDataInput) {
     load: (location: ReturnType<typeof locationQuery>) => Promise<{ location: LocationRef; data: LocationData[Field] }>,
     options?: { alias?: boolean },
   ) {
-    const publish = (key: string, value: LocationData[Field]) => setStore("location", key, { [field]: value })
+    const publish = (key: string, value: LocationData[Field], request: { key: string; token: object }) => {
+      if (!locationActive(request.key, request.token)) return
+      setStore("location", key, { [field]: value })
+    }
     return {
       list: (ref?: LocationRef) => store.location[locationKey(ref ?? defaultLocation())]?.[field],
       sync: (ref?: LocationRef) => {
         const location = ref ?? defaultLocation()
-        const id = locationKey(location)
+        const request = activateLocation(location)
+        const id = request.key
         return sync.run(`location.${field}:${id}`, async () => {
           const response = await load(locationQuery(location))
           const key = locationKey(response.location)
-          publish(key, response.data)
-          if (options?.alias && key !== id) publish(id, response.data)
+          publish(key, response.data, request)
+          if (options?.alias && key !== id) publish(id, response.data, request)
         })
       },
       invalidate: (ref?: LocationRef) => sync.invalidate(`location.${field}:${locationKey(ref ?? defaultLocation())}`),
@@ -1417,7 +1440,8 @@ export function createData(config: CreateDataInput) {
   }
 
   function bootstrapCatalog(location: LocationRef) {
-    const key = locationKey(location)
+    const request = activateLocation(location)
+    const key = request.key
     const fields = ["model", "provider", "integration"] as const
     // Individual refreshes and in-flight reads keep their own invalidation semantics.
     if (fields.some((field) => sync.has(`location.${field}:${key}`)))
@@ -1429,6 +1453,7 @@ export function createData(config: CreateDataInput) {
         sync.run(`location.${field}:${key}`, async () => {
           try {
             const response = await load()
+            if (!locationActive(request.key, request.token)) return
             const canonical = locationKey(response.location)
             setStore("location", canonical, { [field]: response.data[`${field}s`] })
             if (field !== "integration" && canonical !== key)
@@ -1441,6 +1466,7 @@ export function createData(config: CreateDataInput) {
                 : field === "provider"
                   ? await api().provider.list({ location: locationQuery(location) })
                   : await api().integration.list({ location: locationQuery(location) })
+            if (!locationActive(request.key, request.token)) return
             const canonical = locationKey(response.location)
             setStore("location", canonical, { [field]: response.data })
             if (field !== "integration" && canonical !== key) setStore("location", key, { [field]: response.data })
@@ -2056,8 +2082,10 @@ export function createData(config: CreateDataInput) {
       },
       syncInfo(ref?: LocationRef) {
         const current = ref ?? defaultLocation()
-        return sync.run(`location:${locationKey(current)}`, async () => {
+        const request = activateLocation(current)
+        return sync.run(`location:${request.key}`, async () => {
           const location = await api().location.get({ location: locationQuery(current) })
+          if (!locationActive(request.key, request.token)) return
           const key = locationKey(location)
           if (!store.location[key]) setStore("location", key, {})
           setStore("location", key, "info", location)
@@ -2103,6 +2131,19 @@ export function createData(config: CreateDataInput) {
         result.shell.invalidate(location)
         result.session.form.invalidate("global", location)
       },
+      /** Release all cached data for a Location after its last UI owner goes away. */
+      evict(ref?: LocationRef) {
+        const location = ref ?? defaultLocation()
+        const key = locationKey(location)
+        result.location.invalidate(location)
+        locationTokens.delete(key)
+        setStore(
+          "location",
+          produce((draft) => {
+            delete draft[key]
+          }),
+        )
+      },
       vcs: { info: vcs.list, sync: vcs.sync, invalidate: vcs.invalidate },
       agent: locationResource("agent", (location) => api().agent.list({ location })),
       command: locationResource("command", (location) => api().command.list({ location })),
@@ -2132,8 +2173,11 @@ export function createData(config: CreateDataInput) {
           return store.location[locationKey(location ?? defaultLocation())]?.websearch
         },
         async refresh(ref?: LocationRef) {
-          const input = { location: locationQuery(ref ?? defaultLocation()) }
+          const location = ref ?? defaultLocation()
+          const request = activateLocation(location)
+          const input = { location: locationQuery(location) }
           const providers = await api().websearch.providers(input)
+          if (!locationActive(request.key, request.token)) return
           const key = locationKey(providers.location)
           setStore("location", key, { websearch: providers.data })
         },

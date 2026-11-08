@@ -169,6 +169,11 @@ export function createChildStoreManager(input: {
     }
   }
 
+  // Release an idle project's Solid graph even when the app receives no later
+  // navigation or event that would otherwise trigger runEviction.
+  const sweepTimer = setInterval(() => runEviction(), Math.min(DIR_IDLE_TTL_MS, 60_000))
+  onCleanup(() => clearInterval(sweepTimer))
+
   function ensureChild(directory: string) {
     const key = directoryKey(directory)
 
@@ -414,5 +419,6 @@ export function createChildStoreManager(input: {
     active: (directory: string) => activeDirectories.has(directoryKey(directory)),
     disableMcp,
     disposeDirectory,
+    sweep: runEviction,
   }
 }

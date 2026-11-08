@@ -13,21 +13,62 @@ export type MediaCache = {
   dispose(): void
 }
 
-/** Keeps one object URL per content hash for the lifetime of a server connection. */
-export function createMediaCache(getApi: () => Pick<OpenCodeClient, "experimental">): MediaCache {
-  const urls = new Map<string, string>()
+export const MEDIA_CACHE_MAX_ENTRIES = 128
+export const MEDIA_CACHE_MAX_BYTES = 128 * 1024 * 1024
+
+type MediaCacheOptions = { maxEntries?: number; maxBytes?: number }
+type Entry = { url: string; bytes: number }
+
+/** Keeps a byte-bounded LRU of object URLs for one server connection. */
+export function createMediaCache(
+  getApi: () => Pick<OpenCodeClient, "experimental">,
+  options: MediaCacheOptions = {},
+): MediaCache {
+  const urls = new Map<string, Entry>()
   const inflight = new Map<string, Promise<string | undefined>>()
+  const maxEntries = Math.max(1, options.maxEntries ?? MEDIA_CACHE_MAX_ENTRIES)
+  const maxBytes = Math.max(1, options.maxBytes ?? MEDIA_CACHE_MAX_BYTES)
+  let retainedBytes = 0
   let disposed = false
+
+  const remove = (hash: string) => {
+    const entry = urls.get(hash)
+    if (!entry) return
+    urls.delete(hash)
+    retainedBytes -= entry.bytes
+    URL.revokeObjectURL(entry.url)
+  }
+
+  const touch = (hash: string) => {
+    const entry = urls.get(hash)
+    if (!entry) return undefined
+    urls.delete(hash)
+    urls.set(hash, entry)
+    return entry.url
+  }
+
+  const trim = (keep: string) => {
+    while (urls.size > maxEntries || retainedBytes > maxBytes) {
+      const oldest = urls.keys().next().value
+      // A single accepted attachment may be larger than a custom/test budget. Keep
+      // that one usable, but never retain older media beside it.
+      if (oldest === undefined || (oldest === keep && urls.size === 1)) return
+      remove(oldest)
+    }
+  }
 
   const fetchObjectUrl = (hash: string, mime: string) =>
     getApi()
       .experimental.media.get({ hash })
       .then((bytes) => {
         if (disposed) return undefined
-        const url =
-          urls.get(hash) ??
-          URL.createObjectURL(new Blob([new Uint8Array(bytes)], { type: mime || "application/octet-stream" }))
-        urls.set(hash, url)
+        const cached = touch(hash)
+        if (cached) return cached
+        const data = new Uint8Array(bytes)
+        const url = URL.createObjectURL(new Blob([data], { type: mime || "application/octet-stream" }))
+        urls.set(hash, { url, bytes: data.byteLength })
+        retainedBytes += data.byteLength
+        trim(hash)
         return url
       })
       .finally(() => inflight.delete(hash))
@@ -35,13 +76,13 @@ export function createMediaCache(getApi: () => Pick<OpenCodeClient, "experimenta
   return {
     peek(uri) {
       const hash = mediaHashFromUri(uri)
-      return disposed || !hash ? undefined : urls.get(hash)
+      return disposed || !hash ? undefined : touch(hash)
     },
     load(uri, mime = "application/octet-stream", signal) {
       const hash = mediaHashFromUri(uri)
       if (disposed || signal?.aborted) return Promise.resolve(undefined)
       if (!hash) return Promise.resolve(uri)
-      const cached = urls.get(hash)
+      const cached = touch(hash)
       if (cached) return Promise.resolve(cached)
       const pending = inflight.get(hash) ?? fetchObjectUrl(hash, mime)
       inflight.set(hash, pending)
@@ -65,8 +106,9 @@ export function createMediaCache(getApi: () => Pick<OpenCodeClient, "experimenta
     dispose() {
       disposed = true
       inflight.clear()
-      urls.forEach((url) => URL.revokeObjectURL(url))
+      urls.forEach((entry) => URL.revokeObjectURL(entry.url))
       urls.clear()
+      retainedBytes = 0
     },
   }
 }
