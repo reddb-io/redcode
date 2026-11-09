@@ -10,6 +10,7 @@ import { SessionOrigin } from "@opencode/schema/session-origin"
 import { SessionTaskReconciliation } from "@opencode/core/session/task-reconciliation"
 import { SessionTaskGraph } from "@opencode/core/session/task-graph"
 import { SessionTaskAssignments } from "@opencode/core/session/task-assignments"
+import { SessionExecutionGraph } from "@opencode/core/session/execution-graph"
 import { SessionTodoStore } from "@opencode/core/session/todo-store"
 import { SessionTodo } from "@opencode/schema/session-todo"
 import { TaskIntegration } from "../task-integration"
@@ -466,6 +467,19 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
               message: "Monitor not found in this session",
             })
           return { data: Monitor.bounded(info) }
+        }),
+      )
+      .handle(
+        "session.executionGraph",
+        Effect.fn(function* (ctx) {
+          const graph = yield* SessionExecutionGraph.Service
+          const data = yield* graph.snapshot(ctx.params.sessionID, { shellLimit: ctx.query.shellLimit })
+          if (!data)
+            return yield* new SessionNotFoundError({
+              sessionID: ctx.params.sessionID,
+              message: `Session not found: ${ctx.params.sessionID}`,
+            })
+          return { data }
         }),
       )
       .handle(

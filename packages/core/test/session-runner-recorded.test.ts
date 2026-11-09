@@ -255,6 +255,7 @@ describe("SessionRunnerLLM recorded", () => {
       )
       const attempt = turn.find((span) => span.name === "SessionStep.attempt")
       expect(Object.fromEntries(attempt?.attributes ?? [])).toMatchObject({
+        "gen_ai.agent.name": "build",
         "gen_ai.provider.name": "openai",
         "gen_ai.request.model": "gpt-4o-mini",
         "gen_ai.response.finish_reasons": ["stop"],
@@ -263,6 +264,13 @@ describe("SessionRunnerLLM recorded", () => {
         "opencode.usage.cost_usd": 0,
       })
       expect(attempt?.attributes.get("opencode.llm.first_output_ms")).toBeNumber()
+      const stream = turn.find((span) => span.name === "LLM.stream")
+      expect(Option.getOrUndefined(stream!.parent)?.spanId).toBe(attempt!.spanId)
+      expect(Object.fromEntries(stream!.attributes)).toMatchObject({
+        "gen_ai.provider.name": "openai",
+        "gen_ai.request.model": "gpt-4o-mini",
+      })
+      expect(stream!.status._tag).toBe("Ended")
     }).pipe(Effect.withSpan("fixture.request")),
   )
 })

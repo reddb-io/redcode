@@ -180,6 +180,7 @@ const layer = Layer.effect(
       yield* Effect.annotateCurrentSpan({
         "gen_ai.tool.name": name,
         "gen_ai.tool.call.id": context.id,
+        "gen_ai.agent.name": context.agent,
         "session.id": context.sessionID,
       })
       const execution = yield* execute(tool, input, context).pipe(

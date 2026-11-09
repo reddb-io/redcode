@@ -70,6 +70,14 @@ function connected(id = "evt_connected") {
   return { id, type: "server.connected", data: {} } satisfies RunV2Event
 }
 
+function resumableConnected(id: string, cursor: number, replayed = 0, reset = false) {
+  return {
+    id,
+    type: "server.connected",
+    data: { stream: { epoch: "process-one", cursor, replayed, reset } },
+  } satisfies RunV2Event
+}
+
 function durable(sessionID: string, seq?: number): { aggregateID: string; seq: number; version: 1 }
 function durable<const Version extends 1 | 2>(
   sessionID: string,
@@ -146,6 +154,9 @@ function eventForm(info: FormInfo): Extract<RunV2Event, { type: "form.created" }
 
 function sdk(input: {
   streams: ReturnType<typeof feed>[]
+  streamIDs?: Record<string, string>
+  onSubscribe?: (options: Parameters<OpenCodeClient["event"]["subscribe"]>[0]) => void
+  onSessionList?: () => void
   active?: () => Record<string, { type: "running" }>
   messages?: Record<string, SessionMessages>
   sessions?: Array<{ id: string; parentID?: string; title?: string; agent?: string; time: { updated: number } }>
@@ -158,7 +169,18 @@ function sdk(input: {
 }) {
   const client = OpenCode.make({ baseUrl: "https://opencode.test" })
   let subscription = 0
-  spyOn(client.event, "subscribe").mockImplementation(() => input.streams[subscription++]?.stream ?? feed().stream)
+  spyOn(client.event, "subscribe").mockImplementation((options) => {
+    input.onSubscribe?.(options)
+    const source = input.streams[subscription++]?.stream ?? feed().stream
+    if (!input.streamIDs) return source
+    return (async function* () {
+      for await (const event of source) {
+        const id = input.streamIDs?.[event.id]
+        if (id) options?.onSseEvent?.({ id })
+        yield event
+      }
+    })()
+  })
   spyOn(client.message, "list").mockImplementation((request) =>
     ok({
       data: input.messages?.[request.sessionID] ?? [
@@ -202,6 +224,7 @@ function sdk(input: {
   // The generated methods have conditional return types for throwOnError; the
   // minimal shapes below are enough for family discovery and model fallback.
   spyOn(client.session, "list").mockImplementation((request) => {
+    input.onSessionList?.()
     const parentID = request?.parentID
     return ok({
       location: { directory: "/tmp", project: { id: "proj_1", directory: "/tmp" } },
@@ -2224,6 +2247,44 @@ describe("V2 mini transport", () => {
     })
     expect(prompt).toHaveBeenCalled()
     expect(client.event.subscribe).toHaveBeenCalledTimes(2)
+    await transport.close()
+  })
+
+  test("resumes the event stream without repeating session hydration", async () => {
+    const first = feed()
+    const second = feed()
+    const subscriptions: Array<Parameters<OpenCodeClient["event"]["subscribe"]>[0]> = []
+    let hydrations = 0
+    first.push(resumableConnected("evt_connected_1", 0))
+    second.push(resumableConnected("evt_connected_2", 1))
+    const client = sdk({
+      streams: [first, second],
+      streamIDs: { evt_live: "process-one:1" },
+      onSubscribe: (options) => subscriptions.push(options),
+      onSessionList: () => hydrations++,
+    })
+    const ui = footer()
+    const transport = await createSessionTransport({
+      sdk: client,
+      sessionID: "ses_1",
+      thinking: false,
+      footer: ui.api,
+    })
+    const initialHydrations = hydrations
+    first.push({
+      id: "evt_live",
+      created: 2,
+      type: "session.execution.started",
+      durable: durable("ses_1", 1),
+      data: { sessionID: "ses_1" },
+    })
+    while (!ui.events.some((event) => event.type === "stream.patch" && event.patch.phase === "running"))
+      await Bun.sleep(0)
+    first.close()
+    while (subscriptions.length < 2) await Bun.sleep(0)
+
+    expect(subscriptions[1]?.resume).toEqual({ epoch: "process-one", cursor: 1 })
+    expect(hydrations).toBe(initialHydrations)
     await transport.close()
   })
 

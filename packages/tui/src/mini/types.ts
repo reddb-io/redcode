@@ -321,6 +321,15 @@ export type FooterSubagentState = {
   details: Record<string, FooterSubagentDetail>
   permissions: MiniPermissionRequest[]
   forms: MiniFormRequest[]
+  /** Server-projected execution family; absent when connected to an older server. */
+  execution?: {
+    subagents: number
+    active: number
+    jobs: number
+    shells: number
+    terminals: number
+    truncated: boolean
+  }
 }
 
 // Typed messages sent to RunFooter.event(). The prompt queue and stream

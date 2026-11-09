@@ -4,6 +4,7 @@ import { AbsolutePath } from "@opencode/schema/schema"
 import path from "node:path"
 import { tmpdir } from "../../core/test/fixture/tmpdir"
 import { agentRuntime, agentRuntimes } from "../src/agent-runtime/registry"
+import { harnessCapabilities } from "../src/agent-runtime/adapter"
 import { createAgentRuntimeSupervisor } from "../src/agent-runtime/supervisor"
 
 function run(driver: Harness.Driver): Harness.Run {
@@ -34,6 +35,20 @@ describe("agent runtime registry", () => {
       multipleThreadsPerRuntime: false,
       resumeAfterRestart: true,
       steer: false,
+    })
+    expect(harnessCapabilities(agentRuntime("codex"))).toMatchObject({
+      protocol: 1,
+      features: {
+        "mcp.apps": 1,
+        "runtime.multiple-threads": 1,
+        "runtime.resume-after-restart": 1,
+        "thread.resume": 1,
+        "turn.interrupt": 1,
+        "turn.steer": 1,
+      },
+      interrupt: true,
+      resume: true,
+      steer: true,
     })
   })
 

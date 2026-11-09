@@ -185,7 +185,7 @@ const layer = () =>
       })
 
       const remove = Effect.fn("Shell.remove")(function* (id: Shell.ID) {
-        yield* require(id)
+        yield* annotate((yield* require(id)).info)
         yield* removeCommand(id)
       })
 
@@ -196,15 +196,22 @@ const layer = () =>
       })
 
       const get = Effect.fn("Shell.get")(function* (id: Shell.ID) {
-        return (yield* require(id)).info
+        const command = yield* require(id)
+        yield* annotate(command.info)
+        return command.info
       })
 
       const wait = Effect.fn("Shell.wait")(function* (id: Shell.ID) {
-        return yield* Deferred.await((yield* require(id)).done)
+        const command = yield* require(id)
+        yield* annotate(command.info)
+        const info = yield* Deferred.await(command.done)
+        yield* annotate(info)
+        return info
       })
 
       const timeout = Effect.fn("Shell.timeout")(function* (id: Shell.ID, duration: number) {
         const command = yield* require(id)
+        yield* annotate(command.info)
         if (command.info.status !== "running" || !command.timeout) return command.info
         yield* command.timeout(duration)
         return command.info
@@ -245,11 +252,13 @@ const layer = () =>
       })
 
       const result = Effect.fn("Shell.result")(function* (started: Shell.Info) {
+        yield* annotate(started)
         const info = yield* wait(started.id).pipe(
           Effect.catchTag("Shell.NotFoundError", () =>
             Effect.succeed({ ...started, status: "killed" as const, time: { ...started.time, completed: Date.now() } }),
           ),
         )
+        yield* annotate(info)
         const capture = yield* Effect.gen(function* () {
           const limits = Config.latest(yield* config.entries(), "tool_output")
           const maxLines = limits?.max_lines ?? ToolOutput.MAX_LINES
@@ -329,6 +338,7 @@ const layer = () =>
           metadata: input.metadata ?? {},
           time: { started: Date.now() },
         }
+        yield* annotate(info)
 
         // Spawn through the Environment and stream combined output to the file. The handle is scope-bound, so
         // the managing fiber keeps its scope open until the command terminates (it awaits `done` at the
@@ -476,6 +486,19 @@ const layer = () =>
       return Service.of({ create, list, get, wait, result, timeout, output, remove })
     }),
   )
+
+// Shells can outlive the turn that started them. Their own metadata is therefore the durable tracing source.
+// Command text, environment, stdin and output deliberately stay out of telemetry because all may contain secrets.
+function annotate(info: Info) {
+  const sessionID = info.metadata.sessionID
+  return Effect.annotateCurrentSpan({
+    "opencode.shell.id": info.id,
+    ...(typeof sessionID === "string" ? { "session.id": sessionID } : {}),
+    ...(info.metadata.background === true ? { "opencode.shell.background": true } : {}),
+    ...(info.status === "running" ? {} : { "opencode.shell.status": info.status }),
+    ...(info.exit === undefined ? {} : { "process.exit.code": info.exit }),
+  })
+}
 
 // Moves past UTF-8 continuation bytes (at most 3) so a byte cut never splits a character.
 function charBoundary(bytes: Buffer, offset: number) {

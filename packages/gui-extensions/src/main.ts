@@ -15,6 +15,7 @@ import microsoftOffice from "./microsoft-office"
 import design from "./design"
 import sessionImport from "./import"
 import delivery from "./delivery"
+import execution from "./execution"
 
 /**
  * Built-in extensions with their main entries. Lists every built-in so their ids stay reserved. `builtins.typecheck.ts`
@@ -22,6 +23,7 @@ import delivery from "./delivery"
  */
 export const builtins = Extension.compose(
   delivery,
+  execution,
   context,
   btw,
   debug,

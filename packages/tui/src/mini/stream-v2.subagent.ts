@@ -17,6 +17,7 @@
 // session, so only whole-session `v2.session.background(parentID)` exists.
 import type {
   EventSubscribeOutput,
+  ExecutionGraphInfo,
   OpenCodeClient,
   PermissionRequest,
   SessionMessageAssistantTool,
@@ -223,8 +224,36 @@ export function createSubagentTracker(input: SubagentTrackerInput): SubagentTrac
   let activeDiscoveries = 0
   let selected: string | undefined
   let blockerEpoch = 0
+  let execution: FooterSubagentState["execution"]
+  let executionTimer: ReturnType<typeof setTimeout> | undefined
+  let executionEpoch = 0
   let closed = false
   const active = (signal = input.signal) => !closed && !input.signal.aborted && !signal.aborted
+  const readExecution = async (sdk: OpenCodeClient, signal: AbortSignal) => {
+    const epoch = ++executionEpoch
+    const endpoint = sdk.session.executionGraph
+    if (typeof endpoint !== "function") return
+    const graph = await endpoint({ sessionID: input.sessionID, shellLimit: 200 }, { signal }).catch(
+      (): ExecutionGraphInfo | undefined => undefined,
+    )
+    if (!graph || !active(signal) || epoch !== executionEpoch) return
+    execution = {
+      subagents: Math.max(0, graph.nodes.filter((node) => node.kind === "session").length - 1),
+      active: graph.nodes.filter((node) => ["pending", "running", "waiting", "suspended"].includes(node.status)).length,
+      jobs: graph.nodes.filter((node) => node.kind === "job").length,
+      shells: graph.nodes.filter((node) => node.kind === "shell").length,
+      terminals: graph.nodes.filter((node) => node.kind === "terminal").length,
+      truncated: graph.truncated.shells,
+    }
+    input.emit()
+  }
+  const refreshExecution = (sdk: OpenCodeClient, signal: AbortSignal) => {
+    if (executionTimer) return
+    executionTimer = setTimeout(() => {
+      executionTimer = undefined
+      void readExecution(sdk, signal)
+    }, 500)
+  }
   const admitChild = (sessionID: string): ChildState | undefined => {
     const existing = children.get(sessionID)
     if (!existing && children.size >= FAMILY_LIST_LIMIT) return
@@ -966,6 +995,7 @@ export function createSubagentTracker(input: SubagentTrackerInput): SubagentTrac
   return {
     main(sdk, event, signal = input.signal) {
       if (!active(signal)) return
+      refreshExecution(sdk, signal)
       if (event.type === "session.tool.input.started") {
         if (canonicalToolName(event.data.name) === "subagent")
           pendingCalls.set(sourceKey(event.data.assistantMessageID, event.data.id), {})
@@ -1005,6 +1035,7 @@ export function createSubagentTracker(input: SubagentTrackerInput): SubagentTrac
       if (!active(signal)) return
       const child = children.get(sessionID)
       if (child) {
+        refreshExecution(sdk, signal)
         if (blockerHydrations.has(sessionID) && blockerCategory(event)) {
           const buffered = blockerEvents.get(sessionID) ?? []
           if (buffered.length < CHILD_EVENT_BUFFER_LIMIT) buffered.push(event)
@@ -1027,6 +1058,7 @@ export function createSubagentTracker(input: SubagentTrackerInput): SubagentTrac
       const signal = next.signal ?? input.signal
       if (!active(signal)) return
       const blockerHydrationEpoch = resetBlockerHydration()
+      void readExecution(next.sdk, signal)
       await settleHydrations()
       if (!active(signal)) return
       if (next.reconnect) {
@@ -1118,6 +1150,7 @@ export function createSubagentTracker(input: SubagentTrackerInput): SubagentTrac
         details,
         permissions: [...children.values()].flatMap((item) => item.permissions),
         forms: [...children.values()].flatMap((item) => item.forms),
+        execution,
       }
     },
     settleForm(sessionID, formID) {
@@ -1128,6 +1161,8 @@ export function createSubagentTracker(input: SubagentTrackerInput): SubagentTrac
     },
     close() {
       closed = true
+      clearTimeout(executionTimer)
+      executionEpoch += 1
       resetBlockerHydration()
       for (const job of discoveryQueue.splice(0)) {
         if (discoveryJobs.get(job.sessionID) === job) discoveryJobs.delete(job.sessionID)

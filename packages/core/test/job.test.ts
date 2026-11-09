@@ -4,13 +4,49 @@ import { KV } from "@opencode/core/kv"
 import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
 import { Integration } from "@opencode/core/integration"
 import { LayerNode } from "@opencode/util/effect/layer-node"
-import { Cause, Deferred, Effect, Exit, Fiber, Scope } from "effect"
+import { Cause, Deferred, Effect, Exit, Fiber, Scope, Tracer } from "effect"
 import { SessionSchema } from "@opencode/core/session/schema"
+import { AbsolutePath } from "@opencode/core/schema"
+import { Workspace } from "@opencode/core/workspace"
 import { testEffect } from "./lib/effect"
 
 const it = testEffect(AppNodeBuilder.build(LayerNode.group([Job.node, KV.node])))
 
 describe("Job", () => {
+  it.live("traces detached work with job, session and placement identity", () => {
+    const spans: Tracer.NativeSpan[] = []
+    const tracer = Tracer.make({
+      span(options) {
+        const span = new Tracer.NativeSpan(options)
+        spans.push(span)
+        return span
+      },
+    })
+    return Effect.gen(function* () {
+      const jobs = yield* Job.Service
+      const job = yield* jobs.start({
+        id: "job_traced",
+        type: "subagent",
+        metadata: { sessionID: "ses_traced" },
+        location: {
+          directory: AbsolutePath.make("/workspace"),
+          workspaceID: Workspace.ID.make("wrk_remote"),
+        },
+        run: Effect.succeed("done"),
+      })
+      yield* jobs.wait({ id: job.id })
+
+      const span = spans.find((item) => item.name === "Job.run")
+      expect(Object.fromEntries(span?.attributes ?? [])).toEqual({
+        "opencode.job.id": "job_traced",
+        "opencode.job.type": "subagent",
+        "session.id": "ses_traced",
+        "opencode.workspace.id": "wrk_remote",
+      })
+      expect(span?.status._tag).toBe("Ended")
+    }).pipe(Effect.withTracer(tracer))
+  })
+
   it.live("tracks process-local work through explicit observation", () =>
     Effect.gen(function* () {
       const jobs = yield* Job.Service

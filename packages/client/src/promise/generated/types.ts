@@ -70,13 +70,7 @@ export type FormOption = { value: string; label: string; description?: string }
 
 export type FormExternalField = { key: string; type: "external"; url: string; title?: string; description?: string }
 
-export type ServerInfo = {
-  capabilities?: { sessionObservation: boolean; workerLease?: boolean | undefined } | undefined
-  version: string
-  pid: number
-  urls: Array<string>
-  paths: { tmp: string }
-}
+export type CapabilityFeatures = { [x: string]: number }
 
 export type ClientPresenceSnapshot = {
   total: number
@@ -356,6 +350,57 @@ export type MonitorProbeResult = {
 }
 
 export type MonitorProcess = { pid: number; started: string }
+
+export type ExecutionGraphSessionNode = {
+  id: string
+  sessionID: string
+  status: "pending" | "running" | "waiting" | "suspended" | "idle" | "succeeded" | "failed" | "cancelled"
+  kind: "session"
+  title?: string
+  agent?: string
+  started: number
+  updated: number
+  completed?: number
+}
+
+export type ExecutionGraphJobNode = {
+  id: string
+  sessionID: string
+  status: "pending" | "running" | "waiting" | "suspended" | "idle" | "succeeded" | "failed" | "cancelled"
+  kind: "job"
+  jobID: string
+  jobType: string
+  title?: string
+  started: number
+  completed?: number
+}
+
+export type ExecutionGraphShellNode = {
+  id: string
+  sessionID: string
+  status: "pending" | "running" | "waiting" | "suspended" | "idle" | "succeeded" | "failed" | "cancelled"
+  kind: "shell"
+  shellID: string
+  started: number
+  completed?: number
+  exit?: number
+}
+
+export type ExecutionGraphTerminalNode = {
+  id: string
+  sessionID: string
+  status: "pending" | "running" | "waiting" | "suspended" | "idle" | "succeeded" | "failed" | "cancelled"
+  kind: "terminal"
+  ptyID: string
+  title: string
+  pid: number
+}
+
+export type ExecutionGraphEdge = {
+  from: string
+  to: string
+  relation: "delegates" | "starts" | "executes" | "runs" | "owns"
+}
 
 export type TodoSource = {
   type: "request" | "plan"
@@ -1395,6 +1440,21 @@ export type FormMultiselectField = {
   default?: Array<string>
 }
 
+export type ServerCapabilitiesInfo = {
+  protocol?: number
+  features?: CapabilityFeatures
+  sessionObservation?: boolean
+  workerLease?: boolean
+}
+
+export type HarnessCapabilities = {
+  protocol?: number
+  features?: CapabilityFeatures
+  steer: boolean
+  resume: boolean
+  interrupt: boolean
+}
+
 export type SystemInfo = {
   version: string
   runtime: string
@@ -1417,6 +1477,15 @@ export type SystemInfo = {
       frameBytesP95: number
       frameBytesP99: number
       overflows: number
+      acknowledgements?: number
+      replayedFrames?: number
+      replayMisses?: number
+      retainedFrames?: number
+      retainedBytes?: number
+      cursor?: number
+      oldestCursor?: number
+      acknowledgedClients?: number
+      maxAcknowledgementLag?: number
     }
   }
   urls: Array<string>
@@ -1472,7 +1541,7 @@ export type V2EventServerConnected = {
   metadata?: { [x: string]: any } | undefined
   location?: LocationPublicRef | undefined
   type: "server.connected"
-  data: {}
+  data: { stream?: { epoch: string; cursor: number; replayed: number; reset: boolean } | undefined }
 }
 
 export type RouterOffer = {
@@ -1622,6 +1691,12 @@ export type MonitorEvidence = {
   matched?: string | undefined
   error?: string | undefined
 }
+
+export type ExecutionGraphNode =
+  | ExecutionGraphSessionNode
+  | ExecutionGraphJobNode
+  | ExecutionGraphShellNode
+  | ExecutionGraphTerminalNode
 
 export type TodoIntegration = {
   fingerprint: string
@@ -3090,22 +3165,6 @@ export type HarnessLogin = {
   detail?: string
 }
 
-export type HarnessRun = {
-  id: string
-  driver: HarnessDriver
-  providerInstanceID?: string
-  directory: string
-  model?: string
-  nativeID?: string
-  state: HarnessState
-  createdAt: string
-  detail?: string
-  queued: number
-  backgroundWait?: boolean
-  delegation?: boolean
-  capabilities: { steer: boolean; resume: boolean; interrupt: boolean }
-}
-
 export type HarnessRequest = {
   id: string
   kind: "permission" | "question" | "unsupported"
@@ -3241,6 +3300,30 @@ export type FormField =
   | FormBooleanField
   | FormMultiselectField
   | FormExternalField
+
+export type ServerInfo = {
+  capabilities?: ServerCapabilitiesInfo
+  version: string
+  pid: number
+  urls: Array<string>
+  paths: { tmp: string }
+}
+
+export type HarnessRun = {
+  id: string
+  driver: HarnessDriver
+  providerInstanceID?: string
+  directory: string
+  model?: string
+  nativeID?: string
+  state: HarnessState
+  createdAt: string
+  detail?: string
+  queued: number
+  backgroundWait?: boolean
+  delegation?: boolean
+  capabilities: HarnessCapabilities
+}
 
 export type AutomationInfo = {
   id: string
@@ -3387,6 +3470,14 @@ export type MonitorProgress = {
   type: "monitor.progress"
   location?: LocationRef
   data: { sessionID: string; monitorID: string; updated: number; attempts: number; evidence: MonitorEvidence }
+}
+
+export type ExecutionGraphInfo = {
+  rootSessionID: string
+  generatedAt: number
+  nodes: Array<ExecutionGraphNode>
+  edges: Array<ExecutionGraphEdge>
+  truncated: { shells: boolean }
 }
 
 export type Todo = {
@@ -3602,15 +3693,6 @@ export type WorkerArtifact = {
 }
 
 export type WorkerManifest = { tasks: Array<WorkerTask> }
-
-export type HarnessSnapshot = { providers: Array<HarnessProvider>; runs: Array<HarnessRun> }
-
-export type HarnessDetail = {
-  run: HarnessRun
-  events: Array<HarnessEvent>
-  requests: Array<HarnessRequest>
-  tasks?: Array<HarnessTask>
-}
 
 export type AgentToolsSnapshot = {
   host: { name: string; platform: string; arch: string }
@@ -4037,6 +4119,15 @@ export type SessionPermissions = {
 }
 
 export type FormFields = [FormField, ...Array<FormField>]
+
+export type HarnessSnapshot = { providers: Array<HarnessProvider>; runs: Array<HarnessRun> }
+
+export type HarnessDetail = {
+  run: HarnessRun
+  events: Array<HarnessEvent>
+  requests: Array<HarnessRequest>
+  tasks?: Array<HarnessTask>
+}
 
 export type ModelInfo = {
   id: string
@@ -7140,6 +7231,13 @@ export type SessionMonitorCancelInput = {
 }
 
 export type SessionMonitorCancelOutput = { data: MonitorPublicInfo }["data"]
+
+export type SessionExecutionGraphInput = {
+  readonly sessionID: { readonly sessionID: string }["sessionID"]
+  readonly shellLimit?: { readonly shellLimit?: number | undefined }["shellLimit"]
+}
+
+export type SessionExecutionGraphOutput = { data: ExecutionGraphInfo }["data"]
 
 export type SessionTodoListInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
 
@@ -11313,7 +11411,19 @@ export type RpcCallInput = {
 
 export type RpcCallOutput = RpcOutput
 
+export type EventSubscribeInput = {
+  readonly epoch?: { readonly epoch?: string | undefined; readonly cursor?: number | undefined }["epoch"]
+  readonly cursor?: { readonly epoch?: string | undefined; readonly cursor?: number | undefined }["cursor"]
+}
+
 export type EventSubscribeOutput = V2Event
+
+export type EventAckInput = {
+  readonly epoch: { readonly epoch: string; readonly cursor: number }["epoch"]
+  readonly cursor: { readonly epoch: string; readonly cursor: number }["cursor"]
+}
+
+export type EventAckOutput = void
 
 export type PtyListInput = {
   readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]

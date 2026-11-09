@@ -9,6 +9,7 @@ import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { InvalidRequestError, UnauthorizedError } from "@opencode/protocol/errors"
 import { ConsoleForbiddenError } from "@opencode/protocol/console"
 import { ServerAccess } from "@opencode/protocol/server-access"
+import { ServerCapabilities } from "@opencode/schema/server-capabilities"
 import type { RemoteAccessHost } from "../remote-access"
 import { Api } from "../api"
 import { ServerAuth } from "../auth"
@@ -20,6 +21,20 @@ import { createHostResources } from "../host-resources"
 import { executionMemory } from "../execution-memory"
 import { EventFeed } from "../event-feed"
 import { modelPerformance } from "../model-performance"
+
+const capabilities = ServerCapabilities.Info.make({
+  protocol: ServerCapabilities.Protocol.make(1),
+  features: {
+    [ServerCapabilities.Feature.eventAcknowledgement]: ServerCapabilities.Version.make(1),
+    [ServerCapabilities.Feature.eventResume]: ServerCapabilities.Version.make(1),
+    [ServerCapabilities.Feature.executionGraph]: ServerCapabilities.Version.make(1),
+    [ServerCapabilities.Feature.sessionObservation]: ServerCapabilities.Version.make(1),
+    [ServerCapabilities.Feature.workerLease]: ServerCapabilities.Version.make(1),
+  },
+  // Old coordinators still require these fields while the versioned map rolls out.
+  sessionObservation: true,
+  workerLease: true,
+})
 
 export const ServerHandler = HttpApiBuilder.group(Api, "server.server", (handlers) =>
   Effect.gen(function* () {
@@ -74,7 +89,7 @@ export const ServerHandler = HttpApiBuilder.group(Api, "server.server", (handler
           const info = yield* ServerInfo.Service
           return {
             version: info.app.version ?? "unknown",
-            capabilities: { sessionObservation: true, workerLease: true },
+            capabilities,
             pid: process.pid ?? 0,
             urls: info.urls(),
             paths: info.paths,

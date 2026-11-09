@@ -1389,6 +1389,23 @@ describe("HttpApiCodegen.generate", () => {
     expect(output.operations[0]?.success).toBe("stream")
   })
 
+  test("emits standard SSE metadata callbacks for resumable streams", () => {
+    const output = emitPromise(
+      compileContract(
+        api(
+          HttpApiEndpoint.get("subscribe", "/event", {
+            success: HttpApiSchema.StreamSse({ data: Schema.Struct({ type: Schema.String }) }),
+          }),
+        ),
+      ),
+    )
+    const client = output.files.find((file) => file.path === "client.ts")?.content
+
+    expect(client).toContain("export interface SseEventMetadata")
+    expect(client).toContain("readonly onSseEvent?: (metadata: SseEventMetadata) => void")
+    expect(client).toContain("requestOptions?.onSseEvent?.(metadata)")
+  })
+
   test("emits opaque Promise SSE fields as any", () => {
     const output = emitPromise(
       compileContract(

@@ -72,7 +72,7 @@ test("exposes every standard HTTP API group", () => {
   expect(Object.keys(client.vcs)).toEqual(["init", "get", "base", "status", "branch", "diff"])
   expect(Object.keys(client.pty)).toEqual(["list", "create", "get", "update", "remove", "connect"])
   expect(Object.keys(client.pty.connect)).toEqual(["token"])
-  expect(Object.keys(client.experimental)).toEqual(["persistentPty"])
+  expect(Object.keys(client.experimental)).toEqual(["persistentPty", "media"])
   expect(client.experimental.persistentPty.read).toBeFunction()
   expect(Object.keys(client.shell)).toEqual(["list", "create", "get", "output", "remove"])
   expect(Object.keys(client.project)).toEqual(["list", "update"])
@@ -713,6 +713,40 @@ test("event.subscribe exposes the Promise event stream wire projection", async (
 
   expect(events).toEqual([{ id: "evt_connected", created: 0, type: "server.connected", data: {} }, modelSwitchedEvent])
   expect(events[1]?.type === "session.model.selected" && events[1].created).toBe(1_717_171_717_000)
+})
+
+test("event.subscribe resumes with SSE cursors and acknowledges consumed events", async () => {
+  const requests: Request[] = []
+  const metadata: Array<{ readonly id?: string }> = []
+  const connected = {
+    id: "evt_connected",
+    created: 1,
+    type: "server.connected" as const,
+    data: { stream: { epoch: "process-one", cursor: 4, replayed: 1, reset: false } },
+  }
+  const client = OpenCode.make({
+    baseUrl: "http://localhost:3000",
+    fetch: async (input, init) => {
+      const request = input instanceof Request ? input : new Request(input, init)
+      requests.push(request)
+      if (request.method === "POST") return new Response(null, { status: 200 })
+      return new Response(`id: process-one:4\ndata: ${JSON.stringify(connected)}\n\n`, {
+        headers: { "content-type": "text/event-stream" },
+      })
+    },
+  })
+
+  for await (const event of client.event.subscribe({
+    resume: { epoch: "process-one", cursor: 3 },
+    onSseEvent: (value) => metadata.push(value),
+  })) {
+    expect(event).toEqual(connected)
+  }
+  await client.event.ack({ epoch: "process-one", cursor: 4 })
+
+  expect(requests[0]?.url).toBe("http://localhost:3000/api/event?epoch=process-one&cursor=3")
+  expect(requests[1]?.method).toBe("POST")
+  expect(metadata).toEqual([{ id: "process-one:4" }])
 })
 
 // Moved from packages/app/e2e/regression/session-timeline-transport.spec.ts

@@ -30,7 +30,16 @@ const schema = <const Definitions extends ReadonlyArray<Definition>>(definitions
           Schema.Struct({
             ...fields,
             type: Schema.Literal("server.connected"),
-            data: Schema.Struct({}),
+            data: Schema.Struct({
+              stream: Schema.optional(
+                Schema.Struct({
+                  epoch: Schema.NonEmptyString,
+                  cursor: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+                  replayed: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+                  reset: Schema.Boolean,
+                }),
+              ),
+            }),
           }).annotate({ identifier: "V2Event.server.connected" }),
         ]),
   ]).annotate({ identifier: "V2Event" })
@@ -42,13 +51,32 @@ const make = <const Definitions extends ReadonlyArray<Definition>>(definitions: 
     group: HttpApiGroup.make("server.event")
       .add(
         HttpApiEndpoint.get("event.subscribe", "/api/event", {
+          query: {
+            epoch: Schema.optional(Schema.NonEmptyString),
+            cursor: Schema.optional(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
+          },
           success: HttpApiSchema.StreamSse({ data: EventSchema }),
         }).annotateMerge(
           OpenApi.annotations({
             identifier: "event.subscribe",
             summary: "Subscribe to events",
             description:
-              "Subscribe to native events and plugin RPC events across all server locations. Volatile by contract: a slow consumer overflows and fails the stream, and events during disconnection are missed.",
+              "Subscribe to native events and plugin RPC events across all server locations. A matching process epoch and cursor replay a bounded recent gap; older gaps request a snapshot reset. Slow consumers still overflow and reconnect through the same recovery contract.",
+          }),
+        ),
+      )
+      .add(
+        HttpApiEndpoint.post("event.ack", "/api/event/ack", {
+          payload: Schema.Struct({
+            epoch: Schema.NonEmptyString,
+            cursor: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+          }),
+          success: Schema.Void,
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "event.ack",
+            summary: "Acknowledge an event cursor",
+            description: "Record the latest global event-stream cursor consumed by this client identity.",
           }),
         ),
       )

@@ -2,6 +2,7 @@ export * as Harness from "./harness.js"
 
 import { Schema } from "effect"
 import { AbsolutePath, optional } from "./schema.js"
+import { Capability } from "./capability.js"
 
 export const Driver = Schema.Literals(["claude", "codex"]).annotate({ identifier: "Harness.Driver" })
 export type Driver = typeof Driver.Type
@@ -54,6 +55,43 @@ export const State = Schema.Literals([
   "closed",
 ]).annotate({ identifier: "Harness.State" })
 export type State = typeof State.Type
+export const Feature = {
+  backgroundWork: "run.background",
+  fork: "thread.fork",
+  interrupt: "turn.interrupt",
+  mcpApps: "mcp.apps",
+  multipleThreadsPerRuntime: "runtime.multiple-threads",
+  resume: "thread.resume",
+  resumeAfterRestart: "runtime.resume-after-restart",
+  steer: "turn.steer",
+} as const
+export type Feature = (typeof Feature)[keyof typeof Feature]
+export const Capabilities = Schema.Struct({
+  protocol: Capability.Protocol.pipe(optional),
+  features: Capability.Features.pipe(optional),
+  steer: Schema.Boolean,
+  resume: Schema.Boolean,
+  interrupt: Schema.Boolean,
+}).annotate({ identifier: "Harness.Capabilities" })
+export interface Capabilities extends Schema.Schema.Type<typeof Capabilities> {}
+
+export function supports(
+  capabilities: {
+    readonly features?: Readonly<Record<string, number>>
+    readonly steer: boolean
+    readonly resume: boolean
+    readonly interrupt: boolean
+  },
+  feature: string,
+  minimum = 1,
+) {
+  if (capabilities.features?.[feature] !== undefined)
+    return Capability.supports(capabilities.features, feature, minimum)
+  if (feature === Feature.steer) return minimum <= 1 && capabilities.steer
+  if (feature === Feature.resume) return minimum <= 1 && capabilities.resume
+  if (feature === Feature.interrupt) return minimum <= 1 && capabilities.interrupt
+  return false
+}
 export const Run = Schema.Struct({
   id: Schema.String,
   driver: Driver,
@@ -67,7 +105,7 @@ export const Run = Schema.Struct({
   queued: Schema.Int,
   backgroundWait: optional(Schema.Boolean),
   delegation: optional(Schema.Boolean),
-  capabilities: Schema.Struct({ steer: Schema.Boolean, resume: Schema.Boolean, interrupt: Schema.Boolean }),
+  capabilities: Capabilities,
 }).annotate({ identifier: "Harness.Run" })
 export interface Run extends Schema.Schema.Type<typeof Run> {}
 export const Question = Schema.Struct({

@@ -109,6 +109,8 @@ type ShellWait = {
 
 type RunV2Event = EventSubscribeOutput
 type PromptFilePart = Extract<RunPromptPart, { type: "file" }>
+type StreamCursor = { readonly epoch: string; readonly cursor: number }
+type BufferedEvent = { readonly event: RunV2Event; readonly cursor?: StreamCursor }
 
 type Attempt = {
   client: OpenCodeClient
@@ -118,7 +120,7 @@ type Attempt = {
 
 type ReplayBuffer = {
   attempt: Attempt
-  events: RunV2Event[]
+  events: BufferedEvent[]
 }
 
 type ToolState = {
@@ -239,6 +241,15 @@ function nextEvent(stream: AsyncIterator<RunV2Event>, signal: AbortSignal) {
       },
     )
   })
+}
+
+function parseStreamCursor(value: string | undefined): StreamCursor | undefined {
+  if (!value) return
+  const separator = value.lastIndexOf(":")
+  if (separator <= 0) return
+  const cursor = Number(value.slice(separator + 1))
+  if (!Number.isSafeInteger(cursor) || cursor < 0) return
+  return { epoch: value.slice(0, separator), cursor }
 }
 
 async function prepareInitialFile(file: RunFilePart, readTextFile?: StreamInput["readTextFile"]) {
@@ -484,6 +495,9 @@ export async function createSessionTransport(input: StreamInput): Promise<Sessio
   let generation = 0
   let activeAttempt: Attempt | undefined
   let settlementClient: OpenCodeClient | undefined
+  let eventCursor: StreamCursor | undefined
+  let acknowledgeTimer: ReturnType<typeof setTimeout> | undefined
+  let acknowledgementSupported = false
   input.signal?.addEventListener("abort", () => controller.abort(), { once: true })
   const state: State = {
     permissions: [],
@@ -522,6 +536,13 @@ export async function createSessionTransport(input: StreamInput): Promise<Sessio
   })
   const abortReady = () => readyReject(new Error("Mini closed before the event stream connected"))
   controller.signal.addEventListener("abort", abortReady, { once: true })
+  controller.signal.addEventListener(
+    "abort",
+    () => {
+      if (acknowledgeTimer) clearTimeout(acknowledgeTimer)
+    },
+    { once: true },
+  )
   const offFooterClose = input.footer.onClose(() => controller.abort())
   const waitUntilConnected = async (signal?: AbortSignal) => {
     const abort = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal
@@ -1456,13 +1477,28 @@ export async function createSessionTransport(input: StreamInput): Promise<Sessio
     }
   }
 
-  const receive = (attempt: Attempt, event: RunV2Event) => {
+  const commitCursor = (client: OpenCodeClient, cursor: StreamCursor | undefined) => {
+    if (!cursor || (eventCursor?.epoch === cursor.epoch && eventCursor.cursor >= cursor.cursor)) return
+    eventCursor = cursor
+    if (!acknowledgementSupported || acknowledgeTimer) return
+    acknowledgeTimer = setTimeout(() => {
+      acknowledgeTimer = undefined
+      const current = eventCursor
+      if (!current || !acknowledgementSupported) return
+      void client.event.ack(current).catch(() => {
+        acknowledgementSupported = false
+      })
+    }, 1_000)
+  }
+
+  const receive = (attempt: Attempt, event: RunV2Event, cursor?: StreamCursor) => {
     if (!current(attempt)) return
     if (state.buffered?.attempt === attempt) {
-      state.buffered.events.push(event)
+      state.buffered.events.push({ event, cursor })
       return
     }
     apply(attempt, event)
+    commitCursor(attempt.client, cursor)
   }
 
   const hydration = new Map<number, Promise<void>>()
@@ -1512,33 +1548,59 @@ export async function createSessionTransport(input: StreamInput): Promise<Sessio
         const abortConnection = () => connection.abort()
         controller.signal.addEventListener("abort", abortConnection, { once: true })
         const attempt = { client, signal: connection.signal, generation: ++generation }
-        const stream = client.event.subscribe({ signal: connection.signal })[Symbol.asyncIterator]()
+        const resume = eventCursor
+        let observedCursor: StreamCursor | undefined
+        const stream = client.event
+          .subscribe({
+            signal: connection.signal,
+            resume,
+            onSseEvent: (metadata) => {
+              observedCursor = parseStreamCursor(metadata.id)
+            },
+          })
+          [Symbol.asyncIterator]()
         activeAttempt = attempt
         try {
           const first = await nextEvent(stream, connection.signal)
           if (first.done || first.value.type !== "server.connected") throw new Error("Event stream disconnected")
-          const buffered: RunV2Event[] = []
+          observedCursor = undefined
+          const streamInfo = first.value.data.stream
+          acknowledgementSupported = streamInfo !== undefined
+          if (!streamInfo) eventCursor = undefined
+          const snapshotCursor =
+            streamInfo && (!resume || streamInfo.reset)
+              ? { epoch: streamInfo.epoch, cursor: streamInfo.cursor }
+              : undefined
+          if (streamInfo && resume && !streamInfo.reset && streamInfo.replayed === 0)
+            eventCursor = { epoch: streamInfo.epoch, cursor: streamInfo.cursor }
+          const resumed = !state.initial && streamInfo !== undefined && !streamInfo.reset
+          const buffered: BufferedEvent[] = []
           let booting = true
           const consume = (async () => {
             while (true) {
               const next = await nextEvent(stream, connection.signal)
               if (next.done) throw new Error("Event stream disconnected")
-              if (booting) buffered.push(next.value)
-              else receive(attempt, next.value)
+              const cursor = observedCursor
+              observedCursor = undefined
+              if (booting) buffered.push({ event: next.value, cursor })
+              else receive(attempt, next.value, cursor)
             }
           })()
           await Promise.race([
-            serializeHydration(attempt, () =>
-              hydrate(attempt, {
-                render: state.initial ? input.replay === true : true,
-                reconnect: !state.initial,
-              }),
-            ),
+            resumed
+              ? Promise.resolve()
+              : serializeHydration(attempt, () =>
+                  hydrate(attempt, {
+                    render: state.initial ? input.replay === true : true,
+                    reconnect: !state.initial,
+                  }),
+                ),
             consume,
           ])
           if (!current(attempt)) throw new Error("Event stream disconnected")
+          commitCursor(client, snapshotCursor)
           state.initial = false
-          for (const event of buffered.splice(0)) apply(attempt, event)
+          for (const item of buffered.splice(0)) receive(attempt, item.event, item.cursor)
           if (!current(attempt)) throw new Error("Event stream disconnected")
           booting = false
           state.connected = true
@@ -1674,7 +1736,7 @@ export async function createSessionTransport(input: StreamInput): Promise<Sessio
   const performResizeReplay = async (attempt: Attempt, next: SessionResizeReplayInput) => {
     if (!input.replay || !state.connected || !current(attempt) || state.closed || input.footer.isClosed) return false
     const localRows = next.localRows()
-    const buffered: RunV2Event[] = []
+    const buffered: BufferedEvent[] = []
     const replayBuffer = { attempt, events: buffered }
     let failure: unknown
     let reset = false
@@ -1745,7 +1807,10 @@ export async function createSessionTransport(input: StreamInput): Promise<Sessio
         }
       }
     } finally {
-      for (const event of buffered) apply(attempt, event)
+      for (const item of buffered) {
+        apply(attempt, item.event)
+        commitCursor(attempt.client, item.cursor)
+      }
     }
     if (reset) await input.footer.idle()
     if (failure) throw failure

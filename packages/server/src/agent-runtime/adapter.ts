@@ -1,4 +1,5 @@
 import { Harness } from "@opencode/schema/harness"
+import { Capability } from "@opencode/schema/capability"
 import { type Frame, type Wire } from "../harness-wire"
 import { type AgentRuntimeEvent, type AgentRuntimeEventInput } from "./events"
 
@@ -48,7 +49,21 @@ export type AgentRuntimeAdapter = {
 }
 
 export function harnessCapabilities(adapter: AgentRuntimeAdapter): Harness.Run["capabilities"] {
+  const version = Capability.Version.make(1)
   return {
+    protocol: Capability.Protocol.make(1),
+    features: {
+      ...(adapter.capabilities.backgroundWork ? { [Harness.Feature.backgroundWork]: version } : {}),
+      ...(adapter.capabilities.fork ? { [Harness.Feature.fork]: version } : {}),
+      ...(adapter.capabilities.interrupt ? { [Harness.Feature.interrupt]: version } : {}),
+      ...(adapter.capabilities.mcpApps ? { [Harness.Feature.mcpApps]: version } : {}),
+      ...(adapter.capabilities.multipleThreadsPerRuntime
+        ? { [Harness.Feature.multipleThreadsPerRuntime]: version }
+        : {}),
+      ...(adapter.capabilities.resume ? { [Harness.Feature.resume]: version } : {}),
+      ...(adapter.capabilities.resumeAfterRestart ? { [Harness.Feature.resumeAfterRestart]: version } : {}),
+      ...(adapter.capabilities.steer ? { [Harness.Feature.steer]: version } : {}),
+    },
     interrupt: adapter.capabilities.interrupt,
     resume: adapter.capabilities.resume,
     steer: adapter.capabilities.steer,

@@ -48,6 +48,7 @@ describe("EventFeed", () => {
     const payload = event("wire")
     expect(EventFeed.frame(payload)).toBe(`data: ${JSON.stringify(payload)}\n\n`)
     expect(text(EventFeed.frameBytes(payload))).toBe(EventFeed.frame(payload))
+    expect(EventFeed.frame(payload, "epoch:7")).toBe(`id: epoch:7\ndata: ${JSON.stringify(payload)}\n\n`)
   })
 
   it.effect("encodes once and delivers the same frame to every subscriber", () =>
@@ -177,6 +178,15 @@ describe("EventFeed", () => {
         frameBytesP95: 4,
         frameBytesP99: 4,
         overflows: 1,
+        acknowledgements: 0,
+        replayedFrames: 0,
+        replayMisses: 0,
+        retainedFrames: 2,
+        retainedBytes: 8,
+        cursor: 2,
+        oldestCursor: 1,
+        acknowledgedClients: 0,
+        maxAcknowledgementLag: 0,
       })
     }),
   )
@@ -272,6 +282,80 @@ describe("EventFeed", () => {
       if (Exit.isSuccess(exit)) return
       expect(Option.getOrUndefined(Exit.findErrorOption(exit))).toBeInstanceOf(EventFeed.EncodingError)
       expect(texts(yield* Fiber.join(received))).toEqual(["evt_good"])
+    }),
+  )
+
+  it.effect("replays events published while a client is disconnected without duplicating live events", () =>
+    Effect.gen(function* () {
+      const source = makeSource()
+      const feed = yield* EventFeed.make(source.observe, { encode: (item, id) => bytes(`${id}|${item.id}`) })
+      const first = yield* feed.connectClient({ id: "desktop-one", surface: "desktop" })
+      yield* source.publish(event("one"))
+      expect(texts(yield* first.stream.pipe(Stream.take(1), Stream.runCollect))).toEqual([
+        `${first.epoch}:1|evt_one`,
+      ])
+
+      yield* source.publish(event("two"))
+      const resumed = yield* feed.connectClient(
+        { id: "desktop-one", surface: "desktop" },
+        { epoch: first.epoch, cursor: 1 },
+      )
+      const received = yield* resumed.stream.pipe(Stream.take(2), Stream.runCollect, Effect.forkScoped)
+      yield* source.publish(event("three"))
+
+      expect(resumed.reset).toBeFalse()
+      expect(resumed.replayed).toBe(1)
+      expect(texts(yield* Fiber.join(received))).toEqual([
+        `${first.epoch}:2|evt_two`,
+        `${first.epoch}:3|evt_three`,
+      ])
+    }),
+  )
+
+  it.effect("requests a snapshot reset when the replay cursor is stale or belongs to another epoch", () =>
+    Effect.gen(function* () {
+      const source = makeSource()
+      const feed = yield* EventFeed.make(source.observe, {
+        replayCapacity: 1,
+        encode: (item, id) => bytes(`${id}|${item.id}`),
+      })
+      const initial = yield* feed.connectClient({ id: "web-one", surface: "web" })
+      yield* source.publish(event("one"))
+      yield* source.publish(event("two"))
+
+      const stale = yield* feed.connectClient(
+        { id: "web-one", surface: "web" },
+        { epoch: initial.epoch, cursor: 0 },
+      )
+      const wrongEpoch = yield* feed.connectClient(
+        { id: "web-two", surface: "web" },
+        { epoch: "old-process", cursor: 2 },
+      )
+
+      expect(stale.reset).toBeTrue()
+      expect(stale.replayed).toBe(0)
+      expect(wrongEpoch.reset).toBeTrue()
+      expect((yield* feed.diagnostics).replayMisses).toBe(2)
+    }),
+  )
+
+  it.effect("records monotonic acknowledgements without trusting invalid cursors", () =>
+    Effect.gen(function* () {
+      const source = makeSource()
+      const feed = yield* EventFeed.make(source.observe)
+      const connection = yield* feed.connectClient({ id: "tui-one", surface: "tui" })
+      yield* source.publish(event("one"))
+
+      yield* feed.acknowledge("tui-one", { epoch: connection.epoch, cursor: 1 })
+      yield* feed.acknowledge("tui-one", { epoch: connection.epoch, cursor: 1 })
+      yield* feed.acknowledge("tui-one", { epoch: "wrong", cursor: 1 })
+      yield* feed.acknowledge("tui-one", { epoch: connection.epoch, cursor: 2 })
+
+      expect(yield* feed.diagnostics).toMatchObject({
+        acknowledgements: 1,
+        acknowledgedClients: 1,
+        maxAcknowledgementLag: 0,
+      })
     }),
   )
 })

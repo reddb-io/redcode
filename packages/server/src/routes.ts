@@ -28,6 +28,7 @@ import { SessionTaskReconciliation } from "@opencode/core/session/task-reconcili
 import { TaskIntegration } from "./task-integration"
 import { SessionTodoStore } from "@opencode/core/session/todo-store"
 import { SessionTaskAssignments } from "@opencode/core/session/task-assignments"
+import { SessionExecutionGraph } from "@opencode/core/session/execution-graph"
 import { SessionTaskContext } from "@opencode/core/session/task-context"
 import { IntelligenceArtifacts } from "@opencode/core/intelligence/artifacts"
 import { Intelligence } from "@opencode/core/intelligence"
@@ -114,6 +115,7 @@ const applicationServiceNodes = [
   SessionTaskFacts.node,
   SessionTodoStore.node,
   SessionTaskAssignments.node,
+  SessionExecutionGraph.node,
   SessionTaskContext.node,
   SessionTaskReconciliation.node,
   TaskIntegration.node,

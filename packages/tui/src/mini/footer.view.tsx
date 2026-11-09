@@ -142,6 +142,7 @@ export function RunFooterView(props: RunFooterViewProps) {
         details: {},
         permissions: [],
         forms: [],
+        execution: undefined,
       }
     )
   })
@@ -1032,6 +1033,7 @@ export function RunFooterView(props: RunFooterViewProps) {
             index={selectedIndex}
             total={() => tabs().length}
             detail={detail}
+            execution={() => subagent().execution}
             onCycle={cycleTab}
             onClose={closeTab}
             interrupt={() => subagentInterruptShortcut() || undefined}

@@ -9,6 +9,7 @@ import { Config } from "@opencode/schema/config"
 import { Credential } from "@opencode/schema/credential"
 import { Event } from "@opencode/schema/event"
 import { EventLog } from "@opencode/schema/event-log"
+import { ExecutionGraph } from "@opencode/schema/execution-graph"
 import { FileDiff } from "@opencode/schema/file-diff"
 import { FileSystem } from "@opencode/schema/filesystem"
 import { Form } from "@opencode/schema/form"
@@ -45,6 +46,7 @@ import { Session } from "@opencode/schema/session"
 import { SessionMessage } from "@opencode/schema/session-message"
 import { SessionInbox } from "@opencode/schema/session-inbox"
 import { SessionObservation } from "@opencode/schema/session-observation"
+import { ServerCapabilities } from "@opencode/schema/server-capabilities"
 import { WorkerLease } from "@opencode/schema/worker-lease"
 import { Shell } from "@opencode/schema/shell"
 import { Skill } from "@opencode/schema/skill"
@@ -64,6 +66,7 @@ const effectTypeReferences = [
   ...namespaceTypes("Credential", "@opencode/schema/credential", Credential),
   ...namespaceTypes("Event", "@opencode/schema/event", Event),
   ...namespaceTypes("EventLog", "@opencode/schema/event-log", EventLog),
+  ...namespaceTypes("ExecutionGraph", "@opencode/schema/execution-graph", ExecutionGraph),
   ...namespaceTypes("FileDiff", "@opencode/schema/file-diff", FileDiff),
   ...namespaceTypes("FileSystem", "@opencode/schema/filesystem", FileSystem),
   ...namespaceTypes("Form", "@opencode/schema/form", Form),
@@ -98,6 +101,7 @@ const effectTypeReferences = [
   ...namespaceTypes("Session", "@opencode/schema/session", Session),
   ...namespaceTypes("SessionMessage", "@opencode/schema/session-message", SessionMessage),
   ...namespaceTypes("SessionInbox", "@opencode/schema/session-inbox", SessionInbox),
+  ...namespaceTypes("ServerCapabilities", "@opencode/schema/server-capabilities", ServerCapabilities),
   ...namespaceTypes("SessionObservation", "@opencode/schema/session-observation", SessionObservation),
   ...namespaceTypes("WorkerLease", "@opencode/schema/worker-lease", WorkerLease),
   ...namespaceTypes("Shell", "@opencode/schema/shell", Shell),

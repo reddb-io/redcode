@@ -24,12 +24,20 @@ export function createConnectionSync(input: {
   })
   onCleanup(() => dispatch({ type: "disposed" }))
 
-  function handleEvent(event: { type: string }) {
+  function handleEvent(event: { type: string; data?: unknown }) {
     if (event.type !== "server.connected") return
-    dispatch({ type: "handshake.received" })
+    // Servers predating resumable streams omit metadata and keep the conservative full-refresh behavior.
+    dispatch({ type: "handshake.received", reset: streamReset(event.data) })
   }
 
   return { handleEvent }
+}
+
+function streamReset(data: unknown) {
+  if (typeof data !== "object" || data === null || !("stream" in data)) return true
+  const stream = data.stream
+  if (typeof stream !== "object" || stream === null || !("reset" in stream)) return true
+  return stream.reset === true
 }
 
 // Directories a mounted view holds refresh first; the rest keep their existing order behind them.

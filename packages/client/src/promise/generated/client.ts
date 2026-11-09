@@ -86,6 +86,8 @@ import type {
   SessionMonitorGetOutput,
   SessionMonitorCancelInput,
   SessionMonitorCancelOutput,
+  SessionExecutionGraphInput,
+  SessionExecutionGraphOutput,
   SessionTodoListInput,
   SessionTodoListOutput,
   SessionTodoGraphInput,
@@ -315,7 +317,10 @@ import type {
   SkillListOutput,
   RpcCallInput,
   RpcCallOutput,
+  EventSubscribeInput,
   EventSubscribeOutput,
+  EventAckInput,
+  EventAckOutput,
   PtyListInput,
   PtyListOutput,
   PtyCreateInput,
@@ -573,11 +578,19 @@ export interface ClientOptions {
   readonly headers?: RequestInit["headers"]
 }
 
+export interface SseEventMetadata {
+  readonly id?: string
+  readonly event?: string
+  readonly retry?: number
+}
+
 export interface RequestOptions {
   readonly signal?: AbortSignal
   readonly headers?: RequestInit["headers"]
   /** Reports every chunk a streaming response receives, including keepalive comments that yield no event. */
   readonly onActivity?: () => void
+  /** Reports the standard SSE fields associated with a decoded data event. */
+  readonly onSseEvent?: (metadata: SseEventMetadata) => void
 }
 
 interface RequestDescriptor {
@@ -714,13 +727,24 @@ export function make(options: ClientOptions) {
           while (boundary >= 0) {
             const block = buffer.slice(0, boundary)
             buffer = buffer.slice(boundary + 2)
-            const data = block
-              .split("\n")
+            const lines = block.split("\n")
+            const data = lines
               .flatMap((line) => (line.startsWith("data:") ? [line.slice(5).trimStart()] : []))
               .join("\n")
             if (data !== "") {
               try {
-                yield JSON.parse(data) as A
+                const metadata: { id?: string; event?: string; retry?: number } = {}
+                for (const line of lines) {
+                  if (line.startsWith("id:")) metadata.id = line.slice(3).trimStart()
+                  if (line.startsWith("event:")) metadata.event = line.slice(6).trimStart()
+                  if (line.startsWith("retry:")) {
+                    const retry = Number(line.slice(6).trimStart())
+                    if (Number.isFinite(retry) && retry >= 0) metadata.retry = retry
+                  }
+                }
+                const value = JSON.parse(data) as A
+                requestOptions?.onSseEvent?.(metadata)
+                yield value
               } catch (cause) {
                 throw new ClientError("MalformedResponse", { cause })
               }
@@ -1559,6 +1583,18 @@ export function make(options: ClientOptions) {
             requestOptions,
           ).then((value) => value.data),
       },
+      executionGraph: (input: SessionExecutionGraphInput, requestOptions?: RequestOptions) =>
+        request<{ readonly data: SessionExecutionGraphOutput }>(
+          {
+            method: "GET",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/execution-graph`,
+            query: { shellLimit: input["shellLimit"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 404, 409],
+            empty: false,
+          },
+          requestOptions,
+        ).then((value) => value.data),
       todo: {
         list: (input: SessionTodoListInput, requestOptions?: RequestOptions) =>
           request<{ readonly data: SessionTodoListOutput }>(
@@ -2900,14 +2936,27 @@ export function make(options: ClientOptions) {
         ),
     },
     event: {
-      subscribe: (requestOptions?: RequestOptions): AsyncIterable<EventSubscribeOutput> =>
+      subscribe: (input?: EventSubscribeInput, requestOptions?: RequestOptions): AsyncIterable<EventSubscribeOutput> =>
         sse<EventSubscribeOutput>(
           {
             method: "GET",
             path: `/api/event`,
+            query: { epoch: input?.["epoch"], cursor: input?.["cursor"] },
             successStatus: 200,
             declaredStatuses: [400, 401, 403, 409],
             empty: false,
+          },
+          requestOptions,
+        ),
+      ack: (input: EventAckInput, requestOptions?: RequestOptions) =>
+        request<EventAckOutput>(
+          {
+            method: "POST",
+            path: `/api/event/ack`,
+            body: { epoch: input["epoch"], cursor: input["cursor"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 409],
+            empty: true,
           },
           requestOptions,
         ),

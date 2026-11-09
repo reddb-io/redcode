@@ -115,9 +115,13 @@ export const make = Effect.gen(function* () {
     const pendingStartSnapshot = yield* snapshots.capture().pipe(Effect.forkScoped)
     const started = yield* Clock.currentTimeMillis
     let firstOutputAt: number | undefined
-    yield* Effect.annotateCurrentSpan({
+    const modelAttributes = {
       "gen_ai.provider.name": input.model.ref.providerID,
       "gen_ai.request.model": input.model.ref.id,
+    }
+    yield* Effect.annotateCurrentSpan({
+      ...modelAttributes,
+      "gen_ai.agent.name": input.agent,
       ...(input.retryAttempt === undefined ? {} : { "opencode.retry.attempt": input.retryAttempt }),
     })
     const publisher = createLLMEventPublisher(bus, {
@@ -207,6 +211,8 @@ export const make = Effect.gen(function* () {
       }),
       (endModelWait) =>
         llm.stream(input.prepared.request, input.prepared.options).pipe(
+          // Keep provider latency separate from local tool execution in the parent logical-step span.
+          Stream.withSpan("LLM.stream", { attributes: modelAttributes }),
           Stream.runForEach((event) =>
             Effect.gen(function* () {
               yield* endModelWait

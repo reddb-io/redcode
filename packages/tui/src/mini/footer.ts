@@ -126,6 +126,7 @@ function createEmptySubagentState(): FooterSubagentState {
     details: {},
     permissions: [],
     forms: [],
+    execution: undefined,
   }
 }
 
@@ -298,6 +299,7 @@ export class RunFooter implements FooterApi {
       setSubagent("details", reconcile(next.details))
       setSubagent("permissions", reconcile(next.permissions, { key: "id" }))
       setSubagent("forms", reconcile(next.forms, { key: "id" }))
+      setSubagent("execution", reconcile(next.execution))
     }
     const [queuedPrompts, setQueuedPrompts] = createSignal<FooterQueuedPrompt[]>([])
     this.queuedPrompts = queuedPrompts

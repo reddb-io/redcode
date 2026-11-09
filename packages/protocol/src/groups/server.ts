@@ -8,11 +8,11 @@ import { HostResources } from "@opencode/schema/host-resources"
 import { Memory } from "@opencode/schema/memory"
 import { ClientPresence } from "@opencode/schema/client-presence"
 import { ModelPerformance } from "@opencode/schema/model-performance"
+import { ServerCapabilities } from "@opencode/schema/server-capabilities"
+import { optional } from "@opencode/schema/schema"
 
 export const ServerInfo = Schema.Struct({
-  capabilities: Schema.optional(
-    Schema.Struct({ sessionObservation: Schema.Boolean, workerLease: Schema.optional(Schema.Boolean) }),
-  ),
+  capabilities: ServerCapabilities.Info.pipe(optional),
   version: Schema.String,
   // 0 means the runtime has no OS process identity (e.g. workerd).
   pid: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
@@ -64,6 +64,15 @@ export const SystemInfo = Schema.Struct({
           frameBytesP95: Schema.Int,
           frameBytesP99: Schema.Int,
           overflows: Schema.Int,
+          acknowledgements: Schema.optionalKey(Schema.Int),
+          replayedFrames: Schema.optionalKey(Schema.Int),
+          replayMisses: Schema.optionalKey(Schema.Int),
+          retainedFrames: Schema.optionalKey(Schema.Int),
+          retainedBytes: Schema.optionalKey(Schema.Int),
+          cursor: Schema.optionalKey(Schema.Int),
+          oldestCursor: Schema.optionalKey(Schema.Int),
+          acknowledgedClients: Schema.optionalKey(Schema.Int),
+          maxAcknowledgementLag: Schema.optionalKey(Schema.Int),
         }),
       ),
     }),

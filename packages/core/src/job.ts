@@ -300,6 +300,18 @@ export const make = Effect.gen(function* () {
         )
         if ("scope" in result)
           yield* restore(input.run).pipe(
+            Effect.withSpan("Job.run", {
+              attributes: {
+                "opencode.job.id": id,
+                "opencode.job.type": input.type,
+                ...(typeof input.metadata?.sessionID === "string"
+                  ? { "session.id": input.metadata.sessionID }
+                  : {}),
+                ...(input.location?.workspaceID === undefined
+                  ? {}
+                  : { "opencode.workspace.id": input.location.workspaceID }),
+              },
+            }),
             Effect.exit,
             Effect.flatMap((exit) => settle(id, result.scope, exit)),
             Effect.asVoid,

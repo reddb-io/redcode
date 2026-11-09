@@ -234,6 +234,74 @@
         }
       }
     },
+    "/api/memory": {
+      "get": {
+        "tags": ["server"],
+        "operationId": "server.memory",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Memory.Snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Memory.Snapshot"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorEncoded"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ConsoleForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictErrorEncoded"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Sample owned execution memory on demand"
+      }
+    },
     "/api/resources": {
       "get": {
         "tags": ["server"],
@@ -480,6 +548,68 @@
         },
         "description": "Return the server's version, runtime, data paths, database (local size or remote host) and memory. Never a credential.",
         "summary": "Get system info"
+      }
+    },
+    "/api/performance": {
+      "get": {
+        "tags": ["server"],
+        "operationId": "server.performance",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "ModelPerformance.Snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelPerformance.Snapshot"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorEncoded"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ConsoleForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictErrorEncoded"
+                }
+              }
+            }
+          }
+        },
+        "description": "Summarize time to first output, generation throughput, and failures from up to 5,000 persisted model responses in the last 24 hours.",
+        "summary": "Get model performance"
       }
     },
     "/api/pair": {
@@ -5576,6 +5706,110 @@
         },
         "description": "Manage monitors belonging to this session. Cancellation stops local observation; external jobs keep running.",
         "summary": "Stop local monitoring"
+      }
+    },
+    "/api/session/{sessionID}/execution-graph": {
+      "get": {
+        "tags": ["session"],
+        "operationId": "session.executionGraph",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          },
+          {
+            "name": "shellLimit",
+            "in": "query",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ExecutionGraph.Info"
+                    }
+                  },
+                  "required": ["data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorEncoded"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ConsoleForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SessionNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionNotFoundErrorEncoded"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictErrorEncoded"
+                }
+              }
+            }
+          }
+        },
+        "description": "Read the durable session lineage together with recoverable jobs, shell executions and persistent terminals. Live process state is overlaid when available; this observation never starts or changes work.",
+        "summary": "Inspect the session execution graph"
       }
     },
     "/api/session/{sessionID}/todo": {
@@ -19142,7 +19376,40 @@
       "get": {
         "tags": ["event"],
         "operationId": "event.subscribe",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "epoch",
+            "in": "query",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[+-]?\\d*\\.?\\d+(?:[Ee][+-]?\\d+)?$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false
+          }
+        ],
         "security": [],
         "responses": {
           "200": {
@@ -19277,8 +19544,85 @@
             }
           }
         },
-        "description": "Subscribe to native events and plugin RPC events across all server locations. Volatile by contract: a slow consumer overflows and fails the stream, and events during disconnection are missed.",
+        "description": "Subscribe to native events and plugin RPC events across all server locations. A matching process epoch and cursor replay a bounded recent gap; older gaps request a snapshot reset. Slow consumers still overflow and reconnect through the same recovery contract.",
         "summary": "Subscribe to events"
+      }
+    },
+    "/api/event/ack": {
+      "post": {
+        "tags": ["event"],
+        "operationId": "event.ack",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "<No Content>"
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorEncoded"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ConsoleForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictErrorEncoded"
+                }
+              }
+            }
+          }
+        },
+        "description": "Record the latest global event-stream cursor consumed by this client identity.",
+        "summary": "Acknowledge an event cursor",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "epoch": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "cursor": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "required": ["epoch", "cursor"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        }
       }
     },
     "/api/pty": {
@@ -21304,6 +21648,95 @@
         "description": "Stream persistent PTY output through the OpenCode server.",
         "summary": "Connect to a persistent PTY",
         "x-websocket": true
+      }
+    },
+    "/api/experimental/media/{hash}": {
+      "get": {
+        "tags": ["persistentPty"],
+        "operationId": "experimental.media.get",
+        "parameters": [
+          {
+            "name": "hash",
+            "in": "path",
+            "schema": {
+              "$ref": "#/components/schemas/MediaHash"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorEncoded"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ConsoleForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "FileNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileNotFoundErrorEncoded"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictErrorEncoded"
+                }
+              }
+            }
+          }
+        },
+        "description": "Read referenced content-addressed media by SHA-256 hash. Responses use immutable caching and never expose orphaned blobs.",
+        "summary": "Read media blob"
       }
     },
     "/api/shell": {
@@ -24888,6 +25321,169 @@
         }
       }
     },
+    "/api/voice/models": {
+      "post": {
+        "tags": ["server.voice"],
+        "operationId": "voice.models",
+        "parameters": [
+          {
+            "name": "location",
+            "in": "query",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "directory": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false,
+            "style": "deepObject",
+            "explode": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": ["id", "name"],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": ["data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorEncoded"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ConsoleForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "LocationNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationNotFoundErrorEncoded"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictErrorEncoded"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "ServiceUnavailableError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceUnavailableErrorEncoded"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Discover voice models for an explicitly selected provider",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "provider": {
+                    "type": "string",
+                    "enum": ["openai", "openrouter", "elevenlabs", "deepgram", "openai-compatible"]
+                  },
+                  "connection": {
+                    "$ref": "#/components/schemas/Connection.Ref"
+                  },
+                  "baseURL": {
+                    "type": "string"
+                  }
+                },
+                "required": ["provider"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
     "/api/voice/transcribe": {
       "post": {
         "tags": ["server.voice"],
@@ -27400,6 +27996,90 @@
         }
       }
     },
+    "/api/workers/{id}/memory": {
+      "get": {
+        "tags": ["server.workers"],
+        "operationId": "workers.memory",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "$ref": "#/components/schemas/Worker.Name"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Memory.Snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Memory.Snapshot"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorEncoded"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ConsoleForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictErrorEncoded"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Sample an authorized worker's execution memory"
+      }
+    },
     "/api/workers/{id}/resources": {
       "get": {
         "tags": ["server.workers"],
@@ -28739,16 +29419,17 @@
         }
       }
     },
-    "/api/harness/{driver}/login/answer": {
+    "/api/harness/{providerInstanceID}/login/answer": {
       "post": {
         "tags": ["harness"],
         "operationId": "harness.loginAnswer",
         "parameters": [
           {
-            "name": "driver",
+            "name": "providerInstanceID",
             "in": "path",
             "schema": {
-              "$ref": "#/components/schemas/Harness.Driver"
+              "type": "string",
+              "minLength": 1
             },
             "required": true
           }
@@ -28834,16 +29515,17 @@
         }
       }
     },
-    "/api/harness/{driver}/login": {
+    "/api/harness/{providerInstanceID}/login": {
       "delete": {
         "tags": ["harness"],
         "operationId": "harness.cancelLogin",
         "parameters": [
           {
-            "name": "driver",
+            "name": "providerInstanceID",
             "in": "path",
             "schema": {
-              "$ref": "#/components/schemas/Harness.Driver"
+              "type": "string",
+              "minLength": 1
             },
             "required": true
           }
@@ -28914,10 +29596,11 @@
         "operationId": "harness.login",
         "parameters": [
           {
-            "name": "driver",
+            "name": "providerInstanceID",
             "in": "path",
             "schema": {
-              "$ref": "#/components/schemas/Harness.Driver"
+              "type": "string",
+              "minLength": 1
             },
             "required": true
           }
@@ -28995,10 +29678,11 @@
         "operationId": "harness.loginStatus",
         "parameters": [
           {
-            "name": "driver",
+            "name": "providerInstanceID",
             "in": "path",
             "schema": {
-              "$ref": "#/components/schemas/Harness.Driver"
+              "type": "string",
+              "minLength": 1
             },
             "required": true
           }
@@ -29230,16 +29914,17 @@
         }
       }
     },
-    "/api/harness/{driver}/probe": {
+    "/api/harness/{providerInstanceID}/probe": {
       "post": {
         "tags": ["harness"],
         "operationId": "harness.probe",
         "parameters": [
           {
-            "name": "driver",
+            "name": "providerInstanceID",
             "in": "path",
             "schema": {
-              "$ref": "#/components/schemas/Harness.Driver"
+              "type": "string",
+              "minLength": 1
             },
             "required": true
           }
@@ -32344,6 +33029,12 @@
             "items": {
               "$ref": "#/components/schemas/AgentTools.Status"
             }
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExecutionCapability.Info"
+            }
           }
         },
         "required": ["host", "tools"],
@@ -32791,6 +33482,56 @@
           }
         },
         "required": ["_tag", "message"],
+        "additionalProperties": false
+      },
+      "Capability.Features": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        }
+      },
+      "ClientPresence.Snapshot": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "desktop": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "web": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "tui": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "cli": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "api": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "automation": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "worker": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "unknown": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": ["total", "desktop", "web", "tui", "cli", "api", "automation", "worker", "unknown"],
         "additionalProperties": false
       },
       "Command.Info": {
@@ -36607,6 +37348,327 @@
         "required": ["_tag", "designID", "message"],
         "additionalProperties": false
       },
+      "ExecutionCapability.Info": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160,
+            "pattern": "^[A-Za-z0-9._:-]+$"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ExecutionCapability.Kind"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ExecutionCapability.Source"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ExecutionCapability.Status"
+          },
+          "risk": {
+            "$ref": "#/components/schemas/ExecutionCapability.Risk"
+          },
+          "target": {
+            "$ref": "#/components/schemas/ExecutionCapability.Target"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/ExecutionCapability.Provider"
+          },
+          "sessionID": {
+            "type": "string",
+            "pattern": "^ses"
+          },
+          "operations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "detail": {
+            "type": "string"
+          },
+          "checkedAt": {
+            "type": "number"
+          }
+        },
+        "required": ["id", "name", "kind", "source", "status", "risk", "target", "operations"],
+        "additionalProperties": false
+      },
+      "ExecutionCapability.Kind": {
+        "type": "string",
+        "enum": ["browser", "desktop", "terminal", "workspace", "other"]
+      },
+      "ExecutionCapability.Provider": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["plugin"]
+              },
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": ["type", "id"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "ExecutionCapability.Risk": {
+        "type": "string",
+        "enum": ["observe", "interactive", "privileged"]
+      },
+      "ExecutionCapability.Source": {
+        "type": "string",
+        "enum": ["builtin", "managed", "custom", "client-mcp", "worker"]
+      },
+      "ExecutionCapability.Status": {
+        "type": "string",
+        "enum": ["unavailable", "disabled", "available", "connecting", "ready", "degraded"]
+      },
+      "ExecutionCapability.Target": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["server", "client", "worker"]
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "arch": {
+            "type": "string"
+          }
+        },
+        "required": ["type", "id", "name"],
+        "additionalProperties": false
+      },
+      "ExecutionGraph.Edge": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "relation": {
+            "type": "string",
+            "enum": ["delegates", "starts", "executes", "runs", "owns"]
+          }
+        },
+        "required": ["from", "to", "relation"],
+        "additionalProperties": false
+      },
+      "ExecutionGraph.Info": {
+        "type": "object",
+        "properties": {
+          "rootSessionID": {
+            "type": "string",
+            "pattern": "^ses"
+          },
+          "generatedAt": {
+            "type": "number"
+          },
+          "nodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExecutionGraph.Node"
+            }
+          },
+          "edges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExecutionGraph.Edge"
+            }
+          },
+          "truncated": {
+            "type": "object",
+            "properties": {
+              "shells": {
+                "type": "boolean"
+              }
+            },
+            "required": ["shells"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["rootSessionID", "generatedAt", "nodes", "edges", "truncated"],
+        "additionalProperties": false
+      },
+      "ExecutionGraph.JobNode": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string",
+            "pattern": "^ses"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "running", "waiting", "suspended", "idle", "succeeded", "failed", "cancelled"]
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["job"]
+          },
+          "jobID": {
+            "type": "string"
+          },
+          "jobType": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "started": {
+            "type": "number"
+          },
+          "completed": {
+            "type": "number"
+          }
+        },
+        "required": ["id", "sessionID", "status", "kind", "jobID", "jobType", "started"],
+        "additionalProperties": false
+      },
+      "ExecutionGraph.Node": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/ExecutionGraph.SessionNode"
+          },
+          {
+            "$ref": "#/components/schemas/ExecutionGraph.JobNode"
+          },
+          {
+            "$ref": "#/components/schemas/ExecutionGraph.ShellNode"
+          },
+          {
+            "$ref": "#/components/schemas/ExecutionGraph.TerminalNode"
+          }
+        ]
+      },
+      "ExecutionGraph.SessionNode": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string",
+            "pattern": "^ses"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "running", "waiting", "suspended", "idle", "succeeded", "failed", "cancelled"]
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["session"]
+          },
+          "title": {
+            "type": "string"
+          },
+          "agent": {
+            "type": "string"
+          },
+          "started": {
+            "type": "number"
+          },
+          "updated": {
+            "type": "number"
+          },
+          "completed": {
+            "type": "number"
+          }
+        },
+        "required": ["id", "sessionID", "status", "kind", "started", "updated"],
+        "additionalProperties": false
+      },
+      "ExecutionGraph.ShellNode": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string",
+            "pattern": "^ses"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "running", "waiting", "suspended", "idle", "succeeded", "failed", "cancelled"]
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["shell"]
+          },
+          "shellID": {
+            "type": "string",
+            "pattern": "^sh_"
+          },
+          "started": {
+            "type": "number"
+          },
+          "completed": {
+            "type": "number"
+          },
+          "exit": {
+            "type": "number"
+          }
+        },
+        "required": ["id", "sessionID", "status", "kind", "shellID", "started"],
+        "additionalProperties": false
+      },
+      "ExecutionGraph.TerminalNode": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string",
+            "pattern": "^ses"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "running", "waiting", "suspended", "idle", "succeeded", "failed", "cancelled"]
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["terminal"]
+          },
+          "ptyID": {
+            "type": "string",
+            "pattern": "^pty"
+          },
+          "title": {
+            "type": "string"
+          },
+          "pid": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": ["id", "sessionID", "status", "kind", "ptyID", "title", "pid"],
+        "additionalProperties": false
+      },
       "FileDiff.Info": {
         "type": "object",
         "properties": {
@@ -37448,15 +38510,53 @@
         "required": ["request", "allow", "answers"],
         "additionalProperties": false
       },
+      "Harness.Capabilities": {
+        "type": "object",
+        "properties": {
+          "protocol": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "features": {
+            "$ref": "#/components/schemas/Capability.Features"
+          },
+          "steer": {
+            "type": "boolean"
+          },
+          "resume": {
+            "type": "boolean"
+          },
+          "interrupt": {
+            "type": "boolean"
+          }
+        },
+        "required": ["steer", "resume", "interrupt"],
+        "additionalProperties": false
+      },
       "Harness.Config": {
         "type": "object",
         "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
           "driver": {
             "$ref": "#/components/schemas/Harness.Driver"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1
           },
           "executable": {
             "type": "string",
             "minLength": 1
+          },
+          "home": {
+            "type": "string"
+          },
+          "idleTimeoutMs": {
+            "type": "integer",
+            "minimum": 0
           }
         },
         "required": ["driver", "executable"],
@@ -37514,6 +38614,10 @@
       "Harness.Login": {
         "type": "object",
         "properties": {
+          "providerInstanceID": {
+            "type": "string",
+            "minLength": 1
+          },
           "driver": {
             "$ref": "#/components/schemas/Harness.Driver"
           },
@@ -37539,6 +38643,10 @@
         "properties": {
           "driver": {
             "$ref": "#/components/schemas/Harness.Driver"
+          },
+          "providerInstanceID": {
+            "type": "string",
+            "minLength": 1
           },
           "directory": {
             "type": "string"
@@ -37579,11 +38687,32 @@
       "Harness.Provider": {
         "type": "object",
         "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
           "driver": {
             "$ref": "#/components/schemas/Harness.Driver"
           },
+          "label": {
+            "type": "string",
+            "minLength": 1
+          },
           "executable": {
             "type": "string"
+          },
+          "home": {
+            "type": "string"
+          },
+          "credentialRevision": {
+            "type": "integer"
+          },
+          "configured": {
+            "type": "boolean"
+          },
+          "idleTimeoutMs": {
+            "type": "integer",
+            "minimum": 0
           },
           "installed": {
             "type": "boolean"
@@ -37674,6 +38803,10 @@
           "driver": {
             "$ref": "#/components/schemas/Harness.Driver"
           },
+          "providerInstanceID": {
+            "type": "string",
+            "minLength": 1
+          },
           "directory": {
             "type": "string"
           },
@@ -37702,20 +38835,7 @@
             "type": "boolean"
           },
           "capabilities": {
-            "type": "object",
-            "properties": {
-              "steer": {
-                "type": "boolean"
-              },
-              "resume": {
-                "type": "boolean"
-              },
-              "interrupt": {
-                "type": "boolean"
-              }
-            },
-            "required": ["steer", "resume", "interrupt"],
-            "additionalProperties": false
+            "$ref": "#/components/schemas/Harness.Capabilities"
           }
         },
         "required": ["id", "driver", "directory", "state", "createdAt", "queued", "capabilities"],
@@ -40379,6 +41499,74 @@
         "required": ["_tag", "server", "message"],
         "additionalProperties": false
       },
+      "MediaHash": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{64}$"
+      },
+      "Memory.Snapshot": {
+        "type": "object",
+        "properties": {
+          "sampledAt": {
+            "type": "number"
+          },
+          "complete": {
+            "type": "boolean"
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": ["terminal", "agent", "task"]
+                },
+                "id": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "pid": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "residentBytes": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "reason": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": ["shared", "unavailable", "exited"]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": ["kind", "id", "title", "pid", "residentBytes", "reason"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["sampledAt", "complete", "entries"],
+        "additionalProperties": false
+      },
       "MessageNotFoundErrorEncoded": {
         "type": "object",
         "properties": {
@@ -40820,6 +42008,102 @@
           }
         },
         "required": ["id"],
+        "additionalProperties": false
+      },
+      "ModelPerformance.Model": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "$ref": "#/components/schemas/Model.Ref"
+          },
+          "requests": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "errors": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "latencyP50": {
+            "type": "number"
+          },
+          "latencyP95": {
+            "type": "number"
+          },
+          "throughputP50": {
+            "type": "number"
+          }
+        },
+        "required": ["model", "requests", "errors"],
+        "additionalProperties": false
+      },
+      "ModelPerformance.Provider": {
+        "type": "object",
+        "properties": {
+          "providerID": {
+            "type": "string"
+          },
+          "requests": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "errors": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "latencyP50": {
+            "type": "number"
+          },
+          "latencyP95": {
+            "type": "number"
+          },
+          "throughputP50": {
+            "type": "number"
+          }
+        },
+        "required": ["providerID", "requests", "errors"],
+        "additionalProperties": false
+      },
+      "ModelPerformance.Snapshot": {
+        "type": "object",
+        "properties": {
+          "sampledAt": {
+            "type": "number"
+          },
+          "from": {
+            "type": "number"
+          },
+          "requests": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "errors": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "latencyP50": {
+            "type": "number"
+          },
+          "latencyP95": {
+            "type": "number"
+          },
+          "throughputP50": {
+            "type": "number"
+          },
+          "providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelPerformance.Provider"
+            }
+          },
+          "models": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelPerformance.Model"
+            }
+          }
+        },
+        "required": ["sampledAt", "from", "requests", "errors", "providers", "models"],
         "additionalProperties": false
       },
       "Money.USD": {
@@ -43268,35 +44552,30 @@
         "required": ["_tag", "type", "message"],
         "additionalProperties": false
       },
+      "ServerCapabilities.Info": {
+        "type": "object",
+        "properties": {
+          "protocol": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "features": {
+            "$ref": "#/components/schemas/Capability.Features"
+          },
+          "sessionObservation": {
+            "type": "boolean"
+          },
+          "workerLease": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
       "ServerInfo": {
         "type": "object",
         "properties": {
           "capabilities": {
-            "anyOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "sessionObservation": {
-                    "type": "boolean"
-                  },
-                  "workerLease": {
-                    "anyOf": [
-                      {
-                        "type": "boolean"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  }
-                },
-                "required": ["sessionObservation"],
-                "additionalProperties": false
-              },
-              {
-                "type": "null"
-              }
-            ]
+            "$ref": "#/components/schemas/ServerCapabilities.Info"
           },
           "version": {
             "type": "string"
@@ -46020,6 +47299,81 @@
               },
               "activeExecutions": {
                 "type": "integer"
+              },
+              "eventFeed": {
+                "type": "object",
+                "properties": {
+                  "subscribers": {
+                    "type": "integer"
+                  },
+                  "queuedBytes": {
+                    "type": "integer"
+                  },
+                  "peakQueuedBytes": {
+                    "type": "integer"
+                  },
+                  "frames": {
+                    "type": "integer"
+                  },
+                  "encodedBytes": {
+                    "type": "integer"
+                  },
+                  "largestFrameBytes": {
+                    "type": "integer"
+                  },
+                  "frameBytesP50": {
+                    "type": "integer"
+                  },
+                  "frameBytesP95": {
+                    "type": "integer"
+                  },
+                  "frameBytesP99": {
+                    "type": "integer"
+                  },
+                  "overflows": {
+                    "type": "integer"
+                  },
+                  "acknowledgements": {
+                    "type": "integer"
+                  },
+                  "replayedFrames": {
+                    "type": "integer"
+                  },
+                  "replayMisses": {
+                    "type": "integer"
+                  },
+                  "retainedFrames": {
+                    "type": "integer"
+                  },
+                  "retainedBytes": {
+                    "type": "integer"
+                  },
+                  "cursor": {
+                    "type": "integer"
+                  },
+                  "oldestCursor": {
+                    "type": "integer"
+                  },
+                  "acknowledgedClients": {
+                    "type": "integer"
+                  },
+                  "maxAcknowledgementLag": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "subscribers",
+                  "queuedBytes",
+                  "peakQueuedBytes",
+                  "frames",
+                  "encodedBytes",
+                  "largestFrameBytes",
+                  "frameBytesP50",
+                  "frameBytesP95",
+                  "frameBytesP99",
+                  "overflows"
+                ],
+                "additionalProperties": false
               }
             },
             "required": ["cachedLocations", "activeExecutions"],
@@ -46120,6 +47474,9 @@
             },
             "required": ["sessions", "messages"],
             "additionalProperties": false
+          },
+          "clients": {
+            "$ref": "#/components/schemas/ClientPresence.Snapshot"
           }
         },
         "required": ["version", "runtime", "platform", "pid", "started", "memory", "urls", "paths", "database"],
@@ -47776,7 +49133,7 @@
         "properties": {
           "provider": {
             "type": "string",
-            "enum": ["openai", "elevenlabs", "deepgram", "openai-compatible"]
+            "enum": ["openai", "openrouter", "elevenlabs", "deepgram", "openai-compatible"]
           },
           "mode": {
             "type": "string",
@@ -48471,6 +49828,9 @@
           "platform": {
             "type": "string",
             "minLength": 1
+          },
+          "latencyMs": {
+            "type": "number"
           }
         },
         "required": ["worker", "connection"],

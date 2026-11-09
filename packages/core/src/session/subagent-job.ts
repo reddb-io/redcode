@@ -46,6 +46,8 @@ const layer = Layer.effect(
         if (info) yield* SubagentCompletion.deliver(sessions, jobs, { ...info, recovery })
       }).pipe(
         Effect.ensuring(Effect.sync(() => notifications.delete(key))),
+        // Notification delivery is work performed for the parent, even though the observer has process lifetime.
+        Effect.annotateSpans("session.id", recovery.parentSessionID),
         Effect.forkIn(scope, { startImmediately: true }),
         Effect.setContext(context),
       )
@@ -57,7 +59,11 @@ const layer = Layer.effect(
             id: recovery.childSessionID,
             type: "subagent",
             title: recovery.description,
-            metadata: {},
+            metadata: {
+              sessionID: recovery.childSessionID,
+              parentSessionID: recovery.parentSessionID,
+              agent: recovery.agent,
+            },
             recovery,
             run: recovery.promptID
               ? run.pipe(

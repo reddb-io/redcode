@@ -11,6 +11,7 @@ import { UsageMirror } from "@opencode/schema/usage-mirror"
 import { Monitor } from "@opencode/schema/monitor"
 import { SessionTodo } from "@opencode/schema/session-todo"
 import { SessionGoal } from "@opencode/schema/session-goal"
+import { ExecutionGraph } from "@opencode/schema/execution-graph"
 import { SessionBudget } from "@opencode/schema/session-budget"
 import { Design } from "@opencode/schema/design"
 import { InstructionEntry } from "@opencode/schema/instruction-entry"
@@ -583,6 +584,26 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI ext
           summary: "Stop local monitoring",
           description:
             "Manage monitors belonging to this session. Cancellation stops local observation; external jobs keep running.",
+        }),
+      ),
+    )
+    .add(
+      HttpApiEndpoint.get("session.executionGraph", "/api/session/:sessionID/execution-graph", {
+        params: { sessionID: Session.ID },
+        query: {
+          shellLimit: Schema.NumberFromString.pipe(
+            Schema.decodeTo(PositiveInt.check(Schema.isLessThanOrEqualTo(1000))),
+            Schema.optional,
+          ),
+        },
+        success: Schema.Struct({ data: ExecutionGraph.Info }),
+        error: SessionNotFoundError,
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "session.executionGraph",
+          summary: "Inspect the session execution graph",
+          description:
+            "Read the durable session lineage together with recoverable jobs, shell executions and persistent terminals. Live process state is overlaid when available; this observation never starts or changes work.",
         }),
       ),
     )

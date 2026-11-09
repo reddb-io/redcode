@@ -34,6 +34,7 @@ export type ClientConnectionOptions = {
 const connectTimeout = 30_000
 const reconnectDelay = 1_000
 const connectionHistoryLimit = 50
+const acknowledgementDelay = 1_000
 export const defaultIdleTimeout = 45_000
 // Longer than one server keepalive interval: a stream that is silent this long when the page
 // returns to the foreground is probably half-open after the device slept.
@@ -49,8 +50,9 @@ export function createClientConnection(initialApi: OpenCodeClient, options: Clie
     error?: string
   }>({ status: "connecting", attempt: 0 })
   let api = initialApi
-  let pending: OpenCodeEvent[] = []
+  let pending: Array<{ readonly event: OpenCodeEvent; readonly cursor?: StreamCursor }> = []
   let flushTimer: ReturnType<typeof setTimeout> | undefined
+  let acknowledgeTimer: ReturnType<typeof setTimeout> | undefined
   let stream: AbortController | undefined
   let current: AbortController | undefined
   let run: Promise<void> | undefined
@@ -58,20 +60,43 @@ export function createClientConnection(initialApi: OpenCodeClient, options: Clie
   let generation = 0
   let lastActivity = 0
   let forced = false
+  let streamCursor: StreamCursor | undefined
+  let acknowledgementSupported = false
 
   function record(status: ClientConnectionEvent["data"]["status"], attempt: number, error?: string) {
     history.push({ type: "client.connection", created: Date.now(), data: { status, attempt, error } })
     if (history.length > connectionHistoryLimit) history.shift()
   }
 
-  function publish(event: OpenCodeEvent) {
-    pending.push(event)
+  function acknowledge() {
+    if (acknowledgeTimer || !acknowledgementSupported || !streamCursor) return
+    acknowledgeTimer = setTimeout(() => {
+      acknowledgeTimer = undefined
+      const cursor = streamCursor
+      if (!cursor || !acknowledgementSupported) return
+      void api.event.ack(cursor).catch((error) => {
+        acknowledgementSupported = false
+        options.log?.debug?.("event stream acknowledgement unavailable", { error: errorMessage(error) })
+      })
+    }, acknowledgementDelay)
+  }
+
+  function publish(event: OpenCodeEvent, cursor?: StreamCursor) {
+    const last = pending.at(-1)
+    const merged = last && coalesceDelta(last.event, event)
+    if (last && merged) pending[pending.length - 1] = { event: merged, cursor: cursor ?? last.cursor }
+    else pending.push({ event, cursor })
     if (flushTimer) return
     flushTimer = setTimeout(() => {
       flushTimer = undefined
       const events = pending
       pending = []
-      batch(() => events.forEach(options.onEvent))
+      batch(() => events.forEach((item) => options.onEvent(item.event)))
+      const consumed = events.findLast((item) => item.cursor !== undefined)?.cursor
+      if (consumed && (!streamCursor || consumed.epoch !== streamCursor.epoch || consumed.cursor > streamCursor.cursor)) {
+        streamCursor = consumed
+        acknowledge()
+      }
     }, options.flushInterval ?? 10)
   }
 
@@ -86,6 +111,7 @@ export function createClientConnection(initialApi: OpenCodeClient, options: Clie
     // Any received bytes, including keepalive comments, push the stall deadline out. A timer whose
     // deadline passed while the page was suspended fires as soon as the page resumes.
     let watchdog: ReturnType<typeof setTimeout> | undefined
+    let observedCursor: StreamCursor | undefined
     const touch = () => {
       lastActivity = Date.now()
       if (connectedAt === undefined) return
@@ -96,7 +122,17 @@ export function createClientConnection(initialApi: OpenCodeClient, options: Clie
     try {
       record(attempt === 0 ? "connecting" : "reconnecting", attempt)
       options.log?.info?.("event stream connecting", { attempt })
-      const iterator = api.event.subscribe({ signal: request.signal, onActivity: touch })[Symbol.asyncIterator]()
+      const resume = streamCursor ? { epoch: streamCursor.epoch, cursor: streamCursor.cursor } : undefined
+      const iterator = api.event
+        .subscribe({
+          signal: request.signal,
+          onActivity: touch,
+          resume,
+          onSseEvent: (metadata) => {
+            observedCursor = parseStreamCursor(metadata.id)
+          },
+        })
+        [Symbol.asyncIterator]()
       const first = await iterator.next()
       if (signal.aborted) return { error: undefined, connectedAt }
       if (first.done)
@@ -108,12 +144,28 @@ export function createClientConnection(initialApi: OpenCodeClient, options: Clie
       if (first.value.type !== "server.connected")
         return { error: new Error("Event stream did not start with server.connected"), connectedAt }
 
+      const streamInfo = first.value.data.stream
+      if (streamInfo) {
+        acknowledgementSupported = true
+        if (!resume || streamInfo.reset || streamInfo.replayed === 0) {
+          streamCursor = { epoch: streamInfo.epoch, cursor: streamInfo.cursor }
+        }
+      } else {
+        acknowledgementSupported = false
+        streamCursor = undefined
+      }
+
       clearTimeout(timeout)
       record("connected", attempt)
       connectedAt = Date.now()
       touch()
-      options.log?.info?.("event stream connected")
-      publish(first.value)
+      options.log?.info?.("event stream connected", {
+        epoch: streamInfo?.epoch,
+        cursor: streamInfo?.cursor,
+        replayed: streamInfo?.replayed,
+        reset: streamInfo?.reset,
+      })
+      publish(first.value, streamCursor)
       setConnection({ status: "connected", attempt: 0, error: undefined })
 
       while (!signal.aborted) {
@@ -126,13 +178,15 @@ export function createClientConnection(initialApi: OpenCodeClient, options: Clie
             connectedAt,
           }
         touch()
+        const cursor = observedCursor
+        observedCursor = undefined
         if ("durable" in event.value && event.value.durable)
           options.log?.debug?.("event", {
             type: event.value.type,
             aggregateID: event.value.durable.aggregateID,
             seq: event.value.durable.seq,
           })
-        publish(event.value)
+        publish(event.value, cursor)
       }
       return { error: undefined, connectedAt }
     } catch (error) {
@@ -247,6 +301,7 @@ export function createClientConnection(initialApi: OpenCodeClient, options: Clie
     stop()
     abort.abort()
     if (flushTimer) clearTimeout(flushTimer)
+    if (acknowledgeTimer) clearTimeout(acknowledgeTimer)
     pending = []
   })
 
@@ -258,6 +313,49 @@ export function createClientConnection(initialApi: OpenCodeClient, options: Clie
       history: () => history.slice(),
       resync,
     },
+  }
+}
+
+type StreamCursor = { readonly epoch: string; readonly cursor: number }
+
+function parseStreamCursor(value: string | undefined): StreamCursor | undefined {
+  if (!value) return
+  const separator = value.lastIndexOf(":")
+  if (separator <= 0) return
+  const cursor = Number(value.slice(separator + 1))
+  if (!Number.isSafeInteger(cursor) || cursor < 0) return
+  return { epoch: value.slice(0, separator), cursor }
+}
+
+function coalesceDelta(previous: OpenCodeEvent, event: OpenCodeEvent): OpenCodeEvent | undefined {
+  switch (event.type) {
+    case "session.text.delta":
+      if (
+        previous.type !== event.type ||
+        previous.data.sessionID !== event.data.sessionID ||
+        previous.data.assistantMessageID !== event.data.assistantMessageID ||
+        previous.data.ordinal !== event.data.ordinal
+      )
+        return
+      return { ...event, data: { ...event.data, delta: previous.data.delta + event.data.delta } }
+    case "session.reasoning.delta":
+      if (
+        previous.type !== event.type ||
+        previous.data.sessionID !== event.data.sessionID ||
+        previous.data.assistantMessageID !== event.data.assistantMessageID ||
+        previous.data.ordinal !== event.data.ordinal
+      )
+        return
+      return { ...event, data: { ...event.data, delta: previous.data.delta + event.data.delta } }
+    case "session.tool.input.delta":
+      if (
+        previous.type !== event.type ||
+        previous.data.sessionID !== event.data.sessionID ||
+        previous.data.assistantMessageID !== event.data.assistantMessageID ||
+        previous.data.id !== event.data.id
+      )
+        return
+      return { ...event, data: { ...event.data, delta: previous.data.delta + event.data.delta } }
   }
 }
 

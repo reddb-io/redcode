@@ -434,6 +434,11 @@ export const Plugin = {
                   status: "completed" as const,
                 }
               }).pipe(
+                // Process and job spans remain attributable after the foreground tool call has returned.
+                Effect.annotateSpans({
+                  "gen_ai.tool.call.id": context.id,
+                  ...(input.background === true ? { "opencode.shell.background": true } : {}),
+                }),
                 Effect.tap((output) => Deferred.succeed(settled, output)),
                 Effect.map((output) => resultMessages(output, finalTimeout).join("\n\n")),
                 Effect.onInterrupt(() => shell.remove(info.id).pipe(Effect.ignore)),

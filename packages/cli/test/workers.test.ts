@@ -24,6 +24,7 @@ async function fixture(
   measurement?: () => HostResources.Snapshot | undefined,
   modern = true,
   fenced = true,
+  versioned = false,
 ) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "redcode-workers-"))
   const sessions = new Map<
@@ -73,7 +74,9 @@ async function fixture(
           pid: 1,
           urls: [],
           paths: { tmp: directory },
-          capabilities: { sessionObservation: modern, workerLease: fenced },
+          capabilities: versioned
+            ? { protocol: 1, features: { "session.observation": 1, "worker.lease": 1 } }
+            : { sessionObservation: modern, workerLease: fenced },
         })
       if (route === "/api/worker-lease/acquire") {
         leaseState.acquisitions++
@@ -314,6 +317,15 @@ test("an older worker stays queued until checkout fencing is supported", async (
   )
   expect(host.counts.creates).toBe(0)
   expect(host.counts.prompts).toBe(0)
+})
+
+test("a worker negotiates versioned capabilities without legacy booleans", async () => {
+  await using host = await fixture("complete", undefined, false, false, true)
+  const result = await host.run()
+  expect(result.tasks.every((entry) => entry.state === "succeeded")).toBe(true)
+  expect(host.counts.creates).toBeGreaterThan(0)
+  expect(host.counts.observations).toBeGreaterThan(0)
+  expect(host.leaseState.acquisitions).toBeGreaterThan(0)
 })
 
 test("independent coordinator registries cannot dispatch into the same reserved checkout", async () => {

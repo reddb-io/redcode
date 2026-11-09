@@ -5,7 +5,7 @@ import { registerOpencodeSpinner } from "../component/register-spinner"
 import { Show, createMemo, createSignal, indexArray } from "solid-js"
 import { SPINNER_FRAMES } from "../component/spinner-frames"
 import { RunEntryContent, separatorRows } from "./scrollback.writer"
-import type { FooterSubagentDetail, FooterSubagentTab } from "./types"
+import type { FooterSubagentDetail, FooterSubagentState, FooterSubagentTab } from "./types"
 import type { RunFooterTheme, RunTheme } from "./theme"
 import { stringWidth } from "../util/string-width"
 import { footerMenuText } from "./footer.menu"
@@ -53,6 +53,7 @@ export function RunFooterSubagentBody(props: {
   index: () => number
   total: () => number
   detail: () => FooterSubagentDetail | undefined
+  execution?: () => FooterSubagentState["execution"]
   onCycle: (dir: -1 | 1) => void
   onClose: () => void
   // Formatted interrupt shortcut from the registered keymap binding; the
@@ -109,6 +110,17 @@ export function RunFooterSubagentBody(props: {
     return props.interrupt?.()
   })
   const count = () => (props.total() > 1 && props.index() > 0 ? `${props.index()} of ${props.total()}` : "")
+  const execution = createMemo(() => {
+    const value = props.execution?.()
+    if (!value) return ""
+    const parts = [
+      value.active > 0 ? `${value.active} live` : "",
+      value.jobs > 0 ? `${value.jobs} job${value.jobs === 1 ? "" : "s"}` : "",
+      value.shells > 0 ? `${value.shells} shell${value.shells === 1 ? "" : "s"}` : "",
+      value.terminals > 0 ? `${value.terminals} terminal${value.terminals === 1 ? "" : "s"}` : "",
+    ].filter(Boolean)
+    return parts.join(" · ")
+  })
   const headerControlsWidth = () =>
     (interruptHint() ? stringWidth(`${interruptHint()} interrupt`) + 1 : 0) + (count() ? stringWidth(count()) + 1 : 0)
   const headerControls = () => !compact() && stringWidth(title()) + 2 + headerControlsWidth() <= width() - 4
@@ -210,6 +222,13 @@ export function RunFooterSubagentBody(props: {
               </Show>
             </Show>
           </box>
+        )}
+      </Show>
+      <Show when={!compact() && execution()}>
+        {(summary) => (
+          <text height={1} fg={footer().muted} wrapMode="none" truncate flexShrink={0}>
+            {summary()}
+          </text>
         )}
       </Show>
       <scrollbox

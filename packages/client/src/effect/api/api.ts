@@ -3,6 +3,7 @@ import type { Effect, Stream } from "effect"
 import type { RemoteAccess } from "@opencode/schema/remote-access"
 import type { HostResources } from "@opencode/schema/host-resources"
 import type { Attention } from "@opencode/schema/attention"
+import type { ServerCapabilities } from "@opencode/schema/server-capabilities"
 import type { Model } from "@opencode/schema/model"
 import type { Session } from "@opencode/schema/session"
 import type { Automation } from "@opencode/schema/automation"
@@ -20,6 +21,7 @@ import type { Permission } from "@opencode/schema/permission"
 import type { SessionMessage } from "@opencode/schema/session-message"
 import type { SessionObservation } from "@opencode/schema/session-observation"
 import type { Credential } from "@opencode/schema/credential"
+import type { ExecutionGraph } from "@opencode/schema/execution-graph"
 import type { Worktree } from "@opencode/schema/worktree"
 import type { Event } from "@opencode/schema/event"
 import type { Schema } from "effect"
@@ -87,9 +89,7 @@ export type ServerAttentionOutput = Attention.Snapshot
 export type ServerAttentionOperation<E = never> = () => Effect.Effect<ServerAttentionOutput, E>
 
 export type ServerInfoOutput = {
-  readonly capabilities?:
-    | { readonly sessionObservation: boolean; readonly workerLease?: boolean | undefined }
-    | undefined
+  readonly capabilities?: ServerCapabilities.Info | undefined
   readonly version: string
   readonly pid: number
   readonly urls: ReadonlyArray<string>
@@ -124,6 +124,15 @@ export type ServerSystemOutput = {
       readonly frameBytesP95: number
       readonly frameBytesP99: number
       readonly overflows: number
+      readonly acknowledgements?: number
+      readonly replayedFrames?: number
+      readonly replayMisses?: number
+      readonly retainedFrames?: number
+      readonly retainedBytes?: number
+      readonly cursor?: number
+      readonly oldestCursor?: number
+      readonly acknowledgedClients?: number
+      readonly maxAcknowledgementLag?: number
     }
   }
   readonly urls: ReadonlyArray<string>
@@ -920,6 +929,12 @@ export type SessionMonitorCancelOutput = {
 export type SessionMonitorCancelOperation<E = never> = (
   input: SessionMonitorCancelInput,
 ) => Effect.Effect<SessionMonitorCancelOutput, E>
+
+export type SessionExecutionGraphInput = { readonly sessionID: Session.ID; readonly shellLimit?: number | undefined }
+export type SessionExecutionGraphOutput = ExecutionGraph.Info
+export type SessionExecutionGraphOperation<E = never> = (
+  input: SessionExecutionGraphInput,
+) => Effect.Effect<SessionExecutionGraphOutput, E>
 
 export type SessionTodoListInput = { readonly sessionID: Session.ID }
 export type SessionTodoListOutput = ReadonlyArray<{
@@ -4809,6 +4824,7 @@ export interface SessionApi<E = never> {
     readonly get: SessionMonitorGetOperation<E>
     readonly cancel: SessionMonitorCancelOperation<E>
   }
+  readonly executionGraph: SessionExecutionGraphOperation<E>
   readonly todo: {
     readonly list: SessionTodoListOperation<E>
     readonly graph: SessionTodoGraphOperation<E>
@@ -5449,11 +5465,17 @@ export interface RpcApi<E = never> {
   readonly call: RpcCallOperation<E>
 }
 
+export type EventSubscribeInput = { readonly epoch?: string | undefined; readonly cursor?: number | undefined }
 export type EventSubscribeOutput = OpenCodeEvent
-export type EventSubscribeOperation<E = never> = () => Stream.Stream<EventSubscribeOutput, E>
+export type EventSubscribeOperation<E = never> = (input?: EventSubscribeInput) => Stream.Stream<EventSubscribeOutput, E>
+
+export type EventAckInput = { readonly epoch: string; readonly cursor: number }
+export type EventAckOutput = void
+export type EventAckOperation<E = never> = (input: EventAckInput) => Effect.Effect<EventAckOutput, E>
 
 export interface EventApi<E = never> {
   readonly subscribe: EventSubscribeOperation<E>
+  readonly ack: EventAckOperation<E>
 }
 
 export type PtyListInput = { readonly location?: { readonly directory?: string | undefined } | undefined }

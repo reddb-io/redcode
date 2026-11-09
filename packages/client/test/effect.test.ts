@@ -42,6 +42,32 @@ test("server.info decodes the readiness response", async () => {
   })
 })
 
+test("server.info decodes versioned capabilities without legacy booleans", async () => {
+  const httpClient = HttpClient.make((request) =>
+    Effect.succeed(
+      HttpClientResponse.fromWeb(
+        request,
+        Response.json({
+          version: "current",
+          capabilities: { protocol: 1, features: { "event.resume": 1, "worker.lease": 2 } },
+          pid: 123,
+          urls: ["http://localhost:3000"],
+          paths: { tmp: "/tmp/opencode" },
+        }),
+      ),
+    ),
+  )
+  const result = await Effect.gen(function* () {
+    const client = yield* OpenCode.make({ baseUrl: "http://localhost:3000" })
+    return yield* client.server.info()
+  }).pipe(Effect.provideService(HttpClient.HttpClient, httpClient), Effect.runPromise)
+
+  expect(result.capabilities).toEqual({
+    protocol: 1,
+    features: { "event.resume": 1, "worker.lease": 2 },
+  })
+})
+
 test("vcs.base decodes nullable review-base metadata", async () => {
   const location = { directory: "/repo", project: { id: "global", directory: "/repo", canonical: "/repo" } }
   const base = {
@@ -72,6 +98,43 @@ test("session.get returns the decoded Effect projection", async () => {
   }).pipe(Effect.provideService(HttpClient.HttpClient, httpClient), Effect.runPromise)
 
   expect(DateTime.toEpochMillis(result.time.created)).toBe(1_717_171_717_000)
+})
+
+test("session.executionGraph decodes the versioned execution projection", async () => {
+  let requested = ""
+  const httpClient = HttpClient.make((request) => {
+    requested = request.url
+    return Effect.succeed(
+      HttpClientResponse.fromWeb(
+        request,
+        Response.json({
+          data: {
+            rootSessionID: "ses_test",
+            generatedAt: 42,
+            nodes: [
+              {
+                id: "session:ses_test",
+                kind: "session",
+                sessionID: "ses_test",
+                status: "idle",
+                started: 1,
+                updated: 2,
+              },
+            ],
+            edges: [],
+            truncated: { shells: false },
+          },
+        }),
+      ),
+    )
+  })
+  const result = await Effect.gen(function* () {
+    const client = yield* OpenCode.make({ baseUrl: "http://localhost:3000" })
+    return yield* client.session.executionGraph({ sessionID: Session.ID.make("ses_test") })
+  }).pipe(Effect.provideService(HttpClient.HttpClient, httpClient), Effect.runPromise)
+
+  expect(requested).toBe("http://localhost:3000/api/session/ses_test/execution-graph")
+  expect(result.nodes[0]).toMatchObject({ id: "session:ses_test", kind: "session", status: "idle" })
 })
 
 test("session instructions methods use the public HTTP contract", async () => {

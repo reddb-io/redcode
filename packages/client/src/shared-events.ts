@@ -4,16 +4,21 @@ export type SubscribeOptions = {
   readonly signal?: AbortSignal
   /** Reports transport activity on the shared stream, including keepalive frames that carry no event. */
   readonly onActivity?: () => void
+  /** Resume the server's bounded global event feed after this cursor. */
+  readonly resume?: { readonly epoch: string; readonly cursor: number }
+  /** Reports the standard SSE fields associated with each decoded data event. */
+  readonly onSseEvent?: (metadata: { readonly id?: string; readonly event?: string; readonly retry?: number }) => void
 }
 
 export function make<A extends { readonly type: string }>(
-  connect: (signal: AbortSignal, onActivity: () => void) => AsyncIterable<A>,
+  connect: (signal: AbortSignal, onActivity: () => void, options: SubscribeOptions) => AsyncIterable<A>,
 ) {
   type Completion = { readonly error: unknown } | Record<string, never>
   type Subscriber = {
     push: (value: A) => void
     finish: (completion: Completion) => void
     activity?: () => void
+    options: SubscribeOptions
   }
   type Connection = {
     controller: AbortController
@@ -35,9 +40,19 @@ export function make<A extends { readonly type: string }>(
     let completion: Completion = {}
     try {
       if (connection.controller.signal.aborted) return
-      iterator = connect(connection.controller.signal, () => {
-        connection.subscribers.forEach((subscriber) => subscriber.activity?.())
-      })[Symbol.asyncIterator]()
+      const primary = connection.subscribers.values().next().value
+      iterator = connect(
+        connection.controller.signal,
+        () => {
+          connection.subscribers.forEach((subscriber) => subscriber.activity?.())
+        },
+        {
+          resume: primary?.options.resume,
+          onSseEvent: (metadata) => {
+            connection.subscribers.forEach((subscriber) => subscriber.options.onSseEvent?.(metadata))
+          },
+        },
+      )[Symbol.asyncIterator]()
       while (!connection.controller.signal.aborted) {
         const item = await iterator.next()
         if (item.done || connection.controller.signal.aborted) break
@@ -84,6 +99,7 @@ export function make<A extends { readonly type: string }>(
 
           const subscriber: Subscriber = {
             activity: options?.onActivity,
+            options: options ?? {},
             finish(result) {
               finish(result, false)
             },

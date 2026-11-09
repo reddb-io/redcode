@@ -92,6 +92,8 @@ import type {
   SessionMonitorGetOutput,
   SessionMonitorCancelInput,
   SessionMonitorCancelOutput,
+  SessionExecutionGraphInput,
+  SessionExecutionGraphOutput,
   SessionTodoListInput,
   SessionTodoListOutput,
   SessionTodoGraphInput,
@@ -317,7 +319,10 @@ import type {
   SkillListOutput,
   RpcCallInput,
   RpcCallOutput,
+  EventSubscribeInput,
   EventSubscribeOutput,
+  EventAckInput,
+  EventAckOutput,
   PtyListInput,
   PtyListOutput,
   PtyCreateInput,
@@ -1037,6 +1042,17 @@ const EndpointSessionMonitorCancel = (raw: RawClient["server.session"]) => (inpu
     ),
   )
 
+const EndpointSessionExecutionGraph = (raw: RawClient["server.session"]) => (input: SessionExecutionGraphInput) =>
+  preserveEffect<SessionExecutionGraphOutput>()(
+    raw["session.executionGraph"]({
+      params: { sessionID: input["sessionID"] },
+      query: { shellLimit: input["shellLimit"] },
+    }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
 const EndpointSessionTodoList = (raw: RawClient["server.session"]) => (input: SessionTodoListInput) =>
   preserveEffect<SessionTodoListOutput>()(
     raw["session.todo.list"]({ params: { sessionID: input["sessionID"] } }).pipe(
@@ -1671,6 +1687,7 @@ const adaptGroupSession = (raw: RawClient["server.session"]) => ({
     get: EndpointSessionMonitorGet(raw),
     cancel: EndpointSessionMonitorCancel(raw),
   },
+  executionGraph: EndpointSessionExecutionGraph(raw),
   todo: {
     list: EndpointSessionTodoList(raw),
     graph: EndpointSessionTodoGraph(raw),
@@ -2215,17 +2232,27 @@ const EndpointRpcCall = (raw: RawClient["server.rpc"]) => (input: RpcCallInput) 
 
 const adaptGroupRpc = (raw: RawClient["server.rpc"]) => ({ call: EndpointRpcCall(raw) })
 
-const EndpointEventSubscribe = (raw: RawClient["server.event"]) => () =>
+const EndpointEventSubscribe = (raw: RawClient["server.event"]) => (input?: EventSubscribeInput) =>
   preserveStream<EventSubscribeOutput>()(
     Stream.unwrap(
-      raw["event.subscribe"]({}).pipe(
+      raw["event.subscribe"]({ query: { epoch: input?.["epoch"], cursor: input?.["cursor"] } }).pipe(
         Effect.mapError(mapClientError),
         Effect.map((stream) => stream.pipe(Stream.mapError(mapClientError))),
       ),
     ),
   )
 
-const adaptGroupEvent = (raw: RawClient["server.event"]) => ({ subscribe: EndpointEventSubscribe(raw) })
+const EndpointEventAck = (raw: RawClient["server.event"]) => (input: EventAckInput) =>
+  preserveEffect<EventAckOutput>()(
+    raw["event.ack"]({ payload: { epoch: input["epoch"], cursor: input["cursor"] } }).pipe(
+      Effect.mapError(mapClientError),
+    ),
+  )
+
+const adaptGroupEvent = (raw: RawClient["server.event"]) => ({
+  subscribe: EndpointEventSubscribe(raw),
+  ack: EndpointEventAck(raw),
+})
 
 const EndpointPtyList = (raw: RawClient["server.pty"]) => (input?: PtyListInput) =>
   preserveEffect<PtyListOutput>()(

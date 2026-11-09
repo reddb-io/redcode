@@ -7,6 +7,7 @@ import { HostResources } from "@opencode/schema/host-resources"
 import { WorkerEnvironment } from "@opencode/schema/worker-environment"
 import { SessionObservation } from "@opencode/schema/session-observation"
 import { WorkerLease } from "@opencode/schema/worker-lease"
+import { ServerCapabilities } from "@opencode/schema/server-capabilities"
 import { AbsolutePath } from "@opencode/schema/schema"
 import { resourceQueueReason } from "./worker-placement"
 import {
@@ -191,8 +192,11 @@ export async function run(
         .then(
           (info) => ({
             online: true,
-            observation: info.capabilities?.sessionObservation === true,
-            lease: info.capabilities?.workerLease === true,
+            observation: ServerCapabilities.supports(
+              info.capabilities,
+              ServerCapabilities.Feature.sessionObservation,
+            ),
+            lease: ServerCapabilities.supports(info.capabilities, ServerCapabilities.Feature.workerLease),
           }),
           () => ({ online: false, observation: false, lease: false }),
         )),

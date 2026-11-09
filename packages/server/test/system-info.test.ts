@@ -47,6 +47,15 @@ it.live("memory diagnostics report the server heap without booting project runti
           frameBytesP95: 0,
           frameBytesP99: 0,
           overflows: 0,
+          acknowledgements: 0,
+          replayedFrames: 0,
+          replayMisses: 0,
+          retainedFrames: 0,
+          retainedBytes: 0,
+          cursor: 0,
+          oldestCursor: 0,
+          acknowledgedClients: 0,
+          maxAcknowledgementLag: 0,
         },
       })
       expect(snapshot.clients).toEqual({

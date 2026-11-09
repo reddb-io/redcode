@@ -3,6 +3,7 @@ import fs from "node:fs/promises"
 import { createServer } from "node:http"
 import path from "node:path"
 import { Agent } from "@opencode/schema/agent"
+import { ExecutionGraph } from "@opencode/schema/execution-graph"
 import { Integration } from "@opencode/schema/integration"
 import { ServerInfo } from "@opencode/protocol/groups/server"
 import { Effect, Schedule, Schema } from "effect"
@@ -167,7 +168,92 @@ it.live("serves the HttpApi and enforces Basic auth like the Node server", () =>
     )
     expect(body.version).toBe("test-version")
     expect(body.paths.tmp).toEndWith("opencode")
+    expect(body.capabilities).toMatchObject({
+      protocol: 1,
+      features: {
+        "event.ack": 1,
+        "event.resume": 1,
+        "session.execution-graph": 1,
+        "session.observation": 1,
+        "worker.lease": 1,
+      },
+      sessionObservation: true,
+      workerLease: true,
+    })
   }),
+)
+
+it.live("projects durable parent and child sessions into an execution graph", () =>
+  Effect.gen(function* () {
+    const handler = yield* ServerFetch.make(options)
+    const create = (body: Record<string, unknown>) =>
+      Effect.promise(() =>
+        handler(
+          new Request("http://opencode.local/api/session", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(body),
+          }),
+        ).then((response) => response.json()),
+      ).pipe(Effect.flatMap(Schema.decodeUnknownEffect(Schema.Struct({ data: Session.Info }))))
+    const parent = (yield* create({ title: "Parent" })).data
+    const child = (yield* create({ parentID: parent.id, title: "Child" })).data
+    const shell = yield* Effect.promise(() =>
+      handler(
+        new Request(`http://opencode.local/api/session/${parent.id}/shell`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ command: "bun --version" }),
+        }),
+      ),
+    )
+    expect(shell.status).toBe(204)
+
+    const response = yield* Effect.promise(() =>
+      handler(new Request(`http://opencode.local/api/session/${parent.id}/execution-graph`)),
+    )
+    expect(response.status).toBe(200)
+    const graph = Schema.decodeUnknownSync(Schema.Struct({ data: ExecutionGraph.Info }))(
+      yield* Effect.promise(() => response.json()),
+    ).data
+    expect(graph.rootSessionID).toBe(parent.id)
+    expect(graph.truncated.shells).toBe(false)
+    expect(graph.nodes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: `session:${parent.id}`, kind: "session", title: "Parent" }),
+        expect.objectContaining({ id: `session:${child.id}`, kind: "session", title: "Child" }),
+        expect.objectContaining({ kind: "shell", sessionID: parent.id, status: "succeeded" }),
+      ]),
+    )
+    expect(graph.edges).toContainEqual({
+      from: `session:${parent.id}`,
+      to: `session:${child.id}`,
+      relation: "delegates",
+    })
+
+    yield* Effect.promise(() =>
+      handler(
+        new Request(`http://opencode.local/api/session/${parent.id}/shell`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ command: "bun --version" }),
+        }),
+      ),
+    )
+    const bounded = yield* Effect.promise(() =>
+      handler(new Request(`http://opencode.local/api/session/${parent.id}/execution-graph?shellLimit=1`)).then(
+        (response) => response.json(),
+      ),
+    ).pipe(Effect.flatMap(Schema.decodeUnknownEffect(Schema.Struct({ data: ExecutionGraph.Info }))))
+    expect(bounded.data.nodes.filter((node) => node.kind === "shell")).toHaveLength(1)
+    expect(bounded.data.truncated.shells).toBe(true)
+
+    const missing = yield* Effect.promise(() =>
+      handler(new Request("http://opencode.local/api/session/ses_missing_graph/execution-graph")),
+    )
+    expect(missing.status).toBe(404)
+  }),
+  15_000,
 )
 
 it.live("activates credentials through the HttpApi", () =>

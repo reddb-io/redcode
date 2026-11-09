@@ -222,7 +222,7 @@ export function createServerSyncContextInner(serverSDK: ServerSDK, data: Data) {
   }
 
   const unsub = serverSDK.event.listen((event) => {
-    connection.handleEvent({ type: event.type })
+    connection.handleEvent(event)
 
     if (event.type === "intelligence.settings.updated") {
       void queryClient.invalidateQueries(
