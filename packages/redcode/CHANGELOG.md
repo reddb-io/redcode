@@ -1,5 +1,14 @@
 # @reddb-io/redcode
 
+## 0.87.19
+
+### Patch Changes
+
+- Correlate model streams, agents, tool calls, background jobs, shells, sessions, and remote workspace placement in OpenTelemetry traces without exporting command text or shell output.
+- Expose a durable execution graph that connects parent and child sessions, recoverable jobs, shell executions, and persistent terminals while overlaying live running, waiting, and suspended state. Desktop and Web can inspect the live graph in a compact side panel and open child conversations directly; the TUI subagent inspector includes the same event-driven execution summary and remains compatible with older servers.
+- Resume the global server event stream after transient disconnects with bounded replay, explicit snapshot resets, client acknowledgements, slow-consumer backpressure metrics, and compact coalescing of ephemeral model deltas across desktop, web, and TUI clients.
+- Negotiate versioned server, worker, event-stream, and native harness capabilities while retaining compatibility with older clients and servers that only expose legacy booleans.
+
 ## 0.87.18
 
 ### Patch Changes
