@@ -437,7 +437,7 @@ jobs:
         run: |
           set -euo pipefail
           for attempt in 1 2 3 4 5; do
-            if node node_modules/electron/install.js; then
+            if node -e "require('child_process').execFileSync(process.execPath, [require.resolve('electron/install.js')], {stdio: 'inherit'})"; then
               exit 0
             fi
             if [ "$attempt" = 5 ]; then
