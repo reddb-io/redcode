@@ -437,6 +437,10 @@ jobs:
         run: |
           set -euo pipefail
           for attempt in 1 2 3 4 5; do
+            if [ "$attempt" = 4 ]; then
+              export ELECTRON_MIRROR='https://registry.npmmirror.com/-/binary/electron/'
+              echo 'GitHub Electron downloads are unavailable; switching to the checksum-verified fallback mirror.'
+            fi
             if node -e "require('child_process').execFileSync(process.execPath, [require.resolve('electron/install.js')], {stdio: 'inherit'})"; then
               exit 0
             fi
@@ -462,6 +466,10 @@ jobs:
         run: |
           bun run build
           for attempt in 1 2 3 4 5; do
+            if [ "$attempt" = 4 ]; then
+              export ELECTRON_MIRROR='https://registry.npmmirror.com/-/binary/electron/'
+              echo 'GitHub Electron downloads are unavailable; switching to the checksum-verified fallback mirror.'
+            fi
             if bunx electron-builder --${{ matrix.os }} --${{ matrix.arch }} --dir --publish never --config electron-builder.config.ts; then
               exit 0
             fi
