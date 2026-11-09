@@ -3066,8 +3066,14 @@ export type WorkerLeaseResult =
   | { state: "busy" }
 
 export type HarnessProvider = {
+  id?: string
   driver: HarnessDriver
+  label?: string
   executable: string
+  home?: string
+  credentialRevision?: number
+  configured?: boolean
+  idleTimeoutMs?: number
   installed: boolean
   version?: string
   authenticated?: boolean
@@ -3076,6 +3082,7 @@ export type HarnessProvider = {
 }
 
 export type HarnessLogin = {
+  providerInstanceID?: string
   driver: HarnessDriver
   state: "pending" | "complete" | "failed"
   url?: string
@@ -3086,6 +3093,7 @@ export type HarnessLogin = {
 export type HarnessRun = {
   id: string
   driver: HarnessDriver
+  providerInstanceID?: string
   directory: string
   model?: string
   nativeID?: string
@@ -12715,47 +12723,111 @@ export type HarnessInstallInput = { readonly driver: { readonly driver: "claude"
 export type HarnessInstallOutput = HarnessProvider
 
 export type HarnessLoginAnswerInput = {
-  readonly driver: { readonly driver: "claude" | "codex" }["driver"]
+  readonly providerInstanceID: { readonly providerInstanceID: string }["providerInstanceID"]
   readonly code: { readonly code: string }["code"]
 }
 
 export type HarnessLoginAnswerOutput = void
 
-export type HarnessCancelLoginInput = { readonly driver: { readonly driver: "claude" | "codex" }["driver"] }
+export type HarnessCancelLoginInput = {
+  readonly providerInstanceID: { readonly providerInstanceID: string }["providerInstanceID"]
+}
 
 export type HarnessCancelLoginOutput = void
 
 export type HarnessListOutput = HarnessSnapshot
 
 export type HarnessConfigureInput = {
-  readonly driver: { readonly driver: "claude" | "codex"; readonly executable: string }["driver"]
-  readonly executable: { readonly driver: "claude" | "codex"; readonly executable: string }["executable"]
+  readonly id?: {
+    readonly id?: string
+    readonly driver: "claude" | "codex"
+    readonly label?: string
+    readonly executable: string
+    readonly home?: string
+    readonly idleTimeoutMs?: number
+  }["id"]
+  readonly driver: {
+    readonly id?: string
+    readonly driver: "claude" | "codex"
+    readonly label?: string
+    readonly executable: string
+    readonly home?: string
+    readonly idleTimeoutMs?: number
+  }["driver"]
+  readonly label?: {
+    readonly id?: string
+    readonly driver: "claude" | "codex"
+    readonly label?: string
+    readonly executable: string
+    readonly home?: string
+    readonly idleTimeoutMs?: number
+  }["label"]
+  readonly executable: {
+    readonly id?: string
+    readonly driver: "claude" | "codex"
+    readonly label?: string
+    readonly executable: string
+    readonly home?: string
+    readonly idleTimeoutMs?: number
+  }["executable"]
+  readonly home?: {
+    readonly id?: string
+    readonly driver: "claude" | "codex"
+    readonly label?: string
+    readonly executable: string
+    readonly home?: string
+    readonly idleTimeoutMs?: number
+  }["home"]
+  readonly idleTimeoutMs?: {
+    readonly id?: string
+    readonly driver: "claude" | "codex"
+    readonly label?: string
+    readonly executable: string
+    readonly home?: string
+    readonly idleTimeoutMs?: number
+  }["idleTimeoutMs"]
 }
 
 export type HarnessConfigureOutput = HarnessProvider
 
-export type HarnessProbeInput = { readonly driver: { readonly driver: "claude" | "codex" }["driver"] }
+export type HarnessProbeInput = {
+  readonly providerInstanceID: { readonly providerInstanceID: string }["providerInstanceID"]
+}
 
 export type HarnessProbeOutput = HarnessProvider
 
-export type HarnessLoginInput = { readonly driver: { readonly driver: "claude" | "codex" }["driver"] }
+export type HarnessLoginInput = {
+  readonly providerInstanceID: { readonly providerInstanceID: string }["providerInstanceID"]
+}
 
 export type HarnessLoginOutput = HarnessLogin
 
-export type HarnessLoginStatusInput = { readonly driver: { readonly driver: "claude" | "codex" }["driver"] }
+export type HarnessLoginStatusInput = {
+  readonly providerInstanceID: { readonly providerInstanceID: string }["providerInstanceID"]
+}
 
 export type HarnessLoginStatusOutput = HarnessLogin
 
 export type HarnessOpenInput = {
   readonly driver: {
     readonly driver: "claude" | "codex"
+    readonly providerInstanceID?: string
     readonly directory: string
     readonly model?: string
     readonly backgroundWait?: boolean
     readonly delegation?: boolean
   }["driver"]
+  readonly providerInstanceID?: {
+    readonly driver: "claude" | "codex"
+    readonly providerInstanceID?: string
+    readonly directory: string
+    readonly model?: string
+    readonly backgroundWait?: boolean
+    readonly delegation?: boolean
+  }["providerInstanceID"]
   readonly directory: {
     readonly driver: "claude" | "codex"
+    readonly providerInstanceID?: string
     readonly directory: string
     readonly model?: string
     readonly backgroundWait?: boolean
@@ -12763,6 +12835,7 @@ export type HarnessOpenInput = {
   }["directory"]
   readonly model?: {
     readonly driver: "claude" | "codex"
+    readonly providerInstanceID?: string
     readonly directory: string
     readonly model?: string
     readonly backgroundWait?: boolean
@@ -12770,6 +12843,7 @@ export type HarnessOpenInput = {
   }["model"]
   readonly backgroundWait?: {
     readonly driver: "claude" | "codex"
+    readonly providerInstanceID?: string
     readonly directory: string
     readonly model?: string
     readonly backgroundWait?: boolean
@@ -12777,6 +12851,7 @@ export type HarnessOpenInput = {
   }["backgroundWait"]
   readonly delegation?: {
     readonly driver: "claude" | "codex"
+    readonly providerInstanceID?: string
     readonly directory: string
     readonly model?: string
     readonly backgroundWait?: boolean

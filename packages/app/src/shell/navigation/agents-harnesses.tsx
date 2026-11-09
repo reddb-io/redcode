@@ -30,12 +30,23 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
   const [state, setState] = createStore({
     view: "sessions",
     driver: "redcode" as Harness.Driver | "redcode",
+    providerInstanceID: "",
     directory: "",
     model: "",
     customModel: false,
     backgroundWait: false,
     delegation: false,
-    executable: { claude: "", codex: "" },
+    executable: {} as Record<string, string>,
+    home: {} as Record<string, string>,
+    idleTimeoutSeconds: {} as Record<string, string>,
+    newInstance: {
+      driver: "codex" as Harness.Driver,
+      id: "",
+      label: "",
+      executable: "codex",
+      home: "",
+      idleTimeoutSeconds: "60",
+    },
     busy: false,
     error: "",
     runID: "",
@@ -46,7 +57,7 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
     answers: {} as Record<string, string>,
     code: "",
     stopped: false,
-    login: undefined as Harness.Driver | undefined,
+    login: undefined as string | undefined,
   })
   const lifetime = { active: true }
   onCleanup(() => {
@@ -71,7 +82,7 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
   }))
   const login = useQuery(() => ({
     queryKey: ["harness-login", ServerConnection.key(props.server), state.login],
-    queryFn: ({ signal }) => api().loginStatus({ driver: state.login! }, { signal }),
+    queryFn: ({ signal }) => api().loginStatus({ providerInstanceID: state.login! }, { signal }),
     enabled: connected() && !!state.login,
     retry: false,
     refetchInterval: (query) => (query.state.data?.state === "pending" ? 1000 : false),
@@ -128,6 +139,12 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
     })
   }
   const directory = () => state.directory || (typeof params.directory === "string" ? params.directory : "")
+  const providerID = (provider: { id?: string; driver: Harness.Driver }) => provider.id ?? provider.driver
+  const selectedProviderID = () => {
+    if (state.driver === "redcode") return "redcode"
+    const provider = query.data?.providers.find((item) => item.driver === state.driver)
+    return state.providerInstanceID || (provider ? providerID(provider) : state.driver)
+  }
   return (
     <div class="flex flex-col gap-4 text-13-regular leading-[var(--line-height-base)]">
       <Show when={query.isError || !connected()}>
@@ -495,6 +512,7 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                     }
                     const run = await api().open({
                       driver: state.driver,
+                      providerInstanceID: selectedProviderID(),
                       directory: directory(),
                       ...(state.model.trim() ? { model: state.model.trim() } : {}),
                       ...(state.backgroundWait ? { backgroundWait: true } : {}),
@@ -513,14 +531,28 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                     <SearchSelect
                       label={language.t("harness.provider")}
                       class="mt-1 w-full"
-                      value={state.driver}
-                      options={(["redcode", "codex", "claude"] as const).map((driver) => ({
-                        value: driver,
-                        label: language.t(`harness.driver.${driver}`),
-                      }))}
+                      value={state.driver === "redcode" ? "redcode" : selectedProviderID()}
+                      options={[
+                        { value: "redcode", label: language.t("harness.driver.redcode") },
+                        ...(query.data?.providers ?? []).map((provider) => ({
+                          value: providerID(provider),
+                          label: `${language.t(`harness.driver.${provider.driver}`)} · ${provider.label ?? "Default"}`,
+                          description: provider.home || provider.executable,
+                        })),
+                      ]}
                       onChange={(value) => {
-                        if (value === "redcode" || value === "claude" || value === "codex")
-                          setState({ driver: value, model: "", customModel: false })
+                        if (value === "redcode") {
+                          setState({ driver: value, providerInstanceID: "", model: "", customModel: false })
+                          return
+                        }
+                        const provider = query.data?.providers.find((item) => providerID(item) === value)
+                        if (provider)
+                          setState({
+                            driver: provider.driver,
+                            providerInstanceID: providerID(provider),
+                            model: "",
+                            customModel: false,
+                          })
                       }}
                     />
                   </label>
@@ -534,7 +566,10 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                         options={[
                           { value: "", label: language.t("harness.model.default") },
                           ...(
-                            query.data?.providers.find((provider) => provider.driver === state.driver)?.models ?? []
+                            query.data?.providers.find(
+                              (provider) =>
+                                providerID(provider) === selectedProviderID(),
+                            )?.models ?? []
                           ).map((model) => ({
                             value: model.id,
                             label: model.label,
@@ -613,36 +648,186 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
               class="!overflow-visible space-y-4 pt-4"
             >
               <p class="text-ink-muted">{language.t("harness.description")}</p>
+              <details class={appearance.root()}>
+                <summary class="cursor-pointer text-13-medium">{language.t("harness.instance.add")}</summary>
+                <form
+                  class="mt-3 grid gap-3 @md/harness-workspace:grid-cols-2"
+                  onSubmit={(event) => {
+                    event.preventDefault()
+                    void action(async () => {
+                      await api().configure({
+                        id: state.newInstance.id.trim(),
+                        driver: state.newInstance.driver,
+                        label: state.newInstance.label.trim(),
+                        executable: state.newInstance.executable.trim(),
+                        ...(state.newInstance.home.trim() ? { home: state.newInstance.home.trim() } : {}),
+                        idleTimeoutMs: Number(state.newInstance.idleTimeoutSeconds) * 1000,
+                      })
+                      if (lifetime.active)
+                        setState("newInstance", {
+                          driver: "codex",
+                          id: "",
+                          label: "",
+                          executable: "codex",
+                          home: "",
+                          idleTimeoutSeconds: "60",
+                        })
+                    })
+                  }}
+                >
+                  <label>
+                    {language.t("harness.instance.driver")}
+                    <select
+                      class={input({ size: "sm", class: "mt-1 w-full" })}
+                      value={state.newInstance.driver}
+                      onChange={(event) => {
+                        const driver = event.currentTarget.value === "claude" ? "claude" : "codex"
+                        setState("newInstance", { driver, executable: driver })
+                      }}
+                    >
+                      <option value="codex">{language.t("harness.driver.codex")}</option>
+                      <option value="claude">{language.t("harness.driver.claude")}</option>
+                    </select>
+                  </label>
+                  <label>
+                    {language.t("harness.instance.label")}
+                    <input
+                      required
+                      class={input({ size: "sm", class: "mt-1 w-full" })}
+                      value={state.newInstance.label}
+                      onInput={(event) => setState("newInstance", "label", event.currentTarget.value)}
+                    />
+                  </label>
+                  <label>
+                    {language.t("harness.instance.id")}
+                    <input
+                      required
+                      class={input({ size: "sm", class: "mt-1 w-full" })}
+                      value={state.newInstance.id}
+                      placeholder="codex-work"
+                      onInput={(event) => setState("newInstance", "id", event.currentTarget.value)}
+                    />
+                  </label>
+                  <label>
+                    {language.t("harness.executable")}
+                    <input
+                      required
+                      class={input({ size: "sm", class: "mt-1 w-full" })}
+                      value={state.newInstance.executable}
+                      onInput={(event) => setState("newInstance", "executable", event.currentTarget.value)}
+                    />
+                  </label>
+                  <label class="@md/harness-workspace:col-span-2">
+                    {language.t("harness.instanceHome")}
+                    <input
+                      class={input({ size: "sm", class: "mt-1 w-full" })}
+                      value={state.newInstance.home}
+                      placeholder={language.t("harness.instanceHomeDefault")}
+                      onInput={(event) => setState("newInstance", "home", event.currentTarget.value)}
+                    />
+                  </label>
+                  <Show when={state.newInstance.driver === "codex"}>
+                    <label>
+                      {language.t("harness.instance.idleTimeout")}
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        class={input({ size: "sm", class: "mt-1 w-full" })}
+                        value={state.newInstance.idleTimeoutSeconds}
+                        onInput={(event) =>
+                          setState("newInstance", "idleTimeoutSeconds", event.currentTarget.value)
+                        }
+                      />
+                      <span class="mt-1 block text-caption text-ink-muted">
+                        {language.t("harness.instance.idleTimeoutNote")}
+                      </span>
+                    </label>
+                  </Show>
+                  <Button
+                    type="submit"
+                    disabled={
+                      state.busy ||
+                      !state.newInstance.id.trim() ||
+                      !state.newInstance.label.trim() ||
+                      !state.newInstance.executable.trim()
+                    }
+                  >
+                    {language.t("harness.instance.create")}
+                  </Button>
+                </form>
+              </details>
               <div class="grid gap-4 @2xl/harness-workspace:grid-cols-2">
-                <Key each={query.data?.providers} by="driver">
+                <For each={query.data?.providers}>
                   {(provider) => (
-                    <article class={appearance.root()} aria-label={language.t(`harness.driver.${provider().driver}`)}>
+                    <article class={appearance.root()} aria-label={language.t(`harness.driver.${provider.driver}`)}>
                       <div class={appearance.body({ class: "flex flex-col gap-3 space-y-0" })}>
-                        <h3 class="text-13-medium">{language.t(`harness.driver.${provider().driver}`)}</h3>
+                        <h3 class="text-13-medium">
+                          {language.t(`harness.driver.${provider.driver}`)} · {provider.label ?? "Default"}
+                        </h3>
+                        <p class="text-caption text-ink-muted">
+                          {providerID(provider)}
+                          <Show when={provider.credentialRevision !== undefined}>
+                            {" · "}
+                            {language.t("harness.instance.credentialRevision", {
+                              revision: provider.credentialRevision ?? 0,
+                            })}
+                          </Show>
+                        </p>
                         <div class="flex flex-wrap items-center gap-2">
                           <span
-                            class={badge({ tone: provider().installed ? "success" : "warning", variant: "tinted" })}
+                            class={badge({ tone: provider.installed ? "success" : "warning", variant: "tinted" })}
                           >
-                            {language.t(provider().installed ? "harness.installed" : "harness.notInstalled")}
+                            {language.t(provider.installed ? "harness.installed" : "harness.notInstalled")}
                           </span>
                           <span class="text-caption text-ink-muted">
-                            {provider().version || language.t("harness.notChecked")}
+                            {provider.version || language.t("harness.notChecked")}
                           </span>
                         </div>
-                        <Show when={provider().authenticated !== undefined}>
-                          <p>{language.t(provider().authenticated ? "harness.signedIn" : "harness.signedOut")}</p>
+                        <Show when={provider.authenticated !== undefined}>
+                          <p>{language.t(provider.authenticated ? "harness.signedIn" : "harness.signedOut")}</p>
                         </Show>
-                        <Show when={provider().detail}>
+                        <Show when={provider.detail}>
                           <p role="status" class="text-ink-muted">
-                            {provider().detail}
+                            {provider.detail}
                           </p>
                         </Show>
                         <label>
                           {language.t("harness.executable")}
                           <input
                             class={input({ size: "sm", class: "mt-1 w-full" })}
-                            value={state.executable[provider().driver] || provider().executable}
-                            onInput={(event) => setState("executable", provider().driver, event.currentTarget.value)}
+                            value={state.executable[providerID(provider)] || provider.executable}
+                            onInput={(event) => setState("executable", providerID(provider), event.currentTarget.value)}
+                          />
+                        </label>
+                        <Show when={provider.driver === "codex"}>
+                          <label>
+                            {language.t("harness.instance.idleTimeout")}
+                            <input
+                              type="number"
+                              min="0"
+                              step="1"
+                              class={input({ size: "sm", class: "mt-1 w-full" })}
+                              value={
+                                state.idleTimeoutSeconds[providerID(provider)] ??
+                                String((provider.idleTimeoutMs ?? 60_000) / 1000)
+                              }
+                              onInput={(event) =>
+                                setState("idleTimeoutSeconds", providerID(provider), event.currentTarget.value)
+                              }
+                            />
+                            <span class="mt-1 block text-caption text-ink-muted">
+                              {language.t("harness.instance.idleTimeoutNote")}
+                            </span>
+                          </label>
+                        </Show>
+                        <label>
+                          {language.t("harness.instanceHome")}
+                          <input
+                            class={input({ size: "sm", class: "mt-1 w-full" })}
+                            value={state.home[providerID(provider)] ?? provider.home ?? ""}
+                            placeholder={language.t("harness.instanceHomeDefault")}
+                            onInput={(event) => setState("home", providerID(provider), event.currentTarget.value)}
                           />
                         </label>
                         <div class="flex flex-wrap gap-2">
@@ -652,8 +837,18 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                             onClick={() =>
                               void action(() =>
                                 api().configure({
-                                  driver: provider().driver,
-                                  executable: state.executable[provider().driver] || provider().executable,
+                                  id: provider.id,
+                                  driver: provider.driver,
+                                  label: provider.label,
+                                  executable: state.executable[providerID(provider)] || provider.executable,
+                                  ...((state.home[providerID(provider)] ?? provider.home)?.trim()
+                                    ? { home: (state.home[providerID(provider)] ?? provider.home)!.trim() }
+                                    : {}),
+                                  idleTimeoutMs:
+                                    Number(
+                                      state.idleTimeoutSeconds[providerID(provider)] ??
+                                        (provider.idleTimeoutMs ?? 60_000) / 1000,
+                                    ) * 1000,
                                 }),
                               )
                             }
@@ -663,27 +858,29 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                           <Button
                             variant="outline"
                             disabled={state.busy}
-                            onClick={() => void action(() => api().probe({ driver: provider().driver }))}
+                            onClick={() =>
+                              void action(() => api().probe({ providerInstanceID: providerID(provider) }))
+                            }
                           >
                             {language.t("harness.check")}
                           </Button>
-                          <Show when={!provider().installed}>
+                          <Show when={!provider.installed}>
                             <Button
                               variant="outline"
                               disabled={state.busy}
-                              onClick={() => void action(() => api().install({ driver: provider().driver }))}
+                              onClick={() => void action(() => api().install({ driver: provider.driver }))}
                             >
                               {language.t("harness.install")}
                             </Button>
                           </Show>
                           <Button
                             variant="outline"
-                            disabled={state.busy || !provider().installed}
+                            disabled={state.busy || !provider.installed}
                             onClick={() =>
                               void action(async () => {
-                                await api().login({ driver: provider().driver })
+                                await api().login({ providerInstanceID: providerID(provider) })
                                 if (lifetime.active) {
-                                  setState("login", provider().driver)
+                                  setState("login", providerID(provider))
                                   void login.refetch()
                                 }
                               })
@@ -695,7 +892,7 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                       </div>
                     </article>
                   )}
-                </Key>
+                </For>
               </div>
               <details class="text-body text-ink-muted">
                 <summary class="cursor-pointer py-2">{language.t("harness.setupDetails")}</summary>
@@ -737,7 +934,10 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                             disabled={state.busy || !state.code.trim()}
                             onClick={() =>
                               void action(async () => {
-                                await api().loginAnswer({ driver: "claude", code: state.code })
+                                await api().loginAnswer({
+                                  providerInstanceID: result().providerInstanceID || "claude-default",
+                                  code: state.code,
+                                })
                                 if (lifetime.active) setState("code", "")
                               })
                             }
@@ -750,7 +950,10 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                           disabled={state.busy}
                           onClick={() =>
                             void action(async () => {
-                              await api().cancelLogin({ driver: result().driver })
+                              await api().cancelLogin({
+                                providerInstanceID:
+                                  result().providerInstanceID || `${result().driver}-default`,
+                              })
                               if (lifetime.active) void login.refetch()
                             })
                           }

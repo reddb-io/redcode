@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
 import { Database } from "bun:sqlite"
 import { createHash } from "node:crypto"
-import { writeFile, chmod } from "node:fs/promises"
+import { writeFile, chmod, mkdir } from "node:fs/promises"
 import path from "node:path"
 import { tmpdir } from "../../core/test/fixture/tmpdir"
 import { createHarnesses } from "../src/harness"
@@ -11,17 +11,182 @@ import { Schema } from "effect"
 import { App } from "@opencode/core/app"
 
 const fixture = path.resolve(import.meta.dir, "fixture/harness-process.ts")
-async function executable(root: string, driver: Harness.Driver, modelsError = false) {
+async function executable(root: string, driver: Harness.Driver, modelsError = false, source = fixture) {
   const file = path.join(root, driver + (process.platform === "win32" ? ".cmd" : ".sh"))
   await writeFile(
     file,
     process.platform === "win32"
-      ? `@"${process.execPath}" "${fixture}" ${driver} "${path.join(root, "wire.jsonl")}" ${modelsError ? "models-error" : ""} %*\r\n`
-      : `#!/bin/sh\nexec '${process.execPath}' '${fixture}' ${driver} '${path.join(root, "wire.jsonl")}' ${modelsError ? "models-error" : ""} "$@"\n`,
+      ? `@"${process.execPath}" "${source}" ${driver} "${path.join(root, "wire.jsonl")}" ${modelsError ? "models-error" : ""} %*\r\n`
+      : `#!/bin/sh\nexec '${process.execPath}' '${source}' ${driver} '${path.join(root, "wire.jsonl")}' ${modelsError ? "models-error" : ""} "$@"\n`,
   )
   await chmod(file, 0o700)
   return file
 }
+
+test("Codex shares one initialized app-server while isolating native threads", async () => {
+  await using tmp = await tmpdir("redcode-harness-codex-pool-")
+  const service = await createHarnesses(path.join(tmp.path, "state"))
+  try {
+    const source = path.resolve(import.meta.dir, "fixture/codex-multithread-process.ts")
+    await service.configure({ driver: "codex", executable: await executable(tmp.path, "codex", false, source) })
+    const first = await service.open({ driver: "codex", directory: AbsolutePath.make(tmp.path) })
+    const second = await service.open({ driver: "codex", directory: AbsolutePath.make(tmp.path) })
+    expect(first.nativeID).not.toBe(second.nativeID)
+
+    const ownership = new Database(path.join(tmp.path, "state", "harness.sqlite"))
+    const processes = ownership
+      .query<{ run: string; child_pid: number }, []>("SELECT run,child_pid FROM harness_process ORDER BY rowid")
+      .all()
+    ownership.close()
+    expect(processes).toHaveLength(2)
+    expect(new Set(processes.map((item) => item.child_pid)).size).toBe(1)
+
+    const memory = service.memoryOwners()
+    expect(memory.filter((item) => item.shared)).toHaveLength(1)
+    expect(new Set(memory.map((item) => item.rootPID)).size).toBe(1)
+
+    await service.prompt(first.id, { id: "first-hold", text: "hold", delivery: "queue" })
+    await until(() => service.read(first.id).run.state === "running")
+    await service.prompt(second.id, { id: "second-permission", text: "permission", delivery: "queue" })
+    await until(() => service.read(second.id).run.state === "waiting")
+    expect(service.read(first.id).requests).toEqual([])
+    const request = service.read(second.id).requests[0]!
+    await service.answer(second.id, { request: request.id, allow: true, answers: {} })
+    await until(() => service.read(second.id).run.state === "ready")
+    expect(service.read(first.id).run.state).toBe("running")
+
+    await service.interrupt(first.id)
+    await until(() => service.read(first.id).run.state === "interrupted")
+    await service.close(first.id)
+    await service.prompt(second.id, { id: "second-follow-up", text: "again", delivery: "queue" })
+    await until(() => service.read(second.id).run.state === "ready")
+    expect(service.read(second.id).events.some((event) => event.text === `${second.nativeID}:again`)).toBeTrue()
+
+    const capture = await Bun.file(path.join(tmp.path, "wire.jsonl")).text()
+    expect(capture.match(/"method":"initialize"/g)).toHaveLength(2)
+  } finally {
+    await service.dispose()
+  }
+}, 30_000)
+
+test("provider instances isolate account homes, pools and credential revisions", async () => {
+  await using tmp = await tmpdir("redcode-harness-provider-instance-")
+  const service = await createHarnesses(path.join(tmp.path, "state"))
+  const source = path.resolve(import.meta.dir, "fixture/codex-multithread-process.ts")
+  const file = await executable(tmp.path, "codex", false, source)
+  try {
+    const work = await service.configure({
+      id: "codex-work",
+      driver: "codex",
+      label: "Work",
+      executable: file,
+      home: AbsolutePath.make(path.join(tmp.path, "codex-work")),
+    })
+    const personal = await service.configure({
+      id: "codex-personal",
+      driver: "codex",
+      label: "Personal",
+      executable: file,
+      home: AbsolutePath.make(path.join(tmp.path, "codex-personal")),
+    })
+    expect(work.credentialRevision).toBe(1)
+    expect(personal.credentialRevision).toBe(1)
+
+    const first = await service.open({
+      driver: "codex",
+      providerInstanceID: work.id,
+      directory: AbsolutePath.make(tmp.path),
+    })
+    const second = await service.open({
+      driver: "codex",
+      providerInstanceID: personal.id,
+      directory: AbsolutePath.make(tmp.path),
+    })
+    expect(first.providerInstanceID).toBe("codex-work")
+    expect(second.providerInstanceID).toBe("codex-personal")
+    const capture = await Bun.file(path.join(tmp.path, "wire.jsonl")).text()
+    const homes = capture
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { environment?: { CODEX_HOME?: string } })
+      .flatMap((line) => (line.environment?.CODEX_HOME ? [line.environment.CODEX_HOME] : []))
+    expect(homes).toContain(path.join(tmp.path, "codex-work"))
+    expect(homes).toContain(path.join(tmp.path, "codex-personal"))
+
+    const ownership = new Database(path.join(tmp.path, "state", "harness.sqlite"))
+    const pids = ownership
+      .query<{ child_pid: number }, []>("SELECT child_pid FROM harness_process ORDER BY rowid")
+      .all()
+      .map((item) => item.child_pid)
+    ownership.close()
+    expect(new Set(pids).size).toBe(2)
+    await expect(
+      service.configure({
+        id: "codex-work",
+        driver: "codex",
+        label: "Work",
+        executable: file,
+        home: AbsolutePath.make(path.join(tmp.path, "codex-work-next")),
+      }),
+    ).rejects.toThrow("Close this provider instance")
+
+    await service.close(first.id)
+    expect(service.memoryOwners().some((owner) => owner.title === "codex · Work · idle")).toBeTrue()
+    const reused = await service.open({
+      driver: "codex",
+      providerInstanceID: work.id,
+      directory: AbsolutePath.make(tmp.path),
+    })
+    const reusedOwnership = new Database(path.join(tmp.path, "state", "harness.sqlite"))
+    expect(
+      reusedOwnership.query<{ child_pid: number }, [string]>("SELECT child_pid FROM harness_process WHERE run=?").get(
+        reused.id,
+      )?.child_pid,
+    ).toBe(pids[0])
+    reusedOwnership.close()
+    await service.close(reused.id)
+    const revised = await service.configure({
+      id: "codex-work",
+      driver: "codex",
+      label: "Work",
+      executable: file,
+      home: AbsolutePath.make(path.join(tmp.path, "codex-work-next")),
+    })
+    expect(revised.credentialRevision).toBe(2)
+    expect(service.list().providers.map((provider) => provider.id)).toEqual(
+      expect.arrayContaining(["codex-default", "codex-work", "codex-personal"]),
+    )
+    await service.close(second.id)
+  } finally {
+    await service.dispose()
+  }
+}, 30_000)
+
+test("legacy driver configuration migrates to the default provider instance", async () => {
+  await using tmp = await tmpdir("redcode-harness-provider-migration-")
+  const directory = path.join(tmp.path, "state")
+  await mkdir(directory, { recursive: true })
+  const database = new Database(path.join(directory, "harness.sqlite"), { create: true })
+  database.exec("CREATE TABLE config (driver TEXT PRIMARY KEY, executable TEXT NOT NULL)")
+  const file = await executable(tmp.path, "codex")
+  database.query("INSERT INTO config VALUES (?,?)").run("codex", file)
+  database.close()
+
+  const service = await createHarnesses(directory)
+  try {
+    expect(service.list().providers.find((provider) => provider.id === "codex-default")).toMatchObject({
+      driver: "codex",
+      executable: file,
+      label: "Default",
+      credentialRevision: 1,
+    })
+    const run = await service.open({ driver: "codex", directory: AbsolutePath.make(tmp.path) })
+    expect(run.providerInstanceID).toBe("codex-default")
+    await service.close(run.id)
+  } finally {
+    await service.dispose()
+  }
+})
 async function until(check: () => boolean | Promise<boolean>) {
   const end = Date.now() + 5000
   while (!(await check())) {

@@ -14,7 +14,7 @@ import { Context, Effect, Layer, Option, Schema } from "effect"
 import { object, string, wire, stopOwnedProcess, type Frame, type Wire } from "./harness-wire"
 import { createHarnessTasks } from "./harness-tasks"
 import { createHarnessDelegation } from "./harness-delegation"
-import { backgroundWaitTool, createHarnessTools, delegationTools } from "./harness-tools"
+import { createHarnessTools } from "./harness-tools"
 import { App } from "@opencode/core/app"
 import { Session } from "@opencode/core/session"
 import { SessionMessage } from "@opencode/core/session/message"
@@ -22,46 +22,14 @@ import { SessionStore } from "@opencode/core/session/store"
 import { SubagentCompletion } from "@opencode/core/session/subagent-completion"
 import { ExternalDelegation } from "@opencode/core/external-delegation"
 import { Location } from "@opencode/schema/location"
-
-const CodexModelPage = Schema.Struct({
-  data: Schema.Array(
-    Schema.Struct({
-      id: Schema.optional(Schema.NonEmptyString),
-      model: Schema.optional(Schema.NonEmptyString),
-      displayName: Schema.optional(Schema.String),
-      isDefault: Schema.optional(Schema.Boolean),
-      hidden: Schema.optional(Schema.Boolean),
-    }),
-  ),
-  nextCursor: Schema.optional(Schema.NullOr(Schema.String)),
-})
-
-async function codexModels(connection: Wire) {
-  const models: NonNullable<Harness.Provider["models"]>[number][] = []
-  let cursor: string | undefined
-  do {
-    const page = Schema.decodeUnknownSync(CodexModelPage)(
-      await connection.request(
-        "model/list",
-        { limit: 100, includeHidden: false, ...(cursor ? { cursor } : {}) },
-        "codex",
-      ),
-    )
-    models.push(
-      ...page.data.flatMap((model) => {
-        const id = model.model ?? model.id
-        return id && !model.hidden
-          ? [{ id, label: model.displayName || id, recommended: model.isDefault === true }]
-          : []
-      }),
-    )
-    cursor = page.nextCursor ?? undefined
-  } while (cursor)
-  return models
-}
+import { harnessCapabilities } from "./agent-runtime/adapter"
+import { CodexRuntimeProtocol } from "./agent-runtime/adapters/codex"
+import { agentRuntime } from "./agent-runtime/registry"
+import { createAgentRuntimeSupervisor } from "./agent-runtime/supervisor"
 
 type Pending = { request: Harness.Request; frame: Frame }
 type Live = {
+  release: () => Promise<void>
   wire: Wire
   turn: string
   pending: Map<string, Pending>
@@ -74,6 +42,16 @@ type Live = {
 // Tokens distinguish independent server scopes hosted by the same OS process.
 const harnessOwners = new Set<string>()
 type HarnessOwner = { host: string; owner_pid: number; owner_token: string; child_pid: number | null; eligible: number }
+type ProviderInstance = {
+  id: string
+  driver: Harness.Driver
+  label: string
+  executable: string
+  home: string | null
+  credential_revision: number
+  configured: number
+  idle_timeout_ms: number
+}
 const processAlive = (pid: number) => {
   try {
     process.kill(pid, 0)
@@ -109,10 +87,26 @@ export async function createHarnesses(
   const db = new Database(path.join(directory, "harness.sqlite"), { create: true })
   db.exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;
     CREATE TABLE IF NOT EXISTS config (driver TEXT PRIMARY KEY, executable TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS provider_instance (
+      id TEXT PRIMARY KEY, driver TEXT NOT NULL, label TEXT NOT NULL, executable TEXT NOT NULL,
+      home TEXT, credential_revision INTEGER NOT NULL DEFAULT 1, configured INTEGER NOT NULL DEFAULT 0,
+      idle_timeout_ms INTEGER NOT NULL DEFAULT 60000
+    );
     CREATE TABLE IF NOT EXISTS run (id TEXT PRIMARY KEY, data TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS event (cursor INTEGER PRIMARY KEY AUTOINCREMENT, run TEXT NOT NULL, kind TEXT NOT NULL, text TEXT NOT NULL);
     CREATE INDEX IF NOT EXISTS event_run ON event(run,cursor);
     CREATE TABLE IF NOT EXISTS prompt (id TEXT PRIMARY KEY, run TEXT NOT NULL, text TEXT NOT NULL, status TEXT NOT NULL);`)
+  const providerColumns = db.query<{ name: string }, []>("PRAGMA table_info(provider_instance)").all()
+  if (!providerColumns.some((column) => column.name === "configured"))
+    db.exec("ALTER TABLE provider_instance ADD COLUMN configured INTEGER NOT NULL DEFAULT 0")
+  if (!providerColumns.some((column) => column.name === "idle_timeout_ms"))
+    db.exec("ALTER TABLE provider_instance ADD COLUMN idle_timeout_ms INTEGER NOT NULL DEFAULT 60000")
+  db.exec(`INSERT OR IGNORE INTO provider_instance(id,driver,label,executable,credential_revision,configured)
+    SELECT driver || '-default',driver,'Default',executable,1,1 FROM config;
+    UPDATE provider_instance SET configured=1
+      WHERE id IN (SELECT driver || '-default' FROM config);
+    INSERT OR IGNORE INTO provider_instance(id,driver,label,executable,credential_revision)
+    VALUES ('codex-default','codex','Default','codex',1), ('claude-default','claude','Default','claude',1);`)
   db.exec(`CREATE TABLE IF NOT EXISTS harness_process (
     run TEXT PRIMARY KEY, host TEXT NOT NULL, owner_pid INTEGER NOT NULL, owner_token TEXT NOT NULL,
     child_pid INTEGER, eligible INTEGER NOT NULL DEFAULT 0
@@ -132,13 +126,14 @@ export async function createHarnesses(
   )
   const tasks = createHarnessTasks(db)
   const live = new Map<string, Live>()
+  const supervisor = createAgentRuntimeSupervisor()
   const lifetime = { closed: false }
   const recovering = new Set<Promise<void>>()
   let recoveryTimer: ReturnType<typeof setInterval> | undefined
-  const providers = new Map<Harness.Driver, Harness.Provider>()
-  const logins = new Map<Harness.Driver, Harness.Login>()
+  const providers = new Map<string, Harness.Provider>()
+  const logins = new Map<string, Harness.Login>()
   const loginWires = new Map<
-    Harness.Driver,
+    string,
     { id: string; close: () => Promise<void>; answer?: (code: string) => void }
   >()
   const write = (run: Harness.Run) =>
@@ -228,10 +223,43 @@ export async function createHarnesses(
     if (Option.isSome(decoded))
       db.query("INSERT OR IGNORE INTO metric(id,data) VALUES (?,?)").run(key, JSON.stringify(decoded.value))
   }
-  const count = (value: unknown) => (typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null)
-  const executable = (driver: Harness.Driver) =>
-    db.query<{ executable: string }, [string]>("SELECT executable FROM config WHERE driver=?").get(driver)
-      ?.executable ?? driver
+  const defaultInstanceID = (driver: Harness.Driver) => `${driver}-default`
+  const providerInstances = () =>
+    db
+      .query<ProviderInstance, []>(
+        "SELECT id,driver,label,executable,home,credential_revision,configured,idle_timeout_ms FROM provider_instance ORDER BY driver,id",
+      )
+      .all()
+  const providerInstance = (driver: Harness.Driver, id?: string) => {
+    const instance = db
+      .query<ProviderInstance, [string]>(
+        "SELECT id,driver,label,executable,home,credential_revision,configured,idle_timeout_ms FROM provider_instance WHERE id=?",
+      )
+      .get(id ?? defaultInstanceID(driver))
+    if (!instance) throw new Error("Provider instance is not configured")
+    if (instance.driver !== driver) throw new Error("Provider instance belongs to another driver")
+    return instance
+  }
+  const providerInstanceForKey = (key: string) => {
+    if (key === "codex" || key === "claude") return providerInstance(key)
+    const instance = db
+      .query<ProviderInstance, [string]>(
+        "SELECT id,driver,label,executable,home,credential_revision,configured,idle_timeout_ms FROM provider_instance WHERE id=?",
+      )
+      .get(key)
+    if (!instance) throw new Error("Provider instance is not configured")
+    return instance
+  }
+  const runtimeEnvironment = (instance: ProviderInstance) => {
+    if (!instance.home) return undefined
+    return { [instance.driver === "codex" ? "CODEX_HOME" : "CLAUDE_CONFIG_DIR"]: instance.home }
+  }
+  const advanceCredentialRevision = (id: string) => {
+    const instance = providerInstanceForKey(id)
+    void supervisor.evict(JSON.stringify([instance.id, instance.credential_revision]))
+    db.query("UPDATE provider_instance SET credential_revision=credential_revision+1 WHERE id=?").run(id)
+    providers.delete(id)
+  }
   runs()
     .filter((run) => {
       const owner = processOwner(run.id)
@@ -251,9 +279,18 @@ export async function createHarnesses(
       }),
     )
 
-  const call = (command: string, args: string[], timeout = 15_000, codes = [0]) =>
+  const call = (
+    command: string,
+    args: string[],
+    timeout = 15_000,
+    codes = [0],
+    environment?: Record<string, string>,
+  ) =>
     new Promise<string>((resolve, reject) => {
-      const child = spawn(command, args, { windowsHide: true })
+      const child = spawn(command, args, {
+        env: environment ? { ...process.env, ...environment } : process.env,
+        windowsHide: true,
+      })
       const output = { value: "", error: "" }
       const timer = setTimeout(() => {
         child.kill()
@@ -276,30 +313,36 @@ export async function createHarnesses(
           : reject(new Error(output.error || "Harness diagnostic failed"))
       })
     })
-  const codexInit = async (connection: Wire, backgroundWait = false) => {
-    await connection.request(
-      "initialize",
-      {
-        clientInfo: { name: "redcode", title: "Redcode", version: app.version },
-        ...(backgroundWait ? { capabilities: { experimentalApi: true } } : {}),
-      },
-      "codex",
-    )
-    connection.send({ method: "initialized", params: {} })
-  }
-  const provider = (driver: Harness.Driver): Harness.Provider =>
-    providers.get(driver) ?? { driver, executable: executable(driver), installed: false }
-  const probe = async (driver: Harness.Driver) => {
-    const file = executable(driver)
-    const version = await call(file, ["--version"]).catch(() => undefined)
+  const provider = (instance: ProviderInstance): Harness.Provider =>
+    providers.get(instance.id) ?? {
+      id: instance.id,
+      driver: instance.driver,
+      label: instance.label,
+      executable: instance.executable,
+      ...(instance.home ? { home: AbsolutePath.make(instance.home) } : {}),
+      credentialRevision: instance.credential_revision,
+      configured: instance.configured === 1,
+      idleTimeoutMs: instance.idle_timeout_ms,
+      installed: false,
+    }
+  const probe = async (driver: Harness.Driver, providerInstanceID?: string) => {
+    const instance = providerInstance(driver, providerInstanceID)
+    const environment = runtimeEnvironment(instance)
+    const version = await call(instance.executable, ["--version"], 15_000, [0], environment).catch(() => undefined)
     if (!version) {
-      const result = { driver, executable: file, installed: false }
-      providers.set(driver, result)
+      const result = { ...provider(instance), installed: false }
+      providers.set(instance.id, result)
       return result
     }
     const result = {
+      id: instance.id,
       driver,
-      executable: file,
+      label: instance.label,
+      executable: instance.executable,
+      ...(instance.home ? { home: AbsolutePath.make(instance.home) } : {}),
+      credentialRevision: instance.credential_revision,
+      configured: instance.configured === 1,
+      idleTimeoutMs: instance.idle_timeout_ms,
       installed: true,
       version,
       authenticated: undefined as boolean | undefined,
@@ -307,7 +350,9 @@ export async function createHarnesses(
       detail: undefined as string | undefined,
     }
     if (driver === "claude") {
-      const auth = await call(file, ["auth", "status", "--json"], 15_000, [0, 1]).catch(() => undefined)
+      const auth = await call(instance.executable, ["auth", "status", "--json"], 15_000, [0, 1], environment).catch(
+        () => undefined,
+      )
       if (auth) {
         const parsed = object(JSON.parse(auth))
         result.authenticated = parsed.loggedIn === true
@@ -315,17 +360,18 @@ export async function createHarnesses(
     }
     if (driver === "codex") {
       const connection = wire({
-        executable: file,
+        executable: instance.executable,
         args: ["app-server"],
         directory: process.cwd(),
+        environment,
         frame: () => {},
         exit: () => {},
       })
       try {
-        await codexInit(connection)
+        await CodexRuntimeProtocol.initialize(connection, app.version, false)
         const status = await connection.request("account/read", { refreshToken: false }, driver)
         result.authenticated = status.account !== null && status.account !== undefined
-        result.models = await codexModels(connection).catch((error: unknown) => {
+        result.models = await CodexRuntimeProtocol.models(connection).catch((error: unknown) => {
           result.detail = `Could not load Codex models: ${error instanceof Error ? error.message : String(error)}`
           return undefined
         })
@@ -333,46 +379,10 @@ export async function createHarnesses(
         await connection.close()
       }
     }
-    providers.set(driver, result)
+    providers.set(instance.id, result)
     return result
   }
   const requests = (id: string) => [...(live.get(id)?.pending.values() ?? [])].map((item) => item.request)
-  const setRequest = (
-    id: string,
-    frame: Frame,
-    key: string,
-    title: string,
-    detail: string,
-    questions: Harness.Request["questions"],
-    supported: boolean,
-  ) => {
-    const connection = live.get(id)
-    if (!connection) return
-    connection.pending.set(key, {
-      frame,
-      request: {
-        id: key,
-        kind: questions.length ? "question" : supported ? "permission" : "unsupported",
-        title,
-        detail,
-        questions,
-      },
-    })
-    update(id, { state: "waiting" })
-  }
-  const questions = (input: unknown): Harness.Request["questions"] => {
-    if (!Array.isArray(input)) return []
-    return input.map((item, index) => {
-      const value = object(item)
-      return {
-        id: string(value.id) || string(value.question) || String(index),
-        text: string(value.question) || string(value.header),
-        options: Array.isArray(value.options)
-          ? value.options.map((option) => string(object(option).label)).filter(Boolean)
-          : [],
-      }
-    })
-  }
   const frame = (id: string, value: Frame) => {
     if (lifetime.closed) return
     const run = read(id)
@@ -382,176 +392,74 @@ export async function createHarnesses(
     tasks.observe(run, value)
     // Closing may still flush native frames; they cannot reopen an execution already closed by the operator.
     if (run.state === "closed") return
-    if (run.driver === "codex") {
-      const params = object(value.params)
-      // This process owns one thread. Ignore notifications belonging to another thread/turn.
-      if (params.threadId && params.threadId !== run.nativeID) return
-      if (params.turnId && connection.turn && params.turnId !== connection.turn) return
-      if (connection.tools?.handle(value)) return
-      const method = string(value.method)
-      if (method === "thread/tokenUsage/updated") {
-        const usage = object(object(params.tokenUsage).total)
-        const cached = count(usage.cachedInputTokens)
-        const input = count(usage.inputTokens)
-        const output = count(usage.outputTokens)
-        const reasoning = count(usage.reasoningOutputTokens)
-        const tokens = {
-          input: input === null || cached === null ? null : Math.max(0, input - cached),
-          output: output === null || reasoning === null ? null : Math.max(0, output - reasoning),
-          reasoning,
-          cache: { read: cached, write: null },
+    const adapter = agentRuntime(run.driver)
+    const input = { frame: value, inputID: connection.input, run, turn: connection.turn }
+    if (!adapter.accepts(input)) return
+    if (connection.tools?.handle(value)) return
+    adapter
+      .events(input)
+      .forEach((runtimeEvent) => {
+        if (runtimeEvent.type === "text" || runtimeEvent.type === "activity") {
+          event(id, runtimeEvent.type, runtimeEvent.text)
+          return
         }
-        // Codex total is cumulative for the native thread. Preserve it as a replaceable snapshot.
-        metric(id, `usage:${JSON.stringify(tokens)}`, tokens, null, "session", "busy")
-      }
-      if (value.id !== undefined && method) {
-        const supported = [
-          "item/commandExecution/requestApproval",
-          "item/fileChange/requestApproval",
-          "item/tool/requestUserInput",
-        ].includes(method)
-        setRequest(
-          id,
-          value,
-          String(value.id),
-          method,
-          string(params.reason) || string(params.command),
-          questions(params.questions),
-          supported,
-        )
-        return
-      }
-      if (method === "serverRequest/resolved") {
-        connection.tools?.cancel(String(params.requestId))
-        connection.pending.delete(String(params.requestId))
-      }
-      if (method === "turn/started") {
-        connection.turn = string(object(params.turn).id)
-        update(id, { state: "running" })
-      }
-      if (method === "item/agentMessage/delta") event(id, "text", string(params.delta))
-      if (method === "item/started") event(id, "activity", string(object(params.item).type))
-      if (method === "turn/completed") {
+        if (runtimeEvent.type === "usage") {
+          const value = runtimeEvent.metric
+          metric(id, value.identity, value.tokens, value.cost, value.scope, value.status, value.model, value.pricing)
+          return
+        }
+        if (runtimeEvent.type === "request") {
+          connection.pending.set(runtimeEvent.key, {
+            frame: runtimeEvent.frame,
+            request: {
+              id: runtimeEvent.key,
+              kind: runtimeEvent.questions.length
+                ? "question"
+                : runtimeEvent.supported
+                  ? "permission"
+                  : "unsupported",
+              title: runtimeEvent.title,
+              detail: runtimeEvent.detail,
+              questions: runtimeEvent.questions,
+            },
+          })
+          update(id, { state: "waiting" })
+          return
+        }
+        if (runtimeEvent.type === "request.resolved") {
+          connection.tools?.cancel(runtimeEvent.id)
+          connection.pending.delete(runtimeEvent.id)
+          return
+        }
+        if (runtimeEvent.type === "session") {
+          if (runtimeEvent.nativeID !== run.nativeID) update(id, { nativeID: runtimeEvent.nativeID })
+          return
+        }
+        if (runtimeEvent.type === "started") {
+          connection.turn = runtimeEvent.turn
+          update(id, { state: "running" })
+          return
+        }
+        delegation.settle(id, runtimeEvent.outcome, runtimeEvent.detail)
         connection.tools?.cancel()
-        const turn = object(params.turn)
-        delegation.settle(
-          id,
-          turn.status === "failed" ? "failed" : turn.status === "interrupted" ? "interrupted" : "completed",
-          string(object(turn.error).message) || undefined,
-        )
-        metric(
-          id,
-          `turn:${string(turn.id) || connection.turn}`,
-          null,
-          null,
-          "interaction",
-          turn.status === "failed" ? "failed" : turn.status === "interrupted" ? "cancelled" : "succeeded",
+        runtimeEvent.metrics.forEach((value) =>
+          metric(id, value.identity, value.tokens, value.cost, value.scope, value.status, value.model, value.pricing),
         )
         connection.turn = ""
         connection.pending.clear()
         update(id, {
-          state: turn.status === "failed" ? "failed" : turn.status === "interrupted" ? "interrupted" : "ready",
-          detail: string(object(turn.error).message) || undefined,
+          ...(runtimeEvent.nativeID ? { nativeID: runtimeEvent.nativeID } : {}),
+          state:
+            runtimeEvent.outcome === "failed"
+              ? "failed"
+              : runtimeEvent.outcome === "interrupted"
+                ? "interrupted"
+                : "ready",
+          detail: runtimeEvent.detail,
         })
         void drain(id)
-        if (turn.status !== "failed" && turn.status !== "interrupted") void delegation.flush(id).catch(() => {})
-      }
-      return
-    }
-    if (value.type === "control_cancel_request") {
-      connection.tools?.cancel(string(value.request_id))
-      connection.pending.delete(string(value.request_id))
-      return
-    }
-    if (value.type === "control_request") {
-      if (connection.tools?.handle(value)) return
-      const request = object(value.request)
-      const input = object(request.input)
-      const supported = request.subtype === "can_use_tool"
-      setRequest(
-        id,
-        value,
-        string(value.request_id),
-        string(request.tool_name) || string(request.subtype),
-        JSON.stringify(input).slice(0, 8000),
-        questions(input.questions),
-        supported,
-      )
-      return
-    }
-    if (value.type === "system" && value.subtype === "init")
-      update(id, { nativeID: string(value.session_id) || run.nativeID })
-    if (value.type === "assistant" && !value.parent_tool_use_id) {
-      const message = object(value.message)
-      if (Array.isArray(message.content))
-        message.content.forEach((item) => {
-          const block = object(item)
-          if (block.type === "text") event(id, "text", string(block.text))
-          if (block.type === "tool_use") event(id, "activity", string(block.name))
-        })
-    }
-    if (value.type === "result") {
-      delegation.settle(
-        id,
-        value.is_error ? "failed" : "completed",
-        value.is_error ? string(value.result) || "Claude execution failed" : undefined,
-      )
-      connection.tools?.cancel()
-      if (string(value.session_id) && string(value.session_id) !== read(id).nativeID)
-        update(id, { nativeID: string(value.session_id) })
-      const usage = object(value.usage)
-      const tokens = Object.keys(usage).length
-        ? {
-            input: count(usage.input_tokens),
-            output: count(usage.output_tokens),
-            reasoning: null,
-            cache: { read: count(usage.cache_read_input_tokens), write: count(usage.cache_creation_input_tokens) },
-          }
-        : null
-      const models = Object.keys(object(value.modelUsage))
-      metric(
-        id,
-        `result:${string(value.uuid) || connection.input || "unknown"}`,
-        tokens,
-        null,
-        "interaction",
-        value.is_error ? "failed" : "succeeded",
-        models.length === 1 ? models[0] : undefined,
-      )
-      // Streaming-input result usage is per interaction; cost/modelUsage include prior turns and subagents.
-      const totals = models.map((model) => object(object(value.modelUsage)[model]))
-      const sum = (field: string) =>
-        totals.length && totals.every((model) => count(model[field]) !== null)
-          ? totals.reduce((total, model) => total + (count(model[field]) ?? 0), 0)
-          : null
-      const cumulative = totals.length
-        ? {
-            input: sum("inputTokens"),
-            output: sum("outputTokens"),
-            reasoning: null,
-            cache: { read: sum("cacheReadInputTokens"), write: sum("cacheCreationInputTokens") },
-          }
-        : null
-      const cost = count(value.total_cost_usd)
-      metric(
-        id,
-        `total:${JSON.stringify({ cumulative, cost })}`,
-        cumulative,
-        cost,
-        "session",
-        value.is_error ? "failed" : "idle",
-        models.length === 1 ? models[0] : null,
-        "estimated",
-      )
-      connection.pending.clear()
-      update(id, {
-        nativeID: string(value.session_id) || run.nativeID,
-        state: value.is_error ? "failed" : "ready",
-        detail: value.is_error ? string(value.result) || "Claude execution failed" : undefined,
+        if (runtimeEvent.outcome === "completed") void delegation.flush(id).catch(() => {})
       })
-      void drain(id)
-      if (!value.is_error) void delegation.flush(id).catch(() => {})
-    }
   }
   const launch = async (run: Harness.Run) => {
     if (live.has(run.id)) throw new Error("Harness is already attached")
@@ -563,36 +471,32 @@ export async function createHarnesses(
       "INSERT OR REPLACE INTO harness_process(run,host,owner_pid,owner_token,child_pid,eligible) VALUES (?,?,?,?,NULL,?)",
     ).run(run.id, localHost, process.pid, ownerToken, run.delegation ? 1 : 0)
     update(run.id, { state: "starting", detail: undefined })
-    const args =
-      run.driver === "codex"
-        ? ["app-server"]
-        : [
-            "--print",
-            "--verbose",
-            "--input-format",
-            "stream-json",
-            "--output-format",
-            "stream-json",
-            "--permission-prompt-tool",
-            "stdio",
-            "--permission-mode",
-            "default",
-            ...(run.nativeID ? ["--resume", run.nativeID] : []),
-            ...(run.model ? ["--model", run.model] : []),
-          ]
-    const connection = wire({
-      executable: executable(run.driver),
-      args,
-      directory: canonical,
-      frame: (value) => frame(run.id, value),
-      exit: (detail) => {
-        if (live.get(run.id)?.wire !== connection) return
-        live.delete(run.id)
-        if (lifetime.closed) return
-        tasks.unavailable(run.id)
-        if (read(run.id).state !== "closed") update(run.id, { state: "unknown", detail })
+    const adapter = agentRuntime(run.driver)
+    const instance = providerInstance(run.driver, run.providerInstanceID)
+    const environment = runtimeEnvironment(instance)
+    const reusable = adapter.capabilities.multipleThreadsPerRuntime
+    const handle = supervisor.acquire({
+      key: reusable ? JSON.stringify([instance.id, instance.credential_revision]) : `run:${run.id}`,
+      label: `${run.driver} · ${instance.label}`,
+      owner: run.id,
+      reusable,
+      idleTimeoutMs: reusable ? instance.idle_timeout_ms : 0,
+      executable: instance.executable,
+      args: adapter.launchArgs(run),
+      directory: reusable ? process.cwd() : canonical,
+      environment,
+      subscriber: {
+        frame: (value) => frame(run.id, value),
+        exit: (detail) => {
+          if (live.get(run.id)?.wire !== handle.wire) return
+          live.delete(run.id)
+          if (lifetime.closed) return
+          tasks.unavailable(run.id)
+          if (read(run.id).state !== "closed") update(run.id, { state: "unknown", detail })
+        },
       },
     })
+    const connection = handle.wire
     if (connection.pid)
       db.query("UPDATE harness_process SET child_pid=? WHERE run=? AND owner_token=?").run(
         connection.pid,
@@ -600,6 +504,7 @@ export async function createHarnesses(
         ownerToken,
       )
     live.set(run.id, {
+      release: handle.release,
       wire: connection,
       turn: "",
       pending: new Map(),
@@ -633,51 +538,15 @@ export async function createHarnesses(
         : {}),
     })
     try {
-      if (run.driver === "codex") {
-        await codexInit(connection, !!run.backgroundWait || !!run.delegation)
-        const result = await connection.request(
-          run.nativeID ? "thread/resume" : "thread/start",
-          {
-            ...(run.nativeID ? { threadId: run.nativeID } : {}),
-            cwd: canonical,
-            ...(run.model ? { model: run.model } : {}),
-            approvalPolicy: "on-request",
-            sandbox: "workspace-write",
-            ...(!run.nativeID && (run.backgroundWait || run.delegation)
-              ? {
-                  dynamicTools: [
-                    ...(run.backgroundWait ? [{ type: "function", ...backgroundWaitTool }] : []),
-                    ...(run.delegation ? delegationTools.map((tool) => ({ type: "function", ...tool })) : []),
-                  ],
-                }
-              : {}),
-          },
-          run.driver,
-        )
-        const nativeID = string(object(result.thread).id)
-        if (!nativeID) throw new Error("Codex did not return a thread identity")
-        update(run.id, { nativeID })
-      }
-      if (run.driver === "claude")
-        await connection.request(
-          "initialize",
-          {
-            hooks: {},
-            ...(run.backgroundWait || run.delegation
-              ? {
-                  sdkMcpServers: [
-                    ...(run.backgroundWait ? ["redcode_wait"] : []),
-                    ...(run.delegation ? ["redcode"] : []),
-                  ],
-                }
-              : {}),
-          },
-          run.driver,
-        )
+      await handle.initialize(() =>
+        adapter.initialize({ appVersion: app.version, directory: canonical, run, wire: connection }),
+      )
+      const opened = await adapter.open({ appVersion: app.version, directory: canonical, run, wire: connection })
+      if (opened.nativeID) update(run.id, { nativeID: opened.nativeID })
       return update(run.id, { state: "ready" })
     } catch (error) {
       update(run.id, { state: "failed", detail: error instanceof Error ? error.message : String(error) })
-      connection.close()
+      await handle.release()
       throw error
     }
   }
@@ -691,26 +560,14 @@ export async function createHarnesses(
       connection.started = Date.now()
     }
     db.query("UPDATE prompt SET status='admitted' WHERE id=?").run(prompt.id)
-    if (run.driver === "codex") {
-      const result = await connection.wire.request(
-        steer ? "turn/steer" : "turn/start",
-        {
-          threadId: run.nativeID ?? "",
-          ...(steer ? { expectedTurnId: connection.turn } : {}),
-          input: [{ type: "text", text: prompt.text, text_elements: [] }],
-        },
-        run.driver,
-      )
-      if (!steer) connection.turn = string(object(result.turn).id)
-    }
-    if (run.driver === "claude")
-      connection.wire.send({
-        type: "user",
-        uuid: prompt.id,
-        session_id: run.nativeID ?? "",
-        message: { role: "user", content: prompt.text },
-        parent_tool_use_id: null,
-      })
+    const result = await agentRuntime(run.driver).prompt({
+      prompt,
+      run,
+      steer,
+      turn: connection.turn,
+      wire: connection.wire,
+    })
+    if (result.turn) connection.turn = result.turn
     db.query("UPDATE prompt SET status='sent' WHERE id=?").run(prompt.id)
   }
   const drain = async (id: string) => {
@@ -735,14 +592,19 @@ export async function createHarnesses(
   }
   const service = {
     memoryOwners() {
-      return [...live.entries()].flatMap(([id, connection]) => {
+      const seen = new Set<number>()
+      const active = [...live.entries()].flatMap(([id, connection]) => {
         const run = read(id)
         const pid = connection.wire.pid
+        const shared = pid !== undefined && seen.has(pid)
+        if (pid !== undefined) seen.add(pid)
         return [
           {
             id,
             title: `${run.driver} · ${id}`,
-            pid: pid ?? null,
+            pid: shared ? null : (pid ?? null),
+            rootPID: pid ?? null,
+            shared,
             tasksLimited: tasks.memoryLimited(id),
             tasks: tasks.memory(id).map((task) => ({
               id: task.id,
@@ -752,6 +614,19 @@ export async function createHarnesses(
           },
         ]
       })
+      const idle = supervisor
+        .snapshot()
+        .filter((runtime) => runtime.owners.length === 0 && runtime.pid !== undefined)
+        .map((runtime) => ({
+          id: `runtime:${runtime.generation}`,
+          title: `${runtime.label} · idle`,
+          pid: runtime.pid ?? null,
+          rootPID: runtime.pid ?? null,
+          shared: false,
+          tasksLimited: false,
+          tasks: [],
+        }))
+      return [...active, ...idle]
     },
     metrics() {
       return db
@@ -763,62 +638,121 @@ export async function createHarnesses(
       db.query("UPDATE metric SET reported=1 WHERE id=?").run(id)
     },
     list: () => ({
-      providers: (["claude", "codex"] as const).map(provider),
+      providers: providerInstances().map(provider),
       runs: runs().map((run) => ({
         ...run,
         queued: queued(run.id),
       })),
     }),
     async configure(input: Harness.Config) {
-      if (runs().some((run) => run.driver === input.driver && live.has(run.id)))
-        throw new Error("Close this provider's harnesses before changing its executable")
-      db.query("INSERT OR REPLACE INTO config VALUES (?,?)").run(input.driver, input.executable)
-      return probe(input.driver)
+      const id = input.id ?? defaultInstanceID(input.driver)
+      const current = db
+        .query<ProviderInstance, [string]>(
+          "SELECT id,driver,label,executable,home,credential_revision,configured,idle_timeout_ms FROM provider_instance WHERE id=?",
+        )
+        .get(id)
+      if (current && current.driver !== input.driver) throw new Error("Provider instance ID belongs to another driver")
+      if (
+        runs().some(
+          (run) =>
+            run.driver === input.driver &&
+            (run.providerInstanceID ?? defaultInstanceID(run.driver)) === id &&
+            live.has(run.id),
+        )
+      )
+        throw new Error("Close this provider instance's harnesses before changing its configuration")
+      const home = input.home ?? null
+      const revision =
+        current && current.executable === input.executable && current.home === home
+          ? current.credential_revision
+          : (current?.credential_revision ?? 0) + 1
+      if (current) await supervisor.evict(JSON.stringify([current.id, current.credential_revision]))
+      db.query(
+        `INSERT OR REPLACE INTO provider_instance(
+          id,driver,label,executable,home,credential_revision,configured,idle_timeout_ms
+        ) VALUES (?,?,?,?,?,?,1,?)`,
+      ).run(
+        id,
+        input.driver,
+        input.label ?? current?.label ?? "Default",
+        input.executable,
+        home,
+        revision,
+        input.idleTimeoutMs ?? current?.idle_timeout_ms ?? 60_000,
+      )
+      providers.delete(id)
+      return probe(input.driver, id)
     },
     probe,
+    probeInstance: (providerInstanceID: string) => {
+      const instance = providerInstanceForKey(providerInstanceID)
+      return probe(instance.driver, instance.id)
+    },
     async install(driver: Harness.Driver) {
       if (runs().some((run) => run.driver === driver && live.has(run.id)))
         throw new Error("Close active harnesses before installing this provider")
       await call(
         "npm",
-        ["install", "--global", driver === "claude" ? "@anthropic-ai/claude-code" : "@openai/codex"],
+        ["install", "--global", agentRuntime(driver).installPackage],
         300_000,
       )
       return probe(driver)
     },
-    async login(driver: Harness.Driver): Promise<Harness.Login> {
-      if (logins.get(driver)?.state === "pending") return logins.get(driver)!
+    async login(providerInstanceID: string): Promise<Harness.Login> {
+      const instance = providerInstanceForKey(providerInstanceID)
+      const driver = instance.driver
+      const loginID = instance.id
+      if (logins.get(loginID)?.state === "pending") return logins.get(loginID)!
+      if (
+        runs().some(
+          (run) => (run.providerInstanceID ?? defaultInstanceID(run.driver)) === loginID && live.has(run.id),
+        )
+      )
+        throw new Error("Close this provider instance's harnesses before signing in")
       const attempt = crypto.randomUUID()
-      const owns = () => loginWires.get(driver)?.id === attempt
-      logins.set(driver, { driver, state: "pending" })
+      const owns = () => loginWires.get(loginID)?.id === attempt
+      logins.set(loginID, { providerInstanceID: loginID, driver, state: "pending" })
       if (driver === "codex") {
         const connection = wire({
-          executable: executable(driver),
+          executable: instance.executable,
           args: ["app-server"],
           directory: process.cwd(),
+          environment: runtimeEnvironment(instance),
           frame: (value) => {
             if (!owns() || value.method !== "account/login/completed") return
             const params = object(value.params)
-            logins.set(driver, {
+            logins.set(loginID, {
+              providerInstanceID: loginID,
               driver,
               state: params.success ? "complete" : "failed",
               detail: string(params.error) || undefined,
             })
-            loginWires.get(driver)?.close()
-            loginWires.delete(driver)
+            if (params.success) advanceCredentialRevision(loginID)
+            loginWires.get(loginID)?.close()
+            loginWires.delete(loginID)
           },
           exit: () => {
-            if (owns() && logins.get(driver)?.state === "pending")
-              logins.set(driver, { driver, state: "failed", detail: "Sign-in process ended" })
+            if (owns() && logins.get(loginID)?.state === "pending")
+              logins.set(loginID, {
+                providerInstanceID: loginID,
+                driver,
+                state: "failed",
+                detail: "Sign-in process ended",
+              })
           },
         })
         const timer = setTimeout(() => {
           if (!owns()) return
-          logins.set(driver, { driver, state: "failed", detail: "Sign-in timed out" })
+          logins.set(loginID, {
+            providerInstanceID: loginID,
+            driver,
+            state: "failed",
+            detail: "Sign-in timed out",
+          })
           connection.close()
-          loginWires.delete(driver)
+          loginWires.delete(loginID)
         }, 300_000)
-        loginWires.set(driver, {
+        loginWires.set(loginID, {
           id: attempt,
           close: () => {
             clearTimeout(timer)
@@ -826,30 +760,39 @@ export async function createHarnesses(
           },
         })
         try {
-          await codexInit(connection)
+          await CodexRuntimeProtocol.initialize(connection, app.version, false)
           const result = await connection.request("account/login/start", { type: "chatgptDeviceCode" }, driver)
-          if (owns() && logins.get(driver)?.state === "pending")
-            logins.set(driver, {
+          if (owns() && logins.get(loginID)?.state === "pending")
+            logins.set(loginID, {
+              providerInstanceID: loginID,
               driver,
               state: "pending",
               url: string(result.verificationUrl) || undefined,
               code: string(result.userCode) || undefined,
             })
         } catch (error) {
-          if (!owns()) return logins.get(driver)!
-          loginWires.get(driver)?.close()
-          loginWires.delete(driver)
-          logins.set(driver, { driver, state: "failed", detail: String(error) })
+          if (!owns()) return logins.get(loginID)!
+          loginWires.get(loginID)?.close()
+          loginWires.delete(loginID)
+          logins.set(loginID, { providerInstanceID: loginID, driver, state: "failed", detail: String(error) })
         }
       }
       if (driver === "claude") {
-        const child = spawn(executable(driver), ["auth", "login"], { windowsHide: true })
+        const child = spawn(instance.executable, ["auth", "login"], {
+          env: { ...process.env, ...runtimeEnvironment(instance) },
+          windowsHide: true,
+        })
         const timer = setTimeout(() => {
           if (!owns()) return
           void stopOwnedProcess(child)
-          logins.set(driver, { driver, state: "failed", detail: "Sign-in timed out" })
+          logins.set(loginID, {
+            providerInstanceID: loginID,
+            driver,
+            state: "failed",
+            detail: "Sign-in timed out",
+          })
         }, 300_000)
-        loginWires.set(driver, {
+        loginWires.set(loginID, {
           id: attempt,
           close: () => {
             clearTimeout(timer)
@@ -863,48 +806,76 @@ export async function createHarnesses(
         const link = (chunk: Buffer) => {
           if (!owns()) return
           const url = chunk.toString().match(/https:\/\/[^\s\x1b]+/)?.[0]
-          if (url) logins.set(driver, { driver, state: "pending", url })
+          if (url) logins.set(loginID, { providerInstanceID: loginID, driver, state: "pending", url })
         }
         child.stdout?.on("data", link)
         child.stderr?.on("data", link)
         child.on("error", () => {
           if (!owns()) return
           clearTimeout(timer)
-          logins.set(driver, { driver, state: "failed", detail: "Unable to start Claude sign-in" })
-          loginWires.delete(driver)
+          logins.set(loginID, {
+            providerInstanceID: loginID,
+            driver,
+            state: "failed",
+            detail: "Unable to start Claude sign-in",
+          })
+          loginWires.delete(loginID)
         })
         child.on("exit", (code) => {
           if (!owns()) return
           clearTimeout(timer)
-          logins.set(driver, { driver, state: code === 0 ? "complete" : "failed" })
-          loginWires.delete(driver)
+          logins.set(loginID, {
+            providerInstanceID: loginID,
+            driver,
+            state: code === 0 ? "complete" : "failed",
+          })
+          if (code === 0) advanceCredentialRevision(loginID)
+          loginWires.delete(loginID)
         })
       }
-      return logins.get(driver)!
+      return logins.get(loginID)!
     },
-    loginStatus: (driver: Harness.Driver): Harness.Login =>
-      logins.get(driver) ?? { driver, state: "failed", detail: "No sign-in in progress" },
-    loginAnswer(driver: Harness.Driver, code: string) {
-      const login = loginWires.get(driver)
-      if (logins.get(driver)?.state !== "pending" || !login?.answer)
+    loginStatus(providerInstanceID: string): Harness.Login {
+      const instance = providerInstanceForKey(providerInstanceID)
+      return (
+        logins.get(instance.id) ?? {
+          providerInstanceID: instance.id,
+          driver: instance.driver,
+          state: "failed",
+          detail: "No sign-in in progress",
+        }
+      )
+    },
+    loginAnswer(providerInstanceID: string, code: string) {
+      const instance = providerInstanceForKey(providerInstanceID)
+      const login = loginWires.get(instance.id)
+      if (logins.get(instance.id)?.state !== "pending" || !login?.answer)
         throw new Error("No pending authorization-code prompt on this host")
       login.answer(code)
     },
-    async cancelLogin(driver: Harness.Driver) {
-      logins.set(driver, { driver, state: "failed", detail: "Sign-in cancelled" })
-      const connection = loginWires.get(driver)
-      loginWires.delete(driver)
+    async cancelLogin(providerInstanceID: string) {
+      const instance = providerInstanceForKey(providerInstanceID)
+      logins.set(instance.id, {
+        providerInstanceID: instance.id,
+        driver: instance.driver,
+        state: "failed",
+        detail: "Sign-in cancelled",
+      })
+      const connection = loginWires.get(instance.id)
+      loginWires.delete(instance.id)
       await connection?.close()
     },
     async open(input: Harness.Open) {
+      const instance = providerInstance(input.driver, input.providerInstanceID)
       const run: Harness.Run = {
         ...input,
+        providerInstanceID: instance.id,
         directory: AbsolutePath.make(await realpath(input.directory)),
         id: crypto.randomUUID(),
         state: "starting",
         createdAt: new Date().toISOString(),
         queued: 0,
-        capabilities: { steer: input.driver === "codex", resume: true, interrupt: true },
+        capabilities: harnessCapabilities(agentRuntime(input.driver)),
       }
       write(run)
       return launch(run)
@@ -940,13 +911,7 @@ export async function createHarnesses(
       db.query("UPDATE harness_process SET eligible=0 WHERE run=?").run(id)
       connection.tools?.cancel()
       db.query("UPDATE prompt SET status='cancelled' WHERE run=? AND status='queued'").run(id)
-      if (run.driver === "codex" && connection.turn)
-        await connection.wire.request(
-          "turn/interrupt",
-          { threadId: run.nativeID ?? "", turnId: connection.turn },
-          run.driver,
-        )
-      if (run.driver === "claude") await connection.wire.request("interrupt", {}, run.driver)
+      await agentRuntime(run.driver).interrupt({ run, turn: connection.turn, wire: connection.wire })
       connection.pending.clear()
       update(id, { state: "interrupted" })
     },
@@ -963,43 +928,7 @@ export async function createHarnesses(
         item.request.questions.some((question) => !input.answers[question.id]?.trim())
       )
         throw new Error("Answer every question before submitting")
-      if (run.driver === "codex") {
-        const result: Frame =
-          item.request.kind === "question"
-            ? {
-                answers: Object.fromEntries(
-                  item.request.questions.map((question) => [
-                    question.id,
-                    { answers: input.allow ? [input.answers[question.id] ?? ""] : [] },
-                  ]),
-                ),
-              }
-            : { decision: input.allow ? "accept" : "decline" }
-        connection.wire.send(
-          item.request.kind === "unsupported"
-            ? { id: item.frame.id ?? input.request, error: { code: -32601, message: "Unsupported by Redcode" } }
-            : { id: item.frame.id ?? input.request, result },
-        )
-      }
-      if (run.driver === "claude") {
-        const request = object(item.frame.request)
-        connection.wire.send({
-          type: "control_response",
-          response: {
-            subtype: "success",
-            request_id: input.request,
-            response: input.allow
-              ? {
-                  behavior: "allow",
-                  updatedInput: {
-                    ...object(request.input),
-                    ...(item.request.kind === "question" ? { answers: input.answers } : {}),
-                  },
-                }
-              : { behavior: "deny", message: "Declined by user" },
-          },
-        })
-      }
+      agentRuntime(run.driver).answer({ answer: input, item, wire: connection.wire })
       connection.pending.delete(input.request)
       update(id, { state: connection.pending.size ? "waiting" : "running" })
     },
@@ -1032,7 +961,7 @@ export async function createHarnesses(
       db.query("UPDATE harness_process SET eligible=0 WHERE run=?").run(id)
       live.get(id)?.tools?.cancel()
       db.query("UPDATE prompt SET status='cancelled' WHERE run=? AND status='queued'").run(id)
-      await live.get(id)?.wire.close()
+      await live.get(id)?.release()
       live.delete(id)
     },
     reconcile(id: string) {
@@ -1055,8 +984,9 @@ export async function createHarnesses(
       const logins = [...loginWires.values()]
       loginWires.clear()
       await Promise.all(logins.map((connection) => connection.close()))
-      await Promise.all([...live.values()].map((connection) => connection.wire.close()))
+      await Promise.all([...live.values()].map((connection) => connection.release()))
       live.clear()
+      await supervisor.dispose()
       await Promise.allSettled([...recovering])
       await stopping
       harnessOwners.delete(ownerToken)
@@ -1070,16 +1000,18 @@ export async function createHarnesses(
         throw new Error("Delegation requires an active owned harness run")
       return run
     },
-    configured: (driver) => !!db.query("SELECT driver FROM config WHERE driver=?").get(driver),
+    configured: (driver) =>
+      !!db.query("SELECT driver FROM provider_instance WHERE driver=? AND configured=1").get(driver),
     open: async (id, parent, driver) => {
       const run: Harness.Run = {
         id,
         driver,
+        providerInstanceID: defaultInstanceID(driver),
         directory: parent.directory,
         state: "starting",
         createdAt: new Date().toISOString(),
         queued: 0,
-        capabilities: { steer: driver === "codex", resume: true, interrupt: true },
+        capabilities: harnessCapabilities(agentRuntime(driver)),
       }
       write(run)
       await launch(run)

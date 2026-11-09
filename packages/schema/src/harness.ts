@@ -5,13 +5,26 @@ import { AbsolutePath, optional } from "./schema.js"
 
 export const Driver = Schema.Literals(["claude", "codex"]).annotate({ identifier: "Harness.Driver" })
 export type Driver = typeof Driver.Type
-export const Config = Schema.Struct({ driver: Driver, executable: Schema.NonEmptyString }).annotate({
+export const Config = Schema.Struct({
+  id: optional(Schema.NonEmptyString),
+  driver: Driver,
+  label: optional(Schema.NonEmptyString),
+  executable: Schema.NonEmptyString,
+  home: optional(AbsolutePath),
+  idleTimeoutMs: optional(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
+}).annotate({
   identifier: "Harness.Config",
 })
 export interface Config extends Schema.Schema.Type<typeof Config> {}
 export const Provider = Schema.Struct({
+  id: optional(Schema.NonEmptyString),
   driver: Driver,
+  label: optional(Schema.NonEmptyString),
   executable: Schema.String,
+  home: optional(AbsolutePath),
+  credentialRevision: optional(Schema.Int),
+  configured: optional(Schema.Boolean),
+  idleTimeoutMs: optional(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
   installed: Schema.Boolean,
   version: optional(Schema.String),
   authenticated: optional(Schema.Boolean),
@@ -23,6 +36,7 @@ export const Provider = Schema.Struct({
 export interface Provider extends Schema.Schema.Type<typeof Provider> {}
 export const Open = Schema.Struct({
   driver: Driver,
+  providerInstanceID: optional(Schema.NonEmptyString),
   directory: AbsolutePath,
   model: optional(Schema.NonEmptyString),
   backgroundWait: optional(Schema.Boolean),
@@ -43,6 +57,7 @@ export type State = typeof State.Type
 export const Run = Schema.Struct({
   id: Schema.String,
   driver: Driver,
+  providerInstanceID: optional(Schema.NonEmptyString),
   directory: AbsolutePath,
   model: optional(Schema.String),
   nativeID: optional(Schema.String),
@@ -124,6 +139,7 @@ export const Answer = Schema.Struct({
 }).annotate({ identifier: "Harness.Answer" })
 export interface Answer extends Schema.Schema.Type<typeof Answer> {}
 export const Login = Schema.Struct({
+  providerInstanceID: optional(Schema.NonEmptyString),
   driver: Driver,
   state: Schema.Literals(["pending", "complete", "failed"]),
   url: optional(Schema.String),

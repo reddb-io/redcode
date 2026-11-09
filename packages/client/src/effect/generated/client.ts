@@ -3016,14 +3016,17 @@ const EndpointHarnessInstall = (raw: RawClient["server.harness"]) => (input: Har
 
 const EndpointHarnessLoginAnswer = (raw: RawClient["server.harness"]) => (input: HarnessLoginAnswerInput) =>
   preserveEffect<HarnessLoginAnswerOutput>()(
-    raw["harness.loginAnswer"]({ params: { driver: input["driver"] }, payload: { code: input["code"] } }).pipe(
-      Effect.mapError(mapClientError),
-    ),
+    raw["harness.loginAnswer"]({
+      params: { providerInstanceID: input["providerInstanceID"] },
+      payload: { code: input["code"] },
+    }).pipe(Effect.mapError(mapClientError)),
   )
 
 const EndpointHarnessCancelLogin = (raw: RawClient["server.harness"]) => (input: HarnessCancelLoginInput) =>
   preserveEffect<HarnessCancelLoginOutput>()(
-    raw["harness.cancelLogin"]({ params: { driver: input["driver"] } }).pipe(Effect.mapError(mapClientError)),
+    raw["harness.cancelLogin"]({ params: { providerInstanceID: input["providerInstanceID"] } }).pipe(
+      Effect.mapError(mapClientError),
+    ),
   )
 
 const EndpointHarnessList = (raw: RawClient["server.harness"]) => () =>
@@ -3031,24 +3034,37 @@ const EndpointHarnessList = (raw: RawClient["server.harness"]) => () =>
 
 const EndpointHarnessConfigure = (raw: RawClient["server.harness"]) => (input: HarnessConfigureInput) =>
   preserveEffect<HarnessConfigureOutput>()(
-    raw["harness.configure"]({ payload: { driver: input["driver"], executable: input["executable"] } }).pipe(
-      Effect.mapError(mapClientError),
-    ),
+    raw["harness.configure"]({
+      payload: {
+        id: input["id"],
+        driver: input["driver"],
+        label: input["label"],
+        executable: input["executable"],
+        home: input["home"],
+        idleTimeoutMs: input["idleTimeoutMs"],
+      },
+    }).pipe(Effect.mapError(mapClientError)),
   )
 
 const EndpointHarnessProbe = (raw: RawClient["server.harness"]) => (input: HarnessProbeInput) =>
   preserveEffect<HarnessProbeOutput>()(
-    raw["harness.probe"]({ params: { driver: input["driver"] } }).pipe(Effect.mapError(mapClientError)),
+    raw["harness.probe"]({ params: { providerInstanceID: input["providerInstanceID"] } }).pipe(
+      Effect.mapError(mapClientError),
+    ),
   )
 
 const EndpointHarnessLogin = (raw: RawClient["server.harness"]) => (input: HarnessLoginInput) =>
   preserveEffect<HarnessLoginOutput>()(
-    raw["harness.login"]({ params: { driver: input["driver"] } }).pipe(Effect.mapError(mapClientError)),
+    raw["harness.login"]({ params: { providerInstanceID: input["providerInstanceID"] } }).pipe(
+      Effect.mapError(mapClientError),
+    ),
   )
 
 const EndpointHarnessLoginStatus = (raw: RawClient["server.harness"]) => (input: HarnessLoginStatusInput) =>
   preserveEffect<HarnessLoginStatusOutput>()(
-    raw["harness.loginStatus"]({ params: { driver: input["driver"] } }).pipe(Effect.mapError(mapClientError)),
+    raw["harness.loginStatus"]({ params: { providerInstanceID: input["providerInstanceID"] } }).pipe(
+      Effect.mapError(mapClientError),
+    ),
   )
 
 const EndpointHarnessOpen = (raw: RawClient["server.harness"]) => (input: HarnessOpenInput) =>
@@ -3056,6 +3072,7 @@ const EndpointHarnessOpen = (raw: RawClient["server.harness"]) => (input: Harnes
     raw["harness.open"]({
       payload: {
         driver: input["driver"],
+        providerInstanceID: input["providerInstanceID"],
         directory: input["directory"],
         model: input["model"],
         backgroundWait: input["backgroundWait"],

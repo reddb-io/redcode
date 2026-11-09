@@ -29,10 +29,16 @@ export function wire(input: {
   executable: string
   args: string[]
   directory: string
+  environment?: Record<string, string>
   frame: (frame: Frame) => void
   exit: (detail: string) => void
 }) {
-  const child = spawn(input.executable, input.args, { cwd: input.directory, windowsHide: true, stdio: "pipe" })
+  const child = spawn(input.executable, input.args, {
+    cwd: input.directory,
+    env: input.environment ? { ...process.env, ...input.environment } : process.env,
+    windowsHide: true,
+    stdio: "pipe",
+  })
   const stdin = child.stdin
   const stdout = child.stdout
   const stderr = child.stderr

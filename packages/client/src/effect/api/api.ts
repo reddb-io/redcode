@@ -6775,13 +6775,13 @@ export type HarnessInstallInput = { readonly driver: Harness.Driver }
 export type HarnessInstallOutput = Harness.Provider
 export type HarnessInstallOperation<E = never> = (input: HarnessInstallInput) => Effect.Effect<HarnessInstallOutput, E>
 
-export type HarnessLoginAnswerInput = { readonly driver: Harness.Driver; readonly code: string }
+export type HarnessLoginAnswerInput = { readonly providerInstanceID: string; readonly code: string }
 export type HarnessLoginAnswerOutput = void
 export type HarnessLoginAnswerOperation<E = never> = (
   input: HarnessLoginAnswerInput,
 ) => Effect.Effect<HarnessLoginAnswerOutput, E>
 
-export type HarnessCancelLoginInput = { readonly driver: Harness.Driver }
+export type HarnessCancelLoginInput = { readonly providerInstanceID: string }
 export type HarnessCancelLoginOutput = void
 export type HarnessCancelLoginOperation<E = never> = (
   input: HarnessCancelLoginInput,
@@ -6790,21 +6790,28 @@ export type HarnessCancelLoginOperation<E = never> = (
 export type HarnessListOutput = Harness.Snapshot
 export type HarnessListOperation<E = never> = () => Effect.Effect<HarnessListOutput, E>
 
-export type HarnessConfigureInput = { readonly driver: Harness.Driver; readonly executable: string }
+export type HarnessConfigureInput = {
+  readonly id?: string | undefined
+  readonly driver: Harness.Driver
+  readonly label?: string | undefined
+  readonly executable: string
+  readonly home?: AbsolutePath | undefined
+  readonly idleTimeoutMs?: number | undefined
+}
 export type HarnessConfigureOutput = Harness.Provider
 export type HarnessConfigureOperation<E = never> = (
   input: HarnessConfigureInput,
 ) => Effect.Effect<HarnessConfigureOutput, E>
 
-export type HarnessProbeInput = { readonly driver: Harness.Driver }
+export type HarnessProbeInput = { readonly providerInstanceID: string }
 export type HarnessProbeOutput = Harness.Provider
 export type HarnessProbeOperation<E = never> = (input: HarnessProbeInput) => Effect.Effect<HarnessProbeOutput, E>
 
-export type HarnessLoginInput = { readonly driver: Harness.Driver }
+export type HarnessLoginInput = { readonly providerInstanceID: string }
 export type HarnessLoginOutput = Harness.Login
 export type HarnessLoginOperation<E = never> = (input: HarnessLoginInput) => Effect.Effect<HarnessLoginOutput, E>
 
-export type HarnessLoginStatusInput = { readonly driver: Harness.Driver }
+export type HarnessLoginStatusInput = { readonly providerInstanceID: string }
 export type HarnessLoginStatusOutput = Harness.Login
 export type HarnessLoginStatusOperation<E = never> = (
   input: HarnessLoginStatusInput,
@@ -6812,6 +6819,7 @@ export type HarnessLoginStatusOperation<E = never> = (
 
 export type HarnessOpenInput = {
   readonly driver: Harness.Driver
+  readonly providerInstanceID?: string | undefined
   readonly directory: AbsolutePath
   readonly model?: string | undefined
   readonly backgroundWait?: boolean | undefined

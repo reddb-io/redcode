@@ -73,7 +73,7 @@ type Snapshot = {
   history: { x: number; cpu: number | null; memory: number | null; process: number | null }[]
   trend: number[]
   growth: number
-  alert: "disconnected" | "unavailable" | "high" | "growing" | "executionUnavailable" | "partial" | undefined
+  notice: "disconnected" | "unavailable" | "executionUnavailable" | "partial" | undefined
   sampledAt: number | undefined
 }
 
@@ -97,7 +97,7 @@ export function HomeRuntimeView(props: { source: SharedSource<Snapshot>; open: (
       : language.t("home.performance.tokensPerSecond", {
           value: new Intl.NumberFormat(language.intl, { maximumFractionDigits: value < 10 ? 1 : 0 }).format(value),
         })
-  const alert = view.alert ? language.t(`home.runtime.alert.${view.alert}`, { value: view.growth.toFixed(2) }) : undefined
+  const notice = view.notice ? language.t(`home.runtime.notice.${view.notice}`) : undefined
   const hasChart = view.history.length > 1
   const period = hasChart
     ? [view.history[0]!.x, view.history.at(-1)!.x].map((value) =>
@@ -133,8 +133,8 @@ export function HomeRuntimeView(props: { source: SharedSource<Snapshot>; open: (
           delta={view.trend.length >= 3 ? view.growth : null}
           deltaSuffix=" GiB"
           deltaLabel={language.t("home.runtime.recordedWindow")}
-          polarity="lower-is-better"
-          tone={view.alert === "high" || view.alert === "growing" ? "warning" : "neutral"}
+          polarity="neutral"
+          tone="neutral"
           sparkline={
             view.totalBytes && view.serverBytes ? (
               <RadialProgress
@@ -336,8 +336,8 @@ export function HomeRuntimeView(props: { source: SharedSource<Snapshot>; open: (
         </ErrorBoundary>
       )}
 
-      {alert && <p role="alert" className="mb-0 mt-2 text-caption text-feedback-warning-foreground">{alert}</p>}
-      {!alert && view.sampledAt && (
+      {notice && <p role="status" className="mb-0 mt-2 text-caption text-ink-muted">{notice}</p>}
+      {!notice && view.sampledAt && (
         <p className="mb-0 mt-2 text-caption text-ink-muted">
           {language.t("agents.hosts.sampled", { time: new Date(view.sampledAt).toLocaleTimeString(language.intl) })}
         </p>

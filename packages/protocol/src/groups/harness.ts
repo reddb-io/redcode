@@ -22,16 +22,16 @@ export const HarnessGroup = HttpApiGroup.make("server.harness")
     }).annotateMerge(OpenApi.annotations({ identifier: "harness.install" })),
   )
   .add(
-    HttpApiEndpoint.post("harness.loginAnswer", "/api/harness/:driver/login/answer", {
-      params: { driver: Harness.Driver },
+    HttpApiEndpoint.post("harness.loginAnswer", "/api/harness/:providerInstanceID/login/answer", {
+      params: { providerInstanceID: Schema.NonEmptyString },
       payload: Schema.Struct({ code: Schema.NonEmptyString.check(Schema.isPattern(/^[^\r\n]+$/)) }),
       success: Schema.Void,
       error,
     }).annotateMerge(OpenApi.annotations({ identifier: "harness.loginAnswer" })),
   )
   .add(
-    HttpApiEndpoint.delete("harness.cancelLogin", "/api/harness/:driver/login", {
-      params: { driver: Harness.Driver },
+    HttpApiEndpoint.delete("harness.cancelLogin", "/api/harness/:providerInstanceID/login", {
+      params: { providerInstanceID: Schema.NonEmptyString },
       success: Schema.Void,
       error,
     }).annotateMerge(OpenApi.annotations({ identifier: "harness.cancelLogin" })),
@@ -49,22 +49,22 @@ export const HarnessGroup = HttpApiGroup.make("server.harness")
     }).annotateMerge(OpenApi.annotations({ identifier: "harness.configure" })),
   )
   .add(
-    HttpApiEndpoint.post("harness.probe", "/api/harness/:driver/probe", {
-      params: { driver: Harness.Driver },
+    HttpApiEndpoint.post("harness.probe", "/api/harness/:providerInstanceID/probe", {
+      params: { providerInstanceID: Schema.NonEmptyString },
       success: Harness.Provider,
       error,
     }).annotateMerge(OpenApi.annotations({ identifier: "harness.probe" })),
   )
   .add(
-    HttpApiEndpoint.post("harness.login", "/api/harness/:driver/login", {
-      params: { driver: Harness.Driver },
+    HttpApiEndpoint.post("harness.login", "/api/harness/:providerInstanceID/login", {
+      params: { providerInstanceID: Schema.NonEmptyString },
       success: Harness.Login,
       error,
     }).annotateMerge(OpenApi.annotations({ identifier: "harness.login" })),
   )
   .add(
-    HttpApiEndpoint.get("harness.loginStatus", "/api/harness/:driver/login", {
-      params: { driver: Harness.Driver },
+    HttpApiEndpoint.get("harness.loginStatus", "/api/harness/:providerInstanceID/login", {
+      params: { providerInstanceID: Schema.NonEmptyString },
       success: Harness.Login,
       error,
     }).annotateMerge(OpenApi.annotations({ identifier: "harness.loginStatus" })),

@@ -172,19 +172,19 @@ export const executionMemory = Effect.fn("server.executionMemory")(function* () 
     })
   }
   for (const item of agents) {
-    const residentBytes = measure(item.pid)
+    const residentBytes = item.shared ? null : measure(item.pid)
     entries.push({
       kind: "agent",
       id: item.id,
       title: item.title,
       pid: item.pid,
       residentBytes,
-      reason: residentBytes === null ? "unavailable" : null,
+      reason: item.shared ? "shared" : residentBytes === null ? "unavailable" : null,
     })
     for (const task of item.tasks.slice(0, 100)) {
       const pid = task.processID && /^\d+$/.test(task.processID) ? Number(task.processID) : null
       // A numeric task PID is accepted only if it is a descendant of the owning harness.
-      const bytes = pid && item.pid && tree && tree(pid, item.pid) !== null ? measure(pid) : null
+      const bytes = pid && item.rootPID && tree && tree(pid, item.rootPID) !== null ? measure(pid) : null
       entries.push({
         kind: "task",
         id: `${item.id}:${task.id}`,

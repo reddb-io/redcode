@@ -4090,7 +4090,7 @@ export function make(options: ClientOptions) {
         request<HarnessLoginAnswerOutput>(
           {
             method: "POST",
-            path: `/api/harness/${encodeURIComponent(input.driver)}/login/answer`,
+            path: `/api/harness/${encodeURIComponent(input.providerInstanceID)}/login/answer`,
             body: { code: input["code"] },
             successStatus: 200,
             declaredStatuses: [400, 401, 403, 409],
@@ -4102,7 +4102,7 @@ export function make(options: ClientOptions) {
         request<HarnessCancelLoginOutput>(
           {
             method: "DELETE",
-            path: `/api/harness/${encodeURIComponent(input.driver)}/login`,
+            path: `/api/harness/${encodeURIComponent(input.providerInstanceID)}/login`,
             successStatus: 200,
             declaredStatuses: [400, 401, 403, 409],
             empty: true,
@@ -4125,7 +4125,14 @@ export function make(options: ClientOptions) {
           {
             method: "POST",
             path: `/api/harness/config`,
-            body: { driver: input["driver"], executable: input["executable"] },
+            body: {
+              id: input["id"],
+              driver: input["driver"],
+              label: input["label"],
+              executable: input["executable"],
+              home: input["home"],
+              idleTimeoutMs: input["idleTimeoutMs"],
+            },
             successStatus: 200,
             declaredStatuses: [400, 401, 403, 409],
             empty: false,
@@ -4136,7 +4143,7 @@ export function make(options: ClientOptions) {
         request<HarnessProbeOutput>(
           {
             method: "POST",
-            path: `/api/harness/${encodeURIComponent(input.driver)}/probe`,
+            path: `/api/harness/${encodeURIComponent(input.providerInstanceID)}/probe`,
             successStatus: 200,
             declaredStatuses: [400, 401, 403, 409],
             empty: false,
@@ -4147,7 +4154,7 @@ export function make(options: ClientOptions) {
         request<HarnessLoginOutput>(
           {
             method: "POST",
-            path: `/api/harness/${encodeURIComponent(input.driver)}/login`,
+            path: `/api/harness/${encodeURIComponent(input.providerInstanceID)}/login`,
             successStatus: 200,
             declaredStatuses: [400, 401, 403, 409],
             empty: false,
@@ -4158,7 +4165,7 @@ export function make(options: ClientOptions) {
         request<HarnessLoginStatusOutput>(
           {
             method: "GET",
-            path: `/api/harness/${encodeURIComponent(input.driver)}/login`,
+            path: `/api/harness/${encodeURIComponent(input.providerInstanceID)}/login`,
             successStatus: 200,
             declaredStatuses: [400, 401, 403, 409],
             empty: false,
@@ -4172,6 +4179,7 @@ export function make(options: ClientOptions) {
             path: `/api/harness/runs`,
             body: {
               driver: input["driver"],
+              providerInstanceID: input["providerInstanceID"],
               directory: input["directory"],
               model: input["model"],
               backgroundWait: input["backgroundWait"],

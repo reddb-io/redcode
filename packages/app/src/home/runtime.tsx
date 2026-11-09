@@ -11,14 +11,7 @@ import type { HomeController } from "./model"
 import { HomeRuntimeView } from "./runtime.react"
 
 type DesktopMemorySample = { pid: number; createdAt: number; type: string; residentBytes: number | null }[]
-type RuntimeAlert =
-  | "disconnected"
-  | "unavailable"
-  | "high"
-  | "growing"
-  | "executionUnavailable"
-  | "partial"
-  | undefined
+type RuntimeNotice = "disconnected" | "unavailable" | "executionUnavailable" | "partial" | undefined
 
 const unavailableStorage = { getItem: () => null, setItem: () => {} }
 function storage() {
@@ -138,19 +131,15 @@ export function HomeRuntime(props: { home: HomeController; open: () => void }) {
       ? workerLatencies[Math.floor((workerLatencies.length - 1) / 2)]
       : undefined
     const growth = trend.length >= 3 ? trend.at(-1)! - trend[0]! : 0
-    const alert: RuntimeAlert = !connected()
+    const notice: RuntimeNotice = !connected()
       ? "disconnected"
       : resources.isError
         ? "unavailable"
-        : serverBytes !== undefined && serverBytes >= 2 * 1024 ** 3
-          ? "high"
-          : growth >= 0.25
-            ? "growing"
-            : memory.isError
-              ? "executionUnavailable"
-              : memory.data?.complete === false
-                ? "partial"
-                : undefined
+        : memory.isError
+          ? "executionUnavailable"
+          : memory.data?.complete === false
+            ? "partial"
+            : undefined
     return {
       language: sharedLanguage(language),
       server: current ? serverName(current) : "",
@@ -178,7 +167,7 @@ export function HomeRuntime(props: { home: HomeController; open: () => void }) {
       history,
       trend,
       growth,
-      alert,
+      notice,
       sampledAt: resources.data?.sampledAt,
     }
   })
