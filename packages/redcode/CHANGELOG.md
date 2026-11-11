@@ -1,5 +1,12 @@
 # @reddb-io/redcode
 
+## 0.87.20
+
+### Patch Changes
+
+- Add context menus to workbench tabs for closing one, other, all, left or right tabs while preserving fixed tabs. Reuse already loaded URLs when opening desktop links, and guide browser agents to navigate suitable tabs instead of creating one for each page.
+- Release objects retained by the embedded browser's console inspector while preserving its text diagnostics. Record desktop process memory in bounded diagnostic logs, and read Linux process RSS from procfs so the memory panel can report it.
+
 ## 0.87.19
 
 ### Patch Changes
