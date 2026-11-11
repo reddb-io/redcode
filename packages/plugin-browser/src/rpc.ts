@@ -155,13 +155,13 @@ function operation<
 export const Operations = [
   operation(
     "tabs.list",
-    "List this session's browser tabs and the focused tab. Use returned IDs for all page operations.",
+    "List this session's browser tabs and the focused tab. Before opening a page, inspect this list and reuse a suitable tab with browser.navigate. Use returned IDs for all page operations.",
     {},
     State,
   ),
   operation(
     "tabs.open",
-    "Open a browser tab, show it in the Review pane, and select it. Defaults to about:blank. Website traffic uses the connected server's network; localhost reaches that server.",
+    "Create a separate browser tab, show it in the Review pane, and select it. Prefer browser.navigate on an existing suitable tab for the next page or subject. Create another tab only when no suitable tab exists, parallel views or a reference must stay open, or the user explicitly requests a new tab. Defaults to about:blank. Website traffic uses the connected server's network; localhost reaches that server.",
     {
       url: optional(short),
       focus: optional(Schema.Boolean).annotate({
@@ -191,7 +191,7 @@ export const Operations = [
   ),
   operation(
     "navigate",
-    "Navigate this tab to HTTP/HTTPS or about:blank; wait for the document load. Element refs expire.",
+    "Reuse this tab for the next page or subject by navigating to HTTP/HTTPS or about:blank; wait for the document load. Prefer this over tabs.open unless a separate tab is needed. Preserve tabs with unfinished user forms or reference material still in use. Element refs expire.",
     { ...tab, url: short },
     Tab,
   ),

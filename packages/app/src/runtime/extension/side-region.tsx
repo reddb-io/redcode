@@ -1,4 +1,4 @@
-import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, type JSX } from "solid-js"
+import { For, Show, batch, createEffect, createMemo, createSignal, on, onCleanup, type JSX } from "solid-js"
 import { createStore } from "solid-js/store"
 import { createMediaQuery } from "@solid-primitives/media"
 import { createEventListener, makeEventListener } from "@solid-primitives/event-listener"
@@ -476,7 +476,9 @@ function WorkbenchGroupView(props: {
                         index={tabs().all().indexOf(key)}
                         active={!props.launcher && props.group.active() === key}
                         preview={tabs().preview() === key}
+                        siblings={props.group.entries()}
                         onClose={props.region.close}
+                        onCloseMany={(keys) => batch(() => keys.forEach(props.region.close))}
                         onPromote={(value) => void tabs().open(value)}
                       />
                     )}

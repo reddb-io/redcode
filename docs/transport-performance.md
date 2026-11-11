@@ -1,5 +1,25 @@
 # Transport and location startup measurements
 
+## Desktop idle-memory incident, 2026-11-11
+
+The affected Linux desktop's own log identifies packaged Redcode 0.87.19. Its user journal records `systemd-oomd` killing four processes in the application's scope after 5h 1m, with a 16G scope memory peak and 424.6M swap peak. A separate GNOME launch scope reported 2G. These are scope peaks, not individual process measurements or proof of the server's heap size. The processes had already exited, so no heap snapshot was available. Embedded development pages were present in the surviving logs; a warning about eleven download listeners is a lead, not proof of leaked listeners, because pages share an Electron session and unregister on disposal.
+
+The embedded browser enables the CDP Runtime domain for diagnostics. Its 500-entry text history did not release Chromium's original console objects. An isolated Chromium experiment logged 80 objects containing arrays of 100,000 elements, then forced garbage collection:
+
+| Inspector cleanup               | Heap before |   Heap after | Retained growth |
+| ------------------------------- | ----------: | -----------: | --------------: |
+| None                            |   491,944 B | 32,495,368 B |    32,003,424 B |
+| `Runtime.releaseObject` only    |   491,944 B | 32,495,368 B |    32,003,424 B |
+| `Runtime.discardConsoleEntries` |   491,944 B |    492,000 B |            56 B |
+
+Diagnostics now discard the inspector's console storage after copying bounded console/exception text, coalescing concurrent requests separately for each frame target. The production-code regression in `packages/app/e2e/regression/desktop-browser.spec.ts` uses Chromium's real CDP transport. Before the fix its console case retained 32,003,448 B; it now verifies that console and exception text remain readable while their large object graphs can be collected. The 4 MiB assertion is test tolerance, not an application RAM limit.
+
+Desktop logs now sample current process RSS, swap where available, CPU, main-process JS heap, and WebContents IDs/types once per minute. Samples use the existing rotating log files, retain no in-memory history and record no page URLs or process command lines. Linux RSS is read asynchronously from procfs because Electron's working-set field is unavailable there; the memory panel uses the same sampler. No RAM warning threshold, forced tab reload or automatic application restart was added.
+
+This reproduction establishes one retention mechanism; it does not attribute the full 16G incident to that mechanism or replace a multi-hour packaged-desktop soak with the same embedded pages. Hidden-page throttling and the remaining browser/network lifetimes still need that measurement.
+
+Run the regression from `packages/app` with `PLAYWRIGHT_BASE_URL=http://127.0.0.1:1 bunx playwright test e2e/regression/desktop-browser.spec.ts --workers=1`. It uses isolated pages and does not contact the installed Redcode server.
+
 These diagnostics use a separate loopback Redcode server with an in-memory database, isolated temporary configuration, no model downloads, and filesystem watching disabled. They do not connect to the installed service. Run them serially from `packages/client` with Bun:
 
 ```sh

@@ -6,6 +6,7 @@ import { IconButton } from "@opencode/ui/icon-button"
 import { Keybind } from "@opencode/ui/keybind"
 import { Tooltip } from "@opencode/ui/tooltip"
 import { Tabs } from "@opencode/ui/tabs"
+import { Menu } from "@opencode/ui/menu"
 import type { MountedSession, PanelTab } from "@opencode/gui-extensions/sdk"
 import { useLanguage } from "@/runtime/i18n/language"
 import { useCommand } from "@/shell/commands/command"
@@ -20,12 +21,26 @@ export function PanelTrigger(props: {
   index: number
   active: boolean
   preview: boolean
+  siblings: readonly { key: string; tab: PanelTab }[]
   onClose: (value: string) => void
+  onCloseMany: (values: readonly string[]) => void
   onPromote: (value: string) => void
 }): JSX.Element {
   const language = useLanguage()
   const command = useCommand()
   const closeKeybind = createMemo(() => command.keybindParts("file.close"))
+  const targets = (scope: "others" | "all" | "left" | "right") => {
+    const index = props.siblings.findIndex((entry) => entry.key === props.value)
+
+    if (index < 0) return []
+    return props.siblings.flatMap((entry, position) => {
+      if (entry.tab.pinned || entry.tab.closable === false) return []
+      if (scope === "others" && entry.key === props.value) return []
+      if (scope === "left" && position >= index) return []
+      if (scope === "right" && position <= index) return []
+      return [entry.key]
+    })
+  }
 
   // The label renders once per label function; state is read through getters so neither selection nor a session
   // switch remounts it.
@@ -105,7 +120,9 @@ export function PanelTrigger(props: {
     return closeButton(closable === "hover")
   }
 
-  return (
+  // Construct tabs under their own collection context. Kobalte's Menu also provides a list
+  // context, which must not replace the Tabs context used for click and keyboard selection.
+  const trigger = (
     <Switch fallback={<SortableTrigger {...props} content={content()} close={close()} />}>
       <Match when={props.tab.pinned}>
         <Tabs.Trigger
@@ -140,6 +157,37 @@ export function PanelTrigger(props: {
         </Tabs.Trigger>
       </Match>
     </Switch>
+  )
+
+  return (
+    <Menu.Context>
+      <Menu.Context.Trigger as="div" class="h-full flex shrink-0" tabIndex={-1}>
+        {trigger}
+      </Menu.Context.Trigger>
+      <Menu.Context.Portal>
+        <Menu.Context.Content>
+          <Menu.Item
+            disabled={props.tab.pinned || props.tab.closable === false}
+            onSelect={() => props.onClose(props.value)}
+          >
+            {language.t("common.closeTab")}
+          </Menu.Item>
+          <Menu.Item disabled={targets("others").length === 0} onSelect={() => props.onCloseMany(targets("others"))}>
+            {language.t("workbench.tabs.closeOthers")}
+          </Menu.Item>
+          <Menu.Item disabled={targets("all").length === 0} onSelect={() => props.onCloseMany(targets("all"))}>
+            {language.t("workbench.tabs.closeAll")}
+          </Menu.Item>
+          <Menu.Separator />
+          <Menu.Item disabled={targets("left").length === 0} onSelect={() => props.onCloseMany(targets("left"))}>
+            {language.t("workbench.tabs.closeLeft")}
+          </Menu.Item>
+          <Menu.Item disabled={targets("right").length === 0} onSelect={() => props.onCloseMany(targets("right"))}>
+            {language.t("workbench.tabs.closeRight")}
+          </Menu.Item>
+        </Menu.Context.Content>
+      </Menu.Context.Portal>
+    </Menu.Context>
   )
 }
 

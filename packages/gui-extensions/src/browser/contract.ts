@@ -5,7 +5,7 @@ export interface Browser {
   attached(session: SessionRef): boolean
   /** A workspace file (relative path) or http(s) URL can open in the pane for this session. */
   canOpen(session: SessionRef, path?: string): boolean
-  /** Opens a URL (http(s) or file://) as a browser tab in the session's side panel. */
+  /** Opens a URL (http(s) or file://) in the session's side panel, reusing a tab already at that URL. */
   open(session: SessionRef, url: string): void
   /** Opens a workspace file (relative path) as a file:// browser tab. Check `canOpen(session, path)` first. */
   openFile(session: SessionRef, path: string): void

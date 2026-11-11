@@ -3,10 +3,65 @@ import { expect, test, type Locator, type Page } from "@playwright/test"
 import { base64Encode } from "@opencode/util/encode"
 import { SERVER, holdRoute, project, provider, session, workspaceKey } from "../utils/app"
 import { mockOpenCodeServer } from "../utils/mock-server"
-import { fileDiff, fileNode, openSession } from "../utils/workspace"
+import { fileDiff, fileNode, openFileBrowser, openSession } from "../utils/workspace"
 import { expectSessionTitle } from "../utils/waits"
 
 test.use({ viewport: { width: 1440, height: 900 } })
+
+for (const input of [
+  { action: "Close tab", remaining: ["z.ts", "m.ts"] },
+  { action: "Close other tabs", remaining: ["a.ts"] },
+  { action: "Close all tabs", remaining: [] },
+  { action: "Close tabs to the left", remaining: ["a.ts", "m.ts"] },
+  { action: "Close tabs to the right", remaining: ["z.ts", "a.ts"] },
+]) {
+  test(`workbench tab menu: ${input.action}`, async ({ page }) => {
+    const directory = "C:/OpenCode/TabMenu"
+    const files = ["z.ts", "a.ts", "m.ts"]
+    await openSession(page, {
+      name: "TabMenu",
+      directory,
+      fileList: () => files.map((file) => fileNode(directory, file)),
+      fileContent: (path) => ({ type: "text", content: `contents:${path}` }),
+      seed: {
+        panes: { ses_tabmenu: { review: true } },
+        storage: {
+          "opencode.global.dat:layout": {
+            sessionTabs: {
+              [`local\u0000${base64Encode(directory)}/ses_tabmenu`]: {
+                all: files.map((file) => `file://${file}`),
+                active: "file://m.ts",
+              },
+            },
+          },
+        },
+      },
+    })
+    const group = page.getByRole("region", { name: "Top panel group" })
+    const tab = (name: string) => group.getByRole("tab", { name, exact: true })
+    await expect(tab("m.ts")).toHaveAttribute("aria-selected", "true")
+    await tab("z.ts").click()
+    await expect(tab("z.ts")).toHaveAttribute("aria-selected", "true")
+    await tab("m.ts").click()
+    await expect(tab("m.ts")).toHaveAttribute("aria-selected", "true")
+    await tab("a.ts").click({ button: "right" })
+    await page.getByRole("menuitem", { name: input.action, exact: true }).click()
+
+    for (const file of files) await expect(tab(file)).toHaveCount(input.remaining.includes(file) ? 1 : 0)
+    await expect(group.locator("#session-side-panel-review-tab")).toBeVisible()
+    if (input.remaining.includes("a.ts")) {
+      await tab("a.ts").click({ button: "right" })
+      await expect(page.getByRole("menuitem", { name: "Close tabs to the left", exact: true })).toHaveAttribute(
+        "aria-disabled",
+        input.remaining.indexOf("a.ts") === 0 ? "true" : "false",
+      )
+      await page.keyboard.press("Escape")
+    }
+    await page.reload()
+    await expectSessionTitle(page, "TabMenu")
+    for (const file of files) await expect(tab(file)).toHaveCount(input.remaining.includes(file) ? 1 : 0)
+  })
+}
 
 for (const view of ["desktop", "mobile"] as const) {
   test(`offers Git initialization for a project without VCS (${view})`, async ({ page }) => {
@@ -146,11 +201,11 @@ test("open file tab browses, searches, and tracks missing files", async ({ page 
   const sidebar = panel.locator('[data-slot="session-review-v2-sidebar"]')
   const sidebarToggle = panel.getByRole("button", { name: "Toggle file tree" })
   const contextButton = page.getByRole("button", { name: "View context usage" })
-  const openFile = panel.getByRole("button", { name: "Open file" })
+  const openFile = () => openFileBrowser(page)
   const tab = (name: string) => panel.getByRole("tab", { name, exact: true })
   await contextButton.click()
   await expect(tab("Context")).toHaveAttribute("aria-selected", "true")
-  await openFile.click()
+  await openFile()
   await expect(tab("Open file")).toHaveAttribute("aria-selected", "true")
   await expect(sidebarToggle).toBeDisabled()
   await expect(sidebar).toBeVisible()
@@ -158,7 +213,7 @@ test("open file tab browses, searches, and tracks missing files", async ({ page 
   await expect(tab("Context")).toHaveAttribute("aria-selected", "true")
   await expect(tab("Open file")).toHaveAttribute("aria-selected", "false")
   await expect(sidebar).toBeHidden()
-  await openFile.click()
+  await openFile()
   const filter = panel.getByRole("combobox", { name: "Filter files" })
   await expect(filter).toBeFocused()
   await expect(tab("Open file")).toHaveAttribute("aria-selected", "true")
@@ -192,7 +247,7 @@ test("open file tab browses, searches, and tracks missing files", async ({ page 
   await expect(tab("README.md")).toHaveAttribute("aria-selected", "true")
   await expect(panel.getByText("contents:README.md", { exact: true })).toBeVisible()
 
-  await openFile.click()
+  await openFile()
   await expect(tab("README.md")).toHaveCount(0)
   await expect(sidebar).toBeVisible()
   await filter.fill("nested")
@@ -205,7 +260,7 @@ test("open file tab browses, searches, and tracks missing files", async ({ page 
   await expect(panel.getByText("contents:src/nested.ts", { exact: true })).toBeVisible()
   expect(searches).toContainEqual({ query: "nested", dirs: "file", limit: 200 })
 
-  await openFile.click()
+  await openFile()
   await expect(tab("nested.ts")).toHaveCount(1)
   await expect(tab("Open file")).toHaveAttribute("aria-selected", "true")
   await expect(sidebarToggle).toBeDisabled()
@@ -689,7 +744,7 @@ test("restores review state and the side-panel tab per session", async ({ page }
   await toggle.click()
   await page.getByRole("button", { name: "gamma.ts" }).click()
   await selectedFile("gamma.ts")
-  await panel.getByRole("button", { name: "Open file" }).click()
+  await openFileBrowser(page)
   await panel.getByRole("button", { name: "README.md" }).click()
   await selectedTab("README.md")
 
@@ -705,7 +760,7 @@ test("restores review state and the side-panel tab per session", async ({ page }
 
   await switchSession("Gamma review state")
   await toggle.click()
-  await panel.getByRole("button", { name: "Open file" }).click()
+  await openFileBrowser(page)
   await selectedTab("Open file")
 
   await switchSession("Alpha review state")

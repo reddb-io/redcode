@@ -165,6 +165,29 @@ test("highlights of picked elements reach the page", async () => {
   }
 })
 
+test("opening an already loaded URL reuses that session's tab and explicit blank tabs stay separate", async () => {
+  const app = fixture()
+
+  try {
+    await app.connection.command({ type: "tabs.open", url: "http://localhost:4173/" })
+    await app.connection.command({ type: "tabs.open", url: "http://localhost:4173" })
+    await app.connection.command({ type: "tabs.open", url: "http://localhost:4173/", focus: false })
+    await Promise.all([
+      app.connection.command({ type: "tabs.open", url: "https://docs.example/" }),
+      app.connection.command({ type: "tabs.open", url: "https://docs.example/" }),
+    ])
+    await app.connection.command({ type: "tabs.open" })
+    expect(app.calls[0].commands).toEqual([
+      { type: "tabs.focus", tabID },
+      { type: "tabs.focus", tabID },
+      { type: "tabs.open", url: "https://docs.example/" },
+      { type: "tabs.open" },
+    ])
+  } finally {
+    app.connection.dispose()
+  }
+})
+
 test("suspension retains tabs and reconnects once on demand using the current target", () => {
   jest.useFakeTimers()
   const app = fixture()

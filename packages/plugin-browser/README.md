@@ -6,9 +6,17 @@ CDP, captured traffic, evaluations, and capture files. Core only registers the
 plugin. Neither endpoint imports the other's implementation.
 
 ```js
-const tab = await tools.browser.tabs.open({ url: "https://example.com" })
+const state = await tools.browser.tabs.list({})
+const reusable = state.tabs.find((tab) => tab.url === "about:blank" || tab.url === "https://example.com/")
+const tab = reusable
+  ? await tools.browser.navigate({ tabID: reusable.id, url: "https://example.com" })
+  : await tools.browser.tabs.open({ url: "https://example.com" })
 return await tools.browser.snapshot({ tabID: tab.id })
 ```
+
+List tabs first and reuse a suitable tab with `navigate` when moving to another page or subject. Keep a separate tab for intentional comparisons, references still in use, or an explicit user request. Preserve unfinished user forms and unrelated work. Close agent-created tabs when their work is finished and they are no longer needed. `tabs.open` deliberately creates a separate tab; it does not silently replace another page.
+
+Desktop links to a URL already open in the same session focus its existing tab. Right-click a workbench tab to close it, other tabs, all tabs, or tabs to its left/right in that group; fixed tabs are preserved. Closing a browser tab cancels its pending operations and disposes its native page and associated resources.
 
 All page operations require a `tabID` returned by `browser.tabs.open/list`.
 Focus selects the visible Review tab, not an implicit command target. Discover

@@ -37,6 +37,23 @@ export function createDiagnostics(cdp: Cdp) {
   let sequence = 0
   let droppedMessages = 0
   let droppedRequests = 0
+  const clearingConsole = new Set<string>()
+  const dirtyConsole = new Set<string>()
+
+  const discardConsole = async (sessionID?: string) => {
+    const key = sessionID ?? ""
+    dirtyConsole.add(key)
+
+    if (clearingConsole.has(key)) return
+    clearingConsole.add(key)
+
+    // Runtime retains the original logged objects even after releaseObject. We keep only
+    // bounded text, so discard Chromium's console storage too, including child-frame targets.
+    // Coalesce bursts without leaving entries that arrived during the previous discard alive.
+    while (dirtyConsole.delete(key))
+      await cdp.send("Runtime.discardConsoleEntries", {}, sessionID).catch(() => undefined)
+    clearingConsole.delete(key)
+  }
 
   const add = (
     level: (typeof levels)[number],
@@ -59,7 +76,7 @@ export function createDiagnostics(cdp: Cdp) {
     }
   }
 
-  cdp.on("Runtime.consoleAPICalled", (event) => {
+  cdp.on("Runtime.consoleAPICalled", (event, sessionID) => {
     const source = event.stackTrace?.callFrames[0]
     add(
       event.type === "error" || event.type === "assert"
@@ -83,6 +100,7 @@ export function createDiagnostics(cdp: Cdp) {
         ? { url: source.url.slice(0, Browser.MAX_TEXT), line: source.lineNumber + 1, column: source.columnNumber + 1 }
         : undefined,
     )
+    void discardConsole(sessionID)
   })
   // Chromium's own messages (CSP refusals, mixed content, failed resource loads, deprecations)
   // are Log entries, not Runtime console calls.
@@ -97,7 +115,7 @@ export function createDiagnostics(cdp: Cdp) {
         : undefined,
     )
   })
-  cdp.on("Runtime.exceptionThrown", (event) => {
+  cdp.on("Runtime.exceptionThrown", (event, sessionID) => {
     const error = event.exceptionDetails
     add(
       "error",
@@ -105,6 +123,7 @@ export function createDiagnostics(cdp: Cdp) {
       event.timestamp,
       error.url ? { url: error.url, line: error.lineNumber + 1, column: error.columnNumber + 1 } : undefined,
     )
+    void discardConsole(sessionID)
   })
 
   const begin = (

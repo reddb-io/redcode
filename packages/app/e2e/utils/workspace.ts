@@ -70,6 +70,17 @@ export async function openSession(page: Page, input: WorkspaceInput & { sessionI
   return { ...workspace, session: target, editor }
 }
 
+// File browsing now opens from the workbench launcher rather than a dedicated strip button.
+export async function openFileBrowser(page: Page) {
+  const group = page.getByRole("region", { name: "Top panel group" })
+  await group.getByRole("button", { name: "Open a panel", exact: true }).click()
+  await group
+    .locator('[data-component="workbench-launcher"]')
+    .getByRole("button", { name: /^Open file\b/ })
+    .click()
+  await expect(group.getByRole("tab", { name: "Open file", exact: true })).toHaveAttribute("aria-selected", "true")
+}
+
 // Opens a new-session draft (no sessions by default) and waits until its composer accepts input.
 export async function openDraft(page: Page, input: WorkspaceInput & { draftID?: string }) {
   const draftID = input.draftID ?? `draft_${input.name.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`

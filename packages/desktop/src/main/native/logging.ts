@@ -2,10 +2,11 @@ export * as DesktopLogging from "./logging"
 
 import log from "electron-log/main.js"
 import { app, crashReporter, netLog, shell } from "electron"
-import { Context, Effect, FileSystem, Layer, Logger, Option, Path, References, Stream } from "effect"
+import { Context, Effect, FileSystem, Layer, Logger, Option, Path, References, Schedule, Stream } from "effect"
 import { homedir } from "node:os"
 import { VERSION } from "../constants"
 import { marks } from "../lifecycle/marks"
+import { sampleDesktopMemory } from "./memory"
 
 const MAX_LOG_AGE_DAYS = 7
 
@@ -46,6 +47,17 @@ const serviceLayer = Layer.effect(
       onboardingTest: process.env.OPENCODE_TEST_ONBOARDING === "1",
       marks,
     })
+    // Keep a bounded on-disk trail even when the OS kills the whole app before crash handlers run.
+    // No page URLs, process commands or in-memory sample history are recorded.
+    yield* Effect.forkScoped(
+      Effect.promise(sampleDesktopMemory).pipe(
+        Effect.tap((processes) =>
+          scoped("memory", Effect.logInfo("desktop process memory", { main: process.memoryUsage(), processes })),
+        ),
+        Effect.catchCause((cause) => scoped("memory", Effect.logWarning("memory sample unavailable", { cause }))),
+        Effect.repeat(Schedule.spaced("1 minute")),
+      ),
+    )
     const exportDebug = exportDebugLogsEffect(fs, path).pipe(Effect.orDie)
 
     return Service.of({

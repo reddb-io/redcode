@@ -70,6 +70,7 @@ export function createConnection(input: {
   let known: readonly Browser.TabID[] | undefined
   // A native inventory the strip has not received yet; the next mirror that runs prunes with it.
   let pruning = false
+  const openingURLs = new Map<string, Promise<void>>()
 
   // Mirrors the tabs into the strip, applied after the state so closing a strip tab already finds the desktop's answer.
   // Only tabs new since the last mirrored inventory are added, so a tab the user just closed is not reopened before
@@ -235,10 +236,27 @@ export function createConnection(input: {
         return Promise.reject(input.client() ? error : Object.assign(error, { code: "unavailable" }))
       }
 
-      return registration.command(command).catch((cause: unknown) => {
+      // Opening a link to an already loaded page should reveal it, not allocate another native page.
+      // A blank tabs.open remains the user's explicit request for a separate tab.
+      const url =
+        command.type === "tabs.open" && command.url ? (URL.parse(command.url)?.href ?? command.url) : undefined
+      const pending = url && openingURLs.get(url)
+
+      if (pending) return pending
+      const existing = url ? state.browser?.tabs.find((tab) => tab.url === url) : undefined
+      const action = existing ? { type: "tabs.focus" as const, tabID: existing.id } : command
+
+      if (existing && command.type === "tabs.open" && command.focus === false) return Promise.resolve()
+      const request = registration.command(action).catch((cause: unknown) => {
         if (unavailable(cause)) suspend(registration)
         throw cause
       })
+
+      if (!url || existing) return request
+      const opening = request.finally(() => openingURLs.delete(url))
+      openingURLs.set(url, opening)
+
+      return opening
     },
     inspect(tabID: Browser.TabID, enabled: boolean) {
       state.registration?.inspect(tabID, enabled)
@@ -254,6 +272,7 @@ export function createConnection(input: {
     clearSite: (tabID: Browser.TabID) => state.registration?.clearSite(tabID),
     dispose() {
       disposed = true
+      openingURLs.clear()
       clearTimeout(retry)
       state.registration?.close()
       state.registration = undefined
