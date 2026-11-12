@@ -1,11 +1,10 @@
 import { EOL } from "node:os"
 import path from "node:path"
-import { readFile, stat, writeFile } from "node:fs/promises"
 import { Effect, Option } from "effect"
-import { applyEdits, modify } from "jsonc-parser"
 import { Global } from "@opencode/util/global"
 import { Commands } from "../../commands"
 import { Runtime } from "../../../framework/runtime"
+import { configCandidates, definitionPaths, editConfig, readConfig, writeConfig } from "./config"
 
 export default Runtime.handler(
   Commands.commands.mcp.commands.add,
@@ -13,6 +12,8 @@ export default Runtime.handler(
     const url = Option.getOrUndefined(input.url)
     const headers = Option.getOrUndefined(input.header)
     const environment = Option.getOrUndefined(input.env)
+    const explicit = Option.getOrUndefined(input.config)
+    if (explicit && input.global) return yield* Effect.fail(new Error("Choose --global or --config <file>, not both"))
     // The CLI framework strands `--` operands on the root command, so read the local server command
     // straight from argv after `--`. This also lets the command carry its own flags (e.g. `npx -y`).
     const dash = process.argv.indexOf("--")
@@ -31,38 +32,36 @@ export default Runtime.handler(
       : { type: "local" as const, command, ...(environment ? { environment } : {}) }
 
     const global = yield* Global.Service
-    const configPath = yield* Effect.promise(() => resolveConfigPath(input.global ? global.config : process.cwd()))
-    yield* Effect.promise(() => write(configPath, input.name, server))
+    const configPath = explicit
+      ? path.resolve(explicit)
+      : yield* Effect.tryPromise({
+          try: () => resolveConfigPath(input.global ? global.config : process.cwd(), input.global, global.config),
+          catch: (cause) => cause,
+        })
+    yield* Effect.tryPromise({ try: () => write(configPath, input.name, server), catch: (cause) => cause })
     process.stdout.write(`MCP server "${input.name}" added to ${configPath}` + EOL)
+    process.stdout.write("Reload a running project's MCPs with redcode mcp reload." + EOL)
   }),
 )
 
-export async function resolveConfigPath(directory: string) {
-  const candidates = [
-    path.join(directory, "opencode.json"),
-    path.join(directory, "opencode.jsonc"),
-    path.join(directory, ".opencode", "opencode.json"),
-    path.join(directory, ".opencode", "opencode.jsonc"),
-  ]
-  for (const candidate of candidates) {
-    if (
-      await stat(candidate).then(
-        (info) => info.isFile(),
-        () => false,
-      )
+export async function resolveConfigPath(directory: string, global = true, globalDirectory?: string) {
+  if (!global && globalDirectory && path.relative(globalDirectory, directory) === "")
+    throw new Error(
+      "The current directory is the global configuration root. Choose --global or --config <file> explicitly.",
     )
-      return candidate
+  const candidates = configCandidates(directory, global, globalDirectory)
+  for (const candidate of candidates) {
+    if (await Bun.file(candidate).exists()) return candidate
   }
-  return candidates[0]
+  return global ? path.join(directory, "config.jsonc") : path.join(directory, "redcode.jsonc")
 }
 
 async function write(configPath: string, name: string, server: unknown) {
-  const text = await readFile(configPath, "utf8").catch((error) => {
-    if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") return "{}"
-    throw error
-  })
-  const edits = modify(text, ["mcp", "servers", name], server, {
-    formattingOptions: { tabSize: 2, insertSpaces: true },
-  })
-  await writeFile(configPath, applyEdits(text, edits))
+  const document = await readConfig(configPath)
+  const text = document
+    ? definitionPaths(document, name)
+        .filter((key) => key.length === 2)
+        .reduce((text, key) => editConfig(text, key, undefined), document.text)
+    : "{}\n"
+  await writeConfig(configPath, editConfig(text, ["mcp", "servers", name], server))
 }

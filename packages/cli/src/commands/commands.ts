@@ -616,6 +616,25 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
               Flag.withDescription("Write to the global config instead of the project config"),
               Flag.withDefault(false),
             ),
+            config: Flag.string("config").pipe(
+              Flag.withDescription("Write to this specific JSON or JSONC configuration file"),
+              Flag.optional,
+            ),
+          },
+        }),
+        Spec.make("remove", {
+          aliases: ["rm"],
+          description: "Remove an MCP server from project configuration; preserves saved credentials",
+          params: {
+            name: Argument.string("name"),
+            global: Flag.boolean("global").pipe(
+              Flag.withDescription("Remove global definitions instead of project definitions"),
+              Flag.withDefault(false),
+            ),
+            config: Flag.string("config").pipe(
+              Flag.withDescription("Remove the definition only from this JSON or JSONC configuration file"),
+              Flag.optional,
+            ),
           },
         }),
         Spec.make("auth", {

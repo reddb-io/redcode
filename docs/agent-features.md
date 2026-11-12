@@ -272,12 +272,23 @@ redcode mcp auth datadog
 redcode mcp logout datadog
 redcode mcp reload
 redcode mcp restart
+redcode mcp remove playwright
+redcode mcp add playwright -- /path/to/playwright-mcp --cdp-endpoint http://localhost:9222
 ```
 
 `enable` and `disable` alias `connect` and `disconnect`; they affect this server run, preserve saved
 configuration and credentials, and apply to the current project. `reauth` aliases `auth`. `restart`
 reconnects every enabled MCP in that project and can interrupt its running calls. `reload` rereads saved
 configuration. Add `--server <url>` to manage the selected server instead of the local background service.
+
+`add` saves a local command and its arguments exactly as passed after `--`; it does not launch that command.
+Use `--url <url>` instead for a remote MCP. `remove` (alias `rm`) deletes that server's authored definitions
+from project configuration, including legacy definitions, while preserving other servers, JSONC comments and
+saved credentials. Both commands recognize Redcode's configuration names and precedence. Use `--global` for
+global configuration or `--config <file>` for one explicit source. Removing a project definition can expose a
+definition inherited from another scope; managed or external configuration is never silently rewritten.
+Use `mcp logout` separately when you also want to remove saved OAuth credentials. Configuration changes are
+observed by the server; `mcp reload` forces a running project's configuration to be read again.
 
 Remote MCP connections can be shared between projects by setting `pool: true` on a server under
 `mcp.servers`, together with `oauth: false` and `protocol: "2026-07-28"`. Sharing currently applies
