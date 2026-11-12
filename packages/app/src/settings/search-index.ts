@@ -71,18 +71,22 @@ export function settingsSearchIndex(input: {
     page: string,
     owner: string,
     server?: string,
+    project?: string,
+    projectName?: string,
   ) =>
     items.push({
-      id: JSON.stringify([server, undefined, view.tab, view.target, undefined, `${item.extension}:${entry.id}`]),
+      id: JSON.stringify([server, project, view.tab, view.target, view.subtab, `${item.extension}:${entry.id}`]),
       title: entry.title,
       description: entry.description ?? "",
       keywords: entry.keywords ?? "",
       owner,
       page,
       server,
-      topLevel: !view.target,
+      project,
+      projectName,
+      topLevel: !view.target && !project,
       // Rows placed in a host section read like the host's own rows there.
-      icon: item.value.section ? pageIcons.general : (item.value.icon ?? pageIcons.extensions),
+      icon: item.value.section === "general" ? pageIcons.general : (item.value.icon ?? pageIcons.extensions),
       view,
     })
 
@@ -97,7 +101,7 @@ export function settingsSearchIndex(input: {
   extensions.forEach((item) => {
     const setting = item.value
 
-    if (setting.page === "servers") return
+    if (setting.page === "servers" || setting.page === "extensions") return
 
     if (setting.page === "general") {
       const section = setting.section ? input.translate("settings.general.section.general") : setting.title
@@ -145,6 +149,12 @@ export function settingsSearchIndex(input: {
     serverSettings.forEach((entry) => add(entry, view(entry.tab, entry.target, entry.subtab), server.name, server.key))
     // Sections on the servers page render under each server's general page.
     extensions.forEach((item) => {
+      if (item.value.page === "extensions") {
+        item.value.entries?.forEach((entry) =>
+          addExtension(item, entry, view("extensions", entry.id, "plugins"), item.value.title, server.name, server.key),
+        )
+        return
+      }
       if (item.value.page !== "servers") return
       item.value.entries?.forEach((entry) =>
         addExtension(item, entry, view("general", entry.id), item.value.title, server.name, server.key),
@@ -182,6 +192,21 @@ export function settingsSearchIndex(input: {
           server.key,
           project.worktree,
           name,
+        )
+      })
+      extensions.forEach((item) => {
+        if (item.value.page !== "extensions") return
+        item.value.entries?.forEach((entry) =>
+          addExtension(
+            item,
+            entry,
+            { ...destination, tab: "extensions", subtab: "plugins", target: entry.id },
+            item.value.title,
+            `${server.name} · ${name}`,
+            server.key,
+            project.worktree,
+            name,
+          ),
         )
       })
     })

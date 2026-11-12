@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page } from "@playwright/test"
-import { seed, sessionHref, tabKey } from "../utils/app"
-import { fileDiff, openSession } from "../utils/workspace"
+import { holdRoute, seed, sessionHref, tabKey } from "../utils/app"
+import { fileDiff, mockWorkspace, openSession } from "../utils/workspace"
+import { mockCreatorComponents } from "../utils/creator-fixture"
 import { expectSessionTitle } from "../utils/waits"
 import { fixture, installStressSessionTabs, mockStressTimeline } from "../utils/session-fixture"
 import { mockAgentTasks } from "../utils/agent-task-fixture"
@@ -12,6 +13,161 @@ import {
   mockDeliveryNativeTasks,
   mockDeliveryResources,
 } from "../utils/delivery-fixture"
+
+test("Creator installs a revisioned component, runs it in isolation and releases it when hidden or disabled", async ({
+  page,
+}) => {
+  const pageErrors: string[] = []
+  page.on("pageerror", (error) => pageErrors.push(error.message))
+  await page.setViewportSize({ width: 1560, height: 1000 })
+  const sessionID = "ses_creator_ui"
+  const directory = "C:/Projects/creator-ui"
+  const workspace = await mockWorkspace(page, {
+    name: "Creator UI",
+    directory,
+    sessions: [{ id: sessionID, title: "Creator UI", agent: "creator" }],
+  })
+  const components = await mockCreatorComponents(page, { directory, push: workspace.push, sessionID })
+  await page.goto(sessionHref(sessionID))
+  const open = page.getByRole("button", { name: "Open Creator components", exact: true })
+  await expect(open).toBeEnabled()
+  await open.click()
+  const panel = page.locator('[data-slot="creator-components"]')
+  await expect(panel.getByText("No components installed in this project", { exact: true })).toBeVisible()
+  expect(components.operations.filter((item) => item.path.endsWith("/preview"))).toEqual([])
+  await panel.getByRole("button", { name: "Install component", exact: true }).click()
+  const install = page.getByRole("dialog", { name: "Install component", exact: true })
+  await install.getByRole("button", { name: "Published artifact", exact: true }).click()
+  await page.getByRole("option", { name: /^Counter artifact/ }).click()
+  await install.getByRole("textbox", { name: "Component name", exact: true }).fill("Project counter")
+  await expect(install.getByRole("button", { name: "Install component", exact: true })).toBeEnabled()
+  await install.getByRole("button", { name: "Install component", exact: true }).click()
+  await expect(install).toBeHidden()
+  const preview = panel.locator('iframe[title="Project counter component"]')
+  await expect(preview).toHaveAttribute("sandbox", "allow-scripts")
+  await expect(preview).toHaveAttribute("referrerpolicy", "no-referrer")
+  await expect(preview).not.toHaveAttribute("src")
+  await expect(preview.contentFrame().getByRole("heading", { name: "Counter component", exact: true })).toBeVisible()
+  expect(
+    await preview
+      .contentFrame()
+      .locator("body")
+      .evaluate(() => {
+        try {
+          return !!parent.document.body
+        } catch {
+          return false
+        }
+      }),
+  ).toBe(false)
+  await preview.contentFrame().getByRole("button", { name: "Increment", exact: true }).click()
+  await expect(preview.contentFrame().getByRole("status")).toHaveText("1")
+  const previews = components.operations.filter((item) => item.path.endsWith("/preview")).length
+  const refresh = await holdRoute(page, (url) => url.pathname === "/api/creator/component", { method: "GET" })
+  await workspace.push([
+    {
+      id: "evt_creator_other",
+      type: "creator.component.updated",
+      created: Date.now(),
+      location: { directory },
+      data: { componentID: "creator_other" },
+    },
+  ])
+  await refresh.arrived
+  await expect(panel.getByRole("button", { name: "Refresh components", exact: true })).toBeDisabled()
+  refresh.release()
+  await expect(panel.getByRole("button", { name: "Refresh components", exact: true })).toBeEnabled()
+  await expect(preview.contentFrame().getByRole("status")).toHaveText("1")
+  expect(components.operations.filter((item) => item.path.endsWith("/preview"))).toHaveLength(previews)
+  await page.screenshot({ path: test.info().outputPath("creator-installed-component.png"), animations: "disabled" })
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        const receive = (event: MessageEvent) => {
+          if (event.data?.message !== "Spoofed Creator error") return
+          window.removeEventListener("message", receive)
+          resolve()
+        }
+        window.addEventListener("message", receive)
+        window.postMessage({ type: "redcode:creator-error", message: "Spoofed Creator error" }, "*")
+      }),
+  )
+  await expect(panel.getByRole("alert")).toHaveCount(0)
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        const other = document.createElement("iframe")
+        other.sandbox.add("allow-scripts")
+        const receive = (event: MessageEvent) => {
+          if (event.data?.message !== "Other frame error") return
+          window.removeEventListener("message", receive)
+          other.remove()
+          resolve()
+        }
+        window.addEventListener("message", receive)
+        other.srcdoc =
+          '<script>parent.postMessage({type:"redcode:creator-error",message:"Other frame error"},"*")<\/script>'
+        document.body.append(other)
+      }),
+  )
+  await expect(panel.getByRole("alert")).toHaveCount(0)
+  await preview.contentFrame().getByRole("button", { name: "Trigger failure", exact: true }).click()
+  await expect(panel.getByRole("alert")).toContainText("Component runtime failed")
+  await expect(panel.getByRole("alert")).toContainText("Creator fixture exception")
+  await panel.getByRole("alert").getByText("Technical details", { exact: true }).click()
+  await expect(panel.getByRole("alert").locator("pre")).toContainText("Creator fixture exception")
+  await preview.contentFrame().getByRole("button", { name: "Reject promise", exact: true }).click()
+  await expect(panel.getByRole("alert")).toContainText("Creator fixture rejection")
+  expect(
+    pageErrors.filter((message) => !["Creator fixture exception", "Creator fixture rejection"].includes(message)),
+  ).toEqual([])
+  await panel.getByRole("button", { name: "Reload component", exact: true }).click()
+  await expect(preview.contentFrame().getByRole("heading", { name: "Counter component", exact: true })).toBeVisible()
+  await expect(panel.getByRole("alert")).toHaveCount(0)
+  await open.click()
+  await expect(preview).toHaveCount(0)
+  await page.reload()
+  await open.click()
+  await panel.getByRole("button", { name: /^Project counter/ }).click()
+  await expect(preview.contentFrame().getByRole("heading", { name: "Counter component", exact: true })).toBeVisible()
+  components.publishRevision("rev_creator_two")
+  await expect(preview.contentFrame().getByRole("heading", { name: "Counter component", exact: true })).toBeVisible()
+  components.rejectNextUpdate("The source revision changed. Refresh and retry.")
+  await panel.getByRole("button", { name: "Update to latest published revision", exact: true }).click()
+  await expect(panel.getByRole("alert")).toContainText("The source revision changed")
+  await expect(preview.contentFrame().getByRole("heading", { name: "Counter component", exact: true })).toBeVisible()
+  await panel.getByRole("button", { name: "Update to latest published revision", exact: true }).click()
+  await expect(preview.contentFrame().getByRole("heading", { name: "Updated counter", exact: true })).toBeVisible()
+  const enabled = panel.getByRole("switch", { name: "Enable Project counter", exact: true })
+  await panel
+    .locator('[data-component="switch"]')
+    .filter({ has: page.getByRole("switch", { name: "Enable Project counter", exact: true }) })
+    .locator('[data-slot="switch-control"]')
+    .click()
+  await expect(enabled).not.toBeChecked()
+  await expect(preview).toHaveCount(0)
+  await expect(panel.getByText("Enable this component before opening it", { exact: true })).toBeVisible()
+  await enabled.press("Space")
+  await expect(enabled).toBeChecked()
+  await expect(preview.contentFrame().getByRole("heading", { name: "Updated counter", exact: true })).toBeVisible()
+  await panel.getByRole("button", { name: "Remove component", exact: true }).click()
+  const remove = page.getByRole("dialog", { name: "Remove Project counter?", exact: true })
+  await remove.getByRole("button", { name: "Remove component", exact: true }).click()
+  await expect(remove).toBeHidden()
+  await expect(preview).toHaveCount(0)
+  await expect(panel.getByText("No components installed in this project", { exact: true })).toBeVisible()
+  expect(components.operations.filter((item) => item.method !== "GET").map((item) => [item.method, item.body])).toEqual(
+    [
+      ["POST", { sessionID, designID: "design_creator_counter", revision: "rev_creator_one", name: "Project counter" }],
+      ["POST", { expectedVersion: 1, revision: "rev_creator_two" }],
+      ["POST", { expectedVersion: 1, revision: "rev_creator_two" }],
+      ["POST", { expectedVersion: 2, enabled: false }],
+      ["POST", { expectedVersion: 3, enabled: true }],
+      ["DELETE", { expectedVersion: 4 }],
+    ],
+  )
+  expect(components.operations.every((item) => item.directory === directory)).toBe(true)
+})
 
 test("delivery publishes session artifact revisions and previews HTML in a sandbox", async ({ page }) => {
   await page.setViewportSize({ width: 1560, height: 1000 })

@@ -181,6 +181,21 @@ export type ConnectionCredentialInfo = {
 
 export type AgentColor = string
 
+export type CreatorComponentInfo = {
+  id: string
+  name: string
+  description?: string
+  sessionID: string
+  designID: string
+  revision: string
+  enabled: boolean
+  version: number
+  created: number | "Infinity" | "-Infinity" | "NaN"
+  updated: number | "Infinity" | "-Infinity" | "NaN"
+}
+
+export type CreatorComponentPreview = { html: string; revision: string; version: number }
+
 export type PluginSource =
   | { type: "builtin" }
   | { type: "package"; target: string; version?: string; outdated?: true; updating?: true }
@@ -2291,6 +2306,15 @@ export type SessionGuardTripped = {
     detail: string
     at: number
   }
+}
+
+export type CreatorComponentUpdated = {
+  id: string
+  created: number
+  metadata?: { [x: string]: any }
+  type: "creator.component.updated"
+  location?: LocationRef
+  data: { componentID: string }
 }
 
 export type IntelligenceSettingsUpdated = {
@@ -4680,6 +4704,7 @@ export type V2Event =
   | SessionRevertStaged
   | SessionRevertCleared
   | SessionRevertCommitted
+  | CreatorComponentUpdated
   | IntelligenceSettingsUpdated
   | FilesystemChanged
   | ReferenceUpdated
@@ -4799,6 +4824,10 @@ export type AgentNotFoundError = {
 }
 export const isAgentNotFoundError = (value: unknown): value is AgentNotFoundError =>
   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "AgentNotFoundError"
+
+export type CreatorComponentNotFoundError = { readonly _tag: "CreatorComponentNotFoundError"; readonly message: string }
+export const isCreatorComponentNotFoundError = (value: unknown): value is CreatorComponentNotFoundError =>
+  typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "CreatorComponentNotFoundError"
 
 export type SessionBusyError = {
   readonly _tag: "SessionBusyError"
@@ -5476,6 +5505,123 @@ export type AgentGetInput = {
 }
 
 export type AgentGetOutput = { location: LocationPublicRef; data: AgentInfo }
+
+export type ServerCreatorComponentCreatorComponentListInput = {
+  readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]
+}
+
+export type ServerCreatorComponentCreatorComponentListOutput = {
+  location: LocationPublicRef
+  data: Array<CreatorComponentInfo>
+}
+
+export type ServerCreatorComponentCreatorComponentInstallInput = {
+  readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]
+  readonly sessionID: {
+    readonly sessionID: string
+    readonly designID: string
+    readonly revision: string
+    readonly name: string
+    readonly description?: string
+  }["sessionID"]
+  readonly designID: {
+    readonly sessionID: string
+    readonly designID: string
+    readonly revision: string
+    readonly name: string
+    readonly description?: string
+  }["designID"]
+  readonly revision: {
+    readonly sessionID: string
+    readonly designID: string
+    readonly revision: string
+    readonly name: string
+    readonly description?: string
+  }["revision"]
+  readonly name: {
+    readonly sessionID: string
+    readonly designID: string
+    readonly revision: string
+    readonly name: string
+    readonly description?: string
+  }["name"]
+  readonly description?: {
+    readonly sessionID: string
+    readonly designID: string
+    readonly revision: string
+    readonly name: string
+    readonly description?: string
+  }["description"]
+}
+
+export type ServerCreatorComponentCreatorComponentInstallOutput = {
+  location: LocationPublicRef
+  data: CreatorComponentInfo
+}
+
+export type ServerCreatorComponentCreatorComponentUpdateInput = {
+  readonly componentID: { readonly componentID: string }["componentID"]
+  readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]
+  readonly expectedVersion: {
+    readonly expectedVersion: number
+    readonly revision: string
+    readonly name?: string
+    readonly description?: string
+  }["expectedVersion"]
+  readonly revision: {
+    readonly expectedVersion: number
+    readonly revision: string
+    readonly name?: string
+    readonly description?: string
+  }["revision"]
+  readonly name?: {
+    readonly expectedVersion: number
+    readonly revision: string
+    readonly name?: string
+    readonly description?: string
+  }["name"]
+  readonly description?: {
+    readonly expectedVersion: number
+    readonly revision: string
+    readonly name?: string
+    readonly description?: string
+  }["description"]
+}
+
+export type ServerCreatorComponentCreatorComponentUpdateOutput = {
+  location: LocationPublicRef
+  data: CreatorComponentInfo
+}
+
+export type ServerCreatorComponentCreatorComponentControlInput = {
+  readonly componentID: { readonly componentID: string }["componentID"]
+  readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]
+  readonly expectedVersion: { readonly expectedVersion: number; readonly enabled: boolean }["expectedVersion"]
+  readonly enabled: { readonly expectedVersion: number; readonly enabled: boolean }["enabled"]
+}
+
+export type ServerCreatorComponentCreatorComponentControlOutput = {
+  location: LocationPublicRef
+  data: CreatorComponentInfo
+}
+
+export type ServerCreatorComponentCreatorComponentRemoveInput = {
+  readonly componentID: { readonly componentID: string }["componentID"]
+  readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]
+  readonly expectedVersion: { readonly expectedVersion: number }["expectedVersion"]
+}
+
+export type ServerCreatorComponentCreatorComponentRemoveOutput = void
+
+export type ServerCreatorComponentCreatorComponentPreviewInput = {
+  readonly componentID: { readonly componentID: string }["componentID"]
+  readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]
+}
+
+export type ServerCreatorComponentCreatorComponentPreviewOutput = {
+  location: LocationPublicRef
+  data: CreatorComponentPreview
+}
 
 export type PluginListInput = {
   readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]

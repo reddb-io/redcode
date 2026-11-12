@@ -5,6 +5,9 @@ import { usePlatform } from "@/runtime/platform/platform"
 import { useMcpToggle } from "@/providers/connect/mcp"
 import { ReactView } from "@/runtime/react/view"
 import { sharedSource, type SharedSource } from "@/runtime/react/source"
+import { sharedMount } from "@/runtime/react/mount"
+import { ExtensionSettingsSections } from "@/runtime/extension/settings-page-view"
+import { ServerConnection } from "@/runtime/server/registry"
 import type { PluginInfo } from "@opencode/client/promise"
 import type { Installed } from "@opencode/gui-extensions/sdk/bridge"
 import { createSignal, onCleanup } from "solid-js"
@@ -88,6 +91,21 @@ export function createExtensionsServices(
   }))
   return {
     snapshot,
+    pluginSections: sharedMount(() => (
+      <>
+        <ExtensionSettingsSections
+          page="extensions"
+          server={String(ServerConnection.key(sdk.server))}
+          directory={directory?.()}
+        />
+        <ExtensionSettingsSections
+          page="extensions"
+          section="plugins"
+          server={String(ServerConnection.key(sdk.server))}
+          directory={directory?.()}
+        />
+      </>
+    )),
     select: (value: SettingsView["subtab"]) => props.onSubtab(value),
     toggle: (name: string) => toggle.mutate(name),
     load: () =>

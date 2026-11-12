@@ -13,6 +13,7 @@ import { configuredLanguageServers } from "../workspaces/project-lsp"
 import type { createExtensionsServices, ExtensionsSnapshot } from "./extensions"
 import type { createAgentToolsServices } from "../agent-tools/agent-tools"
 import { AgentToolsSettings } from "../agent-tools/view.react"
+import { SharedSlot } from "@/runtime/react/slot.react"
 import "../workspaces/project.css"
 
 type Services = ReturnType<typeof createExtensionsServices>
@@ -207,6 +208,7 @@ export function Extensions(props: { services: Services; tools?: ReturnType<typeo
                     language={language}
                   />
                 ) : null}
+                {item.value === "plugins" ? <SharedSlot mount={services.pluginSections} /> : null}
               </div>
             )
           }

@@ -359,12 +359,27 @@ contracts; no DeepSeek model or extra media provider is required to select the m
 Interactive artifacts reuse Design's workspaces, isolated runtime and revisioned previews. Delivery
 can distribute output files, but its script-free preview is not an interactive 3D viewer. Blender,
 text-to-3D generation and other external capabilities need their own available tools and explicit
-connections. Writing a server/TUI plugin or skill does not activate it. Production Desktop and Web
-do not yet hot-install arbitrary generated GUI plugins; their existing installation gates remain intact.
+connections. Published artifacts can be installed as **Creator components**: persistent interactive
+panels shared by conversations in the same execution project. Open the Creator components button in
+the conversation header, use `/creator-components`, or manage the inventory under the project's
+**Agent Extensions → Plugins** settings. Global settings explain the project scope instead of
+silently editing the active conversation's project.
+
+The `creator_component` tool provides list, inspect, install, update, enable, disable and remove.
+Installation freezes a portable snapshot in the existing blobstore. Updating requires the current
+version and prepares the new snapshot before replacing the active revision. Closing or deleting the
+source conversation does not uninstall the component; removal preserves source files and published
+artifacts. The TUI can manage the same project inventory, while Desktop and Web render its panels.
+
+Only the visible enabled component loads its HTML and iframe runtime. Hiding or disabling it releases
+the frame. Runtime errors appear with technical details, and components receive neither parent DOM
+access nor server credentials. Libraries and assets are bundled; direct network requests from the
+frame remain blocked. This renderer-only installation does not activate server/TUI plugin packages,
+skills, native GUI commands or Electron code. Their existing installation policies remain intact.
 
 See the [DeepSeek Creator study](research/deepseek-creator-mode-2026-11-12.md) for the upstream
 features, public prompts and skills, and the [Redcode architecture mapping](research/creator-redcode-architecture.md)
-for the remaining work toward persistent UI extensions.
+for the remaining work toward native host contributions and additional UI surfaces.
 
 ## Vault
 

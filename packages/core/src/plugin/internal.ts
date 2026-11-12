@@ -141,10 +141,12 @@ import { DesignAssetTool } from "../tool/plugin/design-asset.js"
 import { DesignRenderTool } from "../tool/plugin/design-render.js"
 import { DesignPlaybookTool } from "../tool/plugin/design-playbook.js"
 import { DesignExitTool } from "../tool/plugin/design-exit.js"
+import { CreatorComponentTool } from "../tool/plugin/creator-component.js"
 import { DesignMediaTool } from "../tool/plugin/design-media.js"
 import { PlanExitTool } from "../tool/plugin/plan-exit.js"
 import { WorktreePrepareTool } from "../tool/plugin/worktree-prepare.js"
 import { DesignStore } from "../design/store.js"
+import { CreatorComponents } from "../creator/component.js"
 import { DesignRenderer } from "../design/renderer.js"
 import { DesignAppConnection } from "../design/app-connection.js"
 import { Database } from "../database/database.js"
@@ -168,6 +170,7 @@ const services = [
   HookRuntime.Service,
   Credential.Service,
   DesignStore.Service,
+  CreatorComponents.Service,
   DesignRenderer.Service,
   DesignAppConnection.Service,
   Database.Service,
@@ -245,6 +248,7 @@ export const requirements = LayerNode.group([
   HookRuntime.node,
   Credential.node,
   DesignStore.node,
+  CreatorComponents.node,
   DesignRenderer.node,
   DesignAppConnection.node,
   Database.node,
@@ -355,6 +359,7 @@ const pre = [
   DesignRenderTool.Plugin,
   DesignPlaybookTool.Plugin,
   DesignExitTool.Plugin,
+  CreatorComponentTool.Plugin,
   DesignMediaTool.Plugin,
   PlanExitTool.Plugin,
   WorktreePrepareTool.Plugin,

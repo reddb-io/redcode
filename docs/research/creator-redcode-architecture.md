@@ -6,9 +6,44 @@ Inspected on 2026-11-12. This document describes source-backed Redcode capabilit
 
 Redcode can add Creator as its fifth primary agent without inventing another agent harness, persistence model or preview server. It can already author local server plugins, TUI plugins and skills, create interactive prototypes through Design, and publish versioned output through Delivery. That is a useful first vertical slice.
 
-Redcode cannot yet claim the DeepSeek Creator capability of installing arbitrary new GUI components during a conversation. Our desktop GUI archive manager is explicitly a development tool, packaged builds block its mutating IPC methods, and the renderer host currently loads built-ins only. Removing that guard would not complete the feature: Web has no desktop bridge, server execution and desktop execution live on different machines, and the extension trust/permission boundary remains a product decision.
+The subsequent implementation adds dynamic installation for isolated renderer-only components.
+`creator_component` installs a published Design revision into a persistent project inventory, and
+the built-in Creator surface renders the selected enabled component in Desktop/Web. The installed
+portable HTML belongs to the component, so it outlives its source conversation and revision.
 
-Creator should therefore specialize in creating, testing and handing off reusable capabilities. It should accurately describe which outputs are running, which are preview-only, and which still need explicit installation. A generated HTML panel is an interactive artifact, not an installed application extension.
+This does not enable arbitrary privileged GUI archive installation. The desktop archive manager
+remains a development tool, packaged builds still block its mutating IPC methods, and native
+SDK definitions remain built-ins. Web and remote server clients use the authenticated component
+API instead of a desktop bridge. No generated code executes in the host renderer or Electron main.
+
+Creator distinguishes a draft artifact, a verified published revision, an installed isolated panel
+and a privileged host extension. Generating HTML alone is not an installation: the project record,
+active version and portable snapshot must exist and be verified through the component API.
+
+## Installed component contract
+
+- `schema/src/creator-component.ts` defines metadata, versioned mutations and the update event.
+- `core/src/creator/component.ts` owns Location-scoped KV metadata and the existing Design
+  blobstore's portable snapshots. Inventories contain no HTML or credentials.
+- `creator.component.*` APIs expose the lifecycle through the normal authenticated project scope.
+  Installation and update validate the source session's directory and workspace identity.
+- The agent's `creator_component` tool checks permissions at execution. Mutating operations
+  request approval unless explicitly permitted, and Question remains unable to mutate.
+- Updates check `expectedVersion` and package the new revision before replacing the active record.
+  Repeating installation of the same source/revision is idempotent. Failed preparation retains the
+  last good snapshot. Enable/disable/removal also require the current version.
+- `gui-extensions/src/creator` contributes the panel, command and project Plugins settings content.
+  The server/project scope comes from Settings, never from whichever chat happens to be active.
+- The parent requests HTML with its authenticated SDK, then mounts an opaque-origin `srcdoc`
+  iframe with scripts enabled and no same-origin grant. Generated code receives no host bridge.
+- The iframe exists only while the enabled component is visible. API work is cancelled on owner
+  disposal; inventories refresh through scoped events rather than background polling.
+- A controlled bootstrap reports runtime exceptions and rejected promises. The parent accepts
+  only schema-valid diagnostics from the current frame's window and opaque origin, and renders
+  text/stack details without evaluating them.
+
+This contract is intentionally a panel installation contract. It does not grant arbitrary global
+slots, themes, native commands, host tools, credentials or a shared application database.
 
 ## Existing mechanisms and their real scope
 
@@ -241,11 +276,11 @@ The first implementation needs no public protocol change if it uses existing age
 
 The public agent ID is a string brand, so adding a built-in does not require a new agent enum or migration. Introducing a future Creator document/store/installation protocol would require Schema/Protocol ownership and regenerated clients; merely adding the mode and skill does not.
 
-## Later dynamic extension work
+## Further native extension work
 
-Full in-conversation installation is a separate vertical slice with concrete missing pieces:
+The isolated panel lifecycle is implemented. Broader native SDK contributions still need:
 
-- A portable renderer-only artifact manifest and declared host capabilities, distinct from a privileged Electron main bundle.
+- Bundle contracts for additional UI surfaces and declared host capabilities, distinct from a privileged Electron main bundle.
 - A review/install boundary that targets a particular server, client or session. A remote server cannot silently install code on every connected desktop.
 - A generic loader shared by Web and Desktop, with lifetime and failure handling through the existing GUI SDK.
 - An isolated preview that can exercise declared UI contributions without inheriting application credentials or unrestricted DOM access.
@@ -272,8 +307,32 @@ For the initial implementation, run the owning Core tests through `bun run test`
 
 This mapping was produced by static inspection of the paths cited above. The import-free plugin example was additionally exercised through the real runtime in the focused keeper test (one test, four assertions); the complete owning plugin keeper passed 20 tests and 64 assertions. The visual smoke above also passed, and its screenshot was inspected. No installed Desktop or server process was restarted. No plugin was installed into personal configuration, no external provider was provisioned, and no GUI archive guard was removed.
 
-The initial implementation now includes the Creator mode, bundled authoring skill, stable client
-identity colours and the Creator review link in the TUI. The public agent endpoint was checked
-for all five primary modes, and the existing TUI keeper covers resumed Design and Creator
-previews without launching another browser. Full DeepSeek-style dynamic GUI installation
-remains explicitly outside the initial parity claim.
+The implementation includes the Creator mode, bundled authoring skill, stable client identity
+colours, the Creator review link in the TUI and the isolated project-component lifecycle described
+above. The public agent endpoint was checked for all five primary modes, and the TUI keeper covers
+resumed Design and Creator previews without launching another browser. Native privileged plugins,
+arbitrary global slots and the seven full DeepSeek demo applications remain outside this scope.
+
+### Dynamic-component validation
+
+- Core lifecycle and frame checks: three tests, 26 assertions, including portable snapshots after
+  deleting both source conversation and revision, failed-update preservation, version conflicts,
+  directory/workspace isolation and runtime bootstrap placement under the existing CSP.
+- Permission checks cover Question with a permissive session grant and explicit approval for
+  component mutations. The authenticated API test also covers structured errors and input validation.
+- Three production UI keepers cover installation, pinned revisions, conflicts, update, disable,
+  re-enable, removal, scoped remote project settings, asynchronous Desktop storage, exception and
+  Promise diagnostics, forged-message rejection and iframe disposal. Remote servers are simulated
+  with the real contracts; Desktop uses the fixture bridge rather than an installed Electron binary.
+- Search tests: 13 passed. Existing extension-lifecycle tests: 29 passed. Code-generator tests: 91
+  passed. The new metadata contract, current event manifest and V1 isolation checks passed.
+- The production cold-session benchmark used three samples before and three after: median stable
+  render 832.9 ms before and 840.1 ms after (+0.9%). This short run shows no material regression;
+  it is neither a long-term memory soak nor evidence of a speed improvement.
+- Root lint and all 27 package type-check tasks passed. Test-only Vite fixtures were stopped.
+
+The wider Schema hygiene suite also exposed an existing failing guard: `model-suggestion.ts`
+contains `Schema.mutable` and `connection-check.ts` contains `Schema.mutableKey` in baseline
+commit `1c5579fb42`. These predate Creator components and were not rewritten or exempted here.
+The new Creator contracts use readonly public shapes. A separate pre-existing V1 test used a
+URL pathname as a filesystem path; it now uses `fileURLToPath` and passes on Windows.

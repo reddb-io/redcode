@@ -246,9 +246,15 @@ export function mount(input: {
 
     function Interface() {
       const extensions = useExtensionServers()
+      const local: ServerConnection.Any = {
+        type: "sidecar",
+        variant: "base",
+        displayName: "Local Server",
+        http: { url: input.server },
+      }
 
       const servers = createMemo<ServerConnection.Any[]>(() => [
-        { type: "sidecar", variant: "base", displayName: "Local Server", http: { url: input.server } },
+        local,
         ...extensions.list(),
       ])
 

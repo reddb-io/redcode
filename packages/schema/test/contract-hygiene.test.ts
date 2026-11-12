@@ -3,6 +3,8 @@ import { fileURLToPath } from "node:url"
 import { DateTime, Schema } from "effect"
 import { Agent } from "../src/agent.js"
 import { Automation } from "../src/automation.js"
+import { CreatorComponent } from "../src/creator-component.js"
+import { Design } from "../src/design.js"
 import { ConfigAgent } from "../src/config/agent.js"
 import { ConfigProvider } from "../src/config/provider.js"
 import { FileSystem } from "../src/filesystem.js"
@@ -30,6 +32,24 @@ import { PersistedRevert } from "../src/session-revert.js"
 import { AbsolutePath, optional } from "../src/schema.js"
 
 describe("contract hygiene", () => {
+  test("Creator component metadata omits absent descriptions and requires a current positive version", () => {
+    const component = {
+      id: CreatorComponent.ID.create(),
+      name: "Counter",
+      sessionID: Session.ID.make("ses_creator_contract"),
+      designID: Design.ID.make("design_creator_contract"),
+      revision: "rev_first",
+      enabled: true,
+      version: 1,
+      created: 1,
+      updated: 1,
+    }
+    expect(Schema.encodeSync(CreatorComponent.Info)({ ...component, description: undefined })).toEqual(component)
+    expect(Schema.decodeUnknownOption(CreatorComponent.Info)({ ...component, version: 0 })._tag).toBe("None")
+    expect(Schema.decodeUnknownOption(CreatorComponent.ID)(component.id)._tag).toBe("Some")
+    expect(Schema.decodeUnknownOption(CreatorComponent.ID)("creator")._tag).toBe("None")
+  })
+
   test("native harness task timestamps remain JSON numbers and optional lineage fields omit undefined", () => {
     const task = {
       id: "native-task",

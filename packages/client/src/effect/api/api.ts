@@ -11,9 +11,9 @@ import type { Location } from "@opencode/schema/location"
 import type { Provider } from "@opencode/schema/provider"
 import type { Integration } from "@opencode/schema/integration"
 import type { Agent } from "@opencode/schema/agent"
+import type { Brand } from "effect"
 import type { Plugin } from "@opencode/schema/plugin"
 import type { AbsolutePath } from "@opencode/schema/schema"
-import type { Brand } from "effect"
 import type { Project } from "@opencode/schema/project"
 import type { RelativePath } from "@opencode/schema/schema"
 import type { DateTime } from "effect"
@@ -328,6 +328,142 @@ export type AgentGetOperation<E = never> = (input: AgentGetInput) => Effect.Effe
 export interface AgentApi<E = never> {
   readonly list: AgentListOperation<E>
   readonly get: AgentGetOperation<E>
+}
+
+export type ServerCreatorComponentCreatorComponentListInput = {
+  readonly location?: { readonly directory?: string | undefined } | undefined
+}
+export type ServerCreatorComponentCreatorComponentListOutput = {
+  readonly location: Location.PublicRef
+  readonly data: ReadonlyArray<{
+    readonly id: string & Brand.Brand<"CreatorComponent.ID">
+    readonly name: string
+    readonly description?: string | undefined
+    readonly sessionID: Session.ID
+    readonly designID: string & Brand.Brand<"Design.ID">
+    readonly revision: string
+    readonly enabled: boolean
+    readonly version: number
+    readonly created: number
+    readonly updated: number
+  }>
+}
+export type ServerCreatorComponentCreatorComponentListOperation<E = never> = (
+  input?: ServerCreatorComponentCreatorComponentListInput,
+) => Effect.Effect<ServerCreatorComponentCreatorComponentListOutput, E>
+
+export type ServerCreatorComponentCreatorComponentInstallInput = {
+  readonly location?: { readonly directory?: string | undefined } | undefined
+  readonly sessionID: Session.ID
+  readonly designID: string & Brand.Brand<"Design.ID">
+  readonly revision: string
+  readonly name: string
+  readonly description?: string | undefined
+}
+export type ServerCreatorComponentCreatorComponentInstallOutput = {
+  readonly location: Location.PublicRef
+  readonly data: {
+    readonly id: string & Brand.Brand<"CreatorComponent.ID">
+    readonly name: string
+    readonly description?: string | undefined
+    readonly sessionID: Session.ID
+    readonly designID: string & Brand.Brand<"Design.ID">
+    readonly revision: string
+    readonly enabled: boolean
+    readonly version: number
+    readonly created: number
+    readonly updated: number
+  }
+}
+export type ServerCreatorComponentCreatorComponentInstallOperation<E = never> = (
+  input: ServerCreatorComponentCreatorComponentInstallInput,
+) => Effect.Effect<ServerCreatorComponentCreatorComponentInstallOutput, E>
+
+export type ServerCreatorComponentCreatorComponentUpdateInput = {
+  readonly componentID: string & Brand.Brand<"CreatorComponent.ID">
+  readonly location?: { readonly directory?: string | undefined } | undefined
+  readonly expectedVersion: number
+  readonly revision: string
+  readonly name?: string | undefined
+  readonly description?: string | undefined
+}
+export type ServerCreatorComponentCreatorComponentUpdateOutput = {
+  readonly location: Location.PublicRef
+  readonly data: {
+    readonly id: string & Brand.Brand<"CreatorComponent.ID">
+    readonly name: string
+    readonly description?: string | undefined
+    readonly sessionID: Session.ID
+    readonly designID: string & Brand.Brand<"Design.ID">
+    readonly revision: string
+    readonly enabled: boolean
+    readonly version: number
+    readonly created: number
+    readonly updated: number
+  }
+}
+export type ServerCreatorComponentCreatorComponentUpdateOperation<E = never> = (
+  input: ServerCreatorComponentCreatorComponentUpdateInput,
+) => Effect.Effect<ServerCreatorComponentCreatorComponentUpdateOutput, E>
+
+export type ServerCreatorComponentCreatorComponentControlInput = {
+  readonly componentID: string & Brand.Brand<"CreatorComponent.ID">
+  readonly location?: { readonly directory?: string | undefined } | undefined
+  readonly expectedVersion: number
+  readonly enabled: boolean
+}
+export type ServerCreatorComponentCreatorComponentControlOutput = {
+  readonly location: Location.PublicRef
+  readonly data: {
+    readonly id: string & Brand.Brand<"CreatorComponent.ID">
+    readonly name: string
+    readonly description?: string | undefined
+    readonly sessionID: Session.ID
+    readonly designID: string & Brand.Brand<"Design.ID">
+    readonly revision: string
+    readonly enabled: boolean
+    readonly version: number
+    readonly created: number
+    readonly updated: number
+  }
+}
+export type ServerCreatorComponentCreatorComponentControlOperation<E = never> = (
+  input: ServerCreatorComponentCreatorComponentControlInput,
+) => Effect.Effect<ServerCreatorComponentCreatorComponentControlOutput, E>
+
+export type ServerCreatorComponentCreatorComponentRemoveInput = {
+  readonly componentID: string & Brand.Brand<"CreatorComponent.ID">
+  readonly location?: { readonly directory?: string | undefined } | undefined
+  readonly expectedVersion: number
+}
+export type ServerCreatorComponentCreatorComponentRemoveOutput = void
+export type ServerCreatorComponentCreatorComponentRemoveOperation<E = never> = (
+  input: ServerCreatorComponentCreatorComponentRemoveInput,
+) => Effect.Effect<ServerCreatorComponentCreatorComponentRemoveOutput, E>
+
+export type ServerCreatorComponentCreatorComponentPreviewInput = {
+  readonly componentID: string & Brand.Brand<"CreatorComponent.ID">
+  readonly location?: { readonly directory?: string | undefined } | undefined
+}
+export type ServerCreatorComponentCreatorComponentPreviewOutput = {
+  readonly location: Location.PublicRef
+  readonly data: { readonly html: string; readonly revision: string; readonly version: number }
+}
+export type ServerCreatorComponentCreatorComponentPreviewOperation<E = never> = (
+  input: ServerCreatorComponentCreatorComponentPreviewInput,
+) => Effect.Effect<ServerCreatorComponentCreatorComponentPreviewOutput, E>
+
+export interface ServerCreatorComponentApi<E = never> {
+  readonly creator: {
+    readonly component: {
+      readonly list: ServerCreatorComponentCreatorComponentListOperation<E>
+      readonly install: ServerCreatorComponentCreatorComponentInstallOperation<E>
+      readonly update: ServerCreatorComponentCreatorComponentUpdateOperation<E>
+      readonly control: ServerCreatorComponentCreatorComponentControlOperation<E>
+      readonly remove: ServerCreatorComponentCreatorComponentRemoveOperation<E>
+      readonly preview: ServerCreatorComponentCreatorComponentPreviewOperation<E>
+    }
+  }
 }
 
 export type PluginListInput = { readonly location?: { readonly directory?: string | undefined } | undefined }
@@ -7170,6 +7306,7 @@ export interface AppApi<E = never> {
   readonly automation: AutomationApi<E>
   readonly location: LocationApi<E>
   readonly agent: AgentApi<E>
+  readonly "server.creatorComponent": ServerCreatorComponentApi<E>
   readonly plugin: PluginApi<E>
   readonly session: SessionApi<E>
   readonly message: MessageApi<E>

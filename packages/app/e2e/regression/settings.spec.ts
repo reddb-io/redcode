@@ -8,6 +8,7 @@ import { mockRemoteServer, mockWorkspace, openSettings, type WorkspaceInput } fr
 import { mockHttpsAccess } from "../utils/https-fixture"
 import { mockConnectionEdits } from "../utils/credential-fixture"
 import { openProviderAuthentication } from "../utils/provider-auth-fixture"
+import { creatorComponent, mockCreatorComponents } from "../utils/creator-fixture"
 
 const directory = "C:/Projects/settings-demo"
 
@@ -51,6 +52,90 @@ async function openProject(page: Page, name = "Settings demo") {
   await settings.getByRole("button", { name, exact: true }).click()
   await expect(settings.getByRole("button", { name: "Back to projects", exact: true })).toBeVisible()
 }
+
+test("Creator component settings use the selected remote project and leave global scope read-only", async ({
+  page,
+}) => {
+  const remoteDirectory = "/remote/creator-settings"
+  const remote = await mockRemoteServer(page, { directory: remoteDirectory })
+  const workspace = await open(page)
+  const localComponents = await mockCreatorComponents(page, {
+    directory,
+    push: workspace.push,
+    initial: [creatorComponent("ses_local_creator")],
+  })
+  const remoteComponents = await mockCreatorComponents(page, {
+    directory: remoteDirectory,
+    server: REMOTE_SERVER,
+    push: remote.push,
+    initial: [creatorComponent("ses_remote_creator")],
+  })
+  await page.goto(`/settings?server=${encodeURIComponent(REMOTE_SERVER)}&tab=extensions&subtab=plugins`)
+  const panel = workspace.settings.locator('[data-slot="creator-components"]')
+  await expect(
+    panel.getByText(
+      "Open a project's Agent Extensions settings to manage its Creator components, or open the Creator panel in a conversation.",
+      { exact: true },
+    ),
+  ).toBeVisible()
+  expect(localComponents.operations).toEqual([])
+  expect(remoteComponents.operations).toEqual([])
+  await page.goto(
+    `/settings?server=${encodeURIComponent(REMOTE_SERVER)}&project=${encodeURIComponent(remoteDirectory)}&tab=extensions&subtab=plugins`,
+  )
+  await expect(panel.getByText(`Project: ${remoteDirectory}`, { exact: true })).toBeVisible()
+  const toggle = panel.getByRole("switch", { name: "Enable Project counter", exact: true })
+  await expect(toggle).toBeChecked()
+  await panel
+    .locator('[data-component="switch"]')
+    .filter({ has: page.getByRole("switch", { name: "Enable Project counter", exact: true }) })
+    .locator('[data-slot="switch-control"]')
+    .click()
+  await expect(toggle).not.toBeChecked()
+  expect(remoteComponents.operations.filter((item) => item.method !== "GET")).toEqual([
+    {
+      method: "POST",
+      path: "/api/creator/component/creator_counter/control",
+      directory: remoteDirectory,
+      body: { expectedVersion: 1, enabled: false },
+    },
+  ])
+  expect(localComponents.operations).toEqual([])
+  await workspace.settings.getByRole("tab", { name: "Skills", exact: true }).click()
+  await expect(panel).toHaveCount(0)
+})
+
+test("Creator components work in a desktop scope with asynchronous storage and an unrelated extension unavailable", async ({
+  page,
+}) => {
+  const mock = await mockOpenCodeServer(page, {
+    directory,
+    project: project({ id: projectID, directory, name: "Desktop Creator" }),
+    provider: NO_PROVIDER,
+    sessions: [],
+    pageMessages: () => ({ items: [] }),
+  })
+  const components = await mockCreatorComponents(page, {
+    directory,
+    push: mock.push,
+    initial: [creatorComponent("ses_desktop_creator")],
+  })
+  await page.goto(
+    `/e2e/utils/settings-wsl.html?${new URLSearchParams({ server: SERVER, mode: "stopped", storage: "async", path: `/settings?server=sidecar&project=${encodeURIComponent(directory)}&tab=extensions&subtab=plugins` })}`,
+  )
+  const panel = page.getByTestId("settings-screen").locator('[data-slot="creator-components"]')
+  await expect(panel.getByText(`Project: ${directory}`, { exact: true })).toBeVisible()
+  await panel.getByRole("button", { name: /^Project counter/ }).click()
+  const preview = panel.locator('iframe[title="Project counter component"]')
+  await expect(preview.contentFrame().getByRole("heading", { name: "Counter component", exact: true })).toBeVisible()
+  await preview.contentFrame().getByRole("button", { name: "Increment", exact: true }).click()
+  await expect(preview.contentFrame().getByRole("status")).toHaveText("1")
+  const reads = components.operations.filter((item) => item.path.endsWith("/preview")).length
+  await page.getByRole("checkbox", { name: "WSL extension", exact: true }).uncheck()
+  await expect(preview.contentFrame().getByRole("status")).toHaveText("1")
+  expect(components.operations.filter((item) => item.path.endsWith("/preview"))).toHaveLength(reads)
+  expect(components.operations.every((item) => item.directory === directory)).toBe(true)
+})
 
 const patched = (page: Page) =>
   page.waitForRequest(

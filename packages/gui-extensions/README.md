@@ -231,6 +231,15 @@ SDK icon fields use `IconName` from `@opencode/ui/icons/catalog`, a dependency-f
 | [`Style`](src/sdk/registries.ts)        | window  | CSS imported with `?inline`                                                                 |
 | [`MenubarItem`](src/sdk/main.ts)        | main    | An item of the native app menu                                                              |
 
+`SettingsPage` contributions can join the existing Agent extensions inventory with `page: "extensions"`
+and `section: "plugins"`, rather than adding another settings destination. The host renders them below
+the Plugins list in both server and project settings. Their `render` input exposes the selected settings
+server as `server` (`ServerRef.id`) and the selected project as `directory`; the latter is absent at
+server/global scope. Read these getters reactively and resolve the current connection through
+`ctx.servers.get(input.server)` when making a request. Never infer the settings scope from the active
+conversation. Search entries contributed here open the matching server or project's Plugins tab.
+The content is unmounted when another Agent extensions tab is selected, including its scoped effects.
+
 ### Host APIs
 
 | Property                     | Type ([window](src/sdk/host-apis.ts), [main](src/sdk/main.ts)) | What it does                                                      |
@@ -620,6 +629,9 @@ export default setup
  * checks that it provides every Ipc the renderer composition uses.
  */
 export const builtins = Extension.compose(
+  delivery,
+  execution,
+  creator,
   context,
   btw,
   debug,
@@ -633,6 +645,8 @@ export const builtins = Extension.compose(
   { ...ssh, main: () => import("./ssh/main") },
   { ...wsl, main: () => import("./wsl/main") },
   microsoftOffice,
+  design,
+  sessionImport,
 )
 ```
 
@@ -646,6 +660,9 @@ The window list adds each window entry, loaded with the app:
  * checks this composition against the main one.
  */
 export const builtins = Extension.compose(
+  { ...delivery, renderer: eager(deliveryRenderer) },
+  { ...execution, renderer: eager(executionRenderer) },
+  { ...creator, renderer: eager(creatorRenderer) },
   { ...context, renderer: eager(contextRenderer) },
   { ...btw, renderer: eager(btwRenderer) },
   { ...debug, renderer: eager(debugRenderer) },
@@ -659,6 +676,8 @@ export const builtins = Extension.compose(
   { ...ssh, renderer: eager(sshRenderer) },
   { ...wsl, renderer: eager(wslRenderer) },
   { ...microsoftOffice, renderer: eager(microsoftOfficeRenderer) },
+  { ...design, renderer: eager(designRenderer) },
+  { ...sessionImport, renderer: eager(sessionImportRenderer) },
 )
 ```
 

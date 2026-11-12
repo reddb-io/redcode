@@ -39,6 +39,7 @@ import { WorkersHandler } from "./handlers/workers"
 import { WorkerLeaseHandler } from "./handlers/worker-lease"
 import { HarnessHandler } from "./handlers/harness"
 import { AgentToolsHandler } from "./handlers/agent-tools"
+import { CreatorComponentHandler } from "./handlers/creator-component"
 import { UsageReporterHandler } from "./handlers/usage-reporter"
 import { WorkerEnvironmentsHandler } from "./handlers/worker-environments"
 import { ProjectEnvironmentsHandler } from "./handlers/project-environments"
@@ -48,6 +49,7 @@ export const handlers = Layer.mergeAll(
   DebugHandler,
   LocationHandler,
   AgentHandler,
+  CreatorComponentHandler,
   PluginHandler,
   SessionHandler,
   MessageHandler,

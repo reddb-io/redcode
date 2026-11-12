@@ -8,12 +8,14 @@ creation workflow to Redcode's own APIs; DeepSeek Harness bundles, Cordis Slots 
 
 - Interactive app, dashboard, shader, 3D scene, editor or visual explanation: use the existing
   Design document runtime for a preview that can execute the artifact's JavaScript.
+- Reusable interactive panel inside Desktop/Web: publish and verify the artifact, then use
+  `creator_component` to install its immutable revision in the execution project.
 - Local tools and server/TUI plugins: author a package against the current Redcode plugin SDK.
   Package source is a deliverable; activation is a separate operation.
 - Reusable agent workflow: author a skill with a `SKILL.md` and narrowly scoped references.
 - Native desktop/web GUI contribution: inspect the GUI extensions SDK. Production builds
-  currently load built-in GUI definitions; they do not hot-install arbitrary generated GUI code.
-  Deliver reviewed source or an isolated interactive preview and explain this distinction.
+  load built-in privileged GUI definitions. Creator can dynamically install isolated panels,
+  but cannot inject native host commands, arbitrary DOM code or Electron main-process plugins.
 
 ## Interactive artifacts and procedural 3D
 
@@ -49,6 +51,33 @@ preview rather than opening another browser tab for every revision.
 
 Delivery's file preview intentionally disables scripts and external resources. Use it to inspect
 and distribute files, not as an interactive 3D runtime. Keep its content security policy intact.
+
+## Install a component in the app
+
+1. Use `creator_component` with `action: "list"` to inspect this project's installations. Read
+   the current tool schema; available actions are list, inspect, install, update, enable, disable
+   and remove. A component is available to conversations in the same execution location.
+2. Create and verify a published Design revision. When the user wants it installed, use install
+   with its `designID`, published `revision` and `name`. The source must belong to this session
+   and execution location. Installation asks under the existing permission policy and freezes
+   a portable renderer snapshot. Merely saving draft files does not install anything.
+3. In Desktop/Web, open **Creator components** from the conversation header or panel menu.
+   Project settings expose the same inventory under **Agent Extensions → Plugins**. The TUI
+   can manage installations and inspect metadata through the tool; it does not render HTML.
+4. To update, publish and verify another revision of the same source document, inspect the
+   installation and supply `expectedVersion` with the new revision. Failed preparation leaves
+   the previous active revision intact. A version conflict requires a fresh inspect, not a
+   blind overwrite. Repeating install of the same source/revision is idempotent.
+5. Enable, disable and remove also require the current `expectedVersion`. Disabling or hiding
+   the panel destroys the iframe and releases its runtime. Removing the installation preserves
+   the source document and its files. An installed snapshot is independent of an open source
+   conversation; closing the chat does not uninstall it.
+
+Components run in a sandboxed iframe, with JavaScript but no parent DOM access, host APIs or
+server credentials. Bundle required code and assets; do not add runtime CDN requests or fetch
+private APIs from the frame. Existing server tools/MCPs can prepare authorized data and publish
+a revision. A component's browser-local state is not a shared persistent database, and installing
+a panel does not register new host tools, themes, global slots or privileges.
 
 ## Plugin authoring
 

@@ -2,6 +2,7 @@ export * as EventManifest from "./event-manifest.js"
 
 import { Schema } from "effect"
 import { Agent } from "./agent.js"
+import { CreatorComponent } from "./creator-component.js"
 import { Command } from "./command.js"
 import { Config } from "./config.js"
 import { Credential } from "./credential.js"
@@ -57,6 +58,7 @@ const foundationDefinitions = Event.inventory(
 )
 
 const featureDefinitions = Event.inventory(
+  ...CreatorComponent.Event.Definitions,
   ...IntelligenceEvent.Definitions,
   ...FileSystem.Event.Definitions,
   ...Reference.Event.Definitions,

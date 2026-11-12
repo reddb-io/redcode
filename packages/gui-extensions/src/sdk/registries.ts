@@ -351,14 +351,16 @@ export interface SettingsPage {
    * Adds a section to a host page. Omit it to add a page.
    * - `general`: the General page.
    * - `servers`: the Servers page.
+   * - `extensions`: the selected server or project's Agent extensions page.
    */
-  readonly page?: "general" | "servers"
+  readonly page?: "general" | "servers" | "extensions"
   /**
    * `general`: with `page: "general"`, adds rows to that page's General section instead of a section of its own:
    * `render` returns settings rows, which the host places in its list. Search lists the entries under the host
    * section.
+   * `plugins`: with `page: "extensions"`, adds content below the selected scope's Plugins inventory.
    */
-  readonly section?: "general"
+  readonly section?: "general" | "plugins"
   /** Nav label of a page; search shows it as the section of every entry, except rows placed in a host `section`. */
   readonly title: string
   /** The page's nav icon. */
@@ -374,11 +376,15 @@ export interface SettingsPage {
   /**
    * Renders the page, section or rows.
    *
-   * @param input - `target` is the entry search is revealing.
+   * @param input - `target` is the entry search is revealing; Agent extensions also provides its selected `server` and project `directory`.
    */
   render(input: {
     /** The `SettingEntry.id` search is revealing, if any. */
     readonly target?: string
+    /** The Agent extensions settings server's `ServerRef.id`; absent when the host provides no server scope. Read it reactively. */
+    readonly server?: string
+    /** The selected project's directory; absent for server/global settings. Never substitute an active chat's directory. */
+    readonly directory?: string
   }): JSX.Element
 }
 

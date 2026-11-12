@@ -37,6 +37,18 @@ import type {
   AgentListOutput,
   AgentGetInput,
   AgentGetOutput,
+  ServerCreatorComponentCreatorComponentListInput,
+  ServerCreatorComponentCreatorComponentListOutput,
+  ServerCreatorComponentCreatorComponentInstallInput,
+  ServerCreatorComponentCreatorComponentInstallOutput,
+  ServerCreatorComponentCreatorComponentUpdateInput,
+  ServerCreatorComponentCreatorComponentUpdateOutput,
+  ServerCreatorComponentCreatorComponentControlInput,
+  ServerCreatorComponentCreatorComponentControlOutput,
+  ServerCreatorComponentCreatorComponentRemoveInput,
+  ServerCreatorComponentCreatorComponentRemoveOutput,
+  ServerCreatorComponentCreatorComponentPreviewInput,
+  ServerCreatorComponentCreatorComponentPreviewOutput,
   PluginListInput,
   PluginListOutput,
   PluginCheckInput,
@@ -623,7 +635,7 @@ export function make(options: ClientOptions) {
     for (const [key, value] of Object.entries(descriptor.headers ?? {})) {
       if (value !== undefined && value !== null) headers.set(key, String(value))
     }
-    for (const [key, value] of new Headers(requestOptions?.headers)) headers.set(key, value)
+    new Headers(requestOptions?.headers).forEach((value, key) => headers.set(key, value))
     if (descriptor.body !== undefined && !headers.has("content-type"))
       headers.set("content-type", descriptor.binaryBody ? "application/octet-stream" : "application/json")
     return {
@@ -1057,6 +1069,99 @@ export function make(options: ClientOptions) {
           },
           requestOptions,
         ),
+    },
+    "server.creatorComponent": {
+      creator: {
+        component: {
+          list: (input?: ServerCreatorComponentCreatorComponentListInput, requestOptions?: RequestOptions) =>
+            request<ServerCreatorComponentCreatorComponentListOutput>(
+              {
+                method: "GET",
+                path: `/api/creator/component`,
+                query: { location: input?.["location"] },
+                successStatus: 200,
+                declaredStatuses: [400, 401, 403, 404, 409],
+                empty: false,
+              },
+              requestOptions,
+            ),
+          install: (input: ServerCreatorComponentCreatorComponentInstallInput, requestOptions?: RequestOptions) =>
+            request<ServerCreatorComponentCreatorComponentInstallOutput>(
+              {
+                method: "POST",
+                path: `/api/creator/component`,
+                query: { location: input["location"] },
+                body: {
+                  sessionID: input["sessionID"],
+                  designID: input["designID"],
+                  revision: input["revision"],
+                  name: input["name"],
+                  description: input["description"],
+                },
+                successStatus: 200,
+                declaredStatuses: [400, 401, 403, 404, 409],
+                empty: false,
+              },
+              requestOptions,
+            ),
+          update: (input: ServerCreatorComponentCreatorComponentUpdateInput, requestOptions?: RequestOptions) =>
+            request<ServerCreatorComponentCreatorComponentUpdateOutput>(
+              {
+                method: "POST",
+                path: `/api/creator/component/${encodeURIComponent(input.componentID)}`,
+                query: { location: input["location"] },
+                body: {
+                  expectedVersion: input["expectedVersion"],
+                  revision: input["revision"],
+                  name: input["name"],
+                  description: input["description"],
+                },
+                successStatus: 200,
+                declaredStatuses: [400, 401, 403, 404, 409],
+                empty: false,
+              },
+              requestOptions,
+            ),
+          control: (input: ServerCreatorComponentCreatorComponentControlInput, requestOptions?: RequestOptions) =>
+            request<ServerCreatorComponentCreatorComponentControlOutput>(
+              {
+                method: "POST",
+                path: `/api/creator/component/${encodeURIComponent(input.componentID)}/control`,
+                query: { location: input["location"] },
+                body: { expectedVersion: input["expectedVersion"], enabled: input["enabled"] },
+                successStatus: 200,
+                declaredStatuses: [400, 401, 403, 404, 409],
+                empty: false,
+              },
+              requestOptions,
+            ),
+          remove: (input: ServerCreatorComponentCreatorComponentRemoveInput, requestOptions?: RequestOptions) =>
+            request<ServerCreatorComponentCreatorComponentRemoveOutput>(
+              {
+                method: "DELETE",
+                path: `/api/creator/component/${encodeURIComponent(input.componentID)}`,
+                query: { location: input["location"] },
+                body: { expectedVersion: input["expectedVersion"] },
+                successStatus: 204,
+                declaredStatuses: [400, 401, 403, 404, 409],
+                empty: true,
+              },
+              requestOptions,
+            ),
+          preview: (input: ServerCreatorComponentCreatorComponentPreviewInput, requestOptions?: RequestOptions) =>
+            request<ServerCreatorComponentCreatorComponentPreviewOutput>(
+              {
+                method: "GET",
+                path: `/api/creator/component/${encodeURIComponent(input.componentID)}/preview`,
+                query: { location: input["location"] },
+                successStatus: 200,
+                declaredStatuses: [400, 401, 403, 404, 409],
+                empty: false,
+              },
+              requestOptions,
+            ),
+        },
+      },
     },
     plugin: {
       list: (input?: PluginListInput, requestOptions?: RequestOptions) =>

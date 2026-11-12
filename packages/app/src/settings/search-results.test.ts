@@ -88,6 +88,49 @@ describe("settings search index", () => {
     expect(rankSettings("opencode", items, root)[0].projectInfo).toEqual(withIcon)
     expect(rankSettings("opencode color", items, root)).toEqual([])
   })
+
+  test("indexes contributed plugin settings in their exact server and project scopes", () => {
+    const items = index({
+      extensions: [
+        {
+          extension: "custom-components",
+          value: {
+            id: "custom-components",
+            page: "extensions",
+            section: "plugins",
+            title: "Custom components",
+            entries: [{ id: "component-management", title: "Manage custom components" }],
+            render: () => undefined,
+          },
+        },
+      ],
+    }).filter((item) => item.title === "Manage custom components")
+    expect(items.map((item) => item.view)).toEqual([
+      { type: "server", server: "local", tab: "extensions", target: "component-management", subtab: "plugins" },
+      {
+        type: "project",
+        server: "local",
+        project: project.worktree,
+        tab: "extensions",
+        parent: "server",
+        target: "component-management",
+        subtab: "plugins",
+      },
+      { type: "server", server: "remote", tab: "extensions", target: "component-management", subtab: "plugins" },
+      {
+        type: "project",
+        server: "remote",
+        project: project.worktree,
+        tab: "extensions",
+        parent: "server",
+        target: "component-management",
+        subtab: "plugins",
+      },
+    ])
+    expect(items.map((item) => item.project)).toEqual([undefined, project.worktree, undefined, project.worktree])
+    expect(new Set(items.map((item) => item.id)).size).toBe(4)
+    expect(items.some((item) => item.view.tab === "custom-components")).toBe(false)
+  })
 })
 
 describe("settings search ranking", () => {

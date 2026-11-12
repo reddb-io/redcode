@@ -15,6 +15,7 @@ import { RpcGroup } from "./groups/rpc.js"
 import { EventGroup, makeEventGroup } from "./groups/event.js"
 import type { Definition } from "@opencode/schema/event"
 import { AgentGroup } from "./groups/agent.js"
+import { CreatorComponentGroup } from "./groups/creator-component.js"
 import { PluginGroup } from "./groups/plugin.js"
 import { ServerGroup } from "./groups/server.js"
 import { DebugGroup } from "./groups/debug.js"
@@ -50,6 +51,7 @@ import { WorktreeLifecycleGroup } from "./groups/worktree-lifecycle.js"
 
 type LocationGroups<LocationId extends HttpApiMiddleware.AnyId> =
   | HttpApiGroup.AddMiddleware<typeof AgentGroup, LocationId>
+  | HttpApiGroup.AddMiddleware<typeof CreatorComponentGroup, LocationId>
   | HttpApiGroup.AddMiddleware<typeof PluginGroup, LocationId>
   | HttpApiGroup.AddMiddleware<typeof ModelGroup, LocationId>
   | HttpApiGroup.AddMiddleware<typeof ProviderGroup, LocationId>
@@ -187,6 +189,7 @@ const makeApiFromGroup = <
     .add(makeAutomationGroup(sessionLocationMiddleware))
     .add(makeLocationGroup(locationMiddleware))
     .add(AgentGroup.middleware(locationMiddleware))
+    .add(CreatorComponentGroup.middleware(locationMiddleware))
     .add(PluginGroup.middleware(locationMiddleware))
     .add(makeSessionGroup(sessionLocationMiddleware, formLocationMiddleware))
     .add(MessageGroup)

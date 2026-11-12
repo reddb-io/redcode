@@ -56,6 +56,7 @@ import { Tool } from "./tool.js"
 import { ToolOutput } from "./tool-output.js"
 import { Vcs } from "./vcs.js"
 import { DesignStore } from "./design/store.js"
+import { CreatorComponents } from "./creator/component.js"
 import { DesignRenderer } from "./design/renderer.js"
 import { Ripgrep } from "./ripgrep.js"
 import { ProviderRemove } from "./provider-removal.js"
@@ -67,6 +68,7 @@ const nodes = [
   Location.node,
   LSP.node,
   DesignStore.node,
+  CreatorComponents.node,
   DesignRenderer.node,
   LocationLifecycle.node,
   Environment.node,

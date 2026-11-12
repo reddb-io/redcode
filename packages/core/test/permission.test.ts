@@ -16,10 +16,12 @@ import { Session } from "@opencode/core/session"
 import { SessionTable } from "@opencode/core/session/sql"
 import { SessionStore } from "@opencode/core/session/store"
 import { ShellParse } from "@opencode/core/shell/parse"
+import { QuestionPlugin } from "@opencode/core/plugin/question"
 import { eq } from "drizzle-orm"
 import path from "node:path"
 import { location } from "./fixture/location"
 import { testEffect } from "./lib/effect"
+import { agentHost, host } from "./plugin/host"
 
 const current = Layer.succeed(
   Location.Service,
@@ -238,6 +240,34 @@ function waitForRequest(input: Partial<Permission.AssertInput> = {}) {
 }
 
 describe("Permission", () => {
+  it.effect("Creator installation asks despite broad grants and forced approval never bypasses Question", () =>
+    Effect.gen(function* () {
+      yield* setup([{ action: "*", resource: "*", effect: "allow" }])
+      const agents = yield* Agent.Service
+      const permission = yield* Permission.Service
+      yield* QuestionPlugin.Plugin.effect(host({ agent: agentHost(agents) }))
+      const database = yield* Database.Service
+      yield* database.db
+        .update(SessionTable)
+        .set({ permission: [{ action: "*", resource: "*", effect: "allow" }] })
+        .where(eq(SessionTable.id, Session.ID.make("ses_test")))
+        .run()
+        .pipe(Effect.orDie)
+      const input = assertion({
+        action: "creator_component_edit",
+        resources: ["design_creator"],
+        save: ["design_creator"],
+        force: true,
+      })
+      expect((yield* permission.ask(input)).effect).toBe("ask")
+      yield* permission.reply({ requestID: input.id, reply: "once" })
+      expect((yield* permission.ask({ ...input, agent: Agent.ID.make("question") })).effect).toBe("deny")
+      expect(yield* permission.list()).toEqual([])
+      const blocked = yield* permission.assert({ ...input, agent: Agent.ID.make("question") }).pipe(Effect.flip)
+      expect(blocked).toBeInstanceOf(Permission.BlockedError)
+    }),
+  )
+
   it.effect("returns the evaluated effect and only queues prompts", () =>
     Effect.gen(function* () {
       yield* setup([{ action: "read", resource: "*", effect: "allow" }])

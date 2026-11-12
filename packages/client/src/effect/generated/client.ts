@@ -43,6 +43,18 @@ import type {
   AgentListOutput,
   AgentGetInput,
   AgentGetOutput,
+  ServerCreatorComponentCreatorComponentListInput,
+  ServerCreatorComponentCreatorComponentListOutput,
+  ServerCreatorComponentCreatorComponentInstallInput,
+  ServerCreatorComponentCreatorComponentInstallOutput,
+  ServerCreatorComponentCreatorComponentUpdateInput,
+  ServerCreatorComponentCreatorComponentUpdateOutput,
+  ServerCreatorComponentCreatorComponentControlInput,
+  ServerCreatorComponentCreatorComponentControlOutput,
+  ServerCreatorComponentCreatorComponentRemoveInput,
+  ServerCreatorComponentCreatorComponentRemoveOutput,
+  ServerCreatorComponentCreatorComponentPreviewInput,
+  ServerCreatorComponentCreatorComponentPreviewOutput,
   PluginListInput,
   PluginListOutput,
   PluginCheckInput,
@@ -780,6 +792,84 @@ const EndpointAgentGet = (raw: RawClient["server.agent"]) => (input: AgentGetInp
 const adaptGroupAgent = (raw: RawClient["server.agent"]) => ({
   list: EndpointAgentList(raw),
   get: EndpointAgentGet(raw),
+})
+
+const EndpointServerCreatorComponentCreatorComponentList =
+  (raw: RawClient["server.creatorComponent"]) => (input?: ServerCreatorComponentCreatorComponentListInput) =>
+    preserveEffect<ServerCreatorComponentCreatorComponentListOutput>()(
+      raw["creator.component.list"]({ query: { location: input?.["location"] } }).pipe(Effect.mapError(mapClientError)),
+    )
+
+const EndpointServerCreatorComponentCreatorComponentInstall =
+  (raw: RawClient["server.creatorComponent"]) => (input: ServerCreatorComponentCreatorComponentInstallInput) =>
+    preserveEffect<ServerCreatorComponentCreatorComponentInstallOutput>()(
+      raw["creator.component.install"]({
+        query: { location: input["location"] },
+        payload: {
+          sessionID: input["sessionID"],
+          designID: input["designID"],
+          revision: input["revision"],
+          name: input["name"],
+          description: input["description"],
+        },
+      }).pipe(Effect.mapError(mapClientError)),
+    )
+
+const EndpointServerCreatorComponentCreatorComponentUpdate =
+  (raw: RawClient["server.creatorComponent"]) => (input: ServerCreatorComponentCreatorComponentUpdateInput) =>
+    preserveEffect<ServerCreatorComponentCreatorComponentUpdateOutput>()(
+      raw["creator.component.update"]({
+        params: { componentID: input["componentID"] },
+        query: { location: input["location"] },
+        payload: {
+          expectedVersion: input["expectedVersion"],
+          revision: input["revision"],
+          name: input["name"],
+          description: input["description"],
+        },
+      }).pipe(Effect.mapError(mapClientError)),
+    )
+
+const EndpointServerCreatorComponentCreatorComponentControl =
+  (raw: RawClient["server.creatorComponent"]) => (input: ServerCreatorComponentCreatorComponentControlInput) =>
+    preserveEffect<ServerCreatorComponentCreatorComponentControlOutput>()(
+      raw["creator.component.control"]({
+        params: { componentID: input["componentID"] },
+        query: { location: input["location"] },
+        payload: { expectedVersion: input["expectedVersion"], enabled: input["enabled"] },
+      }).pipe(Effect.mapError(mapClientError)),
+    )
+
+const EndpointServerCreatorComponentCreatorComponentRemove =
+  (raw: RawClient["server.creatorComponent"]) => (input: ServerCreatorComponentCreatorComponentRemoveInput) =>
+    preserveEffect<ServerCreatorComponentCreatorComponentRemoveOutput>()(
+      raw["creator.component.remove"]({
+        params: { componentID: input["componentID"] },
+        query: { location: input["location"] },
+        payload: { expectedVersion: input["expectedVersion"] },
+      }).pipe(Effect.mapError(mapClientError)),
+    )
+
+const EndpointServerCreatorComponentCreatorComponentPreview =
+  (raw: RawClient["server.creatorComponent"]) => (input: ServerCreatorComponentCreatorComponentPreviewInput) =>
+    preserveEffect<ServerCreatorComponentCreatorComponentPreviewOutput>()(
+      raw["creator.component.preview"]({
+        params: { componentID: input["componentID"] },
+        query: { location: input["location"] },
+      }).pipe(Effect.mapError(mapClientError)),
+    )
+
+const adaptGroupServerCreatorComponent = (raw: RawClient["server.creatorComponent"]) => ({
+  creator: {
+    component: {
+      list: EndpointServerCreatorComponentCreatorComponentList(raw),
+      install: EndpointServerCreatorComponentCreatorComponentInstall(raw),
+      update: EndpointServerCreatorComponentCreatorComponentUpdate(raw),
+      control: EndpointServerCreatorComponentCreatorComponentControl(raw),
+      remove: EndpointServerCreatorComponentCreatorComponentRemove(raw),
+      preview: EndpointServerCreatorComponentCreatorComponentPreview(raw),
+    },
+  },
 })
 
 const EndpointPluginList = (raw: RawClient["server.plugin"]) => (input?: PluginListInput) =>
@@ -3447,6 +3537,7 @@ const adaptClient = (raw: RawClient) => ({
   automation: adaptGroupAutomation(raw["server.automation"]),
   location: adaptGroupLocation(raw["server.location"]),
   agent: adaptGroupAgent(raw["server.agent"]),
+  "server.creatorComponent": adaptGroupServerCreatorComponent(raw["server.creatorComponent"]),
   plugin: adaptGroupPlugin(raw["server.plugin"]),
   session: adaptGroupSession(raw["server.session"]),
   message: adaptGroupMessage(raw["server.message"]),

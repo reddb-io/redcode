@@ -10,6 +10,13 @@ Isso constitui a primeira etapa de autoria, não paridade com instalação dinâ
 nem uma implementação dos sete aplicativos da demonstração. As fases posteriores continuam
 identificadas como propostas abaixo.
 
+Atualização da implementação: o Redcode agora também instala **componentes isolados de projeto**
+a partir de revisões publicadas, com snapshots portáteis, versionamento, atualização segura,
+ativação/desativação e remoção. Desktop e Web usam o painel Creator e a gestão em Agent Extensions;
+o agente/TUI acessa o mesmo inventário. Isso entrega instalação dinâmica de painéis sem liberar
+plugins privilegiados no host. O [contrato implementado](creator-redcode-architecture.md#installed-component-contract)
+detalha o escopo. Slots globais arbitrários e os sete aplicativos completos continuam fora dessa entrega.
+
 Snapshot do upstream: [`e8f7b93a344964de3dca1ace9e72b6e4d6de87cb`](https://github.com/deepseek-ai/deepseek-harness/tree/e8f7b93a344964de3dca1ace9e72b6e4d6de87cb), último commit de `master` consultado, datado de 11 de novembro. O repositório usa licença MIT e declara que está em developer preview. As referências de código abaixo apontam para esse snapshot para tornar a comparação reproduzível.
 
 ## 1. O produto que devemos reproduzir
