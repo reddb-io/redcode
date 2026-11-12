@@ -1,5 +1,11 @@
 # @reddb-io/redcode
 
+## 0.87.22
+
+### Patch Changes
+
+- Unify agent setup under Agent extensions with MCPs, Plugins, Skills and Tools tabs. Keep existing Agent tools links working and preserve the selected local or remote host. Include refreshed capability statuses and guidance for connecting the Browser Control extension.
+
 ## 0.87.21
 
 ### Patch Changes
