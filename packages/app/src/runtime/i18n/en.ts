@@ -434,6 +434,8 @@ export const dict = {
     "Redcode does not verify browser approval or operating-system permissions here. Installed or enabled does not mean those steps are complete.",
   "agentTools.browser-control.requirements":
     "After installation, use the extension directory below. In this host's Chrome or Edge, open Extensions, enable Developer mode, choose Load unpacked and select that directory. Approve the extension in that browser.",
+  "agentTools.browser-control.connect":
+    "Open a normal web page and click the Browser Control extension's toolbar icon to attach the tab. Then run diagnostics here to verify the extension connection. Enabling the tool only makes its MCP tools available to agents.",
   "agentTools.computer-use.requirements":
     "Sign in to a graphical desktop on this host and grant any accessibility or screen-capture permissions requested by the operating system. A headless worker or a Windows service outside that desktop session cannot control your applications.",
   "agentTools.terminal-control.requirements":

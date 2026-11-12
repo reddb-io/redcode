@@ -91,6 +91,9 @@ const PtyMissing = [MockNotFound.pipe(HttpApiSchema.status(404)), MockPtyNotFoun
 
 const Group = HttpApiGroup.make("mock")
   .add(HttpApiEndpoint.get("info", "/api/info", { success: Json }))
+  .add(HttpApiEndpoint.get("system", "/api/system", { success: Json }))
+  .add(HttpApiEndpoint.get("performance", "/api/performance", { success: Json }))
+  .add(HttpApiEndpoint.get("workers", "/api/workers", { success: Json }))
   .add(HttpApiEndpoint.get("resources", "/api/resources", { success: Json }))
   .add(HttpApiEndpoint.get("memory", "/api/memory", { success: Json }))
   .add(HttpApiEndpoint.get("attention", "/api/attention", { success: Json }))

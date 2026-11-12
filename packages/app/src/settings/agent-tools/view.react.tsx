@@ -53,6 +53,7 @@ export function AgentToolsSettings(props: { source: ReturnType<typeof createAgen
       setSnapshot((current) =>
         current ? { ...current, tools: current.tools.map((tool) => (tool.id === item.id ? item : tool)) } : current,
       )
+      await refetch()
     } catch {
       if (!controller.signal.aborted)
         updateState((previous) => ({ ...previous, error: language.t("agentTools.failed") }))
@@ -304,6 +305,9 @@ function AgentToolCard(props: {
             <div className="flex flex-col gap-1 text-13-regular">
               <h4 className="font-medium">{language.t("agentTools.setup.required")}</h4>
               <p>{language.t(`agentTools.${props.item.id}.requirements`)}</p>
+              {props.item.id === "browser-control" ? (
+                <p>{language.t("agentTools.browser-control.connect")}</p>
+              ) : null}
               {props.item.id === "browser-control" || props.item.id === "computer-use" ? (
                 <>
                   <p className="text-ink-muted">{language.t("agentTools.setup.manual")}</p>

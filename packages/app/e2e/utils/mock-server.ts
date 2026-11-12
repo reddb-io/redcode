@@ -29,6 +29,7 @@ import {
 import { installSseTransport } from "./sse-transport"
 import type { UsageReporter } from "@opencode/schema/usage-reporter"
 import { AgentTools } from "@opencode/schema/agent-tools"
+import { ExecutionCapability } from "@opencode/schema/execution-capability"
 import { Model } from "@opencode/schema/model"
 import { Provider } from "@opencode/schema/provider"
 
@@ -57,7 +58,27 @@ export async function mockAgentTools(page: Page, server = SERVER) {
     const request = route.request()
     if (request.method() === "OPTIONS") return route.fulfill({ status: 204, headers })
     const pathname = new URL(request.url()).pathname
-    if (request.method() === "GET") return route.fulfill({ json: snapshot, headers })
+    if (request.method() === "GET") {
+      const browser = snapshot.tools.find((tool) => tool.id === "browser-control")!
+      return route.fulfill({
+        json: {
+          ...snapshot,
+          capabilities: [
+            {
+              id: ExecutionCapability.ID.make("agent-tool:browser-control"),
+              name: "Existing browser profile",
+              kind: "browser",
+              source: "managed",
+              status: !browser.installed ? "unavailable" : browser.settings.enabled ? "available" : "disabled",
+              risk: "privileged",
+              target: { type: "server", id: snapshot.host.name, name: snapshot.host.name },
+              operations: ["observe", "navigate", "interact"],
+            } satisfies ExecutionCapability.Info,
+          ],
+        },
+        headers,
+      })
+    }
     const command = pathname.split("/").at(-1)!
     operations.push(command)
     if (command === "initialize") return route.fulfill({ json: null, headers })
@@ -968,6 +989,21 @@ function mockHandlers(
         }),
       )
       .handleAll({
+        system: () =>
+          Effect.succeed({
+            version: "2.0.0",
+            runtime: "bun",
+            platform: "linux arm64",
+            pid: 42,
+            started: 1,
+            memory: 128 * 1024 ** 2,
+            urls: config.server ? [config.server] : [],
+            paths: { config: "/config", data: "/data", state: "/state", cache: "/cache", log: "/log", tmp: "/tmp" },
+            database: { kind: "memory" },
+          }),
+        performance: () =>
+          Effect.succeed({ sampledAt: Date.now(), from: 1, requests: 0, errors: 0, providers: [], models: [] }),
+        workers: () => Effect.succeed({ available: true, workers: [], batches: [] }),
         resources: () =>
           Effect.succeed(
             config.resources
