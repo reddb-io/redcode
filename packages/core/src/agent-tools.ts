@@ -10,9 +10,11 @@ import { AbsolutePath } from "@opencode/schema/schema"
 import { AppProcess } from "@opencode/util/process"
 import { FSUtil } from "@opencode/util/fs-util"
 import { Npm } from "@opencode/util/npm"
+import { Global } from "@opencode/util/global"
 import { makeGlobalNode } from "@opencode/util/effect/app-node"
 import { KV } from "./kv.js"
 import { KeyedMutex } from "./effect/keyed-mutex.js"
+import { BrowserExtension } from "./browser-extension.js"
 
 export { ID, Settings, Status, Snapshot, Configure } from "@opencode/schema/agent-tools"
 
@@ -21,6 +23,7 @@ export interface Interface {
   readonly configure: (input: AgentTools.Configure) => Effect.Effect<AgentTools.Status, Error>
   readonly install: (id: AgentTools.ID) => Effect.Effect<AgentTools.Status, Error>
   readonly probe: (id: AgentTools.ID) => Effect.Effect<AgentTools.Status>
+  readonly browserExtension: (action: AgentTools.BrowserExtensionAction) => Effect.Effect<AgentTools.Status, Error>
   readonly changes: () => Stream.Stream<void>
   readonly rift: (request: Schema.Json) => Effect.Effect<Schema.Json, Error>
 }
@@ -138,6 +141,8 @@ export const layer = Layer.effect(
     const npm = yield* Npm.Service
     const fs = yield* FSUtil.Service
     const processService = yield* AppProcess.Service
+    const global = yield* Global.Service
+    const browserRoot = path.join(global.data, "browser-control", "chrome")
     const changes = yield* PubSub.unbounded<void>()
     const locks = KeyedMutex.makeUnsafe<AgentTools.ID>()
     const host = { name: os.hostname(), platform: process.platform, arch: process.arch }
@@ -171,6 +176,13 @@ export const layer = Layer.effect(
         ...(id === "browser-control" && (yield* fs.isDir(extensionDirectory))
           ? { extensionDirectory: AbsolutePath.make(extensionDirectory) }
           : {}),
+        ...(id === "browser-control" && host.platform === "linux" && exists && !config.command
+          ? {
+              browserExtension: yield* BrowserExtension.inspect(browserRoot).pipe(
+                Effect.catch((error) => Effect.succeed({ state: "not-prepared" as const, canAuthorize: false, error: error.message })),
+              ),
+            }
+          : {}),
         ...diagnoses.get(id),
       } satisfies AgentTools.Status
     })
@@ -201,6 +213,23 @@ export const layer = Layer.effect(
       list: () => Effect.forEach(ids, (id) => read(id)).pipe(Effect.map((tools) => ({ host, tools }))),
       changes: () => Stream.fromPubSub(changes),
       rift,
+      browserExtension: (action) => locks.withLock("browser-control")(
+        Effect.gen(function* () {
+          const item = yield* read("browser-control")
+          if (host.platform !== "linux") return yield* Effect.fail(new Error("Automatic Chrome extension installation is supported on Linux only"))
+          if (!item.installed || !item.extensionDirectory || item.settings.command)
+            return yield* Effect.fail(new Error("Install the managed Browser Control package before preparing its Chrome extension"))
+          yield* BrowserExtension.prepare({ root: browserRoot, extensionDirectory: item.extensionDirectory }).pipe(
+            Effect.mapError((error) => new Error(error.message)),
+          )
+          const result = action === "install" ? yield* BrowserExtension.install(browserRoot) : yield* BrowserExtension.inspect(browserRoot)
+          const status = yield* read("browser-control")
+          return { ...status, browserExtension: result }
+        }).pipe(
+          Effect.provideService(AppProcess.Service, processService),
+          Effect.mapError((error) => new Error(error.message)),
+        ),
+      ),
       configure: (input) =>
         locks.withLock(input.id)(
           Effect.gen(function* () {
@@ -271,4 +300,4 @@ const RiftReply = Schema.Union([
   }),
 ])
 
-export const node = makeGlobalNode({ service: Service, layer, deps: [KV.node, Npm.node, FSUtil.node, AppProcess.node] })
+export const node = makeGlobalNode({ service: Service, layer, deps: [KV.node, Npm.node, FSUtil.node, AppProcess.node, Global.node] })

@@ -23,6 +23,25 @@ export interface Settings extends Schema.Schema.Type<typeof Settings> {}
 export const Configure = Schema.Struct({ id: ID, settings: Settings }).annotate({ identifier: "AgentTools.Configure" })
 export interface Configure extends Schema.Schema.Type<typeof Configure> {}
 
+export const BrowserExtensionAction = Schema.Literals(["prepare", "install"]).annotate({
+  identifier: "AgentTools.BrowserExtensionAction",
+})
+export type BrowserExtensionAction = typeof BrowserExtensionAction.Type
+
+export const BrowserExtensionID = Schema.String.check(Schema.isPattern(/^[a-p]{32}$/)).annotate({
+  identifier: "AgentTools.BrowserExtensionID",
+})
+export const BrowserExtension = Schema.Struct({
+  state: Schema.Literals(["chrome-missing", "not-prepared", "administrator-required", "registered"]),
+  chrome: optional(AbsolutePath),
+  extensionID: optional(BrowserExtensionID),
+  version: optional(Schema.String),
+  command: optional(Schema.String),
+  canAuthorize: Schema.Boolean,
+  error: optional(Schema.String),
+}).annotate({ identifier: "AgentTools.BrowserExtension" })
+export interface BrowserExtension extends Schema.Schema.Type<typeof BrowserExtension> {}
+
 export const Status = Schema.Struct({
   id: ID,
   settings: Settings,
@@ -31,6 +50,7 @@ export const Status = Schema.Struct({
   package: Schema.String,
   command: optional(Command),
   extensionDirectory: optional(AbsolutePath),
+  browserExtension: optional(BrowserExtension),
   diagnosis: optional(Schema.String),
   checkedAt: optional(Schema.Number),
 }).annotate({ identifier: "AgentTools.Status" })

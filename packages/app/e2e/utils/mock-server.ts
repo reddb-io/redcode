@@ -35,6 +35,7 @@ import { Provider } from "@opencode/schema/provider"
 
 export async function mockAgentTools(page: Page, server = SERVER) {
   const operations: string[] = []
+  const extensionFailure = { message: "" }
   const snapshot: AgentTools.Snapshot = {
     host: {
       name: server === SERVER ? "Windows workstation" : "Remote Linux host",
@@ -90,12 +91,30 @@ export async function mockAgentTools(page: Page, server = SERVER) {
     if (command === "install")
       Object.assign(item, {
         installed: true,
-        ...(id === "browser-control" ? { extensionDirectory: "/owned/browser/extension/dist" } : {}),
+        ...(id === "browser-control" ? {
+          extensionDirectory: "/owned/browser/extension/dist",
+          ...(server !== SERVER ? { browserExtension: { state: "not-prepared", chrome: "/usr/bin/google-chrome", canAuthorize: false } } : {}),
+        } : {}),
       })
+    if (command === "extension") {
+      const action = request.postDataJSON().action
+      operations[operations.length - 1] = `extension:${action}`
+      if (action === "install" && extensionFailure.message)
+        return route.fulfill({ json: { ...item, browserExtension: { ...item.browserExtension, error: extensionFailure.message } }, headers })
+      Object.assign(item, {
+        browserExtension: {
+          ...item.browserExtension,
+          state: action === "install" ? "registered" : "administrator-required",
+          extensionID: "abcdefghijklmnopabcdefghijklmnop",
+          version: "0.0.25",
+          command: "sudo /bin/sh '/owned/browser/chrome/install.sh'",
+        },
+      })
+    }
     if (command === "probe") Object.assign(item, { diagnosis: "Owned fixture ready", checkedAt: 1 })
     await route.fulfill({ json: item, headers })
   })
-  return { operations, snapshot }
+  return { operations, snapshot, extensionFailure }
 }
 
 export async function mockUsageReporter(page: Page, server = SERVER) {

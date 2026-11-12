@@ -10,8 +10,9 @@ import { Checkbox } from "@reddb-io/design-system/base/Checkbox"
 import { Switch } from "@reddb-io/design-system/base/Switch"
 import type { createAgentToolsServices } from "./agent-tools"
 import type { SettingsLanguage } from "../shared.react"
+import { formatServerError } from "@/runtime/server/errors"
 
-type Operation = "install" | "configure" | "probe" | "initialize"
+type Operation = "install" | "configure" | "probe" | "initialize" | "extension-prepare" | "extension-install"
 
 export function AgentToolsSettings(props: { source: ReturnType<typeof createAgentToolsServices> }) {
   const services = useSyncExternalStore(props.source.subscribe, props.source.getSnapshot)
@@ -50,13 +51,15 @@ export function AgentToolsSettings(props: { source: ReturnType<typeof createAgen
         return
       }
       const item = Schema.decodeUnknownSync(AgentTools.Status)(result)
+      if (item.browserExtension?.error)
+        updateState((previous) => ({ ...previous, error: item.browserExtension!.error! }))
       setSnapshot((current) =>
         current ? { ...current, tools: current.tools.map((tool) => (tool.id === item.id ? item : tool)) } : current,
       )
       await refetch()
-    } catch {
+    } catch (error) {
       if (!controller.signal.aborted)
-        updateState((previous) => ({ ...previous, error: language.t("agentTools.failed") }))
+        updateState((previous) => ({ ...previous, error: formatServerError(error, undefined, language.t("agentTools.failed")) }))
     } finally {
       if (!controller.signal.aborted) updateState((previous) => ({ ...previous, busy: "" }))
     }
@@ -113,6 +116,7 @@ export function AgentToolsSettings(props: { source: ReturnType<typeof createAgen
                   busy={!!state.busy}
                   working={state.busy === item.id}
                   operation={state.operation}
+                  operationError={state.error}
                   configure={(settings) =>
                     run(item.id, "configure", () =>
                       sdk.api.agentTools.configure({ id: item.id, settings }, { signal: controller.signal }),
@@ -131,6 +135,11 @@ export function AgentToolsSettings(props: { source: ReturnType<typeof createAgen
                   initialize={(directory) =>
                     run(item.id, "initialize", () =>
                       sdk.api.agentTools.initialize({ directory }, { signal: controller.signal }),
+                    )
+                  }
+                  extension={(action) =>
+                    run(item.id, action === "install" ? "extension-install" : "extension-prepare", () =>
+                      sdk.api.agentTools.browserExtension({ action }, { signal: controller.signal }),
                     )
                   }
                 />
@@ -238,10 +247,12 @@ function AgentToolCard(props: {
   busy: boolean
   working: boolean
   operation: Operation
+  operationError: string
   configure: (settings: AgentTools.Settings) => Promise<void>
   install: () => Promise<void>
   probe: () => Promise<void>
   initialize: (directory: string) => Promise<void>
+  extension: (action: AgentTools.BrowserExtensionAction) => Promise<void>
 }) {
   const language = props.language
   const [state, updateState] = useState({
@@ -250,6 +261,7 @@ function AgentToolCard(props: {
     copyAll: props.item.settings.copyAll ?? false,
     directory: "",
     error: "",
+    copied: false,
   })
   const appearance = card({ padding: "md" })
   const save = async () => {
@@ -297,7 +309,7 @@ function AgentToolCard(props: {
                   : "agentTools.state.missing",
           )}
         </p>
-        {props.item.supported ? (
+        {props.item.supported && !props.item.browserExtension ? (
           <>
             <div className="flex flex-col gap-1 text-13-regular">
               <h4 className="font-medium">{language.t("agentTools.setup.required")}</h4>
@@ -313,14 +325,55 @@ function AgentToolCard(props: {
             </div>
           </>
         ) : null}
-        {((directory) =>
-          directory ? (
-            <label className="flex flex-col gap-1">
+        {props.item.browserExtension ? (
+          <div className="flex flex-col gap-2 text-13-regular">
+            <h4 className="font-medium">{language.t("agentTools.chrome.title")}</h4>
+            <p>{language.t("agentTools.chrome.scope")}</p>
+            <p>{language.t(`agentTools.chrome.state.${props.item.browserExtension.state}`)}</p>
+            {props.item.browserExtension.error && props.item.browserExtension.error !== props.operationError ? <pre role="alert" className="whitespace-pre-wrap text-12-regular">{props.item.browserExtension.error}</pre> : null}
+            {props.item.browserExtension.chrome ? (
+              <code className="break-all text-12-regular">{props.item.browserExtension.chrome}</code>
+            ) : null}
+            {props.item.browserExtension.state === "registered" ? (
+              <p>{language.t("agentTools.chrome.verify")}</p>
+            ) : props.item.browserExtension.state !== "chrome-missing" ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={props.busy}
+                onClick={() => void props.extension(props.item.browserExtension!.canAuthorize ? "install" : "prepare")}
+              >
+                {language.t(props.item.browserExtension.canAuthorize ? "agentTools.chrome.install" : "agentTools.chrome.prepare")}
+              </Button>
+            ) : null}
+            {props.item.browserExtension.command && props.item.browserExtension.state !== "registered" ? (
+              <div className="flex flex-col gap-1">
+                <label className="flex flex-col gap-1">
+                  {language.t("agentTools.chrome.command")}
+                  <Input readOnly value={props.item.browserExtension.command} />
+                </label>
+                <Button variant="secondary" size="sm" onClick={() => {
+                  void navigator.clipboard.writeText(props.item.browserExtension!.command!).then(
+                    () => updateState((previous) => ({ ...previous, copied: true })),
+                    (error) => updateState((previous) => ({ ...previous, error: formatServerError(error) })),
+                  )
+                }}>{language.t(state.copied ? "common.copied" : "agentTools.chrome.copyCommand")}</Button>
+                <span className="text-12-regular text-ink-muted">{language.t("agentTools.chrome.commandHelp")}</span>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        {((directory) => directory ? (
+          <details open={props.item.browserExtension ? undefined : true}>
+            <summary>{language.t("agentTools.chrome.manual")}</summary>
+            {props.item.browserExtension ? <p className="mt-2 text-13-regular">{language.t("agentTools.browser-control.requirements")}</p> : null}
+            <label className="mt-2 flex flex-col gap-1">
               {language.t("agentTools.extension")}
               <Input readOnly value={directory} aria-label={language.t("agentTools.extension")} />
               <span className="text-12-regular text-ink-muted">{language.t("agentTools.extensionHelp")}</span>
             </label>
-          ) : null)(props.item.extensionDirectory)}
+          </details>
+        ) : null)(props.item.extensionDirectory)}
         {((diagnosis) =>
           diagnosis ? (
             <pre className="max-h-48 overflow-auto whitespace-pre-wrap text-12-regular">{diagnosis}</pre>

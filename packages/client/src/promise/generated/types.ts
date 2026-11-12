@@ -1246,6 +1246,8 @@ export type AgentToolsID = "rift" | "browser-control" | "terminal-control" | "co
 
 export type AgentToolsSettings = { enabled: boolean; command?: Array<string>; timeout?: number; copyAll?: boolean }
 
+export type AgentToolsBrowserExtensionID = string
+
 export type ExecutionCapabilityKind = "browser" | "desktop" | "terminal" | "workspace" | "other"
 
 export type ExecutionCapabilitySource = "builtin" | "managed" | "custom" | "client-mcp" | "worker"
@@ -3189,16 +3191,14 @@ export type HarnessTask = {
   wait?: HarnessTaskWait
 }
 
-export type AgentToolsStatus = {
-  id: AgentToolsID
-  settings: AgentToolsSettings
-  supported: boolean
-  installed: boolean
-  package: string
-  command?: Array<string>
-  extensionDirectory?: string
-  diagnosis?: string
-  checkedAt?: number | "Infinity" | "-Infinity" | "NaN"
+export type AgentToolsBrowserExtension = {
+  state: "chrome-missing" | "not-prepared" | "administrator-required" | "registered"
+  chrome?: string
+  extensionID?: AgentToolsBrowserExtensionID
+  version?: string
+  command?: string
+  canAuthorize: boolean
+  error?: string
 }
 
 export type ExecutionCapabilityInfo = {
@@ -3694,10 +3694,17 @@ export type WorkerArtifact = {
 
 export type WorkerManifest = { tasks: Array<WorkerTask> }
 
-export type AgentToolsSnapshot = {
-  host: { name: string; platform: string; arch: string }
-  tools: Array<AgentToolsStatus>
-  capabilities?: Array<ExecutionCapabilityInfo>
+export type AgentToolsStatus = {
+  id: AgentToolsID
+  settings: AgentToolsSettings
+  supported: boolean
+  installed: boolean
+  package: string
+  command?: Array<string>
+  extensionDirectory?: string
+  browserExtension?: AgentToolsBrowserExtension
+  diagnosis?: string
+  checkedAt?: number | "Infinity" | "-Infinity" | "NaN"
 }
 
 export type UsageReporterSnapshot = {
@@ -4302,6 +4309,12 @@ export type WorkerBatch = {
   error?: string
   accountID?: string
   workspaceID?: string
+}
+
+export type AgentToolsSnapshot = {
+  host: { name: string; platform: string; arch: string }
+  tools: Array<AgentToolsStatus>
+  capabilities?: Array<ExecutionCapabilityInfo>
 }
 
 export type SessionMessageCompaction =
@@ -13053,6 +13066,10 @@ export type AgentToolsProbeInput = {
 }
 
 export type AgentToolsProbeOutput = AgentToolsStatus
+
+export type AgentToolsBrowserExtensionInput = { readonly action: { readonly action: "prepare" | "install" }["action"] }
+
+export type AgentToolsBrowserExtensionOutput = AgentToolsStatus
 
 export type AgentToolsInitializeInput = { readonly directory: { readonly directory: string }["directory"] }
 

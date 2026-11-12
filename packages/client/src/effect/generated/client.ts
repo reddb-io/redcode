@@ -528,6 +528,8 @@ import type {
   AgentToolsInstallOutput,
   AgentToolsProbeInput,
   AgentToolsProbeOutput,
+  AgentToolsBrowserExtensionInput,
+  AgentToolsBrowserExtensionOutput,
   AgentToolsInitializeInput,
   AgentToolsInitializeOutput,
   UsageReporterSnapshotOutput,
@@ -3183,6 +3185,14 @@ const EndpointAgentToolsProbe = (raw: RawClient["server.agentTools"]) => (input:
     raw["agentTools.probe"]({ params: { id: input["id"] } }).pipe(Effect.mapError(mapClientError)),
   )
 
+const EndpointAgentToolsBrowserExtension =
+  (raw: RawClient["server.agentTools"]) => (input: AgentToolsBrowserExtensionInput) =>
+    preserveEffect<AgentToolsBrowserExtensionOutput>()(
+      raw["agentTools.browserExtension"]({ payload: { action: input["action"] } }).pipe(
+        Effect.mapError(mapClientError),
+      ),
+    )
+
 const EndpointAgentToolsInitialize = (raw: RawClient["server.agentTools"]) => (input: AgentToolsInitializeInput) =>
   preserveEffect<AgentToolsInitializeOutput>()(
     raw["agentTools.initialize"]({ payload: { directory: input["directory"] } }).pipe(Effect.mapError(mapClientError)),
@@ -3193,6 +3203,7 @@ const adaptGroupAgentTools = (raw: RawClient["server.agentTools"]) => ({
   configure: EndpointAgentToolsConfigure(raw),
   install: EndpointAgentToolsInstall(raw),
   probe: EndpointAgentToolsProbe(raw),
+  browserExtension: EndpointAgentToolsBrowserExtension(raw),
   initialize: EndpointAgentToolsInitialize(raw),
 })
 

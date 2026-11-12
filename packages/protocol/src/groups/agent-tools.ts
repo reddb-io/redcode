@@ -33,6 +33,13 @@ export const AgentToolsGroup = HttpApiGroup.make("server.agentTools")
     }).annotateMerge(OpenApi.annotations({ identifier: "agentTools.probe" })),
   )
   .add(
+    HttpApiEndpoint.post("agentTools.browserExtension", "/api/agent-tools/browser-control/extension", {
+      payload: Schema.Struct({ action: AgentTools.BrowserExtensionAction }),
+      success: AgentTools.Status,
+      error,
+    }).annotateMerge(OpenApi.annotations({ identifier: "agentTools.browserExtension" })),
+  )
+  .add(
     HttpApiEndpoint.post("agentTools.initialize", "/api/agent-tools/rift/initialize", {
       payload: AgentTools.Initialize,
       success: Schema.Json,

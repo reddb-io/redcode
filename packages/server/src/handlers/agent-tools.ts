@@ -40,6 +40,7 @@ export const AgentToolsHandler = HttpApiBuilder.group(Api, "server.agentTools", 
       .handle("agentTools.configure", (ctx) => call(tools.configure(ctx.payload)))
       .handle("agentTools.install", (ctx) => call(tools.install(ctx.params.id)))
       .handle("agentTools.probe", (ctx) => call(tools.probe(ctx.params.id)))
+      .handle("agentTools.browserExtension", (ctx) => call(tools.browserExtension(ctx.payload.action)))
       .handle("agentTools.initialize", (ctx) => call(tools.rift({ command: "init", at: ctx.payload.directory })))
   }),
 )

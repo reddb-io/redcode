@@ -6926,6 +6926,12 @@ export type AgentToolsProbeOperation<E = never> = (
   input: AgentToolsProbeInput,
 ) => Effect.Effect<AgentToolsProbeOutput, E>
 
+export type AgentToolsBrowserExtensionInput = { readonly action: AgentTools.BrowserExtensionAction }
+export type AgentToolsBrowserExtensionOutput = AgentTools.Status
+export type AgentToolsBrowserExtensionOperation<E = never> = (
+  input: AgentToolsBrowserExtensionInput,
+) => Effect.Effect<AgentToolsBrowserExtensionOutput, E>
+
 export type AgentToolsInitializeInput = { readonly directory: AbsolutePath }
 export type AgentToolsInitializeOutput = Schema.Json
 export type AgentToolsInitializeOperation<E = never> = (
@@ -6937,6 +6943,7 @@ export interface AgentToolsApi<E = never> {
   readonly configure: AgentToolsConfigureOperation<E>
   readonly install: AgentToolsInstallOperation<E>
   readonly probe: AgentToolsProbeOperation<E>
+  readonly browserExtension: AgentToolsBrowserExtensionOperation<E>
   readonly initialize: AgentToolsInitializeOperation<E>
 }
 

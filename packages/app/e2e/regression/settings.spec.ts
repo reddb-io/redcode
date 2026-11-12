@@ -457,6 +457,27 @@ test("agent tools operate on the selected remote host", async ({ page }) => {
   await expect(terminal.getByRole("switch", { name: "Enable for agents", exact: true })).toBeEnabled()
   expect(remote.operations).toEqual(["install"])
   expect(local.operations).toEqual([])
+  const browser = settings.getByRole("region", { name: "Browser Control", exact: true })
+  await browser.getByRole("button", { name: "Install managed version", exact: true }).click()
+  await expect(browser.getByText("Chrome detected. The extension is ready to be packaged and registered.", { exact: true })).toBeVisible()
+  await browser.getByRole("button", { name: "Prepare Linux install command", exact: true }).click()
+  await expect(browser.getByLabel("Installation command on this host", { exact: true })).toHaveValue("sudo /bin/sh '/owned/browser/chrome/install.sh'")
+  await expect(browser.getByText("Installer prepared. Administrator authorization is still required.", { exact: true })).toBeVisible()
+  const tool = remote.snapshot.tools.find((item) => item.id === "browser-control")!
+  Object.assign(tool.browserExtension!, { canAuthorize: true })
+  await settings.getByRole("button", { name: "Refresh status", exact: true }).click()
+  remote.extensionFailure.message = "Authorization cancelled (pkexec exit 126)."
+  await browser.getByRole("button", { name: "Install in Chrome (administrator)", exact: true }).click()
+  await expect(settings.getByRole("alert")).toHaveText("Authorization cancelled (pkexec exit 126).")
+  await expect(browser.getByText("Installer prepared. Administrator authorization is still required.", { exact: true })).toBeVisible()
+  remote.extensionFailure.message = ""
+  await browser.getByRole("button", { name: "Install in Chrome (administrator)", exact: true }).click()
+  await expect(browser.getByText("Extension registered with Chrome. Browser connection has not been verified.", { exact: true })).toBeVisible()
+  await expect(browser.getByRole("switch", { name: "Enable for agents", exact: true })).not.toBeChecked()
+  await browser.getByRole("button", { name: "Run diagnostics", exact: true }).click()
+  await expect(browser.getByText("Owned fixture ready", { exact: true })).toBeVisible()
+  expect(remote.operations).toEqual(["install", "install", "extension:prepare", "extension:install", "extension:install", "probe"])
+  expect(local.operations).toEqual([])
 })
 
 test("usage reporting settings save on the selected server without returning the secret", async ({

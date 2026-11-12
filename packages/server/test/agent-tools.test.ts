@@ -98,6 +98,8 @@ it.live(
       ).toBe(false)
       expect(snapshot.tools.every((item) => !item.settings.enabled && !item.installed)).toBe(true)
       expect(attempts).toEqual([])
+      expect((yield* Effect.tryPromise(() => api.agentTools.browserExtension({ action: "prepare" })).pipe(Effect.result))._tag).toBe("Failure")
+      expect(attempts).toEqual([])
       expect(yield* Effect.promise(() => Bun.file(launches).exists())).toBe(false)
       const unavailable = yield* Effect.tryPromise(() =>
         api.agentTools.configure({ id: "browser-control", settings: { enabled: true } }),
@@ -203,6 +205,7 @@ it.live(
                 configure: () => Effect.fail(new Error("unused configuration")),
                 install: () => Effect.fail(new Error("unused installation")),
                 probe: () => Effect.succeed(status),
+                browserExtension: () => Effect.fail(new Error("unused browser installation")),
                 rift: (request) =>
                   Effect.sync(() => {
                     requests.push(request)

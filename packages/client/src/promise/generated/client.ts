@@ -526,6 +526,8 @@ import type {
   AgentToolsInstallOutput,
   AgentToolsProbeInput,
   AgentToolsProbeOutput,
+  AgentToolsBrowserExtensionInput,
+  AgentToolsBrowserExtensionOutput,
   AgentToolsInitializeInput,
   AgentToolsInitializeOutput,
   UsageReporterSnapshotOutput,
@@ -4349,6 +4351,18 @@ export function make(options: ClientOptions) {
           {
             method: "POST",
             path: `/api/agent-tools/${encodeURIComponent(input.id)}/probe`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 409],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      browserExtension: (input: AgentToolsBrowserExtensionInput, requestOptions?: RequestOptions) =>
+        request<AgentToolsBrowserExtensionOutput>(
+          {
+            method: "POST",
+            path: `/api/agent-tools/browser-control/extension`,
+            body: { action: input["action"] },
             successStatus: 200,
             declaredStatuses: [400, 401, 403, 409],
             empty: false,
