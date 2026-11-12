@@ -1,5 +1,11 @@
 # @reddb-io/redcode
 
+## 0.87.21
+
+### Patch Changes
+
+- Refresh the Agent tools capability summary after installation, configuration and diagnostics, and explain how to attach a Chrome or Edge tab to Browser Control before using it.
+
 ## 0.87.20
 
 ### Patch Changes
