@@ -1,5 +1,14 @@
 # @reddb-io/redcode
 
+## 0.87.24
+
+### Patch Changes
+
+- Add Creator as the fifth built-in mode for authoring interactive artifacts, procedural 3D scenes, tools, skills and plugin source. Bundle a Redcode-specific creation guide, reuse the existing Design preview runtime and keep native GUI plugin installation gates intact. Preserve Creator's identity colour across desktop, web and TUI.
+- Install published Creator artifacts as persistent isolated project components in Desktop and Web. Add the component lifecycle tool and authenticated API, revision-safe updates, portable snapshots, enable/disable/removal, a Creator panel and management within Agent Extensions. Load previews only while visible and release their iframe runtime on hide or disable.
+- Add MCP remove/rm commands with project, global and explicit-file scopes while preserving credentials and unrelated JSONC settings. Make MCP add honor Redcode configuration precedence, preserve local executable arguments after --, and reject malformed configuration before editing.
+- Expose MCP connect/enable, disconnect/disable, reconnect, restart, reload and reauth commands in the CLI, and a connection and sign-in action menu in the TUI. Make Question a read-only investigator that reports findings using files, web reads, MCP resources and browser observations while keeping arbitrary execution and changes blocked. Advertise permitted tools directly when Code Mode execution is denied.
+
 ## 0.87.23
 
 ### Patch Changes
