@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "react",
+    "composite": false,
+    "noEmit": true,
+    "emitDeclarationOnly": false
+  },
+  "include": ["main.tsx", "scene.ts", "build.ts", "verify.ts"]
+}
