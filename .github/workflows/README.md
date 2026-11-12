@@ -91,6 +91,10 @@ platform selector. Builds, tests and publication are all skipped in this mode.
 Reviewed main workflows use `reddb-public-linux-x64` for Linux-hosted Zig
 sidecar cross-compilation, the Design web bundle, lint/typecheck and vault
 coverage. Only `reddb-io/redcode` at `refs/heads/main` selects that runner.
+For a manual `redcode.yml` release, select `linux_runner: ubuntu-latest` when
+the company runner is unavailable or its queue is blocking publication. This
+uses GitHub-hosted Linux for that run's sidecar and Design jobs; the default
+remains `reddb-public-linux-x64`.
 The GitHub runner group separately restricts admission to these two workflow
 paths on main. Forks, PR refs, tags and other branches are excluded.
 
