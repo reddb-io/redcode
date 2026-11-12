@@ -1,5 +1,11 @@
 # @reddb-io/redcode
 
+## 0.87.27
+
+### Patch Changes
+
+- Prevent an asynchronous broken pipe in the desktop console log from interrupting the application.
+
 ## 0.87.26
 
 ### Patch Changes
