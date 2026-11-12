@@ -11,13 +11,15 @@ import { SettingsHeader, SettingsList, type SettingsLanguage } from "../shared.r
 import { SettingsIcon } from "../icon.react"
 import { configuredLanguageServers } from "../workspaces/project-lsp"
 import type { createExtensionsServices, ExtensionsSnapshot } from "./extensions"
+import type { createAgentToolsServices } from "../agent-tools/agent-tools"
+import { AgentToolsSettings } from "../agent-tools/view.react"
 import "../workspaces/project.css"
 
 type Services = ReturnType<typeof createExtensionsServices>
-const tabs = ["mcps", "plugins", "skills", "lsps"] as const
+const tabs = ["mcps", "plugins", "skills", "tools", "lsps"] as const
 const skillKey = (item: { name: string; path: string }) => `${item.name}\n${item.path}`
 const failureMessage = (error: unknown) => (error instanceof Error ? error.message : String(error))
-export function Extensions(props: { services: Services }) {
+export function Extensions(props: { services: Services; tools?: ReturnType<typeof createAgentToolsServices> }) {
   const services = props.services
   const state = useSyncExternalStore(services.snapshot.subscribe, services.snapshot.getSnapshot)
   const language = state.language
@@ -102,11 +104,17 @@ export function Extensions(props: { services: Services }) {
           label={language.t("settings.tab.extensions")}
           value={state.subtab}
           onValueChange={(value) => {
-            if (value === "mcps" || value === "plugins" || value === "skills" || (project && value === "lsps"))
+            if (
+              value === "mcps" ||
+              value === "plugins" ||
+              value === "skills" ||
+              (!project && props.tools && value === "tools") ||
+              (project && value === "lsps")
+            )
               services.select(value)
           }}
           items={tabs
-            .filter((value) => project || value !== "lsps")
+            .filter((value) => (project ? value !== "tools" : value !== "lsps" && (value !== "tools" || !!props.tools)))
             .map((value) => ({
               value,
               label: language.t(
@@ -116,7 +124,9 @@ export function Extensions(props: { services: Services }) {
           className={`${project ? "project-settings-extension-tabs" : "settings-extensions-tabs"} settings-subtabs`}
         >
           {(item) =>
-            item.value !== state.subtab ? null : item.value === "lsps" ? (
+            item.value !== state.subtab ? null : item.value === "tools" ? (
+              props.tools ? <AgentToolsSettings source={props.tools} /> : null
+            ) : item.value === "lsps" ? (
               <LanguageServers state={state} services={services} />
             ) : (
               <div className={project ? "project-settings-extension-section" : "settings-section"}>

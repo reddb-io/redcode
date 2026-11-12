@@ -372,7 +372,16 @@ test("agent tools share host settings, install explicitly and preserve configura
 }, testInfo) => {
   const { settings } = await open(page)
   const tools = await mockAgentTools(page)
-  await settings.getByRole("tab", { name: "Agent tools", exact: true }).click()
+  await settings.getByRole("tab", { name: "Agent extensions", exact: true }).click()
+  await expect(settings.getByRole("tab", { name: "Agent tools", exact: true })).toHaveCount(0)
+  await expect(settings.getByRole("tablist", { name: "Agent extensions", exact: true }).getByRole("tab")).toHaveText([
+    "MCPs",
+    "Plugins",
+    "Skills",
+    "Tools",
+  ])
+  await settings.getByRole("tab", { name: "Tools", exact: true }).click()
+  await expect(page).toHaveURL("/settings?tab=extensions&subtab=tools")
   await expect(settings.getByText(/Execution host: Windows workstation/)).toBeVisible()
   await expect(settings.getByRole("heading", { name: "Install and enable tools", exact: true })).toBeVisible()
   await expect(settings.getByText(/Installation downloads the package; it does not enable it for agents/)).toBeVisible()
@@ -438,6 +447,8 @@ test("agent tools operate on the selected remote host", async ({ page }) => {
   const local = await mockAgentTools(page)
   const remote = await mockAgentTools(page, REMOTE_SERVER)
   await page.goto(`/settings?server=${encodeURIComponent(REMOTE_SERVER)}&tab=agent-tools`)
+  await expect(settings.getByRole("tab", { name: "Agent extensions", exact: true })).toHaveAttribute("aria-selected", "true")
+  await expect(settings.getByRole("tab", { name: "Tools", exact: true })).toHaveAttribute("aria-selected", "true")
   await expect(settings.getByText(/Execution host: Remote Linux host/)).toBeVisible()
   await expect(settings.getByText(/Installation and actions happen on Remote Linux host/)).toBeVisible()
   const terminal = settings.getByRole("region", { name: "Terminal Control", exact: true })

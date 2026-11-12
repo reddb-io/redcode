@@ -49,6 +49,31 @@ describe("settings route", () => {
     })
   })
 
+  test("maps legacy agent tools links to the unified host extensions tab", () => {
+    for (const server of [undefined, "https://remote.example.test"]) {
+      const search = new URLSearchParams({ tab: "agent-tools" })
+      if (server) search.set("server", server)
+      const view = parseSettingsView(search.toString(), !!server)
+      expect(view).toEqual({
+        ...(server ? { type: "server", server } : { type: "root" }),
+        tab: "extensions",
+        subtab: "tools",
+      })
+      const canonical = settingsViewUrl(view)
+      expect(new URL(canonical, "http://localhost").searchParams.get("tab")).toBe("extensions")
+      expect(new URL(canonical, "http://localhost").searchParams.get("subtab")).toBe("tools")
+      expect(parseSettingsView(new URL(canonical, "http://localhost").search, !!server)).toEqual(view)
+    }
+    expect(parseSettingsView("?server=local&project=%2Fwork&tab=extensions&subtab=tools", false)).toEqual({
+      type: "project",
+      server: "local",
+      project: "/work",
+      parent: "root",
+      tab: "extensions",
+      subtab: undefined,
+    })
+  })
+
   test("keeps a restored server page until the server lists load", () => {
     const view: SettingsView = { type: "server", server: "wsl:Debian", tab: "models" }
     const local = { key: "local", connected: true, starting: false }

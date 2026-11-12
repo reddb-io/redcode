@@ -11,6 +11,7 @@ import { createSignal, onCleanup } from "solid-js"
 import { settingsLanguage, type SettingsLanguage } from "../shared.react"
 import type { SettingsView } from "../surface"
 import { Extensions } from "./extensions.react"
+import { createAgentToolsServices } from "../agent-tools/agent-tools"
 
 type Skill = { name: string; path: string }
 export type ExtensionsSnapshot = {
@@ -132,5 +133,6 @@ export function SettingsExtensions(props: {
   onSubtab: (value: SettingsView["subtab"]) => void
 }) {
   const services = createExtensionsServices(props)
-  return <ReactView component={Extensions} props={{ services }} />
+  const tools = createAgentToolsServices()
+  return <ReactView component={Extensions} props={{ services, tools }} />
 }

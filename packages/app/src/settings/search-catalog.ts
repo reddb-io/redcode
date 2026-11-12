@@ -1,5 +1,5 @@
 import type { useLanguage } from "@/runtime/i18n/language"
-import type { SettingsProjectTab, SettingsRootTab, SettingsServerTab } from "./surface"
+import type { SettingsProjectTab, SettingsRootTab, SettingsServerTab, SettingsView } from "./surface"
 
 type Label = Parameters<ReturnType<typeof useLanguage>["t"]>[0]
 
@@ -11,7 +11,7 @@ type Entry<Tab> = {
   keywords?: string
   description?: Label
   section?: Label
-  subtab?: "mcps" | "plugins" | "skills" | "lsps"
+  subtab?: SettingsView["subtab"]
   available?: "desktop" | "browser" | "mobile"
 }
 
@@ -204,6 +204,13 @@ export const serverSettings: Entry<SettingsServerTab>[] = [
   },
   { tab: "extensions", subtab: "plugins", label: "settings.extensions.tab.plugins" },
   { tab: "extensions", subtab: "skills", label: "settings.extensions.tab.skills" },
+  {
+    tab: "extensions",
+    subtab: "tools",
+    label: "settings.extensions.tab.tools",
+    description: "agentTools.description",
+    keywords: "agent tools browser control computer use terminal rift capabilities diagnostics",
+  },
   {
     tab: "general",
     label: "settings.general.row.shell.title",

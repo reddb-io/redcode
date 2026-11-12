@@ -35,7 +35,7 @@ export type SettingsProjectTab = "general" | "workspaces" | "extensions"
 
 type SettingsViewState = {
   target?: string
-  subtab?: "mcps" | "plugins" | "skills" | "lsps"
+  subtab?: "mcps" | "plugins" | "skills" | "tools" | "lsps"
   searchActivation?: number
 }
 
@@ -97,6 +97,7 @@ const subtabs: Record<NonNullable<SettingsView["subtab"]>, true> = {
   mcps: true,
   plugins: true,
   skills: true,
+  tools: true,
   lsps: true,
 }
 
@@ -107,10 +108,11 @@ export function parseSettingsView(
   extensionTabs?: ReadonlySet<string>,
 ): SettingsView {
   const params = new URLSearchParams(search)
-  const tab = params.get("tab") ?? "general"
   const server = params.get("server")
   const project = params.get("project")
-  const subtab = params.get("subtab")
+  const legacyTools = !project && params.get("tab") === "agent-tools"
+  const tab = legacyTools ? "extensions" : params.get("tab") ?? "general"
+  const subtab = legacyTools ? "tools" : params.get("subtab")
   const nested = subtab && isSubtab(subtab) && tab === "extensions" ? subtab : undefined
 
   if (project && server && isProjectTab(tab)) {
@@ -120,7 +122,7 @@ export function parseSettingsView(
       project,
       parent: multipleServers ? "server" : "root",
       tab,
-      subtab: nested,
+      subtab: nested === "tools" ? undefined : nested,
       ...transient,
     }
   }

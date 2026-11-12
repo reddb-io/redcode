@@ -63,11 +63,8 @@ export function AgentToolsSettings(props: { source: ReturnType<typeof createAgen
   }
   return (
     <>
-      <div className="settings-tab-header">
-        <h2 className="settings-tab-title">{language.t("agentTools.title")}</h2>
+      <div className="settings-section">
         <p className="text-13-regular text-ink-muted">{language.t("agentTools.description")}</p>
-      </div>
-      <div className="settings-tab-body settings-tab-body--sectioned">
         {unavailable ? (
           <>
             <p role="alert">{language.t("agentTools.unavailable")}</p>

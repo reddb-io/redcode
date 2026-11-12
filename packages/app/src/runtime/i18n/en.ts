@@ -2190,6 +2190,7 @@ export const dict = {
   "settings.extensions.description": "Manage extensions available on this server",
   "settings.extensions.tab.mcps": "MCPs",
   "settings.extensions.tab.skills": "Skills",
+  "settings.extensions.tab.tools": "Tools",
   "settings.extensions.availableAll": "Available to all projects",
   "settings.extensions.manageConfig": "Manage in redcode.json",
   "settings.extensions.plugins.check": "Check for updates",
