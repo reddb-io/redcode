@@ -12,6 +12,9 @@ import { PluginModule } from "@opencode/core/plugin/module"
 import { Watcher } from "@opencode/core/filesystem/watcher"
 import { fromPromise } from "@opencode/plugin/promise/adapter"
 import { Session } from "@opencode/schema/session"
+import { SessionMessage } from "@opencode/schema/session-message"
+import { Agent } from "@opencode/core/agent"
+import { Tool } from "@opencode/core/tool"
 import { ExecutionCapability as CapabilityContract } from "@opencode/schema/execution-capability"
 import { testEffect } from "./lib/effect"
 import { PluginTestLayer } from "./plugin/fixture"
@@ -42,9 +45,7 @@ it.effect("attributes leased capabilities to the plugin and removes them when it
       },
     ])
 
-    expect(yield* capabilities.list()).toMatchObject([
-      { provider: { type: "plugin", id: "browser-provider" } },
-    ])
+    expect(yield* capabilities.list()).toMatchObject([{ provider: { type: "plugin", id: "browser-provider" } }])
 
     yield* plugins.activate([])
     expect(yield* capabilities.list()).toEqual([])
@@ -137,6 +138,41 @@ it.live("loads a local plugin with its configured options", () =>
     yield* plugins.activate([definition])
 
     expect(yield* commands.get("greet")).toMatchObject({ description: "Configured greeting" })
+  }),
+)
+
+it.live("loads an import-free Creator package, calls its tool and withdraws it when unloaded", () =>
+  Effect.gen(function* () {
+    const plugins = yield* Plugin.Service
+    const tools = yield* Tool.Service
+    yield* plugins.awaitActivation
+    const modules = yield* PluginModule.make().pipe(Effect.provide(Watcher.testLayer))
+    const definition = yield* modules.load({
+      type: "add",
+      target: path.join(import.meta.dir, "plugin/fixtures/creator-echo"),
+      options: {},
+    })
+    if ("pending" in definition || "blocked" in definition) return yield* Effect.die("Creator package was not loaded")
+    yield* plugins.activate([definition])
+
+    expect((yield* plugins.list()).find((item) => item.id === "creator.echo")?.state.status).toBe("active")
+    const snapshot = yield* tools.snapshot()
+    expect(snapshot.definitions.find((tool) => tool.name === "creator_echo")?.inputSchema).toMatchObject({
+      type: "object",
+      properties: { text: { type: "string" } },
+      required: ["text"],
+    })
+    expect(
+      yield* snapshot.execute({
+        sessionID: Session.ID.make("ses_creator_echo"),
+        agent: Agent.ID.make("creator"),
+        messageID: SessionMessage.ID.make("msg_creator_echo"),
+        call: { type: "tool-call", name: "creator_echo", id: "call_creator_echo", input: { text: "Creator is ready" } },
+      }),
+    ).toMatchObject({ content: [{ type: "text", text: "Creator is ready" }] })
+
+    yield* plugins.activate([])
+    expect((yield* tools.snapshot()).definitions.some((tool) => tool.name === "creator_echo")).toBe(false)
   }),
 )
 

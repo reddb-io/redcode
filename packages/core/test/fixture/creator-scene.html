@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Creator · Procedural scene</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font:
+          14px/1.5 system-ui,
+          sans-serif;
+        background: #12151b;
+        color: #e6e9ef;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+      }
+      main {
+        max-width: 980px;
+        margin: auto;
+      }
+      header,
+      .controls {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      header {
+        margin-bottom: 18px;
+      }
+      h1 {
+        font-size: 22px;
+        letter-spacing: -0.5px;
+        margin: 0;
+      }
+      p {
+        color: #9ca6b7;
+        margin: 4px 0;
+      }
+      .tag {
+        border: 1px solid #384255;
+        border-radius: 18px;
+        padding: 4px 10px;
+        color: #b4c6e6;
+        font-size: 12px;
+      }
+      .stage {
+        position: relative;
+        background: #191f29;
+        border: 1px solid #30394a;
+        border-radius: 12px;
+        overflow: hidden;
+      }
+      canvas {
+        display: block;
+        width: 100%;
+        aspect-ratio: 720/520;
+      }
+      .caption {
+        position: absolute;
+        bottom: 16px;
+        left: 18px;
+        font-size: 12px;
+        color: #9ca6b7;
+      }
+      .controls {
+        margin-top: 16px;
+        flex-wrap: wrap;
+      }
+      .buttons {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      button {
+        color: #e6e9ef;
+        background: #222a37;
+        border: 1px solid #3a4659;
+        padding: 8px 13px;
+        border-radius: 7px;
+        cursor: pointer;
+      }
+      button:hover {
+        background: #303d50;
+      }
+      button:focus-visible {
+        outline: 2px solid #99baff;
+        outline-offset: 3px;
+      }
+      output {
+        font-size: 12px;
+        color: #a5b5cc;
+      }
+    </style>
+  </head>
+  <body>
+    <main data-design-screen="scene">
+      <header>
+        <div>
+          <h1>Procedural scene</h1>
+          <p>A local 3D creation, reviewed in Redcode.</p>
+        </div>
+        <span class="tag">Canvas · WebGL</span>
+      </header>
+      <div class="stage">
+        <canvas width="720" height="520" aria-label="Interactive three-dimensional cube"></canvas>
+        <span class="caption">12 triangles · no network · render on demand</span>
+      </div>
+      <div class="controls">
+        <div class="buttons">
+          <button id="rotate" type="button">Rotate scene</button>
+          <button id="material" type="button">Warm clay</button>
+          <button id="dispose" type="button">Release graphics</button>
+        </div>
+        <output id="status" role="status">Initializing renderer…</output>
+      </div>
+    </main>
+    <script>
+      ;(() => {
+        const canvas = document.querySelector("canvas")
+        const status = document.querySelector("output")
+        const gl = canvas.getContext("webgl", { antialias: false, preserveDrawingBuffer: true })
+        if (!gl) {
+          status.textContent = "WebGL unavailable in this browser."
+          document.querySelectorAll("button").forEach((button) => {
+            button.disabled = true
+          })
+          return
+        }
+        const shader = (type, source) => {
+          const item = gl.createShader(type)
+          gl.shaderSource(item, source)
+          gl.compileShader(item)
+          if (!gl.getShaderParameter(item, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(item))
+          return item
+        }
+        const vertex = shader(
+          gl.VERTEX_SHADER,
+          `attribute vec3 position; attribute float shade; varying float light;
+          uniform float angle; uniform float aspect;
+          void main() { float c = cos(angle), s = sin(angle); float x = position.x*c + position.z*s;
+            float z = -position.x*s + position.z*c; float y = position.y*.86 - z*.51;
+            z = position.y*.51 + z*.86; float perspective = 1.65/(z+3.4);
+            gl_Position = vec4(x*perspective/aspect, y*perspective, z*.05, 1.); light = shade; }`,
+        )
+        const fragment = shader(
+          gl.FRAGMENT_SHADER,
+          `precision mediump float; uniform vec3 color; varying float light;
+          void main() { gl_FragColor = vec4(color*light, 1.); }`,
+        )
+        const program = gl.createProgram()
+        gl.attachShader(program, vertex)
+        gl.attachShader(program, fragment)
+        gl.linkProgram(program)
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program))
+        const faces = [
+          [
+            [-1, -1, 1],
+            [1, -1, 1],
+            [1, 1, 1],
+            [-1, 1, 1],
+          ],
+          [
+            [1, -1, -1],
+            [-1, -1, -1],
+            [-1, 1, -1],
+            [1, 1, -1],
+          ],
+          [
+            [-1, 1, 1],
+            [1, 1, 1],
+            [1, 1, -1],
+            [-1, 1, -1],
+          ],
+          [
+            [-1, -1, -1],
+            [1, -1, -1],
+            [1, -1, 1],
+            [-1, -1, 1],
+          ],
+          [
+            [1, -1, 1],
+            [1, -1, -1],
+            [1, 1, -1],
+            [1, 1, 1],
+          ],
+          [
+            [-1, -1, -1],
+            [-1, -1, 1],
+            [-1, 1, 1],
+            [-1, 1, -1],
+          ],
+        ]
+        const positions = new Float32Array(
+          faces.flatMap((face, index) =>
+            [0, 1, 2, 0, 2, 3].flatMap((corner) => [...face[corner], [0.95, 0.65, 1, 0.55, 0.8, 0.7][index]]),
+          ),
+        )
+        const buffer = gl.createBuffer()
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer)
+        gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW)
+        gl.useProgram(program)
+        const position = gl.getAttribLocation(program, "position")
+        const shade = gl.getAttribLocation(program, "shade")
+        gl.enableVertexAttribArray(position)
+        gl.enableVertexAttribArray(shade)
+        gl.vertexAttribPointer(position, 3, gl.FLOAT, false, 16, 0)
+        gl.vertexAttribPointer(shade, 1, gl.FLOAT, false, 16, 12)
+        gl.uniform1f(gl.getUniformLocation(program, "aspect"), canvas.width / canvas.height)
+        gl.enable(gl.DEPTH_TEST)
+        const state = { angle: 0.65, warm: false, released: false, draws: 0 }
+        const draw = () => {
+          if (state.released) return
+          gl.viewport(0, 0, canvas.width, canvas.height)
+          gl.clearColor(0.098, 0.122, 0.16, 1)
+          gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
+          gl.uniform1f(gl.getUniformLocation(program, "angle"), state.angle)
+          gl.uniform3fv(gl.getUniformLocation(program, "color"), state.warm ? [0.92, 0.52, 0.33] : [0.45, 0.65, 0.96])
+          gl.drawArrays(gl.TRIANGLES, 0, 36)
+          state.draws++
+          status.textContent = `Ready · ${state.warm ? "warm clay" : "blue ceramic"} · ${state.draws} frames`
+        }
+        document.querySelector("#rotate").onclick = () => {
+          state.angle += 0.4
+          draw()
+        }
+        document.querySelector("#material").onclick = () => {
+          state.warm = !state.warm
+          draw()
+        }
+        const dispose = () => {
+          if (state.released) return
+          state.released = true
+          gl.bindBuffer(gl.ARRAY_BUFFER, null)
+          gl.useProgram(null)
+          gl.deleteBuffer(buffer)
+          gl.deleteProgram(program)
+          gl.deleteShader(vertex)
+          gl.deleteShader(fragment)
+          document.querySelectorAll("button").forEach((button) => {
+            button.disabled = true
+          })
+          status.textContent = "Graphics released · no render loop"
+          gl.getExtension("WEBGL_lose_context")?.loseContext()
+        }
+        document.querySelector("#dispose").onclick = dispose
+        addEventListener("pagehide", dispose, { once: true })
+        draw()
+      })()
+    </script>
+  </body>
+</html>

@@ -3,7 +3,7 @@ export function resolveAgent<T extends { name: string }>(items: T[], name?: stri
 }
 
 // The TUI's built-in order, so a built-in agent keeps its colour whatever order the server lists agents in.
-const builtins = ["build", "plan", "design", "question"]
+const builtins = ["build", "plan", "design", "question", "creator"]
 
 const hex = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i
 

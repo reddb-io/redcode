@@ -123,6 +123,7 @@ import { IdentityPlugin } from "./identity.js"
 import { PlanPlugin } from "./plan.js"
 import { DesignPlugin } from "./design.js"
 import { QuestionPlugin } from "./question.js"
+import { CreatorPlugin } from "./creator.js"
 import { ModelSuggestionPlugin } from "./model-suggestion.js"
 import { ModelsDevPlugin } from "./models-dev.js"
 import { McpCodeModeDefaultsPlugin } from "./mcp-codemode-defaults.js"
@@ -321,6 +322,7 @@ const pre = [
   PlanPlugin.Plugin,
   DesignPlugin.Plugin,
   QuestionPlugin.Plugin,
+  CreatorPlugin.Plugin,
   ModelSuggestionPlugin.Plugin,
   CommandPlugin.Plugin,
   SkillPlugin.Plugin,

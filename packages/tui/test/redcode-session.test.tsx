@@ -151,77 +151,80 @@ test("a resumed session submits its saved connection even when the active accoun
   expect(prompts[0]?.text).toBe("Continue with the saved account")
 })
 
-test("a resumed prototype keeps its review address visible without launching another browser", async () => {
-  await using state = await tmpdir()
-  const session = {
-    id: "ses_profile_design",
-    projectID: "project",
-    title: "Profile design",
-    agent: "design",
-    location: { directory },
-    cost: 0,
-    tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
-    time: { created: 1, updated: 1 },
-  }
-  const requests: string[] = []
-  await using setup = await createAppFixture({
-    state: state.path,
-    width: 120,
-    args: { sessionID: session.id },
-    config: { animations: false, tabs: { mode: "off" }, session: { sidebar: "hide" } },
-    fetch: (url) => {
-      if (url.pathname.startsWith("/design/")) requests.push(url.pathname)
-      if (url.pathname === `/api/session/${session.id}`) return json({ data: session })
-      if (["inbox", "permission", "todo"].some((name) => url.pathname === `/api/session/${session.id}/${name}`))
-        return json({ data: [] })
-      if (url.pathname === `/api/session/${session.id}/message`)
-        return json({
-          data: [
-            {
-              id: "msg_preview",
-              type: "assistant",
-              agent: "design",
-              model: { providerID: "fixture", id: "model" },
-              time: { created: 1, completed: 2 },
-              content: [
-                {
-                  type: "tool",
-                  id: "call_preview",
-                  name: "design_preview",
-                  time: { created: 1, completed: 2 },
-                  state: {
-                    status: "completed",
-                    input: { id: "design_profile", name: "Profile" },
-                    content: [{ type: "text", text: "Published profile" }],
-                    metadata: { designID: "design_profile", revision: "rev_profile" },
+test.each(["design", "creator"])(
+  "a resumed %s prototype keeps its review address visible without launching another browser",
+  async (agent) => {
+    await using state = await tmpdir()
+    const session = {
+      id: "ses_profile_design",
+      projectID: "project",
+      title: "Profile design",
+      agent,
+      location: { directory },
+      cost: 0,
+      tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+      time: { created: 1, updated: 1 },
+    }
+    const requests: string[] = []
+    await using setup = await createAppFixture({
+      state: state.path,
+      width: 120,
+      args: { sessionID: session.id },
+      config: { animations: false, tabs: { mode: "off" }, session: { sidebar: "hide" } },
+      fetch: (url) => {
+        if (url.pathname.startsWith("/design/")) requests.push(url.pathname)
+        if (url.pathname === `/api/session/${session.id}`) return json({ data: session })
+        if (["inbox", "permission", "todo"].some((name) => url.pathname === `/api/session/${session.id}/${name}`))
+          return json({ data: [] })
+        if (url.pathname === `/api/session/${session.id}/message`)
+          return json({
+            data: [
+              {
+                id: "msg_preview",
+                type: "assistant",
+                agent,
+                model: { providerID: "fixture", id: "model" },
+                time: { created: 1, completed: 2 },
+                content: [
+                  {
+                    type: "tool",
+                    id: "call_preview",
+                    name: "design_preview",
+                    time: { created: 1, completed: 2 },
+                    state: {
+                      status: "completed",
+                      input: { id: "design_profile", name: "Profile" },
+                      content: [{ type: "text", text: "Published profile" }],
+                      metadata: { designID: "design_profile", revision: "rev_profile" },
+                    },
                   },
-                },
-              ],
-            },
-          ],
-          cursor: {},
-        })
-    },
-  })
-  await setup.ready
-  // The stable review address needs no request and carries no ticket, so it never expires on screen.
-  await setup.waitForFrame((frame) => frame.includes(`/design/session/${session.id}/review`))
-  expect(setup.captureCharFrame()).toMatch(
-    /» Preview: http:\/\/localhost:\d+\/design\/session\/ses_profile_design\/review\s/,
-  )
-  for (let index = 0; index < 3; index++) await setup.renderOnce()
-  expect(requests).toEqual([])
-  setup.events.emit({
-    id: "evt_design_handoff",
-    created: 3,
-    type: "session.agent.selected",
-    durable: { aggregateID: session.id, seq: 3, version: 1 },
-    data: { sessionID: session.id, agent: "plan" },
-  })
-  await setup.waitForFrame((frame) => !frame.includes("» Preview:"))
-  expect(setup.renderer.root.findDescendantById("session-design-review-link")).toBeUndefined()
-  expect(requests).toEqual([])
-})
+                ],
+              },
+            ],
+            cursor: {},
+          })
+      },
+    })
+    await setup.ready
+    // The stable review address needs no request and carries no ticket, so it never expires on screen.
+    await setup.waitForFrame((frame) => frame.includes(`/design/session/${session.id}/review`))
+    expect(setup.captureCharFrame()).toMatch(
+      /» Preview: http:\/\/localhost:\d+\/design\/session\/ses_profile_design\/review\s/,
+    )
+    for (let index = 0; index < 3; index++) await setup.renderOnce()
+    expect(requests).toEqual([])
+    setup.events.emit({
+      id: "evt_design_handoff",
+      created: 3,
+      type: "session.agent.selected",
+      durable: { aggregateID: session.id, seq: 3, version: 1 },
+      data: { sessionID: session.id, agent: "plan" },
+    })
+    await setup.waitForFrame((frame) => !frame.includes("» Preview:"))
+    expect(setup.renderer.root.findDescendantById("session-design-review-link")).toBeUndefined()
+    expect(requests).toEqual([])
+  },
+)
 
 test("session location stays visible without the sidebar while Build runs and moves to its worktree", async () => {
   await using state = await tmpdir()

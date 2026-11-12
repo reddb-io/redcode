@@ -348,6 +348,24 @@ missing evidence rather than acting only as an interviewer. Editing, shell comma
 browser interactions and arbitrary MCP tool execution stay blocked. A connected browser and access to the
 relevant service are still required to investigate an authenticated dashboard.
 
+## Creator
+
+**Creator** is the fifth built-in mode, after Build, Plan, Design and Question. Select it from the
+agent picker in Desktop, Web or the TUI, or use `redcode run --agent creator`. It creates interactive
+artifacts, procedural 3D scenes, local tools, skills and plugin source using the configured coding
+permissions. The bundled `redcode-creator` skill explains the current authoring and verification
+contracts; no DeepSeek model or extra media provider is required to select the mode.
+
+Interactive artifacts reuse Design's workspaces, isolated runtime and revisioned previews. Delivery
+can distribute output files, but its script-free preview is not an interactive 3D viewer. Blender,
+text-to-3D generation and other external capabilities need their own available tools and explicit
+connections. Writing a server/TUI plugin or skill does not activate it. Production Desktop and Web
+do not yet hot-install arbitrary generated GUI plugins; their existing installation gates remain intact.
+
+See the [DeepSeek Creator study](research/deepseek-creator-mode-2026-11-12.md) for the upstream
+features, public prompts and skills, and the [Redcode architecture mapping](research/creator-redcode-architecture.md)
+for the remaining work toward persistent UI extensions.
+
 ## Vault
 
 <img src="features/vault.svg" alt="Vault" width="100%" />

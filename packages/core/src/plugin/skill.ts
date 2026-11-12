@@ -11,6 +11,7 @@ import { Config } from "../config.js"
 import os from "os"
 import opencodeContent from "./skill/opencode.md" with { type: "text" }
 import reportContent from "./skill/report.md" with { type: "text" }
+import creatorContent from "./skill/creator.md" with { type: "text" }
 
 export const OpencodeContent = opencodeContent
 export const ReportContent = reportContent
@@ -32,6 +33,16 @@ export const Plugin = define({
           description: OpencodeDescription,
           path: AbsolutePath.make(Skill.uri("opencode", "SKILL.md")),
           content: OpencodeContent,
+        }),
+      )
+      editor.add(
+        Skill.Info.make({
+          id: Skill.ID.make("redcode-creator"),
+          name: Skill.Name.make("Creator"),
+          description:
+            "Use when creating interactive artifacts, procedural 3D scenes, local tools, skills or Redcode plugin source. Covers preview, verification, activation and host limitations.",
+          path: AbsolutePath.make(Skill.uri("redcode-creator", "SKILL.md")),
+          content: creatorContent,
         }),
       )
       editor.add(

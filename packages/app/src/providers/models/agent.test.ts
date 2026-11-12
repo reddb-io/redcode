@@ -29,10 +29,12 @@ test("agentColor keeps built-in identities, honours configured colours and cycle
     { name: "a" },
     { name: "b" },
     { name: "c" },
+    { name: "creator" },
   ]
 
   expect(agentColor(visible, "build")).toBe("var(--reddb-color-series-1)")
   expect(agentColor(visible, "plan")).toBe("var(--reddb-color-series-2)")
+  expect(agentColor(visible, "creator")).toBe("var(--reddb-color-series-5)")
   expect(agentColor(visible, "custom")).toBe("var(--reddb-color-series-1)")
   expect(agentColor(visible, "tinted")).toBe("#3366FF")
   // Only a hex colour is safe to use as CSS; a theme name falls back to the agent's series.

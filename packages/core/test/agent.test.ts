@@ -9,6 +9,7 @@ import { Location } from "@opencode/core/location"
 import { Permission } from "@opencode/core/permission"
 import { AgentPlugin } from "@opencode/core/plugin/agent"
 import { QuestionPlugin } from "@opencode/core/plugin/question"
+import { CreatorPlugin } from "@opencode/core/plugin/creator"
 import { AbsolutePath } from "@opencode/core/schema"
 import { Global } from "@opencode/util/global"
 import { location } from "./fixture/location"
@@ -177,11 +178,13 @@ describe("Agent", () => {
         }),
       )
       yield* QuestionPlugin.Plugin.effect(host({ agent: agentHost(agent) }))
+      yield* CreatorPlugin.Plugin.effect(host({ agent: agentHost(agent) }))
 
       const agents = yield* agent.list()
       expect(agents.map((item) => String(item.id)).sort()).toEqual([
         "build",
         "compaction",
+        "creator",
         "explore",
         "general",
         "question",
@@ -267,6 +270,31 @@ describe("Agent", () => {
       for (const item of agents) {
         expect(item.permissions.some((rule) => rule.action === "bash" && rule.effect !== "deny")).toBe(false)
       }
+      const creator = yield* agent.get(Agent.ID.make("creator"))
+      expect(creator?.name).toBe(Agent.Name.make("Creator"))
+      expect(creator?.mode).toBe("primary")
+      expect(creator?.hidden).toBe(false)
+      expect(creator?.system).toContain("redcode-creator")
+      expect(Permission.evaluate("edit", "scene.html", creator?.permissions ?? []).effect).toBe("allow")
+    }),
+  )
+
+  it.effect("Creator preserves configured execution and file restrictions", () =>
+    Effect.gen(function* () {
+      const agent = yield* Agent.Service
+      yield* agent.transform((editor) =>
+        editor.update(Agent.ID.make("creator"), (item) => {
+          item.permissions.push(
+            { action: "shell", resource: "*", effect: "deny" },
+            { action: "edit", resource: "protected/*", effect: "deny" },
+          )
+        }),
+      )
+      yield* CreatorPlugin.Plugin.effect(host({ agent: agentHost(agent) }))
+      const creator = yield* agent.get(Agent.ID.make("creator"))
+      expect(Permission.evaluate("shell", "*", creator?.permissions ?? []).effect).toBe("deny")
+      expect(Permission.evaluate("edit", "protected/config.json", creator?.permissions ?? []).effect).toBe("deny")
+      expect(Permission.evaluate("edit", "scene.html", creator?.permissions ?? []).effect).toBe("allow")
     }),
   )
 

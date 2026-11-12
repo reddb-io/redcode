@@ -132,7 +132,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
 
           if (agent?.color) return RGBA.fromHex(agent.color)
           // Built-in identities must survive provider/plugin agent ordering changes.
-          const builtin = ["build", "plan", "design", "question"].indexOf(id)
+          const builtin = ["build", "plan", "design", "question", "creator"].indexOf(id)
           return colors()[(builtin === -1 ? index : builtin) % colors().length]
         },
       }

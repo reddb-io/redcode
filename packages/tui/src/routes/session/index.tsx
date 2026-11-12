@@ -323,7 +323,7 @@ export function Session(props: {
   const client = useClient()
   // A publish seen with launches disabled prints the review link once, not on every revision.
   const reviewLink = { shown: false }
-  const designActive = createMemo(() => session()?.agent === "design")
+  const previewActive = createMemo(() => session()?.agent === "design" || session()?.agent === "creator")
   const hasPublishedDesign = createMemo(() =>
     messages().some(
       (message) =>
@@ -338,13 +338,13 @@ export function Session(props: {
     ),
   )
   createEffect(() => {
-    if (!designActive()) reviewLink.shown = false
+    if (!previewActive()) reviewLink.shown = false
   })
   // The review's stable address: it carries no ticket, so it never expires on screen. A browser that opened the review
   // stays signed in to it, a paired browser opens it directly, and any other browser explains how to get in.
   const reviewAddress = createMemo(() => {
     const endpoint = client.endpoint
-    if (!endpoint || !designActive() || !hasPublishedDesign()) return undefined
+    if (!endpoint || !previewActive() || !hasPublishedDesign()) return undefined
     return designReviewURL(endpoint.url, route.sessionID)
   })
   const reviewDesign = async (explicit: boolean) => {
@@ -354,7 +354,7 @@ export function Session(props: {
       return
     }
     const blocked = browserDisabled()
-    if (!explicit && !designActive()) return
+    if (!explicit && !previewActive()) return
     if (!explicit && blocked && reviewLink.shown) return
     if (!explicit && blocked) reviewLink.shown = true
     const notice = await openDesignReview({
@@ -1907,7 +1907,7 @@ export function Session(props: {
               </box>
             </Show>
             <box flexShrink={0}>
-              <Show when={designActive() && reviewAddress()}>
+              <Show when={previewActive() && reviewAddress()}>
                 {(url) => (
                   <text
                     id="session-design-review-link"
@@ -1918,7 +1918,7 @@ export function Session(props: {
                     onMouseUp={() => void reviewDesign(true)}
                   >
                     {"» "}
-                    <span style={{ fg: local.agent.color("design") }}>Preview:</span> {url()}
+                    <span style={{ fg: local.agent.color(session()?.agent ?? "design") }}>Preview:</span> {url()}
                   </text>
                 )}
               </Show>

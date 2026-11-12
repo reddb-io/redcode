@@ -642,17 +642,22 @@ it.live("routes pending requests through the Session's instance", () =>
     expect(globalForms.status).toBe(200)
     expect(yield* Effect.promise(() => globalForms.json())).toMatchObject({ data: [{ title: "Global form" }] })
 
-    // Agent permission policy is installed by plugin activation.
+    // Agent policies and the five primary modes are installed by plugin activation.
     yield* Effect.gen(function* () {
       const response = yield* Effect.promise(() => handler(new Request("http://opencode.local/api/agent")))
       expect(response.status).toBe(200)
       const body = Schema.decodeUnknownSync(Schema.Struct({ data: Schema.Array(Agent.Info) }))(
         yield* Effect.promise(() => response.json()),
       )
-      return body.data.some(
-        (agent) =>
-          agent.id === "build" &&
-          agent.permissions.some((rule) => rule.action === "shell" && rule.resource === "*" && rule.effect === "ask"),
+      return (
+        ["build", "plan", "design", "question", "creator"].every((id) =>
+          body.data.some((agent) => agent.id === id && agent.mode === "primary"),
+        ) &&
+        body.data.some(
+          (agent) =>
+            agent.id === "build" &&
+            agent.permissions.some((rule) => rule.action === "shell" && rule.resource === "*" && rule.effect === "ask"),
+        )
       )
     }).pipe(
       Effect.filterOrFail((ready) => ready),

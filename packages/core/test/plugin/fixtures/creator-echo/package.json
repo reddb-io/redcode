@@ -1,0 +1,8 @@
+{
+  "name": "creator-echo",
+  "version": "1.0.0",
+  "type": "module",
+  "exports": {
+    "./server": "./server.js"
+  }
+}

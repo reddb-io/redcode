@@ -34,6 +34,7 @@ describe("SkillPlugin.Plugin", () => {
       ).pipe(Effect.provide(config()))
       const skills = yield* skill.list()
       const report = skills.find((item) => item.id === "report")
+      expect(skills).toContainEqual(expect.objectContaining({ id: "redcode-creator", name: "Creator" }))
 
       expect(skills).toContainEqual(
         expect.objectContaining({
