@@ -328,7 +328,7 @@ const layer = Layer.effect(
             if (whollyDisabled(tool.options?.permission ?? name, rules)) continue
             active.set(name, tool)
           }
-          const codeMode = options?.codeMode ?? CodeModeTool.DEFAULT_LIMITS
+          const codeMode = whollyDisabled("execute", rules) ? false : (options?.codeMode ?? CodeModeTool.DEFAULT_LIMITS)
           // With Code Mode off, tools that would sit behind `execute` are advertised directly.
           const direct = new Map(
             Array.from(active).filter(([, tool]) => codeMode === false || tool.options?.codemode === false),

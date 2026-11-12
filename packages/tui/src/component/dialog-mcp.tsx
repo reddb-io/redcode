@@ -54,6 +54,8 @@ export function DialogMcp(props: { initialServer?: string; details?: boolean } =
     props.details && initial?.status.status === "failed" ? initial : undefined,
   )
   const [loading, setLoading] = createSignal<ReadonlySet<string>>(new Set())
+  const [actions, setActions] = createSignal<string>()
+  const actionServer = createMemo(() => servers().find((server) => server.name === actions()))
 
   const statusColor = (status: McpServer["status"]) => {
     if (status.status === "connected") return theme.text.feedback.success.base
@@ -91,13 +93,6 @@ export function DialogMcp(props: { initialServer?: string; details?: boolean } =
     return "connect"
   })
 
-  const focusedError = createMemo(() => {
-    const server = focusedServer()
-    // Enter starts sign-in for auth-gated integrations instead of showing the auth reason
-    if (server?.status.status === "needs_auth" && server.integrationID) return undefined
-    return server ? statusError(server.status) : undefined
-  })
-
   const select = (name: string | undefined) => {
     const server = servers().find((entry) => entry.name === name)
     if (!server) return
@@ -111,8 +106,7 @@ export function DialogMcp(props: { initialServer?: string; details?: boolean } =
       ))
       return
     }
-    if (!statusError(server.status)) return
-    setDetail(server)
+    setActions(name)
   }
 
   // Auth-gated servers enter the integration flow; other inactive states retry the connection.
@@ -138,49 +132,99 @@ export function DialogMcp(props: { initialServer?: string; details?: boolean } =
     )
   }
 
+  const reconnect = (server: McpServer) => {
+    if (loading().has(server.name)) return
+    setLoading((previous) => new Set(previous).add(server.name))
+    const input = { server: server.name, location: { directory: current().directory } }
+    void client.api.mcp
+      .disconnect(input)
+      .then(() => client.api.mcp.connect(input))
+      .catch(toast.error)
+      .finally(() =>
+        setLoading((previous) => {
+          const next = new Set(previous)
+          next.delete(server.name)
+          return next
+        }),
+      )
+  }
+
   return (
     <box>
       <Show
-        when={detail()}
+        when={!actionServer()}
         fallback={
           <DialogSelect
-            title="MCP servers"
-            options={options()}
-            preserveSelection
-            focusTarget={props.initialServer}
-            onMove={(option) => setFocused(option.value as string)}
-            onSelect={(option) => select(option.value as string)}
-            actions={[
+            title={`MCP: ${actionServer()!.name}`}
+            options={[
               {
-                title: toggleTitle(),
-                command: "dialog.mcp.toggle",
-                onTrigger: (option) => {
-                  setFocused(option.value as string)
-                  toggle(option.value as string)
-                },
+                value: "toggle",
+                title:
+                  actionServer()!.status.status === "connected" ? "Disconnect for this run" : "Connect for this run",
               },
+              { value: "reconnect", title: "Reconnect this MCP server" },
+              ...(actionServer()!.integrationID
+                ? [{ value: "auth", title: "Sign in again or manage saved accounts" }]
+                : []),
+              ...(statusError(actionServer()!.status) ? [{ value: "error", title: "View connection error" }] : []),
+              { value: "back", title: "Back to MCP servers" },
             ]}
-            footer={
-              <Show when={focusedError()}>
-                <text fg={theme.text.muted}>enter to view error</text>
-              </Show>
-            }
+            onSelect={(option) => {
+              const server = actionServer()!
+              setActions(undefined)
+              if (option.value === "toggle") toggle(server.name)
+              if (option.value === "reconnect") reconnect(server)
+              if (option.value === "error") setDetail(server)
+              if (option.value === "auth" && server.integrationID)
+                dialog.replace(() => (
+                  <DialogIntegration
+                    integrationID={server.integrationID}
+                    autoConnect
+                    onConnected={() => dialog.replace(() => <DialogMcp initialServer={server.name} />)}
+                  />
+                ))
+            }}
           />
         }
       >
-        {(server) => (
-          <DialogErrorDetails
-            title={`MCP server: ${server().name}`}
-            error={statusError(server().status) ?? "Unknown MCP connection error"}
-            context={`Status: ${server().status.status}\nConfiguration: mcp.servers.${server().name}${
-              server().integrationID ? `\nIntegration: ${server().integrationID}` : ""
-            }`}
-            onBack={() => {
-              setDetail(undefined)
-              dialog.setSize("medium")
-            }}
-          />
-        )}
+        <Show
+          when={detail()}
+          fallback={
+            <DialogSelect
+              title="MCP servers"
+              options={options()}
+              preserveSelection
+              focusTarget={props.initialServer}
+              onMove={(option) => setFocused(option.value as string)}
+              onSelect={(option) => select(option.value as string)}
+              actions={[
+                {
+                  title: toggleTitle(),
+                  command: "dialog.mcp.toggle",
+                  onTrigger: (option) => {
+                    setFocused(option.value as string)
+                    toggle(option.value as string)
+                  },
+                },
+              ]}
+              footer={<text fg={theme.text.muted}>enter for connection and sign-in actions</text>}
+            />
+          }
+        >
+          {(server) => (
+            <DialogErrorDetails
+              title={`MCP server: ${server().name}`}
+              error={statusError(server().status) ?? "Unknown MCP connection error"}
+              context={`Status: ${server().status.status}\nConfiguration: mcp.servers.${server().name}${
+                server().integrationID ? `\nIntegration: ${server().integrationID}` : ""
+              }`}
+              onBack={() => {
+                setDetail(undefined)
+                dialog.setSize("medium")
+              }}
+            />
+          )}
+        </Show>
       </Show>
     </box>
   )

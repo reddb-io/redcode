@@ -97,6 +97,11 @@ const Handlers = Runtime.handlers(Commands, {
   },
   mcp: {
     list: () => import("./commands/handlers/mcp/list"),
+    connect: () => import("./commands/handlers/mcp/control").then((module) => ({ default: module.connect })),
+    disconnect: () => import("./commands/handlers/mcp/control").then((module) => ({ default: module.disconnect })),
+    reconnect: () => import("./commands/handlers/mcp/control").then((module) => ({ default: module.reconnect })),
+    restart: () => import("./commands/handlers/mcp/control").then((module) => ({ default: module.restart })),
+    reload: () => import("./commands/handlers/mcp/control").then((module) => ({ default: module.reload })),
     add: () => import("./commands/handlers/mcp/add"),
     auth: () => import("./commands/handlers/mcp/auth"),
     logout: () => import("./commands/handlers/mcp/logout"),

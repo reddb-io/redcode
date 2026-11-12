@@ -56,6 +56,11 @@ test("opens an investigation draft for a failed MCP server at its originating lo
   try {
     await fixture.app.waitForFrame((frame) => frame.includes("Failed !"))
     fixture.app.mockInput.pressEnter()
+    await fixture.app.waitForFrame((frame) => frame.includes("View connection error"))
+    fixture.app.mockInput.pressArrow("down")
+    fixture.app.mockInput.pressArrow("down")
+    fixture.app.mockInput.pressArrow("down")
+    fixture.app.mockInput.pressEnter()
     await fixture.app.waitForFrame((frame) => frame.includes("i investigate"))
     fixture.app.mockInput.pressKey("i")
     await fixture.app.waitForFrame((frame) => !frame.includes("MCP server: linear"))

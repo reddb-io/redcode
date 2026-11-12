@@ -259,6 +259,26 @@ Each tool call keeps its permission checks. Execution time, tool-call count and 
 bounded. `experimental.code_mode` configures execution limits; the obsolete `enabled` field is
 ignored. S1 catalog ranking is a separate opt-in.
 
+Manage MCPs in the TUI with `/mcps` (or `/mcp`): select a server and press Enter for connection,
+reconnection, sign-in/account management and error details. The existing toggle shortcut remains available.
+From the CLI:
+
+```sh
+redcode mcp list
+redcode mcp disconnect datadog
+redcode mcp connect datadog
+redcode mcp reconnect datadog
+redcode mcp auth datadog
+redcode mcp logout datadog
+redcode mcp reload
+redcode mcp restart
+```
+
+`enable` and `disable` alias `connect` and `disconnect`; they affect this server run, preserve saved
+configuration and credentials, and apply to the current project. `reauth` aliases `auth`. `restart`
+reconnects every enabled MCP in that project and can interrupt its running calls. `reload` rereads saved
+configuration. Add `--server <url>` to manage the selected server instead of the local background service.
+
 Remote MCP connections can be shared between projects by setting `pool: true` on a server under
 `mcp.servers`, together with `oauth: false` and `protocol: "2026-07-28"`. Sharing currently applies
 only to matching remote configurations without URL userinfo; OAuth, legacy and local stdio servers
@@ -310,7 +330,12 @@ build and start on it.
 
 <img src="features/question.svg" alt="Question mode" width="100%" />
 
-**Question** answers investigative questions about the codebase with read-only tool access. Nothing is edited.
+**Question** investigates problems and explains findings with read-only tools: workspace files, documentation,
+MCP resources and observations from a browser attached to the session. For example, ask it to investigate a
+401 response and it can compare the available request, authentication configuration and logs. It asks for
+missing evidence rather than acting only as an interviewer. Editing, shell commands, arbitrary JavaScript,
+browser interactions and arbitrary MCP tool execution stay blocked. A connected browser and access to the
+relevant service are still required to investigate an authenticated dashboard.
 
 ## Vault
 

@@ -4,6 +4,57 @@ import { createAppFixture } from "./fixture/app"
 import { tmpdir } from "./fixture/fixture"
 import { directory, json } from "./fixture/tui-client"
 
+test("MCP server actions expose disconnect, reconnect and sign-in without changing another server", async () => {
+  await using state = await tmpdir()
+  const operations: string[] = []
+  let connected = true
+  await using setup = await createAppFixture({
+    state: state.path,
+    fetch: (url, request) => {
+      if (url.pathname === "/api/mcp")
+        return json({
+          location: { directory },
+          data: [
+            { name: "company", integrationID: "mcp-company", status: { status: connected ? "connected" : "disabled" } },
+          ],
+        })
+      if (request.method === "POST" && url.pathname.startsWith("/api/experimental/mcp/company/")) {
+        operations.push(url.pathname)
+        connected = url.pathname.endsWith("/connect")
+        setup.events.emit({
+          id: `evt_mcp_${operations.length}`,
+          created: Date.now(),
+          type: "mcp.status.changed",
+          location: { directory },
+          data: { server: "company" },
+        })
+        return new Response(null, { status: 204 })
+      }
+    },
+  })
+  await setup.ready
+  await setup.waitForFrame(() => Boolean(setup.renderer.root.findDescendantById("session-pane")))
+  await setup.mockInput.typeText("/mcps")
+  setup.mockInput.pressEnter()
+  await setup.waitForFrame((frame) => frame.includes("MCP servers") && frame.includes("company"))
+  setup.mockInput.pressEnter()
+  await setup.waitForFrame(
+    (frame) => frame.includes("Disconnect for this run") && frame.includes("Sign in again or manage saved accounts"),
+  )
+  setup.mockInput.pressEnter()
+  await setup.waitForFrame((frame) => frame.includes("Disabled") && operations.length === 1)
+  setup.mockInput.pressEnter()
+  await setup.waitForFrame((frame) => frame.includes("Reconnect this MCP server"))
+  setup.mockInput.pressArrow("down")
+  setup.mockInput.pressEnter()
+  await setup.waitForFrame((frame) => frame.includes("Connected") && operations.length === 3)
+  expect(operations).toEqual([
+    "/api/experimental/mcp/company/disconnect",
+    "/api/experimental/mcp/company/disconnect",
+    "/api/experimental/mcp/company/connect",
+  ])
+}, 30_000)
+
 test("environment recipes load only when opened and use the active server worktree without submitting a prompt", async () => {
   await using state = await tmpdir()
   const reads: string[] = []

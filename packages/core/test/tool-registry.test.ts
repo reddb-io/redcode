@@ -769,6 +769,16 @@ describe("Tool", () => {
       expect(yield* snapshot.execute(call("execute")).pipe(Effect.flip)).toMatchObject({
         message: expect.stringContaining('No tool named "execute"'),
       })
+      const restricted = yield* service.snapshot([
+        { action: "*", resource: "*", effect: "deny" },
+        { action: "demo_echo", resource: "*", effect: "allow" },
+      ])
+      expect(restricted.definitions.map((tool) => tool.name)).toEqual(["demo_echo"])
+      expect(restricted.codeModeCatalog).toBeUndefined()
+      expect((yield* restricted.execute(call("demo_echo"))).output).toEqual({ text: "demo_echo" })
+      expect(yield* restricted.execute(call("native")).pipe(Effect.flip)).toMatchObject({
+        message: expect.stringContaining('No tool named "native"'),
+      })
     }),
   )
 

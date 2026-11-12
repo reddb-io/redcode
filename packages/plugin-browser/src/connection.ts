@@ -24,10 +24,12 @@ export type Connection = Effect.Success<ReturnType<typeof make>>
 export const make = Effect.fn("BrowserConnection.make")(function* (
   ctx: Pick<Context, "agent" | "rpc" | "session" | "location" | "event" | "capability">,
 ) {
-  // Appended after config, so every agent hides the browser until an attachment allows it.
+  // Other agents inherit attachment permissions. Question ignores session grants and keeps only
+  // observations; its commands still require a live attachment at the connection boundary.
   yield* ctx.agent.transform((editor) =>
     editor.list().forEach((agent) => {
-      agent.permissions.push(...BrowserMachine.ACCESS.map((rule) => ({ ...rule, effect: "deny" as const })))
+      if (agent.id !== Agent.ID.make("question"))
+        agent.permissions.push(...BrowserMachine.ACCESS.map((rule) => ({ ...rule, effect: "deny" as const })))
       if (agent.id === Agent.ID.make("plan"))
         agent.permissions.push({ action: "browser.*", resource: "*", effect: "deny" })
     }),

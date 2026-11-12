@@ -1,28 +1,28 @@
 import { confirm, intro, log, outro } from "@clack/prompts"
 import { Effect, Option } from "effect"
-import { OpenCode, type IntegrationInfo, type IntegrationOAuthMethod, type McpServer } from "@opencode/client"
+import type { IntegrationInfo, IntegrationOAuthMethod, McpServer } from "@opencode/client"
 import { Commands } from "../../commands"
 import { Runtime } from "../../../framework/runtime"
-import { Service } from "@opencode/client/effect/service"
-import { ServiceConfig } from "../../../services/service-config"
 import { selectIntegration, type IntegrationChoice } from "../../../ui/integration-picker"
 import { handlePromptErrors, prompt, requireInteractive } from "../../../ui/prompt"
 import { answerForm } from "../auth/form"
 import { oauthLogin } from "../auth/login"
-import { loadIntegrations, request } from "../auth/shared"
+import { createClient, loadIntegrations, request } from "../auth/shared"
 
 const location = { directory: process.cwd() }
 
 export default Runtime.handler(
   Commands.commands.mcp.commands.auth,
-  Effect.fn("cli.mcp.auth")((input) => authenticate(Option.getOrUndefined(input.name)).pipe(handlePromptErrors)),
+  Effect.fn("cli.mcp.auth")((input) => authenticate(input).pipe(handlePromptErrors)),
 )
 
-const authenticate = Effect.fn("cli.mcp.auth.run")(function* (name?: string) {
+const authenticate = Effect.fn("cli.mcp.auth.run")(function* (
+  input: Runtime.Input<typeof Commands.commands.mcp.commands.auth>,
+) {
+  const name = Option.getOrUndefined(input.name)
   if (!name) yield* requireInteractive("Pass an MCP server name when running without an interactive terminal")
   intro("Authenticate an MCP server")
-  const endpoint = yield* Service.ensure(yield* ServiceConfig.options())
-  const client = OpenCode.make({ baseUrl: endpoint.url, headers: Service.headers(endpoint) })
+  const client = yield* createClient({ server: Option.getOrUndefined(input.server), standalone: input.standalone })
   const integrations = yield* loadIntegrations(client)
   const servers = yield* request((signal) => client.mcp.list({ location }, { signal }))
   const choices = mcpAuthChoices(servers.data, integrations)

@@ -953,11 +953,12 @@ test.each([false, true])("uses the resolved launch directory for new prompts (fa
   ).toBe(true)
 })
 
-test("error investigations repeatedly seed editable home drafts without creating sessions", async () => {
-  const cwd = process.cwd()
-  const location = { directory: cwd, project: { id: "project", directory: cwd } }
-  let created = 0
+test("error investigations repeatedly seed editable drafts without submitting prompts", async () => {
+  await using state = await tmpdir()
+  const location = { directory, project: { id: "project", directory } }
+  let submitted = 0
   await using setup = await createAppFixture({
+    state: state.path,
     config: { animations: false, keybinds: { "mcp.list": "f6" } },
     fetch: (url, request) => {
       if (url.pathname === "/api/location") return json(location)
@@ -969,7 +970,10 @@ test("error investigations repeatedly seed editable home drafts without creating
             { name: "beta", status: { status: "failed", error: "Beta initialization failed" } },
           ],
         })
-      if (url.pathname === "/api/session" && request.method === "POST") created++
+      if (/^\/api\/session\/[^/]+\/prompt$/.test(url.pathname) && request.method === "POST") {
+        submitted++
+        return new Response(null, { status: 204 })
+      }
       return undefined
     },
   })
@@ -977,6 +981,10 @@ test("error investigations repeatedly seed editable home drafts without creating
 
   setup.mockInput.pressKey("F6")
   await setup.waitForFrame((frame) => frame.includes("MCP servers") && frame.includes("alpha"))
+  setup.mockInput.pressEnter()
+  await setup.waitForFrame((frame) => frame.includes("MCP: alpha"))
+  setup.mockInput.pressArrow("down")
+  setup.mockInput.pressArrow("down")
   setup.mockInput.pressEnter()
   await setup.waitForFrame((frame) => frame.includes("Alpha connection refused") && frame.includes("i investigate"))
   setup.mockInput.pressKey("i")
@@ -986,6 +994,10 @@ test("error investigations repeatedly seed editable home drafts without creating
   await setup.waitForFrame((frame) => frame.includes("MCP servers"))
   setup.mockInput.pressArrow("down")
   setup.mockInput.pressEnter()
+  await setup.waitForFrame((frame) => frame.includes("MCP: beta"))
+  setup.mockInput.pressArrow("down")
+  setup.mockInput.pressArrow("down")
+  setup.mockInput.pressEnter()
   await setup.waitForFrame((frame) => frame.includes("Beta initialization failed") && frame.includes("i investigate"))
   setup.mockInput.pressKey("i")
   const draft = await setup.waitForFrame(
@@ -993,7 +1005,7 @@ test("error investigations repeatedly seed editable home drafts without creating
   )
 
   expect(draft).not.toContain("Alpha connection refused")
-  expect(created).toBe(0)
+  expect(submitted).toBe(0)
 
   setup.mockInput.pressKey("c", { ctrl: true })
   await setup.waitForFrame((frame) => !frame.includes("Beta initialization failed"))
