@@ -20,6 +20,7 @@ import { DesignCapture } from "../src/design/capture"
 import { DesignFiles } from "../src/design/files"
 import { DesignRounds } from "../src/design/rounds"
 import { DesignStore } from "../src/design/store"
+import { DesignTable } from "../src/design/sql"
 import { DesignRenderer } from "../src/design/renderer"
 import { DesignRendererLocal } from "../src/design/renderer-local"
 import { DesignVerify } from "../src/design/verify"
@@ -170,6 +171,143 @@ const write = (file: string, content: string) =>
 const read = (file: string) => Effect.promise(() => Bun.file(file).text())
 
 describe("DesignStore lifecycle", () => {
+  it.live("records Redcode extension authoring as a Creator delivery without replacing the interface contract", () =>
+    Effect.gen(function* () {
+      yield* seed
+      yield* reasoning(single)
+      const store = yield* DesignStore.Service
+      const document = yield* store.create(sessionID, { ...checkout, name: "Redcode tool package" })
+      const contract: Design.DeliveryContract = {
+        kind: "extension",
+        objective: "Register a Redcode agent tool",
+        target: "server-plugin",
+        entry: "server.js",
+        capabilities: ["tool.register"],
+        acceptance: ["Tool registers, executes and unloads cleanly"],
+        outputs: ["source", "package", "instructions"],
+      }
+      expect(
+        (yield* store
+          .collaborate(sessionID, document.id, "design", { action: "define", expectedVersion: 0, contract })
+          .pipe(Effect.flip)).code,
+      ).toBe("invalid")
+      const saved = yield* store.collaborate(sessionID, document.id, "creator", {
+        action: "define",
+        expectedVersion: 0,
+        contract,
+      })
+      expect(saved.collaboration).toEqual({ version: 1, owner: "creator", contracts: { creator: contract } })
+      expect(saved.revision).toBeNull()
+      expect(saved.approvedRevision).toBeNull()
+      expect((yield* store.get(sessionID, document.id)).collaboration?.contracts.creator).toEqual(contract)
+    }),
+  )
+  it.live(
+    "hands complementary delivery contracts through the same persisted document without rolling them back on restore",
+    () =>
+      Effect.gen(function* () {
+        yield* seed
+        yield* reasoning(single)
+        const store = yield* DesignStore.Service
+        const database = yield* Database.Service
+        const created = yield* store.create(sessionID, checkout)
+        const contract: Design.DeliveryContract = {
+          kind: "interface",
+          objective: "Review a compact cube editor",
+          acceptance: ["Keyboard-accessible controls"],
+          states: ["ready", "WebGL unavailable"],
+        }
+        const artifact: Design.DeliveryContract = {
+          kind: "artifact",
+          objective: "Produce an interactive cube",
+          artifact: "3d",
+          acceptance: ["Material changes rendered pixels", "No idle animation loop"],
+          outputs: ["preview", "component"],
+        }
+        const defined = yield* store.collaborate(sessionID, created.id, "design", {
+          action: "define",
+          expectedVersion: 0,
+          contract,
+        })
+        expect(defined.collaboration).toMatchObject({ version: 1, owner: "design", contracts: { design: contract } })
+        expect(
+          (yield* store
+            .collaborate(sessionID, created.id, "design", { action: "define", expectedVersion: 1, contract: artifact })
+            .pipe(Effect.flip)).code,
+        ).toBe("invalid")
+        expect(
+          (yield* store
+            .collaborate(sessionID, created.id, "design", { action: "define", expectedVersion: 0, contract })
+            .pipe(Effect.flip)).code,
+        ).toBe("conflict")
+        const transfer = {
+          action: "handoff" as const,
+          expectedVersion: 1,
+          to: "creator" as const,
+          revision: "rev_missing",
+          summary: "Implement the cube in this prototype, preserving its controls",
+          contract: artifact,
+        }
+        expect((yield* store.collaborate(sessionID, created.id, "design", transfer).pipe(Effect.flip)).code).toBe(
+          "conflict",
+        )
+        yield* write(path.join(created.root, created.entry), "<main>Cube editor</main>")
+        const first = yield* store.publish(sessionID, created.id, "Interface")
+        const handoff = { ...transfer, revision: first.id }
+        const assigned = yield* store.collaborate(sessionID, created.id, "design", handoff)
+        expect(assigned).toMatchObject({
+          id: created.id,
+          root: created.root,
+          revision: first.id,
+          approvedRevision: null,
+          ended: false,
+        })
+        expect(assigned.collaboration).toMatchObject({
+          owner: "creator",
+          version: 2,
+          contracts: { design: contract, creator: artifact },
+        })
+        expect(yield* store.collaborate(sessionID, created.id, "design", handoff)).toEqual(assigned)
+        expect(
+          (yield* store
+            .collaborate(sessionID, created.id, "design", { action: "define", expectedVersion: 2, contract })
+            .pipe(Effect.flip)).code,
+        ).toBe("conflict")
+        const row = yield* database.db.select({ data: DesignTable.data }).from(DesignTable).get().pipe(Effect.orDie)
+        expect(Schema.decodeUnknownSync(Design.Info)(row!.data).collaboration).toEqual(assigned.collaboration)
+        yield* write(path.join(created.root, created.entry), "<main>Working cube</main>")
+        const second = yield* store.publish(sessionID, created.id, "Artifact")
+        const reviewed = yield* store.collaborate(sessionID, created.id, "creator", {
+          action: "handoff",
+          expectedVersion: 2,
+          to: "design",
+          revision: second.id,
+          summary: "Review the working cube and its controls",
+        })
+        expect(reviewed.collaboration).toMatchObject({
+          owner: "design",
+          version: 3,
+          contracts: { design: contract, creator: artifact },
+        })
+        yield* store.restore(sessionID, created.id, first.id)
+        expect((yield* store.get(sessionID, created.id)).collaboration).toEqual(reviewed.collaboration)
+        expect(
+          (yield* store.revisions(sessionID, created.id)).find((item) => item.id === second.id)?.document.collaboration
+            ?.owner,
+        ).toBe("creator")
+        expect(
+          (yield* store
+            .collaborate(elsewhere, created.id, "design", { action: "define", expectedVersion: 3, contract })
+            .pipe(Effect.flip)).code,
+        ).toBe("not-found")
+        yield* store.collaborate(sessionID, created.id, "design", { action: "define", expectedVersion: 3, contract })
+        expect(
+          (yield* store
+            .collaborate(sessionID, created.id, "design", { action: "define", expectedVersion: 3, contract })
+            .pipe(Effect.flip)).code,
+        ).toBe("conflict")
+      }),
+  )
   // Linux CI provisions Chromium; other hosts run this integration when a browser is installed.
   ;(existsSync(chromium.executablePath()) ? it.live : it.live.skip)(
     "exports the selected creative at exact PNG/PDF dimensions and captures visual S1 evidence",

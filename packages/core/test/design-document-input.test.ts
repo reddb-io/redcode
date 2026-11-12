@@ -356,6 +356,7 @@ const tool = testEffect(
       Layer.mock(DesignStore.Service, {
         storage: "/design/store",
         blobs: "/design/blobs",
+        get: () => Effect.succeed(reviewed),
         amend: (_session, _id, input) =>
           Effect.sync(() => {
             amended.push(input)

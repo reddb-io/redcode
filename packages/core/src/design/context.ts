@@ -12,6 +12,7 @@ import { DesignRounds } from "./rounds.js"
 import { DesignStore } from "./store.js"
 import { DesignSystem } from "./system.js"
 import { DesignTarget } from "./target.js"
+import { DesignCollaboration } from "./collaboration.js"
 
 /**
  * The Session's Design documents as one instruction source, so Plan and Build receive the approved
@@ -22,6 +23,7 @@ import { DesignTarget } from "./target.js"
  */
 const Entry = Schema.Struct({
   id: Design.ID,
+  collaboration: Schema.optional(Design.Collaboration),
   name: Schema.String,
   /** What the design is for, such as "iOS app" or "Web"; decides its viewports and playbooks. */
   target: Schema.String,
@@ -80,6 +82,7 @@ const render = (entries: ReadonlyArray<typeof Entry.Type>) =>
     .map((entry) =>
       [
         `Design ${entry.id}: ${entry.name}. Target: ${entry.target}. Review ${entry.ended ? "closed" : entry.ending ? "open until every note has an outcome: the user asked to end it after this round, so finish the notes (fix, mark, publish, verify, record outcomes) and do not ask for another round" : "open"}.`,
+        ...(entry.collaboration ? [DesignCollaboration.guidance(entry.collaboration)] : []),
         entry.approval
           ? DesignApproval.guidance(entry.approval)
           : `Work: ${entry.root}. Objective: ${entry.objective || "Not recorded"}. Open questions: ${entry.questions.join("; ") || "None recorded"}. This design is not approved: its brief is draft project data, not a requirement.`,
@@ -121,6 +124,7 @@ const layer = Layer.effect(
             : yield* designs.jobs(document.sessionID, document.id).pipe(Effect.orElseSucceed(() => []))
         return {
           id: document.id,
+          ...(document.collaboration ? { collaboration: document.collaboration } : {}),
           name: document.name,
           target: DesignTarget.label(document),
           root: document.root,

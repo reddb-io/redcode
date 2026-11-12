@@ -109,7 +109,12 @@ export function merge(...rulesets: Permission.Ruleset[]): Permission.Ruleset {
 
 export function forAgent(agent: Agent.Info, session: Permission.Ruleset = []): Permission.Ruleset {
   // Restricted modes must keep their own boundary when a Session carries Build grants.
-  if (agent.id === Agent.ID.make("question") || agent.id === Agent.ID.make("design")) return agent.permissions
+  if (
+    agent.id === Agent.ID.make("question") ||
+    agent.id === Agent.ID.make("design") ||
+    agent.id === Agent.ID.make("creator")
+  )
+    return agent.permissions
   return merge(agent.permissions, session)
 }
 

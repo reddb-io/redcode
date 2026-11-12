@@ -5,6 +5,7 @@ import type { Context } from "@opencode/plugin/effect/plugin"
 import { Design } from "@opencode/schema/design"
 import { Effect, Schema } from "effect"
 import { DesignStore } from "../../design/store.js"
+import { DesignCollaboration } from "../../design/collaboration.js"
 import { Permission } from "../../permission.js"
 
 export const name = "design_asset"
@@ -34,6 +35,9 @@ export const Plugin = {
                 agent: context.agent,
                 source: { type: "tool", messageID: context.messageID, id: context.id },
               })
+              const document = yield* designs.get(context.sessionID, input.id)
+              const assigned = DesignCollaboration.author(document, context.agent)
+              if (assigned) return yield* new Design.Error({ code: "conflict", message: assigned })
               const output = yield* designs.importAsset(context.sessionID, input.id, input.input)
               return {
                 output,

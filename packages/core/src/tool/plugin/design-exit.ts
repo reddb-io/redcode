@@ -5,6 +5,7 @@ import type { Context } from "@opencode/plugin/effect/plugin"
 import { Design } from "@opencode/schema/design"
 import { Effect, Schema } from "effect"
 import { DesignApproval } from "../../design/approval.js"
+import { DesignCollaboration } from "../../design/collaboration.js"
 import { DesignHandoff } from "../../design/handoff.js"
 import { DesignRounds } from "../../design/rounds.js"
 import { DesignStore } from "../../design/store.js"
@@ -47,13 +48,18 @@ export const Plugin = {
                 source: { type: "tool", messageID: context.messageID, id: context.id },
               })
               const document = yield* designs.get(context.sessionID, input.id)
+              const assigned = DesignCollaboration.author(document, context.agent)
+              if (assigned) return yield* new Design.Error({ code: "conflict", message: assigned })
               if (!document.revision)
                 return yield* new Design.Error({ code: "conflict", message: "Publish the design before approval" })
               if (DesignApproval.missingTargets(document, input.noTargets))
                 return { output: DesignApproval.TARGETS_NUDGE, content: DesignApproval.TARGETS_NUDGE }
               const pending = DesignRounds.blocking(document)
               if (pending)
-                return yield* new Design.Error({ code: "conflict", message: `Approval is not possible yet. ${pending}` })
+                return yield* new Design.Error({
+                  code: "conflict",
+                  message: `Approval is not possible yet. ${pending}`,
+                })
               const goal = yield* goals.get(context.sessionID)
               const stay = goal?.status === "active" && goal.stopAfter === "design"
               const answer = yield* forms.ask({
@@ -70,7 +76,9 @@ export const Plugin = {
                       {
                         value: "Approve",
                         label: "Approve",
-                        description: stay ? "Record this revision and stay in Design" : "Record this revision and continue in Plan",
+                        description: stay
+                          ? "Record this revision and stay in Design"
+                          : "Record this revision and continue in Plan",
                       },
                       { value: "Continue", label: "Continue", description: "Keep reviewing" },
                     ],

@@ -10,6 +10,7 @@ import { Permission } from "@opencode/core/permission"
 import { AgentPlugin } from "@opencode/core/plugin/agent"
 import { QuestionPlugin } from "@opencode/core/plugin/question"
 import { CreatorPlugin } from "@opencode/core/plugin/creator"
+import { Mcp } from "@opencode/core/mcp/index"
 import { AbsolutePath } from "@opencode/core/schema"
 import { Global } from "@opencode/util/global"
 import { location } from "./fixture/location"
@@ -22,7 +23,8 @@ const global = Global.make({ data: "/data", config: "/config", tmp: "/tmp/openco
 const globalLayer = Layer.succeed(Global.Service, Global.Service.of(global))
 
 const it = testEffect(
-  AppNodeBuilder.build(LayerNode.group([Agent.node, Bus.node, Location.node]), [
+  AppNodeBuilder.build(LayerNode.group([Agent.node, Bus.node, Location.node, Mcp.node]), [
+    Mcp.node.replace(Layer.mock(Mcp.Service, { tools: () => Effect.succeed([]) })),
     Global.node.replace(globalLayer),
     Location.node.replace(locationLayer),
   ]) as unknown as Layer.Layer<unknown, never>,
@@ -275,26 +277,64 @@ describe("Agent", () => {
       expect(creator?.mode).toBe("primary")
       expect(creator?.hidden).toBe(false)
       expect(creator?.system).toContain("redcode-creator")
-      expect(Permission.evaluate("edit", "scene.html", creator?.permissions ?? []).effect).toBe("allow")
+      expect(Permission.evaluate("edit", "scene.html", creator?.permissions ?? []).effect).toBe("deny")
+      expect(
+        Permission.evaluate("edit", "/project/.red/code/design/design_cube/work/scene.html", creator?.permissions ?? [])
+          .effect,
+      ).toBe("allow")
+      expect(Permission.evaluate("design_exit", "*", creator?.permissions ?? []).effect).toBe("deny")
+      expect(Permission.evaluate("design_playbook", "*", creator?.permissions ?? []).effect).toBe("deny")
+      expect(Permission.evaluate("design_collaboration", "*", creator?.permissions ?? []).effect).toBe("allow")
+      expect(Permission.evaluate("design_handoff", "*", creator?.permissions ?? []).effect).toBe("ask")
+      expect(Permission.evaluate("creator_component_edit", "*", creator?.permissions ?? []).effect).toBe("allow")
+      expect(
+        Permission.evaluate(
+          "edit",
+          "src/app.tsx",
+          Permission.forAgent(creator!, [{ action: "*", resource: "*", effect: "allow" }]),
+        ).effect,
+      ).toBe("deny")
     }),
   )
 
-  it.effect("Creator preserves configured execution and file restrictions", () =>
+  it.effect("Creator restricts artifact edits and preserves configured denies", () =>
     Effect.gen(function* () {
       const agent = yield* Agent.Service
       yield* agent.transform((editor) =>
         editor.update(Agent.ID.make("creator"), (item) => {
           item.permissions.push(
             { action: "shell", resource: "*", effect: "deny" },
-            { action: "edit", resource: "protected/*", effect: "deny" },
+            { action: "edit", resource: "*/.red/code/design/*/work/protected/*", effect: "deny" },
           )
         }),
       )
       yield* CreatorPlugin.Plugin.effect(host({ agent: agentHost(agent) }))
       const creator = yield* agent.get(Agent.ID.make("creator"))
       expect(Permission.evaluate("shell", "*", creator?.permissions ?? []).effect).toBe("deny")
-      expect(Permission.evaluate("edit", "protected/config.json", creator?.permissions ?? []).effect).toBe("deny")
-      expect(Permission.evaluate("edit", "scene.html", creator?.permissions ?? []).effect).toBe("allow")
+      expect(
+        Permission.evaluate(
+          "edit",
+          "/project/.red/code/design/design_cube/work/protected/config.json",
+          creator?.permissions ?? [],
+        ).effect,
+      ).toBe("deny")
+      expect(Permission.evaluate("edit", "scene.html", creator?.permissions ?? []).effect).toBe("deny")
+      expect(
+        Permission.evaluate("edit", "/project/.red/code/design/design_cube/work/scene.html", creator?.permissions ?? [])
+          .effect,
+      ).toBe("allow")
+      expect(Permission.evaluate("design_exit", "*", creator?.permissions ?? []).effect).toBe("deny")
+      expect(Permission.evaluate("design_playbook", "*", creator?.permissions ?? []).effect).toBe("deny")
+      expect(Permission.evaluate("design_collaboration", "*", creator?.permissions ?? []).effect).toBe("allow")
+      expect(Permission.evaluate("design_handoff", "*", creator?.permissions ?? []).effect).toBe("ask")
+      expect(Permission.evaluate("creator_component_edit", "*", creator?.permissions ?? []).effect).toBe("allow")
+      expect(
+        Permission.evaluate(
+          "edit",
+          "src/app.tsx",
+          Permission.forAgent(creator!, [{ action: "*", resource: "*", effect: "allow" }]),
+        ).effect,
+      ).toBe("deny")
     }),
   )
 

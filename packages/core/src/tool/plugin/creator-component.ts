@@ -6,6 +6,8 @@ import { CreatorComponent } from "@opencode/schema/creator-component"
 import { Design } from "@opencode/schema/design"
 import { Effect, Schema } from "effect"
 import { CreatorComponents } from "../../creator/component.js"
+import { DesignStore } from "../../design/store.js"
+import { DesignCollaboration } from "../../design/collaboration.js"
 import { Permission } from "../../permission.js"
 
 export const Input = Schema.Union([
@@ -31,6 +33,7 @@ export const Plugin = {
   id: "redcode.tool.creator-component",
   effect: Effect.fn("CreatorComponentTool.Plugin")(function* (ctx: Context) {
     const components = yield* CreatorComponents.Service
+    const designs = yield* DesignStore.Service
     const permission = yield* Permission.Service
     yield* ctx.tool
       .transform((editor) =>
@@ -55,6 +58,15 @@ export const Plugin = {
                 source: { type: "tool", messageID: context.messageID, id: context.id },
               })
               const result = yield* Effect.gen(function* () {
+                if (input.action === "install" || input.action === "update") {
+                  const origin =
+                    input.action === "install"
+                      ? { sessionID: context.sessionID, designID: input.designID }
+                      : yield* components.get(input.id)
+                  const document = yield* designs.get(origin.sessionID, origin.designID)
+                  const assigned = DesignCollaboration.author(document, context.agent)
+                  if (assigned) return yield* new Design.Error({ code: "conflict", message: assigned })
+                }
                 if (input.action === "list") return yield* components.list()
                 if (input.action === "inspect") return yield* components.get(input.id)
                 if (input.action === "install")

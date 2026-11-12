@@ -6,6 +6,7 @@ import { Design } from "@opencode/schema/design"
 import { Effect, Schema } from "effect"
 import { Config } from "../../config.js"
 import { DesignStore } from "../../design/store.js"
+import { DesignCollaboration } from "../../design/collaboration.js"
 import { Mcp } from "../../mcp/index.js"
 import { Permission } from "../../permission.js"
 import { McpTool } from "../mcp.js"
@@ -78,11 +79,11 @@ export const Plugin = {
           output: Schema.Array(Design.Asset),
           execute: (input, context) =>
             Effect.gen(function* () {
-              yield* designs.get(context.sessionID, input.id)
+              const document = yield* designs.get(context.sessionID, input.id)
+              const assigned = DesignCollaboration.author(document, context.agent)
+              if (assigned) return yield* new Design.Error({ code: "conflict", message: assigned })
               const servers = yield* declared()
-              const tool = (yield* mcp.tools()).find(
-                (item) => McpTool.name(item.server, item.name) === input.tool,
-              )
+              const tool = (yield* mcp.tools()).find((item) => McpTool.name(item.server, item.name) === input.tool)
               if (!tool)
                 return yield* new Design.Error({ code: "unavailable", message: "The image tool is disconnected" })
               const capability = servers.get(tool.server)?.media?.[tool.name]
@@ -113,7 +114,9 @@ export const Plugin = {
                   message: "Image generation failed; inspect the connected tool and retry explicitly",
                 })
               const assets = yield* Effect.forEach(
-                result.content.filter((part) => part.type === "media").filter((part) => part.mimeType.startsWith("image/")),
+                result.content
+                  .filter((part) => part.type === "media")
+                  .filter((part) => part.mimeType.startsWith("image/")),
                 (part) =>
                   Schema.decodeUnknownEffect(Design.ImportAsset)({
                     name: `generated.${part.mimeType.split("/")[1]?.replace("svg+xml", "svg") ?? "png"}`,
@@ -126,7 +129,11 @@ export const Plugin = {
               const content = assets.length
                 ? assets.map((asset) => `Asset ${asset.id}: assets/${asset.id}-${asset.name}`).join("\n")
                 : "The image tool returned no inline image. Import its local output using design_asset."
-              return { output: assets, content, metadata: { designID: input.id, assets: assets.map((asset) => asset.id) } }
+              return {
+                output: assets,
+                content,
+                metadata: { designID: input.id, assets: assets.map((asset) => asset.id) },
+              }
             }).pipe(Effect.mapError((error) => new ToolFailure({ message: error.message, error }))),
         })
       })

@@ -8,6 +8,7 @@ import { Design } from "@opencode/schema/design"
 import { designReviewURL } from "@opencode/util/design-review"
 import { Cause, Effect, Schema } from "effect"
 import { DesignBuild } from "../../design/build.js"
+import { DesignCollaboration } from "../../design/collaboration.js"
 import { DesignAppConnection } from "../../design/app-connection.js"
 import { DesignAppMode } from "../../design/app-mode.js"
 import { DesignLegacy } from "../../design/legacy.js"
@@ -173,6 +174,8 @@ export const Plugin = {
                       },
                     }).pipe(Effect.provideService(DesignStore.Service, designs))
                   : yield* designs.get(context.sessionID, input.id)
+              const assigned = DesignCollaboration.author(document, context.agent)
+              if (assigned) return yield* new Design.Error({ code: "conflict", message: assigned })
               if (document.ended) {
                 const content = `The user ended this review. Reopen only on an explicit request. Design: ${document.id}`
                 return { output: content, content, metadata: { designID: document.id } }

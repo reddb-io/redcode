@@ -1,6 +1,6 @@
 # Redcode Creator
 
-Use Creator to build interactive artifacts and author Redcode extensions. This guide adapts the
+Use Creator to produce functional 3D, visualizations, simulations, media and interactive tools. This guide adapts the
 creation workflow to Redcode's own APIs; DeepSeek Harness bundles, Cordis Slots and its
 `plugin_manager` are different APIs and do not run here.
 
@@ -10,14 +10,30 @@ creation workflow to Redcode's own APIs; DeepSeek Harness bundles, Cordis Slots 
   Design document runtime for a preview that can execute the artifact's JavaScript.
 - Reusable interactive panel inside Desktop/Web: publish and verify the artifact, then use
   `creator_component` to install its immutable revision in the execution project.
-- Local tools and server/TUI plugins: author a package against the current Redcode plugin SDK.
-  Package source is a deliverable; activation is a separate operation.
-- Reusable agent workflow: author a skill with a `SKILL.md` and narrowly scoped references.
+- Redcode extensions: server/TUI/RPC plugins, agent tools, skills and MCP servers are first-class
+  outputs. Define an extension contract with SDK target, entry, declared capabilities and requested
+  source/package/instructions. General product implementation and host integration belong to Build.
+  Keep extension source in the document's returned work root until installation is authorized.
 - Native desktop/web GUI contribution: inspect the GUI extensions SDK. Production builds
   load built-in privileged GUI definitions. Creator can dynamically install isolated panels,
   but cannot inject native host commands, arbitrary DOM code or Electron main-process plugins.
 
 ## Interactive artifacts and procedural 3D
+
+Designer owns the product experience: flows, hierarchy, interface states, accessibility and
+acceptance for integration. Creator owns a working artifact and evidence about its behavior,
+resources and actual output formats. Both share one Design document runtime; the distinction
+is the delivery contract, not whether the result is 2D or 3D.
+
+Inspect existing documents and `design_collaboration` before creating one. Define an artifact
+contract with objective, acceptance, artifact type and required outputs (`preview`, `component`,
+`files`). The workflow's `expectedVersion` is separate from an installed component's version.
+For Designer's request, reuse its document ID, root, notes and revision history. After publishing
+and exercising the artifact, hand the same document back with `design_collaboration` action
+`handoff`, `to: "design"`, the latest revision and a concrete summary. Omit `contract` to retain
+the existing interface contract. Handoff asks under the permission policy and switches the same
+conversation; it does not approve the revision, install it or prove that acceptance criteria passed.
+Use Designer's review rather than calling `design_exit` or `design_playbook` from Creator.
 
 1. Read the actual schemas of `design_document`, `design_preview`, `design_read`, `design_asset`,
    `design_export` and `design_jobs`. Inspect existing documents before creating another one.
@@ -28,8 +44,8 @@ creation workflow to Redcode's own APIs; DeepSeek Harness bundles, Cordis Slots 
 4. Use the document's preview, rendering jobs or an attached browser to exercise controls and
    inspect failures. Record the revision and the evidence. An export job has not succeeded until
    its result arrives; use its native monitor rather than repeatedly polling.
-5. Deliver the revision/preview and any actual exported files. A creative artifact does not need
-   `design_exit` or a Plan handoff unless the user wants to integrate it into product code.
+5. Deliver the revision/preview and any actual exported files. For interface review or product
+   integration, hand off to Designer on this document; Designer owns approval and the Plan transition.
 
 For 3D, inspect the project dependencies and connected tools. Prefer procedural geometry,
 WebGL or an already available Three.js stack for scenes that do not require generated models.
@@ -88,9 +104,11 @@ connected server or worker, which can be a different computer from the desktop c
 Prefer source and SDK documentation matching the installed release when available. The linked
 main branch can be newer; verify its contracts against the actual host before using an API.
 
-Keep generated source in a user-selected workspace directory, or a dedicated
-`.red/code/creator/<name>` directory in that workspace. Do not modify user configuration merely
-because source was created. Package installation can execute arbitrary host code; show the
+Keep generated supporting source inside the Design document's returned work root. Ask Build
+to integrate host packages and skills after the artifact is reviewed. Creator cannot execute
+native shell commands or edit arbitrary product files; use the artifact builder and explicitly
+connected MCP capabilities. Do not modify user configuration merely because source was created.
+Package installation can execute arbitrary host code; show the
 package, entry point, scope and required access before activation. Respect existing permissions
 and explicit user authorization. Never create connections from ambient environment variables.
 

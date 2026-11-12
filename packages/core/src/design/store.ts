@@ -1,6 +1,7 @@
 export * as DesignStore from "./store.js"
 
 import path from "node:path"
+import { isDeepStrictEqual } from "node:util"
 import { mkdir } from "node:fs/promises"
 import { Design } from "@opencode/schema/design"
 import { ConfigDesign } from "@opencode/schema/config/design"
@@ -719,6 +720,109 @@ const make = Effect.gen(function* () {
     return { ...updated, ...(platform ? { platform } : {}) }
   })
 
+  const collaborate = Effect.fn("DesignStore.collaborate")(function* (
+    sessionID: SessionSchema.ID,
+    id: Design.ID,
+    actor: Design.CreativeRole,
+    input: Design.Collaborate,
+  ) {
+    const current = yield* get(sessionID, id)
+    if (current.ended)
+      return yield* new Design.Error({
+        code: "conflict",
+        message: "Reopen this document before changing its delivery workflow",
+      })
+    const previous = current.collaboration
+    const receipt = previous?.handoff
+    // A retry finishes the same transfer rather than appending another version or opening a new document.
+    if (
+      input.action === "handoff" &&
+      previous?.version === input.expectedVersion + 1 &&
+      receipt?.previousVersion === input.expectedVersion &&
+      receipt.from === actor &&
+      receipt.to === input.to &&
+      receipt.revision === input.revision &&
+      receipt.summary === input.summary &&
+      (!input.contract || isDeepStrictEqual(input.contract, previous.contracts[input.to]))
+    )
+      return current
+    if ((previous?.version ?? 0) !== input.expectedVersion)
+      return yield* new Design.Error({
+        code: "conflict",
+        message: `Delivery workflow changed (current version ${previous?.version ?? 0}); inspect it before retrying`,
+      })
+    if (previous && previous.owner !== actor)
+      return yield* new Design.Error({
+        code: "conflict",
+        message: `This document is assigned to ${previous.owner}; continue in that mode on the same document`,
+      })
+    const owner = input.action === "handoff" ? input.to : actor
+    const contract = input.contract ?? previous?.contracts[owner]
+    if (!contract || (owner === "design" ? contract.kind !== "interface" : contract.kind === "interface"))
+      return yield* new Design.Error({
+        code: "invalid",
+        message: `${owner} requires ${owner === "design" ? "an interface" : "an artifact or extension"} delivery contract`,
+      })
+    if (input.action === "handoff") {
+      if (input.to === actor)
+        return yield* new Design.Error({ code: "invalid", message: "Hand off to the complementary mode" })
+      if (!previous?.contracts[actor])
+        return yield* new Design.Error({ code: "invalid", message: "Define your delivery contract before handing off" })
+      if (current.revision !== input.revision)
+        return yield* new Design.Error({
+          code: "conflict",
+          message: "Hand off the latest published revision of this document",
+        })
+      yield* revision(sessionID, id, input.revision)
+    }
+    const collaboration: Design.Collaboration = {
+      version: input.expectedVersion + 1,
+      owner,
+      contracts: { ...previous?.contracts, [owner]: contract },
+      ...(input.action === "handoff"
+        ? {
+            handoff: {
+              from: actor,
+              to: input.to,
+              revision: input.revision,
+              summary: input.summary,
+              previousVersion: input.expectedVersion,
+            },
+          }
+        : previous?.handoff
+          ? { handoff: previous.handoff }
+          : {}),
+    }
+    const data = { ...current, collaboration, updated: Date.now() }
+    // Change only workflow metadata, preserving feedback and other fields. CAS rejects stale transfers.
+    const changed = yield* db
+      .update(DesignTable)
+      .set({
+        data: sql`json_set(${DesignTable.data}, '$.collaboration', json(${JSON.stringify(collaboration)}), '$.updated', ${data.updated})`,
+      })
+      .where(
+        and(
+          eq(DesignTable.id, id),
+          eq(DesignTable.session_id, sessionID),
+          eq(DesignTable.directory, location.directory),
+          sql`coalesce(json_extract(${DesignTable.data}, '$.collaboration.version'), 0) = ${input.expectedVersion}`,
+          sql`json_extract(${DesignTable.data}, '$.ended') = 0`,
+          ...(input.action === "handoff"
+            ? [sql`json_extract(${DesignTable.data}, '$.revision') = ${input.revision}`]
+            : []),
+        ),
+      )
+      .returning({ id: DesignTable.id })
+      .get()
+      .pipe(Effect.orDie)
+    if (!changed)
+      return yield* new Design.Error({
+        code: "conflict",
+        message: "Document changed during handoff; inspect the current delivery workflow and revision",
+      })
+    return data
+  }, lock.withPermits(1))
+
   const restore = Effect.fn("DesignStore.restore")(function* (
     sessionID: SessionSchema.ID,
     id: Design.ID,
@@ -737,8 +841,10 @@ const make = Effect.gen(function* () {
           ? error
           : new Design.Error({ code: "unavailable", message: DesignBuild.reason(error) }),
     })
+    const { collaboration: _workflow, ...snapshot } = previous.document
     yield* save(sessionID, {
-      ...previous.document,
+      ...snapshot,
+      ...(current.collaboration ? { collaboration: current.collaboration } : {}),
       root: current.root,
       revision: current.revision,
       approvedRevision: current.approvedRevision,
@@ -1588,6 +1694,7 @@ const make = Effect.gen(function* () {
     configured,
     adopt,
     create,
+    collaborate,
     list,
     get,
     revisions,

@@ -4444,6 +4444,57 @@ export type TodoReconciliation = {
 }
 
 export type DesignInfo = {
+  collaboration?: {
+    version: number
+    owner: "design" | "creator"
+    contracts: {
+      design?:
+        | { kind: "interface"; objective: string; acceptance: Array<string>; states: Array<string> }
+        | {
+            kind: "artifact"
+            objective: string
+            acceptance: Array<string>
+            artifact: "3d" | "visualization" | "simulation" | "media" | "interactive-tool"
+            outputs: Array<"preview" | "component" | "files">
+          }
+        | {
+            kind: "extension"
+            objective: string
+            acceptance: Array<string>
+            target: "server-plugin" | "tui-plugin" | "rpc-plugin" | "skill" | "mcp-server"
+            entry: string
+            capabilities: Array<string>
+            outputs: Array<"source" | "package" | "instructions">
+          }
+        | null
+      creator?:
+        | { kind: "interface"; objective: string; acceptance: Array<string>; states: Array<string> }
+        | {
+            kind: "artifact"
+            objective: string
+            acceptance: Array<string>
+            artifact: "3d" | "visualization" | "simulation" | "media" | "interactive-tool"
+            outputs: Array<"preview" | "component" | "files">
+          }
+        | {
+            kind: "extension"
+            objective: string
+            acceptance: Array<string>
+            target: "server-plugin" | "tui-plugin" | "rpc-plugin" | "skill" | "mcp-server"
+            entry: string
+            capabilities: Array<string>
+            outputs: Array<"source" | "package" | "instructions">
+          }
+        | null
+    }
+    handoff?: {
+      from: "design" | "creator"
+      to: "design" | "creator"
+      revision: string
+      summary: string
+      previousVersion: number
+    } | null
+  } | null
   controls?: Array<DesignParamComponent>
   presets?: Array<DesignParamPreset>
   id: string

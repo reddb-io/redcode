@@ -520,6 +520,10 @@ describe("Design agent permissions", () => {
       expect(effect("project_tooling", "tailwind")).toBe("ask")
       expect(effect("subagent", "explore")).toBe("allow")
       expect(effect("subagent", "general")).toBe("deny")
+      expect(effect("creator_component", "*")).toBe("deny")
+      expect(effect("creator_component_edit", "*")).toBe("deny")
+      expect(effect("design_collaboration", "*")).toBe("allow")
+      expect(effect("design_handoff", "*")).toBe("ask")
     }),
   )
 })

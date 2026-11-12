@@ -234,6 +234,14 @@ optional pan, keeping notes attached to their elements. **Design assessment** re
 optional image analysis adds rendered captures. Creative canvases export PNG and PDF; slides export
 PDF. Approval records decisions for Plan and Build.
 
+**Creator mode · Functional artifacts.** Create interactive 3D, visualizations, simulations and
+media with verified previews, files or installed project components. Author Redcode plugins, skills
+and MCP servers with explicit extension contracts and installation instructions. Designer owns the product
+experience; Creator owns the working artifact. Both can define versioned delivery contracts and
+hand off the same document in the same conversation, preserving files, feedback and revisions.
+Creator edits the artifact workspace; Build owns product implementation. Open installed panels
+through **Creator components**. [Contracts and handoff](docs/creator-designer.md).
+
 <img src="docs/features/design-review.svg" alt="Standalone Design review with annotation pins and queued feedback" width="100%" />
 
 Desktop embeds the review beside the chat. Standalone browser review includes its conversation panel.

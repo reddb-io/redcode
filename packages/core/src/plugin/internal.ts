@@ -142,6 +142,7 @@ import { DesignRenderTool } from "../tool/plugin/design-render.js"
 import { DesignPlaybookTool } from "../tool/plugin/design-playbook.js"
 import { DesignExitTool } from "../tool/plugin/design-exit.js"
 import { CreatorComponentTool } from "../tool/plugin/creator-component.js"
+import { DesignCollaborationTool } from "../tool/plugin/design-collaboration.js"
 import { DesignMediaTool } from "../tool/plugin/design-media.js"
 import { PlanExitTool } from "../tool/plugin/plan-exit.js"
 import { WorktreePrepareTool } from "../tool/plugin/worktree-prepare.js"
@@ -360,6 +361,7 @@ const pre = [
   DesignPlaybookTool.Plugin,
   DesignExitTool.Plugin,
   CreatorComponentTool.Plugin,
+  DesignCollaborationTool.Plugin,
   DesignMediaTool.Plugin,
   PlanExitTool.Plugin,
   WorktreePrepareTool.Plugin,

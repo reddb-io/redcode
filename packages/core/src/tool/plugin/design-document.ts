@@ -7,6 +7,7 @@ import { Design } from "@opencode/schema/design"
 import { Global } from "@opencode/util/global"
 import { Effect, Ref, Schema } from "effect"
 import { DesignDetection } from "../../design/detection.js"
+import { DesignCollaboration } from "../../design/collaboration.js"
 import { DesignBuild } from "../../design/build.js"
 import { DesignChecklist } from "../../design/checklist.js"
 import { DesignDocumentTool } from "../../design/document-tool.js"
@@ -205,6 +206,9 @@ export const Plugin = {
                     },
                   ]
                 }
+                const document = yield* designs.get(context.sessionID, input.id)
+                const assigned = DesignCollaboration.author(document, context.agent)
+                if (assigned) return yield* new Design.Error({ code: "conflict", message: assigned })
                 if (input.action === "reopen") return [yield* designs.reopen(context.sessionID, input.id)]
                 if (input.action === "refresh") {
                   const current = yield* designs.get(context.sessionID, input.id)

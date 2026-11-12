@@ -114,6 +114,51 @@ const provided = <A, E>(effect: Effect.Effect<A, E, DesignContext.Service>) =>
   effect.pipe(Effect.provide(AppNodeBuilder.build(DesignContext.node, [DesignStore.node.replace(store)])))
 
 describe("DesignContext", () => {
+  it.effect("retains both delivery contracts and handoff responsibility in the resumed instruction baseline", () =>
+    provided(
+      Effect.gen(function* () {
+        yield* reset([
+          {
+            ...draft,
+            collaboration: {
+              version: 2,
+              owner: "creator",
+              contracts: {
+                design: {
+                  kind: "interface",
+                  objective: "Accessible editor",
+                  acceptance: ["Keyboard controls"],
+                  states: ["ready", "error"],
+                },
+                creator: {
+                  kind: "artifact",
+                  objective: "Working cube",
+                  artifact: "3d",
+                  acceptance: ["Visible material changes"],
+                  outputs: ["preview"],
+                },
+              },
+              handoff: {
+                from: "design",
+                to: "creator",
+                revision: "rev_interface",
+                summary: "Implement in this document",
+                previousVersion: 1,
+              },
+            },
+          },
+        ])
+        const context = yield* DesignContext.Service
+        const initial = yield* readInitial(context.load(sessionID))
+        expect(initial.text).toContain("current responsibility: creator")
+        expect(initial.text).toContain("Accessible editor")
+        expect(initial.text).toContain("Working cube")
+        expect(initial.text).toContain("rev_interface")
+        expect(initial.text).toContain("not user approval")
+        expect(Instructions.renderInitial(context.load(sessionID), initial.values)).toBe(initial.text)
+      }),
+    ),
+  )
   it.effect("adds nothing to a Session without Design documents", () =>
     provided(
       Effect.gen(function* () {

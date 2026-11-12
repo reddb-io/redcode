@@ -1903,6 +1903,71 @@ export type SessionDesignFeedOperation<E = never> = (
 
 export type SessionDesignListInput = { readonly sessionID: Session.ID }
 export type SessionDesignListOutput = ReadonlyArray<{
+  readonly collaboration?:
+    | {
+        readonly version: number
+        readonly owner: "design" | "creator"
+        readonly contracts: {
+          readonly design?:
+            | {
+                readonly kind: "interface"
+                readonly objective: string
+                readonly acceptance: ReadonlyArray<string>
+                readonly states: ReadonlyArray<string>
+              }
+            | {
+                readonly kind: "artifact"
+                readonly objective: string
+                readonly acceptance: ReadonlyArray<string>
+                readonly artifact: "3d" | "visualization" | "simulation" | "media" | "interactive-tool"
+                readonly outputs: ReadonlyArray<"preview" | "component" | "files">
+              }
+            | {
+                readonly kind: "extension"
+                readonly objective: string
+                readonly acceptance: ReadonlyArray<string>
+                readonly target: "server-plugin" | "tui-plugin" | "rpc-plugin" | "skill" | "mcp-server"
+                readonly entry: string
+                readonly capabilities: ReadonlyArray<string>
+                readonly outputs: ReadonlyArray<"source" | "package" | "instructions">
+              }
+            | undefined
+          readonly creator?:
+            | {
+                readonly kind: "interface"
+                readonly objective: string
+                readonly acceptance: ReadonlyArray<string>
+                readonly states: ReadonlyArray<string>
+              }
+            | {
+                readonly kind: "artifact"
+                readonly objective: string
+                readonly acceptance: ReadonlyArray<string>
+                readonly artifact: "3d" | "visualization" | "simulation" | "media" | "interactive-tool"
+                readonly outputs: ReadonlyArray<"preview" | "component" | "files">
+              }
+            | {
+                readonly kind: "extension"
+                readonly objective: string
+                readonly acceptance: ReadonlyArray<string>
+                readonly target: "server-plugin" | "tui-plugin" | "rpc-plugin" | "skill" | "mcp-server"
+                readonly entry: string
+                readonly capabilities: ReadonlyArray<string>
+                readonly outputs: ReadonlyArray<"source" | "package" | "instructions">
+              }
+            | undefined
+        }
+        readonly handoff?:
+          | {
+              readonly from: "design" | "creator"
+              readonly to: "design" | "creator"
+              readonly revision: string
+              readonly summary: string
+              readonly previousVersion: number
+            }
+          | undefined
+      }
+    | undefined
   readonly controls?:
     | ReadonlyArray<{
         readonly id: string
@@ -2084,6 +2149,71 @@ export type SessionDesignCreateInput = {
   readonly platform?: "ios" | "android" | undefined
 }
 export type SessionDesignCreateOutput = {
+  readonly collaboration?:
+    | {
+        readonly version: number
+        readonly owner: "design" | "creator"
+        readonly contracts: {
+          readonly design?:
+            | {
+                readonly kind: "interface"
+                readonly objective: string
+                readonly acceptance: ReadonlyArray<string>
+                readonly states: ReadonlyArray<string>
+              }
+            | {
+                readonly kind: "artifact"
+                readonly objective: string
+                readonly acceptance: ReadonlyArray<string>
+                readonly artifact: "3d" | "visualization" | "simulation" | "media" | "interactive-tool"
+                readonly outputs: ReadonlyArray<"preview" | "component" | "files">
+              }
+            | {
+                readonly kind: "extension"
+                readonly objective: string
+                readonly acceptance: ReadonlyArray<string>
+                readonly target: "server-plugin" | "tui-plugin" | "rpc-plugin" | "skill" | "mcp-server"
+                readonly entry: string
+                readonly capabilities: ReadonlyArray<string>
+                readonly outputs: ReadonlyArray<"source" | "package" | "instructions">
+              }
+            | undefined
+          readonly creator?:
+            | {
+                readonly kind: "interface"
+                readonly objective: string
+                readonly acceptance: ReadonlyArray<string>
+                readonly states: ReadonlyArray<string>
+              }
+            | {
+                readonly kind: "artifact"
+                readonly objective: string
+                readonly acceptance: ReadonlyArray<string>
+                readonly artifact: "3d" | "visualization" | "simulation" | "media" | "interactive-tool"
+                readonly outputs: ReadonlyArray<"preview" | "component" | "files">
+              }
+            | {
+                readonly kind: "extension"
+                readonly objective: string
+                readonly acceptance: ReadonlyArray<string>
+                readonly target: "server-plugin" | "tui-plugin" | "rpc-plugin" | "skill" | "mcp-server"
+                readonly entry: string
+                readonly capabilities: ReadonlyArray<string>
+                readonly outputs: ReadonlyArray<"source" | "package" | "instructions">
+              }
+            | undefined
+        }
+        readonly handoff?:
+          | {
+              readonly from: "design" | "creator"
+              readonly to: "design" | "creator"
+              readonly revision: string
+              readonly summary: string
+              readonly previousVersion: number
+            }
+          | undefined
+      }
+    | undefined
   readonly controls?:
     | ReadonlyArray<{
         readonly id: string
@@ -2257,6 +2387,71 @@ export type SessionDesignGetInput = {
   readonly designID: string & Brand.Brand<"Design.ID">
 }
 export type SessionDesignGetOutput = {
+  readonly collaboration?:
+    | {
+        readonly version: number
+        readonly owner: "design" | "creator"
+        readonly contracts: {
+          readonly design?:
+            | {
+                readonly kind: "interface"
+                readonly objective: string
+                readonly acceptance: ReadonlyArray<string>
+                readonly states: ReadonlyArray<string>
+              }
+            | {
+                readonly kind: "artifact"
+                readonly objective: string
+                readonly acceptance: ReadonlyArray<string>
+                readonly artifact: "3d" | "visualization" | "simulation" | "media" | "interactive-tool"
+                readonly outputs: ReadonlyArray<"preview" | "component" | "files">
+              }
+            | {
+                readonly kind: "extension"
+                readonly objective: string
+                readonly acceptance: ReadonlyArray<string>
+                readonly target: "server-plugin" | "tui-plugin" | "rpc-plugin" | "skill" | "mcp-server"
+                readonly entry: string
+                readonly capabilities: ReadonlyArray<string>
+                readonly outputs: ReadonlyArray<"source" | "package" | "instructions">
+              }
+            | undefined
+          readonly creator?:
+            | {
+                readonly kind: "interface"
+                readonly objective: string
+                readonly acceptance: ReadonlyArray<string>
+                readonly states: ReadonlyArray<string>
+              }
+            | {
+                readonly kind: "artifact"
+                readonly objective: string
+                readonly acceptance: ReadonlyArray<string>
+                readonly artifact: "3d" | "visualization" | "simulation" | "media" | "interactive-tool"
+                readonly outputs: ReadonlyArray<"preview" | "component" | "files">
+              }
+            | {
+                readonly kind: "extension"
+                readonly objective: string
+                readonly acceptance: ReadonlyArray<string>
+                readonly target: "server-plugin" | "tui-plugin" | "rpc-plugin" | "skill" | "mcp-server"
+                readonly entry: string
+                readonly capabilities: ReadonlyArray<string>
+                readonly outputs: ReadonlyArray<"source" | "package" | "instructions">
+              }
+            | undefined
+        }
+        readonly handoff?:
+          | {
+              readonly from: "design" | "creator"
+              readonly to: "design" | "creator"
+              readonly revision: string
+              readonly summary: string
+              readonly previousVersion: number
+            }
+          | undefined
+      }
+    | undefined
   readonly controls?:
     | ReadonlyArray<{
         readonly id: string
@@ -2672,6 +2867,71 @@ export type SessionDesignUpdateInput = {
   readonly tweaks?: { readonly [x: string]: string } | undefined
 }
 export type SessionDesignUpdateOutput = {
+  readonly collaboration?:
+    | {
+        readonly version: number
+        readonly owner: "design" | "creator"
+        readonly contracts: {
+          readonly design?:
+            | {
+                readonly kind: "interface"
+                readonly objective: string
+                readonly acceptance: ReadonlyArray<string>
+                readonly states: ReadonlyArray<string>
+              }
+            | {
+                readonly kind: "artifact"
+                readonly objective: string
+                readonly acceptance: ReadonlyArray<string>
+                readonly artifact: "3d" | "visualization" | "simulation" | "media" | "interactive-tool"
+                readonly outputs: ReadonlyArray<"preview" | "component" | "files">
+              }
+            | {
+                readonly kind: "extension"
+                readonly objective: string
+                readonly acceptance: ReadonlyArray<string>
+                readonly target: "server-plugin" | "tui-plugin" | "rpc-plugin" | "skill" | "mcp-server"
+                readonly entry: string
+                readonly capabilities: ReadonlyArray<string>
+                readonly outputs: ReadonlyArray<"source" | "package" | "instructions">
+              }
+            | undefined
+          readonly creator?:
+            | {
+                readonly kind: "interface"
+                readonly objective: string
+                readonly acceptance: ReadonlyArray<string>
+                readonly states: ReadonlyArray<string>
+              }
+            | {
+                readonly kind: "artifact"
+                readonly objective: string
+                readonly acceptance: ReadonlyArray<string>
+                readonly artifact: "3d" | "visualization" | "simulation" | "media" | "interactive-tool"
+                readonly outputs: ReadonlyArray<"preview" | "component" | "files">
+              }
+            | {
+                readonly kind: "extension"
+                readonly objective: string
+                readonly acceptance: ReadonlyArray<string>
+                readonly target: "server-plugin" | "tui-plugin" | "rpc-plugin" | "skill" | "mcp-server"
+                readonly entry: string
+                readonly capabilities: ReadonlyArray<string>
+                readonly outputs: ReadonlyArray<"source" | "package" | "instructions">
+              }
+            | undefined
+        }
+        readonly handoff?:
+          | {
+              readonly from: "design" | "creator"
+              readonly to: "design" | "creator"
+              readonly revision: string
+              readonly summary: string
+              readonly previousVersion: number
+            }
+          | undefined
+      }
+    | undefined
   readonly controls?:
     | ReadonlyArray<{
         readonly id: string
@@ -2845,6 +3105,71 @@ export type SessionDesignRefreshInput = {
   readonly designID: string & Brand.Brand<"Design.ID">
 }
 export type SessionDesignRefreshOutput = {
+  readonly collaboration?:
+    | {
+        readonly version: number
+        readonly owner: "design" | "creator"
+        readonly contracts: {
+          readonly design?:
+            | {
+                readonly kind: "interface"
+                readonly objective: string
+                readonly acceptance: ReadonlyArray<string>
+                readonly states: ReadonlyArray<string>
+              }
+            | {
+                readonly kind: "artifact"
+                readonly objective: string
+                readonly acceptance: ReadonlyArray<string>
+                readonly artifact: "3d" | "visualization" | "simulation" | "media" | "interactive-tool"
+                readonly outputs: ReadonlyArray<"preview" | "component" | "files">
+              }
+            | {
+                readonly kind: "extension"
+                readonly objective: string
+                readonly acceptance: ReadonlyArray<string>
+                readonly target: "server-plugin" | "tui-plugin" | "rpc-plugin" | "skill" | "mcp-server"
+                readonly entry: string
+                readonly capabilities: ReadonlyArray<string>
+                readonly outputs: ReadonlyArray<"source" | "package" | "instructions">
+              }
+            | undefined
+          readonly creator?:
+            | {
+                readonly kind: "interface"
+                readonly objective: string
+                readonly acceptance: ReadonlyArray<string>
+                readonly states: ReadonlyArray<string>
+              }
+            | {
+                readonly kind: "artifact"
+                readonly objective: string
+                readonly acceptance: ReadonlyArray<string>
+                readonly artifact: "3d" | "visualization" | "simulation" | "media" | "interactive-tool"
+                readonly outputs: ReadonlyArray<"preview" | "component" | "files">
+              }
+            | {
+                readonly kind: "extension"
+                readonly objective: string
+                readonly acceptance: ReadonlyArray<string>
+                readonly target: "server-plugin" | "tui-plugin" | "rpc-plugin" | "skill" | "mcp-server"
+                readonly entry: string
+                readonly capabilities: ReadonlyArray<string>
+                readonly outputs: ReadonlyArray<"source" | "package" | "instructions">
+              }
+            | undefined
+        }
+        readonly handoff?:
+          | {
+              readonly from: "design" | "creator"
+              readonly to: "design" | "creator"
+              readonly revision: string
+              readonly summary: string
+              readonly previousVersion: number
+            }
+          | undefined
+      }
+    | undefined
   readonly controls?:
     | ReadonlyArray<{
         readonly id: string
@@ -3035,6 +3360,71 @@ export type SessionDesignReopenInput = {
   readonly designID: string & Brand.Brand<"Design.ID">
 }
 export type SessionDesignReopenOutput = {
+  readonly collaboration?:
+    | {
+        readonly version: number
+        readonly owner: "design" | "creator"
+        readonly contracts: {
+          readonly design?:
+            | {
+                readonly kind: "interface"
+                readonly objective: string
+                readonly acceptance: ReadonlyArray<string>
+                readonly states: ReadonlyArray<string>
+              }
+            | {
+                readonly kind: "artifact"
+                readonly objective: string
+                readonly acceptance: ReadonlyArray<string>
+                readonly artifact: "3d" | "visualization" | "simulation" | "media" | "interactive-tool"
+                readonly outputs: ReadonlyArray<"preview" | "component" | "files">
+              }
+            | {
+                readonly kind: "extension"
+                readonly objective: string
+                readonly acceptance: ReadonlyArray<string>
+                readonly target: "server-plugin" | "tui-plugin" | "rpc-plugin" | "skill" | "mcp-server"
+                readonly entry: string
+                readonly capabilities: ReadonlyArray<string>
+                readonly outputs: ReadonlyArray<"source" | "package" | "instructions">
+              }
+            | undefined
+          readonly creator?:
+            | {
+                readonly kind: "interface"
+                readonly objective: string
+                readonly acceptance: ReadonlyArray<string>
+                readonly states: ReadonlyArray<string>
+              }
+            | {
+                readonly kind: "artifact"
+                readonly objective: string
+                readonly acceptance: ReadonlyArray<string>
+                readonly artifact: "3d" | "visualization" | "simulation" | "media" | "interactive-tool"
+                readonly outputs: ReadonlyArray<"preview" | "component" | "files">
+              }
+            | {
+                readonly kind: "extension"
+                readonly objective: string
+                readonly acceptance: ReadonlyArray<string>
+                readonly target: "server-plugin" | "tui-plugin" | "rpc-plugin" | "skill" | "mcp-server"
+                readonly entry: string
+                readonly capabilities: ReadonlyArray<string>
+                readonly outputs: ReadonlyArray<"source" | "package" | "instructions">
+              }
+            | undefined
+        }
+        readonly handoff?:
+          | {
+              readonly from: "design" | "creator"
+              readonly to: "design" | "creator"
+              readonly revision: string
+              readonly summary: string
+              readonly previousVersion: number
+            }
+          | undefined
+      }
+    | undefined
   readonly controls?:
     | ReadonlyArray<{
         readonly id: string
@@ -3215,6 +3605,71 @@ export type SessionDesignRevisionsOutput = ReadonlyArray<{
   readonly created: number
   readonly files: { readonly [x: string]: string }
   readonly document: {
+    readonly collaboration?:
+      | {
+          readonly version: number
+          readonly owner: "design" | "creator"
+          readonly contracts: {
+            readonly design?:
+              | {
+                  readonly kind: "interface"
+                  readonly objective: string
+                  readonly acceptance: ReadonlyArray<string>
+                  readonly states: ReadonlyArray<string>
+                }
+              | {
+                  readonly kind: "artifact"
+                  readonly objective: string
+                  readonly acceptance: ReadonlyArray<string>
+                  readonly artifact: "3d" | "visualization" | "simulation" | "media" | "interactive-tool"
+                  readonly outputs: ReadonlyArray<"preview" | "component" | "files">
+                }
+              | {
+                  readonly kind: "extension"
+                  readonly objective: string
+                  readonly acceptance: ReadonlyArray<string>
+                  readonly target: "server-plugin" | "tui-plugin" | "rpc-plugin" | "skill" | "mcp-server"
+                  readonly entry: string
+                  readonly capabilities: ReadonlyArray<string>
+                  readonly outputs: ReadonlyArray<"source" | "package" | "instructions">
+                }
+              | undefined
+            readonly creator?:
+              | {
+                  readonly kind: "interface"
+                  readonly objective: string
+                  readonly acceptance: ReadonlyArray<string>
+                  readonly states: ReadonlyArray<string>
+                }
+              | {
+                  readonly kind: "artifact"
+                  readonly objective: string
+                  readonly acceptance: ReadonlyArray<string>
+                  readonly artifact: "3d" | "visualization" | "simulation" | "media" | "interactive-tool"
+                  readonly outputs: ReadonlyArray<"preview" | "component" | "files">
+                }
+              | {
+                  readonly kind: "extension"
+                  readonly objective: string
+                  readonly acceptance: ReadonlyArray<string>
+                  readonly target: "server-plugin" | "tui-plugin" | "rpc-plugin" | "skill" | "mcp-server"
+                  readonly entry: string
+                  readonly capabilities: ReadonlyArray<string>
+                  readonly outputs: ReadonlyArray<"source" | "package" | "instructions">
+                }
+              | undefined
+          }
+          readonly handoff?:
+            | {
+                readonly from: "design" | "creator"
+                readonly to: "design" | "creator"
+                readonly revision: string
+                readonly summary: string
+                readonly previousVersion: number
+              }
+            | undefined
+        }
+      | undefined
     readonly controls?:
       | ReadonlyArray<{
           readonly id: string
@@ -3482,6 +3937,71 @@ export type SessionDesignRevisionOutput = {
   readonly created: number
   readonly files: { readonly [x: string]: string }
   readonly document: {
+    readonly collaboration?:
+      | {
+          readonly version: number
+          readonly owner: "design" | "creator"
+          readonly contracts: {
+            readonly design?:
+              | {
+                  readonly kind: "interface"
+                  readonly objective: string
+                  readonly acceptance: ReadonlyArray<string>
+                  readonly states: ReadonlyArray<string>
+                }
+              | {
+                  readonly kind: "artifact"
+                  readonly objective: string
+                  readonly acceptance: ReadonlyArray<string>
+                  readonly artifact: "3d" | "visualization" | "simulation" | "media" | "interactive-tool"
+                  readonly outputs: ReadonlyArray<"preview" | "component" | "files">
+                }
+              | {
+                  readonly kind: "extension"
+                  readonly objective: string
+                  readonly acceptance: ReadonlyArray<string>
+                  readonly target: "server-plugin" | "tui-plugin" | "rpc-plugin" | "skill" | "mcp-server"
+                  readonly entry: string
+                  readonly capabilities: ReadonlyArray<string>
+                  readonly outputs: ReadonlyArray<"source" | "package" | "instructions">
+                }
+              | undefined
+            readonly creator?:
+              | {
+                  readonly kind: "interface"
+                  readonly objective: string
+                  readonly acceptance: ReadonlyArray<string>
+                  readonly states: ReadonlyArray<string>
+                }
+              | {
+                  readonly kind: "artifact"
+                  readonly objective: string
+                  readonly acceptance: ReadonlyArray<string>
+                  readonly artifact: "3d" | "visualization" | "simulation" | "media" | "interactive-tool"
+                  readonly outputs: ReadonlyArray<"preview" | "component" | "files">
+                }
+              | {
+                  readonly kind: "extension"
+                  readonly objective: string
+                  readonly acceptance: ReadonlyArray<string>
+                  readonly target: "server-plugin" | "tui-plugin" | "rpc-plugin" | "skill" | "mcp-server"
+                  readonly entry: string
+                  readonly capabilities: ReadonlyArray<string>
+                  readonly outputs: ReadonlyArray<"source" | "package" | "instructions">
+                }
+              | undefined
+          }
+          readonly handoff?:
+            | {
+                readonly from: "design" | "creator"
+                readonly to: "design" | "creator"
+                readonly revision: string
+                readonly summary: string
+                readonly previousVersion: number
+              }
+            | undefined
+        }
+      | undefined
     readonly controls?:
       | ReadonlyArray<{
           readonly id: string

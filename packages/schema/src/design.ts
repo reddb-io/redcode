@@ -10,6 +10,71 @@ export type ID = typeof ID.Type
 export const Kind = Schema.Literals(["screen", "flow", "comparison", "deck"])
 export const Journey = Schema.Literals(["new", "existing"])
 export const Engine = Schema.Literals(["html", "react", "solid"])
+export const CreativeRole = Schema.Literals(["design", "creator"])
+export type CreativeRole = typeof CreativeRole.Type
+const Acceptance = Schema.Array(Schema.NonEmptyString).check(Schema.isMinLength(1), Schema.isMaxLength(20))
+export const DeliveryContract = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("interface"),
+    objective: Schema.NonEmptyString,
+    acceptance: Acceptance,
+    states: Schema.Array(Schema.NonEmptyString).check(Schema.isMaxLength(20)),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("artifact"),
+    objective: Schema.NonEmptyString,
+    acceptance: Acceptance,
+    artifact: Schema.Literals(["3d", "visualization", "simulation", "media", "interactive-tool"]),
+    outputs: Schema.Array(Schema.Literals(["preview", "component", "files"])).check(
+      Schema.isMinLength(1),
+      Schema.isMaxLength(3),
+    ),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("extension"),
+    objective: Schema.NonEmptyString,
+    acceptance: Acceptance,
+    target: Schema.Literals(["server-plugin", "tui-plugin", "rpc-plugin", "skill", "mcp-server"]),
+    entry: Schema.NonEmptyString,
+    capabilities: Schema.Array(Schema.NonEmptyString).check(Schema.isMaxLength(20)),
+    outputs: Schema.Array(Schema.Literals(["source", "package", "instructions"])).check(
+      Schema.isMinLength(1),
+      Schema.isMaxLength(3),
+    ),
+  }),
+])
+export type DeliveryContract = typeof DeliveryContract.Type
+/** Optional on legacy documents. Workflow metadata never grants approval or tool access. */
+export const Collaboration = Schema.Struct({
+  version: Schema.Int.check(Schema.isGreaterThan(0)),
+  owner: CreativeRole,
+  contracts: Schema.Struct({ design: Schema.optional(DeliveryContract), creator: Schema.optional(DeliveryContract) }),
+  handoff: Schema.optional(
+    Schema.Struct({
+      from: CreativeRole,
+      to: CreativeRole,
+      revision: Schema.NonEmptyString,
+      summary: Schema.NonEmptyString,
+      previousVersion: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+    }),
+  ),
+})
+export type Collaboration = typeof Collaboration.Type
+export const DefineDelivery = Schema.Struct({
+  action: Schema.Literal("define"),
+  expectedVersion: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  contract: DeliveryContract,
+})
+export const HandoffDelivery = Schema.Struct({
+  action: Schema.Literal("handoff"),
+  expectedVersion: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  to: CreativeRole,
+  revision: Schema.NonEmptyString,
+  summary: Schema.NonEmptyString,
+  contract: Schema.optional(DeliveryContract),
+})
+export const Collaborate = Schema.Union([DefineDelivery, HandoffDelivery])
+export type Collaborate = typeof Collaborate.Type
 /**
  * What the design is for: a responsive web frontend, mobile app, presentation or static creative. It decides the
  * viewports the review and the audit use and the playbook the agent follows; `Kind` still describes
@@ -334,6 +399,7 @@ export const Update = Schema.Struct({
 export interface Update extends Schema.Schema.Type<typeof Update> {}
 
 export const Info = Schema.Struct({
+  collaboration: Schema.optional(Collaboration),
   controls: Schema.Array(ParamComponent).check(Schema.isMaxLength(32)).pipe(optional),
   presets: Schema.Array(ParamPreset).check(Schema.isMaxLength(100)).pipe(optional),
   id: ID,
