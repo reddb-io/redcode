@@ -7,6 +7,7 @@ import { homedir } from "node:os"
 import { VERSION } from "../constants"
 import { marks } from "../lifecycle/marks"
 import { sampleDesktopMemory } from "./memory"
+import { watchConsoleStreams } from "./console-stream"
 
 const MAX_LOG_AGE_DAYS = 7
 
@@ -331,6 +332,9 @@ function initConsoleTransport() {
     return
   }
 
+  watchConsoleStreams([process.stdout, process.stderr], () => {
+    log.transports.console.level = false
+  })
   const writeConsole = log.transports.console.writeFn.bind(log.transports.console)
   log.transports.console.writeFn = (options) => {
     try {
