@@ -330,6 +330,22 @@ export interface AgentApi<E = never> {
   readonly get: AgentGetOperation<E>
 }
 
+export type ServerCreatorComponentCreatorComponentTestInput = {
+  readonly location?: { readonly directory?: string | undefined } | undefined
+  readonly sessionID: Session.ID
+  readonly designID: string & Brand.Brand<"Design.ID">
+  readonly revision: string
+  readonly name: string
+  readonly description?: string | undefined
+}
+export type ServerCreatorComponentCreatorComponentTestOutput = {
+  readonly location: Location.PublicRef
+  readonly data: { readonly html: string; readonly revision: string; readonly version: number }
+}
+export type ServerCreatorComponentCreatorComponentTestOperation<E = never> = (
+  input: ServerCreatorComponentCreatorComponentTestInput,
+) => Effect.Effect<ServerCreatorComponentCreatorComponentTestOutput, E>
+
 export type ServerCreatorComponentCreatorComponentListInput = {
   readonly location?: { readonly directory?: string | undefined } | undefined
 }
@@ -456,6 +472,7 @@ export type ServerCreatorComponentCreatorComponentPreviewOperation<E = never> = 
 export interface ServerCreatorComponentApi<E = never> {
   readonly creator: {
     readonly component: {
+      readonly test: ServerCreatorComponentCreatorComponentTestOperation<E>
       readonly list: ServerCreatorComponentCreatorComponentListOperation<E>
       readonly install: ServerCreatorComponentCreatorComponentInstallOperation<E>
       readonly update: ServerCreatorComponentCreatorComponentUpdateOperation<E>

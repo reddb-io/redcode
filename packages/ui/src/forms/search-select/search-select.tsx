@@ -65,6 +65,7 @@ export function SearchSelect(props: SearchSelectProps) {
         itemComponent={(item) => (
           <Combobox.Item
             item={item.item}
+            aria-label={item.item.rawValue.label}
             class={styles.item({
               class: "min-h-[max(var(--reddb-spatial-control-height-md),var(--reddb-spatial-target-min))]",
             })}

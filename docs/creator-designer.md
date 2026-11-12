@@ -107,6 +107,35 @@ and version. Workflow versions and installed-component versions are different co
 
 ## Tools and scope
 
+### Create, test and install in the interface
+
+Open **Creator components** from the conversation header and choose **Create with Creator**.
+Select **Visual components** or **Server plugins**, give the extension a name and describe its
+behavior. Starting uses the conversation's selected model and connection, switches its agent
+to Creator and submits the brief. A running conversation must finish before starting this flow.
+No provider is selected from environment variables, and creation does not install or activate code.
+
+After Creator publishes a revision, use the corresponding tab in that same panel:
+
+- **Visual components → Install component → Preview and test** prepares the pinned revision
+  without adding an installation. Try its controls in the isolated iframe and then confirm
+  installation. Runtime diagnostics block confirmation until the preview is tested again.
+- **Server plugins → Install Creator plugin** reviews the package and its execution scope.
+  **Install and test** stores it disabled and runs the compatibility probe. A successful report
+  enables explicit activation; a failed report retains the disabled installation for retry.
+  Active plugins with registered tools offer **Try with agent**: enter a test case and expected
+  result to submit a real tool-test request to Build in the same conversation and selected model.
+  Tool permissions remain in force and the conversation shows the actual calls and results.
+
+Published choices refresh when a generation completes; each installer also has a refresh action.
+An interactive preview loading successfully is not proof of functional correctness. Likewise,
+the server-plugin compatibility probe checks loading, registration and teardown, not tool behavior
+or security isolation. Existing project dependencies and the normal Design builder still govern
+framework builds. Missing tooling or an older server is reported in the interface rather than
+silently claiming an installation succeeded.
+
+### Agent tool boundaries
+
 Designer retains interface playbooks, review/export tools and the approval transition, but
 does not receive component-installation tools. Creator receives artifact authoring, media,
 export, Delivery artifacts and component-management tools; it does not receive `design_exit`

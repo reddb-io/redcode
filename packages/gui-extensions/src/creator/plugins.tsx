@@ -9,12 +9,13 @@ import { Button } from "@opencode/ui/button"
 import { SearchSelect } from "@opencode/ui/search-select"
 import { TextField } from "@opencode/ui/text-field"
 import { Dialog, DialogFooter, DialogHeader, DialogTitleGroup } from "@opencode/ui/dialog"
-import { createKeyed, createLatest, useExtension, type ServerRef } from "../sdk"
+import { createKeyed, createLatest, useExtension, type ServerRef, type SessionRef } from "../sdk"
 import type definition from "./index"
+import TryPlugin from "./try-plugin"
 
 type PluginInfo = ServerCreatorPluginCreatorPluginInstallOutput["data"]
 
-export default function Plugins(props: { server?: ServerRef; location?: LocationRef }) {
+export default function Plugins(props: { server?: ServerRef; location?: LocationRef; session?: SessionRef }) {
   const ctx = useExtension<typeof definition>()
   const scope = createMemo(
     () =>
@@ -45,14 +46,14 @@ export default function Plugins(props: { server?: ServerRef; location?: Location
             </p>
           }
         >
-          {(input) => <Library server={input.server} location={input.location} />}
+          {(input) => <Library server={input.server} location={input.location} session={props.session} />}
         </Show>
       </Show>
     </section>
   )
 }
 
-function Library(props: { server: ServerRef; location: LocationRef }) {
+function Library(props: { server: ServerRef; location: LocationRef; session?: SessionRef }) {
   const ctx = useExtension<typeof definition>()
   const api = () => props.server.client["server.creatorPlugin"].creator.plugin
   const controller = new AbortController()
@@ -235,6 +236,26 @@ function Library(props: { server: ServerRef; location: LocationRef }) {
                 <Button variant="ghost" disabled={!!state.pending} onClick={() => remove(item)}>
                   {ctx.t("plugins.remove")}
                 </Button>
+                <Show when={props.session && item.runtime === "active" && item.report?.tools.length}>
+                  <Button
+                    variant="ghost"
+                    disabled={!!state.pending}
+                    onClick={() => {
+                      const session = props.session
+                      if (!session) return
+                      ctx.dialogs.open((dialog) => (
+                        <TryPlugin
+                          session={session}
+                          name={item.name}
+                          tools={item.report?.tools ?? []}
+                          close={() => dialog.close()}
+                        />
+                      ))
+                    }}
+                  >
+                    {ctx.t("plugins.try")}
+                  </Button>
+                </Show>
               </div>
               <p class="mt-1 truncate font-mono text-11-regular text-ink-muted" title={item.revision}>
                 {ctx.t("plugins.origin", { revision: item.revision, entry: item.entry })}
@@ -272,14 +293,29 @@ function Installer(props: { server: ServerRef; location: LocationRef; close: () 
   onCleanup(() => controller.abort())
   const [state, setState] = createStore({
     selected: "",
+    refresh: 0,
     pending: false,
     error: "",
     review: undefined as ServerCreatorPluginCreatorPluginReviewOutput["data"] | undefined,
     installed: undefined as PluginInfo | undefined,
   })
   const candidates = createLatest(
-    () => true,
+    () => state.refresh,
     (_, signal) => api().candidates({ location: props.location }, { signal }),
+  )
+  // A completed generation can publish a package while this installer is already open.
+  createKeyed(
+    () => props.server.data,
+    (data) =>
+      onCleanup(
+        data.on("session.execution.succeeded", (event) => {
+          if (
+            event.location?.directory === props.location.directory &&
+            event.location.workspaceID === props.location.workspaceID
+          )
+            setState("refresh", (value) => value + 1)
+        }),
+      ),
   )
   const selected = () => candidates.latest?.data.find((item) => item.designID === state.selected)
   const perform = (task: () => Promise<void>) => {
@@ -300,12 +336,19 @@ function Installer(props: { server: ServerRef; location: LocationRef; close: () 
       const result = await api().review({ ...item, location: props.location }, { signal: controller.signal })
       if (!controller.signal.aborted) setState("review", result.data)
     })
-  const install = () =>
+  const install = (runTest = false) =>
     perform(async () => {
       const item = state.review
       if (!item) return
       const result = await api().install({ ...item, location: props.location }, { signal: controller.signal })
-      if (!controller.signal.aborted) setState("installed", result.data)
+      if (controller.signal.aborted) return
+      setState("installed", result.data)
+      if (!runTest) return
+      const tested = await api().test(
+        { pluginID: result.data.id, expectedVersion: result.data.version, location: props.location },
+        { signal: controller.signal },
+      )
+      if (!controller.signal.aborted) setState("installed", tested.data)
     })
   const test = () =>
     perform(async () => {
@@ -351,6 +394,13 @@ function Installer(props: { server: ServerRef; location: LocationRef; close: () 
         <Show when={!candidates.loading && !candidates.error && !candidates.latest?.data.length}>
           <p class="text-12-regular text-ink-muted">{ctx.t("plugins.source.empty")}</p>
         </Show>
+        <Button
+          variant="ghost"
+          disabled={candidates.loading || state.pending}
+          onClick={() => setState("refresh", (value) => value + 1)}
+        >
+          {ctx.t("plugins.sources.refresh")}
+        </Button>
       </Show>
       <Show when={state.review}>
         {(item) => (
@@ -400,8 +450,11 @@ function Installer(props: { server: ServerRef; location: LocationRef; close: () 
           </Button>
         </Show>
         <Show when={state.review && !state.installed}>
-          <Button variant="outline" disabled={state.pending} onClick={install}>
+          <Button variant="ghost" disabled={state.pending} onClick={() => install()}>
             {ctx.t("plugins.install.disabled")}
+          </Button>
+          <Button variant="submit" disabled={state.pending} onClick={() => install(true)}>
+            {ctx.t(state.pending ? "plugins.working" : "plugins.install.test")}
           </Button>
         </Show>
         <Show when={state.installed}>

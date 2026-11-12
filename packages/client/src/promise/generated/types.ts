@@ -181,6 +181,8 @@ export type ConnectionCredentialInfo = {
 
 export type AgentColor = string
 
+export type CreatorComponentPreview = { html: string; revision: string; version: number }
+
 export type CreatorComponentInfo = {
   id: string
   name: string
@@ -193,8 +195,6 @@ export type CreatorComponentInfo = {
   created: number | "Infinity" | "-Infinity" | "NaN"
   updated: number | "Infinity" | "-Infinity" | "NaN"
 }
-
-export type CreatorComponentPreview = { html: string; revision: string; version: number }
 
 export type PluginSource =
   | { type: "builtin" }
@@ -5570,6 +5570,50 @@ export type AgentGetInput = {
 }
 
 export type AgentGetOutput = { location: LocationPublicRef; data: AgentInfo }
+
+export type ServerCreatorComponentCreatorComponentTestInput = {
+  readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]
+  readonly sessionID: {
+    readonly sessionID: string
+    readonly designID: string
+    readonly revision: string
+    readonly name: string
+    readonly description?: string
+  }["sessionID"]
+  readonly designID: {
+    readonly sessionID: string
+    readonly designID: string
+    readonly revision: string
+    readonly name: string
+    readonly description?: string
+  }["designID"]
+  readonly revision: {
+    readonly sessionID: string
+    readonly designID: string
+    readonly revision: string
+    readonly name: string
+    readonly description?: string
+  }["revision"]
+  readonly name: {
+    readonly sessionID: string
+    readonly designID: string
+    readonly revision: string
+    readonly name: string
+    readonly description?: string
+  }["name"]
+  readonly description?: {
+    readonly sessionID: string
+    readonly designID: string
+    readonly revision: string
+    readonly name: string
+    readonly description?: string
+  }["description"]
+}
+
+export type ServerCreatorComponentCreatorComponentTestOutput = {
+  location: LocationPublicRef
+  data: CreatorComponentPreview
+}
 
 export type ServerCreatorComponentCreatorComponentListInput = {
   readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]

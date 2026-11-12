@@ -7,9 +7,11 @@ import type definition from "./index"
 
 const setup: Setup<typeof definition> = (ctx) => {
   const Components = lazy(() => import("./components"))
+  const Studio = lazy(() => import("./studio"))
   const Plugins = lazy(() => import("./plugins"))
   onCleanup(onIdle(() => void Components.preload()))
   onCleanup(onIdle(() => void Plugins.preload()))
+  onCleanup(onIdle(() => void Studio.preload()))
   const key = `${ctx.id}:main`
   const open = () => {
     const session = ctx.sessions.current()
@@ -46,12 +48,7 @@ const setup: Setup<typeof definition> = (ctx) => {
       const panel = usePanel()
       return (
         <Suspense>
-          <Components
-            server={props.session.server}
-            location={props.session.location}
-            sessionID={props.session.id}
-            visible={panel.visible()}
-          />
+          <Studio session={props.session} visible={panel.visible()} />
         </Suspense>
       )
     },

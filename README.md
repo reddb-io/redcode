@@ -239,8 +239,10 @@ media with verified previews, files or installed project components. Author Redc
 and MCP servers with explicit extension contracts and installation instructions. Designer owns the product
 experience; Creator owns the working artifact. Both can define versioned delivery contracts and
 hand off the same document in the same conversation, preserving files, feedback and revisions.
-Creator edits the artifact workspace; Build owns product implementation. Open installed panels
-through **Creator components**. [Contracts and handoff](docs/creator-designer.md).
+Creator edits the artifact workspace; Build owns product implementation. In **Creator components**,
+use **Create with Creator** to describe a visual component or server plugin using the conversation's
+selected model. Preview visual revisions before installation, or review, install and test server plugins
+before activation, from the same panel. [Contracts and handoff](docs/creator-designer.md).
 
 <img src="docs/features/design-review.svg" alt="Standalone Design review with annotation pins and queued feedback" width="100%" />
 

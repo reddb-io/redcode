@@ -380,7 +380,7 @@ function Preview(props: { server: ServerRef; location: LocationRef; component: C
   )
 }
 
-function RuntimeFrame(props: { html: string; name: string }) {
+function RuntimeFrame(props: { html: string; name: string; ready?: () => void; failed?: () => void }) {
   const ctx = useExtension<typeof definition>()
   const [diagnostic, setDiagnostic] = createStore({ message: "", stack: "" })
   let frame: HTMLIFrameElement | undefined
@@ -389,6 +389,7 @@ function RuntimeFrame(props: { html: string; name: string }) {
     const error = decodeRuntimeError(event.data)
     if (Option.isNone(error)) return
     setDiagnostic({ message: error.value.message, stack: error.value.stack ?? "" })
+    props.failed?.()
   }
   window.addEventListener("message", report)
   onCleanup(() => window.removeEventListener("message", report))
@@ -410,6 +411,9 @@ function RuntimeFrame(props: { html: string; name: string }) {
         ref={frame}
         title={ctx.t("preview.frame", { name: props.name })}
         srcdoc={props.html}
+        onLoad={() => {
+          if (!diagnostic.message) props.ready?.()
+        }}
         sandbox="allow-scripts"
         referrerpolicy="no-referrer"
         allow="camera 'none'; microphone 'none'; geolocation 'none'; clipboard-read 'none'; clipboard-write 'none'"
@@ -429,20 +433,72 @@ function Install(props: {
   const ctx = useExtension<typeof definition>()
   const controller = new AbortController()
   onCleanup(() => controller.abort())
-  const [state, setState] = createStore({ design: "", name: "", saving: false, error: "" })
+  const [state, setState] = createStore({
+    design: "",
+    name: "",
+    saving: false,
+    testing: false,
+    refresh: 0,
+    ready: false,
+    error: "",
+    tested: undefined as { html: string; revision: string } | undefined,
+  })
   const designs = createLatest(
-    () => props.sessionID,
-    (sessionID, signal) => props.server.client.session.design.list({ sessionID }, { signal }),
+    () => `${props.sessionID}:${state.refresh}`,
+    (_, signal) => props.server.client.session.design.list({ sessionID: props.sessionID }, { signal }),
+  )
+  // Refresh published choices when the owning conversation finishes generation, without polling.
+  createKeyed(
+    () => props.server.data,
+    (data) =>
+      onCleanup(
+        data.on("session.execution.succeeded", (event) => {
+          if (event.data.sessionID === props.sessionID) setState("refresh", (value) => value + 1)
+        }),
+      ),
   )
   const options = createMemo(() =>
     (designs.latest ?? [])
-      .filter((item) => item.revision)
+      .filter((item) => item.revision && item.collaboration?.contracts?.creator?.kind !== "extension")
       .map((item) => ({ value: item.id, label: item.name, description: item.revision ?? undefined })),
   )
   const selected = createMemo(() => designs.latest?.find((item) => item.id === state.design))
+  const test = async () => {
+    const design = selected()
+    if (!design?.revision || state.testing || state.saving) return
+    setState({ testing: true, ready: false, tested: undefined, error: "" })
+    try {
+      const result = await props.server.client["server.creatorComponent"].creator.component.test(
+        {
+          sessionID: props.sessionID,
+          designID: design.id,
+          revision: design.revision,
+          name: state.name.trim() || design.name,
+          location: props.location,
+        },
+        { signal: controller.signal },
+      )
+      if (!controller.signal.aborted) setState("tested", result.data)
+    } catch (error) {
+      if (!controller.signal.aborted)
+        setState(
+          "error",
+          `${ctx.t("install.test.failed")} ${error instanceof Error ? error.message : ctx.t("request.failed")}`,
+        )
+    } finally {
+      if (!controller.signal.aborted) setState("testing", false)
+    }
+  }
   const save = () => {
     const design = selected()
-    if (!design?.revision || !state.name.trim() || state.saving) return
+    if (
+      !design?.revision ||
+      state.tested?.revision !== design.revision ||
+      !state.ready ||
+      !state.name.trim() ||
+      state.saving
+    )
+      return
     setState({ saving: true, error: "" })
     void props.server.client["server.creatorComponent"].creator.component
       .install(
@@ -477,13 +533,26 @@ function Install(props: {
           options={options()}
           value={state.design}
           onChange={(value) =>
-            setState({ design: value, name: designs.latest?.find((item) => item.id === value)?.name ?? "" })
+            setState({
+              design: value,
+              name: designs.latest?.find((item) => item.id === value)?.name ?? "",
+              tested: undefined,
+              ready: false,
+              error: "",
+            })
           }
-          disabled={state.saving}
+          disabled={state.saving || state.testing}
         />
         <Show when={!designs.loading && !options().length}>
           <p class="text-12-regular text-ink-muted">{ctx.t("install.source.empty")}</p>
         </Show>
+        <Button
+          variant="ghost"
+          disabled={designs.loading || state.testing || state.saving}
+          onClick={() => setState("refresh", (value) => value + 1)}
+        >
+          {ctx.t("install.sources.refresh")}
+        </Button>
         <TextField
           label={ctx.t("install.name")}
           value={state.name}
@@ -495,12 +564,48 @@ function Install(props: {
             {state.error || (designs.error instanceof Error ? designs.error.message : ctx.t("request.failed"))}
           </p>
         </Show>
+        <p class="text-12-regular text-ink-muted">{ctx.t("install.test.description")}</p>
+        <Show when={state.tested} keyed>
+          {(tested) => (
+            <div class="flex max-h-96 min-h-64 flex-col overflow-auto rounded-md border border-elevation-base-border">
+              <RuntimeFrame
+                html={tested.html}
+                name={state.name}
+                ready={() => setState("ready", true)}
+                failed={() => setState("ready", false)}
+              />
+            </div>
+          )}
+        </Show>
+        <Show when={state.ready}>
+          <p role="status" class="text-12-regular text-ink-muted">
+            {ctx.t("install.test.ready")}
+          </p>
+        </Show>
       </div>
       <DialogFooter>
         <Button variant="ghost" onClick={() => props.close()}>
           {ctx.t("common.cancel")}
         </Button>
-        <Button variant="submit" disabled={!selected()?.revision || !state.name.trim() || state.saving} onClick={save}>
+        <Button
+          variant="outline"
+          disabled={!selected()?.revision || state.saving || state.testing}
+          onClick={() => void test()}
+        >
+          {ctx.t(state.testing ? "install.test.pending" : "install.test")}
+        </Button>
+        <Button
+          variant="submit"
+          disabled={
+            !selected()?.revision ||
+            !state.name.trim() ||
+            state.saving ||
+            state.testing ||
+            !state.ready ||
+            state.tested?.revision !== selected()?.revision
+          }
+          onClick={save}
+        >
           {ctx.t("install")}
         </Button>
       </DialogFooter>

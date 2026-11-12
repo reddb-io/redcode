@@ -8,6 +8,9 @@ import { response } from "../location"
 
 export const CreatorComponentHandler = HttpApiBuilder.group(Api, "server.creatorComponent", (handlers) =>
   handlers
+    .handle("creator.component.test", (ctx) =>
+      CreatorComponents.Service.use((service) => response(errors(service.test(ctx.payload)))),
+    )
     .handle("creator.component.list", () =>
       CreatorComponents.Service.use((service) => response(errors(service.list()))),
     )

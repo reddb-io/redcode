@@ -37,6 +37,8 @@ import type {
   AgentListOutput,
   AgentGetInput,
   AgentGetOutput,
+  ServerCreatorComponentCreatorComponentTestInput,
+  ServerCreatorComponentCreatorComponentTestOutput,
   ServerCreatorComponentCreatorComponentListInput,
   ServerCreatorComponentCreatorComponentListOutput,
   ServerCreatorComponentCreatorComponentInstallInput,
@@ -1087,6 +1089,25 @@ export function make(options: ClientOptions) {
     "server.creatorComponent": {
       creator: {
         component: {
+          test: (input: ServerCreatorComponentCreatorComponentTestInput, requestOptions?: RequestOptions) =>
+            request<ServerCreatorComponentCreatorComponentTestOutput>(
+              {
+                method: "POST",
+                path: `/api/creator/component/test`,
+                query: { location: input["location"] },
+                body: {
+                  sessionID: input["sessionID"],
+                  designID: input["designID"],
+                  revision: input["revision"],
+                  name: input["name"],
+                  description: input["description"],
+                },
+                successStatus: 200,
+                declaredStatuses: [400, 401, 403, 404, 409],
+                empty: false,
+              },
+              requestOptions,
+            ),
           list: (input?: ServerCreatorComponentCreatorComponentListInput, requestOptions?: RequestOptions) =>
             request<ServerCreatorComponentCreatorComponentListOutput>(
               {

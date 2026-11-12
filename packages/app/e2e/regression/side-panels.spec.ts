@@ -1,7 +1,9 @@
 import { expect, test, type Locator, type Page } from "@playwright/test"
+import { CreatorPlugin } from "@opencode/schema/creator-plugin"
+import { Schema } from "effect"
 import { holdRoute, seed, sessionHref, tabKey } from "../utils/app"
 import { fileDiff, mockWorkspace, openSession } from "../utils/workspace"
-import { mockCreatorComponents } from "../utils/creator-fixture"
+import { mockCreatorComponents, mockCreatorPlugins } from "../utils/creator-fixture"
 import { expectSessionTitle } from "../utils/waits"
 import { fixture, installStressSessionTabs, mockStressTimeline } from "../utils/session-fixture"
 import { mockAgentTasks } from "../utils/agent-task-fixture"
@@ -13,6 +15,90 @@ import {
   mockDeliveryNativeTasks,
   mockDeliveryResources,
 } from "../utils/delivery-fixture"
+
+test("Creator guided creation preserves the conversation model and exposes server plugin installation in its panel", async ({
+  page,
+}) => {
+  const sessionID = "ses_creator_guided"
+  const prompts: { sessionID: string; body: Record<string, unknown> }[] = []
+  const workspace = await mockWorkspace(page, {
+    name: "Creator guided",
+    sessions: [
+      {
+        id: sessionID,
+        title: "Create an extension",
+        agent: "build",
+        model: { id: "mock-model", providerID: "mock-provider" },
+      },
+    ],
+    onPrompt: (input) => prompts.push(input),
+  })
+  await mockCreatorComponents(page, { directory: workspace.directory, push: workspace.push, sessionID })
+  const plugins = await mockCreatorPlugins(page, {
+    directory: workspace.directory,
+    push: workspace.push,
+    initial: [
+      Schema.decodeUnknownSync(CreatorPlugin.Entry)({
+        id: "cplugin_aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        sessionID: "ses_creator_plugin_0",
+        designID: "design_plugin_0",
+        revision: "rev_plugin_0",
+        name: "Echo toolkit",
+        entry: "server.js",
+        capabilities: ["tool.register"],
+        packageName: "creator-echo",
+        packageVersion: "1.0.0",
+        enabled: true,
+        version: 3,
+        created: 1,
+        runtime: "active",
+        report: { passed: true, time: 1, message: "Registered creator_echo", tools: ["creator_echo"] },
+      }),
+    ],
+  })
+  const agents: unknown[] = []
+  await page.route(`**/api/session/${sessionID}/agent`, (route) => {
+    agents.push(route.request().postDataJSON())
+    return route.fulfill({ status: 204 })
+  })
+  await page.goto(sessionHref(sessionID))
+  await page.getByRole("button", { name: "Open Creator components", exact: true }).click()
+  await page.getByRole("button", { name: "Create with Creator", exact: true }).click()
+  const form = page.getByRole("dialog", { name: "Create with Creator", exact: true })
+  await expect(form.getByRole("button", { name: "Start creating", exact: true })).toBeDisabled()
+  await form.getByRole("button", { name: "Extension type", exact: true }).click()
+  await page.getByRole("option", { name: /Server plugins/ }).click()
+  await form.getByRole("textbox", { name: "Extension name", exact: true }).fill("Payload helper")
+  await form
+    .getByRole("textbox", { name: "What should it do?", exact: true })
+    .fill("Validate JSON and explain malformed input")
+  await expect(form.getByText(/mock-model/)).toBeVisible()
+  expect(prompts).toEqual([])
+  expect(agents).toEqual([])
+  await form.getByRole("button", { name: "Start creating", exact: true }).click()
+  await expect(form).toBeHidden()
+  await expect.poll(() => prompts.length).toBe(1)
+  expect(agents).toEqual([{ agent: "creator" }])
+  expect(prompts[0].sessionID).toBe(sessionID)
+  expect(prompts[0].body.text).toContain("server-plugin")
+  expect(prompts[0].body.text).toContain("Payload helper")
+  expect(prompts[0].body).not.toHaveProperty("model")
+  await expect(page.getByRole("tab", { name: "Server plugins", exact: true })).toHaveAttribute("aria-selected", "true")
+  await page.getByRole("button", { name: "Try with agent", exact: true }).click()
+  const trial = page.getByRole("dialog", { name: "Try Echo toolkit", exact: true })
+  await trial
+    .getByRole("textbox", { name: "Test case and expected result", exact: true })
+    .fill("Echo hello and expect hello")
+  await trial.getByRole("button", { name: "Try with agent", exact: true }).click()
+  await expect(trial).toBeHidden()
+  await expect.poll(() => prompts.length).toBe(2)
+  expect(agents).toEqual([{ agent: "creator" }, { agent: "build" }])
+  expect(prompts[1].sessionID).toBe(sessionID)
+  expect(prompts[1].body.text).toContain("creator_echo")
+  expect(prompts[1].body.text).toContain("Echo hello and expect hello")
+  expect(prompts[1].body).not.toHaveProperty("model")
+  expect(plugins.operations.every((operation) => operation.method === "GET")).toBe(true)
+})
 
 test("Creator installs a revisioned component, runs it in isolation and releases it when hidden or disabled", async ({
   page,
@@ -40,6 +126,16 @@ test("Creator installs a revisioned component, runs it in isolation and releases
   await install.getByRole("button", { name: "Published artifact", exact: true }).click()
   await page.getByRole("option", { name: /^Counter artifact/ }).click()
   await install.getByRole("textbox", { name: "Component name", exact: true }).fill("Project counter")
+  await expect(install.getByRole("button", { name: "Install component", exact: true })).toBeDisabled()
+  await install.getByRole("button", { name: "Preview and test", exact: true }).click()
+  const trial = install.locator('iframe[title="Project counter component"]')
+  await expect(trial).toHaveAttribute("sandbox", "allow-scripts")
+  await trial.contentFrame().getByRole("button", { name: "Increment", exact: true }).click()
+  await expect(trial.contentFrame().getByRole("status")).toHaveText("1")
+  expect(components.list()).toEqual([])
+  await trial.contentFrame().getByRole("button", { name: "Trigger failure", exact: true }).click()
+  await expect(install.getByRole("button", { name: "Install component", exact: true })).toBeDisabled()
+  await install.getByRole("button", { name: "Preview and test", exact: true }).click()
   await expect(install.getByRole("button", { name: "Install component", exact: true })).toBeEnabled()
   await install.getByRole("button", { name: "Install component", exact: true }).click()
   await expect(install).toBeHidden()
@@ -158,6 +254,8 @@ test("Creator installs a revisioned component, runs it in isolation and releases
   await expect(panel.getByText("No components installed in this project", { exact: true })).toBeVisible()
   expect(components.operations.filter((item) => item.method !== "GET").map((item) => [item.method, item.body])).toEqual(
     [
+      ["POST", { sessionID, designID: "design_creator_counter", revision: "rev_creator_one", name: "Project counter" }],
+      ["POST", { sessionID, designID: "design_creator_counter", revision: "rev_creator_one", name: "Project counter" }],
       ["POST", { sessionID, designID: "design_creator_counter", revision: "rev_creator_one", name: "Project counter" }],
       ["POST", { expectedVersion: 1, revision: "rev_creator_two" }],
       ["POST", { expectedVersion: 1, revision: "rev_creator_two" }],

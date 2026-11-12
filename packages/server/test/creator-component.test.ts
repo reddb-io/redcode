@@ -37,6 +37,25 @@ it.live(
         revision: "rev_missing",
         name: "Widget",
       }
+      expect(
+        (yield* Effect.promise(() =>
+          handler(
+            new Request(`${base}/test`, {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify(source),
+            }),
+          ),
+        )).status,
+      ).toBe(401)
+      const tested = yield* Effect.promise(() =>
+        handler(new Request(`${base}/test`, { method: "POST", headers, body: JSON.stringify(source) })),
+      )
+      expect(tested.status).toBe(404)
+      expect(yield* Effect.promise(() => tested.json())).toMatchObject({
+        _tag: "CreatorComponentNotFoundError",
+        message: "Creator component source is not in this project location",
+      })
       const installed = yield* Effect.promise(() =>
         handler(new Request(base, { method: "POST", headers, body: JSON.stringify(source) })),
       )

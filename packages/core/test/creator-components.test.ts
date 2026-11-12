@@ -73,6 +73,11 @@ it.live(
         Bun.write(entry, '<main>First revision</main><script>document.body.dataset.ready="yes"</script>'),
       )
       const first = yield* designs.publish(sessionID, design.id, "First")
+      const tested = yield* components.test({ sessionID, designID: design.id, revision: first.id, name: "Counter" })
+      expect(tested.html).toContain("First revision")
+      expect(tested.html).toContain("redcode:creator-error")
+      expect(tested.revision).toBe(first.id)
+      expect(yield* components.list()).toEqual([])
       const installed = yield* components.install({
         sessionID,
         designID: design.id,

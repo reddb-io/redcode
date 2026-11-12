@@ -86,6 +86,12 @@ export async function mockCreatorComponents(
         json: { _tag: "InvalidRequestError", message: "Wrong Creator project scope" },
       })
     const location = { directory }
+    if (url.pathname === "/api/creator/component/test") {
+      const source = Schema.decodeUnknownSync(CreatorComponent.Install)(body)
+      return route.fulfill({
+        json: { location, data: { html: html(source.revision), revision: source.revision, version: 1 } },
+      })
+    }
     if (url.pathname === "/api/creator/component") {
       if (request.method() === "GET") return route.fulfill({ json: { location, data: components } })
       const install = Schema.decodeUnknownSync(CreatorComponent.Install)(body)
@@ -120,30 +126,30 @@ export async function mockCreatorComponents(
           data: { html: html(component.revision), revision: component.revision, version: component.version },
         },
       })
-    const expected = url.pathname.endsWith("/control")
-      ? Schema.decodeUnknownSync(CreatorComponent.Control)(body)
+    const change = url.pathname.endsWith("/control")
+      ? { kind: "control" as const, value: Schema.decodeUnknownSync(CreatorComponent.Control)(body) }
       : request.method() === "DELETE"
-        ? Schema.decodeUnknownSync(CreatorComponent.Remove)(body)
-        : Schema.decodeUnknownSync(CreatorComponent.Update)(body)
-    if (expected.expectedVersion !== component.version)
+        ? { kind: "remove" as const, value: Schema.decodeUnknownSync(CreatorComponent.Remove)(body) }
+        : { kind: "update" as const, value: Schema.decodeUnknownSync(CreatorComponent.Update)(body) }
+    if (change.value.expectedVersion !== component.version)
       return route.fulfill({
         status: 409,
         json: { _tag: "ConflictError", message: "The installed component changed. Reload before updating." },
       })
-    if (rejection && "revision" in expected) {
+    if (rejection && change.kind === "update") {
       const message = rejection
       rejection = undefined
       return route.fulfill({ status: 409, json: { _tag: "ConflictError", message } })
     }
     const next = {
       ...component,
-      ...("enabled" in expected
-        ? { enabled: expected.enabled }
-        : "revision" in expected
+      ...(change.kind === "control"
+        ? { enabled: change.value.enabled }
+        : change.kind === "update"
           ? {
-              revision: expected.revision,
-              name: expected.name ?? component.name,
-              description: expected.description ?? component.description,
+              revision: change.value.revision,
+              name: change.value.name ?? component.name,
+              description: change.value.description ?? component.description,
             }
           : {}),
       version: component.version + 1,
@@ -182,6 +188,7 @@ export async function mockCreatorPlugins(
     directory: string
     server?: string
     push: Awaited<ReturnType<typeof mockOpenCodeServer>>["push"]
+    initial?: (typeof CreatorPlugin.Entry.Type)[]
   },
 ) {
   const candidates = Array.from({ length: 24 }, (_, index) => ({
@@ -192,7 +199,7 @@ export async function mockCreatorPlugins(
     entry: "server.js",
     capabilities: ["tool.register"],
   }))
-  let plugins: (typeof CreatorPlugin.Entry.Type)[] = []
+  let plugins: (typeof CreatorPlugin.Entry.Type)[] = input.initial ?? []
   let failTest = true
   const operations: { method: string; path: string; directory: string | null; body?: Schema.Json }[] = []
   await page.route(`${input.server ?? SERVER}/api/creator/plugin**`, async (route) => {

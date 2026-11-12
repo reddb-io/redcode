@@ -43,6 +43,8 @@ import type {
   AgentListOutput,
   AgentGetInput,
   AgentGetOutput,
+  ServerCreatorComponentCreatorComponentTestInput,
+  ServerCreatorComponentCreatorComponentTestOutput,
   ServerCreatorComponentCreatorComponentListInput,
   ServerCreatorComponentCreatorComponentListOutput,
   ServerCreatorComponentCreatorComponentInstallInput,
@@ -808,6 +810,21 @@ const adaptGroupAgent = (raw: RawClient["server.agent"]) => ({
   get: EndpointAgentGet(raw),
 })
 
+const EndpointServerCreatorComponentCreatorComponentTest =
+  (raw: RawClient["server.creatorComponent"]) => (input: ServerCreatorComponentCreatorComponentTestInput) =>
+    preserveEffect<ServerCreatorComponentCreatorComponentTestOutput>()(
+      raw["creator.component.test"]({
+        query: { location: input["location"] },
+        payload: {
+          sessionID: input["sessionID"],
+          designID: input["designID"],
+          revision: input["revision"],
+          name: input["name"],
+          description: input["description"],
+        },
+      }).pipe(Effect.mapError(mapClientError)),
+    )
+
 const EndpointServerCreatorComponentCreatorComponentList =
   (raw: RawClient["server.creatorComponent"]) => (input?: ServerCreatorComponentCreatorComponentListInput) =>
     preserveEffect<ServerCreatorComponentCreatorComponentListOutput>()(
@@ -876,6 +893,7 @@ const EndpointServerCreatorComponentCreatorComponentPreview =
 const adaptGroupServerCreatorComponent = (raw: RawClient["server.creatorComponent"]) => ({
   creator: {
     component: {
+      test: EndpointServerCreatorComponentCreatorComponentTest(raw),
       list: EndpointServerCreatorComponentCreatorComponentList(raw),
       install: EndpointServerCreatorComponentCreatorComponentInstall(raw),
       update: EndpointServerCreatorComponentCreatorComponentUpdate(raw),

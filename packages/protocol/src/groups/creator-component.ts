@@ -10,6 +10,21 @@ const errors = [ConflictError, CreatorComponentNotFoundError, InvalidRequestErro
 const params = { componentID: CreatorComponent.ID }
 export const CreatorComponentGroup = HttpApiGroup.make("server.creatorComponent")
   .add(
+    HttpApiEndpoint.post("creator.component.test", "/api/creator/component/test", {
+      query: LocationQuery,
+      payload: CreatorComponent.Install,
+      success: Location.response(CreatorComponent.Preview),
+      error: errors,
+    })
+      .annotateMerge(locationQueryOpenApi)
+      .annotateMerge(
+        OpenApi.annotations({
+          identifier: "creator.component.test",
+          summary: "Prepare a published component for an isolated interactive test without installing it",
+        }),
+      ),
+  )
+  .add(
     HttpApiEndpoint.get("creator.component.list", "/api/creator/component", {
       query: LocationQuery,
       success: Location.response(Schema.Array(CreatorComponent.Info)),

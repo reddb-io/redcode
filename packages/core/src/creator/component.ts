@@ -181,7 +181,13 @@ const make = Effect.gen(function* () {
     const html = new TextDecoder().decode(yield* designs.readBlob(record.blob))
     return { html, revision: component.revision, version: component.version }
   })
-  return { list, get, install, update, control, remove, preview }
+  const test = Effect.fn("CreatorComponents.test")(function* (input: CreatorComponent.Install) {
+    yield* checkOrigin(input.sessionID)
+    const blob = yield* prepare(input)
+    const html = new TextDecoder().decode(yield* designs.readBlob(blob))
+    return { html, revision: input.revision, version: 1 }
+  })
+  return { list, get, install, update, control, remove, preview, test }
 })
 
 export class Service extends Context.Service<Service, Effect.Success<typeof make>>()("@redcode/CreatorComponents") {}
