@@ -230,6 +230,27 @@ const make = Effect.gen(function* () {
     return yield* document(row)
   })
 
+  const projectDocuments = Effect.fn("DesignStore.projectDocuments")(function* () {
+    const rows = yield* db
+      .select()
+      .from(DesignTable)
+      .where(eq(DesignTable.directory, location.directory))
+      .all()
+      .pipe(Effect.orDie)
+    return yield* Effect.forEach(rows, (row) =>
+      Effect.gen(function* () {
+        const session = yield* sessions.get(SessionSchema.ID.make(row.session_id))
+        if (
+          !session ||
+          session.location.workspaceID !== location.workspaceID ||
+          session.location.directory !== location.directory
+        )
+          return []
+        return [yield* document(row)]
+      }),
+    ).pipe(Effect.map((items) => items.flat()))
+  })
+
   const revisions = Effect.fn("DesignStore.revisions")(function* (sessionID: SessionSchema.ID, id: Design.ID) {
     yield* get(sessionID, id)
     const rows = yield* db
@@ -1696,6 +1717,7 @@ const make = Effect.gen(function* () {
     create,
     collaborate,
     list,
+    projectDocuments,
     get,
     revisions,
     revision,

@@ -1,3 +1,4 @@
+import { idlePluginSupervisor } from "./fixture/plugin-supervisor"
 import { afterAll, describe, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -505,7 +506,7 @@ const layer = Layer.unwrap(
       ReferenceInstructions.node.replace(referenceInstructions),
       Permission.node.replace(permission),
       Config.node.replace(config),
-      PluginSupervisor.node.replace(Layer.empty),
+      PluginSupervisor.node.replace(idlePluginSupervisor),
       Plugin.node.replace(Layer.mock(Plugin.Service, { awaitActivation: Effect.void })),
       SessionModelTransport.node.replace(modelTransport),
       McpInstructions.node.replace(mcpInstructions),

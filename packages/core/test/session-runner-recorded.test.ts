@@ -1,3 +1,4 @@
+import { idlePluginSupervisor } from "./fixture/plugin-supervisor"
 import { HttpRecorder } from "@opencode/http-recorder"
 import { OpenAIChat } from "@opencode/ai/protocols/openai-chat"
 import { Auth, LLMClient, type LLMClientService, RequestExecutor } from "@opencode/ai/route"
@@ -155,7 +156,7 @@ const testLayer = (llmClient: Layer.Layer<LLMClientService>) =>
       McpInstructions.node.replace(mcpInstructions),
       Config.node.replace(config),
       Snapshot.node.replace(Snapshot.noopLayer),
-      PluginSupervisor.node.replace(Layer.empty),
+      PluginSupervisor.node.replace(idlePluginSupervisor),
       Plugin.node.replace(Layer.mock(Plugin.Service, { awaitActivation: Effect.void })),
       SessionExecution.node.replace(execution),
     ],

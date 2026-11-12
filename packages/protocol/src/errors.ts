@@ -51,6 +51,12 @@ export class UnauthorizedError extends Schema.TaggedError<UnauthorizedError>()(
   { httpApiStatus: 401 },
 ) {}
 
+export class CreatorPluginNotFoundError extends Schema.TaggedError<CreatorPluginNotFoundError>()(
+  "CreatorPluginNotFoundError",
+  { message: Schema.String },
+  { httpApiStatus: 404 },
+) {}
+
 export class CreatorComponentNotFoundError extends Schema.TaggedError<CreatorComponentNotFoundError>()(
   "CreatorComponentNotFoundError",
   { message: Schema.String },

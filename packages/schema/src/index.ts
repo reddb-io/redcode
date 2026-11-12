@@ -1,5 +1,6 @@
 export { Agent } from "./agent.js"
 export { CreatorComponent } from "./creator-component.js"
+export { CreatorPlugin } from "./creator-plugin.js"
 export { Capability } from "./capability.js"
 export { AgentTools } from "./agent-tools.js"
 export { ExecutionCapability } from "./execution-capability.js"

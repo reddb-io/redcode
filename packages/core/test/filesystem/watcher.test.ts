@@ -1,3 +1,4 @@
+import { idlePluginSupervisor } from "../fixture/plugin-supervisor"
 import { $ } from "bun"
 import { describe, expect } from "bun:test"
 import fs from "fs/promises"
@@ -272,7 +273,7 @@ function provide(
     [
       Config.node.replace(config),
       Location.node.replace(locationLayer),
-      plugins ?? PluginSupervisor.node.replace(Layer.empty),
+      plugins ?? PluginSupervisor.node.replace(idlePluginSupervisor),
       ...(watcher ? ([Watcher.node.replace(watcher)] as const) : []),
       offlineModels,
       ...replacements,
@@ -515,7 +516,7 @@ describe("LocationWatcher subscriptions", () => {
           const policy = yield* LocationWatcherPolicy.Service
           yield* policy.transform((editor) => editor.add([".git"]))
         }),
-      ),
+      ).pipe(Layer.merge(idlePluginSupervisor)),
       deps: [LocationWatcherPolicy.node],
     })
     return withTmp(

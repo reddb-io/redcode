@@ -12,6 +12,7 @@ import { Config } from "../../config.js"
 import { Watcher } from "../../filesystem/watcher.js"
 import { Location } from "../../location.js"
 import { PluginSourceDirectory } from "../../plugin/source-directory.js"
+import { CreatorPluginSource } from "../../creator/plugin-source.js"
 
 export type Operation =
   | {
@@ -39,6 +40,7 @@ export const layer = Layer.effect(
     const watcher = yield* Watcher.Service
     const fs = yield* FSUtil.Service
     const location = yield* Location.Service
+    const creator = yield* CreatorPluginSource.Service
     const configuredChanges = yield* PubSub.unbounded<void>()
     const watched = new Set<string>()
 
@@ -76,10 +78,22 @@ export const layer = Layer.effect(
         const entries = yield* config.entries()
         const operations = yield* scan(fs, location, entries)
         yield* watchConfiguredSources(entries, operations)
-        return operations
+        return [
+          ...(yield* creator.list())
+            .filter((plugin) => plugin.enabled)
+            .map(
+              (plugin): Operation => ({
+                type: "add",
+                target: creator.directory(plugin.id),
+                options: {},
+              }),
+            ),
+          ...operations,
+        ]
       }),
       changes: () =>
-        Stream.merge(
+        Stream.mergeAll({ concurrency: "unbounded" })([
+          creator.changes(),
           config.changes().pipe(
             Stream.filterEffect((update) =>
               Effect.map(config.entries(), (entries) => isPluginSource(entries, update.path)),
@@ -87,7 +101,7 @@ export const layer = Layer.effect(
             Stream.map(() => undefined),
           ),
           Stream.fromPubSub(configuredChanges),
-        ),
+        ]),
     })
   }),
 )
@@ -95,7 +109,7 @@ export const layer = Layer.effect(
 export const node = makeLocationNode({
   service: Service,
   layer,
-  deps: [Config.node, FSUtil.node, Watcher.node, Location.node],
+  deps: [Config.node, FSUtil.node, Watcher.node, Location.node, CreatorPluginSource.node],
 })
 
 export const empty = makeLocationNode({

@@ -7,7 +7,9 @@ import type definition from "./index"
 
 const setup: Setup<typeof definition> = (ctx) => {
   const Components = lazy(() => import("./components"))
+  const Plugins = lazy(() => import("./plugins"))
   onCleanup(onIdle(() => void Components.preload()))
+  onCleanup(onIdle(() => void Plugins.preload()))
   const key = `${ctx.id}:main`
   const open = () => {
     const session = ctx.sessions.current()
@@ -73,6 +75,23 @@ const setup: Setup<typeof definition> = (ctx) => {
     keybind: `${ctx.id}.open`,
     order: 38,
     run: open,
+  })
+  ctx.add(SettingsPage, {
+    id: "plugins",
+    page: "extensions",
+    section: "plugins",
+    title: ctx.t("plugins.title"),
+    entries: [
+      { id: "plugins", title: ctx.t("plugins.title"), keywords: "creator plugin install test activate disable remove" },
+    ],
+    render: (input) => (
+      <Suspense>
+        <Plugins
+          server={input.server ? ctx.servers.get(input.server) : undefined}
+          location={input.directory ? { directory: input.directory } : undefined}
+        />
+      </Suspense>
+    ),
   })
   ctx.add(SettingsPage, {
     id: "components",

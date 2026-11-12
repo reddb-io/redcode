@@ -91,16 +91,23 @@ export async function mockAgentTools(page: Page, server = SERVER) {
     if (command === "install")
       Object.assign(item, {
         installed: true,
-        ...(id === "browser-control" ? {
-          extensionDirectory: "/owned/browser/extension/dist",
-          ...(server !== SERVER ? { browserExtension: { state: "not-prepared", chrome: "/usr/bin/google-chrome", canAuthorize: false } } : {}),
-        } : {}),
+        ...(id === "browser-control"
+          ? {
+              extensionDirectory: "/owned/browser/extension/dist",
+              ...(server !== SERVER
+                ? { browserExtension: { state: "not-prepared", chrome: "/usr/bin/google-chrome", canAuthorize: false } }
+                : {}),
+            }
+          : {}),
       })
     if (command === "extension") {
       const action = request.postDataJSON().action
       operations[operations.length - 1] = `extension:${action}`
       if (action === "install" && extensionFailure.message)
-        return route.fulfill({ json: { ...item, browserExtension: { ...item.browserExtension, error: extensionFailure.message } }, headers })
+        return route.fulfill({
+          json: { ...item, browserExtension: { ...item.browserExtension, error: extensionFailure.message } },
+          headers,
+        })
       Object.assign(item, {
         browserExtension: {
           ...item.browserExtension,
@@ -1037,9 +1044,7 @@ function mockHandlers(
           ),
         memory: () =>
           Effect.succeed(
-            config.memory
-              ? resolve(config.memory)
-              : { sampledAt: Date.now(), complete: true, entries: [] },
+            config.memory ? resolve(config.memory) : { sampledAt: Date.now(), complete: true, entries: [] },
           ),
         attention: () => Effect.succeed(config.attention ? resolve(config.attention) : { data: [], unavailable: [] }),
         info: () =>
@@ -1130,6 +1135,10 @@ function mockHandlers(
           })),
         skill: () => Effect.sync(() => ({ location: location(config), data: resolve(config.skills ?? []) })),
         plugin: () => Effect.sync(() => ({ location: location(config), data: resolve(config.plugins ?? []) })),
+        creatorPluginList: (ctx) =>
+          Effect.succeed({ location: location(config, requestDirectory(config, ctx.request)), data: [] }),
+        creatorComponentList: (ctx) =>
+          Effect.succeed({ location: location(config, requestDirectory(config, ctx.request)), data: [] }),
         mcp: (ctx) =>
           Effect.sync(() => {
             const directory = requestDirectory(config, ctx.request)

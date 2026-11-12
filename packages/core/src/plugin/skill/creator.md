@@ -132,3 +132,18 @@ verified, and remaining limitations. Use only existing authorized data sources f
 Do not claim a generated UI plugin is loaded, a remote model was called, an export completed or
 a skill is active without checking its runtime state. Missing access or a dependency should
 produce a concrete next step, not a fictional success message.
+
+## Deliver an installable server plugin
+
+Define a `server-plugin` extension contract with the actual server entry. Publish `package.json`
+and bundled `server.js` (or `index.js`) at the returned document work root. Use the real
+Redcode plugin SDK; bundle dependencies and do not embed credentials. Include usage examples
+and evidence of a real tool call where authorized.
+
+The user can open project **Agent Extensions → Plugins → Install Creator plugin**, review the
+published revision, install it disabled, test loading/registration/teardown, and activate it.
+The native code executes on the selected server with OS permissions; testing is not a sandbox
+and is not proof that acceptance criteria passed. This installer does not fetch dependencies
+or run package scripts. Do not confuse it with the isolated `creator_component` runtime, and
+do not silently activate packages through shared configuration. Other extension targets use
+their existing installation flows.

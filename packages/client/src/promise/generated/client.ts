@@ -49,6 +49,20 @@ import type {
   ServerCreatorComponentCreatorComponentRemoveOutput,
   ServerCreatorComponentCreatorComponentPreviewInput,
   ServerCreatorComponentCreatorComponentPreviewOutput,
+  ServerCreatorPluginCreatorPluginListInput,
+  ServerCreatorPluginCreatorPluginListOutput,
+  ServerCreatorPluginCreatorPluginCandidatesInput,
+  ServerCreatorPluginCreatorPluginCandidatesOutput,
+  ServerCreatorPluginCreatorPluginReviewInput,
+  ServerCreatorPluginCreatorPluginReviewOutput,
+  ServerCreatorPluginCreatorPluginInstallInput,
+  ServerCreatorPluginCreatorPluginInstallOutput,
+  ServerCreatorPluginCreatorPluginTestInput,
+  ServerCreatorPluginCreatorPluginTestOutput,
+  ServerCreatorPluginCreatorPluginControlInput,
+  ServerCreatorPluginCreatorPluginControlOutput,
+  ServerCreatorPluginCreatorPluginRemoveInput,
+  ServerCreatorPluginCreatorPluginRemoveOutput,
   PluginListInput,
   PluginListOutput,
   PluginCheckInput,
@@ -1157,6 +1171,101 @@ export function make(options: ClientOptions) {
                 successStatus: 200,
                 declaredStatuses: [400, 401, 403, 404, 409],
                 empty: false,
+              },
+              requestOptions,
+            ),
+        },
+      },
+    },
+    "server.creatorPlugin": {
+      creator: {
+        plugin: {
+          list: (input?: ServerCreatorPluginCreatorPluginListInput, requestOptions?: RequestOptions) =>
+            request<ServerCreatorPluginCreatorPluginListOutput>(
+              {
+                method: "GET",
+                path: `/api/creator/plugin`,
+                query: { location: input?.["location"] },
+                successStatus: 200,
+                declaredStatuses: [400, 401, 403, 404, 409, 503],
+                empty: false,
+              },
+              requestOptions,
+            ),
+          candidates: (input?: ServerCreatorPluginCreatorPluginCandidatesInput, requestOptions?: RequestOptions) =>
+            request<ServerCreatorPluginCreatorPluginCandidatesOutput>(
+              {
+                method: "GET",
+                path: `/api/creator/plugin/candidates`,
+                query: { location: input?.["location"] },
+                successStatus: 200,
+                declaredStatuses: [400, 401, 403, 404, 409, 503],
+                empty: false,
+              },
+              requestOptions,
+            ),
+          review: (input: ServerCreatorPluginCreatorPluginReviewInput, requestOptions?: RequestOptions) =>
+            request<ServerCreatorPluginCreatorPluginReviewOutput>(
+              {
+                method: "POST",
+                path: `/api/creator/plugin/review`,
+                query: { location: input["location"] },
+                body: { sessionID: input["sessionID"], designID: input["designID"], revision: input["revision"] },
+                successStatus: 200,
+                declaredStatuses: [400, 401, 403, 404, 409, 503],
+                empty: false,
+              },
+              requestOptions,
+            ),
+          install: (input: ServerCreatorPluginCreatorPluginInstallInput, requestOptions?: RequestOptions) =>
+            request<ServerCreatorPluginCreatorPluginInstallOutput>(
+              {
+                method: "POST",
+                path: `/api/creator/plugin`,
+                query: { location: input["location"] },
+                body: { sessionID: input["sessionID"], designID: input["designID"], revision: input["revision"] },
+                successStatus: 200,
+                declaredStatuses: [400, 401, 403, 404, 409, 503],
+                empty: false,
+              },
+              requestOptions,
+            ),
+          test: (input: ServerCreatorPluginCreatorPluginTestInput, requestOptions?: RequestOptions) =>
+            request<ServerCreatorPluginCreatorPluginTestOutput>(
+              {
+                method: "POST",
+                path: `/api/creator/plugin/${encodeURIComponent(input.pluginID)}/test`,
+                query: { location: input["location"] },
+                body: { expectedVersion: input["expectedVersion"] },
+                successStatus: 200,
+                declaredStatuses: [400, 401, 403, 404, 409, 503],
+                empty: false,
+              },
+              requestOptions,
+            ),
+          control: (input: ServerCreatorPluginCreatorPluginControlInput, requestOptions?: RequestOptions) =>
+            request<ServerCreatorPluginCreatorPluginControlOutput>(
+              {
+                method: "POST",
+                path: `/api/creator/plugin/${encodeURIComponent(input.pluginID)}/control`,
+                query: { location: input["location"] },
+                body: { expectedVersion: input["expectedVersion"], enabled: input["enabled"] },
+                successStatus: 200,
+                declaredStatuses: [400, 401, 403, 404, 409, 503],
+                empty: false,
+              },
+              requestOptions,
+            ),
+          remove: (input: ServerCreatorPluginCreatorPluginRemoveInput, requestOptions?: RequestOptions) =>
+            request<ServerCreatorPluginCreatorPluginRemoveOutput>(
+              {
+                method: "DELETE",
+                path: `/api/creator/plugin/${encodeURIComponent(input.pluginID)}`,
+                query: { location: input["location"] },
+                body: { expectedVersion: input["expectedVersion"] },
+                successStatus: 204,
+                declaredStatuses: [400, 401, 403, 404, 409, 503],
+                empty: true,
               },
               requestOptions,
             ),

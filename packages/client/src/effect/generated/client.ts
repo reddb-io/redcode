@@ -55,6 +55,20 @@ import type {
   ServerCreatorComponentCreatorComponentRemoveOutput,
   ServerCreatorComponentCreatorComponentPreviewInput,
   ServerCreatorComponentCreatorComponentPreviewOutput,
+  ServerCreatorPluginCreatorPluginListInput,
+  ServerCreatorPluginCreatorPluginListOutput,
+  ServerCreatorPluginCreatorPluginCandidatesInput,
+  ServerCreatorPluginCreatorPluginCandidatesOutput,
+  ServerCreatorPluginCreatorPluginReviewInput,
+  ServerCreatorPluginCreatorPluginReviewOutput,
+  ServerCreatorPluginCreatorPluginInstallInput,
+  ServerCreatorPluginCreatorPluginInstallOutput,
+  ServerCreatorPluginCreatorPluginTestInput,
+  ServerCreatorPluginCreatorPluginTestOutput,
+  ServerCreatorPluginCreatorPluginControlInput,
+  ServerCreatorPluginCreatorPluginControlOutput,
+  ServerCreatorPluginCreatorPluginRemoveInput,
+  ServerCreatorPluginCreatorPluginRemoveOutput,
   PluginListInput,
   PluginListOutput,
   PluginCheckInput,
@@ -868,6 +882,82 @@ const adaptGroupServerCreatorComponent = (raw: RawClient["server.creatorComponen
       control: EndpointServerCreatorComponentCreatorComponentControl(raw),
       remove: EndpointServerCreatorComponentCreatorComponentRemove(raw),
       preview: EndpointServerCreatorComponentCreatorComponentPreview(raw),
+    },
+  },
+})
+
+const EndpointServerCreatorPluginCreatorPluginList =
+  (raw: RawClient["server.creatorPlugin"]) => (input?: ServerCreatorPluginCreatorPluginListInput) =>
+    preserveEffect<ServerCreatorPluginCreatorPluginListOutput>()(
+      raw["creator.plugin.list"]({ query: { location: input?.["location"] } }).pipe(Effect.mapError(mapClientError)),
+    )
+
+const EndpointServerCreatorPluginCreatorPluginCandidates =
+  (raw: RawClient["server.creatorPlugin"]) => (input?: ServerCreatorPluginCreatorPluginCandidatesInput) =>
+    preserveEffect<ServerCreatorPluginCreatorPluginCandidatesOutput>()(
+      raw["creator.plugin.candidates"]({ query: { location: input?.["location"] } }).pipe(
+        Effect.mapError(mapClientError),
+      ),
+    )
+
+const EndpointServerCreatorPluginCreatorPluginReview =
+  (raw: RawClient["server.creatorPlugin"]) => (input: ServerCreatorPluginCreatorPluginReviewInput) =>
+    preserveEffect<ServerCreatorPluginCreatorPluginReviewOutput>()(
+      raw["creator.plugin.review"]({
+        query: { location: input["location"] },
+        payload: { sessionID: input["sessionID"], designID: input["designID"], revision: input["revision"] },
+      }).pipe(Effect.mapError(mapClientError)),
+    )
+
+const EndpointServerCreatorPluginCreatorPluginInstall =
+  (raw: RawClient["server.creatorPlugin"]) => (input: ServerCreatorPluginCreatorPluginInstallInput) =>
+    preserveEffect<ServerCreatorPluginCreatorPluginInstallOutput>()(
+      raw["creator.plugin.install"]({
+        query: { location: input["location"] },
+        payload: { sessionID: input["sessionID"], designID: input["designID"], revision: input["revision"] },
+      }).pipe(Effect.mapError(mapClientError)),
+    )
+
+const EndpointServerCreatorPluginCreatorPluginTest =
+  (raw: RawClient["server.creatorPlugin"]) => (input: ServerCreatorPluginCreatorPluginTestInput) =>
+    preserveEffect<ServerCreatorPluginCreatorPluginTestOutput>()(
+      raw["creator.plugin.test"]({
+        params: { pluginID: input["pluginID"] },
+        query: { location: input["location"] },
+        payload: { expectedVersion: input["expectedVersion"] },
+      }).pipe(Effect.mapError(mapClientError)),
+    )
+
+const EndpointServerCreatorPluginCreatorPluginControl =
+  (raw: RawClient["server.creatorPlugin"]) => (input: ServerCreatorPluginCreatorPluginControlInput) =>
+    preserveEffect<ServerCreatorPluginCreatorPluginControlOutput>()(
+      raw["creator.plugin.control"]({
+        params: { pluginID: input["pluginID"] },
+        query: { location: input["location"] },
+        payload: { expectedVersion: input["expectedVersion"], enabled: input["enabled"] },
+      }).pipe(Effect.mapError(mapClientError)),
+    )
+
+const EndpointServerCreatorPluginCreatorPluginRemove =
+  (raw: RawClient["server.creatorPlugin"]) => (input: ServerCreatorPluginCreatorPluginRemoveInput) =>
+    preserveEffect<ServerCreatorPluginCreatorPluginRemoveOutput>()(
+      raw["creator.plugin.remove"]({
+        params: { pluginID: input["pluginID"] },
+        query: { location: input["location"] },
+        payload: { expectedVersion: input["expectedVersion"] },
+      }).pipe(Effect.mapError(mapClientError)),
+    )
+
+const adaptGroupServerCreatorPlugin = (raw: RawClient["server.creatorPlugin"]) => ({
+  creator: {
+    plugin: {
+      list: EndpointServerCreatorPluginCreatorPluginList(raw),
+      candidates: EndpointServerCreatorPluginCreatorPluginCandidates(raw),
+      review: EndpointServerCreatorPluginCreatorPluginReview(raw),
+      install: EndpointServerCreatorPluginCreatorPluginInstall(raw),
+      test: EndpointServerCreatorPluginCreatorPluginTest(raw),
+      control: EndpointServerCreatorPluginCreatorPluginControl(raw),
+      remove: EndpointServerCreatorPluginCreatorPluginRemove(raw),
     },
   },
 })
@@ -3538,6 +3628,7 @@ const adaptClient = (raw: RawClient) => ({
   location: adaptGroupLocation(raw["server.location"]),
   agent: adaptGroupAgent(raw["server.agent"]),
   "server.creatorComponent": adaptGroupServerCreatorComponent(raw["server.creatorComponent"]),
+  "server.creatorPlugin": adaptGroupServerCreatorPlugin(raw["server.creatorPlugin"]),
   plugin: adaptGroupPlugin(raw["server.plugin"]),
   session: adaptGroupSession(raw["server.session"]),
   message: adaptGroupMessage(raw["server.message"]),

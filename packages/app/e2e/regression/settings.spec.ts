@@ -8,7 +8,7 @@ import { mockRemoteServer, mockWorkspace, openSettings, type WorkspaceInput } fr
 import { mockHttpsAccess } from "../utils/https-fixture"
 import { mockConnectionEdits } from "../utils/credential-fixture"
 import { openProviderAuthentication } from "../utils/provider-auth-fixture"
-import { creatorComponent, mockCreatorComponents } from "../utils/creator-fixture"
+import { creatorComponent, mockCreatorComponents, mockCreatorPlugins } from "../utils/creator-fixture"
 
 const directory = "C:/Projects/settings-demo"
 
@@ -120,6 +120,7 @@ test("Creator components work in a desktop scope with asynchronous storage and a
     push: mock.push,
     initial: [creatorComponent("ses_desktop_creator")],
   })
+  const plugins = await mockCreatorPlugins(page, { directory, push: mock.push })
   await page.goto(
     `/e2e/utils/settings-wsl.html?${new URLSearchParams({ server: SERVER, mode: "stopped", storage: "async", path: `/settings?server=sidecar&project=${encodeURIComponent(directory)}&tab=extensions&subtab=plugins` })}`,
   )
@@ -135,12 +136,96 @@ test("Creator components work in a desktop scope with asynchronous storage and a
   await expect(preview.contentFrame().getByRole("status")).toHaveText("1")
   expect(components.operations.filter((item) => item.path.endsWith("/preview"))).toHaveLength(reads)
   expect(components.operations.every((item) => item.directory === directory)).toBe(true)
+  const installer = page.getByTestId("settings-screen").locator('[data-slot="creator-plugins"]')
+  await installer.getByRole("button", { name: "Install Creator plugin", exact: true }).click()
+  await installer.getByRole("button", { name: "Published Creator plugin", exact: true }).click()
+  await expect(page.getByRole("option")).toHaveCount(24)
+  await page.keyboard.press("Escape")
+  await installer.getByRole("button", { name: "Cancel", exact: true }).click()
+  expect(plugins.operations.every((item) => item.method === "GET" && item.directory === directory)).toBe(true)
+})
+
+test("Creator plugin settings explain an older server without breaking settings navigation", async ({ page }) => {
+  const workspace = await open(page)
+  await page.route(`${SERVER}/api/creator/plugin**`, (route) =>
+    route.fulfill({ status: 404, contentType: "text/html", body: "Not found" }),
+  )
+  await page.goto(
+    `/settings?server=${encodeURIComponent(SERVER)}&project=${encodeURIComponent(directory)}&tab=extensions&subtab=plugins`,
+  )
+  const panel = workspace.settings.locator('[data-slot="creator-plugins"]')
+  await expect(panel.getByRole("alert")).toContainText(
+    "Creator plugin installation is unavailable. Update or reconnect this server.",
+  )
+  await expect(panel.getByRole("button", { name: "Install Creator plugin", exact: true })).toBeDisabled()
+  await workspace.settings.getByRole("tab", { name: "General", exact: true }).click()
+  await expect(panel).toHaveCount(0)
 })
 
 const patched = (page: Page) =>
   page.waitForRequest(
     (request) => request.method() === "PATCH" && new URL(request.url()).pathname === `/api/project/${projectID}`,
   )
+
+test("Creator plugin wizard reviews, tests, activates, deactivates and removes in the selected remote project", async ({
+  page,
+}) => {
+  const remoteDirectory = "/remote/creator-plugins"
+  const remote = await mockRemoteServer(page, { directory: remoteDirectory })
+  const workspace = await open(page)
+  const localPlugins = await mockCreatorPlugins(page, { directory, push: workspace.push })
+  const remotePlugins = await mockCreatorPlugins(page, {
+    directory: remoteDirectory,
+    server: REMOTE_SERVER,
+    push: remote.push,
+  })
+  await page.goto(`/settings?server=${encodeURIComponent(REMOTE_SERVER)}&tab=extensions&subtab=plugins`)
+  const panel = workspace.settings.locator('[data-slot="creator-plugins"]')
+  await expect(
+    panel.getByText("Select a project's Agent Extensions settings to install and manage its plugins.", { exact: true }),
+  ).toBeVisible()
+  expect(remotePlugins.operations).toEqual([])
+  await page.goto(
+    `/settings?server=${encodeURIComponent(REMOTE_SERVER)}&project=${encodeURIComponent(remoteDirectory)}&tab=extensions&subtab=plugins`,
+  )
+  await panel.getByRole("button", { name: "Install Creator plugin", exact: true }).click()
+  const wizard = panel.locator('[data-slot="creator-plugin-installer"]')
+  await wizard.getByRole("button", { name: "Published Creator plugin", exact: true }).click()
+  await expect(page.getByRole("option")).toHaveCount(24)
+  await page.getByRole("option", { name: /Echo toolkit/ }).click()
+  await wizard.getByRole("button", { name: "Review package", exact: true }).click()
+  await expect(wizard.getByText("creator-echo@1.0.0", { exact: true })).toBeVisible()
+  expect(remotePlugins.operations.some((operation) => operation.path.endsWith("/test"))).toBe(false)
+  await wizard.getByRole("button", { name: "Install disabled", exact: true }).click()
+  await expect(wizard.getByRole("button", { name: "Activate", exact: true })).toBeDisabled()
+  await wizard.getByRole("button", { name: "Test plugin", exact: true }).click()
+  await expect(wizard.getByText("setup failed: Cannot find package missing-dependency", { exact: true })).toBeVisible()
+  await expect(wizard.getByRole("button", { name: "Activate", exact: true })).toBeDisabled()
+  await wizard.getByRole("button", { name: "Test plugin", exact: true }).click()
+  await expect(wizard.getByText("Compatibility test passed", { exact: true })).toBeVisible()
+  await wizard.getByRole("button", { name: "Activate", exact: true }).click()
+  await expect(wizard).toHaveCount(0)
+  const installed = panel.getByRole("article").filter({ has: page.getByText("Echo toolkit", { exact: true }) })
+  await expect(installed.getByRole("status")).toHaveText("Active")
+  await page.screenshot({ path: test.info().outputPath("creator-plugin-installed.png") })
+  await installed.getByRole("button", { name: "Deactivate", exact: true }).click()
+  await expect(installed.getByRole("status")).toHaveText("Disabled")
+  await installed.getByRole("button", { name: "Remove", exact: true }).click()
+  await page.getByRole("dialog").getByRole("button", { name: "Remove", exact: true }).click()
+  await expect(installed).toHaveCount(0)
+  expect(localPlugins.operations).toEqual([])
+  expect(remotePlugins.operations.every((operation) => operation.directory === remoteDirectory)).toBe(true)
+  const writes = remotePlugins.operations.filter((operation) => operation.method !== "GET")
+  expect(writes.map((operation) => [operation.method, operation.path.split("/").at(-1)])).toEqual([
+    ["POST", "review"],
+    ["POST", "plugin"],
+    ["POST", "test"],
+    ["POST", "test"],
+    ["POST", "control"],
+    ["POST", "control"],
+    ["DELETE", "cplugin_aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"],
+  ])
+})
 
 test("settings has its own route and returns through app history", async ({ page }) => {
   const { settings } = await open(page, { seed: { settings: { general: { showNavigation: true } } } })
@@ -532,7 +617,10 @@ test("agent tools operate on the selected remote host", async ({ page }) => {
   const local = await mockAgentTools(page)
   const remote = await mockAgentTools(page, REMOTE_SERVER)
   await page.goto(`/settings?server=${encodeURIComponent(REMOTE_SERVER)}&tab=agent-tools`)
-  await expect(settings.getByRole("tab", { name: "Agent extensions", exact: true })).toHaveAttribute("aria-selected", "true")
+  await expect(settings.getByRole("tab", { name: "Agent extensions", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  )
   await expect(settings.getByRole("tab", { name: "Tools", exact: true })).toHaveAttribute("aria-selected", "true")
   await expect(settings.getByText(/Execution host: Remote Linux host/)).toBeVisible()
   await expect(settings.getByText(/Installation and actions happen on Remote Linux host/)).toBeVisible()
@@ -544,24 +632,41 @@ test("agent tools operate on the selected remote host", async ({ page }) => {
   expect(local.operations).toEqual([])
   const browser = settings.getByRole("region", { name: "Browser Control", exact: true })
   await browser.getByRole("button", { name: "Install managed version", exact: true }).click()
-  await expect(browser.getByText("Chrome detected. The extension is ready to be packaged and registered.", { exact: true })).toBeVisible()
+  await expect(
+    browser.getByText("Chrome detected. The extension is ready to be packaged and registered.", { exact: true }),
+  ).toBeVisible()
   await browser.getByRole("button", { name: "Prepare Linux install command", exact: true }).click()
-  await expect(browser.getByLabel("Installation command on this host", { exact: true })).toHaveValue("sudo /bin/sh '/owned/browser/chrome/install.sh'")
-  await expect(browser.getByText("Installer prepared. Administrator authorization is still required.", { exact: true })).toBeVisible()
+  await expect(browser.getByLabel("Installation command on this host", { exact: true })).toHaveValue(
+    "sudo /bin/sh '/owned/browser/chrome/install.sh'",
+  )
+  await expect(
+    browser.getByText("Installer prepared. Administrator authorization is still required.", { exact: true }),
+  ).toBeVisible()
   const tool = remote.snapshot.tools.find((item) => item.id === "browser-control")!
   Object.assign(tool.browserExtension!, { canAuthorize: true })
   await settings.getByRole("button", { name: "Refresh status", exact: true }).click()
   remote.extensionFailure.message = "Authorization cancelled (pkexec exit 126)."
   await browser.getByRole("button", { name: "Install in Chrome (administrator)", exact: true }).click()
   await expect(settings.getByRole("alert")).toHaveText("Authorization cancelled (pkexec exit 126).")
-  await expect(browser.getByText("Installer prepared. Administrator authorization is still required.", { exact: true })).toBeVisible()
+  await expect(
+    browser.getByText("Installer prepared. Administrator authorization is still required.", { exact: true }),
+  ).toBeVisible()
   remote.extensionFailure.message = ""
   await browser.getByRole("button", { name: "Install in Chrome (administrator)", exact: true }).click()
-  await expect(browser.getByText("Extension registered with Chrome. Browser connection has not been verified.", { exact: true })).toBeVisible()
+  await expect(
+    browser.getByText("Extension registered with Chrome. Browser connection has not been verified.", { exact: true }),
+  ).toBeVisible()
   await expect(browser.getByRole("switch", { name: "Enable for agents", exact: true })).not.toBeChecked()
   await browser.getByRole("button", { name: "Run diagnostics", exact: true }).click()
   await expect(browser.getByText("Owned fixture ready", { exact: true })).toBeVisible()
-  expect(remote.operations).toEqual(["install", "install", "extension:prepare", "extension:install", "extension:install", "probe"])
+  expect(remote.operations).toEqual([
+    "install",
+    "install",
+    "extension:prepare",
+    "extension:install",
+    "extension:install",
+    "probe",
+  ])
   expect(local.operations).toEqual([])
 })
 

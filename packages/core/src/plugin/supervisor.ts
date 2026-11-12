@@ -1,7 +1,7 @@
 export * as PluginSupervisor from "./supervisor.js"
 
 import { Event } from "@opencode/schema/config"
-import { Cause, Effect, Layer, Queue, Stream } from "effect"
+import { Cause, Context, Effect, Layer, Queue, Stream } from "effect"
 import path from "path"
 import { ConfigPluginSource } from "../config/plugin/source.js"
 import { makeLocationNode } from "@opencode/util/effect/app-node"
@@ -121,7 +121,16 @@ const resolve = Effect.fn("PluginSupervisor.resolve")(function* (
   }
 })
 
-export const layer = Layer.effectDiscard(
+export class Service extends Context.Service<
+  Service,
+  {
+    readonly refresh: Effect.Effect<void>
+    readonly pending: () => boolean
+  }
+>()("@opencode/PluginSupervisor") {}
+
+export const layer = Layer.effect(
+  Service,
   Effect.gen(function* () {
     const managed = yield* ManagedPolicy.Service
     const registry = yield* Plugin.Service
@@ -247,6 +256,10 @@ export const layer = Layer.effectDiscard(
       ),
       Effect.forkScoped({ startImmediately: true }),
     )
+    return Service.of({
+      refresh: notify.pipe(Effect.andThen(registry.awaitActivation)),
+      pending: () => release !== undefined,
+    })
   }),
 )
 
@@ -267,4 +280,4 @@ function pluginSource(target: string): Plugin.Source {
   return { type: "package", target }
 }
 
-export const node = makeLocationNode({ name: "plugin-supervisor", layer, deps: nodeDeps })
+export const node = makeLocationNode({ service: Service, layer, deps: nodeDeps })

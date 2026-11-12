@@ -79,9 +79,7 @@ export function Extensions(props: { services: Services; tools?: ReturnType<typeo
         project={project}
         language={language}
         update={() =>
-          plugin.source.type === "package"
-            ? services.updatePlugin(plugin.source.target, scoped)
-            : Promise.resolve()
+          plugin.source.type === "package" ? services.updatePlugin(plugin.source.target, scoped) : Promise.resolve()
         }
       />
     ))
@@ -126,7 +124,9 @@ export function Extensions(props: { services: Services; tools?: ReturnType<typeo
         >
           {(item) =>
             item.value !== state.subtab ? null : item.value === "tools" ? (
-              props.tools ? <AgentToolsSettings source={props.tools} /> : null
+              props.tools ? (
+                <AgentToolsSettings source={props.tools} />
+              ) : null
             ) : item.value === "lsps" ? (
               <LanguageServers state={state} services={services} />
             ) : (
@@ -256,12 +256,7 @@ function PluginRow(props: {
       .finally(() => setBusy(false))
   }
   return (
-    <ExtensionRow
-      icon="cube"
-      name={pluginLabel(plugin)}
-      project={props.project}
-      description={description}
-    >
+    <ExtensionRow icon="cube" name={pluginLabel(plugin)} project={props.project} description={description}>
       <div className="flex items-center gap-2">
         <span className="text-11-regular text-ink-muted">
           {plugin.state.status === "failed"
@@ -341,9 +336,7 @@ function DesktopExtensions(props: {
                 fieldClass="settings-react-switch"
                 checked={item.enabled}
                 disabled={busy === item.id}
-                onCheckedChange={(enabled) =>
-                  run(item.id, () => props.services.setDesktopExtension(item.id, enabled))
-                }
+                onCheckedChange={(enabled) => run(item.id, () => props.services.setDesktopExtension(item.id, enabled))}
               />
             </div>
           </ExtensionRow>
@@ -398,12 +391,20 @@ function ProjectSectionHeader(props: {
       <div className="project-settings-extension-section-copy">
         <span>
           {props.language.t(
-            props.empty ? `project.settings.extensions.empty.${props.kind}.title` : "project.settings.extensions.added",
+            props.empty
+              ? props.kind === "plugins"
+                ? "settings.extensions.plugins.runtime.empty.title"
+                : `project.settings.extensions.empty.${props.kind}.title`
+              : "project.settings.extensions.added",
           )}
         </span>
         {props.empty && (
           <span className="project-settings-extension-empty-description">
-            {props.language.t(`project.settings.extensions.empty.${props.kind}.description`)}
+            {props.language.t(
+              props.kind === "plugins"
+                ? "settings.extensions.plugins.runtime.empty.description"
+                : `project.settings.extensions.empty.${props.kind}.description`,
+            )}
           </span>
         )}
       </div>

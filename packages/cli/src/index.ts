@@ -19,7 +19,10 @@ process.env.no_proxy = noProxy
 declare const OPENCODE_CLI_NAME: string | undefined
 
 // Version queries must work even when storage, configuration or telemetry cannot initialize.
-if (
+if (process.argv.length === 4 && process.argv[2] === "--internal-creator-plugin-probe") {
+  const { run } = await import("@opencode/core/creator/plugin-probe-runner")
+  await run(process.argv[3]!)
+} else if (
   !process.env.OPENCODE_SSH_ASKPASS_PORT &&
   process.argv.length === 3 &&
   (process.argv[2] === "--version" || process.argv[2] === "-v")

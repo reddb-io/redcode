@@ -1,3 +1,4 @@
+import { idlePluginSupervisor } from "./fixture/plugin-supervisor"
 import fs from "fs/promises"
 import { realpathSync, watch } from "node:fs"
 import os from "os"
@@ -142,7 +143,7 @@ const executionNode = makeGlobalNode({
 
 const shellPluginSupervisor = makeLocationNode({
   name: "test/shell-plugins",
-  layer: Layer.effectDiscard(registerToolPlugin(ShellTool.Plugin)),
+  layer: Layer.effectDiscard(registerToolPlugin(ShellTool.Plugin)).pipe(Layer.merge(idlePluginSupervisor)),
   deps: [
     Config.node,
     Git.node,

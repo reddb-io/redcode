@@ -517,4 +517,9 @@ const Group = HttpApiGroup.make("mock")
     }),
   )
 
-export const MockApi = HttpApi.make("mock").add(Group)
+export const MockApi = HttpApi.make("mock").add(
+  Group.add(
+    HttpApiEndpoint.get("creatorPluginList", "/api/creator/plugin", { success: Json }),
+    HttpApiEndpoint.get("creatorComponentList", "/api/creator/component", { success: Json }),
+  ),
+)

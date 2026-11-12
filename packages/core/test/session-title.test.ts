@@ -1,3 +1,4 @@
+import { idlePluginSupervisor } from "./fixture/plugin-supervisor"
 import { beforeEach, expect } from "bun:test"
 import {
   AIError,
@@ -120,7 +121,7 @@ const it = testEffect(
       Model.node.replace(smallModels),
       SessionRunnerModel.node.replace(models),
       Location.node.replace(Location.boundNode({ directory: AbsolutePath.make("/project") })),
-      PluginSupervisor.node.replace(Layer.empty),
+      PluginSupervisor.node.replace(idlePluginSupervisor),
     ],
   ),
 )
@@ -617,7 +618,10 @@ it.effect("sends a restricted first message to the title model only as the place
       item: { type: "user", payload: { text: prose }, delivery: "steer" },
     })
     yield* bus.publish(SessionEvent.InboxDelivered, { sessionID, inboxID: messageID })
-    yield* bus.publish(SessionEvent.MetadataUpdated, { sessionID, metadata: { restricted: { [messageID]: "sensitive" } } })
+    yield* bus.publish(SessionEvent.MetadataUpdated, {
+      sessionID,
+      metadata: { restricted: { [messageID]: "sensitive" } },
+    })
 
     const title = yield* SessionTitle.Service
     yield* title.generate(sessionID)

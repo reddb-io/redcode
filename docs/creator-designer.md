@@ -26,10 +26,32 @@ contract and `creator_component`; it is a different runtime from a server/TUI/RP
 **Agent Extensions → Plugins** lists loaded plugins and their status; **Tools** manages the
 predefined Browser Control, Computer Use, Terminal Control and Rift integrations. SDK plugins
 can register additional agent tools, but their creation does not automatically add a managed
-Tool card. The current plugin panel lists/checks/updates packages; a generic guided installation
-flow for Creator-authored host packages remains separate work. Use the real SDK/configuration
-entry point and explicit installation scope, and verify loading plus a real tool call before
-reporting an extension as active.
+Tool card. Project settings include a guided **Install Creator plugin** flow:
+
+1. Publish an extension contract targeting `server-plugin`, with `package.json` and the matching
+   `server.js` or `index.js` entry at the document work root. Bundle runtime dependencies; the
+   installer neither downloads dependencies nor executes package install scripts.
+2. In **Agent Extensions → Plugins → Creator plugins**, choose a published package, review its
+   entry, revision, declared capabilities and file inventory, then **Install disabled**. Review
+   and installation do not import the plugin. A private copy pins that revision independently
+   of later source edits or a closed originating conversation.
+3. **Test plugin** launches the real SDK loader in a disposable subprocess with a copied package,
+   fresh Redcode storage and no configured connections. It checks setup, tool registration and
+   teardown, and reports technical failures. It does not call arbitrary tools or certify the
+   delivery's acceptance criteria. Native code still has the server's OS permissions: this is
+   process separation, not a security sandbox, and capabilities are declarations, not ACLs.
+4. **Activate** requires a passing test and uses the existing plugin supervisor and policies.
+   The interface shows actual runtime state. **Deactivate** withdraws its hooks and tools;
+   **Remove** awaits withdrawal and deletes only the managed installed copy. The original
+   document and published revisions remain available. Manual plugin configuration is preserved.
+
+Installations belong to the connected server's database and execution location (directory and
+workspace), not to the UI client. Desktop and Web manage the same server-side tools used by
+sessions from the TUI. Opening global settings does not install into an arbitrary project.
+Version conflicts require a refresh instead of overwriting a newer installation. Installation
+and enabled state survive server restart through the existing persistent KV/config loading
+path. This installer currently handles server SDK plugins; standalone TUI/RPC plugins, skills,
+MCP servers and privileged GUI extensions retain their respective installation flows.
 
 ```json
 {

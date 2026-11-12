@@ -466,6 +466,216 @@ export interface ServerCreatorComponentApi<E = never> {
   }
 }
 
+export type ServerCreatorPluginCreatorPluginListInput = {
+  readonly location?: { readonly directory?: string | undefined } | undefined
+}
+export type ServerCreatorPluginCreatorPluginListOutput = {
+  readonly location: Location.PublicRef
+  readonly data: ReadonlyArray<{
+    readonly sessionID: Session.ID
+    readonly designID: string & Brand.Brand<"Design.ID">
+    readonly revision: string
+    readonly name: string
+    readonly entry: string
+    readonly capabilities: ReadonlyArray<string>
+    readonly id: string & Brand.Brand<"CreatorPlugin.ID">
+    readonly packageName: string
+    readonly packageVersion: string
+    readonly enabled: boolean
+    readonly version: number
+    readonly created: number
+    readonly report?:
+      | {
+          readonly passed: boolean
+          readonly time: number
+          readonly message: string
+          readonly pluginID?: string | undefined
+          readonly tools: ReadonlyArray<string>
+        }
+      | undefined
+    readonly runtime: "disabled" | "pending" | "active" | "failed"
+    readonly error?: string | undefined
+  }>
+}
+export type ServerCreatorPluginCreatorPluginListOperation<E = never> = (
+  input?: ServerCreatorPluginCreatorPluginListInput,
+) => Effect.Effect<ServerCreatorPluginCreatorPluginListOutput, E>
+
+export type ServerCreatorPluginCreatorPluginCandidatesInput = {
+  readonly location?: { readonly directory?: string | undefined } | undefined
+}
+export type ServerCreatorPluginCreatorPluginCandidatesOutput = {
+  readonly location: Location.PublicRef
+  readonly data: ReadonlyArray<{
+    readonly sessionID: Session.ID
+    readonly designID: string & Brand.Brand<"Design.ID">
+    readonly revision: string
+    readonly name: string
+    readonly entry: string
+    readonly capabilities: ReadonlyArray<string>
+  }>
+}
+export type ServerCreatorPluginCreatorPluginCandidatesOperation<E = never> = (
+  input?: ServerCreatorPluginCreatorPluginCandidatesInput,
+) => Effect.Effect<ServerCreatorPluginCreatorPluginCandidatesOutput, E>
+
+export type ServerCreatorPluginCreatorPluginReviewInput = {
+  readonly location?: { readonly directory?: string | undefined } | undefined
+  readonly sessionID: Session.ID
+  readonly designID: string & Brand.Brand<"Design.ID">
+  readonly revision: string
+}
+export type ServerCreatorPluginCreatorPluginReviewOutput = {
+  readonly location: Location.PublicRef
+  readonly data: {
+    readonly sessionID: Session.ID
+    readonly designID: string & Brand.Brand<"Design.ID">
+    readonly revision: string
+    readonly name: string
+    readonly entry: string
+    readonly capabilities: ReadonlyArray<string>
+    readonly packageName: string
+    readonly packageVersion: string
+    readonly files: ReadonlyArray<string>
+    readonly bytes: number
+    readonly dependencies: ReadonlyArray<string>
+  }
+}
+export type ServerCreatorPluginCreatorPluginReviewOperation<E = never> = (
+  input: ServerCreatorPluginCreatorPluginReviewInput,
+) => Effect.Effect<ServerCreatorPluginCreatorPluginReviewOutput, E>
+
+export type ServerCreatorPluginCreatorPluginInstallInput = {
+  readonly location?: { readonly directory?: string | undefined } | undefined
+  readonly sessionID: Session.ID
+  readonly designID: string & Brand.Brand<"Design.ID">
+  readonly revision: string
+}
+export type ServerCreatorPluginCreatorPluginInstallOutput = {
+  readonly location: Location.PublicRef
+  readonly data: {
+    readonly sessionID: Session.ID
+    readonly designID: string & Brand.Brand<"Design.ID">
+    readonly revision: string
+    readonly name: string
+    readonly entry: string
+    readonly capabilities: ReadonlyArray<string>
+    readonly id: string & Brand.Brand<"CreatorPlugin.ID">
+    readonly packageName: string
+    readonly packageVersion: string
+    readonly enabled: boolean
+    readonly version: number
+    readonly created: number
+    readonly report?:
+      | {
+          readonly passed: boolean
+          readonly time: number
+          readonly message: string
+          readonly pluginID?: string | undefined
+          readonly tools: ReadonlyArray<string>
+        }
+      | undefined
+  }
+}
+export type ServerCreatorPluginCreatorPluginInstallOperation<E = never> = (
+  input: ServerCreatorPluginCreatorPluginInstallInput,
+) => Effect.Effect<ServerCreatorPluginCreatorPluginInstallOutput, E>
+
+export type ServerCreatorPluginCreatorPluginTestInput = {
+  readonly pluginID: string & Brand.Brand<"CreatorPlugin.ID">
+  readonly location?: { readonly directory?: string | undefined } | undefined
+  readonly expectedVersion: number
+}
+export type ServerCreatorPluginCreatorPluginTestOutput = {
+  readonly location: Location.PublicRef
+  readonly data: {
+    readonly sessionID: Session.ID
+    readonly designID: string & Brand.Brand<"Design.ID">
+    readonly revision: string
+    readonly name: string
+    readonly entry: string
+    readonly capabilities: ReadonlyArray<string>
+    readonly id: string & Brand.Brand<"CreatorPlugin.ID">
+    readonly packageName: string
+    readonly packageVersion: string
+    readonly enabled: boolean
+    readonly version: number
+    readonly created: number
+    readonly report?:
+      | {
+          readonly passed: boolean
+          readonly time: number
+          readonly message: string
+          readonly pluginID?: string | undefined
+          readonly tools: ReadonlyArray<string>
+        }
+      | undefined
+  }
+}
+export type ServerCreatorPluginCreatorPluginTestOperation<E = never> = (
+  input: ServerCreatorPluginCreatorPluginTestInput,
+) => Effect.Effect<ServerCreatorPluginCreatorPluginTestOutput, E>
+
+export type ServerCreatorPluginCreatorPluginControlInput = {
+  readonly pluginID: string & Brand.Brand<"CreatorPlugin.ID">
+  readonly location?: { readonly directory?: string | undefined } | undefined
+  readonly expectedVersion: number
+  readonly enabled: boolean
+}
+export type ServerCreatorPluginCreatorPluginControlOutput = {
+  readonly location: Location.PublicRef
+  readonly data: {
+    readonly sessionID: Session.ID
+    readonly designID: string & Brand.Brand<"Design.ID">
+    readonly revision: string
+    readonly name: string
+    readonly entry: string
+    readonly capabilities: ReadonlyArray<string>
+    readonly id: string & Brand.Brand<"CreatorPlugin.ID">
+    readonly packageName: string
+    readonly packageVersion: string
+    readonly enabled: boolean
+    readonly version: number
+    readonly created: number
+    readonly report?:
+      | {
+          readonly passed: boolean
+          readonly time: number
+          readonly message: string
+          readonly pluginID?: string | undefined
+          readonly tools: ReadonlyArray<string>
+        }
+      | undefined
+  }
+}
+export type ServerCreatorPluginCreatorPluginControlOperation<E = never> = (
+  input: ServerCreatorPluginCreatorPluginControlInput,
+) => Effect.Effect<ServerCreatorPluginCreatorPluginControlOutput, E>
+
+export type ServerCreatorPluginCreatorPluginRemoveInput = {
+  readonly pluginID: string & Brand.Brand<"CreatorPlugin.ID">
+  readonly location?: { readonly directory?: string | undefined } | undefined
+  readonly expectedVersion: number
+}
+export type ServerCreatorPluginCreatorPluginRemoveOutput = void
+export type ServerCreatorPluginCreatorPluginRemoveOperation<E = never> = (
+  input: ServerCreatorPluginCreatorPluginRemoveInput,
+) => Effect.Effect<ServerCreatorPluginCreatorPluginRemoveOutput, E>
+
+export interface ServerCreatorPluginApi<E = never> {
+  readonly creator: {
+    readonly plugin: {
+      readonly list: ServerCreatorPluginCreatorPluginListOperation<E>
+      readonly candidates: ServerCreatorPluginCreatorPluginCandidatesOperation<E>
+      readonly review: ServerCreatorPluginCreatorPluginReviewOperation<E>
+      readonly install: ServerCreatorPluginCreatorPluginInstallOperation<E>
+      readonly test: ServerCreatorPluginCreatorPluginTestOperation<E>
+      readonly control: ServerCreatorPluginCreatorPluginControlOperation<E>
+      readonly remove: ServerCreatorPluginCreatorPluginRemoveOperation<E>
+    }
+  }
+}
+
 export type PluginListInput = { readonly location?: { readonly directory?: string | undefined } | undefined }
 export type PluginListOutput = { readonly location: Location.PublicRef; readonly data: ReadonlyArray<Plugin.Info> }
 export type PluginListOperation<E = never> = (input?: PluginListInput) => Effect.Effect<PluginListOutput, E>
@@ -7827,6 +8037,7 @@ export interface AppApi<E = never> {
   readonly location: LocationApi<E>
   readonly agent: AgentApi<E>
   readonly "server.creatorComponent": ServerCreatorComponentApi<E>
+  readonly "server.creatorPlugin": ServerCreatorPluginApi<E>
   readonly plugin: PluginApi<E>
   readonly session: SessionApi<E>
   readonly message: MessageApi<E>

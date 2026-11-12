@@ -1,3 +1,4 @@
+import { idlePluginSupervisor } from "./fixture/plugin-supervisor"
 import { describe, expect } from "bun:test"
 import { Deferred, Effect, Fiber, Layer, Schema, Stream } from "effect"
 import { AIError, InvalidRequestError, LanguageModel } from "@opencode/ai"
@@ -154,7 +155,7 @@ const subagentPluginSupervisor = makeLocationNode({
       yield* registerToolPlugin(TaskReconcileTool.Plugin)
       yield* registerToolPlugin(SubagentTool.Plugin, {}, (name, callback) => hooks.register("tool", name, callback))
     }),
-  ),
+  ).pipe(Layer.merge(idlePluginSupervisor)),
   deps: [
     HookRuntime.node,
     Agent.node,

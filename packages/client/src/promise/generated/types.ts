@@ -2317,6 +2317,15 @@ export type CreatorComponentUpdated = {
   data: { componentID: string }
 }
 
+export type CreatorPluginUpdated = {
+  id: string
+  created: number
+  metadata?: { [x: string]: any }
+  type: "creator.plugin.updated"
+  location?: LocationRef
+  data: { pluginID: string }
+}
+
 export type IntelligenceSettingsUpdated = {
   id: string
   created: number
@@ -4756,6 +4765,7 @@ export type V2Event =
   | SessionRevertCleared
   | SessionRevertCommitted
   | CreatorComponentUpdated
+  | CreatorPluginUpdated
   | IntelligenceSettingsUpdated
   | FilesystemChanged
   | ReferenceUpdated
@@ -4879,6 +4889,10 @@ export const isAgentNotFoundError = (value: unknown): value is AgentNotFoundErro
 export type CreatorComponentNotFoundError = { readonly _tag: "CreatorComponentNotFoundError"; readonly message: string }
 export const isCreatorComponentNotFoundError = (value: unknown): value is CreatorComponentNotFoundError =>
   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "CreatorComponentNotFoundError"
+
+export type CreatorPluginNotFoundError = { readonly _tag: "CreatorPluginNotFoundError"; readonly message: string }
+export const isCreatorPluginNotFoundError = (value: unknown): value is CreatorPluginNotFoundError =>
+  typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "CreatorPluginNotFoundError"
 
 export type SessionBusyError = {
   readonly _tag: "SessionBusyError"
@@ -5673,6 +5687,180 @@ export type ServerCreatorComponentCreatorComponentPreviewOutput = {
   location: LocationPublicRef
   data: CreatorComponentPreview
 }
+
+export type ServerCreatorPluginCreatorPluginListInput = {
+  readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]
+}
+
+export type ServerCreatorPluginCreatorPluginListOutput = {
+  location: LocationPublicRef
+  data: Array<{
+    sessionID: string
+    designID: string
+    revision: string
+    name: string
+    entry: string
+    capabilities: Array<string>
+    id: string
+    packageName: string
+    packageVersion: string
+    enabled: boolean
+    version: number
+    created: number | "Infinity" | "-Infinity" | "NaN"
+    report?: {
+      passed: boolean
+      time: number | "Infinity" | "-Infinity" | "NaN"
+      message: string
+      pluginID?: string
+      tools: Array<string>
+    }
+    runtime: "disabled" | "pending" | "active" | "failed"
+    error?: string
+  }>
+}
+
+export type ServerCreatorPluginCreatorPluginCandidatesInput = {
+  readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]
+}
+
+export type ServerCreatorPluginCreatorPluginCandidatesOutput = {
+  location: LocationPublicRef
+  data: Array<{
+    sessionID: string
+    designID: string
+    revision: string
+    name: string
+    entry: string
+    capabilities: Array<string>
+  }>
+}
+
+export type ServerCreatorPluginCreatorPluginReviewInput = {
+  readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]
+  readonly sessionID: { readonly sessionID: string; readonly designID: string; readonly revision: string }["sessionID"]
+  readonly designID: { readonly sessionID: string; readonly designID: string; readonly revision: string }["designID"]
+  readonly revision: { readonly sessionID: string; readonly designID: string; readonly revision: string }["revision"]
+}
+
+export type ServerCreatorPluginCreatorPluginReviewOutput = {
+  location: LocationPublicRef
+  data: {
+    sessionID: string
+    designID: string
+    revision: string
+    name: string
+    entry: string
+    capabilities: Array<string>
+    packageName: string
+    packageVersion: string
+    files: Array<string>
+    bytes: number
+    dependencies: Array<string>
+  }
+}
+
+export type ServerCreatorPluginCreatorPluginInstallInput = {
+  readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]
+  readonly sessionID: { readonly sessionID: string; readonly designID: string; readonly revision: string }["sessionID"]
+  readonly designID: { readonly sessionID: string; readonly designID: string; readonly revision: string }["designID"]
+  readonly revision: { readonly sessionID: string; readonly designID: string; readonly revision: string }["revision"]
+}
+
+export type ServerCreatorPluginCreatorPluginInstallOutput = {
+  location: LocationPublicRef
+  data: {
+    sessionID: string
+    designID: string
+    revision: string
+    name: string
+    entry: string
+    capabilities: Array<string>
+    id: string
+    packageName: string
+    packageVersion: string
+    enabled: boolean
+    version: number
+    created: number | "Infinity" | "-Infinity" | "NaN"
+    report?: {
+      passed: boolean
+      time: number | "Infinity" | "-Infinity" | "NaN"
+      message: string
+      pluginID?: string
+      tools: Array<string>
+    }
+  }
+}
+
+export type ServerCreatorPluginCreatorPluginTestInput = {
+  readonly pluginID: { readonly pluginID: string }["pluginID"]
+  readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]
+  readonly expectedVersion: { readonly expectedVersion: number }["expectedVersion"]
+}
+
+export type ServerCreatorPluginCreatorPluginTestOutput = {
+  location: LocationPublicRef
+  data: {
+    sessionID: string
+    designID: string
+    revision: string
+    name: string
+    entry: string
+    capabilities: Array<string>
+    id: string
+    packageName: string
+    packageVersion: string
+    enabled: boolean
+    version: number
+    created: number | "Infinity" | "-Infinity" | "NaN"
+    report?: {
+      passed: boolean
+      time: number | "Infinity" | "-Infinity" | "NaN"
+      message: string
+      pluginID?: string
+      tools: Array<string>
+    }
+  }
+}
+
+export type ServerCreatorPluginCreatorPluginControlInput = {
+  readonly pluginID: { readonly pluginID: string }["pluginID"]
+  readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]
+  readonly expectedVersion: { readonly expectedVersion: number; readonly enabled: boolean }["expectedVersion"]
+  readonly enabled: { readonly expectedVersion: number; readonly enabled: boolean }["enabled"]
+}
+
+export type ServerCreatorPluginCreatorPluginControlOutput = {
+  location: LocationPublicRef
+  data: {
+    sessionID: string
+    designID: string
+    revision: string
+    name: string
+    entry: string
+    capabilities: Array<string>
+    id: string
+    packageName: string
+    packageVersion: string
+    enabled: boolean
+    version: number
+    created: number | "Infinity" | "-Infinity" | "NaN"
+    report?: {
+      passed: boolean
+      time: number | "Infinity" | "-Infinity" | "NaN"
+      message: string
+      pluginID?: string
+      tools: Array<string>
+    }
+  }
+}
+
+export type ServerCreatorPluginCreatorPluginRemoveInput = {
+  readonly pluginID: { readonly pluginID: string }["pluginID"]
+  readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]
+  readonly expectedVersion: { readonly expectedVersion: number }["expectedVersion"]
+}
+
+export type ServerCreatorPluginCreatorPluginRemoveOutput = void
 
 export type PluginListInput = {
   readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]

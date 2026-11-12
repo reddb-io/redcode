@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test"
 import { CreatorComponent } from "@opencode/schema/creator-component"
+import { CreatorPlugin } from "@opencode/schema/creator-plugin"
 import { Design } from "@opencode/schema/design"
 import { Session } from "@opencode/schema/session"
 import { Schema } from "effect"
@@ -173,4 +174,117 @@ export async function mockCreatorComponents(
       rejection = message
     },
   }
+}
+
+export async function mockCreatorPlugins(
+  page: Page,
+  input: {
+    directory: string
+    server?: string
+    push: Awaited<ReturnType<typeof mockOpenCodeServer>>["push"]
+  },
+) {
+  const candidates = Array.from({ length: 24 }, (_, index) => ({
+    sessionID: Session.ID.make(`ses_creator_plugin_${index}`),
+    designID: Design.ID.make(`design_plugin_${index}`),
+    revision: `rev_plugin_${index}`,
+    name: index ? `Toolkit ${index + 1}` : "Echo toolkit",
+    entry: "server.js",
+    capabilities: ["tool.register"],
+  }))
+  let plugins: (typeof CreatorPlugin.Entry.Type)[] = []
+  let failTest = true
+  const operations: { method: string; path: string; directory: string | null; body?: Schema.Json }[] = []
+  await page.route(`${input.server ?? SERVER}/api/creator/plugin**`, async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    const directory = url.searchParams.get("location[directory]")
+    const body = request.postData() ? Schema.decodeUnknownSync(Schema.Json)(request.postDataJSON()) : undefined
+    operations.push({ method: request.method(), path: url.pathname, directory, body })
+    if (directory !== input.directory)
+      return route.fulfill({
+        status: 400,
+        json: { _tag: "InvalidRequestError", message: "Wrong plugin project scope" },
+      })
+    const location = { directory }
+    if (url.pathname.endsWith("/candidates")) return route.fulfill({ json: { location, data: candidates } })
+    if (url.pathname.endsWith("/review")) {
+      const source = Schema.decodeUnknownSync(CreatorPlugin.Source)(body)
+      return route.fulfill({
+        json: {
+          location,
+          data: {
+            ...candidates.find((item) => item.designID === source.designID),
+            packageName: "creator-echo",
+            packageVersion: "1.0.0",
+            files: ["package.json", "server.js"],
+            bytes: 612,
+            dependencies: [],
+          },
+        },
+      })
+    }
+    if (url.pathname === "/api/creator/plugin") {
+      if (request.method() === "GET") return route.fulfill({ json: { location, data: plugins } })
+      const source = Schema.decodeUnknownSync(CreatorPlugin.Source)(body)
+      const candidate = candidates.find((item) => item.designID === source.designID)!
+      const item = {
+        ...candidate,
+        id: CreatorPlugin.ID.make("cplugin_aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+        packageName: "creator-echo",
+        packageVersion: "1.0.0",
+        enabled: false,
+        runtime: "disabled" as const,
+        version: 1,
+        created: 1,
+      }
+      plugins.push(item)
+      return route.fulfill({ json: { location, data: item } })
+    }
+    const id = url.pathname.split("/")[4]
+    const item = plugins.find((item) => item.id === id)!
+    const expected = Schema.decodeUnknownSync(CreatorPlugin.Expected)(body)
+    if (expected.expectedVersion !== item.version)
+      return route.fulfill({ status: 409, json: { _tag: "ConflictError", message: "Refresh this installation" } })
+    const next = url.pathname.endsWith("/test")
+      ? {
+          ...item,
+          version: item.version + 1,
+          report: {
+            passed: !failTest,
+            time: 1,
+            pluginID: "creator.echo",
+            tools: failTest ? [] : ["creator_echo"],
+            message: failTest
+              ? "setup failed: Cannot find package missing-dependency"
+              : "Loaded creator.echo; registered 1 tool; teardown succeeded.",
+          },
+        }
+      : url.pathname.endsWith("/control")
+        ? {
+            ...item,
+            version: item.version + 1,
+            enabled: Schema.decodeUnknownSync(CreatorPlugin.Control)(body).enabled,
+            runtime: Schema.decodeUnknownSync(CreatorPlugin.Control)(body).enabled
+              ? ("active" as const)
+              : ("disabled" as const),
+          }
+        : item
+    if (url.pathname.endsWith("/test")) failTest = false
+    plugins =
+      request.method() === "DELETE"
+        ? plugins.filter((item) => item.id !== id)
+        : plugins.map((item) => (item.id === id ? next : item))
+    await route.fulfill(request.method() === "DELETE" ? { status: 204 } : { json: { location, data: next } })
+    await input.push([
+      {
+        id: `evt_creator_plugin_${next.version}`,
+        type: "creator.plugin.updated",
+        created: Date.now(),
+        location,
+        data: { pluginID: item.id },
+      },
+    ])
+  })
+  return { operations }
 }

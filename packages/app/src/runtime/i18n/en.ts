@@ -438,17 +438,22 @@ export const dict = {
     "Open a normal web page and click the Browser Control extension's toolbar icon to attach the tab. Then run diagnostics here to verify the extension connection. Enabling the tool only makes its MCP tools available to agents.",
   "agentTools.chrome.title": "Automatic Chrome setup · Linux",
   "agentTools.chrome.manual": "Manual extension setup",
-  "agentTools.chrome.scope": "Installs the managed extension for Google Chrome users on this execution host. Linux administrator authorization is required. Redcode does not close Chrome or edit your browser profile.",
-  "agentTools.chrome.state.chrome-missing": "Google Chrome was not found on this host. Use the manual extension setup instructions below.",
+  "agentTools.chrome.scope":
+    "Installs the managed extension for Google Chrome users on this execution host. Linux administrator authorization is required. Redcode does not close Chrome or edit your browser profile.",
+  "agentTools.chrome.state.chrome-missing":
+    "Google Chrome was not found on this host. Use the manual extension setup instructions below.",
   "agentTools.chrome.state.not-prepared": "Chrome detected. The extension is ready to be packaged and registered.",
-  "agentTools.chrome.state.administrator-required": "Installer prepared. Administrator authorization is still required.",
+  "agentTools.chrome.state.administrator-required":
+    "Installer prepared. Administrator authorization is still required.",
   "agentTools.chrome.state.registered": "Extension registered with Chrome. Browser connection has not been verified.",
   "agentTools.chrome.install": "Install in Chrome (administrator)",
   "agentTools.chrome.prepare": "Prepare Linux install command",
   "agentTools.chrome.command": "Installation command on this host",
   "agentTools.chrome.copyCommand": "Copy installation command",
-  "agentTools.chrome.commandHelp": "Run this command in a terminal on the execution host if graphical authorization is unavailable. The installer registers the extension without restarting Chrome.",
-  "agentTools.chrome.verify": "Close and reopen Chrome when convenient, then run diagnostics below. If you need an existing tab, click the Browser Control toolbar icon on that tab to attach it.",
+  "agentTools.chrome.commandHelp":
+    "Run this command in a terminal on the execution host if graphical authorization is unavailable. The installer registers the extension without restarting Chrome.",
+  "agentTools.chrome.verify":
+    "Close and reopen Chrome when convenient, then run diagnostics below. If you need an existing tab, click the Browser Control toolbar icon on that tab to attach it.",
   "agentTools.operation.extension-prepare": "Preparing Chrome extension…",
   "agentTools.operation.extension-install": "Waiting for Linux administrator authorization…",
   "agentTools.computer-use.requirements":
@@ -2235,6 +2240,9 @@ export const dict = {
   "project.settings.extensions.empty.mcps.title": "No MCPs yet",
   "project.settings.extensions.empty.mcps.description": "MCPs available to Redcode will appear here",
   "project.settings.extensions.empty.plugins.title": "No plugins yet",
+  "settings.extensions.plugins.runtime.empty.title": "No project plugins loaded",
+  "settings.extensions.plugins.runtime.empty.description":
+    "Loaded plugins appear here. Manage Creator installations below.",
   "project.settings.extensions.empty.plugins.description": "Plugins available to Redcode will appear here",
   "project.settings.extensions.empty.skills.title": "No skills yet",
   "project.settings.extensions.empty.skills.description": "Skills available to Redcode will appear here",
