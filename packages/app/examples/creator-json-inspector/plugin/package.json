@@ -1,0 +1,7 @@
+{
+  "name": "creator-json-inspector",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "server.js",
+  "description": "Redcode server plugin: json_inspect validates JSON and summarizes its structure; json_pointer_get reads RFC 6901 JSON Pointer paths. Read-only, dependency-free."
+}
