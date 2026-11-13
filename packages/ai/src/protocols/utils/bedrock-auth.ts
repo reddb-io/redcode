@@ -75,7 +75,11 @@ const signRequest = (input: {
         sessionToken: input.credentials.sessionToken,
         service: input.service,
       }).sign()
-      return Object.fromEntries(signed.headers.entries())
+      const headers: Record<string, string> = {}
+      signed.headers.forEach((value, key) => {
+        headers[key] = value
+      })
+      return headers
     },
     catch: (error) =>
       ProviderShared.invalidRequest(

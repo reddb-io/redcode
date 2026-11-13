@@ -39,9 +39,34 @@ const credential = (input: { access: string; refresh: string; expires?: number; 
 // inspect the row the provider leaves behind.
 const memoryCredentials = (initial: Credential.Info[]) => {
   const rows = new Map(initial.map((row) => [row.id, row]))
+  let locked = false
+  const waiters: Array<() => void> = []
+  const acquire = () =>
+    new Promise<void>((resolve) => {
+      if (!locked) {
+        locked = true
+        resolve()
+        return
+      }
+      waiters.push(resolve)
+    })
   const unused = () => Effect.die("unused credential method")
   const service = Credential.Service.of({
     lock: unused,
+    lease: () =>
+      Effect.promise(async () => {
+        await acquire()
+        let released = false
+        return {
+          release: Effect.sync(() => {
+            if (released) return
+            released = true
+            const next = waiters.shift()
+            if (next) next()
+            else locked = false
+          }),
+        }
+      }),
     all: unused,
     create: unused,
     activate: unused,
@@ -122,6 +147,42 @@ const authorize = (redirect_uri?: string) =>
   )
 
 describe("MCP OAuth", () => {
+  test("rejects URL userinfo and strips request fragments", () => {
+    expect(() => McpOAuth.networkURL("https://user:pass@mcp.example/rpc")).toThrow("userinfo")
+    expect(McpOAuth.networkURL("https://mcp.example/rpc#local-only").href).toBe("https://mcp.example/rpc")
+  })
+
+  test("rejects an authorization redirect to a host outside discovered metadata", async () => {
+    const opened: URL[] = []
+    const oauthProvider = McpOAuth.provider({
+      config: remote("https://mcp.example/rpc"),
+      store: McpOAuth.memoryStore(),
+      discovery: {
+        authorizationServerUrl: "https://auth.example",
+        authorizationServerMetadata: {
+          issuer: "https://auth.example",
+          authorization_endpoint: "https://auth.example/authorize",
+          token_endpoint: "https://auth.example/token",
+          response_types_supported: ["code"],
+        },
+        resourceMetadata: { resource: "https://mcp.example/rpc" },
+      },
+      redirect: {
+        url: "http://127.0.0.1/callback",
+        state: "state",
+        open: (url) => {
+          opened.push(url)
+        },
+      },
+    })
+
+    expect(() => oauthProvider.redirectToAuthorization?.(new URL("https://evil.example/authorize"))).toThrow(
+      "changed host",
+    )
+    await oauthProvider.redirectToAuthorization?.(new URL("https://auth.example/authorize#ignored"))
+    expect(opened[0]?.href).toBe("https://auth.example/authorize")
+  })
+
   test("completes interactive authorization through the loopback callback", async () => {
     const tokenRequests: URLSearchParams[] = []
     const server = Bun.serve({
@@ -324,6 +385,66 @@ describe("MCP OAuth", () => {
     ])
   })
 
+  test("locks persisted credential read, refresh, comparison and write as one transaction", async () => {
+    let requests = 0
+    let active = 0
+    let maxActive = 0
+    const server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const body = new URLSearchParams(await request.text())
+        if (body.get("grant_type") !== "refresh_token") return new Response(null, { status: 404 })
+        requests++
+        active++
+        maxActive = Math.max(maxActive, active)
+        await new Promise((resolve) => setTimeout(resolve, 25))
+        active--
+        return Response.json({
+          access_token: "rotated-access",
+          token_type: "Bearer",
+          refresh_token: "rotated-refresh",
+          expires_in: 3600,
+        })
+      },
+    })
+    const store = memoryCredentials([credential({ access: "expired", refresh: "refresh", url: server.url.href })])
+    const [first, second] = await Promise.all([
+      connectProvider(remote(server.url.href), store),
+      connectProvider(remote(server.url.href), store),
+    ])
+
+    const result = await Promise.all([
+      auth(first, { serverUrl: server.url.href }),
+      auth(second, { serverUrl: server.url.href }),
+    ]).finally(() => server.stop(true))
+
+    expect(result).toEqual(["AUTHORIZED", "AUTHORIZED"])
+    // Some providers omit an issuer on refresh, so the SDK may conservatively refresh once per
+    // connection. The credential transaction must still be serialized and leave the last row coherent.
+    expect(requests).toBeGreaterThanOrEqual(1)
+    expect(maxActive).toBe(1)
+    const stored = store.rows.get(Credential.ID.make("cred_test"))?.value
+    expect(stored?.type === "oauth" && stored.refresh).toBe("rotated-refresh")
+  })
+
+  test("preserves the persisted account when refresh fails transiently", async () => {
+    const server = Bun.serve({
+      port: 0,
+      fetch: () => Response.json({ error: "temporarily_unavailable" }, { status: 503 }),
+    })
+    const store = memoryCredentials([credential({ access: "expired", refresh: "refresh", url: server.url.href })])
+    const oauthProvider = await connectProvider(remote(server.url.href), store)
+
+    await expect(auth(oauthProvider, { serverUrl: server.url.href })).rejects.toThrow()
+    server.stop(true)
+
+    expect(store.rows.size).toBe(1)
+    expect(store.rows.get(Credential.ID.make("cred_test"))?.value).toMatchObject({
+      type: "oauth",
+      refresh: "refresh",
+    })
+  })
+
   test("generates a loopback redirect URL when none is configured", async () => {
     expect(await authorize()).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/callback$/)
   })
@@ -344,7 +465,7 @@ describe("MCP OAuth", () => {
     const { server } = authorizationServer({ authorization_endpoint: "file:///tmp/authorize" })
 
     await expect(Effect.runPromise(Effect.scoped(start(server))).finally(() => server.stop(true))).rejects.toThrow(
-      "returned a file: authorization URL",
+      "must use http or https, received file:",
     )
   })
 

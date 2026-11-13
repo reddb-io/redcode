@@ -2161,7 +2161,7 @@ export type CredentialUpdated = {
   metadata?: { [x: string]: any }
   type: "credential.updated"
   location?: LocationRef
-  data: {}
+  data: { integrationID?: string; credentialID?: string }
 }
 
 export type CredentialSwitched = {
@@ -2179,7 +2179,7 @@ export type IntegrationUpdated = {
   metadata?: { [x: string]: any }
   type: "integration.updated"
   location?: LocationRef
-  data: {}
+  data: { integrationID?: string }
 }
 
 export type ProviderUpdated = {

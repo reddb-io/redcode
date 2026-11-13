@@ -2,6 +2,7 @@ export * as PersistentPty from "./index.js"
 
 import os from "node:os"
 import path from "node:path"
+import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises"
 import { Context, Effect, Layer, Schema } from "effect"
 import { makeGlobalNode } from "@opencode/util/effect/app-node"
 import { Added, Handoff, PersistentPty, ReadLines, Removed, type ReadResult } from "@opencode/schema/persistent-pty"
@@ -26,9 +27,9 @@ export { Handoff } from "@opencode/schema/persistent-pty"
 export const Options = Schema.Struct({ handoff: Schema.optional(Handoff) })
 export type Options = typeof Options.Type
 
-export type Info = PersistentPty.Info
+export type Info = PersistentPty.Info & { readonly launch?: PersistentPty.LaunchBinding }
 
-export type Snapshot = PersistentPty.Snapshot
+export type Snapshot = Omit<PersistentPty.Snapshot, "info"> & { readonly info: Info }
 
 export type Attachment = {
   readonly info: Info
@@ -53,6 +54,11 @@ export class NotFoundError extends Schema.TaggedError<NotFoundError>()("Persiste
   ptyID: Pty.ID,
 }) {}
 
+export class PolicyMismatchError extends Schema.TaggedError<PolicyMismatchError>()("PersistentPty.PolicyMismatchError", {
+  ptyID: Pty.ID,
+  message: Schema.String,
+}) {}
+
 export interface Interface {
   readonly list: (sessionID?: Session.ID) => Effect.Effect<Info[], UnavailableError>
   readonly get: (id: Pty.ID) => Effect.Effect<Info, NotFoundError | UnavailableError>
@@ -66,13 +72,15 @@ export interface Interface {
       readonly env: Readonly<Record<string, string>>
       readonly cols?: number
       readonly rows?: number
+      readonly launch?: PersistentPty.LaunchBinding
     },
   ) => Effect.Effect<Info, UnavailableError>
   readonly write: (
     id: Pty.ID,
     data: string,
     attachmentID?: string,
-  ) => Effect.Effect<void, NotFoundError | UnavailableError>
+    launch?: PersistentPty.LaunchBinding,
+  ) => Effect.Effect<void, NotFoundError | PolicyMismatchError | UnavailableError>
   readonly resize: (
     id: Pty.ID,
     cols: number,
@@ -91,7 +99,8 @@ export interface Interface {
     cols: number,
     rows: number,
     data: Uint8Array,
-  ) => Effect.Effect<void, NotFoundError | UnavailableError>
+    launch?: PersistentPty.LaunchBinding,
+  ) => Effect.Effect<void, NotFoundError | PolicyMismatchError | UnavailableError>
   readonly snapshot: (id: Pty.ID) => Effect.Effect<Snapshot, NotFoundError | UnavailableError>
   readonly read: (sessionID: Session.ID, lines?: number) => Effect.Effect<ReadResult | null, UnavailableError>
   readonly remove: (id: Pty.ID) => Effect.Effect<void, NotFoundError | UnavailableError>
@@ -121,8 +130,9 @@ const makeLayer = (options: Options = {}) =>
       const context = yield* Effect.context()
       const runFork = Effect.runForkWith(context)
       let binary: Promise<string> | undefined
+      const directory = options.handoff?.directory ?? runtimeDirectory()
       const daemon = yield* makeDaemonTransport(
-        options.handoff?.directory ?? runtimeDirectory(),
+        directory,
         () =>
           (binary ??= resolveBinary(global.bin).catch((error) => {
             binary = undefined
@@ -134,13 +144,56 @@ const makeLayer = (options: Options = {}) =>
       // Controller activity selects a terminal; observer reads and pane visibility do not.
       const current = new Map<Session.ID, Pty.ID>()
 
+      const launchFile = (id: Pty.ID) => path.join(directory, `launch-${fromID(id)}.json`)
+      const readLaunch = (id: Pty.ID) =>
+        Effect.tryPromise({
+          try: () => readFile(launchFile(id), "utf8").then((value) => Schema.decodeUnknownPromise(PersistentPty.LaunchBinding)(JSON.parse(value))),
+          catch: () => undefined,
+        }).pipe(Effect.orElseSucceed(() => undefined))
+      const writeLaunch = (id: Pty.ID, launch: PersistentPty.LaunchBinding) =>
+        Effect.tryPromise({
+          try: async () => {
+            await mkdir(directory, { recursive: true })
+            const target = launchFile(id)
+            const temporary = `${target}.${crypto.randomUUID()}.tmp`
+            await writeFile(temporary, JSON.stringify(launch), { encoding: "utf8", mode: 0o600 })
+            await rename(temporary, target)
+          },
+          catch: unavailable,
+        })
+      const removeLaunch = (id: Pty.ID) =>
+        Effect.tryPromise({ try: () => unlink(launchFile(id)), catch: () => undefined }).pipe(Effect.ignore)
+      const withLaunch = Effect.fn("PersistentPty.withLaunch")(function* (terminal: Info) {
+        const launch = yield* readLaunch(terminal.id)
+        return launch ? { ...terminal, launch } : terminal
+      })
+      const requireLaunch = Effect.fn("PersistentPty.requireLaunch")(function* (
+        id: Pty.ID,
+        actual?: PersistentPty.LaunchBinding,
+      ) {
+        const expected = yield* readLaunch(id)
+        if (!expected) {
+          if (!actual) return
+          return yield* new PolicyMismatchError({
+            ptyID: id,
+            message: "Terminal launch policy is unavailable; create a new terminal before sending commands",
+          })
+        }
+        if (actual && sameLaunchBinding(expected, actual)) return
+        return yield* new PolicyMismatchError({
+          ptyID: id,
+          message: "Terminal launch policy changed; new commands are blocked, but the terminal can still be read or closed",
+        })
+      })
+
       const list = Effect.fn("PersistentPty.list")(function* (sessionID?: Session.ID) {
         const response = yield* optionalRequest(daemon, { op: "list" })
         if (!response) return []
         if (response.type !== "terminals") return yield* unexpected(response)
-        return response.terminals
+        const terminals = response.terminals
           .map(toInfo)
           .filter((terminal) => sessionID === undefined || terminal.sessionID === sessionID)
+        return yield* Effect.all(terminals.map(withLaunch), { concurrency: 16 })
       })
 
       const get = Effect.fn("PersistentPty.get")(function* (id: Pty.ID) {
@@ -169,13 +222,21 @@ const makeLayer = (options: Options = {}) =>
           true,
         )
         if (response.type !== "created") return yield* unexpected(response)
-        const terminal = toInfo(response.terminal)
+        const created = toInfo(response.terminal)
+        if (input.launch) yield* writeLaunch(created.id, input.launch)
+        const terminal = input.launch ? { ...created, launch: input.launch } : created
         yield* bus.publish(Added, { sessionID, terminal })
         return terminal
       })
 
-      const write = Effect.fn("PersistentPty.write")(function* (id: Pty.ID, data: string, attachmentID?: string) {
+      const write = Effect.fn("PersistentPty.write")(function* (
+        id: Pty.ID,
+        data: string,
+        attachmentID?: string,
+        launch?: PersistentPty.LaunchBinding,
+      ) {
         yield* get(id)
+        yield* requireLaunch(id, launch)
         const response = yield* request(daemon, {
           op: "write",
           id: fromID(id),
@@ -230,8 +291,10 @@ const makeLayer = (options: Options = {}) =>
         cols: number,
         rows: number,
         data: Uint8Array,
+        launch?: PersistentPty.LaunchBinding,
       ) {
         const terminal = yield* get(id)
+        yield* requireLaunch(id, launch)
         const response = yield* request(daemon, {
           op: "input",
           id: fromID(id),
@@ -250,7 +313,7 @@ const makeLayer = (options: Options = {}) =>
         const response = yield* request(daemon, { op: "snapshot", id: fromID(id) })
         if (response.type !== "snapshot") return yield* unexpected(response)
         return {
-          info: toInfo(response.terminal),
+          info: yield* withLaunch(toInfo(response.terminal)),
           text: response.text,
           checkpoint: Buffer.from(response.checkpoint_base64, "base64"),
           cursor: { x: response.cursor_x, y: response.cursor_y },
@@ -290,6 +353,7 @@ const makeLayer = (options: Options = {}) =>
         const response = yield* request(daemon, { op: "terminate", id: fromID(id) })
         if (response.type !== "ok") return yield* unexpected(response)
         if (current.get(terminal.sessionID) === id) current.delete(terminal.sessionID)
+        yield* removeLaunch(id)
         yield* bus.publish(Removed, { sessionID: terminal.sessionID, ptyID: id })
         return undefined
       })
@@ -333,8 +397,9 @@ const makeLayer = (options: Options = {}) =>
           })
           .pipe(Effect.mapError(unavailable))
         if (attachment.role === "controller") current.set(Session.ID.make(attachment.terminal.group_id), id)
+        const info = yield* withLaunch(toInfo(attachment.terminal))
         return {
-          info: toInfo(attachment.terminal),
+          info,
           role: attachment.role,
           generation: attachment.generation,
           replay: attachment.replay,
@@ -423,4 +488,8 @@ function fromID(value: Pty.ID) {
   const parsed = Number(value.slice("pty_persistent_".length))
   if (!Number.isSafeInteger(parsed) || parsed < 1) throw new Error(`invalid persistent PTY ID: ${value}`)
   return parsed
+}
+
+export function sameLaunchBinding(left: PersistentPty.LaunchBinding, right: PersistentPty.LaunchBinding) {
+  return JSON.stringify(left) === JSON.stringify(right)
 }

@@ -1,7 +1,7 @@
 export * as Credential from "./credential.js"
 
 import { asc, desc, eq } from "drizzle-orm"
-import { Cause, Context, Effect, Fiber, Layer, Schema } from "effect"
+import { Cause, Context, Effect, Exit, Fiber, Layer, Schema, Scope } from "effect"
 import { Credential } from "@opencode/schema/credential"
 import { Integration } from "@opencode/schema/integration"
 import { Database } from "./database/database.js"
@@ -47,6 +47,8 @@ export interface Interface {
     id: ID,
     operation: Effect.Effect<OAuth | undefined, unknown>,
   ) => Effect.Effect<OAuth | undefined, unknown>
+  /** Holds the cross-process credential lock across an SDK read/network/CAS/write transaction. */
+  readonly lease?: (id: ID) => Effect.Effect<{ readonly release: Effect.Effect<void> }, unknown>
   /**
    * Creates a credential for an integration and returns the new record. The new credential becomes the
    * integration's selection unless `activate` is false and the integration already has a credential.
@@ -93,6 +95,21 @@ const layer = Layer.effect(
       })
 
     return Service.of({
+      lease: Effect.fn("Credential.lease")(function* (id) {
+        const lease = yield* Scope.make()
+        yield* flock.acquire(`credential-refresh:${id}`, undefined, { timeoutMs: 30_000 }).pipe(
+          Effect.provideService(Scope.Scope, lease),
+          Effect.onError(() => Scope.close(lease, Exit.void)),
+        )
+        let released = false
+        return {
+          release: Effect.suspend(() => {
+            if (released) return Effect.void
+            released = true
+            return Scope.close(lease, Exit.void)
+          }),
+        }
+      }),
       lock: Effect.fn("Credential.lock")((id, operation) =>
         Effect.uninterruptibleMask((restore) =>
           Effect.gen(function* () {
@@ -184,7 +201,11 @@ const layer = Layer.effect(
           type: credential.value.type,
           active: activated,
         })
-        yield* bus.publish(Event.Updated, {}, { global: true })
+        yield* bus.publish(
+          Event.Updated,
+          { integrationID: credential.integrationID, credentialID: credential.id },
+          { global: true },
+        )
         if (activated)
           yield* bus.publish(
             Event.Switched,
@@ -280,8 +301,11 @@ const layer = Layer.effect(
           valueChanged: updates.value !== undefined,
           labelChanged: updates.label !== undefined && updates.label !== credential.label,
         })
-        if (updates.label !== undefined && updates.label !== credential.label)
-          yield* bus.publish(Event.Updated, {}, { global: true })
+        yield* bus.publish(
+          Event.Updated,
+          { integrationID: credential.integrationID, credentialID: id },
+          { global: true },
+        )
         if (updates.value !== undefined && credential.active)
           yield* bus.publish(
             Event.Switched,
@@ -347,7 +371,11 @@ const layer = Layer.effect(
           active: removed.switched,
           ...(removed.switched ? { replacementID: removed.credentialID } : {}),
         })
-        yield* bus.publish(Event.Updated, {}, { global: true })
+        yield* bus.publish(
+          Event.Updated,
+          { ...(removed.integrationID ? { integrationID: removed.integrationID } : {}), credentialID: id },
+          { global: true },
+        )
         if (removed.switched)
           yield* bus.publish(
             Event.Switched,

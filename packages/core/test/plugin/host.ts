@@ -28,6 +28,7 @@ export function host(overrides: Overrides = {}): Plugin.Context {
         },
       }),
     options: {},
+    redactText: overrides.redactText ?? ((text) => Effect.succeed(text)),
     rpc:
       overrides.rpc ??
       Object.assign(

@@ -1,4 +1,6 @@
 import { PersistentPty } from "@opencode/core/persistent-pty"
+import { Session } from "@opencode/core/session"
+import { ManagedPolicy } from "@opencode/core/managed-policy"
 import { PtyTicket } from "@opencode/core/pty/ticket"
 import { ForbiddenError, PtyNotFoundError, ServiceUnavailableError } from "@opencode/protocol/errors"
 import {
@@ -6,7 +8,7 @@ import {
   PTY_CONNECT_TOKEN_HEADER,
   PTY_CONNECT_TOKEN_HEADER_VALUE,
 } from "@opencode/protocol/groups/persistent-pty"
-import { Deferred, Effect, Queue, Stream } from "effect"
+import { Deferred, Effect, Option, Queue, Stream } from "effect"
 import { HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { HttpApiBuilder, HttpApiSchema } from "effect/unstable/httpapi"
 import { Socket } from "effect/unstable/socket"
@@ -16,6 +18,7 @@ import { runPtySocket } from "./pty-socket"
 import { makePtyOutbox } from "./pty-outbox"
 import { PtySockets } from "../pty-sockets"
 import { makeMediaGet } from "./media"
+import { terminalLaunchBinding } from "../persistent-pty-policy"
 
 export const PersistentPtyHandler = HttpApiBuilder.group(Api, "server.experimental", (handlers) =>
   Effect.gen(function* () {
@@ -24,6 +27,24 @@ export const PersistentPtyHandler = HttpApiBuilder.group(Api, "server.experiment
     const cors = yield* CorsConfig
     const pty = yield* PersistentPty.Service
     const mediaGet = yield* makeMediaGet
+    const sessions = yield* Session.Service
+    const managedPolicy = Option.getOrUndefined(yield* Effect.serviceOption(ManagedPolicy.Service))
+
+    const binding = Effect.fn("PersistentPtyHandler.binding")(function* (
+      request: HttpServerRequest.HttpServerRequest,
+      sessionID: Session.ID,
+      inherited?: PersistentPty.Info["launch"],
+    ) {
+      const info = yield* sessions.get(sessionID).pipe(Effect.catchTag("Session.NotFoundError", () => Effect.succeed(undefined)))
+      return terminalLaunchBinding({
+        request,
+        session: info,
+        sessionID,
+        policy: managedPolicy?.current() ?? { statements: [] },
+        credential: inherited?.scope.credential,
+        origin: inherited?.origin,
+      })
+    })
 
     return handlers
       .handleRaw("media.get", (ctx) => mediaGet(ctx.params.hash, ctx.request))
@@ -42,6 +63,7 @@ export const PersistentPtyHandler = HttpApiBuilder.group(Api, "server.experiment
       .handle(
         "persistentPty.create",
         Effect.fn(function* (ctx) {
+          const request = yield* HttpServerRequest.HttpServerRequest
           return {
             data: yield* pty
               .create(ctx.params.sessionID, {
@@ -52,6 +74,7 @@ export const PersistentPtyHandler = HttpApiBuilder.group(Api, "server.experiment
                 env: ctx.payload.env,
                 cols: ctx.payload.size?.cols,
                 rows: ctx.payload.size?.rows,
+                launch: yield* binding(request, ctx.params.sessionID),
               })
               .pipe(Effect.catchTag("PersistentPty.UnavailableError", unavailable)),
           }
@@ -107,8 +130,13 @@ export const PersistentPtyHandler = HttpApiBuilder.group(Api, "server.experiment
             !isAllowedRequestOrigin(request.headers.origin, request.headers.host, cors)
           )
             return yield* new ForbiddenError({ message: "Invalid persistent PTY connect token request" })
-          yield* pty.get(ctx.params.ptyID).pipe(mapTerminalError)
-          return { data: yield* tickets.issue({ ptyID: ctx.params.ptyID }) }
+          const terminal = yield* pty.get(ctx.params.ptyID).pipe(mapTerminalError)
+          return {
+            data: yield* tickets.issue({
+              ptyID: ctx.params.ptyID,
+              launch: yield* binding(request, terminal.sessionID, terminal.launch),
+            }),
+          }
         }),
       )
       .handleRaw(
@@ -119,8 +147,8 @@ export const PersistentPtyHandler = HttpApiBuilder.group(Api, "server.experiment
 
           const url = new URL(ctx.request.url, "http://localhost")
           const ticket = url.searchParams.get(PTY_CONNECT_TICKET_QUERY)
-          if (ticket && !(yield* tickets.consume({ ticket, ptyID: ctx.params.ptyID })))
-            return HttpServerResponse.empty({ status: 403 })
+          const ticketScope = ticket ? yield* tickets.take({ ticket, ptyID: ctx.params.ptyID }) : undefined
+          if (ticket && !ticketScope) return HttpServerResponse.empty({ status: 403 })
 
           const cursor = Number(url.searchParams.get("cursor") ?? "0")
           const role = url.searchParams.get("role") === "observer" ? "observer" : "controller"
@@ -195,11 +223,25 @@ export const PersistentPtyHandler = HttpApiBuilder.group(Api, "server.experiment
           yield* Stream.runForEach(Stream.fromQueue(input), (data) =>
             Effect.suspend(() => {
               inputBytes -= data.byteLength
-              if (!attachment) return Effect.void
+              const active = attachment
+              if (!active) return Effect.void
               if (!framedInput)
-                return pty
-                  .input(ctx.params.ptyID, attachmentID, attachment.info.size.cols, attachment.info.size.rows, data)
-                  .pipe(Effect.ignore)
+                return binding(ctx.request, active.info.sessionID, ticketScope?.launch).pipe(
+                  Effect.flatMap((launch) =>
+                    pty.input(
+                      ctx.params.ptyID,
+                      attachmentID,
+                      active.info.size.cols,
+                      active.info.size.rows,
+                      data,
+                      launch,
+                    ),
+                  ),
+                  Effect.catchTag("PersistentPty.PolicyMismatchError", (error) =>
+                    Effect.sync(() => outbox.offer(new Socket.CloseEvent(4403, error.message))),
+                  ),
+                  Effect.ignore,
+                )
               if (data.byteLength < 5) return Effect.void
               const view = new DataView(data.buffer, data.byteOffset, data.byteLength)
               const type = data[0]
@@ -207,7 +249,15 @@ export const PersistentPtyHandler = HttpApiBuilder.group(Api, "server.experiment
               const rows = view.getUint16(3)
               if ((type !== 0 && type !== 1) || cols === 0 || rows === 0) return Effect.void
               if (type === 0) return pty.control(ctx.params.ptyID, attachmentID, cols, rows).pipe(Effect.ignore)
-              return pty.input(ctx.params.ptyID, attachmentID, cols, rows, data.subarray(5)).pipe(Effect.ignore)
+              return binding(ctx.request, active.info.sessionID, ticketScope?.launch).pipe(
+                Effect.flatMap((launch) =>
+                  pty.input(ctx.params.ptyID, attachmentID, cols, rows, data.subarray(5), launch),
+                ),
+                Effect.catchTag("PersistentPty.PolicyMismatchError", (error) =>
+                  Effect.sync(() => outbox.offer(new Socket.CloseEvent(4403, error.message))),
+                ),
+                Effect.ignore,
+              )
             }),
           ).pipe(Effect.forkScoped)
           yield* runPtySocket(

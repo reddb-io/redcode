@@ -189,10 +189,12 @@ export const OpenAICompatibleCatalogPlugin = define({
     )
     yield* ctx.event.subscribe().pipe(
       Stream.filter((event) => event.type === "credential.switched" || event.type === "credential.updated"),
-      Stream.runForEach(() =>
+      Stream.runForEach((event) =>
         Effect.sync(() => {
           revision++
-          inventories.clear()
+          if (event.type === "credential.updated" && event.data.integrationID)
+            inventories.delete(Provider.ID.make(event.data.integrationID))
+          else inventories.clear()
         }).pipe(Effect.andThen(ctx.provider.reload()), Effect.andThen(ctx.model.reload())),
       ),
       Effect.forkScoped({ startImmediately: true }),

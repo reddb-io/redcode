@@ -238,9 +238,9 @@ export const ActiveSessionsResponse = Schema.Struct({
   data: Schema.Record(Session.ID, SessionActive),
 }).annotate({ identifier: "ActiveSessionsResponse" })
 
-export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI extends HttpApiMiddleware.AnyId, FormS>(
+const makeSessionGroupPart1 = <I extends HttpApiMiddleware.AnyId, S, FormI extends HttpApiMiddleware.AnyId, FormS>(
   sessionLocationMiddleware: Context.Key<I, S>,
-  formLocationMiddleware: Context.Key<FormI, FormS>,
+  _formLocationMiddleware: Context.Key<FormI, FormS>,
 ) =>
   HttpApiGroup.make("server.session")
     .add(
@@ -679,6 +679,11 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI ext
         }),
       ),
     )
+const makeSessionGroupPart2 = <I extends HttpApiMiddleware.AnyId, S, FormI extends HttpApiMiddleware.AnyId, FormS>(
+  sessionLocationMiddleware: Context.Key<I, S>,
+  _formLocationMiddleware: Context.Key<FormI, FormS>,
+) =>
+  HttpApiGroup.make("server.session")
     .add(
       HttpApiEndpoint.get("session.goal.get", "/api/experimental/session/:sessionID/goal", {
         params: { sessionID: Session.ID },
@@ -1107,6 +1112,11 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI ext
           }),
         ),
     )
+const makeSessionGroupPart3 = <I extends HttpApiMiddleware.AnyId, S, FormI extends HttpApiMiddleware.AnyId, FormS>(
+  sessionLocationMiddleware: Context.Key<I, S>,
+  formLocationMiddleware: Context.Key<FormI, FormS>,
+) =>
+  HttpApiGroup.make("server.session")
     .add(
       HttpApiEndpoint.post("session.command", "/api/session/:sessionID/command", {
         params: { sessionID: Session.ID },
@@ -1622,3 +1632,51 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI ext
         description: "Experimental session routes.",
       }),
     )
+
+type SessionGroupPart1<I extends HttpApiMiddleware.AnyId, S, FormI extends HttpApiMiddleware.AnyId, FormS> = ReturnType<
+  typeof makeSessionGroupPart1<I, S, FormI, FormS>
+>
+type SessionGroupPart2<I extends HttpApiMiddleware.AnyId, S, FormI extends HttpApiMiddleware.AnyId, FormS> = ReturnType<
+  typeof makeSessionGroupPart2<I, S, FormI, FormS>
+>
+type SessionGroupPart3<I extends HttpApiMiddleware.AnyId, S, FormI extends HttpApiMiddleware.AnyId, FormS> = ReturnType<
+  typeof makeSessionGroupPart3<I, S, FormI, FormS>
+>
+
+type SessionGroupEndpoints<I extends HttpApiMiddleware.AnyId, S, FormI extends HttpApiMiddleware.AnyId, FormS> =
+  | HttpApiGroup.Endpoints<SessionGroupPart1<I, S, FormI, FormS>>
+  | HttpApiGroup.Endpoints<SessionGroupPart2<I, S, FormI, FormS>>
+  | HttpApiGroup.Endpoints<SessionGroupPart3<I, S, FormI, FormS>>
+
+type SessionGroup<
+  I extends HttpApiMiddleware.AnyId,
+  S,
+  FormI extends HttpApiMiddleware.AnyId,
+  FormS,
+> = HttpApiGroup.HttpApiGroup<"server.session", SessionGroupEndpoints<I, S, FormI, FormS>>
+
+// Keep each declaration-sized fragment small, then combine the exact endpoint objects.
+// The named union preserves handler and generated-client types without asking TypeScript
+// to serialize one enormous inferred expression into the public declaration file.
+export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI extends HttpApiMiddleware.AnyId, FormS>(
+  sessionLocationMiddleware: Context.Key<I, S>,
+  formLocationMiddleware: Context.Key<FormI, FormS>,
+): SessionGroup<I, S, FormI, FormS> => {
+  const part1 = makeSessionGroupPart1(sessionLocationMiddleware, formLocationMiddleware)
+  const part2 = makeSessionGroupPart2(sessionLocationMiddleware, formLocationMiddleware)
+  const part3 = makeSessionGroupPart3(sessionLocationMiddleware, formLocationMiddleware)
+  const endpoints = [
+    ...Object.values(part1.endpoints),
+    ...Object.values(part2.endpoints),
+    ...Object.values(part3.endpoints),
+  ] as unknown as [HttpApiEndpoint.Constraint, ...Array<HttpApiEndpoint.Constraint>]
+
+  return HttpApiGroup.make("server.session")
+    .add(...endpoints)
+    .annotateMerge(
+      OpenApi.annotations({
+        title: "session",
+        description: "Experimental session routes.",
+      }),
+    ) as unknown as SessionGroup<I, S, FormI, FormS>
+}

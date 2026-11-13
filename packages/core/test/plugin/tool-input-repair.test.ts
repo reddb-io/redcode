@@ -89,7 +89,7 @@ describe("tool input repair plugin", () => {
     }),
   )
 
-  it.effect("removes extras only from explicitly closed objects without mutating inputs", () =>
+  it.effect("retains extras for closed-schema validation while coercing known fields", () =>
     Effect.gen(function* () {
       const input = {
         known: "2",
@@ -113,14 +113,15 @@ describe("tool input repair plugin", () => {
 
       expect(event.input).toEqual({
         known: 2,
-        closed: { keep: 3 },
+        extra: true,
+        closed: { keep: 3, extra: true },
         open: { keep: 4, extra: true },
-        items: [{ keep: 5 }],
+        items: [{ keep: 5, extra: true }],
       })
       expect(input.extra).toBeTrue()
       expect(input.closed.extra).toBeTrue()
       expect(input.items[0]?.extra).toBeTrue()
-      expect((yield* run({ extra: true }, { ...object({}), additionalProperties: false })).input).toEqual({})
+      expect((yield* run({ extra: true }, { ...object({}), additionalProperties: false })).input).toEqual({ extra: true })
     }),
   )
 

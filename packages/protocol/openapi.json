@@ -302,6 +302,680 @@
         "summary": "Sample owned execution memory on demand"
       }
     },
+    "/api/memory/captures": {
+      "get": {
+        "tags": ["server"],
+        "operationId": "server.memoryCaptures",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "pattern": "^cap_[0-9a-f-]{36}$"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": ["heap", "cpu", "samples"]
+                      },
+                      "target": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "enum": ["server"]
+                              }
+                            },
+                            "required": ["kind"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "enum": ["process"]
+                              },
+                              "pid": {
+                                "type": "integer",
+                                "exclusiveMinimum": 0
+                              },
+                              "label": {
+                                "type": "string",
+                                "maxLength": 200
+                              }
+                            },
+                            "required": ["kind", "pid"],
+                            "additionalProperties": false
+                          }
+                        ]
+                      },
+                      "state": {
+                        "type": "string",
+                        "enum": ["pending", "running", "completed", "failed", "cancelled"]
+                      },
+                      "createdAt": {
+                        "type": "number"
+                      },
+                      "startedAt": {
+                        "type": "number"
+                      },
+                      "completedAt": {
+                        "type": "number"
+                      },
+                      "expiresAt": {
+                        "type": "number"
+                      },
+                      "size": {
+                        "type": "number"
+                      },
+                      "error": {
+                        "type": "string",
+                        "maxLength": 2048
+                      },
+                      "filename": {
+                        "type": "string",
+                        "maxLength": 255
+                      }
+                    },
+                    "required": ["id", "kind", "target", "state", "createdAt", "expiresAt"],
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorEncoded"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ConsoleForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictErrorEncoded"
+                }
+              }
+            }
+          }
+        },
+        "summary": "List local diagnostic captures"
+      },
+      "post": {
+        "tags": ["server"],
+        "operationId": "server.startMemoryCapture",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "pattern": "^cap_[0-9a-f-]{36}$"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": ["heap", "cpu", "samples"]
+                    },
+                    "target": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": ["server"]
+                            }
+                          },
+                          "required": ["kind"],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": ["process"]
+                            },
+                            "pid": {
+                              "type": "integer",
+                              "exclusiveMinimum": 0
+                            },
+                            "label": {
+                              "type": "string",
+                              "maxLength": 200
+                            }
+                          },
+                          "required": ["kind", "pid"],
+                          "additionalProperties": false
+                        }
+                      ]
+                    },
+                    "state": {
+                      "type": "string",
+                      "enum": ["pending", "running", "completed", "failed", "cancelled"]
+                    },
+                    "createdAt": {
+                      "type": "number"
+                    },
+                    "startedAt": {
+                      "type": "number"
+                    },
+                    "completedAt": {
+                      "type": "number"
+                    },
+                    "expiresAt": {
+                      "type": "number"
+                    },
+                    "size": {
+                      "type": "number"
+                    },
+                    "error": {
+                      "type": "string",
+                      "maxLength": 2048
+                    },
+                    "filename": {
+                      "type": "string",
+                      "maxLength": 255
+                    }
+                  },
+                  "required": ["id", "kind", "target", "state", "createdAt", "expiresAt"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorEncoded"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ConsoleForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictErrorEncoded"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Start a local diagnostic capture",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": ["heap", "cpu", "samples"]
+                  },
+                  "target": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": ["server"]
+                          }
+                        },
+                        "required": ["kind"],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": ["process"]
+                          },
+                          "pid": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                          },
+                          "label": {
+                            "type": "string",
+                            "maxLength": 200
+                          }
+                        },
+                        "required": ["kind", "pid"],
+                        "additionalProperties": false
+                      }
+                    ]
+                  },
+                  "durationMs": {
+                    "type": "integer",
+                    "minimum": 1000,
+                    "maximum": 60000
+                  },
+                  "retentionMs": {
+                    "type": "integer",
+                    "minimum": 60000,
+                    "maximum": 86400000
+                  }
+                },
+                "required": ["kind", "target"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/api/memory/captures/{id}/run": {
+      "delete": {
+        "tags": ["server"],
+        "operationId": "server.cancelMemoryCapture",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^cap_[0-9a-f-]{36}$"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "pattern": "^cap_[0-9a-f-]{36}$"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": ["heap", "cpu", "samples"]
+                    },
+                    "target": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": ["server"]
+                            }
+                          },
+                          "required": ["kind"],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": ["process"]
+                            },
+                            "pid": {
+                              "type": "integer",
+                              "exclusiveMinimum": 0
+                            },
+                            "label": {
+                              "type": "string",
+                              "maxLength": 200
+                            }
+                          },
+                          "required": ["kind", "pid"],
+                          "additionalProperties": false
+                        }
+                      ]
+                    },
+                    "state": {
+                      "type": "string",
+                      "enum": ["pending", "running", "completed", "failed", "cancelled"]
+                    },
+                    "createdAt": {
+                      "type": "number"
+                    },
+                    "startedAt": {
+                      "type": "number"
+                    },
+                    "completedAt": {
+                      "type": "number"
+                    },
+                    "expiresAt": {
+                      "type": "number"
+                    },
+                    "size": {
+                      "type": "number"
+                    },
+                    "error": {
+                      "type": "string",
+                      "maxLength": 2048
+                    },
+                    "filename": {
+                      "type": "string",
+                      "maxLength": 255
+                    }
+                  },
+                  "required": ["id", "kind", "target", "state", "createdAt", "expiresAt"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorEncoded"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ConsoleForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictErrorEncoded"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Cancel a diagnostic capture"
+      }
+    },
+    "/api/memory/captures/{id}": {
+      "delete": {
+        "tags": ["server"],
+        "operationId": "server.deleteMemoryCapture",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^cap_[0-9a-f-]{36}$"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "204": {
+            "description": "<No Content>"
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorEncoded"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ConsoleForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictErrorEncoded"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Delete a local diagnostic capture"
+      }
+    },
+    "/api/memory/captures/{id}/download": {
+      "get": {
+        "tags": ["server"],
+        "operationId": "server.downloadMemoryCapture",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^cap_[0-9a-f-]{36}$"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorEncoded"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ConsoleForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictErrorEncoded"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Download a diagnostic capture"
+      }
+    },
     "/api/resources": {
       "get": {
         "tags": ["server"],
@@ -2232,6 +2906,2691 @@
         },
         "description": "Retrieve a single currently registered agent.",
         "summary": "Get agent"
+      }
+    },
+    "/api/creator/component/test": {
+      "post": {
+        "tags": ["server.creatorComponent"],
+        "operationId": "creator.component.test",
+        "parameters": [
+          {
+            "name": "location",
+            "in": "query",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "directory": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false,
+            "style": "deepObject",
+            "explode": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "location": {
+                      "$ref": "#/components/schemas/Location.PublicRef"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/CreatorComponent.Preview"
+                    }
+                  },
+                  "required": ["location", "data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorEncoded"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ConsoleForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "CreatorComponentNotFoundError | LocationNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CreatorComponentNotFoundErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LocationNotFoundErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConflictErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConflictErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "Prepare a published component for an isolated interactive test without installing it",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatorComponent.Install"
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/api/creator/component": {
+      "get": {
+        "tags": ["server.creatorComponent"],
+        "operationId": "creator.component.list",
+        "parameters": [
+          {
+            "name": "location",
+            "in": "query",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "directory": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false,
+            "style": "deepObject",
+            "explode": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "location": {
+                      "$ref": "#/components/schemas/Location.PublicRef"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CreatorComponent.Info"
+                      }
+                    }
+                  },
+                  "required": ["location", "data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorEncoded"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ConsoleForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "CreatorComponentNotFoundError | LocationNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CreatorComponentNotFoundErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LocationNotFoundErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConflictErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConflictErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "List installed isolated Creator components in this project"
+      },
+      "post": {
+        "tags": ["server.creatorComponent"],
+        "operationId": "creator.component.install",
+        "parameters": [
+          {
+            "name": "location",
+            "in": "query",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "directory": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false,
+            "style": "deepObject",
+            "explode": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "location": {
+                      "$ref": "#/components/schemas/Location.PublicRef"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/CreatorComponent.Info"
+                    }
+                  },
+                  "required": ["location", "data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorEncoded"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ConsoleForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "CreatorComponentNotFoundError | LocationNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CreatorComponentNotFoundErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LocationNotFoundErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConflictErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConflictErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "Install a published Design revision as an isolated project component",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatorComponent.Install"
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/api/creator/component/{componentID}": {
+      "post": {
+        "tags": ["server.creatorComponent"],
+        "operationId": "creator.component.update",
+        "parameters": [
+          {
+            "name": "componentID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^creator_[a-z0-9-]+$"
+            },
+            "required": true
+          },
+          {
+            "name": "location",
+            "in": "query",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "directory": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false,
+            "style": "deepObject",
+            "explode": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "location": {
+                      "$ref": "#/components/schemas/Location.PublicRef"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/CreatorComponent.Info"
+                    }
+                  },
+                  "required": ["location", "data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorEncoded"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ConsoleForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "CreatorComponentNotFoundError | LocationNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CreatorComponentNotFoundErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LocationNotFoundErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConflictErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConflictErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "Update an installed component without overwriting a newer version",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatorComponent.Update"
+              }
+            }
+          },
+          "required": true
+        }
+      },
+      "delete": {
+        "tags": ["server.creatorComponent"],
+        "operationId": "creator.component.remove",
+        "parameters": [
+          {
+            "name": "componentID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^creator_[a-z0-9-]+$"
+            },
+            "required": true
+          },
+          {
+            "name": "location",
+            "in": "query",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "directory": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false,
+            "style": "deepObject",
+            "explode": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "204": {
+            "description": "<No Content>"
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorEncoded"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ConsoleForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "CreatorComponentNotFoundError | LocationNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CreatorComponentNotFoundErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LocationNotFoundErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConflictErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConflictErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "Remove installation metadata while preserving source artifacts",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatorComponent.Remove"
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/api/creator/component/{componentID}/control": {
+      "post": {
+        "tags": ["server.creatorComponent"],
+        "operationId": "creator.component.control",
+        "parameters": [
+          {
+            "name": "componentID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^creator_[a-z0-9-]+$"
+            },
+            "required": true
+          },
+          {
+            "name": "location",
+            "in": "query",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "directory": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false,
+            "style": "deepObject",
+            "explode": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "location": {
+                      "$ref": "#/components/schemas/Location.PublicRef"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/CreatorComponent.Info"
+                    }
+                  },
+                  "required": ["location", "data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorEncoded"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ConsoleForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "CreatorComponentNotFoundError | LocationNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CreatorComponentNotFoundErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LocationNotFoundErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConflictErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConflictErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "Enable or disable a Creator component",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatorComponent.Control"
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/api/creator/component/{componentID}/preview": {
+      "get": {
+        "tags": ["server.creatorComponent"],
+        "operationId": "creator.component.preview",
+        "parameters": [
+          {
+            "name": "componentID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^creator_[a-z0-9-]+$"
+            },
+            "required": true
+          },
+          {
+            "name": "location",
+            "in": "query",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "directory": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false,
+            "style": "deepObject",
+            "explode": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "location": {
+                      "$ref": "#/components/schemas/Location.PublicRef"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/CreatorComponent.Preview"
+                    }
+                  },
+                  "required": ["location", "data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorEncoded"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ConsoleForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "CreatorComponentNotFoundError | LocationNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CreatorComponentNotFoundErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LocationNotFoundErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConflictErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConflictErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "Read the pinned isolated HTML for an enabled Creator component"
+      }
+    },
+    "/api/creator/plugin": {
+      "get": {
+        "tags": ["server.creatorPlugin"],
+        "operationId": "creator.plugin.list",
+        "parameters": [
+          {
+            "name": "location",
+            "in": "query",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "directory": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false,
+            "style": "deepObject",
+            "explode": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "location": {
+                      "$ref": "#/components/schemas/Location.PublicRef"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "sessionID": {
+                            "type": "string",
+                            "pattern": "^ses"
+                          },
+                          "designID": {
+                            "type": "string",
+                            "pattern": "^design_[a-zA-Z0-9_-]+$"
+                          },
+                          "revision": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "entry": {
+                            "type": "string"
+                          },
+                          "capabilities": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "id": {
+                            "type": "string",
+                            "pattern": "^cplugin_[a-f0-9-]{36}$"
+                          },
+                          "packageName": {
+                            "type": "string"
+                          },
+                          "packageVersion": {
+                            "type": "string"
+                          },
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "version": {
+                            "type": "integer",
+                            "minimum": 1
+                          },
+                          "created": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "string",
+                                "enum": ["Infinity", "-Infinity", "NaN"]
+                              }
+                            ]
+                          },
+                          "report": {
+                            "type": "object",
+                            "properties": {
+                              "passed": {
+                                "type": "boolean"
+                              },
+                              "time": {
+                                "anyOf": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "string",
+                                    "enum": ["Infinity", "-Infinity", "NaN"]
+                                  }
+                                ]
+                              },
+                              "message": {
+                                "type": "string"
+                              },
+                              "pluginID": {
+                                "type": "string"
+                              },
+                              "tools": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              }
+                            },
+                            "required": ["passed", "time", "message", "tools"],
+                            "additionalProperties": false
+                          },
+                          "runtime": {
+                            "type": "string",
+                            "enum": ["disabled", "pending", "active", "failed"]
+                          },
+                          "error": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "sessionID",
+                          "designID",
+                          "revision",
+                          "name",
+                          "entry",
+                          "capabilities",
+                          "id",
+                          "packageName",
+                          "packageVersion",
+                          "enabled",
+                          "version",
+                          "created",
+                          "runtime"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": ["location", "data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorEncoded"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ConsoleForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "CreatorPluginNotFoundError | LocationNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CreatorPluginNotFoundErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LocationNotFoundErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConflictErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConflictErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "ServiceUnavailableError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceUnavailableErrorEncoded"
+                }
+              }
+            }
+          }
+        },
+        "summary": "List project Creator plugins and their actual runtime state"
+      },
+      "post": {
+        "tags": ["server.creatorPlugin"],
+        "operationId": "creator.plugin.install",
+        "parameters": [
+          {
+            "name": "location",
+            "in": "query",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "directory": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false,
+            "style": "deepObject",
+            "explode": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "location": {
+                      "$ref": "#/components/schemas/Location.PublicRef"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "sessionID": {
+                          "type": "string",
+                          "pattern": "^ses"
+                        },
+                        "designID": {
+                          "type": "string",
+                          "pattern": "^design_[a-zA-Z0-9_-]+$"
+                        },
+                        "revision": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "entry": {
+                          "type": "string"
+                        },
+                        "capabilities": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "id": {
+                          "type": "string",
+                          "pattern": "^cplugin_[a-f0-9-]{36}$"
+                        },
+                        "packageName": {
+                          "type": "string"
+                        },
+                        "packageVersion": {
+                          "type": "string"
+                        },
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "version": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "created": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "string",
+                              "enum": ["Infinity", "-Infinity", "NaN"]
+                            }
+                          ]
+                        },
+                        "report": {
+                          "type": "object",
+                          "properties": {
+                            "passed": {
+                              "type": "boolean"
+                            },
+                            "time": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "string",
+                                  "enum": ["Infinity", "-Infinity", "NaN"]
+                                }
+                              ]
+                            },
+                            "message": {
+                              "type": "string"
+                            },
+                            "pluginID": {
+                              "type": "string"
+                            },
+                            "tools": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          "required": ["passed", "time", "message", "tools"],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "sessionID",
+                        "designID",
+                        "revision",
+                        "name",
+                        "entry",
+                        "capabilities",
+                        "id",
+                        "packageName",
+                        "packageVersion",
+                        "enabled",
+                        "version",
+                        "created"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["location", "data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorEncoded"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ConsoleForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "CreatorPluginNotFoundError | LocationNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CreatorPluginNotFoundErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LocationNotFoundErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConflictErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConflictErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "ServiceUnavailableError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceUnavailableErrorEncoded"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Pin a disabled project plugin from an immutable published revision",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sessionID": {
+                    "type": "string",
+                    "pattern": "^ses"
+                  },
+                  "designID": {
+                    "type": "string",
+                    "pattern": "^design_[a-zA-Z0-9_-]+$"
+                  },
+                  "revision": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": ["sessionID", "designID", "revision"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/api/creator/plugin/candidates": {
+      "get": {
+        "tags": ["server.creatorPlugin"],
+        "operationId": "creator.plugin.candidates",
+        "parameters": [
+          {
+            "name": "location",
+            "in": "query",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "directory": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false,
+            "style": "deepObject",
+            "explode": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "location": {
+                      "$ref": "#/components/schemas/Location.PublicRef"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "sessionID": {
+                            "type": "string",
+                            "pattern": "^ses"
+                          },
+                          "designID": {
+                            "type": "string",
+                            "pattern": "^design_[a-zA-Z0-9_-]+$"
+                          },
+                          "revision": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "entry": {
+                            "type": "string"
+                          },
+                          "capabilities": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "required": ["sessionID", "designID", "revision", "name", "entry", "capabilities"],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": ["location", "data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorEncoded"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ConsoleForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "CreatorPluginNotFoundError | LocationNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CreatorPluginNotFoundErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LocationNotFoundErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConflictErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConflictErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "ServiceUnavailableError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceUnavailableErrorEncoded"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Find published Creator server plugin packages in this project"
+      }
+    },
+    "/api/creator/plugin/review": {
+      "post": {
+        "tags": ["server.creatorPlugin"],
+        "operationId": "creator.plugin.review",
+        "parameters": [
+          {
+            "name": "location",
+            "in": "query",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "directory": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false,
+            "style": "deepObject",
+            "explode": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "location": {
+                      "$ref": "#/components/schemas/Location.PublicRef"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "sessionID": {
+                          "type": "string",
+                          "pattern": "^ses"
+                        },
+                        "designID": {
+                          "type": "string",
+                          "pattern": "^design_[a-zA-Z0-9_-]+$"
+                        },
+                        "revision": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "entry": {
+                          "type": "string"
+                        },
+                        "capabilities": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "packageName": {
+                          "type": "string"
+                        },
+                        "packageVersion": {
+                          "type": "string"
+                        },
+                        "files": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "bytes": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "string",
+                              "enum": ["Infinity", "-Infinity", "NaN"]
+                            }
+                          ]
+                        },
+                        "dependencies": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "required": [
+                        "sessionID",
+                        "designID",
+                        "revision",
+                        "name",
+                        "entry",
+                        "capabilities",
+                        "packageName",
+                        "packageVersion",
+                        "files",
+                        "bytes",
+                        "dependencies"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["location", "data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorEncoded"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ConsoleForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "CreatorPluginNotFoundError | LocationNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CreatorPluginNotFoundErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LocationNotFoundErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConflictErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConflictErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "ServiceUnavailableError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceUnavailableErrorEncoded"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Review a published package without executing it",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sessionID": {
+                    "type": "string",
+                    "pattern": "^ses"
+                  },
+                  "designID": {
+                    "type": "string",
+                    "pattern": "^design_[a-zA-Z0-9_-]+$"
+                  },
+                  "revision": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": ["sessionID", "designID", "revision"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/api/creator/plugin/{pluginID}/test": {
+      "post": {
+        "tags": ["server.creatorPlugin"],
+        "operationId": "creator.plugin.test",
+        "parameters": [
+          {
+            "name": "pluginID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^cplugin_[a-f0-9-]{36}$"
+            },
+            "required": true
+          },
+          {
+            "name": "location",
+            "in": "query",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "directory": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false,
+            "style": "deepObject",
+            "explode": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "location": {
+                      "$ref": "#/components/schemas/Location.PublicRef"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "sessionID": {
+                          "type": "string",
+                          "pattern": "^ses"
+                        },
+                        "designID": {
+                          "type": "string",
+                          "pattern": "^design_[a-zA-Z0-9_-]+$"
+                        },
+                        "revision": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "entry": {
+                          "type": "string"
+                        },
+                        "capabilities": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "id": {
+                          "type": "string",
+                          "pattern": "^cplugin_[a-f0-9-]{36}$"
+                        },
+                        "packageName": {
+                          "type": "string"
+                        },
+                        "packageVersion": {
+                          "type": "string"
+                        },
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "version": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "created": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "string",
+                              "enum": ["Infinity", "-Infinity", "NaN"]
+                            }
+                          ]
+                        },
+                        "report": {
+                          "type": "object",
+                          "properties": {
+                            "passed": {
+                              "type": "boolean"
+                            },
+                            "time": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "string",
+                                  "enum": ["Infinity", "-Infinity", "NaN"]
+                                }
+                              ]
+                            },
+                            "message": {
+                              "type": "string"
+                            },
+                            "pluginID": {
+                              "type": "string"
+                            },
+                            "tools": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          "required": ["passed", "time", "message", "tools"],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "sessionID",
+                        "designID",
+                        "revision",
+                        "name",
+                        "entry",
+                        "capabilities",
+                        "id",
+                        "packageName",
+                        "packageVersion",
+                        "enabled",
+                        "version",
+                        "created"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["location", "data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorEncoded"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ConsoleForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "CreatorPluginNotFoundError | LocationNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CreatorPluginNotFoundErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LocationNotFoundErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConflictErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConflictErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "ServiceUnavailableError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceUnavailableErrorEncoded"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Test loading, SDK registration and teardown in a disposable process on this server",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "expectedVersion": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                },
+                "required": ["expectedVersion"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/api/creator/plugin/{pluginID}/control": {
+      "post": {
+        "tags": ["server.creatorPlugin"],
+        "operationId": "creator.plugin.control",
+        "parameters": [
+          {
+            "name": "pluginID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^cplugin_[a-f0-9-]{36}$"
+            },
+            "required": true
+          },
+          {
+            "name": "location",
+            "in": "query",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "directory": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false,
+            "style": "deepObject",
+            "explode": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "location": {
+                      "$ref": "#/components/schemas/Location.PublicRef"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "sessionID": {
+                          "type": "string",
+                          "pattern": "^ses"
+                        },
+                        "designID": {
+                          "type": "string",
+                          "pattern": "^design_[a-zA-Z0-9_-]+$"
+                        },
+                        "revision": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "entry": {
+                          "type": "string"
+                        },
+                        "capabilities": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "id": {
+                          "type": "string",
+                          "pattern": "^cplugin_[a-f0-9-]{36}$"
+                        },
+                        "packageName": {
+                          "type": "string"
+                        },
+                        "packageVersion": {
+                          "type": "string"
+                        },
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "version": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "created": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "string",
+                              "enum": ["Infinity", "-Infinity", "NaN"]
+                            }
+                          ]
+                        },
+                        "report": {
+                          "type": "object",
+                          "properties": {
+                            "passed": {
+                              "type": "boolean"
+                            },
+                            "time": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "string",
+                                  "enum": ["Infinity", "-Infinity", "NaN"]
+                                }
+                              ]
+                            },
+                            "message": {
+                              "type": "string"
+                            },
+                            "pluginID": {
+                              "type": "string"
+                            },
+                            "tools": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          "required": ["passed", "time", "message", "tools"],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "sessionID",
+                        "designID",
+                        "revision",
+                        "name",
+                        "entry",
+                        "capabilities",
+                        "id",
+                        "packageName",
+                        "packageVersion",
+                        "enabled",
+                        "version",
+                        "created"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["location", "data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorEncoded"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ConsoleForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "CreatorPluginNotFoundError | LocationNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CreatorPluginNotFoundErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LocationNotFoundErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConflictErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConflictErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "ServiceUnavailableError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceUnavailableErrorEncoded"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Activate or deactivate a tested Creator plugin using the shared runtime",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "expectedVersion": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                },
+                "required": ["expectedVersion", "enabled"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/api/creator/plugin/{pluginID}": {
+      "delete": {
+        "tags": ["server.creatorPlugin"],
+        "operationId": "creator.plugin.remove",
+        "parameters": [
+          {
+            "name": "pluginID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^cplugin_[a-f0-9-]{36}$"
+            },
+            "required": true
+          },
+          {
+            "name": "location",
+            "in": "query",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "directory": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false,
+            "style": "deepObject",
+            "explode": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "204": {
+            "description": "<No Content>"
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorEncoded"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ConsoleForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "CreatorPluginNotFoundError | LocationNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CreatorPluginNotFoundErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LocationNotFoundErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConflictErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConflictErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "ServiceUnavailableError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceUnavailableErrorEncoded"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Unload and remove an installed package, preserving its original Creator document",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "expectedVersion": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                },
+                "required": ["expectedVersion"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        }
       }
     },
     "/api/plugin": {
@@ -28080,6 +31439,729 @@
         "summary": "Sample an authorized worker's execution memory"
       }
     },
+    "/api/workers/{id}/memory/captures": {
+      "get": {
+        "tags": ["server.workers"],
+        "operationId": "workers.memoryCaptures",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "$ref": "#/components/schemas/Worker.Name"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "pattern": "^cap_[0-9a-f-]{36}$"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": ["heap", "cpu", "samples"]
+                      },
+                      "target": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "enum": ["server"]
+                              }
+                            },
+                            "required": ["kind"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "enum": ["process"]
+                              },
+                              "pid": {
+                                "type": "integer",
+                                "exclusiveMinimum": 0
+                              },
+                              "label": {
+                                "type": "string",
+                                "maxLength": 200
+                              }
+                            },
+                            "required": ["kind", "pid"],
+                            "additionalProperties": false
+                          }
+                        ]
+                      },
+                      "state": {
+                        "type": "string",
+                        "enum": ["pending", "running", "completed", "failed", "cancelled"]
+                      },
+                      "createdAt": {
+                        "type": "number"
+                      },
+                      "startedAt": {
+                        "type": "number"
+                      },
+                      "completedAt": {
+                        "type": "number"
+                      },
+                      "expiresAt": {
+                        "type": "number"
+                      },
+                      "size": {
+                        "type": "number"
+                      },
+                      "error": {
+                        "type": "string",
+                        "maxLength": 2048
+                      },
+                      "filename": {
+                        "type": "string",
+                        "maxLength": 255
+                      }
+                    },
+                    "required": ["id", "kind", "target", "state", "createdAt", "expiresAt"],
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorEncoded"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ConsoleForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictErrorEncoded"
+                }
+              }
+            }
+          }
+        },
+        "summary": "List a worker's diagnostic captures"
+      },
+      "post": {
+        "tags": ["server.workers"],
+        "operationId": "workers.startMemoryCapture",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "$ref": "#/components/schemas/Worker.Name"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "pattern": "^cap_[0-9a-f-]{36}$"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": ["heap", "cpu", "samples"]
+                    },
+                    "target": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": ["server"]
+                            }
+                          },
+                          "required": ["kind"],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": ["process"]
+                            },
+                            "pid": {
+                              "type": "integer",
+                              "exclusiveMinimum": 0
+                            },
+                            "label": {
+                              "type": "string",
+                              "maxLength": 200
+                            }
+                          },
+                          "required": ["kind", "pid"],
+                          "additionalProperties": false
+                        }
+                      ]
+                    },
+                    "state": {
+                      "type": "string",
+                      "enum": ["pending", "running", "completed", "failed", "cancelled"]
+                    },
+                    "createdAt": {
+                      "type": "number"
+                    },
+                    "startedAt": {
+                      "type": "number"
+                    },
+                    "completedAt": {
+                      "type": "number"
+                    },
+                    "expiresAt": {
+                      "type": "number"
+                    },
+                    "size": {
+                      "type": "number"
+                    },
+                    "error": {
+                      "type": "string",
+                      "maxLength": 2048
+                    },
+                    "filename": {
+                      "type": "string",
+                      "maxLength": 255
+                    }
+                  },
+                  "required": ["id", "kind", "target", "state", "createdAt", "expiresAt"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorEncoded"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ConsoleForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictErrorEncoded"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Start a worker diagnostic capture",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": ["heap", "cpu", "samples"]
+                  },
+                  "target": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": ["server"]
+                          }
+                        },
+                        "required": ["kind"],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": ["process"]
+                          },
+                          "pid": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                          },
+                          "label": {
+                            "type": "string",
+                            "maxLength": 200
+                          }
+                        },
+                        "required": ["kind", "pid"],
+                        "additionalProperties": false
+                      }
+                    ]
+                  },
+                  "durationMs": {
+                    "type": "integer",
+                    "minimum": 1000,
+                    "maximum": 60000
+                  },
+                  "retentionMs": {
+                    "type": "integer",
+                    "minimum": 60000,
+                    "maximum": 86400000
+                  }
+                },
+                "required": ["kind", "target"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/api/workers/{id}/memory/captures/{captureID}/run": {
+      "delete": {
+        "tags": ["server.workers"],
+        "operationId": "workers.cancelMemoryCapture",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "$ref": "#/components/schemas/Worker.Name"
+            },
+            "required": true
+          },
+          {
+            "name": "captureID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^cap_[0-9a-f-]{36}$"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "pattern": "^cap_[0-9a-f-]{36}$"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": ["heap", "cpu", "samples"]
+                    },
+                    "target": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": ["server"]
+                            }
+                          },
+                          "required": ["kind"],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": ["process"]
+                            },
+                            "pid": {
+                              "type": "integer",
+                              "exclusiveMinimum": 0
+                            },
+                            "label": {
+                              "type": "string",
+                              "maxLength": 200
+                            }
+                          },
+                          "required": ["kind", "pid"],
+                          "additionalProperties": false
+                        }
+                      ]
+                    },
+                    "state": {
+                      "type": "string",
+                      "enum": ["pending", "running", "completed", "failed", "cancelled"]
+                    },
+                    "createdAt": {
+                      "type": "number"
+                    },
+                    "startedAt": {
+                      "type": "number"
+                    },
+                    "completedAt": {
+                      "type": "number"
+                    },
+                    "expiresAt": {
+                      "type": "number"
+                    },
+                    "size": {
+                      "type": "number"
+                    },
+                    "error": {
+                      "type": "string",
+                      "maxLength": 2048
+                    },
+                    "filename": {
+                      "type": "string",
+                      "maxLength": 255
+                    }
+                  },
+                  "required": ["id", "kind", "target", "state", "createdAt", "expiresAt"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorEncoded"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ConsoleForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictErrorEncoded"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Cancel a worker diagnostic capture"
+      }
+    },
+    "/api/workers/{id}/memory/captures/{captureID}": {
+      "delete": {
+        "tags": ["server.workers"],
+        "operationId": "workers.deleteMemoryCapture",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "$ref": "#/components/schemas/Worker.Name"
+            },
+            "required": true
+          },
+          {
+            "name": "captureID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^cap_[0-9a-f-]{36}$"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "204": {
+            "description": "<No Content>"
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorEncoded"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ConsoleForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictErrorEncoded"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Delete a worker diagnostic capture"
+      }
+    },
+    "/api/workers/{id}/memory/captures/{captureID}/download": {
+      "get": {
+        "tags": ["server.workers"],
+        "operationId": "workers.downloadMemoryCapture",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "$ref": "#/components/schemas/Worker.Name"
+            },
+            "required": true
+          },
+          {
+            "name": "captureID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^cap_[0-9a-f-]{36}$"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorEncoded"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ConsoleForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictErrorEncoded"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Download a worker diagnostic capture"
+      }
+    },
     "/api/workers/{id}/resources": {
       "get": {
         "tags": ["server.workers"],
@@ -30894,6 +34976,97 @@
         }
       }
     },
+    "/api/agent-tools/browser-control/extension": {
+      "post": {
+        "tags": ["agentTools"],
+        "operationId": "agentTools.browserExtension",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "AgentTools.Status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentTools.Status"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorEncoded"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ConsoleForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictErrorEncoded"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "action": {
+                    "$ref": "#/components/schemas/AgentTools.BrowserExtensionAction"
+                  }
+                },
+                "required": ["action"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
     "/api/agent-tools/rift/initialize": {
       "post": {
         "tags": ["agentTools"],
@@ -32950,6 +37123,43 @@
         "required": ["_tag", "agentID", "message"],
         "additionalProperties": false
       },
+      "AgentTools.BrowserExtension": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": ["chrome-missing", "not-prepared", "administrator-required", "registered"]
+          },
+          "chrome": {
+            "type": "string"
+          },
+          "extensionID": {
+            "$ref": "#/components/schemas/AgentTools.BrowserExtensionID"
+          },
+          "version": {
+            "type": "string"
+          },
+          "command": {
+            "type": "string"
+          },
+          "canAuthorize": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": ["state", "canAuthorize"],
+        "additionalProperties": false
+      },
+      "AgentTools.BrowserExtensionAction": {
+        "type": "string",
+        "enum": ["prepare", "install"]
+      },
+      "AgentTools.BrowserExtensionID": {
+        "type": "string",
+        "pattern": "^[a-p]{32}$"
+      },
       "AgentTools.Configure": {
         "type": "object",
         "properties": {
@@ -33069,6 +37279,9 @@
           },
           "extensionDirectory": {
             "type": "string"
+          },
+          "browserExtension": {
+            "$ref": "#/components/schemas/AgentTools.BrowserExtension"
           },
           "diagnosis": {
             "type": "string"
@@ -35325,6 +39538,183 @@
         "required": ["status"],
         "additionalProperties": false
       },
+      "CreatorComponent.Control": {
+        "type": "object",
+        "properties": {
+          "expectedVersion": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": ["expectedVersion", "enabled"],
+        "additionalProperties": false
+      },
+      "CreatorComponent.Info": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^creator_[a-z0-9-]+$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string",
+            "pattern": "^ses"
+          },
+          "designID": {
+            "type": "string",
+            "pattern": "^design_[a-zA-Z0-9_-]+$"
+          },
+          "revision": {
+            "type": "string",
+            "minLength": 1
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "created": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          },
+          "updated": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          }
+        },
+        "required": ["id", "name", "sessionID", "designID", "revision", "enabled", "version", "created", "updated"],
+        "additionalProperties": false
+      },
+      "CreatorComponent.Install": {
+        "type": "object",
+        "properties": {
+          "sessionID": {
+            "type": "string",
+            "pattern": "^ses"
+          },
+          "designID": {
+            "type": "string",
+            "pattern": "^design_[a-zA-Z0-9_-]+$"
+          },
+          "revision": {
+            "type": "string",
+            "minLength": 1
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": ["sessionID", "designID", "revision", "name"],
+        "additionalProperties": false
+      },
+      "CreatorComponent.Preview": {
+        "type": "object",
+        "properties": {
+          "html": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          }
+        },
+        "required": ["html", "revision", "version"],
+        "additionalProperties": false
+      },
+      "CreatorComponent.Remove": {
+        "type": "object",
+        "properties": {
+          "expectedVersion": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          }
+        },
+        "required": ["expectedVersion"],
+        "additionalProperties": false
+      },
+      "CreatorComponent.Update": {
+        "type": "object",
+        "properties": {
+          "expectedVersion": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "revision": {
+            "type": "string",
+            "minLength": 1
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": ["expectedVersion", "revision"],
+        "additionalProperties": false
+      },
+      "CreatorComponentNotFoundErrorEncoded": {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": ["CreatorComponentNotFoundError"]
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": ["_tag", "message"],
+        "additionalProperties": false
+      },
+      "CreatorPluginNotFoundErrorEncoded": {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": ["CreatorPluginNotFoundError"]
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": ["_tag", "message"],
+        "additionalProperties": false
+      },
       "Credential.CreateInput": {
         "type": "object",
         "properties": {
@@ -36094,6 +40484,342 @@
       "Design.Info": {
         "type": "object",
         "properties": {
+          "collaboration": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  },
+                  "owner": {
+                    "type": "string",
+                    "enum": ["design", "creator"]
+                  },
+                  "contracts": {
+                    "type": "object",
+                    "properties": {
+                      "design": {
+                        "anyOf": [
+                          {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "enum": ["interface"]
+                                  },
+                                  "objective": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "acceptance": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 20
+                                  },
+                                  "states": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    },
+                                    "maxItems": 20
+                                  }
+                                },
+                                "required": ["kind", "objective", "acceptance", "states"],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "enum": ["artifact"]
+                                  },
+                                  "objective": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "acceptance": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 20
+                                  },
+                                  "artifact": {
+                                    "type": "string",
+                                    "enum": ["3d", "visualization", "simulation", "media", "interactive-tool"]
+                                  },
+                                  "outputs": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "enum": ["preview", "component", "files"]
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 3
+                                  }
+                                },
+                                "required": ["kind", "objective", "acceptance", "artifact", "outputs"],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "enum": ["extension"]
+                                  },
+                                  "objective": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "acceptance": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 20
+                                  },
+                                  "target": {
+                                    "type": "string",
+                                    "enum": ["server-plugin", "tui-plugin", "rpc-plugin", "skill", "mcp-server"]
+                                  },
+                                  "entry": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "capabilities": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    },
+                                    "maxItems": 20
+                                  },
+                                  "outputs": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "enum": ["source", "package", "instructions"]
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 3
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "objective",
+                                  "acceptance",
+                                  "target",
+                                  "entry",
+                                  "capabilities",
+                                  "outputs"
+                                ],
+                                "additionalProperties": false
+                              }
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "creator": {
+                        "anyOf": [
+                          {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "enum": ["interface"]
+                                  },
+                                  "objective": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "acceptance": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 20
+                                  },
+                                  "states": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    },
+                                    "maxItems": 20
+                                  }
+                                },
+                                "required": ["kind", "objective", "acceptance", "states"],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "enum": ["artifact"]
+                                  },
+                                  "objective": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "acceptance": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 20
+                                  },
+                                  "artifact": {
+                                    "type": "string",
+                                    "enum": ["3d", "visualization", "simulation", "media", "interactive-tool"]
+                                  },
+                                  "outputs": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "enum": ["preview", "component", "files"]
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 3
+                                  }
+                                },
+                                "required": ["kind", "objective", "acceptance", "artifact", "outputs"],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "enum": ["extension"]
+                                  },
+                                  "objective": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "acceptance": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 20
+                                  },
+                                  "target": {
+                                    "type": "string",
+                                    "enum": ["server-plugin", "tui-plugin", "rpc-plugin", "skill", "mcp-server"]
+                                  },
+                                  "entry": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "capabilities": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    },
+                                    "maxItems": 20
+                                  },
+                                  "outputs": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "enum": ["source", "package", "instructions"]
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 3
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "objective",
+                                  "acceptance",
+                                  "target",
+                                  "entry",
+                                  "capabilities",
+                                  "outputs"
+                                ],
+                                "additionalProperties": false
+                              }
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "handoff": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "from": {
+                            "type": "string",
+                            "enum": ["design", "creator"]
+                          },
+                          "to": {
+                            "type": "string",
+                            "enum": ["design", "creator"]
+                          },
+                          "revision": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "summary": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "previousVersion": {
+                            "type": "integer",
+                            "minimum": 0
+                          }
+                        },
+                        "required": ["from", "to", "revision", "summary", "previousVersion"],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": ["version", "owner", "contracts"],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "controls": {
             "type": "array",
             "items": {
@@ -49831,6 +54557,9 @@
           },
           "latencyMs": {
             "type": "number"
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/ServerCapabilities.Info"
           }
         },
         "required": ["worker", "connection"],
@@ -50641,6 +55370,12 @@
     },
     {
       "name": "agent"
+    },
+    {
+      "name": "server.creatorComponent"
+    },
+    {
+      "name": "server.creatorPlugin"
     },
     {
       "name": "plugin",

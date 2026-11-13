@@ -119,10 +119,17 @@ try {
     const chunks: Uint8Array[] = []
     await (async () => {
       if (!response.body) return
-      for await (const chunk of response.body) {
-        row.request.bytes += chunk.byteLength
-        if (row.request.bytes > 1_048_576) throw new Error("Detector response exceeds the JSON evidence limit")
-        chunks.push(chunk)
+      const reader = response.body.getReader()
+      try {
+        while (true) {
+          const result = await reader.read()
+          if (result.done) break
+          row.request.bytes += result.value.byteLength
+          if (row.request.bytes > 1_048_576) throw new Error("Detector response exceeds the JSON evidence limit")
+          chunks.push(result.value)
+        }
+      } finally {
+        reader.releaseLock()
       }
     })().finally(() => {
       row.request.latencyMs = performance.now() - started

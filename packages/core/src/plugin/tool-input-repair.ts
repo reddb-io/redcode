@@ -104,11 +104,9 @@ function repairObject(
     const declared = Object.hasOwn(properties, key)
     const property = declared ? properties[key] : !patterned ? schema.additionalProperties : undefined
 
-    if (!declared && schema.additionalProperties === false && !patterned && !composed) {
-      const next = { ...result }
-      delete next[key]
-      return next
-    }
+    // Unknown keys in a closed schema are deliberately retained. Runtime validation
+    // reports their exact path instead of silently changing a call before policy sees it.
+    // Repair remains limited to unambiguous representation coercions.
     if (!Predicate.isObject(property)) return result
 
     // Only a bare single-type property provably rejects null and `{}`. Compositions, enums,

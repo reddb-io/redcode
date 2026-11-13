@@ -16,7 +16,9 @@ export type ID = typeof ID.Type
 
 const Updated = ephemeral({
   type: "credential.updated",
-  schema: {},
+  // Optional so events produced by older servers continue to decode and retain
+  // their historical meaning: invalidate every credential-backed catalog.
+  schema: { integrationID: optional(IntegrationID), credentialID: optional(ID) },
 })
 const Switched = ephemeral({
   type: "credential.switched",

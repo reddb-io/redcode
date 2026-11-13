@@ -336,13 +336,15 @@ export const connect = Effect.fnUntraced(function* (
       })
       return yield* initialize(transport)
     }
-    if (!URL.canParse(config.url))
-      return yield* new ConnectError({ server, message: `Invalid MCP URL for "${server}"` })
     const { McpOAuth } = yield* Effect.promise(() => import("./oauth.js"))
+    const configured = yield* Effect.try({
+      try: () => McpOAuth.networkURL(config.url, `MCP server "${server}" URL`),
+      catch: (error) => new ConnectError({ server, message: error instanceof Error ? error.message : String(error) }),
+    })
     const fetch = yield* McpOAuth.loggedFetch({ server, directory })
     // Servers that bundle their own Code Mode (Cloudflare and others) expose raw tools when asked
     // with ?codemode=false, which is what our Code Mode wants. The configured URL stays the OAuth identity.
-    const url = new URL(config.url)
+    const url = configured
     const rejectsCodemode = url.hostname.endsWith(".googleapis.com") || /^zohomcp\./.test(url.hostname)
     const addedCodemode = !rejectsCodemode && config.codemode !== false && !url.searchParams.has("codemode")
     if (addedCodemode) url.searchParams.set("codemode", "false")
@@ -362,7 +364,7 @@ export const connect = Effect.fnUntraced(function* (
           if (!addedCodemode || !(error instanceof SdkHttpError) || (error.status !== 400 && error.status !== 404))
             return Effect.fail(error)
           // Servers that reject unknown query params get one retry at the configured URL.
-          return open(new URL(config.url))
+          return open(configured)
         }),
       ),
       config.timeout?.startup ?? DEFAULT_STARTUP_TIMEOUT,

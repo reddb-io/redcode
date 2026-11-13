@@ -266,7 +266,16 @@ try {
   service.password = await cli("service", "get", "password")
   const version = await cli("--version")
   const binaryHash = new Bun.CryptoHasher("sha256")
-  for await (const chunk of Bun.file(binary).stream()) binaryHash.update(chunk)
+  const binaryReader = Bun.file(binary).stream().getReader()
+  try {
+    while (true) {
+      const result = await binaryReader.read()
+      if (result.done) break
+      binaryHash.update(result.value)
+    }
+  } finally {
+    binaryReader.releaseLock()
+  }
   const location = `?${new URLSearchParams({ "location[directory]": setup })}`
   await api(`/api/model/default${location}`, Json)
   await api(`/api/integration/red-router/connect/key${location}`, Json, "POST", {

@@ -28,6 +28,8 @@ export interface Context {
   readonly app: App
   readonly location: Location.Info
   readonly options: PluginOptions
+  /** Removes project Vault values and recognized credentials before text is exported or logged. */
+  readonly redactText: (text: string) => Effect.Effect<string>
   readonly agent: AgentDomain
   readonly aisdk: AISDKDomain
   readonly command: CommandDomain

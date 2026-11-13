@@ -189,6 +189,13 @@ test("Zod schemas validate, transform, and describe typed tools", async () => {
         'Invalid arguments for tool "zod":\n- count: Invalid input: expected string, received number\n\nArguments provided:\n{\n  "count": 41\n}\n\nUpdate the arguments and call the tool again.',
     }),
   )
+
+  const strict = { ...tool, input: z.object({ count: z.string() }).strict() }
+  expect(await Effect.runPromise(Effect.flip(execute(strict, { count: "41", ignored: true }, context)))).toEqual(
+    expect.objectContaining({
+      message: expect.stringContaining('Invalid arguments for tool "zod"'),
+    }),
+  )
 })
 
 test("portable schema failures become tool failures", async () => {
@@ -325,10 +332,12 @@ test("raw JSON schemas validate and decode tool input", async () => {
     description: "Raw tool",
     inputSchema: input,
   })
-  expect(await Effect.runPromise(execute(tool, { value: "ok", extra: true }, context))).toEqual({
-    output: undefined,
-    content: [{ type: "text", text: '{"value":"ok"}' }],
-  })
+  expect(await Effect.runPromise(Effect.flip(execute(tool, { value: "ok", extra: true }, context)))).toEqual(
+    new Tool.Error({
+      message:
+        'Invalid arguments for tool "raw":\n- extra: Expected no excess property\n\nArguments provided:\n{\n  "value": "ok",\n  "extra": true\n}\n\nUpdate the arguments and call the tool again.',
+    }),
+  )
   expect(await Effect.runPromise(Effect.flip(execute(tool, { value: 1 }, context)))).toEqual(
     new Tool.Error({
       message:

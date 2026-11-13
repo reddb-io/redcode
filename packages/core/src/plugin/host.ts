@@ -42,6 +42,8 @@ import { PluginHooks } from "./hooks.js"
 import type { Interface } from "../plugin.js"
 import { LayerNode } from "@opencode/util/effect/layer-node"
 import { httpClient } from "@opencode/util/effect/app-node-platform"
+import { Redact } from "@opencode/util/redact"
+import { Vault } from "../vault/vault.js"
 
 const mutable = <T>(value: T) => value as DeepMutable<T>
 type RpcEvent = Event.Payload & {
@@ -83,6 +85,7 @@ export const make = Effect.fn("PluginHost.make")(function* (
   const locations = yield* LocationServiceMap.Service
   const worktrees = yield* Worktree.Service
   const worktreeStrategies = yield* WorktreeStrategies.Service
+  const vault = yield* Vault.Service
   const currentWorktreeStrategies = location.workspaceID ? undefined : worktreeStrategies
   const locationInfo = () =>
     new Location.Info({
@@ -126,6 +129,7 @@ export const make = Effect.fn("PluginHost.make")(function* (
     app,
     location: locationInfo(),
     options: {},
+    redactText: (text) => vault.scrub(location.project.id, text).pipe(Effect.map(Redact.redact)),
     rpc: Object.assign(rpc.client, { register: rpc.register }),
     agent: {
       get: (input) => {
@@ -649,6 +653,7 @@ export const requirements = LayerNode.group([
   Session.node,
   PersistentPty.node,
   LocationServiceMap.node,
+  Vault.node,
 ])
 
 export function storage(kv: KV.Interface, pluginID: string): Plugin.Context["storage"] {

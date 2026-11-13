@@ -232,7 +232,16 @@ try {
   service.password = await cli("service", "get", "password")
   provenance.version = await cli("--version")
   const hash = new Bun.CryptoHasher("sha256")
-  for await (const chunk of Bun.file(binary).stream()) hash.update(chunk)
+  const binaryReader = Bun.file(binary).stream().getReader()
+  try {
+    while (true) {
+      const result = await binaryReader.read()
+      if (result.done) break
+      hash.update(result.value)
+    }
+  } finally {
+    binaryReader.releaseLock()
+  }
   provenance.binarySha256 = hash.digest("hex")
   const location = `?${new URLSearchParams({ "location[directory]": setup })}`
   await api(`/api/model/default${location}`, Schema.Json)

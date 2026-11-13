@@ -60,7 +60,9 @@ export type Method = typeof Method.Type
 
 const Updated = ephemeral({
   type: "integration.updated",
-  schema: {},
+  // Definition rebuilds may not know which registration changed. An omitted ID
+  // deliberately preserves the legacy global invalidation contract.
+  schema: { integrationID: optional(ID) },
 })
 export const Event = { Updated, Definitions: inventory(Updated) }
 

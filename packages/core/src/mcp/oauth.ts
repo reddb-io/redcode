@@ -30,6 +30,16 @@ export const CLIENT_METADATA_URL = "https://opencode.ai/oauth/opencode/client.js
 // Refresh tokens rotate, so concurrent refreshes of the same token share one request or the second gets invalid_grant.
 const refreshes = new Map<string, ReturnType<FetchLike>>()
 
+/** A network URL with credentials rejected and non-request fragments removed. */
+export const networkURL = (input: string | URL, label: string = "MCP URL") => {
+  const url = new URL(input)
+  if (url.protocol !== "http:" && url.protocol !== "https:")
+    throw new Error(`${label} must use http or https, received ${url.protocol}`)
+  if (url.username || url.password) throw new Error(`${label} must not contain username or password userinfo`)
+  url.hash = ""
+  return url
+}
+
 const refreshKey = (url: string | URL, init: RequestInit | undefined) => {
   if (!(init?.body instanceof URLSearchParams) || init.body.get("grant_type") !== "refresh_token") return undefined
   return [String(url), init.body.get("client_id") ?? "", init.body.get("refresh_token") ?? ""].join("\u0000")
@@ -39,7 +49,8 @@ const refreshKey = (url: string | URL, init: RequestInit | undefined) => {
 // overload is picked by annotation and clone() is pinned to the type it was called on.
 // OAuth exchanges may carry client secrets, authorization codes and refresh tokens. Refuse redirects
 // so an untrusted MCP endpoint cannot move those credentials (or the request body) to another origin.
-const base: FetchLike = (url, init) => fetch(url, { ...init, redirect: "error", timeout: false })
+const base: FetchLike = (url, init) =>
+  fetch(networkURL(url, "MCP OAuth request URL"), { ...init, redirect: "error", timeout: false })
 const share = (pending: ReturnType<FetchLike>) => pending.then((response) => response.clone() as typeof response)
 
 const send: FetchLike = (url, init) => {
@@ -94,7 +105,7 @@ export const loggedFetch = (fields: { readonly server: string; readonly director
           Effect.annotateLogs({
             ...fields,
             requestID: crypto.randomUUID(),
-            origin: new URL(url).origin,
+            origin: networkURL(url, "MCP request URL").origin,
             method: init?.method ?? "GET",
             ...(operation ? { operation } : {}),
           }),
@@ -110,7 +121,8 @@ export const configuredDiscovery = async (input: {
   readonly config: typeof ConfigMCP.Remote.Type
   readonly fetchFn: FetchLike
 }): Promise<OAuthDiscoveryState | undefined> => {
-  const url = input.config.oauth ? input.config.oauth.auth_server_metadata_url : undefined
+  const configured = input.config.oauth ? input.config.oauth.auth_server_metadata_url : undefined
+  const url = configured ? networkURL(configured, "MCP authorization metadata URL") : undefined
   if (!url) return undefined
   const response = await input.fetchFn(url, { headers: { accept: "application/json" } })
   if (!response.ok) throw new Error(`HTTP ${response.status} trying to load OAuth authorization server metadata`)
@@ -151,10 +163,12 @@ export const provider = (options: Options): OAuthClientProvider => {
   const client = oauth?.client_id ? { client_id: oauth.client_id, client_secret: oauth.client_secret } : undefined
   const redirect = options.redirect
   // A missing redirectUrl selects the client-credentials grant in the SDK, so connect still names one.
-  const redirectUrl = redirect?.url ?? oauth?.redirect_uri ?? "http://127.0.0.1/callback"
+  const redirectUrl = networkURL(
+    redirect?.url ?? oauth?.redirect_uri ?? "http://127.0.0.1/callback",
+    "MCP OAuth redirect URL",
+  ).toString()
   const refuse = (what: string) => new UnauthorizedError(`MCP server "${options.config.url}" requires ${what}`)
-  const identity = new URL(options.config.url)
-  identity.hash = ""
+  const identity = networkURL(options.config.url, "MCP server URL")
   let discovery: OAuthDiscoveryState | undefined = options.discovery
   return {
     redirectUrl,
@@ -171,7 +185,7 @@ export const provider = (options: Options): OAuthClientProvider => {
       if (!resource) return identity
       if (!checkResourceAllowed({ requestedResource: identity, configuredResource: resource }))
         throw new Error(`Protected resource ${resource} does not cover ${identity}`)
-      const canonical = new URL(resource)
+      const canonical = networkURL(resource, "MCP protected resource URL")
       // The transport dials the configured URL with extra query parameters and some servers echo
       // that back as the resource. Query is transport detail, not identity: the token stays bound
       // to the configured URL so a later refresh names the same resource the login did.
@@ -200,11 +214,13 @@ export const provider = (options: Options): OAuthClientProvider => {
     saveTokens: (tokens) => options.store.saveTokens(tokens),
     redirectToAuthorization: (url) => {
       if (!redirect) throw refuse("user authorization")
-      if (url.protocol !== "http:" && url.protocol !== "https:")
+      const target = networkURL(url, `MCP server "${options.config.url}" authorization URL`)
+      const approved = discovery?.authorizationServerMetadata?.authorization_endpoint
+      if (approved && target.origin !== networkURL(approved, "MCP authorization endpoint").origin)
         throw new Error(
-          `MCP server "${options.config.url}" returned a ${url.protocol} authorization URL; only http and https are supported`,
+          `MCP authorization redirect changed host from ${networkURL(approved).origin} to ${target.origin}`,
         )
-      return redirect.open(url)
+      return redirect.open(target)
     },
     ...(options.invalidate ? { invalidateCredentials: options.invalidate } : {}),
     saveCodeVerifier: (verifier) => options.store.saveCodeVerifier(verifier),
@@ -297,43 +313,86 @@ export const connectProvider = Effect.fnUntraced(function* (input: {
     const stored = await run(credentials.get(id))
     return stored?.value.type === "oauth" ? stored.value : undefined
   }
-  // Refresh tokens rotate and the row is shared across connections: only drop it while it still holds ours.
+  // Refresh tokens rotate and the row is shared across connections. The SDK splits a refresh across
+  // tokens()/network/saveTokens(), so keep the credential flock lease for that whole transaction.
+  // The timeout is only a crash/net-error backstop; normal success and confirmed invalidation release immediately.
+  let lease: { readonly release: Effect.Effect<void> } | undefined
+  let leaseTimer: ReturnType<typeof setTimeout> | undefined
+  const release = async () => {
+    if (leaseTimer) clearTimeout(leaseTimer)
+    leaseTimer = undefined
+    const current = lease
+    lease = undefined
+    if (current) await run(current.release)
+  }
+  const acquire = async () => {
+    if (lease || !credentials.lease) return
+    lease = await run(credentials.lease(id))
+    leaseTimer = setTimeout(() => void release(), 45_000)
+    leaseTimer.unref?.()
+  }
+  const expiring = (value: Credential.OAuth) => value.expires !== 0 && value.expires <= Date.now() + 5 * 60_000
+  // Only drop or replace the row while it still holds the token this provider presented.
   let presented = found.value.refresh
   return provider({
     config: input.config,
     invalidate: async (scope) => {
       if (scope === "verifier" || scope === "discovery") return
-      const oauth = await read()
-      if (!oauth || oauth.refresh !== presented) return
-      await run(Effect.logWarning("mcp oauth credential invalidated", { credentialID: id, scope }))
-      await run(credentials.remove(id))
+      try {
+        await acquire()
+        const oauth = await read()
+        if (!oauth || oauth.refresh !== presented) return
+        await run(Effect.logWarning("mcp oauth credential invalidated", { credentialID: id, scope }))
+        await run(credentials.remove(id))
+      } finally {
+        await release()
+      }
     },
     store: {
       tokens: async () => {
-        const oauth = await read()
+        let oauth = await read()
         if (!oauth) return undefined
+        if (expiring(oauth)) {
+          await acquire()
+          oauth = await read()
+          if (!oauth) {
+            await release()
+            return undefined
+          }
+        }
         presented = oauth.refresh
         return toTokens(oauth)
       },
       saveTokens: async (tokens) => {
-        const previous = await read()
-        const value = toCredential({
-          methodID,
-          serverUrl: input.config.url,
-          tokens,
-          client: previous ? clientFromCredential(previous) : undefined,
-        })
-        presented = value.refresh
-        await run(credentials.update(id, { value }))
+        try {
+          await acquire()
+          const previous = await read()
+          if (!previous || previous.refresh !== presented) return
+          const value = toCredential({
+            methodID,
+            serverUrl: networkURL(input.config.url).toString(),
+            tokens: tokens.refresh_token || !previous.refresh ? tokens : { ...tokens, refresh_token: previous.refresh },
+            client: clientFromCredential(previous),
+          })
+          presented = value.refresh
+          await run(credentials.update(id, { value }))
+        } finally {
+          await release()
+        }
       },
       clientInformation: async () => {
         const oauth = await read()
         return oauth ? clientFromCredential(oauth) : undefined
       },
       saveClientInformation: async (client) => {
-        const oauth = await read()
-        if (!oauth) return
-        await run(credentials.update(id, { value: { ...oauth, metadata: { ...oauth.metadata, client } } }))
+        try {
+          await acquire()
+          const oauth = await read()
+          if (!oauth) return
+          await run(credentials.update(id, { value: { ...oauth, metadata: { ...oauth.metadata, client } } }))
+        } finally {
+          await release()
+        }
       },
       codeVerifier: async () => undefined,
       saveCodeVerifier: async () => {},
@@ -364,7 +423,7 @@ export const authorize = (input: {
       if (client) yield* Effect.promise(() => store.saveClientInformation(client))
     }
     const code = yield* Deferred.make<{ code: string; iss: string | undefined; response: ServerResponse }, Error>()
-    const redirect = oauth?.redirect_uri ? new URL(oauth.redirect_uri) : undefined
+    const redirect = oauth?.redirect_uri ? networkURL(oauth.redirect_uri, "MCP OAuth redirect URL") : undefined
     const redirectPath = redirect?.pathname ?? "/callback"
     const state = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("base64url")
 

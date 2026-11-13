@@ -25,6 +25,22 @@ describe("PTY websocket tickets", () => {
     }),
   )
 
+  it.live("returns a persistent terminal launch binding exactly once", () =>
+    Effect.gen(function* () {
+      const tickets = yield* PtyTicket.Service
+      const ptyID = PtyID.ascending()
+      const launch = {
+        origin: "tui" as const,
+        policyFingerprint: "policy",
+        scope: { server: "server", location: "location", project: "project", credential: "credential" },
+      }
+      const issued = yield* tickets.issue({ ptyID, launch })
+
+      expect(yield* tickets.take({ ptyID, ticket: issued.ticket })).toEqual({ ptyID, launch })
+      expect(yield* tickets.take({ ptyID, ticket: issued.ticket })).toBeUndefined()
+    }),
+  )
+
   it.live("rejects tickets scoped to a different request", () =>
     Effect.gen(function* () {
       const tickets = yield* PtyTicket.Service

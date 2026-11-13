@@ -5,6 +5,28 @@ import { ephemeral, inventory } from "./event.js"
 import { Pty } from "./pty.js"
 import { NonNegativeInt, PositiveInt, optional } from "./schema.js"
 import { Session } from "./session.js"
+import { ClientPresence } from "./client-presence.js"
+
+export interface LaunchBinding {
+  readonly origin: ClientPresence.Surface
+  readonly policyFingerprint: string
+  readonly scope: {
+    readonly server: string
+    readonly location: string
+    readonly project: string
+    readonly credential: string
+  }
+}
+export const LaunchBinding: Schema.Codec<LaunchBinding> = Schema.Struct({
+  origin: ClientPresence.Surface,
+  policyFingerprint: Schema.String,
+  scope: Schema.Struct({
+    server: Schema.String,
+    location: Schema.String,
+    project: Schema.String,
+    credential: Schema.String,
+  }),
+}).annotate({ identifier: "PersistentPty.LaunchBinding" })
 
 export const Info = Schema.Struct({
   ...Pty.Info.fields,

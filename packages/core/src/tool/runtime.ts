@@ -71,17 +71,42 @@ const validateInput = (
   schema: Tool.ValueSchema<any>,
   value: unknown,
 ): Effect.Effect<StandardSchemaV1.Result<unknown>> => {
-  if (isStandardSchema(schema)) return validateStandard(schema, value)
+  if (isStandardSchema(schema))
+    return Effect.gen(function* () {
+      if (isStandardJSONSchema(schema)) {
+        const json = standardJsonSchema(schema, "input")
+        const codec = hasClosedObject(json) ? codecFor(json) : undefined
+        if (codec) {
+          const structural = yield* Schema.decodeUnknownEffect(codec)(value, {
+            errors: "all",
+            onExcessProperty: "error",
+          }).pipe(
+            Effect.match({
+              onFailure: (error) => formatEffectIssues(error.issue),
+              onSuccess: () => undefined,
+            }),
+          )
+          if (structural) return structural
+        }
+      }
+      return yield* validateStandard(schema, value)
+    })
   return Effect.gen(function* () {
     const codec = Schema.isSchema(schema) ? schema : codecFor(schema)
     if (codec === undefined) return { value }
-    return yield* Schema.decodeUnknownEffect(codec)(value, { errors: "all" }).pipe(
+    return yield* Schema.decodeUnknownEffect(codec)(value, { errors: "all", onExcessProperty: "error" }).pipe(
       Effect.match({
         onFailure: (error) => formatEffectIssues(error.issue),
         onSuccess: (value) => ({ value }),
       }),
     )
   })
+}
+
+const hasClosedObject = (value: unknown): boolean => {
+  if (Array.isArray(value)) return value.some(hasClosedObject)
+  if (!isRecord(value)) return false
+  return value.additionalProperties === false || Object.values(value).some(hasClosedObject)
 }
 
 const formatInputIssues = (tool: string, issues: ReadonlyArray<StandardSchemaV1.Issue>, value: unknown) => {

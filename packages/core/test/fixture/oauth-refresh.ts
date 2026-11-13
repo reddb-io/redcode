@@ -46,7 +46,7 @@ const result = await Effect.runPromise(
       LayerNode.compile(LayerNode.group([Credential.node, Integration.node]), {
         replacements: [
           Database.node.replace(Database.configured({ path: `${directory}/credentials.db` })),
-          Global.node.replace(Global.layerWith({ state: `${directory}/state` })),
+          Global.node.replace(Global.layerWith({ state: `${directory}/state`, config: `${directory}/config` })),
           Location.node.replace(Location.boundNode({ directory: AbsolutePath.make(process.cwd()) })),
         ],
       }),
