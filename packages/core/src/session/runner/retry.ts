@@ -4,7 +4,7 @@ import { AIError, isRetryable } from "@opencode/ai"
 import { Agent } from "@opencode/schema/agent"
 import { Model } from "@opencode/schema/model"
 import { SessionError } from "@opencode/schema/session-error"
-import { Clock, Duration, Effect, Pull, Schedule, Stream } from "effect"
+import { Clock, Deferred, Duration, Effect, Pull, Schedule } from "effect"
 import { Bus } from "../../bus.js"
 import type { PluginHooks } from "../../plugin/hooks.js"
 import { SessionEvent } from "../event.js"
@@ -185,7 +185,17 @@ export const make = (bus: Bus.Interface, sessionID: SessionSchema.ID) =>
       readonly assistantMessageID: SessionMessage.ID
       readonly error: SessionError.Error
     }) =>
-      Effect.gen(function* () {
+      Effect.scoped(Effect.gen(function* () {
+        const modelChanged = yield* Deferred.make<void>()
+        yield* Effect.acquireRelease(
+          bus.listen((event) =>
+            event.type === SessionEvent.ModelSelected.type &&
+            (event.data as { sessionID?: string }).sessionID === sessionID
+              ? Deferred.succeed(modelChanged, undefined).pipe(Effect.asVoid)
+              : Effect.void,
+          ),
+          (unsubscribe) => unsubscribe,
+        )
         const scheduled = yield* Clock.currentTimeMillis
         yield* bus.publish(SessionEvent.RetryScheduled, {
           sessionID,
@@ -199,14 +209,10 @@ export const make = (bus: Bus.Interface, sessionID: SessionSchema.ID) =>
         // which starts with fresh attempts rather than the exhausted model's remaining ones.
         const switched = yield* Effect.raceFirst(
           Effect.sleep(Duration.millis(remaining)).pipe(Effect.as(false)),
-          bus.subscribe(SessionEvent.ModelSelected).pipe(
-            Stream.filter((event) => event.data.sessionID === sessionID),
-            Stream.runHead,
-            Effect.as(true),
-          ),
+          Deferred.await(modelChanged).pipe(Effect.as(true)),
         )
         if (switched) decide = yield* policy(sessionID)
-      })
+      }))
     return { decide: (input: Input) => decide(input), wait }
   })
 

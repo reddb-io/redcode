@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { Effect, Fiber } from "effect"
+import { Deferred, Effect, Fiber } from "effect"
 import {
   AIError,
   HttpContext,
@@ -238,26 +238,25 @@ describe("SessionRunnerRetry.make", () => {
       const second = yield* retry.decide(input(rateLimited("Too many requests", 60_000)))
       expect(second.retry && second.attempt).toBe(3)
       if (!first.retry) return
-      let finished = false
+      const scheduled = yield* Deferred.make<void>()
+      yield* Effect.acquireRelease(
+        bus.listen((event) => event.type === SessionEvent.RetryScheduled.type
+          ? Deferred.succeed(scheduled, undefined).pipe(Effect.asVoid) : Effect.void),
+        (unsubscribe) => unsubscribe,
+      )
       const waiting = yield* retry
         .wait({
           decision: first,
           assistantMessageID: SessionMessage.ID.create(),
           error: { type: "provider.rate-limit", message: "Too many requests" },
         })
-        .pipe(
-          Effect.ensuring(
-            Effect.sync(() => {
-              finished = true
-            }),
-          ),
-          Effect.forkScoped({ startImmediately: true }),
-        )
-      // The TestClock never advances, so only the switch can end the one-minute wait. Publishing until the
-      // wait ends avoids depending on when its subscription starts.
-      yield* bus
-        .publish(SessionEvent.ModelSelected, { sessionID: id, model: Model.Ref.parse("openai/gpt-6-luna") })
-        .pipe(Effect.andThen(Effect.yieldNow), Effect.repeat({ while: () => !finished }))
+        .pipe(Effect.forkScoped({ startImmediately: true }))
+      yield* Deferred.await(scheduled)
+      yield* bus.publish(SessionEvent.ModelSelected, {
+        sessionID: SessionID.make("ses_other_retry"), model: Model.Ref.parse("openai/gpt-6-luna"),
+      })
+      expect(waiting.pollUnsafe()).toBeUndefined()
+      yield* bus.publish(SessionEvent.ModelSelected, { sessionID: id, model: Model.Ref.parse("openai/gpt-6-luna") })
       yield* Fiber.join(waiting)
       const fresh = yield* retry.decide(input(rateLimited("Too many requests", 60_000)))
       expect(fresh.retry && fresh.attempt).toBe(2)
