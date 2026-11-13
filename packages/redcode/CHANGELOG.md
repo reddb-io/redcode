@@ -1,5 +1,11 @@
 # @reddb-io/redcode
 
+## 0.87.31
+
+### Patch Changes
+
+- Keep large file reads and disabled TUI screenshot previews memory-bounded, make desktop shell discovery asynchronous and cancellable, and isolate plugin and review-gutter cleanup lifecycles.
+
 ## 0.87.30
 
 ### Patch Changes
