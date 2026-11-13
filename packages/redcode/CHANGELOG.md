@@ -1,5 +1,11 @@
 # @reddb-io/redcode
 
+## 0.87.38
+
+### Patch Changes
+
+- Keep MCP results without structured content JSON-serializable, fixing Expected JSON value errors in the Computer Use stdio bridge.
+
 ## 0.87.37
 
 ### Patch Changes
