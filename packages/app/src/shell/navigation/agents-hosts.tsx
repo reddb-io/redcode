@@ -19,6 +19,8 @@ import { useLanguage } from "@/runtime/i18n/language"
 import { ServerConnection } from "@/runtime/server/registry"
 import { useGlobal } from "@/runtime/server/runtime"
 import { useNavigation } from "./controller"
+import { MemoryCaptures } from "./memory-captures"
+import { ServerCapabilities } from "@opencode/schema/server-capabilities"
 
 export default function AgentHosts(props: { server: ServerConnection.Any; memory?: boolean }) {
   const global = useGlobal()
@@ -39,6 +41,14 @@ export default function AgentHosts(props: { server: ServerConnection.Any; memory
     retry: false,
     refetchInterval: 5000,
   }))
+  const selectedWorker = () => workers.data?.workers.find((status) => status.worker.id === state.selected)
+  const supportsCaptures = () =>
+    ServerCapabilities.supports(
+      state.selected
+        ? selectedWorker()?.capabilities
+        : global.servers.health[ServerConnection.key(props.server)]?.capabilities,
+      ServerCapabilities.Feature.memoryCaptures,
+    )
   const hosts = createMemo(() => [
     {
       id: "",
@@ -175,7 +185,46 @@ export default function AgentHosts(props: { server: ServerConnection.Any; memory
                           : ctx().sdk.api.server.memory({ signal })
                     : undefined
                 }
+                capture={
+                  props.memory && supportsCaptures()
+                    ? (input) =>
+                        state.selected
+                          ? ctx().sdk.api.workers.startMemoryCapture({ id: state.selected, ...input })
+                          : ctx().sdk.api.server.startMemoryCapture(input)
+                    : undefined
+                }
               />
+              <Show when={props.memory && supportsCaptures()}>
+                <MemoryCaptures
+                  identity={`${ServerConnection.key(props.server)}:${state.selected}`}
+                  connected={connected()}
+                  list={(signal) =>
+                    state.selected
+                      ? ctx().sdk.api.workers.memoryCaptures({ id: state.selected }, { signal })
+                      : ctx().sdk.api.server.memoryCaptures({ signal })
+                  }
+                  start={(input) =>
+                    state.selected
+                      ? ctx().sdk.api.workers.startMemoryCapture({ id: state.selected, ...input })
+                      : ctx().sdk.api.server.startMemoryCapture(input)
+                  }
+                  cancel={(id) =>
+                    state.selected
+                      ? ctx().sdk.api.workers.cancelMemoryCapture({ id: state.selected, captureID: id })
+                      : ctx().sdk.api.server.cancelMemoryCapture({ id })
+                  }
+                  remove={(id) =>
+                    state.selected
+                      ? ctx().sdk.api.workers.deleteMemoryCapture({ id: state.selected, captureID: id })
+                      : ctx().sdk.api.server.deleteMemoryCapture({ id })
+                  }
+                  download={(id) =>
+                    state.selected
+                      ? ctx().sdk.api.workers.downloadMemoryCapture({ id: state.selected, captureID: id })
+                      : ctx().sdk.api.server.downloadMemoryCapture({ id })
+                  }
+                />
+              </Show>
             </Show>
             <details class="text-body text-ink-muted">
               <summary class="cursor-pointer py-2">{language.t("agents.hosts.measurementDetails")}</summary>
@@ -226,6 +275,7 @@ function Resources(props: {
   cacheKey: string
   load: (signal: AbortSignal) => Promise<HostResourcesSnapshot>
   memory?: (signal: AbortSignal) => Promise<MemorySnapshot>
+  capture?: Parameters<typeof ExecutionMemory>[0]["capture"]
 }) {
   const language = useLanguage()
   const query = useQuery(() => ({
@@ -249,7 +299,14 @@ function Resources(props: {
     <article aria-label={props.name} class="py-[var(--reddb-spatial-inset-sm)]">
       <ReactView component={HostHistory} props={{ source: history, refresh: () => void query.refetch() }} />
       <Show when={props.memory}>
-        {(load) => <ExecutionMemory identity={props.cacheKey} connected={props.connected} load={load()} />}
+        {(load) => (
+          <ExecutionMemory
+            identity={props.cacheKey}
+            connected={props.connected}
+            load={load()}
+            capture={props.capture}
+          />
+        )}
       </Show>
     </article>
   )

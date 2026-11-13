@@ -36,6 +36,19 @@ export const WorkersHandler = HttpApiBuilder.group(Api, "server.workers", (handl
       .handle("workers.control", (ctx) => scoped((scope) => workers.control(ctx.params.id, ctx.payload, scope)))
       .handle("workers.resources", (ctx) => scoped((scope) => workers.resources(ctx.params.id, scope)))
       .handle("workers.memory", (ctx) => scoped((scope) => workers.memory(ctx.params.id, scope)))
+      .handle("workers.memoryCaptures", (ctx) => scoped((scope) => workers.memoryCaptures(ctx.params.id, scope)))
+      .handle("workers.startMemoryCapture", (ctx) =>
+        scoped((scope) => workers.startMemoryCapture(ctx.params.id, ctx.payload, scope)),
+      )
+      .handle("workers.cancelMemoryCapture", (ctx) =>
+        scoped((scope) => workers.cancelMemoryCapture(ctx.params.id, ctx.params.captureID, scope)),
+      )
+      .handle("workers.deleteMemoryCapture", (ctx) =>
+        scoped((scope) => workers.deleteMemoryCapture(ctx.params.id, ctx.params.captureID, scope)),
+      )
+      .handle("workers.downloadMemoryCapture", (ctx) =>
+        scoped((scope) => workers.downloadMemoryCapture(ctx.params.id, ctx.params.captureID, scope)),
+      )
       .handle("workers.attention", (ctx) => scoped((scope) => workers.attention(ctx.params.id, scope)))
       .handle("workers.answer", (ctx) => scoped((scope) => workers.answer(ctx.params.id, ctx.payload, scope)))
       .handle("workers.list", () => scoped((scope) => workers.list(scope)))

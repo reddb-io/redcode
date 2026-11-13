@@ -8,6 +8,7 @@ import { Form } from "@opencode/core/form"
 import { Permission } from "@opencode/core/permission"
 import { Attention } from "@opencode/schema/attention"
 import { HostResources } from "@opencode/schema/host-resources"
+import { ServerCapabilities } from "@opencode/schema/server-capabilities"
 import { HttpEffect, HttpRouter, HttpServer } from "effect/unstable/http"
 import { llmClient } from "@opencode/core/effect/app-node-platform"
 import { SessionRunnerModel } from "@opencode/core/session/runner/model"
@@ -449,6 +450,8 @@ it.live(
       expect(yield* forms.state(own.id)).toMatchObject({ status: "answered", answer: { choice: "correct" } })
       expect(yield* forms.state(unrelated.id)).toEqual({ status: "pending" })
       const registration = (yield* Effect.promise(() => WorkerPool.readConfig(config))).workers[0]!
+      const health = yield* Effect.promise(() => WorkerPool.health(registration, input.environment))
+      expect(ServerCapabilities.supports(health.capabilities, ServerCapabilities.Feature.memoryCaptures)).toBe(true)
       const resources = Schema.decodeUnknownSync(HostResources.Snapshot)(
         yield* Effect.promise(() => WorkerPool.resources(registration, input.environment)),
       )
@@ -457,6 +460,37 @@ it.live(
       const memory = yield* Effect.promise(() => WorkerPool.memory(registration, input.environment))
       expect(memory.sampledAt).toBeGreaterThan(0)
       expect(Array.isArray(memory.entries)).toBe(true)
+      const capture = yield* Effect.promise(() =>
+        WorkerPool.startMemoryCapture(registration, input.environment, {
+          kind: "samples",
+          target: { kind: "server" },
+          durationMs: 1_000,
+          retentionMs: 60_000,
+        }),
+      )
+      const completed = yield* Effect.promise(async () => {
+        for (let attempt = 0; attempt < 100; attempt++) {
+          const current = (await WorkerPool.memoryCaptures(registration, input.environment)).find(
+            (item) => item.id === capture.id,
+          )
+          if (current && current.state !== "pending" && current.state !== "running") return current
+          await Bun.sleep(25)
+        }
+        throw new Error("remote diagnostic capture did not settle")
+      })
+      expect(completed.state).toBe("completed")
+      const bundle = JSON.parse(
+        new TextDecoder().decode(
+          yield* Effect.promise(() => WorkerPool.downloadMemoryCapture(registration, input.environment, capture.id)),
+        ),
+      )
+      expect(bundle).toMatchObject({ format: "redcode.process-samples.v1", target: { kind: "server" } })
+      yield* Effect.promise(() => WorkerPool.deleteMemoryCapture(registration, input.environment, capture.id))
+      expect(
+        (yield* Effect.promise(() => WorkerPool.memoryCaptures(registration, input.environment))).some(
+          (item) => item.id === capture.id,
+        ),
+      ).toBe(false)
       yield* Effect.promise(() =>
         Bun.write(report, JSON.stringify({ fingerprint: "fixture", tasks: [{ ...task, directory: "/different" }] })),
       )

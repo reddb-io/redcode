@@ -35,6 +35,32 @@ describe("checkServerHealth", () => {
     ])
   })
 
+  test("preserves advertised capabilities without requiring them from older servers", async () => {
+    const legacy = await checkServerHealth(server, (async () => info("1.0.0")) as unknown as typeof globalThis.fetch)
+    expect(legacy).toMatchObject({ healthy: true, version: "1.0.0" })
+    expect(legacy).not.toHaveProperty("capabilities")
+
+    const modern = await checkServerHealth(server, (async () =>
+      Response.json({
+        version: "2.0.0",
+        pid: 1,
+        urls: [server.url],
+        paths: { tmp: "/tmp/opencode" },
+        capabilities: {
+          protocol: 1,
+          features: { "diagnostics.memory-captures": 1 },
+        },
+      })) as unknown as typeof globalThis.fetch)
+    expect(modern).toMatchObject({
+      healthy: true,
+      version: "2.0.0",
+      capabilities: {
+        protocol: 1,
+        features: { "diagnostics.memory-captures": 1 },
+      },
+    })
+  })
+
   test("reports rejected credentials without retrying", async () => {
     let calls = 0
 

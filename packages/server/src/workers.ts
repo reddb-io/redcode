@@ -39,6 +39,27 @@ export interface Interface {
   readonly answer: (id: string, answer: Worker.Answer, scope?: ServerAccess.Principal) => Promise<void>
   readonly resources: (id: string, scope?: ServerAccess.Principal) => Promise<HostResources.Snapshot>
   readonly memory: (id: string, scope?: ServerAccess.Principal) => Promise<Memory.Snapshot>
+  readonly memoryCaptures: (id: string, scope?: ServerAccess.Principal) => Promise<ReadonlyArray<Memory.Capture>>
+  readonly startMemoryCapture: (
+    id: string,
+    input: Memory.CaptureStart,
+    scope?: ServerAccess.Principal,
+  ) => Promise<Memory.Capture>
+  readonly cancelMemoryCapture: (
+    id: string,
+    captureID: Memory.CaptureID,
+    scope?: ServerAccess.Principal,
+  ) => Promise<Memory.Capture>
+  readonly deleteMemoryCapture: (
+    id: string,
+    captureID: Memory.CaptureID,
+    scope?: ServerAccess.Principal,
+  ) => Promise<void>
+  readonly downloadMemoryCapture: (
+    id: string,
+    captureID: Memory.CaptureID,
+    scope?: ServerAccess.Principal,
+  ) => Promise<Uint8Array>
   readonly control: (id: string, control: Worker.Control, scope?: ServerAccess.Principal) => Promise<void>
 }
 export class Service extends Context.Service<Service, Interface>()("@opencode/Workers") {}
@@ -258,7 +279,13 @@ function layer(directory?: string, accessOptions?: InfrastructureAccess.Options,
               connections.set(worker.id, {
                 worker,
                 connection: health ? "online" : "offline",
-                ...(health ? { platform: health.platform, latencyMs: health.latencyMs } : {}),
+                ...(health
+                  ? {
+                      platform: health.platform,
+                      latencyMs: health.latencyMs,
+                      ...(health.capabilities ? { capabilities: health.capabilities } : {}),
+                    }
+                  : {}),
               })
             }),
           )
@@ -311,6 +338,7 @@ function layer(directory?: string, accessOptions?: InfrastructureAccess.Options,
             connection: "online",
             platform: health.platform,
             latencyMs: health.latencyMs,
+            ...(health.capabilities ? { capabilities: health.capabilities } : {}),
           }
           connections.set(worker.id, status)
           return status
@@ -358,6 +386,7 @@ function layer(directory?: string, accessOptions?: InfrastructureAccess.Options,
           connection: "online",
           platform: health.platform,
           latencyMs: health.latencyMs,
+          ...(health.capabilities ? { capabilities: health.capabilities } : {}),
         }
         connections.set(worker.id, status)
         return status
@@ -391,6 +420,41 @@ function layer(directory?: string, accessOptions?: InfrastructureAccess.Options,
           if (!worker || !(await permitted(worker, scope)) || (scope && scope.access.ownerRole !== "admin"))
             throw denied()
           return WorkerPool.memory(worker, await environment(), local?.client)
+        },
+        memoryCaptures: async (id, scope) => {
+          ready()
+          const worker = (await WorkerPool.readConfig(config)).workers.find((worker) => worker.id === id)
+          if (!worker || !(await permitted(worker, scope)) || (scope && scope.access.ownerRole !== "admin"))
+            throw denied()
+          return WorkerPool.memoryCaptures(worker, await environment(), local?.client)
+        },
+        startMemoryCapture: async (id, capture, scope) => {
+          ready()
+          const worker = (await WorkerPool.readConfig(config)).workers.find((worker) => worker.id === id)
+          if (!worker || !(await permitted(worker, scope)) || (scope && scope.access.ownerRole !== "admin"))
+            throw denied()
+          return WorkerPool.startMemoryCapture(worker, await environment(), capture, local?.client)
+        },
+        cancelMemoryCapture: async (id, captureID, scope) => {
+          ready()
+          const worker = (await WorkerPool.readConfig(config)).workers.find((worker) => worker.id === id)
+          if (!worker || !(await permitted(worker, scope)) || (scope && scope.access.ownerRole !== "admin"))
+            throw denied()
+          return WorkerPool.cancelMemoryCapture(worker, await environment(), captureID, local?.client)
+        },
+        deleteMemoryCapture: async (id, captureID, scope) => {
+          ready()
+          const worker = (await WorkerPool.readConfig(config)).workers.find((worker) => worker.id === id)
+          if (!worker || !(await permitted(worker, scope)) || (scope && scope.access.ownerRole !== "admin"))
+            throw denied()
+          return WorkerPool.deleteMemoryCapture(worker, await environment(), captureID, local?.client)
+        },
+        downloadMemoryCapture: async (id, captureID, scope) => {
+          ready()
+          const worker = (await WorkerPool.readConfig(config)).workers.find((worker) => worker.id === id)
+          if (!worker || !(await permitted(worker, scope)) || (scope && scope.access.ownerRole !== "admin"))
+            throw denied()
+          return WorkerPool.downloadMemoryCapture(worker, await environment(), captureID, local?.client)
         },
         list: async (scope) => {
           if (state.error) return { available: false, reason: state.error, workers: [], batches: [] }
@@ -483,7 +547,13 @@ function layer(directory?: string, accessOptions?: InfrastructureAccess.Options,
           const status: Worker.Status = {
             worker: authorized,
             connection: health ? "online" : "offline",
-            ...(health ? { platform: health.platform, latencyMs: health.latencyMs } : {}),
+            ...(health
+              ? {
+                  platform: health.platform,
+                  latencyMs: health.latencyMs,
+                  ...(health.capabilities ? { capabilities: health.capabilities } : {}),
+                }
+              : {}),
           }
           connections.set(id, status)
           return status

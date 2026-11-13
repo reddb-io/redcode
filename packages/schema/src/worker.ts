@@ -8,6 +8,7 @@ import { Form } from "./form.js"
 import { Permission } from "./permission.js"
 import { SessionMessage } from "./session-message.js"
 import { WorkerLease } from "./worker-lease.js"
+import { ServerCapabilities } from "./server-capabilities.js"
 
 export const Name = Schema.String.check(Schema.isMinLength(1), Schema.isPattern(/^[a-zA-Z0-9_-]+$/)).annotate({
   identifier: "Worker.Name",
@@ -153,6 +154,8 @@ export const Status = Schema.Struct({
   platform: optional(Text),
   /** Round-trip time of the latest successful coordinator health probe. */
   latencyMs: optional(Schema.Finite),
+  /** Optional because older workers and coordinators do not advertise versioned features. */
+  capabilities: optional(ServerCapabilities.Info),
 }).annotate({ identifier: "Worker.Status" })
 export interface Status extends Schema.Schema.Type<typeof Status> {}
 export const Batch = Schema.Struct({

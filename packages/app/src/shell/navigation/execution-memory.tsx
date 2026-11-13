@@ -1,6 +1,9 @@
-import type { MemorySnapshot } from "@opencode/client/promise"
+import type { MemorySnapshot, ServerStartMemoryCaptureInput } from "@opencode/client/promise"
+import { Button } from "@opencode/ui/button"
 import { useQuery } from "@tanstack/solid-query"
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js"
+import { errorMessage } from "@/shell/layout/helpers"
+import { showToast } from "@/shell/notifications/toast"
 import { useLanguage } from "@/runtime/i18n/language"
 import { executionHistory, recordExecutions } from "./resource-history"
 
@@ -17,9 +20,11 @@ export function ExecutionMemory(props: {
   identity: string
   connected: boolean
   load: (signal: AbortSignal) => Promise<MemorySnapshot>
+  capture?: (input: ServerStartMemoryCaptureInput) => Promise<unknown>
 }) {
   const language = useLanguage()
   const [history, setHistory] = createSignal<Record<string, [number, number][]>>({})
+  const [capturing, setCapturing] = createSignal("")
   let last = ""
   const refreshHistory = () => {
     setHistory(executionHistory(storage(), props.identity))
@@ -57,6 +62,24 @@ export function ExecutionMemory(props: {
     const active = new Set((query.data?.entries ?? []).map((entry) => `${entry.kind}:${entry.id}`))
     return Object.entries(history()).filter(([key, points]) => !active.has(key) && points.length)
   })
+  const capture = (item: MemorySnapshot["entries"][number]) => {
+    if (!props.capture || !item.pid || capturing()) return
+    setCapturing(item.id)
+    void props
+      .capture({
+        kind: "samples",
+        target: { kind: "process", pid: item.pid, label: `${item.kind}: ${item.title}`.slice(0, 200) },
+        durationMs: 10_000,
+        retentionMs: 3_600_000,
+      })
+      .catch((error) =>
+        showToast({
+          title: language.t("memory.captures.failed"),
+          description: errorMessage(error, language.t("common.requestFailed")),
+        }),
+      )
+      .finally(() => setCapturing(""))
+  }
   return (
     <section class="mt-4" aria-label={language.t("agents.memory.executions")}>
       <h4 class="text-body font-medium">{language.t("agents.memory.executions")}</h4>
@@ -86,12 +109,22 @@ export function ExecutionMemory(props: {
                               {language.t(`agents.memory.kind.${item.kind}`)} · {item.title}
                               {item.pid ? ` · PID ${item.pid}` : ""}
                             </span>
-                            <span class="shrink-0">
+                            <span class="flex shrink-0 items-center gap-1">
                               {item.residentBytes === null
                                 ? language.t(
                                     item.reason === "shared" ? "agents.memory.shared" : "agents.memory.unavailable",
                                   )
                                 : bytes(item.residentBytes)}
+                              <Show when={props.capture && item.pid}>
+                                <Button
+                                  size="small"
+                                  variant="ghost"
+                                  disabled={!!capturing()}
+                                  onClick={() => capture(item)}
+                                >
+                                  {language.t("memory.captures.sampleProcess")}
+                                </Button>
+                              </Show>
                             </span>
                           </div>
                           <Show when={points().length}>

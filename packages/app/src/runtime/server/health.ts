@@ -2,6 +2,7 @@ import { usePlatform } from "@/runtime/platform/platform"
 import { ServerConnection } from "@/runtime/server/registry"
 import { authTokenFromCredentials } from "./api"
 import { ClientError, isUnauthorizedError, OpenCode } from "@opencode/client"
+import type { ServerInfo } from "@opencode/client"
 import { Accessor, createEffect, onCleanup } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 
@@ -10,6 +11,7 @@ export type ServerHealth = {
   version?: string
   /** Round-trip time of the latest successful `/api/info` probe. */
   latencyMs?: number
+  capabilities?: ServerInfo["capabilities"]
   incompatible?: boolean
   checking?: boolean
   unauthorized?: boolean
@@ -126,7 +128,12 @@ export async function checkServerHealth(
     })
       .server.info({ signal })
       .then((status) => ({
-        data: { healthy: true as const, version: status.version, latencyMs: Math.max(0, performance.now() - started) },
+        data: {
+          healthy: true as const,
+          version: status.version,
+          latencyMs: Math.max(0, performance.now() - started),
+          ...(status.capabilities ? { capabilities: status.capabilities } : {}),
+        },
       }))
       .catch((error) => ({ error }))
 

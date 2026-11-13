@@ -1,4 +1,6 @@
 import { sql } from "drizzle-orm"
+import * as NodeStream from "@effect/platform-node/NodeStream"
+import { createReadStream } from "node:fs"
 import { Database } from "@opencode/core/database/database"
 import { Global } from "@opencode/util/global"
 import { Duration, Effect, RcMap } from "effect"
@@ -22,6 +24,8 @@ import { executionMemory } from "../execution-memory"
 import { EventFeed } from "../event-feed"
 import { modelPerformance } from "../model-performance"
 import { startMemoryDiagnostics } from "../memory-diagnostics"
+import { createMemoryCaptures } from "../memory-captures"
+import { ContentHeaders } from "../content-headers"
 
 const capabilities = ServerCapabilities.Info.make({
   protocol: ServerCapabilities.Protocol.make(1),
@@ -31,6 +35,7 @@ const capabilities = ServerCapabilities.Info.make({
     [ServerCapabilities.Feature.executionGraph]: ServerCapabilities.Version.make(1),
     [ServerCapabilities.Feature.sessionObservation]: ServerCapabilities.Version.make(1),
     [ServerCapabilities.Feature.workerLease]: ServerCapabilities.Version.make(1),
+    [ServerCapabilities.Feature.memoryCaptures]: ServerCapabilities.Version.make(1),
   },
   // Old coordinators still require these fields while the versioned map rolls out.
   sessionObservation: true,
@@ -42,8 +47,20 @@ export const ServerHandler = HttpApiBuilder.group(Api, "server.server", (handler
     const pairing = yield* ServerPairing.Service
     const auth = yield* ServerAuth.Config
     const feed = yield* EventFeed.Service
+    const global = yield* Global.Service
     yield* startMemoryDiagnostics
+    const captures = yield* Effect.promise(() => createMemoryCaptures(global.state))
+    yield* Effect.addFinalizer(() => Effect.sync(() => captures.close()))
     const resources = createHostResources()
+    const administration = Effect.gen(function* () {
+      const principal = yield* ServerAccess.Current
+      if (principal && principal.access.ownerRole !== "admin")
+        return yield* new ConsoleForbiddenError({
+          message: "Infrastructure administration is required for diagnostics",
+        })
+    })
+    const invalid = (cause: unknown) =>
+      new InvalidRequestError({ message: cause instanceof Error ? cause.message : "Diagnostic request failed" })
     const remote = <A>(operation: (host: RemoteAccessHost.Interface | undefined) => Promise<A>) =>
       Effect.gen(function* () {
         const principal = yield* ServerAccess.Current
@@ -67,6 +84,49 @@ export const ServerHandler = HttpApiBuilder.group(Api, "server.server", (handler
               message: "Infrastructure administration is required for execution memory",
             })
           return yield* executionMemory()
+        }),
+      )
+      .handle("server.memoryCaptures", () => administration.pipe(Effect.andThen(Effect.promise(() => captures.list()))))
+      .handle("server.startMemoryCapture", (ctx) =>
+        Effect.gen(function* () {
+          yield* administration
+          if (ctx.payload.target.kind === "process") {
+            const pid = ctx.payload.target.pid
+            const snapshot = yield* executionMemory()
+            if (!snapshot.entries.some((entry) => entry.pid === pid))
+              return yield* invalid(new Error("The process is not owned by a visible Redcode execution"))
+          }
+          return yield* Effect.tryPromise({
+            try: () => captures.start(ctx.payload),
+            catch: invalid,
+          })
+        }),
+      )
+      .handle("server.cancelMemoryCapture", (ctx) =>
+        administration.pipe(
+          Effect.andThen(Effect.tryPromise({ try: () => captures.cancel(ctx.params.id), catch: invalid })),
+        ),
+      )
+      .handle("server.deleteMemoryCapture", (ctx) =>
+        administration.pipe(
+          Effect.andThen(Effect.tryPromise({ try: () => captures.delete(ctx.params.id), catch: invalid })),
+        ),
+      )
+      .handleRaw("server.downloadMemoryCapture", (ctx) =>
+        Effect.gen(function* () {
+          yield* administration
+          const capture = yield* Effect.try({ try: () => captures.download(ctx.params.id), catch: invalid })
+          const stream = NodeStream.fromReadable({
+            evaluate: () => createReadStream(capture.file),
+            onError: invalid,
+          })
+          return HttpServerResponse.stream(stream, {
+            contentLength: capture.capture.size,
+            headers: ContentHeaders.download({
+              path: capture.capture.filename,
+              mime: capture.capture.kind === "samples" ? "application/json" : "application/octet-stream",
+            }),
+          })
         }),
       )
       .handle("server.remoteAccess", () =>
@@ -101,7 +161,6 @@ export const ServerHandler = HttpApiBuilder.group(Api, "server.server", (handler
       .handle("server.system", () =>
         Effect.gen(function* () {
           const info = yield* ServerInfo.Service
-          const global = yield* Global.Service
           const storage = yield* Database.Service
           const locations = yield* LocationServiceMap.Service
           const execution = yield* SessionExecution.Service

@@ -32,7 +32,9 @@ export const create = Effect.fn("ConsoleHost.create")(function* (options: Option
     Layer.provideMerge(HttpRouter.layer),
     Layer.provide(HttpServer.layerServices),
   )
-  const runtime = ManagedRuntime.make(routes)
+  // Stable TypeScript retains an already-provided internal HTTP request marker in this Effect RC's
+  // declaration inference. tsgo correctly reduces it; keep the emitted declaration at the actual runtime boundary.
+  const runtime = ManagedRuntime.make(routes as Layer.Layer<HttpRouter.HttpRouter, never, never>)
   return yield* Effect.gen(function* () {
     const services = yield* runtime.contextEffect
     const handler = HttpEffect.toWebHandlerWith<never, HttpServerRequest.HttpServerRequest | Scope.Scope>(services)(

@@ -81,6 +81,55 @@ export const WorkersGroup = HttpApiGroup.make("server.workers")
     ),
   )
   .add(
+    HttpApiEndpoint.get("workers.memoryCaptures", "/api/workers/:id/memory/captures", {
+      params: { id: Worker.Name },
+      success: Schema.Array(Memory.Capture),
+      error: [InvalidRequestError, ConsoleForbiddenError],
+    }).annotateMerge(
+      OpenApi.annotations({ identifier: "workers.memoryCaptures", summary: "List a worker's diagnostic captures" }),
+    ),
+  )
+  .add(
+    HttpApiEndpoint.post("workers.startMemoryCapture", "/api/workers/:id/memory/captures", {
+      params: { id: Worker.Name },
+      payload: Memory.CaptureStart,
+      success: Memory.Capture,
+      error: [InvalidRequestError, ConsoleForbiddenError],
+    }).annotateMerge(
+      OpenApi.annotations({ identifier: "workers.startMemoryCapture", summary: "Start a worker diagnostic capture" }),
+    ),
+  )
+  .add(
+    HttpApiEndpoint.delete("workers.cancelMemoryCapture", "/api/workers/:id/memory/captures/:captureID/run", {
+      params: { id: Worker.Name, captureID: Memory.CaptureID },
+      success: Memory.Capture,
+      error: [InvalidRequestError, ConsoleForbiddenError],
+    }).annotateMerge(
+      OpenApi.annotations({ identifier: "workers.cancelMemoryCapture", summary: "Cancel a worker diagnostic capture" }),
+    ),
+  )
+  .add(
+    HttpApiEndpoint.delete("workers.deleteMemoryCapture", "/api/workers/:id/memory/captures/:captureID", {
+      params: { id: Worker.Name, captureID: Memory.CaptureID },
+      success: HttpApiSchema.NoContent,
+      error: [InvalidRequestError, ConsoleForbiddenError],
+    }).annotateMerge(
+      OpenApi.annotations({ identifier: "workers.deleteMemoryCapture", summary: "Delete a worker diagnostic capture" }),
+    ),
+  )
+  .add(
+    HttpApiEndpoint.get("workers.downloadMemoryCapture", "/api/workers/:id/memory/captures/:captureID/download", {
+      params: { id: Worker.Name, captureID: Memory.CaptureID },
+      success: Schema.Uint8Array.pipe(HttpApiSchema.asUint8Array()),
+      error: [InvalidRequestError, ConsoleForbiddenError],
+    }).annotateMerge(
+      OpenApi.annotations({
+        identifier: "workers.downloadMemoryCapture",
+        summary: "Download a worker diagnostic capture",
+      }),
+    ),
+  )
+  .add(
     HttpApiEndpoint.get("workers.resources", "/api/workers/:id/resources", {
       params: { id: Worker.Name },
       success: HostResources.Snapshot,

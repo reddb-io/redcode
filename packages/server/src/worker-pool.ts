@@ -4,6 +4,7 @@ import { Schema } from "effect"
 import { Worker } from "@opencode/schema/worker"
 import { Attention } from "@opencode/schema/attention"
 import { HostResources } from "@opencode/schema/host-resources"
+import { Memory } from "@opencode/schema/memory"
 import { WorkerEnvironment } from "@opencode/schema/worker-environment"
 import { SessionObservation } from "@opencode/schema/session-observation"
 import { WorkerLease } from "@opencode/schema/worker-lease"
@@ -120,8 +121,17 @@ export async function health(
   local?: () => OpenCodeClient,
 ) {
   const started = performance.now()
-  const system = await client(worker, environment, local).server.system({ signal: AbortSignal.timeout(5_000) })
-  return { ...system, latencyMs: Math.max(0, performance.now() - started) }
+  const api = client(worker, environment, local)
+  const signal = AbortSignal.timeout(5_000)
+  const [system, info] = await Promise.all([api.server.system({ signal }), api.server.info({ signal })])
+  const capabilities = info.capabilities
+    ? Schema.decodeUnknownSync(ServerCapabilities.Info)(info.capabilities)
+    : undefined
+  return {
+    ...system,
+    latencyMs: Math.max(0, performance.now() - started),
+    ...(capabilities ? { capabilities } : {}),
+  }
 }
 
 /** One local coordinator owns a batch. Workers own independent Sessions and databases. */
@@ -192,10 +202,7 @@ export async function run(
         .then(
           (info) => ({
             online: true,
-            observation: ServerCapabilities.supports(
-              info.capabilities,
-              ServerCapabilities.Feature.sessionObservation,
-            ),
+            observation: ServerCapabilities.supports(info.capabilities, ServerCapabilities.Feature.sessionObservation),
             lease: ServerCapabilities.supports(info.capabilities, ServerCapabilities.Feature.workerLease),
           }),
           () => ({ online: false, observation: false, lease: false }),
@@ -842,6 +849,59 @@ export async function memory(
   local?: () => OpenCodeClient,
 ) {
   return client(worker, environment, local).server.memory({ signal: AbortSignal.timeout(15_000) })
+}
+
+export async function memoryCaptures(
+  worker: Worker.Registration,
+  environment: Readonly<Record<string, string | undefined>>,
+  local?: () => OpenCodeClient,
+) {
+  return client(worker, environment, local)
+    .server.memoryCaptures({ signal: AbortSignal.timeout(15_000) })
+    .then(Schema.decodeUnknownSync(Schema.Array(Memory.Capture)))
+}
+
+export async function startMemoryCapture(
+  worker: Worker.Registration,
+  environment: Readonly<Record<string, string | undefined>>,
+  input: Memory.CaptureStart,
+  local?: () => OpenCodeClient,
+) {
+  return client(worker, environment, local)
+    .server.startMemoryCapture(input, { signal: AbortSignal.timeout(15_000) })
+    .then(Schema.decodeUnknownSync(Memory.Capture))
+}
+
+export async function cancelMemoryCapture(
+  worker: Worker.Registration,
+  environment: Readonly<Record<string, string | undefined>>,
+  id: Memory.CaptureID,
+  local?: () => OpenCodeClient,
+) {
+  return client(worker, environment, local)
+    .server.cancelMemoryCapture({ id }, { signal: AbortSignal.timeout(15_000) })
+    .then(Schema.decodeUnknownSync(Memory.Capture))
+}
+
+export async function deleteMemoryCapture(
+  worker: Worker.Registration,
+  environment: Readonly<Record<string, string | undefined>>,
+  id: Memory.CaptureID,
+  local?: () => OpenCodeClient,
+) {
+  return client(worker, environment, local).server.deleteMemoryCapture({ id }, { signal: AbortSignal.timeout(15_000) })
+}
+
+export async function downloadMemoryCapture(
+  worker: Worker.Registration,
+  environment: Readonly<Record<string, string | undefined>>,
+  id: Memory.CaptureID,
+  local?: () => OpenCodeClient,
+) {
+  return client(worker, environment, local).server.downloadMemoryCapture(
+    { id },
+    { signal: AbortSignal.timeout(120_000) },
+  )
 }
 
 /** Reuse the native Session harness with first-admission-wins prompt IDs and original task placement. */

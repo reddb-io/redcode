@@ -10,6 +10,15 @@ import type {
   ServerConfigureRemoteAccessOutput,
   ServerDisableRemoteAccessOutput,
   ServerMemoryOutput,
+  ServerMemoryCapturesOutput,
+  ServerStartMemoryCaptureInput,
+  ServerStartMemoryCaptureOutput,
+  ServerCancelMemoryCaptureInput,
+  ServerCancelMemoryCaptureOutput,
+  ServerDeleteMemoryCaptureInput,
+  ServerDeleteMemoryCaptureOutput,
+  ServerDownloadMemoryCaptureInput,
+  ServerDownloadMemoryCaptureOutput,
   ServerResourcesOutput,
   ServerAttentionOutput,
   ServerInfoOutput,
@@ -491,6 +500,16 @@ import type {
   WorkersControlOutput,
   WorkersMemoryInput,
   WorkersMemoryOutput,
+  WorkersMemoryCapturesInput,
+  WorkersMemoryCapturesOutput,
+  WorkersStartMemoryCaptureInput,
+  WorkersStartMemoryCaptureOutput,
+  WorkersCancelMemoryCaptureInput,
+  WorkersCancelMemoryCaptureOutput,
+  WorkersDeleteMemoryCaptureInput,
+  WorkersDeleteMemoryCaptureOutput,
+  WorkersDownloadMemoryCaptureInput,
+  WorkersDownloadMemoryCaptureOutput,
   WorkersResourcesInput,
   WorkersResourcesOutput,
   WorkersAttentionInput,
@@ -639,6 +658,39 @@ const EndpointServerDisableRemoteAccess = (raw: RawClient["server.server"]) => (
 const EndpointServerMemory = (raw: RawClient["server.server"]) => () =>
   preserveEffect<ServerMemoryOutput>()(raw["server.memory"]({}).pipe(Effect.mapError(mapClientError)))
 
+const EndpointServerMemoryCaptures = (raw: RawClient["server.server"]) => () =>
+  preserveEffect<ServerMemoryCapturesOutput>()(raw["server.memoryCaptures"]({}).pipe(Effect.mapError(mapClientError)))
+
+const EndpointServerStartMemoryCapture = (raw: RawClient["server.server"]) => (input: ServerStartMemoryCaptureInput) =>
+  preserveEffect<ServerStartMemoryCaptureOutput>()(
+    raw["server.startMemoryCapture"]({
+      payload: {
+        kind: input["kind"],
+        target: input["target"],
+        durationMs: input["durationMs"],
+        retentionMs: input["retentionMs"],
+      },
+    }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const EndpointServerCancelMemoryCapture =
+  (raw: RawClient["server.server"]) => (input: ServerCancelMemoryCaptureInput) =>
+    preserveEffect<ServerCancelMemoryCaptureOutput>()(
+      raw["server.cancelMemoryCapture"]({ params: { id: input["id"] } }).pipe(Effect.mapError(mapClientError)),
+    )
+
+const EndpointServerDeleteMemoryCapture =
+  (raw: RawClient["server.server"]) => (input: ServerDeleteMemoryCaptureInput) =>
+    preserveEffect<ServerDeleteMemoryCaptureOutput>()(
+      raw["server.deleteMemoryCapture"]({ params: { id: input["id"] } }).pipe(Effect.mapError(mapClientError)),
+    )
+
+const EndpointServerDownloadMemoryCapture =
+  (raw: RawClient["server.server"]) => (input: ServerDownloadMemoryCaptureInput) =>
+    preserveEffect<ServerDownloadMemoryCaptureOutput>()(
+      raw["server.downloadMemoryCapture"]({ params: { id: input["id"] } }).pipe(Effect.mapError(mapClientError)),
+    )
+
 const EndpointServerResources = (raw: RawClient["server.server"]) => () =>
   preserveEffect<ServerResourcesOutput>()(raw["server.resources"]({}).pipe(Effect.mapError(mapClientError)))
 
@@ -672,6 +724,11 @@ const adaptGroupServer = (raw: RawClient["server.server"]) => ({
   configureRemoteAccess: EndpointServerConfigureRemoteAccess(raw),
   disableRemoteAccess: EndpointServerDisableRemoteAccess(raw),
   memory: EndpointServerMemory(raw),
+  memoryCaptures: EndpointServerMemoryCaptures(raw),
+  startMemoryCapture: EndpointServerStartMemoryCapture(raw),
+  cancelMemoryCapture: EndpointServerCancelMemoryCapture(raw),
+  deleteMemoryCapture: EndpointServerDeleteMemoryCapture(raw),
+  downloadMemoryCapture: EndpointServerDownloadMemoryCapture(raw),
   resources: EndpointServerResources(raw),
   attention: EndpointServerAttention(raw),
   info: EndpointServerInfo(raw),
@@ -3081,6 +3138,49 @@ const EndpointWorkersMemory = (raw: RawClient["server.workers"]) => (input: Work
     raw["workers.memory"]({ params: { id: input["id"] } }).pipe(Effect.mapError(mapClientError)),
   )
 
+const EndpointWorkersMemoryCaptures = (raw: RawClient["server.workers"]) => (input: WorkersMemoryCapturesInput) =>
+  preserveEffect<WorkersMemoryCapturesOutput>()(
+    raw["workers.memoryCaptures"]({ params: { id: input["id"] } }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const EndpointWorkersStartMemoryCapture =
+  (raw: RawClient["server.workers"]) => (input: WorkersStartMemoryCaptureInput) =>
+    preserveEffect<WorkersStartMemoryCaptureOutput>()(
+      raw["workers.startMemoryCapture"]({
+        params: { id: input["id"] },
+        payload: {
+          kind: input["kind"],
+          target: input["target"],
+          durationMs: input["durationMs"],
+          retentionMs: input["retentionMs"],
+        },
+      }).pipe(Effect.mapError(mapClientError)),
+    )
+
+const EndpointWorkersCancelMemoryCapture =
+  (raw: RawClient["server.workers"]) => (input: WorkersCancelMemoryCaptureInput) =>
+    preserveEffect<WorkersCancelMemoryCaptureOutput>()(
+      raw["workers.cancelMemoryCapture"]({ params: { id: input["id"], captureID: input["captureID"] } }).pipe(
+        Effect.mapError(mapClientError),
+      ),
+    )
+
+const EndpointWorkersDeleteMemoryCapture =
+  (raw: RawClient["server.workers"]) => (input: WorkersDeleteMemoryCaptureInput) =>
+    preserveEffect<WorkersDeleteMemoryCaptureOutput>()(
+      raw["workers.deleteMemoryCapture"]({ params: { id: input["id"], captureID: input["captureID"] } }).pipe(
+        Effect.mapError(mapClientError),
+      ),
+    )
+
+const EndpointWorkersDownloadMemoryCapture =
+  (raw: RawClient["server.workers"]) => (input: WorkersDownloadMemoryCaptureInput) =>
+    preserveEffect<WorkersDownloadMemoryCaptureOutput>()(
+      raw["workers.downloadMemoryCapture"]({ params: { id: input["id"], captureID: input["captureID"] } }).pipe(
+        Effect.mapError(mapClientError),
+      ),
+    )
+
 const EndpointWorkersResources = (raw: RawClient["server.workers"]) => (input: WorkersResourcesInput) =>
   preserveEffect<WorkersResourcesOutput>()(
     raw["workers.resources"]({ params: { id: input["id"] } }).pipe(Effect.mapError(mapClientError)),
@@ -3166,6 +3266,11 @@ const adaptGroupWorkers = (raw: RawClient["server.workers"]) => ({
   enroll: EndpointWorkersEnroll(raw),
   control: EndpointWorkersControl(raw),
   memory: EndpointWorkersMemory(raw),
+  memoryCaptures: EndpointWorkersMemoryCaptures(raw),
+  startMemoryCapture: EndpointWorkersStartMemoryCapture(raw),
+  cancelMemoryCapture: EndpointWorkersCancelMemoryCapture(raw),
+  deleteMemoryCapture: EndpointWorkersDeleteMemoryCapture(raw),
+  downloadMemoryCapture: EndpointWorkersDownloadMemoryCapture(raw),
   resources: EndpointWorkersResources(raw),
   attention: EndpointWorkersAttention(raw),
   answer: EndpointWorkersAnswer(raw),

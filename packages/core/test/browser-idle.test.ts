@@ -32,7 +32,7 @@ const it = testEffect(
         makeGlobalNode({
           service: LocationActivity.Service,
           // Leave room for cold plugin setup on Windows; still exercise real idle eviction during the attachment.
-          layer: LocationActivity.layer({ timeToLive: "5 seconds", sweepInterval: "100 millis" }),
+          layer: LocationActivity.layer({ timeToLive: "10 seconds", sweepInterval: "100 millis" }),
           deps: [Bus.node, LocationServiceMap.node, SessionExecution.node, SessionStore.node, Job.node],
         }),
       ),
@@ -83,6 +83,7 @@ it.live(
       )
       expect(resumed.pollUnsafe()).toBeUndefined()
       yield* Fiber.interrupt(resumed)
+      yield* locations.invalidate(ref, "inactivity")
     }),
-  30_000,
+  40_000,
 )

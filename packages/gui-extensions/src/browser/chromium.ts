@@ -19,6 +19,7 @@ import {
   type Policy,
 } from "./policy"
 import type { PaneElement } from "./ipc"
+import { createBrowserActivity } from "./activity"
 
 type Element = { backendID: number; frameID: string; sessionID?: string }
 
@@ -164,13 +165,22 @@ export function createBrowserPage(
       webSecurity: true,
       webviewTag: false,
       devTools: false,
-      backgroundThrottling: false,
+      backgroundThrottling: true,
       // Agent navigation, including in hidden tabs, must not take the user's keyboard focus.
       focusOnNavigation: false,
     },
   })
 
   const contents = view.webContents
+  const activity = createBrowserActivity((throttled) => contents.setBackgroundThrottling(throttled))
+  let loadingLease: (() => void) | undefined
+  contents.on("did-start-loading", () => {
+    loadingLease ??= activity.acquire()
+  })
+  contents.on("did-stop-loading", () => {
+    loadingLease?.()
+    loadingLease = undefined
+  })
   const detachNetwork = options.network?.attach(contents)
   contents.on("before-input-event", (event, input) => {
     if (input.type !== "keyDown") return
@@ -524,27 +534,29 @@ export function createBrowserPage(
   // whether there is a document worth exposing over the themed background.
   const updateVisibility = () => embed.show(content)
 
-  const ready = Promise.all([
-    files.ready,
-    ...(options.initialize === false
-      ? []
-      : [
-          contents.loadURL(normalizeURL(options.restore?.url || "about:blank", policy)).catch((error: Error) => {
-            if (!options.restore) throw error
-            // A dev server may have stopped while this page was unloaded. Keep its tab available to retry.
-            options.publish(error.message)
-          }),
-        ]),
-    diagnostics.enable(),
-    cdp.send("Page.enable"),
-    cdp.send("DOM.enable"),
-    cdp.send("Target.setAutoAttach", {
-      autoAttach: true,
-      waitForDebuggerOnStart: false,
-      flatten: true,
-      filter: [{ type: "iframe", exclude: false }, { exclude: true }],
-    }),
-  ]).then(() => undefined)
+  const ready = activity.during(() =>
+    Promise.all([
+      files.ready,
+      ...(options.initialize === false
+        ? []
+        : [
+            contents.loadURL(normalizeURL(options.restore?.url || "about:blank", policy)).catch((error: Error) => {
+              if (!options.restore) throw error
+              // A dev server may have stopped while this page was unloaded. Keep its tab available to retry.
+              options.publish(error.message)
+            }),
+          ]),
+      diagnostics.enable(),
+      cdp.send("Page.enable"),
+      cdp.send("DOM.enable"),
+      cdp.send("Target.setAutoAttach", {
+        autoAttach: true,
+        waitForDebuggerOnStart: false,
+        flatten: true,
+        filter: [{ type: "iframe", exclude: false }, { exclude: true }],
+      }),
+    ]).then(() => undefined),
+  )
 
   return {
     view,
@@ -604,73 +616,81 @@ export function createBrowserPage(
           "Browser tab was closed. Call browser.tabs.list({}) and choose an existing tabID; do not reuse the closed tab's refs.",
         )
 
-      if (inspecting && pointerOperations.includes(command.action.type)) await toggleInspect(false)
-
-      if (dialog && command.action.type !== "dialog")
-        throw new Error(
-          'A JavaScript dialog is open. Inspect it with browser.dialog({tabID,action:"get"}), then explicitly accept or dismiss it before continuing.',
-        )
-
-      if (command.inspect) return { value: await inspect(command.action), files: [] }
-
-      if (command.target && JSON.stringify(await inspect(command.action)) !== JSON.stringify(command.target))
-        throw new Error(
-          "Browser target changed while permission was pending. Take a fresh snapshot or listing and request the action again; it was not executed.",
-        )
-
-      if (
-        command.generation !== undefined &&
-        command.generation !== generation &&
-        !retainedOperations.includes(command.action.type)
-      )
-        throw new Error(
-          "The document changed before this operation ran. Call browser.tabs.list({}) to check its current URL, then browser.snapshot({tabID}) for fresh refs. Reconsider the action before retrying on the new page.",
-        )
-      const modal = Promise.withResolvers<never>()
-      const cancelled = Promise.withResolvers<never>()
-      // The action underneath the race keeps running after a dialog wins it; it checks this
-      // signal before each further step, so a validation alert on one field stops the rest.
-      // A navigation is left alone: its beforeunload dialog is answered through browser.dialog
-      // and the pending load then proceeds or not.
-      const run = new AbortController()
-
-      const cancel = () => {
-        run.abort()
-        cancelled.reject(
-          new Error(
-            "Browser operation was cancelled. Inspect the tab before deciding to repeat an action; cancellation does not undo changes already made.",
-          ),
-        )
-      }
-
-      signal.addEventListener("abort", cancel, { once: true })
-
-      const reject = () => {
-        if (command.action.type !== "navigate") run.abort()
-        modal.reject(
-          new Error(
-            'A JavaScript dialog opened while the action was running. Inspect it with browser.dialog({tabID,action:"get"}) and accept or dismiss it. Do not repeat the original action just to close the dialog.',
-          ),
-        )
-      }
-
-      if (command.action.type !== "dialog") dialogs.add(reject)
-
+      const releaseActivity = activity.acquire()
       try {
-        return await Promise.race([
-          execute(command.action, command.files, run.signal, command.target),
-          modal.promise,
-          cancelled.promise,
-        ])
+        if (inspecting && pointerOperations.includes(command.action.type)) await toggleInspect(false)
+
+        if (dialog && command.action.type !== "dialog")
+          throw new Error(
+            'A JavaScript dialog is open. Inspect it with browser.dialog({tabID,action:"get"}), then explicitly accept or dismiss it before continuing.',
+          )
+
+        if (command.inspect) return { value: await inspect(command.action), files: [] }
+
+        if (command.target && JSON.stringify(await inspect(command.action)) !== JSON.stringify(command.target))
+          throw new Error(
+            "Browser target changed while permission was pending. Take a fresh snapshot or listing and request the action again; it was not executed.",
+          )
+
+        if (
+          command.generation !== undefined &&
+          command.generation !== generation &&
+          !retainedOperations.includes(command.action.type)
+        )
+          throw new Error(
+            "The document changed before this operation ran. Call browser.tabs.list({}) to check its current URL, then browser.snapshot({tabID}) for fresh refs. Reconsider the action before retrying on the new page.",
+          )
+        const modal = Promise.withResolvers<never>()
+        const cancelled = Promise.withResolvers<never>()
+        // The action underneath the race keeps running after a dialog wins it; it checks this
+        // signal before each further step, so a validation alert on one field stops the rest.
+        // A navigation is left alone: its beforeunload dialog is answered through browser.dialog
+        // and the pending load then proceeds or not.
+        const run = new AbortController()
+
+        const cancel = () => {
+          run.abort()
+          cancelled.reject(
+            new Error(
+              "Browser operation was cancelled. Inspect the tab before deciding to repeat an action; cancellation does not undo changes already made.",
+            ),
+          )
+        }
+
+        signal.addEventListener("abort", cancel, { once: true })
+
+        const reject = () => {
+          if (command.action.type !== "navigate") run.abort()
+          modal.reject(
+            new Error(
+              'A JavaScript dialog opened while the action was running. Inspect it with browser.dialog({tabID,action:"get"}) and accept or dismiss it. Do not repeat the original action just to close the dialog.',
+            ),
+          )
+        }
+
+        if (command.action.type !== "dialog") dialogs.add(reject)
+
+        try {
+          return await Promise.race([
+            execute(command.action, command.files, run.signal, command.target),
+            modal.promise,
+            cancelled.promise,
+          ])
+        } finally {
+          signal.removeEventListener("abort", cancel)
+          dialogs.delete(reject)
+        }
       } finally {
-        signal.removeEventListener("abort", cancel)
-        dialogs.delete(reject)
+        releaseActivity()
       }
     },
     async dispose() {
       if (closed) return
       closed = true
       clearTimeout(flash)
+      loadingLease?.()
+      loadingLease = undefined
+      activity.dispose()
       detachNetwork?.()
       contents.session.off("will-download", download)
       await profiling.dispose()

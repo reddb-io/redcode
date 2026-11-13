@@ -8,7 +8,7 @@ import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { HttpServerRequest } from "effect/unstable/http"
 import { ConsoleFederation } from "./federation.js"
 
-const error = (failure: { code: string; message: string }) => {
+const error = (failure: { code?: string; message: string }) => {
   if (failure.code === "unauthorized") return new UnauthorizedError({ message: failure.message })
   if (failure.code === "forbidden") return new ConsoleForbiddenError({ message: failure.message })
   if (failure.code === "not_found") return new ConsoleNotFoundError({ message: failure.message })

@@ -4,6 +4,15 @@ import type {
   ServerConfigureRemoteAccessOutput,
   ServerDisableRemoteAccessOutput,
   ServerMemoryOutput,
+  ServerMemoryCapturesOutput,
+  ServerStartMemoryCaptureInput,
+  ServerStartMemoryCaptureOutput,
+  ServerCancelMemoryCaptureInput,
+  ServerCancelMemoryCaptureOutput,
+  ServerDeleteMemoryCaptureInput,
+  ServerDeleteMemoryCaptureOutput,
+  ServerDownloadMemoryCaptureInput,
+  ServerDownloadMemoryCaptureOutput,
   ServerResourcesOutput,
   ServerAttentionOutput,
   ServerInfoOutput,
@@ -489,6 +498,16 @@ import type {
   WorkersControlOutput,
   WorkersMemoryInput,
   WorkersMemoryOutput,
+  WorkersMemoryCapturesInput,
+  WorkersMemoryCapturesOutput,
+  WorkersStartMemoryCaptureInput,
+  WorkersStartMemoryCaptureOutput,
+  WorkersCancelMemoryCaptureInput,
+  WorkersCancelMemoryCaptureOutput,
+  WorkersDeleteMemoryCaptureInput,
+  WorkersDeleteMemoryCaptureOutput,
+  WorkersDownloadMemoryCaptureInput,
+  WorkersDownloadMemoryCaptureOutput,
   WorkersResourcesInput,
   WorkersResourcesOutput,
   WorkersAttentionInput,
@@ -836,6 +855,68 @@ export function make(options: ClientOptions) {
             successStatus: 200,
             declaredStatuses: [400, 401, 403, 409],
             empty: false,
+          },
+          requestOptions,
+        ),
+      memoryCaptures: (requestOptions?: RequestOptions) =>
+        request<ServerMemoryCapturesOutput>(
+          {
+            method: "GET",
+            path: `/api/memory/captures`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 409],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      startMemoryCapture: (input: ServerStartMemoryCaptureInput, requestOptions?: RequestOptions) =>
+        request<ServerStartMemoryCaptureOutput>(
+          {
+            method: "POST",
+            path: `/api/memory/captures`,
+            body: {
+              kind: input["kind"],
+              target: input["target"],
+              durationMs: input["durationMs"],
+              retentionMs: input["retentionMs"],
+            },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 409],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      cancelMemoryCapture: (input: ServerCancelMemoryCaptureInput, requestOptions?: RequestOptions) =>
+        request<ServerCancelMemoryCaptureOutput>(
+          {
+            method: "DELETE",
+            path: `/api/memory/captures/${encodeURIComponent(input.id)}/run`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 409],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      deleteMemoryCapture: (input: ServerDeleteMemoryCaptureInput, requestOptions?: RequestOptions) =>
+        request<ServerDeleteMemoryCaptureOutput>(
+          {
+            method: "DELETE",
+            path: `/api/memory/captures/${encodeURIComponent(input.id)}`,
+            successStatus: 204,
+            declaredStatuses: [400, 401, 403, 409],
+            empty: true,
+          },
+          requestOptions,
+        ),
+      downloadMemoryCapture: (input: ServerDownloadMemoryCaptureInput, requestOptions?: RequestOptions) =>
+        request<ServerDownloadMemoryCaptureOutput>(
+          {
+            method: "GET",
+            path: `/api/memory/captures/${encodeURIComponent(input.id)}/download`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 409],
+            empty: false,
+            binary: true,
           },
           requestOptions,
         ),
@@ -4138,6 +4219,68 @@ export function make(options: ClientOptions) {
             successStatus: 200,
             declaredStatuses: [400, 401, 403, 409],
             empty: false,
+          },
+          requestOptions,
+        ),
+      memoryCaptures: (input: WorkersMemoryCapturesInput, requestOptions?: RequestOptions) =>
+        request<WorkersMemoryCapturesOutput>(
+          {
+            method: "GET",
+            path: `/api/workers/${encodeURIComponent(input.id)}/memory/captures`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 409],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      startMemoryCapture: (input: WorkersStartMemoryCaptureInput, requestOptions?: RequestOptions) =>
+        request<WorkersStartMemoryCaptureOutput>(
+          {
+            method: "POST",
+            path: `/api/workers/${encodeURIComponent(input.id)}/memory/captures`,
+            body: {
+              kind: input["kind"],
+              target: input["target"],
+              durationMs: input["durationMs"],
+              retentionMs: input["retentionMs"],
+            },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 409],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      cancelMemoryCapture: (input: WorkersCancelMemoryCaptureInput, requestOptions?: RequestOptions) =>
+        request<WorkersCancelMemoryCaptureOutput>(
+          {
+            method: "DELETE",
+            path: `/api/workers/${encodeURIComponent(input.id)}/memory/captures/${encodeURIComponent(input.captureID)}/run`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 409],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      deleteMemoryCapture: (input: WorkersDeleteMemoryCaptureInput, requestOptions?: RequestOptions) =>
+        request<WorkersDeleteMemoryCaptureOutput>(
+          {
+            method: "DELETE",
+            path: `/api/workers/${encodeURIComponent(input.id)}/memory/captures/${encodeURIComponent(input.captureID)}`,
+            successStatus: 204,
+            declaredStatuses: [400, 401, 403, 409],
+            empty: true,
+          },
+          requestOptions,
+        ),
+      downloadMemoryCapture: (input: WorkersDownloadMemoryCaptureInput, requestOptions?: RequestOptions) =>
+        request<WorkersDownloadMemoryCaptureOutput>(
+          {
+            method: "GET",
+            path: `/api/workers/${encodeURIComponent(input.id)}/memory/captures/${encodeURIComponent(input.captureID)}/download`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 409],
+            empty: false,
+            binary: true,
           },
           requestOptions,
         ),

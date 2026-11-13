@@ -152,6 +152,50 @@ export const ServerGroup = HttpApiGroup.make("server.server")
     ),
   )
   .add(
+    HttpApiEndpoint.get("server.memoryCaptures", "/api/memory/captures", {
+      success: Schema.Array(Memory.Capture),
+      error: [ConsoleForbiddenError],
+    }).annotateMerge(
+      OpenApi.annotations({ identifier: "server.memoryCaptures", summary: "List local diagnostic captures" }),
+    ),
+  )
+  .add(
+    HttpApiEndpoint.post("server.startMemoryCapture", "/api/memory/captures", {
+      payload: Memory.CaptureStart,
+      success: Memory.Capture,
+      error: [InvalidRequestError, ConsoleForbiddenError],
+    }).annotateMerge(
+      OpenApi.annotations({ identifier: "server.startMemoryCapture", summary: "Start a local diagnostic capture" }),
+    ),
+  )
+  .add(
+    HttpApiEndpoint.delete("server.cancelMemoryCapture", "/api/memory/captures/:id/run", {
+      params: { id: Memory.CaptureID },
+      success: Memory.Capture,
+      error: [InvalidRequestError, ConsoleForbiddenError],
+    }).annotateMerge(
+      OpenApi.annotations({ identifier: "server.cancelMemoryCapture", summary: "Cancel a diagnostic capture" }),
+    ),
+  )
+  .add(
+    HttpApiEndpoint.delete("server.deleteMemoryCapture", "/api/memory/captures/:id", {
+      params: { id: Memory.CaptureID },
+      success: HttpApiSchema.NoContent,
+      error: [InvalidRequestError, ConsoleForbiddenError],
+    }).annotateMerge(
+      OpenApi.annotations({ identifier: "server.deleteMemoryCapture", summary: "Delete a local diagnostic capture" }),
+    ),
+  )
+  .add(
+    HttpApiEndpoint.get("server.downloadMemoryCapture", "/api/memory/captures/:id/download", {
+      params: { id: Memory.CaptureID },
+      success: Schema.Uint8Array.pipe(HttpApiSchema.asUint8Array()),
+      error: [InvalidRequestError, ConsoleForbiddenError],
+    }).annotateMerge(
+      OpenApi.annotations({ identifier: "server.downloadMemoryCapture", summary: "Download a diagnostic capture" }),
+    ),
+  )
+  .add(
     HttpApiEndpoint.get("server.resources", "/api/resources", {
       success: HostResources.Snapshot,
     }).annotateMerge(

@@ -11,6 +11,7 @@ export const Feature = {
   executionGraph: "session.execution-graph",
   sessionObservation: "session.observation",
   workerLease: "worker.lease",
+  memoryCaptures: "diagnostics.memory-captures",
 } as const
 export type Feature = (typeof Feature)[keyof typeof Feature]
 

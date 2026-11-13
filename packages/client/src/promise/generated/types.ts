@@ -4331,6 +4331,7 @@ export type WorkerStatus = {
   connection: "unchecked" | "online" | "offline"
   platform?: string
   latencyMs?: number
+  capabilities?: ServerCapabilitiesInfo
 }
 
 export type WorkerBatch = {
@@ -5114,6 +5115,93 @@ export type ServerConfigureRemoteAccessOutput = RemoteAccessStatus
 export type ServerDisableRemoteAccessOutput = RemoteAccessStatus
 
 export type ServerMemoryOutput = MemorySnapshot
+
+export type ServerMemoryCapturesOutput = Array<{
+  id: string
+  kind: "heap" | "cpu" | "samples"
+  target: { kind: "server" } | { kind: "process"; pid: number; label?: string }
+  state: "pending" | "running" | "completed" | "failed" | "cancelled"
+  createdAt: number
+  startedAt?: number
+  completedAt?: number
+  expiresAt: number
+  size?: number
+  error?: string
+  filename?: string
+}>
+
+export type ServerStartMemoryCaptureInput = {
+  readonly kind: {
+    readonly kind: "heap" | "cpu" | "samples"
+    readonly target:
+      | { readonly kind: "server" }
+      | { readonly kind: "process"; readonly pid: number; readonly label?: string }
+    readonly durationMs?: number
+    readonly retentionMs?: number
+  }["kind"]
+  readonly target: {
+    readonly kind: "heap" | "cpu" | "samples"
+    readonly target:
+      | { readonly kind: "server" }
+      | { readonly kind: "process"; readonly pid: number; readonly label?: string }
+    readonly durationMs?: number
+    readonly retentionMs?: number
+  }["target"]
+  readonly durationMs?: {
+    readonly kind: "heap" | "cpu" | "samples"
+    readonly target:
+      | { readonly kind: "server" }
+      | { readonly kind: "process"; readonly pid: number; readonly label?: string }
+    readonly durationMs?: number
+    readonly retentionMs?: number
+  }["durationMs"]
+  readonly retentionMs?: {
+    readonly kind: "heap" | "cpu" | "samples"
+    readonly target:
+      | { readonly kind: "server" }
+      | { readonly kind: "process"; readonly pid: number; readonly label?: string }
+    readonly durationMs?: number
+    readonly retentionMs?: number
+  }["retentionMs"]
+}
+
+export type ServerStartMemoryCaptureOutput = {
+  id: string
+  kind: "heap" | "cpu" | "samples"
+  target: { kind: "server" } | { kind: "process"; pid: number; label?: string }
+  state: "pending" | "running" | "completed" | "failed" | "cancelled"
+  createdAt: number
+  startedAt?: number
+  completedAt?: number
+  expiresAt: number
+  size?: number
+  error?: string
+  filename?: string
+}
+
+export type ServerCancelMemoryCaptureInput = { readonly id: { readonly id: string }["id"] }
+
+export type ServerCancelMemoryCaptureOutput = {
+  id: string
+  kind: "heap" | "cpu" | "samples"
+  target: { kind: "server" } | { kind: "process"; pid: number; label?: string }
+  state: "pending" | "running" | "completed" | "failed" | "cancelled"
+  createdAt: number
+  startedAt?: number
+  completedAt?: number
+  expiresAt: number
+  size?: number
+  error?: string
+  filename?: string
+}
+
+export type ServerDeleteMemoryCaptureInput = { readonly id: { readonly id: string }["id"] }
+
+export type ServerDeleteMemoryCaptureOutput = void
+
+export type ServerDownloadMemoryCaptureInput = { readonly id: { readonly id: string }["id"] }
+
+export type ServerDownloadMemoryCaptureOutput = globalThis.Uint8Array
 
 export type ServerResourcesOutput = HostResourcesSnapshot
 
@@ -12849,6 +12937,105 @@ export type WorkersControlOutput = void
 export type WorkersMemoryInput = { readonly id: { readonly id: string }["id"] }
 
 export type WorkersMemoryOutput = MemorySnapshot
+
+export type WorkersMemoryCapturesInput = { readonly id: { readonly id: string }["id"] }
+
+export type WorkersMemoryCapturesOutput = Array<{
+  id: string
+  kind: "heap" | "cpu" | "samples"
+  target: { kind: "server" } | { kind: "process"; pid: number; label?: string }
+  state: "pending" | "running" | "completed" | "failed" | "cancelled"
+  createdAt: number
+  startedAt?: number
+  completedAt?: number
+  expiresAt: number
+  size?: number
+  error?: string
+  filename?: string
+}>
+
+export type WorkersStartMemoryCaptureInput = {
+  readonly id: { readonly id: string }["id"]
+  readonly kind: {
+    readonly kind: "heap" | "cpu" | "samples"
+    readonly target:
+      | { readonly kind: "server" }
+      | { readonly kind: "process"; readonly pid: number; readonly label?: string }
+    readonly durationMs?: number
+    readonly retentionMs?: number
+  }["kind"]
+  readonly target: {
+    readonly kind: "heap" | "cpu" | "samples"
+    readonly target:
+      | { readonly kind: "server" }
+      | { readonly kind: "process"; readonly pid: number; readonly label?: string }
+    readonly durationMs?: number
+    readonly retentionMs?: number
+  }["target"]
+  readonly durationMs?: {
+    readonly kind: "heap" | "cpu" | "samples"
+    readonly target:
+      | { readonly kind: "server" }
+      | { readonly kind: "process"; readonly pid: number; readonly label?: string }
+    readonly durationMs?: number
+    readonly retentionMs?: number
+  }["durationMs"]
+  readonly retentionMs?: {
+    readonly kind: "heap" | "cpu" | "samples"
+    readonly target:
+      | { readonly kind: "server" }
+      | { readonly kind: "process"; readonly pid: number; readonly label?: string }
+    readonly durationMs?: number
+    readonly retentionMs?: number
+  }["retentionMs"]
+}
+
+export type WorkersStartMemoryCaptureOutput = {
+  id: string
+  kind: "heap" | "cpu" | "samples"
+  target: { kind: "server" } | { kind: "process"; pid: number; label?: string }
+  state: "pending" | "running" | "completed" | "failed" | "cancelled"
+  createdAt: number
+  startedAt?: number
+  completedAt?: number
+  expiresAt: number
+  size?: number
+  error?: string
+  filename?: string
+}
+
+export type WorkersCancelMemoryCaptureInput = {
+  readonly id: { readonly id: string; readonly captureID: string }["id"]
+  readonly captureID: { readonly id: string; readonly captureID: string }["captureID"]
+}
+
+export type WorkersCancelMemoryCaptureOutput = {
+  id: string
+  kind: "heap" | "cpu" | "samples"
+  target: { kind: "server" } | { kind: "process"; pid: number; label?: string }
+  state: "pending" | "running" | "completed" | "failed" | "cancelled"
+  createdAt: number
+  startedAt?: number
+  completedAt?: number
+  expiresAt: number
+  size?: number
+  error?: string
+  filename?: string
+}
+
+export type WorkersDeleteMemoryCaptureInput = {
+  readonly id: { readonly id: string; readonly captureID: string }["id"]
+  readonly captureID: { readonly id: string; readonly captureID: string }["captureID"]
+}
+
+export type WorkersDeleteMemoryCaptureOutput = void
+
+export type WorkersDownloadMemoryCaptureInput = {
+  readonly id: { readonly id: string; readonly captureID: string }["id"]
+  readonly captureID: { readonly id: string; readonly captureID: string }["captureID"]
+}
+
+export type WorkersDownloadMemoryCaptureOutput = globalThis.Uint8Array
 
 export type WorkersResourcesInput = { readonly id: { readonly id: string }["id"] }
 
