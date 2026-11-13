@@ -1,5 +1,11 @@
 # @reddb-io/redcode
 
+## 0.87.34
+
+### Patch Changes
+
+- Make subagent activity durable and ordered across restarts, isolate prompt-cache affinity by provider, credential, and delegation root, and expose automation delivery certainty with an explicit retry path for uncertain outcomes.
+
 ## 0.87.33
 
 ### Patch Changes
