@@ -74,10 +74,14 @@ test("conditional runs check a monitor probe before admitting a prompt and keep 
         const first = Automation.RunID.create()
         const skipped = yield* automations.run(session.id, task.id, first)
         expect(skipped.status).toBe("skipped")
+        expect(skipped.delivery).toBe("none")
         expect(yield* sessions.inbox(session.id)).toHaveLength(0)
         status = 200
         expect((yield* automations.run(session.id, task.id, first)).status).toBe("skipped")
-        expect((yield* automations.run(session.id, task.id, Automation.RunID.create())).status).toBe("admitted")
+        expect(yield* automations.run(session.id, task.id, Automation.RunID.create())).toMatchObject({
+          status: "admitted",
+          delivery: "confirmed",
+        })
         expect(yield* sessions.inbox(session.id)).toHaveLength(1)
 
         // Simulate a restart after an affirmative observation but before prompt admission.
@@ -437,6 +441,7 @@ test("manual automation admission is durable, queued and idempotent without chan
       const id = Automation.RunID.create()
       const run = yield* automations.run(session.id, task.id, id)
       expect(run.status).toBe("admitted")
+      expect(run.delivery).toBe("confirmed")
       expect(yield* automations.run(session.id, task.id, id)).toEqual(run)
       const inbox = yield* sessions.inbox(session.id)
       expect(inbox).toHaveLength(1)
@@ -523,6 +528,7 @@ test("one-time schedules fire once and paused goals suppress admission and pause
       yield* goals.control(session.id, { action: "pause" })
       const run = yield* automations.run(session.id, blocked.id, Automation.RunID.create())
       expect(run.status).toBe("skipped")
+      expect(run.delivery).toBe("none")
       expect(run.error).toBe("Goal is paused")
       expect((yield* automations.list(session.id)).find((item) => item.id === blocked.id)?.enabled).toBe(false)
       expect(yield* sessions.inbox(session.id)).toHaveLength(1)
@@ -619,6 +625,7 @@ test("a project hook rejection records failed admission and pauses the automatio
       })
       const run = yield* automations.run(session.id, task.id, Automation.RunID.create())
       expect(run.status).toBe("failed")
+      expect(run.delivery).toBe("none")
       expect(run.error).toContain("Rejected by project hook")
       expect((yield* automations.list(session.id))[0].enabled).toBe(false)
       expect(yield* sessions.inbox(session.id)).toHaveLength(0)
@@ -696,6 +703,7 @@ test("calendar recovery expires unadmitted work while preserving an existing adm
         )
         expect(history).toHaveLength(1)
         expect(history[0]).toMatchObject({ id: saved.runID, status: admitted ? "admitted" : "missed" })
+        expect(history[0].delivery).toBe(admitted ? "confirmed" : "none")
         expect(yield* sessions.inbox(saved.sessionID)).toHaveLength(admitted ? 1 : 0)
         expect((yield* automations.list(saved.sessionID))[0]).toMatchObject({
           enabled: true,

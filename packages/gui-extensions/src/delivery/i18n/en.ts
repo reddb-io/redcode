@@ -283,6 +283,9 @@ export default {
   autoPause: "Pause schedule",
   autoResume: "Resume schedule",
   autoRun: "Run now",
+  autoRetryAnyway: "Retry anyway",
+  autoDeliveryUncertain:
+    "The server could not prove whether the prompt crossed the admission boundary. It was not repeated automatically.",
   autoRemove: "Delete automation",
   autoInspect: "Inspect automation",
   autoDetails: "Automation details",

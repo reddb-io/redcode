@@ -1,6 +1,6 @@
 export * as SessionExecution from "./execution.js"
 
-import { Cause, Context, Effect, Exit, Layer } from "effect"
+import { Cause, Context, Effect, Exit, Layer, Stream } from "effect"
 import { Bus } from "../bus.js"
 import { Database } from "../database/database.js"
 import { Job } from "../job.js"
@@ -14,6 +14,7 @@ import { SessionSchema } from "./schema.js"
 import { SessionStore } from "./store.js"
 import { toSessionError } from "./to-session-error.js"
 import { SessionInbox } from "./inbox.js"
+import { SessionWait as SessionWaitSchema } from "@opencode/schema/session-wait"
 
 export interface Interface {
   /** Snapshots active execution owned by this process. */
@@ -68,6 +69,49 @@ export const layer: Layer.Layer<
     const jobs = yield* Job.Service
     const db = (yield* Database.Service).db
     const owned = new Set<SessionSchema.ID>()
+    const subagentEpochs = new Map<SessionSchema.ID, { id: string; sequence: number; since: number; waiting: boolean }>()
+    const publishSubagent = Effect.fnUntraced(function* (
+      sessionID: SessionSchema.ID,
+      state: SessionEvent.Subagent.Updated["data"]["state"],
+      operation?: string,
+    ) {
+      const session = yield* store.get(sessionID)
+      if (!session?.parentID) return
+      const epoch = subagentEpochs.get(sessionID) ?? {
+        id: crypto.randomUUID(),
+        sequence: 0,
+        since: Date.now(),
+        waiting: false,
+      }
+      subagentEpochs.set(sessionID, epoch)
+      const sequence = epoch.sequence++
+      const since = Date.now()
+      epoch.since = since
+      yield* bus.publish(SessionEvent.Subagent.Updated, {
+        sessionID,
+        parentID: session.parentID,
+        epoch: epoch.id,
+        sequence,
+        state,
+        since,
+        ...(operation ? { operation } : {}),
+      })
+    })
+
+    yield* bus.subscribe(SessionWaitSchema.Changed).pipe(
+      Stream.runForEach((event) =>
+        Effect.gen(function* () {
+          const epoch = subagentEpochs.get(event.data.sessionID)
+          if (!epoch) return
+          const waiting = event.data.waits.length > 0
+          if (epoch.waiting === waiting) return
+          epoch.waiting = waiting
+          const target = event.data.waits[0]?.target
+          yield* publishSubagent(event.data.sessionID, waiting ? "waiting" : "working", target)
+        }),
+      ),
+      Effect.forkScoped({ startImmediately: true }),
+    )
     const reportLifecycle = <A>(sessionID: SessionSchema.ID, effect: Effect.Effect<A>) =>
       effect.pipe(
         Effect.tapCause((cause) =>
@@ -138,9 +182,21 @@ export const layer: Layer.Layer<
               new Error("This session is executing on another server. Connect to that server to control it."),
             )
           owned.add(sessionID)
+          subagentEpochs.set(sessionID, {
+            id: crypto.randomUUID(),
+            sequence: 0,
+            since: Date.now(),
+            waiting: false,
+          })
           yield* reportLifecycle(
             sessionID,
-            bus.publish(SessionEvent.Execution.Started, { sessionID }, claimOnCommit(sessionID)),
+            Effect.all(
+              [
+                bus.publish(SessionEvent.Execution.Started, { sessionID }, claimOnCommit(sessionID)),
+                publishSubagent(sessionID, "working"),
+              ],
+              { discard: true },
+            ),
           )
         }),
       drain: (sessionID, force, promotable) => drain(sessionID, force, undefined, promotable),
@@ -154,6 +210,7 @@ export const layer: Layer.Layer<
               const outcome = terminal(exit, reason)
               if (outcome.type === "succeeded") {
                 yield* bus.publish(SessionEvent.Execution.Succeeded, { sessionID }, releaseOnCommit(sessionID))
+                yield* publishSubagent(sessionID, "completed")
                 if (
                   !(yield* SessionInbox.nextPromotable(db, sessionID, "input")) &&
                   !(yield* backgroundPending(sessionID))
@@ -178,6 +235,7 @@ export const layer: Layer.Layer<
                   { sessionID, reason: outcome.reason },
                   outcome.reason === "shutdown" ? undefined : releaseOnCommit(sessionID),
                 )
+                yield* publishSubagent(sessionID, "interrupted")
                 return
               }
               yield* bus.publish(
@@ -188,6 +246,7 @@ export const layer: Layer.Layer<
                 },
                 releaseOnCommit(sessionID),
               )
+              yield* publishSubagent(sessionID, "failed", outcome.error.message)
             }),
           ).pipe(
             Effect.ensuring(
@@ -195,6 +254,7 @@ export const layer: Layer.Layer<
                 Effect.andThen(
                   Effect.sync(() => {
                     owned.delete(sessionID)
+                    subagentEpochs.delete(sessionID)
                   }),
                 ),
               ),

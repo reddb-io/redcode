@@ -6498,7 +6498,7 @@ describe("SessionRunnerLLM", () => {
     yield* s.runPrompt("Run correlated request")
 
     expect(s.requests[0]?.http?.headers).toEqual({
-      "x-session-affinity": sessionID,
+      "x-session-affinity": expect.stringMatching(/^[0-9a-f]{64}$/),
       "X-Session-Id": sessionID,
       "User-Agent": App.useragent(App.make()),
       "x-opencode-project": Project.ID.global,
@@ -6519,7 +6519,7 @@ describe("SessionRunnerLLM", () => {
     yield* s.runPrompt("Run child request")
 
     expect(s.requests[0]?.http?.headers?.["x-parent-session-id"]).toBe(parentID)
-    expect(s.requests[0]?.promptCacheKey).toBe(parentID)
+    expect(s.requests[0]?.promptCacheKey).toMatch(/^[0-9a-f]{64}$/)
   })
 
   scenario("runs different sessions concurrently", function* (s) {
@@ -6539,7 +6539,7 @@ describe("SessionRunnerLLM", () => {
     yield* stream.started
 
     expect(s.requests).toHaveLength(2)
-    expect(s.requests.map((request) => request.promptCacheKey)).toEqual([sessionID, otherSessionID])
+    expect(new Set(s.requests.map((request) => request.promptCacheKey)).size).toBe(2)
     yield* stream.release
     yield* Fiber.join(first)
     yield* Fiber.join(second)
@@ -6565,7 +6565,6 @@ describe("SessionRunnerLLM", () => {
     yield* s.session.resume(otherLongSessionID)
 
     const keys = s.requests.map((request) => request.promptCacheKey)
-    expect(keys).toEqual([longSessionID.slice(4), otherLongSessionID.slice(4)])
     expect(keys.every((key) => typeof key === "string" && key.length === 64)).toBe(true)
     expect(keys[0]).not.toBe(keys[1])
   })

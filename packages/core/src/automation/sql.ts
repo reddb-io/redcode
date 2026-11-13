@@ -38,6 +38,7 @@ export const AutomationRunTable = sqliteTable(
     trigger: text().$type<Automation.Run["trigger"]>().notNull(),
     scheduled_at: integer().notNull(),
     status: text().$type<Automation.Run["status"]>().notNull(),
+    delivery_result: text().$type<NonNullable<Automation.Run["delivery"]>>(),
     owner: text({ mode: "json" }).$type<ExecutionOwner.Info>().notNull(),
     error: text(),
     condition_result: text({ mode: "json" }).$type<{ matched: boolean; summary: string }>(),

@@ -80,6 +80,8 @@ export const Run = Schema.Struct({
   created: Timestamp,
   updated: Timestamp,
   status: Schema.Literals(["pending", "admitted", "failed", "skipped", "missed"]),
+  /** What the dispatcher knows about prompt delivery. Absent on records created by older servers. */
+  delivery: Schema.optional(Schema.Literals(["none", "confirmed", "partial", "uncertain"])),
   error: Schema.NullOr(Schema.String),
 }).annotate({ identifier: "Automation.Run" })
 export interface Run extends Schema.Schema.Type<typeof Run> {}

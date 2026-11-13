@@ -95,6 +95,23 @@ export interface Input {
   readonly compactionMaxTokens?: number
 }
 
+/**
+ * Provider prompt-cache keys are opaque and scoped to the selected provider,
+ * access identity, and root delegation. A credential rotation keeps its
+ * account-local cache, while switching credentials (or environment-backed
+ * profiles) can never inherit another account's affinity.
+ */
+export const promptCacheAffinity = Effect.fnUntraced(function* (root: SessionSchema.ID, model: Model.Ref) {
+  const connection = model.connection
+    ? model.connection.type === "credential"
+      ? `credential:${model.connection.id}`
+      : `env:${model.connection.name}`
+    : "default"
+  const input = new TextEncoder().encode(`${model.providerID}\0${connection}\0${root}`)
+  const digest = yield* Effect.promise(() => crypto.subtle.digest("SHA-256", input))
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("")
+})
+
 /** The default output limit: the catalog limit, fitted to the room the prompt leaves in the context window. */
 const outputLimit = (
   limit: Model.Info["limit"],
@@ -346,12 +363,13 @@ export const layer = Layer.effect(
         ),
       ) as GenerationOptionsFields
       const providerOptions = Object.fromEntries(entries.filter(([k]) => !GENERATION_KEYS.has(k)))
-      const affinity = (yield* store.cacheRoot(session.id)) ?? session.parentID ?? session.fork?.sessionID ?? session.id
+      const root = (yield* store.cacheRoot(session.id)) ?? session.parentID ?? session.fork?.sessionID ?? session.id
+      const affinity = yield* promptCacheAffinity(root, model.ref)
       const base = LLM.request({
         model: model.model,
         http: {
           headers: {
-            "x-session-affinity": session.id,
+            "x-session-affinity": affinity,
             "X-Session-Id": session.id,
             ...(session.parentID ? { "x-parent-session-id": session.parentID } : {}),
             "User-Agent": App.useragent(app),
@@ -360,7 +378,7 @@ export const layer = Layer.effect(
             "x-opencode-client": app.name,
           },
         },
-        promptCacheKey: /^ses_[0-9a-f]{64}$/.test(affinity) ? affinity.slice(4) : affinity,
+        promptCacheKey: affinity,
         system: shaped.system,
         // A message the user withheld reaches the provider only as a placeholder, whatever the hooks returned.
         messages: boundImages(

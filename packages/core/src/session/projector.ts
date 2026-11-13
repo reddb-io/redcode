@@ -719,6 +719,10 @@ const layer = Layer.effectDiscard(
     yield* bus.project(SessionEvent.Execution.Succeeded, (event) => projectIdle(db, event))
     yield* bus.project(SessionEvent.Execution.Failed, (event) => projectIdle(db, event))
     yield* bus.project(SessionEvent.Execution.Interrupted, (event) => projectIdle(db, event))
+    // Subagent activity is already durable and is consumed directly by parent
+    // projections. It intentionally does not synthesize transcript messages here:
+    // the compact parent update owns that presentation and deduplication policy.
+    yield* bus.project(SessionEvent.Subagent.Updated, () => Effect.void)
     yield* bus.project(SessionEvent.InstructionsUpdated, (event) =>
       Effect.gen(function* () {
         yield* run(db, event)

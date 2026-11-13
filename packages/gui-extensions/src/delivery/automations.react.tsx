@@ -237,8 +237,28 @@ export function DeliveryAutomationsView(props: {
                         : "running",
                 stateLabel: copy[`autoStatus.${run.status}`],
                 description: copy[`autoTrigger.${run.trigger}`],
-                reason: run.error ?? undefined,
+                reason:
+                  run.delivery === "uncertain"
+                    ? [copy.autoDeliveryUncertain, run.error].filter(Boolean).join(" ")
+                    : (run.error ?? undefined),
               }))}
+              actions={(item) => {
+                const run = view.history.find((candidate) => candidate.id === item.id)
+                if (run?.delivery !== "uncertain") return null
+                return (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={disabled}
+                    onClick={() => {
+                      props.actions.clear()
+                      setConfirmation({ type: "run", id: task.id, runID: Automation.RunID.create() })
+                    }}
+                  >
+                    {copy.autoRetryAnyway}
+                  </Button>
+                )
+              }}
             />
           )}
         </section>

@@ -275,6 +275,24 @@ export namespace Execution {
   export type Interrupted = typeof Interrupted.Type
 }
 
+export namespace Subagent {
+  /** Durable activity for one child execution epoch. Consumers deduplicate by child, epoch and sequence. */
+  export const Updated = Event.durable({
+    type: "session.subagent.updated",
+    ...options,
+    schema: {
+      ...Base,
+      parentID: SessionID,
+      epoch: Schema.NonEmptyString,
+      sequence: NonNegativeInt,
+      state: Schema.Literals(["working", "waiting", "blocked", "completed", "failed", "interrupted"]),
+      operation: Schema.String.pipe(optional),
+      since: Schema.Number,
+    },
+  })
+  export type Updated = typeof Updated.Type
+}
+
 export const InstructionsUpdated = Event.durable({
   type: "session.instructions.updated",
   durable: {
@@ -704,6 +722,7 @@ export const Definitions = Event.inventory(
   Settled,
   Execution.Failed,
   Execution.Interrupted,
+  Subagent.Updated,
   InstructionsUpdated,
   Synthetic,
   Skill.Activated,

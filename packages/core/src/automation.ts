@@ -43,6 +43,7 @@ function runInfo(row: typeof AutomationRunTable.$inferSelect): Automation.Run {
     created: row.created_at,
     updated: row.updated_at,
     status: row.status,
+    ...(row.delivery_result ? { delivery: row.delivery_result } : {}),
     error: row.error,
   }
 }
@@ -105,12 +106,13 @@ export const make = Effect.gen(function* () {
           // Recover the admission fact separately from deciding whether pending work may wake.
           if (!reason && (yield* inbox.list(task.session_id)).some((item) => item.id === inboxID))
             yield* execution.wake(task.session_id)
-          return { status: "admitted" as const, error: null, pause: false }
+          return { status: "admitted" as const, delivery: "confirmed" as const, error: null, pause: false }
         }
-        if (reason) return { status: "skipped" as const, error: reason, pause: true }
+        if (reason) return { status: "skipped" as const, delivery: "none" as const, error: reason, pause: true }
         if (run.trigger === "scheduled" && AutomationSchedule.missed(task.schedule, run.scheduled_at, Date.now()))
           return {
             status: "missed" as const,
+            delivery: "none" as const,
             error: "Calendar occurrence missed by more than 10 minutes",
             pause: false,
           }
@@ -124,6 +126,7 @@ export const make = Effect.gen(function* () {
             if (observation._tag === "Failure")
               return {
                 status: "failed" as const,
+                delivery: "none" as const,
                 error: `Condition failed: ${observation.failure.message}`.slice(0, 1000),
                 pause: true,
               }
@@ -162,6 +165,7 @@ export const make = Effect.gen(function* () {
           if (!result.matched)
             return {
               status: "skipped" as const,
+              delivery: "none" as const,
               error: `Condition not met: ${result.summary}`.slice(0, 1000),
               pause: false,
             }
@@ -173,10 +177,15 @@ export const make = Effect.gen(function* () {
           delivery: "queue",
           metadata: { source: "automation", automationID: task.id, automationRunID: run.id },
         })
-        return { status: "admitted" as const, error: null, pause: false }
+        return { status: "admitted" as const, delivery: "confirmed" as const, error: null, pause: false }
       }).pipe(
         Effect.catchTag("Hook.BlockedError", (error) =>
-          Effect.succeed({ status: "failed" as const, error: error.reason.slice(0, 1000), pause: true }),
+          Effect.succeed({
+            status: "failed" as const,
+            delivery: "none" as const,
+            error: error.reason.slice(0, 1000),
+            pause: true,
+          }),
         ),
         Effect.exit,
       )
@@ -187,6 +196,9 @@ export const make = Effect.gen(function* () {
           ? decision.value
           : {
               status: "failed" as const,
+              // An unknown failure may have happened after the durable admission boundary.
+              // Keep it terminal so restart recovery never repeats a possibly delivered prompt.
+              delivery: "uncertain" as const,
               pause: true,
               error: Cause.prettyErrors(decision.cause)
                 .map((error) => error.message || error.name)
@@ -198,7 +210,12 @@ export const make = Effect.gen(function* () {
           Effect.gen(function* () {
             yield* tx
               .update(AutomationRunTable)
-              .set({ status: result.status, error: result.error, updated_at: Date.now() })
+              .set({
+                status: result.status,
+                delivery_result: result.delivery,
+                error: result.error,
+                updated_at: Date.now(),
+              })
               .where(and(eq(AutomationRunTable.id, run.id), eq(AutomationRunTable.status, "pending")))
               .run()
             if (result.pause)
@@ -252,6 +269,7 @@ export const make = Effect.gen(function* () {
             trigger: "scheduled" as const,
             scheduled_at: row.next_at,
             status: missed ? ("missed" as const) : ("pending" as const),
+            delivery_result: missed ? ("none" as const) : null,
             condition_result: null,
             owner,
             error: missed ? "Calendar occurrence missed by more than 10 minutes" : null,
@@ -451,6 +469,7 @@ export const make = Effect.gen(function* () {
           trigger: "manual",
           scheduled_at: now,
           status: "pending",
+          delivery_result: null,
           owner,
           error: null,
           created_at: now,

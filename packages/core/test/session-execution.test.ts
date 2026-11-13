@@ -23,7 +23,7 @@ import { SessionMessage } from "@opencode/core/session/message"
 import { SessionRunner } from "@opencode/core/session/runner/index"
 import { SessionInboxTable, SessionTable } from "@opencode/core/session/sql"
 import { SessionStore } from "@opencode/core/session/store"
-import { Cause, Context, Deferred, Effect, Exit, Fiber, Layer, LayerMap, Scope } from "effect"
+import { Cause, Context, Deferred, Effect, Exit, Fiber, Layer, LayerMap, Schema, Scope } from "effect"
 import { eq } from "drizzle-orm"
 import { testEffect } from "./lib/effect"
 
@@ -34,6 +34,42 @@ const it = testEffect(
 )
 
 describe("SessionExecution lifecycle", () => {
+  it.effect("publishes one ordered durable activity epoch for a child busy cycle", () =>
+    Effect.gen(function* () {
+      const database = yield* Database.Service
+      const bus = yield* Bus.Service
+      const parent = Session.ID.make("ses_activity_parent")
+      const child = Session.ID.make("ses_activity_child")
+      yield* seedSessions(database, [parent])
+      yield* seedSessions(database, [child], { parent_id: parent })
+      const started = yield* Deferred.make<void>()
+      const release = yield* Deferred.make<void>()
+      const observed: Array<SessionEvent.Subagent.Updated["data"]> = []
+      yield* bus.listen((event) =>
+        Schema.is(SessionEvent.Subagent.Updated)(event)
+          ? Effect.sync(() => observed.push(event.data))
+          : Effect.void,
+      )
+      const scope = yield* Scope.make()
+      yield* Effect.addFinalizer(() => Scope.close(scope, Exit.void))
+      const context = yield* buildExecution(scope, () =>
+        Deferred.succeed(started, undefined).pipe(Effect.andThen(Deferred.await(release))),
+      )
+      const execution = Context.get(context, SessionExecution.Service)
+      const fiber = yield* execution.resume(child).pipe(Effect.forkChild)
+      yield* Deferred.await(started)
+      yield* Deferred.succeed(release, undefined)
+      yield* Fiber.join(fiber)
+
+      expect(observed.map(({ state, sequence }) => ({ state, sequence }))).toEqual([
+        { state: "working", sequence: 0 },
+        { state: "completed", sequence: 1 },
+      ])
+      expect(new Set(observed.map((event) => event.epoch)).size).toBe(1)
+      expect(observed.every((event) => event.sessionID === child && event.parentID === parent)).toBe(true)
+    }),
+  )
+
   it.effect("settles only after nested subagent results are acknowledged, without waiting on background services", () =>
     Effect.gen(function* () {
       const database = yield* Database.Service

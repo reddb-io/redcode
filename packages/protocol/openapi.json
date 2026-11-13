@@ -37591,6 +37591,17 @@
             "type": "string",
             "enum": ["pending", "admitted", "failed", "skipped", "missed"]
           },
+          "delivery": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["none", "confirmed", "partial", "uncertain"]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "error": {
             "anyOf": [
               {

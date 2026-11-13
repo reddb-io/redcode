@@ -119,6 +119,7 @@ export type AutomationRun = {
   created: number
   updated: number
   status: "pending" | "admitted" | "failed" | "skipped" | "missed"
+  delivery?: "none" | "confirmed" | "partial" | "uncertain" | undefined
   error: string | null
 }
 
@@ -1992,6 +1993,24 @@ export type SessionExecutionInterrupted = {
   durable: { aggregateID: string; seq: number; version: 1 }
   location?: LocationRef
   data: { sessionID: string; reason: "user" | "shutdown" | "superseded" | "inactivity" }
+}
+
+export type SessionSubagentUpdated = {
+  id: string
+  created: number
+  metadata?: { [x: string]: any }
+  type: "session.subagent.updated"
+  durable: { aggregateID: string; seq: number; version: 1 }
+  location?: LocationRef
+  data: {
+    sessionID: string
+    parentID: string
+    epoch: string
+    sequence: number
+    state: "working" | "waiting" | "blocked" | "completed" | "failed" | "interrupted"
+    operation?: string
+    since: number
+  }
 }
 
 export type SessionInstructionsUpdated = {
@@ -4675,6 +4694,7 @@ export type SessionEventDurable =
   | SessionExecutionSucceeded
   | SessionExecutionFailed
   | SessionExecutionInterrupted
+  | SessionSubagentUpdated
   | SessionInstructionsUpdated
   | SessionSynthetic
   | SessionSkillActivated
@@ -4734,6 +4754,7 @@ export type V2Event =
   | SessionSettled
   | SessionExecutionFailed
   | SessionExecutionInterrupted
+  | SessionSubagentUpdated
   | SessionInstructionsUpdated
   | SessionSynthetic
   | SessionSkillActivated

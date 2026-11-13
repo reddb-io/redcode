@@ -308,7 +308,9 @@ export const ChatGPTPlugin = define({
         Effect.gen(function* () {
           if (!chatgpt) return
           // Mirror the Codex client's session headers: ChatGPT derives prompt-cache affinity from session-id.
-          evt.headers["session-id"] = (yield* sessions.cacheRoot(evt.sessionID)) ?? evt.sessionID
+          // Core already scopes this opaque affinity to provider, credential and
+          // root delegation. Reusing it here avoids cross-account cache affinity.
+          evt.headers["session-id"] = evt.headers["x-session-affinity"] ?? (yield* sessions.cacheRoot(evt.sessionID)) ?? evt.sessionID
           evt.headers["thread-id"] = evt.sessionID
           evt.headers["x-client-request-id"] = evt.sessionID
         }),
