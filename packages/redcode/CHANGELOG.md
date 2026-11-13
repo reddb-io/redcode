@@ -1,5 +1,11 @@
 # @reddb-io/redcode
 
+## 0.87.33
+
+### Patch Changes
+
+- Harden credential, MCP OAuth, tool-input, plugin-redaction, and persistent-terminal isolation while preserving compatibility with older clients and servers.
+
 ## 0.87.32
 
 ### Patch Changes
