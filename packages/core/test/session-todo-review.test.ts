@@ -269,6 +269,22 @@ describe("SessionTodoStore dependency graph", () => {
           .pipe(Effect.flip)).message,
       ).toContain("Duplicate dependencies")
       expect(yield* todos.get(sessionID)).toEqual(linked)
+
+      const hierarchy = (yield* todos.write({
+        sessionID,
+        todos: [{ id: created[2]!.id, parentID: created[0]!.id }],
+      })).todos
+      expect(hierarchy.find((task) => task.id === created[2]!.id)?.parentID).toBe(created[0]!.id)
+      expect(
+        (yield* todos
+          .write({ sessionID, todos: [{ id: created[0]!.id, parentID: created[2]!.id }] })
+          .pipe(Effect.flip)).message,
+      ).toContain("hierarchy contains a cycle")
+      expect(
+        (yield* todos.write({ sessionID, todos: [{ id: created[0]!.id, parentID: "missing" }] }).pipe(Effect.flip))
+          .message,
+      ).toContain("Unknown parent")
+      expect(yield* todos.get(sessionID)).toEqual(hierarchy)
     }),
   )
 

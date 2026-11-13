@@ -11,6 +11,7 @@ import { WorkspaceTabs } from "@reddb-io/design-system/app/WorkspaceTabs"
 import { ErrorBoundary } from "@reddb-io/design-system/app/ErrorBoundary"
 import { breakdownItems } from "@reddb-io/design-system/data/BreakdownBar"
 import { SessionTodo } from "@opencode/schema/session-todo"
+import { taskTree } from "@opencode/util/task-tree"
 import type { createAgentTaskServices } from "./agents-tasks"
 
 export function AgentTasksView(props: { services: ReturnType<typeof createAgentTaskServices> }) {
@@ -202,8 +203,8 @@ function AgentTasksContent(props: { services: ReturnType<typeof createAgentTaskS
           {!view.loading && view.tasks.length === 0 && <p role="status">{language.t("agentTasks.empty")}</p>}
           <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(180px,1fr)_minmax(0,2fr)]">
             <ul aria-label={language.t("agentTasks.dependencies")} className="min-w-0 space-y-4">
-              {view.tasks.map((item, index) => (
-                <li key={item.id ?? index}>
+              {taskTree(view.tasks).map(({ task: item, depth }, index) => (
+                <li key={item.id ?? index} style={{ paddingInlineStart: `${Math.min(depth, 6) * 12}px` }}>
                   <Button
                     variant={item.id === view.taskID ? "secondary" : "ghost"}
                     className="h-auto min-h-[var(--reddb-spatial-target-min)] w-full justify-start whitespace-normal text-start"
@@ -322,6 +323,9 @@ function AgentTasksContent(props: { services: ReturnType<typeof createAgentTaskS
                           <div className="flex flex-wrap items-center gap-2">
                             <h3 className="text-13-medium">{SessionTodo.label(task)}</h3>
                             <Badge>{status(task.status)}</Badge>
+                            <Button variant="ghost" disabled={view.busy} onClick={services.discuss}>
+                              {language.t("agentTasks.discuss")}
+                            </Button>
                           </div>
                           <p className="mt-2 whitespace-pre-wrap">{task.content}</p>
                           {task.reason && <p className="mt-2 whitespace-pre-wrap">{task.reason}</p>}

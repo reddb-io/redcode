@@ -1,4 +1,11 @@
 export const dict = {
+  "agentTasks.discuss": "Discutir",
+  "agentTasks.activity": "Atividade das tarefas",
+  "agentTasks.openActivity": "Abrir árvore de tarefas",
+  "agentTasks.activityActive": "{{count}} ativas",
+  "agentTasks.activitySubagents": "{{count}} subagentes",
+  "agentTasks.activityWaiting": "{{count}} aguardando",
+  "agentTasks.activityBlocked": "{{count}} bloqueadas",
   "voice.start": "Gravar áudio",
   "voice.stop": "Parar e transcrever",
   "voice.cancel": "Cancelar gravação",

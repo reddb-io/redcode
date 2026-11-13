@@ -1410,6 +1410,7 @@ export type SessionTodoListOutput = ReadonlyArray<{
       }
     | undefined
   readonly dependencies?: ReadonlyArray<string> | undefined
+  readonly parentID?: string | undefined
   readonly inputs?: ReadonlyArray<{ readonly id: string; readonly hash: string }> | undefined
   readonly integration?:
     | {
@@ -1494,6 +1495,7 @@ export type SessionTodoGraphOutput = {
         }
       | undefined
     readonly dependencies?: ReadonlyArray<string> | undefined
+    readonly parentID?: string | undefined
     readonly inputs?: ReadonlyArray<{ readonly id: string; readonly hash: string }> | undefined
     readonly integration?:
       | {
@@ -1626,6 +1628,7 @@ export type SessionTodoReconcileOutput = {
         }
       | undefined
     readonly dependencies?: ReadonlyArray<string> | undefined
+    readonly parentID?: string | undefined
     readonly inputs?: ReadonlyArray<{ readonly id: string; readonly hash: string }> | undefined
     readonly integration?:
       | {
@@ -1730,6 +1733,7 @@ export type SessionTodoReconcileOutput = {
           }
         | undefined
       readonly dependencies?: ReadonlyArray<string> | undefined
+      readonly parentID?: string | undefined
       readonly inputs?: ReadonlyArray<{ readonly id: string; readonly hash: string }> | undefined
       readonly integration?:
         | {
@@ -1913,6 +1917,7 @@ export type SessionTodoPrepareIntegrationOutput = {
         }
       | undefined
     readonly dependencies?: ReadonlyArray<string> | undefined
+    readonly parentID?: string | undefined
     readonly inputs?: ReadonlyArray<{ readonly id: string; readonly hash: string }> | undefined
     readonly integration?:
       | {

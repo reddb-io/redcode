@@ -32,7 +32,27 @@ export function validate(tasks: ReadonlyArray<SessionTodo.Info>) {
     visiting.delete(task.id)
     visited.add(task.id)
   }
-  return tasks.map(visit).find((problem) => problem !== undefined)
+  const dependencyProblem = tasks.map(visit).find((problem) => problem !== undefined)
+  if (dependencyProblem) return dependencyProblem
+
+  const parentVisiting = new Set<string>()
+  const parentVisited = new Set<string>()
+  const visitParent = (task: SessionTodo.Info): string | undefined => {
+    if (!task.id || parentVisited.has(task.id)) return
+    if (parentVisiting.has(task.id)) return `Task hierarchy contains a cycle at ${task.id}`
+    parentVisiting.add(task.id)
+    if (task.parentID) {
+      const parent = indexed.get(task.parentID)
+      if (!parent) return `Unknown parent ${task.parentID} for task ${task.id}`
+      if ((parent.phase ?? "build") !== (task.phase ?? "build"))
+        return `Task ${task.id} cannot have a parent from another phase: ${task.parentID}`
+      const problem = visitParent(parent)
+      if (problem) return problem
+    }
+    parentVisiting.delete(task.id)
+    parentVisited.add(task.id)
+  }
+  return tasks.map(visitParent).find((problem) => problem !== undefined)
 }
 
 /** Execution/status updates do not change the contract a child was asked to deliver. */
@@ -42,6 +62,7 @@ export function fingerprint(task: SessionTodo.Info, tasks: ReadonlyArray<Session
     criterion: task.criterion,
     source: task.source,
     phase: task.phase ?? "build",
+    parentID: task.parentID,
     dependencies: (task.dependencies ?? []).map((id) => {
       const dependency = tasks.find((entry) => entry.id === id)
       return { id, hash: dependency ? proof(dependency) : undefined }

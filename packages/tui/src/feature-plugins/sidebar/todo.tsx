@@ -2,6 +2,7 @@ import type { DesignFeedbackItem, DesignInfo } from "@opencode/client"
 import { SessionTodo } from "@opencode/schema/session-todo"
 import { Plugin } from "@opencode/plugin/tui"
 import { designRoundSummary, outcomeTally } from "@opencode/util/design-round-summary"
+import { taskTree } from "@opencode/util/task-tree"
 import type { RGBA } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/solid"
 import { createMemo, createResource, createSignal, For, onCleanup, Show } from "solid-js"
@@ -88,8 +89,43 @@ export function SidebarTodo(props: { context: Plugin.Context; sessionID: string 
   const listed = createMemo(() =>
     folded().length && !tasksOpen() ? visible().filter((item) => (item.phase ?? "build") !== "design") : visible(),
   )
-  const shown = createMemo(() => (all() ? listed() : listed().slice(0, Math.max(3, dimensions().height - 20))))
+  const tree = createMemo(() => taskTree(listed()))
+  const shown = createMemo(() => (all() ? tree() : tree().slice(0, Math.max(3, dimensions().height - 20))))
   const designError = () => (agent() === "design" ? designs()?.error : undefined)
+  const discuss = async (taskID: string) => {
+    const task = listed().find((item) => item.id === taskID)
+    const parent = props.context.data.session.get(props.sessionID)
+    if (!task || !parent) return
+    try {
+      const child = await props.context.client.session.create({
+        parentID: parent.id,
+        title: `Discuss · ${task.title ?? task.content}`.slice(0, 120),
+        metadata: {
+          ...(parent.metadata ?? {}),
+          redcode: { kind: "task-discussion", taskID },
+        },
+      })
+      if (!props.context.ui.tabs.focus(child.id))
+        props.context.ui.router.navigate({ type: "session", sessionID: child.id })
+    } catch (error) {
+      props.context.ui.toast.show({ variant: "error", message: errorMessage(error) })
+    }
+  }
+  props.context.keymap.layer(() => ({
+    commands: [
+      {
+        id: "task.discuss",
+        title: "Discuss selected task",
+        group: "session",
+        palette: true,
+        enabled: () => !!expanded() && listed().some((item) => item.id === expanded()),
+        run: () => {
+          const taskID = expanded()
+          if (taskID) void discuss(taskID)
+        },
+      },
+    ],
+  }))
 
   return (
     <Show when={visible().length > 0 || tasks()?.error || reviews().length > 0 || designError()}>
@@ -212,7 +248,8 @@ export function SidebarTodo(props: { context: Plugin.Context; sessionID: string 
         </Show>
         <Show when={listed().length <= 2 || open()}>
           <For each={shown()}>
-            {(item) => {
+            {(row) => {
+              const item = row.task
               const key = item.id ?? item.content
               const tone = ["in_progress", "blocked"].includes(item.status)
                 ? theme.text.feedback.warning.base
@@ -220,7 +257,10 @@ export function SidebarTodo(props: { context: Plugin.Context; sessionID: string 
               // Collapsed, a task takes its title line and at most one reason line, however long the
               // model wrote it; a click shows the full task and what it is checked against.
               return (
-                <box onMouseUp={() => setExpanded(expanded() === key ? undefined : key)}>
+                <box
+                  paddingLeft={Math.min(row.depth, 6) * 2}
+                  onMouseUp={() => setExpanded(expanded() === key ? undefined : key)}
+                >
                   <box flexDirection="row" gap={0}>
                     <text flexShrink={0} fg={tone}>
                       [
@@ -269,15 +309,22 @@ export function SidebarTodo(props: { context: Plugin.Context; sessionID: string 
                           </text>
                         )}
                       </For>
+                      <Show when={item.id}>
+                        {(id) => (
+                          <text fg={theme.text.action.secondary.base} onMouseUp={() => void discuss(id())}>
+                            Discuss in child conversation
+                          </text>
+                        )}
+                      </Show>
                     </box>
                   </Show>
                 </box>
               )
             }}
           </For>
-          <Show when={listed().length > shown().length}>
+          <Show when={tree().length > shown().length}>
             <text fg={theme.text.action.secondary.base} onMouseUp={() => setAll(true)}>
-              +{listed().length - shown().length} more
+              +{tree().length - shown().length} more
             </text>
           </Show>
         </Show>

@@ -3543,6 +3543,7 @@ export type Todo = {
   criterion?: string
   evidence?: TodoEvidence
   dependencies?: Array<string>
+  parentID?: string
   inputs?: Array<{ id: string; hash: string }>
   integration?: TodoIntegration
   integrationApplication?: TodoIntegrationApplication

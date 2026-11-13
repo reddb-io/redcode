@@ -13,6 +13,7 @@ export default function DeliveryTaskFlow(props: {
   current: string
   copy: Record<string, string>
   open(id: string): void
+  discuss(taskID: string): void | Promise<void>
 }) {
   const [selected, setSelected] = useState<string | null>(null)
   const entries = props.tasks.map((task, index) => ({
@@ -85,6 +86,11 @@ export default function DeliveryTaskFlow(props: {
             </div>
           )}
           {task.reason && <p className="mb-0 mt-2 whitespace-pre-wrap break-words text-caption">{task.reason}</p>}
+          {task.id && (
+            <Button size="sm" variant="ghost" className="mt-2" onClick={() => props.discuss(task.id!)}>
+              {props.copy.discuss}
+            </Button>
+          )}
           <h5 className="mb-1 mt-3 text-eyebrow text-ink-muted">{props.copy.prerequisites}</h5>
           {dependencies.length ? (
             <ul aria-label={props.copy.prerequisites} className="m-0 list-none space-y-2 p-0">

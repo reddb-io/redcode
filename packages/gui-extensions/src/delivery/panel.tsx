@@ -149,6 +149,20 @@ export default function DeliveryPanel(props: { session: MountedSession; visible:
           const session = props.session.server.data.session.get(id)
           if (session) ctx.sessions.open(props.session.server.id, session)
         },
+        discuss: async (taskID: string) => {
+          const task = graph.data?.tasks.find((item) => item.id === taskID)
+          const parent = props.session.server.data.session.get(root())
+          if (!task || !parent) return
+          const child = await props.session.server.client.session.create({
+            parentID: parent.id,
+            title: `Discuss · ${task.title ?? task.content}`.slice(0, 120),
+            metadata: {
+              ...(parent.metadata ?? {}),
+              redcode: { kind: "task-discussion", taskID },
+            },
+          })
+          ctx.sessions.open(props.session.server.id, child)
+        },
         review: props.onReview,
       }}
     />

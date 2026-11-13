@@ -58,6 +58,7 @@ export function DeliveryView(props: {
   section(value: DeliverySection): void
   refresh(): void
   open(id: string): void
+  discuss(taskID: string): void | Promise<void>
   review?: () => void
 }) {
   return <DeliveryContent key={props.view.key} {...props} />
@@ -69,9 +70,11 @@ function DeliveryContent(props: Parameters<typeof DeliveryView>[0]) {
   const copy = view.copy
   const [selected, setSelected] = useState<string | null>(view.current)
   const [expanded, setExpanded] = useState<readonly string[]>([view.root])
-  const [taskView, setTaskView] = useState("list")
+  const [taskView, setTaskView] = useState("tree")
+  const [selectedTask, setSelectedTask] = useState<string | null>(null)
   const agent = view.sessions.find((item) => item.id === selected)
   const completed = view.tasks.filter((item) => item.status === "completed").length
+  const trackedTaskIDs = new Set(view.tasks.flatMap((task) => (task.id ? [task.id] : [])))
   const tasks: ComponentProps<typeof TaskList>["items"] = view.tasks.map((task, index) => ({
     id: task.id ?? `legacy-${index}`,
     title: task.title ?? task.content,
@@ -107,6 +110,15 @@ function DeliveryContent(props: Parameters<typeof DeliveryView>[0]) {
     view.sessions
       .filter((item) => (parent ? item.parentID === parent : item.id === view.root))
       .map((item) => ({ id: item.id, label: item.title ?? item.id, children: nodes(item.id) }))
+  const taskNodes = (parent: string | undefined): TreeNode[] =>
+    view.tasks
+      .filter((item) => (parent ? item.parentID === parent : !item.parentID) && item.id)
+      .map((item) => ({
+        id: item.id!,
+        label: item.title ?? item.content,
+        children: taskNodes(item.id),
+      }))
+  const selectedTaskInfo = view.tasks.find((task) => task.id === selectedTask)
   return (
     <SidebarPanel
       title={copy.title}
@@ -298,7 +310,7 @@ function DeliveryContent(props: Parameters<typeof DeliveryView>[0]) {
                 )}
                 {!!view.tasks.length && (
                   <div role="group" aria-label={copy.taskViews} className="mb-2 flex gap-1">
-                    {["list", "flow"].map((mode) => (
+                    {["tree", "list", "flow"].map((mode) => (
                       <Button
                         key={mode}
                         size="sm"
@@ -327,10 +339,57 @@ function DeliveryContent(props: Parameters<typeof DeliveryView>[0]) {
                       current={view.current}
                       copy={copy}
                       open={props.open}
+                      discuss={props.discuss}
                     />
                   </Suspense>
+                ) : taskView === "tree" && view.tasks.length ? (
+                  <div className="flex min-w-0 flex-col gap-2">
+                    <TreeView
+                      label={copy.taskTree}
+                      nodes={taskNodes(undefined)}
+                      selected={selectedTask}
+                      onSelectedChange={setSelectedTask}
+                      trailing={(node) => {
+                        const task = view.tasks.find((item) => item.id === node.id)
+                        return task ? (
+                          <Badge tone={task.status === "blocked" ? "warning" : "neutral"}>
+                            {copy[task.status === "in_progress" ? "inProgress" : task.status] ?? task.status}
+                          </Badge>
+                        ) : null
+                      }}
+                    />
+                    {selectedTaskInfo && (
+                      <div className="rounded-lg border border-elevation-raised-border p-3">
+                        <p className="m-0 whitespace-pre-wrap text-caption">{selectedTaskInfo.content}</p>
+                        {selectedTaskInfo.criterion && (
+                          <p className="mb-0 mt-2 whitespace-pre-wrap text-caption text-ink-muted">
+                            {selectedTaskInfo.criterion}
+                          </p>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="mt-2"
+                          onClick={() => selectedTaskInfo.id && props.discuss(selectedTaskInfo.id)}
+                        >
+                          {copy.discuss}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
                 ) : (
-                  <TaskList label={copy.tasks} items={tasks} emptyLabel={copy.noTasks} />
+                  <TaskList
+                    label={copy.tasks}
+                    items={tasks}
+                    emptyLabel={copy.noTasks}
+                    actions={(item) =>
+                      trackedTaskIDs.has(item.id) ? (
+                        <Button size="sm" variant="ghost" onClick={() => props.discuss(item.id)}>
+                          {copy.discuss}
+                        </Button>
+                      ) : null
+                    }
+                  />
                 )}
               </section>
               <section aria-label={copy.evidence}>

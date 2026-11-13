@@ -159,6 +159,21 @@ export function createAgentTaskServices(props: { server: ServerConnection.Any; o
         const child = await api.session.get({ sessionID })
         if (lifetime.active) props.open(child)
       }),
+    discuss: () =>
+      void run(async () => {
+        const selected = task()
+        const parent = session()
+        if (!selected?.id || !parent) return
+        const child = await api.session.create({
+          parentID: parent.id,
+          title: `Discuss · ${selected.title ?? selected.content}`.slice(0, 120),
+          metadata: {
+            ...(parent.metadata ?? {}),
+            redcode: { kind: "task-discussion", taskID: selected.id },
+          },
+        })
+        if (lifetime.active) props.open(child)
+      }),
     refresh: () => void run(async () => {}),
     prepare: () =>
       void run(async () => {

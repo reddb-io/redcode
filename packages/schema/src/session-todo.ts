@@ -97,6 +97,7 @@ export const PlanTask = Schema.Struct({
   criterion: Schema.String.check(Schema.isMinLength(1)),
   quote: Schema.String.check(Schema.isMinLength(1)),
   dependencies: optional(Schema.Array(Schema.String.check(Schema.isMinLength(1)))),
+  parentID: optional(Schema.String.check(Schema.isMinLength(1))),
 }).annotate({ identifier: "Todo.PlanTask" })
 export type PlanTask = typeof PlanTask.Type
 
@@ -120,6 +121,12 @@ const tracking = {
 
 export const Input = Schema.Struct({
   ...tracking,
+  parentID: optional(
+    Schema.String.check(Schema.isMinLength(1)).annotate({
+      description:
+        "Parent task ID used only for Task Tree hierarchy. It does not imply a dependency; an empty relationship is represented by omission.",
+    }),
+  ),
   dependencies: optional(
     Schema.Array(Schema.String.check(Schema.isMinLength(1))).annotate({
       description:
@@ -269,6 +276,7 @@ export const Info = Schema.Struct({
   criterion: optional(Schema.String),
   evidence: optional(Evidence),
   dependencies: optional(Schema.Array(Schema.String)),
+  parentID: optional(Schema.String),
   inputs: optional(Schema.Array(Schema.Struct({ id: Schema.String, hash: Schema.String }))),
   integration: optional(Integration),
   integrationApplication: optional(IntegrationApplication),

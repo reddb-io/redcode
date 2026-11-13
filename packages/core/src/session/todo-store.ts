@@ -184,6 +184,7 @@ const make = Effect.gen(function* () {
           (requirement && !before?.source && (paraphrased || !source) ? requirement : undefined) ||
           (source ? content : undefined)
         const dependencies = item.dependencies ?? before?.dependencies
+        const parentID = item.parentID ?? before?.parentID
         // Evidence is a claim only when it cites a result; an explanation on its own asks for the
         // newest verification to be selected and says what it shows.
         const claim = item.evidence?.callID ? { ...item.evidence, callID: item.evidence.callID } : undefined
@@ -279,6 +280,7 @@ const make = Effect.gen(function* () {
           ...(source ? { source } : {}),
           ...(criterion ? { criterion } : {}),
           ...(dependencies !== undefined ? { dependencies } : {}),
+          ...(parentID !== undefined ? { parentID } : {}),
           ...(before?.integration ? { integration: before.integration } : {}),
           ...(before?.integrationApplication ? { integrationApplication: before.integrationApplication } : {}),
           ...(kept && before?.inputs ? { inputs: before.inputs } : {}),
@@ -332,6 +334,11 @@ const make = Effect.gen(function* () {
                   (entry) => entry.source?.id === input.origin?.id && entry.source?.key === key,
                 )?.id ?? key,
             ),
+            parentID: task.parentID
+              ? ([...previous, ...changes].find(
+                  (entry) => entry.source?.id === input.origin?.id && entry.source?.key === task.parentID,
+                )?.id ?? task.parentID)
+              : undefined,
           }))
         : changes
     const combined = previous
@@ -401,6 +408,7 @@ const make = Effect.gen(function* () {
         before.priority === task.priority &&
         before.reason === task.reason &&
         SessionTaskFacts.hash(before.dependencies) === SessionTaskFacts.hash(task.dependencies) &&
+        before.parentID === task.parentID &&
         SessionTaskFacts.hash(before.inputs) === SessionTaskFacts.hash(inputs) &&
         SessionTaskFacts.hash(before.source) === SessionTaskFacts.hash(task.source) &&
         SessionTaskFacts.hash(before.criterion) === SessionTaskFacts.hash(task.criterion) &&
@@ -718,6 +726,7 @@ const make = Effect.gen(function* () {
                       scopeChange: task.scopeChange,
                       closedAt: task.closedAt,
                       dependencies: task.dependencies,
+                      parentID: task.parentID,
                       inputs: task.inputs,
                       integration: task.integration,
                       integrationApplication: task.integrationApplication,
@@ -742,6 +751,7 @@ const make = Effect.gen(function* () {
                         scopeChange: task.scopeChange,
                         closedAt: task.closedAt,
                         dependencies: task.dependencies,
+                        parentID: task.parentID,
                         inputs: task.inputs,
                         integration: task.integration,
                         integrationApplication: task.integrationApplication,

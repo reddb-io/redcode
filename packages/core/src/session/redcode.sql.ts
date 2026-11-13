@@ -67,6 +67,7 @@ export const TodoTable = sqliteTable(
         | "scopeChange"
         | "closedAt"
         | "dependencies"
+        | "parentID"
         | "inputs"
         | "integration"
         | "integrationApplication"
