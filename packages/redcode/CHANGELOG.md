@@ -1,5 +1,11 @@
 # @reddb-io/redcode
 
+## 0.87.35
+
+### Patch Changes
+
+- Add hierarchical Task Trees, a compact live activity strip above the composer, and durable task-discussion conversations across desktop, web, and TUI.
+
 ## 0.87.34
 
 ### Patch Changes
