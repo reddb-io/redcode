@@ -8,6 +8,7 @@ import { DesignPlugin } from "@opencode/core/plugin/design"
 import { Event } from "@opencode/schema/event"
 import { McpEvent } from "@opencode/schema/mcp-event"
 import { it } from "../lib/effect"
+import { watchFrom } from "../fixture/bus"
 import { host } from "./host"
 
 it.effect("refreshes Design permissions when an MCP connects after agent initialization", () =>
@@ -15,6 +16,10 @@ it.effect("refreshes Design permissions when an MCP connects after agent initial
     const events = yield* PubSub.unbounded<Event.Payload>()
     const tools = yield* PubSub.subscribe(events)
     const status = yield* PubSub.subscribe(events)
+    const subscribe = ((definition: Event.Definition) =>
+      Stream.fromSubscription(definition.type === McpEvent.ToolsChanged.type ? tools : status).pipe(
+        Stream.filter((event) => event.type === definition.type),
+      )) as Bus.Subscribe
     const refreshed = yield* Deferred.make<void>()
     const state = { tools: [] as Mcp.Tool[], apply: () => {} }
     const agent: Types.DeepMutable<Agent.Info> = {
@@ -67,10 +72,8 @@ it.effect("refreshes Design permissions when an MCP connects after agent initial
         Layer.mergeAll(
           Layer.mock(Mcp.Service, { tools: () => Effect.succeed(state.tools) }),
           Layer.mock(Bus.Service, {
-            subscribe: ((definition: Event.Definition) =>
-              Stream.fromSubscription(definition.type === McpEvent.ToolsChanged.type ? tools : status).pipe(
-                Stream.filter((event) => event.type === definition.type),
-              )) as Bus.Subscribe,
+            subscribe,
+            watch: watchFrom(subscribe),
           }),
         ),
       ),

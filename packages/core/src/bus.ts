@@ -1,11 +1,15 @@
 export * as Bus from "./bus.js"
 
-import { Cause, Clock, Context, Effect, Layer, Option, PubSub, Schema, Stream } from "effect"
+import { Cause, Clock, Context, Effect, Exit, Layer, Option, PubSub, Queue, Schema, Semaphore, Stream } from "effect"
 import { Event } from "@opencode/schema/event"
 import type { EventLog } from "@opencode/schema/event-log"
 import { and, asc, eq, gt, lte, sql } from "drizzle-orm"
 import { Database } from "./database/database.js"
-import { EventSequenceTable, EventTable } from "./event/sql.js"
+import { EventJournalKeyTable, EventSequenceTable, EventSubscriptionTable, EventTable } from "./event/sql.js"
+import type { DeliveryFilter } from "./event/sql.js"
+import { EventBuffer } from "./event/buffer.js"
+import { EventJournal } from "#event-journal"
+import { EventKey } from "#event-key"
 import type { Location } from "@opencode/schema/location"
 import { KeyedMutex } from "./effect/keyed-mutex.js"
 import { makeGlobalNode } from "@opencode/util/effect/app-node"
@@ -14,6 +18,9 @@ import { Durable } from "@opencode/schema/durable-event-manifest"
 import { SessionEvent } from "@opencode/schema/session-event"
 import type { SessionID } from "@opencode/schema/session-id"
 import { AbsolutePath } from "@opencode/schema/schema"
+import { Global } from "@opencode/util/global"
+import { createHash, randomBytes } from "node:crypto"
+import path from "node:path"
 
 export type Subscriber<D extends Event.Definition = Event.Definition> = (event: Event.Payload<D>) => Effect.Effect<void>
 export type Unsubscribe = Effect.Effect<void>
@@ -125,6 +132,8 @@ export interface Subscribe {
    * With an ambient Location, delivery is restricted to that Location and global
    * events. Unlocated Session events use the Session's owner at publication time.
    * Session moves reach both the old and new Location, without changing the event.
+   * Slow consumers spill to encrypted temporary files; these do not survive a restart.
+   * Publication rejects values that cannot be safely serialized before committing.
    */
   (): Stream.Stream<Event.Payload>
   <D extends Event.Definition>(definition: D): Stream.Stream<Event.Payload<D>>
@@ -146,6 +155,30 @@ export interface Interface {
     events: I,
   ) => Effect.Effect<PublishResult<I>>
   readonly subscribe: Subscribe
+  /**
+   * Registers a stable consumer before returning its delivery loop. Registration and pending
+   * deliveries survive shutdown. The handler can run more than once and must be idempotent;
+   * an event is acknowledged only after the handler succeeds. Requires local key storage.
+   */
+  readonly consume: <const D extends readonly [Event.Definition, ...Event.Definition[]]>(
+    id: string,
+    definitions: D,
+    handle: (event: SubscribePayload<D>) => Effect.Effect<void>,
+    options?: { readonly global?: boolean; readonly filter?: DeliveryFilter },
+  ) => Effect.Effect<Effect.Effect<void>>
+  /** Uses durable consumption where local key storage is available, otherwise a live stream. */
+  readonly watch: Interface["consume"]
+  /** Coalesces invalidations while acknowledging every included event only after the handler succeeds. */
+  readonly watchBatch: <const D extends readonly [Event.Definition, ...Event.Definition[]]>(
+    id: string,
+    definitions: D,
+    onPending: Effect.Effect<void>,
+    handle: (events: readonly SubscribePayload<D>[]) => Effect.Effect<void>,
+  ) => Effect.Effect<Effect.Effect<void>>
+  readonly subscribeTypes: (
+    types: readonly string[],
+    options?: { readonly predicate?: (event: Event.Payload) => boolean },
+  ) => Stream.Stream<Event.Payload>
   /**
    * Durable, ordered per-aggregate log read. Forked aggregates may reserve an
    * inherited prefix before their first child-authored event. `follow: false`
@@ -182,7 +215,7 @@ interface Options {
 export function configured(options?: Options) {
   return makeGlobalNode({
     service: Service,
-    deps: [Database.node],
+    deps: [Database.node, Global.node],
     layer: Layer.effect(
       Service,
       Effect.gen(function* () {
@@ -191,14 +224,36 @@ export function configured(options?: Options) {
         const { Location } = yield* Effect.promise(() => import("./location.js"))
         const { SessionTable } = yield* Effect.promise(() => import("./session/sql.js"))
         const pubsub = {
-          live: yield* PubSub.unbounded<Event.Payload>(),
           durable: new Map<string, Set<PubSub.PubSub<void>>>(),
-          typed: new Map<string, PubSub.PubSub<Event.Payload>>(),
         }
+        const filtered = new Set<{
+          types?: Set<string>
+          matches: (event: Event.Payload) => boolean
+          offer: (event: Event.Payload, definition: Event.Definition, encoded: Uint8Array) => Effect.Effect<void>
+        }>()
         const projectors = new Map<string, Subscriber[]>()
         const listeners = new Array<Subscriber>()
+        const journalWakes = new Set<Queue.Queue<void>>()
+        const dispatch = Semaphore.makeUnsafe(1)
         const durableLocks = KeyedMutex.makeUnsafe<string>()
-        const { db } = yield* Database.Service
+        const database = yield* Database.Service
+        const { db } = database
+        const global = yield* Global.Service
+        let journal: ReturnType<typeof EventJournal.make> | undefined
+        const memoryKey = database.memory ? randomBytes(32) : undefined
+        const openJournal = (create: boolean) => Effect.gen(function* () {
+          if (journal) return journal
+          if (!database.journalKeyStorage) return yield* Effect.die(new Error("Durable event consumers require local key storage"))
+          const registered = yield* db.select().from(EventJournalKeyTable).where(eq(EventJournalKeyTable.id, 1)).get().pipe(Effect.orDie)
+          const key = memoryKey ?? (yield* Effect.promise(() => EventKey.load(global.data, create && !registered)))
+          journal = EventJournal.make(db, key)
+          return journal
+        })
+        const enqueueJournal = (event: Event.Payload, definition: Event.Definition, refs?: readonly Location.Ref[]) => Effect.gen(function* () {
+          const subscriptions = yield* db.select().from(EventSubscriptionTable).all().pipe(Effect.orDie)
+          if (!subscriptions.some((entry) => entry.types.includes(event.type))) return
+          yield* (yield* openJournal(false)).enqueue(event, definition, refs)
+        })
         const logReadPageSize = options?.logReadPageSize ?? 512
         const persist = options?.persist ?? false
         const sessions = new Map<SessionID, Location.Ref>()
@@ -251,33 +306,25 @@ export function configured(options?: Options) {
           }
           // Apply only after the projection transaction commits. A failed move
           // must not redirect events away from the Session's actual location.
-          return () => {
-            for (const [id, ref] of updates) {
-              if (ref) sessions.set(id, ref)
-              else sessions.delete(id)
-            }
-            for (const [event, ref] of resolved) routes.set(event, ref)
+          return {
+            refs: resolved,
+            apply: () => {
+              for (const [id, ref] of updates) {
+                if (ref) sessions.set(id, ref)
+                else sessions.delete(id)
+              }
+              for (const [event, ref] of resolved) routes.set(event, ref)
+            },
           }
         })
 
-        const getOrCreate = (definition: Event.Definition) =>
-          Effect.gen(function* () {
-            const existing = pubsub.typed.get(definition.type)
-            if (existing) return existing
-            const created = yield* PubSub.unbounded<Event.Payload>()
-            pubsub.typed.set(definition.type, created)
-            return created
-          })
-
         yield* Effect.addFinalizer(() =>
           Effect.gen(function* () {
-            yield* PubSub.shutdown(pubsub.live)
             yield* Effect.forEach(
               pubsub.durable.values(),
               (pubsubs) => Effect.forEach(pubsubs, PubSub.shutdown, { discard: true }),
               { discard: true },
             )
-            yield* Effect.forEach(pubsub.typed.values(), PubSub.shutdown, { discard: true })
           }),
         )
 
@@ -289,6 +336,7 @@ export function configured(options?: Options) {
             readonly aggregateID: string
             readonly ownerID?: string
             readonly strictOwner?: boolean
+            readonly publish?: boolean
           },
           commit?: (seq: number) => Effect.Effect<void>,
         ) {
@@ -314,9 +362,7 @@ export function configured(options?: Options) {
             const list = projectors.get(versionedType(definition.type, durable.version)) ?? []
             return yield* Effect.uninterruptible(
               Effect.gen(function* () {
-                const committed = yield* db
-                  .transaction(
-                    () =>
+                const committed = yield* db.transaction(() =>
                       Effect.gen(function* () {
                         const row = yield* db
                           .select({ seq: EventSequenceTable.seq, ownerID: EventSequenceTable.owner_id })
@@ -428,13 +474,16 @@ export function configured(options?: Options) {
                             ])
                             .run()
                             .pipe(Effect.orDie)
+                        if (!input || input.publish) {
+                          const refs = route.refs.get(committed)
+                          yield* enqueueJournal(committed, definition, refs)
+                        }
                         return { aggregateID, seq, event: committed, route }
                       }),
-                    { behavior: "immediate" },
-                  )
-                  .pipe(Effect.orDie)
+                  { behavior: "immediate" },
+                ).pipe(Effect.orDie)
                 if (committed) {
-                  committed.route()
+                  committed.route.apply()
                   yield* Effect.forEach(
                     pubsub.durable.get(committed.aggregateID) ?? [],
                     (wake) => PubSub.publish(wake, undefined),
@@ -453,6 +502,7 @@ export function configured(options?: Options) {
           commit?: PublishOptions["commit"],
         ) {
           return Effect.gen(function* () {
+            yield* Effect.sync(() => EventBuffer.preflight(definition, event.data, event.metadata))
             if (!definition.durable && commit)
               return yield* Effect.die(
                 new InvalidDurableEventError({
@@ -471,14 +521,18 @@ export function configured(options?: Options) {
                   const committed = yield* commitDurableEvent(definition, event as Event.Payload, undefined, commit)
                   if (!committed) return event
                   event = committed.event as Event.Payload<D>
-                  yield* notify(event as Event.Payload, true)
+                  yield* notify(event as Event.Payload, definition, true)
                   return event
-                }),
+                }).pipe(Effect.uninterruptible),
               )
             }
             const route = yield* prepareRoutes([event as Event.Payload])
-            route()
-            yield* notify(event as Event.Payload, false)
+            yield* db.transaction(() => Effect.gen(function* () {
+              const refs = route.refs.get(event as Event.Payload)
+              yield* enqueueJournal(event as Event.Payload, definition, refs)
+            })).pipe(Effect.orDie)
+            route.apply()
+            yield* notify(event as Event.Payload, definition, false)
             return event
           })
         }
@@ -491,16 +545,29 @@ export function configured(options?: Options) {
             ),
           )
 
-        function notify(event: Event.Payload, isolateListeners: boolean) {
+        function notify(event: Event.Payload, definition: Event.Definition, isolateListeners: boolean) {
           return Effect.gen(function* () {
-            yield* Effect.forEach(
+            const listenersResult = yield* Effect.forEach(
               listeners,
               (listener) => (isolateListeners ? observe(event, listener) : listener(event)),
               { discard: true },
+            ).pipe(Effect.exit)
+            if (Exit.isFailure(listenersResult) && !isolateListeners)
+              return yield* Effect.failCause(listenersResult.cause)
+            yield* Effect.forEach(journalWakes, (wake) => Queue.offer(wake, undefined).pipe(Effect.ignore), { discard: true })
+            const subscribers = Array.from(filtered).filter(
+              (subscriber) => (!subscriber.types || subscriber.types.has(event.type)) && subscriber.matches(event),
             )
-            const typed = pubsub.typed.get(event.type)
-            if (typed) yield* PubSub.publish(typed, event)
-            yield* PubSub.publish(pubsub.live, event)
+            yield* dispatch.withPermit(
+              Effect.gen(function* () {
+                if (!subscribers.length) return
+                const encoded = yield* Effect.sync(() => EventBuffer.encode(event, definition))
+                yield* Effect.forEach(subscribers, (subscriber) => subscriber.offer(event, definition, encoded), {
+                  discard: true,
+                })
+              }).pipe(Effect.uninterruptible),
+            )
+            if (Exit.isFailure(listenersResult)) return yield* Effect.failCause(listenersResult.cause)
           })
         }
 
@@ -548,6 +615,7 @@ export function configured(options?: Options) {
                     (serviceLocation
                       ? { directory: serviceLocation.directory, workspaceID: serviceLocation.workspaceID }
                       : undefined))
+                yield* Effect.sync(() => EventBuffer.preflight(definition, data, options?.metadata))
                 return {
                   definition,
                   aggregateID,
@@ -575,9 +643,7 @@ export function configured(options?: Options) {
             return yield* durableLocks.withLock(aggregateID)(
               Effect.uninterruptible(
                 Effect.gen(function* () {
-                  const committed = yield* db
-                    .transaction(
-                      () =>
+                  const committed = yield* db.transaction(() =>
                         Effect.gen(function* () {
                           const row = yield* db
                             .select({ seq: EventSequenceTable.seq })
@@ -624,6 +690,7 @@ export function configured(options?: Options) {
                                 )
                             }
                             const event = queued[index]
+                            yield* enqueueJournal(event, item.definition, route.refs.get(event))
                             for (const projector of projectors.get(
                               versionedType(item.definition.type, item.definition.durable.version),
                             ) ?? []) {
@@ -649,10 +716,9 @@ export function configured(options?: Options) {
                           if (persist) yield* db.insert(EventTable).values(rows).run().pipe(Effect.orDie)
                           return { events: queued, route }
                         }),
-                      { behavior: "immediate" },
-                    )
-                    .pipe(Effect.orDie)
-                  committed.route()
+                    { behavior: "immediate" },
+                  ).pipe(Effect.orDie)
+                  committed.route.apply()
                   yield* Effect.forEach(
                     pubsub.durable.get(aggregateID) ?? [],
                     (wake) => PubSub.publish(wake, undefined),
@@ -660,7 +726,11 @@ export function configured(options?: Options) {
                       discard: true,
                     },
                   )
-                  yield* Effect.forEach(committed.events, (event) => notify(event, true), { discard: true })
+                  const deliveries = yield* Effect.forEach(committed.events, (event, index) =>
+                    notify(event, payloads[index]!.definition, true).pipe(Effect.exit),
+                  )
+                  const failure = deliveries.find(Exit.isFailure)
+                  if (failure) return yield* Effect.failCause(failure.cause)
                   return committed.events as PublishResult<I>
                 }),
               ),
@@ -686,16 +756,18 @@ export function configured(options?: Options) {
                   type: definition.type,
                   data: Schema.decodeUnknownSync(definition.data)(event.data),
                 } as Event.Payload
+                yield* Effect.sync(() => EventBuffer.preflight(definition, payload.data, payload.metadata))
                 const committed = yield* commitDurableEvent(definition, payload, {
                   seq: event.seq,
                   aggregateID: event.aggregateID,
                   ownerID: options?.ownerID,
                   strictOwner: options?.strictOwner,
+                  publish: options?.publish,
                 })
                 if (committed && options?.publish) {
-                  yield* notify(committed.event, true)
+                  yield* notify(committed.event, definition, true)
                 }
-              }),
+              }).pipe(Effect.uninterruptible),
             )
           })
         }
@@ -723,27 +795,106 @@ export function configured(options?: Options) {
             .pipe(Effect.orDie)
         }
 
-        const local = <A extends Event.Payload>(stream: Stream.Stream<A>) =>
-          Stream.unwrap(
-            Effect.serviceOption(Location.Service).pipe(
-              Effect.map((location) =>
-                Option.match(location, {
-                  onNone: () => stream,
-                  onSome: (location) => {
-                    const matches = (ref: Location.Ref) =>
-                      ref.directory === location.directory && ref.workspaceID === location.workspaceID
-                    return stream.pipe(
-                      Stream.filter((event) => {
-                        const refs = routes.get(event)
-                        if (refs) return refs.some(matches)
-                        return !event.location || matches(event.location)
-                      }),
-                    )
-                  },
+        const registerConsumer = (id: string, definitions: readonly Event.Definition[], options?: { global?: boolean; filter?: DeliveryFilter }) => Effect.gen(function* () {
+          const ambient = Option.getOrUndefined(yield* Effect.serviceOption(Location.Service))
+          const location = ambient && !options?.global ? {
+            directory: ambient.directory,
+            ...(ambient.workspaceID === undefined ? {} : { workspaceID: ambient.workspaceID }),
+          } : undefined
+          const consumerID = location
+            ? `${id}:${createHash("sha256").update(JSON.stringify([location.directory, location.workspaceID ?? null])).digest("hex")}`
+            : id
+          const journal = yield* openJournal(true)
+          yield* journal.register(consumerID, definitions, location, options?.filter)
+          return { journal, consumerID }
+        })
+
+        // Polls also discover deliveries written by another process. Use wall time so advancing a
+        // simulated application clock by days does not execute hundreds of thousands of DB reads.
+        const pollJournal = Effect.callback<void>((resume) => {
+          const timer = setTimeout(() => resume(Effect.void), 250)
+          return Effect.sync(() => clearTimeout(timer))
+        })
+
+        const consume: Interface["consume"] = (id, definitions, handle, options) => Effect.gen(function* () {
+          const { journal, consumerID } = yield* registerConsumer(id, definitions, options)
+          return Effect.scoped(Effect.gen(function* () {
+            const wake = yield* Queue.sliding<void>(1)
+            yield* Effect.acquireRelease(
+              Effect.sync(() => { journalWakes.add(wake) }),
+              () => Effect.sync(() => { journalWakes.delete(wake) }).pipe(Effect.andThen(Queue.shutdown(wake))),
+            )
+            const iteration = Effect.gen(function* () {
+              const delivery = yield* journal.next(consumerID, definitions)
+              if (!delivery) {
+                yield* Queue.take(wake).pipe(Effect.raceFirst(pollJournal))
+                return
+              }
+              yield* handle(delivery.event as SubscribePayload<typeof definitions>)
+              yield* delivery.ack
+            }).pipe(Effect.catchCauseIf(
+              (cause) => !Cause.hasInterrupts(cause),
+              (cause) => Effect.logError("Durable event consumer failed; retrying", { id, cause }).pipe(Effect.andThen(Effect.sleep("1 second"))),
+            ))
+            yield* Effect.forever(iteration)
+          }))
+        })
+
+        const watch: Interface["watch"] = (id, definitions, handle, options) =>
+          database.journalKeyStorage
+            ? consume(id, definitions, handle, options)
+            : Effect.succeed((subscribeRaw(definitions.map((definition) => definition.type), { global: options?.global }) as
+                Stream.Stream<SubscribePayload<typeof definitions>>).pipe(
+                Stream.filter((event) => {
+                  const filter = options?.filter
+                  const payload = event as Event.Payload
+                  if (!filter || payload.type !== filter.type) return true
+                  if (typeof payload.data !== "object" || payload.data === null || !Object.hasOwn(payload.data, filter.field)) return false
+                  const value = (payload.data as Record<string, unknown>)[filter.field]
+                  return typeof value === "string" && (filter.projection === "basename" ? path.basename(value) : value) === filter.value
                 }),
-              ),
+                Stream.runForEach((event) => handle(event).pipe(Effect.catchCauseIf(
+                  (cause) => !Cause.hasInterrupts(cause),
+                  (cause) => Effect.logError("Live event consumer failed", { id, cause }),
+                ))),
+              ))
+
+        const watchBatch: Interface["watchBatch"] = (id, definitions, onPending, handle) => {
+          if (!database.journalKeyStorage) return Effect.succeed(
+            subscribe(definitions).pipe(
+              Stream.tap(() => onPending),
+              Stream.debounce("100 millis"),
+              Stream.runForEach((event) => handle([event])),
             ),
           )
+          return Effect.gen(function* () {
+            const { journal, consumerID } = yield* registerConsumer(id, definitions)
+            return Effect.scoped(Effect.gen(function* () {
+              const wake = yield* Queue.sliding<void>(1)
+              yield* Effect.acquireRelease(
+                Effect.sync(() => { journalWakes.add(wake) }),
+                () => Effect.sync(() => { journalWakes.delete(wake) }).pipe(Effect.andThen(Queue.shutdown(wake))),
+              )
+              const iteration = Effect.gen(function* () {
+                const pending = yield* journal.next(consumerID, definitions)
+                if (!pending) {
+                  yield* Queue.take(wake).pipe(Effect.raceFirst(pollJournal))
+                  return
+                }
+                yield* onPending
+                yield* Effect.sleep("100 millis")
+                const batch = yield* journal.nextBatch(consumerID, definitions)
+                if (!batch) return
+                yield* handle(batch.events.map((event) => event as SubscribePayload<typeof definitions>))
+                yield* batch.ack
+              }).pipe(Effect.catchCauseIf(
+                (cause) => !Cause.hasInterrupts(cause),
+                (cause) => Effect.logError("Durable event batch failed; retrying", { id, cause }).pipe(Effect.andThen(Effect.sleep("1 second"))),
+              ))
+              yield* Effect.forever(iteration)
+            }))
+          })
+        }
 
         function subscribe(): Stream.Stream<Event.Payload>
         function subscribe<D extends Event.Definition>(definition: D): Stream.Stream<Event.Payload<D>>
@@ -751,15 +902,47 @@ export function configured(options?: Options) {
           definitions: D,
         ): Stream.Stream<SubscribePayload<D>>
         function subscribe(input?: Event.Definition | readonly Event.Definition[]): Stream.Stream<Event.Payload> {
-          if (input === undefined) return streamLive()
-          if (isDefinition(input)) {
-            return local(Stream.unwrap(getOrCreate(input).pipe(Effect.map((pubsub) => Stream.fromPubSub(pubsub)))))
-          }
-          const types = new Set(input.map((definition) => definition.type))
-          return streamLive().pipe(Stream.filter((event) => types.has(event.type)))
+          if (input === undefined) return subscribeRaw()
+          if (isDefinition(input)) return subscribeRaw([input.type])
+          return subscribeTypes(input.map((definition) => definition.type))
         }
 
-        const streamLive = (): Stream.Stream<Event.Payload> => local(Stream.fromPubSub(pubsub.live))
+        const subscribeRaw = (
+          types?: readonly string[],
+          options?: { readonly predicate?: (event: Event.Payload) => boolean; readonly global?: boolean },
+        ): Stream.Stream<Event.Payload> =>
+          Stream.unwrap(
+            Effect.gen(function* () {
+              const location = options?.global ? undefined : Option.getOrUndefined(yield* Effect.serviceOption(Location.Service))
+              const buffer = yield* EventBuffer.make()
+              const subscriber = yield* Effect.acquireRelease(
+                Effect.gen(function* () {
+                  const matches = (event: Event.Payload) => {
+                    if (options?.predicate && !options.predicate(event)) return false
+                    if (!location) return true
+                    const refs = routes.get(event)
+                    const same = (ref: Location.Ref) =>
+                      ref.directory === location.directory && ref.workspaceID === location.workspaceID
+                    return refs ? refs.some(same) : !event.location || same(event.location)
+                  }
+                  const entry = { types: types ? new Set(types) : undefined, matches, offer: buffer.offer }
+                  filtered.add(entry)
+                  return entry
+                }),
+                (entry) =>
+                  Effect.sync(() => {
+                    filtered.delete(entry)
+                  }),
+              )
+              return buffer.stream
+            }),
+          )
+
+        // Filter before enqueueing: a blocked consumer must not retain unrelated session events.
+        const subscribeTypes = (
+          types: readonly string[],
+          options?: { readonly predicate?: (event: Event.Payload) => boolean },
+        ) => subscribeRaw(types, options)
 
         const readAfter = (
           aggregateID: string,
@@ -893,6 +1076,10 @@ export function configured(options?: Options) {
           publish,
           publishAll,
           subscribe,
+          consume,
+          watch,
+          watchBatch,
+          subscribeTypes,
           log,
           listen,
           project,

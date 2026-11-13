@@ -1,4 +1,4 @@
-import { Effect, Option, Schema, Stream } from "effect"
+import { Effect, Option, Schema } from "effect"
 import path from "node:path"
 import { FSUtil } from "@opencode/util/fs-util"
 import { Global } from "@opencode/util/global"
@@ -186,8 +186,7 @@ export const GoogleVertexPlugin = define({
         }
       }
     })
-    yield* bus.subscribe([Credential.Event.Updated, Credential.Event.Switched]).pipe(
-      Stream.runForEach(() =>
+    const watch = yield* bus.watch("plugin.google-vertex.credentials", [Credential.Event.Updated, Credential.Event.Switched], () =>
         Effect.gen(function* () {
           const next = yield* load()
           if (JSON.stringify(next) === JSON.stringify(selected.settings)) return
@@ -195,9 +194,8 @@ export const GoogleVertexPlugin = define({
           yield* ctx.provider.reload()
           yield* ctx.model.reload()
         }),
-      ),
-      Effect.forkScoped({ startImmediately: true }),
     )
+    yield* watch.pipe(Effect.forkScoped({ startImmediately: true }))
     yield* ctx.aisdk.hook(
       "language",
       Effect.fn(function* (evt) {

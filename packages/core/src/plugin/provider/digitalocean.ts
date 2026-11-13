@@ -1,6 +1,6 @@
 import type { IntegrationOAuthMethodRegistration } from "@opencode/plugin/effect/integration"
 import { define } from "@opencode/plugin/effect/plugin"
-import { Clock, Deferred, Effect, Option, Schedule, Schema, Semaphore, Stream } from "effect"
+import { Clock, Deferred, Effect, Option, Schedule, Schema, Semaphore } from "effect"
 import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http"
 import type { Server } from "node:http"
 import { App } from "../../app.js"
@@ -178,11 +178,10 @@ export const DigitalOceanPlugin = define({
           yield* ctx.provider.reload()
         }),
       )
-    yield* bus.subscribe(Credential.Event.Switched).pipe(
-      Stream.filter((event) => event.data.integrationID === integrationID),
-      Stream.runForEach(refresh),
-      Effect.forkScoped({ startImmediately: true }),
-    )
+    const watch = yield* bus.watch("plugin.digitalocean.credential-switched", [Credential.Event.Switched], refresh, {
+      filter: { type: Credential.Event.Switched.type, field: "integrationID", value: integrationID },
+    })
+    yield* watch.pipe(Effect.forkScoped({ startImmediately: true }))
     // Retain the last successful inventory for this credential through transient failures.
     yield* refresh().pipe(Effect.repeat(Schedule.spaced("5 minutes")), Effect.forkScoped)
   }),

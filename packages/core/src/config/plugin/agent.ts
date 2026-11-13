@@ -1,3 +1,4 @@
+import { subscribeFiltered } from "@opencode/plugin/effect/event"
 export * as ConfigAgentPlugin from "./agent.js"
 
 import { define } from "@opencode/plugin/effect/plugin"
@@ -69,7 +70,7 @@ export const Plugin = define({
       Stream.runForEach(notify),
       Effect.forkScoped({ startImmediately: true }),
     )
-    yield* ctx.event.subscribe().pipe(
+    yield* subscribeFiltered(ctx.event, { types: ["config.updated"] }).pipe(
       Stream.filter((event) => event.type === "config.updated"),
       Stream.runForEach(notify),
       Effect.forkScoped({ startImmediately: true }),

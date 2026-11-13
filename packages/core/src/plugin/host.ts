@@ -275,6 +275,15 @@ export const make = Effect.fn("PluginHost.make")(function* (
                 EventManifest.isServer(event) || isRpcEvent(event),
             ),
           ),
+      subscribeFiltered: (input) =>
+        bus
+          .subscribeTypes(input.types)
+          .pipe(
+            Stream.filter(
+              (event): event is EventManifest.ServerEvent | RpcEvent =>
+                EventManifest.isServer(event) || isRpcEvent(event),
+            ),
+          ),
     },
     capability: {
       lease: capabilities.lease,
@@ -446,11 +455,12 @@ export const make = Effect.fn("PluginHost.make")(function* (
       hook: (name, callback) => hooks.register("permission", name, callback),
       assert: (input) =>
         permission.assert(input).pipe(
-          Effect.mapError((error) =>
-            new Tool.Error({
-              message: error instanceof Error ? error.message : "Permission request failed",
-              error,
-            }),
+          Effect.mapError(
+            (error) =>
+              new Tool.Error({
+                message: error instanceof Error ? error.message : "Permission request failed",
+                error,
+              }),
           ),
         ),
       list: (input) => permission.forSession(input.sessionID),

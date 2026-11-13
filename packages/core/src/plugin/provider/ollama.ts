@@ -1,3 +1,4 @@
+import { subscribeFiltered } from "@opencode/plugin/effect/event"
 import { define } from "@opencode/plugin/effect/plugin"
 import type { Entry } from "@opencode/schema/config"
 import { Duration, Effect, Option, Schedule, Schema, Semaphore, Stream } from "effect"
@@ -208,7 +209,7 @@ export function make(origin?: string, interval: Duration.Input = "30 seconds") {
         yield* ctx.provider.reload()
         yield* refresh().pipe(Effect.ignore)
       })
-      yield* ctx.event.subscribe().pipe(
+      yield* subscribeFiltered(ctx.event, { types: ["config.updated"] }).pipe(
         Stream.filter((event) => event.type === "config.updated"),
         Stream.runForEach(reload),
         Effect.forkScoped({ startImmediately: true }),

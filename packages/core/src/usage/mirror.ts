@@ -29,7 +29,8 @@ export class Service extends Context.Service<Service, Interface>()("@redcode/Usa
 const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
-    const db = (yield* Database.Service).db
+    const database = yield* Database.Service
+    const db = database.db
     const bus = yield* Bus.Service
     const global = yield* Global.Service
     const filename = UsagePath.sidecar(global.home)
@@ -83,35 +84,36 @@ const layer = Layer.effect(
     })
 
     if (supported) {
-      let failed = false
-      yield* bus.subscribe([SessionEvent.Step.Ended, SessionEvent.Step.Failed]).pipe(
-        Stream.runForEach((event) => {
-          if (failed || !UsagePath.enabled()) return Effect.void
-          return Effect.gen(function* () {
-            const row = yield* db
-              .select({
-                id: SessionMessageTable.id,
-                session_id: SessionMessageTable.session_id,
-                time_created: SessionMessageTable.time_created,
-                time_updated: SessionMessageTable.time_updated,
-                data: SessionMessageTable.data,
-              })
-              .from(SessionMessageTable)
-              .where(and(eq(SessionMessageTable.id, event.data.assistantMessageID), eq(SessionMessageTable.type, "assistant")))
-              .get()
-              .pipe(Effect.orDie)
-            if (!row) return
-            const store = yield* openStore()
-            yield* Effect.try({
-              try: () => mirror(row, store),
-              catch: (cause) => new Error(`Cannot write usage sidecar: ${String(cause)}`),
-            }).pipe(Effect.ensuring(Effect.sync(() => store.close())))
-          }).pipe(Effect.catch((error) => Effect.sync(() => { failed = true }).pipe(
-            Effect.andThen(Effect.logWarning("usage sidecar disabled after write failure", { error })),
+      const definitions = [SessionEvent.Step.Ended, SessionEvent.Step.Failed] as const
+      const handle = (event: Bus.SubscribePayload<typeof definitions>) => {
+        if (!UsagePath.enabled()) return Effect.void
+        return Effect.gen(function* () {
+          const row = yield* db
+            .select({
+              id: SessionMessageTable.id,
+              session_id: SessionMessageTable.session_id,
+              time_created: SessionMessageTable.time_created,
+              time_updated: SessionMessageTable.time_updated,
+              data: SessionMessageTable.data,
+            })
+            .from(SessionMessageTable)
+            .where(and(eq(SessionMessageTable.id, event.data.assistantMessageID), eq(SessionMessageTable.type, "assistant")))
+            .get()
+            .pipe(Effect.orDie)
+          if (!row) return
+          const store = yield* openStore()
+          yield* Effect.try({
+            try: () => mirror(row, store),
+            catch: (cause) => new Error(`Cannot write usage sidecar: ${String(cause)}`),
+          }).pipe(Effect.ensuring(Effect.sync(() => store.close())))
+        })
+      }
+      const watch = database.journalKeyStorage
+        ? yield* bus.consume("session-usage-mirror", definitions, (event) => handle(event).pipe(Effect.orDie), { global: true })
+        : bus.subscribe(definitions).pipe(Stream.runForEach((event) => handle(event).pipe(
+            Effect.catch((error) => Effect.logWarning("usage sidecar write failed", { error })),
           )))
-        }),
-        Effect.forkScoped({ startImmediately: true }),
-      )
+      yield* watch.pipe(Effect.forkScoped({ startImmediately: true }))
     }
 
     return Service.of({ backfill })

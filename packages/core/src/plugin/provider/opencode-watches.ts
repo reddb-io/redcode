@@ -1,3 +1,4 @@
+import { subscribeFiltered } from "@opencode/plugin/effect/event"
 export * as OpencodeWatches from "./opencode-watches.js"
 
 import { ToolFailure } from "@opencode/ai"
@@ -194,7 +195,7 @@ export const make = Effect.fnUntraced(function* (ctx: Context, http: HttpClient.
       )
     })
     // Every Location hears every deletion; the connection's first member alone cleans up.
-    yield* ctx.event.subscribe().pipe(
+    yield* subscribeFiltered(ctx.event, { types: ["session.deleted"] }).pipe(
       Stream.runForEach((event) => {
         if (event.type !== "session.deleted") return Effect.void
         return hubs.get(member.console.key)?.members[0] === member

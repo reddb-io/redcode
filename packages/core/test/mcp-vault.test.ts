@@ -3,6 +3,7 @@ import { Deferred, Effect, Fiber, Layer, Stream } from "effect"
 import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
 import { LayerNode } from "@opencode/util/effect/layer-node"
 import { Bus } from "@opencode/core/bus"
+import { watchBatchFrom, watchFrom } from "./fixture/bus"
 import { Image } from "@opencode/core/image"
 import { Mcp } from "@opencode/core/mcp/index"
 import { Permission } from "@opencode/core/permission"
@@ -98,6 +99,8 @@ const it = testEffect(
     Bus.node.replace(
       Layer.mock(Bus.Service, {
         subscribe: () => Stream.never,
+        watch: watchFrom(() => Stream.never),
+        watchBatch: watchBatchFrom(() => Stream.never),
         publish: (definition, data) =>
           Effect.succeed({ id: Event.ID.create(), type: definition.type, data } as Event.Payload<typeof definition>),
       }),

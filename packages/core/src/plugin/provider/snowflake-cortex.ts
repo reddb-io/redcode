@@ -1,6 +1,6 @@
 import { define } from "@opencode/plugin/effect/plugin"
 import { Form } from "@opencode/schema/form"
-import { Clock, Deferred, Effect, Option, Schema, Stream } from "effect"
+import { Clock, Deferred, Effect, Option, Schema } from "effect"
 import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http"
 import { App } from "../../app.js"
 import { Bus } from "../../bus.js"
@@ -199,11 +199,11 @@ export const SnowflakeCortexPlugin = define({
         })
       }
     })
-    yield* bus.subscribe(Credential.Event.Switched).pipe(
-      Stream.filter((event) => event.data.integrationID === integrationID),
-      Stream.runForEach(() => load.pipe(Effect.andThen(ctx.provider.reload()))),
-      Effect.forkScoped({ startImmediately: true }),
+    const watch = yield* bus.watch("plugin.snowflake-cortex.credential-switched", [Credential.Event.Switched],
+      () => load.pipe(Effect.andThen(ctx.provider.reload())),
+      { filter: { type: Credential.Event.Switched.type, field: "integrationID", value: integrationID } },
     )
+    yield* watch.pipe(Effect.forkScoped({ startImmediately: true }))
     yield* ctx.session.hook(
       "http.request",
       (event) =>

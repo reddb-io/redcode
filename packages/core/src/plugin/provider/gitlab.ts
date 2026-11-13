@@ -1,6 +1,6 @@
 import os from "os"
 import { App } from "../../app.js"
-import { Clock, Deferred, Effect, Exit, Option, Schema, Semaphore, Stream } from "effect"
+import { Clock, Deferred, Effect, Exit, Option, Schema, Semaphore } from "effect"
 import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http"
 import type { Server, ServerResponse } from "node:http"
 import { define } from "@opencode/plugin/effect/plugin"
@@ -283,11 +283,10 @@ export const GitLabPlugin = define({
       })
     })
     const refresh = () => loading.withPermit(load().pipe(Effect.andThen(ctx.provider.reload())))
-    yield* bus.subscribe(Credential.Event.Switched).pipe(
-      Stream.filter((event) => event.data.integrationID === integrationID),
-      Stream.runForEach(refresh),
-      Effect.forkScoped({ startImmediately: true }),
-    )
+    const watch = yield* bus.watch("plugin.gitlab.credential-switched", [Credential.Event.Switched], refresh, {
+      filter: { type: Credential.Event.Switched.type, field: "integrationID", value: integrationID },
+    })
+    yield* watch.pipe(Effect.forkScoped({ startImmediately: true }))
     yield* refresh().pipe(Effect.forkScoped)
 
     yield* ctx.aisdk.hook(

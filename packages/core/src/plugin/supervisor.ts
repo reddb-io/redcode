@@ -1,7 +1,7 @@
 export * as PluginSupervisor from "./supervisor.js"
 
 import { Event } from "@opencode/schema/config"
-import { Cause, Context, Effect, Layer, Queue, Stream } from "effect"
+import { Cause, Context, Deferred, Effect, Exit, Layer, Queue, Stream } from "effect"
 import path from "path"
 import { ConfigPluginSource } from "../config/plugin/source.js"
 import { makeLocationNode } from "@opencode/util/effect/app-node"
@@ -217,21 +217,33 @@ export const layer = Layer.effect(
     // Each source owns its upstream subscriptions; the queue retains the latest observed request.
     const triggers = yield* Queue.sliding<number>(1)
     // Make accepted work visible to awaitActivation before coalescing the burst.
-    const notify = Effect.gen(function* () {
-      observed++
+    const pending = new Map<number, Deferred.Deferred<void>>()
+    const notify = (done?: Deferred.Deferred<void>) => Effect.gen(function* () {
+      const target = ++observed
+      if (done) pending.set(target, done)
       if (!release) release = yield* registry.hold()
-      yield* Queue.offer(triggers, observed)
+      yield* Queue.offer(triggers, target)
     })
     const watch = <A>(stream: Stream.Stream<A>) =>
       stream.pipe(
-        Stream.runForEach(() => notify),
+        Stream.runForEach(() => notify()),
         Effect.forkScoped({ startImmediately: true }),
       )
     yield* watch(sources.changes())
     yield* watch(modules.changes())
     yield* watch(managed.changes())
     yield* watch(Stream.fromEffectRepeat(Effect.sleep("24 hours")))
-    yield* watch(bus.subscribe([Event.Updated, SdkPlugins.Updated]))
+    const durableWatch = yield* bus.watchBatch(
+      "plugin.supervisor.config",
+      [Event.Updated, SdkPlugins.Updated],
+      Effect.void,
+      () => Effect.gen(function* () {
+        const done = yield* Deferred.make<void>()
+        yield* notify(done)
+        yield* Deferred.await(done)
+      }),
+    )
+    yield* durableWatch.pipe(Effect.forkScoped({ startImmediately: true }))
     yield* watch(
       updates.changes().pipe(
         Stream.filter((update) => packages.has(update.target)),
@@ -247,7 +259,13 @@ export const layer = Layer.effect(
     yield* Stream.concat(Stream.succeed(0), Stream.fromQueue(triggers).pipe(Stream.debounce("100 millis"))).pipe(
       Stream.runForEach((target) =>
         Effect.gen(function* () {
-          yield* activate().pipe(Effect.catchCause((cause) => Effect.logError("failed to reload plugins", { cause })))
+          const result = yield* activate().pipe(Effect.exit)
+          if (Exit.isFailure(result)) yield* Effect.logError("failed to reload plugins", { cause: result.cause })
+          for (const [requested, done] of pending) {
+            if (requested > target) continue
+            pending.delete(requested)
+            Deferred.doneUnsafe(done, result)
+          }
           if (observed !== target) return
           const settled = release
           release = undefined
@@ -257,7 +275,7 @@ export const layer = Layer.effect(
       Effect.forkScoped({ startImmediately: true }),
     )
     return Service.of({
-      refresh: notify.pipe(Effect.andThen(registry.awaitActivation)),
+      refresh: notify().pipe(Effect.andThen(registry.awaitActivation)),
       pending: () => release !== undefined,
     })
   }),

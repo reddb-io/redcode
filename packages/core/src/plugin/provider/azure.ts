@@ -1,4 +1,4 @@
-import { Clock, Effect, Schema, Semaphore, Stream } from "effect"
+import { Clock, Effect, Schema, Semaphore } from "effect"
 import { ChildProcess } from "effect/unstable/process"
 import { define } from "@opencode/plugin/effect/plugin"
 import { Form } from "@opencode/schema/form"
@@ -174,11 +174,10 @@ export const AzurePlugin = define({
     })
 
     const reload = () => loading.withPermit(load().pipe(Effect.andThen(ctx.provider.reload())))
-    yield* bus.subscribe(Credential.Event.Switched).pipe(
-      Stream.filter((event) => event.data.integrationID === Integration.ID.make("azure")),
-      Stream.runForEach(reload),
-      Effect.forkScoped({ startImmediately: true }),
-    )
+    const watch = yield* bus.watch("plugin.azure.credential-switched", [Credential.Event.Switched], reload, {
+      filter: { type: Credential.Event.Switched.type, field: "integrationID", value: Integration.ID.make("azure") },
+    })
+    yield* watch.pipe(Effect.forkScoped({ startImmediately: true }))
 
     // Entra bearer tokens are minted per request from the target URL's scope, so they are injected
     // at the transport hooks rather than stored as a credential.

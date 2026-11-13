@@ -599,6 +599,57 @@ describe("WebSocket channel execution", () => {
     JSON.stringify({ type: "response.completed", response: { id: "resp_1" } }),
   ]
 
+  it.effect("closes a socket when unread frames exceed the receive buffer", () =>
+    Effect.gen(function* () {
+      class TestSocket extends EventTarget {
+        readyState = globalThis.WebSocket.OPEN
+        closed = 0
+        send() {}
+        close() {
+          this.closed++
+          this.readyState = globalThis.WebSocket.CLOSED
+        }
+      }
+      const socket = new TestSocket()
+      const connection = yield* WebSocketTransport.fromWebSocket(
+        // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
+        socket as unknown as globalThis.WebSocket,
+        { url: "wss://provider.test/responses", headers: Headers.empty },
+      )
+      for (let index = 0; index <= 16_384; index++) socket.dispatchEvent(new MessageEvent("message", { data: "frame" }))
+      const error = yield* connection.messages.pipe(Stream.runDrain, Effect.flip)
+      expect(error.reason).toMatchObject({ _tag: "Transport", code: "buffer-overflow" })
+      expect(socket.closed).toBe(1)
+      yield* connection.close
+    }),
+  )
+
+  it.effect("limits buffered bytes even when each frame is below the frame limit", () =>
+    Effect.gen(function* () {
+      class TestSocket extends EventTarget {
+        readyState = globalThis.WebSocket.OPEN
+        closed = 0
+        send() {}
+        close() {
+          this.closed++
+          this.readyState = globalThis.WebSocket.CLOSED
+        }
+      }
+      const socket = new TestSocket()
+      const connection = yield* WebSocketTransport.fromWebSocket(
+        // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
+        socket as unknown as globalThis.WebSocket,
+        { url: "wss://provider.test/responses", headers: Headers.empty },
+      )
+      const frame = "x".repeat(4 * 1024 * 1024)
+      for (let index = 0; index < 5; index++) socket.dispatchEvent(new MessageEvent("message", { data: frame }))
+      const error = yield* connection.messages.pipe(Stream.runDrain, Effect.flip)
+      expect(error.reason).toMatchObject({ _tag: "Transport", code: "buffer-overflow" })
+      expect(socket.closed).toBe(1)
+      yield* connection.close
+    }),
+  )
+
   it.effect("preserves close reasons and native event causes without fabricated HTTP metadata", () =>
     Effect.gen(function* () {
       class TestSocket extends EventTarget {

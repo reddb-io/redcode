@@ -1,7 +1,7 @@
 export * as WellKnownPlugin from "./plugin.js"
 
 import { define } from "@opencode/plugin/effect/plugin"
-import { Effect, Stream } from "effect"
+import { Effect } from "effect"
 import { Bus } from "../bus.js"
 import { WellKnown } from "../wellknown.js"
 
@@ -28,9 +28,7 @@ export const Plugin = define({
         })
       })
     })
-    yield* bus.subscribe(WellKnown.Event.Updated).pipe(
-      Stream.runForEach(() => ctx.integration.reload()),
-      Effect.forkScoped({ startImmediately: true }),
-    )
+    const watch = yield* bus.watch("plugin.wellknown.updated", [WellKnown.Event.Updated], () => ctx.integration.reload())
+    yield* watch.pipe(Effect.forkScoped({ startImmediately: true }))
   }),
 })

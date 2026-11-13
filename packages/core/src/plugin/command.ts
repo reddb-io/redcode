@@ -1,7 +1,7 @@
 export * as CommandPlugin from "./command.js"
 
 import { define } from "@opencode/plugin/effect/plugin"
-import { Effect, Stream } from "effect"
+import { Effect } from "effect"
 import { Bus } from "../bus.js"
 import { Location } from "../location.js"
 import { Mcp } from "../mcp/index.js"
@@ -15,15 +15,13 @@ export const Plugin = define({
     const mcp = yield* Mcp.Service
     const bus = yield* Bus.Service
     const loaded = { prompts: [] as Mcp.Prompt[] }
-    yield* bus.subscribe(Mcp.PromptsChanged).pipe(
-      Stream.runForEach(() =>
+    const watch = yield* bus.watch("plugin.command.prompts", [Mcp.PromptsChanged], () =>
         mcp.prompts().pipe(
           Effect.tap((prompts) => Effect.sync(() => (loaded.prompts = prompts))),
           Effect.andThen(ctx.command.reload()),
         ),
-      ),
-      Effect.forkScoped({ startImmediately: true }),
     )
+    yield* watch.pipe(Effect.forkScoped({ startImmediately: true }))
     loaded.prompts = yield* mcp.prompts()
     yield* ctx.command.transform((editor) => {
       editor.add({

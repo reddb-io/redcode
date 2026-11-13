@@ -71,6 +71,10 @@ import m68 from "./migration/20261026223833_session_automations.js"
 import m69 from "./migration/20261105093303_conditional_automations.js"
 import m70 from "./migration/20261105095220_automation_condition_transitions.js"
 import m71 from "./migration/20261107213842_groovy_emma_frost.js"
+import m72 from "./migration/20261112210711_event_deliveries.js"
+import m73 from "./migration/20261112215248_event_journal_key.js"
+import m74 from "./migration/20261112221026_event_subscription_location.js"
+import m75 from "./migration/20261112231603_event_subscription_filter.js"
 
 export const migrations = [
   m00,
@@ -145,4 +149,8 @@ export const migrations = [
   m69,
   m70,
   m71,
+  m72,
+  m73,
+  m74,
+  m75,
 ] satisfies DatabaseMigration.Migration[]

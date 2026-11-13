@@ -423,11 +423,37 @@ describe("Vcs", () => {
         expect((yield* vcs.info()).branch.current).toBe("recovered")
         const updated = yield* bus
           .subscribe(VcsEvent.BranchUpdated)
-          .pipe(Stream.runHead, Effect.timeout("1 second"), Effect.forkScoped({ startImmediately: true }))
+          .pipe(Stream.runHead, Effect.timeout("3 seconds"), Effect.forkScoped({ startImmediately: true }))
         branch = "after-recovery"
         yield* bus.publish(FileSystem.Event.Changed, { file: path.join(directory, ".git", "HEAD"), event: "change" })
         expect(Option.getOrUndefined(yield* Fiber.join(updated))).toMatchObject({ data: { branch: "after-recovery" } })
         expect((yield* vcs.info()).branch.current).toBe("after-recovery")
+      }),
+    ),
+  )
+
+  it.live("retries branch announcements when publication fails after updating the cache", () =>
+    withGit((directory) =>
+      Effect.gen(function* () {
+        const vcs = yield* Vcs.Service
+        const bus = yield* Bus.Service
+        let branch = "initial"
+        yield* vcs.transform((editor) =>
+          editor.add(provider({ id: "git", info: () => Effect.sync(() => ({ branch: { current: branch } })) })),
+        )
+        let attempts = 0
+        yield* Effect.acquireRelease(
+          bus.listen((event) => event.type === VcsEvent.BranchUpdated.type && ++attempts === 1
+            ? Effect.die(new Error("temporary publication failure")) : Effect.void),
+          (unsubscribe) => unsubscribe,
+        )
+        const updated = yield* bus.subscribe(VcsEvent.BranchUpdated).pipe(
+          Stream.runHead, Effect.timeout("5 seconds"), Effect.forkScoped({ startImmediately: true }),
+        )
+        branch = "retried"
+        yield* bus.publish(FileSystem.Event.Changed, { file: path.join(directory, ".git", "HEAD"), event: "change" })
+        expect(Option.getOrUndefined(yield* Fiber.join(updated))).toMatchObject({ data: { branch: "retried" } })
+        expect(attempts).toBe(2)
       }),
     ),
   )

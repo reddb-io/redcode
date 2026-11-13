@@ -1,5 +1,5 @@
 import { describe, expect } from "bun:test"
-import { Deferred, Duration, Effect, Layer, LayerMap, Stream } from "effect"
+import { Deferred, Duration, Effect, Layer, LayerMap, Schedule, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import { define } from "@opencode/plugin/effect/plugin"
 import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
@@ -256,6 +256,37 @@ describe("PluginSupervisor", () => {
         Effect.provide(locations.get(Location.Ref.make({ directory: AbsolutePath.make(directory.path) }))),
       )
       expect(source.activations).toBe(2)
+    }),
+  )
+
+  it.live("keeps the reload delivery until plugin activation completes", () =>
+    Effect.gen(function* () {
+      const sdk = yield* SdkPlugins.Service
+      const { db } = yield* Database.Service
+      const directory = yield* tmpdirScoped()
+      const locations = yield* LocationServiceMap.Service
+      const entered = yield* Deferred.make<void>()
+      const gate = yield* Deferred.make<void>()
+      yield* Effect.gen(function* () {
+        const plugins = yield* Plugin.Service
+        yield* plugins.awaitActivation
+        yield* sdk.register(define({
+          id: "delivery-gate",
+          effect: () => Deferred.succeed(entered, undefined).pipe(Effect.andThen(Deferred.await(gate))),
+        }))
+        yield* Deferred.await(entered).pipe(Effect.timeout("10 seconds"))
+        const pending = () => db.all("SELECT seq FROM event_delivery WHERE subscription_id LIKE 'plugin.supervisor.config:%'")
+        expect((yield* pending()).length).toBeGreaterThan(0)
+        yield* Deferred.succeed(gate, undefined)
+        yield* pending().pipe(
+          Effect.filterOrFail((rows) => rows.length === 0, () => new Error("Reload delivery was not acknowledged")),
+          Effect.retry({ times: 200, schedule: Schedule.spaced("10 millis") }),
+        )
+      }).pipe(
+        Effect.ensuring(Deferred.succeed(gate, undefined)),
+        Effect.scoped,
+        Effect.provide(locations.get(Location.Ref.make({ directory: AbsolutePath.make(directory.path) }))),
+      )
     }),
   )
 })

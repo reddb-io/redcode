@@ -458,10 +458,33 @@ const schema: Omit<DatabaseMigration.Migration, "id"> = {
         );
       `)
       yield* tx.run(`
+        CREATE TABLE \`event_delivery\` (
+          \`seq\` integer PRIMARY KEY AUTOINCREMENT,
+          \`subscription_id\` text NOT NULL,
+          \`type\` text NOT NULL,
+          \`payload\` text NOT NULL,
+          CONSTRAINT \`fk_event_delivery_subscription_id_event_subscription_id_fk\` FOREIGN KEY (\`subscription_id\`) REFERENCES \`event_subscription\`(\`id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`event_journal_key\` (
+          \`id\` integer PRIMARY KEY,
+          \`digest\` text NOT NULL
+        );
+      `)
+      yield* tx.run(`
         CREATE TABLE \`event_sequence\` (
           \`aggregate_id\` text PRIMARY KEY,
           \`seq\` integer NOT NULL,
           \`owner_id\` text
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`event_subscription\` (
+          \`id\` text PRIMARY KEY,
+          \`types\` text NOT NULL,
+          \`location\` text,
+          \`filter\` text
         );
       `)
       yield* tx.run(`
@@ -746,6 +769,9 @@ const schema: Omit<DatabaseMigration.Migration, "id"> = {
       )
       yield* tx.run(`CREATE INDEX \`design_document_session_idx\` ON \`design_document\` (\`session_id\`);`)
       yield* tx.run(`CREATE INDEX \`design_revision_document_idx\` ON \`design_revision\` (\`design_id\`);`)
+      yield* tx.run(
+        `CREATE INDEX \`event_delivery_subscription_seq_idx\` ON \`event_delivery\` (\`subscription_id\`,\`seq\`);`,
+      )
       yield* tx.run(`CREATE UNIQUE INDEX \`event_aggregate_seq_idx\` ON \`event\` (\`aggregate_id\`,\`seq\`);`)
       yield* tx.run(`CREATE INDEX \`event_aggregate_type_seq_idx\` ON \`event\` (\`aggregate_id\`,\`type\`,\`seq\`);`)
       yield* tx.run(`CREATE INDEX \`event_type_created_id_idx\` ON \`event\` (\`type\`,\`created\`,\`id\`);`)

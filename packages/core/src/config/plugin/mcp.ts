@@ -1,3 +1,4 @@
+import { subscribeFiltered } from "@opencode/plugin/effect/event"
 export * as ConfigMcpPlugin from "./mcp.js"
 
 import { define } from "@opencode/plugin/effect/plugin"
@@ -10,7 +11,7 @@ import { Mcp } from "../../mcp/index.js"
 export const Plugin = define({
   id: "opencode.config.mcp",
   effect: Effect.fn(function* (ctx) {
-    yield* register(ctx.event.subscribe())
+    yield* register(subscribeFiltered(ctx.event, { types: ["config.updated"] }))
   }),
 })
 

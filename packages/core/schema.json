@@ -1,8 +1,8 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "d4f82461-bbed-402f-8b48-4b4553f1c455",
-  "prevIds": ["acd56a13-8dc9-4fcd-9a6a-887196561bfc"],
+  "id": "966fa9f4-2f3d-401a-8d91-6a774c2742ab",
+  "prevIds": ["61faea53-110f-4a0f-b54f-8aacff2e50eb"],
   "ddl": [
     {
       "name": "console_auth_provider",
@@ -173,7 +173,19 @@
       "entityType": "tables"
     },
     {
+      "name": "event_delivery",
+      "entityType": "tables"
+    },
+    {
+      "name": "event_journal_key",
+      "entityType": "tables"
+    },
+    {
       "name": "event_sequence",
+      "entityType": "tables"
+    },
+    {
+      "name": "event_subscription",
       "entityType": "tables"
     },
     {
@@ -2733,6 +2745,66 @@
       "table": "design_revision"
     },
     {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": true,
+      "default": null,
+      "generated": null,
+      "name": "seq",
+      "entityType": "columns",
+      "table": "event_delivery"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "subscription_id",
+      "entityType": "columns",
+      "table": "event_delivery"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "type",
+      "entityType": "columns",
+      "table": "event_delivery"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "payload",
+      "entityType": "columns",
+      "table": "event_delivery"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "event_journal_key"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "digest",
+      "entityType": "columns",
+      "table": "event_journal_key"
+    },
+    {
       "type": "text",
       "notNull": false,
       "autoincrement": false,
@@ -2761,6 +2833,46 @@
       "name": "owner_id",
       "entityType": "columns",
       "table": "event_sequence"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "event_subscription"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "types",
+      "entityType": "columns",
+      "table": "event_subscription"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "location",
+      "entityType": "columns",
+      "table": "event_subscription"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "filter",
+      "entityType": "columns",
+      "table": "event_subscription"
     },
     {
       "type": "text",
@@ -4713,6 +4825,17 @@
       "table": "design_revision"
     },
     {
+      "columns": ["subscription_id"],
+      "tableTo": "event_subscription",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_event_delivery_subscription_id_event_subscription_id_fk",
+      "entityType": "fks",
+      "table": "event_delivery"
+    },
+    {
       "columns": ["aggregate_id"],
       "tableTo": "event_sequence",
       "columnsTo": ["aggregate_id"],
@@ -5207,10 +5330,31 @@
       "entityType": "pks"
     },
     {
+      "columns": ["seq"],
+      "nameExplicit": false,
+      "name": "event_delivery_pk",
+      "table": "event_delivery",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "event_journal_key_pk",
+      "table": "event_journal_key",
+      "entityType": "pks"
+    },
+    {
       "columns": ["aggregate_id"],
       "nameExplicit": false,
       "name": "event_sequence_pk",
       "table": "event_sequence",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "event_subscription_pk",
+      "table": "event_subscription",
       "entityType": "pks"
     },
     {
@@ -5530,6 +5674,24 @@
       "name": "design_revision_document_idx",
       "entityType": "indexes",
       "table": "design_revision"
+    },
+    {
+      "columns": [
+        {
+          "value": "subscription_id",
+          "isExpression": false
+        },
+        {
+          "value": "seq",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "event_delivery_subscription_seq_idx",
+      "entityType": "indexes",
+      "table": "event_delivery"
     },
     {
       "columns": [

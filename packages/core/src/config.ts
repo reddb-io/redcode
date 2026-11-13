@@ -352,24 +352,21 @@ export const layer = (options?: Options) =>
         ),
         Effect.forkScoped({ startImmediately: true }),
       )
-      yield* bus.subscribe(Credential.Event.Switched).pipe(
-        Stream.filterEffect((event) =>
-          wellknown.entries().pipe(
-            Effect.map((entries) => entries.some((entry) => entry.integrationID === event.data.integrationID)),
-            Effect.orElseSucceed(() => false),
+      const credentialWatch = yield* bus.watch("config.wellknown-credential", [Credential.Event.Switched], (event) =>
+        wellknown.entries().pipe(
+          Effect.flatMap((entries) =>
+            entries.some((entry) => entry.integrationID === event.data.integrationID)
+              ? reload().pipe(Effect.provideContext(reloadContext))
+              : Effect.void,
           ),
+          Effect.orDie,
         ),
-        Stream.runForEach(() =>
-          reload().pipe(Effect.catchCause((cause) => Effect.logError("failed to reload wellknown config", { cause }))),
-        ),
-        Effect.forkScoped({ startImmediately: true }),
       )
-      yield* bus.subscribe(WellKnown.Event.Updated).pipe(
-        Stream.runForEach(() =>
-          reload().pipe(Effect.catchCause((cause) => Effect.logError("failed to reload wellknown sources", { cause }))),
-        ),
-        Effect.forkScoped({ startImmediately: true }),
+      yield* credentialWatch.pipe(Effect.forkScoped({ startImmediately: true }))
+      const wellknownWatch = yield* bus.watch("config.wellknown-updated", [WellKnown.Event.Updated], () =>
+        reload().pipe(Effect.provideContext(reloadContext), Effect.orDie),
       )
+      yield* wellknownWatch.pipe(Effect.forkScoped({ startImmediately: true }))
       yield* Effect.sleep("10 minutes").pipe(
         Effect.andThen(
           Effect.suspend(() => {

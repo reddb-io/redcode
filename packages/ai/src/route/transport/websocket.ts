@@ -39,6 +39,8 @@ type WebSocketConstructorWithHeaders = (
 ) => globalThis.WebSocket
 
 const MAX_FRAME_BYTES = 16 * 1024 * 1024
+const MAX_QUEUED_BYTES = 32 * 1024 * 1024
+const MAX_QUEUED_FRAMES = 16_384
 const transportError = (
   message: string,
   input: {
@@ -225,6 +227,10 @@ export const fromWebSocket = (
     // The socket pushes frames synchronously and cannot be paused, so the hand-off to the consumer
     // fiber must absorb whole read buffers. Bun delivers over a thousand small frames in one tick.
     const messages = yield* Queue.unbounded<string | Uint8Array, AIError | Cause.Done<void>>()
+    let queuedBytes = 0
+    let queuedFrames = 0
+    const size = (message: string | Uint8Array) =>
+      typeof message === "string" ? message.length * 2 : message.byteLength
 
     const oversized = (message: string | Uint8Array) =>
       typeof message === "string" ? new Blob([message]).size > MAX_FRAME_BYTES : message.byteLength > MAX_FRAME_BYTES
@@ -247,6 +253,24 @@ export const fromWebSocket = (
     }
     const offer = (message: string | Uint8Array) => {
       if (rejectOversized(message)) return
+      const bytes = size(message)
+      if (queuedFrames >= MAX_QUEUED_FRAMES || queuedBytes + bytes > MAX_QUEUED_BYTES) {
+        Queue.failCauseUnsafe(
+          messages,
+          Cause.fail(
+            transportError("WebSocket receive buffer exceeded its limit", {
+              url: input.url,
+              operation: "read",
+              code: "buffer-overflow",
+              phase: "receive",
+            }),
+          ),
+        )
+        if (ws.readyState === globalThis.WebSocket.OPEN) ws.close(1009, "Receive buffer exceeded")
+        return
+      }
+      queuedBytes += bytes
+      queuedFrames++
       Queue.offerUnsafe(messages, message)
     }
 
@@ -330,7 +354,13 @@ export const fromWebSocket = (
               }),
           })
         }),
-      messages: Stream.fromQueue(messages),
+      messages: Stream.fromQueue(messages).pipe(
+        Stream.map((message) => {
+          queuedBytes -= size(message)
+          queuedFrames--
+          return message
+        }),
+      ),
       close: cleanup.pipe(
         Effect.andThen(
           Effect.sync(() => {

@@ -21,6 +21,7 @@ import { Credential } from "@opencode/core/credential"
 import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
 import { LayerNode } from "@opencode/util/effect/layer-node"
 import { Bus } from "@opencode/core/bus"
+import { watchBatchFrom, watchFrom } from "./fixture/bus"
 import { ID, type Payload } from "@opencode/schema/event"
 import { Form } from "@opencode/core/form"
 import { Integration } from "@opencode/core/integration"
@@ -375,6 +376,8 @@ function resourceMcpLayer(
         Layer.succeed(Location.Service, Location.Service.of(location({ directory }))),
         Layer.mock(Bus.Service, {
           subscribe: overrides?.subscribe ?? (() => Stream.never),
+          watch: watchFrom(overrides?.subscribe ?? (() => Stream.never)),
+          watchBatch: watchBatchFrom(overrides?.subscribe ?? (() => Stream.never)),
           publish: (definition, data) => {
             const event = {
               id: ID.create(),
@@ -557,6 +560,8 @@ const permissions = Layer.mock(Permission.Service, {
 })
 const events = Layer.mock(Bus.Service, {
   subscribe: () => Stream.never,
+  watch: watchFrom(() => Stream.never),
+  watchBatch: watchBatchFrom(() => Stream.never),
   publish: (definition, data) =>
     Effect.succeed({ id: ID.create(), type: definition.type, data } as Payload<typeof definition>),
 })
@@ -1019,7 +1024,7 @@ testEffect(Layer.empty).live(
             Layer.provideMerge(
               Layer.mergeAll(
                 Layer.mock(Permission.Service, { assert: () => Effect.void }),
-                Layer.mock(Bus.Service, { subscribe: () => Stream.never }),
+                Layer.mock(Bus.Service, { subscribe: () => Stream.never, watch: watchFrom(() => Stream.never), watchBatch: watchBatchFrom(() => Stream.never) }),
               ),
             ),
           ),
@@ -1216,6 +1221,8 @@ testEffect(Layer.empty).live("Design calls a connected MCP through direct tools 
               Layer.mock(Permission.Service, { assert: () => Effect.void }),
               Layer.mock(Bus.Service, {
                 subscribe: () => Stream.never,
+                watch: watchFrom(() => Stream.never),
+                watchBatch: watchBatchFrom(() => Stream.never),
                 publish: (definition, data) =>
                   Effect.succeed({ id: ID.create(), type: definition.type, data } as Payload<typeof definition>),
               }),
@@ -3339,6 +3346,38 @@ const shutdownIt = testEffect(
       Config.node.replace(Config.testLayer([])),
     ],
   ),
+)
+shutdownIt.live("reconnects only the MCP integration whose credential changed", () =>
+  Effect.gen(function* () {
+    const bus = yield* Bus.Service
+    const server = yield* resourceServer()
+    const service = Context.get(
+      yield* Layer.build(Mcp.layer().pipe(Layer.provide(McpPool.layer))),
+      Mcp.Service,
+    )
+    yield* service.transform((editor) =>
+      editor.set("credentials", { type: "remote", url: server.url }),
+    )
+    const integrationID = yield* service.servers().pipe(
+      Effect.flatMap((servers) => {
+        const current = servers.find((item) => item.name === "credentials")
+        return current?.status.status === "connected" && current.integrationID
+          ? Effect.succeed(current.integrationID)
+          : Effect.fail(new Error("MCP server has not connected"))
+      }),
+      Effect.retry({ times: 200, schedule: Schedule.spaced("10 millis") }),
+    )
+    expect(server.state.initializations).toBe(1)
+    yield* bus.publish(Credential.Event.Switched, {
+      integrationID: Integration.ID.make("unrelated"), credentialID: null,
+    }, { global: true })
+    yield* bus.publish(Credential.Event.Switched, { integrationID, credentialID: null }, { global: true })
+    yield* Effect.sync(() => server.state.initializations).pipe(
+      Effect.filterOrFail((count) => count >= 2, () => new Error("MCP server did not reconnect")),
+      Effect.retry({ times: 200, schedule: Schedule.spaced("10 millis") }),
+    )
+    expect(server.state.initializations).toBe(2)
+  }),
 )
 shutdownIt.effect("discards in-flight and queued MCP notifications after its layer closes", () =>
   Effect.gen(function* () {

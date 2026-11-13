@@ -19,7 +19,6 @@ import {
   Schema,
   Scope,
   Semaphore,
-  Stream,
   Types,
 } from "effect"
 import { makeLocationNode } from "@opencode/util/effect/app-node"
@@ -211,7 +210,6 @@ export const layer = (options?: Options) =>
 
       // Register every remote server as an OAuth integration so credentials live in the global store
       // rather than in committed config. Servers that connect anonymously simply never use the method.
-      const owned = new Set<Integration.ID>()
       const register = Effect.fnUntraced(function* (name: ServerName, entry: ServerEntry) {
         if (entry.config.type !== "remote" || entry.config.oauth === false) return
         const remote = entry.config
@@ -225,7 +223,6 @@ export const layer = (options?: Options) =>
             .slice(0, 16)
         const integrationID = Integration.ID.make(suffix)
         entry.integrationID = integrationID
-        owned.add(integrationID)
         const methodID = Integration.MethodID.make(suffix)
         // Each registration gets its own child scope so disposal detaches it from the root scope
         // entirely; registering directly on root would accumulate a dead finalizer per replaced or
@@ -251,6 +248,11 @@ export const layer = (options?: Options) =>
             })
           })
           .pipe(Scope.provide(scope))
+        const watch = yield* bus.watch(`mcp.credential.${integrationID}`, [Credential.Event.Switched],
+          () => reconnect(integrationID),
+          { filter: { type: Credential.Event.Switched.type, field: "integrationID", value: integrationID } },
+        )
+        yield* watch.pipe(Effect.forkIn(scope))
       })
       const requireServer = Effect.fnUntraced(function* (server: ServerName | string) {
         const name = ServerName.make(server)
@@ -584,7 +586,6 @@ export const layer = (options?: Options) =>
       const disposeServer = Effect.fnUntraced(function* (name: ServerName, entry: ServerEntry) {
         yield* FiberMap.remove(recoveries, name)
         yield* stopServer(name, entry)
-        if (entry.integrationID) owned.delete(entry.integrationID)
         if (entry.registration) yield* entry.registration.dispose
       })
 
@@ -689,12 +690,6 @@ export const layer = (options?: Options) =>
             yield* startServer(name, entry)
           }).pipe(locks.withLock(name))
         })
-      fork(
-        bus.subscribe(Credential.Event.Switched).pipe(
-          Stream.filter((event) => owned.has(event.data.integrationID)),
-          Stream.runForEach((event) => Effect.sync(() => fork(reconnect(event.data.integrationID)))),
-        ),
-      )
       const state: State.Interface<Data, Editor> = State.create<Data, Editor>({
         name: "mcp",
         initial: () => ({

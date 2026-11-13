@@ -30,6 +30,16 @@
     "./*": "./src/*.ts"
   },
   "imports": {
+    "#event-key": {
+      "types": "./src/event/key.ts",
+      "workerd": "./src/event/key.workerd.ts",
+      "default": "./src/event/key.ts"
+    },
+    "#event-journal": {
+      "types": "./src/event/journal.ts",
+      "workerd": "./src/event/journal.workerd.ts",
+      "default": "./src/event/journal.ts"
+    },
     "#execution-owner-platform": {
       "types": "./src/execution-owner.node.ts",
       "workerd": "./src/execution-owner.workerd.ts",

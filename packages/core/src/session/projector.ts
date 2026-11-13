@@ -458,7 +458,8 @@ function projectIdle(
 const layer = Layer.effectDiscard(
   Effect.gen(function* () {
     const bus = yield* Bus.Service
-    const db = (yield* Database.Service).db
+    const database = yield* Database.Service
+    const db = database.db
     yield* bus.project(SessionEvent.Created, (event) =>
       Effect.gen(function* () {
         if (event.data.parentID) yield* SessionArchive.requireWritable(db, event.data.parentID).pipe(Effect.orDie)
@@ -825,17 +826,18 @@ const layer = Layer.effectDiscard(
         yield* InstructionState.reset(db, event.data.sessionID)
       }),
     )
-    yield* bus.subscribe([SessionEvent.Step.Ended, SessionEvent.Step.Failed, SessionEvent.UsageRecorded]).pipe(
-      Stream.runForEach((event) => {
-        if (
-          event.type === SessionEvent.Step.Failed.type &&
-          (event.data.cost === undefined || event.data.tokens === undefined)
-        )
-          return Effect.void
-        return publishSessionUsage(db, bus, event.data.sessionID)
-      }),
-      Effect.forkScoped({ startImmediately: true }),
-    )
+    const definitions = [SessionEvent.Step.Ended, SessionEvent.Step.Failed, SessionEvent.UsageRecorded] as const
+    const handle = (event: Bus.SubscribePayload<typeof definitions>) => {
+      if (
+        event.type === SessionEvent.Step.Failed.type &&
+        (event.data.cost === undefined || event.data.tokens === undefined)
+      ) return Effect.void
+      return publishSessionUsage(db, bus, event.data.sessionID)
+    }
+    const watch = database.journalKeyStorage
+      ? yield* bus.consume("session-projector.usage", definitions, handle, { global: true })
+      : bus.subscribe(definitions).pipe(Stream.runForEach(handle))
+    yield* watch.pipe(Effect.forkScoped({ startImmediately: true }))
   }),
 )
 

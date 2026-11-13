@@ -4,7 +4,7 @@ import { define } from "@opencode/plugin/effect/plugin"
 import { Document, type Entry } from "@opencode/schema/config"
 import { ConfigProvider } from "@opencode/schema/config/provider"
 import { Money } from "@opencode/schema/money"
-import { Effect, Stream } from "effect"
+import { Effect } from "effect"
 import { Bus } from "../../bus.js"
 import { Config } from "../../config.js"
 import { Model } from "../../model.js"
@@ -68,8 +68,7 @@ export const Plugin = define({
       ),
     )
     yield* warnWithoutCatalog
-    yield* bus.subscribe(ModelsDev.Event.Refreshed).pipe(
-      Stream.runForEach(() =>
+    const watch = yield* bus.watch("plugin.config-provider.models-refreshed", [ModelsDev.Event.Refreshed], () =>
         modelsDev.get().pipe(
           Effect.tap((data) =>
             Effect.sync(() => {
@@ -80,9 +79,8 @@ export const Plugin = define({
           Effect.andThen(warnWithoutCatalog),
           Effect.andThen(ctx.model.reload()),
         ),
-      ),
-      Effect.forkScoped({ startImmediately: true }),
     )
+    yield* watch.pipe(Effect.forkScoped({ startImmediately: true }))
     yield* ctx.integration.transform((integrations) => {
       for (const [id, provider] of configuredProviders(loaded.entries)) {
         const integrationID = id
