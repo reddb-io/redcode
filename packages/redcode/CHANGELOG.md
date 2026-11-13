@@ -1,5 +1,11 @@
 # @reddb-io/redcode
 
+## 0.87.39
+
+### Patch Changes
+
+- Bound the estimated memory retained by the Markdown rendering cache.
+
 ## 0.87.38
 
 ### Patch Changes
