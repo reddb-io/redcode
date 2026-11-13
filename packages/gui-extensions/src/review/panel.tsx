@@ -1,4 +1,4 @@
-import { createMemo, createResource, createSignal, Show, type JSX } from "solid-js"
+import { createMemo, createResource, createSignal, For, Show, type JSX } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import type { FileDiffInfo } from "@opencode/client/promise"
 import {
@@ -11,6 +11,7 @@ import {
 } from "@opencode/session-ui/v2/session-review-v2"
 import { SessionReviewFilePreviewV2 } from "@opencode/session-ui/v2/session-review-file-preview-v2"
 import { DiffChanges } from "@opencode/ui/diff-changes"
+import { Button } from "@opencode/ui/button"
 import type {
   SessionReviewComment,
   SessionReviewCommentActions,
@@ -20,7 +21,19 @@ import type {
   SessionReviewFocus,
   SessionReviewLineComment,
 } from "@opencode/session-ui/session-review"
-import { useExtension, usePanel, type MountedSession, type PanelSidebar, type SessionScreen } from "../sdk"
+import {
+  createLatest,
+  ReviewActionRegistry,
+  ReviewAnnotationRegistry,
+  ReviewLensRegistry,
+  useExtension,
+  usePanel,
+  type MountedSession,
+  type PanelSidebar,
+  type ReviewActionContribution,
+  type ReviewActionInput,
+  type SessionScreen,
+} from "../sdk"
 import type Review from "./index"
 import {
   applyFileListKeyDown,
@@ -32,6 +45,7 @@ import {
 } from "./kinds"
 import type { ReviewModel } from "./model"
 import { ReviewPanelEmpty, ReviewScopeNotice, ReviewTitle } from "./parts"
+import { applyReviewLenses, loadReviewAnnotations } from "./contributions"
 
 type ReviewPanelState = {
   sidebar: PanelSidebar
@@ -133,7 +147,15 @@ function ReviewPanel(props: ReviewPanelProps) {
         return undefined
       })
 
-  const diffs = () => props.diffs
+  const diffs = createMemo(() =>
+    applyReviewLenses({
+      diffs: props.diffs,
+      session: props.session,
+      screen: props.screen,
+      lenses: ctx.list(ReviewLensRegistry),
+      report: (owner, error) => console.error("[review] lens failed", { owner, error }),
+    }),
+  )
 
   const filteredFiles = createMemo(() =>
     filterReviewFiles(
@@ -194,6 +216,66 @@ function ReviewPanel(props: ReviewPanelProps) {
     return source
   })
 
+  const annotationTarget = createMemo(() => {
+    const diff = activeItem()
+    const sources = ctx.list(ReviewAnnotationRegistry)
+
+    if (!diff || sources.length === 0) return
+
+    return { diff, sources }
+  })
+
+  const annotations = createLatest(
+    annotationTarget,
+    async (target, signal) => ({
+      file: target.diff.file,
+      values: await loadReviewAnnotations({
+        sources: target.sources,
+        session: props.session,
+        screen: props.screen,
+        file: target.diff.file,
+        patch: target.diff.patch,
+        signal,
+        report: (owner, error) => console.error("[review] annotation source failed", { owner, error }),
+      }),
+    }),
+  )
+
+  const actionInput = (signal: AbortSignal, commentID?: string): ReviewActionInput => ({
+    session: props.session,
+    screen: props.screen,
+    file: activeDiff(),
+    ...(commentID ? { commentID } : {}),
+    signal,
+  })
+
+  const actions = (placements: readonly ReviewActionContribution["placement"][], commentID?: string) =>
+    ctx.list(ReviewActionRegistry).filter((action) => {
+      if (action.signal.aborted || !placements.includes(action.placement)) return false
+      try {
+        return action.when?.(actionInput(action.signal, commentID)) ?? true
+      } catch (error) {
+        console.error("[review] action predicate failed", { owner: action.owner, error })
+        return false
+      }
+    })
+
+  const runAction = (action: ReviewActionContribution, commentID?: string) => {
+    void Promise.try(() => action.run(actionInput(action.signal, commentID))).catch((error: unknown) =>
+      console.error("[review] action failed", { owner: action.owner, error }),
+    )
+  }
+
+  const renderActions = (placements: readonly ReviewActionContribution["placement"][]) => (
+    <For each={actions(placements)}>
+      {(action) => (
+        <Button size="small" variant="ghost" icon={action.icon} onClick={() => runAction(action)}>
+          {action.title}
+        </Button>
+      )}
+    </For>
+  )
+
   return (
     <SessionReviewV2
       title={props.title}
@@ -205,9 +287,12 @@ function ReviewPanel(props: ReviewPanelProps) {
         <SessionReviewV2SidebarToggle opened={props.state.sidebar.opened()} onToggle={props.state.sidebar.toggle} />
       }
       toolbarAction={
-        <Show when={openIn()}>
-          {(openIn) => <Dynamic component={openIn().Button} screen={props.screen} session={props.session} />}
-        </Show>
+        <>
+          {renderActions(["toolbar", "change-request"])}
+          <Show when={openIn()}>
+            {(openIn) => <Dynamic component={openIn().Button} screen={props.screen} session={props.session} />}
+          </Show>
+        </>
       }
       sidebar={
         // Always mounted: the sidebar header hosts the changes-mode dropdown,
@@ -255,6 +340,15 @@ function ReviewPanel(props: ReviewPanelProps) {
                   comments={props.comments}
                   focusedComment={props.focusedComment}
                   onFocusedCommentChange={props.onFocusedCommentChange}
+                  externalAnnotations={annotations.latest?.file === file ? annotations.latest.values : []}
+                  headerAction={renderActions(["file"])}
+                  pluginCommentActions={(comment) =>
+                    actions(["comment"], comment.id).map((action) => ({
+                      id: `${action.owner}:${action.id}`,
+                      title: action.title,
+                      run: () => runAction(action, comment.id),
+                    }))
+                  }
                 />
               )}
             </Show>

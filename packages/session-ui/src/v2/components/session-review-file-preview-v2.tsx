@@ -1,5 +1,5 @@
 import { getDirectory, getFilename } from "@opencode/util/path"
-import type { SelectedLineRange } from "@pierre/diffs"
+import type { DiffLineAnnotation, SelectedLineRange } from "@pierre/diffs"
 import { DiffChanges } from "@opencode/ui/diff-changes"
 import { FileIcon } from "@opencode/ui/file-icon"
 import { useFileComponent } from "@opencode/ui/context/file"
@@ -8,7 +8,7 @@ import { mediaKindFromPath } from "../../pierre/media"
 import { cloneSelectedLineRange, previewSelectedLines } from "../../pierre/selection-bridge"
 import type { FileDiffInfo } from "@opencode/client/promise"
 import type { PresentationFileContent, PresentationFileDiff } from "../../file-presentation"
-import { createEffect, createMemo, onCleanup, Show, untrack } from "solid-js"
+import { createEffect, createMemo, For, onCleanup, Show, untrack, type JSX } from "solid-js"
 import { createStore } from "solid-js/store"
 import { Dynamic } from "solid-js/web"
 import { normalize, text, type ViewDiff } from "../../components/session-diff"
@@ -23,6 +23,7 @@ import type {
 } from "../../components/session-review"
 import type { SessionReviewExpandMode } from "./session-review-v2"
 import { createLineCommentControllerV2 } from "./line-comment-annotations-v2"
+import type { LineCommentAnnotationMeta } from "../../components/line-comment-annotations"
 import { shouldVirtualizeReviewDiff } from "./session-review-file-preview-v2-virtualize"
 import { LineCommentOverflowIcon } from "@opencode/ui/line-comment"
 import { Menu } from "@opencode/ui/menu"
@@ -43,6 +44,33 @@ export type SessionReviewFilePreviewV2Props = {
   comments?: SessionReviewComment[]
   focusedComment?: SessionReviewFocus | null
   onFocusedCommentChange?: (focus: SessionReviewFocus | null) => void
+  externalAnnotations?: SessionReviewExternalAnnotation[]
+  headerAction?: JSX.Element
+  pluginCommentActions?: (comment: SessionReviewComment) => readonly SessionReviewPluginCommentAction[]
+}
+
+export type SessionReviewPluginCommentAction = {
+  id: string
+  title: string
+  run(): void
+}
+
+export type SessionReviewExternalAnnotation = {
+  id: string
+  line: number
+  side?: "additions" | "deletions"
+  title: string
+  body?: string
+  severity?: "info" | "warning" | "error"
+}
+
+type ExternalAnnotationMeta = { kind: "external"; annotation: SessionReviewExternalAnnotation }
+type ReviewAnnotationMeta = ExternalAnnotationMeta | LineCommentAnnotationMeta<SessionReviewComment>
+
+function isExternalAnnotation(
+  annotation: DiffLineAnnotation<ReviewAnnotationMeta>,
+): annotation is DiffLineAnnotation<ExternalAnnotationMeta> {
+  return annotation.metadata.kind === "external"
 }
 
 function statusLabel(status: ViewDiff["status"]) {
@@ -78,6 +106,7 @@ function ReviewCommentMenu(props: {
   labels: SessionReviewCommentActions
   onEdit: VoidFunction
   onDelete: VoidFunction
+  pluginActions?: readonly SessionReviewPluginCommentAction[]
 }) {
   return (
     <div onMouseDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
@@ -94,6 +123,7 @@ function ReviewCommentMenu(props: {
           <Menu.Content>
             <Menu.Item onSelect={props.onEdit}>{props.labels.editLabel}</Menu.Item>
             <Menu.Item onSelect={props.onDelete}>{props.labels.deleteLabel}</Menu.Item>
+            <For each={props.pluginActions}>{(action) => <Menu.Item onSelect={action.run}>{action.title}</Menu.Item>}</For>
           </Menu.Content>
         </Menu.Portal>
       </Menu>
@@ -163,10 +193,47 @@ export function SessionReviewFilePreviewV2(props: SessionReviewFilePreviewV2Prop
     editSubmitLabel: props.lineCommentActions?.saveLabel,
     renderCommentActions: props.lineCommentActions
       ? (comment, controls) => (
-          <ReviewCommentMenu labels={props.lineCommentActions!} onEdit={controls.edit} onDelete={controls.remove} />
+          <ReviewCommentMenu
+            labels={props.lineCommentActions!}
+            onEdit={controls.edit}
+            onDelete={controls.remove}
+            pluginActions={props.pluginCommentActions?.(comment)}
+          />
         )
       : undefined,
   })
+
+  const externalAnnotations = createMemo<DiffLineAnnotation<ExternalAnnotationMeta>[]>(() =>
+    (props.externalAnnotations ?? []).map((annotation) => ({
+      side: annotation.side ?? "additions",
+      lineNumber: annotation.line,
+      metadata: { kind: "external", annotation },
+    })),
+  )
+
+  const annotations = createMemo<DiffLineAnnotation<ReviewAnnotationMeta>[]>(() => [
+    ...commentsUi.annotations(),
+    ...externalAnnotations(),
+  ])
+
+  const renderAnnotation = (annotation: ReturnType<typeof annotations>[number]) => {
+    if (!isExternalAnnotation(annotation)) return commentsUi.renderAnnotation(annotation)
+
+    const value = annotation.metadata.annotation
+    const root = document.createElement("div")
+    root.dataset.slot = "review-plugin-annotation"
+    root.dataset.severity = value.severity ?? "info"
+    const title = document.createElement("strong")
+    title.textContent = value.title
+    root.append(title)
+    if (value.body) {
+      const body = document.createElement("span")
+      body.textContent = value.body
+      root.append(body)
+    }
+
+    return root
+  }
 
   onCleanup(() => {
     focusToken++
@@ -253,8 +320,8 @@ export function SessionReviewFilePreviewV2(props: SessionReviewFilePreviewV2Prop
         commentsUi.onLineSelectionEnd(range)
       }}
       onLineNumberSelectionEnd={commentsUi.onLineNumberSelectionEnd}
-      annotations={commentsUi.annotations()}
-      renderAnnotation={commentsUi.renderAnnotation}
+      annotations={annotations()}
+      renderAnnotation={renderAnnotation}
       renderGutterUtility={lineCommentsEnabled() ? commentsUi.renderGutterUtility : undefined}
       selectedLines={store.selection}
       commentedLines={commentedLines()}
@@ -282,6 +349,7 @@ export function SessionReviewFilePreviewV2(props: SessionReviewFilePreviewV2Prop
         </div>
         <div data-slot="session-review-v2-file-diff">
           <DiffChanges changes={view()} />
+          {props.headerAction}
         </div>
       </div>
       <div

@@ -229,6 +229,9 @@ SDK icon fields use `IconName` from `@opencode/ui/icons/catalog`, a dependency-f
 | [`TitlebarItem`](src/sdk/registries.ts) | window  | A titlebar pill, or the dev channel badge as a toggle                                       |
 | [`Slot`](src/sdk/registries.ts)         | window  | Content for `window.bottom`, `session.header`, `session.panel.end`, `session.panel.sidebar` |
 | [`Style`](src/sdk/registries.ts)        | window  | CSS imported with `?inline`                                                                 |
+| [`ReviewLensRegistry`](src/sdk/registries.ts) | window | Host-owned file and hunk filters registered through `ctx.review.lens`                 |
+| [`ReviewAnnotationRegistry`](src/sdk/registries.ts) | window | Lazy, bounded line observations registered through `ctx.review.annotations`      |
+| [`ReviewActionRegistry`](src/sdk/registries.ts) | window | Toolbar, file, comment and change-request actions registered through `ctx.review.action` |
 | [`MenubarItem`](src/sdk/main.ts)        | main    | An item of the native app menu                                                              |
 
 `SettingsPage` contributions can join the existing Agent extensions inventory with `page: "extensions"`
@@ -260,6 +263,7 @@ The content is unmounted when another Agent extensions tab is selected, includin
 | `ctx.keybinds`               | `Keybinds`                                                     | Display and matching of command keybinds                          |
 | `ctx.servers`                | `Servers`                                                      | The servers the app lists, and each one's live `ServerRef`        |
 | `ctx.workspaces`             | `Workspaces`                                                   | `on("remove", …)` when a workspace is removed                     |
+| `ctx.review`                 | `Review`                                                       | Owned lenses, lazy annotations and actions for the Review surface  |
 | `ctx.scope` (main)           | `Scope`                                                        | The instance's lifetime                                           |
 | `ctx.storage` (main)         | `Storage`                                                      | Synchronous storage, the same `Persisted` shape                   |
 | `ctx.log` (main)             | `Log`                                                          | The desktop log file                                              |
@@ -269,6 +273,29 @@ The content is unmounted when another Agent extensions tab is selected, includin
 | `ctx.windows` (main)         | `Windows`                                                      | The app's main windows                                            |
 | `ctx.embeds` (main)          | `Embeds`                                                       | `create(view, window)` places a web page                          |
 | `ctx.cli` (main)             | `Cli`                                                          | The opencode CLI the app runs                                     |
+
+Review contributions are host-rendered and follow the same owner lifetime as registry items. A lens runs synchronously
+and fails open, annotations load only for the visible file and are capped by the host, and actions use fixed host
+surfaces rather than injecting arbitrary UI:
+
+```ts
+ctx.review.lens({
+  id: "source-only",
+  title: "Source files",
+  file: ({ file }) => file.startsWith("src/"),
+})
+ctx.review.annotations({
+  id: "policy",
+  title: "Policy checks",
+  load: async ({ file, signal }) => inspect(file, { signal }),
+})
+ctx.review.action({
+  id: "approve",
+  title: "Approve",
+  placement: "change-request",
+  run: ({ session, signal }) => approve(session.id, { signal }),
+})
+```
 
 ## Ipc: main ↔ window
 

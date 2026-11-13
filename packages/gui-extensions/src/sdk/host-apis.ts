@@ -1036,6 +1036,168 @@ export interface Servers {
   get(id: string): ServerRef | undefined
 }
 
+/** One unified-diff hunk offered to a review lens. */
+export interface ReviewHunk {
+  /** The hunk header, including its old and new ranges. */
+  readonly header: string
+  /** The hunk body, without the header. */
+  readonly lines: readonly string[]
+}
+
+/** The immutable input a review lens receives. */
+export interface ReviewLensInput {
+  /** The session whose review is being projected. */
+  readonly session: MountedSession
+  /** The owning session screen. */
+  readonly screen: SessionScreen
+  /** The workspace-relative file path. */
+  readonly file: string
+  /** The file's unified patch. */
+  readonly patch: string
+  /** The hunk being considered; absent while the lens filters the whole file. */
+  readonly hunk?: ReviewHunk
+  /** Aborts when the contribution, its owner, or its extension goes away. */
+  readonly signal: AbortSignal
+}
+
+/** A plugin-provided filter for files and hunks in Review. */
+export interface ReviewLens {
+  /** Stable id, unique within the extension. */
+  readonly id: string
+  /** Human-readable label used in diagnostics. */
+  readonly title: string
+  /**
+   * Decides whether a file remains visible. Omit it to keep every file.
+   *
+   * @param input - The file and review context.
+   * @returns False to hide the file. A thrown error is isolated and leaves the file visible.
+   */
+  readonly file?: (input: ReviewLensInput) => boolean
+  /**
+   * Decides whether one hunk remains in a visible file. Omit it to keep every hunk.
+   *
+   * @param input - The hunk and review context.
+   * @returns False to hide the hunk. A thrown error is isolated and leaves the hunk visible.
+   */
+  readonly hunk?: (input: ReviewLensInput & { readonly hunk: ReviewHunk }) => boolean
+}
+
+/** Severity used to style a review annotation. */
+export type ReviewAnnotationSeverity = "info" | "warning" | "error"
+
+/** One lazy observation drawn at a changed line. */
+export interface ReviewAnnotation {
+  /** Stable id within the annotation source and file. */
+  readonly id: string
+  /** One-based line number on the selected side. */
+  readonly line: number
+  /** Which side of the diff owns the line. Defaults to additions. */
+  readonly side?: "additions" | "deletions"
+  /** Compact annotation title. */
+  readonly title: string
+  /** Optional explanatory text. */
+  readonly body?: string
+  /** Visual severity. Defaults to info. */
+  readonly severity?: ReviewAnnotationSeverity
+}
+
+/** Input for a lazy review annotation source. */
+export interface ReviewAnnotationInput {
+  /** The session whose review is visible. */
+  readonly session: MountedSession
+  /** The owning session screen. */
+  readonly screen: SessionScreen
+  /** The visible workspace-relative file path. */
+  readonly file: string
+  /** The visible file's unified patch. */
+  readonly patch: string
+  /** Aborts when the file stops being visible or the contribution goes away. */
+  readonly signal: AbortSignal
+}
+
+/** A plugin-provided, lazy source of line observations. */
+export interface ReviewAnnotationSource {
+  /** Stable id, unique within the extension. */
+  readonly id: string
+  /** Human-readable source label used in diagnostics. */
+  readonly title: string
+  /**
+   * Loads observations only for the visible file. The host truncates results to its per-file budget.
+   *
+   * @param input - The visible file and cancellation signal.
+   * @returns The file's observations. A rejection is isolated to this source.
+   */
+  load(input: ReviewAnnotationInput): readonly ReviewAnnotation[] | Promise<readonly ReviewAnnotation[]>
+}
+
+/** Where a review action appears. */
+export type ReviewActionPlacement = "toolbar" | "file" | "comment" | "change-request"
+
+/** Context passed to a review action. */
+export interface ReviewActionInput {
+  /** The session whose review owns the action. */
+  readonly session: MountedSession
+  /** The owning session screen. */
+  readonly screen: SessionScreen
+  /** The active workspace-relative file, when one is selected. */
+  readonly file?: string
+  /** The focused comment id for a comment action, when available. */
+  readonly commentID?: string
+  /** Aborts when the action's contribution goes away. */
+  readonly signal: AbortSignal
+}
+
+/** A plugin-provided action in the review toolbar, file, comment, or change-request surface. */
+export interface ReviewAction {
+  /** Stable id, unique within the extension. */
+  readonly id: string
+  /** Button or menu label. */
+  readonly title: string
+  /** Surface that hosts the action. */
+  readonly placement: ReviewActionPlacement
+  /** Optional shared icon name. */
+  readonly icon?: IconName
+  /**
+   * Controls whether the action is available for the current context. Omit it to show the action whenever its
+   * placement is visible.
+   *
+   * @param input - The current review context.
+   * @returns Whether to show the action. A thrown error hides only this action.
+   */
+  readonly when?: (input: ReviewActionInput) => boolean
+  /**
+   * Runs the action. Rejections are reported without breaking Review.
+   *
+   * @param input - The current review context and cancellation signal.
+   */
+  run(input: ReviewActionInput): void | Promise<void>
+}
+
+/** Registration API for plugin contributions to Review. */
+export interface Review {
+  /**
+   * Adds a file/hunk lens. It is withdrawn with the current owner, else with the extension.
+   *
+   * @param lens - The lens to register.
+   * @returns A cleanup that withdraws it early.
+   */
+  lens(lens: ReviewLens): Cleanup
+  /**
+   * Adds a lazy line-annotation source. It is withdrawn with the current owner, else with the extension.
+   *
+   * @param source - The source to register.
+   * @returns A cleanup that withdraws it early.
+   */
+  annotations(source: ReviewAnnotationSource): Cleanup
+  /**
+   * Adds an action to a Review surface. It is withdrawn with the current owner, else with the extension.
+   *
+   * @param action - The action to register.
+   * @returns A cleanup that withdraws it early.
+   */
+  action(action: ReviewAction): Cleanup
+}
+
 /** Workspace lifecycle events. */
 export interface Workspaces {
   /**

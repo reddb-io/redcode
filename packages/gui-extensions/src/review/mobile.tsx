@@ -1,10 +1,11 @@
-import { onCleanup, Show } from "solid-js"
+import { createMemo, onCleanup, Show } from "solid-js"
 import { makeEventListener } from "@solid-primitives/event-listener"
 import { SessionReview } from "@opencode/session-ui/session-review"
-import { createKeyed, useExtension, type MountedSession } from "../sdk"
+import { createKeyed, ReviewLensRegistry, useExtension, type MountedSession } from "../sdk"
 import type Review from "./index"
 import type { ReviewModel } from "./model"
 import { ReviewEmpty, ReviewTitle } from "./parts"
+import { applyReviewLenses } from "./contributions"
 
 type ScrollState = {
   scroll?: HTMLDivElement
@@ -43,6 +44,15 @@ function SessionReviewTab(props: {
   const layout = ctx.layout
   const review = props.review
   const state: ScrollState = { userInteracted: false }
+  const diffs = createMemo(() =>
+    applyReviewLenses({
+      diffs: review.diffs(),
+      session: props.session,
+      screen: review.screen,
+      lenses: ctx.list(ReviewLensRegistry),
+      report: (owner, error) => console.error("[review] lens failed", { owner, error }),
+    }),
+  )
 
   const readFile = async (path: string) => {
     return props.session.server.client.file
@@ -158,7 +168,7 @@ function SessionReviewTab(props: {
           "!px-2 !h-10 !pb-0 relative before:pointer-events-none before:absolute before:inset-x-0 before:bottom-0 before:h-px before:bg-v2-border-border-base before:content-['']",
         container: "!px-0",
       }}
-      diffs={review.diffs()}
+      diffs={diffs()}
       diffStyle="unified"
       changeSummary
       overflow={props.overflow}

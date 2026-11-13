@@ -584,3 +584,28 @@
   text-align: center;
   color: var(--reddb-color-ink-muted);
 }
+[data-slot="review-plugin-annotation"] {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 4px 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border-weak-base);
+  border-inline-start: 2px solid var(--icon-info-base);
+  border-radius: 6px;
+  background: var(--background-base);
+  color: var(--text-base);
+  font: var(--font-size-small) / 1.35 var(--font-family-sans);
+}
+
+[data-slot="review-plugin-annotation"][data-severity="warning"] {
+  border-inline-start-color: var(--icon-warning-base);
+}
+
+[data-slot="review-plugin-annotation"][data-severity="error"] {
+  border-inline-start-color: var(--icon-critical-base);
+}
+
+[data-slot="review-plugin-annotation"] > span {
+  color: var(--text-weak);
+}

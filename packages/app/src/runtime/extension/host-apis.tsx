@@ -6,6 +6,7 @@ import {
   createSignal,
   getOwner,
   on,
+  onCleanup,
   runWithOwner,
   startTransition,
   untrack,
@@ -18,12 +19,21 @@ import { useDialog } from "@opencode/ui/context/dialog"
 import { base64Encode } from "@opencode/util/encode"
 import {
   Panel,
+  ReviewActionRegistry,
+  ReviewAnnotationRegistry,
+  ReviewLensRegistry,
   type Build,
+  type Context,
   type Layout,
   type MountedSession,
   type OpenOptions,
   type PanelSidebar,
   type PanelState,
+  type ReviewAction,
+  type ReviewAnnotationSource,
+  type ReviewLens,
+  type Review,
+  type Registry,
   type ServerRef,
   type SessionRef,
   type SessionScreen,
@@ -73,6 +83,38 @@ type Attached = {
   matches: (command: string, event: KeyboardEvent) => boolean
   servers: Accessor<readonly string[]>
   server: (id: string) => ServerRef | undefined
+}
+
+/** Creates the owned Review contribution API for one extension instance. */
+export function createReviewApi(extension: string, context: Pick<Context, "add" | "signal">): Review {
+  let sequence = 0
+
+  const add = <T extends ReviewLens | ReviewAnnotationSource | ReviewAction>(
+    registry: Registry<T & { readonly owner: string; readonly signal: AbortSignal }>,
+    value: T,
+  ) => {
+    const controller = new AbortController()
+    const owner = `${extension}:${++sequence}`
+    const remove = context.add(registry, { ...value, owner, signal: controller.signal })
+    let active = true
+    const cleanup = () => {
+      if (!active) return
+      active = false
+      controller.abort()
+      remove()
+    }
+
+    if (getOwner()) onCleanup(cleanup)
+    else context.signal.addEventListener("abort", cleanup, { once: true })
+
+    return cleanup
+  }
+
+  return {
+    lens: (lens) => add(ReviewLensRegistry, lens),
+    annotations: (source) => add(ReviewAnnotationRegistry, source),
+    action: (action) => add(ReviewActionRegistry, action),
+  }
 }
 
 /**
@@ -156,6 +198,7 @@ export function createHostApis() {
   }
 
   const apis: HostApiFactories = {
+    review: (extension, _owner, context) => createReviewApi(extension, context),
     storage: (extension, owner) => ({
       store<S extends Schema.ConstraintCodec<object, unknown>>(key: string, options: StoreOptions<S>) {
         const open = (at: Parameters<typeof persisted>[0]) => {

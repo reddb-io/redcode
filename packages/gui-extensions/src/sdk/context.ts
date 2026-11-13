@@ -27,6 +27,7 @@ import type {
   Links,
   Locale,
   Router,
+  Review,
   Screen,
   Servers,
   SessionRef,
@@ -216,6 +217,16 @@ export interface Context extends BaseContext {
    * ```
    */
   readonly workspaces: Workspaces
+  /**
+   * Typed plugin contributions to the Review surface. Registrations follow the current Solid owner and extension
+   * lifetime, and receive cancellation signals owned by the host.
+   *
+   * @example
+   * ```ts
+   * ctx.review.action({ id: "approve", title: "Approve", placement: "toolbar", run: approve })
+   * ```
+   */
+  readonly review: Review
 }
 
 type Handle<S> =

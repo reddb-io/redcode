@@ -1,7 +1,14 @@
 import type { JSX } from "solid-js"
 import type { IconName } from "@opencode/ui/icons/catalog"
 import { Registry } from "./core"
-import type { SessionRef, MountedSession, SessionScreen } from "./host-apis"
+import type {
+  MountedSession,
+  ReviewAction,
+  ReviewAnnotationSource,
+  ReviewLens,
+  SessionRef,
+  SessionScreen,
+} from "./host-apis"
 
 /** The name of a shared icon; derived from the dependency-free UI artwork catalog, not a component's props. */
 export type { IconName }
@@ -720,3 +727,57 @@ export const Slot = Registry.define<Slot>("slot")
  * ```
  */
 export const Style = Registry.define<string>("style")
+
+/** A review lens plus the host-owned lifetime that bounds it. */
+export interface ReviewLensContribution extends ReviewLens {
+  /** Opaque owner key, stable for this registration only. */
+  readonly owner: string
+  /** Aborts when the registration's owner or extension goes away. */
+  readonly signal: AbortSignal
+}
+
+/** A review annotation source plus the host-owned lifetime that bounds it. */
+export interface ReviewAnnotationContribution extends ReviewAnnotationSource {
+  /** Opaque owner key, stable for this registration only. */
+  readonly owner: string
+  /** Aborts when the registration's owner or extension goes away. */
+  readonly signal: AbortSignal
+}
+
+/** A review action plus the host-owned lifetime that bounds it. */
+export interface ReviewActionContribution extends ReviewAction {
+  /** Opaque owner key, stable for this registration only. */
+  readonly owner: string
+  /** Aborts when the registration's owner or extension goes away. */
+  readonly signal: AbortSignal
+}
+
+/**
+ * Host registry backing `ctx.review.lens`. Plugins use the context API; Review consumes this registry.
+ *
+ * @example
+ * ```ts
+ * const lenses = () => ctx.list(ReviewLensRegistry)
+ * ```
+ */
+export const ReviewLensRegistry = Registry.define<ReviewLensContribution>("review-lens")
+
+/**
+ * Host registry backing `ctx.review.annotations`. Plugins use the context API; Review consumes this registry.
+ *
+ * @example
+ * ```ts
+ * const sources = () => ctx.list(ReviewAnnotationRegistry)
+ * ```
+ */
+export const ReviewAnnotationRegistry = Registry.define<ReviewAnnotationContribution>("review-annotation")
+
+/**
+ * Host registry backing `ctx.review.action`. Plugins use the context API; Review consumes this registry.
+ *
+ * @example
+ * ```ts
+ * const actions = () => ctx.list(ReviewActionRegistry)
+ * ```
+ */
+export const ReviewActionRegistry = Registry.define<ReviewActionContribution>("review-action")
