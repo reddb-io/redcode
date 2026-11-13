@@ -206,6 +206,55 @@ it.effect("unloading a plugin removes its commands and runs cleanup", () =>
   }),
 )
 
+it.effect("isolates plugin cleanup failures while unloading the remaining suffix", () =>
+  Effect.gen(function* () {
+    const plugins = yield* Plugin.Service
+    const commands = yield* Command.Service
+    const cleaned: string[] = []
+    const generation = (id: string, fail = false): Plugin.Generation => ({
+      id,
+      revision: "1",
+      effect: (ctx) =>
+        Effect.gen(function* () {
+          yield* ctx.command.transform((editor) => editor.add({ name: id, execute: () => Effect.void }))
+          yield* Effect.addFinalizer(() =>
+            Effect.sync(() => cleaned.push(id)).pipe(
+              Effect.andThen(fail ? Effect.die(new Error(`${id} cleanup failed`)) : Effect.void),
+            ),
+          )
+        }),
+    })
+
+    // Finalizers run in reverse order, so the failing one is encountered first.
+    yield* plugins.activate([generation("healthy"), generation("broken", true)])
+    yield* plugins.activate([])
+
+    expect(cleaned).toEqual(["broken", "healthy"])
+    expect(yield* commands.list()).toEqual([])
+    expect(yield* plugins.list()).toEqual([])
+  }),
+)
+
+it.effect("ignores non-function cleanup values returned by Promise plugins", () =>
+  Effect.gen(function* () {
+    const plugins = yield* Plugin.Service
+    yield* plugins.activate([
+      {
+        ...fromPromise({
+          id: "legacy-return",
+          setup() {
+            return { hooks: {} } as never
+          },
+        }),
+        revision: "1",
+      },
+    ])
+
+    yield* plugins.activate([])
+    expect(yield* plugins.list()).toEqual([])
+  }),
+)
+
 it.effect("reports a failed plugin without blocking a healthy plugin", () =>
   Effect.gen(function* () {
     const plugins = yield* Plugin.Service

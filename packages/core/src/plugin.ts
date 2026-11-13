@@ -142,8 +142,14 @@ const layer = Layer.effect(
                     ([id, slot]) =>
                       Effect.gen(function* () {
                         active.delete(id)
-                        if (slot.activation && !slot.activation.failure)
-                          yield* Scope.close(slot.activation.scope, Exit.void)
+                        if (!slot.activation || slot.activation.failure) return
+                        // A finalizer belongs to one plugin. Its failure must not keep the rest of the
+                        // suffix registered or prevent replacement plugins from loading.
+                        yield* Scope.close(slot.activation.scope, Exit.void).pipe(
+                          Effect.catchCause((cause) =>
+                            Effect.logError("failed to clean up plugin", { "plugin.id": id, cause }),
+                          ),
+                        )
                       }),
                     { discard: true },
                   )

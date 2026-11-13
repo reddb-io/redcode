@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import { getEventListeners } from "node:events"
-import { createRoot } from "solid-js"
+import { createRoot, createSignal } from "solid-js"
 import { createData, type CreateDataInput } from "../src/solid"
 import {
   OpenCode,
@@ -19,6 +19,144 @@ const session = (viewed: number): SessionInfo => ({
   outcome: "succeeded",
   time: { created: 0, updated: 0, idle: 2, viewed },
   location: { directory: "/project" },
+})
+
+test("drops inline tool files while disabled and restores them from durable messages", async () => {
+  const screenshot = `data:image/png;base64,${"A".repeat(4096)}`
+  const assistant = {
+    id: "msg_screenshot",
+    type: "assistant" as const,
+    agent: "build",
+    model: { providerID: "provider", id: "model" },
+    time: { created: 1, completed: 2 },
+    content: [
+      {
+        type: "tool" as const,
+        id: "call_screenshot",
+        name: "computer",
+        time: { created: 1, ran: 1, completed: 2 },
+        executed: true,
+        state: {
+          status: "completed" as const,
+          input: {},
+          metadata: {},
+          content: [{ type: "file" as const, uri: screenshot, mime: "image/png" }],
+        },
+      },
+    ],
+  }
+  const reads: string[] = []
+  const api = OpenCode.make({
+    baseUrl: "http://opencode.local",
+    fetch: async (input) => {
+      const url = new URL(input instanceof Request ? input.url : String(input))
+      reads.push(url.pathname)
+      if (url.pathname.endsWith("/message/msg_screenshot")) return Response.json({ data: assistant })
+      return Response.json({ data: [assistant], cursor: {} })
+    },
+  })
+  const [omit, setOmit] = createSignal(true)
+  const setup = createRoot((dispose) => ({
+    data: createData({
+      api: () => api,
+      directory: "/project",
+      omitToolFileData: omit,
+      event: { on: () => () => {}, listen: () => () => {} },
+    }),
+    dispose,
+  }))
+
+  try {
+    await setup.data.session.message.sync("ses_screenshot")
+    expect(setup.data.session.message.get("ses_screenshot", assistant.id)).toMatchObject({
+      content: [{ state: { content: [{ uri: "data:image/png;base64," }] } }],
+    })
+
+    setOmit(false)
+    await setup.data.session.message.restoreFiles()
+    expect(reads.filter((value) => value.endsWith("/message/msg_screenshot"))).toHaveLength(1)
+    expect(setup.data.session.message.get("ses_screenshot", assistant.id)).toMatchObject({
+      content: [{ state: { content: [{ uri: screenshot }] } }],
+    })
+  } finally {
+    setup.dispose()
+  }
+})
+
+test("reads the screenshot retention setting for every live tool result", async () => {
+  const listeners = new Set<Parameters<CreateDataInput["event"]["listen"]>[0]>()
+  const screenshot = `data:image/png;base64,${"B".repeat(4096)}`
+  const running = (id: string) => ({
+    type: "tool" as const,
+    id,
+    name: "computer",
+    time: { created: 1, ran: 1 },
+    state: { status: "running" as const, input: {}, metadata: {} },
+  })
+  const api = OpenCode.make({
+    baseUrl: "http://opencode.local",
+    fetch: async () =>
+      Response.json({
+        data: [
+          {
+            id: "msg_live",
+            type: "assistant",
+            agent: "build",
+            model: { providerID: "provider", id: "model" },
+            time: { created: 1 },
+            content: [running("call_hidden"), running("call_visible")],
+          },
+        ],
+        cursor: {},
+      }),
+  })
+  const [omit, setOmit] = createSignal(true)
+  const setup = createRoot((dispose) => ({
+    data: createData({
+      api: () => api,
+      directory: "/project",
+      omitToolFileData: omit,
+      event: {
+        on: () => () => {},
+        listen(handler) {
+          listeners.add(handler)
+          return () => listeners.delete(handler)
+        },
+      },
+    }),
+    dispose,
+  }))
+  const succeed = (id: string, seq: number) => {
+    const event: OpenCodeEvent = {
+      id: `evt_${id}`,
+      created: 2,
+      type: "session.tool.success",
+      durable: { aggregateID: "ses_live", seq, version: 2 },
+      data: {
+        sessionID: "ses_live",
+        assistantMessageID: "msg_live",
+        id,
+        executed: true,
+        content: [{ type: "file", uri: screenshot, mime: "image/png" }],
+      },
+    }
+    listeners.forEach((listener) => listener({ name: event.type, details: event }))
+  }
+
+  try {
+    await setup.data.session.message.sync("ses_live")
+    succeed("call_hidden", 1)
+    setOmit(false)
+    succeed("call_visible", 2)
+    expect(setup.data.session.message.get("ses_live", "msg_live")).toMatchObject({
+      content: [
+        { state: { content: [{ uri: "data:image/png;base64," }] } },
+        { state: { content: [{ uri: screenshot }] } },
+      ],
+    })
+  } finally {
+    setup.dispose()
+  }
 })
 
 test("uses the configured initial window and retains normal cursor page sizes", async () => {

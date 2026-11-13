@@ -3,7 +3,7 @@ import { createEffect, createMemo, createSignal, onCleanup, Show, type Accessor,
 import { createStore } from "solid-js/store"
 import { render as renderSolid } from "solid-js/web"
 import { useI18n } from "@opencode/ui/context/i18n"
-import { createHoverCommentUtility } from "../pierre/comment-hover"
+import { createHoverComment, type HoverComment, type HoverCommentLine } from "../pierre/comment-hover"
 import { cloneSelectedLineRange, formatSelectedLineLabel, lineInSelectedRange } from "../pierre/selection-bridge"
 import { LineComment, LineCommentEditor, type LineCommentEditorProps } from "./line-comment"
 
@@ -27,11 +27,6 @@ type LineCommentAnnotationsProps<T> = {
 
 type LineCommentAnnotationsWithSideProps<T> = LineCommentAnnotationsProps<T> & {
   getSide: (range: SelectedLineRange) => "additions" | "deletions"
-}
-
-type HoverCommentLine = {
-  lineNumber: number
-  side?: "additions" | "deletions"
 }
 
 export type LineCommentStateProps<T> = {
@@ -643,8 +638,15 @@ export function createLineCommentGutterRenderer(props: {
   getSelectedRange: Accessor<SelectedLineRange | null>
   onOpenDraft: (range: SelectedLineRange) => void
 }) {
-  return (getHoveredLine: () => HoverCommentLine | undefined) =>
-    createHoverCommentUtility({
+  let active: { comment: HoverComment; getHoveredLine: () => HoverCommentLine | undefined } | undefined
+
+  onCleanup(() => active?.comment.dispose())
+
+  return (getHoveredLine: () => HoverCommentLine | undefined) => {
+    if (active?.getHoveredLine === getHoveredLine && active.comment.canReuse()) return active.comment.button
+    active?.comment.dispose()
+
+    const comment = createHoverComment({
       label: props.label,
       getHoveredLine,
       onSelect: (hovered) => {
@@ -665,4 +667,8 @@ export function createLineCommentGutterRenderer(props: {
         props.onOpenDraft(range)
       },
     })
+
+    active = comment && { comment, getHoveredLine }
+    return comment?.button
+  }
 }

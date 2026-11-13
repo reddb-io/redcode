@@ -88,7 +88,20 @@ it.effect("repairs namespaced inner tool input called from Code Mode", () =>
     const plugins = yield* Plugin.Service
     const registry = yield* Tool.Service
     const executed: unknown[] = []
-    yield* plugins.activate([{ ...ToolInputRepairPlugin.Plugin, revision: "1" }])
+    let repairs = 0
+    yield* plugins.activate([
+      { ...ToolInputRepairPlugin.Plugin, revision: "1" },
+      {
+        id: "repair-observer",
+        revision: "1",
+        effect: (ctx) =>
+          ctx.tool.hook("execute.before", (event) =>
+            Effect.sync(() => {
+              if (event.tool === "example_count") repairs++
+            }),
+          ),
+      },
+    ])
     yield* registry.transform((draft) =>
       draft.add({
         name: "count",
@@ -110,5 +123,6 @@ it.effect("repairs namespaced inner tool input called from Code Mode", () =>
       },
     })
     expect(executed).toEqual([{ count: 3 }])
+    expect(repairs).toBe(1)
   }),
 )

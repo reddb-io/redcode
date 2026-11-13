@@ -348,6 +348,21 @@ describe("ReadToolFileSystem", () => {
     }),
   )
 
+  it.effect("reads past a multi-chunk unterminated line without retaining its body", () =>
+    Effect.gen(function* () {
+      const { environment, files, directory } = yield* fixture
+      const file = path.join(directory, "huge-line.txt")
+      yield* files.writeFileString(file, `${"a".repeat(12 * 256 * 1024)}\nselected\n`)
+
+      const result = yield* ReadToolFileSystem.read(environment, absolute(file), "huge-line.txt", {
+        offset: 2,
+        limit: 1,
+      })
+
+      expect(result).toMatchObject({ type: "text-page", content: "selected", offset: 2, truncated: false })
+    }),
+  )
+
   it.effect("reads after a newline at the first chunk boundary", () =>
     Effect.gen(function* () {
       const { environment, files, directory } = yield* fixture

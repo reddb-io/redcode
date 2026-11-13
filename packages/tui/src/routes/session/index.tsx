@@ -3229,7 +3229,10 @@ function SessionImages(props: { images: readonly { uri: string }[]; paddingLeft?
 
 function inlineToolImages(part: SessionMessageAssistantTool) {
   return toolDisplayContent(part.state).flatMap((content) =>
-    content.type === "file" && content.mime.startsWith("image/") && content.uri.startsWith("data:image/")
+    content.type === "file" &&
+    content.mime.startsWith("image/") &&
+    content.uri.startsWith("data:image/") &&
+    !content.uri.endsWith(",")
       ? [{ uri: content.uri }]
       : [],
   )

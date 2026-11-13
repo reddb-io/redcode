@@ -1,9 +1,11 @@
 import { createData } from "@opencode/client/solid"
 import type { LocationRef } from "@opencode/client"
 import type { Plugin } from "@opencode/plugin/tui"
+import { createEffect, on } from "solid-js"
 import { createStore } from "solid-js/store"
 import { createSimpleContext } from "./helper"
 import { useClient } from "./client"
+import { useConfig } from "../config"
 
 export { locationKey } from "@opencode/client/solid"
 export type { FormWithLocation } from "@opencode/client/solid"
@@ -12,12 +14,23 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
   name: "Data",
   init: (props: { directory: string }) => {
     const client = useClient()
+    const config = useConfig()
     const data = createData({
       api: () => client.api,
       event: client.event,
       connection: client.connection,
       directory: props.directory,
+      omitToolFileData: () => !config.data.session?.image_preview,
     })
+    createEffect(
+      on(
+        () => config.data.session?.image_preview === true,
+        (preview) => {
+          if (preview) void data.session.message.restoreFiles()
+        },
+        { defer: true },
+      ),
+    )
     data satisfies Plugin.Context["data"]
     const [generatingTitles, setGeneratingTitles] = createStore<Record<string, boolean | undefined>>({})
     return {

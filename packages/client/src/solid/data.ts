@@ -37,6 +37,7 @@ import type {
   VcsInfo,
   OpenCodeEvent,
   OpenCodeClient,
+  ToolContent,
   WebSearchProvider,
 } from "../promise"
 import { Worktree } from "@opencode/schema/worktree"
@@ -80,6 +81,8 @@ export type CreateDataInput = {
   }
   /** Receives failed event-driven reads. Explicit reads still reject to their caller. */
   readonly onError?: (error: unknown) => void
+  /** Drops inline tool-file bytes before they enter the transcript store. Functions are read for every update. */
+  readonly omitToolFileData?: boolean | (() => boolean)
 }
 
 const messageIDFromEvent = (eventID: string) => eventID.replace(/^evt_/, "msg_")
@@ -92,6 +95,38 @@ export const settleMs = 150
 // until MCP elicitations carry session ownership.
 export type FormWithLocation = FormInfo & { readonly location?: LocationRef }
 type ShellWithLocation = ShellInfo & { readonly location: LocationRef }
+
+// Build an independent empty URI. Slicing the original would keep the complete base64 string alive in V8.
+function omitFileData(content: [ToolContent, ...ToolContent[]]): [ToolContent, ...ToolContent[]] {
+  const omit = (item: ToolContent): ToolContent =>
+    item.type === "file" && item.uri.startsWith("data:") ? { ...item, uri: `data:${item.mime};base64,` } : item
+  return [omit(content[0]), ...content.slice(1).map(omit)]
+}
+
+const isDroppedFile = (item: ToolContent) => item.type === "file" && item.uri === `data:${item.mime};base64,`
+
+const hasFileData = (part: Extract<SessionMessageInfo, { type: "assistant" }>["content"][number]) =>
+  part.type === "tool" &&
+  "content" in part.state &&
+  !!part.state.content?.some((item) => item.type === "file" && item.uri.startsWith("data:") && !isDroppedFile(item))
+
+const hasDroppedFileData = (item: SessionMessageInfo) =>
+  item.type === "assistant" &&
+  item.content.some(
+    (part) => part.type === "tool" && "content" in part.state && !!part.state.content?.some(isDroppedFile),
+  )
+
+function omitMessageFileData(item: SessionMessageInfo): SessionMessageInfo {
+  if (item.type !== "assistant" || !item.content.some(hasFileData)) return item
+  return {
+    ...item,
+    content: item.content.map((part) =>
+      part.type === "tool" && "content" in part.state && part.state.content
+        ? { ...part, state: { ...part.state, content: omitFileData(part.state.content) } }
+        : part,
+    ),
+  }
+}
 
 type LocationData = {
   info?: LocationGetOutput
@@ -214,13 +249,15 @@ export function createData(config: CreateDataInput) {
   let disposed = false
   onCleanup(() => (disposed = true))
 
+  function refreshFailed(error: unknown) {
+    if (disposed || (config.connection && config.connection.status() !== "connected")) return
+    if (config.onError) return config.onError(error)
+    console.error("Failed to refresh client data", error)
+  }
+
   function refresh(load: () => Promise<unknown>) {
     if (disposed || (config.connection && config.connection.status() !== "connected")) return
-    void load().catch((error) => {
-      if (disposed || (config.connection && config.connection.status() !== "connected")) return
-      if (config.onError) return config.onError(error)
-      console.error("Failed to refresh client data", error)
-    })
+    void load().catch(refreshFailed)
   }
 
   // Runs `load` once a burst of same-key events goes quiet, so N events cost one refetch.
@@ -279,6 +316,9 @@ export function createData(config: CreateDataInput) {
     Object.values(store.session.info).toSorted((a, b) => b.time.updated - a.time.updated),
   )
   const messageIndex = new Map<string, Map<string, number>>()
+  const omitFiles = () =>
+    typeof config.omitToolFileData === "function" ? config.omitToolFileData() : config.omitToolFileData === true
+  const stored = (item: SessionMessageInfo) => (omitFiles() ? omitMessageFileData(item) : item)
   const sync = createSync()
   const spending = new Set<string>()
 
@@ -532,6 +572,24 @@ export function createData(config: CreateDataInput) {
         if (item) index.set(item.id, position)
       }
     },
+  }
+
+  function restoreMessageFiles(sessionID: string, messageID: string) {
+    return api()
+      .session.message.get({ sessionID, messageID })
+      .then((fetched) => {
+        if (fetched.type !== "assistant" || omitFiles()) return
+        message.editAssistant(sessionID, fetched.id, (assistant) => {
+          assistant.content.forEach((part) => {
+            if (part.type !== "tool" || !("content" in part.state) || !part.state.content?.some(isDroppedFile)) return
+            const source = fetched.content.findLast(
+              (candidate) => candidate.type === "tool" && candidate.id === part.id,
+            )
+            if (source?.type === "tool" && "content" in source.state && source.state.content)
+              part.state.content = source.state.content
+          })
+        })
+      })
   }
 
   function index(sessionID: string) {
@@ -1058,7 +1116,7 @@ export function createData(config: CreateDataInput) {
             status: "completed",
             input: tool.state.input,
             metadata: event.data.metadata,
-            content: [...event.data.content],
+            content: omitFiles() ? omitFileData(event.data.content) : [...event.data.content],
           }
           tool.executed = event.data.executed || tool.executed === true
           tool.providerResultState = event.data.resultState
@@ -1073,7 +1131,7 @@ export function createData(config: CreateDataInput) {
             error: event.data.error,
             input: typeof tool.state.input === "string" ? {} : tool.state.input,
             metadata: event.data.metadata,
-            content: event.data.content,
+            content: omitFiles() && event.data.content ? omitFileData(event.data.content) : event.data.content,
           }
           tool.executed = event.data.executed || tool.executed === true
           tool.providerResultState = event.data.resultState
@@ -1848,6 +1906,22 @@ export function createData(config: CreateDataInput) {
           const position = messageIndex.get(sessionID)?.get(messageID)
           return position === undefined ? undefined : messages?.[position]
         },
+        /** Re-read only messages whose inline tool files were dropped while previews were disabled. */
+        restoreFiles() {
+          const sessions = Object.entries(store.session.message).flatMap(([sessionID, messages]) => {
+            const ids = (messages ?? []).filter(hasDroppedFileData).map((item) => item.id)
+            return ids.length === 0 ? [] : [{ sessionID, ids }]
+          })
+          return Promise.all(
+            sessions.map((session) =>
+              session.ids.reduce(
+                (previous, messageID) =>
+                  previous.then(() => restoreMessageFiles(session.sessionID, messageID).catch(refreshFailed)),
+                Promise.resolve(),
+              ),
+            ),
+          )
+        },
         sync(sessionID: string) {
           return sync.run(`session.message:${sessionID}`, async () => {
             const response = await api().message.list({
@@ -1855,7 +1929,7 @@ export function createData(config: CreateDataInput) {
               limit: config.initialMessageLimit?.() ?? messagePageLimit,
               order: "desc",
             })
-            const fetched = response.data.toReversed()
+            const fetched = response.data.toReversed().map(stored)
             // Same protection as the pending sync: a re-fetch racing an
             // admission must not wipe its local transcript row.
             const ids = new Set(fetched.map((item) => item.id))
@@ -1930,7 +2004,7 @@ export function createData(config: CreateDataInput) {
                 { signal },
               )
               if (signal?.aborted) return
-              fetched.push(...response.data)
+              fetched.push(...response.data.map(stored))
               next = response.cursor.next ?? undefined
               if (!options?.all) break
             } while (next)
