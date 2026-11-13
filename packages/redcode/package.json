@@ -24,6 +24,8 @@
     "@opencode/script": "workspace:*",
     "@tsconfig/bun": "catalog:",
     "@types/bun": "catalog:",
-    "@typescript/native-preview": "catalog:"
+    "@typescript/native-preview": "catalog:",
+    "@zip.js/zip.js": "2.7.62",
+    "tar": "7.5.22"
   }
 }

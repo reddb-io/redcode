@@ -6,12 +6,14 @@
 // from the same release. Windows archives are zip; the others are tar.gz, which keeps file modes and symlinks (the
 // macOS app bundle has both).
 
-import { $ } from "bun"
+import { BlobReader, TextReader, ZipWriter } from "@zip.js/zip.js"
 import { createHash } from "node:crypto"
-import { createReadStream } from "node:fs"
-import { chmod, mkdir, readdir, rm, utimes } from "node:fs/promises"
+import { constants, createReadStream, createWriteStream } from "node:fs"
+import { chmod, copyFile, cp, lstat, mkdir, readdir, readlink, rm } from "node:fs/promises"
 import path from "node:path"
+import { Writable } from "node:stream"
 import { Script } from "@opencode/script"
+import { create } from "tar"
 import { RedcodePackages } from "./packages"
 
 const directory = path.resolve(import.meta.dir, "..")
@@ -23,9 +25,8 @@ const cli = packages.filter((item) => item.kind === "cli")
 if (cli.length === 0) throw new Error(`No Redcode native packages in ${dist}`)
 const whiteboard = path.join(RedcodePackages.designDist(directory), `redcode-whiteboard-${Script.version}.tar.gz`)
 if (!(await Bun.file(whiteboard).exists())) throw new Error(`Missing whiteboard bundle: ${whiteboard}`)
-// Reject incomplete inputs before starting archive processes, whose working directories
-// otherwise remain locked on Windows when another concurrent target fails validation.
-const apps = new Map<string, string[]>()
+// Reject incomplete inputs before writing any release files.
+const apps = new Set<string>()
 for (const item of cli) {
   for (const name of RedcodePackages.binaries(item)) {
     const file = path.join(item.dir, "bin", name)
@@ -36,53 +37,51 @@ for (const item of cli) {
   const built = path.join(desktops, desktop)
   const entries = await readdir(built).catch(() => [])
   if (entries.length === 0) throw new Error(`Missing desktop app for ${desktop}: ${built}`)
-  apps.set(desktop, entries)
+  apps.add(desktop)
 }
 await mkdir(output, { recursive: true })
-
-await Promise.all(
-  cli.map(async (item) => {
-    for (const name of RedcodePackages.binaries(item)) {
-      const file = path.join(item.dir, "bin", name)
-      if (!item.target.startsWith("windows-")) await chmod(file, 0o755)
-      await utimes(file, new Date("1980-01-01T00:00:00Z"), new Date("1980-01-01T00:00:00Z"))
-    }
-  }),
-)
 
 const archives = await Promise.all(
   cli.flatMap((item) =>
     ["full", "server"].map(async (profile) => {
       const bin = path.join(item.dir, "bin")
       const names = RedcodePackages.binaries(item)
-      const files = names.map((name) => path.join(bin, name))
       const windows = item.target.startsWith("windows-")
       const archive = `redcode-${profile === "server" ? "server-" : ""}${item.target}.${windows ? "zip" : "tar.gz"}`
       await rm(path.join(output, archive), { force: true })
-      // The desktop app is staged under `desktop/`, beside redcode; a tar pipe keeps its symlinks and file modes.
       const desktop = profile === "full" ? RedcodePackages.desktopTarget(item.target) : undefined
       const stage = path.join(output, `.desktop-${profile}-${item.target}`)
       await rm(stage, { recursive: true, force: true })
-      if (desktop) {
-        const built = path.join(desktops, desktop)
-        const entries = apps.get(desktop)!
-        await mkdir(path.join(stage, "desktop"), { recursive: true })
-        await $`tar -cf - -C ${built} ${entries} | tar -xf -`.cwd(path.join(stage, "desktop"))
+      await mkdir(stage, { recursive: true })
+      try {
+        // Reflink where supported, copy otherwise. Keep input binaries untouched and symlinks relative.
+        for (const name of names) {
+          await copyFile(path.join(bin, name), path.join(stage, name), constants.COPYFILE_FICLONE)
+          if (!windows) await chmod(path.join(stage, name), 0o755)
+        }
+        if (desktop)
+          await cp(path.join(desktops, desktop), path.join(stage, "desktop"), {
+            recursive: true,
+            verbatimSymlinks: true,
+            mode: constants.COPYFILE_FICLONE,
+          })
+        const files = await archiveEntries(stage)
+        if (windows) await zip(stage, path.join(output, archive), files)
+        if (!windows)
+          await create(
+            {
+              cwd: stage,
+              file: path.join(output, archive),
+              gzip: true,
+              portable: true,
+              mtime: new Date(0),
+              noDirRecurse: true,
+            },
+            files,
+          )
+      } finally {
+        await rm(stage, { recursive: true, force: true })
       }
-      // GNU tar reads a Windows drive letter such as `C:` in an archive name as a remote host, so tar only sees
-      // relative names, or the archive on stdin. zip runs a second time from the stage to keep the `desktop/` tree.
-      if (windows) {
-        await $`zip -X -q -j ${archive} ${files}`.cwd(output)
-        if (desktop) await $`zip -X -q -r -y ${path.join("..", archive)} desktop`.cwd(stage)
-      } else {
-        await $`tar --mtime=@0 --owner=0 --group=0 --numeric-owner -czf ${archive} ${[
-          "-C",
-          bin,
-          ...names,
-          ...(desktop ? ["-C", stage, "desktop"] : []),
-        ]}`.cwd(output)
-      }
-      await rm(stage, { recursive: true, force: true })
       return archive
     }),
   ),
@@ -98,3 +97,41 @@ const sums = await Promise.all(
 )
 await Bun.write(path.join(output, "SHA256SUMS"), sums.join("\n") + "\n")
 console.log(`Archived ${archives.length} full and server distributions in ${output}`)
+
+async function archiveEntries(directory: string, prefix = ""): Promise<string[]> {
+  const entries = await readdir(path.join(directory, prefix), { withFileTypes: true })
+  const files = await Promise.all(
+    entries.map(async (entry) => {
+      const name = path.posix.join(prefix, entry.name)
+      return entry.isDirectory() ? [name, ...(await archiveEntries(directory, name))] : [name]
+    }),
+  )
+  return files.flat().toSorted()
+}
+
+async function zip(directory: string, file: string, files: string[]) {
+  const stream = createWriteStream(file)
+  const writer = new ZipWriter(Writable.toWeb(stream), {
+    lastModDate: new Date(1980, 0, 1),
+    extendedTimestamp: false,
+    versionMadeBy: (3 << 8) | 20,
+  })
+  try {
+    for (const name of files) {
+      const source = path.join(directory, name)
+      const stat = await lstat(source)
+      await writer.add(
+        stat.isDirectory() ? `${name}/` : name,
+        stat.isDirectory()
+          ? undefined
+          : stat.isSymbolicLink()
+            ? new TextReader(await readlink(source))
+            : new BlobReader(Bun.file(source)),
+        { directory: stat.isDirectory(), externalFileAttributes: (stat.mode << 16) >>> 0, useWebWorkers: false },
+      )
+    }
+    await writer.close()
+  } finally {
+    stream.destroy()
+  }
+}

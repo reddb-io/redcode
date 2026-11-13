@@ -1,21 +1,20 @@
 import { expect, test } from "bun:test"
 import { $ } from "bun"
+import { BlobReader, TextWriter, ZipReader } from "@zip.js/zip.js"
 import os from "node:os"
 import path from "node:path"
-import { chmod, mkdtemp, readdir, rm, symlink } from "node:fs/promises"
+import { chmod, mkdtemp, readdir, rm, symlink, utimes } from "node:fs/promises"
+import { t } from "tar"
 import { RedcodePackages } from "../../script/packages"
 
 const version = "9.8.7"
-// zip packs the Windows archive; a machine without it covers the tar.gz targets only.
 const targets = [
   { target: "linux-x64", os: "linux", cpu: "x64", desktop: "linux-x64" },
   { target: "linux-x64-baseline", os: "linux", cpu: "x64", desktop: "linux-x64" },
   { target: "linux-x64-baseline-musl", os: "linux", cpu: "x64", desktop: undefined },
   { target: "linux-arm64-musl", os: "linux", cpu: "arm64", desktop: undefined },
   { target: "darwin-arm64", os: "darwin", cpu: "arm64", desktop: "darwin-arm64" },
-  ...(Bun.which("zip") && Bun.which("unzip")
-    ? [{ target: "windows-x64", os: "win32", cpu: "x64", desktop: "windows-x64" }]
-    : []),
+  { target: "windows-x64", os: "win32", cpu: "x64", desktop: "windows-x64" },
 ]
 const desktops = [...new Set(targets.flatMap((item) => (item.desktop ? [item.desktop] : [])))]
 // Windows needs a privilege to create symlinks; the other hosts check that archives keep them.
@@ -33,7 +32,7 @@ const desktopFiles: Record<string, string[]> = {
  * desktop apps CI normalizes.
  */
 async function fixture() {
-  const root = await mkdtemp(path.join(os.tmpdir(), "redcode-packages-"))
+  const root = await mkdtemp(path.join(os.tmpdir(), "redcode packages-"))
   const dist = path.join(root, "dist")
   const design = path.join(root, "design")
   const desktop = path.join(root, "desktop")
@@ -106,9 +105,15 @@ async function run(script: string, input: { dist: string; design: string; deskto
 
 /** Lists an archive from its own directory: GNU tar on Windows reads `C:\...` as a remote host. */
 async function list(directory: string, archive: string, verbose = false) {
-  const command = archive.endsWith(".zip")
-    ? ["unzip", "-Z1", archive]
-    : ["tar", verbose ? "-tvf" : "-tf", archive, ...(archive.endsWith(".gz") ? ["-z"] : [])]
+  if (archive.endsWith(".zip")) {
+    const reader = new ZipReader(new BlobReader(Bun.file(path.join(directory, archive))))
+    try {
+      return (await reader.getEntries()).map((entry) => entry.filename)
+    } finally {
+      await reader.close()
+    }
+  }
+  const command = ["tar", verbose ? "-tvf" : "-tf", archive, ...(archive.endsWith(".gz") ? ["-z"] : [])]
   const child = Bun.spawn(command, { cwd: directory, stdout: "pipe" })
   const [code, stdout] = await Promise.all([child.exited, new Response(child.stdout).text()])
   if (code !== 0) throw new Error(`${command.join(" ")} exited with ${code}`)
@@ -214,7 +219,8 @@ test("repack pins the stable meta package to unchanged native executables in the
     }),
   )
   await $`npm install --offline --ignore-scripts --no-audit --no-fund --os=linux --cpu=arm64 --libc=musl`
-    .cwd(installation).quiet()
+    .cwd(installation)
+    .quiet()
   expect(await Bun.file(path.join(installation, "node_modules", original.name, "bin/redcode")).text()).toBe(before[0]!)
 }, 45_000)
 
@@ -255,6 +261,26 @@ test("full archives include Desktop while server archives keep only Redcode and 
     expect(await entries(release, server)).toEqual(
       (windows ? ["redcode-rpc-sidecar.exe", "redcode.exe"] : ["redcode", "redcode-rpc-sidecar"]).toSorted(),
     )
+    if (windows) {
+      const reader = new ZipReader(new BlobReader(Bun.file(path.join(release, archive))))
+      try {
+        const files = await reader.getEntries()
+        const binary = files.find((entry) => !entry.directory && entry.filename === "redcode.exe")
+        expect(await binary?.getData?.(new TextWriter())).toBe(`redcode ${item.target}`)
+        expect(files.every((entry) => entry.lastModDate.getFullYear() === 1980)).toBe(true)
+      } finally {
+        await reader.close()
+      }
+    }
+    if (!windows)
+      await t({
+        file: path.join(release, archive),
+        onReadEntry: (entry) => {
+          expect(entry.uid ?? 0).toBe(0)
+          expect(entry.gid ?? 0).toBe(0)
+          if (entry.type !== "Directory") expect(entry.mtime?.getTime()).toBe(0)
+        },
+      })
     if (!links || item.desktop !== "linux-x64") continue
     // Archives keep the app's executable modes and symlinks.
     const verbose = await list(release, archive, true)
@@ -278,6 +304,20 @@ test("full archives include Desktop while server archives keep only Redcode and 
     .update(await Bun.file(path.join(release, whiteboard)).bytes())
     .digest("hex")
   expect(sums).toContain(`${digest}  ${whiteboard}`)
+  // Source timestamps and output staging order must not change the release checksums.
+  for (const item of targets)
+    for (const name of RedcodePackages.binaries({ kind: "cli", target: item.target }))
+      await utimes(
+        path.join(input.dist, `redcode-${item.target}`, "bin", name),
+        new Date(1_000_000),
+        new Date(1_000_000),
+      )
+  for (const target of desktops)
+    for (const file of desktopFiles[target]!)
+      await utimes(path.join(input.desktop, target, file), new Date(2_000_000), new Date(2_000_000))
+  await run("archive.ts", input, `--outdir=${release}`)
+  expect((await Bun.file(path.join(release, "SHA256SUMS")).text()).trim().split("\n")).toEqual(sums)
+  expect((await readdir(release)).some((name) => name.startsWith(".desktop-"))).toBe(false)
 })
 
 test("archive rejects missing sidecars or Desktop before creating release files", async () => {
