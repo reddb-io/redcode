@@ -45,6 +45,8 @@ const BUSY_TIMEOUT_MS = 1000
 export interface Interface {
   db: DatabaseShape
   remote?: boolean
+  memory?: boolean
+  journalKeyStorage?: boolean
 }
 
 export const Options = Schema.Struct({
@@ -92,7 +94,7 @@ const databaseLayer = (
       const semaphore = yield* lock
       yield* semaphore.withPermit(remote ? DatabaseMigration.applyRemote(db) : DatabaseMigration.apply(db))
 
-      return { db, remote }
+      return { db, remote, memory: options?.filename === ":memory:", journalKeyStorage: !!options?.filename }
     }).pipe(Effect.orDie),
   )
 

@@ -3,7 +3,7 @@ export * as McpTool from "./mcp.js"
 import { ToolFailure } from "@opencode/ai"
 import { isDeepStrictEqual } from "node:util"
 import { McpEvent } from "@opencode/schema/mcp-event"
-import { Context, Effect, Fiber, type JsonSchema, Layer, PubSub, Semaphore, Stream } from "effect"
+import { Context, Effect, Fiber, type JsonSchema, Layer, Semaphore } from "effect"
 import { makeLocationNode } from "@opencode/util/effect/app-node"
 import { Bus } from "../bus.js"
 
@@ -188,31 +188,19 @@ export const layer = Layer.effect(
       .pipe(Effect.forkScoped)
     const reconcile = lock.withPermit(
       Effect.gen(function* () {
-        dirty = false
         const next = yield* mcp.tools()
-        if (isDeepStrictEqual(discovered, next)) return
-        discovered = next
-        yield* tools.reload()
+        if (!isDeepStrictEqual(discovered, next)) {
+          const previous = discovered
+          discovered = next
+          yield* tools.reload().pipe(Effect.onError(() => Effect.sync(() => { discovered = previous })))
+        }
+        dirty = false
       }),
     )
 
-    // Servers announce tools in bursts and each read loads the whole catalog, so settle and refresh
-    // once. The bus subscription stays eager; only the already-open sliding subscription is debounced.
-    const changes = yield* PubSub.sliding<void>(1)
-    yield* bus.subscribe(McpEvent.ToolsChanged).pipe(
-      Stream.runForEach(() =>
-        Effect.sync(() => {
-          dirty = true
-        }).pipe(Effect.andThen(PubSub.publish(changes, undefined))),
-      ),
-      Effect.forkScoped({ startImmediately: true }),
-    )
-    const updates = yield* PubSub.subscribe(changes)
-    yield* Stream.fromSubscription(updates).pipe(
-      Stream.debounce("100 millis"),
-      Stream.runForEach(() => reconcile),
-      Effect.forkScoped({ startImmediately: true }),
-    )
+    const watch = yield* bus.watchBatch("mcp-tool.catalog", [McpEvent.ToolsChanged],
+      Effect.sync(() => { dirty = true }), () => reconcile)
+    yield* watch.pipe(Effect.forkScoped({ startImmediately: true }))
     return Service.of({
       starting: Effect.suspend(() => mcp.servers()).pipe(
         Effect.map((servers) =>

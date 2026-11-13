@@ -1,5 +1,5 @@
 import { define } from "@opencode/plugin/effect/plugin"
-import { Effect, Option, Schedule, Schema, Scope, Stream, Struct } from "effect"
+import { Effect, Option, Schedule, Schema, Scope, Struct } from "effect"
 import { Bus } from "../../bus.js"
 import { Credential } from "../../credential.js"
 import { IntelligenceEvaluation } from "../../intelligence/evaluation.js"
@@ -553,21 +553,18 @@ function routerPlugin(options: {
           }),
           { providerID },
         )
-      yield* bus.subscribe([Credential.Event.Updated, Credential.Event.Switched]).pipe(
-        Stream.runForEach(() => safeRefresh()),
-        Effect.forkScoped({ startImmediately: true }),
-      )
-      yield* bus.subscribe(ModelsDev.Event.Refreshed).pipe(
-        Stream.runForEach(() =>
+      const credentialWatch = yield* bus.watch(`plugin.${providerID}.credentials`,
+        [Credential.Event.Updated, Credential.Event.Switched], () => refresh().pipe(Effect.orDie))
+      yield* credentialWatch.pipe(Effect.forkScoped({ startImmediately: true }))
+      const modelsWatch = yield* bus.watch(`plugin.${providerID}.models-refreshed`, [ModelsDev.Event.Refreshed], () =>
           modelsDev.get().pipe(
             Effect.flatMap((catalog) => {
               loaded.names = catalogNames(catalog)
               return ctx.provider.reload()
             }),
           ),
-        ),
-        Effect.forkScoped({ startImmediately: true }),
       )
+      yield* modelsWatch.pipe(Effect.forkScoped({ startImmediately: true }))
       yield* Effect.forkScoped(safeRefresh().pipe(Effect.repeat(Schedule.spaced("5 minutes"))), {
         startImmediately: true,
       })

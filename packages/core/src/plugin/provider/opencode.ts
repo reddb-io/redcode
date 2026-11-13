@@ -206,7 +206,7 @@ export const OpencodePlugin = define<
     const skillDownload = yield* FiberHandle.make<void, never>()
     const skillCache = new Map<string, { version: string; item: ConsoleSkill }>()
 
-    const load = Effect.fn("OpencodePlugin.load")(function* () {
+    const load = Effect.fn("OpencodePlugin.load")(function* (strict = false) {
       const connection = yield* ctx.integration.connection.active("opencode")
       if (!connection) return empty()
       return yield* ctx.integration.connection.resolve(connection).pipe(
@@ -214,7 +214,11 @@ export const OpencodePlugin = define<
           if (!credential || credential.type === "external") return Effect.succeed(empty(connection))
           return fetchConfig(http, credential).pipe(
             Effect.flatMap((config) => {
-              if (!config) return Effect.succeed(empty(connection))
+              if (!config)
+                return Effect.succeed({
+                  ...empty(connection),
+                  organization: typeof credential.metadata?.orgName === "string" ? credential.metadata.orgName : undefined,
+                })
               const previous =
                 IntegrationConnection.key(connection) === IntegrationConnection.key(snapshot.connection)
                   ? snapshot.config
@@ -255,7 +259,7 @@ export const OpencodePlugin = define<
           )
         }),
         Effect.catch((cause) =>
-          Effect.logWarning("failed to load OpenCode provider config", { cause }).pipe(
+          strict ? Effect.die(cause) : Effect.logWarning("failed to load OpenCode provider config", { cause }).pipe(
             // A load that fails for the connection already in place keeps its last config: dropping it
             // would lift organization policy while personal credentials keep working.
             Effect.as(
@@ -548,12 +552,11 @@ export const OpencodePlugin = define<
         },
       )
     })
-    const refresh = () => loading.withPermit(load().pipe(Effect.andThen(apply)))
-    yield* bus.subscribe(Credential.Event.Switched).pipe(
-      Stream.filter((event) => event.data.integrationID === Integration.ID.make("opencode")),
-      Stream.runForEach(refresh),
-      Effect.forkScoped({ startImmediately: true }),
-    )
+    const refresh = () => loading.withPermit(load(true).pipe(Effect.andThen(apply)))
+    const watch = yield* bus.watch("plugin.opencode.credential-switched", [Credential.Event.Switched], refresh, {
+      filter: { type: Credential.Event.Switched.type, field: "integrationID", value: Integration.ID.make("opencode") },
+    })
+    yield* watch.pipe(Effect.forkScoped({ startImmediately: true }))
 
     // Console config can change independently of local credential activity, so re-fetch
     // periodically and only rebuild the catalog and search providers when the snapshot differs.

@@ -1,7 +1,7 @@
 export * as Vcs from "./vcs.js"
 
 import path from "path"
-import { Cause, Context, Effect, FiberSet, Layer, Schema, Semaphore, Stream } from "effect"
+import { Cause, Context, Effect, FiberSet, Layer, Schema, Semaphore } from "effect"
 import type { VcsDefinition, VcsEditor } from "@opencode/plugin/effect/vcs"
 import { FileDiff } from "@opencode/schema/file-diff"
 import { FileSystem } from "@opencode/schema/filesystem"
@@ -65,6 +65,7 @@ const layer = Layer.effect(
     const fork = yield* FiberSet.makeRuntime<never, void, never>()
     const vcs = location.vcs
     const current: { info: Info } = { info: { branch: {} } }
+    let announcePending = false
     const refreshLock = Semaphore.makeUnsafe(1)
     const scope = {
       directory: location.directory,
@@ -140,13 +141,18 @@ const layer = Layer.effect(
         current.info = next
         return changed
       }).pipe(Semaphore.withPermit(refreshLock))
-      if (!changed) return
+      if (changed) announcePending = true
+      // A failed publication must be retried even though the cached branch was already updated.
+      if (!announcePending) return
       // Legacy listeners can publish nested updates before streams and SSE receive
       // this event. Re-announce the latest branch if publication was overtaken.
       while (true) {
         const branch = current.info.branch.current
         yield* bus.publish(VcsEvent.BranchUpdated, { branch })
-        if (branch === current.info.branch.current) return
+        if (branch === current.info.branch.current) {
+          announcePending = false
+          return
+        }
       }
     })
 
@@ -156,19 +162,15 @@ const layer = Layer.effect(
         vcs.type === "git"
           ? (file: string) => path.basename(file) === "HEAD" && FSUtil.contains(store, file)
           : (file: string) => path.resolve(file) === path.join(store, "branch")
-      yield* bus.subscribe(FileSystem.Event.Changed).pipe(
-        Stream.filter((event) => isBranchMetadata(event.data.file)),
-        Stream.runForEach((event) =>
-          refresh().pipe(
-            Effect.catchCauseIf(
-              (cause) => !Cause.hasInterrupts(cause),
-              (cause) => Effect.logWarning("vcs refresh failed", { file: event.data.file, cause }),
-            ),
-            Effect.withSpan("Vcs.refreshBranch", { attributes: { file: event.data.file } }),
-          ),
-        ),
-        Effect.forkScoped({ startImmediately: true }),
+      const watch = yield* bus.watch(
+        `vcs.branch-metadata.${vcs.type}`,
+        [FileSystem.Event.Changed],
+        (event) => isBranchMetadata(event.data.file)
+          ? refresh().pipe(Effect.withSpan("Vcs.refreshBranch", { attributes: { file: event.data.file } }))
+          : Effect.void,
+        { filter: { type: FileSystem.Event.Changed.type, field: "file", value: vcs.type === "git" ? "HEAD" : "branch", projection: "basename" } },
       )
+      yield* watch.pipe(Effect.forkScoped({ startImmediately: true }))
     }
 
     return Service.of({

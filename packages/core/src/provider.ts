@@ -1,7 +1,7 @@
 export * as Provider from "./provider.js"
 export { AISDK_PREFIX, isAISDK, aisdk, packageName } from "./provider-package.js"
 
-import { Context, Effect, Layer, Option, Schema, Stream, Struct, type Scope } from "effect"
+import { Context, Effect, Layer, Option, Schema, Struct, type Scope } from "effect"
 import { Provider } from "@opencode/schema/provider"
 import { Model } from "@opencode/schema/model"
 import { makeLocationNode } from "@opencode/util/effect/app-node"
@@ -458,10 +458,12 @@ const layer = Layer.effect(
         },
       )
     })
-    yield* bus.subscribe([Integration.Event.Updated, Credential.Event.Updated, Credential.Event.Switched]).pipe(
-      Stream.runForEach(() => notify),
-      Effect.forkScoped({ startImmediately: true }),
+    const watch = yield* bus.watch(
+      "provider.inputs-updated",
+      [Integration.Event.Updated, Credential.Event.Updated, Credential.Event.Switched],
+      () => notify,
     )
+    yield* watch.pipe(Effect.forkScoped({ startImmediately: true }))
     return Service.of({
       refresh: Effect.fn("Provider.refresh")((id) => {
         const refresh = refreshers.get(id)

@@ -1,7 +1,7 @@
 import type { IntegrationOAuthMethodRegistration } from "@opencode/plugin/effect/integration"
 import type { Context } from "@opencode/plugin/effect/plugin"
 import { define } from "@opencode/plugin/effect/plugin"
-import { Clock, Deferred, Effect, Fiber, Option, Result, Schedule, Schema, Stream } from "effect"
+import { Clock, Deferred, Effect, Fiber, Option, Result, Schedule, Schema } from "effect"
 import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http"
 import type { Server, ServerResponse } from "node:http"
 import { App } from "../../app.js"
@@ -439,13 +439,11 @@ export const ChatGPTPlugin = define({
     yield* ctx.provider.onRefresh(providerID, () =>
       load().pipe(Effect.andThen(ctx.provider.reload()), Effect.andThen(sync(true))),
     )
-    const reload = () =>
-      load().pipe(Effect.andThen(ctx.provider.reload()), Effect.andThen(sync().pipe(Effect.ignore, Effect.forkScoped)))
-    yield* bus.subscribe(Credential.Event.Switched).pipe(
-      Stream.filter((event) => event.data.integrationID === integrationID),
-      Stream.runForEach(reload),
-      Effect.forkScoped({ startImmediately: true }),
-    )
+    const reload = () => load().pipe(Effect.andThen(ctx.provider.reload()), Effect.andThen(sync().pipe(Effect.orDie)))
+    const watch = yield* bus.watch("plugin.chatgpt.credential-switched", [Credential.Event.Switched], reload, {
+      filter: { type: Credential.Event.Switched.type, field: "integrationID", value: integrationID },
+    })
+    yield* watch.pipe(Effect.forkScoped({ startImmediately: true }))
     yield* Effect.gen(function* () {
       if (
         catalog &&

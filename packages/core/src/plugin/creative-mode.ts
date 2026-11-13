@@ -1,6 +1,6 @@
 import type { Context } from "@opencode/plugin/effect/plugin"
 import type { Design } from "@opencode/schema/design"
-import { Effect, Stream } from "effect"
+import { Effect } from "effect"
 import { Agent } from "../agent.js"
 import { Bus } from "../bus.js"
 import { Mcp } from "../mcp/index.js"
@@ -17,15 +17,13 @@ export const apply = Effect.fn("CreativeMode.apply")(function* (
   const mcp = yield* Mcp.Service
   const bus = yield* Bus.Service
   const loaded = { tools: yield* mcp.tools() }
-  yield* Stream.merge(bus.subscribe(McpEvent.ToolsChanged), bus.subscribe(McpEvent.StatusChanged)).pipe(
-    Stream.runForEach(() =>
-      mcp.tools().pipe(
-        Effect.tap((tools) => Effect.sync(() => (loaded.tools = tools))),
-        Effect.andThen(ctx.agent.reload()),
-      ),
+  const watch = yield* bus.watch(`plugin.creative-mode.${role}.mcp`, [McpEvent.ToolsChanged, McpEvent.StatusChanged], () =>
+    mcp.tools().pipe(
+      Effect.tap((tools) => Effect.sync(() => (loaded.tools = tools))),
+      Effect.andThen(ctx.agent.reload()),
     ),
-    Effect.forkScoped({ startImmediately: true }),
   )
+  yield* watch.pipe(Effect.forkScoped({ startImmediately: true }))
   yield* ctx.agent.transform((editor) =>
     editor.update(Agent.ID.make(role), (item) => {
       const configured = item.permissions.slice()

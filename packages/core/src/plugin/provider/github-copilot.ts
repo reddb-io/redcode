@@ -1,6 +1,6 @@
 import type { IntegrationOAuthMethodRegistration } from "@opencode/plugin/effect/integration"
 import type { SessionRequestKind, SessionTitle } from "@opencode/plugin/effect/session"
-import { Effect, Option, Schema, Semaphore, Stream } from "effect"
+import { Effect, Option, Schema, Semaphore } from "effect"
 import { IntegrationConnection } from "../../integration/connection.js"
 import { Credential } from "../../credential.js"
 import { Bus } from "../../bus.js"
@@ -254,11 +254,10 @@ export const GithubCopilotPlugin = define({
       }
     })
     const refresh = () => loading.withPermit(load().pipe(Effect.andThen(ctx.provider.reload())))
-    yield* bus.subscribe(Credential.Event.Switched).pipe(
-      Stream.filter((event) => event.data.integrationID === Integration.ID.make("github-copilot")),
-      Stream.runForEach(refresh),
-      Effect.forkScoped({ startImmediately: true }),
-    )
+    const watch = yield* bus.watch("plugin.github-copilot.credential-switched", [Credential.Event.Switched], refresh, {
+      filter: { type: Credential.Event.Switched.type, field: "integrationID", value: Integration.ID.make("github-copilot") },
+    })
+    yield* watch.pipe(Effect.forkScoped({ startImmediately: true }))
     yield* refresh().pipe(Effect.forkScoped)
     yield* ctx.aisdk.hook(
       "sdk",

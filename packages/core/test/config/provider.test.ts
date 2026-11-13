@@ -716,7 +716,7 @@ describe("ConfigProviderPlugin.Plugin", () => {
     }),
   )
 
-  it.effect("completes a declared limit across documents and follows the catalog when it learns a model", () =>
+  it.live("completes a declared limit across documents and follows the catalog when it learns a model", () =>
     Effect.gen(function* () {
       const models = yield* Model.Service
       const bus = yield* Bus.Service

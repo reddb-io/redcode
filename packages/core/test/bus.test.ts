@@ -7,6 +7,8 @@ import { SessionEvent } from "@opencode/schema/session-event"
 import { Database } from "@opencode/core/database/database"
 import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
 import { LayerNode } from "@opencode/util/effect/layer-node"
+import { makeGlobalNode } from "@opencode/util/effect/app-node"
+import { Global } from "@opencode/util/global"
 import { EventSequenceTable, EventTable } from "@opencode/core/event/sql"
 import { Location } from "@opencode/core/location"
 import { AbsolutePath } from "@opencode/core/schema"
@@ -75,6 +77,7 @@ const CountMessage = Bus.ephemeral({
     count: Schema.Number,
   },
 })
+const FilteredMessage = Bus.ephemeral({ type: "test.filtered", schema: { key: Schema.String, text: Schema.String } })
 
 const VersionedMessage = Bus.durable({
   type: "test.versioned",
@@ -110,8 +113,392 @@ const itWithoutLocation = testEffect(
   ]),
 )
 const itWithoutPersistence = testEffect(AppNodeBuilder.build(LayerNode.group([Database.node, Bus.node])))
+const noJournalDatabase = makeGlobalNode({
+  service: Database.Service,
+  deps: [Global.node],
+  layer: Layer.effect(Database.Service, Effect.map(Database.Service, (database) =>
+    Database.Service.of({ ...database, journalKeyStorage: false }),
+  )).pipe(Layer.provide(Database.layer({ path: ":memory:" }))),
+})
+const itWithoutJournal = testEffect(AppNodeBuilder.build(LayerNode.group([Database.node, Bus.node]), [
+  Database.node.replace(noJournalDatabase),
+]))
 
 describe("Bus", () => {
+  itWithoutLocation.live("retries all coalesced events after a batch handler fails", () =>
+    Effect.gen(function* () {
+      const bus = yield* Bus.Service
+      const { db } = yield* Database.Service
+      const failed = yield* Deferred.make<void>()
+      const done = yield* Deferred.make<void>()
+      let attempts = 0
+      let processed: string[] = []
+      const run = yield* bus.watchBatch("test.batch-retry", [Message], Effect.void, (events) => Effect.gen(function* () {
+        attempts++
+        if (attempts === 1) {
+          yield* Deferred.succeed(failed, undefined)
+          return yield* Effect.die(new Error("temporary batch failure"))
+        }
+        processed = events.map((event) => event.data.text)
+        yield* Deferred.succeed(done, undefined)
+      }))
+      for (const text of ["one", "two", "three"]) yield* bus.publish(Message, { text })
+      yield* run.pipe(Effect.forkScoped({ startImmediately: true }))
+      yield* Deferred.await(failed).pipe(Effect.timeout("5 seconds"))
+      expect(yield* db.all("SELECT seq FROM event_delivery")).toHaveLength(3)
+      yield* Deferred.await(done).pipe(Effect.timeout("5 seconds"))
+      expect(attempts).toBe(2)
+      expect(processed).toEqual(["one", "two", "three"])
+    }), 15_000,
+  )
+
+  itWithoutJournal.live("applies a named watcher filter and global scope on the live fallback", () =>
+    Effect.gen(function* () {
+      const bus = yield* Bus.Service
+      const received = yield* Deferred.make<string>()
+      const run = yield* bus.watch("test.live-fallback", [Message], (event) =>
+        Deferred.succeed(received, event.data.text).pipe(Effect.asVoid), {
+          global: true,
+          filter: { type: Message.type, field: "text", value: "selected" },
+        }).pipe(Effect.provideService(Location.Service, location({ directory: AbsolutePath.make("/a") })))
+      yield* run.pipe(
+        Effect.provideService(Location.Service, location({ directory: AbsolutePath.make("/a") })),
+        Effect.forkScoped({ startImmediately: true }),
+      )
+      yield* bus.publish(Message, { text: "ignored" }, { location: { directory: AbsolutePath.make("/b") } })
+      yield* bus.publish(Message, { text: "selected" }, { location: { directory: AbsolutePath.make("/b") } })
+      expect(yield* Deferred.await(received).pipe(Effect.timeout("5 seconds"))).toBe("selected")
+    }),
+  )
+
+  itWithoutLocation.effect("rejects a matching filtered event when the journal is full without retaining it", () =>
+    Effect.gen(function* () {
+      const bus = yield* Bus.Service
+      const { db } = yield* Database.Service
+      yield* bus.consume("test.full-filter", [FilteredMessage], () => Effect.void, {
+        filter: { type: FilteredMessage.type, field: "key", value: "selected" },
+      })
+      const pages = yield* db.get<{ page_count: number }>("PRAGMA page_count")
+      if (!pages) throw new Error("Missing page count")
+      yield* db.run(`PRAGMA max_page_count = ${pages.page_count}`)
+      const large = "x".repeat(4 * 1024 * 1024)
+      const unrelated = yield* bus.publish(FilteredMessage, { key: "other", text: large }).pipe(Effect.exit)
+      expect(Exit.isSuccess(unrelated)).toBe(true)
+      const matching = yield* bus.publish(FilteredMessage, { key: "selected", text: large }).pipe(Effect.exit)
+      expect(Exit.isFailure(matching)).toBe(true)
+      if (Exit.isFailure(matching)) expect(Cause.pretty(matching.cause)).toMatch(/full/i)
+      expect(yield* db.all("SELECT seq FROM event_delivery")).toEqual([])
+    }),
+  )
+
+  itWithoutLocation.live("journals only matching events for filtered named consumers", () =>
+    Effect.gen(function* () {
+      const bus = yield* Bus.Service
+      const { db } = yield* Database.Service
+      const first = yield* Deferred.make<string>()
+      const second = yield* Deferred.make<string>()
+      const filter = (value: string) => ({ type: Message.type, field: "text", value })
+      const runA = yield* bus.consume("test.filter-a", [Message], (event) =>
+        Deferred.succeed(first, event.data.text).pipe(Effect.asVoid), { filter: filter("secret-a") })
+      const runB = yield* bus.consume("test.filter-b", [Message], (event) =>
+        Deferred.succeed(second, event.data.text).pipe(Effect.asVoid), { filter: filter("secret-b") })
+      yield* bus.publish(Message, { text: "unrelated" })
+      yield* bus.publish(Message, { text: "secret-a" })
+      yield* bus.publish(Message, { text: "secret-b" })
+      expect(yield* db.all("SELECT seq FROM event_delivery")).toHaveLength(2)
+      const stored = yield* db.all<{ filter: string }>("SELECT filter FROM event_subscription")
+      expect(stored.every((row) => !row.filter.includes("secret-"))).toBe(true)
+      yield* runA.pipe(Effect.forkScoped({ startImmediately: true }))
+      yield* runB.pipe(Effect.forkScoped({ startImmediately: true }))
+      expect(yield* Deferred.await(first).pipe(Effect.timeout("5 seconds"))).toBe("secret-a")
+      expect(yield* Deferred.await(second).pipe(Effect.timeout("5 seconds"))).toBe("secret-b")
+    }),
+  )
+
+  itWithoutLocation.live("notifies listeners before a live consumer publishes a nested event", () =>
+    Effect.gen(function* () {
+      const bus = yield* Bus.Service
+      const done = yield* Deferred.make<void>()
+      const observed: string[] = []
+      yield* bus.listen((event) => Effect.sync(() => {
+        if (event.type === Message.type) observed.push((event.data as { text: string }).text)
+      }))
+      yield* bus.subscribe(Message).pipe(Stream.runForEach((event) => Effect.gen(function* () {
+        if (event.data.text === "first") yield* bus.publish(Message, { text: "nested" })
+        else yield* Deferred.succeed(done, undefined)
+      })), Effect.forkScoped({ startImmediately: true }))
+      yield* bus.publish(Message, { text: "first" })
+      yield* Deferred.await(done).pipe(Effect.timeout("5 seconds"))
+      expect(observed).toEqual(["first", "nested"])
+    }),
+  )
+
+  itWithoutLocation.live("a live consumer waits until a slow synchronous listener completes", () =>
+    Effect.gen(function* () {
+      const bus = yield* Bus.Service
+      const entered = yield* Deferred.make<void>()
+      const release = yield* Deferred.make<void>()
+      let streamed = false
+      yield* bus.listen(() => Deferred.succeed(entered, undefined).pipe(Effect.andThen(Deferred.await(release))))
+      yield* bus.subscribe(Message).pipe(Stream.runForEach(() => Effect.sync(() => { streamed = true })),
+        Effect.forkScoped({ startImmediately: true }))
+      const publishing = yield* bus.publish(Message, { text: "first" }).pipe(Effect.forkScoped({ startImmediately: true }))
+      yield* Deferred.await(entered)
+      yield* Effect.sleep("50 millis")
+      expect(streamed).toBe(false)
+      yield* Deferred.succeed(release, undefined)
+      yield* Fiber.join(publishing)
+    }),
+  )
+
+  itWithoutLocation.live("queues events for a named consumer without waiting for its handler", () =>
+    Effect.gen(function* () {
+      const bus = yield* Bus.Service
+      const started = yield* Deferred.make<void>()
+      const release = yield* Deferred.make<void>()
+      const finished = yield* Deferred.make<void>()
+      const received: string[] = []
+      const run = yield* bus.consume("test.consumer", [Message], (event) => Effect.gen(function* () {
+        received.push(event.data.text)
+        if (event.data.text === "first") {
+          yield* Deferred.succeed(started, undefined)
+          yield* Deferred.await(release)
+          yield* bus.publish(Message, { text: "nested" })
+        }
+        if (event.data.text === "nested") yield* Deferred.succeed(finished, undefined)
+      }))
+      yield* run.pipe(Effect.forkScoped({ startImmediately: true }))
+      yield* bus.publish(Message, { text: "first" })
+      yield* Deferred.await(started)
+      yield* bus.publish(Message, { text: "second" })
+      yield* Deferred.succeed(release, undefined)
+      yield* Deferred.await(finished).pipe(Effect.timeout("5 seconds"))
+      expect(received).toEqual(["first", "second", "nested"])
+    }),
+  )
+
+  itWithoutLocation.live("redelivers a named event after its handler fails", () =>
+    Effect.gen(function* () {
+      const bus = yield* Bus.Service
+      const { db } = yield* Database.Service
+      const first = yield* Deferred.make<void>()
+      const recovered = yield* Deferred.make<void>()
+      let attempts = 0
+      const run = yield* bus.consume("test.retry", [Message], () => Effect.gen(function* () {
+        attempts++
+        if (attempts === 1) {
+          yield* Deferred.succeed(first, undefined)
+          return yield* Effect.die(new Error("temporary handler failure"))
+        }
+        yield* Deferred.succeed(recovered, undefined)
+      }))
+      yield* run.pipe(Effect.forkScoped({ startImmediately: true }))
+      yield* bus.publish(Message, { text: "retry" })
+      yield* Deferred.await(first)
+      expect(yield* db.all("SELECT seq FROM event_delivery")).toHaveLength(1)
+      yield* Deferred.await(recovered).pipe(Effect.timeout("4 seconds"))
+      expect(attempts).toBe(2)
+    }),
+  )
+
+  itWithoutLocation.effect("rolls back the projection when a named delivery cannot fit on disk", () =>
+    Effect.gen(function* () {
+      const bus = yield* Bus.Service
+      const { db } = yield* Database.Service
+      yield* bus.consume("test.full", [SyncMessage], () => Effect.void)
+      yield* db.run("CREATE TABLE durable_delivery_probe (value text NOT NULL)")
+      yield* bus.project(SyncMessage, () => db.run("INSERT INTO durable_delivery_probe VALUES ('projected')").pipe(Effect.orDie, Effect.asVoid))
+      const pages = yield* db.get<{ page_count: number }>("PRAGMA page_count")
+      if (!pages) throw new Error("Missing page count")
+      yield* db.run(`PRAGMA max_page_count = ${pages.page_count}`)
+      const result = yield* bus.publish(SyncMessage, { id: "full", text: "x".repeat(4 * 1024 * 1024) }).pipe(Effect.exit)
+      expect(Exit.isFailure(result)).toBe(true)
+      expect(yield* db.all("SELECT * FROM durable_delivery_probe")).toEqual([])
+      expect(yield* db.all("SELECT * FROM event_delivery")).toEqual([])
+    }),
+  )
+
+  itWithoutLocation.effect("does not notify listeners when a live event cannot be journaled", () =>
+    Effect.gen(function* () {
+      const bus = yield* Bus.Service
+      const { db } = yield* Database.Service
+      yield* bus.consume("test.full-live", [Message], () => Effect.void)
+      let notified = false
+      yield* bus.listen(() => Effect.sync(() => { notified = true }))
+      const pages = yield* db.get<{ page_count: number }>("PRAGMA page_count")
+      if (!pages) throw new Error("Missing page count")
+      yield* db.run(`PRAGMA max_page_count = ${pages.page_count}`)
+      const result = yield* bus.publish(Message, { text: "x".repeat(4 * 1024 * 1024) }).pipe(Effect.exit)
+      expect(Exit.isFailure(result)).toBe(true)
+      if (Exit.isFailure(result)) expect(Cause.pretty(result.cause)).toMatch(/full/i)
+      expect(notified).toBe(false)
+      expect(yield* db.all("SELECT * FROM event_delivery")).toEqual([])
+    }),
+  )
+
+  itWithoutLocation.effect("rolls back every named delivery when a batch runs out of space", () =>
+    Effect.gen(function* () {
+      const bus = yield* Bus.Service
+      const { db } = yield* Database.Service
+      yield* bus.consume("test.full-batch", [SyncMessage], () => Effect.void)
+      const pages = yield* db.get<{ page_count: number }>("PRAGMA page_count")
+      if (!pages) throw new Error("Missing page count")
+      yield* db.run(`PRAGMA max_page_count = ${pages.page_count}`)
+      const result = yield* bus.publishAll([
+        [SyncMessage, { id: "batch", text: "small" }],
+        [SyncMessage, { id: "batch", text: "x".repeat(4 * 1024 * 1024) }],
+      ]).pipe(Effect.exit)
+      expect(Exit.isFailure(result)).toBe(true)
+      if (Exit.isFailure(result)) expect(Cause.pretty(result.cause)).toMatch(/full/i)
+      expect(yield* db.all("SELECT * FROM event_delivery")).toEqual([])
+      expect(yield* db.select().from(EventSequenceTable).where(eq(EventSequenceTable.aggregate_id, "batch")).all()).toEqual([])
+    }),
+  )
+
+  it.effect("rejects non-serializable metadata before running projectors or committing", () =>
+    Effect.gen(function* () {
+      const bus = yield* Bus.Service
+      const { db } = yield* Database.Service
+      const aggregateID = Event.ID.create()
+      let projected = false
+      yield* bus.project(SyncMessage, () =>
+        Effect.sync(() => {
+          projected = true
+        }),
+      )
+      const exit = yield* bus
+        .publish(
+          SyncMessage,
+          { id: aggregateID, text: "not committed" },
+          {
+            metadata: { unsupported: () => 1 },
+          },
+        )
+        .pipe(Effect.exit)
+      expect(Exit.isFailure(exit)).toBe(true)
+      expect(projected).toBe(false)
+      expect(
+        yield* db.select().from(EventSequenceTable).where(eq(EventSequenceTable.aggregate_id, aggregateID)).all(),
+      ).toEqual([])
+    }),
+  )
+
+  it.effect("rejects a batch before committing any event when a later payload is not serializable", () =>
+    Effect.gen(function* () {
+      const bus = yield* Bus.Service
+      const { db } = yield* Database.Service
+      const aggregateID = Event.ID.create()
+      let projected = false
+      yield* bus.project(SyncMessage, () =>
+        Effect.sync(() => {
+          projected = true
+        }),
+      )
+      const exit = yield* bus
+        .publishAll([
+          [SyncMessage, { id: aggregateID, text: "first" }],
+          [SyncMessage, { id: aggregateID, text: "second" }, { metadata: { unsupported: () => 1 } }],
+        ])
+        .pipe(Effect.exit)
+      expect(Exit.isFailure(exit)).toBe(true)
+      expect(projected).toBe(false)
+      expect(
+        yield* db.select().from(EventSequenceTable).where(eq(EventSequenceTable.aggregate_id, aggregateID)).all(),
+      ).toEqual([])
+    }),
+  )
+
+  it.effect("delivers every event in order when a slow subscriber also publishes", () =>
+    Effect.gen(function* () {
+      const bus = yield* Bus.Service
+      const started = yield* Deferred.make<void>()
+      const release = yield* Deferred.make<void>()
+      const received: string[] = []
+      const listener = yield* bus.subscribe().pipe(
+        Stream.take(2002),
+        Stream.runForEach((event) =>
+          Effect.gen(function* () {
+            if (event.type !== Message.type) return
+            const text = (event.data as { readonly text: string }).text
+            received.push(text)
+            if (text !== "first") return
+            yield* Deferred.succeed(started, undefined)
+            yield* Deferred.await(release)
+            yield* bus.publish(Message, { text: "nested" })
+          }),
+        ),
+        Effect.forkScoped({ startImmediately: true }),
+      )
+      yield* bus.publish(Message, { text: "first" })
+      yield* Deferred.await(started)
+      yield* Effect.forEach(
+        Array.from({ length: 2000 }, (_, index) => index),
+        (index) => bus.publish(Message, { text: `event-${index}` }),
+        { discard: true },
+      )
+      yield* Deferred.succeed(release, undefined)
+      yield* Fiber.join(listener)
+      expect(received).toEqual(["first", ...Array.from({ length: 2000 }, (_, index) => `event-${index}`), "nested"])
+    }),
+  )
+
+  it.effect("delivers concurrent publications in the same order to every subscriber", () =>
+    Effect.gen(function* () {
+      const bus = yield* Bus.Service
+      const left = yield* bus
+        .subscribe()
+        .pipe(Stream.take(500), Stream.runCollect, Effect.forkScoped({ startImmediately: true }))
+      const right = yield* bus
+        .subscribe(Message)
+        .pipe(Stream.take(500), Stream.runCollect, Effect.forkScoped({ startImmediately: true }))
+      yield* Effect.forEach(
+        Array.from({ length: 500 }, (_, index) => index),
+        (index) => bus.publish(Message, { text: String(index) }),
+        { concurrency: 32, discard: true },
+      )
+      const first = Array.from(yield* Fiber.join(left))
+      const second = Array.from(yield* Fiber.join(right))
+      expect(first.map((event) => event.id)).toEqual(second.map((event) => event.id))
+      expect(new Set(first.map((event) => event.id)).size).toBe(500)
+    }),
+  )
+
+  it.effect("retains every matching event while filtering unrelated events", () =>
+    Effect.gen(function* () {
+      const bus = yield* Bus.Service
+      const started = yield* Deferred.make<void>()
+      const release = yield* Deferred.make<void>()
+      const received: string[] = []
+      const fiber = yield* bus.subscribeTypes([Message.type]).pipe(
+        Stream.take(2001),
+        Stream.runForEach((event) =>
+          Effect.gen(function* () {
+            if (event.type !== Message.type) return
+            const text = (event.data as { readonly text: string }).text
+            received.push(text)
+            if (text !== "first") return
+            yield* Deferred.succeed(started, undefined)
+            yield* Deferred.await(release)
+          }),
+        ),
+        Effect.forkScoped({ startImmediately: true }),
+      )
+      yield* bus.publish(Message, { text: "first" })
+      yield* Deferred.await(started)
+      yield* Effect.forEach(
+        Array.from({ length: 2000 }, (_, index) => index),
+        (index) =>
+          bus
+            .publish(Message, { text: `event-${index}` })
+            .pipe(Effect.andThen(bus.publish(CountMessage, { count: index }))),
+        { discard: true },
+      )
+      expect(received).toEqual(["first"])
+      yield* Deferred.succeed(release, undefined)
+      yield* Fiber.join(fiber)
+      expect(received).toEqual(["first", ...Array.from({ length: 2000 }, (_, index) => `event-${index}`)])
+    }),
+  )
   it.effect("subscribes to multiple event definitions with a discriminated payload union", () =>
     Effect.gen(function* () {
       const bus = yield* Bus.Service
@@ -278,6 +665,30 @@ describe("Bus", () => {
     }),
   )
 
+  it.effect("rolls back the event and its projection when SQLite runs out of space", () =>
+    Effect.gen(function* () {
+      const bus = yield* Bus.Service
+      const { db } = yield* Database.Service
+      const aggregateID = Event.ID.create()
+      yield* db.run("CREATE TABLE event_disk_full_probe (value text NOT NULL)")
+      yield* bus.project(SyncMessage, () =>
+        db.run("INSERT INTO event_disk_full_probe (value) VALUES ('projected')").pipe(Effect.orDie, Effect.asVoid),
+      )
+      const pages = yield* db.get<{ page_count: number }>("PRAGMA page_count")
+      if (!pages) throw new Error("Could not inspect SQLite page count")
+      yield* db.run(`PRAGMA max_page_count = ${pages.page_count}`)
+      const exit = yield* bus
+        .publish(SyncMessage, { id: aggregateID, text: "x".repeat(4 * 1024 * 1024) })
+        .pipe(Effect.exit)
+      expect(Exit.isFailure(exit)).toBe(true)
+      expect(yield* db.all("SELECT value FROM event_disk_full_probe")).toEqual([])
+      expect(yield* db.select().from(EventTable).where(eq(EventTable.aggregate_id, aggregateID)).all()).toEqual([])
+      expect(
+        yield* db.select().from(EventSequenceTable).where(eq(EventSequenceTable.aggregate_id, aggregateID)).all(),
+      ).toEqual([])
+    }),
+  )
+
   itWithoutPersistence.effect("projects durable events without retaining their payloads", () =>
     Effect.gen(function* () {
       const bus = yield* Bus.Service
@@ -410,6 +821,9 @@ describe("Bus", () => {
     Effect.gen(function* () {
       const bus = yield* Bus.Service
       const { db } = yield* Database.Service
+      const subscriber = yield* bus
+        .subscribe(SyncMessage)
+        .pipe(Stream.take(1), Stream.runCollect, Effect.forkScoped({ startImmediately: true }))
       yield* bus.listen(() => Effect.interrupt)
 
       const exit = yield* bus.publish(SyncMessage, { id: "interrupted", text: "hello" }).pipe(Effect.exit)
@@ -422,6 +836,25 @@ describe("Bus", () => {
 
       expect(Exit.isFailure(exit) && Cause.hasInterrupts(exit.cause)).toBeTrue()
       expect(committed).toBeDefined()
+      expect((yield* Fiber.join(subscriber)).map((event) => event.data.text)).toEqual(["hello"])
+    }),
+  )
+
+  it.effect("delivers an entire committed batch even if a listener interrupts", () =>
+    Effect.gen(function* () {
+      const bus = yield* Bus.Service
+      const subscriber = yield* bus
+        .subscribe(SyncMessage)
+        .pipe(Stream.take(2), Stream.runCollect, Effect.forkScoped({ startImmediately: true }))
+      yield* bus.listen(() => Effect.interrupt)
+      const result = yield* bus
+        .publishAll([
+          [SyncMessage, { id: "interrupted-batch", text: "first" }],
+          [SyncMessage, { id: "interrupted-batch", text: "second" }],
+        ])
+        .pipe(Effect.exit)
+      expect(Exit.isFailure(result) && Cause.hasInterrupts(result.cause)).toBe(true)
+      expect((yield* Fiber.join(subscriber)).map((event) => event.data.text)).toEqual(["first", "second"])
     }),
   )
 

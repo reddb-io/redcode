@@ -3,7 +3,7 @@ export * as WebSearch from "./websearch.js"
 import { WebSearch } from "@opencode/schema/websearch"
 import type { Session } from "@opencode/schema/session"
 import { SessionEvent } from "@opencode/schema/session-event"
-import { Clock, Context, Effect, Layer, Option, Schema, Stream } from "effect"
+import { Clock, Context, Effect, Layer, Option, Schema } from "effect"
 import { HttpClientError } from "effect/unstable/http"
 import { makeLocationNode } from "@opencode/util/effect/app-node"
 import { Bus } from "./bus.js"
@@ -91,14 +91,15 @@ const layer = Layer.effect(
     const cooldowns = new Map<ID, { until: number; error: RequestError }>()
     const preferred = new Map<Session.ID | undefined, { provider?: ID }>()
     yield* Effect.addFinalizer(() => Effect.sync(() => preferred.clear()))
-    yield* bus.subscribe([SessionEvent.Deleted, SessionEvent.Moved]).pipe(
-      Stream.runForEach((event) =>
+    const watch = yield* bus.watch(
+      "websearch.session-lifecycle",
+      [SessionEvent.Deleted, SessionEvent.Moved],
+      (event) =>
         Effect.sync(() => {
           preferred.delete(event.data.sessionID)
         }),
-      ),
-      Effect.forkScoped({ startImmediately: true }),
     )
+    yield* watch.pipe(Effect.forkScoped({ startImmediately: true }))
     const state = State.create<Data, Editor>({
       initial: () => ({ providers: new Map() }),
       editor: (editor) => ({

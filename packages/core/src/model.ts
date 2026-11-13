@@ -2,7 +2,7 @@ import { Model } from "@opencode/schema/model"
 import type { CapabilityOverrides } from "@opencode/schema/config/provider"
 import { Provider } from "./provider.js"
 import type { DeepMutable } from "./schema.js"
-import { Context, Effect, Layer, Stream } from "effect"
+import { Context, Effect, Layer } from "effect"
 import { makeLocationNode } from "@opencode/util/effect/app-node"
 import { Bus } from "./bus.js"
 import { State } from "./state.js"
@@ -267,10 +267,8 @@ const layer = Layer.effect(
         },
       )
     })
-    yield* bus.subscribe(Provider.Event.Updated).pipe(
-      Stream.runForEach(() => notify),
-      Effect.forkScoped({ startImmediately: true }),
-    )
+    const watch = yield* bus.watch("model.provider-updated", [Provider.Event.Updated], () => notify)
+    yield* watch.pipe(Effect.forkScoped({ startImmediately: true }))
     return Service.of({
       transform: (update) => prepare.pipe(Effect.andThen(state.transform(update))),
       reload,

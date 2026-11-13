@@ -1,7 +1,7 @@
 import { define } from "@opencode/plugin/effect/plugin"
 import { Integration } from "@opencode/schema/integration"
 import { Provider } from "@opencode/schema/provider"
-import { Effect, Stream } from "effect"
+import { Effect } from "effect"
 import { Bus } from "../bus.js"
 import { ModelsDev } from "../models-dev.js"
 
@@ -61,10 +61,10 @@ export const ModelsDevPlugin = define({
       loaded.data = snapshots(data)
       return ctx.integration.reload().pipe(Effect.andThen(ctx.provider.reload()))
     }
-    yield* bus.subscribe(ModelsDev.Event.Refreshed).pipe(
-      Stream.runForEach(() => modelsDev.get().pipe(Effect.flatMap(apply))),
-      Effect.forkScoped({ startImmediately: true }),
+    const watch = yield* bus.watch("plugin.models-dev.refreshed", [ModelsDev.Event.Refreshed], () =>
+      modelsDev.get().pipe(Effect.flatMap(apply)),
     )
+    yield* watch.pipe(Effect.forkScoped({ startImmediately: true }))
     // A refresh that landed between the initial read and the subscription above published
     // Refreshed to nobody here. On a cold cache that read served the bundled snapshot, so
     // re-read now instead of waiting for the next TTL refresh.

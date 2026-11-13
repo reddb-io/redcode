@@ -1,3 +1,4 @@
+import { subscribeFiltered } from "@opencode/plugin/effect/event"
 import { define } from "@opencode/plugin/effect/plugin"
 import { Effect, Stream } from "effect"
 import { Config } from "../../config.js"
@@ -182,12 +183,12 @@ export const OpenAICompatibleCatalogPlugin = define({
       yield* ctx.model.reload()
     })
     yield* sync()
-    yield* ctx.event.subscribe().pipe(
+    yield* subscribeFiltered(ctx.event, { types: ["config.updated"] }).pipe(
       Stream.filter((event) => event.type === "config.updated"),
       Stream.runForEach(() => sync()),
       Effect.forkScoped({ startImmediately: true }),
     )
-    yield* ctx.event.subscribe().pipe(
+    yield* subscribeFiltered(ctx.event, { types: ["credential.switched", "credential.updated"] }).pipe(
       Stream.filter((event) => event.type === "credential.switched" || event.type === "credential.updated"),
       Stream.runForEach(() =>
         Effect.sync(() => {

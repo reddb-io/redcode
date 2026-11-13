@@ -302,7 +302,15 @@ export class EffectSQLiteSession<TRelations extends AnyRelations> extends SQLite
                           )
                         : this.executeTransactionStatement(connection, `release savepoint effect_sql_${id}`)
                       : id === 0
-                        ? this.executeTransactionStatement(connection, "rollback")
+                        ? this.executeTransactionStatement(connection, "rollback").pipe(
+                            // SQLite can roll back the entire transaction itself on SQLITE_FULL.
+                            // In that case a second rollback fails and must not hide the original error.
+                            Effect.catch((error) =>
+                              /cannot rollback - no transaction is active/i.test(error.message)
+                                ? Effect.void
+                                : Effect.fail(error),
+                            ),
+                          )
                         : this.executeTransactionStatement(connection, `rollback to savepoint effect_sql_${id}`).pipe(
                             Effect.andThen(
                               this.executeTransactionStatement(connection, `release savepoint effect_sql_${id}`),

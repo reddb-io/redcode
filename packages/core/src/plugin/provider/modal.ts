@@ -1,4 +1,4 @@
-import { Effect, Semaphore, Stream } from "effect"
+import { Effect, Semaphore } from "effect"
 import { define } from "@opencode/plugin/effect/plugin"
 import { Bus } from "../../bus.js"
 import { IntegrationConnection } from "../../integration/connection.js"
@@ -65,11 +65,10 @@ export const ModalPlugin = define({
       })
     })
     const refresh = () => loading.withPermit(load().pipe(Effect.andThen(ctx.provider.reload())))
-    yield* bus.subscribe(Credential.Event.Switched).pipe(
-      Stream.filter((event) => event.data.integrationID === Integration.ID.make("modal")),
-      Stream.runForEach(refresh),
-      Effect.forkScoped({ startImmediately: true }),
-    )
+    const watch = yield* bus.watch("plugin.modal.credential-switched", [Credential.Event.Switched], refresh, {
+      filter: { type: Credential.Event.Switched.type, field: "integrationID", value: Integration.ID.make("modal") },
+    })
+    yield* watch.pipe(Effect.forkScoped({ startImmediately: true }))
     yield* refresh().pipe(Effect.forkScoped)
   }),
 } satisfies PluginInternal.InternalPlugin)

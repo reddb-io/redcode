@@ -235,7 +235,7 @@ export function follow(sessions: Pick<Session.Interface, "log">, sessionID: Sess
 /** The normal server retains message projections even when durable event payload retention is off. */
 export function stream(
   sessions: Pick<Session.Interface, "messages" | "inbox">,
-  bus: Pick<Bus.Interface, "subscribe">,
+  bus: Pick<Bus.Interface, "subscribeTypes">,
   sessionID: SessionSchema.ID,
 ) {
   return Stream.unwrap(
@@ -243,7 +243,18 @@ export function stream(
       // Subscribe before reading projections; queued live entries merge with the snapshot by their stable IDs.
       const live = yield* Stream.toPull(
         bus
-          .subscribe()
+          .subscribeTypes(
+            [
+              ...SessionEvent.DurableDefinitions.map((definition) => definition.type),
+              Permission.Event.Asked.type,
+              Permission.Event.Replied.type,
+            ],
+            {
+              predicate: (event) =>
+                (isSessionEvent(event) && event.durable.aggregateID === sessionID) ||
+                ((isAsked(event) || isReplied(event)) && event.data.sessionID === sessionID),
+            },
+          )
           .pipe(
             Stream.filter(
               (

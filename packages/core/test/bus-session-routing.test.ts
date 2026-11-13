@@ -67,6 +67,39 @@ const delta = (bus: Bus.Interface) =>
   })
 
 describe("Bus Session routing", () => {
+  it.live("persists named deliveries only for matching locations, including both sides of a move", () =>
+    Effect.gen(function* () {
+      yield* seed()
+      const bus = yield* Bus.Service
+      const definitions = [SessionEvent.Renamed, SessionEvent.Moved, Done] as const
+      const first: Event.Payload[] = []
+      const second: Event.Payload[] = []
+      const third: Event.Payload[] = []
+      const completed = yield* Deferred.make<void>()
+      let done = 0
+      const register = (ref: Location.Ref, target: Event.Payload[]) =>
+        bus.consume("test.location-routing", definitions, (event) => Effect.sync(() => {
+          target.push(event)
+          if (event.type === Done.type && ++done === 3) Deferred.doneUnsafe(completed, Effect.void)
+        })).pipe(Effect.provideService(Location.Service, location(ref)))
+      const runA = yield* register(a, first)
+      const runB = yield* register(b, second)
+      const runOther = yield* register(otherWorkspace, third)
+      const before = yield* bus.publish(SessionEvent.Renamed, { sessionID: id, title: "before" })
+      const moved = yield* bus.publish(SessionEvent.Moved, { sessionID: id, location: b, projectID: Project.ID.global })
+      const after = yield* bus.publish(SessionEvent.Renamed, { sessionID: id, title: "after" })
+      const marker = yield* bus.publish(Done, {})
+      yield* runA.pipe(Effect.forkScoped({ startImmediately: true }))
+      yield* runB.pipe(Effect.forkScoped({ startImmediately: true }))
+      yield* runOther.pipe(Effect.forkScoped({ startImmediately: true }))
+      yield* Deferred.await(completed).pipe(Effect.timeout("5 seconds"))
+      expect(first).toEqual([before, moved, marker])
+      expect(second).toEqual([moved, after, marker])
+      expect(third).toEqual([marker])
+    }),
+    10_000,
+  )
+
   it.effect("delivers workspace-only moves to both owners without duplicating same-location moves", () =>
     Effect.gen(function* () {
       yield* seed()

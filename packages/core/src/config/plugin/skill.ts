@@ -1,3 +1,4 @@
+import { subscribeFiltered } from "@opencode/plugin/effect/event"
 export * as ConfigSkillPlugin from "./skill.js"
 
 import { define } from "@opencode/plugin/effect/plugin"
@@ -185,7 +186,7 @@ export const Plugin = define({
     yield* ctx.skill.transform((editor) => {
       for (const skill of loaded.skills) editor.add(skill)
     })
-    yield* ctx.event.subscribe().pipe(
+    yield* subscribeFiltered(ctx.event, { types: ["config.updated"] }).pipe(
       Stream.filter((event) => event.type === "config.updated"),
       Stream.runForEach(() =>
         config.entries().pipe(

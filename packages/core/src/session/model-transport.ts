@@ -20,6 +20,9 @@ import { SessionSchema } from "./schema.js"
 import { webSocketConstructor } from "../effect/app-node-platform.js"
 
 const ROTATE_AFTER_MS = 55 * 60 * 1000
+const CHANNEL_IDLE_TIMEOUT = "5 minutes"
+const MAX_QUEUED_FRAMES = 16_384
+const MAX_QUEUED_BYTES = 32 * 1024 * 1024
 const CONNECT_TIMEOUT = "15 seconds"
 // Reasoning models can stream nothing for several minutes while still working.
 const IDLE_TIMEOUT = "30 minutes"
@@ -34,6 +37,8 @@ const metric = (event: string, attributes: Record<string, string> = {}) =>
 
 interface Active {
   readonly queue: Queue.Queue<string, AIError>
+  queuedBytes: number
+  queuedFrames: number
   delivery: "send-attempted" | "provider-observed" | "terminal"
 }
 
@@ -46,6 +51,7 @@ interface Channel {
   checkpoint?: ChannelCheckpoint
   pending?: { readonly token: object; readonly checkpoint: ChannelCheckpoint }
   reader?: Fiber.Fiber<unknown, unknown>
+  idle?: Fiber.Fiber<unknown, unknown>
 }
 
 interface State {
@@ -142,6 +148,10 @@ export const makeLayer = (connector: WebSocketConnector) =>
         if (owner.channel === channel) owner.channel = undefined
         if (channel.closing) return
         channel.closing = true
+        if (channel.idle) yield* Fiber.interrupt(channel.idle)
+        channel.idle = undefined
+        channel.checkpoint = undefined
+        channel.pending = undefined
         if (channel.reader) yield* Fiber.interrupt(channel.reader)
         yield* channel.connection.close
         if (channel.active)
@@ -170,6 +180,10 @@ export const makeLayer = (connector: WebSocketConnector) =>
         if (owner.channel === channel) owner.channel = undefined
         if (channel.closing) return
         channel.closing = true
+        if (channel.idle) yield* Fiber.interrupt(channel.idle)
+        channel.idle = undefined
+        channel.checkpoint = undefined
+        channel.pending = undefined
         yield* Effect.logDebug("session websocket poisoned", {
           sessionTransport: "websocket",
           code: error.reason._tag === "Transport" ? error.reason.code : error.reason._tag,
@@ -254,6 +268,17 @@ export const makeLayer = (connector: WebSocketConnector) =>
                       code: "message",
                       phase: "receive",
                     })
+                  const bytes = message.length * 2
+                  if (active.queuedFrames >= MAX_QUEUED_FRAMES || active.queuedBytes + bytes > MAX_QUEUED_BYTES)
+                    return yield* transportError("WebSocket receive buffer exceeded its limit", {
+                      url: exchange.connect.url,
+                      operation: "read",
+                      code: "buffer-overflow",
+                      phase: "receive",
+                      delivery: "accepted",
+                    })
+                  active.queuedBytes += bytes
+                  active.queuedFrames++
                   Queue.offerUnsafe(active.queue, message)
                 }),
               ),
@@ -315,6 +340,10 @@ export const makeLayer = (connector: WebSocketConnector) =>
         const key = affinity(exchange)
         const now = yield* Clock.currentTimeMillis
         const current = owner.channel
+        if (current?.idle) {
+          yield* Fiber.interrupt(current.idle)
+          current.idle = undefined
+        }
         const rotateAfterMs = exchange.connect.rotateAfterMs ?? ROTATE_AFTER_MS
         const rotation = current
           ? current.affinity !== key
@@ -382,6 +411,8 @@ export const makeLayer = (connector: WebSocketConnector) =>
         })
         const active: Active = {
           queue: yield* Queue.unbounded<string, AIError>(),
+          queuedBytes: 0,
+          queuedFrames: 0,
           delivery: "send-attempted",
         }
         channel.active = active
@@ -414,6 +445,11 @@ export const makeLayer = (connector: WebSocketConnector) =>
         let terminal: ChannelObservation | undefined
         const token = {}
         const frames = Stream.fromQueue(active.queue).pipe(
+          Stream.map((frame) => {
+            active.queuedBytes -= frame.length * 2
+            active.queuedFrames--
+            return frame
+          }),
           Stream.timeoutOrElse({
             duration: idleTimeout === false ? Duration.infinity : (idleTimeout ?? IDLE_TIMEOUT),
             orElse: () =>
@@ -454,6 +490,20 @@ export const makeLayer = (connector: WebSocketConnector) =>
                 // never answered and the socket dies with 1006. api.openai.com keeps it open, so reconnecting
                 // costs one handshake there. Drop the socket after every error so retries never race that.
                 if (terminal.type !== "completed" && terminal.type !== "incomplete") yield* closeChannel(owner, channel)
+                else if (owner.channel === channel && !channel.closing) {
+                  channel.idle = yield* Effect.sleep(CHANNEL_IDLE_TIMEOUT).pipe(
+                    Effect.andThen(
+                      owner.lock.withPermit(
+                        Effect.gen(function* () {
+                          if (owner.channel !== channel || channel.active) return
+                          channel.idle = undefined
+                          yield* closeChannel(owner, channel)
+                        }),
+                      ),
+                    ),
+                    Effect.forkIn(scope),
+                  )
+                }
                 return
               }
               yield* metric("cancellation")

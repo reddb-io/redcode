@@ -5,6 +5,7 @@ import { DesignChecklist } from "@opencode/core/design/checklist"
 import { Monitor } from "@opencode/schema/monitor"
 import { Agent } from "@opencode/core/agent"
 import { Bus } from "@opencode/core/bus"
+import { watchBatchFrom, watchFrom } from "./fixture/bus"
 import { Mcp } from "@opencode/core/mcp/index"
 import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
 import { DesignRenderer } from "@opencode/core/design/renderer"
@@ -568,7 +569,7 @@ function designAgent(
     Effect.provide(
       Layer.mergeAll(
         Layer.mock(Mcp.Service, { tools: () => Effect.succeed(tools) }),
-        Layer.mock(Bus.Service, { subscribe: () => Stream.never }),
+        Layer.mock(Bus.Service, { subscribe: () => Stream.never, watch: watchFrom(() => Stream.never), watchBatch: watchBatchFrom(() => Stream.never) }),
       ),
     ),
   )

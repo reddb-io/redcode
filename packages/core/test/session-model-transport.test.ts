@@ -959,6 +959,84 @@ describe("SessionModelTransport", () => {
     )
   })
 
+  test("closes an idle channel and reconnects on the next exchange", async () => {
+    const fixture = automatic()
+
+    await runWithTestClock(
+      fixture.connector,
+      Effect.gen(function* () {
+        const transport = yield* SessionModelTransport.Service
+        yield* collect(transport.bind(session), exchange("first"))
+        yield* TestClock.adjust("5 minutes")
+        expect(fixture.connections[0]?.closed).toBe(1)
+        yield* collect(transport.bind(session), exchange("second"))
+        expect(fixture.connections).toHaveLength(2)
+      }),
+    )
+  })
+
+  test("does not close an active exchange after an earlier idle period", async () => {
+    const fixture = automatic()
+
+    await runWithTestClock(
+      fixture.connector,
+      Effect.gen(function* () {
+        const transport = yield* SessionModelTransport.Service
+        const started = yield* Deferred.make<void>()
+        const release = yield* Deferred.make<void>()
+        yield* collect(transport.bind(session), exchange("first"))
+        yield* TestClock.adjust("4 minutes")
+        const running = yield* collect(
+          transport.bind(session, {
+            receive: (frame) =>
+              Deferred.succeed(started, undefined).pipe(Effect.andThen(Deferred.await(release)), Effect.as(frame)),
+          }),
+          exchange("second"),
+        ).pipe(Effect.forkChild({ startImmediately: true }))
+        yield* Deferred.await(started)
+        yield* TestClock.adjust("2 minutes")
+        expect(fixture.connections[0]?.closed).toBe(0)
+        yield* Deferred.succeed(release, undefined)
+        yield* Fiber.join(running)
+        yield* TestClock.adjust("5 minutes")
+        expect(fixture.connections[0]?.closed).toBe(1)
+      }),
+    )
+  })
+
+  test("drops the continuation checkpoint after an idle connection expires", async () => {
+    const fixture = automatic()
+    const checkpoints: unknown[] = []
+    const item = exchange("first")
+    const withCheckpoint: WebSocketChannelExchange = {
+      ...item,
+      driver: {
+        create: (checkpoint) =>
+          Effect.sync(() => {
+            checkpoints.push(checkpoint)
+            return { message: "first", mode: "full" as const }
+          }),
+        observe: (_create, frame) =>
+          Effect.succeed({
+            type: "completed" as const,
+            frame,
+            checkpoint: { protocol: "test", value: { input: "previous context" } },
+          }),
+      },
+    }
+    await runWithTestClock(
+      fixture.connector,
+      Effect.gen(function* () {
+        const transport = yield* SessionModelTransport.Service
+        const executor = transport.bind(session)
+        yield* collectComplete(executor, withCheckpoint)
+        yield* TestClock.adjust("5 minutes")
+        yield* collectComplete(executor, withCheckpoint)
+        expect(checkpoints).toEqual([undefined, undefined])
+      }),
+    )
+  })
+
   test("poisons a socket that receives data while idle", async () => {
     const fixture = automatic()
 
@@ -971,7 +1049,7 @@ describe("SessionModelTransport", () => {
         const connection = fixture.connections[0]
         if (!connection) throw new Error("Expected connection")
         Queue.offerUnsafe(connection.messages, "late")
-        yield* Effect.yieldNow
+        while (connection.closed === 0) yield* Effect.yieldNow
         yield* collect(executor, exchange("second"))
         expect(fixture.connections).toHaveLength(2)
         expect(fixture.connections[0]?.closed).toBe(1)
@@ -1018,6 +1096,51 @@ describe("SessionModelTransport", () => {
         expect(frames.at(-2)).toBe(`frame:${burst - 1}`)
         expect(frames.at(-1)).toBe("completed")
         expect(closed).toBe(0)
+      }),
+    )
+  })
+
+  test("fails and closes when the session receive queue overflows", async () => {
+    const messages = queue<string | Uint8Array, AIError>()
+    const closed = Deferred.makeUnsafe<void>()
+    const connector: WebSocketConnector = {
+      open: () =>
+        Effect.succeed({
+          sendText: () =>
+            Effect.sync(() => {
+              for (let index = 0; index < 20_000; index++) Queue.offerUnsafe(messages, `frame:${index}`)
+            }),
+          messages: Stream.fromQueue(messages),
+          close: Deferred.succeed(closed, undefined).pipe(Effect.andThen(Queue.shutdown(messages)), Effect.asVoid),
+        }),
+    }
+    await run(
+      connector,
+      Effect.gen(function* () {
+        const transport = yield* SessionModelTransport.Service
+        const started = yield* Deferred.make<void>()
+        const release = yield* Deferred.make<void>()
+        const item = exchange("first")
+        const running = yield* Effect.result(
+          collect(
+            transport.bind(session, {
+              receive: (frame) =>
+                Deferred.succeed(started, undefined).pipe(Effect.andThen(Deferred.await(release)), Effect.as(frame)),
+            }),
+            {
+              ...item,
+              driver: { ...item.driver, observe: (_create, frame) => Effect.succeed({ type: "frame", frame }) },
+            },
+          ),
+        ).pipe(Effect.forkChild({ startImmediately: true }))
+        yield* Deferred.await(started)
+        yield* Deferred.await(closed)
+        yield* Deferred.succeed(release, undefined)
+        const result = yield* Fiber.join(running)
+        expect(result).toMatchObject({
+          _tag: "Failure",
+          failure: { reason: { _tag: "Transport", code: "buffer-overflow", delivery: "accepted" } },
+        })
       }),
     )
   })

@@ -10,6 +10,7 @@ import { App } from "@opencode/core/app"
 import { Config } from "@opencode/core/config"
 import { ConfigPolicyPlugin } from "@opencode/core/config/plugin/policy"
 import { Credential } from "@opencode/core/credential"
+import { Database } from "@opencode/core/database/database"
 import { InstructionDiscovery } from "@opencode/core/instruction-discovery"
 import { Integration } from "@opencode/core/integration"
 import { ManagedPolicy } from "@opencode/core/managed-policy"
@@ -125,6 +126,52 @@ const cost = (input: number, output = 0) => [
 ]
 
 describe("OpencodePlugin", () => {
+  it.live("retries a pending credential switch after a temporary Console failure", () =>
+    Effect.acquireUseRelease(
+      Effect.sync(() => {
+        const state = { failBeta: true, betaAttempts: 0 }
+        const server = Bun.serve({
+          port: 0,
+          fetch(request) {
+            const url = new URL(request.url)
+            if (url.pathname !== "/api/v2/config") return new Response(null, { status: 404 })
+            if (request.headers.get("x-org-id") === "org_beta") {
+              state.betaAttempts++
+              if (state.failBeta) return new Response("Unavailable", { status: 503 })
+            }
+            return Response.json({ providers: {} })
+          },
+        })
+        return { state, server }
+      }),
+      ({ state, server }) => Effect.gen(function* () {
+        const credentials = yield* Credential.Service
+        const managed = yield* ManagedPolicy.Service
+        const { db } = yield* Database.Service
+        const account = (orgID: string, orgName: string) => credentials.create({
+          integrationID: Integration.ID.make("opencode"),
+          value: Credential.Key.make({ type: "key", key: orgID, metadata: { server: server.url.origin, orgID, orgName } }),
+        })
+        yield* account("org_alpha", "Alpha")
+        yield* addPlugin()
+        yield* account("org_beta", "Beta")
+        yield* eventually(Effect.sync(() => state.betaAttempts), (attempts) => attempts > 0, 5000)
+        const pending = yield* db.all<{ id: string }>("SELECT subscription_id AS id FROM event_delivery WHERE subscription_id LIKE 'plugin.opencode.credential-switched:%'")
+        expect(pending).toHaveLength(1)
+        expect(managed.current().organization).toBe("Alpha")
+        state.failBeta = false
+        yield* eventually(Effect.sync(() => managed.current().organization), (name) => name === "Beta", 5000)
+        const remaining = yield* eventually(
+          db.all("SELECT seq FROM event_delivery WHERE subscription_id LIKE 'plugin.opencode.credential-switched:%'").pipe(Effect.orDie),
+          (rows) => rows.length === 0,
+          5000,
+        )
+        expect(remaining).toEqual([])
+      }),
+      ({ server }) => Effect.promise(() => server.stop(true)),
+    ), 15_000,
+  )
+
   it.effect("refreshes past future-only policies while retaining config on malformed supported statements", () =>
     Effect.acquireUseRelease(
       Effect.sync(() => {
@@ -1111,6 +1158,7 @@ describe("OpencodePlugin", () => {
         Effect.gen(function* () {
           const credentials = yield* Credential.Service
           const websearch = yield* WebSearch.Service
+          const { db } = yield* Database.Service
           const account = (access: string, serverURL = server.url.origin, orgID = "org_test") =>
             Credential.OAuth.make({
               type: "oauth",
@@ -1180,7 +1228,7 @@ describe("OpencodePlugin", () => {
             value: account("replacement"),
           })
           yield* websearch.query({ query: "fresh credential" })
-          expect(requests.at(-1)).toMatchObject({
+          expect(requests.filter((request) => request.method === "POST").at(-1)).toMatchObject({
             method: "POST",
             authorization: "Bearer replacement",
             body: { query: "fresh credential", providerID: "opencode" },
@@ -1204,7 +1252,14 @@ describe("OpencodePlugin", () => {
           yield* eventually(
             Effect.sync(() => requests),
             (requests) => requests.filter((request) => request.path === "/api/v2/config").length > configCount,
-          )
+          ).pipe(Effect.mapError(() => new Error("Timed out waiting for replacement config")))
+          // The durable watcher may still be applying earlier switches after the request starts.
+          // Set the gate only after those deliveries are acknowledged, so it gates the new account.
+          yield* eventually(
+            db.all("SELECT seq FROM event_delivery WHERE subscription_id LIKE 'plugin.opencode.credential-switched:%'").pipe(Effect.orDie),
+            (rows) => rows.length === 0,
+            5000,
+          ).pipe(Effect.mapError(() => new Error("Timed out waiting for earlier credential switches")))
 
           state.advertised = false
           state.waitForConfig = true
@@ -1217,7 +1272,7 @@ describe("OpencodePlugin", () => {
             Effect.sync(() => requests),
             (requests) => requests.some((request) => request.authorization === "Bearer switched"),
             5000,
-          )
+          ).pipe(Effect.mapError(() => new Error("Timed out waiting for switched config")))
           expect(["WebSearch.Request", "WebSearch.ProviderRequired"]).toContain(
             (yield* websearch.query({ query: "switch race" }).pipe(Effect.flip))._tag,
           )
@@ -1225,7 +1280,7 @@ describe("OpencodePlugin", () => {
           gate.resolve()
           yield* eventually(websearch.providers(), (providers) =>
             providers.every((provider) => provider.id !== WebSearch.ID.make("opencode")),
-          )
+          ).pipe(Effect.mapError(() => new Error("Timed out waiting for search removal")))
           expect(yield* websearch.default()).toBeUndefined()
           expect(requests.filter((request) => request.path === "/api/v2/config").at(-1)).toMatchObject({
             method: "GET",
@@ -1236,7 +1291,7 @@ describe("OpencodePlugin", () => {
         }),
       ({ gate, server }) =>
         Effect.sync(() => gate.resolve()).pipe(Effect.andThen(Effect.promise(() => server.stop(true)))),
-    ),
+    ), 15_000,
   )
 
   it.live("derives hosted search identity and the default Console endpoint locally", () =>

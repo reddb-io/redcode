@@ -1,3 +1,4 @@
+import { subscribeFiltered } from "@opencode/plugin/effect/event"
 export * as PlanPlugin from "./plan.js"
 
 import { Message, ToolFailure } from "@opencode/ai"
@@ -76,7 +77,7 @@ export const Plugin = define({
         )
     })
 
-    yield* ctx.event.subscribe().pipe(
+    yield* subscribeFiltered(ctx.event, { types: ["session.created", "session.agent.selected"] }).pipe(
       Stream.filter(
         (event): event is SessionEvent.Created | SessionEvent.AgentSelected =>
           event.type === "session.created" || event.type === "session.agent.selected",
