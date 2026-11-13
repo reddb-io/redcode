@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "name": "@reddb-io/redcode",
-  "version": "0.87.28",
+  "version": "0.87.29",
   "private": true,
   "type": "module",
   "license": "MIT",

@@ -1,5 +1,11 @@
 # @reddb-io/redcode
 
+## 0.87.29
+
+### Patch Changes
+
+- Generate release tarballs and ZIPs on Windows without GNU tar or external zip tools, preserving desktop layout, symlinks, permissions and deterministic archive metadata.
+
 ## 0.87.28
 
 ### Patch Changes
