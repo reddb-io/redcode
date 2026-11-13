@@ -523,7 +523,7 @@ function negotiation(protocol: ConfigMCP.Protocol | undefined): VersionNegotiati
 function toCallToolResult(result: SdkCallToolResult): CallToolResult {
   return {
     isError: result.isError === true,
-    structured: result.structuredContent,
+    ...(result.structuredContent !== undefined ? { structured: result.structuredContent } : {}),
     content: result.content.flatMap((part): CallToolContent[] => {
       if (part.type === "text") return [{ type: "text", text: part.text }]
       if (part.type === "image" || part.type === "audio")

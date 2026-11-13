@@ -2161,18 +2161,22 @@ describe.each([
           )
           yield* connection.tools()
 
-          expect(yield* connection.callTool({ name: "delete", args: { text: "Meeting deleted." } })).toEqual({
+          expect(
+            Schema.decodeUnknownSync(Schema.Json)(
+              yield* connection.callTool({ name: "delete", args: { text: "Meeting deleted." } }),
+            ),
+          ).toEqual({
             isError: false,
-            structured: undefined,
             content: [{ type: "text", text: "Meeting deleted." }],
           })
-          expect(yield* connection.callTool({ name: "delete" })).toEqual({
+          expect(Schema.decodeUnknownSync(Schema.Json)(yield* connection.callTool({ name: "delete" }))).toEqual({
             isError: false,
-            structured: undefined,
             content: [],
           })
           expect(
-            yield* connection.callTool({ name: "collaborators", args: { structured: { role: "commenter" } } }),
+            Schema.decodeUnknownSync(Schema.Json)(
+              yield* connection.callTool({ name: "collaborators", args: { structured: { role: "commenter" } } }),
+            ),
           ).toMatchObject({ isError: false, structured: { role: "commenter" } })
         }),
       ),
