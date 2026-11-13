@@ -131,11 +131,12 @@ export const ClaudeAgentRuntime: AgentRuntimeAdapter = {
       "initialize",
       {
         hooks: {},
-        ...(input.run.backgroundWait || input.run.delegation
+        ...(input.run.backgroundWait || input.run.delegation || input.computerUse
           ? {
               sdkMcpServers: [
                 ...(input.run.backgroundWait ? ["redcode_wait"] : []),
                 ...(input.run.delegation ? ["redcode"] : []),
+                ...(input.computerUse ? ["redcode_computer_use"] : []),
               ],
             }
           : {}),

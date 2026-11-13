@@ -554,6 +554,12 @@ import type {
   HarnessLoginStatusOutput,
   HarnessOpenInput,
   HarnessOpenOutput,
+  HarnessComputerUseTicketInput,
+  HarnessComputerUseTicketOutput,
+  HarnessComputerUseMessageInput,
+  HarnessComputerUseMessageOutput,
+  HarnessRevokeComputerUseInput,
+  HarnessRevokeComputerUseOutput,
   HarnessReadInput,
   HarnessReadOutput,
   HarnessPromptInput,
@@ -4613,7 +4619,43 @@ export function make(options: ClientOptions) {
               model: input["model"],
               backgroundWait: input["backgroundWait"],
               delegation: input["delegation"],
+              computerUse: input["computerUse"],
             },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 409],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      computerUseTicket: (input: HarnessComputerUseTicketInput, requestOptions?: RequestOptions) =>
+        request<HarnessComputerUseTicketOutput>(
+          {
+            method: "POST",
+            path: `/api/harness/runs/${encodeURIComponent(input.runID)}/computer-use/ticket`,
+            body: { hostID: input["hostID"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 409],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      computerUseMessage: (input: HarnessComputerUseMessageInput, requestOptions?: RequestOptions) =>
+        request<HarnessComputerUseMessageOutput>(
+          {
+            method: "POST",
+            path: `/api/harness/runs/${encodeURIComponent(input.runID)}/computer-use/message`,
+            body: { ticket: input["ticket"], hostID: input["hostID"], message: input["message"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 409],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      revokeComputerUse: (input: HarnessRevokeComputerUseInput, requestOptions?: RequestOptions) =>
+        request<HarnessRevokeComputerUseOutput>(
+          {
+            method: "DELETE",
+            path: `/api/harness/runs/${encodeURIComponent(input.runID)}/computer-use`,
             successStatus: 200,
             declaredStatuses: [400, 401, 403, 409],
             empty: false,

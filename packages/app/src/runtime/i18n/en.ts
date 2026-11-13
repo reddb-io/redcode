@@ -872,6 +872,15 @@ export const dict = {
   "harness.backgroundWaitNote":
     "Adds a read-only wait tool to this run, limited to its recorded tasks and 30 seconds per call. Waiting never stops native tasks. Codex uses an experimental API.",
   "harness.backgroundWaitEnabled": "Native background wait tool enabled for this run.",
+  "harness.computerUse": "Bind Computer Use to this harness",
+  "harness.computerUseNote":
+    "Actions run only on {{host}} and keep the existing Agent Extensions permission policy.",
+  "harness.computerUseUnavailable":
+    "Computer Use is not ready on {{host}}. Install, enable and diagnose it in Agent Extensions first.",
+  "harness.computerUse.bound": "Computer Use host",
+  "harness.computerUse.open": "Open extensions",
+  "harness.computerUse.diagnose": "Diagnose",
+  "harness.computerUse.revoke": "Revoke for this run",
   "harness.directory": "Checkout directory on this host",
   "harness.runs": "Native sessions",
   "harness.inspector": "Native session details",

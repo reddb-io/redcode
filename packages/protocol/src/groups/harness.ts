@@ -77,6 +77,29 @@ export const HarnessGroup = HttpApiGroup.make("server.harness")
     }).annotateMerge(OpenApi.annotations({ identifier: "harness.open" })),
   )
   .add(
+    HttpApiEndpoint.post("harness.computerUseTicket", "/api/harness/runs/:runID/computer-use/ticket", {
+      params: run,
+      payload: Schema.Struct({ hostID: Schema.NonEmptyString }),
+      success: Harness.ComputerUseTicket,
+      error,
+    }).annotateMerge(OpenApi.annotations({ identifier: "harness.computerUseTicket" })),
+  )
+  .add(
+    HttpApiEndpoint.post("harness.computerUseMessage", "/api/harness/runs/:runID/computer-use/message", {
+      params: run,
+      payload: Harness.ComputerUseMessage,
+      success: Schema.NullOr(Schema.Json),
+      error,
+    }).annotateMerge(OpenApi.annotations({ identifier: "harness.computerUseMessage" })),
+  )
+  .add(
+    HttpApiEndpoint.delete("harness.revokeComputerUse", "/api/harness/runs/:runID/computer-use", {
+      params: run,
+      success: Harness.Run,
+      error,
+    }).annotateMerge(OpenApi.annotations({ identifier: "harness.revokeComputerUse" })),
+  )
+  .add(
     HttpApiEndpoint.get("harness.read", "/api/harness/runs/:runID", {
       params: run,
       success: Harness.Detail,

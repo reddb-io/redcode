@@ -1246,6 +1246,10 @@ export type HarnessState =
   | "unknown"
   | "closed"
 
+export type HarnessComputerUseBinding = { hostID: string; capabilityID: string; server?: string }
+
+export type HarnessComputerUseTicket = { ticket: string; hostID: string; expiresAt: number }
+
 export type HarnessEvent = { cursor: number; kind: "text" | "activity" | "error"; text: string }
 
 export type HarnessQuestion = { id: string; text: string; options: Array<string> }
@@ -3374,6 +3378,7 @@ export type HarnessRun = {
   queued: number
   backgroundWait?: boolean
   delegation?: boolean
+  computerUse?: HarnessComputerUseBinding
   capabilities: HarnessCapabilities
 }
 
@@ -13577,6 +13582,7 @@ export type HarnessOpenInput = {
     readonly model?: string
     readonly backgroundWait?: boolean
     readonly delegation?: boolean
+    readonly computerUse?: { readonly hostID: string; readonly capabilityID: string; readonly server?: string }
   }["driver"]
   readonly providerInstanceID?: {
     readonly driver: "claude" | "codex"
@@ -13585,6 +13591,7 @@ export type HarnessOpenInput = {
     readonly model?: string
     readonly backgroundWait?: boolean
     readonly delegation?: boolean
+    readonly computerUse?: { readonly hostID: string; readonly capabilityID: string; readonly server?: string }
   }["providerInstanceID"]
   readonly directory: {
     readonly driver: "claude" | "codex"
@@ -13593,6 +13600,7 @@ export type HarnessOpenInput = {
     readonly model?: string
     readonly backgroundWait?: boolean
     readonly delegation?: boolean
+    readonly computerUse?: { readonly hostID: string; readonly capabilityID: string; readonly server?: string }
   }["directory"]
   readonly model?: {
     readonly driver: "claude" | "codex"
@@ -13601,6 +13609,7 @@ export type HarnessOpenInput = {
     readonly model?: string
     readonly backgroundWait?: boolean
     readonly delegation?: boolean
+    readonly computerUse?: { readonly hostID: string; readonly capabilityID: string; readonly server?: string }
   }["model"]
   readonly backgroundWait?: {
     readonly driver: "claude" | "codex"
@@ -13609,6 +13618,7 @@ export type HarnessOpenInput = {
     readonly model?: string
     readonly backgroundWait?: boolean
     readonly delegation?: boolean
+    readonly computerUse?: { readonly hostID: string; readonly capabilityID: string; readonly server?: string }
   }["backgroundWait"]
   readonly delegation?: {
     readonly driver: "claude" | "codex"
@@ -13617,10 +13627,40 @@ export type HarnessOpenInput = {
     readonly model?: string
     readonly backgroundWait?: boolean
     readonly delegation?: boolean
+    readonly computerUse?: { readonly hostID: string; readonly capabilityID: string; readonly server?: string }
   }["delegation"]
+  readonly computerUse?: {
+    readonly driver: "claude" | "codex"
+    readonly providerInstanceID?: string
+    readonly directory: string
+    readonly model?: string
+    readonly backgroundWait?: boolean
+    readonly delegation?: boolean
+    readonly computerUse?: { readonly hostID: string; readonly capabilityID: string; readonly server?: string }
+  }["computerUse"]
 }
 
 export type HarnessOpenOutput = HarnessRun
+
+export type HarnessComputerUseTicketInput = {
+  readonly runID: { readonly runID: string }["runID"]
+  readonly hostID: { readonly hostID: string }["hostID"]
+}
+
+export type HarnessComputerUseTicketOutput = HarnessComputerUseTicket
+
+export type HarnessComputerUseMessageInput = {
+  readonly runID: { readonly runID: string }["runID"]
+  readonly ticket: { readonly ticket: string; readonly hostID: string; readonly message: JsonValue }["ticket"]
+  readonly hostID: { readonly ticket: string; readonly hostID: string; readonly message: JsonValue }["hostID"]
+  readonly message: { readonly ticket: string; readonly hostID: string; readonly message: JsonValue }["message"]
+}
+
+export type HarnessComputerUseMessageOutput = JsonValue | null
+
+export type HarnessRevokeComputerUseInput = { readonly runID: { readonly runID: string }["runID"] }
+
+export type HarnessRevokeComputerUseOutput = HarnessRun
 
 export type HarnessReadInput = { readonly runID: { readonly runID: string }["runID"] }
 

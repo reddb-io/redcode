@@ -575,6 +575,19 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
     Spec.make("mcp", {
       description: "Manage MCP (Model Context Protocol) servers",
       commands: [
+        Spec.make("serve", {
+          description: "Serve a Redcode-owned MCP bridge",
+          commands: [
+            Spec.make("computer-use", {
+              description: "Serve the Computer Use binding for one explicit harness session and host over stdio",
+              params: {
+                ...ServerParams,
+                session: Flag.string("session").pipe(Flag.withDescription("Harness run ID")),
+                host: Flag.string("host").pipe(Flag.withDescription("Stable execution host ID")),
+              },
+            }),
+          ],
+        }),
         Spec.make("list", { description: "List configured MCP servers and their status", params: ServerParams }),
         Spec.make("connect", {
           aliases: ["enable"],

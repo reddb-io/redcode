@@ -3,6 +3,18 @@ import { z } from "zod"
 import type { createHarnessTasks } from "./harness-tasks"
 import type { Frame } from "./harness-wire"
 
+export type ComputerUseTool = {
+  name: string
+  description?: string
+  inputSchema: Frame
+}
+
+export type ComputerUseBridge = {
+  tools: ReadonlyArray<ComputerUseTool>
+  call: (name: string, args: unknown, signal: AbortSignal) => Promise<unknown>
+  close: () => Promise<void>
+}
+
 const WaitInput = z
   .object({ taskID: z.string().min(1), timeoutMs: z.number().int().min(1000).max(30000).optional() })
   .strict()
@@ -13,7 +25,7 @@ const CodexCall = z.object({
     threadId: z.string(),
     turnId: z.string(),
     callId: z.string(),
-    tool: z.enum(["redcode_background_wait", "redcode_delegate_task", "redcode_task_status", "redcode_task_cancel"]),
+    tool: z.string(),
     namespace: z.null().optional(),
     arguments: z.json(),
   }),
@@ -23,7 +35,7 @@ const ClaudeCall = z.object({
   request_id: z.string(),
   request: z.object({
     subtype: z.literal("mcp_message"),
-    server_name: z.enum(["redcode_wait", "redcode"]),
+    server_name: z.enum(["redcode_wait", "redcode", "redcode_computer_use"]),
     message: z.object({
       jsonrpc: z.literal("2.0"),
       id: z.union([z.string(), z.number()]).optional(),
@@ -103,10 +115,23 @@ export function createHarnessTools(input: {
     status: (id: string) => unknown
     cancel: (id: string) => Promise<unknown>
   }
+  computerUse?: ComputerUseBridge
   send: (frame: Frame) => void
 }) {
-  const pending = new Map<string, AbortController>()
+  const pending = new Map<string, { controller: AbortController; kind: "wait" | "computer-use" }>()
   const call = async (id: string, name: string, args: unknown) => {
+    const computerUseName = decodeComputerUseToolName(name)
+    if (computerUseName !== undefined) {
+      if (!input.computerUse) throw new Error("Computer Use is not bound to this harness")
+      if (pending.has(id)) throw new Error("This Computer Use request is already running")
+      const controller = new AbortController()
+      pending.set(id, { controller, kind: "computer-use" })
+      try {
+        return await input.computerUse.call(computerUseName, args, controller.signal)
+      } finally {
+        pending.delete(id)
+      }
+    }
     if (name !== "redcode_background_wait") {
       if (!input.delegation) throw new Error("Delegation is not enabled for this harness")
       if (name === "redcode_delegate_task") return input.delegation.delegate(args)
@@ -120,7 +145,7 @@ export function createHarnessTools(input: {
     if (!parsed.success) throw new Error("Expected taskID and an optional timeoutMs from 1000 to 30000")
     if (pending.has(id)) throw new Error("This tool request is already waiting")
     const controller = new AbortController()
-    pending.set(id, controller)
+    pending.set(id, { controller, kind: "wait" })
     try {
       return await input.wait(parsed.data.taskID, parsed.data.timeoutMs ?? 10000, controller.signal)
     } finally {
@@ -129,8 +154,13 @@ export function createHarnessTools(input: {
   }
   return {
     cancel(id?: string) {
-      if (id !== undefined) return pending.get(id)?.abort()
-      pending.forEach((controller) => controller.abort())
+      if (id !== undefined) return pending.get(id)?.controller.abort()
+      pending.forEach(({ controller }) => controller.abort())
+    },
+    cancelComputerUse() {
+      pending.forEach(({ controller, kind }) => {
+        if (kind === "computer-use") controller.abort()
+      })
     },
     handle(frame: Frame) {
       if (input.driver === "codex") {
@@ -201,9 +231,11 @@ export function createHarnessTools(input: {
                       },
                     ]
                   : []
-                : input.delegation
-                  ? delegationTools
-                  : [],
+                : server === "redcode_computer_use"
+                  ? [...(input.computerUse?.tools ?? [])]
+                  : input.delegation
+                    ? delegationTools
+                    : [],
           },
         })
         return true
@@ -216,12 +248,15 @@ export function createHarnessTools(input: {
       const allowed =
         server === "redcode_wait"
           ? name === backgroundWaitTool.name && input.waitEnabled
-          : !!input.delegation && delegationTools.some((tool) => tool.name === name)
+          : server === "redcode_computer_use"
+            ? !!input.computerUse && input.computerUse.tools.some((tool) => tool.name === name)
+            : !!input.delegation && delegationTools.some((tool) => tool.name === name)
       if (message.method !== "tools/call" || typeof name !== "string" || !allowed) {
         reply({ jsonrpc: "2.0", id, error: { code: -32601, message: "Unsupported Redcode observer method or tool" } })
         return true
       }
-      void call(parsed.data.request_id, name, message.params?.arguments).then(
+      const callable = server === "redcode_computer_use" ? encodeComputerUseToolName(name) : name
+      void call(parsed.data.request_id, callable, message.params?.arguments).then(
         (result) =>
           reply({
             jsonrpc: "2.0",
@@ -245,5 +280,74 @@ export function createHarnessTools(input: {
       )
       return true
     },
+  }
+}
+
+const COMPUTER_USE_PREFIX = "redcode_computer_use__"
+
+export function encodeComputerUseToolName(name: string) {
+  return `${COMPUTER_USE_PREFIX}${Buffer.from(name, "utf8").toString("base64url")}`
+}
+
+export function decodeComputerUseToolName(name: string) {
+  if (!name.startsWith(COMPUTER_USE_PREFIX)) return undefined
+  try {
+    return Buffer.from(name.slice(COMPUTER_USE_PREFIX.length), "base64url").toString("utf8")
+  } catch {
+    return undefined
+  }
+}
+
+export function computerUseDynamicTools(bridge?: ComputerUseBridge) {
+  return (bridge?.tools ?? []).map((tool) => ({
+    type: "function" as const,
+    name: encodeComputerUseToolName(tool.name),
+    description: tool.description ?? `Run ${tool.name} on the explicitly bound Computer Use host.`,
+    inputSchema: tool.inputSchema,
+  }))
+}
+
+export async function computerUseMcpMessage(bridge: ComputerUseBridge, input: unknown, signal?: AbortSignal) {
+  const message = z
+    .object({
+      jsonrpc: z.literal("2.0"),
+      id: z.union([z.string(), z.number()]).optional(),
+      method: z.string(),
+      params: z.record(z.string(), z.json()).optional(),
+    })
+    .parse(input)
+  if (message.id === undefined) return null
+  if (message.method === "initialize")
+    return {
+      jsonrpc: "2.0",
+      id: message.id,
+      result: {
+        protocolVersion: message.params?.protocolVersion ?? "2024-11-05",
+        capabilities: { tools: {} },
+        serverInfo: { name: "redcode-computer-use", version: "1.0.0" },
+      },
+    }
+  if (message.method === "ping") return { jsonrpc: "2.0", id: message.id, result: {} }
+  if (message.method === "tools/list")
+    return { jsonrpc: "2.0", id: message.id, result: { tools: bridge.tools } }
+  const name = message.params?.name
+  if (
+    message.method !== "tools/call" ||
+    typeof name !== "string" ||
+    !bridge.tools.some((tool) => tool.name === name)
+  )
+    return { jsonrpc: "2.0", id: message.id, error: { code: -32601, message: "Unsupported Computer Use method or tool" } }
+  try {
+    const result = await bridge.call(name, message.params?.arguments, signal ?? new AbortController().signal)
+    return { jsonrpc: "2.0", id: message.id, result }
+  } catch (error) {
+    return {
+      jsonrpc: "2.0",
+      id: message.id,
+      result: {
+        content: [{ type: "text", text: error instanceof Error ? error.message : "Computer Use failed" }],
+        isError: true,
+      },
+    }
   }
 }

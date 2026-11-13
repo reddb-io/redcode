@@ -19,11 +19,14 @@ import { useGlobal } from "@/runtime/server/runtime"
 import { ServerConnection } from "@/runtime/server/registry"
 import { errorMessage } from "@/shell/layout/helpers"
 import { useNavigation } from "./controller"
+import { ServerCapabilities } from "@opencode/schema/server-capabilities"
+import { useSettingsSurface } from "@/settings/surface"
 
 export default function AgentHarnesses(props: { server: ServerConnection.Any }) {
   const language = useLanguage()
   const global = useGlobal()
   const navigation = useNavigation()
+  const settings = useSettingsSurface()
   const [params, setParams] = useSearchParams()
   const api = () => global.ensureServerCtx(props.server).sdk.api.harness
   const connected = () => global.ensureServerCtx(props.server).sdk.connection.status() === "connected"
@@ -36,6 +39,7 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
     customModel: false,
     backgroundWait: false,
     delegation: false,
+    computerUse: false,
     executable: {} as Record<string, string>,
     home: {} as Record<string, string>,
     idleTimeoutSeconds: {} as Record<string, string>,
@@ -73,6 +77,26 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
     retry: false,
     refetchInterval: 3000,
   }))
+  const tools = useQuery(() => ({
+    queryKey: ["agent-tools", ServerConnection.key(props.server), "harness-binding"],
+    queryFn: ({ signal }) => global.ensureServerCtx(props.server).sdk.api.agentTools.list({ signal }),
+    enabled: connected(),
+    retry: false,
+    refetchInterval: 5000,
+  }))
+  const computerUse = () => tools.data?.tools.find((tool) => tool.id === "computer-use")
+  const computerUseReady = () => {
+    const item = computerUse()
+    return (
+      ServerCapabilities.supports(
+        global.servers.health[ServerConnection.key(props.server)]?.capabilities,
+        ServerCapabilities.Feature.computerUseHarnessBinding,
+      ) &&
+      !!item?.supported &&
+      !!item.installed &&
+      !!item.settings.enabled
+    )
+  }
   const detail = useQuery(() => ({
     queryKey: ["harness-run", ServerConnection.key(props.server), state.runID],
     queryFn: ({ signal }) => api().read({ runID: state.runID }, { signal }),
@@ -250,6 +274,42 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                   </Show>
                   <Show when={result().run.backgroundWait}>
                     <p class="text-ink-muted">{language.t("harness.backgroundWaitEnabled")}</p>
+                  </Show>
+                  <Show when={result().run.computerUse}>
+                    {(binding) => (
+                      <section class="rounded border border-v2-border-base p-3">
+                        <h4 class="text-13-medium">{language.t("harness.computerUse.bound")}</h4>
+                        <p class="text-ink-muted">
+                          {binding().hostID} · {binding().capabilityID}
+                        </p>
+                        <Show when={binding().server}>
+                          {(server) => <p class="truncate text-ink-muted">{server()}</p>}
+                        </Show>
+                        <div class="mt-2 flex flex-wrap gap-2">
+                          <Button
+                            variant="outline"
+                            disabled={state.busy}
+                            onClick={() =>
+                              void action(() =>
+                                global.ensureServerCtx(props.server).sdk.api.agentTools.probe({ id: "computer-use" }),
+                              )
+                            }
+                          >
+                            {language.t("harness.computerUse.diagnose")}
+                          </Button>
+                          <Button variant="outline" onClick={() => settings.open("extensions")}>
+                            {language.t("harness.computerUse.open")}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            disabled={state.busy}
+                            onClick={() => void action(() => api().revokeComputerUse({ runID: state.runID }))}
+                          >
+                            {language.t("harness.computerUse.revoke")}
+                          </Button>
+                        </div>
+                      </section>
+                    )}
                   </Show>
                   <Show when={result().requests.length}>
                     <section
@@ -517,6 +577,15 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                       ...(state.model.trim() ? { model: state.model.trim() } : {}),
                       ...(state.backgroundWait ? { backgroundWait: true } : {}),
                       ...(state.delegation ? { delegation: true } : {}),
+                      ...(state.computerUse && computerUseReady()
+                        ? {
+                            computerUse: {
+                              hostID: tools.data!.host.name,
+                              capabilityID: "agent-tool:computer-use" as const,
+                              server: ServerConnection.key(props.server),
+                            },
+                          }
+                        : {}),
                     })
                     if (lifetime.active) inspect(run.id)
                   })
@@ -621,6 +690,21 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                         {language.t("harness.delegation")}
                       </label>
                       <p class="mt-1 text-ink-muted">{language.t("harness.delegationNote")}</p>
+                      <label class="mt-3 flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={state.computerUse}
+                          disabled={state.busy || !computerUseReady()}
+                          onChange={(event) => setState("computerUse", event.currentTarget.checked)}
+                        />
+                        {language.t("harness.computerUse")}
+                      </label>
+                      <p class="mt-1 text-ink-muted">
+                        {language.t(
+                          computerUseReady() ? "harness.computerUseNote" : "harness.computerUseUnavailable",
+                          { host: tools.data?.host.name ?? language.t("common.unknown") },
+                        )}
+                      </p>
                     </div>
                   </Show>
                   <label class="@md/harness-workspace:col-span-2">

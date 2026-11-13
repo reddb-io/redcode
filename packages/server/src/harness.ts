@@ -10,11 +10,15 @@ import { createHash } from "node:crypto"
 import { AbsolutePath } from "@opencode/schema/schema"
 import { Global } from "@opencode/util/global"
 import { makeGlobalNode } from "@opencode/util/effect/app-node"
-import { Context, Effect, Layer, Option, Schema } from "effect"
+import { Context, Effect, Exit, Layer, Option, Schema, Scope, Stream } from "effect"
 import { object, string, wire, stopOwnedProcess, type Frame, type Wire } from "./harness-wire"
 import { createHarnessTasks } from "./harness-tasks"
 import { createHarnessDelegation } from "./harness-delegation"
-import { createHarnessTools } from "./harness-tools"
+import {
+  computerUseMcpMessage,
+  createHarnessTools,
+  type ComputerUseBridge,
+} from "./harness-tools"
 import { App } from "@opencode/core/app"
 import { Session } from "@opencode/core/session"
 import { SessionMessage } from "@opencode/core/session/message"
@@ -26,6 +30,12 @@ import { harnessCapabilities } from "./agent-runtime/adapter"
 import { CodexRuntimeProtocol } from "./agent-runtime/adapters/codex"
 import { agentRuntime } from "./agent-runtime/registry"
 import { createAgentRuntimeSupervisor } from "./agent-runtime/supervisor"
+import { AgentTools } from "@opencode/core/agent-tools"
+import { McpClient } from "@opencode/core/mcp/client"
+import { ConfigMCP } from "@opencode/schema/config/mcp"
+import { Environment } from "@opencode/core/environment/index"
+import { CrossSpawnSpawner } from "@opencode/util/cross-spawn-spawner"
+import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner"
 
 type Pending = { request: Harness.Request; frame: Frame }
 type Live = {
@@ -37,6 +47,7 @@ type Live = {
   input?: string
   started?: number
   tools?: ReturnType<typeof createHarnessTools>
+  computerUse?: ComputerUseBridge
 }
 
 // Tokens distinguish independent server scopes hosted by the same OS process.
@@ -80,6 +91,9 @@ export async function createHarnesses(
       signal: AbortSignal,
     ) => Promise<{ status: "completed" | "failed" | "interrupted"; text: string } | undefined>
     interrupt?: (child: string) => Promise<boolean>
+    computerUse?: {
+      open: (binding: Harness.ComputerUseBinding, directory: string) => Promise<ComputerUseBridge>
+    }
   },
 ) {
   const { Database } = await import("bun:sqlite")
@@ -132,6 +146,7 @@ export async function createHarnesses(
   let recoveryTimer: ReturnType<typeof setInterval> | undefined
   const providers = new Map<string, Harness.Provider>()
   const logins = new Map<string, Harness.Login>()
+  const computerUseTickets = new Map<string, { runID: string; hostID: string; expiresAt: number }>()
   const loginWires = new Map<
     string,
     { id: string; close: () => Promise<void>; answer?: (code: string) => void }
@@ -472,6 +487,12 @@ export async function createHarnesses(
     ).run(run.id, localHost, process.pid, ownerToken, run.delegation ? 1 : 0)
     update(run.id, { state: "starting", detail: undefined })
     const adapter = agentRuntime(run.driver)
+    const computerUse = run.computerUse
+      ? await native?.computerUse?.open(run.computerUse, canonical).catch((error) => {
+          throw new Error(`Computer Use binding failed: ${error instanceof Error ? error.message : String(error)}`)
+        })
+      : undefined
+    if (run.computerUse && !computerUse) throw new Error("Computer Use is unavailable on this server")
     const instance = providerInstance(run.driver, run.providerInstanceID)
     const environment = runtimeEnvironment(instance)
     const reusable = adapter.capabilities.multipleThreadsPerRuntime
@@ -509,7 +530,8 @@ export async function createHarnesses(
       turn: "",
       pending: new Map(),
       sending: false,
-      ...(run.backgroundWait || run.delegation
+      ...(computerUse ? { computerUse } : {}),
+      ...(run.backgroundWait || run.delegation || computerUse
         ? {
             tools: createHarnessTools({
               driver: run.driver,
@@ -524,6 +546,7 @@ export async function createHarnesses(
                     },
                   }
                 : {}),
+              ...(computerUse ? { computerUse } : {}),
               send: (frame) => {
                 if (
                   !lifetime.closed &&
@@ -539,14 +562,15 @@ export async function createHarnesses(
     })
     try {
       await handle.initialize(() =>
-        adapter.initialize({ appVersion: app.version, directory: canonical, run, wire: connection }),
+        adapter.initialize({ appVersion: app.version, directory: canonical, run, wire: connection, computerUse }),
       )
-      const opened = await adapter.open({ appVersion: app.version, directory: canonical, run, wire: connection })
+      const opened = await adapter.open({ appVersion: app.version, directory: canonical, run, wire: connection, computerUse })
       if (opened.nativeID) update(run.id, { nativeID: opened.nativeID })
       return update(run.id, { state: "ready" })
     } catch (error) {
       update(run.id, { state: "failed", detail: error instanceof Error ? error.message : String(error) })
       await handle.release()
+      await computerUse?.close()
       throw error
     }
   }
@@ -960,9 +984,43 @@ export async function createHarnesses(
       update(id, { state: "closed" })
       db.query("UPDATE harness_process SET eligible=0 WHERE run=?").run(id)
       live.get(id)?.tools?.cancel()
+      await live.get(id)?.computerUse?.close()
+      for (const [ticket, value] of computerUseTickets) if (value.runID === id) computerUseTickets.delete(ticket)
       db.query("UPDATE prompt SET status='cancelled' WHERE run=? AND status='queued'").run(id)
       await live.get(id)?.release()
       live.delete(id)
+    },
+    computerUseTicket(id: string, hostID: string): Harness.ComputerUseTicket {
+      const run = read(id)
+      if (!run.computerUse || run.computerUse.hostID !== hostID)
+        throw new Error("This harness is not bound to the requested Computer Use host")
+      if (!live.get(id)?.computerUse) throw new Error("Computer Use is not active; resume the harness first")
+      const now = Date.now()
+      for (const [key, value] of computerUseTickets)
+        if (value.expiresAt < now || value.runID === id) computerUseTickets.delete(key)
+      const ticket = crypto.randomUUID()
+      const expiresAt = now + 60_000
+      computerUseTickets.set(ticket, { runID: id, hostID, expiresAt })
+      return { ticket, hostID, expiresAt }
+    },
+    async computerUseMessage(id: string, input: Harness.ComputerUseMessage) {
+      const ticket = computerUseTickets.get(input.ticket)
+      if (!ticket || ticket.runID !== id || ticket.hostID !== input.hostID || ticket.expiresAt < Date.now()) {
+        computerUseTickets.delete(input.ticket)
+        throw new Error("Computer Use ticket is invalid or expired")
+      }
+      computerUseTickets.delete(input.ticket)
+      const connection = live.get(id)?.computerUse
+      if (!connection) throw new Error("Computer Use is no longer active for this harness")
+      return Schema.decodeUnknownSync(Schema.Json)(await computerUseMcpMessage(connection, input.message))
+    },
+    async revokeComputerUse(id: string) {
+      const connection = live.get(id)
+      connection?.tools?.cancelComputerUse()
+      await connection?.computerUse?.close()
+      if (connection) delete connection.computerUse
+      for (const [ticket, value] of computerUseTickets) if (value.runID === id) computerUseTickets.delete(ticket)
+      return update(id, { computerUse: undefined })
     },
     reconcile(id: string) {
       if (read(id).state !== "unknown" || live.has(id))
@@ -984,6 +1042,7 @@ export async function createHarnesses(
       const logins = [...loginWires.values()]
       loginWires.clear()
       await Promise.all(logins.map((connection) => connection.close()))
+      await Promise.all([...live.values()].map((connection) => connection.computerUse?.close()))
       await Promise.all([...live.values()].map((connection) => connection.release()))
       live.clear()
       await supervisor.dispose()
@@ -1137,6 +1196,27 @@ const layer = (options: { sessionDelegation: boolean }) =>
       const sessions = yield* Session.Service
       const store = yield* SessionStore.Service
       const gateway = yield* ExternalDelegation.Service
+      const agentTools = yield* AgentTools.Service
+      const computerUseSignature = (snapshot: AgentTools.Snapshot) => {
+        const item = snapshot.tools.find((tool) => tool.id === "computer-use")
+        return JSON.stringify(
+          item
+            ? {
+                supported: item.supported,
+                installed: item.installed,
+                settings: item.settings,
+                command: item.command,
+              }
+            : null,
+        )
+      }
+      let currentComputerUseSignature = computerUseSignature(yield* agentTools.list())
+      const spawner = yield* ChildProcessSpawner
+      const localEnvironment = Environment.Service.of({
+        files: Environment.makeFiles(Environment.makeLocalDriver(spawner)),
+        spawner,
+      })
+      const runEffect = Effect.runPromiseWith(yield* Effect.context())
       const service = yield* Effect.acquireRelease(
         Effect.promise(() =>
           createHarnesses(path.join(global.state, "harnesses"), app, {
@@ -1244,6 +1324,67 @@ const layer = (options: { sessionDelegation: boolean }) =>
               if (interrupted) await Effect.runPromise(sessions.wait(sessionID))
               return interrupted
             },
+            computerUse: {
+              open: async (binding, directory) => {
+                const status = async () => {
+                  const snapshot = await runEffect(agentTools.list())
+                  if (snapshot.host.name !== binding.hostID)
+                    throw new Error(`Requested host ${binding.hostID} is not connected; this server is ${snapshot.host.name}`)
+                  if (binding.capabilityID !== "agent-tool:computer-use")
+                    throw new Error(`Unsupported Computer Use capability: ${binding.capabilityID}`)
+                  const item = snapshot.tools.find((tool) => tool.id === "computer-use")
+                  if (!item?.supported || !item.installed || !item.settings.enabled || !item.command)
+                    throw new Error("Enable and diagnose Computer Use on the selected host before binding it")
+                  return { ...item, command: item.command }
+                }
+                const item = await status()
+                const scope = await Effect.runPromise(Scope.make())
+                const connection = await runEffect(
+                  McpClient.connect(
+                    `harness-computer-use:${binding.hostID}`,
+                    new ConfigMCP.Local({
+                      type: "local",
+                      command: [...item.command],
+                      timeout: {
+                        startup: 30_000,
+                        catalog: 30_000,
+                        execution: item.settings.timeout ?? 120_000,
+                      },
+                    }),
+                    directory,
+                  ).pipe(
+                    Effect.provideService(Environment.Service, localEnvironment),
+                    Scope.provide(scope),
+                    Effect.onError(() => Scope.close(scope, Exit.void)),
+                  ),
+                )
+                const tools = await runEffect(connection.tools())
+                let closed = false
+                return {
+                  tools: tools.map((tool) => ({
+                    name: tool.name,
+                    ...(tool.description ? { description: tool.description } : {}),
+                    inputSchema: tool.inputSchema as import("./harness-wire").Frame,
+                  })),
+                  call: async (name, args, signal) => {
+                    if (closed) throw new Error("Computer Use binding was revoked")
+                    await status()
+                    return runEffect(
+                      connection.callTool({
+                        name,
+                        args: typeof args === "object" && args !== null ? (args as Record<string, unknown>) : {},
+                      }),
+                      { signal },
+                    )
+                  },
+                  close: async () => {
+                    if (closed) return
+                    closed = true
+                    await runEffect(Scope.close(scope, Exit.void))
+                  },
+                }
+              },
+            },
           }),
         ),
         (service) =>
@@ -1251,6 +1392,25 @@ const layer = (options: { sessionDelegation: boolean }) =>
             gateway.set(undefined)
             await service.dispose()
           }),
+      )
+      yield* agentTools.changes().pipe(
+        Stream.runForEach(() =>
+          Effect.gen(function* () {
+            const snapshot = yield* agentTools.list()
+            const nextSignature = computerUseSignature(snapshot)
+            if (nextSignature === currentComputerUseSignature) return
+            currentComputerUseSignature = nextSignature
+            yield* Effect.promise(() =>
+              Promise.all(
+                service
+                  .list()
+                  .runs.filter((run) => !!run.computerUse)
+                  .map((run) => service.revokeComputerUse(run.id)),
+              ),
+            )
+          }).pipe(Effect.catchCause((cause) => Effect.logWarning("failed to revoke Computer Use bindings", { cause }))),
+        ),
+        Effect.forkScoped({ startImmediately: true }),
       )
       if (options.sessionDelegation)
         gateway.set({
@@ -1270,6 +1430,14 @@ export const configured = (options: { sessionDelegation: boolean }) =>
   makeGlobalNode({
     service: Service,
     layer: layer(options),
-    deps: [Global.node, App.node, Session.node, SessionStore.node, ExternalDelegation.node],
+    deps: [
+      Global.node,
+      App.node,
+      Session.node,
+      SessionStore.node,
+      ExternalDelegation.node,
+      AgentTools.node,
+      CrossSpawnSpawner.node,
+    ],
   })
 export const node = configured({ sessionDelegation: true })

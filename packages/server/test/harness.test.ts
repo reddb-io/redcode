@@ -9,6 +9,7 @@ import { Harness } from "@opencode/schema/harness"
 import { AbsolutePath } from "@opencode/schema/schema"
 import { Schema } from "effect"
 import { App } from "@opencode/core/app"
+import { ExecutionCapability } from "@opencode/schema/execution-capability"
 
 const fixture = path.resolve(import.meta.dir, "fixture/harness-process.ts")
 async function executable(root: string, driver: Harness.Driver, modelsError = false, source = fixture) {
@@ -22,6 +23,126 @@ async function executable(root: string, driver: Harness.Driver, modelsError = fa
   await chmod(file, 0o700)
   return file
 }
+
+for (const driver of Harness.Driver.literals) {
+  test(`${driver}: Computer Use binds one host, serves MCP and revokes without replay`, async () => {
+    await using tmp = await tmpdir(`redcode-harness-computer-use-${driver}-`)
+    let calls = 0
+    let closes = 0
+    const service = await createHarnesses(path.join(tmp.path, "state"), App.make({ name: "redcode" }), {
+      deliver: async () => {},
+      computerUse: {
+        open: async (binding) => {
+          expect(binding.hostID).toBe("host-a")
+          return {
+            tools: [
+              {
+                name: "observe_desktop",
+                description: "Observe the selected desktop",
+                inputSchema: { type: "object", additionalProperties: false },
+              },
+            ],
+            call: async (name, args) => {
+              calls++
+              return { content: [{ type: "text", text: JSON.stringify({ name, args }) }], isError: false }
+            },
+            close: async () => {
+              closes++
+            },
+          }
+        },
+      },
+    })
+    try {
+      await service.configure({ driver, executable: await executable(tmp.path, driver) })
+      const run = await service.open({
+        driver,
+        directory: AbsolutePath.make(tmp.path),
+        computerUse: {
+          hostID: "host-a",
+          capabilityID: ExecutionCapability.ID.make("agent-tool:computer-use"),
+          server: "http://server.test",
+        },
+      })
+      expect(run.computerUse?.hostID).toBe("host-a")
+      const claim = service.computerUseTicket(run.id, "host-a")
+      const listed = await service.computerUseMessage(run.id, {
+        ticket: claim.ticket,
+        hostID: "host-a",
+        message: { jsonrpc: "2.0", id: 1, method: "tools/list" },
+      })
+      expect(listed).toEqual({
+        jsonrpc: "2.0",
+        id: 1,
+        result: {
+          tools: [
+            {
+              name: "observe_desktop",
+              description: "Observe the selected desktop",
+              inputSchema: { type: "object", additionalProperties: false },
+            },
+          ],
+        },
+      })
+      await expect(
+        service.computerUseMessage(run.id, {
+          ticket: claim.ticket,
+          hostID: "host-a",
+          message: { jsonrpc: "2.0", id: 11, method: "tools/list" },
+        }),
+      ).rejects.toThrow("invalid or expired")
+      const callClaim = service.computerUseTicket(run.id, "host-a")
+      await service.computerUseMessage(run.id, {
+        ticket: callClaim.ticket,
+        hostID: "host-a",
+        message: {
+          jsonrpc: "2.0",
+          id: 2,
+          method: "tools/call",
+          params: { name: "observe_desktop", arguments: { application: "Editor" } },
+        },
+      })
+      expect(calls).toBe(1)
+
+      const capture = await Bun.file(path.join(tmp.path, "wire.jsonl")).text()
+      expect(capture).toContain(driver === "codex" ? "redcode_computer_use__" : "redcode_computer_use")
+
+      const revoked = await service.revokeComputerUse(run.id)
+      expect(revoked.computerUse).toBeUndefined()
+      expect(closes).toBe(1)
+      await expect(
+        service.computerUseMessage(run.id, {
+          ticket: callClaim.ticket,
+          hostID: "host-a",
+          message: { jsonrpc: "2.0", id: 3, method: "tools/list" },
+        }),
+      ).rejects.toThrow("invalid or expired")
+      expect(calls).toBe(1)
+    } finally {
+      await service.dispose()
+    }
+  }, 15_000)
+}
+
+test("Computer Use binding is refused when the server has no Computer Use provider", async () => {
+  await using tmp = await tmpdir("redcode-harness-computer-use-disabled-")
+  const service = await createHarnesses(path.join(tmp.path, "state"))
+  try {
+    await service.configure({ driver: "codex", executable: await executable(tmp.path, "codex") })
+    await expect(
+      service.open({
+        driver: "codex",
+        directory: AbsolutePath.make(tmp.path),
+        computerUse: {
+          hostID: "host-a",
+          capabilityID: ExecutionCapability.ID.make("agent-tool:computer-use"),
+        },
+      }),
+    ).rejects.toThrow("unavailable")
+  } finally {
+    await service.dispose()
+  }
+}, 15_000)
 
 test("Codex shares one initialized app-server while isolating native threads", async () => {
   await using tmp = await tmpdir("redcode-harness-codex-pool-")

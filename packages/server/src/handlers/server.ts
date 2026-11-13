@@ -36,6 +36,7 @@ const capabilities = ServerCapabilities.Info.make({
     [ServerCapabilities.Feature.sessionObservation]: ServerCapabilities.Version.make(1),
     [ServerCapabilities.Feature.workerLease]: ServerCapabilities.Version.make(1),
     [ServerCapabilities.Feature.memoryCaptures]: ServerCapabilities.Version.make(1),
+    [ServerCapabilities.Feature.computerUseHarnessBinding]: ServerCapabilities.Version.make(1),
   },
   // Old coordinators still require these fields while the versioned map rolls out.
   sessionObservation: true,

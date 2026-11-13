@@ -96,6 +96,9 @@ const Handlers = Runtime.handlers(Commands, {
     paths: () => import("./commands/handlers/debug/paths"),
   },
   mcp: {
+    serve: {
+      "computer-use": () => import("./commands/handlers/mcp/serve-computer-use"),
+    },
     list: () => import("./commands/handlers/mcp/list"),
     connect: () => import("./commands/handlers/mcp/control").then((module) => ({ default: module.connect })),
     disconnect: () => import("./commands/handlers/mcp/control").then((module) => ({ default: module.disconnect })),

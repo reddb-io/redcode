@@ -2,6 +2,7 @@ import { Harness } from "@opencode/schema/harness"
 import { Capability } from "@opencode/schema/capability"
 import { type Frame, type Wire } from "../harness-wire"
 import { type AgentRuntimeEvent, type AgentRuntimeEventInput } from "./events"
+import type { ComputerUseBridge } from "../harness-tools"
 
 export type AgentRuntimeCapabilities = {
   backgroundWork: boolean
@@ -19,6 +20,7 @@ export type AgentRuntimeOpen = {
   directory: string
   run: Harness.Run
   wire: Wire
+  computerUse?: ComputerUseBridge
 }
 
 export type AgentRuntimePrompt = {

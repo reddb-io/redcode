@@ -1,5 +1,6 @@
 import { Plugin } from "@opencode/plugin/tui"
 import { AgentTools } from "@opencode/schema/agent-tools"
+import { Harness } from "@opencode/schema/harness"
 import { Schema } from "effect"
 import { Show } from "solid-js"
 import { createStore } from "solid-js/store"
@@ -12,14 +13,19 @@ export default Plugin.define({
     const controller = new AbortController()
     const [state, setState] = createStore<{
       snapshot?: AgentTools.Snapshot
+      harness?: Harness.Snapshot
       busy: boolean
-      view: "tools" | "capabilities"
+      view: "tools" | "capabilities" | "bindings"
     }>({ busy: false, view: "tools" })
     const load = async () => {
-      const snapshot = Schema.decodeUnknownSync(AgentTools.Snapshot)(
-        await context.client.agentTools.list({ signal: controller.signal }),
-      )
-      if (!controller.signal.aborted) setState("snapshot", snapshot)
+      const [snapshot, harness] = await Promise.all([
+        context.client.agentTools.list({ signal: controller.signal }),
+        context.client.harness.list({ signal: controller.signal }).catch(() => undefined),
+      ])
+      if (!controller.signal.aborted) {
+        setState("snapshot", Schema.decodeUnknownSync(AgentTools.Snapshot)(snapshot))
+        if (harness) setState("harness", Schema.decodeUnknownSync(Harness.Snapshot)(harness))
+      }
     }
     const run = async (action: () => Promise<unknown>) => {
       if (state.busy) return
@@ -86,7 +92,7 @@ export default Plugin.define({
       setState("view", "tools")
       context.ui.dialog.show(() => (
         <Show
-          when={state.view === "capabilities"}
+          when={state.view !== "tools"}
           fallback={
             <DialogSelect
               title={`Agent tools · ${state.snapshot?.host.name ?? "connected host"}`}
@@ -127,6 +133,14 @@ export default Plugin.define({
                   selection: "none",
                   hidden: !(state.snapshot?.capabilities?.length ?? 0),
                   onTrigger: () => setState("view", "capabilities"),
+                },
+                {
+                  command: "agent-tools.bindings",
+                  title: "harness bindings",
+                  bind: "ctrl+b",
+                  selection: "none",
+                  hidden: !state.harness?.runs.some((run) => !!run.computerUse),
+                  onTrigger: () => setState("view", "bindings"),
                 },
                 {
                   command: "agent-tools.install",
@@ -181,21 +195,68 @@ export default Plugin.define({
             />
           }
         >
-          <DialogSelect
-            title={`Operational capabilities · ${state.snapshot?.host.name ?? "connected host"}`}
-            preserveSelection
-            options={operationalCapabilityOptions(state.snapshot?.capabilities ?? [])}
-            onSelect={() => undefined}
-            bindings={[
-              {
-                bind: "escape",
-                title: "Back",
-                group: "Dialog",
-                run: () => setState("view", "tools"),
-              },
-            ]}
-            footerHints={[{ title: "esc", label: "back" }]}
-          />
+          <Show
+            when={state.view === "bindings"}
+            fallback={
+              <DialogSelect
+                title={`Operational capabilities · ${state.snapshot?.host.name ?? "connected host"}`}
+                preserveSelection
+                options={operationalCapabilityOptions(state.snapshot?.capabilities ?? [])}
+                onSelect={() => undefined}
+                bindings={[
+                  {
+                    bind: "escape",
+                    title: "Back",
+                    group: "Dialog",
+                    run: () => setState("view", "tools"),
+                  },
+                ]}
+                footerHints={[{ title: "esc", label: "back" }]}
+              />
+            }
+          >
+            <DialogSelect
+              title="Computer Use harness bindings"
+              locked={state.busy}
+              preserveSelection
+              options={(state.harness?.runs ?? []).flatMap((run) =>
+                run.computerUse
+                  ? [
+                      {
+                        value: run.id,
+                        title: `${run.driver} · ${run.computerUse.hostID}`,
+                        footer: run.state,
+                        details: [
+                          run.directory,
+                          `Capability: ${run.computerUse.capabilityID}`,
+                          ...(run.computerUse.server ? [`Server: ${run.computerUse.server}`] : []),
+                        ],
+                        detailsWrap: true,
+                      },
+                    ]
+                  : [],
+              )}
+              onSelect={() => undefined}
+              actions={[
+                {
+                  command: "agent-tools.binding.revoke",
+                  title: "revoke binding",
+                  bind: "ctrl+x",
+                  onTrigger: (option) =>
+                    void run(() => context.client.harness.revokeComputerUse({ runID: option.value })),
+                },
+              ]}
+              bindings={[
+                {
+                  bind: "escape",
+                  title: "Back",
+                  group: "Dialog",
+                  run: () => setState("view", "tools"),
+                },
+              ]}
+              footerHints={[{ title: "esc", label: "back" }]}
+            />
+          </Show>
         </Show>
       ))
     }

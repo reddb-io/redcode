@@ -7931,9 +7931,33 @@ export type HarnessOpenInput = {
   readonly model?: string | undefined
   readonly backgroundWait?: boolean | undefined
   readonly delegation?: boolean | undefined
+  readonly computerUse?: Harness.ComputerUseBinding | undefined
 }
 export type HarnessOpenOutput = Harness.Run
 export type HarnessOpenOperation<E = never> = (input: HarnessOpenInput) => Effect.Effect<HarnessOpenOutput, E>
+
+export type HarnessComputerUseTicketInput = { readonly runID: string; readonly hostID: string }
+export type HarnessComputerUseTicketOutput = Harness.ComputerUseTicket
+export type HarnessComputerUseTicketOperation<E = never> = (
+  input: HarnessComputerUseTicketInput,
+) => Effect.Effect<HarnessComputerUseTicketOutput, E>
+
+export type HarnessComputerUseMessageInput = {
+  readonly runID: string
+  readonly ticket: string
+  readonly hostID: string
+  readonly message: Schema.Json
+}
+export type HarnessComputerUseMessageOutput = Schema.Json | null
+export type HarnessComputerUseMessageOperation<E = never> = (
+  input: HarnessComputerUseMessageInput,
+) => Effect.Effect<HarnessComputerUseMessageOutput, E>
+
+export type HarnessRevokeComputerUseInput = { readonly runID: string }
+export type HarnessRevokeComputerUseOutput = Harness.Run
+export type HarnessRevokeComputerUseOperation<E = never> = (
+  input: HarnessRevokeComputerUseInput,
+) => Effect.Effect<HarnessRevokeComputerUseOutput, E>
 
 export type HarnessReadInput = { readonly runID: string }
 export type HarnessReadOutput = Harness.Detail
@@ -7982,6 +8006,9 @@ export interface HarnessApi<E = never> {
   readonly login: HarnessLoginOperation<E>
   readonly loginStatus: HarnessLoginStatusOperation<E>
   readonly open: HarnessOpenOperation<E>
+  readonly computerUseTicket: HarnessComputerUseTicketOperation<E>
+  readonly computerUseMessage: HarnessComputerUseMessageOperation<E>
+  readonly revokeComputerUse: HarnessRevokeComputerUseOperation<E>
   readonly read: HarnessReadOperation<E>
   readonly prompt: HarnessPromptOperation<E>
   readonly answer: HarnessAnswerOperation<E>

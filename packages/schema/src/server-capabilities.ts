@@ -12,6 +12,7 @@ export const Feature = {
   sessionObservation: "session.observation",
   workerLease: "worker.lease",
   memoryCaptures: "diagnostics.memory-captures",
+  computerUseHarnessBinding: "harness.computer-use-binding",
 } as const
 export type Feature = (typeof Feature)[keyof typeof Feature]
 

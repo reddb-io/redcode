@@ -3,6 +3,7 @@ export * as Harness from "./harness.js"
 import { Schema } from "effect"
 import { AbsolutePath, optional } from "./schema.js"
 import { Capability } from "./capability.js"
+import { ExecutionCapability } from "./execution-capability.js"
 
 export const Driver = Schema.Literals(["claude", "codex"]).annotate({ identifier: "Harness.Driver" })
 export type Driver = typeof Driver.Type
@@ -35,6 +36,12 @@ export const Provider = Schema.Struct({
   ),
 }).annotate({ identifier: "Harness.Provider" })
 export interface Provider extends Schema.Schema.Type<typeof Provider> {}
+export const ComputerUseBinding = Schema.Struct({
+  hostID: Schema.NonEmptyString,
+  capabilityID: ExecutionCapability.ID,
+  server: optional(Schema.String),
+}).annotate({ identifier: "Harness.ComputerUseBinding" })
+export interface ComputerUseBinding extends Schema.Schema.Type<typeof ComputerUseBinding> {}
 export const Open = Schema.Struct({
   driver: Driver,
   providerInstanceID: optional(Schema.NonEmptyString),
@@ -42,6 +49,7 @@ export const Open = Schema.Struct({
   model: optional(Schema.NonEmptyString),
   backgroundWait: optional(Schema.Boolean),
   delegation: optional(Schema.Boolean),
+  computerUse: optional(ComputerUseBinding),
 }).annotate({ identifier: "Harness.Open" })
 export interface Open extends Schema.Schema.Type<typeof Open> {}
 export const State = Schema.Literals([
@@ -105,6 +113,7 @@ export const Run = Schema.Struct({
   queued: Schema.Int,
   backgroundWait: optional(Schema.Boolean),
   delegation: optional(Schema.Boolean),
+  computerUse: optional(ComputerUseBinding),
   capabilities: Capabilities,
 }).annotate({ identifier: "Harness.Run" })
 export interface Run extends Schema.Schema.Type<typeof Run> {}
@@ -185,3 +194,17 @@ export const Login = Schema.Struct({
   detail: optional(Schema.String),
 }).annotate({ identifier: "Harness.Login" })
 export interface Login extends Schema.Schema.Type<typeof Login> {}
+
+export const ComputerUseTicket = Schema.Struct({
+  ticket: Schema.NonEmptyString,
+  hostID: Schema.NonEmptyString,
+  expiresAt: Schema.Int,
+}).annotate({ identifier: "Harness.ComputerUseTicket" })
+export interface ComputerUseTicket extends Schema.Schema.Type<typeof ComputerUseTicket> {}
+
+export const ComputerUseMessage = Schema.Struct({
+  ticket: Schema.NonEmptyString,
+  hostID: Schema.NonEmptyString,
+  message: Schema.Json,
+}).annotate({ identifier: "Harness.ComputerUseMessage" })
+export interface ComputerUseMessage extends Schema.Schema.Type<typeof ComputerUseMessage> {}

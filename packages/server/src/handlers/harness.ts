@@ -35,6 +35,13 @@ export const HarnessHandler = HttpApiBuilder.group(Api, "server.harness", (handl
       .handle("harness.login", (ctx) => call(() => harness.login(ctx.params.providerInstanceID)))
       .handle("harness.loginStatus", (ctx) => call(() => harness.loginStatus(ctx.params.providerInstanceID)))
       .handle("harness.open", (ctx) => call(() => harness.open(ctx.payload)))
+      .handle("harness.computerUseTicket", (ctx) =>
+        call(() => harness.computerUseTicket(ctx.params.runID, ctx.payload.hostID)),
+      )
+      .handle("harness.computerUseMessage", (ctx) =>
+        call(() => harness.computerUseMessage(ctx.params.runID, ctx.payload)),
+      )
+      .handle("harness.revokeComputerUse", (ctx) => call(() => harness.revokeComputerUse(ctx.params.runID)))
       .handle("harness.read", (ctx) => call(() => harness.read(ctx.params.runID)))
       .handle("harness.prompt", (ctx) => call(() => harness.prompt(ctx.params.runID, ctx.payload)))
       .handle("harness.interrupt", (ctx) => call(() => harness.interrupt(ctx.params.runID)))

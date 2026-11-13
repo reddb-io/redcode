@@ -556,6 +556,12 @@ import type {
   HarnessLoginStatusOutput,
   HarnessOpenInput,
   HarnessOpenOutput,
+  HarnessComputerUseTicketInput,
+  HarnessComputerUseTicketOutput,
+  HarnessComputerUseMessageInput,
+  HarnessComputerUseMessageOutput,
+  HarnessRevokeComputerUseInput,
+  HarnessRevokeComputerUseOutput,
   HarnessReadInput,
   HarnessReadOutput,
   HarnessPromptInput,
@@ -3409,8 +3415,30 @@ const EndpointHarnessOpen = (raw: RawClient["server.harness"]) => (input: Harnes
         model: input["model"],
         backgroundWait: input["backgroundWait"],
         delegation: input["delegation"],
+        computerUse: input["computerUse"],
       },
     }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const EndpointHarnessComputerUseTicket = (raw: RawClient["server.harness"]) => (input: HarnessComputerUseTicketInput) =>
+  preserveEffect<HarnessComputerUseTicketOutput>()(
+    raw["harness.computerUseTicket"]({ params: { runID: input["runID"] }, payload: { hostID: input["hostID"] } }).pipe(
+      Effect.mapError(mapClientError),
+    ),
+  )
+
+const EndpointHarnessComputerUseMessage =
+  (raw: RawClient["server.harness"]) => (input: HarnessComputerUseMessageInput) =>
+    preserveEffect<HarnessComputerUseMessageOutput>()(
+      raw["harness.computerUseMessage"]({
+        params: { runID: input["runID"] },
+        payload: { ticket: input["ticket"], hostID: input["hostID"], message: input["message"] },
+      }).pipe(Effect.mapError(mapClientError)),
+    )
+
+const EndpointHarnessRevokeComputerUse = (raw: RawClient["server.harness"]) => (input: HarnessRevokeComputerUseInput) =>
+  preserveEffect<HarnessRevokeComputerUseOutput>()(
+    raw["harness.revokeComputerUse"]({ params: { runID: input["runID"] } }).pipe(Effect.mapError(mapClientError)),
   )
 
 const EndpointHarnessRead = (raw: RawClient["server.harness"]) => (input: HarnessReadInput) =>
@@ -3460,6 +3488,9 @@ const adaptGroupHarness = (raw: RawClient["server.harness"]) => ({
   login: EndpointHarnessLogin(raw),
   loginStatus: EndpointHarnessLoginStatus(raw),
   open: EndpointHarnessOpen(raw),
+  computerUseTicket: EndpointHarnessComputerUseTicket(raw),
+  computerUseMessage: EndpointHarnessComputerUseMessage(raw),
+  revokeComputerUse: EndpointHarnessRevokeComputerUse(raw),
   read: EndpointHarnessRead(raw),
   prompt: EndpointHarnessPrompt(raw),
   answer: EndpointHarnessAnswer(raw),

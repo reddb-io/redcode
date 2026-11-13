@@ -1,6 +1,6 @@
 import { Harness } from "@opencode/schema/harness"
 import { Schema } from "effect"
-import { backgroundWaitTool, delegationTools } from "../../harness-tools"
+import { backgroundWaitTool, computerUseDynamicTools, delegationTools } from "../../harness-tools"
 import { object, string, type Wire } from "../../harness-wire"
 import { type AgentRuntimeAdapter } from "../adapter"
 import { type AgentRuntimeEvent, type AgentRuntimeEventInput } from "../events"
@@ -194,11 +194,12 @@ export const CodexAgentRuntime: AgentRuntimeAdapter = {
         ...(input.run.model ? { model: input.run.model } : {}),
         approvalPolicy: "on-request",
         sandbox: "workspace-write",
-        ...(!input.run.nativeID && (input.run.backgroundWait || input.run.delegation)
+        ...(!input.run.nativeID && (input.run.backgroundWait || input.run.delegation || input.computerUse)
           ? {
               dynamicTools: [
                 ...(input.run.backgroundWait ? [{ type: "function", ...backgroundWaitTool }] : []),
                 ...(input.run.delegation ? delegationTools.map((tool) => ({ type: "function", ...tool })) : []),
+                ...computerUseDynamicTools(input.computerUse),
               ],
             }
           : {}),
