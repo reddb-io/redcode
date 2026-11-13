@@ -125,7 +125,7 @@ export function layer(
               yield* Effect.logInfo("location services evicted", {
                 directory: entry.ref.directory,
                 workspaceID: entry.ref.workspaceID,
-              }).pipe(Effect.andThen(locations.invalidate(entry.ref)))
+              }).pipe(Effect.andThen(locations.invalidate(entry.ref, "inactivity")))
             }),
           { discard: true, concurrency: "unbounded" },
         )

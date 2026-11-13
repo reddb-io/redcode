@@ -729,6 +729,76 @@ test("catalog events do not load unopened locations or unused catalogs", async (
   }
 })
 
+test("location shutdown keeps cached catalogs dormant until explicitly reopened", async () => {
+  const listeners = new Set<Parameters<CreateDataInput["event"]["listen"]>[0]>()
+  const requests: string[] = []
+  const location = { directory: "/idle-project" }
+  const api = OpenCode.make({
+    baseUrl: "http://opencode.local",
+    fetch: async (input, init) => {
+      const url = new URL((input instanceof Request ? input : new Request(input, init)).url)
+      requests.push(url.pathname)
+      return Response.json({ location, data: [] })
+    },
+  })
+  const setup = createRoot((dispose) => ({
+    data: createData({
+      api: () => api,
+      directory: location.directory,
+      event: {
+        on: () => () => {},
+        listen(handler) {
+          listeners.add(handler)
+          return () => listeners.delete(handler)
+        },
+      },
+      connection: { status: () => "connected" },
+    }),
+    dispose,
+  }))
+  const emit = (event: OpenCodeEvent) => listeners.forEach((listener) => listener({ name: event.type, details: event }))
+  try {
+    await setup.data.location.model.sync(location)
+    requests.length = 0
+    // An MCP notification can already be debounced when the idle graph closes.
+    emit({ id: "evt_pending_mcp", created: 1, type: "mcp.status.changed", location, data: { server: "fixture" } })
+    emit({
+      id: "evt_idle",
+      created: 2,
+      type: "location.shutdown",
+      location,
+      metadata: { reason: "inactivity" },
+      data: {},
+    })
+    for (const type of ["model.updated", "integration.updated", "agent.updated", "command.updated"] as const)
+      emit({ id: `evt_late_${type}`, created: 3, type, location, data: {} })
+    emit({
+      id: "evt_late_credential",
+      created: 3,
+      type: "credential.switched",
+      data: { integrationID: "fixture", credentialID: null },
+    })
+    await Bun.sleep(200)
+    expect(requests).toEqual([])
+    expect(setup.data.location.model.list(location)).toEqual([])
+
+    await setup.data.location.model.sync(location)
+    expect(requests).toEqual(["/api/model"])
+    requests.length = 0
+    emit({ id: "evt_reopened", created: 4, type: "model.updated", location, data: {} })
+    await wait(() => requests.length === 1)
+    expect(requests).toEqual(["/api/model"])
+    requests.length = 0
+    // Explicit reloads and older servers keep the existing event refresh contract.
+    emit({ id: "evt_reload", created: 5, type: "location.shutdown", location, data: {} })
+    emit({ id: "evt_reloaded", created: 6, type: "model.updated", location, data: {} })
+    await wait(() => requests.length === 1)
+    expect(requests).toEqual(["/api/model"])
+  } finally {
+    setup.dispose()
+  }
+})
+
 test("revalidates model discovery when an update overtakes an in-flight model list", async () => {
   const started = Promise.withResolvers<void>()
   const release = Promise.withResolvers<void>()

@@ -187,7 +187,7 @@ export function layer(ref: Location.Ref, options: Options = {}): Layer.Layer<Ser
           ),
         ),
     ),
-    Layer.tap((context) => Effect.addFinalizer(() => Context.get(context, LocationLifecycle.Service).shutdown)),
+    Layer.tap((context) => Effect.addFinalizer(() => Context.get(context, LocationLifecycle.Service).shutdown())),
     Layer.tap(() =>
       Effect.logInfo("location services booted", {
         directory: ref.directory,

@@ -1284,6 +1284,7 @@ export function createData(config: CreateDataInput) {
 
     if (event.type === "credential.updated" || event.type === "credential.switched") {
       Object.keys(store.location).forEach((key) => {
+        if (!locationActive(key)) return
         const ref = JSON.parse(key) as [string, string | null]
         const location = { directory: ref[0], workspaceID: ref[1] ?? undefined }
         if (event.type === "credential.updated") {
@@ -1311,6 +1312,16 @@ export function createData(config: CreateDataInput) {
 
     if (!event.location) return
     const location = event.location
+    if (event.type === "location.shutdown" && event.metadata?.reason === "inactivity") {
+      // Keep the last catalog visible, but fence reads and late teardown notifications.
+      // Only an explicit surface read may wake the idle server graph again.
+      result.location.invalidate(location)
+      locationTokens.delete(locationKey(location))
+      const pending = `mcp.status:${locationKey(location)}`
+      clearTimeout(settling.get(pending))
+      settling.delete(pending)
+      return
+    }
     // The event stream is global. Do not recreate a heavy Location cache after its
     // last UI owner released it (or for a Location this client never opened).
     if (event.type !== "form.created" && !locationActive(locationKey(location))) return
@@ -1429,6 +1440,7 @@ export function createData(config: CreateDataInput) {
         const request = activateLocation(location)
         const id = request.key
         return sync.run(`location.${field}:${id}`, async () => {
+          if (!locationActive(request.key, request.token)) return
           const response = await load(locationQuery(location))
           const key = locationKey(response.location)
           publish(key, response.data, request)
@@ -2069,6 +2081,9 @@ export function createData(config: CreateDataInput) {
       invalidate: shells.invalidate,
     },
     location: {
+      active(ref?: LocationRef) {
+        return locationActive(locationKey(ref ?? defaultLocation()))
+      },
       catalog: {
         sync(ref?: LocationRef) {
           return bootstrapCatalog(ref ?? defaultLocation())

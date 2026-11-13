@@ -4,11 +4,43 @@ import os from "node:os"
 import path from "node:path"
 import { database, runtime } from "../src/system-info"
 import { createHostResources, cpuUtilization, cgroupCpuUtilization, cgroupMeasurements } from "../src/host-resources"
-import { Effect, Schema } from "effect"
+import { Effect, Logger, Schema } from "effect"
+import { TestClock } from "effect/testing"
 import { SystemInfo } from "@opencode/protocol/groups/server"
 import { Memory } from "@opencode/schema/memory"
 import { ServerFetch } from "../src/fetch"
 import { it } from "../../core/test/lib/effect"
+
+it.effect("periodic memory samples stop with the server and never boot project runtimes", () =>
+  Effect.gen(function* () {
+    const samples: unknown[] = []
+    const logger = Logger.make((options) => {
+      if (Array.isArray(options.message) && options.message[0] === "server memory sample")
+        samples.push(options.message[1])
+    })
+    yield* Effect.gen(function* () {
+      yield* ServerFetch.make({
+        database: { path: ":memory:" },
+        config: { project: false, global: false },
+        models: { fetch: false },
+        fs: { filewatcher: false },
+      })
+      yield* TestClock.adjust("2 minutes")
+      expect(samples).toHaveLength(3)
+      for (const sample of samples)
+        expect(sample).toMatchObject({
+          pid: process.pid,
+          cachedLocations: 0,
+          activeExecutions: 0,
+          eventSubscribers: 0,
+          eventQueuedBytes: 0,
+          eventRetainedBytes: 0,
+        })
+    }).pipe(Effect.scoped, Effect.provide(Logger.layer([logger], { mergeWithExisting: false })))
+    yield* TestClock.adjust("2 minutes")
+    expect(samples).toHaveLength(3)
+  }),
+)
 
 it.live("memory diagnostics report the server heap without booting project runtimes", () =>
   Effect.gen(function* () {

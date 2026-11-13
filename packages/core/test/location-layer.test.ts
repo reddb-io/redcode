@@ -79,6 +79,29 @@ const itWithActivity = testEffect(
 )
 
 describe("LocationServiceMap", () => {
+  it.live("identifies idle eviction without changing explicit reload notifications", () =>
+    Effect.gen(function* () {
+      const dir = yield* tmpdirScoped()
+      const ref = Location.Ref.make({ directory: AbsolutePath.make(dir.path) })
+      const locations = yield* LocationServiceMap.Service
+      const bus = yield* Bus.Service
+      const reasons: unknown[] = []
+      const unsubscribe = yield* bus.listen((event) =>
+        Effect.sync(() => {
+          if (event.type === "location.shutdown" && event.location?.directory === ref.directory)
+            reasons.push(event.metadata?.reason)
+        }),
+      )
+      yield* Effect.addFinalizer(() => unsubscribe)
+      for (const reason of ["inactivity", undefined] as const) {
+        yield* Location.Service.pipe(Effect.provide(locations.get(ref)), Effect.scoped)
+        yield* locations.invalidate(ref, reason)
+      }
+      expect(reasons).toEqual(["inactivity", undefined])
+      expect(Array.from(yield* RcMap.keys(locations.rcMap))).toEqual([])
+    }),
+  )
+
   for (const failure of ["file", "permissions", "config reference"] as const) {
     for (const invalidate of [false, true]) {
       // The file-path fixture boots on Windows rather than failing during
@@ -361,6 +384,10 @@ describe("LocationServiceMap", () => {
             const bus = yield* Bus.Service
             const firstRef = Location.Ref.make({ directory: AbsolutePath.make(first.path) })
             const secondRef = Location.Ref.make({ directory: AbsolutePath.make(second.path) })
+            // Cached graphs own native watches beyond their request borrowers.
+            yield* Effect.addFinalizer(() =>
+              Effect.forEach([firstRef, secondRef], (ref) => locations.invalidate(ref), { discard: true }),
+            )
             const firstContext = yield* locations.contextEffect(firstRef)
             const secondContext = yield* locations.contextEffect(secondRef)
             const received = { first: 0, second: 0 }
@@ -458,6 +485,14 @@ describe("LocationServiceMap", () => {
     ).pipe(
       Effect.flatMap(([blocked, allowed]) =>
         Effect.gen(function* () {
+          const locations = yield* LocationServiceMap.Service
+          yield* Effect.addFinalizer(() =>
+            Effect.forEach(
+              [blocked, allowed],
+              (dir) => locations.invalidate(Location.Ref.make({ directory: AbsolutePath.make(dir.path) })),
+              { discard: true },
+            ),
+          )
           const update = (directory: string, providerID: Provider.ID) =>
             Effect.gen(function* () {
               yield* Reference.Service
@@ -499,6 +534,10 @@ describe("LocationServiceMap", () => {
     Effect.acquireDisposable(Effect.promise(() => tmpdir())).pipe(
       Effect.flatMap((dir) =>
         Effect.gen(function* () {
+          const locations = yield* LocationServiceMap.Service
+          yield* Effect.addFinalizer(() =>
+            locations.invalidate(Location.Ref.make({ directory: AbsolutePath.make(dir.path) })),
+          )
           yield* Effect.promise(() =>
             fs.writeFile(
               path.join(dir.path, "opencode.json"),

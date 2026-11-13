@@ -7,21 +7,20 @@ import path from "path"
 import { Location } from "./location.js"
 import type { Instance } from "./instance.js"
 
-export class Service extends Context.Service<
-  Service,
-  LayerMap.LayerMap<Location.Ref, Instance.Services, Instance.Error>
->()("@opencode/example/LocationServiceMap") {
+type Services = LayerMap.LayerMap<Location.Ref, Instance.Services, Instance.Error> & {
+  readonly invalidate: (ref: Location.Ref, reason?: "inactivity") => Effect.Effect<void>
+}
+
+export class Service extends Context.Service<Service, Services>()("@opencode/example/LocationServiceMap") {
   static get(ref: Location.Ref) {
     return Layer.unwrap(Effect.map(Service, (locations) => locations.get(ref)))
   }
 }
 
-export const node = LayerNode.unbound<
+export const node = LayerNode.unbound<Service, Services, typeof Node.tags.values.global, SqlError>(
   Service,
-  LayerMap.LayerMap<Location.Ref, Instance.Services, Instance.Error>,
-  typeof Node.tags.values.global,
-  SqlError
->(Service, Node.tags.values.global)
+  Node.tags.values.global,
+)
 
 export const reload = Effect.fn("LocationServiceMap.reload")(function* () {
   const locations = yield* Service

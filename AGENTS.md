@@ -191,6 +191,7 @@ const table = sqliteTable("session", {
 
 - Run `bun run check` from the repository root as the canonical full lint and type-check verification.
 - During focused iteration, run `bun typecheck` from the affected package directory (for example, `packages/core`). Never run `tsc` directly.
+- Run workspace typechecks through the root script, which serializes package checks. Do not fan out package `typecheck` commands through `Promise.all` or overlap a workspace check with package checks: each compiler traverses shared dependencies and can consume several GiB independently.
 
 ## Session Core
 

@@ -250,8 +250,11 @@ export function createServerSyncContextInner(serverSDK: ServerSDK, data: Data) {
     const directory = event.location.directory
     const key = directoryKey(directory)
 
-    if (!children.children[key]) return
-    children.mark(key)
+    if (event.type === "location.shutdown") {
+      queue.clear(key)
+      return
+    }
+    if (!children.children[key] || !data.location.active(event.location)) return
 
     if (event.type === "config.updated" || event.type === "agent.updated") queue.push(key)
   })

@@ -21,6 +21,7 @@ import { createHostResources } from "../host-resources"
 import { executionMemory } from "../execution-memory"
 import { EventFeed } from "../event-feed"
 import { modelPerformance } from "../model-performance"
+import { startMemoryDiagnostics } from "../memory-diagnostics"
 
 const capabilities = ServerCapabilities.Info.make({
   protocol: ServerCapabilities.Protocol.make(1),
@@ -41,6 +42,7 @@ export const ServerHandler = HttpApiBuilder.group(Api, "server.server", (handler
     const pairing = yield* ServerPairing.Service
     const auth = yield* ServerAuth.Config
     const feed = yield* EventFeed.Service
+    yield* startMemoryDiagnostics
     const resources = createHostResources()
     const remote = <A>(operation: (host: RemoteAccessHost.Interface | undefined) => Promise<A>) =>
       Effect.gen(function* () {

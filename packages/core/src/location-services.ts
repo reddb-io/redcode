@@ -16,10 +16,10 @@ export function buildLocationServiceMap(
     LocationServiceMap.Service,
     Effect.gen(function* () {
       const owner = yield* Effect.scope
-      const builds = MutableHashMap.empty<Location.Ref, { close?: Effect.Effect<void> }>()
+      const builds = MutableHashMap.empty<Location.Ref, { close?: (reason?: "inactivity") => Effect.Effect<void> }>()
       const inner: LayerMap.LayerMap<Location.Ref, LocationServices, Instance.Error> = yield* LayerMap.make(
         (ref: Location.Ref) => {
-          const build: { close?: Effect.Effect<void> } = {}
+          const build: { close?: (reason?: "inactivity") => Effect.Effect<void> } = {}
           MutableHashMap.set(builds, ref, build)
           return Layer.fromBuild((memoMap, scope) =>
             Effect.suspend(() =>
@@ -32,7 +32,7 @@ export function buildLocationServiceMap(
                       const lifecycle = Context.get(exit.value, LocationLifecycle.Service)
                       // A boot detached while in flight still needs shutdown and cancellation.
                       if (Option.getOrUndefined(MutableHashMap.get(builds, ref)) !== build)
-                        return yield* lifecycle.shutdown
+                        return yield* lifecycle.shutdown()
                       build.close = lifecycle.shutdown
                     })
                   }
@@ -60,15 +60,17 @@ export function buildLocationServiceMap(
         get: (ref: Location.Ref) => inner.get(LocationServiceMap.canonical(ref)),
         contextEffect: (ref: Location.Ref) => inner.contextEffect(LocationServiceMap.canonical(ref)),
         contextEffectOption: (ref: Location.Ref) => inner.contextEffectOption(LocationServiceMap.canonical(ref)),
-        invalidate: (ref: Location.Ref) =>
+        invalidate: (ref: Location.Ref, reason?: "inactivity") =>
           Effect.suspend(() => {
             const key = LocationServiceMap.canonical(ref)
             const build = Option.getOrUndefined(MutableHashMap.get(builds, key))
             MutableHashMap.remove(builds, key)
+            // Record the cause before RcMap runs the graph's scope finalizers.
+            const close = build?.close?.(reason) ?? Effect.void
             // Detach routing first, then cancel interactions and notify clients. Running
             // steps retain their borrowed graph until they can hand off at a boundary.
             // Do not await a boot here: failed/in-flight builds have their own cleanup path.
-            return inner.invalidate(key).pipe(Effect.andThen(build?.close ?? Effect.void))
+            return inner.invalidate(key).pipe(Effect.andThen(close))
           }).pipe(Effect.uninterruptible),
       }
       // Cached instances borrow their owner instead of retaining its Layer scope.

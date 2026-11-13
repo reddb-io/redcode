@@ -16,7 +16,7 @@ const isSessionEvent = Schema.is(SessionEvent.Durable)
 
 export class Service extends Context.Service<
   Service,
-  { readonly isClosed: () => boolean; readonly shutdown: Effect.Effect<void> }
+  { readonly isClosed: () => boolean; readonly shutdown: (reason?: "inactivity") => Effect.Effect<void> }
 >()("@opencode/LocationLifecycle") {}
 
 const layer = Layer.effect(
@@ -39,6 +39,7 @@ const layer = Layer.effect(
     })
     yield* Effect.addFinalizer(() => unsubscribe)
     let closed = false
+    let reason: "inactivity" | undefined
     const shutdown = yield* Effect.cached(
       Effect.gen(function* () {
         closed = true
@@ -50,13 +51,17 @@ const layer = Layer.effect(
           {},
           {
             location: Location.Ref.make({ directory: location.directory, workspaceID: location.workspaceID }),
+            ...(reason === undefined ? {} : { metadata: { reason } }),
           },
         )
       }).pipe(Effect.uninterruptible),
     )
     return Service.of({
       isClosed: () => closed,
-      shutdown,
+      shutdown: (cause) => {
+        if (!closed) reason ??= cause
+        return shutdown
+      },
     })
   }),
 )
