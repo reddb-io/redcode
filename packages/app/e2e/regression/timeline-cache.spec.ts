@@ -47,10 +47,15 @@ for (const width of [1440, 390]) {
       observer.observe(document, { childList: true, subtree: true, attributes: true, attributeFilter: ["style"] })
     }, expected[fixture.sourceID].answerID)
     await mockStressTimeline(page, { pageMessages: () => ({ items: messages[fixture.sourceID] }) })
+    await page.route("**/api/session/*/todo/graph", (route) => {
+      const sessionID = new URL(route.request().url()).pathname.split("/")[3]
+      return route.fulfill({ json: { data: { sessionID, tasks: [], nodes: [], assignments: [] } } })
+    })
     await installTimelineSettings(page)
 
     try {
-      await page.goto(sessionHref(fixture.sourceID), { waitUntil: "domcontentloaded" })
+      // The delayed worker can be requested during module loading before DOMContentLoaded.
+      await page.goto(sessionHref(fixture.sourceID), { waitUntil: "commit" })
       await requested.promise
       await expect(page.locator("[data-timeline-virtual-content]")).toHaveCSS("visibility", "hidden")
       release.resolve()
