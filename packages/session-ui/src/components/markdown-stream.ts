@@ -136,18 +136,33 @@ export function project(previous: Projection | undefined, text: string, live: bo
   const tail = previous.blocks.at(-1)
   const suffix = text.slice(previous.text.length)
 
-  if (!suffix || tail?.mode !== "code" || tail.complete || closesFence(tail.raw, suffix))
-    return { text, blocks: stream(text, live) }
+  if (!suffix) return previous
 
+  if (tail?.mode === "code" && tail.raw.includes("\n") && !tail.complete && !closesFence(tail.raw, suffix))
+    return {
+      text,
+      blocks: [
+        ...previous.blocks.slice(0, -1),
+        {
+          ...tail,
+          raw: tail.raw + suffix,
+          src: tail.src + suffix,
+        },
+      ],
+    }
+
+  // Marked freezes every block except the last one. Re-lexing that unstable tail
+  // preserves block semantics without replaying the full streamed response.
+  // Reference definitions are document-scoped, so they deliberately use the
+  // full projection and can update earlier references.
+  // Marked may normalize ambiguous tails (for example `- ` becomes `-\n`).
+  // Without an exact source suffix there is no safe splice boundary.
+  // An unfinished display-math block may span multiple apparent Markdown blocks;
+  // its closing delimiter can change the meaning of already frozen blocks.
+  if (!tail || !previous.text.endsWith(tail.raw) || refs(text) || /(?:^|\n)\${1,2}\r?\n/.test(text))
+    return { text, blocks: stream(text, live) }
   return {
     text,
-    blocks: [
-      ...previous.blocks.slice(0, -1),
-      {
-        ...tail,
-        raw: tail.raw + suffix,
-        src: tail.src + suffix,
-      },
-    ],
+    blocks: [...previous.blocks.slice(0, -1), ...stream(tail.raw + suffix, live)],
   }
 }

@@ -166,6 +166,73 @@ describe("markdown stream", () => {
     })
   })
 
+  test("reprojects only the unstable prose tail", () => {
+    const previous = project(undefined, "# Plan\n\nFirst paragraph\n\nSecond", true)
+    const next = project(previous, `${previous.text} paragraph\n\nThird`, true)
+
+    expect(next.blocks[0]).toBe(previous.blocks[0])
+    expect(next.blocks[1]).toBe(previous.blocks[1])
+    expect(next.blocks.slice(2)).toEqual([
+      { raw: "Second paragraph\n\n", src: "Second paragraph\n\n", mode: "full" },
+      { raw: "Third", src: "Third", mode: "live" },
+    ])
+  })
+
+  test("reprojects the full document when a reference definition arrives", () => {
+    const previous = project(undefined, "# Links\n\nRead [docs][guide]", true)
+    const next = project(previous, `${previous.text}\n\n[guide]: /docs`, true)
+
+    expect(next.blocks).toEqual([{ raw: next.text, src: next.text, mode: "live" }])
+  })
+
+  test.each(["$", "$$"])("reprojects multiline display math with %s delimiters", (delimiter) => {
+    const text = `before\n\n${delimiter}\nx\n\ny\n${delimiter}\n\nafter`
+    for (const delta of [1, 2, 3, 7]) {
+      let previous: ReturnType<typeof project> | undefined
+      for (let end = delta; end < text.length + delta; end += delta) {
+        const current = text.slice(0, Math.min(end, text.length))
+        previous = project(previous, current, true)
+        expect(previous.blocks, `delta=${delta}, end=${end}`).toEqual(project(undefined, current, true).blocks)
+      }
+    }
+  })
+
+  test("matches a stateless projection across provider delta sizes", () => {
+    const text = [
+      "# Plan",
+      "",
+      "A paragraph with **emphasis** and `code`.",
+      "",
+      "- first",
+      "- second",
+      "",
+      "| a | b |",
+      "|---|---|",
+      "| 1 | 2 |",
+      "",
+      "$$",
+      "a + b",
+      "$$",
+      "",
+      "```ts",
+      "const value = 1",
+      "```",
+      "",
+      "Read [docs][guide]",
+      "",
+      "[guide]: /docs",
+    ].join("\n")
+
+    for (const delta of [1, 3, 17, 64]) {
+      let incremental: ReturnType<typeof project> | undefined
+      for (let end = delta; end < text.length + delta; end += delta) {
+        const current = text.slice(0, Math.min(end, text.length))
+        incremental = project(incremental, current, true)
+        expect(incremental.blocks, `delta=${delta}, end=${end}`).toEqual(project(undefined, current, true).blocks)
+      }
+    }
+  })
+
   test("finalizes only the live tail when streaming stops", () => {
     const live = project(undefined, "# Plan\n\nFinished paragraph.\n\n- final item", true)
     const final = project(live, live.text, false)

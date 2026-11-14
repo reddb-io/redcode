@@ -285,6 +285,11 @@ export async function setupTimeline(
     pageMessages: input.pageMessages ?? (() => ({ items: messages })),
   })
 
+  await page.route("**/api/session/*/todo/graph", (route) => {
+    const sessionID = new URL(route.request().url()).pathname.split("/")[3]
+    return route.fulfill({ json: { data: { sessionID, tasks: [], nodes: [], assignments: [] } } })
+  })
+
   if (input.tabs) await seed(page, { tabs: input.tabs })
   await page.addInitScript((settings) => {
     localStorage.setItem(
