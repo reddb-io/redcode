@@ -1,5 +1,11 @@
 # @reddb-io/redcode
 
+## 0.87.40
+
+### Patch Changes
+
+- Reduce repeated Markdown processing while assistant responses stream.
+
 ## 0.87.39
 
 ### Patch Changes
