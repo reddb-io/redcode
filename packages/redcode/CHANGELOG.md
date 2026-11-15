@@ -1,5 +1,11 @@
 # @reddb-io/redcode
 
+## 0.87.41
+
+### Patch Changes
+
+- Fix web startup over LAN HTTP by using the shared UUID fallback for browser client identity and observability run IDs when crypto.randomUUID is unavailable.
+
 ## 0.87.40
 
 ### Patch Changes
