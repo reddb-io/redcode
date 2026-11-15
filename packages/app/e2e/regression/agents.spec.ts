@@ -65,6 +65,9 @@ test("one server topology scopes its workers and explains local, remote and brow
   await page.goto(`/agents?view=remote&host=${encodeURIComponent(SERVER)}`)
   const workspace = page.getByRole("region", { name: "Agents", exact: true })
   const menu = page.getByRole("navigation", { name: "Agents", exact: true })
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem("redcode.client.id")))
+    .toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
   await expect(menu.getByRole("button", { name: "Servers & workers", exact: true })).toHaveAttribute(
     "aria-current",
     "page",

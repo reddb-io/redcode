@@ -12,6 +12,7 @@ import { createRequestQueue } from "@/runtime/server/request-queue"
 import { ServerScope } from "@/runtime/server/scope"
 import { useServer } from "./current"
 import { createEndpointSyncState, transitionEndpointSync, type EndpointSyncEvent } from "./server-sync/endpoint-machine"
+import { uuid } from "@opencode/util/uuid"
 
 type OpenCodeEventMap = { [Type in OpenCodeEvent["type"]]: Extract<OpenCodeEvent, { type: Type }> }
 
@@ -227,7 +228,7 @@ function clientIdentity(platform: ReturnType<typeof usePlatform>) {
       return null
     }
   })()
-  const id = existing || crypto.randomUUID()
+  const id = existing || uuid()
   if (!existing)
     try {
       window.localStorage.setItem(key, id)
