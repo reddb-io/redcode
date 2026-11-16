@@ -383,7 +383,9 @@ jobs:
           compression-level: 0
 
   path-search:
-    if: ${{ !inputs.workers_only && !inputs.preview_platforms && github.event_name == 'workflow_dispatch' }}
+    # A disabled platform must not allocate its runner at all. Guarding only the steps still leaves the
+    # job queued forever on a runner the repository may not host, and `build` waits on this job.
+    if: ${{ !inputs.workers_only && !inputs.preview_platforms && github.event_name == 'workflow_dispatch' && needs.platforms.outputs[matrix.enabled] == 'true' }}
     needs: [plan, platforms]
     strategy:
       fail-fast: false
