@@ -69,6 +69,8 @@ jobs:
       any: ${{ steps.select.outputs.any }}
       docker_platforms: ${{ steps.select.outputs.docker_platforms }}
       matrix_sidecar: ${{ steps.select.outputs.matrix_sidecar }}
+      matrix_path_search: ${{ steps.select.outputs.matrix_path_search }}
+      enabled_path_search: ${{ steps.select.outputs.enabled_path_search }}
       enabled_sidecar: ${{ steps.select.outputs.enabled_sidecar }}
       matrix_desktop: ${{ steps.select.outputs.matrix_desktop }}
       enabled_desktop: ${{ steps.select.outputs.enabled_desktop }}
@@ -209,6 +211,40 @@ jobs:
                     "os": "win",
                     "arch": "arm64"
                   }
+                }
+              ],
+              "path_search": [
+                {
+                  "flag": "linux_x64",
+                  "row": { "target": "linux-x64", "host": "ubuntu-24.04" }
+                },
+                {
+                  "flag": "linux_arm64",
+                  "row": { "target": "linux-arm64", "host": "ubuntu-24.04-arm" }
+                },
+                {
+                  "flag": "linux_x64",
+                  "row": { "target": "linux-x64-musl", "host": "ubuntu-24.04", "musl": true }
+                },
+                {
+                  "flag": "linux_arm64",
+                  "row": { "target": "linux-arm64-musl", "host": "ubuntu-24.04-arm", "musl": true }
+                },
+                {
+                  "flag": "windows_x64",
+                  "row": { "target": "windows-x64", "host": "windows-2025" }
+                },
+                {
+                  "flag": "windows_arm64",
+                  "row": { "target": "windows-arm64", "host": "windows-11-arm" }
+                },
+                {
+                  "flag": "macos_x64",
+                  "row": { "target": "darwin-x64", "host": "macos-15-intel" }
+                },
+                {
+                  "flag": "macos_arm64",
+                  "row": { "target": "darwin-arm64", "host": "macos-15" }
                 }
               ]
             }
@@ -383,35 +419,25 @@ jobs:
           compression-level: 0
 
   path-search:
-    # A disabled platform must not allocate its runner at all. Guarding only the steps still leaves the
-    # job queued forever on a runner the repository may not host, and `build` waits on this job.
-    if: ${{ !inputs.workers_only && !inputs.preview_platforms && github.event_name == 'workflow_dispatch' && needs.platforms.outputs[matrix.enabled] == 'true' }}
+    if: ${{ !inputs.workers_only && !inputs.preview_platforms && github.event_name == 'workflow_dispatch' }}
     needs: [plan, platforms]
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - { target: linux-x64, host: ubuntu-24.04, enabled: linux_x64 }
-          - { target: linux-arm64, host: ubuntu-24.04-arm, enabled: linux_arm64 }
-          - { target: linux-x64-musl, host: ubuntu-24.04, enabled: linux_x64, musl: true }
-          - { target: linux-arm64-musl, host: ubuntu-24.04-arm, enabled: linux_arm64, musl: true }
-          - { target: windows-x64, host: windows-2025, enabled: windows_x64 }
-          - { target: windows-arm64, host: windows-11-arm, enabled: windows_arm64 }
-          - { target: darwin-x64, host: macos-15-intel, enabled: macos_x64 }
-          - { target: darwin-arm64, host: macos-15, enabled: macos_arm64 }
+      # Filtered by the platforms job, so a disabled platform never allocates its runner. Guarding only
+      # the steps leaves the job queued forever on a host the repository does not run, and build waits.
+      matrix: ${{ fromJSON(needs.platforms.outputs.matrix_path_search) }}
     runs-on: ${{ matrix.host }}
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-        if: needs.platforms.outputs[matrix.enabled] == 'true'
         with:
           ref: ${{ needs.plan.outputs.sha }}
       - uses: ./.github/actions/setup-bun
-        if: needs.platforms.outputs[matrix.enabled] == 'true' && !matrix.musl
+        if: ${{ !matrix.musl }}
         with:
           install-flags: --filter=@opencode/core
       - name: Build and test native package
-        if: needs.platforms.outputs[matrix.enabled] == 'true' && !matrix.musl
+        if: ${{ !matrix.musl }}
         shell: bash
         env:
           FS001_TARGET: ${{ matrix.target }}
@@ -444,7 +470,7 @@ jobs:
             exit 1
           fi
       - name: Exercise real file discovery
-        if: needs.platforms.outputs[matrix.enabled] == 'true' && !matrix.musl
+        if: ${{ !matrix.musl }}
         shell: bash
         env:
           FS001_TARGET: ${{ matrix.target }}
@@ -462,7 +488,7 @@ jobs:
           bun build packages/core/script/native-path-search/smoke-product-files.ts --compile --outfile "$executable"
           "$executable"
       - name: Build and test native package on Alpine
-        if: needs.platforms.outputs[matrix.enabled] == 'true' && matrix.musl
+        if: ${{ matrix.musl }}
         shell: bash
         env:
           FS001_TARGET: ${{ matrix.target }}
@@ -478,7 +504,6 @@ jobs:
             bun packages/core/script/native-path-search/validate-target.ts --target "$FS001_TARGET" --out /out --cargo-target /tmp/cargo --skip-performance
           '
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        if: needs.platforms.outputs[matrix.enabled] == 'true'
         with:
           name: path-search-${{ matrix.target }}
           path: ${{ runner.temp }}/fs001/native-packages/${{ matrix.target }}
