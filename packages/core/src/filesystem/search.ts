@@ -3,7 +3,7 @@ export * from "./search-contract.js"
 
 import { makeLocationNode } from "@opencode/util/effect/app-node"
 import path from "path"
-import { Clock, Deferred, Duration, Effect, Layer, Scope } from "effect"
+import { Clock, Context, Deferred, Duration, Effect, Layer, Scope } from "effect"
 import { Fff } from "#fff"
 import * as NativePathSearch from "#path-search-native"
 import fuzzysort from "fuzzysort"
@@ -12,6 +12,7 @@ import { Location } from "../location.js"
 import { Ripgrep } from "../ripgrep.js"
 import { RelativePath } from "../schema.js"
 import { Protected } from "./protected.js"
+import { runtimeFallback } from "./search-runtime-fallback.js"
 import { Service, type Options } from "./search-contract.js"
 
 const REFRESH_INTERVAL = Duration.toMillis("10 seconds")
@@ -209,7 +210,19 @@ export const layer = (options?: Options) =>
       const filepath =
         options?.native?.library ?? process.env.REDCODE_PATH_SEARCH_LIBRARY ?? path.join(path.dirname(process.execPath), nativeFilename)
       const selected = NativePathSearch.tryNucleoAsyncRuntime(filepath)
-      if (selected.ok) return Layer.effect(Service, selected.runtime.pipe(Effect.map((runtime) => runtime.service)))
+      // A technical failure in the Rust runtime rolls back to the validated legacy search instead of
+      // failing every query, so a missing or broken index degrades rather than breaks the product.
+      if (selected.ok)
+        return legacyLayer(options).pipe(
+          Layer.flatMap((context) =>
+            Layer.effect(
+              Service,
+              Effect.map(selected.runtime, (runtime) =>
+                runtimeFallback(runtime, Effect.succeed(Context.get(context, Service))),
+              ),
+            ),
+          ),
+        )
       return Layer.effect(Service, Effect.die(selected.error))
     }),
   )

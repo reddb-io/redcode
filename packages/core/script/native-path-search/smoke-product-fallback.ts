@@ -29,7 +29,7 @@ const dependencies = Layer.merge(
   Layer.succeed(Location.Service, Location.Service.of(location({ directory: AbsolutePath.make(path.resolve(".")) }))),
   Layer.succeed(Ripgrep.Service, ripgrep),
 )
-const selected = FileSystemSearch.layer({ fff: false, native: { library } }).pipe(Layer.provide(dependencies))
+const selected = FileSystemSearch.layer({ fff: false, native: { mode: "rust", library } }).pipe(Layer.provide(dependencies))
 await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
   const search = yield* FileSystemSearch.Service
   for (let index = 0; index < 2; index++) {
