@@ -18,8 +18,10 @@ import type { SessionSchema } from "../session/schema.js"
 export const admit = Effect.fn("DesignTasks.admit")(function* (sessionID: SessionSchema.ID, feedbackID: string) {
   const designs = yield* DesignStore.Service
   const todos = yield* SessionTodoStore.Service
-  const bus = yield* Bus.Service
   yield* Effect.gen(function* () {
+    // Resolved inside the protected block: a runtime without the Bus must degrade to the ledger
+    // itself instead of failing the review with a 500 before the catch below runs.
+    const bus = yield* Bus.Service
     const current = yield* todos.get(sessionID)
     const documents = yield* designs.list(sessionID)
     const pending = documents.flatMap((document) =>
