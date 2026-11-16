@@ -137,7 +137,7 @@ test("reloads the final closed session after returning home", async ({ page }) =
   await expect.poll(() => reads.filter((id) => id === fixture.sourceID).length).toBe(2)
 })
 
-test("conversation width stays aligned with the composer and clear of outputs", async ({ page }) => {
+test("conversation width clears outputs while the composer fills its panel", async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 900 })
   await openTabs(page, {
     pageMessages: (id) => ({
@@ -177,14 +177,19 @@ test("conversation width stays aligned with the composer and clear of outputs", 
   const bounds = async () => ({
     row: (await row.boundingBox())!,
     composer: (await composer.boundingBox())!,
+    dock: (await page.locator('[data-component="session-composer-dock"]').boundingBox())!,
     outputs: (await outputs.boundingBox())!,
   })
+  const expectFullComposer = () => expect.poll(async () => {
+    const value = await bounds()
+    return Math.abs(value.composer.x - value.dock.x) + Math.abs(value.composer.width - value.dock.width)
+  }).toBeLessThan(1)
   await expect.poll(async () => {
     const value = await bounds()
     return value.outputs.x - (value.row.x + value.row.width)
   }).toBeGreaterThanOrEqual(0)
   const wide = await bounds()
-  expect(Math.abs(wide.row.x - wide.composer.x)).toBeLessThan(32)
+  await expectFullComposer()
 
   await page.getByRole("button", { name: "Settings", exact: true }).click()
   const settings = page.getByTestId("settings-screen")
@@ -194,6 +199,7 @@ test("conversation width stays aligned with the composer and clear of outputs", 
   await settings.getByRole("button", { name: "Back to app", exact: true }).click()
   await expect(row).toBeVisible()
   await expect.poll(async () => (await row.boundingBox())!.width).toBeLessThan(wide.row.width)
+  await expectFullComposer()
   await page.getByRole("button", { name: "Settings", exact: true }).click()
   await width.selectOption("full")
   await page.reload()
@@ -203,8 +209,9 @@ test("conversation width stays aligned with the composer and clear of outputs", 
   await expect(row).toBeVisible()
   await expect.poll(async () => {
     const value = await bounds()
-    return Math.min(value.outputs.x - (value.row.x + value.row.width), value.outputs.x - (value.composer.x + value.composer.width))
+    return value.outputs.x - (value.row.x + value.row.width)
   }).toBeGreaterThanOrEqual(0)
+  await expectFullComposer()
   await page.setViewportSize({ width: 1000, height: 900 })
   const toggle = outputs.locator(":scope > button")
   await expect(toggle).toHaveAttribute("aria-expanded", "false")
@@ -212,8 +219,9 @@ test("conversation width stays aligned with the composer and clear of outputs", 
   await expect(toggle).toHaveAttribute("aria-expanded", "true")
   await expect.poll(async () => {
     const value = await bounds()
-    return Math.min(value.outputs.x - (value.row.x + value.row.width), value.outputs.x - (value.composer.x + value.composer.width))
+    return value.outputs.x - (value.row.x + value.row.width)
   }).toBeGreaterThanOrEqual(0)
+  await expectFullComposer()
 })
 
 test("scrolls within a long answer without mounting unrelated history", async ({ page }) => {

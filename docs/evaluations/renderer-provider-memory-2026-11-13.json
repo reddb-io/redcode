@@ -1,0 +1,9 @@
+{
+  "scenario": "1200 mock catalog models, 10 switches between two session tabs, forced GC after each observation",
+  "environment": "Windows x64, Chromium Playwright, Vite development renderer, mocked APIs; not packaged Electron",
+  "date": "2026-11-13",
+  "usedBytes": [92650452, 98308440, 98067104, 97363296, 97629128, 97742744, 97874968, 97997188, 98406108, 98542648, 98644180],
+  "domNodes": [1579, 2023, 2038, 2046, 2040, 2046, 2040, 2046, 2040, 2046, 2040],
+  "scope": "one main renderer isolate; values exclude other processes and do not establish total resident RAM",
+  "limitations": "single run, development bundle, two fixture sessions, no attribution of retained objects, no long soak"
+}

@@ -131,6 +131,7 @@ const env = {
   OPENCODE_DB: paths.db,
   OPENCODE_CONFIG_DIR: paths.config,
   REDCODE_DESKTOP_CLI: cli,
+  REDCODE_DESKTOP_DISABLE_PROTOCOL_REGISTRATION: "1",
   // Beta and prod builds check for updates on start; a closed proxy port fails that fast and offline.
   ...(args.values.offline || appId !== "io.reddb.redcode.dev" ? { HTTPS_PROXY: "http://127.0.0.1:9" } : {}),
 }
@@ -215,7 +216,7 @@ for (let run = 1 - warmup; run <= runs; run++) {
 
 await killApp()
 
-if (service === "warm") await stopService()
+await stopService()
 
 const summaries = Object.fromEntries(
   builds.map((build) => {
@@ -307,8 +308,11 @@ for (const label of labels) {
 
   if (!s) continue
   const total = s.processes.reduce((n, p) => n + p.rssMB, 0)
-  console.log(`${(labels.length > 1 ? label : "").padEnd(4)}total ${total} MB · main cpu ${s.mainCpuMs ?? "?"} ms · renderer heap ${s.renderer.jsHeapMB} MB, ${s.renderer.domNodes} nodes, layout ${s.renderer.layoutMs} ms/${s.renderer.layouts}×, style ${s.renderer.styleMs} ms/${s.renderer.styleRecalcs}×`)
+  console.log(`${(labels.length > 1 ? label : "").padEnd(4)}sum of working sets ${total} MB (shared pages may be counted more than once) · main cpu ${s.mainCpuMs ?? "?"} ms · renderer heap ${s.renderer.jsHeapMB} MB, ${s.renderer.domNodes} nodes, layout ${s.renderer.layoutMs} ms/${s.renderer.layouts}×, style ${s.renderer.styleMs} ms/${s.renderer.styleRecalcs}×`)
   console.log(`    ${s.processes.map((p) => `${p.name} ${p.rssMB}`).join(" · ")}`)
+  if (s.serviceProcesses.length)
+    console.log(`    separate service: ${s.serviceProcesses.map((p) => `${p.name} ${p.rssMB}`).join(" · ")}`)
+  else console.log("    separate service: unavailable")
 }
 
 console.log(`\nreport: ${reportPath}`)
@@ -346,6 +350,8 @@ type Sample = {
   // Working set per process in the app's tree (main, renderer, GPU, utility) once idle, in MB, and
   // the main process's CPU time.
   processes: { name: string; pid: number; rssMB: number }[]
+  // The service is independently spawned and must not be counted as a child of Electron.
+  serviceProcesses: { name: string; pid: number; rssMB: number }[]
   mainCpuMs?: number
   // Every timestamped line from the run's log directory (main, crash, onboarding, window, …) as
   // [ms since spawn, file, message].
@@ -476,6 +482,12 @@ async function launch(build: { label: string; exe: string }, run: number): Promi
   const timelineResult = await cdp.send("Runtime.evaluate", { expression: rendererTimeline, returnByValue: true })
   cdp.close()
   const processes = appPid ? await processTree(appPid) : []
+  const registration = existsSync(paths.registration)
+    ? JSON.parse(readFileSync(paths.registration, "utf8")) as { pid?: number }
+    : undefined
+  const serviceProcesses = registration?.pid && Number.isSafeInteger(registration.pid) && registration.pid > 0
+    ? (await processTree(registration.pid)).filter((entry) => !processes.some((desktop) => desktop.pid === entry.pid))
+    : []
   const screenChanges = await raiser.screen()
   const boot = profile ? undefined : await mainBootTiming()
   await sleep(300)
@@ -532,6 +544,7 @@ async function launch(build: { label: string; exe: string }, run: number): Promi
     renderer,
     rendererTimeline: timelineResult.result?.result?.value,
     processes,
+    serviceProcesses,
     mainCpuMs: boot && Math.round((boot.cpu.user + boot.cpu.system) / 1000),
     timeline: main.timeline.map(([at, file, message]) => [at - spawnAt, file, message]),
   }

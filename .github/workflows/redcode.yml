@@ -382,6 +382,107 @@ jobs:
           retention-days: 7
           compression-level: 0
 
+  path-search:
+    if: ${{ !inputs.workers_only && !inputs.preview_platforms && github.event_name == 'workflow_dispatch' }}
+    needs: [plan, platforms]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: linux-x64, host: ubuntu-24.04, enabled: linux_x64 }
+          - { target: linux-arm64, host: ubuntu-24.04-arm, enabled: linux_arm64 }
+          - { target: linux-x64-musl, host: ubuntu-24.04, enabled: linux_x64, musl: true }
+          - { target: linux-arm64-musl, host: ubuntu-24.04-arm, enabled: linux_arm64, musl: true }
+          - { target: windows-x64, host: windows-2025, enabled: windows_x64 }
+          - { target: windows-arm64, host: windows-11-arm, enabled: windows_arm64 }
+          - { target: darwin-x64, host: macos-15-intel, enabled: macos_x64 }
+          - { target: darwin-arm64, host: macos-15, enabled: macos_arm64 }
+    runs-on: ${{ matrix.host }}
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        if: needs.platforms.outputs[matrix.enabled] == 'true'
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+      - uses: ./.github/actions/setup-bun
+        if: needs.platforms.outputs[matrix.enabled] == 'true' && !matrix.musl
+        with:
+          install-flags: --filter=@opencode/core
+      - name: Build and test native package
+        if: needs.platforms.outputs[matrix.enabled] == 'true' && !matrix.musl
+        shell: bash
+        env:
+          FS001_TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.99.1 --profile minimal
+          rustup default 1.99.1
+          bun packages/core/script/native-path-search/validate-target.ts --target "$FS001_TARGET" --out "$RUNNER_TEMP/fs001" --cargo-target "$RUNNER_TEMP/fs001-cargo" --skip-performance
+          package="$RUNNER_TEMP/fs001/native-packages/$FS001_TARGET"
+          case "$RUNNER_OS" in
+            Windows) native="$package/redcode_path_search.dll" ;;
+            macOS) native="$package/libredcode_path_search.dylib" ;;
+            Linux) native="$package/libredcode_path_search.so" ;;
+          esac
+          bun packages/core/script/native-path-search/smoke-dispose.ts "$native"
+          bun packages/core/script/native-path-search/smoke-product-fallback.ts "$native"
+          bun packages/core/script/native-path-search/smoke-product-fallback.ts "$native" --refresh
+          executable="$package/path-search-smoke"
+          if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
+          bun build packages/core/script/native-path-search/smoke-native.ts --compile --outfile "$executable"
+          "$executable" --fixture packages/core/test/fixture/filesystem-search-contract.json --out "$package/compiled-contract.json"
+          product="$package/path-search-product"
+          if [ "$RUNNER_OS" = Windows ]; then product="$product.exe"; fi
+          bun build packages/core/script/native-path-search/smoke-product.ts --compile --outfile "$product"
+          "$product" packages/core/test/fixture/filesystem-search-contract.json
+          mkdir -p "$RUNNER_TEMP/fs001-missing"
+          cp "$product" "$RUNNER_TEMP/fs001-missing/$(basename "$product")"
+          if "$RUNNER_TEMP/fs001-missing/$(basename "$product")" packages/core/test/fixture/filesystem-search-contract.json; then
+            echo 'Product smoke unexpectedly succeeded without a native library' >&2
+            exit 1
+          fi
+      - name: Exercise real file discovery
+        if: needs.platforms.outputs[matrix.enabled] == 'true' && !matrix.musl
+        shell: bash
+        env:
+          FS001_TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          if ! command -v rg >/dev/null; then
+            case "$RUNNER_OS" in
+              Linux) sudo apt-get update -qq && sudo apt-get install -y ripgrep ;;
+              macOS) brew install ripgrep ;;
+              Windows) choco install ripgrep --yes --no-progress ;;
+            esac
+          fi
+          executable="$RUNNER_TEMP/fs001/native-packages/$FS001_TARGET/path-search-real"
+          if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
+          bun build packages/core/script/native-path-search/smoke-product-files.ts --compile --outfile "$executable"
+          "$executable"
+      - name: Build and test native package on Alpine
+        if: needs.platforms.outputs[matrix.enabled] == 'true' && matrix.musl
+        shell: bash
+        env:
+          FS001_TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/fs001"
+          docker run --rm -e FS001_TARGET -v "$GITHUB_WORKSPACE:/repo:ro" -v "$RUNNER_TEMP/fs001:/out" rust:1.99.1-alpine sh -c '
+            set -eu
+            apk add --no-cache bash build-base curl git unzip >/dev/null
+            curl -fsSL https://bun.com/install | bash -s "bun-v1.4.2" >/dev/null
+            export PATH=/root/.bun/bin:$PATH
+            cd /repo
+            bun packages/core/script/native-path-search/validate-target.ts --target "$FS001_TARGET" --out /out --cargo-target /tmp/cargo --skip-performance
+          '
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: needs.platforms.outputs[matrix.enabled] == 'true'
+        with:
+          name: path-search-${{ matrix.target }}
+          path: ${{ runner.temp }}/fs001/native-packages/${{ matrix.target }}
+          if-no-files-found: error
+          retention-days: 7
+
   design:
     if: ${{ !inputs.preview_platforms && (github.event_name == 'workflow_dispatch') }}
     needs: plan
@@ -520,6 +621,7 @@ jobs:
     needs:
       - plan
       - sidecar
+      - path-search
       - design
       - desktop
       - platforms
@@ -540,6 +642,20 @@ jobs:
           pattern: rpc-sidecar-*
           path: packages/rpc-sidecar/dist/release
           merge-multiple: true
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: path-search-*
+          path: ${{ runner.temp }}/path-search-artifacts
+      - name: Arrange native path-search packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/path-search"
+          for dir in "$RUNNER_TEMP"/path-search-artifacts/path-search-*; do
+            test -d "$dir"
+            target="${dir##*/path-search-}"
+            mv "$dir" "$RUNNER_TEMP/path-search/$target"
+          done
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: redcode-design-dist
@@ -577,6 +693,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           BUN_COMPILE_RELEASE: bun-v1.4.2
           REDCODE_RPC_SIDECAR_DIR: ${{ github.workspace }}/packages/rpc-sidecar/dist/release
+          REDCODE_PATH_SEARCH_PACKAGE_DIR: ${{ runner.temp }}/path-search
         run: bun run build
       - name: Exercise compiled Redcode CLI and agents
         shell: bash

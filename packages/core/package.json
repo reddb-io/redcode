@@ -85,6 +85,13 @@
       "node": "./src/filesystem/fff.node.ts",
       "default": "./src/filesystem/fff.bun.ts"
     },
+    "#path-search-native": {
+      "types": "./src/filesystem/search-native.bun.ts",
+      "workerd": "./src/filesystem/search-native.unavailable.ts",
+      "bun": "./src/filesystem/search-native.bun.ts",
+      "node": "./src/filesystem/search-native.unavailable.ts",
+      "default": "./src/filesystem/search-native.bun.ts"
+    },
     "#photon-wasm": {
       "workerd": "./src/image/photon-wasm.workerd.ts",
       "bun": "./src/image/photon-wasm.bun.ts",

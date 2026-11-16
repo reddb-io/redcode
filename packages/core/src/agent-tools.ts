@@ -158,13 +158,14 @@ export const layer = Layer.effect(
       const spec = distribution(id, host)
       const installed = yield* npm.resolve(spec.package)
       const entry = path.join(installed.directory, spec.entry)
-      const node = Bun.which("node")
+      const managedExists = config.command ? false : yield* fs.isFile(entry)
+      const node = !config.command && id === "browser-control" && managedExists ? Bun.which("node") : null
       const command = config.command ?? (id === "browser-control" ? [node ?? "node", entry] : [entry, ...spec.mcp])
       const exists = config.command
         ? path.isAbsolute(command[0])
           ? yield* fs.isFile(command[0])
           : Bun.which(command[0]) !== null
-        : (yield* fs.isFile(entry)) && (id !== "browser-control" || node !== null)
+        : managedExists && (id !== "browser-control" || node !== null)
       const extensionDirectory = path.join(installed.directory, "extension", "dist")
       return {
         id,

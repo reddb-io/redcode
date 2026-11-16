@@ -60,8 +60,8 @@ describe("Design prompt", () => {
   test("describes one ledger for review notes: mark, publish once, verify once, record", () => {
     const prompt = DesignPrompt.instructions
     for (const phrase of [
-      "browser review notes are never Design tasks",
-      "the round's notes are your checklist",
+      "each browser review note also becomes one Design task linked to its feedback round",
+      "each note is admitted as a Design task linked to its feedback",
       "mark it with design_document update addressed: [{feedback, index, summary}]",
       "a mark is not an outcome and needs no evidence",
       "A note you will not change: record it instead as unresolved or accepted with a reason",
@@ -72,13 +72,13 @@ describe("Design prompt", () => {
       expect(prompt).toContain(phrase)
     // The contradictions it replaces: feedback never creates tasks, and outcomes are not recorded twice.
     expect(prompt).not.toContain("Browser feedback creates new Design tasks")
-    expect(prompt).not.toContain("record the task and note outcomes")
+    expect(prompt).toContain("plan_exit closes the accepted Design tasks")
     // The mark comes before the publish, and the publish before the verify and the outcomes.
     const rounds = prompt.slice(prompt.indexOf("Notes arrive in rounds"))
     expect(rounds.indexOf("design_document update addressed")).toBeLessThan(rounds.indexOf("3. Publish one revision"))
     expect(rounds.indexOf("3. Publish one revision")).toBeLessThan(rounds.indexOf("design_document update notes"))
     const screen = DesignPlaybooks.render(DesignPlaybooks.find("screen")!)
-    expect(screen).toContain("are its checklist")
+    expect(screen).toContain("each admitted as a Design task linked to that feedback")
     expect(screen).toContain("mark it with design_document update addressed")
   })
 
@@ -103,7 +103,7 @@ describe("Design prompt", () => {
     for (const [index, opening] of [
       "Fix the notes in the prototype source. After each note or group, mark it",
       "A note you will not change: record it instead",
-      "Publish one revision with design_preview; it is refused while a note of the round has neither a mark nor an outcome, and lists those notes.",
+      "Publish one revision with design_preview",
       "Run one verify: design_export",
       "Record every note's outcome in ONE",
       "Reply for the",

@@ -50,6 +50,11 @@ benchmark("measures retained renderer memory with a large model catalog", async 
     },
   })
 
+  await page.route("**/api/session/*/todo/graph", (route) => {
+    const sessionID = new URL(route.request().url()).pathname.split("/")[3]
+    return route.fulfill({ json: { data: { sessionID, tasks: [], nodes: [], assignments: [] } } })
+  })
+
   await installTimelineSettings(page)
   await installStressSessionTabs(page)
   await page.goto(sessionHref(fixture.sourceID))

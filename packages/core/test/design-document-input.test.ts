@@ -94,6 +94,75 @@ describe("design_document input", () => {
     expect(() => decode({ ...update, input: { designSystem: 42 } })).toThrow()
   })
 
+  test("a create carries the brief, decisions, scenarios, controls and presets in the same call", () => {
+    // One call defines the design and its recorded material, so the agent does not need a second
+    // update for a brief that the create already had room for.
+    const create = {
+      action: "create",
+      input: {
+        name: "Checkout",
+        journey: "existing",
+        engine: "html",
+        kind: "screen",
+        application: "apps/web",
+        brief: { objective: "Sell in one step", audience: "Buyers", content: "", constraints: "", references: [] },
+        decisions: [{ id: "d1", text: "One-page checkout" }],
+        questions: ["Which currency?"],
+        scenarios: [
+          {
+            id: "empty",
+            name: "Empty cart",
+            selector: "#cart",
+            state: "empty",
+            actions: [],
+          },
+        ],
+        controls: [
+          {
+            id: "cart",
+            name: "Cart",
+            selector: "#cart",
+            fields: [{ id: "items", name: "Items", type: "number", default: 1 }],
+          },
+        ],
+        presets: [{ id: "empty", name: "Empty", values: { cart: { items: 0 } } }],
+        targets: [{ path: "src/checkout.tsx", role: "Page" }],
+      },
+    }
+    expect(decode(create)).toEqual(create)
+    // Its required identity is still enforced.
+    expect(() => decode({ action: "create", input: { ...create.input, kind: undefined } })).toThrow()
+  })
+
+  test("a create accepts the empty note placeholders a provider includes, and refuses a real one", () => {
+    // `notes: []` and `addressed: []` used to be refused as excess properties. They decode now.
+    const create = {
+      action: "create",
+      input: {
+        name: "Checkout",
+        journey: "existing",
+        engine: "html",
+        kind: "screen",
+        notes: [],
+        addressed: [],
+      },
+    }
+    expect(decode(create)).toEqual(create)
+    // A real note belongs to a round the design does not have yet.
+    expect(
+      decode({
+        action: "create",
+        input: {
+          ...create.input,
+          notes: [{ feedback: "msg_1", index: 1, status: "resolved" }],
+        },
+      }),
+    ).toEqual({
+      action: "create",
+      input: { ...create.input, notes: [{ feedback: "msg_1", index: 1, status: "resolved" }] },
+    })
+  })
+
   test("never lets the agent record statuses as the reviewer", () => {
     expect(
       decode({

@@ -1,0 +1,173 @@
+name: FS-001 native validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: Fresh processes per implementation and target
+        required: true
+        default: "5"
+        type: string
+      contract_only:
+        description: Build and run the shared contract without the performance matrix
+        required: true
+        default: false
+        type: boolean
+      soak_minutes:
+        description: Optional soak duration per target; zero disables it
+        required: true
+        default: "0"
+        type: string
+      baseline:
+        description: Legacy backend for the performance comparison
+        required: true
+        default: ripgrep
+        type: choice
+        options: [ripgrep, fff]
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    name: FS-001 (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64
+            host: ubuntu-24.04
+          - target: linux-arm64
+            host: ubuntu-24.04-arm
+          - target: darwin-x64
+            host: macos-15-intel
+          - target: darwin-arm64
+            host: macos-15
+          - target: windows-x64
+            host: windows-2025
+          - target: windows-arm64
+            host: windows-11-arm
+    runs-on: ${{ matrix.host }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: ./.github/actions/setup-bun
+        with:
+          install-flags: --filter=@opencode/core
+      - name: Pin Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.99.1 --profile minimal
+          rustup default 1.99.1
+          rustc -vV
+      - name: Ensure ripgrep is available
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v rg >/dev/null; then rg --version | head -1; exit 0; fi
+          case "$RUNNER_OS" in
+            Linux) sudo apt-get update -qq && sudo apt-get install -y ripgrep ;;
+            macOS) brew install ripgrep ;;
+            Windows) choco install ripgrep --yes --no-progress ;;
+            *) exit 1 ;;
+          esac
+          rg --version | head -1
+      - name: Build, exercise and measure the target
+        shell: bash
+        env:
+          FS001_TARGET: ${{ matrix.target }}
+          FS001_RUNS: ${{ inputs.runs }}
+          FS001_CONTRACT_ONLY: ${{ inputs.contract_only }}
+          FS001_SOAK_MINUTES: ${{ inputs.soak_minutes }}
+          FS001_BASELINE: ${{ inputs.baseline }}
+        run: |
+          set -euo pipefail
+          extra=()
+          if [ "$FS001_CONTRACT_ONLY" = true ]; then extra+=(--skip-performance); fi
+          case "$FS001_SOAK_MINUTES" in ''|*[!0-9]*) echo 'soak_minutes must be a non-negative integer' >&2; exit 1 ;; esac
+          soak_ms=$((FS001_SOAK_MINUTES * 60000))
+          bun packages/core/script/native-path-search/validate-target.ts \
+            --target "$FS001_TARGET" \
+            --out "$RUNNER_TEMP/fs001" \
+            --cargo-target "$RUNNER_TEMP/fs001-cargo" \
+            --fixture-root "$RUNNER_TEMP/fs001-fixtures" \
+            --runs "$FS001_RUNS" \
+            --baseline "$FS001_BASELINE" \
+            --soak-ms "$soak_ms" \
+            "${extra[@]}"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fs001-${{ matrix.target }}
+          path: ${{ runner.temp }}/fs001
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+  musl:
+    name: FS-001 (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64-musl
+            host: ubuntu-24.04
+          - target: linux-arm64-musl
+            host: ubuntu-24.04-arm
+    runs-on: ${{ matrix.host }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Build, exercise and measure in Alpine
+        shell: bash
+        env:
+          FS001_TARGET: ${{ matrix.target }}
+          FS001_RUNS: ${{ inputs.runs }}
+          FS001_CONTRACT_ONLY: ${{ inputs.contract_only }}
+          FS001_SOAK_MINUTES: ${{ inputs.soak_minutes }}
+          FS001_BASELINE: ${{ inputs.baseline }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/fs001" "$RUNNER_TEMP/fs001-fixtures"
+          docker run --rm \
+            --env FS001_TARGET \
+            --env FS001_RUNS \
+            --env FS001_CONTRACT_ONLY \
+            --env FS001_SOAK_MINUTES \
+            --env FS001_BASELINE \
+            --mount "type=bind,source=$GITHUB_WORKSPACE,target=/repo,readonly" \
+            --mount "type=bind,source=$RUNNER_TEMP/fs001,target=/out" \
+            --mount "type=bind,source=$RUNNER_TEMP/fs001-fixtures,target=/fixtures" \
+            rust:1.99.1-alpine \
+            sh -c '
+              set -eu
+              apk add --no-cache bash build-base ca-certificates curl git ripgrep tar unzip >/dev/null
+              curl -fsSL https://bun.com/install | bash -s "bun-v1.4.2" >/dev/null
+              export PATH=/root/.bun/bin:$PATH
+              mkdir -p /work
+              cd /repo
+              tar --exclude=.git --exclude=node_modules --exclude="*/node_modules" --exclude="*/target" -cf - . | tar -C /work -xf -
+              cd /work
+              bun install --frozen-lockfile --ignore-scripts --filter @opencode/core
+              extra=""
+              if [ "$FS001_CONTRACT_ONLY" = true ]; then extra=--skip-performance; fi
+              case "$FS001_SOAK_MINUTES" in ""|*[!0-9]*) echo "soak_minutes must be a non-negative integer" >&2; exit 1 ;; esac
+              soak_ms=$((FS001_SOAK_MINUTES * 60000))
+              bun packages/core/script/native-path-search/validate-target.ts \
+                --target "$FS001_TARGET" \
+                --out /out \
+                --cargo-target /tmp/fs001-cargo \
+                --fixture-root /fixtures \
+                --ranking-directory /repo \
+                --runs "$FS001_RUNS" \
+                --baseline "$FS001_BASELINE" \
+                --soak-ms "$soak_ms" \
+                $extra
+            '
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fs001-${{ matrix.target }}
+          path: ${{ runner.temp }}/fs001
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0

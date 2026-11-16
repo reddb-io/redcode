@@ -194,7 +194,7 @@ function startDesktop(profile: Awaited<ReturnType<typeof createColdProfile>>) {
       OPENCODE_TEST_ONBOARDING: "0",
       OPENCODE_DESKTOP_TEST_ROOT: profile.root,
       OPENCODE_DESKTOP_REMOTE_DEBUGGING_PORT: "0",
-      OPENCODE_DESKTOP_DISABLE_PROTOCOL_REGISTRATION: "1",
+      REDCODE_DESKTOP_DISABLE_PROTOCOL_REGISTRATION: "1",
       // The test root also redirects XDG_CACHE_HOME, which would move Bun's transpiler cache and make
       // every sample transpile the source CLI from scratch. A dev start reuses the developer's cache.
       BUN_RUNTIME_TRANSPILER_CACHE_PATH: process.env.BUN_RUNTIME_TRANSPILER_CACHE_PATH ?? bunTranspilerCache(),

@@ -81,6 +81,10 @@ import { MAX_STEPS_PROMPT, stepLimit } from "./max-steps.js"
 
 const CONTINUE_AFTER_INCOMPLETE_STREAM =
   "The previous response was interrupted. Continue from where you left off without repeating completed content."
+const CONTINUE_AFTER_OUTPUT_LIMIT =
+  "The provider stopped the previous response at its output token limit; the work is not complete. Continue from the saved state without repeating reasoning or completed work. Execute the next tool now. Make small, incremental edits instead of rewriting the entire artifact in one call. Keep feedback items pending until implemented and verified."
+/** Output-limit stops in a row that made no tool progress before the step fails as incomplete. */
+const OUTPUT_LIMIT_STALLS = 1
 /** Messages read back when judging a goal or reviewing a final response. */
 const RECENT = 60
 type DrainInput = Parameters<Interface["drain"]>[0]
@@ -1510,6 +1514,8 @@ const layer = Layer.effect(
       let initial: SessionContext.Loaded | undefined = first
       let recoverOverflow = true
       let recoverContinuation = true
+      // Consecutive output-limit stops that produced no tool work; a step that ran tools made progress.
+      let outputLimitStalls = 0
       let retryAttempt: number | undefined
       while (true) {
         // Reuse boundary preparation once; retries refresh context without delivering more input.
@@ -1750,6 +1756,29 @@ const layer = Layer.effect(
               const goal = yield* goals.get(sessionID)
               if (goal?.status === "active")
                 yield* goals.save(goal, { ...goal, status: "paused", reason: outcome.guardStop }).pipe(Effect.orDie)
+            }
+            if (outcome.truncated) {
+              // A step that ran tools made progress; only repeated stops without work fail the step.
+              if (outcome.needsContinuation) {
+                outputLimitStalls = 0
+                yield* bus.publish(SessionEvent.Synthetic, { sessionID, text: CONTINUE_AFTER_OUTPUT_LIMIT })
+                // Completed tools are already durable. Advance the normal loop rather than replaying them.
+                return true
+              }
+              if (outputLimitStalls >= OUTPUT_LIMIT_STALLS)
+                return yield* new StepFailedError({
+                  error: {
+                    type: "provider.output-limit",
+                    message:
+                      "The model reached its output token limit again after automatic continuation without making progress. Work remains incomplete; saved edits and pending tasks were preserved. Increase the model output limit, reduce its reasoning budget or choose another model, then resume.",
+                    provider: loaded.model.ref.providerID,
+                    model: loaded.model.ref.id,
+                  },
+                })
+              outputLimitStalls++
+              yield* bus.publish(SessionEvent.Synthetic, { sessionID, text: CONTINUE_AFTER_OUTPUT_LIMIT })
+              assistantMessageID = SessionMessage.ID.create()
+              return
             }
             return outcome.needsContinuation
           }),

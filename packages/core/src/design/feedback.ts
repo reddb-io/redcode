@@ -11,6 +11,7 @@ import { SessionSchema } from "../session/schema.js"
 import { DesignApproval } from "./approval.js"
 import { DesignRounds } from "./rounds.js"
 import { DesignStore } from "./store.js"
+import { DesignTasks } from "./tasks.js"
 
 /**
  * What one review message carries of each note. `message` is a target, not a cap: page-captured
@@ -285,12 +286,12 @@ export function render(input: Design.Feedback, context: Context) {
                 input.end
                   ? "The user asked to end this review after this round. It stays open until every note below has an outcome, then ends by itself: work through the steps, do not ask for another round and do not reopen it without an explicit request."
                   : "",
-                `Feedback round${context.round !== undefined ? ` ${context.round}` : ""}: its notes are your checklist, not Design tasks.`,
-                `1. Fix the notes in the prototype source. After each note or group, mark it: design_document update {"addressed":[{"feedback":"${input.id}","index":<n>,"summary":"<what you changed>"}]}.`,
-                `2. A note you will not change: record it instead with design_document update {"notes":[{"feedback":"${input.id}","index":<n>,"status":"unresolved|accepted","reason":"<why>"}]}.`,
-                "3. Publish one revision with design_preview; it is refused while a note of the round has neither a mark nor an outcome, and lists those notes.",
+                `Feedback round${context.round !== undefined ? ` ${context.round}` : ""}: each note has a Design task linked to this feedback. Read todowrite {"todos":[]} and work through every item, updating its status as you go. Do not create duplicate tasks. The Design note ledger remains the authority for review outcomes; update both after verification.`,
+                `1. Fix the notes in the prototype source. After each note or group, mark it with design_document {"action":"update","id":"${context.id}","input":{"addressed":[{"feedback":"${input.id}","index":1,"summary":"<what you changed>"}]}}. Use each note's actual index; never send id:null.`,
+                `2. A note you will not change: record it instead with design_document {"action":"update","id":"${context.id}","input":{"notes":[{"feedback":"${input.id}","index":1,"status":"unresolved","reason":"<concrete blocker>"}]}}. Use accepted only for a tradeoff the reviewer explicitly accepted, never for an implementation failure.`,
+                `3. Publish one revision with design_preview {"id":"${context.id}"}; it is refused while a note of the round has neither a mark nor an outcome, and lists those notes. Never send a null id, and do not import this workspace as another design.`,
                 `4. Run one verify: design_export {"revision":"<that revision>","format":"verify"${context.round !== undefined ? `,"round":${context.round}` : ""}}, wait for its native monitor, then read design_jobs once.`,
-                `5. Record every note's outcome in ONE update, one notes entry per note, not one update per note: design_document update {"notes":[{"feedback":"${input.id}","index":<n>,"status":"resolved|partial|unresolved|accepted","reason":"...","evidence":{"job":"<verify job>"}}, ...]}; evidence for resolved and partial, a reason for partial, unresolved and accepted.`,
+                `5. Record every note's outcome in ONE update, one notes entry per note, not one update per note: design_document {"action":"update","id":"${context.id}","input":{"notes":[{"feedback":"${input.id}","index":1,"status":"resolved","evidence":{"job":"<verify job>"}}]}}. Include all note indices; use resolved, partial, unresolved or accepted as appropriate, with evidence for resolved and partial and a reason for partial, unresolved and accepted.`,
                 `6. Reply for the revision you published with what is resolved, partial, unresolved or accepted and why, and ${input.end ? "say the review has ended" : "wait for the next round"}. An anti-slop audit is optional: run it only when the reviewer asks, and report its findings instead of fixing them.`,
               ]
                 .filter(Boolean)
@@ -362,6 +363,7 @@ export const admit = Effect.fn("DesignFeedback.admit")(function* (
     }),
   )
   if (prepared.admitted) {
+    yield* DesignTasks.admit(sessionID, input.id)
     yield* execution.wake(sessionID)
     return { id: input.id, status: "admitted" as const }
   }
@@ -407,6 +409,7 @@ export const admit = Effect.fn("DesignFeedback.admit")(function* (
           message: "Feedback ID is already used by another session message",
         })
       const receipt = yield* store.acknowledge(sessionID, id, input)
+      yield* DesignTasks.admit(sessionID, input.id)
       yield* execution.wake(sessionID)
       return receipt
     }).pipe(Effect.uninterruptible),

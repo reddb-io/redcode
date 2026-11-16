@@ -77,7 +77,7 @@ export function designReminder(todos: ReadonlyArray<Info>, observed: SessionTodo
   return [
     "Reconcile Design tasks before finishing this audit.",
     "Design tasks track setup work, the approval request and anti-slop findings. Use todowrite to mark each verified one completed, citing the relevant result's callID and messageID with an explanation of how it meets that task's criterion. A final response saying a fix is done does not update its task.",
-    "Review notes are not tasks: they are tracked separately on the design, with addressed marks and outcomes recorded through design_document update. A design_preview publish alone proves no note outcome; resolved and partial need a verify job of the round.",
+    "Review notes also have tasks linked by their feedback message and note index. Record their addressed marks and outcomes through design_document, then update their tasks from verified evidence. A design_preview publish alone proves no note outcome; resolved and partial need a verify job of the round.",
     ...remaining.map((todo) => `- ${todo.id} r${todo.revision} [${todo.status}] ${todo.content}`),
     "Available current-request Design evidence:",
     ...proofs.slice(0, 5).map((proof) => `${proof.callID} (${proof.tool}, message ${proof.messageID})`),

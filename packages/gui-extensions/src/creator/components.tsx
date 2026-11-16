@@ -1,7 +1,8 @@
-import { createMemo, createSignal, For, onCleanup, Show } from "solid-js"
+import { createMemo, For, onCleanup, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { Option, Schema } from "effect"
 import type { CreatorComponentInfo, LocationRef } from "@opencode/client/promise"
+import { getFilename } from "@opencode/util/path"
 import { Button } from "@opencode/ui/button"
 import { Dialog, DialogFooter, DialogHeader, DialogTitleGroup } from "@opencode/ui/dialog"
 import { Icon } from "@opencode/ui/icon"
@@ -45,10 +46,12 @@ export default function Components(props: Props) {
   )
   return (
     <div class="flex size-full min-h-0 flex-col bg-elevation-base-surface" data-slot="creator-components">
-      <div class="border-b border-elevation-base-border px-3 py-2">
-        <h3 class="text-13-medium text-foreground">{ctx.t("title")}</h3>
-        <p class="mt-1 text-12-regular text-ink-muted">{ctx.t("description")}</p>
-      </div>
+      <Show when={!props.sessionID}>
+        <div class="border-b border-elevation-base-border px-3 py-2">
+          <h3 class="text-13-medium text-foreground">{ctx.t("title")}</h3>
+          <p class="mt-1 text-12-regular text-ink-muted">{ctx.t("description")}</p>
+        </div>
+      </Show>
       <Show
         when={props.location}
         fallback={<p class="px-3 py-3 text-12-regular text-ink-muted">{ctx.t("scope.missing")}</p>}
@@ -80,7 +83,15 @@ function Library(props: { server: ServerRef; location: LocationRef; sessionID?: 
   const ctx = useExtension<typeof definition>()
   const controller = new AbortController()
   onCleanup(() => controller.abort())
-  const [state, setState] = createStore({ refresh: 0, search: "", selected: "", pending: "", error: "", notice: "" })
+  const [state, setState] = createStore({
+    refresh: 0,
+    reload: 0,
+    search: "",
+    selected: "",
+    pending: "",
+    error: "",
+    notice: "",
+  })
   const source = createMemo(() => (props.visible ? String(state.refresh) : undefined))
   const inventory = createLatest(source, (_, signal) =>
     props.server.client["server.creatorComponent"].creator.component.list({ location: props.location }, { signal }),
@@ -198,10 +209,14 @@ function Library(props: { server: ServerRef; location: LocationRef; sessionID?: 
 
   return (
     <>
-      <div class="flex items-center justify-between gap-2 border-b border-elevation-base-border px-3 py-2">
-        <span class="min-w-0 truncate text-11-regular text-ink-muted" title={props.location.directory}>
-          {ctx.t("scope", { directory: props.location.directory })}
-        </span>
+      <div class="flex h-9 shrink-0 items-center justify-between gap-2 border-b border-elevation-base-border px-2">
+        <Tooltip value={ctx.t("scope", { directory: props.location.directory })}>
+          <span class="min-w-0 truncate text-11-regular text-ink-muted" tabIndex={0}>
+            {props.sessionID
+              ? getFilename(props.location.directory) || props.location.directory
+              : ctx.t("scope", { directory: props.location.directory })}
+          </span>
+        </Tooltip>
         <div class="flex shrink-0 items-center gap-1">
           <Tooltip value={ctx.t("refresh")}>
             <IconButton
@@ -212,7 +227,7 @@ function Library(props: { server: ServerRef; location: LocationRef; sessionID?: 
             />
           </Tooltip>
           <Show when={props.sessionID}>
-            <Button variant="ghost" onClick={install} disabled={!!state.pending}>
+            <Button size="small" variant="ghost" onClick={install} disabled={!!state.pending}>
               {ctx.t("install")}
             </Button>
           </Show>
@@ -263,8 +278,11 @@ function Library(props: { server: ServerRef; location: LocationRef; sessionID?: 
                 <div class="flex min-h-14 items-center gap-2 border-b border-elevation-base-border py-2">
                   <button class="min-w-0 flex-1 text-left" onClick={() => setState("selected", item.id)}>
                     <span class="block truncate text-12-medium text-foreground">{item.name}</span>
-                    <span class="block truncate font-mono text-11-regular text-ink-muted">
-                      {ctx.t("revision", { revision: item.revision, version: item.version })}
+                    <span
+                      class="block truncate text-11-regular text-ink-muted"
+                      title={ctx.t("revision", { revision: item.revision, version: item.version })}
+                    >
+                      {ctx.t("version", { version: item.version })}
                     </span>
                     <Show when={item.description}>
                       <span class="block truncate text-12-regular text-ink-muted">{item.description}</span>
@@ -297,13 +315,18 @@ function Library(props: { server: ServerRef; location: LocationRef; sessionID?: 
       >
         {(item) => (
           <div class="flex min-h-0 flex-1 flex-col">
-            <div class="flex items-center gap-2 border-b border-elevation-base-border px-3 py-2">
+            <div class="flex h-9 shrink-0 items-center gap-2 border-b border-elevation-base-border px-2">
               <IconButton
                 icon={<Icon name="outline-arrow-left" size="small" />}
                 aria-label={ctx.t("preview.back")}
                 onClick={() => setState("selected", "")}
               />
               <span class="min-w-0 flex-1 truncate text-12-medium text-foreground">{item().name}</span>
+              <Tooltip value={ctx.t("revision", { revision: item().revision, version: item().version })}>
+                <span tabIndex={0} class="shrink-0 text-11-regular text-ink-muted">
+                  {ctx.t("version", { version: item().version })}
+                </span>
+              </Tooltip>
               <Switch checked={item().enabled} onChange={() => toggle(item())} disabled={!!state.pending} hideLabel>
                 {ctx.t("toggle.label", { name: item().name })}
               </Switch>
@@ -313,6 +336,13 @@ function Library(props: { server: ServerRef; location: LocationRef; sessionID?: 
                   aria-label={ctx.t("update")}
                   onClick={() => update(item())}
                   disabled={!!state.pending}
+                />
+              </Tooltip>
+              <Tooltip value={ctx.t("preview.refresh")}>
+                <IconButton
+                  icon={<Icon name="refresh" size="small" />}
+                  aria-label={ctx.t("preview.refresh")}
+                  onClick={() => setState("reload", (value) => value + 1)}
                 />
               </Tooltip>
               <IconButton
@@ -327,7 +357,7 @@ function Library(props: { server: ServerRef; location: LocationRef; sessionID?: 
               fallback={<p class="px-3 py-3 text-12-regular text-ink-muted">{ctx.t("preview.disabled")}</p>}
             >
               <Show when={props.visible}>
-                <Preview server={props.server} location={props.location} component={item()} />
+                <Preview server={props.server} location={props.location} component={item()} reload={state.reload} />
               </Show>
             </Show>
           </div>
@@ -337,11 +367,10 @@ function Library(props: { server: ServerRef; location: LocationRef; sessionID?: 
   )
 }
 
-function Preview(props: { server: ServerRef; location: LocationRef; component: CreatorComponentInfo }) {
+function Preview(props: { server: ServerRef; location: LocationRef; component: CreatorComponentInfo; reload: number }) {
   const ctx = useExtension<typeof definition>()
-  const [reload, setReload] = createSignal(0)
   const source = createMemo(
-    () => ({ id: props.component.id, version: props.component.version, reload: reload() }),
+    () => ({ id: props.component.id, version: props.component.version, reload: props.reload }),
     undefined,
     {
       equals: (a, b) => a?.id === b?.id && a?.version === b?.version && a?.reload === b?.reload,
@@ -355,14 +384,6 @@ function Preview(props: { server: ServerRef; location: LocationRef; component: C
   )
   return (
     <div class="flex min-h-80 flex-1 flex-col">
-      <div class="flex items-center justify-between px-3 py-1 text-11-regular text-ink-muted">
-        <span>{ctx.t("revision", { revision: props.component.revision, version: props.component.version })}</span>
-        <IconButton
-          icon={<Icon name="refresh" size="small" />}
-          aria-label={ctx.t("preview.refresh")}
-          onClick={() => setReload((value) => value + 1)}
-        />
-      </div>
       <Show when={result.error}>
         <p role="alert" class="px-3 py-2 text-12-regular text-text-danger-base">
           {ctx.t("preview.failed")}: {result.error instanceof Error ? result.error.message : ctx.t("request.failed")}

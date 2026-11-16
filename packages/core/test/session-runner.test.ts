@@ -1520,6 +1520,9 @@ describe("SessionRunnerLLM", () => {
       expect(s.requests).toHaveLength(3)
       expect(yield* roundContinuations(s)).toHaveLength(1)
     },
+    // Opening a round publishes a prototype, snapshots it and admits its notes: more filesystem
+    // work than the default timeout covers when the suite runs beside the other Design files.
+    30_000,
   )
 
   scenario("a Design round with a verify still running is not continued", function* (s) {
@@ -1539,7 +1542,7 @@ describe("SessionRunnerLLM", () => {
     yield* reviewPrompt(s, "Answer the review")
     expect(s.requests).toHaveLength(1)
     expect(yield* roundContinuations(s)).toHaveLength(0)
-  })
+  }, 30_000)
 
   scenario("an interrupted Design turn is not continued", function* (s) {
     yield* openDesignRound(s)
@@ -7098,6 +7101,46 @@ describe("SessionRunnerLLM", () => {
         content: [Expected.text("Complete")],
       },
     ])
+  })
+
+  scenario("continues an output-limited response without replaying completed tools", function* (s) {
+    yield* s.llm.push(
+      TestLLM.complete(
+        { reason: { normalized: "length", raw: "max_output_tokens" } },
+        LLMEvent.toolCall({ id: "saved-edit", name: "echo", input: { text: "saved" } }),
+      ),
+      TestLLM.complete(
+        { reason: { normalized: "length", raw: "max_output_tokens" } },
+        LLMEvent.textStart({ id: "promise" }),
+        LLMEvent.textDelta({ id: "promise", text: "I will write it now" }),
+        LLMEvent.textEnd({ id: "promise" }),
+      ),
+      TestLLM.tool("next-edit", "echo", { text: "finished" }),
+      TestLLM.text("Implemented and verified", "final"),
+    )
+    yield* s.runPrompt("Implement every feedback item")
+    expect(s.requests).toHaveLength(4)
+    expect(s.executions).toEqual(["saved", "finished"])
+    expect(JSON.stringify(s.requests[1])).toContain("output token limit")
+    expect((yield* s.context).findLast((message) => message.type === "assistant")).toMatchObject({ finish: "stop" })
+  })
+
+  scenario("reports repeated output limits as incomplete instead of silent success", function* (s) {
+    yield* s.llm.push(
+      ...[1, 2].map((index) =>
+        TestLLM.complete(
+          { reason: { normalized: "length", raw: "max_output_tokens" } },
+          LLMEvent.textStart({ id: `promise-${index}` }),
+          LLMEvent.textDelta({ id: `promise-${index}`, text: "Writing now" }),
+          LLMEvent.textEnd({ id: `promise-${index}` }),
+        ),
+      ),
+    )
+    expect(yield* s.runPrompt("Finish the prototype").pipe(Effect.flip)).toMatchObject({
+      error: { type: "provider.output-limit", message: expect.stringContaining("Work remains incomplete") },
+    })
+    expect(s.requests).toHaveLength(2)
+    expect(s.executions).toEqual([])
   })
 
   scenario("projects content-filter finishes as visible terminal failures", function* (s) {

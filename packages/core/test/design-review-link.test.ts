@@ -28,6 +28,7 @@ const ticketed = (origin: string) => `${origin}/design/session/${sessionID}/revi
 
 // Stands in for the owning Redcode server: it answers the link route only with its credential, and records calls.
 const requests: string[] = []
+const publishes: Array<{ id: string; name: string; answer?: boolean }> = []
 const redcode = Bun.serve({
   port: 0,
   fetch: (request) => {
@@ -102,7 +103,12 @@ const tools = testEffect(
         blobs: path.join(root, "blobs"),
         configured: () => Effect.succeed(undefined),
         get: () => Effect.succeed(document),
-        publish: () => Effect.succeed(revision),
+        list: () => Effect.succeed([document]),
+        publish: (_session, id, name, _read, _tooling, answer) =>
+          Effect.sync(() => {
+            publishes.push({ id, name, answer })
+            return revision
+          }),
         revisions: () => Effect.succeed([revision]),
       }),
     ),
@@ -127,6 +133,7 @@ const reset = (host?: DesignApp.Host) =>
     served.host = host
     requests.length = 0
     assertions.length = 0
+    publishes.length = 0
   })
 
 describe("design_link", () => {
@@ -173,6 +180,16 @@ describe("design_link", () => {
 })
 
 describe("design_preview", () => {
+  for (const input of [{ id: designID }, { path: root }, { path: path.join(root, ".") }])
+    tools.effect(`reuses the existing document and feedback gate for ${JSON.stringify(input)}`, () =>
+      Effect.gen(function* () {
+        yield* reset({ url: redcode.url.origin, authorization })
+        const result = yield* executeTool(yield* Tool.Service, call(input, DesignPreviewTool.name))
+        expect(result.status).toBe("completed")
+        expect(publishes).toEqual([{ id: designID, name: "Profile", answer: true }])
+      }),
+    )
+
   tools.effect(
     "names the stable review link, never a ticket, so the transcript keeps a link that does not expire",
     () =>

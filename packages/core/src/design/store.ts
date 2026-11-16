@@ -87,7 +87,7 @@ const make = Effect.gen(function* () {
     path.posix.normalize(design.application.replaceAll("\\", "/")) === path.posix.normalize(named.replaceAll("\\", "/"))
       ? design?.system
       : undefined
-  const create = Effect.fn("DesignStore.create")(function* (sessionID: SessionSchema.ID, input: Design.Create) {
+  const create = Effect.fn("DesignStore.create")(function* (sessionID: SessionSchema.ID, input: Design.CreateWithMaterial) {
     const session = yield* sessions.get(sessionID)
     if (
       !session ||
@@ -148,15 +148,20 @@ const make = Effect.gen(function* () {
       ...(input.platform ? { platform: input.platform } : {}),
       root,
       application,
-      entry,
-      brief: { objective: "", audience: "", content: "", constraints: "", references: [] },
-      decisions: [],
-      questions: [],
-      scenarios: [],
+      entry: input.entry ?? entry,
+      // A create may carry the same material an update does, so recording the brief, decisions or
+      // scenarios in one call neither needs a second update nor is refused as an excess property.
+      brief: input.brief ?? { objective: "", audience: "", content: "", constraints: "", references: [] },
+      decisions: input.decisions ?? [],
+      questions: input.questions ?? [],
+      scenarios: input.scenarios ?? [],
+      ...(input.targets ? { targets: input.targets } : {}),
+      ...(input.controls ? { controls: input.controls } : {}),
+      ...(input.presets ? { presets: input.presets } : {}),
       designSystem: input.designSystem ?? "",
       ...(system ? { system } : {}),
       ...discovery,
-      tweaks: {},
+      tweaks: input.tweaks ?? {},
       revision: null,
       approvedRevision: null,
       ended: false,

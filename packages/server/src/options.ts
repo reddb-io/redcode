@@ -45,6 +45,12 @@ export const ServerOptions = Schema.Struct({
     Schema.Struct({
       filewatcher: Schema.optional(Schema.Boolean),
       fff: Schema.optional(Schema.Boolean),
+      search: Schema.optional(
+        Schema.Struct({
+          mode: Schema.optional(Schema.Literals(["rust", "legacy"])),
+          library: Schema.optional(Schema.String),
+        }),
+      ),
     }),
   ),
 })

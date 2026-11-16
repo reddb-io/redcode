@@ -1,0 +1,140 @@
+{
+  "files": [
+    "src/index.ts",
+    "src/session/provider.ts",
+    "src/session/worker.ts",
+    "src/renderer/component.tsx",
+    "src/database/worker.ts",
+    "docs/file name.md",
+    "docs/guide.md",
+    "src/日本語/検索.ts",
+    "src/espaço/ação.ts",
+    "src/emoji/rocket-🚀.ts",
+    "packages/server/src/filesystem.ts",
+    "packages/app/src/session.tsx"
+  ],
+  "cases": [
+    {
+      "id": "empty-query",
+      "query": "",
+      "type": "mixed",
+      "limit": 50,
+      "exactCount": 0
+    },
+    {
+      "id": "whitespace-only-query",
+      "query": "   ",
+      "type": "mixed",
+      "limit": 50,
+      "exactCount": 0
+    },
+    {
+      "id": "embedded-nul-query",
+      "query": "index\u0000",
+      "type": "file",
+      "limit": 50,
+      "exactCount": 0
+    },
+    {
+      "id": "zero-width-query",
+      "query": "\u200b",
+      "type": "mixed",
+      "limit": 50,
+      "exactCount": 0
+    },
+    {
+      "id": "exact-file",
+      "query": "index",
+      "type": "file",
+      "limit": 5,
+      "first": "src/index.ts",
+      "required": ["src/index.ts"]
+    },
+    {
+      "id": "case-insensitive-file",
+      "query": "INDEX",
+      "type": "file",
+      "limit": 5,
+      "first": "src/index.ts",
+      "required": ["src/index.ts"]
+    },
+    {
+      "id": "space-separated-terms",
+      "query": "renderer component",
+      "type": "file",
+      "limit": 5,
+      "first": "src/renderer/component.tsx",
+      "required": ["src/renderer/component.tsx"]
+    },
+    {
+      "id": "literal-space",
+      "query": "file name",
+      "type": "file",
+      "limit": 5,
+      "first": "docs/file name.md",
+      "required": ["docs/file name.md"]
+    },
+    {
+      "id": "unicode-cjk",
+      "query": "検索",
+      "type": "file",
+      "limit": 5,
+      "first": "src/日本語/検索.ts",
+      "required": ["src/日本語/検索.ts"]
+    },
+    {
+      "id": "unicode-accent",
+      "query": "ação",
+      "type": "file",
+      "limit": 5,
+      "first": "src/espaço/ação.ts",
+      "required": ["src/espaço/ação.ts"]
+    },
+    {
+      "id": "unicode-emoji",
+      "query": "rocket-🚀",
+      "type": "file",
+      "limit": 5,
+      "first": "src/emoji/rocket-🚀.ts",
+      "required": ["src/emoji/rocket-🚀.ts"]
+    },
+    {
+      "id": "directory-only",
+      "query": "renderer",
+      "type": "directory",
+      "limit": 5,
+      "first": "src/renderer/",
+      "required": ["src/renderer/"]
+    },
+    {
+      "id": "file-filter",
+      "query": "worker",
+      "type": "file",
+      "limit": 10,
+      "required": ["src/session/worker.ts", "src/database/worker.ts"]
+    },
+    {
+      "id": "mixed-file-and-directory",
+      "query": "database",
+      "type": "mixed",
+      "limit": 10,
+      "required": ["src/database/", "src/database/worker.ts"]
+    },
+    {
+      "id": "limit",
+      "query": "filesystem",
+      "type": "mixed",
+      "limit": 1,
+      "exactCount": 1,
+      "first": "packages/server/src/filesystem.ts",
+      "required": ["packages/server/src/filesystem.ts"]
+    },
+    {
+      "id": "no-result",
+      "query": "not-present-anywhere",
+      "type": "mixed",
+      "limit": 50,
+      "exactCount": 0
+    }
+  ]
+}

@@ -205,7 +205,7 @@ function makeRoutes<AuthError, AuthServices>(
     App.node.replace(App.configured(options.app)),
     ModelsDev.node.replace(ModelsDev.configured(options.models)),
     Watcher.node.replace(Watcher.configured({ enabled: options.fs?.filewatcher })),
-    FileSystemSearch.node.replace(FileSystemSearch.configured({ fff: options.fs?.fff })),
+    FileSystemSearch.node.replace(FileSystemSearch.configured({ fff: options.fs?.fff, native: options.fs?.search })),
     Global.node.replace(Global.layerWith(options.config?.directory ? { config: options.config.directory } : {})),
     Config.node.replace(
       Config.configured({

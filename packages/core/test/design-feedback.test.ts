@@ -24,12 +24,12 @@ const base = {
 /** The Next step of a message with notes from msg_review_1, as the renderer writes it. */
 const steps = (round?: number) =>
   [
-    `Feedback round${round === undefined ? "" : ` ${round}`}: its notes are your checklist, not Design tasks.`,
-    '1. Fix the notes in the prototype source. After each note or group, mark it: design_document update {"addressed":[{"feedback":"msg_review_1","index":<n>,"summary":"<what you changed>"}]}.',
-    '2. A note you will not change: record it instead with design_document update {"notes":[{"feedback":"msg_review_1","index":<n>,"status":"unresolved|accepted","reason":"<why>"}]}.',
-    "3. Publish one revision with design_preview; it is refused while a note of the round has neither a mark nor an outcome, and lists those notes.",
+    `Feedback round${round === undefined ? "" : ` ${round}`}: each note has a Design task linked to this feedback. Read todowrite {"todos":[]} and work through every item, updating its status as you go. Do not create duplicate tasks. The Design note ledger remains the authority for review outcomes; update both after verification.`,
+    '1. Fix the notes in the prototype source. After each note or group, mark it with design_document {"action":"update","id":"design_checkout","input":{"addressed":[{"feedback":"msg_review_1","index":1,"summary":"<what you changed>"}]}}. Use each note\'s actual index; never send id:null.',
+    '2. A note you will not change: record it instead with design_document {"action":"update","id":"design_checkout","input":{"notes":[{"feedback":"msg_review_1","index":1,"status":"unresolved","reason":"<concrete blocker>"}]}}. Use accepted only for a tradeoff the reviewer explicitly accepted, never for an implementation failure.',
+    '3. Publish one revision with design_preview {"id":"design_checkout"}; it is refused while a note of the round has neither a mark nor an outcome, and lists those notes. Never send a null id, and do not import this workspace as another design.',
     `4. Run one verify: design_export {"revision":"<that revision>","format":"verify"${round === undefined ? "" : `,"round":${round}`}}, wait for its native monitor, then read design_jobs once.`,
-    '5. Record every note\'s outcome in ONE update, one notes entry per note, not one update per note: design_document update {"notes":[{"feedback":"msg_review_1","index":<n>,"status":"resolved|partial|unresolved|accepted","reason":"...","evidence":{"job":"<verify job>"}}, ...]}; evidence for resolved and partial, a reason for partial, unresolved and accepted.',
+    '5. Record every note\'s outcome in ONE update, one notes entry per note, not one update per note: design_document {"action":"update","id":"design_checkout","input":{"notes":[{"feedback":"msg_review_1","index":1,"status":"resolved","evidence":{"job":"<verify job>"}}]}}. Include all note indices; use resolved, partial, unresolved or accepted as appropriate, with evidence for resolved and partial and a reason for partial, unresolved and accepted.',
     "6. Reply for the revision you published with what is resolved, partial, unresolved or accepted and why, and wait for the next round. An anti-slop audit is optional: run it only when the reviewer asks, and report its findings instead of fixing them.",
   ].join("\n")
 
@@ -87,7 +87,7 @@ describe("DesignFeedback.render", () => {
     expect(step).not.toContain("Design tasks for")
     expect(step).not.toContain("Publish a new revision with design_preview and reply")
     expect(DesignFeedback.render({ ...base, items: [{ target: "#title", text: "Bigger" }] }, context)).toContain(
-      "Feedback round: its notes are your checklist",
+      "Feedback round: each note has a Design task",
     )
     expect(DesignFeedback.render({ ...base, text: "Looks good" }, { ...context, round: 2 })).not.toContain(
       "Feedback round",
@@ -96,7 +96,7 @@ describe("DesignFeedback.render", () => {
     // a plain end has no round to work through.
     const ending = DesignFeedback.render({ ...base, end: true, items: [{ target: "#title", text: "Bigger" }] }, context)
     expect(ending).toContain("The user asked to end this review after this round.")
-    expect(ending).toContain("Feedback round: its notes are your checklist")
+    expect(ending).toContain("Feedback round: each note has a Design task")
     expect(ending).toContain("and say the review has ended.")
     expect(ending).not.toContain("wait for the next round")
     const ended = DesignFeedback.render({ ...base, end: true, text: "Looks good" }, context)
@@ -600,7 +600,7 @@ describe("DesignFeedback.render never drops a note", () => {
     expect(few.match(/^Element text: "Filipe Forattini"$/gm)).toHaveLength(3)
 
     // Step 2: the backup locators go, with one line saying so and how to read them.
-    const located = fill("an id repeated across rows", 40, 300)
+    const located = fill("an id repeated across rows", 40, 270)
     const second = DesignFeedback.render(review(located), round)
     expect(second.length).toBeLessThanOrEqual(DesignFeedback.LIMITS.message)
     expect(second).toContain(

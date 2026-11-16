@@ -9,7 +9,8 @@ import { Plugin } from "@opencode/core/plugin"
 import { PluginHooks } from "@opencode/core/plugin/hooks"
 import { PluginHost } from "@opencode/core/plugin/host"
 import { catalogLimits } from "@opencode/core/plugin/provider/catalog-limits"
-import { catalogChanges, NineRouterPlugin, RedRouterPlugin, routerModel } from "@opencode/core/plugin/provider/red-router"
+import { catalogChanges, catalogNames, NineRouterPlugin, RedRouterPlugin, routerModel } from "@opencode/core/plugin/provider/red-router"
+import type { ModelsDev } from "@opencode/core/models-dev"
 import { Provider } from "@opencode/core/provider"
 import { ProviderRouter } from "@opencode/core/provider-router"
 import { Agent } from "@opencode/schema/agent"
@@ -45,6 +46,21 @@ const addPlugin = Effect.fn(function* () {
 })
 
 describe("RedRouterPlugin", () => {
+  test("shares name indexes per snapshot and refreshes them for a new snapshot", () => {
+    const snapshot = (name: string) => [{
+      info: { id: "example", name: "Example" },
+      models: [{ id: "model", name, limit: { context: 1024, output: 128 } }],
+      environment: [],
+    }] as unknown as readonly ModelsDev.Snapshot[]
+    const first = snapshot("Original")
+    const updated = snapshot("Updated")
+    const names = catalogNames(first)
+    expect(catalogNames(first)).toBe(names)
+    expect(names.models.get("example/model")).toBe("Original")
+    expect(catalogNames(updated)).not.toBe(names)
+    expect(catalogNames(updated).models.get("example/model")).toBe("Updated")
+  })
+
   it.effect("does not rebuild the catalog when unconfigured routers poll", () =>
     Effect.gen(function* () {
       const bus = yield* Bus.Service

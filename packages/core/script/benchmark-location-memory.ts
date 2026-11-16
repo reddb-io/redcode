@@ -12,7 +12,8 @@ import fs from "fs/promises"
 import os from "os"
 import path from "path"
 import { heapStats } from "bun:jsc"
-import { Effect, Layer, Logger, Scope } from "effect"
+import { spyOn } from "bun:test"
+import { Effect, Layer, Logger, Schema, Scope } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
 import { Global } from "@opencode/util/global"
 import { LayerNode } from "@opencode/util/effect/layer-node"
@@ -27,10 +28,12 @@ import { LocationServiceMap } from "../src/location-service-map"
 import { ModelsDev } from "../src/models-dev"
 import { Model } from "../src/model"
 import { Plugin } from "../src/plugin"
+import { PluginInternal } from "../src/plugin/internal"
 import { ModelsDevPlugin } from "../src/plugin/models-dev"
 import { Provider } from "../src/provider"
 import { AbsolutePath } from "../src/schema"
 import { Watcher } from "../src/filesystem/watcher"
+import * as ToolRuntime from "../src/tool/runtime"
 import { location } from "../test/fixture/location"
 import { providerHost, host, integrationHost } from "../test/plugin/host"
 
@@ -48,6 +51,10 @@ const flag = (name: string, fallback: number) => {
 const locationCount = flag("locations", 6)
 const pluginCount = flag("plugins", 8)
 const cycleCount = flag("cycles", 1)
+const profilePlugins = args.includes("--profile-plugins")
+const forceGc = !args.includes("--no-forced-gc")
+const countNodeLookups = args.includes("--count-node-lookups")
+const countSchemas = args.includes("--count-schemas")
 const jsonIndex = args.indexOf("--json")
 const jsonPath = jsonIndex === -1 ? undefined : args[jsonIndex + 1]
 
@@ -61,13 +68,72 @@ type Population = {
 }
 
 const sample = (): Sample => {
-  Bun.gc(true)
-  Bun.gc(true)
+  if (forceGc) {
+    Bun.gc(true)
+    Bun.gc(true)
+  }
   const usage = process.memoryUsage()
-  return { heapUsed: usage.heapUsed, rss: usage.rss, objects: heapStats().objectCount }
+  return { heapUsed: usage.heapUsed, rss: usage.rss, objects: forceGc ? heapStats().objectCount : 0 }
 }
 
 const mib = (bytes: number) => (bytes / 1024 / 1024).toFixed(2).padStart(8)
+
+const nodeLookups = { count: 0, milliseconds: 0 }
+const schemaConversions = { count: 0, effect: 0, repeatedEffect: 0, milliseconds: 0 }
+if (countSchemas) {
+  const seen = new WeakSet<object>()
+  const original = ToolRuntime.definition
+  spyOn(ToolRuntime, "definition").mockImplementation((tool) => {
+    schemaConversions.count++
+    if (Schema.isSchema(tool.input)) {
+      schemaConversions.effect++
+      if (seen.has(tool.input)) schemaConversions.repeatedEffect++
+      else seen.add(tool.input)
+    }
+    const start = performance.now()
+    try {
+      return original(tool)
+    } finally {
+      schemaConversions.milliseconds += performance.now() - start
+    }
+  })
+}
+if (countNodeLookups) {
+  const original = Bun.which
+  spyOn(Bun, "which").mockImplementation((command, options) => {
+    if (command !== "node") return original(command, options)
+    const start = performance.now()
+    try {
+      return original(command, options)
+    } finally {
+      nodeLookups.count++
+      nodeLookups.milliseconds += performance.now() - start
+    }
+  })
+}
+
+// Diagnostic only: intercept the internal definitions in this process. No runtime
+// source is modified, and forced GCs make these values unsuitable as timing data.
+const pluginSamples: { id: string; delta: number }[] = []
+let recordPlugins = false
+if (profilePlugins) {
+  const original = PluginInternal.list
+  spyOn(PluginInternal, "list").mockImplementation(() =>
+    original().pipe(Effect.map((list) => {
+      const wrap = (plugins: typeof list.pre) => plugins.map((plugin) => ({
+        ...plugin,
+        effect: (host: Parameters<typeof plugin.effect>[0]) => Effect.suspend(() => {
+          if (!recordPlugins) return plugin.effect(host)
+          const before = sample().heapUsed
+          return plugin.effect(host).pipe(Effect.onExit(() => Effect.sync(() => {
+            pluginSamples.push({ id: plugin.id, delta: sample().heapUsed - before })
+          })))
+        }),
+      }))
+      return { pre: wrap(list.pre), post: wrap(list.post) }
+    })),
+  )
+}
 
 const median = (values: ReadonlyArray<number>) => {
   const sorted = values.toSorted((a, b) => a - b)
@@ -117,20 +183,34 @@ const locationsProgram = Effect.gen(function* () {
   const deltas: number[] = []
   const rss: number[] = []
   const populations: Population[] = []
+  const phases: { context: number; pluginService: number; activation: number; population: number }[] = []
   let previous = before
   for (let index = 0; index < locationCount; index++) {
+    recordPlugins = profilePlugins && index === 1 && pluginSamples.length === 0
     const directory = path.join(root, "projects", `location-${index}`)
     yield* Effect.promise(() => fs.mkdir(directory, { recursive: true }))
     populations.push(
       yield* Effect.gen(function* () {
         const context = yield* locations.contextEffect(Location.Ref.make({ directory: AbsolutePath.make(directory) }))
+        const contextSample = sample()
         const plugins = yield* Plugin.Service.pipe(Effect.provideContext(context))
+        const pluginService = sample()
         yield* plugins.awaitActivation
+        const activation = sample()
         // Force the actual read models before sampling, including lazy materialization.
-        return yield* population.pipe(Effect.provideContext(context))
+        const result = yield* population.pipe(Effect.provideContext(context))
+        const current = sample()
+        phases.push({
+          context: contextSample.heapUsed - previous.heapUsed,
+          pluginService: pluginService.heapUsed - contextSample.heapUsed,
+          activation: activation.heapUsed - pluginService.heapUsed,
+          population: current.heapUsed - activation.heapUsed,
+        })
+        return result
       }).pipe(Effect.scoped),
     )
     const current = sample()
+    recordPlugins = false
     deltas.push(current.heapUsed - previous.heapUsed)
     rss.push(current.rss)
     previous = current
@@ -149,6 +229,7 @@ const locationsProgram = Effect.gen(function* () {
     deltas,
     rss,
     populations,
+    phases,
     afterEviction: sample(),
   }
 }).pipe(Effect.scoped)
@@ -162,6 +243,7 @@ const pluginProgram = Effect.gen(function* () {
   const before = sample()
   const deltas: number[] = []
   const populations: Population[] = []
+  const phases: { services: number; plugin: number; integrations: number; population: number }[] = []
   let previous = before
   for (let index = 0; index < pluginCount; index++) {
     const directory = AbsolutePath.make(path.join(root, "plugins", `instance-${index}`))
@@ -177,12 +259,21 @@ const pluginProgram = Effect.gen(function* () {
     ).pipe(Scope.provide(scope))
     const providers = yield* Provider.Service.pipe(Effect.provideContext(context))
     const integration = yield* Integration.Service.pipe(Effect.provideContext(context))
+    const services = sample()
     yield* ModelsDevPlugin.effect(
       host({ provider: providerHost(providers), integration: integrationHost(integration) }),
     ).pipe(Effect.provideService(ModelsDev.Service, modelsDev), Effect.provideContext(context), Scope.provide(scope))
+    const plugin = sample()
     yield* integration.list()
+    const integrations = sample()
     populations.push(yield* population.pipe(Effect.provideContext(context)))
     const current = sample()
+    phases.push({
+      services: services.heapUsed - previous.heapUsed,
+      plugin: plugin.heapUsed - services.heapUsed,
+      integrations: integrations.heapUsed - plugin.heapUsed,
+      population: current.heapUsed - integrations.heapUsed,
+    })
     deltas.push(current.heapUsed - previous.heapUsed)
     previous = current
   }
@@ -190,6 +281,7 @@ const pluginProgram = Effect.gen(function* () {
     before,
     after: previous,
     deltas,
+    phases,
     populations,
     snapshot: {
       providers: snapshot.length,
@@ -221,17 +313,20 @@ const program = Effect.gen(function* () {
 const result = await Effect.runPromise(program)
 await fs.rm(root, { recursive: true, force: true }).catch(() => undefined)
 
+if (!forceGc) console.log("Forced GC and object counting disabled: heap samples are not retained-memory measurements.")
+if (countNodeLookups) console.log(`Node executable lookups: ${nodeLookups.count}, ${nodeLookups.milliseconds.toFixed(2)} ms total`)
+if (countSchemas) console.log(`Tool definitions: ${JSON.stringify(schemaConversions)}`)
 console.log(
   `models.dev snapshot: ${result.plugin.snapshot.providers} providers, ${result.plugin.snapshot.models} models`,
 )
 console.log(`ModelsDevPlugin instances: ${pluginCount}`)
 console.log(`  populations: ${JSON.stringify(result.plugin.populations)}`)
-console.log(`  retained heap per instance (MiB): ${result.plugin.deltas.map((delta) => mib(delta).trim()).join(", ")}`)
+console.log(`  ${forceGc ? "retained heap" : "heap"} per instance (MiB): ${result.plugin.deltas.map((delta) => mib(delta).trim()).join(", ")}`)
 console.log(`  median per instance: ${mib(median(result.plugin.deltas))} MiB`)
 console.log(`Location graphs: ${locationCount}`)
 console.log(`  populations: ${JSON.stringify(result.locations.populations)}`)
 console.log(
-  `  retained heap per location (MiB): ${result.locations.deltas.map((delta) => mib(delta).trim()).join(", ")}`,
+  `  ${forceGc ? "retained heap" : "heap"} per location (MiB): ${result.locations.deltas.map((delta) => mib(delta).trim()).join(", ")}`,
 )
 console.log(`  median per location: ${mib(median(result.locations.deltas))} MiB`)
 console.log(
@@ -242,7 +337,7 @@ console.log(`  heapUsed after eviction: ${mib(result.locations.afterEviction.hea
 console.log(`  rss after eviction: ${mib(result.locations.afterEviction.rss)} MiB`)
 console.log(`Repeated load/eviction cycles: ${cycleCount}`)
 console.log(
-  `  retained heap after each eviction (MiB): ${result.cycles.map((cycle) => mib(cycle.afterEviction.heapUsed).trim()).join(", ")}`,
+  `  ${forceGc ? "retained heap" : "heap"} after each eviction (MiB): ${result.cycles.map((cycle) => mib(cycle.afterEviction.heapUsed).trim()).join(", ")}`,
 )
 
 if (jsonPath) {
@@ -257,6 +352,10 @@ if (jsonPath) {
         locationCount,
         pluginCount,
         cycleCount,
+        forceGc,
+        ...(countNodeLookups ? { nodeLookups } : {}),
+        ...(countSchemas ? { schemaConversions } : {}),
+        pluginSamples,
         ...result,
       },
       null,

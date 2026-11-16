@@ -122,9 +122,10 @@ describe("Tool", () => {
         },
       })
       expect(JSON.stringify(result.content)).toContain("value")
-      expect(builds).toEqual(registered)
+      // Standard JSON Schema is also requested to enforce closed objects at validation time.
+      expect(builds).toEqual([...registered, "input"])
       yield* service.reload()
-      expect(builds.length).toBe(registered.length * 2)
+      expect(builds.length).toBe(registered.length * 2 + 1)
       expect((yield* service.snapshot()).definitions[0]).not.toBe(first.definitions[0])
     }),
   )

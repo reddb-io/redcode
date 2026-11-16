@@ -1,4 +1,5 @@
 import path from "node:path"
+import { mkdir, unlink } from "node:fs/promises"
 import { expect } from "bun:test"
 import { OpenCode } from "@opencode/client/promise"
 import { AgentTools } from "@opencode/core/agent-tools"
@@ -65,6 +66,14 @@ it.live(
       const location = { directory: tmp.path }
       const snapshot = yield* Effect.promise(() => api.agentTools.list())
       expect(snapshot.tools).toHaveLength(4)
+      const managedEntry = path.join(tmp.path, "absent-package", "dist", "mcp.js")
+      yield* Effect.promise(() => mkdir(path.dirname(managedEntry), { recursive: true }))
+      yield* Effect.promise(() => Bun.write(managedEntry, "// isolated managed fixture\n"))
+      const managed = (yield* Effect.promise(() => api.agentTools.list())).tools.find((item) => item.id === "browser-control")
+      expect(managed?.installed).toBe(true)
+      expect(managed?.command).toEqual([executable, managedEntry])
+      yield* Effect.promise(() => unlink(managedEntry))
+      expect((yield* Effect.promise(() => api.agentTools.list())).tools.find((item) => item.id === "browser-control")?.installed).toBe(false)
       expect(snapshot.capabilities).toHaveLength(4)
       expect(
         snapshot.capabilities?.every((item) => item.target.type === "server" && item.status === "unavailable"),

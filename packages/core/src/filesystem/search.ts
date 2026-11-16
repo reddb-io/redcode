@@ -1,26 +1,18 @@
 export * as FileSystemSearch from "./search.js"
+export * from "./search-contract.js"
 
 import { makeLocationNode } from "@opencode/util/effect/app-node"
 import path from "path"
-import { Clock, Context, Deferred, Duration, Effect, Layer, Schema, Scope } from "effect"
+import { Clock, Deferred, Duration, Effect, Layer, Scope } from "effect"
 import { Fff } from "#fff"
+import * as NativePathSearch from "#path-search-native"
 import fuzzysort from "fuzzysort"
 import { FileSystem } from "@opencode/schema/filesystem"
 import { Location } from "../location.js"
 import { Ripgrep } from "../ripgrep.js"
 import { RelativePath } from "../schema.js"
 import { Protected } from "./protected.js"
-
-export interface Interface {
-  readonly find: (input: FileSystem.FindInput) => Effect.Effect<FileSystem.Entry[]>
-}
-
-export const Options = Schema.Struct({
-  fff: Schema.optional(Schema.Boolean),
-})
-export type Options = typeof Options.Type
-
-export class Service extends Context.Service<Service, Interface>()("@opencode/FileSystem/Search") {}
+import { Service, type Options } from "./search-contract.js"
 
 const REFRESH_INTERVAL = Duration.toMillis("10 seconds")
 type Prepared = ReturnType<typeof fuzzysort.prepare>
@@ -113,7 +105,7 @@ export const ripgrepLayer = Layer.effect(
   }),
 )
 
-export const fffLayer = Layer.effect(
+export const makeFffLayer = (configuration?: { maxThreads?: number; waitForIndexReady?: boolean }) => Layer.effect(
   Service,
   Effect.gen(function* () {
     const location = yield* Location.Service
@@ -136,10 +128,15 @@ export const fffLayer = Layer.effect(
       })
     }
     yield* Effect.addFinalizer(() => Effect.sync(() => result.value.destroy()))
+    if (configuration?.waitForIndexReady) {
+      const ready = yield* Effect.promise(() => result.value.waitForIndexReady(30_000))
+      if (!ready.ok || !ready.value)
+        return yield* Effect.die(new Error(`FFF index readiness failed: ${ready.ok ? "timeout" : ready.error}`))
+    }
     return Service.of({
       find: (input) =>
         Effect.sync(() => {
-          const options = { pageIndex: 0, pageSize: input.limit ?? 50 }
+          const options = { pageIndex: 0, pageSize: input.limit ?? 50, maxThreads: configuration?.maxThreads }
           const items = (() => {
             if (input.type === "file") {
               const found = result.value.fileSearch(input.query.trim(), options)
@@ -181,7 +178,9 @@ export const fffLayer = Layer.effect(
   }),
 )
 
-export const layer = (options?: Options) =>
+export const fffLayer = makeFffLayer()
+
+const legacyLayer = (options?: Options) =>
   Layer.unwrap(
     Effect.gen(function* () {
       const location = yield* Location.Service
@@ -192,6 +191,26 @@ export const layer = (options?: Options) =>
         return ripgrepLayer
       // Non-VCS locations can contain many repositories, so avoid eagerly content-indexing the entire aggregate tree.
       return location.vcs && !Protected.isHome(location.directory) ? fffLayer : ripgrepLayer
+    }),
+  )
+
+const nativeFilename =
+  process.platform === "win32"
+    ? "redcode_path_search.dll"
+    : process.platform === "darwin"
+      ? "libredcode_path_search.dylib"
+      : "libredcode_path_search.so"
+/** The validated search remains the default; Rust requires explicit opt-in. */
+export const layer = (options?: Options) =>
+  Layer.unwrap(
+    Effect.gen(function* () {
+      const fallback = legacyLayer(options)
+      if (options?.native?.mode !== "rust") return fallback
+      const filepath =
+        options?.native?.library ?? process.env.REDCODE_PATH_SEARCH_LIBRARY ?? path.join(path.dirname(process.execPath), nativeFilename)
+      const selected = NativePathSearch.tryNucleoAsyncRuntime(filepath)
+      if (selected.ok) return Layer.effect(Service, selected.runtime.pipe(Effect.map((runtime) => runtime.service)))
+      return Layer.effect(Service, Effect.die(selected.error))
     }),
   )
 

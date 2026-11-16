@@ -180,7 +180,7 @@ const validateStandard = (
 const inputJsonSchema = (schema: Tool.ValueSchema<any>): JsonSchema.JsonSchema => {
   if (schema === undefined || schema === null) return {}
   if (isStandardSchema(schema)) return standardJsonSchema(schema, "input")
-  return Schema.isSchema(schema) ? toJsonSchema(schema) : schema
+  return Schema.isSchema(schema) ? toJsonSchema(schema, true) : schema
 }
 
 const outputJsonSchema = (schema: Tool.ValueSchema<any>): JsonSchema.JsonSchema => {
@@ -194,7 +194,14 @@ const standardJsonSchema = (schema: StandardSchemaV1<any, any>, io: "input" | "o
   throw new Error(`Schema vendor "${schema["~standard"].vendor}" does not support JSON Schema conversion`)
 }
 
-const toJsonSchema = (schema: Schema.Top): JsonSchema.JsonSchema => {
+const effectJsonSchemas = new WeakMap<object, JsonSchema.JsonSchema>()
+const effectInputJsonSchemas = new WeakMap<object, JsonSchema.JsonSchema>()
+
+const toJsonSchema = (schema: Schema.Top, input = false): JsonSchema.JsonSchema => {
+  // Input schemas state a stricter contract than output schemas: see `refuseOptionalNulls`.
+  const cache = input ? effectInputJsonSchemas : effectJsonSchemas
+  const cached = cache.get(schema)
+  if (cached) return structuredClone(cached)
   const document = Schema.toJsonSchemaDocument(schema)
   // Effect emits valid JSON Schema that some inference providers handle poorly. Simplify it
   // without changing validation: `{ type: "integer", allOf: [{ minimum: 0 }] }` becomes
@@ -207,7 +214,61 @@ const toJsonSchema = (schema: Schema.Top): JsonSchema.JsonSchema => {
       ? document.schema
       : { ...document.schema, $defs: document.definitions },
   )
-  return dropDefinitionsIfResolved(inlineLocalReferences(normalized)) as JsonSchema.JsonSchema
+  const inlined = dropDefinitionsIfResolved(inlineLocalReferences(normalized)) as JsonSchema.JsonSchema
+  const result = input ? refuseOptionalNulls(inlined) : inlined
+  cache.set(schema, result)
+  return structuredClone(result)
+}
+
+const carriesNull = (schema: unknown): boolean => {
+  if (!isRecord(schema)) return false
+  if (schema.type === "null") return true
+  if (Array.isArray(schema.type) && schema.type.includes("null")) return true
+  for (const keyword of ["anyOf", "oneOf"] as const) {
+    const branches = schema[keyword]
+    if (Array.isArray(branches) && branches.some(carriesNull)) return true
+  }
+  return false
+}
+
+/**
+ * Effect emits `anyOf: [T, { type: "null" }]` for an optional property but its decoder rejects
+ * null: only an absent key is optional. A provider reads that branch as permission to send
+ * `{"id":null}` and every such call is refused for a reason the schema itself invited. Tool inputs
+ * therefore state the decoder's contract: for a property the object does not require, drop the null
+ * branch that optionality added. A genuinely nullable value keeps null, because it is either
+ * required or its own schema still carries null without that branch.
+ */
+const refuseOptionalNulls = (value: unknown): JsonSchema.JsonSchema => {
+  if (Array.isArray(value)) return value.map(refuseOptionalNulls) as unknown as JsonSchema.JsonSchema
+  if (!isRecord(value)) return value as JsonSchema.JsonSchema
+  const schema = Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [key, refuseOptionalNulls(item)]),
+  ) as Record<string, unknown>
+  if (schema.type !== "object" || !isRecord(schema.properties)) return schema as JsonSchema.JsonSchema
+  const required = Array.isArray(schema.required) ? schema.required.map(String) : []
+  const properties = Object.fromEntries(
+    Object.entries(schema.properties).map(([name, property]) => {
+      if (required.includes(name) || !isRecord(property)) return [name, property]
+      const branches = Array.isArray(property.anyOf) ? property.anyOf : undefined
+      if (!branches) return [name, property]
+      const kept = branches.filter((branch) => !(isRecord(branch) && branch.type === "null"))
+      if (kept.length === branches.length || !kept.length) return [name, property]
+      const { anyOf: _anyOf, ...rest } = property
+      // One surviving branch is the whole field: `anyOf: [X, { type: "null" }]` reads as X. An
+      // optional nullable value wraps its own nullable schema, so unwrapping leaves that null intact.
+      const single = kept.length === 1 && isRecord(kept[0]) ? kept[0] : undefined
+      if (single) {
+        if (carriesNull(single)) return [name, { ...single, ...rest }]
+        // `{ description: "..." }` beside the branch is documentation, not a constraint.
+        const described = Object.keys(rest).every((key) => key === "description" || key === "title")
+        return [name, described ? { ...single, ...rest } : { ...rest, anyOf: kept }]
+      }
+      // Several branches remain: keep them, since another branch may accept null on its own.
+      return [name, { ...rest, anyOf: kept }]
+    }),
+  )
+  return { ...schema, properties } as JsonSchema.JsonSchema
 }
 
 const flattenAllOf = (value: unknown): unknown => {

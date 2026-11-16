@@ -398,6 +398,32 @@ export const Update = Schema.Struct({
 }).annotate({ identifier: "Design.Update" })
 export interface Update extends Schema.Schema.Type<typeof Update> {}
 
+/**
+ * A create may carry the material an update records, so one call can define the design and its
+ * brief, decisions, scenarios, targets, controls and presets together instead of needing a second
+ * update that the provider would be right to attempt and the tool would then refuse.
+ */
+export const CreateWithMaterial = Schema.Struct({
+  ...Create.fields,
+  /**
+   * A fresh design has no feedback round, so these are accepted only as the empty arrays a provider
+   * naturally includes; a non-empty value is refused with a message instead of an excess-property
+   * error, which is what the agent used to get for sending `notes: []`.
+   */
+  notes: Update.fields.notes,
+  addressed: Update.fields.addressed,
+  controls: Update.fields.controls,
+  presets: Update.fields.presets,
+  brief: Update.fields.brief,
+  decisions: Update.fields.decisions,
+  questions: Update.fields.questions,
+  scenarios: Update.fields.scenarios,
+  targets: Update.fields.targets,
+  entry: Update.fields.entry,
+  tweaks: Update.fields.tweaks,
+}).annotate({ identifier: "Design.CreateWithMaterial" })
+export interface CreateWithMaterial extends Schema.Schema.Type<typeof CreateWithMaterial> {}
+
 export const Info = Schema.Struct({
   collaboration: Schema.optional(Collaboration),
   controls: Schema.Array(ParamComponent).check(Schema.isMaxLength(32)).pipe(optional),

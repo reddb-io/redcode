@@ -1031,10 +1031,20 @@ function firstPositive(values: ReadonlyArray<number | null | undefined>) {
   return value === undefined ? undefined : Math.floor(value)
 }
 
-function catalogNames(catalog: readonly ModelsDev.Snapshot[]) {
-  return {
+const namesBySnapshot = new WeakMap<readonly ModelsDev.Snapshot[], {
+  readonly providers: ReadonlyMap<string, string>
+  readonly models: ReadonlyMap<string, string>
+  readonly limits: ReturnType<typeof catalogLimits>
+}>()
+
+export function catalogNames(catalog: readonly ModelsDev.Snapshot[]) {
+  const cached = namesBySnapshot.get(catalog)
+  if (cached) return cached
+  const names = {
     providers: new Map(catalog.map((item) => [String(item.info.id), item.info.name])),
     models: new Map(catalog.flatMap((item) => item.models.map((model) => [`${item.info.id}/${model.id}`, model.name]))),
     limits: catalogLimits(catalog),
   }
+  namesBySnapshot.set(catalog, names)
+  return names
 }

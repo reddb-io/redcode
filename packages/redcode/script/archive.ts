@@ -28,7 +28,7 @@ if (!(await Bun.file(whiteboard).exists())) throw new Error(`Missing whiteboard 
 // Reject incomplete inputs before writing any release files.
 const apps = new Set<string>()
 for (const item of cli) {
-  for (const name of RedcodePackages.binaries(item)) {
+  for (const name of [...RedcodePackages.binaries(item), ...RedcodePackages.nativeSearchFiles(item)]) {
     const file = path.join(item.dir, "bin", name)
     if (!(await Bun.file(file).exists())) throw new Error(`Missing release binary: ${file}`)
   }
@@ -45,7 +45,8 @@ const archives = await Promise.all(
   cli.flatMap((item) =>
     ["full", "server"].map(async (profile) => {
       const bin = path.join(item.dir, "bin")
-      const names = RedcodePackages.binaries(item)
+      const binaries = RedcodePackages.binaries(item)
+      const names = [...binaries, ...RedcodePackages.nativeSearchFiles(item)]
       const windows = item.target.startsWith("windows-")
       const archive = `redcode-${profile === "server" ? "server-" : ""}${item.target}.${windows ? "zip" : "tar.gz"}`
       await rm(path.join(output, archive), { force: true })
@@ -57,7 +58,7 @@ const archives = await Promise.all(
         // Reflink where supported, copy otherwise. Keep input binaries untouched and symlinks relative.
         for (const name of names) {
           await copyFile(path.join(bin, name), path.join(stage, name), constants.COPYFILE_FICLONE)
-          if (!windows) await chmod(path.join(stage, name), 0o755)
+          if (!windows && binaries.includes(name)) await chmod(path.join(stage, name), 0o755)
         }
         if (desktop)
           await cp(path.join(desktops, desktop), path.join(stage, "desktop"), {

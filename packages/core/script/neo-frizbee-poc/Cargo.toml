@@ -1,0 +1,13 @@
+[package]
+name = "redcode-neo-frizbee-probe"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+neo_frizbee = "=0.11.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"

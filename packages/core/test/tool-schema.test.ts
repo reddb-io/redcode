@@ -106,6 +106,75 @@ test("Effect tool schemas resolve escaped definition names", () => {
   expect(JSON.stringify(definition(tool).inputSchema)).not.toContain("$defs")
 })
 
+test("input schemas never advertise null for a property the decoder treats as merely optional", () => {
+  // Effect emits `anyOf: [T, { type: "null" }]` for `Schema.optional(T)` but its decoder rejects
+  // null. A provider that follows the advertised branch sends `{"id":null}` and every call is
+  // refused for a reason the schema invited, which is how Design lost its cycle.
+  const tool: Info = {
+    name: "optional-nulls",
+    description: "Optional nulls",
+    input: Schema.Struct({
+      id: Schema.optional(Schema.String),
+      described: Schema.optional(Schema.String.annotate({ description: "Helpful" })),
+      required: Schema.String,
+      nullable: Schema.NullOr(Schema.String),
+      optionalNullable: Schema.optional(Schema.NullOr(Schema.String)),
+      nested: Schema.optional(
+        Schema.Struct({ inner: Schema.optional(Schema.Int), keeps: Schema.NullOr(Schema.Int) }),
+      ),
+    }),
+    execute: () => Effect.succeed({ content: "unused" }),
+  }
+  const schema = definition(tool).inputSchema as {
+    properties: Record<string, any>
+    required: string[]
+  }
+  // An optional null is never advertised, at the root or inside a nested object.
+  expect(schema.properties.id).toEqual({ type: "string" })
+  expect(schema.properties.described).toEqual({ type: "string", description: "Helpful" })
+  expect(schema.properties.optionalNullable).toEqual({ anyOf: [{ type: "string" }, { type: "null" }] })
+  expect(schema.properties.nested.properties.inner).toEqual({ type: "integer" })
+  // A value that is genuinely nullable keeps it, required or not.
+  expect(schema.properties.required).toEqual({ type: "string" })
+  expect(schema.properties.nullable).toEqual({ anyOf: [{ type: "string" }, { type: "null" }] })
+  expect(schema.properties.nested.properties.keeps).toEqual({ anyOf: [{ type: "integer" }, { type: "null" }] })
+  expect(JSON.stringify(schema.properties.id)).not.toContain("null")
+})
+
+test("optional keys stay unrequired while their null branch goes", () => {
+  const tool: Info = {
+    name: "optional-required",
+    description: "Optional required",
+    input: Schema.Struct({
+      optional: Schema.optional(Schema.String),
+      required: Schema.String,
+    }),
+    execute: () => Effect.succeed({ content: "unused" }),
+  }
+  const schema = definition(tool).inputSchema as { required: string[] }
+  expect(schema.required).toEqual(["required"])
+})
+
+test("cached Effect schemas return independent definitions", () => {
+  const input = Schema.Struct({ nested: Schema.Struct({ value: Schema.String }) })
+  const tool: Info = {
+    name: "independent",
+    description: "Independent definitions",
+    input,
+    output: input,
+    execute: () => Effect.succeed({ output: { nested: { value: "ok" } } }),
+  }
+  const first = definition(tool)
+  const second = definition(tool)
+  expect(first.inputSchema).toEqual(second.inputSchema)
+  expect(first.outputSchema).toEqual(second.outputSchema)
+  const mutated = first.inputSchema as { properties: { nested: { properties: { value: { type: string } } } } }
+  mutated.properties.nested.properties.value.type = "number"
+  expect(JSON.stringify(second.inputSchema)).toContain('"type":"string"')
+  expect(JSON.stringify(first.outputSchema)).toContain('"type":"string"')
+  expect(JSON.stringify(definition(tool).inputSchema)).toContain('"type":"string"')
+})
+
 test("portable schemas validate and describe typed tools", async () => {
   const input = {
     "~standard": {

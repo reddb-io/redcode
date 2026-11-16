@@ -9,6 +9,7 @@ import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
 import { FileSystem } from "@opencode/core/filesystem"
 import { Protected } from "@opencode/core/filesystem/protected"
 import { FileSystemSearch } from "@opencode/core/filesystem/search"
+import * as NativePathSearch from "#path-search-native"
 import { Location } from "@opencode/core/location"
 import { Ripgrep } from "@opencode/core/ripgrep"
 import { AbsolutePath, RelativePath } from "@opencode/core/schema"
@@ -16,6 +17,23 @@ import { Workspace } from "@opencode/core/workspace"
 import { location } from "../fixture/location"
 import { tmpdir } from "../fixture/tmpdir"
 import { it } from "../lib/effect"
+
+interface Contract {
+  files: string[]
+  cases: Array<{
+    id: string
+    query: string
+    type: "file" | "directory" | "mixed"
+    limit: number
+    exactCount?: number
+    first?: string
+    required?: string[]
+  }>
+}
+
+const contract = (await Bun.file(
+  new URL("../fixture/filesystem-search-contract.json", import.meta.url),
+).json()) as Contract
 
 const ripgrepStub = (entry: string, onFind: (input: Ripgrep.FindInput) => void) =>
   Layer.succeed(
@@ -34,6 +52,106 @@ const ripgrepStub = (entry: string, onFind: (input: Ripgrep.FindInput) => void) 
   )
 
 describe("FileSystemSearch", () => {
+  it.effect("uses the existing search by default without loading the native library", () =>
+    Effect.gen(function* () {
+      const load = spyOn(NativePathSearch, "tryNucleoAsyncRuntime")
+      try {
+        const layer = AppNodeBuilder.build(FileSystemSearch.configured({
+          fff: false,
+          native: { library: path.join(os.tmpdir(), "redcode-missing-path-search", "absent-library") },
+        }), [
+          Location.node.replace(Layer.succeed(Location.Service, Location.Service.of(
+            location({ directory: AbsolutePath.make(path.join(os.tmpdir(), "redcode-search-default")) }),
+          ))),
+          Ripgrep.node.replace(ripgrepStub("legacy.ts", () => {})),
+        ])
+        const entries = yield* Effect.gen(function* () {
+          const search = yield* FileSystemSearch.Service
+          return yield* search.find({ query: "legacy" })
+        }).pipe(Effect.provide(layer))
+        expect(entries.map((entry) => entry.path)).toContain(RelativePath.make("legacy.ts"))
+        expect(load).not.toHaveBeenCalled()
+      } finally {
+        load.mockRestore()
+      }
+    }),
+  )
+
+  it.effect("fails visibly in explicit Rust mode when the library is missing", () =>
+    Effect.gen(function* () {
+      let scans = 0
+      const layer = AppNodeBuilder.build(FileSystemSearch.configured({
+        fff: false,
+        native: { mode: "rust", library: path.join(os.tmpdir(), "redcode-missing-path-search", "absent-library") },
+      }), [
+        Location.node.replace(Layer.succeed(Location.Service, Location.Service.of(
+          location({ directory: AbsolutePath.make(path.join(os.tmpdir(), "redcode-search-strict")) }),
+        ))),
+        Ripgrep.node.replace(ripgrepStub("legacy.ts", () => scans++)),
+      ])
+      const result = yield* Effect.exit(Effect.gen(function* () {
+        const search = yield* FileSystemSearch.Service
+        return yield* search.find({ query: "legacy" })
+      }).pipe(Effect.provide(layer)))
+      expect(result._tag).toBe("Failure")
+      expect(scans).toBe(0)
+    }),
+  )
+
+  it.effect("preserves the implementation-independent filename search contract", () =>
+    Effect.gen(function* () {
+      const layer = AppNodeBuilder.build(FileSystemSearch.configured({ fff: false }), [
+        Location.node.replace(
+          Layer.succeed(
+            Location.Service,
+            Location.Service.of(
+              location({ directory: AbsolutePath.make(path.join(os.tmpdir(), "opencode-search-contract")) }),
+            ),
+          ),
+        ),
+        Ripgrep.node.replace(
+          Layer.succeed(
+            Ripgrep.Service,
+            Ripgrep.Service.of({
+              find: (input) =>
+                Effect.gen(function* () {
+                  const entries = contract.files.map((file) =>
+                    FileSystem.Entry.make({ path: RelativePath.make(file), type: "file" }),
+                  )
+                  if (input.onEntry) yield* Effect.forEach(entries, input.onEntry, { discard: true })
+                  return entries
+                }),
+              glob: () => Effect.succeed([]),
+              grep: () => Effect.succeed([]),
+            }),
+          ),
+        ),
+      ])
+
+      yield* Effect.gen(function* () {
+        const search = yield* FileSystemSearch.Service
+        for (const test of contract.cases) {
+          const entries = yield* search.find({
+            query: test.query,
+            type: test.type === "mixed" ? undefined : test.type,
+            limit: test.limit,
+          })
+          const paths = entries.map((entry) => entry.path.replaceAll("\\", "/"))
+          expect(paths.length, test.id).toBeLessThanOrEqual(test.limit)
+          expect(new Set(paths).size, test.id).toBe(paths.length)
+          if (test.type !== "mixed")
+            expect(
+              entries.every((entry) => entry.type === test.type),
+              test.id,
+            ).toBe(true)
+          if (test.exactCount !== undefined) expect(paths.length, test.id).toBe(test.exactCount)
+          if (test.first !== undefined) expect(paths[0], test.id).toBe(test.first)
+          for (const required of test.required ?? []) expect(paths, test.id).toContain(required)
+        }
+      }).pipe(Effect.provide(layer))
+    }),
+  )
+
   it.live("honors wildcard directory rules from .gitignore", () =>
     Effect.gen(function* () {
       const directory = (yield* Effect.acquireDisposable(Effect.promise(() => tmpdir("opencode-fff-ignore-")))).path

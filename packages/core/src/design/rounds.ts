@@ -610,15 +610,16 @@ export function continuation(document: Rounds & Pick<Design.Info, "id" | "revisi
 
 /** The first missing step of a round, in the order the round is worked through. */
 function step(
-  document: Rounds & Pick<Design.Info, "revision">,
+  document: Rounds & Pick<Design.Info, "id" | "revision">,
   last: Design.Round,
   pending: ReadonlyArray<Design.Note>,
   jobs: ReadonlyArray<Design.Job>,
 ) {
   const left = unaddressed(document).length
   if (left)
-    return `fix the ${left === 1 ? "note" : `${left} notes`} of round ${last.number} without a mark below and mark each with design_document update {"addressed":[{"feedback":"<feedback>","index":<n>,"summary":"<what you changed>"}]}. ${ESCAPE}`
-  if (!last.published) return `publish one revision with design_preview; it answers round ${last.number}.`
+    return `fix the ${left === 1 ? "note" : `${left} notes`} of round ${last.number} without a mark below and mark each with design_document {"action":"update","id":"${document.id}","input":{"addressed":[{"feedback":"<feedback>","index":<n>,"summary":"<what you changed>"}]}}. ${ESCAPE}`
+  if (!last.published)
+    return `publish one revision with design_preview {"id":"${document.id}"}; it answers round ${last.number} and never imports this workspace as another design.`
   const unverified = [...new Set(pending.map((note) => note.round))]
     .toSorted((a, b) => a - b)
     .filter(
@@ -634,7 +635,7 @@ function step(
   if (unverified.length)
     return `run one verify of the current revision per round: ${unverified.map((round) => `design_export {"revision":"${document.revision}","format":"verify","round":${round}}`).join(", ")}, then wait for its native monitor.`
   const failing = pending.filter((note) => failedVerify(document, note, jobs))
-  return `record every note's outcome in ONE design_document update notes, citing the round's verify job: resolved needs the element found without blocking findings; partial, unresolved and accepted need a reason.${failing.length ? ` A verify failed for ${failing.map((note) => `${note.feedback} #${note.index}`).join(", ")}: record partial with a reason saying what still differs, or unresolved or accepted with a reason.` : ""}`
+  return `record every note's outcome in ONE design_document {"action":"update","id":"${document.id}","input":{"notes":[{"feedback":"<feedback>","index":<n>,"status":"resolved","evidence":{"job":"<verify job>"}}]}}, citing the round's verify job: resolved needs the element found without blocking findings; partial, unresolved and accepted need a reason.${failing.length ? ` A verify failed for ${failing.map((note) => `${note.feedback} #${note.index}`).join(", ")}: record partial with a reason saying what still differs, or unresolved or accepted with a reason.` : ""}`
 }
 
 /** The verify jobs of a design, newest first, as a refusal or report names them. */

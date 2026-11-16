@@ -79,7 +79,7 @@ describe("SessionTodo", () => {
     expect(reminder).toContain("do not edit, republish, export, audit, approve or start another correction cycle")
     expect(reminder).toContain("Keep partial, unresolved, unverified and user-approval tasks open")
     expect(reminder).toContain("Design tasks track setup work, the approval request and anti-slop findings.")
-    expect(reminder).toContain("Review notes are not tasks")
+    expect(reminder).toContain("Review notes also have tasks linked by their feedback message and note index")
     expect(reminder).toContain("A design_preview publish alone proves no note outcome")
   })
 

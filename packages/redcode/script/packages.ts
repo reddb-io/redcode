@@ -84,9 +84,14 @@ export function binaries(item: Pick<Package, "kind" | "target">) {
   return kinds.find((kind) => kind.kind === item.kind)!.binaries.map((name) => `${name}${extension}`)
 }
 
+export function nativeSearchFiles(item: Pick<Package, "kind" | "target">) {
+  const library = item.target.startsWith("windows-") ? "redcode_path_search.dll" : item.target.startsWith("darwin-") ? "libredcode_path_search.dylib" : "libredcode_path_search.so"
+  return [library, "LICENSE.nucleo-matcher.txt", "THIRD_PARTY_NOTICES.txt"]
+}
+
 /** The files a package must carry, relative to its folder. */
 export function files(item: Pick<Package, "kind" | "target">) {
-  return binaries(item).map((name) => `bin/${name}`)
+  return [...binaries(item), ...nativeSearchFiles(item)].map((name) => `bin/${name}`)
 }
 
 /** npm installs the compatible baseline once; optimized archives remain available separately. */

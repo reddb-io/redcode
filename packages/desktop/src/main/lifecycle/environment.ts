@@ -60,7 +60,7 @@ export const prepareDesktop = Effect.gen(function* () {
   const paths = yield* DesktopPaths.resolve
 
   // The launcher a packaged app registers is what setAsDefaultProtocolClient names on Linux, so it comes first.
-  if (app.isPackaged)
+  if (app.isPackaged && process.env.REDCODE_DESKTOP_DISABLE_PROTOCOL_REGISTRATION !== "1")
     yield* ShellIntegration.register({
       app,
       shell,
@@ -69,7 +69,7 @@ export const prepareDesktop = Effect.gen(function* () {
       name: APP_NAME,
       scheme: DEEP_LINK_SCHEME,
     })
-  if (app.isPackaged || process.env.REDCODE_DESKTOP_DISABLE_PROTOCOL_REGISTRATION !== "1")
+  if (process.env.REDCODE_DESKTOP_DISABLE_PROTOCOL_REGISTRATION !== "1")
     app.setAsDefaultProtocolClient(DEEP_LINK_SCHEME)
   const runFork = Effect.runForkWith(yield* Effect.context())
   setProtocolReporter((level, message, data) =>

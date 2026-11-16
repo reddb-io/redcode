@@ -1,7 +1,9 @@
 import { createMemo, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { Button } from "@opencode/ui/button"
+import { Icon } from "@opencode/ui/icon"
 import { Tabs } from "@opencode/ui/tabs"
+import { Tooltip } from "@opencode/ui/tooltip"
 import { useExtension, type MountedSession } from "../sdk"
 import type definition from "./index"
 import Components from "./components"
@@ -38,20 +40,30 @@ function Workspace(props: { session: MountedSession; visible: boolean }) {
       variant="pill"
       class="flex size-full min-h-0 flex-col"
     >
-      <div class="flex flex-wrap items-center justify-between gap-2 border-b border-elevation-base-border px-3 py-2">
-        <Tabs.List aria-label={ctx.t("studio.tabs")} class="flex min-w-0 gap-1">
-          <Tabs.Trigger value="visual">{ctx.t("studio.visual")}</Tabs.Trigger>
-          <Tabs.Trigger value="server">{ctx.t("studio.plugins")}</Tabs.Trigger>
+      <div class="flex h-9 shrink-0 items-center gap-2 border-b border-elevation-base-border px-2">
+        <Tabs.List
+          aria-label={ctx.t("studio.tabs")}
+          class="min-w-0 flex-1"
+          style={{ width: "auto", padding: "0", height: "28px" }}
+        >
+          <Tabs.Trigger value="visual" aria-label={ctx.t("studio.visual")}>
+            {ctx.t("studio.visual.short")}
+          </Tabs.Trigger>
+          <Tabs.Trigger value="server" aria-label={ctx.t("studio.plugins")}>
+            {ctx.t("studio.plugins.short")}
+          </Tabs.Trigger>
         </Tabs.List>
-        <Button variant="outline" onClick={create}>
-          {ctx.t("create.title")}
+        <Show when={state.notice}>
+          <Tooltip value={state.notice}>
+            <span role="status" aria-label={state.notice} tabIndex={0} class="shrink-0 text-ink-muted">
+              <Icon name="info" size="small" />
+            </span>
+          </Tooltip>
+        </Show>
+        <Button size="small" variant="outline" icon="plus" aria-label={ctx.t("create.title")} onClick={create}>
+          {ctx.t("studio.create")}
         </Button>
       </div>
-      <Show when={state.notice}>
-        <p role="status" class="border-b border-elevation-base-border px-3 py-2 text-12-regular text-ink-muted">
-          {state.notice}
-        </p>
-      </Show>
       <Tabs.Content value="visual" class="flex min-h-0 flex-1 flex-col overflow-auto">
         <Components
           server={props.session.server}

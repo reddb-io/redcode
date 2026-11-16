@@ -57,10 +57,12 @@ export const Input = Schema.Struct({
 }).pipe(
   Schema.decodeTo(
     Schema.Union([
-      Schema.Struct({ action: Schema.Literal("list") }),
+      Schema.Struct({
+        action: Schema.Literal("list"),
+      }),
       Schema.Struct({
         action: Schema.Literal("create"),
-        input: Design.Create,
+        input: Design.CreateWithMaterial,
         system: Schema.optional(DesignIdentify.Answer),
       }),
       Schema.Struct({ action: Schema.Literal("update"), id: Design.ID, input: AgentUpdate }),

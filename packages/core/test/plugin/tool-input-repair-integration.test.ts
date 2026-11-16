@@ -39,13 +39,24 @@ it.effect("repairs tool input before validating its original schema", () =>
       },
     ])
     const snapshot = yield* registry.snapshot()
-    yield* snapshot.execute({
+    const invalid = yield* snapshot.execute({
       ...identity,
       call: {
         type: "tool-call",
         id: "call-repair",
         name: "repairable",
         input: '{"count":"2","enabled":"true","extra":true}',
+      },
+    }).pipe(Effect.flip)
+    expect(invalid.message).toContain("extra")
+    expect(executed).toEqual([])
+    yield* snapshot.execute({
+      ...identity,
+      call: {
+        type: "tool-call",
+        id: "call-repair-valid",
+        name: "repairable",
+        input: '{"count":"2","enabled":"true"}',
       },
     })
     expect(executed).toEqual([{ count: 2, enabled: true }])
@@ -80,6 +91,39 @@ it.effect("repairs tool input before validating its original schema", () =>
         })
         .pipe(Effect.flip)).message,
     ).toBe('No tool named "repairable" is currently available. Please use a tool from the available tool list.')
+  }),
+)
+
+it.effect("a null sent for a merely optional field is dropped instead of refusing the call", () =>
+  Effect.gen(function* () {
+    const plugins = yield* Plugin.Service
+    const registry = yield* Tool.Service
+    const executed: unknown[] = []
+    yield* plugins.activate([
+      { ...ToolInputRepairPlugin.Plugin, revision: "1" },
+      {
+        id: "optional-null-tool",
+        revision: "1",
+        effect: (ctx) =>
+          ctx.tool.transform((draft) =>
+            draft.add({
+              name: "optional-null",
+              options: { codemode: false },
+              description: "Optional null",
+              // The exact shape a Design publish has: an optional id and an optional name beside it.
+              input: Schema.Struct({ id: Schema.optional(Schema.String), name: Schema.optional(Schema.String) }),
+              execute: (input) => Effect.sync(() => executed.push(input)).pipe(Effect.as({ content: "ok" })),
+            }),
+          ),
+      },
+    ])
+    const snapshot = yield* registry.snapshot()
+    yield* snapshot.execute({
+      ...identity,
+      call: { type: "tool-call", id: "call-optional-null", name: "optional-null", input: { id: null, name: null } },
+    })
+    // Both placeholders are gone rather than handed to the decoder that rejects null.
+    expect(executed).toEqual([{}])
   }),
 )
 

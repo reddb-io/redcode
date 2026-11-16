@@ -56,6 +56,8 @@ async function fixture() {
         path.join(dist, `redcode-${item.target}`, "bin", `redcode-rpc-sidecar${extension}`),
         `sidecar ${item.target}`,
       )
+      for (const name of RedcodePackages.nativeSearchFiles({ kind: "cli", target: item.target }))
+        await Bun.write(path.join(dist, `redcode-${item.target}`, "bin", name), `native ${name}`)
     }),
   )
   await Promise.all(
@@ -147,6 +149,9 @@ test("classifies native packages and leaves out the meta package", async () => {
   expect(RedcodePackages.files({ kind: "cli", target: "linux-x64" })).toEqual([
     "bin/redcode",
     "bin/redcode-rpc-sidecar",
+    "bin/libredcode_path_search.so",
+    "bin/LICENSE.nucleo-matcher.txt",
+    "bin/THIRD_PARTY_NOTICES.txt",
   ])
   await expect(RedcodePackages.list(input.dist, "0.0.1")).rejects.toThrow("Unexpected platform package")
 })
@@ -254,12 +259,13 @@ test("full archives include Desktop while server archives keep only Redcode and 
     expect(await entries(release, archive)).toEqual(
       [
         ...(windows ? ["redcode-rpc-sidecar.exe", "redcode.exe"] : ["redcode", "redcode-rpc-sidecar"]),
+        ...RedcodePackages.nativeSearchFiles({ kind: "cli", target: item.target }),
         ...(item.desktop ? desktopEntries(item.desktop, "desktop/") : []),
       ].toSorted(),
     )
     const server = `redcode-server-${item.target}.${windows ? "zip" : "tar.gz"}`
     expect(await entries(release, server)).toEqual(
-      (windows ? ["redcode-rpc-sidecar.exe", "redcode.exe"] : ["redcode", "redcode-rpc-sidecar"]).toSorted(),
+      [...(windows ? ["redcode-rpc-sidecar.exe", "redcode.exe"] : ["redcode", "redcode-rpc-sidecar"]), ...RedcodePackages.nativeSearchFiles({ kind: "cli", target: item.target })].toSorted(),
     )
     if (windows) {
       const reader = new ZipReader(new BlobReader(Bun.file(path.join(release, archive))))

@@ -29,7 +29,7 @@ export const Input = Schema.Struct({
 }).pipe(
   Schema.decodeTo(
     Schema.Union([
-      Schema.Struct({ id: Design.ID, name: Schema.String }),
+      Schema.Struct({ id: Design.ID, name: Schema.optional(Schema.String) }),
       Schema.Struct({
         path: Schema.String,
         name: Schema.optional(Schema.String),
@@ -128,7 +128,7 @@ export const Plugin = {
           name,
           options: { codemode: false },
           description:
-            "Publish an immutable, reviewable Design revision after coherent edits. Use id and name for a current Design. For a pre-0.22 prototype, supply path to its directory instead; name and reopen are optional. Reuse the resulting Design ID for later revisions. Publishing answers the open feedback round, so it is refused while a note of that round has neither an addressed mark nor an outcome (design_document update addressed or notes); the refusal lists those notes.",
+            'Publish an immutable, reviewable Design revision after coherent edits. For a current Design use {"id":"<design ID>"}; name is optional and defaults to its current name. A path matching an existing Design workspace reuses that Design and its feedback. Only a pre-0.22 prototype without a current Design is imported; name and reopen are optional. Reuse the resulting Design ID for later revisions. Publishing answers the open feedback round, so it is refused while a note of that round has neither an addressed mark nor an outcome (design_document update addressed or notes); the refusal lists those notes.',
           input: Input,
           output: Schema.Union([Design.Revision, Schema.String]),
           execute: (input, context) =>
@@ -151,13 +151,20 @@ export const Plugin = {
                   source: source(context),
                 })
               const configured = yield* designs.configured(context.sessionID)
+              const existing =
+                "path" in input
+                  ? (yield* designs.list(context.sessionID)).find(
+                      (document) => path.relative(document.root, path.resolve(location.directory, input.path)) === "",
+                    )
+                  : undefined
+              const importing = "path" in input && !existing
               const app =
-                "path" in input && DesignAppMode.process(configured)
+                importing && DesignAppMode.process(configured)
                   ? yield* Effect.tryPromise(() => apps.connect())
                   : undefined
               const document =
                 "path" in input
-                  ? yield* DesignLegacy.importPrototype({
+                  ? existing ?? (yield* DesignLegacy.importPrototype({
                       sessionID: context.sessionID,
                       directory: location.directory,
                       path: input.path,
@@ -172,7 +179,7 @@ export const Plugin = {
                         const { DesignVendor } = await import("../../design/vendor.js")
                         return DesignVendor.FILES[asset].body
                       },
-                    }).pipe(Effect.provideService(DesignStore.Service, designs))
+                    }).pipe(Effect.provideService(DesignStore.Service, designs)))
                   : yield* designs.get(context.sessionID, input.id)
               const assigned = DesignCollaboration.author(document, context.agent)
               if (assigned) return yield* new Design.Error({ code: "conflict", message: assigned })
@@ -190,7 +197,7 @@ export const Plugin = {
                 input.name ?? document.name,
                 read(context),
                 yield* tooling(document, context),
-                !("path" in input),
+                !importing,
               )
               // What every round still waits for, so the next step (verify, then record) is in this result.
               const recited = DesignRounds.recite(yield* designs.get(context.sessionID, document.id))

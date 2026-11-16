@@ -138,6 +138,14 @@ export const Plugin = {
                   source,
                 })
                 if (input.action === "create") {
+                  // A design that does not exist yet has no round to answer. An empty array is the
+                  // placeholder a provider includes; a real note or mark belongs to an update.
+                  if (input.input.notes?.length || input.input.addressed?.length)
+                    return yield* new Design.Error({
+                      code: "invalid",
+                      message:
+                        "A new design has no feedback round yet: create it first, then record notes and addressed marks with an update to the returned id.",
+                    })
                   const mode = IntelligenceEvaluation.mode(yield* intelligence.read(context.sessionID))
                   const memory = path.join(global.state, DesignTarget.STATE)
                   const forced = DesignTarget.forced()

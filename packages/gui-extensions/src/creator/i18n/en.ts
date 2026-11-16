@@ -2,6 +2,9 @@ export default {
   "studio.tabs": "Creator workspace",
   "studio.visual": "Visual components",
   "studio.plugins": "Server plugins",
+  "studio.visual.short": "Visual",
+  "studio.plugins.short": "Plugins",
+  "studio.create": "Create",
   "create.title": "Create with Creator",
   "create.description":
     "Describe an extension. Creator prepares and publishes it; you test and confirm installation here.",
@@ -105,6 +108,7 @@ export default {
   "toggle.label": "Enable {{name}}",
   component: "Component",
   revision: "Revision {{revision}} · version {{version}}",
+  version: "v{{version}}",
   update: "Update to latest published revision",
   "update.none": "This component already uses the latest published revision",
   remove: "Remove component",

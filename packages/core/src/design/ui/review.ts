@@ -58,6 +58,16 @@ export interface ReviewOptions {
 
 /** Shared native review surface. The standalone host serializes this self-contained function. */
 export function mountReview(host: HTMLElement, options: ReviewOptions) {
+  // This function is serialized into the review page, including on plain LAN HTTP.
+  const uuid = () => {
+    if (typeof crypto.randomUUID === "function") return crypto.randomUUID()
+    const bytes = crypto.getRandomValues(new Uint8Array(16))
+    bytes[6] = (bytes[6]! & 0x0f) | 0x40
+    bytes[8] = (bytes[8]! & 0x3f) | 0x80
+    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0"))
+      .join("")
+      .replace(/^(\w{8})(\w{4})(\w{4})(\w{4})(\w{12})$/, "$1-$2-$3-$4-$5")
+  }
   const copy = { ...options.copy }
   // The hints name the modifier the reader actually presses.
   const platformize = () => {
@@ -1120,7 +1130,7 @@ main{grid-template-rows:minmax(0,1fr)}main>#inspector{display:none}
       const current = await api<Design.Info>(`/${state.design!.id}`)
       if (current.revision !== state.revision) throw new Error(copy.paramLatest)
       const preset: Design.ParamPreset = {
-        id: `preset-${crypto.randomUUID()}`,
+        id: `preset-${uuid()}`,
         name,
         values: structuredClone(state.params),
         ...(state.variant ? { variant: state.variant } : {}),
@@ -3832,7 +3842,7 @@ main{grid-template-rows:minmax(0,1fr)}main>#inspector{display:none}
       })
       const revision = await api<Design.Revision>(`/${created.id}/revision`, "POST", { name: copy.create })
       await api(`/${created.id}/feedback`, "POST", {
-        id: `msg_${crypto.randomUUID()}`,
+        id: `msg_${uuid()}`,
         revision: revision.id,
         text: `${input("objective").value}\n${input("constraints").value}`,
         items: [],
@@ -4224,7 +4234,7 @@ main{grid-template-rows:minmax(0,1fr)}main>#inspector{display:none}
       scrollX: number
       scrollY: number
     }>((resolve, reject) => {
-      const request = crypto.randomUUID()
+      const request = uuid()
       const finish = (error?: Error, view?: Parameters<typeof resolve>[0]) => {
         clearTimeout(timer)
         window.removeEventListener("message", receive)
@@ -4345,7 +4355,7 @@ main{grid-template-rows:minmax(0,1fr)}main>#inspector{display:none}
     queueCard()
     if (!state.pending && !state.notes.length && !input("note").value.trim()) throw new Error(copy.feedbackRequired)
     state.pending ??= {
-      id: `msg_${crypto.randomUUID()}` as Design.Feedback["id"],
+      id: `msg_${uuid()}` as Design.Feedback["id"],
       revision: state.revision,
       params: paramContext(),
       text: input("note").value.trim(),
@@ -4422,7 +4432,7 @@ main{grid-template-rows:minmax(0,1fr)}main>#inspector{display:none}
     const variant = state.variants.find((variant) => variant.id === state.variant)
     if (!variant || (state.pending && !state.pending.review)) return
     state.pending ??= {
-      id: `msg_${crypto.randomUUID()}` as Design.Feedback["id"],
+      id: `msg_${uuid()}` as Design.Feedback["id"],
       revision: state.revision,
       review: variant,
       params: paramContext(),
@@ -4512,7 +4522,7 @@ main{grid-template-rows:minmax(0,1fr)}main>#inspector{display:none}
   input("variant-prompt").oninput = save
   const requestVariant = async (organize = false) => {
     state.variantPending ??= {
-      id: `msg_${crypto.randomUUID()}` as Design.Feedback["id"],
+      id: `msg_${uuid()}` as Design.Feedback["id"],
       revision: state.revision,
       text: organize
         ? "Separate the existing alternatives in this prototype into selectable variants. Preserve their appearance; wrap each entire alternative in a non-nested data-design-variant root with a unique stable ID and data-design-label. Publish a new revision on this same design."
@@ -4639,7 +4649,7 @@ main{grid-template-rows:minmax(0,1fr)}main>#inspector{display:none}
     )
       return
     const feedback = {
-      id: `msg_${crypto.randomUUID()}` as Design.Feedback["id"],
+      id: `msg_${uuid()}` as Design.Feedback["id"],
       revision: state.revision,
       text: "",
       items: [],
@@ -5006,7 +5016,7 @@ main{grid-template-rows:minmax(0,1fr)}main>#inspector{display:none}
   click("whiteboard", async () => {
     const response = await request(`${endpoint}/whiteboard`, { signal: controller.signal })
     if (!response.ok) throw new Error(copy.failure)
-    state.channel = crypto.randomUUID()
+    state.channel = uuid()
     element<HTMLDialogElement>("board-dialog").showModal()
     element<HTMLIFrameElement>("board-frame").srcdoc = await response.text()
   })

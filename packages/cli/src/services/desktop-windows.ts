@@ -47,6 +47,7 @@ export async function install(input: {
         path.join(path.dirname(input.cli), "redcode-rpc-sidecar.exe"),
         path.join(staged, "redcode-rpc-sidecar.exe"),
       )
+      await copyPathSearch(path.dirname(input.cli), staged)
       await Bun.write(
         path.join(staged, manifest),
         JSON.stringify({ id: identity, version: input.version, target: input.target }),
@@ -61,6 +62,9 @@ export async function install(input: {
   await Schema.decodeUnknownPromise(Ownership)(await Bun.file(path.join(destination, manifest)).text())
   if (!(await Bun.file(app).exists()) || !(await Bun.file(binary).exists()))
     throw new Error(`Redcode Desktop installation is incomplete: ${destination}`)
+  // Repair installations made by an older installer from the same release archive.
+  if (!(await Bun.file(path.join(destination, "redcode_path_search.dll")).exists()))
+    await copyPathSearch(path.dirname(input.cli), destination)
   await Bun.write(path.join(root, "uninstall.ps1"), "\ufeff" + uninstallScript)
   const config = Buffer.from(JSON.stringify({ root, app, version: input.version }), "utf8").toString("base64")
   await powershell(
@@ -71,6 +75,13 @@ export async function install(input: {
     located: { source: "archive", app, executable: app, root: path.dirname(app) } satisfies DesktopApp.Located,
     cli: binary,
   }
+}
+
+/** Releases predating native path search do not carry this optional payload. */
+export async function copyPathSearch(source: string, destination: string) {
+  if (!(await Bun.file(path.join(source, "redcode_path_search.dll")).exists())) return
+  for (const name of ["redcode_path_search.dll", "LICENSE.nucleo-matcher.txt", "THIRD_PARTY_NOTICES.txt"])
+    await cp(path.join(source, name), path.join(destination, name))
 }
 
 async function owned(root: string) {

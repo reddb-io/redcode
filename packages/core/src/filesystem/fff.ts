@@ -8,6 +8,7 @@ export interface Init {
 }
 
 export interface SearchOptions {
+  maxThreads?: number
   currentFile?: string
   pageIndex?: number
   pageSize?: number
@@ -44,6 +45,7 @@ export interface MixedSearch {
 
 export interface Picker {
   destroy(): void
+  waitForIndexReady(timeoutMs?: number): Promise<Result<boolean>>
   fileSearch(query: string, options?: SearchOptions): Result<Search>
   directorySearch(query: string, options?: SearchOptions): Result<DirSearch>
   mixedSearch(query: string, options?: SearchOptions): Result<MixedSearch>

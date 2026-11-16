@@ -325,7 +325,6 @@ export function configured(options?: Options) {
                           .get()
                           .pipe(Effect.orDie)
                         const latest = row?.seq ?? -1
-                        const encoded = Schema.encodeUnknownSync(definition.data)(event.data) as Record<string, unknown>
                         if (input?.strictOwner && row?.ownerID && row.ownerID !== input.ownerID) {
                           yield* Effect.die(
                             new InvalidDurableEventError({
@@ -336,6 +335,10 @@ export function configured(options?: Options) {
                         }
                         if (input && input.seq <= latest) {
                           if (!persist) return
+                          const encoded = Schema.encodeUnknownSync(definition.data)(event.data) as Record<
+                            string,
+                            unknown
+                          >
                           const stored = yield* db
                             .select()
                             .from(EventTable)
@@ -413,7 +416,11 @@ export function configured(options?: Options) {
                           })
                           .run()
                           .pipe(Effect.orDie)
-                        if (persist)
+                        if (persist) {
+                          const encoded = Schema.encodeUnknownSync(definition.data)(event.data) as Record<
+                            string,
+                            unknown
+                          >
                           yield* db
                             .insert(EventTable)
                             .values([
@@ -428,6 +435,7 @@ export function configured(options?: Options) {
                             ])
                             .run()
                             .pipe(Effect.orDie)
+                        }
                         return { aggregateID, seq, event: committed, route }
                       }),
                     { behavior: "immediate" },
@@ -596,10 +604,6 @@ export function configured(options?: Options) {
                           const ids = new Set<Event.ID>()
                           for (const [index, item] of payloads.entries()) {
                             const seq = firstSeq + index
-                            const encoded = Schema.encodeUnknownSync(item.definition.data)(item.event.data) as Record<
-                              string,
-                              unknown
-                            >
                             if (persist) {
                               if (ids.has(item.event.id))
                                 yield* Effect.die(
@@ -630,7 +634,11 @@ export function configured(options?: Options) {
                               yield* projector(event)
                             }
                             if (item.commit) yield* item.commit(seq)
-                            if (persist)
+                            if (persist) {
+                              const encoded = Schema.encodeUnknownSync(item.definition.data)(item.event.data) as Record<
+                                string,
+                                unknown
+                              >
                               rows.push({
                                 id: event.id,
                                 aggregate_id: aggregateID,
@@ -639,6 +647,7 @@ export function configured(options?: Options) {
                                 type: versionedType(item.definition.type, item.definition.durable.version),
                                 data: encoded,
                               })
+                            }
                           }
                           yield* db
                             .insert(EventSequenceTable)

@@ -42,7 +42,7 @@ export const Plugin = {
           name: "plan_exit",
           options: { codemode: false },
           description:
-            "Record the finished plan and request approval to execute it in Build. Supply the complete plan as content, or its path when it was written to a file. For implementation, supply tasks covering every deliverable and verification, each with key, a short title for the task list, content holding the full task, criterion and an exact quote from the plan; optional dependencies name prerequisite task keys in the same plan. A Plan-only goal records a ready revision and stays in Plan. System One review is advisory and visible with the approval question. The approved revision and tasks survive compaction.",
+            'Record the finished plan and request approval to execute it in Build. Supply the complete plan as content, or its path when it was written to a file, never both. For implementation, supply tasks covering every deliverable and verification, each with key, a short title for the task list, content holding the full task, criterion and a quote copied verbatim from that plan content; optional dependencies name prerequisite task keys in the same plan. A Plan-only goal records a ready revision and stays in Plan. System One review is advisory and visible with the approval question. The approved revision and tasks survive compaction. A refused task names the task and the field to fix.',
           input: Schema.Struct({
             content: Schema.optionalKey(Schema.String),
             path: Schema.optionalKey(Schema.String),

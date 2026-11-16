@@ -42,7 +42,7 @@
   }
 }
 
-/* Keep the composer and transcript in one lane beside the floating outputs card. */
+/* Keep the transcript clear of the floating outputs card; the composer fills its panel. */
 @container (min-width: 30rem) {
   [data-slot="session-chat-panel"]:has([data-component="session-outputs"]) .md\:max-w-session {
     --redcode-outputs-space: 11rem;

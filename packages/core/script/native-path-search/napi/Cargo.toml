@@ -1,0 +1,18 @@
+[package]
+name = "redcode-path-search-napi-poc"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+napi = { version = "=3.16.1", default-features = false, features = ["napi4", "dyn-symbols"] }
+napi-derive = "=3.7.0"
+redcode-path-search-poc = { path = ".." }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[build-dependencies]
+napi-build = "=2.6.0"

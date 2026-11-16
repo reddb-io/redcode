@@ -91,7 +91,8 @@ async function createRegistryFixture(directory: string) {
           ),
         })
       const tarball = tarballs.get(url.pathname.slice(1).replace(".tgz", ""))
-      return tarball ? new Response(tarball) : new Response("missing", { status: 404 })
+      // Bun's `bytes()` returns a view over an ArrayBufferLike; Response accepts an ArrayBuffer-backed view.
+      return tarball ? new Response(new Uint8Array(tarball)) : new Response("missing", { status: 404 })
     },
   })
   return {

@@ -1,0 +1,674 @@
+{
+  "createdAt": "2026-11-13T14:49:52.966Z",
+  "window": {
+    "since": "2026-10-30T14:26:44Z",
+    "until": "2026-11-13T14:26:44Z"
+  },
+  "repositories": [
+    {
+      "repo": "anomalyco/opencode",
+      "since": "2026-10-30T14:26:44Z",
+      "until": "2026-11-13T14:26:44Z",
+      "commits": {
+        "dev": {
+          "head": "ba77ff90d34efc0bc792169698c760dd892ad1e2",
+          "count": 944,
+          "oldest": "2026-10-30T14:39:04Z"
+        },
+        "v2": {
+          "head": "4617210822bdbb31e5749751afbfb4584ccedac8",
+          "count": 0
+        }
+      },
+      "pulls": 2418,
+      "merged": 931,
+      "issues": 2609,
+      "releases": 7,
+      "errors": [],
+      "mergedInitiallyCollected": 930,
+      "mergedUpdatedAfterCutoff": 1
+    },
+    {
+      "repo": "NousResearch/hermes-agent",
+      "since": "2026-10-30T14:26:44Z",
+      "until": "2026-11-13T14:26:44Z",
+      "commits": {
+        "main": {
+          "head": "5c1abd257d0cc1b531ffee6e50bef0621aa49dc4",
+          "count": 9999,
+          "oldest": "2026-10-30T14:46:50Z"
+        }
+      },
+      "pulls": 10767,
+      "merged": 2619,
+      "issues": 4600,
+      "releases": 5,
+      "errors": []
+    },
+    {
+      "repo": "deepseek-ai/deepseek-harness",
+      "since": "2026-10-30T14:26:44Z",
+      "until": "2026-11-13T14:26:44Z",
+      "commits": {
+        "master": {
+          "head": "39163dd30f703a79079e2d2446545cff3c453738",
+          "count": 1649,
+          "oldest": "2026-10-30T15:41:45Z"
+        }
+      },
+      "pulls": 0,
+      "merged": 0,
+      "issues": 0,
+      "releases": 4,
+      "errors": [
+        "Error: repos/deepseek-ai/deepseek-harness/pulls?per_page=100&page=1&state=all&sort=updated&direction=desc: gh: Not Found (HTTP 404)\n",
+        "Repository has_issues=false; public feedback is collected from Discussions separately."
+      ]
+    }
+  ],
+  "methodology": {
+    "inventory": "Metadados públicos, paginados, de commits na branch padrão, PRs/issues atualizados na janela, merges por merged_at, releases e avisos públicos. Uma passada extra inclui PRs mergeados na janela mas atualizados depois do horário de corte.",
+    "deepseek": "O repositório oficial não expõe issues/PRs públicos pela API; 2244 Discussions coletadas como relatos, sem tratar relatos como bugs confirmados.",
+    "selectedChangeSets": 48,
+    "review": "Foram baixados diffs de 21 PRs OpenCode, 12 PRs Hermes e 15 commits DeepSeek; leitura focada nos arquivos relevantes, sem alegar revisão linha a linha de todos os itens.",
+    "limitations": [
+      "PRs podem ter sido atualizados durante a coleta; é uma fotografia da API, não snapshot transacional.",
+      "Commits contam merges e contribuições de catálogo; volume não equivale a funcionalidades.",
+      "Patches omitidos/truncados pela API não permitem alegar revisão completa de commits grandes.",
+      "Nenhuma vulnerabilidade do Redcode ou causa integral do OOM é declarada apenas com base em relatos upstream.",
+      "Ganhos de benchmarks upstream não são ganhos medidos do Redcode.",
+      "Não houve nova implementação das oportunidades nesta etapa."
+    ]
+  },
+  "findings": [
+    {
+      "id": "stream-file-previews",
+      "priority": "P1",
+      "surface": [
+        "server",
+        "CLI"
+      ],
+      "title": "Leitura de arquivo com memória proporcional ao preview",
+      "status": "confirmed_gap",
+      "action": "Contar linhas em streaming, reter somente o prefixo necessário e a janela final; limitar inclusive linhas sem newline.",
+      "sources": [
+        "https://github.com/anomalyco/opencode/pull/63030"
+      ],
+      "localEvidence": [
+        "packages/core/src/tool/read-filesystem.ts: leaves acumula chunks antes de montar linhas"
+      ],
+      "validation": [
+        "Comparar RSS/heap em arquivo grande de linha única, tail e leitura paginada; conferir saída UTF-8 e cancelamento."
+      ]
+    },
+    {
+      "id": "idle-browser-activity",
+      "priority": "P1",
+      "surface": [
+        "desktop",
+        "browser"
+      ],
+      "title": "Suspender previews ociosos com leases de atividade",
+      "status": "confirmed_gap",
+      "action": "Usar throttling quando ocioso; cada automação/captura segura uma referência de atividade e libera em conclusão/cancelamento/destruição/navegação.",
+      "sources": [
+        "https://github.com/NousResearch/hermes-agent/pull/146600"
+      ],
+      "localEvidence": [
+        "packages/gui-extensions/src/browser/chromium.ts:167 backgroundThrottling=false"
+      ],
+      "validation": [
+        "Soak Linux com 10 abas por 6h; CPU/RSS por processo; automações simultâneas, rAF, navegação e screenshot continuam funcionando."
+      ]
+    },
+    {
+      "id": "tui-image-payload",
+      "priority": "P1",
+      "surface": [
+        "TUI"
+      ],
+      "title": "Não reter screenshots ocultos no estado do TUI",
+      "status": "confirmed_gap",
+      "action": "Transportar referências duráveis e descartar bytes/base64 de resultados visuais quando previews estiverem desligados; recarregar ao ativar.",
+      "sources": [
+        "https://github.com/anomalyco/opencode/pull/63577"
+      ],
+      "localEvidence": [
+        "packages/tui/src/context/data.tsx: createData sem omitToolFileData"
+      ],
+      "validation": [
+        "Capturar screenshots repetidos; alternar previews; conferir redução de retained heap e preservação das referências."
+      ]
+    },
+    {
+      "id": "async-shell-env",
+      "priority": "P1",
+      "surface": [
+        "desktop",
+        "Linux"
+      ],
+      "title": "Probe do login shell sem bloquear processo principal",
+      "status": "confirmed_gap",
+      "action": "Trocar spawnSync por subprocesso assíncrono com timeout e cancelamento que encerram o processo.",
+      "sources": [
+        "https://github.com/anomalyco/opencode/pull/63208"
+      ],
+      "localEvidence": [
+        "packages/desktop/src/main/service/shell-env.ts: spawnSync e TIMEOUT=5000"
+      ],
+      "validation": [
+        "Shell artificial lento e que não termina; janela responde; nenhum subprocesso órfão."
+      ]
+    },
+    {
+      "id": "review-gutter-lifetime",
+      "priority": "P1",
+      "surface": [
+        "desktop",
+        "web",
+        "review"
+      ],
+      "title": "Dispor e reutilizar botão e listeners do gutter de revisão",
+      "status": "confirmed_gap",
+      "action": "Um botão por viewer; dispose explícito no unmount/substituição, sem depender de próximo evento de pointer/scroll.",
+      "sources": [
+        "https://github.com/anomalyco/opencode/pull/61972"
+      ],
+      "localEvidence": [
+        "packages/session-ui/src/pierre/comment-hover.ts: utility não tem teardown explícito e depende de futuro evento",
+        "packages/session-ui/src/components/line-comment-annotations.tsx:647 cria utility a cada chamada do renderer"
+      ],
+      "validation": [
+        "Repetir rerender e troca de arquivo/sessão; contar listeners e detached DOM; listeners voltam ao baseline inclusive sem pointermove posterior."
+      ]
+    },
+    {
+      "id": "plugin-cleanup",
+      "priority": "P1",
+      "surface": [
+        "server",
+        "plugins"
+      ],
+      "title": "Falha de cleanup de um plugin não interrompe os demais",
+      "status": "confirmed_gap",
+      "action": "Invocar retorno apenas quando função; registrar falha individual e continuar descarregamento e troca.",
+      "sources": [
+        "https://github.com/anomalyco/opencode/pull/63548"
+      ],
+      "localEvidence": [
+        "packages/plugin/src/promise/adapter.ts:626 testa truthiness de cleanup",
+        "packages/core/src/plugin.ts:146 fecha slots sem isolamento por cleanup"
+      ],
+      "validation": [
+        "Plugin v1 retornando objeto; cleanup rejeita; outros plugins continuam; recuperação da geração anterior permanece."
+      ]
+    },
+    {
+      "id": "mcp-oauth-lifecycle",
+      "priority": "P1",
+      "surface": [
+        "server",
+        "MCP"
+      ],
+      "title": "Refresh OAuth com lock entre processos e classificação de falhas",
+      "status": "partial",
+      "action": "Cobrir leitura, refresh e CAS com lock da credencial; preservar tokens em timeout/429/503; invalidar somente falhas permanentes confirmadas.",
+      "sources": [
+        "https://github.com/anomalyco/opencode/pull/62827",
+        "https://github.com/anomalyco/opencode/pull/63012"
+      ],
+      "localEvidence": [
+        "packages/core/src/mcp/oauth.ts: deduplicação de promises no processo já existe; transação completa não está protegida por lock compartilhado"
+      ],
+      "validation": [
+        "Dois processos atualizam mesma credencial; refresh rotativo; 429/503/network; invalid_grant; troca de conta concorrente."
+      ]
+    },
+    {
+      "id": "credential-invalidation",
+      "priority": "P1",
+      "surface": [
+        "server",
+        "providers"
+      ],
+      "title": "Evitar fanout global na alteração de uma credencial",
+      "status": "confirmed_gap",
+      "action": "Incluir identidade da integração/credencial no evento e invalidar somente os consumidores afetados.",
+      "sources": [
+        "https://github.com/anomalyco/opencode/pull/62762",
+        "https://github.com/anomalyco/opencode/pull/60782"
+      ],
+      "localEvidence": [
+        "packages/core/src/provider.ts: assinatura genérica de Credential.Event.Updated/Switched e Integration.Event.Updated; adaptar ao layout atual do fork"
+      ],
+      "validation": [
+        "Contar discoveries/conexões/watchers ao editar uma conta entre múltiplos projetos; projetos ociosos permanecem dormentes."
+      ]
+    },
+    {
+      "id": "heap-capture",
+      "priority": "P1",
+      "surface": [
+        "server",
+        "desktop"
+      ],
+      "title": "Captura de heap e CPU acionada pelo usuário",
+      "status": "partial",
+      "action": "Adicionar captura cancelável e contextual por processo à observabilidade existente; exportação local e consentimento antes de upload.",
+      "sources": [
+        "https://github.com/anomalyco/opencode/pull/62001"
+      ],
+      "localEvidence": [
+        "packages/gui-extensions/src/debug/bar.tsx: métricas Chromium existentes",
+        "Servidor e painel de memória existentes; amostragem leve publicada na 0.87.30"
+      ],
+      "validation": [
+        "Capturar no processo correto sem iniciar projetos; cancelamento; retenção bounded; sem upload automático nem alerta arbitrário de 2GB."
+      ]
+    },
+    {
+      "id": "idle-session-retirement",
+      "priority": "P1",
+      "surface": [
+        "server"
+      ],
+      "title": "Auditar sessão viva, replay, locks e observers após último cliente",
+      "status": "partial",
+      "action": "Aplicar a sessões a mesma disciplina de ociosidade de projetos, com pin por execução/cliente/lock e restauração sob demanda.",
+      "sources": [
+        "https://github.com/NousResearch/hermes-agent/pull/147863"
+      ],
+      "localEvidence": [
+        "Correção de location inactivity já publicada; ausência de heap impede concluir que toda retenção do incidente foi eliminada"
+      ],
+      "validation": [
+        "Ciclos de abrir/fechar milhares de sessões; sessões ativas nunca evictadas; RSS e cardinalidade estabilizam após aquecimento."
+      ]
+    },
+    {
+      "id": "web-url-permission",
+      "priority": "P1",
+      "surface": [
+        "server",
+        "permissions"
+      ],
+      "title": "Completar contrato de URL antes da permissão",
+      "status": "partial",
+      "action": "Preservar matching da URL solicitada e exclusão do fragmento já existentes; avaliar rejeição de userinfo e política de redirects.",
+      "sources": [
+        "https://github.com/anomalyco/opencode/pull/60505",
+        "https://github.com/anomalyco/opencode/pull/61701"
+      ],
+      "localEvidence": [
+        "packages/core/src/tool/plugin/webfetch.ts: requested remove fragmento e é recurso da permissão; assertHttpUrl só valida protocolo"
+      ],
+      "validation": [
+        "userinfo, fragmento, redirect entre hosts e vault referências; não registrar segredo em aprovação/log. Não representa vulnerabilidade comprovada."
+      ]
+    },
+    {
+      "id": "terminal-policy-change",
+      "priority": "P1",
+      "surface": [
+        "server",
+        "terminal",
+        "security"
+      ],
+      "title": "Input de terminal respeita política atual da sessão",
+      "status": "needs_targeted_validation",
+      "action": "Registrar política de lançamento e recusar novos comandos do agente quando permissões ou raízes mudarem; leitura/sinal/fechamento continuam.",
+      "sources": [
+        "https://github.com/deepseek-ai/deepseek-harness/commit/076527b6a0c1692f3338db84c65fbab5f9a0980d"
+      ],
+      "localEvidence": [
+        "packages/core/src/persistent-pty.ts",
+        "packages/server/src/handlers/persistent-pty.ts",
+        "packages/core/src/permission.ts"
+      ],
+      "validation": [
+        "Abrir terminal, reduzir permissão, tentar send pelo agente; terminal do usuário separado; não afirmar isolamento OS sem sandbox real."
+      ]
+    },
+    {
+      "id": "terminal-env-isolation",
+      "priority": "P1",
+      "surface": [
+        "server",
+        "workers",
+        "terminal"
+      ],
+      "title": "Validar ambiente por perfil/máquina ao reutilizar terminais",
+      "status": "needs_targeted_validation",
+      "action": "Testar que processo reutilizado não herda credenciais de outro perfil/conta ou servidor; vincular ambiente à identidade do executor.",
+      "sources": [
+        "https://github.com/NousResearch/hermes-agent/pull/154534"
+      ],
+      "localEvidence": [
+        "packages/server/src/pty-environment.ts",
+        "packages/core/src/persistent-pty/daemon.ts"
+      ],
+      "validation": [
+        "Dois perfis com mesmo nome de variável e valores distintos, foreground/background/PTY/worker; resultado do Hermes não prova falha no Redcode."
+      ]
+    },
+    {
+      "id": "auth-regression-matrix",
+      "priority": "P1",
+      "surface": [
+        "server",
+        "web",
+        "security"
+      ],
+      "title": "Matriz de revogação e acesso a arquivos sensíveis",
+      "status": "needs_targeted_validation",
+      "action": "Cobrir logout, rotação, revogação, origem/porta e caminhos com symlink em endpoints de arquivo; separar autenticação Console e pairing.",
+      "sources": [
+        "https://github.com/NousResearch/hermes-agent/pull/153855",
+        "https://github.com/NousResearch/hermes-agent/pull/154136"
+      ],
+      "localEvidence": [
+        "packages/server/src/auth.ts: rotação da senha já invalida token de pairing; cookie inclui porta",
+        "packages/server/src/middleware/authorization.ts: cookie exige mesma origem"
+      ],
+      "validation": [
+        "Token copiado antes/depois logout e rotação; usuário sem permissão; caminho solicitado e realpath; não importar bloqueio genérico que impeça configuração autorizada."
+      ]
+    },
+    {
+      "id": "subagent-parent-progress",
+      "priority": "P2",
+      "surface": [
+        "server",
+        "desktop",
+        "web",
+        "TUI"
+      ],
+      "title": "Comunicar cada período de trabalho do subagent à conversa pai",
+      "status": "partial",
+      "action": "Delimitar atualizações pelo ciclo busy/idle e deduplicar resultados de retomada; distinguir falha, bloqueio, andamento e conclusão.",
+      "sources": [
+        "https://github.com/anomalyco/opencode/pull/63209",
+        "https://github.com/NousResearch/hermes-agent/pull/149568",
+        "https://github.com/NousResearch/hermes-agent/pull/154353"
+      ],
+      "localEvidence": [
+        "packages/core/src/session/subagent-job.ts",
+        "packages/core/src/session/subagent-completion.ts",
+        "packages/server/src/agent-runtime/supervisor.ts"
+      ],
+      "validation": [
+        "Child tem vários turnos; pai ocioso; restart; cancelamento do pai vence auto-resume; entrega única de cada resultado."
+      ]
+    },
+    {
+      "id": "sibling-prompt-cache",
+      "priority": "P2",
+      "surface": [
+        "server",
+        "models"
+      ],
+      "title": "Aumentar prefixo estável entre subagents",
+      "status": "partial",
+      "action": "Manter skills/ferramentas estáveis antes do contexto variável; conferir breakpoints específicos de cada provider e isolar por conta/tenant.",
+      "sources": [
+        "https://github.com/NousResearch/hermes-agent/pull/153385",
+        "https://github.com/NousResearch/hermes-agent/pull/153275"
+      ],
+      "localEvidence": [
+        "packages/core/src/session/model-request.ts:349-363 já herda cacheRoot/parent e envia promptCacheKey",
+        "packages/core/src/plugin/provider/prompt-cache-key.ts já declara suporte de rotas"
+      ],
+      "validation": [
+        "Medir tokens cache read/write e latência em tarefas distintas irmãs; não transferir números do Hermes para Redcode; não misturar contas."
+      ]
+    },
+    {
+      "id": "task-tree",
+      "priority": "P2",
+      "surface": [
+        "desktop",
+        "web",
+        "TUI"
+      ],
+      "title": "Árvore persistente de tarefas e bloqueios",
+      "status": "new_optional_feature",
+      "action": "Estender Todo/lineage com responsável, dependências, resultado e discussão por tarefa; projeções sob demanda, resumo compacto e auto-open opcional.",
+      "sources": [
+        "https://github.com/deepseek-ai/deepseek-harness/commit/d997173e4500956d4ce638a67fbc6fc382bdda7c"
+      ],
+      "localEvidence": [
+        "Redcode já tem Todo, subagents, waits, automações e Delivery; não é necessário outro painel de KPI"
+      ],
+      "validation": [
+        "Recuperação após reinício/fork; grande histórico paginado; sem timer LLM ocioso; percentual é estimativa de tarefas, não medida de trabalho real. DeepSeek ainda documenta replay O(N²) de relatórios."
+      ]
+    },
+    {
+      "id": "review-extension-slots",
+      "priority": "P2",
+      "surface": [
+        "Creator",
+        "Designer",
+        "plugins",
+        "desktop",
+        "web"
+      ],
+      "title": "Slots de extensão e lentes no painel de revisão",
+      "status": "new_optional_feature",
+      "action": "SDK tipado permite plugins adicionarem filtros/anotações/ações com owner e dispose, renderização lazy e orçamentos por arquivo.",
+      "sources": [
+        "https://github.com/deepseek-ai/deepseek-harness/commit/b60e5985ab8df93df56bd04cd2ce681410ad6404",
+        "https://github.com/deepseek-ai/deepseek-harness/commit/8c8122ffb05055b7e865b13d81d702789c9d554c"
+      ],
+      "localEvidence": [
+        "packages/gui-extensions/src/sdk/host-apis.ts",
+        "packages/gui-extensions/src/creator já instala componentes e plugins"
+      ],
+      "validation": [
+        "Plugin mostra somente SQL/migrations; atualiza/desativa/remove sem listeners remanescentes; preview isolado, nenhuma elevação implícita."
+      ]
+    },
+    {
+      "id": "cua-mcp",
+      "priority": "P2",
+      "surface": [
+        "Computer Use",
+        "MCP",
+        "harnesses"
+      ],
+      "title": "Expor Computer Use do host certo aos harnesses externos",
+      "status": "partial",
+      "action": "Contrato MCP independente com aplicação/sessão/máquina/provedor explícitos, revogação encerra handles; não repetir input após reconectar.",
+      "sources": [
+        "https://github.com/deepseek-ai/deepseek-harness/commit/7ed4b56940d3452d8b300eec1639a93da75ba009",
+        "https://github.com/deepseek-ai/deepseek-harness/commit/36496e149552f02492b91eb5f8f9961eca27a301"
+      ],
+      "localEvidence": [
+        "packages/core/src/agent-tools.ts",
+        "packages/server/src/agent-runtime/adapters/codex.ts",
+        "packages/server/src/agent-runtime/adapters/claude.ts"
+      ],
+      "validation": [
+        "Codex/Claude e Redcode alcançam mesma capacidade aprovada; host remoto explícito; Windows UIA é específico de plataforma, não assumir suporte Linux."
+      ]
+    },
+    {
+      "id": "strict-tool-contract",
+      "priority": "P2",
+      "surface": [
+        "server",
+        "MCP",
+        "plugins",
+        "security"
+      ],
+      "title": "Argumentos não anunciados recusados antes de aprovação",
+      "status": "partial",
+      "action": "Distinguir reparo seguro de coerção silenciosa de argumentos extras; executar validação pelo contrato anunciado antes de pairing/permissões.",
+      "sources": [
+        "https://github.com/deepseek-ai/deepseek-harness/commit/efc62d7b060ea61eccb34a2539ad8b78e8a47d4c",
+        "https://github.com/NousResearch/hermes-agent/pull/115682"
+      ],
+      "localEvidence": [
+        "packages/core/src/plugin/tool-input-repair.ts: já aplica reparos e remove extras em objetos fechados"
+      ],
+      "validation": [
+        "Argumento grafado errado e sandbox_permissions inexistente produzem diagnóstico acionável, sem efeitos nem prompt de autorização indevido."
+      ]
+    },
+    {
+      "id": "plugin-secret-redaction",
+      "priority": "P2",
+      "surface": [
+        "plugins",
+        "security"
+      ],
+      "title": "API pública para redigir segredos em exportação",
+      "status": "needs_targeted_validation",
+      "action": "Facilitar sanitização pelo SDK em vez de importar internos; userinfo e query secrets inclusive; prévia e consentimento ao compartilhar.",
+      "sources": [
+        "https://github.com/NousResearch/hermes-agent/pull/154915"
+      ],
+      "localEvidence": [
+        "packages/plugin/src/effect",
+        "packages/gui-extensions/src/sdk; existem Vault e referências restritas; verificar integração sem duplicar infraestrutura"
+      ],
+      "validation": [
+        "Exportar sessão com credenciais fictícias e URLs; nenhum fragmento reutilizável; segredo continua disponível somente à operação autorizada."
+      ]
+    },
+    {
+      "id": "sidebar-and-activity",
+      "priority": "P2",
+      "surface": [
+        "desktop",
+        "web",
+        "TUI"
+      ],
+      "title": "Atividade e navegação configuráveis e compactas",
+      "status": "partial",
+      "action": "Agrupar atividade por intenção e manter usuário, espera, subagents e ações importantes visíveis; filtros por projeto/servidor/atenção e ocultar/silenciar recentes.",
+      "sources": [
+        "https://github.com/anomalyco/opencode/pull/63295",
+        "https://github.com/anomalyco/opencode/pull/63143",
+        "https://github.com/anomalyco/opencode/pull/63427"
+      ],
+      "localEvidence": [
+        "Layout Redcode já possui side rail e sessões; usuário exige mensagens alinhadas à esquerda e UI compacta/delicada"
+      ],
+      "validation": [
+        "Protótipo opt-in com DS existente; teclado e leitor de tela; largura estreita; histórico completo acessível; benchmark antes de mudar timeline."
+      ]
+    },
+    {
+      "id": "code-mode-repair",
+      "priority": "P2",
+      "surface": [
+        "server",
+        "plugins"
+      ],
+      "title": "Validar hooks de reparo também em Code Mode",
+      "status": "partly_present",
+      "action": "Verificar que ferramenta interna passa pelo mesmo execute.before de chamadas diretas, sem repetir reparo na ferramenta externa execute.",
+      "sources": [
+        "https://github.com/anomalyco/opencode/pull/63444"
+      ],
+      "localEvidence": [
+        "packages/core/src/plugin/tool-input-repair.ts: comentário e hook já descrevem reparo das ferramentas chamadas pelo Code Mode"
+      ],
+      "validation": [
+        "Mesmo input inválido com ferramenta direta e Code Mode; hook chamado uma vez; erro não escondido."
+      ]
+    },
+    {
+      "id": "stdio-mcp",
+      "priority": "P3",
+      "surface": [
+        "server",
+        "MCP"
+      ],
+      "title": "Framing MCP por chunks com limite",
+      "status": "already_present",
+      "action": "Preservar implementação existente; usar testes upstream para verificar fragmentação e mensagens grandes.",
+      "sources": [
+        "https://github.com/anomalyco/opencode/pull/60694"
+      ],
+      "localEvidence": [
+        "Implementação MCP stdio local já usa chunk-list, deserializeMessage e limite de 16MiB"
+      ],
+      "validation": [
+        "Sem novo port necessário; erro explícito e reconexão limpa para frame acima do orçamento."
+      ]
+    },
+    {
+      "id": "automation-ambiguous-delivery",
+      "priority": "P2",
+      "surface": [
+        "server",
+        "automations",
+        "workers"
+      ],
+      "title": "Não repetir efeitos quando a entrega é incerta",
+      "status": "partial",
+      "action": "Ampliar recibos para none/partial/uncertain/confirmed quando houver transporte externo; não classificar último erro como prova de que nada aconteceu.",
+      "sources": [
+        "https://github.com/NousResearch/hermes-agent/commit/e1d3cc86a2e88846c940e3b6dde61af9c45eed12"
+      ],
+      "localEvidence": [
+        "packages/core/src/automation.ts já usa inboxID determinístico e inbox.reconcile por run"
+      ],
+      "validation": [
+        "Crash entre envio e ack; nenhum reenvio automático de efeito incerto; prompt interno idempotente continua recuperável. Não prometer exactly-once em rede."
+      ]
+    }
+  ],
+  "regressionReports": [
+    {
+      "url": "https://github.com/anomalyco/opencode/issues/57641",
+      "status": "open",
+      "subject": "Resume TUI com milhares de filhos e CPU alta; reproduzir e avaliar separadamente."
+    },
+    {
+      "url": "https://github.com/anomalyco/opencode/issues/52501",
+      "status": "open_at_collection",
+      "subject": "Identidade de caminhos Windows e inicialização duplicada; conferir normalização no fork."
+    },
+    {
+      "url": "https://github.com/NousResearch/hermes-agent/issues/154329",
+      "status": "open_at_collection",
+      "subject": "Relato de supervisor CDP não encerrado; não é prova de mesma falha no Redcode."
+    },
+    {
+      "url": "https://github.com/deepseek-ai/deepseek-harness/discussions/13191",
+      "status": "discussion_report",
+      "subject": "Watcher de diretório excluído consumindo CPU no Windows."
+    },
+    {
+      "url": "https://github.com/deepseek-ai/deepseek-harness/discussions/13204",
+      "status": "discussion_report",
+      "subject": "Troca de plugin link local para tarball com junction e EPERM no Windows."
+    }
+  ],
+  "recommendedFirstBatch": [
+    "stream-file-previews",
+    "idle-browser-activity",
+    "tui-image-payload",
+    "async-shell-env",
+    "review-gutter-lifetime",
+    "plugin-cleanup",
+    "mcp-oauth-lifecycle",
+    "credential-invalidation",
+    "heap-capture"
+  ],
+  "localRevision": "346e854a420a5cfc306570c824697fa1aacb29e4",
+  "release": {
+    "version": "0.87.30",
+    "github": "published",
+    "url": "https://github.com/reddb-io/redcode/releases/tag/v0.87.30",
+    "npm": "published",
+    "workflow": "https://github.com/reddb-io/redcode/actions/runs/43438622569",
+    "workflowConclusion": "success",
+    "attempt": 2,
+    "verifiedAt": "2026-11-13T14:53:59.522Z",
+    "validation": "Workflow confirmou acesso público anônimo, instalação do pacote, versão 0.87.30 do binário Linux, sidecar e Design; GitHub assets verificados por SHA256."
+  }
+}

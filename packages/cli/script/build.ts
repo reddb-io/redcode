@@ -10,6 +10,7 @@ import pkg from "../package.json"
 import { buildAppArchive } from "./app-assets"
 import { verifyArtifact, verifySimulationGraph } from "./verify-artifact"
 import { resolveOpencodePty } from "./opencode-pty"
+import { stagePathSearch } from "./path-search-package"
 
 const dir = path.resolve(import.meta.dirname, "..")
 const redcode = process.env.REDCODE_BUILD === "1"
@@ -235,6 +236,9 @@ export default { path: file, version: ${JSON.stringify(opencodePty.version)}, sh
     await Bun.write(destination, Bun.file(source))
     if (item.os !== "win32") await chmod(destination, 0o755)
   }
+  const pathSearchDir = process.env.REDCODE_PATH_SEARCH_PACKAGE_DIR
+  if (redcode && pathSearchDir)
+    await stagePathSearch(pathSearchDir, targetName(item).slice(`${binary}-`.length), path.join(outdir, name, "bin"))
   await verifyArtifact(path.join(outdir, name))
 }
 

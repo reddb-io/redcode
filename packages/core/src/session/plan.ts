@@ -90,17 +90,21 @@ export function guidance(plans: ReadonlyArray<SessionPlan.Info>) {
 export function validationError(input: Pick<SessionPlan.Info, "content" | "tasks">) {
   if (!input.content.trim()) return "The plan is empty"
   const tasks = input.tasks ?? []
-  if (
-    tasks.some(
-      (task) =>
-        !task.key.trim() ||
-        !task.content.trim() ||
-        !task.criterion.trim() ||
-        !task.quote.trim() ||
-        !input.content.includes(task.quote),
-    )
-  )
-    return "Each plan task needs a key, content, acceptance criterion and exact quote from the plan"
+  // Name the task and the field, so a refusal is actionable instead of an identical retry: the
+  // quote must be copied verbatim from this plan's own content, not from the user request.
+  for (const task of tasks) {
+    const label = task.key.trim() || task.content.trim().slice(0, 40) || "(unnamed task)"
+    if (!task.key.trim()) return `Plan task ${label} needs a key.`
+    if (!task.content.trim()) return `Plan task ${label} needs content.`
+    if (!task.criterion.trim())
+      return `Plan task ${label} needs an acceptance criterion: the observable condition that means it is done.`
+    if (!task.quote.trim())
+      return `Plan task ${label} needs a quote copied verbatim from this plan's content.`
+    if (!input.content.includes(task.quote))
+      return `Plan task ${label} quotes text that does not appear in the plan content: ${JSON.stringify(
+        task.quote.length > 120 ? `${task.quote.slice(0, 120)}…` : task.quote,
+      )}. Copy the quote verbatim from the plan you sent, or add that text to the plan.`
+  }
   if (
     new Set(tasks.map((task) => task.key)).size !== tasks.length ||
     new Set(tasks.map((task) => task.content.trim())).size !== tasks.length

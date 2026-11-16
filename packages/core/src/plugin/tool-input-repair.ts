@@ -6,7 +6,7 @@ import { definition } from "../tool/runtime.js"
 
 // Repairs apply only when the input schema unambiguously supports them:
 // - Stringified root or nested object: '{"limit":"20"}' -> { limit: 20 }
-// - Closed object: { limit: "20", extra: true } -> { limit: 20 }
+// - Closed object: { limit: "20", extra: true } -> { limit: 20, extra: true }; validation rejects extra
 // - Optional null or empty-object placeholder: { limit: null } -> {}
 // - Numeric or boolean string: { limit: "20", enabled: "false" } -> { limit: 20, enabled: false }
 // - Nullable field: { count: "2" } -> { count: 2 }

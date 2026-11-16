@@ -25,12 +25,28 @@ export async function resolve(root: string, file: string) {
   return target
 }
 
+/** Windows keeps a just-closed handle briefly; a rename can fail with EPERM/EBUSY before it clears. */
+const transient = (error: unknown) => {
+  const code = (error as { code?: string } | undefined)?.code
+  return code === "EPERM" || code === "EBUSY" || code === "EACCES"
+}
+
 export async function atomic(file: string, bytes: Uint8Array | string) {
   await mkdir(path.dirname(file), { recursive: true })
   const temporary = `${file}.${crypto.randomUUID()}.tmp`
   try {
     await Bun.write(temporary, bytes)
-    await rename(temporary, file)
+    // A destination another process holds open (a reader, a scanner) rejects the rename on Windows.
+    // Retrying briefly preserves atomicity: the temporary file is complete before any attempt.
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await rename(temporary, file)
+        break
+      } catch (error) {
+        if (!transient(error) || attempt >= 20) throw error
+        await new Promise((resolve) => setTimeout(resolve, 5 * (attempt + 1)))
+      }
+    }
   } finally {
     await rm(temporary, { force: true })
   }

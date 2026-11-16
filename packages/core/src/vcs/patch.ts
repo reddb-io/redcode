@@ -24,9 +24,14 @@ export const deletePatch = (file: string, content: string) =>
 export const countPatch = (patch: string) => {
   let additions = 0
   let deletions = 0
-  for (const line of patch.split("\n")) {
-    if (line.startsWith("+") && !line.startsWith("+++")) additions++
-    else if (line.startsWith("-") && !line.startsWith("---")) deletions++
+  let start = 0
+  for (let index = 0; index <= patch.length; index++) {
+    if (index < patch.length && patch.charCodeAt(index) !== 10) continue
+    const first = patch.charCodeAt(start)
+    const header = patch.charCodeAt(start + 1) === first && patch.charCodeAt(start + 2) === first
+    if (first === 43 && !header) additions++
+    else if (first === 45 && !header) deletions++
+    start = index + 1
   }
   return { additions, deletions }
 }

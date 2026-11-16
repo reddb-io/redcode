@@ -93,6 +93,9 @@ const processEffect = Effect.fnUntraced(function* (options: Options) {
       const instanceID = randomUUID()
       const transform = yield* WebUi.handler()
       const remote = yield* RemoteAccessController.make(options.mode === "service")
+      const pathSearchMode = process.env.REDCODE_PATH_SEARCH_MODE
+      if (pathSearchMode !== undefined && pathSearchMode !== "rust" && pathSearchMode !== "legacy")
+        return yield* Effect.fail(new Error("REDCODE_PATH_SEARCH_MODE must be rust or legacy"))
       const server = yield* start(
         {
           app: {
@@ -138,6 +141,10 @@ const processEffect = Effect.fnUntraced(function* (options: Options) {
               process.env.OPENCODE_DISABLE_FFF === undefined
                 ? process.platform !== "win32"
                 : !truthy(process.env.OPENCODE_DISABLE_FFF),
+            search: {
+              mode: pathSearchMode,
+              library: process.env.REDCODE_PATH_SEARCH_LIBRARY,
+            },
           },
         },
         serviceOptions === undefined

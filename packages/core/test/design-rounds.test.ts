@@ -600,7 +600,7 @@ describe("DesignRounds checklist", () => {
     expect(DesignRounds.continuation(document, [])).toBe(
       [
         "Design design_checkout: the feedback round is not finished; 2 notes still have no recorded outcome.",
-        `Next step: fix the 2 notes of round 1 without a mark below and mark each with design_document update {"addressed":[{"feedback":"<feedback>","index":<n>,"summary":"<what you changed>"}]}. ${DesignRounds.ESCAPE}`,
+        `Next step: fix the 2 notes of round 1 without a mark below and mark each with design_document {"action":"update","id":"design_checkout","input":{"addressed":[{"feedback":"<feedback>","index":<n>,"summary":"<what you changed>"}]}}. ${DesignRounds.ESCAPE}`,
         DesignRounds.recite(round),
         closing,
       ].join("\n"),
@@ -611,7 +611,9 @@ describe("DesignRounds checklist", () => {
     )
     // Marked but not published: only the publish is named.
     const unpublished = DesignRounds.continuation({ ...document, notes: marked.notes }, [])!
-    expect(unpublished).toContain("Next step: publish one revision with design_preview; it answers round 1.")
+    expect(unpublished).toContain(
+      'Next step: publish one revision with design_preview {"id":"design_checkout"}; it answers round 1 and never imports this workspace as another design.',
+    )
     expect(unpublished).not.toContain("design_export")
     expect(unpublished).not.toContain("mark each")
     const answered = {
@@ -626,7 +628,7 @@ describe("DesignRounds checklist", () => {
     // Marked, answered and verified: only the outcomes are left.
     const verified = [job("render_1", "rev_2", 1, [seen(feedback, 1, true), seen(feedback, 2, true)])]
     const outcomes = DesignRounds.continuation(answered, verified)!
-    expect(outcomes).toContain("Next step: record every note's outcome in ONE design_document update notes")
+    expect(outcomes).toContain("Next step: record every note's outcome in ONE design_document")
     expect(outcomes).not.toContain("A verify failed")
     expect(outcomes).toContain(closing)
     // A verify of an older revision does not count.

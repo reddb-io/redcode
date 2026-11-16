@@ -47,7 +47,7 @@ import { createLLMEventPublisher } from "./publish-llm-event.js"
 import { SessionRunnerRetry } from "./retry.js"
 
 export type Outcome = Data.TaggedEnum<{
-  Completed: { readonly needsContinuation: boolean; readonly guardStop?: string }
+  Completed: { readonly needsContinuation: boolean; readonly guardStop?: string; readonly truncated?: boolean }
   Retry: { readonly error: SessionError.Error; readonly decision: SessionRunnerRetry.Decision }
   Continue: {
     readonly error: SessionError.Error
@@ -524,6 +524,7 @@ export const make = Effect.gen(function* () {
           needsContinuation:
             !guardStop && input.prepared.request.toolChoice?.type !== "none" && record.needsContinuation,
           ...(guardStop ? { guardStop } : {}),
+          ...(!guardStop && record.finish?.finish === "length" ? { truncated: true } : {}),
         })
       }),
     )

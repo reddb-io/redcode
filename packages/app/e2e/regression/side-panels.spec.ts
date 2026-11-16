@@ -144,6 +144,11 @@ test("Creator installs a revisioned component, runs it in isolation and releases
   await expect(preview).toHaveAttribute("referrerpolicy", "no-referrer")
   await expect(preview).not.toHaveAttribute("src")
   await expect(preview.contentFrame().getByRole("heading", { name: "Counter component", exact: true })).toBeVisible()
+  await expect.poll(async () => {
+    const frame = await preview.boundingBox()
+    const library = await panel.boundingBox()
+    return frame && library ? frame.y - library.y : Infinity
+  }).toBeLessThanOrEqual(80)
   expect(
     await preview
       .contentFrame()

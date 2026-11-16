@@ -37,12 +37,7 @@ export function SessionComposerRegion(props: {
       data-component="session-composer-dock"
       class="w-full shrink-0 flex flex-col justify-center items-center pb-3 pointer-events-none bg-v2-background-bg-base"
     >
-      <div
-        classList={{
-          "w-full px-3 pointer-events-auto": true,
-          "md:max-w-session md:mx-auto": controller.centered(),
-        }}
-      >
+      <div class="w-full min-w-0 px-3 pointer-events-auto">
         <Show when={controller.state.websearch.request()}>
           <SessionWebSearchDock model={controller.state.websearch} onSubmit={controller.onResponseSubmit} />
         </Show>
