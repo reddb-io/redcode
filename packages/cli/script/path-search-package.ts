@@ -20,7 +20,18 @@ export async function stagePathSearch(root: string, target: string, destination:
     throw new Error(`Invalid path-search manifest for ${canonical}`)
   const digest = (bytes: string | Uint8Array) => createHash("sha256").update(bytes).digest("hex")
   const sourceFiles = ["Cargo.toml", "Cargo.lock", "src/lib.rs"]
-  const sourceHash = digest((await Promise.all(sourceFiles.map(async (file) => `${file}\0${digest(await Bun.file(path.join(sourceRoot, file)).bytes())}`))).join("\n"))
+  // Match the manifest's line-ending normalization: the artifact is built on one host and verified on
+  // another, and a Windows checkout is CRLF while Linux is LF.
+  const sourceHash = digest(
+    (
+      await Promise.all(
+        sourceFiles.map(async (file) => {
+          const bytes = await Bun.file(path.join(sourceRoot, file)).bytes()
+          return `${file}\0${digest(new TextDecoder().decode(bytes).replace(/\r\n/g, "\n"))}`
+        }),
+      )
+    ).join("\n"),
+  )
   if (sourceHash !== manifest.sourceSha256) throw new Error(`Path-search source hash mismatch for ${canonical}`)
   const contract = await Bun.file(path.join(source, "contract-smoke.json")).json() as {
     passed: boolean

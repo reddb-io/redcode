@@ -127,10 +127,16 @@ await Bun.write(
 const bytes = await Bun.file(destination).bytes()
 const sha256 = (value: string | Uint8Array) => createHash("sha256").update(value).digest("hex")
 const sourceFiles = ["Cargo.toml", "Cargo.lock", "src/lib.rs"]
+// The manifest is produced on the target host and verified on another one: a Windows checkout has
+// CRLF while Linux has LF, so hashing raw bytes made every cross-host verification fail. Normalize
+// line endings so the digest describes the source, not the checkout's autocrlf.
 const sourceSha256 = sha256(
   (
     await Promise.all(
-      sourceFiles.map(async (file) => `${file}\0${sha256(await Bun.file(path.join(root, file)).bytes())}`),
+      sourceFiles.map(async (file) => {
+        const bytes = await Bun.file(path.join(root, file)).bytes()
+        return `${file}\0${sha256(new TextDecoder().decode(bytes).replace(/\r\n/g, "\n"))}`
+      }),
     )
   ).join("\n"),
 )
