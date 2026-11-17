@@ -27,8 +27,9 @@ describe("settings timeline detail migration", () => {
     })
 
     expect(settings.general.timelineDetail).toEqual({
-      ...timelinePresets[2].value,
+      ...timelinePresets[1].value,
       shell: { placement: "separate", details: "expanded" },
+      edit: { placement: "grouped", details: "collapsed" },
       thinking: { placement: "separate", details: "expanded" },
     })
     expect(settings.appearance.fontSize).toBe(16)
@@ -98,7 +99,7 @@ describe("settings schema", () => {
         showNavigation: true,
         navigationLabels: true,
         navigationGap: 12,
-        timelineDetail: timelinePresets[2].value,
+        timelineDetail: timelinePresets[1].value,
         showAgent: true,
         mobileTitlebarPosition: "top",
         terminalPlacement: "side",
@@ -153,7 +154,7 @@ describe("settings schema", () => {
     expect(settings.general).toMatchObject({
       showTerminal: true,
       autoSave: false,
-      timelineDetail: timelinePresets[2].value,
+      timelineDetail: timelinePresets[1].value,
       followUpBehavior: "steer",
       navigationGap: 12,
     })

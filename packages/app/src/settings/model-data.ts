@@ -265,7 +265,10 @@ export const defaultSettings: Settings = {
     showNavigation: true,
     navigationLabels: true,
     navigationGap: 12,
-    timelineDetail: { ...timelinePresets[2].value },
+    // "detailed" mirrors the TUI's default rendering: edit and shell output expand inline
+    // (the TUI shows the edit diff side by side as soon as the tool runs), while thinking
+    // stays grouped and collapsed. "compact" hid the edit diffs the TUI shows by default.
+    timelineDetail: { ...timelinePresets[1].value },
     showAgent: true,
     mobileTitlebarPosition: "top",
     terminalPlacement: "side",
