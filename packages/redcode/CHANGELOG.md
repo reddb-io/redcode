@@ -1,5 +1,11 @@
 # @reddb-io/redcode
 
+## 0.89.1
+
+### Patch Changes
+
+- Todo update failures now show the reason where the user reads: the collapsed row keeps the verdict and its meaning instead of spending the line budget on the task and review ids, and a retry loop's identical refusals are shown once with a repeat count instead of repeating the same text for every attempt.
+
 ## 0.89.0
 
 ### Minor Changes
