@@ -54,7 +54,13 @@ export default function Agents() {
   const navigation = useNavigation()
   const scope = useAgentsScope()
   const command = useCommand()
-  const [state, setState] = createStore({ query: "", attention: false, selected: "" })
+  const [state, setState] = createStore({
+    query: "",
+    attention: false,
+    selected: "",
+    panelServer: "",
+    panelSession: "",
+  })
   const selection = { get: () => state.selected, set: (key: string) => setState("selected", key) }
   return (
     <section
@@ -134,8 +140,9 @@ export default function Agents() {
               element.style.setProperty("--agents-content-height", `${rect.height}px`),
             )
           }
-          class="min-h-0 min-w-0 w-full flex-1 overflow-y-auto px-[var(--reddb-spatial-inset-md)] py-[var(--reddb-spatial-inset-sm)] [overflow-wrap:anywhere]"
+          class="flex min-h-0 min-w-0 w-full flex-1"
         >
+          <div class="min-h-0 min-w-0 w-full flex-1 overflow-y-auto px-[var(--reddb-spatial-inset-md)] py-[var(--reddb-spatial-inset-sm)] [overflow-wrap:anywhere]">
           <Show when={scope.servers().length === 0}>
             <p role="status">{language.t("agents.scope.missing")}</p>
           </Show>
@@ -172,6 +179,13 @@ export default function Agents() {
                         context={global.ensureServerCtx(server)}
                         query={state.query}
                         attention={state.attention}
+                        focusedSessionID={state.panelSession}
+                        focus={(sessionID) =>
+                          setState({
+                            panelServer: ServerConnection.key(server),
+                            panelSession: sessionID,
+                          })
+                        }
                         open={(session) => {
                           navigation.session.open(session, { server })
                         }}
@@ -209,6 +223,40 @@ export default function Agents() {
               </section>
             )}
           </For>
+          </div>
+          <Show when={scope.view() === "sessions" && !!state.panelSession}>
+            <aside
+              aria-label={language.t("agentTasks.activity")}
+              class="flex w-[min(28rem,45%)] min-w-72 shrink-0 flex-col border-l border-v2-border-border-base bg-v2-background-bg-base"
+            >
+              <div class="flex shrink-0 items-center justify-between border-b border-v2-border-border-base px-[var(--reddb-spatial-inset-sm)] py-[var(--reddb-spatial-inset-sm)]">
+                <span class="text-13-medium">{language.t("agentTasks.activity")}</span>
+                <Button
+                  size="small"
+                  variant="ghost"
+                  aria-label={language.t("common.close")}
+                  onClick={() => setState({ panelServer: "", panelSession: "" })}
+                >
+                  <Icon name="close" />
+                </Button>
+              </div>
+              <div class="min-h-0 flex-1 overflow-y-auto px-[var(--reddb-spatial-inset-sm)] py-[var(--reddb-spatial-inset-sm)] [overflow-wrap:anywhere]">
+                <For each={scope.servers()}>
+                  {(server) => (
+                    <Show when={ServerConnection.key(server) === state.panelServer}>
+                      <Suspense fallback={<p role="status">{language.t("common.loading")}</p>}>
+                        <AgentTasks
+                          server={server}
+                          open={(session) => navigation.session.open(session, { server })}
+                          sessionID={state.panelSession}
+                        />
+                      </Suspense>
+                    </Show>
+                  )}
+                </For>
+              </div>
+            </aside>
+          </Show>
         </div>
       </div>
     </section>
@@ -220,6 +268,8 @@ function ServerAgents(props: {
   context: ServerCtx
   query: string
   attention: boolean
+  focusedSessionID?: string
+  focus?: (sessionID: string) => void
   open: (session: SessionInfo) => void
 }) {
   const language = useLanguage()
@@ -368,6 +418,8 @@ function ServerAgents(props: {
                                   run={(request, reset) => run(entry().session.id, request, reset)}
                                   depth={entry().depth}
                                   status={status(entry().session)}
+                                  focused={props.focusedSessionID === entry().session.id}
+                                  focus={props.focus ? () => props.focus?.(entry().session.id) : undefined}
                                   open={() => props.open(entry().session)}
                                 />
                               )}
@@ -395,6 +447,8 @@ function AgentSession(props: {
   setInstruction: SetStoreFunction<AgentInstruction>
   run: (request: () => Promise<unknown>, reset?: boolean) => void
   status: ReturnType<typeof sessionStatus>
+  focused?: boolean
+  focus?: () => void
   open: () => void
 }) {
   const language = useLanguage()
@@ -439,6 +493,18 @@ function AgentSession(props: {
             onClick={() => props.run(() => props.context.sdk.api.session.interrupt({ sessionID: props.session.id }))}
           >
             {language.t("agents.interrupt")}
+          </Button>
+        </Show>
+        <Show when={props.focus}>
+          <Button
+            size="small"
+            variant={props.focused ? "outline" : "ghost"}
+            aria-pressed={props.focused}
+            aria-label={language.t("agentTasks.activity")}
+            title={language.t("agentTasks.activity")}
+            onClick={() => props.focus?.()}
+          >
+            {language.t("agentTasks.activity")}
           </Button>
         </Show>
       </div>

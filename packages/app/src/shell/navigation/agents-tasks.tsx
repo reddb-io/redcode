@@ -4,7 +4,7 @@ import type {
   WorktreeIntegrationCandidate,
 } from "@opencode/client/promise"
 import { useQuery } from "@tanstack/solid-query"
-import { onCleanup } from "solid-js"
+import { createEffect, on, onCleanup } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useLanguage } from "@/runtime/i18n/language"
 import { uuid } from "@/runtime/persistence/uuid"
@@ -18,12 +18,29 @@ import { AgentTasksView } from "./agents-tasks.react"
 
 const AGENT_TASK_SESSION_LIMIT = 500
 
-export default function AgentTasks(props: { server: ServerConnection.Any; open: (session: SessionInfo) => void }) {
+export default function AgentTasks(props: {
+  server: ServerConnection.Any
+  open: (session: SessionInfo) => void
+  /** When set, the board follows the session focused in the Agents tree; its own session picker keeps working. */
+  sessionID?: string
+}) {
   const services = createAgentTaskServices(props)
+  createEffect(
+    on(
+      () => props.sessionID,
+      (sessionID) => {
+        if (sessionID) services.selectSession(sessionID)
+      },
+    ),
+  )
   return <ReactView component={AgentTasksView} props={{ services }} />
 }
 
-export function createAgentTaskServices(props: { server: ServerConnection.Any; open: (session: SessionInfo) => void }) {
+export function createAgentTaskServices(props: {
+  server: ServerConnection.Any
+  open: (session: SessionInfo) => void
+  sessionID?: string
+}) {
   const language = useLanguage()
   const context = useGlobal().ensureServerCtx(props.server)
   const api = context.sdk.api
@@ -32,7 +49,7 @@ export function createAgentTaskServices(props: { server: ServerConnection.Any; o
   const lifetime = { active: true }
   onCleanup(() => (lifetime.active = false))
   const [state, setState] = createStore({
-    sessionID: "",
+    sessionID: props.sessionID ?? "",
     taskID: "",
     target: "",
     busy: false,
