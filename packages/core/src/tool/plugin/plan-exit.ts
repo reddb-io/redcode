@@ -21,6 +21,21 @@ import { SessionTaskFacts } from "../../session/task-facts.js"
 import { SessionTodoStore } from "../../session/todo-store.js"
 import { SessionEvidence } from "../session-evidence.js"
 
+/** Maps a stored plan task to a todo admission input, omitting a null or empty dependencies array. */
+export const planTaskToTodoInput = (task: SessionTodo.PlanTask): SessionTodo.Input => ({
+  planKey: task.key,
+  // A stored plan revision may carry dependencies as an explicit null (a model's omitted array
+  // survives the round-trip). SessionTodo.Input only accepts an array or an absent key, so a null
+  // here would fail the whole admission after the user already approved.
+  ...(task.dependencies?.length ? { dependencies: task.dependencies } : {}),
+  ...(task.title ? { title: task.title } : {}),
+  content: task.content,
+  criterion: task.criterion,
+  requirement: task.quote,
+  status: "pending",
+  priority: "high",
+})
+
 export const Plugin = {
   id: "redcode.tool.plan-exit",
   effect: Effect.fn("PlanExitTool.Plugin")(function* (ctx: Context) {
@@ -169,16 +184,7 @@ export const Plugin = {
                         document.approvedRevision === document.revision,
                     ),
                   origin: { type: "plan", id: ready.revision, quote: ready.content, created: ready.created },
-                  todos: ready.tasks.map((task) => ({
-                    planKey: task.key,
-                    dependencies: task.dependencies,
-                    ...(task.title ? { title: task.title } : {}),
-                    content: task.content,
-                    criterion: task.criterion,
-                    requirement: task.quote,
-                    status: "pending",
-                    priority: "high",
-                  })),
+                  todos: ready.tasks.map(planTaskToTodoInput),
                   messageID: context.messageID,
                 },
                 {

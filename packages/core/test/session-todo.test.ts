@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test"
+import { Schema } from "effect"
 import { SessionTodo } from "@opencode/core/session/todo"
+import { SessionTodo as SessionTodoContract } from "@opencode/schema/session-todo"
 import { SessionTaskFacts } from "@opencode/core/session/task-facts"
 import { tool } from "./intelligence/fixtures"
 
@@ -122,5 +124,22 @@ describe("SessionTodo", () => {
         ]),
       }),
     ).toBeUndefined()
+  })
+
+  test("Input decoding accepts omission and an empty array for dependencies, and rejects null or an explicit undefined key", () => {
+    const base = {
+      planKey: "repro",
+      content: "Fase 1",
+      criterion: "repro estavel",
+      requirement: "vamos testar",
+      status: "pending",
+      priority: "high",
+    }
+    const decode = Schema.decodeUnknownSync(SessionTodoContract.Input)
+    expect(decode({ ...base })).toBeTruthy()
+    expect(decode({ ...base, dependencies: [] })).toBeTruthy()
+    expect(decode({ ...base, dependencies: ["fix"] })).toBeTruthy()
+    expect(() => decode({ ...base, dependencies: null })).toThrow("Expected array")
+    expect(() => decode({ ...base, dependencies: undefined })).toThrow("Expected array")
   })
 })
