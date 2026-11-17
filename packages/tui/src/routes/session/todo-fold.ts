@@ -84,22 +84,47 @@ export function shown(run: Run | undefined) {
   return !run || run.count > 1 || !run.corrected
 }
 
-/** The row label: the count, then the first line of the latest refusal. */
+/** The row label: the count, then the verdict and reason of the latest refusal.
+ *
+ *  The collapsed row spends its budget on the verdict and reason, not on the todo and review ids:
+ *  `todo_…: Semantic evaluation needs_revision (review id): issue. Previous state preserved.`
+ *  becomes `Semantic evaluation needs_revision: issue`, which is the part the user reads. */
 export function label(run: Run | undefined, part: SessionMessageAssistantTool, limit = 160) {
   const count = run?.count ?? 1
   const head = count > 1 ? `Todo update failed ×${count}` : "Todo update failed"
-  const line =
-    errorText(run?.latest ?? part)
-      .trim()
-      .split("\n")[0] ?? ""
+  const line = shortenRefusal(errorText(run?.latest ?? part).trim().split("\n")[0] ?? "")
   if (!line) return head
   return `${head}: ${line.length > limit ? `${line.slice(0, limit - 1)}…` : line}`
 }
 
-/** Every refusal of a run, numbered, as the expanded row shows them. */
+/** Every refusal of a run, as the expanded row shows them: each distinct reason once, with the
+ *  number of identical repeats — a retry loop repeats the same refusal, and seven walls of the same
+ *  text hide the reason they share. */
 export function errors(parts: readonly SessionMessageAssistantTool[]) {
   const texts = parts.map(errorText)
-  return texts.length > 1 ? texts.map((text, index) => `${index + 1}. ${text}`).join("\n\n") : (texts[0] ?? "")
+  if (texts.length <= 1) return texts[0] ?? ""
+  const distinct: string[] = []
+  const counts: number[] = []
+  for (const text of texts) {
+    const at = distinct.indexOf(text)
+    if (at === -1) {
+      distinct.push(text)
+      counts.push(1)
+    } else counts[at] += 1
+  }
+  return distinct
+    .map((text, index) => {
+      const repeated = counts[index] > 1 ? ` ×${counts[index]}` : ""
+      return `${index + 1}. ${text}${repeated}`
+    })
+    .join("\n\n")
+}
+
+function shortenRefusal(message: string) {
+  return message
+    .replace(/^todo_\S+:\s*/, "")
+    .replace(/^(Semantic evaluation \S+) \([^)]*\):\s*/, "$1: ")
+    .replace(/\s*Previous state preserved\.?$/, "")
 }
 
 function errorText(part: SessionMessageAssistantTool) {

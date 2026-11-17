@@ -75,3 +75,31 @@ test("the cached fold follows a finished message whose todowrite settles later",
   const settled = assistant("a1", [todo("t1", "error"), todo("t2", "completed")])
   expect(fold([settled]).get("t1")?.corrected).toBe(true)
 })
+
+const semantic = (id: string) =>
+  todo(
+    id,
+    "error",
+    "todo_06c64b8b-0981-4281-8acf-465331bdaf06: Semantic evaluation needs_revision (2e493a75-079c-448c-95fb-99ee29d134fd): task_0_coverage (the task claims more than its selected requirement covers, or relies on truncated source text). Previous state preserved.",
+  )
+
+test("the collapsed label keeps the verdict and reason instead of the todo and review ids", () => {
+  const call = semantic("t1")
+  const label = TodoFold.label(TodoFold.fold([assistant("a", [call])]).get("t1"), call)
+  expect(label).toContain("Todo update failed")
+  expect(label).toContain("Semantic evaluation needs_revision: task_0_coverage")
+  expect(label).toContain("claims more than its selected requirement covers")
+  expect(label).not.toContain("todo_06c64b8b")
+  expect(label).not.toContain("2e493a75")
+  expect(label).not.toContain("Previous state preserved")
+})
+
+test("identical refusals in a run are shown once with a repeat count", () => {
+  const parts = [semantic("t1"), semantic("t2"), semantic("t3"), semantic("t4")]
+  const expanded = TodoFold.errors(parts)
+  expect(expanded).toContain("×4")
+  expect(expanded.match(/task_0_coverage/g)?.length).toBe(1)
+  expect(TodoFold.errors([todo("t1", "error", "one"), todo("t2", "error", "one"), todo("t3", "error", "two")])).toBe(
+    "1. one ×2\n\n2. two",
+  )
+})
