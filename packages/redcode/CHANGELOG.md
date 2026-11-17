@@ -1,5 +1,15 @@
 # @reddb-io/redcode
 
+## 0.89.0
+
+### Minor Changes
+
+- The Agents page can now open the full task board next to the sessions tree: each session row has a "Task activity" action that shows the orchestration view (task graph, goal, integration flow) for that session in a side panel, following the focused session. The standalone Tasks view, every tree control, and all other Agents views are unchanged.
+
+### Patch Changes
+
+- Fix plan approval failing after the user approves: a stored plan revision may carry task dependencies as an explicit null (a model's omitted array survives the round-trip), and the todo admission rejected it with `Invalid task update: Expected array` after the approval had already been given. The mapping now omits the key entirely, and a focused regression test locks the contract (omission and empty array accepted; null and an explicit undefined key rejected).
+
 ## 0.88.2
 
 ### Patch Changes
