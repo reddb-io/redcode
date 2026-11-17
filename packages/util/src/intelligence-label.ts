@@ -75,6 +75,55 @@ export function tone(input: { readonly failed: boolean; readonly outcome: Outcom
   return "muted" as const
 }
 
+/** The gate and classification answers the scored label reads; `Intelligence.Answer` satisfies it. */
+export interface Answerish {
+  readonly type: string
+  readonly noul?: number
+  readonly confidence?: number
+}
+
+/** How sure the latest evaluation speaks: the weakest answer's certainty — one minus the worst gate
+ *  probability, or the lowest answer confidence. Undefined when the answers hold nothing to read. */
+export function sureness(answers: Readonly<Record<string, Answerish>> | undefined): number | undefined {
+  const values = Object.values(answers ?? {})
+    .map((answer) =>
+      answer.type === "noul" ? (answer.noul === undefined ? undefined : 1 - answer.noul) : answer.confidence,
+    )
+    .filter((value): value is number => value !== undefined)
+  return values.length ? Math.min(...values) : undefined
+}
+
+/** The scored words for an inconclusive verdict: the margin S1 actually had, instead of a bare
+ *  "unsure". The same words in the TUI and the desktop. */
+export function scored(state: State, sureness: number | undefined): string {
+  if (state === "unsure" && sureness !== undefined) return `S1 ${Math.round(sureness * 100)}% sure`
+  return labels[state]
+}
+
+/**
+ * The workspace state an evaluation read, as one short line per subject: what the review actually saw,
+ * shown beside its verdict. Unknown shapes stay quiet instead of guessing.
+ */
+export function readDigest(read: unknown): string | undefined {
+  if (!read || typeof read !== "object" || Array.isArray(read)) return undefined
+  const parts = Object.entries(read as Record<string, unknown>).flatMap(([subject, slice]): string[] => {
+    if (typeof slice === "string") return [`${subject}: ${slice}`]
+    if (!slice || typeof slice !== "object" || Array.isArray(slice)) return []
+    const record = slice as Record<string, unknown>
+    const bits: string[] = []
+    if (Array.isArray(record.files)) bits.push(`${record.files.length} files`)
+    if (record.todos && typeof record.todos === "object" && !Array.isArray(record.todos)) {
+      const counts = Object.entries(record.todos as Record<string, unknown>).filter(
+        (entry): entry is [string, number] => typeof entry[1] === "number" && entry[1] > 0,
+      )
+      bits.push(counts.length ? counts.map(([status, count]) => `${count} ${status}`).join(", ") : "no tasks")
+    }
+    if (typeof record.goal === "string") bits.push(`goal ${record.goal}`)
+    return bits.length ? [`${subject}: ${bits.join(", ")}`] : []
+  })
+  return parts.length ? parts.join(" · ") : undefined
+}
+
 const transports: Record<string, string> = {
   "opencode-zen": "OpenCode Zen",
   openrouter: "OpenRouter",

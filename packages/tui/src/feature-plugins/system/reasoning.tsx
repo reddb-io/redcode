@@ -289,7 +289,8 @@ function IntelligenceIndicator(props: {
       mode: mode(),
       outcome: outcome(),
     })
-    return state ? IntelligenceLabel.labels[state] : ""
+    if (!state) return ""
+    return IntelligenceLabel.scored(state, IntelligenceLabel.sureness(history()?.[0]?.answers))
   }
   const tone = () => {
     const tone = IntelligenceLabel.tone({ failed: props.error, outcome: outcome() })

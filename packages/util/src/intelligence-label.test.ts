@@ -115,4 +115,40 @@ describe("IntelligenceLabel", () => {
     expect(IntelligenceLabel.modelName("vendor/jev-mini")).toBe("JEV mini")
     expect(IntelligenceLabel.modelName("gpt-5-mini")).toBe("gpt-5-mini")
   })
+
+  test("sureness is the weakest answer's certainty", () => {
+    const gate = { type: "noul", noul: 0.3 }
+    const sureGate = { type: "noul", noul: 0.05 }
+    expect(IntelligenceLabel.sureness(undefined)).toBeUndefined()
+    expect(IntelligenceLabel.sureness({})).toBeUndefined()
+    expect(IntelligenceLabel.sureness({ correctness: gate })).toBe(0.7)
+    expect(IntelligenceLabel.sureness({ correctness: sureGate, omission: gate })).toBe(0.7)
+    expect(
+      IntelligenceLabel.sureness({ correctness: gate, route: { type: "choice", confidence: 0.9 } as never }),
+    ).toBe(0.7)
+    expect(IntelligenceLabel.sureness({ route: { type: "choice", confidence: 0.9 } as never })).toBe(0.9)
+  })
+
+  test("an inconclusive verdict speaks with the margin it had", () => {
+    expect(IntelligenceLabel.scored("unsure", 0.74)).toBe("S1 74% sure")
+    expect(IntelligenceLabel.scored("unsure", undefined)).toBe("S1 unsure")
+    expect(IntelligenceLabel.scored("flagged", 0.74)).toBe("S1 flagged answer")
+    expect(IntelligenceLabel.scored("observing", undefined)).toBe("S1 observing")
+  })
+
+  test("the read digest names the state each subject saw, one line per subject", () => {
+    expect(IntelligenceLabel.readDigest(undefined)).toBeUndefined()
+    expect(IntelligenceLabel.readDigest("not a record")).toBeUndefined()
+    expect(IntelligenceLabel.readDigest({})).toBeUndefined()
+    expect(
+      IntelligenceLabel.readDigest({
+        work_claims: { files: ["src/a.ts", "src/b.ts"], todos: { pending: 2, in_progress: 1, completed: 3 } },
+        completeness: { todos: { pending: 2, in_progress: 1, completed: 3 }, goal: "active" },
+      }),
+    ).toBe("work_claims: 2 files, 2 pending, 1 in_progress, 3 completed · completeness: 2 pending, 1 in_progress, 3 completed, goal active")
+    expect(IntelligenceLabel.readDigest({ workspace: "2 files changed · goal active" })).toBe(
+      "workspace: 2 files changed · goal active",
+    )
+    expect(IntelligenceLabel.readDigest({ writing: {} })).toBeUndefined()
+  })
 })
