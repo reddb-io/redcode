@@ -39,7 +39,6 @@ import {
   SessionAncestorTrail,
   SessionProjectMenu,
   SessionTitleHeader,
-  useOpenSessionRoute,
 } from "../session-identity-header"
 import { SessionHeaderSpacer } from "@/session/header/session-header"
 import { SessionRunningMenu } from "@/session/header/session-running-menu"
@@ -48,7 +47,6 @@ import { DesignApprovalCard, DesignFeedbackCard } from "../design/cards"
 import { designOrdinals } from "../design/state"
 import { announceRestricted, RestrictedNotice } from "./restricted-notice"
 import { SessionOutputsOverlay } from "../summary/outputs"
-import { SubagentActivity, type ActiveSubagent } from "./subagent-activity"
 
 type BlockingTask = { type: "shell" | "subagent"; partID: string; id?: string; label?: string; agent?: string }
 
@@ -502,35 +500,6 @@ function MessageTimelineView(
     />
   )
 
-  const openSession = useOpenSessionRoute()
-  const subagents = createMemo<ActiveSubagent[]>(() => {
-    if (props.active === false || props.data.timelineDetail().subagents.placement === "hidden") return []
-    const foreground = props.background.activity.blocking().flatMap((task) =>
-      task.type === "subagent"
-        ? [
-            {
-              sessionID: task.id,
-              title: task.label,
-              agent: task.agent ?? (task.id ? data.session.get(task.id)?.agent : undefined),
-            },
-          ]
-        : [],
-    )
-    const present = new Set(foreground.flatMap((item) => (item.sessionID ? [item.sessionID] : [])))
-    const background = props.background.activity.tasks().flatMap((task) =>
-      task.type === "subagent" && !present.has(task.id)
-        ? [
-            {
-              sessionID: task.id,
-              title: task.label,
-              agent: task.agent ?? data.session.get(task.id)?.agent,
-            },
-          ]
-        : [],
-    )
-    return [...foreground, ...background]
-  })
-
   return (
     <VirtualizedTimeline
       workspaceSession={workspaceSession}
@@ -542,8 +511,7 @@ function MessageTimelineView(
             waits().length > 0 ||
             observing().length > 0 ||
             phases().length > 0 ||
-            permissions().length > 0 ||
-            subagents().length > 0
+            permissions().length > 0
           }
         >
           <div
@@ -576,15 +544,6 @@ function MessageTimelineView(
               </div>
             </Show>
             <div class={`flex flex-col gap-1 ${turnPadding()}`}>
-              <Show when={subagents().length > 0}>
-                <SubagentActivity
-                  items={subagents()}
-                  open={(id) => {
-                    const current = sessionID()
-                    if (current) openSession(current, id)
-                  }}
-                />
-              </Show>
               <For each={phases()}>
                 {(phase) => <SessionPhaseWaitStatus kind={phase.kind} target={phase.target} since={phase.started} />}
               </For>

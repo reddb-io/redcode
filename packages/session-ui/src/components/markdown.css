@@ -394,11 +394,13 @@
     display: inline-flex;
   }
 
+  /* Session content in fenced blocks (logs, JSON, long lines) wraps in place like the TUI's rendering;
+     a tail hidden behind a horizontal scrollbar is unreadable exactly when it matters. */
   pre {
     margin-top: var(--reddb-spatial-gap-md);
     margin-bottom: var(--reddb-spatial-gap-lg);
-    overflow: auto;
-    scrollbar-width: thin;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
 
   /* Inline code sits on the muted surface in the code face, one step smaller than prose. */
