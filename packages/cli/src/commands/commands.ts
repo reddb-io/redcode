@@ -819,6 +819,19 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
         Spec.make("refresh", { description: "Discover and reconcile project worktrees" }),
       ],
     }),
+    Spec.make("project", {
+      description: "Manage known projects",
+      commands: [
+        Spec.make("remove", {
+          description: "Remove a project from the project list; resolving its directory restores it",
+          params: {
+            ...ServerParams,
+            projectID: Argument.string("projectID").pipe(Argument.withDescription("Project ID to remove")),
+            yes: Flag.boolean("yes").pipe(Flag.withAlias("y"), Flag.withDefault(false)),
+          },
+        }),
+      ],
+    }),
     Spec.make("pr", {
       description: `Check out a GitHub pull request and open ${name}`,
       params: { number: Argument.integer("number") },
@@ -1084,6 +1097,10 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
             ...ServerParams,
             sessionID: Argument.string("sessionID"),
             restore: Flag.boolean("restore").pipe(Flag.withDefault(false)),
+            force: Flag.boolean("force").pipe(
+              Flag.withDescription("Archive even when the session family still has pending work"),
+              Flag.withDefault(false),
+            ),
           },
         }),
         Spec.make("delete", {

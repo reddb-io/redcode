@@ -16,7 +16,11 @@ const handler = Effect.fn("cli.session.archive")(function* (
   })
   const client = OpenCode.make({ baseUrl: server.endpoint.url, headers: Service.headers(server.endpoint) })
   yield* Effect.tryPromise({
-    try: (signal) => client.session.archive({ sessionID: input.sessionID, archived: !input.restore }, { signal }),
+    try: (signal) =>
+      client.session.archive(
+        { sessionID: input.sessionID, archived: !input.restore, force: input.force },
+        { signal },
+      ),
     catch: (cause) => cause,
   })
   process.stdout.write(`Session ${input.sessionID} ${input.restore ? "restored" : "archived"}${EOL}`)

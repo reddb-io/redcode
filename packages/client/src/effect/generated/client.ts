@@ -330,6 +330,8 @@ import type {
   ProjectListOutput,
   ProjectUpdateInput,
   ProjectUpdateOutput,
+  ProjectRemoveInput,
+  ProjectRemoveOutput,
   FormListInput,
   FormListOutput,
   PermissionRequestListInput,
@@ -1072,7 +1074,7 @@ const EndpointSessionArchive = (raw: RawClient["server.session"]) => (input: Ses
   preserveEffect<SessionArchiveOutput>()(
     raw["session.archive"]({
       params: { sessionID: input["sessionID"] },
-      payload: { archived: input["archived"] },
+      payload: { archived: input["archived"], force: input["force"] },
     }).pipe(Effect.mapError(mapClientError)),
   )
 
@@ -2372,9 +2374,15 @@ const EndpointProjectUpdate = (raw: RawClient["server.project"]) => (input: Proj
     }).pipe(Effect.mapError(mapClientError)),
   )
 
+const EndpointProjectRemove = (raw: RawClient["server.project"]) => (input: ProjectRemoveInput) =>
+  preserveEffect<ProjectRemoveOutput>()(
+    raw["project.remove"]({ params: { projectID: input["projectID"] } }).pipe(Effect.mapError(mapClientError)),
+  )
+
 const adaptGroupProject = (raw: RawClient["server.project"]) => ({
   list: EndpointProjectList(raw),
   update: EndpointProjectUpdate(raw),
+  remove: EndpointProjectRemove(raw),
 })
 
 const EndpointFormList = (raw: RawClient["server.form"]) => (input?: FormListInput) =>

@@ -53,6 +53,7 @@ export function createNavigationController() {
     query: "",
     showAll: {} as Record<string, boolean>,
     since: {} as Record<string, number>,
+    hidden: {} as Record<string, true>,
   })
 
   const state = observeShared(store)
@@ -127,6 +128,7 @@ export function createNavigationController() {
       query: state().query,
       expanded: layout.navigation.expanded,
       showAll: (key) => !!state().showAll[key],
+      hidden: new Set(Object.keys(state().hidden)),
       status,
     }),
   )
@@ -362,6 +364,29 @@ export function createNavigationController() {
         const server = serverKey()
         if (server) layout.navigation.pinned.toggle({ server, session: sessionID })
       },
+      archive: async (sessionID: string) => {
+        const context = ctx()
+        if (!context) return
+        await context.data.session.archive(sessionID, true)
+      },
+      restore: async (sessionID: string) => {
+        const context = ctx()
+        if (!context) return
+        await context.data.session.archive(sessionID, false)
+      },
+      remove: async (sessionID: string) => {
+        const context = ctx()
+        if (!context) return
+        await context.sdk.api.session.remove({ sessionID })
+      },
+      /** Hides the session from this client's lists without touching the server. */
+      hide: (sessionID: string) => store.update({ hidden: { ...state().hidden, [sessionID]: true } }),
+      unhide: (sessionID: string) => {
+        const next = { ...state().hidden }
+        delete next[sessionID]
+        store.update({ hidden: next })
+      },
+      hidden: (sessionID: string) => !!state().hidden[sessionID],
     },
     route: {
       agents: () => layout.route().type === "agents",

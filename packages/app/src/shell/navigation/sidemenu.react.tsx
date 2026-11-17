@@ -371,6 +371,14 @@ function ProjectNode(props: RowProps & { project: NavigationView["tree"]["projec
                       disabled: !view.projects[props.project.key]?.unseen,
                       onselect: () => run((conn) => actions.clearNotifications(conn, props.project.project)),
                     },
+                    {
+                      id: "remove",
+                      label: language.t("navigation.project.remove"),
+                      onselect: () => {
+                        if (!window.confirm(language.t("navigation.project.removeConfirm"))) return
+                        run((conn) => actions.remove(conn, props.project.project))
+                      },
+                    },
                   ],
                 },
                 {
@@ -585,6 +593,25 @@ function SessionRow(
                 id: "background",
                 label: language.t("navigation.session.openBackground"),
                 onselect: () => props.navigation.session.open(props.item.session, { background: true }),
+              },
+              {
+                id: "hide",
+                label: language.t(state.hidden ? "navigation.session.unhide" : "navigation.session.hide"),
+                onselect: () =>
+                  state.hidden ? props.navigation.session.unhide(id) : props.navigation.session.hide(id),
+              },
+              {
+                id: "archive",
+                label: language.t("navigation.session.archive"),
+                onselect: () => void props.navigation.session.archive(id),
+              },
+              {
+                id: "delete",
+                label: language.t("navigation.session.delete"),
+                onselect: () => {
+                  if (!window.confirm(language.t("navigation.session.deleteConfirm"))) return
+                  void props.navigation.session.remove(id)
+                },
               },
             ]}
           />

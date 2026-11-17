@@ -26,6 +26,10 @@ import { useLocation } from "../context/location"
 
 type Scope = "directory" | "project" | "all"
 
+function isBusyError(error: unknown) {
+  return error instanceof Error && error.name === "SessionBusyError"
+}
+
 export function DialogSessionList() {
   const dialog = useDialog()
   const route = useRoute()
@@ -42,6 +46,7 @@ export function DialogSessionList() {
   const [search, setSearch] = createDebouncedSignal("", 150)
   const [archived, setArchived] = createSignal(false)
   const [toDelete, setToDelete] = createSignal<string>()
+  const [forceArchive, setForceArchive] = createSignal<string>()
   const [prefs, updatePrefs] = useStorage().store<{ allProjects: boolean; scope: Scope }>("session-list", {
     initial: {
       allProjects: config.tabs?.scope !== "cwd",
@@ -280,13 +285,31 @@ export function DialogSessionList() {
           title: archived() ? "restore" : "archive",
           onTrigger: (option: { value: string }) => {
             const restoring = archived()
-            void data.session
-              .archive(option.value, !restoring)
-              .then(async () => {
-                await refetch()
-                if (!restoring) sessionTabs.close(option.value)
-              })
-              .catch((error) => toast.show({ message: errorMessage(error), variant: "error", duration: 5000 }))
+            const archive = (force: boolean) =>
+              data.session.archive(option.value, !restoring, force).then(
+                async () => {
+                  await refetch()
+                  if (!restoring) sessionTabs.close(option.value)
+                },
+                (error: unknown) => {
+                  if (!restoring && !force && isBusyError(error)) {
+                    toast.show({
+                      message: `${errorMessage(error)} Press ctrl+e again to archive anyway.`,
+                      variant: "error",
+                      duration: 10000,
+                    })
+                    setForceArchive(option.value)
+                    return
+                  }
+                  toast.show({ message: errorMessage(error), variant: "error", duration: 5000 })
+                },
+              )
+            if (!restoring && forceArchive() === option.value) {
+              setForceArchive(undefined)
+              void archive(true)
+              return
+            }
+            void archive(false)
           },
         },
         {

@@ -52,6 +52,8 @@ export type NavigationInput<P extends NavigationProjectLike> = {
   query?: string
   expanded?: (key: string) => boolean
   showAll?: (key: string) => boolean
+  /** Sessions hidden locally on this client; keyed by session ID, scoped to a project key. */
+  hidden?: ReadonlySet<string>
   /** Sessions with a status stay visible past the project limit. */
   status?: (sessionID: string) => SessionStatus | undefined
   limit?: number
@@ -83,9 +85,10 @@ export function buildNavigationTree<P extends NavigationProjectLike>(input: Navi
     sessionLabel(item.session).toLowerCase().includes(query) ||
     (!!item.project && displayName(item.project).toLowerCase().includes(query))
   const byID = new Map(sessions.map((session) => [session.id, session] as const))
+  const shown = (session: SessionInfo) => filtered || !input.hidden?.has(session.id)
   const pinned = input.pinned.flatMap((id) => {
     const session = byID.get(id)
-    return session ? [entry(session)] : []
+    return session && shown(session) ? [entry(session)] : []
   })
   const unpinned = sessions.filter((session) => !pinnedIDs.has(session.id)).map(entry)
   const grouped = Map.groupBy(unpinned, (item) => (item.project ? navigationProjectKey(item.project.worktree) : ""))
@@ -95,7 +98,7 @@ export function buildNavigationTree<P extends NavigationProjectLike>(input: Navi
     const name = displayName(project)
     const all = grouped.get(key) ?? []
     const named = filtered && name.toLowerCase().includes(query)
-    const candidates = named ? all : all.filter(matches)
+    const candidates = (named ? all : all.filter(matches)).filter((item) => shown(item.session))
     if (filtered && !named && candidates.length === 0) return []
     const visible =
       filtered || input.showAll?.(key)
@@ -118,7 +121,7 @@ export function buildNavigationTree<P extends NavigationProjectLike>(input: Navi
   return {
     grouping: input.grouping ?? "projects",
     activity: (["attention", "working", "other"] as const).flatMap((id) => {
-      const items = unpinned.filter(matches).filter((item) => {
+      const items = unpinned.filter(matches).filter((item) => shown(item.session)).filter((item) => {
         const status = input.status?.(item.session.id)
         if (id === "attention") return sessionAwaitsUser(status)
         if (id === "working") return status === "working" || status === "queued"
@@ -135,7 +138,7 @@ export function buildNavigationTree<P extends NavigationProjectLike>(input: Navi
     }),
     pinned: pinned.filter(matches),
     projects,
-    recents: unpinned.filter(matches).slice(0, input.recentLimit ?? NAVIGATION_RECENT_LIMIT),
+    recents: unpinned.filter(matches).filter((item) => shown(item.session)).slice(0, input.recentLimit ?? NAVIGATION_RECENT_LIMIT),
     filtered,
   }
 }

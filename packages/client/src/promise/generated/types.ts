@@ -2413,6 +2413,15 @@ export type PluginUpdated = {
   data: {}
 }
 
+export type ProjectRemoved = {
+  id: string
+  created: number
+  metadata?: { [x: string]: any }
+  type: "project.removed"
+  location?: LocationRef
+  data: { projectID: string }
+}
+
 export type WorktreeUpdated = {
   id: string
   created: number
@@ -4802,6 +4811,7 @@ export type V2Event =
   | SessionWaitChanged
   | PluginUpdated
   | ProjectUpdated
+  | ProjectRemoved
   | WorktreeUpdated
   | WorktreeResolved
   | CommandUpdated
@@ -6043,7 +6053,8 @@ export type PluginUpdateOutput = void
 
 export type SessionArchiveInput = {
   readonly sessionID: { readonly sessionID: string }["sessionID"]
-  readonly archived: { readonly archived: boolean }["archived"]
+  readonly archived: { readonly archived: boolean; readonly force?: boolean | undefined }["archived"]
+  readonly force?: { readonly archived: boolean; readonly force?: boolean | undefined }["force"]
 }
 
 export type SessionArchiveOutput = void
@@ -11768,6 +11779,10 @@ export type ProjectUpdateInput = {
 }
 
 export type ProjectUpdateOutput = Project
+
+export type ProjectRemoveInput = { readonly projectID: { readonly projectID: string }["projectID"] }
+
+export type ProjectRemoveOutput = void
 
 export type FormListInput = {
   readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]

@@ -144,6 +144,8 @@ export interface Interface {
   readonly archive: (input: {
     sessionID: SessionSchema.ID
     archived: boolean
+    /** Archive even when the family still has pending work. */
+    force?: boolean
   }) => Effect.Effect<void, NotFoundError | BusyError>
   readonly view: (input: { sessionID: SessionSchema.ID; idle: number }) => Effect.Effect<void, NotFoundError>
   readonly remove: (sessionID: SessionSchema.ID) => Effect.Effect<void, NotFoundError>
@@ -449,7 +451,9 @@ const layer = Layer.effect(
             yield* bus
               .publish(SessionEvent.Archived, input, {
                 commit: () =>
-                  input.archived ? SessionArchive.requireSettled(db, input.sessionID).pipe(Effect.orDie) : Effect.void,
+                  input.archived && !input.force
+                    ? SessionArchive.requireSettled(db, input.sessionID).pipe(Effect.orDie)
+                    : Effect.void,
               })
               .pipe(
                 Effect.catchDefect((error) => (error instanceof BusyError ? Effect.fail(error) : Effect.die(error))),

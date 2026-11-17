@@ -169,6 +169,9 @@ const Handlers = Runtime.handlers(Commands, {
     export: () => import("./commands/handlers/session/export"),
     import: () => import("./commands/handlers/session/import"),
   },
+  project: {
+    remove: () => import("./commands/handlers/project/remove"),
+  },
   service: {
     start: () => import("./commands/handlers/service/start"),
     restart: () => import("./commands/handlers/service/restart"),

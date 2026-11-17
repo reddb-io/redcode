@@ -246,7 +246,7 @@ const makeSessionGroupPart1 = <I extends HttpApiMiddleware.AnyId, S, FormI exten
     .add(
       HttpApiEndpoint.post("session.archive", "/api/session/:sessionID/archive", {
         params: { sessionID: Session.ID },
-        payload: Schema.Struct({ archived: Schema.Boolean }),
+        payload: Schema.Struct({ archived: Schema.Boolean, force: Schema.optional(Schema.Boolean) }),
         success: HttpApiSchema.NoContent,
         error: [SessionNotFoundError, SessionBusyError],
       }).annotateMerge(

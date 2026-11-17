@@ -104,6 +104,11 @@ export function useProjectActions() {
       )
       if (next) layout.home.setSelection(next)
     },
+    async remove(conn: ServerConnection.Any, project: LocalProject) {
+      const ctx = global.ensureServerCtx(conn)
+      if (!project.id) return
+      await ctx.sdk.api.project.remove({ projectID: project.id })
+    },
   }
 }
 

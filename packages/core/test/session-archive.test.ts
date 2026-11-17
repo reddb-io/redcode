@@ -152,4 +152,27 @@ describe("Session archive", () => {
       expect((yield* session.get(parent.id)).time.archived).toBeDefined()
     }),
   )
+  it.effect("force archives a family with pending work", () =>
+    Effect.gen(function* () {
+      const session = yield* Session.Service
+      const database = yield* Database.Service
+      const parent = yield* session.create({ location })
+      const child = yield* session.create({ parentID: parent.id })
+      yield* database.db
+        .insert(TodoTable)
+        .values({
+          session_id: child.id,
+          position: 0,
+          content: "Finish verification",
+          priority: "high",
+          status: "blocked",
+        })
+        .run()
+      expect(
+        (yield* session.archive({ sessionID: parent.id, archived: true, force: true }).pipe(Effect.result))._tag,
+      ).toBe("Success")
+      expect((yield* session.get(parent.id)).time.archived).toBeDefined()
+      expect((yield* session.list({ archived: "only" })).data.map((item) => item.id)).toEqual([parent.id])
+    }),
+  )
 })

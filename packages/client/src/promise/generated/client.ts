@@ -324,6 +324,8 @@ import type {
   ProjectListOutput,
   ProjectUpdateInput,
   ProjectUpdateOutput,
+  ProjectRemoveInput,
+  ProjectRemoveOutput,
   FormListInput,
   FormListOutput,
   PermissionRequestListInput,
@@ -1426,7 +1428,7 @@ export function make(options: ClientOptions) {
           {
             method: "POST",
             path: `/api/session/${encodeURIComponent(input.sessionID)}/archive`,
-            body: { archived: input["archived"] },
+            body: { archived: input["archived"], force: input["force"] },
             successStatus: 204,
             declaredStatuses: [400, 401, 403, 404, 409],
             empty: true,
@@ -3050,6 +3052,17 @@ export function make(options: ClientOptions) {
             successStatus: 200,
             declaredStatuses: [400, 401, 403, 404, 409],
             empty: false,
+          },
+          requestOptions,
+        ),
+      remove: (input: ProjectRemoveInput, requestOptions?: RequestOptions) =>
+        request<ProjectRemoveOutput>(
+          {
+            method: "DELETE",
+            path: `/api/project/${encodeURIComponent(input.projectID)}`,
+            successStatus: 204,
+            declaredStatuses: [400, 401, 403, 404, 409],
+            empty: true,
           },
           requestOptions,
         ),

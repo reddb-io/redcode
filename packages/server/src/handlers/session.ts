@@ -119,7 +119,11 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
     return handlers
       .handle("session.archive", (ctx) =>
         session
-          .archive({ sessionID: ctx.params.sessionID, archived: ctx.payload.archived })
+          .archive({
+            sessionID: ctx.params.sessionID,
+            archived: ctx.payload.archived,
+            force: ctx.payload.force,
+          })
           .pipe(
             Effect.catchTag("Session.NotFoundError", missingSession),
             Effect.catchTag("Session.BusyError", busySession),

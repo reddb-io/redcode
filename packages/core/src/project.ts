@@ -68,6 +68,8 @@ export interface ListInput {
 export interface Interface {
   readonly list: (input?: ListInput) => Effect.Effect<ReadonlyArray<Info>>
   readonly update: (input: UpdateInput) => Effect.Effect<Info, NotFoundError>
+  /** Archives a Project so it leaves the default list; resolving its directory unarchives it. */
+  readonly remove: (input: { readonly projectID: ID }) => Effect.Effect<void, NotFoundError>
   /** Records Project activity for recency ordering, at most once per minute per Project. */
   readonly activate: (projectID: ID) => Effect.Effect<void>
   /** Resolves and persists the owning Project. */
@@ -253,6 +255,22 @@ const layer = Layer.effect(
       const project = fromRow(row)
       yield* bus.publish(ProjectSchema.Event.Updated, project)
       return project
+    })
+
+    const remove = Effect.fn("Project.remove")(function* (input: { readonly projectID: ID }) {
+      // The global Project backs every directory outside a workspace; it cannot be removed.
+      if (input.projectID === ID.global) return yield* new NotFoundError({ projectID: input.projectID })
+      const now = Date.now()
+      const row = yield* db
+        .update(ProjectTable)
+        .set({ time_archived: now, time_updated: now })
+        .where(and(eq(ProjectTable.id, input.projectID), isNull(ProjectTable.time_archived)))
+        .returning()
+        .get()
+        .pipe(Effect.orDie)
+      if (!row) return yield* new NotFoundError({ projectID: input.projectID })
+      yield* bus.publish(ProjectSchema.Event.Removed, { projectID: input.projectID })
+      yield* bus.publish(ProjectSchema.Event.Updated, fromRow(row))
     })
 
     const activated = new Map<ID, number>()
@@ -445,7 +463,7 @@ const layer = Layer.effect(
       )
     })
 
-    return Service.of({ list, update, activate, resolve, sweep })
+    return Service.of({ list, update, remove, activate, resolve, sweep })
   }),
 )
 

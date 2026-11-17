@@ -156,6 +156,21 @@ describe("buildNavigationTree", () => {
     ])
   })
 
+  test("hides a session locally until the search or unhide reveals it", () => {
+    const sessions = [
+      session("a1", "/repo/alpha", 10),
+      session("a2", "/repo/alpha", 20),
+    ]
+    const hidden = new Set(["a2"])
+    const tree = buildNavigationTree({ projects: [alpha], sessions, pinned: [], hidden })
+    expect(tree.projects[0]!.sessions.map((item) => item.session.id)).toEqual(["a1"])
+    expect(tree.projects[0]!.total).toBe(2)
+    expect(tree.recents.map((item) => item.session.id)).toEqual(["a1"])
+    // A search shows hidden sessions too; hiding is a list filter, not a data delete.
+    const searched = buildNavigationTree({ projects: [alpha], sessions, pinned: [], hidden, query: "a2" })
+    expect(searched.projects[0]!.sessions.map((item) => item.session.id)).toEqual(["a2"])
+  })
+
   test("filters by session title or project name and expands every match", () => {
     const sessions = [
       session("a1", "/repo/alpha", 10, { title: "Fix login" } as Partial<SessionInfo>),

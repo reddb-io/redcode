@@ -763,6 +763,11 @@ export function createData(config: CreateDataInput) {
       case "project.updated":
         setStore("project", "info", event.data.id, reconcile(event.data))
         return
+      case "project.removed": {
+        const project = store.project.info[event.data.projectID]
+        if (project) setStore("project", "info", event.data.projectID, "time", "archived", Date.now())
+        return
+      }
       case "session.created":
         refreshSpending(event.data.sessionID)
         sessionOutbox.delete(event.data.sessionID)
@@ -1589,8 +1594,8 @@ export function createData(config: CreateDataInput) {
       get(sessionID: string) {
         return store.session.info[sessionID]
       },
-      async archive(sessionID: string, archived: boolean) {
-        await api().session.archive({ sessionID, archived })
+      async archive(sessionID: string, archived: boolean, force?: boolean) {
+        await api().session.archive({ sessionID, archived, force })
         result.session.invalidate(sessionID)
         await result.session.sync(sessionID)
       },
