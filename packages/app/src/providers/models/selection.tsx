@@ -367,7 +367,17 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       const expected = pending.get(sessionID)
       const session = data.session.get(sessionID)
 
-      if (!expected || !session?.model) return
+      if (!expected) {
+        // A server-initiated switch (plan_exit, design handoff) has no pending expectation. Drop the
+        // stale local agent override so the composer follows the session's durable agent again.
+        const draft = saved.session[sessionID]
+
+        if (draft?.agent && session?.agent !== draft.agent)
+          setSaved("session", sessionID, { ...draft, agent: undefined })
+        return
+      }
+
+      if (!session?.model) return
 
       if (
         !sameSelection(expected, {
