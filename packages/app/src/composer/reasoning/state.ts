@@ -112,6 +112,9 @@ export function createComposerReasoning(input: { session: Accessor<string | unde
         mode: mode(),
         outcome: outcome(),
       }),
+    /** How sure the latest evaluation speaks, from its answers; undefined when nothing is readable. */
+    sureness: () =>
+      IntelligenceLabel.sureness(history.state === "ready" ? history.latest?.[0]?.answers : undefined),
     tone: () => IntelligenceLabel.tone({ failed: failed(), outcome: outcome() }),
     /** Sets the session's mode, or keeps the draft's choice until the session exists. */
     set(choice: ReasoningChoice) {

@@ -3093,6 +3093,7 @@ export type IntelligenceEvaluation = {
   model: string
   answers: { [x: string]: IntelligenceAnswer }
   issues: Array<string>
+  read?: JsonValue
   created: number
   duration: number
   evaluator?: {

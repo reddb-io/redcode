@@ -666,6 +666,18 @@ describe("SessionStopLoss wording", () => {
     expect(text).toStartWith(SessionStopLoss.STEER)
     expect(text).toContain("Your last 3 `bash` calls came back with the same result")
   })
+
+  test("a steer cites the workspace fact it was given, and stays as before without one", () => {
+    const verdict = { action: "steer" as const, signals: ["no_progress"] as const, verified: false }
+    const text = SessionStopLoss.steer(observe(probes(3)), verdict, {
+      workspace: "2 files changed · working on Fix the engine",
+    })
+    expect(text).toStartWith(SessionStopLoss.STEER)
+    expect(text).toContain("Workspace facts: 2 files changed · working on Fix the engine.")
+    const plain = SessionStopLoss.steer(observe(probes(3)), verdict)
+    expect(plain).not.toContain("Workspace facts:")
+    expect(plain).toBe(SessionStopLoss.steer(observe(probes(3)), verdict, {}))
+  })
 })
 
 describe("SessionStopLoss.evaluation", () => {

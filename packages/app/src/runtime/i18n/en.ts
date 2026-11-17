@@ -1187,6 +1187,7 @@ export const dict = {
   "composer.reasoning.state.observing": "S1 observing",
   "composer.reasoning.state.unavailable": "S1 unavailable",
   "composer.reasoning.state.unsure": "S1 unsure",
+  "composer.reasoning.state.unsure.scored": "S1 {{score}}% sure",
   "composer.reasoning.state.flagged": "S1 flagged answer",
   "composer.reasoning.dialog.title": "S1 / S2 · Models and evaluations",
   "composer.reasoning.dialog.s2.current": "System Two in this composer",

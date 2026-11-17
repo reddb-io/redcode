@@ -6,6 +6,7 @@ import type { EvaluationInput } from "../intelligence.js"
 import { IntelligenceEvaluation } from "./evaluation.js"
 import { IntelligenceCodeRepair } from "./code-repair.js"
 import type { SessionRequestContext } from "../session/request-context.js"
+import type { SessionWorkspaceSnapshot } from "../session/workspace-snapshot.js"
 
 /**
  * System One review of the agent's final response. S1 validates the answer against the request
@@ -20,23 +21,45 @@ export const REVIEW_KEY = "responseReview"
 /** Repair passes per final response. */
 export const REPAIRS = 1
 
-export const QUESTIONS: Record<string, Intelligence.Question> = IntelligenceEvaluation.questions({
-  correctness:
-    "Does candidate contain a factual or logical error contradicted by the request or available evidence? Compare actual behavior with intended behavior and check the requested result. Missing evidence alone does not establish an error.",
-  omission:
-    "Does candidate fail to answer an applicable request or question in sources.request and sources.request_context? Follow later corrections and scope changes; neutral continuation preserves applicable requirements. Do not revive a superseded topic or infer an omission from missing or truncated history.",
-  // Only claims of performed or verified work: a greeting or a statement of readiness is not one.
-  unsupported:
-    "Does candidate claim it performed or verified work, such as making edits, running commands or tests, completing tasks or checking results, that sources.tasks, sources.goal and sources.tools do not support? Conversational statements, such as greetings, saying it is ready, plans or offers of help, are not claims of work.",
-  tool_evidence:
-    "Does candidate rely on a failed, partial, irrelevant or ambiguous result in sources.tools as if it proved the claimed outcome?",
-  premature:
-    "Does candidate present the overall task as complete while sources contain unfinished tasks, an active goal or a blocker?",
-  writing:
-    "Does candidate have a material writing defect that makes the result, remaining work or next action hard to understand?",
-  refusal:
-    "Does candidate refuse, withhold help on, or add an unwarranted safety warning to the latest request in sources when that request is ordinary software work with no concrete sign of harm? Declining a request to cause harm, evade authorization or falsify results is not this issue, and neither is asking for a missing detail.",
-})
+/** Each gate declares the facts it reads: a description mapped to the reference in the sources. */
+const DECLARED: Record<string, Record<string, string>> = {
+  correctness: { "files this session changed": "workspace.files" },
+  unsupported: { "files this session changed": "workspace.files", "task state": "tasks" },
+  tool_evidence: { "bounded tool results": "tools" },
+  premature: { "task state": "tasks", "goal state": "goal" },
+}
+
+export const QUESTIONS: Record<string, Intelligence.Question> = IntelligenceEvaluation.questions(
+  {
+    correctness:
+      "Does candidate contain a factual or logical error contradicted by the request or available evidence? Compare actual behavior with intended behavior and check the requested result. Missing evidence alone does not establish an error.",
+    omission:
+      "Does candidate fail to answer an applicable request or question in sources.request and sources.request_context? Follow later corrections and scope changes; neutral continuation preserves applicable requirements. Do not revive a superseded topic or infer an omission from missing or truncated history.",
+    // Only claims of performed or verified work: a greeting or a statement of readiness is not one.
+    unsupported:
+      "Does candidate claim it performed or verified work, such as making edits, running commands or tests, completing tasks or checking results, that sources.tasks, sources.goal and sources.tools do not support? Conversational statements, such as greetings, saying it is ready, plans or offers of help, are not claims of work.",
+    tool_evidence:
+      "Does candidate rely on a failed, partial, irrelevant or ambiguous result in sources.tools as if it proved the claimed outcome?",
+    premature:
+      "Does candidate present the overall task as complete while sources contain unfinished tasks, an active goal or a blocker?",
+    writing:
+      "Does candidate have a material writing defect that makes the result, remaining work or next action hard to understand?",
+    refusal:
+      "Does candidate refuse, withhold help on, or add an unwarranted safety warning to the latest request in sources when that request is ordinary software work with no concrete sign of harm? Declining a request to cause harm, evade authorization or falsify results is not this issue, and neither is asking for a missing detail.",
+  },
+  DECLARED,
+)
+
+/** The subject each gate belongs to; the snapshot slices in the record's `read` follow this grouping. */
+export const SUBJECTS: Record<string, string> = {
+  correctness: "work_claims",
+  unsupported: "work_claims",
+  tool_evidence: "work_claims",
+  omission: "completeness",
+  premature: "completeness",
+  writing: "writing",
+  refusal: "refusal",
+}
 
 /** Plain-language reasons for the question ids, shown to the user instead of the raw key. */
 export const REASONS: Record<string, string> = {
@@ -83,12 +106,24 @@ export function evaluation(input: {
   readonly goal: unknown
   readonly route?: string
   readonly artifact?: ReturnType<typeof IntelligenceCodeRepair.artifact>
+  /** Deterministic workspace facts feeding the subject slices; absent keeps current behavior. */
+  readonly workspace?: SessionWorkspaceSnapshot.Snapshot
   readonly scrub?: (text: string) => string
 }): EvaluationInput {
   const clean = (value: unknown) => {
     const text = typeof value === "string" ? value : (JSON.stringify(value) ?? "null")
     return Redact.redact(input.scrub ? input.scrub(text) : text)
   }
+  // Per subject, the bounded snapshot slice the subject's gates judge against. A subject that
+  // reads only the request or candidate carries no slice.
+  const read = input.workspace
+    ? {
+        work_claims: { files: input.workspace.files, todos: input.workspace.todos.counts },
+        ...(input.workspace.goal
+          ? { completeness: { todos: input.workspace.todos.counts, goal: input.workspace.goal.status } }
+          : {}),
+      }
+    : undefined
   return {
     sessionID: input.sessionID,
     operation: "response_quality",
@@ -96,6 +131,7 @@ export function evaluation(input: {
     subjectID: input.request.id,
     candidateID: input.candidate.id,
     attempt: input.attempt,
+    ...(read ? { read } : {}),
     sources: {
       ...(input.requestContext ? { request_context: input.requestContext } : {}),
       request: IntelligenceEvaluation.evidence(clean(input.request.text), {
@@ -117,6 +153,14 @@ export function evaluation(input: {
         // Share the existing source budget instead of making large reviews exceed the evaluator's request ceiling.
         limit: 36_000 - (input.requestContext ? JSON.stringify(input.requestContext).length : 0),
       }),
+      ...(input.workspace
+        ? {
+            workspace: IntelligenceEvaluation.evidence(clean(input.workspace), {
+              reference: `${input.sessionID}/workspace`,
+              limit: 3_000,
+            }),
+          }
+        : {}),
       ...(input.artifact ? { artifact: input.artifact } : {}),
     },
     candidate: IntelligenceEvaluation.evidence(clean(input.candidate.text), {

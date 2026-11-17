@@ -18,8 +18,11 @@ export function createReasoningControlServices(props: {
       const reasoning = props.reasoning
       const evaluator = reasoning.status()?.settings.evaluator
       const state = reasoning.state()
+      const unsureScore = state === "unsure" ? reasoning.sureness() : undefined
       const label = state
-        ? language.t(stateKeys[state])
+        ? unsureScore !== undefined
+          ? language.t("composer.reasoning.state.unsure.scored", { score: Math.round(unsureScore * 100) })
+          : language.t(stateKeys[state])
         : reasoning.mode() !== "dual"
           ? language.t("composer.reasoning.single")
           : evaluator

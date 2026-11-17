@@ -56,6 +56,51 @@ describe("IntelligenceResponse", () => {
     expect(Object.keys(input.questions)).not.toContain("tool_evidence")
   })
 
+  test("each gate declares the facts it reads, and the record carries the subject slices read", () => {
+    const workspace = {
+      files: ["src/a.ts", "src/b.ts"],
+      todos: {
+        counts: { pending: 2, in_progress: 1, blocked: 0, completed: 3, cancelled: 0 },
+        working: [{ key: "t1", label: "Fix the engine" }],
+        blocked: [],
+        next: [],
+      },
+      goal: { status: "active", stopAfter: "plan", objective: "fix it" },
+      heading: "2 files changed · working on Fix the engine · goal active",
+    }
+    const input = IntelligenceResponse.evaluation({
+      sessionID: "ses_test",
+      request: { id: "msg_request", text: "Fix the build" },
+      candidate: { id: "msg_answer", text: "Fixed." },
+      attempt: 1,
+      tools: { total: 2, calls: [] },
+      tasks: [{ content: "fix" }],
+      goal: { objective: "fix it" },
+      workspace,
+    })
+    // Every gate declares what it reads; a description maps to the fact's reference.
+    expect(input.questions.correctness?.sources).toEqual({ "files this session changed": "workspace.files" })
+    expect(input.questions.tool_evidence?.sources).toEqual({ "bounded tool results": "tools" })
+    expect(input.questions.writing?.sources).toBeUndefined()
+    // The record exposes, per subject, the bounded slice that subject's gates judge against.
+    expect(input.read).toEqual({
+      work_claims: { files: ["src/a.ts", "src/b.ts"], todos: workspace.todos.counts },
+      completeness: { todos: workspace.todos.counts, goal: "active" },
+    })
+    // Without a snapshot nothing is declared beyond the per-gate sources and no slice is recorded.
+    const plain = IntelligenceResponse.evaluation({
+      sessionID: "ses_test",
+      request: { id: "msg_request", text: "Fix the build" },
+      candidate: { id: "msg_answer", text: "Fixed." },
+      attempt: 1,
+      tools: { total: 0, calls: [] },
+      tasks: [],
+      goal: undefined,
+    })
+    expect(plain.read).toBeUndefined()
+    expect(plain.sources).not.toHaveProperty("workspace")
+  })
+
   test("repairs only established issues, each once, and keeps what remains unresolved", () => {
     const evaluation = review("needs_revision", { unsupported: 0.8, writing: 0.5, omission: 0.05 })
     expect(IntelligenceResponse.verdict(evaluation, [])).toEqual({

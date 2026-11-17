@@ -141,7 +141,16 @@ export function createIntelligenceDialogServices(props: {
                   : evaluation.usage.unpriced
                     ? language.t("composer.reasoning.dialog.costPartial", { cost: known })
                     : known,
-              detail: evaluation.issues.join(" · ") || evaluation.model,
+              detail:
+                [
+                  evaluation.issues.join(" · "),
+                  (() => {
+                    const read = IntelligenceLabel.readDigest(evaluation.read)
+                    return read ? `read: ${read}` : undefined
+                  })(),
+                ]
+                  .filter((part): part is string => part !== undefined)
+                  .join(" · ") || evaluation.model,
             }),
           }
         }),
