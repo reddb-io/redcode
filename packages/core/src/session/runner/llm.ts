@@ -60,6 +60,7 @@ import { Config } from "../../config.js"
 import { LoopGuard } from "../loop-guard.js"
 import { SessionStall } from "../stall.js"
 import { SessionStopLoss } from "../stop-loss.js"
+import { SessionWorkspaceSnapshot } from "../workspace-snapshot.js"
 import { Intelligence } from "../../intelligence.js"
 import { CodeModeCatalog } from "../../codemode/catalog.js"
 import { IntelligenceClassification } from "../../intelligence/classification.js"
@@ -131,6 +132,7 @@ const layer = Layer.effect(
     const title = yield* SessionTitle.Service
     const todos = yield* SessionTodoStore.Service
     const goals = yield* SessionGoal.Service
+    const workspaceSnapshot = yield* SessionWorkspaceSnapshot.Service
     const budgets = yield* SessionBudget.Service
     const guards = yield* SessionGuardLog.Service
     const artifacts = yield* IntelligenceArtifacts.Service
@@ -584,6 +586,7 @@ const layer = Layer.effect(
       })
       if (checkpoint.type === "none") return { memory: current, ended: false }
       const subagent = loaded.session.parentID !== undefined
+      const workspace = yield* workspaceSnapshot.snapshot(sessionID).pipe(Effect.orElseSucceed(() => undefined))
       const evaluation = asked
         ? yield* intelligence
             .evaluate(
@@ -597,6 +600,7 @@ const layer = Layer.effect(
                 subagent,
                 directory: loaded.session.location.directory,
                 limits: bounds,
+                ...(workspace ? { workspace: workspace.heading } : {}),
               }),
             )
             .pipe(Effect.orElseSucceed(() => undefined))
@@ -626,7 +630,7 @@ const layer = Layer.effect(
       })
       const text =
         verdict.action === "steer"
-          ? SessionStopLoss.steer(trajectory, verdict)
+          ? SessionStopLoss.steer(trajectory, verdict, { ...(workspace ? { workspace: workspace.heading } : {}) })
           : SessionStopLoss.final(trajectory, verdict, { subagent })
       yield* bus.publish(SessionEvent.Synthetic, {
         sessionID,
@@ -1246,6 +1250,7 @@ const layer = Layer.effect(
           : undefined
       const artifact =
         files?.length && from && to ? IntelligenceCodeRepair.artifact({ from, to, files, scrub }) : undefined
+      const workspace = yield* workspaceSnapshot.snapshot(sessionID).pipe(Effect.orElseSucceed(() => undefined))
       const evaluation = yield* intelligence
         .evaluate(
           IntelligenceResponse.evaluation({
@@ -1257,6 +1262,7 @@ const layer = Layer.effect(
             tools: SessionTaskFacts.evidence(projected),
             scrub,
             artifact,
+            workspace,
             tasks: SessionTodo.forAgent(yield* todos.get(sessionID), loaded.agent.id).map((task) => ({
               content: task.content,
               status: task.status,
@@ -1904,6 +1910,7 @@ export const node = makeLocationNode({
     IntelligenceArtifacts.node,
     Intelligence.node,
     SessionTaskFacts.node,
+    SessionWorkspaceSnapshot.node,
     SessionTitle.node,
     SessionTodoStore.node,
     SessionGoal.node,

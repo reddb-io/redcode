@@ -76,13 +76,16 @@ export function DialogIntelligence(props: { context: Plugin.Context; setup: () =
               : artifact.proposal,
           category: "Session artifacts",
         })),
-        ...(history.error ? [] : (history() ?? [])).map((evaluation) => ({
-          value: evaluation.id,
-          title: `${evaluation.operation} · ${evaluation.mode ?? "dual"} · ${evaluation.decision}`,
-          description: `${Math.round(evaluation.duration)}ms · ${evaluation.usage.input_tokens + evaluation.usage.output_tokens} tokens · ${evaluation.usage.cost === undefined ? "cost unknown" : `$${evaluation.usage.cost.toFixed(5)}`}${evaluation.usage.unpriced ? " + unknown cost" : ""} · ${evaluation.issues.join(" · ") || evaluation.model}`,
-          footer: new Date(evaluation.created).toLocaleTimeString(),
-          category: "Session evaluations",
-        })),
+        ...(history.error ? [] : (history() ?? [])).map((evaluation) => {
+          const read = IntelligenceLabel.readDigest(evaluation.read)
+          return {
+            value: evaluation.id,
+            title: `${evaluation.operation} · ${evaluation.mode ?? "dual"} · ${evaluation.decision}`,
+            description: `${Math.round(evaluation.duration)}ms · ${evaluation.usage.input_tokens + evaluation.usage.output_tokens} tokens · ${evaluation.usage.cost === undefined ? "cost unknown" : `$${evaluation.usage.cost.toFixed(5)}`}${evaluation.usage.unpriced ? " + unknown cost" : ""} · ${evaluation.issues.join(" · ") || evaluation.model}${read ? ` · read: ${read}` : ""}`,
+            footer: new Date(evaluation.created).toLocaleTimeString(),
+            category: "Session evaluations",
+          }
+        }),
       ]}
       titleView={<text fg={theme.text.base}>{description()}</text>}
       footer={

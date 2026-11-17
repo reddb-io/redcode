@@ -59,16 +59,19 @@ export const Question = Schema.Union([
     type: Schema.Literal("noul"),
     instructions: Schema.Json,
     criteria: Schema.Struct({ true: Schema.Json, false: Schema.Json }).pipe(optional),
+    sources: optional(Schema.Record(Schema.String, Schema.String)),
   }),
   Schema.Struct({
     type: Schema.Literal("choice"),
     instructions: Schema.Json,
     criteria: Schema.Record(Schema.String, Schema.Json),
+    sources: optional(Schema.Record(Schema.String, Schema.String)),
   }),
   Schema.Struct({
     type: Schema.Literal("score"),
     instructions: Schema.Json,
     criteria: Schema.Array(Schema.Json).check(Schema.isMinLength(2), Schema.isMaxLength(10)),
+    sources: optional(Schema.Record(Schema.String, Schema.String)),
   }),
 ]).annotate({ identifier: "Intelligence.Question" })
 export type Question = typeof Question.Type
@@ -145,6 +148,8 @@ export const Evaluation = Schema.Struct({
   model: Schema.String,
   answers: Schema.Record(Schema.String, Answer),
   issues: Schema.Array(Schema.String),
+  /** Per subject, the bounded workspace state the review read; absent when no snapshot was read. */
+  read: optional(Schema.Json),
   created: Schema.Finite,
   duration: Schema.Finite,
   evaluator: Schema.Struct({

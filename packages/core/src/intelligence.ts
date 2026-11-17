@@ -26,6 +26,8 @@ export interface EvaluationInput {
   attempt?: number
   sources: unknown
   candidate?: unknown
+  /** Per subject, the bounded workspace state the review read; absent when no snapshot was read. */
+  read?: Intelligence.Evaluation["read"]
   questions: Record<string, Intelligence.Question>
   /** Explicit image review only; bytes stay out of the durable evaluation evidence. */
   assets?: Record<string, { type: "image"; format: "png" | "jpg" | "jpeg"; data_base64: string }>
@@ -227,6 +229,7 @@ const make = Effect.gen(function* () {
       kind: input.kind ?? "gate",
       ...(input.subjectID ? { subjectID: input.subjectID } : {}),
       ...(input.candidateID ? { candidateID: input.candidateID } : {}),
+      ...(input.read !== undefined ? { read: input.read } : {}),
       attempt: input.attempt ?? 0,
       mode: IntelligenceEvaluation.mode(selected),
       policy: IntelligenceEvaluation.POLICY,

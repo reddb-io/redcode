@@ -7313,6 +7313,7 @@ export type ServerIntelligenceHistoryOutput = ReadonlyArray<{
         }
   }
   readonly issues: ReadonlyArray<string>
+  readonly read?: Schema.Json | undefined
   readonly created: number
   readonly duration: number
   readonly evaluator?:
