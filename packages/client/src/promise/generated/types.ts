@@ -1236,6 +1236,10 @@ export type WorkerResources = { cpu: number; memoryBytes: number; maxCpuUtilizat
 
 export type HarnessDriver = "claude" | "codex"
 
+export type HarnessEffort = "low" | "medium" | "high" | "xhigh" | "max"
+
+export type HarnessPermissionMode = "default" | "acceptEdits" | "plan" | "auto" | "bypassPermissions"
+
 export type HarnessState =
   | "starting"
   | "ready"
@@ -3220,6 +3224,7 @@ export type HarnessProvider = {
   installed: boolean
   version?: string
   authenticated?: boolean
+  account?: { method: string; plan?: string }
   detail?: string
   models?: Array<{ id: string; label: string; recommended: boolean }>
 }
@@ -3381,6 +3386,8 @@ export type HarnessRun = {
   providerInstanceID?: string
   directory: string
   model?: string
+  effort?: HarnessEffort
+  permissionMode?: HarnessPermissionMode
   nativeID?: string
   state: HarnessState
   createdAt: string
@@ -13504,13 +13511,6 @@ export type HarnessInstallInput = { readonly driver: { readonly driver: "claude"
 
 export type HarnessInstallOutput = HarnessProvider
 
-export type HarnessLoginAnswerInput = {
-  readonly providerInstanceID: { readonly providerInstanceID: string }["providerInstanceID"]
-  readonly code: { readonly code: string }["code"]
-}
-
-export type HarnessLoginAnswerOutput = void
-
 export type HarnessCancelLoginInput = {
   readonly providerInstanceID: { readonly providerInstanceID: string }["providerInstanceID"]
 }
@@ -13596,6 +13596,8 @@ export type HarnessOpenInput = {
     readonly providerInstanceID?: string
     readonly directory: string
     readonly model?: string
+    readonly effort?: "low" | "medium" | "high" | "xhigh" | "max"
+    readonly permissionMode?: "default" | "acceptEdits" | "plan" | "auto" | "bypassPermissions"
     readonly backgroundWait?: boolean
     readonly delegation?: boolean
     readonly computerUse?: { readonly hostID: string; readonly capabilityID: string; readonly server?: string }
@@ -13605,6 +13607,8 @@ export type HarnessOpenInput = {
     readonly providerInstanceID?: string
     readonly directory: string
     readonly model?: string
+    readonly effort?: "low" | "medium" | "high" | "xhigh" | "max"
+    readonly permissionMode?: "default" | "acceptEdits" | "plan" | "auto" | "bypassPermissions"
     readonly backgroundWait?: boolean
     readonly delegation?: boolean
     readonly computerUse?: { readonly hostID: string; readonly capabilityID: string; readonly server?: string }
@@ -13614,6 +13618,8 @@ export type HarnessOpenInput = {
     readonly providerInstanceID?: string
     readonly directory: string
     readonly model?: string
+    readonly effort?: "low" | "medium" | "high" | "xhigh" | "max"
+    readonly permissionMode?: "default" | "acceptEdits" | "plan" | "auto" | "bypassPermissions"
     readonly backgroundWait?: boolean
     readonly delegation?: boolean
     readonly computerUse?: { readonly hostID: string; readonly capabilityID: string; readonly server?: string }
@@ -13623,15 +13629,41 @@ export type HarnessOpenInput = {
     readonly providerInstanceID?: string
     readonly directory: string
     readonly model?: string
+    readonly effort?: "low" | "medium" | "high" | "xhigh" | "max"
+    readonly permissionMode?: "default" | "acceptEdits" | "plan" | "auto" | "bypassPermissions"
     readonly backgroundWait?: boolean
     readonly delegation?: boolean
     readonly computerUse?: { readonly hostID: string; readonly capabilityID: string; readonly server?: string }
   }["model"]
+  readonly effort?: {
+    readonly driver: "claude" | "codex"
+    readonly providerInstanceID?: string
+    readonly directory: string
+    readonly model?: string
+    readonly effort?: "low" | "medium" | "high" | "xhigh" | "max"
+    readonly permissionMode?: "default" | "acceptEdits" | "plan" | "auto" | "bypassPermissions"
+    readonly backgroundWait?: boolean
+    readonly delegation?: boolean
+    readonly computerUse?: { readonly hostID: string; readonly capabilityID: string; readonly server?: string }
+  }["effort"]
+  readonly permissionMode?: {
+    readonly driver: "claude" | "codex"
+    readonly providerInstanceID?: string
+    readonly directory: string
+    readonly model?: string
+    readonly effort?: "low" | "medium" | "high" | "xhigh" | "max"
+    readonly permissionMode?: "default" | "acceptEdits" | "plan" | "auto" | "bypassPermissions"
+    readonly backgroundWait?: boolean
+    readonly delegation?: boolean
+    readonly computerUse?: { readonly hostID: string; readonly capabilityID: string; readonly server?: string }
+  }["permissionMode"]
   readonly backgroundWait?: {
     readonly driver: "claude" | "codex"
     readonly providerInstanceID?: string
     readonly directory: string
     readonly model?: string
+    readonly effort?: "low" | "medium" | "high" | "xhigh" | "max"
+    readonly permissionMode?: "default" | "acceptEdits" | "plan" | "auto" | "bypassPermissions"
     readonly backgroundWait?: boolean
     readonly delegation?: boolean
     readonly computerUse?: { readonly hostID: string; readonly capabilityID: string; readonly server?: string }
@@ -13641,6 +13673,8 @@ export type HarnessOpenInput = {
     readonly providerInstanceID?: string
     readonly directory: string
     readonly model?: string
+    readonly effort?: "low" | "medium" | "high" | "xhigh" | "max"
+    readonly permissionMode?: "default" | "acceptEdits" | "plan" | "auto" | "bypassPermissions"
     readonly backgroundWait?: boolean
     readonly delegation?: boolean
     readonly computerUse?: { readonly hostID: string; readonly capabilityID: string; readonly server?: string }
@@ -13650,6 +13684,8 @@ export type HarnessOpenInput = {
     readonly providerInstanceID?: string
     readonly directory: string
     readonly model?: string
+    readonly effort?: "low" | "medium" | "high" | "xhigh" | "max"
+    readonly permissionMode?: "default" | "acceptEdits" | "plan" | "auto" | "bypassPermissions"
     readonly backgroundWait?: boolean
     readonly delegation?: boolean
     readonly computerUse?: { readonly hostID: string; readonly capabilityID: string; readonly server?: string }

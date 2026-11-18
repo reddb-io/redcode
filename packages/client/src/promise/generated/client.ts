@@ -541,8 +541,6 @@ import type {
   HarnessReconcileOutput,
   HarnessInstallInput,
   HarnessInstallOutput,
-  HarnessLoginAnswerInput,
-  HarnessLoginAnswerOutput,
   HarnessCancelLoginInput,
   HarnessCancelLoginOutput,
   HarnessListOutput,
@@ -4534,18 +4532,6 @@ export function make(options: ClientOptions) {
           },
           requestOptions,
         ),
-      loginAnswer: (input: HarnessLoginAnswerInput, requestOptions?: RequestOptions) =>
-        request<HarnessLoginAnswerOutput>(
-          {
-            method: "POST",
-            path: `/api/harness/${encodeURIComponent(input.providerInstanceID)}/login/answer`,
-            body: { code: input["code"] },
-            successStatus: 200,
-            declaredStatuses: [400, 401, 403, 409],
-            empty: true,
-          },
-          requestOptions,
-        ),
       cancelLogin: (input: HarnessCancelLoginInput, requestOptions?: RequestOptions) =>
         request<HarnessCancelLoginOutput>(
           {
@@ -4630,6 +4616,8 @@ export function make(options: ClientOptions) {
               providerInstanceID: input["providerInstanceID"],
               directory: input["directory"],
               model: input["model"],
+              effort: input["effort"],
+              permissionMode: input["permissionMode"],
               backgroundWait: input["backgroundWait"],
               delegation: input["delegation"],
               computerUse: input["computerUse"],

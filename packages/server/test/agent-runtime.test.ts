@@ -59,6 +59,24 @@ describe("agent runtime registry", () => {
     expect(args).toContain("--model")
     expect(args).toContain("claude-opus")
     expect(args).toContain("stream-json")
+    expect(args).toContain("--include-partial-messages")
+    for (const flag of ["--system-prompt", "--system-prompt-file", "--bare"]) expect(args).not.toContain(flag)
+    expect(args.slice(args.indexOf("--permission-mode"), args.indexOf("--permission-mode") + 2)).toEqual([
+      "--permission-mode",
+      "default",
+    ])
+    expect(args).not.toContain("--allow-dangerously-skip-permissions")
+    const configured = agentRuntime("claude").launchArgs({
+      ...run("claude"),
+      effort: "xhigh",
+      permissionMode: "bypassPermissions",
+    })
+    expect(configured.slice(configured.indexOf("--effort"), configured.indexOf("--effort") + 2)).toEqual([
+      "--effort",
+      "xhigh",
+    ])
+    expect(configured).toContain("bypassPermissions")
+    expect(configured).toContain("--allow-dangerously-skip-permissions")
     expect(agentRuntime("codex").launchArgs(run("codex"))).toEqual(["app-server"])
   })
 })
@@ -141,6 +159,67 @@ describe("agent runtime event normalization", () => {
     ).toEqual([
       { type: "text", text: "done" },
       { type: "activity", text: "Bash" },
+    ])
+    const streamed = [
+      { type: "stream_event", event: { type: "message_start", message: { id: "msg-1" } }, parent_tool_use_id: null },
+      {
+        type: "stream_event",
+        event: { type: "content_block_delta", delta: { type: "text_delta", text: "str" } },
+        parent_tool_use_id: null,
+      },
+      {
+        type: "stream_event",
+        event: { type: "content_block_delta", delta: { type: "text_delta", text: "eamed" } },
+        parent_tool_use_id: null,
+      },
+      {
+        type: "stream_event",
+        event: { type: "content_block_delta", delta: { type: "text_delta", text: "subagent" } },
+        parent_tool_use_id: "toolu-1",
+      },
+      {
+        type: "assistant",
+        message: {
+          id: "msg-1",
+          content: [
+            { type: "text", text: "streamed" },
+            { type: "tool_use", name: "Read" },
+          ],
+        },
+        parent_tool_use_id: null,
+      },
+    ].flatMap((frame) => adapter.events({ run: runtime, turn: "", frame }))
+    expect(streamed).toEqual([
+      { type: "text", text: "str" },
+      { type: "text", text: "eamed" },
+      { type: "activity", text: "Read" },
+    ])
+    expect(
+      [
+        {
+          type: "assistant",
+          message: {
+            content: [
+              { type: "text", text: "inner" },
+              { type: "tool_use", name: "Grep" },
+            ],
+          },
+          parent_tool_use_id: "toolu-1",
+        },
+        { type: "rate_limit_event", rate_limit_info: { status: "allowed", rateLimitType: "five_hour" } },
+        {
+          type: "rate_limit_event",
+          rate_limit_info: { status: "allowed_warning", rateLimitType: "seven_day", resetsAt: 1_800_000_000 },
+        },
+        { type: "rate_limit_event", rate_limit_info: { status: "rejected", rateLimitType: "five_hour" } },
+      ].flatMap((frame) => adapter.events({ run: runtime, turn: "", frame })),
+    ).toEqual([
+      { type: "activity", text: "Subagent · Grep" },
+      {
+        type: "activity",
+        text: "Claude is close to the 7-day usage limit. It resets at 2027-01-15T08:00:00.000Z.",
+      },
+      { type: "error", text: "Claude reached the 5-hour usage limit." },
     ])
     expect(
       adapter.events({

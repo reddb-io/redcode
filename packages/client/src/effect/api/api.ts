@@ -7892,12 +7892,6 @@ export type HarnessInstallInput = { readonly driver: Harness.Driver }
 export type HarnessInstallOutput = Harness.Provider
 export type HarnessInstallOperation<E = never> = (input: HarnessInstallInput) => Effect.Effect<HarnessInstallOutput, E>
 
-export type HarnessLoginAnswerInput = { readonly providerInstanceID: string; readonly code: string }
-export type HarnessLoginAnswerOutput = void
-export type HarnessLoginAnswerOperation<E = never> = (
-  input: HarnessLoginAnswerInput,
-) => Effect.Effect<HarnessLoginAnswerOutput, E>
-
 export type HarnessCancelLoginInput = { readonly providerInstanceID: string }
 export type HarnessCancelLoginOutput = void
 export type HarnessCancelLoginOperation<E = never> = (
@@ -7939,6 +7933,8 @@ export type HarnessOpenInput = {
   readonly providerInstanceID?: string | undefined
   readonly directory: AbsolutePath
   readonly model?: string | undefined
+  readonly effort?: Harness.Effort | undefined
+  readonly permissionMode?: Harness.PermissionMode | undefined
   readonly backgroundWait?: boolean | undefined
   readonly delegation?: boolean | undefined
   readonly computerUse?: Harness.ComputerUseBinding | undefined
@@ -8008,7 +8004,6 @@ export type HarnessCloseOperation<E = never> = (input: HarnessCloseInput) => Eff
 export interface HarnessApi<E = never> {
   readonly reconcile: HarnessReconcileOperation<E>
   readonly install: HarnessInstallOperation<E>
-  readonly loginAnswer: HarnessLoginAnswerOperation<E>
   readonly cancelLogin: HarnessCancelLoginOperation<E>
   readonly list: HarnessListOperation<E>
   readonly configure: HarnessConfigureOperation<E>

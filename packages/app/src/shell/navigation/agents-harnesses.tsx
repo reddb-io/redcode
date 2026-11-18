@@ -37,6 +37,8 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
     directory: "",
     model: "",
     customModel: false,
+    effort: "" as Harness.Effort | "",
+    permissionMode: "default" as Harness.PermissionMode,
     backgroundWait: false,
     delegation: false,
     computerUse: false,
@@ -59,7 +61,6 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
     promptID: uuid(),
     delivery: "queue" as "queue" | "steer",
     answers: {} as Record<string, string>,
-    code: "",
     stopped: false,
     login: undefined as string | undefined,
   })
@@ -575,6 +576,10 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                       providerInstanceID: selectedProviderID(),
                       directory: directory(),
                       ...(state.model.trim() ? { model: state.model.trim() } : {}),
+                      ...(state.driver === "claude" && state.effort ? { effort: state.effort } : {}),
+                      ...(state.driver === "claude" && state.permissionMode !== "default"
+                        ? { permissionMode: state.permissionMode }
+                        : {}),
                       ...(state.backgroundWait ? { backgroundWait: true } : {}),
                       ...(state.delegation ? { delegation: true } : {}),
                       ...(state.computerUse && computerUseReady()
@@ -663,6 +668,37 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                           />
                         </label>
                       </Show>
+                    </div>
+                  </Show>
+                  <Show when={state.driver === "claude"}>
+                    <div>
+                      <span>{language.t("harness.effort")}</span>
+                      <SearchSelect
+                        label={language.t("harness.effort")}
+                        class="mt-1 w-full"
+                        value={state.effort}
+                        options={[
+                          { value: "", label: language.t("harness.effort.default") },
+                          ...Harness.Effort.literals.map((effort) => ({
+                            value: effort,
+                            label: language.t(`harness.effort.${effort}`),
+                          })),
+                        ]}
+                        onChange={(value) => setState("effort", value as Harness.Effort | "")}
+                      />
+                    </div>
+                    <div>
+                      <span>{language.t("harness.permissionMode")}</span>
+                      <SearchSelect
+                        label={language.t("harness.permissionMode")}
+                        class="mt-1 w-full"
+                        value={state.permissionMode}
+                        options={Harness.PermissionMode.literals.map((mode) => ({
+                          value: mode,
+                          label: language.t(`harness.permissionMode.${mode}`),
+                        }))}
+                        onChange={(value) => setState("permissionMode", value as Harness.PermissionMode)}
+                      />
                     </div>
                   </Show>
                   <Show when={state.driver === "redcode"}>
@@ -871,6 +907,31 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                         <Show when={provider.authenticated !== undefined}>
                           <p>{language.t(provider.authenticated ? "harness.signedIn" : "harness.signedOut")}</p>
                         </Show>
+                        <Show when={provider.account}>
+                          {(account) => (
+                            <p class="text-ink-muted">
+                              {account().method === "api_key"
+                                ? language.t("harness.account.apiKey")
+                                : account().method === "claude.ai"
+                                  ? account().plan
+                                    ? language.t("harness.account.subscriptionPlan", { plan: account().plan! })
+                                    : language.t("harness.account.subscription")
+                                  : language.t("harness.account.other", { method: account().method })}
+                            </p>
+                          )}
+                        </Show>
+                        <Show when={provider.driver === "claude" && provider.installed}>
+                          <p>
+                            {language.t("harness.claudeSignIn", {
+                              command: `${provider.executable} auth login`,
+                            })}
+                          </p>
+                          <Show when={provider.home}>
+                            {(home) => (
+                              <p class="text-ink-muted">{language.t("harness.claudeConfigDir", { path: home() })}</p>
+                            )}
+                          </Show>
+                        </Show>
                         <Show when={provider.detail}>
                           <p role="status" class="text-ink-muted">
                             {provider.detail}
@@ -957,21 +1018,23 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                               {language.t("harness.install")}
                             </Button>
                           </Show>
-                          <Button
-                            variant="outline"
-                            disabled={state.busy || !provider.installed}
-                            onClick={() =>
-                              void action(async () => {
-                                await api().login({ providerInstanceID: providerID(provider) })
-                                if (lifetime.active) {
-                                  setState("login", providerID(provider))
-                                  void login.refetch()
-                                }
-                              })
-                            }
-                          >
-                            {language.t("harness.signIn")}
-                          </Button>
+                          <Show when={provider.driver !== "claude"}>
+                            <Button
+                              variant="outline"
+                              disabled={state.busy || !provider.installed}
+                              onClick={() =>
+                                void action(async () => {
+                                  await api().login({ providerInstanceID: providerID(provider) })
+                                  if (lifetime.active) {
+                                    setState("login", providerID(provider))
+                                    void login.refetch()
+                                  }
+                                })
+                              }
+                            >
+                              {language.t("harness.signIn")}
+                            </Button>
+                          </Show>
                         </div>
                       </div>
                     </article>
@@ -1002,33 +1065,6 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                       </Show>
                       <p class="text-ink-muted">{language.t("harness.remoteLogin")}</p>
                       <Show when={result().state === "pending"}>
-                        <Show when={result().driver === "claude"}>
-                          <label>
-                            {language.t("harness.authorizationCode")}
-                            <input
-                              type="password"
-                              autocomplete="off"
-                              class={input({ size: "sm", class: "mt-1 w-full" })}
-                              value={state.code}
-                              onInput={(event) => setState("code", event.currentTarget.value)}
-                            />
-                          </label>
-                          <Button
-                            variant="outline"
-                            disabled={state.busy || !state.code.trim()}
-                            onClick={() =>
-                              void action(async () => {
-                                await api().loginAnswer({
-                                  providerInstanceID: result().providerInstanceID || "claude-default",
-                                  code: state.code,
-                                })
-                                if (lifetime.active) setState("code", "")
-                              })
-                            }
-                          >
-                            {language.t("harness.submitCode")}
-                          </Button>
-                        </Show>
                         <Button
                           variant="outline"
                           disabled={state.busy}

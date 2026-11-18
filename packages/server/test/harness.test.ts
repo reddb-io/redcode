@@ -341,6 +341,17 @@ for (const parentDriver of ["codex", "claude"] as const) {
       await until(() => service.read(parent.id).events.filter((event) => event.text === "fixture response").length >= 2)
       const capture = await Bun.file(path.join(tmp.path, "wire.jsonl")).text()
       expect(capture).toContain(parentDriver === "codex" ? '"redcode_delegate_task"' : '"sdkMcpServers":["redcode"]')
+      if (parentDriver === "claude") {
+        // Deferred MCP tools need a pointer in the system prompt, appended without replacing Claude Code's own.
+        const initialize = capture
+          .split("\n")
+          .filter(Boolean)
+          .map((line) => JSON.parse(line))
+          .find((frame) => frame.request?.subtype === "initialize" && frame.request.sdkMcpServers)
+        expect(initialize.request.appendSystemPrompt).toContain("`redcode_delegate_task`")
+        expect(initialize.request.appendSystemPrompt).not.toContain("redcode_background_wait")
+        expect(initialize.request.systemPrompt).toBeUndefined()
+      }
       expect(capture).toContain("redcode_task_status")
       expect(capture).toContain("<delegated_task_result>")
     } finally {
@@ -1017,22 +1028,31 @@ test("restart requires reconciliation and does not replay ambiguously admitted i
   }
 })
 
-test("provider sign-in keeps completion authoritative and passes Claude codes only to the live process", async () => {
+test("provider sign-in keeps Codex completion authoritative and leaves Claude sign-in to its own terminal flow", async () => {
   await using tmp = await tmpdir("redcode-harness-login-")
   const service = await createHarnesses(path.join(tmp.path, "state"))
+  const inherited = process.env.CLAUDECODE
+  process.env.CLAUDECODE = "1"
   try {
     await service.configure({ driver: "codex", executable: await executable(tmp.path, "codex") })
-    await service.configure({ driver: "claude", executable: await executable(tmp.path, "claude") })
+    expect(
+      await service.configure({ driver: "claude", executable: await executable(tmp.path, "claude") }),
+    ).toMatchObject({
+      authenticated: true,
+      account: { method: "claude.ai", plan: "max" },
+      models: [{ id: "opus", label: "Opus", recommended: false }],
+    })
     await service.login("codex")
     await until(() => service.loginStatus("codex").state === "complete")
-    await service.login("claude")
-    await until(() => !!service.loginStatus("claude").url)
-    expect(service.loginStatus("claude").url).toBe("https://claude.example.test/authorize")
-    service.loginAnswer("claude", "fixture-code")
-    await until(() => service.loginStatus("claude").state === "complete")
-    expect(() => service.loginAnswer("claude", "old-code")).toThrow("No pending")
+    await expect(service.login("claude")).rejects.toThrow("claude auth login")
+    await expect(
+      service.open({ driver: "codex", directory: AbsolutePath.make(tmp.path), effort: "high" }),
+    ).rejects.toThrow("only to Claude")
+    expect(service.loginStatus("claude").state).toBe("failed")
     expect(service.list().runs).toHaveLength(0)
   } finally {
+    if (inherited === undefined) delete process.env.CLAUDECODE
+    else process.env.CLAUDECODE = inherited
     await service.dispose()
   }
 })

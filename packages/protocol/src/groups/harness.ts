@@ -22,14 +22,6 @@ export const HarnessGroup = HttpApiGroup.make("server.harness")
     }).annotateMerge(OpenApi.annotations({ identifier: "harness.install" })),
   )
   .add(
-    HttpApiEndpoint.post("harness.loginAnswer", "/api/harness/:providerInstanceID/login/answer", {
-      params: { providerInstanceID: Schema.NonEmptyString },
-      payload: Schema.Struct({ code: Schema.NonEmptyString.check(Schema.isPattern(/^[^\r\n]+$/)) }),
-      success: Schema.Void,
-      error,
-    }).annotateMerge(OpenApi.annotations({ identifier: "harness.loginAnswer" })),
-  )
-  .add(
     HttpApiEndpoint.delete("harness.cancelLogin", "/api/harness/:providerInstanceID/login", {
       params: { providerInstanceID: Schema.NonEmptyString },
       success: Schema.Void,

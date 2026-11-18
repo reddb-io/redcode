@@ -26,9 +26,6 @@ export const HarnessHandler = HttpApiBuilder.group(Api, "server.harness", (handl
       .handle("harness.list", () => call(() => harness.list()))
       .handle("harness.reconcile", (ctx) => call(() => harness.reconcile(ctx.params.runID)))
       .handle("harness.install", (ctx) => call(() => harness.install(ctx.params.driver)))
-      .handle("harness.loginAnswer", (ctx) =>
-        call(() => harness.loginAnswer(ctx.params.providerInstanceID, ctx.payload.code)),
-      )
       .handle("harness.cancelLogin", (ctx) => call(() => harness.cancelLogin(ctx.params.providerInstanceID)))
       .handle("harness.configure", (ctx) => call(() => harness.configure(ctx.payload)))
       .handle("harness.probe", (ctx) => call(() => harness.probeInstance(ctx.params.providerInstanceID)))

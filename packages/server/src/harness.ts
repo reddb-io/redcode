@@ -2,7 +2,7 @@ export * as Harnesses from "./harness"
 
 import { mkdir, realpath } from "node:fs/promises"
 import path from "node:path"
-import { hostname } from "node:os"
+import { hostname, tmpdir } from "node:os"
 import spawn from "cross-spawn"
 import { Harness } from "@opencode/schema/harness"
 import { UsageReporter } from "@opencode/schema/usage-reporter"
@@ -11,7 +11,7 @@ import { AbsolutePath } from "@opencode/schema/schema"
 import { Global } from "@opencode/util/global"
 import { makeGlobalNode } from "@opencode/util/effect/app-node"
 import { Context, Effect, Exit, Layer, Option, Schema, Scope, Stream } from "effect"
-import { object, string, wire, stopOwnedProcess, type Frame, type Wire } from "./harness-wire"
+import { harnessEnvironment, object, string, wire, type Frame, type Wire } from "./harness-wire"
 import { createHarnessTasks } from "./harness-tasks"
 import { createHarnessDelegation } from "./harness-delegation"
 import {
@@ -28,6 +28,7 @@ import { ExternalDelegation } from "@opencode/core/external-delegation"
 import { Location } from "@opencode/schema/location"
 import { harnessCapabilities } from "./agent-runtime/adapter"
 import { CodexRuntimeProtocol } from "./agent-runtime/adapters/codex"
+import { ClaudeRuntimeProtocol } from "./agent-runtime/adapters/claude"
 import { agentRuntime } from "./agent-runtime/registry"
 import { createAgentRuntimeSupervisor } from "./agent-runtime/supervisor"
 import { AgentTools } from "@opencode/core/agent-tools"
@@ -147,10 +148,7 @@ export async function createHarnesses(
   const providers = new Map<string, Harness.Provider>()
   const logins = new Map<string, Harness.Login>()
   const computerUseTickets = new Map<string, { runID: string; hostID: string; expiresAt: number }>()
-  const loginWires = new Map<
-    string,
-    { id: string; close: () => Promise<void>; answer?: (code: string) => void }
-  >()
+  const loginWires = new Map<string, { id: string; close: () => Promise<void> }>()
   const write = (run: Harness.Run) =>
     db.query("INSERT OR REPLACE INTO run VALUES (?,?)").run(run.id, JSON.stringify(run))
   const read = (id: string) => {
@@ -302,10 +300,7 @@ export async function createHarnesses(
     environment?: Record<string, string>,
   ) =>
     new Promise<string>((resolve, reject) => {
-      const child = spawn(command, args, {
-        env: environment ? { ...process.env, ...environment } : process.env,
-        windowsHide: true,
-      })
+      const child = spawn(command, args, { env: harnessEnvironment(environment), windowsHide: true })
       const output = { value: "", error: "" }
       const timer = setTimeout(() => {
         child.kill()
@@ -361,6 +356,7 @@ export async function createHarnesses(
       installed: true,
       version,
       authenticated: undefined as boolean | undefined,
+      account: undefined as Harness.Provider["account"],
       models: undefined as Harness.Provider["models"],
       detail: undefined as string | undefined,
     }
@@ -371,6 +367,30 @@ export async function createHarnesses(
       if (auth) {
         const parsed = object(JSON.parse(auth))
         result.authenticated = parsed.loggedIn === true
+        // An API key in the host environment outranks a subscription login in `claude -p`, so show which one runs.
+        const method = string(parsed.authMethod)
+        if (result.authenticated && method)
+          result.account = {
+            method,
+            ...(string(parsed.subscriptionType) ? { plan: string(parsed.subscriptionType) } : {}),
+          }
+      }
+      // A neutral directory keeps project settings out of the catalog process.
+      const connection = wire({
+        executable: instance.executable,
+        args: ClaudeRuntimeProtocol.catalogArgs,
+        directory: tmpdir(),
+        environment: { ...environment, ENABLE_CLAUDEAI_MCP_SERVERS: "false" },
+        frame: () => {},
+        exit: () => {},
+      })
+      try {
+        result.models = await ClaudeRuntimeProtocol.models(connection).catch((error: unknown) => {
+          result.detail = `Could not load Claude models: ${error instanceof Error ? error.message : String(error)}`
+          return undefined
+        })
+      } finally {
+        await connection.close()
       }
     }
     if (driver === "codex") {
@@ -414,7 +434,7 @@ export async function createHarnesses(
     adapter
       .events(input)
       .forEach((runtimeEvent) => {
-        if (runtimeEvent.type === "text" || runtimeEvent.type === "activity") {
+        if (runtimeEvent.type === "text" || runtimeEvent.type === "activity" || runtimeEvent.type === "error") {
           event(id, runtimeEvent.type, runtimeEvent.text)
           return
         }
@@ -725,6 +745,11 @@ export async function createHarnesses(
     async login(providerInstanceID: string): Promise<Harness.Login> {
       const instance = providerInstanceForKey(providerInstanceID)
       const driver = instance.driver
+      // Anthropic requires Claude sign-in to complete through its own flow, so Redcode never relays it.
+      if (driver === "claude")
+        throw new Error(
+          "Claude sign-in runs in a terminal on this host: run `claude auth login`, then check the installation",
+        )
       const loginID = instance.id
       if (logins.get(loginID)?.state === "pending") return logins.get(loginID)!
       if (
@@ -801,62 +826,6 @@ export async function createHarnesses(
           logins.set(loginID, { providerInstanceID: loginID, driver, state: "failed", detail: String(error) })
         }
       }
-      if (driver === "claude") {
-        const child = spawn(instance.executable, ["auth", "login"], {
-          env: { ...process.env, ...runtimeEnvironment(instance) },
-          windowsHide: true,
-        })
-        const timer = setTimeout(() => {
-          if (!owns()) return
-          void stopOwnedProcess(child)
-          logins.set(loginID, {
-            providerInstanceID: loginID,
-            driver,
-            state: "failed",
-            detail: "Sign-in timed out",
-          })
-        }, 300_000)
-        loginWires.set(loginID, {
-          id: attempt,
-          close: () => {
-            clearTimeout(timer)
-            return stopOwnedProcess(child)
-          },
-          answer: (code) => {
-            if (!child.stdin?.writable) throw new Error("Sign-in input is unavailable")
-            child.stdin.write(code + "\n")
-          },
-        })
-        const link = (chunk: Buffer) => {
-          if (!owns()) return
-          const url = chunk.toString().match(/https:\/\/[^\s\x1b]+/)?.[0]
-          if (url) logins.set(loginID, { providerInstanceID: loginID, driver, state: "pending", url })
-        }
-        child.stdout?.on("data", link)
-        child.stderr?.on("data", link)
-        child.on("error", () => {
-          if (!owns()) return
-          clearTimeout(timer)
-          logins.set(loginID, {
-            providerInstanceID: loginID,
-            driver,
-            state: "failed",
-            detail: "Unable to start Claude sign-in",
-          })
-          loginWires.delete(loginID)
-        })
-        child.on("exit", (code) => {
-          if (!owns()) return
-          clearTimeout(timer)
-          logins.set(loginID, {
-            providerInstanceID: loginID,
-            driver,
-            state: code === 0 ? "complete" : "failed",
-          })
-          if (code === 0) advanceCredentialRevision(loginID)
-          loginWires.delete(loginID)
-        })
-      }
       return logins.get(loginID)!
     },
     loginStatus(providerInstanceID: string): Harness.Login {
@@ -869,13 +838,6 @@ export async function createHarnesses(
           detail: "No sign-in in progress",
         }
       )
-    },
-    loginAnswer(providerInstanceID: string, code: string) {
-      const instance = providerInstanceForKey(providerInstanceID)
-      const login = loginWires.get(instance.id)
-      if (logins.get(instance.id)?.state !== "pending" || !login?.answer)
-        throw new Error("No pending authorization-code prompt on this host")
-      login.answer(code)
     },
     async cancelLogin(providerInstanceID: string) {
       const instance = providerInstanceForKey(providerInstanceID)
@@ -890,6 +852,8 @@ export async function createHarnesses(
       await connection?.close()
     },
     async open(input: Harness.Open) {
+      if (input.driver !== "claude" && (input.effort || input.permissionMode))
+        throw new Error("Effort and permission mode apply only to Claude harnesses")
       const instance = providerInstance(input.driver, input.providerInstanceID)
       const run: Harness.Run = {
         ...input,
