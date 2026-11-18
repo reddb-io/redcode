@@ -1,10 +1,74 @@
-import { type AgentRuntimeAdapter } from "../adapter"
+import { type AgentRuntimeAdapter, type AgentRuntimeOpen } from "../adapter"
 import { Harness } from "@opencode/schema/harness"
-import { object, string } from "../../harness-wire"
+import { Schema } from "effect"
+import { object, string, type Frame, type Wire } from "../../harness-wire"
 import { type AgentRuntimeEvent, type AgentRuntimeEventInput } from "../events"
+
+const STREAM_ARGS = ["--print", "--verbose", "--input-format", "stream-json", "--output-format", "stream-json"]
+
+const ModelList = Schema.Struct({
+  models: Schema.optional(
+    Schema.Array(Schema.Struct({ value: Schema.NonEmptyString, displayName: Schema.optional(Schema.String) })),
+  ),
+})
+
+// Initialize alone lists the models without a model request; hooks and configured MCP servers stay off.
+const catalogArgs = [
+  ...STREAM_ARGS,
+  "--permission-prompt-tool",
+  "stdio",
+  "--strict-mcp-config",
+  "--settings",
+  JSON.stringify({ disableAllHooks: true }),
+]
+
+async function models(wire: Wire) {
+  const catalog = Schema.decodeUnknownSync(ModelList)(await wire.request("initialize", { hooks: {} }, "claude"))
+  // "default" is the agent's own choice, which the model selector already offers.
+  return (catalog.models ?? []).flatMap((model) =>
+    model.value === "default" ? [] : [{ id: model.value, label: model.displayName || model.value, recommended: false }],
+  )
+}
+
+export const ClaudeRuntimeProtocol = { catalogArgs, models }
+
+// Claude Code defers MCP tools behind ToolSearch, so the model learns when to load Redcode's tools from here.
+// Keep each text fixed per capability: Claude Code records the system prompt on a session's first request.
+const INSTRUCTIONS_HEADER =
+  "Redcode hosts this session and adds the tools below. If they are not loaded yet, load them with ToolSearch when you need them."
+const WAIT_INSTRUCTIONS =
+  "- `redcode_background_wait` (server `redcode_wait`): before you end your turn, wait for a background command or Monitor task you started and still need. Do not wait for services or watchers you intend to leave running."
+const DELEGATION_INSTRUCTIONS =
+  "- `redcode_delegate_task`, `redcode_task_status` and `redcode_task_cancel` (server `redcode`): hand a task to Redcode, Codex or Claude in this checkout. Use your own Agent tool for ordinary subagent work. A delegated result is delivered to you when it finishes, so do not poll for it."
+const COMPUTER_USE_INSTRUCTIONS =
+  "- The Computer Use tools (server `redcode_computer_use`) operate the desktop bound to this run when a task needs it."
+
+function redcodeTools(input: AgentRuntimeOpen) {
+  return [
+    ...(input.run.backgroundWait ? [{ server: "redcode_wait", text: WAIT_INSTRUCTIONS }] : []),
+    ...(input.run.delegation ? [{ server: "redcode", text: DELEGATION_INSTRUCTIONS }] : []),
+    ...(input.computerUse ? [{ server: "redcode_computer_use", text: COMPUTER_USE_INSTRUCTIONS }] : []),
+  ]
+}
+
+// Messages whose text arrived as deltas; their assistant frames repeat that text.
+const streamed = new Map<string, Set<string>>()
 
 function events(input: AgentRuntimeEventInput): AgentRuntimeEvent[] {
   const value = input.frame
+  if (value.type === "stream_event") {
+    if (value.parent_tool_use_id) return []
+    const event = object(value.event)
+    if (event.type === "message_start") {
+      const id = string(object(event.message).id)
+      if (id) streamed.set(input.run.id, (streamed.get(input.run.id) ?? new Set<string>()).add(id))
+      return []
+    }
+    const delta = object(event.delta)
+    return event.type === "content_block_delta" && delta.type === "text_delta"
+      ? [{ type: "text", text: string(delta.text) }]
+      : []
+  }
   if (value.type === "control_cancel_request")
     return [{ type: "request.resolved", id: string(value.request_id) }]
   if (value.type === "control_request") {
@@ -26,17 +90,28 @@ function events(input: AgentRuntimeEventInput): AgentRuntimeEvent[] {
     const nativeID = string(value.session_id)
     return nativeID ? [{ type: "session", nativeID }] : []
   }
-  if (value.type === "assistant" && !value.parent_tool_use_id) {
+  if (value.type === "rate_limit_event") return usageLimit(object(value.rate_limit_info))
+  if (value.type === "assistant" && value.parent_tool_use_id) {
+    const content = object(value.message).content
+    if (!Array.isArray(content)) return []
+    return content.flatMap((item): AgentRuntimeEvent[] => {
+      const block = object(item)
+      return block.type === "tool_use" ? [{ type: "activity", text: `Subagent · ${string(block.name)}` }] : []
+    })
+  }
+  if (value.type === "assistant") {
     const message = object(value.message)
     if (!Array.isArray(message.content)) return []
+    const repeated = !!message.id && streamed.get(input.run.id)?.has(string(message.id)) === true
     return message.content.flatMap((item): AgentRuntimeEvent[] => {
       const block = object(item)
-      if (block.type === "text") return [{ type: "text", text: string(block.text) }]
+      if (block.type === "text") return repeated ? [] : [{ type: "text", text: string(block.text) }]
       if (block.type === "tool_use") return [{ type: "activity", text: string(block.name) }]
       return []
     })
   }
   if (value.type !== "result") return []
+  streamed.delete(input.run.id)
   const failed = value.is_error === true
   const detail = failed ? string(value.result) || "Claude execution failed" : undefined
   const usage = object(value.usage)
@@ -93,6 +168,29 @@ function events(input: AgentRuntimeEventInput): AgentRuntimeEvent[] {
   ]
 }
 
+const USAGE_LIMIT_WINDOWS: Record<string, string> = {
+  five_hour: "5-hour",
+  seven_day: "7-day",
+  seven_day_opus: "7-day Opus",
+  seven_day_sonnet: "7-day Sonnet",
+  overage: "overage",
+}
+
+// Subscription sessions report their usage windows; the CLI repeats a frame only when its state changes.
+function usageLimit(info: Frame): AgentRuntimeEvent[] {
+  const status = string(info.status)
+  if (status !== "rejected" && status !== "allowed_warning") return []
+  const window = USAGE_LIMIT_WINDOWS[string(info.rateLimitType)]
+  const limit = window ? `the ${window} usage limit` : "a usage limit"
+  const reset =
+    typeof info.resetsAt === "number" && info.resetsAt > 0 && info.resetsAt < 8.64e12
+      ? ` It resets at ${new Date(info.resetsAt * 1000).toISOString()}.`
+      : ""
+  return status === "rejected"
+    ? [{ type: "error", text: `Claude reached ${limit}.${reset}` }]
+    : [{ type: "activity", text: `Claude is close to ${limit}.${reset}` }]
+}
+
 function count(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null
 }
@@ -127,17 +225,16 @@ export const ClaudeAgentRuntime: AgentRuntimeAdapter = {
   accepts: () => true,
   events,
   async initialize(input) {
+    const tools = redcodeTools(input)
     await input.wire.request(
       "initialize",
       {
         hooks: {},
-        ...(input.run.backgroundWait || input.run.delegation || input.computerUse
+        // Redcode only appends; Claude Code's own system prompt stays in place.
+        ...(tools.length
           ? {
-              sdkMcpServers: [
-                ...(input.run.backgroundWait ? ["redcode_wait"] : []),
-                ...(input.run.delegation ? ["redcode"] : []),
-                ...(input.computerUse ? ["redcode_computer_use"] : []),
-              ],
+              sdkMcpServers: tools.map((tool) => tool.server),
+              appendSystemPrompt: [INSTRUCTIONS_HEADER, ...tools.map((tool) => tool.text)].join("\n"),
             }
           : {}),
       },
@@ -164,16 +261,15 @@ export const ClaudeAgentRuntime: AgentRuntimeAdapter = {
     })
   },
   launchArgs: (run) => [
-    "--print",
-    "--verbose",
-    "--input-format",
-    "stream-json",
-    "--output-format",
-    "stream-json",
+    ...STREAM_ARGS,
+    "--include-partial-messages",
     "--permission-prompt-tool",
     "stdio",
     "--permission-mode",
-    "default",
+    run.permissionMode ?? "default",
+    // The CLI accepts bypassPermissions only when skipping checks is explicitly allowed.
+    ...(run.permissionMode === "bypassPermissions" ? ["--allow-dangerously-skip-permissions"] : []),
+    ...(run.effort ? ["--effort", run.effort] : []),
     ...(run.nativeID ? ["--resume", run.nativeID] : []),
     ...(run.model ? ["--model", run.model] : []),
   ],

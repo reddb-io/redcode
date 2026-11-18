@@ -24,6 +24,29 @@ export async function stopOwnedProcess(child: ChildProcess) {
   await closed
 }
 
+// A Claude Code session that launched Redcode exports these; a harness spawned with them joins that session.
+const HOST_SESSION_VARIABLES = [
+  "CLAUDECODE",
+  "CLAUDE_CODE_ENTRYPOINT",
+  "CLAUDE_CODE_SESSION_ID",
+  "CLAUDE_CODE_HOST_SESSION_ID",
+  "CLAUDE_CODE_CHILD_SESSION",
+  "CLAUDE_CODE_SESSION_ATTENDED",
+  "CLAUDE_CODE_MESSAGING_SOCKET",
+  "CLAUDE_CODE_MESSAGING_TOKEN",
+  "CLAUDE_CODE_EXECPATH",
+  "CLAUDE_CODE_DESKTOP_APP_VERSION",
+  "CLAUDE_EFFORT",
+  "CLAUDE_PID",
+  "CLAUDE_AGENT_SDK_VERSION",
+]
+
+export function harnessEnvironment(environment?: Record<string, string>) {
+  return Object.fromEntries(
+    Object.entries({ ...process.env, ...environment }).filter(([name]) => !HOST_SESSION_VARIABLES.includes(name)),
+  )
+}
+
 /** One owned process, literal argv and line-delimited protocol; never accepts shell command text. */
 export function wire(input: {
   executable: string
@@ -35,7 +58,7 @@ export function wire(input: {
 }) {
   const child = spawn(input.executable, input.args, {
     cwd: input.directory,
-    env: input.environment ? { ...process.env, ...input.environment } : process.env,
+    env: harnessEnvironment(input.environment),
     windowsHide: true,
     stdio: "pipe",
   })

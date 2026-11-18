@@ -88,7 +88,7 @@ export function LinkedResources(props: Props) {
             return (
               <li key={link.runID} className="rounded-lg border border-elevation-raised-border p-3">
                 <div className="flex items-center justify-between gap-2">
-                  <b className="text-body">{link.driver === "claude" ? "Claude Code" : "Codex"}</b>
+                  <b className="text-body">{link.driver === "claude" ? "Claude" : "Codex"}</b>
                   <Badge tone={item?.state === "waiting" ? "warning" : "neutral"}>
                     {view.unavailable || !view.connected || !item
                       ? copy.externalUnavailable
@@ -139,11 +139,9 @@ export function LinkedResources(props: Props) {
                 .filter((item) => !view.resources.harnesses.some((link) => link.runID === item.id))
                 .map((item) => (
                   <option key={item.id} value={item.id}>
-                    {[
-                      item.driver === "claude" ? "Claude Code" : "Codex",
-                      item.nativeID ?? item.id,
-                      item.directory,
-                    ].join(" · ")}
+                    {[item.driver === "claude" ? "Claude" : "Codex", item.nativeID ?? item.id, item.directory].join(
+                      " · ",
+                    )}
                   </option>
                 ))}
             </Select>

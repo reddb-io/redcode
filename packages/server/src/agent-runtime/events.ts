@@ -31,6 +31,7 @@ export type AgentRuntimeEvent =
       supported: boolean
       title: string
     }
+  | { type: "error"; text: string }
   | { type: "session"; nativeID: string }
   | { type: "started"; turn: string }
   | { type: "text"; text: string }

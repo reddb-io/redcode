@@ -30,6 +30,8 @@ export const Provider = Schema.Struct({
   installed: Schema.Boolean,
   version: optional(Schema.String),
   authenticated: optional(Schema.Boolean),
+  /** The credential the CLI reports in use: an arbitrary method such as `claude.ai` or `api_key`, and the plan when known. */
+  account: optional(Schema.Struct({ method: Schema.String, plan: optional(Schema.String) })),
   detail: optional(Schema.String),
   models: optional(
     Schema.Array(Schema.Struct({ id: Schema.String, label: Schema.String, recommended: Schema.Boolean })),
@@ -42,11 +44,25 @@ export const ComputerUseBinding = Schema.Struct({
   server: optional(Schema.String),
 }).annotate({ identifier: "Harness.ComputerUseBinding" })
 export interface ComputerUseBinding extends Schema.Schema.Type<typeof ComputerUseBinding> {}
+/** Claude Code `--effort` levels. */
+export const Effort = Schema.Literals(["low", "medium", "high", "xhigh", "max"]).annotate({
+  identifier: "Harness.Effort",
+})
+export type Effort = typeof Effort.Type
+/** Claude Code `--permission-mode` values Redcode offers; `default` asks before each action. */
+export const PermissionMode = Schema.Literals(["default", "acceptEdits", "plan", "auto", "bypassPermissions"]).annotate(
+  {
+    identifier: "Harness.PermissionMode",
+  },
+)
+export type PermissionMode = typeof PermissionMode.Type
 export const Open = Schema.Struct({
   driver: Driver,
   providerInstanceID: optional(Schema.NonEmptyString),
   directory: AbsolutePath,
   model: optional(Schema.NonEmptyString),
+  effort: optional(Effort),
+  permissionMode: optional(PermissionMode),
   backgroundWait: optional(Schema.Boolean),
   delegation: optional(Schema.Boolean),
   computerUse: optional(ComputerUseBinding),
@@ -106,6 +122,8 @@ export const Run = Schema.Struct({
   providerInstanceID: optional(Schema.NonEmptyString),
   directory: AbsolutePath,
   model: optional(Schema.String),
+  effort: optional(Effort),
+  permissionMode: optional(PermissionMode),
   nativeID: optional(Schema.String),
   state: State,
   createdAt: Schema.String,

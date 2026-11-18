@@ -543,8 +543,6 @@ import type {
   HarnessReconcileOutput,
   HarnessInstallInput,
   HarnessInstallOutput,
-  HarnessLoginAnswerInput,
-  HarnessLoginAnswerOutput,
   HarnessCancelLoginInput,
   HarnessCancelLoginOutput,
   HarnessListOutput,
@@ -3360,14 +3358,6 @@ const EndpointHarnessInstall = (raw: RawClient["server.harness"]) => (input: Har
     raw["harness.install"]({ params: { driver: input["driver"] } }).pipe(Effect.mapError(mapClientError)),
   )
 
-const EndpointHarnessLoginAnswer = (raw: RawClient["server.harness"]) => (input: HarnessLoginAnswerInput) =>
-  preserveEffect<HarnessLoginAnswerOutput>()(
-    raw["harness.loginAnswer"]({
-      params: { providerInstanceID: input["providerInstanceID"] },
-      payload: { code: input["code"] },
-    }).pipe(Effect.mapError(mapClientError)),
-  )
-
 const EndpointHarnessCancelLogin = (raw: RawClient["server.harness"]) => (input: HarnessCancelLoginInput) =>
   preserveEffect<HarnessCancelLoginOutput>()(
     raw["harness.cancelLogin"]({ params: { providerInstanceID: input["providerInstanceID"] } }).pipe(
@@ -3421,6 +3411,8 @@ const EndpointHarnessOpen = (raw: RawClient["server.harness"]) => (input: Harnes
         providerInstanceID: input["providerInstanceID"],
         directory: input["directory"],
         model: input["model"],
+        effort: input["effort"],
+        permissionMode: input["permissionMode"],
         backgroundWait: input["backgroundWait"],
         delegation: input["delegation"],
         computerUse: input["computerUse"],
@@ -3488,7 +3480,6 @@ const EndpointHarnessClose = (raw: RawClient["server.harness"]) => (input: Harne
 const adaptGroupHarness = (raw: RawClient["server.harness"]) => ({
   reconcile: EndpointHarnessReconcile(raw),
   install: EndpointHarnessInstall(raw),
-  loginAnswer: EndpointHarnessLoginAnswer(raw),
   cancelLogin: EndpointHarnessCancelLogin(raw),
   list: EndpointHarnessList(raw),
   configure: EndpointHarnessConfigure(raw),

@@ -7,14 +7,11 @@ if (args.includes("--version")) {
   process.exit(0)
 }
 if (args.includes("status")) {
-  console.log(JSON.stringify({ loggedIn: true }))
+  // A probe that inherits the launching Claude Code session's variables would report that session's state.
+  console.log(JSON.stringify({ loggedIn: !process.env.CLAUDECODE, authMethod: "claude.ai", subscriptionType: "max" }))
   process.exit(0)
 }
 const send = (value: object) => console.log(JSON.stringify(value))
-if (args.includes("login")) {
-  console.log("https://claude.example.test/authorize")
-  for await (const code of createInterface({ input: process.stdin })) process.exit(code === "fixture-code" ? 0 : 1)
-}
 const state = { turn: "turn-fixture", thread: "thread-fixture", completed: 0, prompt: "", waiting: "" }
 const startWait = (mode: string) => {
   state.waiting = mode
@@ -309,7 +306,22 @@ for await (const line of createInterface({ input: process.stdin })) {
   }
   if (driver === "claude") {
     if (value.type === "control_request") {
-      send({ type: "control_response", response: { subtype: "success", request_id: value.request_id, response: {} } })
+      send({
+        type: "control_response",
+        response: {
+          subtype: "success",
+          request_id: value.request_id,
+          response:
+            value.request.subtype === "initialize"
+              ? {
+                  models: [
+                    { value: "default", displayName: "Default (recommended)" },
+                    { value: "opus", displayName: "Opus" },
+                  ],
+                }
+              : {},
+        },
+      })
       if (value.request.subtype === "initialize" && value.request.sdkMcpServers?.includes("redcode")) {
         send({
           type: "control_request",

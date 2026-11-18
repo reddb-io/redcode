@@ -63,15 +63,26 @@ recommended default. A discovery failure appears in Agent setup instead of being
 empty or partial list. The handshake identifies the running Redcode version.
 The model selector provides search and an explicit **Enter a model ID** option for custom overrides.
 
+Claude's installation check lists the models its CLI offers on that host, read from the CLI's startup
+handshake without a model request. Hooks and configured MCP servers stay off for that check. Leaving
+the model empty keeps Claude's own default.
+
 **Install with npm on this host** installs the official `@anthropic-ai/claude-code` or `@openai/codex`
 package. This explicit action needs Node.js/npm and permission for a global installation on that host.
 The CLIs are not bundled into Redcode, and existing installations can be used without downloading them.
 
-**Sign in** runs the provider's own authentication flow on that machine. Codex uses app-server's
-device-code flow: the screen displays its verification link and code. Claude displays its browser
-authorization link; if the provider asks for an authorization code, paste it into the masked field
-and submit. Codes are passed to the live login process and are not stored in Redcode history.
-The provider owns token storage. Sign-in can be cancelled and expires after five minutes.
+For Codex, **Sign in** runs app-server's device-code flow on that machine: the screen displays its
+verification link and code. The provider owns token storage. Sign-in can be cancelled and expires
+after five minutes.
+
+Claude sign-in stays in Anthropic's own flow. Run `claude auth login` in a terminal on the execution
+host (with `CLAUDE_CONFIG_DIR` set when the instance uses its own configuration directory), then choose
+**Check installation**. Redcode never opens or relays Claude sign-in. The check shows whether the
+instance uses a Claude subscription or an API key. An API key in the host environment takes precedence
+over a subscription login, and its usage is billed to that key.
+
+Claude and Codex processes do not inherit the variables of a Claude Code session that launched Redcode,
+so a harness never joins that session.
 
 These host-wide APIs require an infrastructure owner administrator or an existing trusted server
 connection. Organization membership alone does not grant access to the host's provider accounts or
@@ -109,6 +120,17 @@ The adapters preserve each provider's permission behavior. Supported command/fil
 questions appear in the run's panel. Unsupported requests can be declined; the app never fabricates
 support or silently approves them. Answers target a still-pending request on the owning process.
 Codex events from another thread/active turn are ignored.
+
+Claude output streams as it is written. When a run enables delegation, background waits or Computer
+Use, Redcode appends a short note to Claude Code's system prompt saying when to load those tools. It
+never replaces Claude Code's own system prompt.
+
+A Claude harness can start with a reasoning effort and a permission mode. **Ask before each action** is
+the default. **Accept file edits automatically**, **Plan before making changes** and **Auto** follow Claude
+Code's own modes. **Full access** runs every action without asking, so choose it only for a checkout you
+trust. Codex harnesses keep their own settings and reject these options. The run shows tool activity from
+Claude's subagents. On a subscription, it also shows a notice when Claude is close to a usage limit, and
+an error with the reset time once a limit is reached.
 
 Sending the same instruction ID again uses first-admission-wins behavior. Reusing it in another run
 is rejected. Queued input is stored on the host, and interruption cancels queued instructions. After
