@@ -1041,6 +1041,10 @@ test("provider sign-in keeps Codex completion authoritative and leaves Claude si
       authenticated: true,
       account: { method: "claude.ai", plan: "max" },
       models: [{ id: "opus", label: "Opus", recommended: false }],
+      limits: [
+        { window: "five_hour", used: 37.5, resetsAt: "2026-11-18T20:00:00Z" },
+        { window: "model", model: "Fable", used: 12, resetsAt: "2026-11-21T00:00:00Z" },
+      ],
     })
     await service.login("codex")
     await until(() => service.loginStatus("codex").state === "complete")

@@ -3225,6 +3225,12 @@ export type HarnessProvider = {
   version?: string
   authenticated?: boolean
   account?: { method: string; plan?: string }
+  limits?: Array<{
+    window: "five_hour" | "seven_day" | "seven_day_opus" | "seven_day_sonnet" | "model"
+    model?: string
+    used: number
+    resetsAt: string
+  }>
   detail?: string
   models?: Array<{ id: string; label: string; recommended: boolean }>
 }

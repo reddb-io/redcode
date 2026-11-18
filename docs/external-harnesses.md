@@ -65,7 +65,9 @@ The model selector provides search and an explicit **Enter a model ID** option f
 
 Claude's installation check lists the models its CLI offers on that host, read from the CLI's startup
 handshake without a model request. Hooks and configured MCP servers stay off for that check. Leaving
-the model empty keeps Claude's own default.
+the model empty keeps Claude's own default. For a Claude subscription, the check also shows how much of
+each usage window is used and when it resets, as reported by the CLI. That report is experimental in
+Claude Code, so the check omits it when the CLI does not provide it.
 
 **Install with npm on this host** installs the official `@anthropic-ai/claude-code` or `@openai/codex`
 package. This explicit action needs Node.js/npm and permission for a global installation on that host.
