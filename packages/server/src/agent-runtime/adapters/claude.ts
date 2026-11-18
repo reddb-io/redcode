@@ -71,7 +71,10 @@ async function limits(wire: Wire): Promise<Harness.Provider["limits"]> {
   ]
 }
 
-export const ClaudeRuntimeProtocol = { catalogArgs, models, limits }
+// The oldest Claude Code release the CLI contract test has passed against.
+const minimumVersion = "2.1.327"
+
+export const ClaudeRuntimeProtocol = { catalogArgs, models, limits, minimumVersion }
 
 // Claude Code defers MCP tools behind ToolSearch, so the model learns when to load Redcode's tools from here.
 // Keep each text fixed per capability: Claude Code records the system prompt on a session's first request.

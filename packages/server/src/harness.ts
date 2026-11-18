@@ -395,6 +395,14 @@ export async function createHarnesses(
       } finally {
         await connection.close()
       }
+      const installed = version.match(/\d+\.\d+\.\d+/)?.[0]
+      if (installed && Bun.semver.order(installed, ClaudeRuntimeProtocol.minimumVersion) < 0)
+        result.detail = [
+          result.detail,
+          `Redcode is tested with Claude Code ${ClaudeRuntimeProtocol.minimumVersion} or later; this host has ${installed}. Run \`claude update\`.`,
+        ]
+          .filter(Boolean)
+          .join(" ")
     }
     if (driver === "codex") {
       const connection = wire({

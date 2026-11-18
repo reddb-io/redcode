@@ -1,0 +1,34 @@
+name: Claude CLI contract
+
+on:
+  workflow_dispatch:
+    inputs:
+      claude_version:
+        description: "Claude Code npm version to test, such as latest or 2.1.327"
+        required: false
+        default: "latest"
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    name: Claude CLI contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-bun
+      - name: Install Claude Code
+        env:
+          CLAUDE_VERSION: ${{ inputs.claude_version }}
+        run: npm install --global "@anthropic-ai/claude-code@${CLAUDE_VERSION}"
+      - name: Run the contract test
+        working-directory: packages/server
+        env:
+          REDCODE_CLAUDE_CLI: claude
+        run: |
+          claude --version
+          bun test test/claude-cli-contract.test.ts
