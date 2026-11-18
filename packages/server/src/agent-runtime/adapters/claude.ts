@@ -267,7 +267,7 @@ export const ClaudeAgentRuntime: AgentRuntimeAdapter = {
     multipleThreadsPerRuntime: false,
     resume: true,
     resumeAfterRestart: true,
-    steer: false,
+    steer: true,
   },
   accepts: () => true,
   events,

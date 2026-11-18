@@ -14,7 +14,14 @@ if (args.includes("status")) {
   process.exit(0)
 }
 const send = (value: object) => console.log(JSON.stringify(value))
-const state = { turn: "turn-fixture", thread: "thread-fixture", completed: 0, prompt: "", waiting: "" }
+const state = {
+  turn: "turn-fixture",
+  thread: "thread-fixture",
+  completed: 0,
+  prompt: "",
+  waiting: "",
+  claudeActive: false,
+}
 const startWait = (mode: string) => {
   state.waiting = mode
   const taskID = `wait-${driver === "claude" ? state.prompt : state.turn}`
@@ -118,6 +125,7 @@ const complete = () => {
     })
   }
   if (driver === "claude") {
+    state.claudeActive = false
     send({
       type: "assistant",
       message: { content: [{ type: "text", text: "fixture response" }] },
@@ -308,6 +316,7 @@ for await (const line of createInterface({ input: process.stdin })) {
   }
   if (driver === "claude") {
     if (value.type === "control_request") {
+      if (value.request.subtype === "interrupt") state.claudeActive = false
       send({
         type: "control_response",
         response: {
@@ -363,9 +372,19 @@ for await (const line of createInterface({ input: process.stdin })) {
       }
     }
     if (value.type === "user") {
+      // Like Claude Code, a message during a held turn joins that turn instead of starting another.
+      if (state.claudeActive) {
+        send({
+          type: "assistant",
+          message: { content: [{ type: "text", text: `STEERED ${value.message.content}` }] },
+          parent_tool_use_id: null,
+        })
+        continue
+      }
       state.prompt = value.uuid
       send({ type: "system", subtype: "init", session_id: claudeSession })
       const text = value.message.content
+      state.claudeActive = text === "hold" || text === "permission"
       if (text.startsWith("delegate:")) {
         send({
           type: "control_request",

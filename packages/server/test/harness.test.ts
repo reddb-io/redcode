@@ -818,6 +818,12 @@ for (const driver of ["codex", "claude"] as const) {
       await until(() => service.read(run.id).requests.length === 1)
       const request = service.read(run.id).requests[0]
       expect(request.kind).toBe("permission")
+      if (driver === "claude") {
+        // A steer while approval is pending joins the turn and leaves the approval answerable.
+        await service.prompt(run.id, { id: "approval-steer", text: "also check docs", delivery: "steer" })
+        await until(() => service.read(run.id).events.some((event) => event.text === "STEERED also check docs"))
+        expect(service.read(run.id).run.state).toBe("waiting")
+      }
       service.answer(run.id, { request: request.id, allow: true, answers: {} })
       await until(() => service.read(run.id).run.state === "ready")
       expect(service.read(run.id).events.some((event) => event.text === "fixture response")).toBe(true)
@@ -884,10 +890,13 @@ for (const driver of ["codex", "claude"] as const) {
       await service.prompt(run.id, { id: "queued-input", text: "later", delivery: "queue" })
       expect(service.list().runs.find((item) => item.id === run.id)?.queued).toBe(1)
       expect(service.read(run.id).run.queued).toBe(1)
-      if (driver === "claude")
-        await expect(service.prompt(run.id, { id: "steer-input", text: "now", delivery: "steer" })).rejects.toThrow(
-          "does not support",
-        )
+      if (driver === "claude") {
+        // A steer joins the active turn: it is sent at once and the held turn stays open.
+        await service.prompt(run.id, { id: "steer-input", text: "now", delivery: "steer" })
+        await until(() => service.read(run.id).events.some((event) => event.text === "STEERED now"))
+        expect(service.read(run.id).run.state).toBe("running")
+        expect(service.read(run.id).run.queued).toBe(1)
+      }
       await service.interrupt(run.id)
       expect(service.list().runs.find((item) => item.id === run.id)?.queued).toBe(0)
       await service.close(run.id)

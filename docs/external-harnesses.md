@@ -116,15 +116,18 @@ Codex's installation check also fetches the host/account's advertised models. Th
 those suggestions. Leaving it empty preserves the CLI's configured default; an unavailable default
 is reported by the provider, and you can choose an advertised model without editing a file.
 
-| Adapter     | Transport                        | Active steering             | Queued instructions | Interrupt | Native resume    |
-| ----------- | -------------------------------- | --------------------------- | ------------------- | --------- | ---------------- |
-| Codex       | app-server JSON-RPC over stdio   | Yes                         | Yes                 | Yes       | Saved thread ID  |
-| Claude Code | CLI stream-json/control protocol | Unavailable in this adapter | Yes                 | Yes       | Saved session ID |
+| Adapter     | Transport                        | Active steering            | Queued instructions | Interrupt | Native resume    |
+| ----------- | -------------------------------- | -------------------------- | ------------------- | --------- | ---------------- |
+| Codex       | app-server JSON-RPC over stdio   | Yes                        | Yes                 | Yes       | Saved thread ID  |
+| Claude Code | CLI stream-json/control protocol | Yes, joins the active turn | Yes                 | Yes       | Saved session ID |
 
 The adapters preserve each provider's permission behavior. Supported command/file approvals and
 questions appear in the run's panel. Unsupported requests can be declined; the app never fabricates
 support or silently approves them. Answers target a still-pending request on the owning process.
 Codex events from another thread/active turn are ignored.
+
+Steering a Claude run sends the instruction into the active turn. Claude reads it with its next step,
+including after a pending approval is answered, and the turn still ends once.
 
 Claude output streams as it is written. Claude's reasoning appears as summaries, one block per thinking
 step, set apart from its replies. When a run enables delegation, background waits or Computer
