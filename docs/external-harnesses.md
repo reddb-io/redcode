@@ -137,10 +137,11 @@ never replaces Claude Code's own system prompt.
 A Claude harness can start with a reasoning effort and a permission mode. **Ask before each action** is
 the default. **Accept file edits automatically**, **Plan before making changes** and **Auto** follow Claude
 Code's own modes. In plan mode, Claude's proposed plan appears as an approval request; approving it
-lets Claude start the work, and the run then records that it left plan mode. **Full access** runs every action without asking, so choose it only for a checkout you
-trust. Codex harnesses keep their own settings and reject these options. The run shows tool activity from
-Claude's subagents. On a subscription, it also shows a notice when Claude is close to a usage limit, and
-an error with the reset time once a limit is reached.
+lets Claude start the work, and the run then records that it left plan mode. **Full access** runs every
+action without asking, so choose it only for a checkout you trust. Codex harnesses keep their own
+settings and reject these options. Claude's tool activity, including its subagents', names the command,
+file or query each call acts on. On a subscription, the run also shows a notice when Claude is close to
+a usage limit, and an error with the reset time once a limit is reached.
 
 Sending the same instruction ID again uses first-admission-wins behavior. Reusing it in another run
 is rejected. Queued input is stored on the host, and interruption cancels queued instructions. After

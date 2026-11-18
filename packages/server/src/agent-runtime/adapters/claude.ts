@@ -146,7 +146,7 @@ function events(input: AgentRuntimeEventInput): AgentRuntimeEvent[] {
     if (!Array.isArray(content)) return []
     return content.flatMap((item): AgentRuntimeEvent[] => {
       const block = object(item)
-      return block.type === "tool_use" ? [{ type: "activity", text: `Subagent · ${string(block.name)}` }] : []
+      return block.type === "tool_use" ? [{ type: "activity", text: `Subagent · ${toolActivity(block)}` }] : []
     })
   }
   if (value.type === "assistant") {
@@ -159,7 +159,7 @@ function events(input: AgentRuntimeEventInput): AgentRuntimeEvent[] {
       // Each thinking block arrives whole in its own assistant frame, so it is shown once as a block.
       if (block.type === "thinking")
         return string(block.thinking).trim() ? [{ type: "reasoning", text: string(block.thinking) }] : []
-      if (block.type === "tool_use") return [{ type: "activity", text: string(block.name) }]
+      if (block.type === "tool_use") return [{ type: "activity", text: toolActivity(block) }]
       return []
     })
   }
@@ -246,6 +246,25 @@ function usageLimit(info: Frame): AgentRuntimeEvent[] {
 
 function count(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null
+}
+
+const TOOL_TARGETS = [
+  "command",
+  "file_path",
+  "notebook_path",
+  "pattern",
+  "path",
+  "url",
+  "query",
+  "skill",
+  "description",
+]
+
+// A tool call with the command, file or query it acts on, so the run shows what Claude is doing.
+function toolActivity(block: Frame) {
+  const input = object(block.input)
+  const target = TOOL_TARGETS.map((field) => string(input[field]).trim()).find(Boolean)
+  return target ? `${string(block.name)} · ${target.split("\n")[0].slice(0, 200)}` : string(block.name)
 }
 
 // The plan, command or tool input the user is approving; questions render as their own fields.

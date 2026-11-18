@@ -251,6 +251,12 @@ describe.skipIf(!cli)("Claude Code CLI contract", () => {
       service.answer(planning.id, { request: service.read(planning.id).requests[0]!.id, allow: true, answers: {} })
       await until(() => service.read(planning.id).run.state === "ready")
       expect(service.read(planning.id).run.permissionMode).toBe("default")
+      // Tool activity names what the call acts on.
+      expect(
+        service
+          .read(planning.id)
+          .events.some((event) => event.kind === "activity" && /^Write · .*plans.*\.md$/.test(event.text)),
+      ).toBe(true)
     } finally {
       await service.dispose()
     }

@@ -189,7 +189,9 @@ describe("agent runtime event normalization", () => {
             { type: "thinking", thinking: "Check the file first." },
             { type: "thinking", thinking: "" },
             { type: "text", text: "streamed" },
-            { type: "tool_use", name: "Read" },
+            { type: "tool_use", name: "Read", input: { file_path: "/repo/README.md" } },
+            { type: "tool_use", name: "Grep", input: { pattern: "TODO", path: "/repo/src" } },
+            { type: "tool_use", name: "Bash", input: { command: "bun test\n--watch", description: "Run tests" } },
           ],
         },
         parent_tool_use_id: null,
@@ -199,7 +201,9 @@ describe("agent runtime event normalization", () => {
       { type: "text", text: "str" },
       { type: "text", text: "eamed" },
       { type: "reasoning", text: "Check the file first." },
-      { type: "activity", text: "Read" },
+      { type: "activity", text: "Read · /repo/README.md" },
+      { type: "activity", text: "Grep · TODO" },
+      { type: "activity", text: "Bash · bun test" },
     ])
     expect(
       [
@@ -208,7 +212,7 @@ describe("agent runtime event normalization", () => {
           message: {
             content: [
               { type: "text", text: "inner" },
-              { type: "tool_use", name: "Grep" },
+              { type: "tool_use", name: "Grep", input: { pattern: "fixme" } },
             ],
           },
           parent_tool_use_id: "toolu-1",
@@ -221,7 +225,7 @@ describe("agent runtime event normalization", () => {
         { type: "rate_limit_event", rate_limit_info: { status: "rejected", rateLimitType: "five_hour" } },
       ].flatMap((frame) => adapter.events({ run: runtime, turn: "", frame })),
     ).toEqual([
-      { type: "activity", text: "Subagent · Grep" },
+      { type: "activity", text: "Subagent · Grep · fixme" },
       {
         type: "activity",
         text: "Claude is close to the 7-day usage limit. It resets at 2027-01-15T08:00:00.000Z.",
