@@ -63,6 +63,9 @@ recommended default. A discovery failure appears in Agent setup instead of being
 empty or partial list. The handshake identifies the running Redcode version.
 The model selector provides search and an explicit **Enter a model ID** option for custom overrides.
 
+Redcode drives Claude Code through its CLI and is tested against Claude Code 2.1.327 or later. The
+installation check warns when the host has an older release; run `claude update` there.
+
 Claude's installation check lists the models its CLI offers on that host, read from the CLI's startup
 handshake without a model request. Hooks and configured MCP servers stay off for that check. Leaving
 the model empty keeps Claude's own default. For a Claude subscription, the check also shows how much of

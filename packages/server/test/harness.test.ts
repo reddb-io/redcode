@@ -1028,6 +1028,23 @@ test("restart requires reconciliation and does not replay ambiguously admitted i
   }
 })
 
+test("Claude installation check warns about a CLI older than the tested contract", async () => {
+  await using tmp = await tmpdir("redcode-harness-version-")
+  const service = await createHarnesses(path.join(tmp.path, "state"))
+  const inherited = process.env.REDCODE_FIXTURE_VERSION
+  try {
+    process.env.REDCODE_FIXTURE_VERSION = "2.0.1 (Claude Code)"
+    const old = await service.configure({ driver: "claude", executable: await executable(tmp.path, "claude") })
+    expect(old.detail).toContain("Run `claude update`")
+    process.env.REDCODE_FIXTURE_VERSION = "9.0.0 (Claude Code)"
+    expect((await service.probe("claude")).detail).toBeUndefined()
+  } finally {
+    if (inherited === undefined) delete process.env.REDCODE_FIXTURE_VERSION
+    else process.env.REDCODE_FIXTURE_VERSION = inherited
+    await service.dispose()
+  }
+})
+
 test("Claude forks a finished run into a new native session and Codex refuses", async () => {
   await using tmp = await tmpdir("redcode-harness-fork-")
   const service = await createHarnesses(path.join(tmp.path, "state"))

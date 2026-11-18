@@ -5,7 +5,7 @@ const [driver, capture, ...args] = process.argv.slice(2)
 // A forked Claude session gets a new native identity.
 const claudeSession = args.includes("--fork-session") ? "claude-fork" : "claude-fixture"
 if (args.includes("--version")) {
-  console.log("fixture-cli 1.0")
+  console.log(process.env.REDCODE_FIXTURE_VERSION ?? "fixture-cli 1.0")
   process.exit(0)
 }
 if (args.includes("status")) {

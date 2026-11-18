@@ -31,12 +31,17 @@ identity and version requirements; this policy does not publish anything itself.
 
 | File | Events |
 | --- | --- |
+| `claude-cli-contract.yml` | workflow_dispatch |
 | `models-catalog.yml` | workflow_dispatch |
 | `npm-release-diagnostics.yml` | workflow_dispatch |
 | `npm-release-recovery.yml` | workflow_dispatch |
 | `quality.yml` | workflow_dispatch |
 | `redcode-recover-0872.yml` | workflow_dispatch |
 | `redcode.yml` | workflow_dispatch |
+
+`claude-cli-contract.yml` installs a chosen Claude Code release (latest by default) and runs Redcode's
+Claude harness against it through a local stub API, with no account or model request. Run it when a new
+Claude Code release ships; raise `ClaudeRuntimeProtocol.minimumVersion` only after it passes.
 
 `quality.yml` selects checks, unit, browser, Windows or coverage independently.
 The Windows unit matrix is opt-in. `redcode.yml` is the explicit build/publish
