@@ -34,7 +34,7 @@ describe("agent runtime registry", () => {
       interrupt: true,
       multipleThreadsPerRuntime: false,
       resumeAfterRestart: true,
-      steer: false,
+      steer: true,
     })
     expect(harnessCapabilities(agentRuntime("codex"))).toMatchObject({
       protocol: 1,

@@ -615,8 +615,9 @@ export async function createHarnesses(
     const run = read(id)
     const connection = live.get(id)
     if (!connection) throw new Error("Resume the harness before sending input")
-    update(id, { state: "running" })
+    // A steer joins the active turn, so a pending approval stays answerable.
     if (!steer) {
+      update(id, { state: "running" })
       connection.input = prompt.id
       connection.started = Date.now()
     }

@@ -10,10 +10,18 @@ import { ClaudeRuntimeProtocol } from "../src/agent-runtime/adapters/claude"
 // Run with REDCODE_CLAUDE_CLI=claude from packages/server, or through the Claude CLI contract workflow.
 const cli = process.env.REDCODE_CLAUDE_CLI
 
-type Captured = { system: string; thinking?: { display?: string }; effort?: string; messages: number }
+type Captured = {
+  system: string
+  thinking?: { display?: string }
+  effort?: string
+  messages: number
+  steered: boolean
+}
 
 const REASONING = "Contract reasoning step."
 const REPLY = "contract-ok"
+const STEER_SCENARIO = "CONTRACT_STEER_SCENARIO"
+const STEER_TEXT = "CONTRACT_STEER_TEXT"
 const captured: Captured[] = []
 const saved: Record<string, string | undefined> = {}
 let server: ReturnType<typeof Bun.serve> | undefined
@@ -68,6 +76,40 @@ function reply(model: string) {
   ].join("")
 }
 
+// A Bash call needs approval, which holds the turn open long enough to steer it deterministically.
+function toolCall(model: string) {
+  const message = {
+    id: `msg_contract_${captured.length}`,
+    type: "message",
+    role: "assistant",
+    model,
+    content: [],
+    stop_reason: null,
+    stop_sequence: null,
+    usage: { input_tokens: 1, output_tokens: 1 },
+  }
+  return [
+    sse("message_start", { type: "message_start", message }),
+    sse("content_block_start", {
+      type: "content_block_start",
+      index: 0,
+      content_block: { type: "tool_use", id: "toolu_contract", name: "Bash", input: {} },
+    }),
+    sse("content_block_delta", {
+      type: "content_block_delta",
+      index: 0,
+      delta: { type: "input_json_delta", partial_json: JSON.stringify({ command: "mkdir contract-steer" }) },
+    }),
+    sse("content_block_stop", { type: "content_block_stop", index: 0 }),
+    sse("message_delta", {
+      type: "message_delta",
+      delta: { stop_reason: "tool_use", stop_sequence: null },
+      usage: { output_tokens: 1 },
+    }),
+    sse("message_stop", { type: "message_stop" }),
+  ].join("")
+}
+
 async function until(check: () => boolean, timeout = 60_000) {
   const end = Date.now() + timeout
   while (!check()) {
@@ -85,6 +127,7 @@ describe.skipIf(!cli)("Claude Code CLI contract", () => {
         if (!url.pathname.startsWith("/v1/messages") || url.pathname.includes("count_tokens"))
           return Response.json({ input_tokens: 1 })
         const body = await request.json()
+        const history = JSON.stringify(body.messages)
         // The main loop carries the tool list; side requests such as titles do not.
         if (body.tools?.length)
           captured.push({
@@ -94,8 +137,12 @@ describe.skipIf(!cli)("Claude Code CLI contract", () => {
             thinking: body.thinking,
             effort: body.output_config?.effort,
             messages: body.messages.length,
+            steered: history.includes(STEER_TEXT),
           })
-        return new Response(reply(body.model), { headers: { "content-type": "text/event-stream" } })
+        const callTool = body.tools?.length && history.includes(STEER_SCENARIO) && !history.includes("tool_result")
+        return new Response(callTool ? toolCall(body.model) : reply(body.model), {
+          headers: { "content-type": "text/event-stream" },
+        })
       },
     })
     const variables = {
@@ -170,6 +217,16 @@ describe.skipIf(!cli)("Claude Code CLI contract", () => {
       expect(service.read(fork.id).run.nativeID).not.toBe(source)
       // The fork carries the original conversation.
       expect(captured.at(-1)!.messages).toBeGreaterThan(first.messages)
+
+      // A steer sent while the turn waits for approval reaches Claude within that same turn.
+      const steering = await service.open({ driver: "claude", directory: AbsolutePath.make(checkout) })
+      await service.prompt(steering.id, { id: "contract-steer-start", text: STEER_SCENARIO, delivery: "queue" })
+      await until(() => service.read(steering.id).requests.length === 1)
+      const before = captured.length
+      await service.prompt(steering.id, { id: "contract-steer", text: STEER_TEXT, delivery: "steer" })
+      service.answer(steering.id, { request: service.read(steering.id).requests[0]!.id, allow: true, answers: {} })
+      await until(() => service.read(steering.id).run.state === "ready")
+      expect(captured.slice(before).some((request) => request.steered)).toBe(true)
     } finally {
       await service.dispose()
     }
