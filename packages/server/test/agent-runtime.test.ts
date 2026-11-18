@@ -60,6 +60,10 @@ describe("agent runtime registry", () => {
     expect(args).toContain("claude-opus")
     expect(args).toContain("stream-json")
     expect(args).toContain("--include-partial-messages")
+    expect(args.slice(args.indexOf("--thinking-display"), args.indexOf("--thinking-display") + 2)).toEqual([
+      "--thinking-display",
+      "summarized",
+    ])
     for (const flag of ["--system-prompt", "--system-prompt-file", "--bare"]) expect(args).not.toContain(flag)
     expect(args.slice(args.indexOf("--permission-mode"), args.indexOf("--permission-mode") + 2)).toEqual([
       "--permission-mode",
@@ -182,6 +186,8 @@ describe("agent runtime event normalization", () => {
         message: {
           id: "msg-1",
           content: [
+            { type: "thinking", thinking: "Check the file first." },
+            { type: "thinking", thinking: "" },
             { type: "text", text: "streamed" },
             { type: "tool_use", name: "Read" },
           ],
@@ -192,6 +198,7 @@ describe("agent runtime event normalization", () => {
     expect(streamed).toEqual([
       { type: "text", text: "str" },
       { type: "text", text: "eamed" },
+      { type: "reasoning", text: "Check the file first." },
       { type: "activity", text: "Read" },
     ])
     expect(

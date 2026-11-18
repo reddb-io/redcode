@@ -1254,7 +1254,7 @@ export type HarnessComputerUseBinding = { hostID: string; capabilityID: string; 
 
 export type HarnessComputerUseTicket = { ticket: string; hostID: string; expiresAt: number }
 
-export type HarnessEvent = { cursor: number; kind: "text" | "activity" | "error"; text: string }
+export type HarnessEvent = { cursor: number; kind: "text" | "reasoning" | "activity" | "error"; text: string }
 
 export type HarnessQuestion = { id: string; text: string; options: Array<string> }
 

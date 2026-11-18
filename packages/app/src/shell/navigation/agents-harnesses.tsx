@@ -491,7 +491,13 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                       <Key each={result().events} by="cursor">
                         {(event) => (
                           <span
-                            class={event().kind === "text" ? "whitespace-pre-wrap break-words" : "block text-ink-muted"}
+                            class={
+                              event().kind === "text"
+                                ? "whitespace-pre-wrap break-words"
+                                : event().kind === "reasoning"
+                                  ? "block whitespace-pre-wrap break-words italic text-ink-muted"
+                                  : "block text-ink-muted"
+                            }
                           >
                             {event().text}
                           </span>

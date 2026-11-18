@@ -147,6 +147,9 @@ function events(input: AgentRuntimeEventInput): AgentRuntimeEvent[] {
     return message.content.flatMap((item): AgentRuntimeEvent[] => {
       const block = object(item)
       if (block.type === "text") return repeated ? [] : [{ type: "text", text: string(block.text) }]
+      // Each thinking block arrives whole in its own assistant frame, so it is shown once as a block.
+      if (block.type === "thinking")
+        return string(block.thinking).trim() ? [{ type: "reasoning", text: string(block.thinking) }] : []
       if (block.type === "tool_use") return [{ type: "activity", text: string(block.name) }]
       return []
     })
@@ -304,6 +307,9 @@ export const ClaudeAgentRuntime: AgentRuntimeAdapter = {
   launchArgs: (run) => [
     ...STREAM_ARGS,
     "--include-partial-messages",
+    // Readable reasoning summaries instead of the default one-line progress updates.
+    "--thinking-display",
+    "summarized",
     "--permission-prompt-tool",
     "stdio",
     "--permission-mode",

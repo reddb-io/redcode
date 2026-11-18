@@ -170,7 +170,7 @@ export async function createHarnesses(
     write(next)
     return next
   }
-  const event = (id: string, kind: "text" | "activity" | "error", text: string) => {
+  const event = (id: string, kind: Harness.Event["kind"], text: string) => {
     if (text) db.query("INSERT INTO event(run,kind,text) VALUES (?,?,?)").run(id, kind, text.slice(0, 64_000))
   }
   const metric = (
@@ -437,7 +437,12 @@ export async function createHarnesses(
     adapter
       .events(input)
       .forEach((runtimeEvent) => {
-        if (runtimeEvent.type === "text" || runtimeEvent.type === "activity" || runtimeEvent.type === "error") {
+        if (
+          runtimeEvent.type === "text" ||
+          runtimeEvent.type === "reasoning" ||
+          runtimeEvent.type === "activity" ||
+          runtimeEvent.type === "error"
+        ) {
           event(id, runtimeEvent.type, runtimeEvent.text)
           return
         }
@@ -874,7 +879,7 @@ export async function createHarnesses(
     read(id: string): Harness.Detail {
       const events = db
         .query<
-          { cursor: number; kind: "text" | "activity" | "error"; text: string },
+          { cursor: number; kind: Harness.Event["kind"]; text: string },
           [string]
         >("SELECT cursor,kind,text FROM (SELECT cursor,kind,text FROM event WHERE run=? ORDER BY cursor DESC LIMIT 200) ORDER BY cursor")
         .all(id)

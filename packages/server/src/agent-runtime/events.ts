@@ -32,6 +32,7 @@ export type AgentRuntimeEvent =
       title: string
     }
   | { type: "error"; text: string }
+  | { type: "reasoning"; text: string }
   | { type: "session"; nativeID: string }
   | { type: "started"; turn: string }
   | { type: "text"; text: string }

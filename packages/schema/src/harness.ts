@@ -162,7 +162,7 @@ export const Request = Schema.Struct({
 export interface Request extends Schema.Schema.Type<typeof Request> {}
 export const Event = Schema.Struct({
   cursor: Schema.Int,
-  kind: Schema.Literals(["text", "activity", "error"]),
+  kind: Schema.Literals(["text", "reasoning", "activity", "error"]),
   text: Schema.String,
 }).annotate({ identifier: "Harness.Event" })
 export interface Event extends Schema.Schema.Type<typeof Event> {}
