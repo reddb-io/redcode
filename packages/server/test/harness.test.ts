@@ -5,6 +5,7 @@ import { writeFile, chmod, mkdir } from "node:fs/promises"
 import path from "node:path"
 import { tmpdir } from "../../core/test/fixture/tmpdir"
 import { createHarnesses } from "../src/harness"
+import { harnessEnvironment } from "../src/harness-wire"
 import { Harness } from "@opencode/schema/harness"
 import { AbsolutePath } from "@opencode/schema/schema"
 import { Schema } from "effect"
@@ -1110,6 +1111,20 @@ test("Claude forks a finished run into a new native session and Codex refuses", 
   } finally {
     await service.dispose()
   }
+})
+
+test("harness processes never inherit the identity or credentials of a Claude Code host session", () => {
+  const environment = harnessEnvironment({
+    CLAUDE_CODE_BRIDGE_SESSION_ID: "host-bridge",
+    CLAUDE_CODE_SESSION_ACCESS_TOKEN: "host-token",
+    CLAUDE_CODE_CHILD_NOTES_DIR: "/host/notes",
+    CLAUDE_CODE_USE_BEDROCK: "1",
+  })
+  expect(environment.CLAUDE_CODE_BRIDGE_SESSION_ID).toBeUndefined()
+  expect(environment.CLAUDE_CODE_SESSION_ACCESS_TOKEN).toBeUndefined()
+  expect(environment.CLAUDE_CODE_CHILD_NOTES_DIR).toBeUndefined()
+  // Provider settings the user chose still reach the CLI.
+  expect(environment.CLAUDE_CODE_USE_BEDROCK).toBe("1")
 })
 
 test("provider sign-in keeps Codex completion authoritative and leaves Claude sign-in to its own terminal flow", async () => {
