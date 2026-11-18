@@ -927,6 +927,7 @@ export const dict = {
   "harness.queued.other": "{{count}} queued instructions",
   "harness.interrupt": "Interrupt",
   "harness.resume": "Resume native session",
+  "harness.fork": "Fork into a new session",
   "harness.reconcile": "Record reconciliation",
   "harness.originalStopped": "I confirmed that the original process is stopped",
   "harness.reconcileNote":

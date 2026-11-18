@@ -141,6 +141,11 @@ host restart or process loss, a run normally displays **Needs reconciliation**. 
 with outstanding work can instead resume automatically as described below. **Resume native session**
 reattaches using a recorded native ID; input whose delivery was ambiguous is not resent.
 
+**Fork into a new session** starts a new Claude run from a finished run's conversation. Claude Code copies
+the history into a new native session, so the original run is unchanged. The fork keeps the source run's
+checkout, model, effort, permission mode, background-wait and delegation settings; Computer Use is not
+carried over. Codex runs cannot be forked.
+
 Other unknown executions must be reconciled first: check the original machine and confirm in the screen
 that its process has stopped. Redcode does not claim to have killed a process it no longer owns.
 

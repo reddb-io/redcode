@@ -136,6 +136,8 @@ export const Run = Schema.Struct({
   effort: optional(Effort),
   permissionMode: optional(PermissionMode),
   nativeID: optional(Schema.String),
+  /** The next launch forks `nativeID` into a new native session; cleared once the agent reports it. */
+  fork: optional(Schema.Boolean),
   state: State,
   createdAt: Schema.String,
   detail: optional(Schema.String),

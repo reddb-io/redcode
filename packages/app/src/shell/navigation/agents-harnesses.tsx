@@ -469,6 +469,24 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                       >
                         {language.t("harness.resume")}
                       </Button>
+                      <Show when={Harness.supports(result().run.capabilities, Harness.Feature.fork)}>
+                        <Button
+                          variant="outline"
+                          disabled={
+                            state.busy ||
+                            ["starting", "running", "waiting"].includes(result().run.state) ||
+                            !result().run.nativeID
+                          }
+                          onClick={() =>
+                            void action(async () => {
+                              const run = await api().fork({ runID: state.runID })
+                              if (lifetime.active) inspect(run.id)
+                            })
+                          }
+                        >
+                          {language.t("harness.fork")}
+                        </Button>
+                      </Show>
                       <Button
                         variant="outline"
                         disabled={state.busy || ["closed", "unknown"].includes(result().run.state)}

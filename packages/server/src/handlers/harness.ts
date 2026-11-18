@@ -44,6 +44,7 @@ export const HarnessHandler = HttpApiBuilder.group(Api, "server.harness", (handl
       .handle("harness.interrupt", (ctx) => call(() => harness.interrupt(ctx.params.runID)))
       .handle("harness.answer", (ctx) => call(() => harness.answer(ctx.params.runID, ctx.payload)))
       .handle("harness.resume", (ctx) => call(() => harness.resume(ctx.params.runID)))
+      .handle("harness.fork", (ctx) => call(() => harness.fork(ctx.params.runID)))
       .handle("harness.close", (ctx) => call(() => harness.close(ctx.params.runID)))
   }),
 )

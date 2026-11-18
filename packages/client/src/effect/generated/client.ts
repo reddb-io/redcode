@@ -572,6 +572,8 @@ import type {
   HarnessInterruptOutput,
   HarnessResumeInput,
   HarnessResumeOutput,
+  HarnessForkInput,
+  HarnessForkOutput,
   HarnessCloseInput,
   HarnessCloseOutput,
   AgentToolsListOutput,
@@ -3472,6 +3474,11 @@ const EndpointHarnessResume = (raw: RawClient["server.harness"]) => (input: Harn
     raw["harness.resume"]({ params: { runID: input["runID"] } }).pipe(Effect.mapError(mapClientError)),
   )
 
+const EndpointHarnessFork = (raw: RawClient["server.harness"]) => (input: HarnessForkInput) =>
+  preserveEffect<HarnessForkOutput>()(
+    raw["harness.fork"]({ params: { runID: input["runID"] } }).pipe(Effect.mapError(mapClientError)),
+  )
+
 const EndpointHarnessClose = (raw: RawClient["server.harness"]) => (input: HarnessCloseInput) =>
   preserveEffect<HarnessCloseOutput>()(
     raw["harness.close"]({ params: { runID: input["runID"] } }).pipe(Effect.mapError(mapClientError)),
@@ -3495,6 +3502,7 @@ const adaptGroupHarness = (raw: RawClient["server.harness"]) => ({
   answer: EndpointHarnessAnswer(raw),
   interrupt: EndpointHarnessInterrupt(raw),
   resume: EndpointHarnessResume(raw),
+  fork: EndpointHarnessFork(raw),
   close: EndpointHarnessClose(raw),
 })
 
