@@ -323,7 +323,7 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                         {(request) => (
                           <section class="rounded border border-v2-border-base p-3">
                             <h4 class="text-13-medium">{language.t(`harness.request.${request().kind}`)}</h4>
-                            <pre class="max-h-40 overflow-auto whitespace-pre-wrap break-words">{request().detail}</pre>
+                            <pre class="max-h-80 overflow-auto whitespace-pre-wrap break-words">{request().detail}</pre>
                             <Key each={request().questions} by="id">
                               {(question) => (
                                 <label class="mt-2 block">

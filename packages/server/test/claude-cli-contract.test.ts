@@ -22,6 +22,8 @@ const REASONING = "Contract reasoning step."
 const REPLY = "contract-ok"
 const STEER_SCENARIO = "CONTRACT_STEER_SCENARIO"
 const STEER_TEXT = "CONTRACT_STEER_TEXT"
+const PLAN_SCENARIO = "CONTRACT_PLAN_SCENARIO"
+const PLAN = "# Contract plan\n\n1. Create the directory"
 const captured: Captured[] = []
 const saved: Record<string, string | undefined> = {}
 let server: ReturnType<typeof Bun.serve> | undefined
@@ -76,8 +78,7 @@ function reply(model: string) {
   ].join("")
 }
 
-// A Bash call needs approval, which holds the turn open long enough to steer it deterministically.
-function toolCall(model: string) {
+function toolCall(model: string, name: string, input: object) {
   const message = {
     id: `msg_contract_${captured.length}`,
     type: "message",
@@ -93,12 +94,12 @@ function toolCall(model: string) {
     sse("content_block_start", {
       type: "content_block_start",
       index: 0,
-      content_block: { type: "tool_use", id: "toolu_contract", name: "Bash", input: {} },
+      content_block: { type: "tool_use", id: `toolu_contract_${captured.length}`, name, input: {} },
     }),
     sse("content_block_delta", {
       type: "content_block_delta",
       index: 0,
-      delta: { type: "input_json_delta", partial_json: JSON.stringify({ command: "mkdir contract-steer" }) },
+      delta: { type: "input_json_delta", partial_json: JSON.stringify(input) },
     }),
     sse("content_block_stop", { type: "content_block_stop", index: 0 }),
     sse("message_delta", {
@@ -108,6 +109,19 @@ function toolCall(model: string) {
     }),
     sse("message_stop", { type: "message_stop" }),
   ].join("")
+}
+
+function scenario(body: { model: string; tools?: unknown[] }, history: string) {
+  const results = history.split("tool_result").length - 1
+  if (!body.tools?.length) return reply(body.model)
+  // A Bash call needs approval, which holds the turn open long enough to steer it deterministically.
+  if (history.includes(STEER_SCENARIO) && results === 0)
+    return toolCall(body.model, "Bash", { command: "mkdir contract-steer" })
+  if (!history.includes(PLAN_SCENARIO) || results > 1) return reply(body.model)
+  // Plan mode names the plan file Claude may write without approval; ExitPlanMode then carries it.
+  const plan = JSON.stringify(body).match(/[^"\s]*plans(?:\\\\|\/)[\w-]+\.md/)?.[0]
+  if (results === 0 && plan) return toolCall(body.model, "Write", { file_path: JSON.parse(`"${plan}"`), content: PLAN })
+  return toolCall(body.model, "ExitPlanMode", {})
 }
 
 async function until(check: () => boolean, timeout = 60_000) {
@@ -139,10 +153,7 @@ describe.skipIf(!cli)("Claude Code CLI contract", () => {
             messages: body.messages.length,
             steered: history.includes(STEER_TEXT),
           })
-        const callTool = body.tools?.length && history.includes(STEER_SCENARIO) && !history.includes("tool_result")
-        return new Response(callTool ? toolCall(body.model) : reply(body.model), {
-          headers: { "content-type": "text/event-stream" },
-        })
+        return new Response(scenario(body, history), { headers: { "content-type": "text/event-stream" } })
       },
     })
     const variables = {
@@ -167,7 +178,7 @@ describe.skipIf(!cli)("Claude Code CLI contract", () => {
     }
   })
 
-  test("check, run, stream, reason and fork through the installed CLI", async () => {
+  test("check, run, stream, reason, fork, steer and plan through the installed CLI", async () => {
     await using tmp = await tmpdir("redcode-claude-contract-")
     const home = path.join(tmp.path, "claude-home")
     const checkout = path.join(tmp.path, "checkout")
@@ -227,6 +238,19 @@ describe.skipIf(!cli)("Claude Code CLI contract", () => {
       service.answer(steering.id, { request: service.read(steering.id).requests[0]!.id, allow: true, answers: {} })
       await until(() => service.read(steering.id).run.state === "ready")
       expect(captured.slice(before).some((request) => request.steered)).toBe(true)
+
+      // Approving the proposed plan shows it to the user and leaves plan mode.
+      const planning = await service.open({
+        driver: "claude",
+        directory: AbsolutePath.make(checkout),
+        permissionMode: "plan",
+      })
+      await service.prompt(planning.id, { id: "contract-plan", text: PLAN_SCENARIO, delivery: "queue" })
+      await until(() => service.read(planning.id).requests.length === 1)
+      expect(service.read(planning.id).requests[0]).toMatchObject({ title: "ExitPlanMode", detail: PLAN })
+      service.answer(planning.id, { request: service.read(planning.id).requests[0]!.id, allow: true, answers: {} })
+      await until(() => service.read(planning.id).run.state === "ready")
+      expect(service.read(planning.id).run.permissionMode).toBe("default")
     } finally {
       await service.dispose()
     }

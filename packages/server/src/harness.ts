@@ -487,6 +487,10 @@ export async function createHarnesses(
             update(id, { nativeID: runtimeEvent.nativeID, fork: false })
           return
         }
+        if (runtimeEvent.type === "permissionMode") {
+          if (runtimeEvent.mode !== (run.permissionMode ?? "default")) update(id, { permissionMode: runtimeEvent.mode })
+          return
+        }
         if (runtimeEvent.type === "started") {
           connection.turn = runtimeEvent.turn
           update(id, { state: "running" })
