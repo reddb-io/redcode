@@ -1,5 +1,12 @@
 # @reddb-io/redcode
 
+## 0.90.0
+
+### Minor Changes
+
+- Dual review is grounded in deterministic workspace facts. Each review gate now declares the facts it reads, the evaluation records the bounded workspace state it judged against — files changed, task counts, active goal — and the evaluations dialog in the TUI and desktop shows that state beside the verdict. Stop-loss steers cite the same workspace facts, so a corrective hint names what the worktree actually shows instead of a generic nudge.
+- The reasoning indicator says how sure S1 actually was instead of a bare "S1 unsure": when the latest evaluation is inconclusive, the TUI and desktop show the margin, such as "S1 74% sure", derived from the same gate probabilities that decided the verdict.
+
 ## 0.89.1
 
 ### Patch Changes
