@@ -3228,7 +3228,7 @@ export type HarnessProvider = {
   limits?: Array<{
     window: "five_hour" | "seven_day" | "seven_day_opus" | "seven_day_sonnet" | "model"
     model?: string
-    used: number | "Infinity" | "-Infinity" | "NaN"
+    used: number
     resetsAt: string
   }>
   detail?: string

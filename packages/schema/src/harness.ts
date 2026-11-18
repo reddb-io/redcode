@@ -38,7 +38,7 @@ export const Provider = Schema.Struct({
       Schema.Struct({
         window: Schema.Literals(["five_hour", "seven_day", "seven_day_opus", "seven_day_sonnet", "model"]),
         model: optional(Schema.String),
-        used: Schema.Number,
+        used: Schema.Finite,
         resetsAt: Schema.String,
       }),
     ),
