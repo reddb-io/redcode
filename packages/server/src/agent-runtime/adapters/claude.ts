@@ -167,7 +167,9 @@ function events(input: AgentRuntimeEventInput): AgentRuntimeEvent[] {
   }
   if (value.type !== "result") return []
   streamed.delete(input.run.id)
-  const failed = value.is_error === true
+  // An interrupt ends the cut turn with an error result whose terminal reason names the abort.
+  const interrupted = ["aborted_streaming", "aborted_tools"].includes(string(value.terminal_reason))
+  const failed = value.is_error === true && !interrupted
   const detail = failed ? string(value.result) || "Claude execution failed" : undefined
   const usage = object(value.usage)
   const tokens = Object.keys(usage).length
@@ -197,7 +199,7 @@ function events(input: AgentRuntimeEventInput): AgentRuntimeEvent[] {
   return [
     {
       type: "completed",
-      outcome: failed ? "failed" : "completed",
+      outcome: interrupted ? "interrupted" : failed ? "failed" : "completed",
       detail,
       nativeID: string(value.session_id) || input.run.nativeID,
       metrics: [
@@ -206,7 +208,7 @@ function events(input: AgentRuntimeEventInput): AgentRuntimeEvent[] {
           tokens,
           cost: null,
           scope: "interaction",
-          status: failed ? "failed" : "succeeded",
+          status: failed ? "failed" : interrupted ? "cancelled" : "succeeded",
           model: models.length === 1 ? models[0] : undefined,
         },
         {

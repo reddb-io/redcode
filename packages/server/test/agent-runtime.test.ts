@@ -302,6 +302,24 @@ describe("agent runtime event normalization", () => {
         ],
       },
     ])
+    // Claude Code ends an interrupted turn with this error result.
+    expect(
+      adapter.events({
+        run: runtime,
+        turn: "",
+        frame: {
+          type: "result",
+          subtype: "error_during_execution",
+          is_error: true,
+          result: "",
+          stop_reason: null,
+          terminal_reason: "aborted_streaming",
+          session_id: "native-session",
+        },
+      }),
+    ).toMatchObject([
+      { type: "completed", outcome: "interrupted", detail: undefined, metrics: [{ status: "cancelled" }, {}] },
+    ])
   })
 })
 
