@@ -87,6 +87,7 @@ function events(input: AgentRuntimeEventInput): AgentRuntimeEvent[] {
         title: method,
         detail: string(params.reason) || string(params.command),
         questions,
+        session: ["item/commandExecution/requestApproval", "item/fileChange/requestApproval"].includes(method),
         supported: [
           "item/commandExecution/requestApproval",
           "item/fileChange/requestApproval",
@@ -182,7 +183,8 @@ export const CodexAgentRuntime: AgentRuntimeAdapter = {
       })
       return
     }
-    input.wire.send({ id, result: { decision: input.answer.allow ? "accept" : "decline" } })
+    const decision = input.answer.session ? "acceptForSession" : "accept"
+    input.wire.send({ id, result: { decision: input.answer.allow ? decision : "decline" } })
   },
   launchArgs: () => ["app-server"],
   async open(input) {

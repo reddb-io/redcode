@@ -7983,6 +7983,7 @@ export type HarnessAnswerInput = {
   readonly request: string
   readonly allow: boolean
   readonly answers: { readonly [x: string]: string }
+  readonly session?: boolean | undefined
 }
 export type HarnessAnswerOutput = void
 export type HarnessAnswerOperation<E = never> = (input: HarnessAnswerInput) => Effect.Effect<HarnessAnswerOutput, E>

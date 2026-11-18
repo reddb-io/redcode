@@ -23,6 +23,7 @@ const REPLY = "contract-ok"
 const STEER_SCENARIO = "CONTRACT_STEER_SCENARIO"
 const STEER_TEXT = "CONTRACT_STEER_TEXT"
 const PLAN_SCENARIO = "CONTRACT_PLAN_SCENARIO"
+const SESSION_SCENARIO = "CONTRACT_SESSION_SCENARIO"
 const PLAN = "# Contract plan\n\n1. Create the directory"
 const captured: Captured[] = []
 const saved: Record<string, string | undefined> = {}
@@ -117,6 +118,11 @@ function scenario(body: { model: string; tools?: unknown[] }, history: string) {
   // A Bash call needs approval, which holds the turn open long enough to steer it deterministically.
   if (history.includes(STEER_SCENARIO) && results === 0)
     return toolCall(body.model, "Bash", { command: "mkdir contract-steer" })
+  // Each prompt of the session scenario runs the same command once.
+  if (history.includes(SESSION_SCENARIO))
+    return history.split(SESSION_SCENARIO).length - 1 > results
+      ? toolCall(body.model, "Bash", { command: "mkdir -p contract-session" })
+      : reply(body.model)
   if (!history.includes(PLAN_SCENARIO) || results > 1) return reply(body.model)
   // Plan mode names the plan file Claude may write without approval; ExitPlanMode then carries it.
   const plan = JSON.stringify(body).match(/[^"\s]*plans(?:\\\\|\/)[\w-]+\.md/)?.[0]
@@ -257,6 +263,26 @@ describe.skipIf(!cli)("Claude Code CLI contract", () => {
           .read(planning.id)
           .events.some((event) => event.kind === "activity" && /^Write · .*plans.*\.md$/.test(event.text)),
       ).toBe(true)
+
+      // A command allowed for the session runs again without asking, and the run keeps its mode.
+      const session = await service.open({ driver: "claude", directory: AbsolutePath.make(checkout) })
+      await service.prompt(session.id, { id: "contract-session-1", text: SESSION_SCENARIO, delivery: "queue" })
+      await until(() => service.read(session.id).requests.length === 1)
+      const grant = service.read(session.id).requests[0]!
+      expect(grant.session).toBe(true)
+      service.answer(session.id, { request: grant.id, allow: true, answers: {}, session: true })
+      await until(() => service.read(session.id).run.state === "ready")
+      await service.prompt(session.id, { id: "contract-session-2", text: SESSION_SCENARIO, delivery: "queue" })
+      // A second approval would leave the run waiting until this times out.
+      await until(
+        () =>
+          service.read(session.id).run.state === "ready" &&
+          service.read(session.id).events.filter((event) => event.text === "Bash · mkdir -p contract-session")
+            .length === 2,
+      )
+      expect(service.read(session.id).requests).toEqual([])
+      expect(service.read(session.id).run.permissionMode ?? "default").toBe("default")
+      expect(await Bun.file(path.join(checkout, ".claude", "settings.local.json")).exists()).toBe(false)
     } finally {
       await service.dispose()
     }

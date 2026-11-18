@@ -365,6 +365,25 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                                   {language.t(request().kind === "question" ? "harness.answer" : "harness.allow")}
                                 </Button>
                               </Show>
+                              <Show when={request().session}>
+                                <Button
+                                  variant="outline"
+                                  disabled={state.busy}
+                                  onClick={() =>
+                                    void action(() =>
+                                      api().answer({
+                                        runID: state.runID,
+                                        request: request().id,
+                                        allow: true,
+                                        answers: {},
+                                        session: true,
+                                      }),
+                                    )
+                                  }
+                                >
+                                  {language.t("harness.allowSession")}
+                                </Button>
+                              </Show>
                               <Button
                                 variant="outline"
                                 disabled={state.busy}

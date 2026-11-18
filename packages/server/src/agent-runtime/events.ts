@@ -28,6 +28,7 @@ export type AgentRuntimeEvent =
       frame: Frame
       key: string
       questions: Harness.Request["questions"]
+      session?: boolean
       supported: boolean
       title: string
     }

@@ -126,6 +126,11 @@ questions appear in the run's panel. Unsupported requests can be declined; the a
 support or silently approves them. Answers target a still-pending request on the owning process.
 Codex events from another thread/active turn are ignored.
 
+A command or file approval can also be allowed for the rest of the session. The provider then stops
+asking for matching calls: Codex through its session approval cache, Claude through the rules Claude Code
+suggests for that call, kept to the native session and never written to the checkout's settings. Allowing
+for the session never changes the run's permission mode. Plan approvals and questions always ask.
+
 Steering a Claude run sends the instruction into the active turn. Claude reads it with its next step,
 including after a pending approval is answered, and the turn still ends once.
 

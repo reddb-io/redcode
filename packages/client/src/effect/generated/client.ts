@@ -3460,7 +3460,12 @@ const EndpointHarnessAnswer = (raw: RawClient["server.harness"]) => (input: Harn
   preserveEffect<HarnessAnswerOutput>()(
     raw["harness.answer"]({
       params: { runID: input["runID"] },
-      payload: { request: input["request"], allow: input["allow"], answers: input["answers"] },
+      payload: {
+        request: input["request"],
+        allow: input["allow"],
+        answers: input["answers"],
+        session: input["session"],
+      },
     }).pipe(Effect.mapError(mapClientError)),
   )
 

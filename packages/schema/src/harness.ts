@@ -160,6 +160,8 @@ export const Request = Schema.Struct({
   title: Schema.String,
   detail: Schema.String,
   questions: Schema.Array(Question),
+  // The provider can keep allowing matching calls for the rest of its native session.
+  session: optional(Schema.Boolean),
 }).annotate({ identifier: "Harness.Request" })
 export interface Request extends Schema.Schema.Type<typeof Request> {}
 export const Event = Schema.Struct({
@@ -214,6 +216,7 @@ export const Answer = Schema.Struct({
   request: Schema.String,
   allow: Schema.Boolean,
   answers: Schema.Record(Schema.String, Schema.String),
+  session: optional(Schema.Boolean),
 }).annotate({ identifier: "Harness.Answer" })
 export interface Answer extends Schema.Schema.Type<typeof Answer> {}
 export const Login = Schema.Struct({

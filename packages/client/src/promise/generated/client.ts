@@ -4693,7 +4693,12 @@ export function make(options: ClientOptions) {
           {
             method: "POST",
             path: `/api/harness/runs/${encodeURIComponent(input.runID)}/answer`,
-            body: { request: input["request"], allow: input["allow"], answers: input["answers"] },
+            body: {
+              request: input["request"],
+              allow: input["allow"],
+              answers: input["answers"],
+              session: input["session"],
+            },
             successStatus: 200,
             declaredStatuses: [400, 401, 403, 409],
             empty: true,

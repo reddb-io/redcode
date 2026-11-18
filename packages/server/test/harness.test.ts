@@ -842,9 +842,16 @@ for (const driver of ["codex", "claude"] as const) {
         await until(() => service.read(run.id).events.some((event) => event.text === "STEERED also check docs"))
         expect(service.read(run.id).run.state).toBe("waiting")
       }
-      service.answer(run.id, { request: request.id, allow: true, answers: {} })
+      expect(request.session).toBe(true)
+      service.answer(run.id, { request: request.id, allow: true, answers: {}, session: true })
       await until(() => service.read(run.id).run.state === "ready")
       expect(service.read(run.id).events.some((event) => event.text === "fixture response")).toBe(true)
+      // The provider keeps allowing matching calls itself; Claude's grant stays in the native session.
+      expect(await Bun.file(path.join(tmp.path, "wire.jsonl")).text()).toContain(
+        driver === "codex"
+          ? `"decision":"acceptForSession"`
+          : `"updatedPermissions":[{"type":"addRules","rules":[{"toolName":"Bash"}],"behavior":"allow","destination":"session"}]`,
+      )
       const metrics = service.metrics()
       expect(JSON.stringify(metrics)).not.toContain("fixture response")
       expect(JSON.stringify(metrics)).not.toContain("echo fixture")
@@ -875,6 +882,15 @@ for (const driver of ["codex", "claude"] as const) {
       const question = service.read(run.id).requests[0]
       expect(question.kind).toBe("question")
       expect(() => service.answer(run.id, { request: question.id, allow: true, answers: {} })).toThrow("Answer every")
+      expect(question.session).toBeUndefined()
+      expect(() =>
+        service.answer(run.id, {
+          request: question.id,
+          allow: true,
+          answers: { [question.questions[0].id]: "Small" },
+          session: true,
+        }),
+      ).toThrow("cannot be allowed for the session")
       service.answer(run.id, { request: question.id, allow: true, answers: { [question.questions[0].id]: "Small" } })
       await until(() => service.read(run.id).run.state === "ready")
       const before = await Bun.file(path.join(tmp.path, "wire.jsonl")).text()
