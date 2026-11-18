@@ -1028,6 +1028,30 @@ test("restart requires reconciliation and does not replay ambiguously admitted i
   }
 })
 
+test("Claude forks a finished run into a new native session and Codex refuses", async () => {
+  await using tmp = await tmpdir("redcode-harness-fork-")
+  const service = await createHarnesses(path.join(tmp.path, "state"))
+  try {
+    await service.configure({ driver: "claude", executable: await executable(tmp.path, "claude") })
+    await service.configure({ driver: "codex", executable: await executable(tmp.path, "codex") })
+    const source = await service.open({ driver: "claude", directory: AbsolutePath.make(tmp.path) })
+    await service.prompt(source.id, { id: "fork-source", text: "plain", delivery: "queue" })
+    await until(() => service.read(source.id).run.state === "ready")
+    expect(service.read(source.id).run.nativeID).toBe("claude-fixture")
+    const fork = await service.fork(source.id)
+    expect(fork).toMatchObject({ nativeID: "claude-fixture", fork: true })
+    await service.prompt(fork.id, { id: "fork-input", text: "plain", delivery: "queue" })
+    await until(() => service.read(fork.id).run.state === "ready")
+    // The forked native identity replaces the source's, so a later resume continues the fork.
+    expect(service.read(fork.id).run).toMatchObject({ nativeID: "claude-fork", fork: false })
+    expect(service.read(source.id).run.nativeID).toBe("claude-fixture")
+    const codex = await service.open({ driver: "codex", directory: AbsolutePath.make(tmp.path) })
+    await expect(service.fork(codex.id)).rejects.toThrow("cannot fork")
+  } finally {
+    await service.dispose()
+  }
+})
+
 test("provider sign-in keeps Codex completion authoritative and leaves Claude sign-in to its own terminal flow", async () => {
   await using tmp = await tmpdir("redcode-harness-login-")
   const service = await createHarnesses(path.join(tmp.path, "state"))

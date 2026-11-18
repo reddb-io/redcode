@@ -570,6 +570,8 @@ import type {
   HarnessInterruptOutput,
   HarnessResumeInput,
   HarnessResumeOutput,
+  HarnessForkInput,
+  HarnessForkOutput,
   HarnessCloseInput,
   HarnessCloseOutput,
   AgentToolsListOutput,
@@ -4714,6 +4716,17 @@ export function make(options: ClientOptions) {
           {
             method: "POST",
             path: `/api/harness/runs/${encodeURIComponent(input.runID)}/resume`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 409],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      fork: (input: HarnessForkInput, requestOptions?: RequestOptions) =>
+        request<HarnessForkOutput>(
+          {
+            method: "POST",
+            path: `/api/harness/runs/${encodeURIComponent(input.runID)}/fork`,
             successStatus: 200,
             declaredStatuses: [400, 401, 403, 409],
             empty: false,

@@ -258,7 +258,7 @@ export const ClaudeAgentRuntime: AgentRuntimeAdapter = {
   installPackage: "@anthropic-ai/claude-code",
   capabilities: {
     backgroundWork: true,
-    fork: false,
+    fork: true,
     interrupt: true,
     mcpApps: false,
     multipleThreadsPerRuntime: false,
@@ -317,7 +317,7 @@ export const ClaudeAgentRuntime: AgentRuntimeAdapter = {
     // The CLI accepts bypassPermissions only when skipping checks is explicitly allowed.
     ...(run.permissionMode === "bypassPermissions" ? ["--allow-dangerously-skip-permissions"] : []),
     ...(run.effort ? ["--effort", run.effort] : []),
-    ...(run.nativeID ? ["--resume", run.nativeID] : []),
+    ...(run.nativeID ? ["--resume", run.nativeID, ...(run.fork ? ["--fork-session"] : [])] : []),
     ...(run.model ? ["--model", run.model] : []),
   ],
   async open() {

@@ -2,6 +2,8 @@ import { createInterface } from "node:readline"
 import { appendFileSync } from "node:fs"
 
 const [driver, capture, ...args] = process.argv.slice(2)
+// A forked Claude session gets a new native identity.
+const claudeSession = args.includes("--fork-session") ? "claude-fork" : "claude-fixture"
 if (args.includes("--version")) {
   console.log("fixture-cli 1.0")
   process.exit(0)
@@ -57,12 +59,12 @@ const startWait = (mode: string) => {
   if (driver === "claude") {
     send({
       type: "assistant",
-      session_id: "claude-fixture",
+      session_id: claudeSession,
       message: { content: [{ type: "tool_use", id: `tool-${taskID}`, name: "Monitor" }] },
     })
     const task = {
       type: "system",
-      session_id: "claude-fixture",
+      session_id: claudeSession,
       task_id: taskID,
       task_type: "local_bash",
       tool_use_id: `tool-${taskID}`,
@@ -124,7 +126,7 @@ const complete = () => {
     send({
       type: "result",
       uuid: state.prompt,
-      session_id: "claude-fixture",
+      session_id: claudeSession,
       is_error: false,
       usage: { input_tokens: 20, output_tokens: 30, cache_read_input_tokens: 80, cache_creation_input_tokens: 10 },
       total_cost_usd: 0.002 * state.completed,
@@ -362,7 +364,7 @@ for await (const line of createInterface({ input: process.stdin })) {
     }
     if (value.type === "user") {
       state.prompt = value.uuid
-      send({ type: "system", subtype: "init", session_id: "claude-fixture" })
+      send({ type: "system", subtype: "init", session_id: claudeSession })
       const text = value.message.content
       if (text.startsWith("delegate:")) {
         send({
@@ -391,7 +393,7 @@ for await (const line of createInterface({ input: process.stdin })) {
       if (text === "native-tasks") {
         const task = {
           type: "system",
-          session_id: "claude-fixture",
+          session_id: claudeSession,
           task_id: "native-monitor",
           task_type: "local_bash",
           tool_use_id: "monitor-call",
@@ -401,7 +403,7 @@ for await (const line of createInterface({ input: process.stdin })) {
         send({ ...task, subtype: "task_started" })
         send({
           type: "assistant",
-          session_id: "claude-fixture",
+          session_id: claudeSession,
           parent_tool_use_id: null,
           message: { content: [{ type: "tool_use", id: "monitor-call", name: "Monitor" }] },
         })

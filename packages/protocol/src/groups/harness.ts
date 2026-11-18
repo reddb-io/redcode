@@ -129,6 +129,13 @@ export const HarnessGroup = HttpApiGroup.make("server.harness")
     }).annotateMerge(OpenApi.annotations({ identifier: "harness.resume" })),
   )
   .add(
+    HttpApiEndpoint.post("harness.fork", "/api/harness/runs/:runID/fork", {
+      params: run,
+      success: Harness.Run,
+      error,
+    }).annotateMerge(OpenApi.annotations({ identifier: "harness.fork" })),
+  )
+  .add(
     HttpApiEndpoint.delete("harness.close", "/api/harness/runs/:runID", {
       params: run,
       success: Schema.Void,

@@ -7997,6 +7997,10 @@ export type HarnessResumeInput = { readonly runID: string }
 export type HarnessResumeOutput = Harness.Run
 export type HarnessResumeOperation<E = never> = (input: HarnessResumeInput) => Effect.Effect<HarnessResumeOutput, E>
 
+export type HarnessForkInput = { readonly runID: string }
+export type HarnessForkOutput = Harness.Run
+export type HarnessForkOperation<E = never> = (input: HarnessForkInput) => Effect.Effect<HarnessForkOutput, E>
+
 export type HarnessCloseInput = { readonly runID: string }
 export type HarnessCloseOutput = void
 export type HarnessCloseOperation<E = never> = (input: HarnessCloseInput) => Effect.Effect<HarnessCloseOutput, E>
@@ -8019,6 +8023,7 @@ export interface HarnessApi<E = never> {
   readonly answer: HarnessAnswerOperation<E>
   readonly interrupt: HarnessInterruptOperation<E>
   readonly resume: HarnessResumeOperation<E>
+  readonly fork: HarnessForkOperation<E>
   readonly close: HarnessCloseOperation<E>
 }
 

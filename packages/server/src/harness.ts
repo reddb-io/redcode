@@ -475,7 +475,8 @@ export async function createHarnesses(
           return
         }
         if (runtimeEvent.type === "session") {
-          if (runtimeEvent.nativeID !== run.nativeID) update(id, { nativeID: runtimeEvent.nativeID })
+          if (runtimeEvent.nativeID !== run.nativeID || run.fork)
+            update(id, { nativeID: runtimeEvent.nativeID, fork: false })
           return
         }
         if (runtimeEvent.type === "started") {
@@ -947,6 +948,32 @@ export async function createHarnesses(
       void drain(id)
       void delegation.flush(id).catch(() => {})
       return next
+    },
+    async fork(id: string) {
+      const source = read(id)
+      if (!agentRuntime(source.driver).capabilities.fork) throw new Error("This coding agent cannot fork its sessions")
+      if (!source.nativeID) throw new Error("No native session was recorded to fork")
+      if (["starting", "running", "waiting"].includes(source.state))
+        throw new Error("Wait for the run to finish its turn before forking it")
+      const run: Harness.Run = {
+        id: crypto.randomUUID(),
+        driver: source.driver,
+        providerInstanceID: source.providerInstanceID,
+        directory: source.directory,
+        model: source.model,
+        effort: source.effort,
+        permissionMode: source.permissionMode,
+        backgroundWait: source.backgroundWait,
+        delegation: source.delegation,
+        nativeID: source.nativeID,
+        fork: true,
+        state: "starting",
+        createdAt: new Date().toISOString(),
+        queued: 0,
+        capabilities: harnessCapabilities(agentRuntime(source.driver)),
+      }
+      write(run)
+      return launch(run)
     },
     async close(id: string) {
       if (read(id).state === "unknown" && !live.has(id))

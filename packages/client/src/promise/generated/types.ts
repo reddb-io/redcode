@@ -3395,6 +3395,7 @@ export type HarnessRun = {
   effort?: HarnessEffort
   permissionMode?: HarnessPermissionMode
   nativeID?: string
+  fork?: boolean
   state: HarnessState
   createdAt: string
   detail?: string
@@ -13761,6 +13762,10 @@ export type HarnessInterruptOutput = void
 export type HarnessResumeInput = { readonly runID: { readonly runID: string }["runID"] }
 
 export type HarnessResumeOutput = HarnessRun
+
+export type HarnessForkInput = { readonly runID: { readonly runID: string }["runID"] }
+
+export type HarnessForkOutput = HarnessRun
 
 export type HarnessCloseInput = { readonly runID: { readonly runID: string }["runID"] }
 
