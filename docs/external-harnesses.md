@@ -123,7 +123,8 @@ questions appear in the run's panel. Unsupported requests can be declined; the a
 support or silently approves them. Answers target a still-pending request on the owning process.
 Codex events from another thread/active turn are ignored.
 
-Claude output streams as it is written. When a run enables delegation, background waits or Computer
+Claude output streams as it is written. Claude's reasoning appears as summaries, one block per thinking
+step, set apart from its replies. When a run enables delegation, background waits or Computer
 Use, Redcode appends a short note to Claude Code's system prompt saying when to load those tools. It
 never replaces Claude Code's own system prompt.
 
