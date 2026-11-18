@@ -472,6 +472,7 @@ export async function createHarnesses(
               title: runtimeEvent.title,
               detail: runtimeEvent.detail,
               questions: runtimeEvent.questions,
+              ...(runtimeEvent.session ? { session: true } : {}),
             },
           })
           update(id, { state: "waiting" })
@@ -938,6 +939,7 @@ export async function createHarnesses(
         item.request.questions.some((question) => !input.answers[question.id]?.trim())
       )
         throw new Error("Answer every question before submitting")
+      if (input.session && !item.request.session) throw new Error("This request cannot be allowed for the session")
       agentRuntime(run.driver).answer({ answer: input, item, wire: connection.wire })
       connection.pending.delete(input.request)
       update(id, { state: connection.pending.size ? "waiting" : "running" })

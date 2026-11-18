@@ -938,6 +938,7 @@ export const dict = {
   "harness.request.question": "Agent question",
   "harness.request.unsupported": "This provider request is not supported; decline it to continue",
   "harness.allow": "Allow once",
+  "harness.allowSession": "Allow for this session",
   "harness.decline": "Decline",
   "harness.output": "Harness output",
   "harness.instruction": "Instruction",

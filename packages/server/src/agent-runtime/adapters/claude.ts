@@ -127,6 +127,8 @@ function events(input: AgentRuntimeEventInput): AgentRuntimeEvent[] {
         title: string(request.tool_name) || string(request.subtype),
         detail: requestDetail(string(request.tool_name), requestInput, questions.length > 0),
         questions,
+        // Plan approvals and questions always need the user.
+        session: request.subtype === "can_use_tool" && request.requires_user_interaction !== true && !questions.length,
         supported: request.subtype === "can_use_tool",
       },
     ]
@@ -275,6 +277,26 @@ function requestDetail(tool: string, input: Frame, questions: boolean) {
   return [tool, string(input.command) || JSON.stringify(input)].filter(Boolean).join("\n").slice(0, 8000)
 }
 
+// Claude Code's own suggestions, kept to this session and without switching its permission mode, which
+// stays the run's choice. A tool rule covers requests that carry no suggestion.
+function sessionPermissions(request: Frame) {
+  const suggestions = Array.isArray(request.permission_suggestions) ? request.permission_suggestions : []
+  const updates = suggestions
+    .map(object)
+    .filter((suggestion) => suggestion.type !== "setMode")
+    .map((suggestion) => ({ ...suggestion, destination: "session" }))
+  return updates.length
+    ? updates
+    : [
+        {
+          type: "addRules",
+          rules: [{ toolName: string(request.tool_name) }],
+          behavior: "allow",
+          destination: "session",
+        },
+      ]
+}
+
 function runtimeQuestions(input: unknown): Harness.Request["questions"] {
   if (!Array.isArray(input)) return []
   return input.map((item, index) => {
@@ -335,6 +357,7 @@ export const ClaudeAgentRuntime: AgentRuntimeAdapter = {
                 ...object(request.input),
                 ...(input.item.request.kind === "question" ? { answers: input.answer.answers } : {}),
               },
+              ...(input.answer.session ? { updatedPermissions: sessionPermissions(request) } : {}),
             }
           : { behavior: "deny", message: "Declined by user" },
       },

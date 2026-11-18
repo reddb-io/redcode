@@ -3250,6 +3250,7 @@ export type HarnessRequest = {
   title: string
   detail: string
   questions: Array<HarnessQuestion>
+  session?: boolean
 }
 
 export type HarnessTask = {
@@ -13740,17 +13741,26 @@ export type HarnessAnswerInput = {
     readonly request: string
     readonly allow: boolean
     readonly answers: { readonly [x: string]: string }
+    readonly session?: boolean
   }["request"]
   readonly allow: {
     readonly request: string
     readonly allow: boolean
     readonly answers: { readonly [x: string]: string }
+    readonly session?: boolean
   }["allow"]
   readonly answers: {
     readonly request: string
     readonly allow: boolean
     readonly answers: { readonly [x: string]: string }
+    readonly session?: boolean
   }["answers"]
+  readonly session?: {
+    readonly request: string
+    readonly allow: boolean
+    readonly answers: { readonly [x: string]: string }
+    readonly session?: boolean
+  }["session"]
 }
 
 export type HarnessAnswerOutput = void
