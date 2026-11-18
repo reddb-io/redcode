@@ -319,7 +319,17 @@ for await (const line of createInterface({ input: process.stdin })) {
                     { value: "opus", displayName: "Opus" },
                   ],
                 }
-              : {},
+              : value.request.subtype === "get_usage"
+                ? {
+                    rate_limits_available: true,
+                    rate_limits: {
+                      five_hour: { utilization: 37.5, resets_at: "2026-11-18T20:00:00Z" },
+                      seven_day: null,
+                      seven_day_opus: { utilization: null, resets_at: "2026-11-21T00:00:00Z" },
+                      model_scoped: [{ display_name: "Fable", utilization: 12, resets_at: "2026-11-21T00:00:00Z" }],
+                    },
+                  }
+                : {},
         },
       })
       if (value.request.subtype === "initialize" && value.request.sdkMcpServers?.includes("redcode")) {

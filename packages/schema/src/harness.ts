@@ -32,6 +32,17 @@ export const Provider = Schema.Struct({
   authenticated: optional(Schema.Boolean),
   /** The credential the CLI reports in use: an arbitrary method such as `claude.ai` or `api_key`, and the plan when known. */
   account: optional(Schema.Struct({ method: Schema.String, plan: optional(Schema.String) })),
+  /** Subscription usage windows the CLI reports; `used` is a 0-100 percentage and `model` names a model-scoped window. */
+  limits: optional(
+    Schema.Array(
+      Schema.Struct({
+        window: Schema.Literals(["five_hour", "seven_day", "seven_day_opus", "seven_day_sonnet", "model"]),
+        model: optional(Schema.String),
+        used: Schema.Number,
+        resetsAt: Schema.String,
+      }),
+    ),
+  ),
   detail: optional(Schema.String),
   models: optional(
     Schema.Array(Schema.Struct({ id: Schema.String, label: Schema.String, recommended: Schema.Boolean })),

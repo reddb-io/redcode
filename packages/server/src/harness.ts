@@ -357,6 +357,7 @@ export async function createHarnesses(
       version,
       authenticated: undefined as boolean | undefined,
       account: undefined as Harness.Provider["account"],
+      limits: undefined as Harness.Provider["limits"],
       models: undefined as Harness.Provider["models"],
       detail: undefined as string | undefined,
     }
@@ -389,6 +390,8 @@ export async function createHarnesses(
           result.detail = `Could not load Claude models: ${error instanceof Error ? error.message : String(error)}`
           return undefined
         })
+        if (result.models && result.account?.method === "claude.ai")
+          result.limits = await ClaudeRuntimeProtocol.limits(connection).catch(() => undefined)
       } finally {
         await connection.close()
       }

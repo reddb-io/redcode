@@ -920,6 +920,20 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                             </p>
                           )}
                         </Show>
+                        <For each={provider.limits ?? []}>
+                          {(limit) => (
+                            <p class="text-ink-muted">
+                              {language.t(`harness.limit.${limit.window}`, {
+                                model: limit.model ?? "",
+                                used: Math.round(limit.used).toLocaleString(language.intl()),
+                                time: new Date(limit.resetsAt).toLocaleString(language.intl(), {
+                                  dateStyle: "medium",
+                                  timeStyle: "short",
+                                }),
+                              })}
+                            </p>
+                          )}
+                        </For>
                         <Show when={provider.driver === "claude" && provider.installed}>
                           <p>
                             {language.t("harness.claudeSignIn", {

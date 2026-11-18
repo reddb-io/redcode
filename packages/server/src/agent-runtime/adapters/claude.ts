@@ -30,7 +30,48 @@ async function models(wire: Wire) {
   )
 }
 
-export const ClaudeRuntimeProtocol = { catalogArgs, models }
+const UsageWindow = Schema.Struct({
+  utilization: Schema.NullOr(Schema.Number),
+  resets_at: Schema.NullOr(Schema.String),
+})
+const Usage = Schema.Struct({
+  rate_limits: Schema.NullOr(
+    Schema.Struct({
+      five_hour: Schema.optional(Schema.NullOr(UsageWindow)),
+      seven_day: Schema.optional(Schema.NullOr(UsageWindow)),
+      seven_day_opus: Schema.optional(Schema.NullOr(UsageWindow)),
+      seven_day_sonnet: Schema.optional(Schema.NullOr(UsageWindow)),
+      model_scoped: Schema.optional(
+        Schema.Array(Schema.Struct({ display_name: Schema.String, ...UsageWindow.fields })),
+      ),
+    }),
+  ),
+})
+const USAGE_WINDOWS = ["five_hour", "seven_day", "seven_day_opus", "seven_day_sonnet"] as const
+
+// The CLI marks get_usage experimental and reads the subscription's own usage endpoint; callers treat a
+// failure as "no limits reported".
+async function limits(wire: Wire): Promise<Harness.Provider["limits"]> {
+  const usage = Schema.decodeUnknownSync(Usage)(
+    await wire.request("get_usage", { skip_behaviors: true }, "claude"),
+  ).rate_limits
+  if (!usage) return undefined
+  return [
+    ...USAGE_WINDOWS.flatMap((window) => {
+      const value = usage[window]
+      return value?.utilization != null && value.resets_at
+        ? [{ window, used: value.utilization, resetsAt: value.resets_at }]
+        : []
+    }),
+    ...(usage.model_scoped ?? []).flatMap((value) =>
+      value.utilization !== null && value.resets_at
+        ? [{ window: "model" as const, model: value.display_name, used: value.utilization, resetsAt: value.resets_at }]
+        : [],
+    ),
+  ]
+}
+
+export const ClaudeRuntimeProtocol = { catalogArgs, models, limits }
 
 // Claude Code defers MCP tools behind ToolSearch, so the model learns when to load Redcode's tools from here.
 // Keep each text fixed per capability: Claude Code records the system prompt on a session's first request.
