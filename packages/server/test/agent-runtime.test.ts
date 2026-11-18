@@ -238,7 +238,40 @@ describe("agent runtime event normalization", () => {
           request: { subtype: "can_use_tool", tool_name: "Bash", input: { command: "bun test" } },
         },
       }),
-    ).toMatchObject([{ type: "request", key: "approval-1", title: "Bash", supported: true }])
+    ).toMatchObject([{ type: "request", key: "approval-1", title: "Bash", detail: "Bash\nbun test", supported: true }])
+    expect(
+      [
+        {
+          type: "control_request",
+          request_id: "plan-1",
+          request: {
+            subtype: "can_use_tool",
+            tool_name: "ExitPlanMode",
+            input: { plan: "# Plan\n\n1. Add the test", planFilePath: "/home/user/.claude/plans/plan.md" },
+          },
+        },
+        {
+          type: "control_request",
+          request_id: "question-1",
+          request: {
+            subtype: "can_use_tool",
+            tool_name: "AskUserQuestion",
+            input: { questions: [{ question: "Which size?", header: "Size", options: [{ label: "Small" }] }] },
+          },
+        },
+        { type: "system", subtype: "status", status: null, permissionMode: "default" },
+        { type: "system", subtype: "status", status: null, permissionMode: "dontAsk" },
+      ].flatMap((frame) => adapter.events({ run: runtime, turn: "", frame })),
+    ).toMatchObject([
+      { type: "request", key: "plan-1", title: "ExitPlanMode", detail: "# Plan\n\n1. Add the test" },
+      {
+        type: "request",
+        key: "question-1",
+        detail: "",
+        questions: [{ id: "Which size?", text: "Which size?", options: ["Small"] }],
+      },
+      { type: "permissionMode", mode: "default" },
+    ])
     expect(
       adapter.events({
         run: runtime,

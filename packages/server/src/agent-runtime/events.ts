@@ -32,6 +32,7 @@ export type AgentRuntimeEvent =
       title: string
     }
   | { type: "error"; text: string }
+  | { type: "permissionMode"; mode: Harness.PermissionMode }
   | { type: "reasoning"; text: string }
   | { type: "session"; nativeID: string }
   | { type: "started"; turn: string }

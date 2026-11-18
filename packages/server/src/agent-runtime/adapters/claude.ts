@@ -118,18 +118,24 @@ function events(input: AgentRuntimeEventInput): AgentRuntimeEvent[] {
   if (value.type === "control_request") {
     const request = object(value.request)
     const requestInput = object(request.input)
+    const questions = runtimeQuestions(requestInput.questions)
     return [
       {
         type: "request",
         frame: value,
         key: string(value.request_id),
         title: string(request.tool_name) || string(request.subtype),
-        detail: JSON.stringify(requestInput).slice(0, 8000),
-        questions: runtimeQuestions(requestInput.questions),
+        detail: requestDetail(string(request.tool_name), requestInput, questions.length > 0),
+        questions,
         supported: request.subtype === "can_use_tool",
       },
     ]
   }
+  // Approving a plan moves the CLI out of plan mode; later launches must not restore the mode it left.
+  if (value.type === "system" && value.subtype === "status")
+    return Schema.is(Harness.PermissionMode)(value.permissionMode)
+      ? [{ type: "permissionMode", mode: value.permissionMode }]
+      : []
   if (value.type === "system" && value.subtype === "init") {
     const nativeID = string(value.session_id)
     return nativeID ? [{ type: "session", nativeID }] : []
@@ -240,6 +246,14 @@ function usageLimit(info: Frame): AgentRuntimeEvent[] {
 
 function count(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null
+}
+
+// The plan, command or tool input the user is approving; questions render as their own fields.
+function requestDetail(tool: string, input: Frame, questions: boolean) {
+  if (questions) return ""
+  // ExitPlanMode carries the plan Claude wrote to its plan file.
+  if (string(input.plan).trim()) return string(input.plan)
+  return [tool, string(input.command) || JSON.stringify(input)].filter(Boolean).join("\n").slice(0, 8000)
 }
 
 function runtimeQuestions(input: unknown): Harness.Request["questions"] {

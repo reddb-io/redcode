@@ -468,7 +468,17 @@ for await (const line of createInterface({ input: process.stdin })) {
             input: { questions: [{ question: "Choose implementation", options: [{ label: "Small" }] }] },
           },
         })
-      if (!["permission", "question", "hold"].includes(text)) complete()
+      if (text === "plan")
+        send({
+          type: "control_request",
+          request_id: "claude-plan",
+          request: {
+            subtype: "can_use_tool",
+            tool_name: "ExitPlanMode",
+            input: { plan: "# Plan\n\n1. Ship it", planFilePath: "/fixture/plans/plan.md" },
+          },
+        })
+      if (!["permission", "question", "hold", "plan"].includes(text)) complete()
     }
     if (value.type === "control_response") {
       if (["wait-mcp-init", "wait-mcp-list", "delegation-mcp-list"].includes(value.response.request_id)) continue
@@ -498,6 +508,9 @@ for await (const line of createInterface({ input: process.stdin })) {
         if (state.waiting !== "wait-cancel") complete()
         continue
       }
+      // Like Claude Code, an approved plan leaves plan mode.
+      if (value.response.request_id === "claude-plan" && value.response.response.behavior === "allow")
+        send({ type: "system", subtype: "status", status: null, permissionMode: "default" })
       complete()
     }
   }
