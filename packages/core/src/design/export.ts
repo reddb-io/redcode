@@ -5,9 +5,13 @@ import { parseHTML } from "linkedom"
 import { init, parse } from "es-module-lexer"
 import { DesignFiles } from "./files.js"
 
-/** HTML and CSS are web-format boundaries. Embed local bytes without executing the artifact. */
-export async function html(root: string, entry: string) {
+/**
+ * HTML and CSS are web-format boundaries. Embed local bytes without executing the artifact. `origins` are the
+ * design's live grant: references to them stay as they are, so a live deck keeps loading what it was allowed to.
+ */
+export async function html(root: string, entry: string, origins: readonly string[] = []) {
   await init
+  const granted = (reference: string) => URL.canParse(reference) && origins.includes(new URL(reference).origin)
   const { document } = parseHTML(await Bun.file(await DesignFiles.resolve(root, entry)).text())
   const file = async (reference: string, parent: string) => {
     if (/^(?:[a-z]+:|\/\/)/i.test(reference)) throw new Error(`Export requires a local resource: ${reference}`)
@@ -18,7 +22,7 @@ export async function html(root: string, entry: string) {
     return { relative, file: Bun.file(await DesignFiles.resolve(root, relative)) }
   }
   const uri = async (reference: string, parent: string) => {
-    if (/^(?:data:|#)/.test(reference)) return reference
+    if (/^(?:data:|#)/.test(reference) || granted(reference)) return reference
     const asset = await file(reference, parent)
     return `data:${asset.file.type};base64,${Buffer.from(await asset.file.bytes()).toString("base64")}`
   }
@@ -26,6 +30,7 @@ export async function html(root: string, entry: string) {
     if (seen.includes(parent)) throw new Error(`Circular CSS import: ${parent}`)
     const imports = [...source.matchAll(/@import\s+(?:url\(\s*)?["']([^"']+)["']\s*\)?\s*([^;]*);/gi)]
     const expanded = await imports.reduce(async (pending, match) => {
+      if (granted(match[1])) return pending
       const asset = await file(match[1], parent)
       const nested = await css(await asset.file.text(), asset.relative, [...seen, parent])
       return (await pending).replace(match[0], match[2].trim() ? `@media ${match[2]}{${nested}}` : nested)
@@ -36,6 +41,7 @@ export async function html(root: string, entry: string) {
     )
   }
   for (const script of document.querySelectorAll("script[src]")) {
+    if (granted(script.getAttribute("src")!)) continue
     const asset = await file(script.getAttribute("src")!, entry)
     const source = await asset.file.text()
     if (parse(source)[0].some((item) => item.d !== -2))
@@ -44,6 +50,7 @@ export async function html(root: string, entry: string) {
     script.textContent = source.replace(/<\/script/gi, "<\\/script")
   }
   for (const link of document.querySelectorAll('link[rel="stylesheet"]')) {
+    if (granted(link.getAttribute("href")!)) continue
     const asset = await file(link.getAttribute("href")!, entry)
     const style = document.createElement("style")
     style.textContent = (await css(await asset.file.text(), asset.relative)).replace(/<\/style/gi, "<\\/style")
