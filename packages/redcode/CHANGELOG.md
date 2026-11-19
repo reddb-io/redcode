@@ -1,5 +1,12 @@
 # @reddb-io/redcode
 
+## 0.90.4
+
+### Patch Changes
+
+- Keep a command a Claude Code harness runs in the background shown as running until it ends.
+- Show the diff of each file a Claude Code or Codex harness edits, with added and removed lines colored.
+
 ## 0.90.3
 
 ### Patch Changes
