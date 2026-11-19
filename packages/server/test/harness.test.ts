@@ -1206,6 +1206,49 @@ test("a Claude subagent's calls nest under the Agent call, which settles with th
   }
 })
 
+test("an instance passes its own variables and arguments, never credentials or Redcode's own flags", async () => {
+  await using tmp = await tmpdir("redcode-harness-instance-settings-")
+  const service = await createHarnesses(path.join(tmp.path, "state"))
+  try {
+    const executablePath = await executable(tmp.path, "claude")
+    const configure = (input: Partial<Harness.Config>) =>
+      service.configure({ driver: "claude", executable: executablePath, ...input })
+    await expect(configure({ environment: { ANTHROPIC_API_KEY: "secret" } })).rejects.toThrow(
+      "does not store credentials",
+    )
+    await expect(configure({ environment: { CLAUDE_CONFIG_DIR: "/elsewhere" } })).rejects.toThrow("managed by Redcode")
+    await expect(configure({ arguments: ["--system-prompt", "replace it"] })).rejects.toThrow(
+      "--system-prompt is set by Redcode",
+    )
+    await expect(configure({ arguments: ["--output-format=text"] })).rejects.toThrow(
+      "--output-format is set by Redcode",
+    )
+    const provider = await configure({
+      // The instance's own choice wins over the task list Redcode turns on by default.
+      environment: { FIXTURE_SETTING: "on", CLAUDE_CODE_ENABLE_TODO_TOOLS: "0" },
+      arguments: ["--append-system-prompt-file", "notes.md"],
+    })
+    expect(provider).toMatchObject({
+      environment: { FIXTURE_SETTING: "on", CLAUDE_CODE_ENABLE_TODO_TOOLS: "0" },
+      arguments: ["--append-system-prompt-file", "notes.md"],
+    })
+    const run = await service.open({ driver: "claude", directory: AbsolutePath.make(tmp.path) })
+    await service.prompt(run.id, { id: "settings-input", text: "settings", delivery: "queue" })
+    await until(() => service.read(run.id).run.state === "ready")
+    expect(service.read(run.id).events.map((event) => event.text)).toContain(
+      "SETTINGS on TODO 0 ARGS --append-system-prompt-file notes.md",
+    )
+    await service.close(run.id)
+    // Saving without the settings keeps them; empty settings clear them.
+    expect(await configure({ label: "Renamed" })).toMatchObject({ environment: { FIXTURE_SETTING: "on" } })
+    const cleared = await configure({ environment: {}, arguments: [] })
+    expect(cleared.environment).toBeUndefined()
+    expect(cleared.arguments).toBeUndefined()
+  } finally {
+    await service.dispose()
+  }
+})
+
 test("a Claude background command runs until its task reports the end", async () => {
   await using tmp = await tmpdir("redcode-harness-background-")
   const service = await createHarnesses(path.join(tmp.path, "state"))

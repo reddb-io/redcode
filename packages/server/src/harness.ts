@@ -11,7 +11,7 @@ import { AbsolutePath } from "@opencode/schema/schema"
 import { Global } from "@opencode/util/global"
 import { makeGlobalNode } from "@opencode/util/effect/app-node"
 import { Context, Effect, Exit, Layer, Option, Schema, Scope, Stream } from "effect"
-import { harnessEnvironment, object, string, wire, type Frame, type Wire } from "./harness-wire"
+import { HOST_SESSION_VARIABLES, harnessEnvironment, object, string, wire, type Frame, type Wire } from "./harness-wire"
 import { createHarnessTasks } from "./harness-tasks"
 import { createHarnessDelegation } from "./harness-delegation"
 import {
@@ -41,6 +41,43 @@ import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner
 const StoredImages = Schema.fromJsonString(Schema.Array(Harness.Image))
 const StoredTool = Schema.fromJsonString(Harness.Tool)
 const StoredTodos = Schema.fromJsonString(Schema.Array(Harness.Todo))
+const StoredEnvironment = Schema.fromJsonString(Schema.Record(Schema.String, Schema.String))
+const StoredArguments = Schema.fromJsonString(Schema.Array(Schema.String))
+// Redcode never stores credentials; the provider's own sign-in or the host's environment supplies them.
+const CREDENTIAL_NAME = /KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|AUTH/i
+
+function instanceSettings(instance: { environment: string | null; arguments: string | null }) {
+  return {
+    environment: instance.environment ? Schema.decodeUnknownSync(StoredEnvironment)(instance.environment) : {},
+    arguments: instance.arguments ? Schema.decodeUnknownSync(StoredArguments)(instance.arguments) : [],
+  }
+}
+
+// The provider view carries only settings the user chose, so an instance without them omits the fields.
+function shownSettings(instance: { environment: string | null; arguments: string | null }) {
+  const settings = instanceSettings(instance)
+  return {
+    ...(Object.keys(settings.environment).length ? { environment: settings.environment } : {}),
+    ...(settings.arguments.length ? { arguments: settings.arguments } : {}),
+  }
+}
+
+function checkInstanceSettings(input: Harness.Config) {
+  for (const name of Object.keys(input.environment ?? {})) {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) throw new Error(`${name} is not a valid variable name`)
+    if (CREDENTIAL_NAME.test(name))
+      throw new Error(
+        `Redcode does not store credentials such as ${name}; sign in with the provider or set it in this host's environment`,
+      )
+    if (HOST_SESSION_VARIABLES.includes(name) || name === "CLAUDE_CONFIG_DIR" || name === "CODEX_HOME")
+      throw new Error(`${name} is managed by Redcode; use the account home for a separate account`)
+  }
+  const reserved = agentRuntime(input.driver).reservedArguments
+  for (const argument of input.arguments ?? []) {
+    const flag = argument.split("=")[0] ?? argument
+    if (reserved.includes(flag)) throw new Error(`${flag} is set by Redcode and cannot be added to this instance`)
+  }
+}
 
 // A path inside the run's checkout reads relative to it; Windows paths match without regard to case.
 function relative(directory: string, text: string) {
@@ -80,6 +117,8 @@ type ProviderInstance = {
   credential_revision: number
   configured: number
   idle_timeout_ms: number
+  environment: string | null
+  arguments: string | null
 }
 const processAlive = (pid: number) => {
   try {
@@ -142,6 +181,10 @@ export async function createHarnesses(
     db.exec("ALTER TABLE provider_instance ADD COLUMN configured INTEGER NOT NULL DEFAULT 0")
   if (!providerColumns.some((column) => column.name === "idle_timeout_ms"))
     db.exec("ALTER TABLE provider_instance ADD COLUMN idle_timeout_ms INTEGER NOT NULL DEFAULT 60000")
+  if (!providerColumns.some((column) => column.name === "environment"))
+    db.exec(
+      "ALTER TABLE provider_instance ADD COLUMN environment TEXT; ALTER TABLE provider_instance ADD COLUMN arguments TEXT",
+    )
   db.exec(`INSERT OR IGNORE INTO provider_instance(id,driver,label,executable,credential_revision,configured)
     SELECT driver || '-default',driver,'Default',executable,1,1 FROM config;
     UPDATE provider_instance SET configured=1
@@ -292,13 +335,13 @@ export async function createHarnesses(
   const providerInstances = () =>
     db
       .query<ProviderInstance, []>(
-        "SELECT id,driver,label,executable,home,credential_revision,configured,idle_timeout_ms FROM provider_instance ORDER BY driver,id",
+        "SELECT id,driver,label,executable,home,credential_revision,configured,idle_timeout_ms,environment,arguments FROM provider_instance ORDER BY driver,id",
       )
       .all()
   const providerInstance = (driver: Harness.Driver, id?: string) => {
     const instance = db
       .query<ProviderInstance, [string]>(
-        "SELECT id,driver,label,executable,home,credential_revision,configured,idle_timeout_ms FROM provider_instance WHERE id=?",
+        "SELECT id,driver,label,executable,home,credential_revision,configured,idle_timeout_ms,environment,arguments FROM provider_instance WHERE id=?",
       )
       .get(id ?? defaultInstanceID(driver))
     if (!instance) throw new Error("Provider instance is not configured")
@@ -309,16 +352,18 @@ export async function createHarnesses(
     if (key === "codex" || key === "claude") return providerInstance(key)
     const instance = db
       .query<ProviderInstance, [string]>(
-        "SELECT id,driver,label,executable,home,credential_revision,configured,idle_timeout_ms FROM provider_instance WHERE id=?",
+        "SELECT id,driver,label,executable,home,credential_revision,configured,idle_timeout_ms,environment,arguments FROM provider_instance WHERE id=?",
       )
       .get(key)
     if (!instance) throw new Error("Provider instance is not configured")
     return instance
   }
+  // Redcode's defaults yield to the host's environment, and the instance's own variables win over both.
   const runtimeEnvironment = (instance: ProviderInstance) => ({
     ...Object.fromEntries(
       Object.entries(agentRuntime(instance.driver).environment).filter(([name]) => process.env[name] === undefined),
     ),
+    ...instanceSettings(instance).environment,
     ...(instance.home ? { [instance.driver === "codex" ? "CODEX_HOME" : "CLAUDE_CONFIG_DIR"]: instance.home } : {}),
   })
   const advanceCredentialRevision = (id: string) => {
@@ -390,6 +435,7 @@ export async function createHarnesses(
       credentialRevision: instance.credential_revision,
       configured: instance.configured === 1,
       idleTimeoutMs: instance.idle_timeout_ms,
+      ...shownSettings(instance),
       installed: false,
     }
   const probe = async (driver: Harness.Driver, providerInstanceID?: string) => {
@@ -410,6 +456,7 @@ export async function createHarnesses(
       credentialRevision: instance.credential_revision,
       configured: instance.configured === 1,
       idleTimeoutMs: instance.idle_timeout_ms,
+      ...shownSettings(instance),
       installed: true,
       version,
       authenticated: undefined as boolean | undefined,
@@ -647,7 +694,7 @@ export async function createHarnesses(
       reusable,
       idleTimeoutMs: reusable ? instance.idle_timeout_ms : 0,
       executable: instance.executable,
-      args: adapter.launchArgs(run),
+      args: [...adapter.launchArgs(run), ...instanceSettings(instance).arguments],
       directory: reusable ? process.cwd() : canonical,
       environment,
       subscriber: {
@@ -828,7 +875,7 @@ export async function createHarnesses(
       const id = input.id ?? defaultInstanceID(input.driver)
       const current = db
         .query<ProviderInstance, [string]>(
-          "SELECT id,driver,label,executable,home,credential_revision,configured,idle_timeout_ms FROM provider_instance WHERE id=?",
+          "SELECT id,driver,label,executable,home,credential_revision,configured,idle_timeout_ms,environment,arguments FROM provider_instance WHERE id=?",
         )
         .get(id)
       if (current && current.driver !== input.driver) throw new Error("Provider instance ID belongs to another driver")
@@ -841,16 +888,35 @@ export async function createHarnesses(
         )
       )
         throw new Error("Close this provider instance's harnesses before changing its configuration")
+      checkInstanceSettings(input)
       const home = input.home ?? null
+      // An omitted setting keeps the instance's current one; an empty one clears it.
+      const environment =
+        input.environment === undefined
+          ? (current?.environment ?? null)
+          : Object.keys(input.environment).length
+            ? JSON.stringify(input.environment)
+            : null
+      const args =
+        input.arguments === undefined
+          ? (current?.arguments ?? null)
+          : input.arguments.length
+            ? JSON.stringify(input.arguments)
+            : null
+      // A changed process setting needs a new process, so a shared runtime is not reused.
       const revision =
-        current && current.executable === input.executable && current.home === home
+        current &&
+        current.executable === input.executable &&
+        current.home === home &&
+        current.environment === environment &&
+        current.arguments === args
           ? current.credential_revision
           : (current?.credential_revision ?? 0) + 1
       if (current) await supervisor.evict(JSON.stringify([current.id, current.credential_revision]))
       db.query(
         `INSERT OR REPLACE INTO provider_instance(
-          id,driver,label,executable,home,credential_revision,configured,idle_timeout_ms
-        ) VALUES (?,?,?,?,?,?,1,?)`,
+          id,driver,label,executable,home,credential_revision,configured,idle_timeout_ms,environment,arguments
+        ) VALUES (?,?,?,?,?,?,1,?,?,?)`,
       ).run(
         id,
         input.driver,
@@ -859,6 +925,8 @@ export async function createHarnesses(
         home,
         revision,
         input.idleTimeoutMs ?? current?.idle_timeout_ms ?? 60_000,
+        environment,
+        args,
       )
       providers.delete(id)
       return probe(input.driver, id)

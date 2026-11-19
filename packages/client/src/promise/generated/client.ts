@@ -4568,6 +4568,8 @@ export function make(options: ClientOptions) {
               executable: input["executable"],
               home: input["home"],
               idleTimeoutMs: input["idleTimeoutMs"],
+              environment: input["environment"],
+              arguments: input["arguments"],
             },
             successStatus: 200,
             declaredStatuses: [400, 401, 403, 409],

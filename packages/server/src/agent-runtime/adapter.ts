@@ -47,6 +47,8 @@ export type AgentRuntimeAdapter = {
   permissionModes: readonly Harness.PermissionMode[]
   // Provider settings Redcode needs; a value the user already set in the environment wins.
   environment: Record<string, string>
+  // Flags Redcode sets itself or that would change how it talks to the provider; an instance cannot add them.
+  reservedArguments: readonly string[]
   events(input: AgentRuntimeEventInput): AgentRuntimeEvent[]
   installPackage: string
   initialize(input: AgentRuntimeOpen): Promise<void>

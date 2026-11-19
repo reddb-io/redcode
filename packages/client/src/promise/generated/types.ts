@@ -3230,6 +3230,8 @@ export type HarnessProvider = {
   credentialRevision?: number
   configured?: boolean
   idleTimeoutMs?: number
+  environment?: { [x: string]: string }
+  arguments?: Array<string>
   installed: boolean
   version?: string
   authenticated?: boolean
@@ -13552,6 +13554,8 @@ export type HarnessConfigureInput = {
     readonly executable: string
     readonly home?: string
     readonly idleTimeoutMs?: number
+    readonly environment?: { readonly [x: string]: string }
+    readonly arguments?: ReadonlyArray<string>
   }["id"]
   readonly driver: {
     readonly id?: string
@@ -13560,6 +13564,8 @@ export type HarnessConfigureInput = {
     readonly executable: string
     readonly home?: string
     readonly idleTimeoutMs?: number
+    readonly environment?: { readonly [x: string]: string }
+    readonly arguments?: ReadonlyArray<string>
   }["driver"]
   readonly label?: {
     readonly id?: string
@@ -13568,6 +13574,8 @@ export type HarnessConfigureInput = {
     readonly executable: string
     readonly home?: string
     readonly idleTimeoutMs?: number
+    readonly environment?: { readonly [x: string]: string }
+    readonly arguments?: ReadonlyArray<string>
   }["label"]
   readonly executable: {
     readonly id?: string
@@ -13576,6 +13584,8 @@ export type HarnessConfigureInput = {
     readonly executable: string
     readonly home?: string
     readonly idleTimeoutMs?: number
+    readonly environment?: { readonly [x: string]: string }
+    readonly arguments?: ReadonlyArray<string>
   }["executable"]
   readonly home?: {
     readonly id?: string
@@ -13584,6 +13594,8 @@ export type HarnessConfigureInput = {
     readonly executable: string
     readonly home?: string
     readonly idleTimeoutMs?: number
+    readonly environment?: { readonly [x: string]: string }
+    readonly arguments?: ReadonlyArray<string>
   }["home"]
   readonly idleTimeoutMs?: {
     readonly id?: string
@@ -13592,7 +13604,29 @@ export type HarnessConfigureInput = {
     readonly executable: string
     readonly home?: string
     readonly idleTimeoutMs?: number
+    readonly environment?: { readonly [x: string]: string }
+    readonly arguments?: ReadonlyArray<string>
   }["idleTimeoutMs"]
+  readonly environment?: {
+    readonly id?: string
+    readonly driver: "claude" | "codex"
+    readonly label?: string
+    readonly executable: string
+    readonly home?: string
+    readonly idleTimeoutMs?: number
+    readonly environment?: { readonly [x: string]: string }
+    readonly arguments?: ReadonlyArray<string>
+  }["environment"]
+  readonly arguments?: {
+    readonly id?: string
+    readonly driver: "claude" | "codex"
+    readonly label?: string
+    readonly executable: string
+    readonly home?: string
+    readonly idleTimeoutMs?: number
+    readonly environment?: { readonly [x: string]: string }
+    readonly arguments?: ReadonlyArray<string>
+  }["arguments"]
 }
 
 export type HarnessConfigureOutput = HarnessProvider

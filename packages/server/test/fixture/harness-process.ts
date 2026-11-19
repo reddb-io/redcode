@@ -649,6 +649,21 @@ for await (const line of createInterface({ input: process.stdin })) {
           },
         })
       }
+      // Echoes the instance's variables and arguments as the process received them.
+      if (text === "settings")
+        send({
+          type: "assistant",
+          session_id: claudeSession,
+          parent_tool_use_id: null,
+          message: {
+            content: [
+              {
+                type: "text",
+                text: `SETTINGS ${process.env.FIXTURE_SETTING} TODO ${process.env.CLAUDE_CODE_ENABLE_TODO_TOOLS} ARGS ${args.slice(-2).join(" ")}`,
+              },
+            ],
+          },
+        })
       // A background command's call returns at once; its task reports the end in a later turn.
       if (text === "background") {
         send({
