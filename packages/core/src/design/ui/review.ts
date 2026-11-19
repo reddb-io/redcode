@@ -5,6 +5,7 @@ import type { viewports } from "./viewports.js"
 import type { device } from "./devices.js"
 import type { stage } from "./stage.js"
 import type { deck } from "./slides.js"
+import type { liveHost } from "./live.js"
 import type { LoadingEvent, LoadingState, previewLoading } from "./loading.js"
 
 export interface ReviewOptions {
@@ -39,6 +40,8 @@ export interface ReviewOptions {
   deck?: typeof deck
   /** The preview area's loading, zero and error states from ./loading. */
   loading: typeof previewLoading
+  /** The microphone bridge from ./live for a design granted live use of it. */
+  live?: typeof liveHost
   /**
    * The review is shown beside the session it belongs to (the desktop pane, an app embed): the views that repeat
    * that session's conversation (the agent's last reply, the round's message and the Activity transcript) are left
@@ -327,6 +330,10 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
   const openNotes = () => (state.design?.notes ?? []).filter((note) => note.status === "open")
   const element = <T extends HTMLElement>(id: string) => root.getElementById(id) as T
   const input = (id: string) => element<HTMLInputElement>(id)
+  // Only the primary preview of a design granted the microphone gets one; comparison and minis never do.
+  const releaseMicrophone = options.live?.(() =>
+    state.design?.live?.microphone ? element<HTMLIFrameElement>("preview").contentWindow : undefined,
+  )
   const key = () => `redcode:design:${endpoint}:${state.design?.id}:${state.revision}`
   const dismissedKey = () => `redcode:design:${endpoint}:${state.design?.id}:dismissed`
   /** Cuts by code point like the frame does, so a surrogate pair is never split. */
@@ -3402,6 +3409,8 @@ main{grid-template-rows:minmax(0,1fr)}main>#inspector{display:none}
     loadingEvent({ type: "document", revision: revisionID })
     revealAfter(10000)
     element<HTMLIFrameElement>("peer-preview").removeAttribute("srcdoc")
+    // A capture belongs to the document that asked for it.
+    releaseMicrophone?.()
     element<HTMLIFrameElement>("preview").srcdoc = html
     if (keep && state.comparing) element<HTMLIFrameElement>("peer-preview").srcdoc = html
     input("revisions").value = revisionID

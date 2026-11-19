@@ -398,8 +398,10 @@ describe("design_document notes result", () => {
   })
 })
 
-// What the tool asked of the store, reset before the test.
-const amended: Array<Design.Update> = []
+// What the tool asked of the store and of the user, reset before each test.
+const amended: Array<typeof DesignDocumentTool.AgentUpdate.Type> = []
+const asked: Permission.AssertInput[] = []
+const fixture: { document: Design.Info; deny?: string } = { document: reviewed }
 const documentToolNode = makeLocationNode({
   name: "test/design-document-tool",
   layer: Layer.effectDiscard(registerToolPlugin(DesignDocumentToolPlugin.Plugin)),
@@ -417,7 +419,20 @@ const documentToolNode = makeLocationNode({
 const tool = testEffect(
   AppNodeBuilder.build(LayerNode.group([Tool.node, documentToolNode]), [
     Location.node.replace(tempLocationLayer),
-    Permission.node.replace(permissionLayer({ assert: () => Effect.void })),
+    Permission.node.replace(
+      permissionLayer({
+        assert: (input) =>
+          Effect.sync(() => asked.push(input)).pipe(
+            Effect.andThen(
+              input.action === fixture.deny
+                ? Effect.fail(
+                    new Permission.BlockedError({ rules: [], permission: input.action, resources: input.resources }),
+                  )
+                : Effect.void,
+            ),
+          ),
+      }),
+    ),
     Form.node.replace(Layer.mock(Form.Service, {})),
     Intelligence.node.replace(Layer.mock(Intelligence.Service, {})),
     SessionStore.node.replace(Layer.mock(SessionStore.Service, {})),
@@ -425,7 +440,7 @@ const tool = testEffect(
       Layer.mock(DesignStore.Service, {
         storage: "/design/store",
         blobs: "/design/blobs",
-        get: () => Effect.succeed(reviewed),
+        get: () => Effect.succeed(fixture.document),
         amend: (_session, _id, input) =>
           Effect.sync(() => {
             amended.push(input)
@@ -441,7 +456,7 @@ const tool = testEffect(
     ),
   ]),
 )
-const update = (input: Design.Update) => ({
+const update = (input: typeof DesignDocumentTool.AgentUpdate.Type) => ({
   sessionID,
   ...toolIdentity,
   call: {
@@ -485,4 +500,58 @@ describe("design_document update", () => {
       expect(amended).toEqual([{ notes }, { questions: ["Which secret?"] }, { addressed }])
     }),
   )
+})
+
+describe("design_document live", () => {
+  tool.effect("asks the user for each live capability the design does not have yet, and records none refused", () =>
+    Effect.gen(function* () {
+      amended.length = 0
+      asked.length = 0
+      const registry = yield* Tool.Service
+      const live = (result: { readonly status: string }) => result.status
+      const grant = { microphone: true, origins: ["wss://api.hume.ai", "https://api.hume.ai"] }
+
+      expect(live(yield* executeTool(registry, update({ live: grant })))).toBe("completed")
+      expect(asked.filter((item) => item.action === "design_live").map((item) => item.resources)).toEqual([
+        ["microphone", "wss://api.hume.ai", "https://api.hume.ai"],
+      ])
+
+      // With the microphone granted, adding an origin asks for that origin alone; narrowing asks nothing.
+      fixture.document = { ...reviewed, live: grant }
+      asked.length = 0
+      yield* executeTool(registry, update({ live: { ...grant, origins: [...grant.origins, "wss://stream.example.com"] } }))
+      yield* executeTool(registry, update({ live: { microphone: false } }))
+      expect(asked.filter((item) => item.action === "design_live").map((item) => item.resources)).toEqual([
+        ["wss://stream.example.com"],
+      ])
+
+      // A refused grant leaves the design as it was.
+      fixture.document = reviewed
+      fixture.deny = "design_live"
+      const refused = yield* executeTool(registry, update({ live: { microphone: true } }))
+      fixture.deny = undefined
+      expect(refused.status).toBe("error")
+      expect(amended).toEqual([
+        { live: grant },
+        { live: { ...grant, origins: [...grant.origins, "wss://stream.example.com"] } },
+        { live: { microphone: false } },
+      ])
+    }),
+  )
+
+  test("takes only https and wss origins of a domain name, without a path", () => {
+    const valid = (origin: string) => Schema.is(Design.Live)({ origins: [origin] })
+    expect(["wss://api.hume.ai", "https://api.example.com:8443"].every(valid)).toBe(true)
+    expect(
+      [
+        "http://api.example.com",
+        "ws://api.example.com",
+        "https://localhost:4096",
+        "https://127.0.0.1",
+        "https://api.example.com/v0",
+        "https://*.example.com",
+        "https://API.example.com",
+      ].some(valid),
+    ).toBe(false)
+  })
 })

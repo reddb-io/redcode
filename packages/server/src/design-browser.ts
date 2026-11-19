@@ -386,8 +386,15 @@ function read(
     if (parts[0] === "review" && parts.length === 1) {
       const { DesignPage } = yield* Effect.promise(() => import("@opencode/core/design/ui/page"))
       const configured = yield* store.configured(sessionID)
+      // The review frames each design in turn, so the page allows what any of the session's designs was granted.
+      const grants = (yield* store.list(sessionID)).flatMap((document) => (document.live ? [document.live] : []))
       return html(
         DesignPage.review(sessionID, endpoint, configured?.breakpoints, url.searchParams.get("embed") === "1"),
+        200,
+        DesignPage.livePolicy(pageCSP, {
+          microphone: grants.some((grant) => grant.microphone),
+          origins: [...new Set(grants.flatMap((grant) => grant.origins ?? []))],
+        }),
       )
     }
     if (parts[0] === "feed" && parts.length === 1) {
@@ -459,7 +466,7 @@ function read(
       previews.set(key, "building")
       if (previews.size > 500) previews.delete(previews.keys().next().value!)
       const content = yield* renderer.directory(revision).pipe(
-        Effect.flatMap((directory) => Effect.promise(() => DesignPage.preview(revision, directory))),
+        Effect.flatMap((directory) => Effect.promise(() => DesignPage.preview(revision, directory, document.live))),
         Effect.onExit((exit) =>
           Effect.sync(() => {
             previews.set(key, Exit.isSuccess(exit) ? "ready" : "failed")
@@ -482,7 +489,10 @@ function read(
           id,
           url.searchParams.get("view") === "presenter" ? "presenter" : "audience",
           url.searchParams.get("revision") ?? undefined,
+          document.live,
         ),
+        200,
+        DesignPage.livePolicy(pageCSP, document.live),
       )
     }
     if (parts[1] === "asset" && parts.length === 2)
@@ -597,11 +607,11 @@ function mutate(
   })
 }
 
-function html(content: string, status = 200) {
+function html(content: string, status = 200, policy = pageCSP) {
   return HttpServerResponse.text(content, {
     status,
     contentType: "text/html",
-    headers: { "cache-control": "no-store", "content-security-policy": pageCSP },
+    headers: { "cache-control": "no-store", "content-security-policy": policy },
   })
 }
 

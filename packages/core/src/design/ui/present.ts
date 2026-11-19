@@ -3,6 +3,7 @@
 
 import type { ReviewCopy } from "./copy.js"
 import type { deck, PresentEvent } from "./slides.js"
+import type { liveHost } from "./live.js"
 import type { stage } from "./stage.js"
 
 export interface PresentOptions {
@@ -19,6 +20,10 @@ export interface PresentOptions {
   /** Frame geometry from ./stage: the 1920×1080 slide scaled to fit its box. */
   stage: typeof stage
   request?: (url: string, init?: RequestInit) => Promise<Response>
+  /** The design was granted the microphone: the current slide gets it, the next-slide preview never does. */
+  microphone?: boolean
+  /** The microphone bridge from ./live, passed in because this function is serialized on its own. */
+  live?: typeof liveHost
 }
 
 /**
@@ -58,6 +63,7 @@ export function mountPresent(host: HTMLElement, options: PresentOptions) {
   const element = <T extends HTMLElement = HTMLElement>(id: string) => host.querySelector<T>(`#${id}`)!
   const slide = element<HTMLIFrameElement>("slide")
   const upcoming = presenter ? element<HTMLIFrameElement>("upcoming") : undefined
+  const release = options.microphone ? options.live?.(() => slide.contentWindow) : undefined
   const channel =
     typeof BroadcastChannel === "function"
       ? new BroadcastChannel(`redcode-design-present:${options.designID}`)
@@ -138,6 +144,8 @@ export function mountPresent(host: HTMLElement, options: PresentOptions) {
   }
   for (const target of upcoming ? [slide, upcoming] : [slide])
     target.addEventListener("load", () => {
+      // A capture belongs to the document that asked for it.
+      if (target === slide) release?.()
       if (!target.srcdoc) return
       if (wanted) target.contentWindow?.postMessage({ type: "design:variant", id: wanted }, "*")
       setTimeout(() => shown(target), 3000)
