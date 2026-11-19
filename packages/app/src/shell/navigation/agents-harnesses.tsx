@@ -46,6 +46,8 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
     executable: {} as Record<string, string>,
     home: {} as Record<string, string>,
     idleTimeoutSeconds: {} as Record<string, string>,
+    environment: {} as Record<string, string>,
+    arguments: {} as Record<string, string>,
     newInstance: {
       driver: "codex" as Harness.Driver,
       id: "",
@@ -1226,6 +1228,35 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                             onInput={(event) => setState("home", providerID(provider), event.currentTarget.value)}
                           />
                         </label>
+                        <label>
+                          {language.t("harness.instance.environment")}
+                          <textarea
+                            class={textarea({ class: "mt-1 w-full font-mono" })}
+                            rows={3}
+                            spellcheck={false}
+                            placeholder="NAME=value"
+                            value={state.environment[providerID(provider)] ?? environmentText(provider.environment)}
+                            onInput={(event) =>
+                              setState("environment", providerID(provider), event.currentTarget.value)
+                            }
+                          />
+                          <span class="mt-1 block text-caption text-ink-muted">
+                            {language.t("harness.instance.environmentNote")}
+                          </span>
+                        </label>
+                        <label>
+                          {language.t("harness.instance.arguments")}
+                          <textarea
+                            class={textarea({ class: "mt-1 w-full font-mono" })}
+                            rows={2}
+                            spellcheck={false}
+                            value={state.arguments[providerID(provider)] ?? (provider.arguments ?? []).join("\n")}
+                            onInput={(event) => setState("arguments", providerID(provider), event.currentTarget.value)}
+                          />
+                          <span class="mt-1 block text-caption text-ink-muted">
+                            {language.t("harness.instance.argumentsNote")}
+                          </span>
+                        </label>
                         <div class="flex flex-wrap gap-2">
                           <Button
                             variant="outline"
@@ -1245,6 +1276,12 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                                       state.idleTimeoutSeconds[providerID(provider)] ??
                                         (provider.idleTimeoutMs ?? 60_000) / 1000,
                                     ) * 1000,
+                                  environment: parseEnvironment(
+                                    state.environment[providerID(provider)] ?? environmentText(provider.environment),
+                                  ),
+                                  arguments: lines(
+                                    state.arguments[providerID(provider)] ?? (provider.arguments ?? []).join("\n"),
+                                  ),
                                 }),
                               )
                             }
@@ -1413,6 +1450,29 @@ function ToolCall(props: { event: Harness.Event; events: readonly Harness.Event[
 const PERMISSION_MODES: Record<Harness.Driver, readonly Harness.PermissionMode[]> = {
   claude: Harness.PermissionMode.literals,
   codex: ["default", "auto", "bypassPermissions"],
+}
+
+// An instance's variables edit as one NAME=value per line; the server rejects invalid or credential names.
+function environmentText(environment: Readonly<Record<string, string>> | undefined) {
+  return Object.entries(environment ?? {})
+    .map(([name, value]) => `${name}=${value}`)
+    .join("\n")
+}
+
+function parseEnvironment(text: string) {
+  return Object.fromEntries(
+    lines(text).map((line) => {
+      const separator = line.indexOf("=")
+      return separator < 0 ? [line, ""] : [line.slice(0, separator).trim(), line.slice(separator + 1)]
+    }),
+  )
+}
+
+function lines(text: string) {
+  return text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
 }
 
 const IMAGE_TYPES = Harness.Image.fields.mediaType.literals

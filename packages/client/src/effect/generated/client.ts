@@ -3380,6 +3380,8 @@ const EndpointHarnessConfigure = (raw: RawClient["server.harness"]) => (input: H
         executable: input["executable"],
         home: input["home"],
         idleTimeoutMs: input["idleTimeoutMs"],
+        environment: input["environment"],
+        arguments: input["arguments"],
       },
     }).pipe(Effect.mapError(mapClientError)),
   )

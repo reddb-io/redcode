@@ -7908,6 +7908,8 @@ export type HarnessConfigureInput = {
   readonly executable: string
   readonly home?: AbsolutePath | undefined
   readonly idleTimeoutMs?: number | undefined
+  readonly environment?: { readonly [x: string]: string } | undefined
+  readonly arguments?: ReadonlyArray<string> | undefined
 }
 export type HarnessConfigureOutput = Harness.Provider
 export type HarnessConfigureOperation<E = never> = (

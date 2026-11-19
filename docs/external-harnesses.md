@@ -91,6 +91,15 @@ over a subscription login, and its usage is billed to that key.
 Claude and Codex processes do not inherit the variables of a Claude Code session that launched Redcode,
 so a harness never joins that session.
 
+Each instance can also carry **Environment variables**, one `NAME=value` per line, and **Extra
+arguments**, one per line, both passed to its process as written; the instance's variables win over
+Redcode's defaults, such as the task list setting for Claude. Redcode never stores credentials: a name
+such as `ANTHROPIC_API_KEY` or one containing `TOKEN` or `SECRET` is refused, so keep using the agent's
+own sign-in or the host's environment, and the account home sets a separate account. Arguments Redcode
+sets itself are refused as well: Claude Code's stream protocol and run settings, and `--system-prompt`,
+which would replace Claude Code's own prompt (`--append-system-prompt` adds to it); for Codex, the
+app-server's transport flags. Saving without these fields keeps the instance's current settings.
+
 These host-wide APIs require an infrastructure owner administrator or an existing trusted server
 connection. Organization membership alone does not grant access to the host's provider accounts or
 arbitrary directories. This delivery does not introduce account-profile isolation or tenant-scoped

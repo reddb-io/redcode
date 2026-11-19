@@ -343,6 +343,15 @@ function runtimeQuestions(input: unknown): Harness.Request["questions"] {
 export const CodexAgentRuntime: AgentRuntimeAdapter = {
   driver: "codex",
   environment: {},
+  // Redcode talks to the app-server over stdio.
+  reservedArguments: [
+    "--listen",
+    "--code-mode-host",
+    "--ws-auth",
+    "--ws-token-file",
+    "--ws-token-sha256",
+    "--ws-shared-secret-file",
+  ],
   // Codex has no plan mode, and its workspace sandbox already accepts edits.
   permissionModes: ["default", "auto", "bypassPermissions"],
   installPackage: "@openai/codex",

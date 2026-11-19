@@ -43712,6 +43712,18 @@
           "idleTimeoutMs": {
             "type": "integer",
             "minimum": 0
+          },
+          "environment": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "arguments": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         },
         "required": ["driver", "executable"],
@@ -43917,6 +43929,18 @@
           "idleTimeoutMs": {
             "type": "integer",
             "minimum": 0
+          },
+          "environment": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "arguments": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "installed": {
             "type": "boolean"

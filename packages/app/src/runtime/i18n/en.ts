@@ -842,6 +842,12 @@ export const dict = {
   "harness.instance.label": "Account label",
   "harness.instance.credentialRevision": "credential revision {{revision}}",
   "harness.instance.idleTimeout": "Keep warm after last session (seconds)",
+  "harness.instance.environment": "Environment variables",
+  "harness.instance.environmentNote":
+    "One NAME=value per line, passed to this agent's process. Credentials stay in the agent's own sign-in or this host's environment.",
+  "harness.instance.arguments": "Extra arguments",
+  "harness.instance.argumentsNote":
+    "One argument per line, added to the agent's command line as written. Flags Redcode sets itself are refused.",
   "harness.instance.idleTimeoutNote": "Use 0 to stop the runtime immediately.",
   "harness.saveAndCheck": "Save and check",
   "harness.check": "Check installation",

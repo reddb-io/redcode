@@ -25,7 +25,7 @@ export async function stopOwnedProcess(child: ChildProcess) {
 }
 
 // A Claude Code session that launched Redcode exports these; a harness spawned with them joins that session.
-const HOST_SESSION_VARIABLES = [
+export const HOST_SESSION_VARIABLES = [
   "CLAUDECODE",
   "CLAUDE_CODE_ENTRYPOINT",
   "CLAUDE_CODE_SESSION_ID",

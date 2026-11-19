@@ -15,6 +15,10 @@ export const Config = Schema.Struct({
   executable: Schema.NonEmptyString,
   home: optional(AbsolutePath),
   idleTimeoutMs: optional(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
+  /** Variables for the provider's process; credentials stay in the provider's own sign-in. */
+  environment: optional(Schema.Record(Schema.String, Schema.String)),
+  /** Arguments appended to the provider's command line, each passed literally. */
+  arguments: optional(Schema.Array(Schema.String)),
 }).annotate({
   identifier: "Harness.Config",
 })
@@ -28,6 +32,8 @@ export const Provider = Schema.Struct({
   credentialRevision: optional(Schema.Int),
   configured: optional(Schema.Boolean),
   idleTimeoutMs: optional(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
+  environment: optional(Schema.Record(Schema.String, Schema.String)),
+  arguments: optional(Schema.Array(Schema.String)),
   installed: Schema.Boolean,
   version: optional(Schema.String),
   authenticated: optional(Schema.Boolean),
