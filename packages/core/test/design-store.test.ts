@@ -438,6 +438,11 @@ describe("DesignStore lifecycle", () => {
       expect((yield* store.list(sessionID)).map((item) => item.id)).toEqual([created.id])
       expect(yield* store.list(elsewhere)).toEqual([])
       expect((yield* store.get(elsewhere, created.id).pipe(Effect.flip)).code).toBe("not-found")
+      // A mistyped id names the session's designs, so the agent retries instead of starting a new design.
+      const mistyped = yield* store.get(sessionID, Design.ID.make(`${created.id}x`)).pipe(Effect.flip)
+      expect(mistyped.code).toBe("not-found")
+      expect(mistyped.message).toContain(`${created.id} (Checkout)`)
+      expect(mistyped.message).toContain("do not create a new design")
       expect((yield* store.create(elsewhere, checkout).pipe(Effect.flip)).code).toBe("not-found")
       expect((yield* store.create(Session.ID.make("ses_design_missing"), checkout).pipe(Effect.flip)).message).toBe(
         "Session not found in this location",
