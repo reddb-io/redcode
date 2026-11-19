@@ -971,8 +971,8 @@ export async function createHarnesses(
       await connection?.close()
     },
     async open(input: Harness.Open) {
-      if (input.driver !== "claude" && (input.effort || input.permissionMode))
-        throw new Error("Effort and permission mode apply only to Claude harnesses")
+      if (input.permissionMode && !agentRuntime(input.driver).permissionModes.includes(input.permissionMode))
+        throw new Error(`${input.driver} has no ${input.permissionMode} permission mode`)
       const instance = providerInstance(input.driver, input.providerInstanceID)
       const run: Harness.Run = {
         ...input,

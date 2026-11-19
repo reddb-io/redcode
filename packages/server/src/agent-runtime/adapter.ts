@@ -43,6 +43,8 @@ export type AgentRuntimeAdapter = {
   accepts(input: AgentRuntimeEventInput): boolean
   capabilities: AgentRuntimeCapabilities
   driver: Harness.Driver
+  // The permission modes the provider can honor; others are refused when a run opens.
+  permissionModes: readonly Harness.PermissionMode[]
   // Provider settings Redcode needs; a value the user already set in the environment wins.
   environment: Record<string, string>
   events(input: AgentRuntimeEventInput): AgentRuntimeEvent[]
