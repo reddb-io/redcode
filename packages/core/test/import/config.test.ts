@@ -577,6 +577,14 @@ describe("ConfigImport", () => {
     expect(result.diagnostics).toEqual([])
   })
 
+  test("explains display settings an older config kept instead of calling them unrecognized", () => {
+    const result = normalized({ $schema: "https://opencode.ai/config.json", theme: "system", keybinds: {} })
+    expect(result.diagnostics).toEqual([
+      { kind: "unsupported", path: ["theme"], message: expect.stringContaining("display setting") },
+      { kind: "unsupported", path: ["keybinds"], message: expect.stringContaining("display setting") },
+    ])
+  })
+
   test("reports unsupported legacy settings without including their values", () => {
     const secret = "do-not-log-this-value"
     const result = normalized({
