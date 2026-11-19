@@ -884,6 +884,19 @@ for (const driver of ["codex", "claude"] as const) {
         expect(denial).toStartWith("The user doesn't want to proceed with this tool use.")
         expect(denial).toEndWith("To tell you how to proceed, the user said:\nRead the docs first")
         expect(frames.filter((frame) => frame.type === "user")).toHaveLength(1)
+        // Without a reason, Claude Code's own wording tells Claude to wait for the user.
+        await service.prompt(run.id, { id: "plain-decline-input", text: "permission", delivery: "queue" })
+        await until(() => service.read(run.id).requests.length === 1)
+        service.answer(run.id, { request: service.read(run.id).requests[0]!.id, allow: false, answers: {} })
+        await until(() => service.read(run.id).run.state === "ready")
+        const denials = (await Bun.file(path.join(tmp.path, "wire.jsonl")).text())
+          .trim()
+          .split("\n")
+          .map((line) => JSON.parse(line))
+          .filter((frame) => frame.response?.response?.behavior === "deny")
+        expect(denials.at(-1).response.response.message).toEndWith(
+          "STOP what you are doing and wait for the user to tell you how to proceed.",
+        )
         return
       }
       // Codex's decline carries no reason, so the reason joins the continuing turn right after it.

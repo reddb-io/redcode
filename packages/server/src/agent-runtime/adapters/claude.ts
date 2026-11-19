@@ -5,8 +5,8 @@ import { object, string, type Frame, type Wire } from "../../harness-wire"
 import { type AgentRuntimeEvent, type AgentRuntimeEventInput } from "../events"
 
 const STREAM_ARGS = ["--print", "--verbose", "--input-format", "stream-json", "--output-format", "stream-json"]
-const REJECTED_WITH_FEEDBACK =
-  "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). To tell you how to proceed, the user said:"
+const REJECTED =
+  "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file)."
 
 const ModelList = Schema.Struct({
   models: Schema.optional(
@@ -367,11 +367,11 @@ export const ClaudeAgentRuntime: AgentRuntimeAdapter = {
             }
           : {
               behavior: "deny",
-              // Claude Code's own wording for a rejection with feedback, which Claude reads as the user's voice
-              // rather than as instructions arriving in a tool result.
+              // Claude Code's own rejection wording, which Claude reads as the user's voice rather than as
+              // instructions arriving in a tool result; without feedback it waits for the user.
               message: input.answer.message?.trim()
-                ? `${REJECTED_WITH_FEEDBACK}\n${input.answer.message.trim()}`
-                : "Declined by user",
+                ? `${REJECTED} To tell you how to proceed, the user said:\n${input.answer.message.trim()}`
+                : `${REJECTED} STOP what you are doing and wait for the user to tell you how to proceed.`,
             },
       },
     })
