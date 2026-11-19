@@ -128,7 +128,9 @@ Codex events from another thread/active turn are ignored.
 
 A decline can say why, so the agent changes course instead of stopping: Claude Code reads the reason
 with the declined call, including a declined plan; Codex's decline carries no text, so Redcode steers the
-reason into the turn that continues after it. The reason appears in the output as your input.
+reason into the turn that continues after it. The reason appears in the output as your input. Without a
+reason, Claude Code uses its own wording for a plain rejection: Claude stops and waits for your next
+instruction instead of trying another way.
 
 A command or file approval can also be allowed for the rest of the session. The provider then stops
 asking for matching calls: Codex through its session approval cache, Claude through the rules Claude Code
