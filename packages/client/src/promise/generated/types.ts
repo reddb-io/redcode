@@ -13728,9 +13728,42 @@ export type HarnessReadOutput = HarnessDetail
 
 export type HarnessPromptInput = {
   readonly runID: { readonly runID: string }["runID"]
-  readonly id: { readonly id: string; readonly text: string; readonly delivery: "steer" | "queue" }["id"]
-  readonly text: { readonly id: string; readonly text: string; readonly delivery: "steer" | "queue" }["text"]
-  readonly delivery: { readonly id: string; readonly text: string; readonly delivery: "steer" | "queue" }["delivery"]
+  readonly id: {
+    readonly id: string
+    readonly text: string
+    readonly images?: ReadonlyArray<{
+      readonly mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp"
+      readonly data: string
+    }>
+    readonly delivery: "steer" | "queue"
+  }["id"]
+  readonly text: {
+    readonly id: string
+    readonly text: string
+    readonly images?: ReadonlyArray<{
+      readonly mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp"
+      readonly data: string
+    }>
+    readonly delivery: "steer" | "queue"
+  }["text"]
+  readonly images?: {
+    readonly id: string
+    readonly text: string
+    readonly images?: ReadonlyArray<{
+      readonly mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp"
+      readonly data: string
+    }>
+    readonly delivery: "steer" | "queue"
+  }["images"]
+  readonly delivery: {
+    readonly id: string
+    readonly text: string
+    readonly images?: ReadonlyArray<{
+      readonly mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp"
+      readonly data: string
+    }>
+    readonly delivery: "steer" | "queue"
+  }["delivery"]
 }
 
 export type HarnessPromptOutput = void

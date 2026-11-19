@@ -38,6 +38,7 @@ import { Environment } from "@opencode/core/environment/index"
 import { CrossSpawnSpawner } from "@opencode/util/cross-spawn-spawner"
 import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner"
 
+const StoredImages = Schema.fromJsonString(Schema.Array(Harness.Image))
 type Pending = { request: Harness.Request; frame: Frame }
 type Live = {
   release: () => Promise<void>
@@ -112,6 +113,9 @@ export async function createHarnesses(
     CREATE INDEX IF NOT EXISTS event_run ON event(run,cursor);
     CREATE TABLE IF NOT EXISTS prompt (id TEXT PRIMARY KEY, run TEXT NOT NULL, text TEXT NOT NULL, status TEXT NOT NULL);`)
   const providerColumns = db.query<{ name: string }, []>("PRAGMA table_info(provider_instance)").all()
+  // Images wait with a queued instruction and are dropped once it is delivered or cancelled.
+  const promptColumns = db.query<{ name: string }, []>("PRAGMA table_info(prompt)").all()
+  if (!promptColumns.some((column) => column.name === "images")) db.exec("ALTER TABLE prompt ADD COLUMN images TEXT")
   if (!providerColumns.some((column) => column.name === "configured"))
     db.exec("ALTER TABLE provider_instance ADD COLUMN configured INTEGER NOT NULL DEFAULT 0")
   if (!providerColumns.some((column) => column.name === "idle_timeout_ms"))
@@ -618,7 +622,11 @@ export async function createHarnesses(
       throw error
     }
   }
-  const deliver = async (id: string, prompt: { id: string; text: string }, steer = false) => {
+  const deliver = async (
+    id: string,
+    prompt: { id: string; text: string; images?: readonly Harness.Image[] },
+    steer = false,
+  ) => {
     const run = read(id)
     const connection = live.get(id)
     if (!connection) throw new Error("Resume the harness before sending input")
@@ -629,7 +637,7 @@ export async function createHarnesses(
       connection.started = Date.now()
     }
     db.query("UPDATE prompt SET status='admitted' WHERE id=?").run(prompt.id)
-    event(id, "input", prompt.text)
+    event(id, "input", [prompt.text.trim(), ...(prompt.images ?? []).map(() => "[image]")].filter(Boolean).join("\n"))
     const result = await agentRuntime(run.driver).prompt({
       prompt,
       run,
@@ -638,21 +646,25 @@ export async function createHarnesses(
       wire: connection.wire,
     })
     if (result.turn) connection.turn = result.turn
-    db.query("UPDATE prompt SET status='sent' WHERE id=?").run(prompt.id)
+    db.query("UPDATE prompt SET status='sent', images=NULL WHERE id=?").run(prompt.id)
   }
   const drain = async (id: string) => {
     const connection = live.get(id)
     if (!connection || connection.sending || read(id).state !== "ready") return
     const next = db
       .query<
-        { id: string; text: string },
+        { id: string; text: string; images: string | null },
         [string]
-      >("SELECT id,text FROM prompt WHERE run=? AND status='queued' ORDER BY rowid LIMIT 1")
+      >("SELECT id,text,images FROM prompt WHERE run=? AND status='queued' ORDER BY rowid LIMIT 1")
       .get(id)
     if (!next) return
     connection.sending = true
     try {
-      await deliver(id, next)
+      await deliver(id, {
+        id: next.id,
+        text: next.text,
+        ...(next.images ? { images: Schema.decodeUnknownSync(StoredImages)(next.images) } : {}),
+      })
     } catch (error) {
       update(id, { state: "unknown", detail: String(error) })
     } finally {
@@ -904,6 +916,7 @@ export async function createHarnesses(
       return { run: { ...read(id), queued: queued(id) }, events, requests: requests(id), tasks: tasks.list(id) }
     },
     async prompt(id: string, input: Harness.Prompt) {
+      if (!input.text.trim() && !input.images?.length) throw new Error("An instruction needs text or an image")
       const existing = db.query<{ run: string }, [string]>("SELECT run FROM prompt WHERE id=?").get(input.id)
       if (existing) {
         if (existing.run !== id) throw new Error("Input identity belongs to another run")
@@ -915,7 +928,13 @@ export async function createHarnesses(
       const busy = run.state === "running" || run.state === "waiting"
       if (busy && input.delivery === "steer" && !run.capabilities.steer)
         throw new Error("This harness does not support active steering; queue the instruction")
-      db.query("INSERT INTO prompt VALUES (?,?,?,?)").run(input.id, id, input.text, "queued")
+      db.query("INSERT INTO prompt(id,run,text,status,images) VALUES (?,?,?,?,?)").run(
+        input.id,
+        id,
+        input.text,
+        "queued",
+        input.images?.length ? JSON.stringify(input.images) : null,
+      )
       if (!busy || input.delivery === "steer") await deliver(id, input, busy)
     },
     async interrupt(id: string) {
@@ -924,7 +943,7 @@ export async function createHarnesses(
       if (!connection) throw new Error("Harness process is unavailable")
       db.query("UPDATE harness_process SET eligible=0 WHERE run=?").run(id)
       connection.tools?.cancel()
-      db.query("UPDATE prompt SET status='cancelled' WHERE run=? AND status='queued'").run(id)
+      db.query("UPDATE prompt SET status='cancelled', images=NULL WHERE run=? AND status='queued'").run(id)
       await agentRuntime(run.driver).interrupt({ run, turn: connection.turn, wire: connection.wire })
       connection.pending.clear()
       update(id, { state: "interrupted" })
@@ -1003,7 +1022,7 @@ export async function createHarnesses(
       live.get(id)?.tools?.cancel()
       await live.get(id)?.computerUse?.close()
       for (const [ticket, value] of computerUseTickets) if (value.runID === id) computerUseTickets.delete(ticket)
-      db.query("UPDATE prompt SET status='cancelled' WHERE run=? AND status='queued'").run(id)
+      db.query("UPDATE prompt SET status='cancelled', images=NULL WHERE run=? AND status='queued'").run(id)
       await live.get(id)?.release()
       live.delete(id)
     },

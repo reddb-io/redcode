@@ -3452,7 +3452,7 @@ const EndpointHarnessPrompt = (raw: RawClient["server.harness"]) => (input: Harn
   preserveEffect<HarnessPromptOutput>()(
     raw["harness.prompt"]({
       params: { runID: input["runID"] },
-      payload: { id: input["id"], text: input["text"], delivery: input["delivery"] },
+      payload: { id: input["id"], text: input["text"], images: input["images"], delivery: input["delivery"] },
     }).pipe(Effect.mapError(mapClientError)),
   )
 

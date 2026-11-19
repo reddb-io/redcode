@@ -5,6 +5,7 @@ import { card } from "@reddb-io/design-system/contracts/card"
 import { input } from "@reddb-io/design-system/contracts/input"
 import { textarea } from "@reddb-io/design-system/contracts/textarea"
 import { Button } from "@opencode/ui/button"
+import { Icon } from "@opencode/ui/icon"
 import { Tabs } from "@opencode/ui/tabs"
 import { badge } from "@reddb-io/design-system/contracts/badge"
 import { multiColumnLayout } from "@reddb-io/design-system/contracts/multi-column-layout"
@@ -58,6 +59,7 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
     runID: "",
     inspecting: false,
     prompt: "",
+    images: [] as Harness.Image[],
     promptID: uuid(),
     delivery: "queue" as "queue" | "steer",
     answers: {} as Record<string, string>,
@@ -127,6 +129,21 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
       if (lifetime.active) setState("busy", false)
     }
   }
+  // Each change gives the instruction a new identity, so a retried send never repeats an older one.
+  const attach = (files: File[]) =>
+    void action(async () => {
+      const images = await Promise.all(
+        files
+          .filter((file) => file.type.startsWith("image/"))
+          .slice(0, MAX_IMAGES - state.images.length)
+          // An image the browser cannot decode or encode is rejected like an unsupported one.
+          .map((file) => harnessImage(file).catch(() => undefined)),
+      )
+      const accepted = images.filter((image) => image !== undefined)
+      if (accepted.length) setState({ images: [...state.images, ...accepted], promptID: uuid() })
+      if (accepted.length < images.length) throw new Error(language.t("harness.imageRejected"))
+    })
+  let imageInput: HTMLInputElement | undefined
   let inspectorElement: HTMLElement | undefined
   let requestsElement: HTMLElement | undefined
   let outputElement: HTMLElement | undefined
@@ -152,6 +169,7 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
           ? {
               stopped: false,
               prompt: "",
+              images: [],
               delivery: "queue" as const,
               promptID: uuid(),
             }
@@ -427,9 +445,10 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                           runID: state.runID,
                           id: state.promptID,
                           text: state.prompt,
+                          ...(state.images.length ? { images: state.images } : {}),
                           delivery: state.delivery,
                         })
-                        if (lifetime.active) setState({ prompt: "", promptID: uuid() })
+                        if (lifetime.active) setState({ prompt: "", images: [], promptID: uuid() })
                       })
                     }}
                     class="flex flex-col gap-2"
@@ -437,12 +456,77 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                     <label>
                       {language.t("harness.instruction")}
                       <textarea
-                        required
+                        required={!state.images.length}
                         class={textarea({ class: "mt-1 w-full" })}
                         value={state.prompt}
                         onInput={(event) => setState({ prompt: event.currentTarget.value, promptID: uuid() })}
+                        onPaste={(event) => {
+                          const files = Array.from(event.clipboardData?.files ?? [])
+                          if (!files.some((file) => file.type.startsWith("image/"))) return
+                          event.preventDefault()
+                          attach(files)
+                        }}
+                        onDragOver={(event) => {
+                          if (event.dataTransfer?.types.includes("Files")) event.preventDefault()
+                        }}
+                        onDrop={(event) => {
+                          const files = Array.from(event.dataTransfer?.files ?? [])
+                          if (!files.length) return
+                          event.preventDefault()
+                          attach(files)
+                        }}
                       />
                     </label>
+                    <Show when={state.images.length}>
+                      <ul aria-label={language.t("harness.images")} class="flex flex-wrap gap-2">
+                        <For each={state.images}>
+                          {(image, index) => (
+                            <li class="flex items-start gap-1">
+                              <img
+                                src={`data:${image.mediaType};base64,${image.data}`}
+                                alt={language.t("harness.image", { index: index() + 1 })}
+                                class="size-16 rounded border border-v2-border-base object-cover"
+                              />
+                              <Button
+                                size="small"
+                                variant="ghost"
+                                aria-label={language.t("harness.removeImage", { index: index() + 1 })}
+                                onClick={() =>
+                                  setState({
+                                    images: state.images.filter((_, position) => position !== index()),
+                                    promptID: uuid(),
+                                  })
+                                }
+                              >
+                                <Icon name="close" />
+                              </Button>
+                            </li>
+                          )}
+                        </For>
+                      </ul>
+                    </Show>
+                    <Show when={state.images.length < MAX_IMAGES}>
+                      <input
+                        ref={imageInput}
+                        type="file"
+                        multiple
+                        accept={IMAGE_TYPES.join(",")}
+                        class="hidden"
+                        onChange={(event) => {
+                          attach(Array.from(event.currentTarget.files ?? []))
+                          event.currentTarget.value = ""
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        class="self-start"
+                        disabled={state.busy}
+                        onClick={() => imageInput?.click()}
+                      >
+                        {language.t("harness.attachImages")}
+                      </Button>
+                    </Show>
                     <label>
                       {language.t("harness.delivery")}
                       <select
@@ -466,7 +550,7 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                       type="submit"
                       disabled={
                         state.busy ||
-                        !state.prompt.trim() ||
+                        (!state.prompt.trim() && !state.images.length) ||
                         !["ready", "running", "waiting", "interrupted"].includes(result().run.state)
                       }
                     >
@@ -1174,4 +1258,52 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
       </div>
     </div>
   )
+}
+
+const IMAGE_TYPES = Harness.Image.fields.mediaType.literals
+// The server accepts this many images per instruction, each within this much base64.
+const MAX_IMAGES = 10
+const MAX_IMAGE_BASE64 = 5 * 1024 * 1024
+// Claude Code downsizes larger images before sending them, so a smaller copy loses nothing.
+const MAX_IMAGE_EDGE = 2000
+
+async function harnessImage(file: File) {
+  const mediaType = IMAGE_TYPES.find((type) => type === file.type)
+  if (!mediaType) return undefined
+  const bitmap = await createImageBitmap(file)
+  const scale = Math.min(1, MAX_IMAGE_EDGE / Math.max(bitmap.width, bitmap.height))
+  const original = { mediaType, data: await base64(file) }
+  if (scale === 1 && original.data.length <= MAX_IMAGE_BASE64) {
+    bitmap.close()
+    return original
+  }
+  const canvas = document.createElement("canvas")
+  canvas.width = Math.round(bitmap.width * scale)
+  canvas.height = Math.round(bitmap.height * scale)
+  canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+  bitmap.close()
+  // A redrawn GIF keeps only its first frame, so it is stored as a PNG.
+  const resized = mediaType === "image/gif" ? "image/png" : mediaType
+  const copy = { mediaType: resized, data: await base64(await encode(canvas, resized)) }
+  if (copy.data.length <= MAX_IMAGE_BASE64) return copy
+  const jpeg = { mediaType: "image/jpeg" as const, data: await base64(await encode(canvas, "image/jpeg", 0.85)) }
+  return jpeg.data.length <= MAX_IMAGE_BASE64 ? jpeg : undefined
+}
+
+function encode(canvas: HTMLCanvasElement, type: string, quality?: number) {
+  return new Promise<Blob>((resolve, reject) =>
+    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error(type))), type, quality),
+  )
+}
+
+function base64(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.addEventListener("error", () => reject(reader.error))
+    reader.addEventListener("load", () => {
+      const value = typeof reader.result === "string" ? reader.result : ""
+      resolve(value.slice(value.indexOf(",") + 1))
+    })
+    reader.readAsDataURL(blob)
+  })
 }

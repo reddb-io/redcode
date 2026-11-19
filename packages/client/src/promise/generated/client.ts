@@ -4681,7 +4681,7 @@ export function make(options: ClientOptions) {
           {
             method: "POST",
             path: `/api/harness/runs/${encodeURIComponent(input.runID)}/prompt`,
-            body: { id: input["id"], text: input["text"], delivery: input["delivery"] },
+            body: { id: input["id"], text: input["text"], images: input["images"], delivery: input["delivery"] },
             successStatus: 200,
             declaredStatuses: [400, 401, 403, 409],
             empty: true,

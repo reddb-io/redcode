@@ -390,7 +390,19 @@ export const ClaudeAgentRuntime: AgentRuntimeAdapter = {
       type: "user",
       uuid: input.prompt.id,
       session_id: input.run.nativeID ?? "",
-      message: { role: "user", content: input.prompt.text },
+      message: {
+        role: "user",
+        // Images go first, as the Messages API recommends; an image-only instruction carries no text block.
+        content: input.prompt.images?.length
+          ? [
+              ...input.prompt.images.map((image) => ({
+                type: "image",
+                source: { type: "base64", media_type: image.mediaType, data: image.data },
+              })),
+              ...(input.prompt.text.trim() ? [{ type: "text", text: input.prompt.text }] : []),
+            ]
+          : input.prompt.text,
+      },
       parent_tool_use_id: null,
     })
     return {}

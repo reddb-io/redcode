@@ -218,7 +218,13 @@ export const CodexAgentRuntime: AgentRuntimeAdapter = {
       {
         threadId: input.run.nativeID ?? "",
         ...(input.steer ? { expectedTurnId: input.turn } : {}),
-        input: [{ type: "text", text: input.prompt.text, text_elements: [] }],
+        input: [
+          ...(input.prompt.images ?? []).map((image) => ({
+            type: "image",
+            url: `data:${image.mediaType};base64,${image.data}`,
+          })),
+          ...(input.prompt.text.trim() ? [{ type: "text", text: input.prompt.text, text_elements: [] }] : []),
+        ],
       },
       input.run.driver,
     )
