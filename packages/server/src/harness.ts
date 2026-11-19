@@ -41,6 +41,20 @@ import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner
 const StoredImages = Schema.fromJsonString(Schema.Array(Harness.Image))
 const StoredTool = Schema.fromJsonString(Harness.Tool)
 const StoredTodos = Schema.fromJsonString(Schema.Array(Harness.Todo))
+
+// A path inside the run's checkout reads relative to it; Windows paths match without regard to case.
+function relative(directory: string, text: string) {
+  return [directory, directory.replaceAll("\\", "/")]
+    .flatMap((root) => [`${root}\\`, `${root}/`])
+    .reduce(
+      (value, prefix) =>
+        value.replace(
+          new RegExp(prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), process.platform === "win32" ? "gi" : "g"),
+          "",
+        ),
+      text,
+    )
+}
 type Pending = { request: Harness.Request; frame: Frame }
 type Live = {
   release: () => Promise<void>
@@ -199,12 +213,12 @@ export async function createHarnesses(
     db.query("UPDATE event SET tool=? WHERE run=? AND call=?").run(JSON.stringify(tool), id, call)
   }
   // A call still running when its process ends never reports a result, like the run's native tasks.
-  const abandonTools = (id: string) =>
+  const abandonTools = (id: string, status: "failed" | "stopped" = "failed") =>
     db
       .query(
-        "UPDATE event SET tool=json_set(tool,'$.status','failed') WHERE run=? AND call IS NOT NULL AND json_extract(tool,'$.status')='running'",
+        "UPDATE event SET tool=json_set(tool,'$.status',?) WHERE run=? AND call IS NOT NULL AND json_extract(tool,'$.status')='running'",
       )
-      .run(id)
+      .run(status, id)
   const todos = (id: string) => {
     const row = db.query<{ data: string }, [string]>("SELECT data FROM todo WHERE run=?").get(id)
     return row ? Schema.decodeUnknownSync(StoredTodos)(row.data) : []
@@ -504,7 +518,7 @@ export async function createHarnesses(
           db.query("INSERT INTO event(run,kind,text,call,tool) VALUES (?,?,?,?,?)").run(
             id,
             "tool",
-            runtimeEvent.title,
+            relative(run.directory, runtimeEvent.title),
             runtimeEvent.id,
             JSON.stringify({
               id: runtimeEvent.id,
@@ -526,6 +540,8 @@ export async function createHarnesses(
         if (runtimeEvent.type === "todo") {
           const current = todos(id)
           const existing = current.find((item) => item.id === runtimeEvent.id)
+          // An update to a task the list never saw, such as a failed call's, has nothing to show.
+          if (!existing && runtimeEvent.content === undefined) return
           if (runtimeEvent.status === "deleted") {
             writeTodos(id, current.filter((item) => item.id !== runtimeEvent.id))
             return
@@ -556,7 +572,7 @@ export async function createHarnesses(
                     ? "permission"
                     : "unsupported",
               title: runtimeEvent.title,
-              detail: runtimeEvent.detail,
+              detail: relative(run.directory, runtimeEvent.detail),
               questions: runtimeEvent.questions,
               ...(runtimeEvent.session ? { session: true } : {}),
             },
@@ -717,7 +733,8 @@ export async function createHarnesses(
       connection.input = prompt.id
       connection.started = Date.now()
     }
-    db.query("UPDATE prompt SET status='admitted' WHERE id=?").run(prompt.id)
+    // An admitted instruction is never replayed, so its images are not needed past this point.
+    db.query("UPDATE prompt SET status='admitted', images=NULL WHERE id=?").run(prompt.id)
     event(id, "input", [prompt.text.trim(), ...(prompt.images ?? []).map(() => "[image]")].filter(Boolean).join("\n"))
     const result = await agentRuntime(run.driver).prompt({
       prompt,
@@ -1062,17 +1079,20 @@ export async function createHarnesses(
       connection.pending.delete(input.request)
       update(id, { state: connection.pending.size ? "waiting" : "running" })
       if (!message) return
-      event(id, "input", message)
-      if (adapter.capabilities.declineMessage) return
+      if (adapter.capabilities.declineMessage) {
+        event(id, "input", message)
+        return
+      }
+      // The reason follows the decline into the continuing turn; a turn that ended first takes it as the next
+      // instruction, so the reason shows once it is actually sent.
+      const reason = { id: crypto.randomUUID(), text: message }
       return adapter
-        .prompt({
-          prompt: { id: crypto.randomUUID(), text: message },
-          run,
-          steer: true,
-          turn: connection.turn,
-          wire: connection.wire,
+        .prompt({ prompt: reason, run, steer: true, turn: connection.turn, wire: connection.wire })
+        .then(() => event(id, "input", message))
+        .catch(() => {
+          db.query("INSERT INTO prompt(id,run,text,status) VALUES (?,?,?,'queued')").run(reason.id, id, message)
+          void drain(id)
         })
-        .then(() => undefined)
     },
     async resume(id: string) {
       const run = read(id)
@@ -1118,6 +1138,8 @@ export async function createHarnesses(
         capabilities: harnessCapabilities(agentRuntime(source.driver)),
       }
       write(run)
+      // The forked session keeps the task list its history refers to.
+      writeTodos(run.id, todos(source.id))
       return launch(run)
     },
     async close(id: string) {
@@ -1126,6 +1148,8 @@ export async function createHarnesses(
           "No owned process can be stopped. Reconcile the original process before releasing this checkout",
         )
       update(id, { state: "closed" })
+      // The user ends the calls still running; the process exit that follows finds none left.
+      abandonTools(id, "stopped")
       db.query("UPDATE harness_process SET eligible=0 WHERE run=?").run(id)
       live.get(id)?.tools?.cancel()
       await live.get(id)?.computerUse?.close()
@@ -1133,8 +1157,6 @@ export async function createHarnesses(
       db.query("UPDATE prompt SET status='cancelled', images=NULL WHERE run=? AND status='queued'").run(id)
       await live.get(id)?.release()
       live.delete(id)
-      // A shared Codex app-server outlives the run, so its calls end with the close.
-      abandonTools(id)
     },
     computerUseTicket(id: string, hostID: string): Harness.ComputerUseTicket {
       const run = read(id)

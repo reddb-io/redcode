@@ -139,7 +139,8 @@ instruction instead of trying another way.
 
 The output shows each tool call the agent makes, such as a command, a file edit or a search, with its
 status and, when you expand it, what the tool returned. A file edit, from Claude Code or Codex, shows its
-diff instead. The agent's own task list appears above the output and follows its progress: Claude Code's
+diff instead. A call you declined or interrupted shows as stopped, and paths inside the checkout read relative
+to it. The agent's own task list appears above the output and follows its progress: Claude Code's
 tasks or Codex's plan. Claude Code offers its task tools on newer models only when the client shows the
 list, so Redcode starts it with `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`; set the variable yourself, for example
 to `0`, and your value wins.

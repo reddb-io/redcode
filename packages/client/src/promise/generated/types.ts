@@ -1257,7 +1257,7 @@ export type HarnessComputerUseTicket = { ticket: string; hostID: string; expires
 export type HarnessTool = {
   id: string
   name: string
-  status: "running" | "succeeded" | "failed"
+  status: "running" | "succeeded" | "failed" | "stopped"
   output?: string
   diff?: string
   parent?: string

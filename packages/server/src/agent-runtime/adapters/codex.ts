@@ -43,9 +43,12 @@ async function limits(wire: Wire): Promise<Harness.Provider["limits"]> {
   const value = Schema.decodeUnknownSync(RateLimits)(await wire.request("account/rateLimits/read", {}, "codex"))
   return Object.values(value.rateLimitsByLimitId ?? { codex: value.rateLimits }).flatMap((snapshot) => {
     const model = snapshot.limitId && snapshot.limitId !== "codex" ? snapshot.limitName || snapshot.limitId : undefined
-    return [snapshot.primary, snapshot.secondary].flatMap((window) => {
-      const kind = model ? "model" : LIMIT_WINDOWS[window?.windowDurationMins ?? 0]
-      return window && kind && window.resetsAt
+    const windows = [snapshot.primary, snapshot.secondary].flatMap((window) => (window?.resetsAt ? [window] : []))
+    // A model's windows share one label, so its fullest window stands for the bucket.
+    const shown = model ? [...windows].sort((a, b) => b.usedPercent - a.usedPercent).slice(0, 1) : windows
+    return shown.flatMap((window) => {
+      const kind = model ? "model" : LIMIT_WINDOWS[window.windowDurationMins ?? 0]
+      return kind && window.resetsAt
         ? [
             {
               window: kind,
@@ -127,7 +130,9 @@ function events(input: AgentRuntimeEventInput): AgentRuntimeEvent[] {
         key: String(input.frame.id),
         title: method,
         detail:
-          method === PERMISSIONS_REQUEST ? permissionsDetail(params) : string(params.reason) || string(params.command),
+          method === PERMISSIONS_REQUEST
+            ? permissionsDetail(params)
+            : [string(params.command), string(params.reason)].filter(Boolean).join("\n"),
         questions,
         session: [
           "item/commandExecution/requestApproval",
@@ -176,9 +181,11 @@ function events(input: AgentRuntimeEventInput): AgentRuntimeEvent[] {
     const status =
       item.status === undefined || item.status === "completed"
         ? "succeeded"
-        : item.status === "failed" || item.status === "declined"
+        : item.status === "failed"
           ? "failed"
-          : undefined
+          : item.status === "declined"
+            ? "stopped"
+            : undefined
     return toolName(item) && status
       ? [{ type: "tool.result", id: string(item.id), status, output: toolOutput(item), diff: fileDiff(item) }]
       : []
@@ -242,7 +249,19 @@ function fileDiff(item: Frame) {
   return Array.isArray(item.changes)
     ? item.changes
         .map(object)
-        .map((change) => [string(change.path), string(change.diff)].filter(Boolean).join("\n"))
+        .map((change) => {
+          // A new or removed file arrives as its content rather than as a diff.
+          const kind = string(object(change.kind).type)
+          const body =
+            kind === "add" || kind === "delete"
+              ? string(change.diff)
+                  .replace(/\n$/, "")
+                  .split("\n")
+                  .map((line) => (kind === "add" ? "+" : "-") + line)
+                  .join("\n")
+              : string(change.diff)
+          return [string(change.path), body].filter(Boolean).join("\n")
+        })
         .join("\n")
         .slice(0, 16_000)
     : ""
