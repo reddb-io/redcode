@@ -331,7 +331,7 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
   const element = <T extends HTMLElement>(id: string) => root.getElementById(id) as T
   const input = (id: string) => element<HTMLInputElement>(id)
   // Only the primary preview of a design granted the microphone gets one; comparison and minis never do.
-  const releaseMicrophone = options.live?.(() =>
+  const microphone = options.live?.(() =>
     state.design?.live?.microphone ? element<HTMLIFrameElement>("preview").contentWindow : undefined,
   )
   const key = () => `redcode:design:${endpoint}:${state.design?.id}:${state.revision}`
@@ -3410,7 +3410,7 @@ main{grid-template-rows:minmax(0,1fr)}main>#inspector{display:none}
     revealAfter(10000)
     element<HTMLIFrameElement>("peer-preview").removeAttribute("srcdoc")
     // A capture belongs to the document that asked for it.
-    releaseMicrophone?.()
+    microphone?.release()
     element<HTMLIFrameElement>("preview").srcdoc = html
     if (keep && state.comparing) element<HTMLIFrameElement>("peer-preview").srcdoc = html
     input("revisions").value = revisionID

@@ -532,7 +532,7 @@ export const make = Effect.gen(function* () {
         }
 
         if (job.input.format === "html") {
-          const html = yield* io(() => DesignExport.html(root, entry))
+          const html = yield* io(() => DesignExport.html(root, entry, revision.document.live?.origins))
           // The exported page keeps working screens without the review page around it.
           yield* io(() => DesignFiles.atomic(output, injectScreens(html, revision.document.target)))
         }

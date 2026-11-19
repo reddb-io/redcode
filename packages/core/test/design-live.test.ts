@@ -4,6 +4,7 @@ import os from "os"
 import { describe, expect, test } from "bun:test"
 import { DesignPage } from "@opencode/core/design/ui/page"
 import { liveFrame } from "@opencode/core/design/ui/live"
+import { DesignExport } from "@opencode/core/design/export"
 
 const grant = { microphone: true, origins: ["wss://api.hume.ai", "https://api.hume.ai"] }
 const directive = (policy: string, name: string) => policy.split("; ").find((item) => item.startsWith(`${name} `))
@@ -39,6 +40,20 @@ describe("design live grant", () => {
     const closed = await DesignPage.preview(revision, directory)
     expect(closed).not.toContain(shim)
     expect(closed).toContain(`content="${DesignPage.FRAME_CSP}"`)
+    await fs.rm(directory, { recursive: true, force: true })
+  })
+
+  test("the HTML export keeps references to granted origins and still embeds or refuses every other one", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "design-live-export-"))
+    await fs.writeFile(path.join(directory, "app.js"), "window.local = true")
+    await fs.writeFile(
+      path.join(directory, "index.html"),
+      `<script src="https://api.hume.ai/sdk.js"></script><script src="app.js"></script><section class="slide" id="intro"></section>`,
+    )
+    const exported = await DesignExport.html(directory, "index.html", grant.origins)
+    expect(exported).toContain(`<script src="https://api.hume.ai/sdk.js"></script>`)
+    expect(exported).toContain("window.local = true")
+    expect(DesignExport.html(directory, "index.html")).rejects.toThrow("Export requires a local resource")
     await fs.rm(directory, { recursive: true, force: true })
   })
 

@@ -98,6 +98,7 @@ export async function preview(revision: Design.Revision, directory: string, gran
   const html = await DesignExport.html(
     directory,
     revision.document.engine === "html" ? revision.document.entry : "index.html",
+    grant?.origins,
   )
   const controls = JSON.stringify(revision.document.controls ?? []).replaceAll("<", "\\u003c")
   return `<meta http-equiv="Content-Security-Policy" content="${livePolicy(FRAME_CSP, grant)}">${grant?.microphone ? `<script>(${liveFrame.toString()})()</script>` : ""}${revision.document.target === "presentation" ? `<script>(${slides.toString()})(${deck.toString()})</script>` : ""}<script>(${screens.toString()})()</script>${html}<script>(${params.toString()})(${controls});(${annotations.toString()})();(function(module,exports,define){${captureRuntime.replaceAll("</script", "<\\/script")}
