@@ -1,5 +1,12 @@
 # @reddb-io/redcode
 
+## 0.90.3
+
+### Patch Changes
+
+- Show a Claude Code subagent's calls inside the Agent call that launched it, running until the subagent reports back.
+- Show each Claude Code or Codex tool call with its status and result, and the agent's own task list as it works through it.
+
 ## 0.90.2
 
 ### Patch Changes
