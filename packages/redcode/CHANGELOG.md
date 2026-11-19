@@ -1,5 +1,15 @@
 # @reddb-io/redcode
 
+## 0.90.7
+
+### Patch Changes
+
+- Give the agent two file tools: copy, which copies a file or a whole directory byte for byte, and open, which shows the user a file or folder in their system's application after asking, never running programs.
+- A live Design deck or prototype can also be granted the camera. Like the microphone, the trusted page captures it and hands the sandboxed frame its picture, so getUserMedia({video:true}) works in the review and while presenting, where the presenter turns the camera on and off with a button or the C key.
+- Let a Design deck or prototype run live JavaScript: once the user approves, its own code can use the microphone and connect to the https and wss services it names, in the review and while presenting. The design's frame stays sandboxed: the trusted page captures the microphone and hands the frame its audio, so getUserMedia, MediaRecorder and Web Audio work unchanged. Permission prompts now show what an open request or a live grant reaches.
+- The presenter now owns a live deck's microphone: it starts off, and the presenter turns it on and off with a button or the M key, in every window of the show. The presenter view can also export the deck as one HTML page, which keeps loading what the deck's live grant allows and runs the deck as its own page.
+- Design prototypes run on a simulated device: battery, network (online, slow, offline), location, tilt and shake, the clock and vibration, read through the browser's own APIs. The reviewer changes it in the review's Params tab, and a scenario can fix one, such as a low battery or no network, which holds while that scenario is audited. A live deck can also be granted the computer's real location, which the presenter turns on and off like the microphone and camera.
+
 ## 0.90.6
 
 ### Patch Changes
