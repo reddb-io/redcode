@@ -46,6 +46,8 @@ export const Info = Schema.Struct({
           permissions: [
             { action: "*", resource: "*", effect: "allow" },
             { action: "external_directory", resource: "*", effect: "ask" },
+            // Opening a file or folder acts on the user's desktop, outside the agent's own work.
+            { action: "open", resource: "*", effect: "ask" },
             { action: "read", resource: "*.env", effect: "ask" },
             { action: "read", resource: "*.env.*", effect: "ask" },
             { action: "read", resource: "*.env.example", effect: "allow" },

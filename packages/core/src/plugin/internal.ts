@@ -114,6 +114,8 @@ import { WebFetchTool } from "../tool/plugin/webfetch.js"
 import { WebSearchTool } from "../tool/plugin/websearch.js"
 import { WellKnown } from "../wellknown.js"
 import { WriteTool } from "../tool/plugin/write.js"
+import { CopyTool } from "../tool/plugin/copy.js"
+import { OpenTool } from "../tool/plugin/open.js"
 import { Vault } from "../vault/vault.js"
 import { VaultPlugin } from "./vault.js"
 import { AgentPlugin } from "./agent.js"
@@ -377,6 +379,8 @@ const pre = [
   WebFetchTool.Plugin,
   WebSearchTool.Plugin,
   WriteTool.Plugin,
+  CopyTool.Plugin,
+  OpenTool.Plugin,
   WarmingPlugin.Plugin,
   VaultPlugin.Plugin,
 ] as const satisfies readonly InternalPlugin[]
