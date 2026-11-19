@@ -946,6 +946,7 @@ export const dict = {
   "harness.tool.running": "Running",
   "harness.tool.succeeded": "Done",
   "harness.tool.failed": "Failed",
+  "harness.tool.diff": "Changes",
   "harness.todos": "Tasks · {{done}} of {{total}} done",
   "harness.todo.pending": "Pending:",
   "harness.todo.in_progress": "In progress:",

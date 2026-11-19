@@ -133,7 +133,7 @@ function events(input: AgentRuntimeEventInput): AgentRuntimeEvent[] {
           ? "failed"
           : undefined
     return toolName(item) && status
-      ? [{ type: "tool.result", id: string(item.id), status, output: toolOutput(item) }]
+      ? [{ type: "tool.result", id: string(item.id), status, output: toolOutput(item), diff: fileDiff(item) }]
       : []
   }
   if (method !== "turn/completed") return []
@@ -190,8 +190,18 @@ function toolTitle(name: string, item: Frame) {
   return target ? `${name} · ${target.split("\n")[0].slice(0, 200)}` : name
 }
 
+// Each changed file's path, then its diff.
+function fileDiff(item: Frame) {
+  return Array.isArray(item.changes)
+    ? item.changes
+        .map(object)
+        .map((change) => [string(change.path), string(change.diff)].filter(Boolean).join("\n"))
+        .join("\n")
+        .slice(0, 16_000)
+    : ""
+}
+
 function toolOutput(item: Frame) {
-  const diffs = Array.isArray(item.changes) ? item.changes.map((change) => string(object(change).diff)).join("\n") : ""
   const content = Array.isArray(item.contentItems)
     ? item.contentItems
         .map((part) => string(object(part).text))
@@ -200,7 +210,6 @@ function toolOutput(item: Frame) {
     : ""
   return (
     string(item.aggregatedOutput) ||
-    diffs ||
     content ||
     string(object(item.error).message) ||
     (item.result ? JSON.stringify(item.result) : "")

@@ -133,10 +133,11 @@ reason, Claude Code uses its own wording for a plain rejection: Claude stops and
 instruction instead of trying another way.
 
 The output shows each tool call the agent makes, such as a command, a file edit or a search, with its
-status and, when you expand it, what the tool returned; a Codex file change shows its diff. The agent's own
-task list appears above the output and follows its progress: Claude Code's tasks or Codex's plan. Claude
-Code offers its task tools on newer models only when the client shows the list, so Redcode starts it with
-`CLAUDE_CODE_ENABLE_TODO_TOOLS=1`; set the variable yourself, for example to `0`, and your value wins.
+status and, when you expand it, what the tool returned. A file edit, from Claude Code or Codex, shows its
+diff instead. The agent's own task list appears above the output and follows its progress: Claude Code's
+tasks or Codex's plan. Claude Code offers its task tools on newer models only when the client shows the
+list, so Redcode starts it with `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`; set the variable yourself, for example
+to `0`, and your value wins.
 
 A Claude Code subagent shows as its Agent call, with the subagent's own calls nested inside it. The call
 stays running until the subagent ends, including one that runs in the background, and then shows the

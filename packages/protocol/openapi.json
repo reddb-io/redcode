@@ -44233,6 +44233,9 @@
           "output": {
             "type": "string"
           },
+          "diff": {
+            "type": "string"
+          },
           "parent": {
             "type": "string"
           }

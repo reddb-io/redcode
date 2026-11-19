@@ -936,10 +936,22 @@ for (const driver of ["codex", "claude"] as const) {
                 text: "Read · /missing.txt",
                 tool: { id: "read-1", name: "Read", status: "failed", output: "File does not exist." },
               },
+              // An edit shows the hunks it applied.
+              {
+                text: "Edit · /a.txt",
+                tool: {
+                  id: "edit-1",
+                  name: "Edit",
+                  status: "succeeded",
+                  diff: "@@ -1,1 +1,1 @@\n-a\n+b",
+                },
+              },
+              // A new file is all added lines.
+              { text: "Write · /b.txt", tool: { id: "write-1", name: "Write", status: "succeeded", diff: "+x\n+y" } },
             ]
           : [
               { text: "Command · echo hi", tool: { id: "cmd-1", name: "Command", status: "succeeded", output: "hi" } },
-              { text: "Edit · a.txt", tool: { id: "edit-1", name: "Edit", status: "failed", output: "+one" } },
+              { text: "Edit · a.txt", tool: { id: "edit-1", name: "Edit", status: "failed", diff: "a.txt\n+one" } },
             ],
       )
       expect(detail.events.some((event) => event.kind === "activity")).toBe(false)
