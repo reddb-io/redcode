@@ -186,6 +186,7 @@ export function createBrowserPane(input: {
               attachment,
               location: options.location,
               partition: entry.partition,
+              server: server.url,
             })
             const connected = yield* Deferred.make<void>()
             const outbound = yield* Queue.unbounded<Effect.Effect<void>>()

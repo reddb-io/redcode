@@ -4,6 +4,7 @@ import type { Session } from "@opencode/schema/session"
 import { Browser } from "@opencode/plugin-browser/rpc"
 import { BrowserProxy } from "@opencode/plugin-browser/proxy"
 import { Effect, Encoding } from "effect"
+import { serverBypass } from "./policy"
 
 export type BrowserNetwork = Effect.Success<ReturnType<typeof createBrowserNetwork>>
 
@@ -12,6 +13,8 @@ export const createBrowserNetwork = Effect.fn("BrowserNetwork.create")(function*
   attachment: { sessionID: Session.ID; connectionID: string }
   location: { directory: string; workspace?: string }
   partition: string
+  /** The Redcode server this pane belongs to, which the desktop already reaches directly. */
+  server: string
 }) {
   const options = { location: input.location }
 
@@ -43,8 +46,15 @@ export const createBrowserNetwork = Effect.fn("BrowserNetwork.create")(function*
   yield* Effect.addFinalizer(() => Effect.promise(() => partition.closeAllConnections()))
   // This is the browser's private partition, not the app/API connection. Never
   // bypass localhost: it must resolve on the machine running the OC2 server.
+  // The one exception is the Redcode server itself, whose Design review this pane shows: the tunnel refuses its
+  // loopback or private address as it would any page's, while the desktop already reaches it directly. It still
+  // asks for the server's credential, which the pane adds only to that session's review.
   yield* Effect.tryPromise(() =>
-    partition.setProxy({ mode: "fixed_servers", proxyRules: proxy.url, proxyBypassRules: "<-loopback>" }),
+    partition.setProxy({
+      mode: "fixed_servers",
+      proxyRules: proxy.url,
+      proxyBypassRules: ["<-loopback>", serverBypass(input.server)].filter(Boolean).join(";"),
+    }),
   )
   yield* Effect.tryPromise(() => partition.closeAllConnections())
 
