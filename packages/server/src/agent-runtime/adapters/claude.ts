@@ -224,7 +224,7 @@ function events(input: AgentRuntimeEventInput): AgentRuntimeEvent[] {
                 id: string(block.tool_use_id),
                 status: block.is_error === true ? "failed" : "succeeded",
                 // An edit's diff says what its confirmation, written for Claude, only announces.
-                ...(diff ? { output: "", diff } : { output: toolOutput(report ?? block.content) }),
+                ...(diff ? { output: "", diff } : { output: shownOutput(toolOutput(report ?? block.content)) }),
               },
             ]
           : []
@@ -370,6 +370,11 @@ function toolUse(block: Frame): AgentRuntimeEvent[] {
 
 function todoStatus(value: unknown) {
   return Schema.is(Harness.Todo.fields.status)(value) ? value : undefined
+}
+
+// A declined or interrupted call returns Claude Code's rejection, written for Claude; the failed call says it.
+function shownOutput(text: string) {
+  return text.startsWith(REJECTED) ? "" : text
 }
 
 // The text a tool returned; images and other blocks are left to the agent.

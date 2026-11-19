@@ -533,6 +533,13 @@ for await (const line of createInterface({ input: process.stdin })) {
         ])
         result({ tool_use_id: "bash-1", content: [{ type: "text", text: "hi" }] })
         result({ tool_use_id: "read-1", content: "File does not exist.", is_error: true })
+        assistant([{ type: "tool_use", id: "denied-1", name: "Bash", input: { command: "rm -rf build" } }])
+        result({
+          tool_use_id: "denied-1",
+          content:
+            "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.",
+          is_error: true,
+        })
         assistant([
           {
             type: "tool_use",

@@ -942,6 +942,8 @@ for (const driver of ["codex", "claude"] as const) {
                 text: "Read · /missing.txt",
                 tool: { id: "read-1", name: "Read", status: "failed", output: "File does not exist." },
               },
+              // A declined call fails without the rejection Claude Code writes for Claude.
+              { text: "Bash · rm -rf build", tool: { id: "denied-1", name: "Bash", status: "failed" } },
               // An edit shows the hunks it applied.
               {
                 text: "Edit · /a.txt",
@@ -1217,6 +1219,14 @@ test("a Claude background command runs until its task reports the end", async ()
       status: "succeeded",
       output: 'Background command "sleep 5" completed (exit code 0)',
     })
+    // A call still running when the run closes never reports a result.
+    const second = await service.open({ driver: "claude", directory: AbsolutePath.make(tmp.path) })
+    await service.prompt(second.id, { id: "background-close-input", text: "background", delivery: "queue" })
+    await until(() => service.read(second.id).run.state === "ready")
+    const pending = () => service.read(second.id).events.find((event) => event.tool?.id === "bg-1")?.tool?.status
+    expect(pending()).toBe("running")
+    await service.close(second.id)
+    expect(pending()).toBe("failed")
   } finally {
     await service.dispose()
   }

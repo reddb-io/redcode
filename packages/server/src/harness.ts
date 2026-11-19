@@ -198,6 +198,13 @@ export async function createHarnesses(
     }
     db.query("UPDATE event SET tool=? WHERE run=? AND call=?").run(JSON.stringify(tool), id, call)
   }
+  // A call still running when its process ends never reports a result, like the run's native tasks.
+  const abandonTools = (id: string) =>
+    db
+      .query(
+        "UPDATE event SET tool=json_set(tool,'$.status','failed') WHERE run=? AND call IS NOT NULL AND json_extract(tool,'$.status')='running'",
+      )
+      .run(id)
   const todos = (id: string) => {
     const row = db.query<{ data: string }, [string]>("SELECT data FROM todo WHERE run=?").get(id)
     return row ? Schema.decodeUnknownSync(StoredTodos)(row.data) : []
@@ -311,7 +318,10 @@ export async function createHarnesses(
       const owner = processOwner(run.id)
       return !owner || !ownerAlive(owner, localHost)
     })
-    .forEach((run) => tasks.unavailable(run.id))
+    .forEach((run) => {
+      tasks.unavailable(run.id)
+      abandonTools(run.id)
+    })
   runs()
     .filter((run) => {
       const owner = processOwner(run.id)
@@ -631,6 +641,7 @@ export async function createHarnesses(
           live.delete(run.id)
           if (lifetime.closed) return
           tasks.unavailable(run.id)
+          abandonTools(run.id)
           if (read(run.id).state !== "closed") update(run.id, { state: "unknown", detail })
         },
       },
@@ -1122,6 +1133,8 @@ export async function createHarnesses(
       db.query("UPDATE prompt SET status='cancelled', images=NULL WHERE run=? AND status='queued'").run(id)
       await live.get(id)?.release()
       live.delete(id)
+      // A shared Codex app-server outlives the run, so its calls end with the close.
+      abandonTools(id)
     },
     computerUseTicket(id: string, hostID: string): Harness.ComputerUseTicket {
       const run = read(id)
@@ -1168,7 +1181,10 @@ export async function createHarnesses(
         throw new Error("Close or reconcile this checkout's harness before changing its Git state")
     },
     async dispose() {
-      live.forEach((_connection, id) => tasks.unavailable(id))
+      live.forEach((_connection, id) => {
+        tasks.unavailable(id)
+        abandonTools(id)
+      })
       lifetime.closed = true
       if (recoveryTimer) clearTimeout(recoveryTimer)
       const stopping = delegation.stop()
