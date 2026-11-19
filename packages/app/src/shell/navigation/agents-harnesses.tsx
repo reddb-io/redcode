@@ -790,10 +790,8 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                       providerInstanceID: selectedProviderID(),
                       directory: directory(),
                       ...(state.model.trim() ? { model: state.model.trim() } : {}),
-                      ...(state.driver === "claude" && state.effort ? { effort: state.effort } : {}),
-                      ...(state.driver === "claude" && state.permissionMode !== "default"
-                        ? { permissionMode: state.permissionMode }
-                        : {}),
+                      ...(state.effort ? { effort: state.effort } : {}),
+                      ...(state.permissionMode !== "default" ? { permissionMode: state.permissionMode } : {}),
                       ...(state.backgroundWait ? { backgroundWait: true } : {}),
                       ...(state.delegation ? { delegation: true } : {}),
                       ...(state.computerUse && computerUseReady()
@@ -840,6 +838,10 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                             providerInstanceID: providerID(provider),
                             model: "",
                             customModel: false,
+                            // Each agent offers its own permission modes.
+                            permissionMode: PERMISSION_MODES[provider.driver].includes(state.permissionMode)
+                              ? state.permissionMode
+                              : "default",
                           })
                       }}
                     />
@@ -884,36 +886,44 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                       </Show>
                     </div>
                   </Show>
-                  <Show when={state.driver === "claude"}>
-                    <div>
-                      <span>{language.t("harness.effort")}</span>
-                      <SearchSelect
-                        label={language.t("harness.effort")}
-                        class="mt-1 w-full"
-                        value={state.effort}
-                        options={[
-                          { value: "", label: language.t("harness.effort.default") },
-                          ...Harness.Effort.literals.map((effort) => ({
-                            value: effort,
-                            label: language.t(`harness.effort.${effort}`),
-                          })),
-                        ]}
-                        onChange={(value) => setState("effort", value as Harness.Effort | "")}
-                      />
-                    </div>
-                    <div>
-                      <span>{language.t("harness.permissionMode")}</span>
-                      <SearchSelect
-                        label={language.t("harness.permissionMode")}
-                        class="mt-1 w-full"
-                        value={state.permissionMode}
-                        options={Harness.PermissionMode.literals.map((mode) => ({
-                          value: mode,
-                          label: language.t(`harness.permissionMode.${mode}`),
-                        }))}
-                        onChange={(value) => setState("permissionMode", value as Harness.PermissionMode)}
-                      />
-                    </div>
+                  <Show when={state.driver !== "redcode" && state.driver}>
+                    {(driver) => (
+                      <>
+                        <div>
+                          <span>{language.t("harness.effort")}</span>
+                          <SearchSelect
+                            label={language.t("harness.effort")}
+                            class="mt-1 w-full"
+                            value={state.effort}
+                            options={[
+                              { value: "", label: language.t("harness.effort.default") },
+                              ...Harness.Effort.literals.map((effort) => ({
+                                value: effort,
+                                label: language.t(`harness.effort.${effort}`),
+                              })),
+                            ]}
+                            onChange={(value) => setState("effort", value as Harness.Effort | "")}
+                          />
+                        </div>
+                        <div>
+                          <span>{language.t("harness.permissionMode")}</span>
+                          <SearchSelect
+                            label={language.t("harness.permissionMode")}
+                            class="mt-1 w-full"
+                            value={state.permissionMode}
+                            options={PERMISSION_MODES[driver()].map((mode) => ({
+                              value: mode,
+                              label: language.t(
+                                driver() === "codex" && (mode === "default" || mode === "auto")
+                                  ? `harness.permissionMode.codex.${mode}`
+                                  : `harness.permissionMode.${mode}`,
+                              ),
+                            }))}
+                            onChange={(value) => setState("permissionMode", value as Harness.PermissionMode)}
+                          />
+                        </div>
+                      </>
+                    )}
                   </Show>
                   <Show when={state.driver === "redcode"}>
                     <p class="text-ink-muted">{language.t("harness.native.description")}</p>
@@ -1381,6 +1391,12 @@ function ToolCall(props: { event: Harness.Event; events: readonly Harness.Event[
       </Show>
     </details>
   )
+}
+
+// Codex has no plan mode, and its workspace sandbox already accepts edits.
+const PERMISSION_MODES: Record<Harness.Driver, readonly Harness.PermissionMode[]> = {
+  claude: Harness.PermissionMode.literals,
+  codex: ["default", "auto", "bypassPermissions"],
 }
 
 const IMAGE_TYPES = Harness.Image.fields.mediaType.literals

@@ -888,6 +888,8 @@ export const dict = {
   "harness.permissionMode.plan": "Plan before making changes",
   "harness.permissionMode.auto": "Auto: Claude Code decides which actions need approval",
   "harness.permissionMode.bypassPermissions": "Full access: run every action without asking",
+  "harness.permissionMode.codex.default": "Ask before leaving the workspace sandbox",
+  "harness.permissionMode.codex.auto": "Auto: Codex reviews which actions need approval",
   "harness.backgroundWait": "Enable native background wait tool",
   "harness.delegation": "Allow delegation to configured coding agents",
   "harness.delegationNote":

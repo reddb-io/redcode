@@ -257,6 +257,16 @@ function toolOutput(item: Frame) {
   ).slice(0, 8000)
 }
 
+// Codex asks before leaving its workspace sandbox; auto routes those requests to its own reviewer first.
+function permissions(mode: Harness.PermissionMode | undefined) {
+  if (mode === "bypassPermissions") return { approvalPolicy: "never", sandbox: "danger-full-access" }
+  return {
+    approvalPolicy: "on-request",
+    sandbox: "workspace-write",
+    ...(mode === "auto" ? { approvalsReviewer: "auto_review" } : {}),
+  }
+}
+
 function count(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null
 }
@@ -282,6 +292,8 @@ function runtimeQuestions(input: unknown): Harness.Request["questions"] {
 export const CodexAgentRuntime: AgentRuntimeAdapter = {
   driver: "codex",
   environment: {},
+  // Codex has no plan mode, and its workspace sandbox already accepts edits.
+  permissionModes: ["default", "auto", "bypassPermissions"],
   installPackage: "@openai/codex",
   capabilities: {
     backgroundWork: true,
@@ -333,8 +345,7 @@ export const CodexAgentRuntime: AgentRuntimeAdapter = {
         ...(input.run.nativeID ? { threadId: input.run.nativeID } : {}),
         cwd: input.directory,
         ...(input.run.model ? { model: input.run.model } : {}),
-        approvalPolicy: "on-request",
-        sandbox: "workspace-write",
+        ...permissions(input.run.permissionMode),
         ...(!input.run.nativeID && (input.run.backgroundWait || input.run.delegation || input.computerUse)
           ? {
               dynamicTools: [
@@ -357,6 +368,8 @@ export const CodexAgentRuntime: AgentRuntimeAdapter = {
       {
         threadId: input.run.nativeID ?? "",
         ...(input.steer ? { expectedTurnId: input.turn } : {}),
+        // The effort holds for this turn and the ones after it.
+        ...(!input.steer && input.run.effort ? { effort: input.run.effort } : {}),
         input: [
           ...(input.prompt.images ?? []).map((image) => ({
             type: "image",

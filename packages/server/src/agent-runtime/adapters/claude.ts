@@ -466,6 +466,7 @@ export const ClaudeAgentRuntime: AgentRuntimeAdapter = {
   driver: "claude",
   // Claude Code leaves its task list out of print mode on newer models unless the client renders it, as Redcode does.
   environment: { CLAUDE_CODE_ENABLE_TODO_TOOLS: "1" },
+  permissionModes: Harness.PermissionMode.literals,
   installPackage: "@anthropic-ai/claude-code",
   capabilities: {
     backgroundWork: true,

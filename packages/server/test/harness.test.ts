@@ -1232,6 +1232,40 @@ test("a Claude background command runs until its task reports the end", async ()
   }
 })
 
+test("Codex takes the run's effort and maps its permission mode onto approvals and the sandbox", async () => {
+  await using tmp = await tmpdir("redcode-harness-codex-modes-")
+  const service = await createHarnesses(path.join(tmp.path, "state"))
+  try {
+    await service.configure({ driver: "codex", executable: await executable(tmp.path, "codex") })
+    const frames = async () =>
+      (await Bun.file(path.join(tmp.path, "wire.jsonl")).text())
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line))
+    const cases = [
+      [undefined, { approvalPolicy: "on-request", sandbox: "workspace-write" }],
+      ["auto", { approvalPolicy: "on-request", sandbox: "workspace-write", approvalsReviewer: "auto_review" }],
+      ["bypassPermissions", { approvalPolicy: "never", sandbox: "danger-full-access" }],
+    ] as const
+    for (const [permissionMode, expected] of cases) {
+      const run = await service.open({
+        driver: "codex",
+        directory: AbsolutePath.make(tmp.path),
+        effort: "high",
+        ...(permissionMode ? { permissionMode } : {}),
+      })
+      await service.prompt(run.id, { id: `modes-${permissionMode}`, text: "hello", delivery: "queue" })
+      await until(() => service.read(run.id).run.state === "ready")
+      const start = (await frames()).findLast((frame) => frame.method === "thread/start")
+      expect(start.params).toMatchObject(expected)
+      if (!permissionMode) expect(start.params.approvalsReviewer).toBeUndefined()
+      expect((await frames()).findLast((frame) => frame.method === "turn/start").params.effort).toBe("high")
+    }
+  } finally {
+    await service.dispose()
+  }
+})
+
 test("Codex rejects unsupported approvals and ignores foreign thread requests", async () => {
   await using tmp = await tmpdir("redcode-harness-boundary-")
   const service = await createHarnesses(path.join(tmp.path, "state"))
@@ -1367,8 +1401,8 @@ test("provider sign-in keeps Codex completion authoritative and leaves Claude si
     await until(() => service.loginStatus("codex").state === "complete")
     await expect(service.login("claude")).rejects.toThrow("claude auth login")
     await expect(
-      service.open({ driver: "codex", directory: AbsolutePath.make(tmp.path), effort: "high" }),
-    ).rejects.toThrow("only to Claude")
+      service.open({ driver: "codex", directory: AbsolutePath.make(tmp.path), permissionMode: "plan" }),
+    ).rejects.toThrow("codex has no plan permission mode")
     expect(service.loginStatus("claude").state).toBe("failed")
     expect(service.list().runs).toHaveLength(0)
   } finally {
