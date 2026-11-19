@@ -1,5 +1,23 @@
 # @reddb-io/redcode
 
+## 0.90.1
+
+### Patch Changes
+
+- Check installation warns when a host's Claude Code CLI is older than the release Redcode is tested with (2.1.327) and suggests `claude update`.
+- Claude harnesses can start with a reasoning effort and a permission mode (ask before each action, accept edits, plan, auto or full access). Their runs show subagent tool activity and Claude subscription usage-limit warnings and resets. The coding agent is now labelled "Claude".
+- Claude harness output now streams as it is written, and Check installation lists the Claude models the host's CLI offers for the model selector. Runs that enable delegation, background waits or Computer Use append a short note to Claude Code's system prompt so Claude loads those tools when they apply; Claude Code's own prompt is never replaced.
+- Interrupting a Claude harness run leaves it interrupted instead of failed with "Claude execution failed", and the next instruction runs normally. Harness processes no longer inherit the bridge, notes or remote session identity and access token of a Claude Code session that launched Redcode.
+- Claude approval requests are readable: a plan proposed in plan mode shows as the plan itself and a command as the command, instead of raw tool input. Approving the plan records that the run left plan mode, so a resumed run does not return to it.
+- Claude harness runs show Claude's reasoning as readable summaries, one block per thinking step, set apart from its replies.
+- Claude harness runs can be forked into a new native session from the run controls. The fork starts with the original conversation and settings, and the original run is left unchanged.
+- Claude sign-in now stays in Anthropic's own flow: Agent setup shows the `claude auth login` command to run in a terminal on the host instead of relaying the sign-in. Check installation shows whether a Claude instance uses a subscription (with its plan) or an API key, which takes precedence and is billed separately. Claude and Codex harnesses no longer inherit the session variables of a Claude Code session that launched Redcode.
+- Claude harness runs accept steering: an instruction sent during a turn joins that turn, and Claude reads it with its next step. Steering while an approval is pending no longer makes that approval unanswerable.
+- Claude tool activity names what each call acts on, such as the command, file or search pattern, for the main thread and its subagents.
+- Agent setup shows a Claude subscription's usage windows (5-hour, weekly and model-scoped) with the percentage used and reset time, as reported by the host's Claude Code CLI.
+- The harness output shows each instruction where its turn begins, so replies from consecutive turns no longer run together, and it follows new output while you are at the end. The Claude sign-in hint appears only while Claude is not signed in.
+- Command and file approvals in Claude and Codex harness runs can be allowed for the rest of the session, so the agent stops asking for matching calls. Claude keeps the grant in its native session, never in the checkout's settings, and the run keeps its permission mode.
+
 ## 0.90.0
 
 ### Minor Changes
