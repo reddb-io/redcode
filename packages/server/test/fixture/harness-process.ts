@@ -517,6 +517,55 @@ for await (const line of createInterface({ input: process.stdin })) {
         result({ tool_use_id: "bash-1", content: [{ type: "text", text: "hi" }] })
         result({ tool_use_id: "read-1", content: "File does not exist.", is_error: true })
       }
+      if (text === "subagent") {
+        // Like Claude Code, the Agent call returns at once and its task reports the subagent's end.
+        const frame = (type: string, parent: string | null, content: object[], extra: object = {}) =>
+          send({ type, session_id: claudeSession, parent_tool_use_id: parent, message: { content }, ...extra })
+        frame("assistant", null, [
+          {
+            type: "tool_use",
+            id: "agent-1",
+            name: "Agent",
+            input: { description: "Find files", prompt: "Glob *.txt" },
+          },
+        ])
+        frame("user", null, [{ type: "tool_result", tool_use_id: "agent-1", content: "Async agent launched" }], {
+          tool_use_result: { status: "async_launched", agentId: "agent-task" },
+        })
+        frame("assistant", "agent-1", [
+          { type: "tool_use", id: "glob-1", name: "Glob", input: { pattern: "*.txt" } },
+          { type: "tool_use", id: "inner-create", name: "TaskCreate", input: { subject: "Inner" } },
+        ])
+        frame("user", "agent-1", [{ type: "tool_result", tool_use_id: "glob-1", content: "a.txt" }])
+        frame("user", "agent-1", [{ type: "tool_result", tool_use_id: "inner-create", content: "Task #9 created" }], {
+          tool_use_result: { task: { id: "9", subject: "Inner" } },
+        })
+        send({
+          type: "system",
+          subtype: "task_notification",
+          session_id: claudeSession,
+          task_id: "agent-task",
+          tool_use_id: "agent-1",
+          status: "completed",
+          summary: "Found a.txt",
+        })
+        // A foreground subagent returns its report wrapped in notes meant for the model.
+        frame("assistant", null, [
+          { type: "tool_use", id: "agent-2", name: "Agent", input: { description: "Check", prompt: "Glob" } },
+        ])
+        frame("user", null, [{ type: "tool_result", tool_use_id: "agent-2", content: "[Subagent hand-back] b.txt" }], {
+          tool_use_result: {
+            status: "completed",
+            agentId: "agent-sync",
+            harnessNoteCount: 1,
+            harnessTailCount: 0,
+            content: [
+              { type: "text", text: "<tools-used-before-summary>Glob</tools-used-before-summary>\n" },
+              { type: "text", text: "b.txt" },
+            ],
+          },
+        })
+      }
       if (text === "permission")
         send({
           type: "control_request",

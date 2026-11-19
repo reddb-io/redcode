@@ -138,6 +138,10 @@ task list appears above the output and follows its progress: Claude Code's tasks
 Code offers its task tools on newer models only when the client shows the list, so Redcode starts it with
 `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`; set the variable yourself, for example to `0`, and your value wins.
 
+A Claude Code subagent shows as its Agent call, with the subagent's own calls nested inside it. The call
+stays running until the subagent ends, including one that runs in the background, and then shows the
+subagent's report.
+
 A command or file approval can also be allowed for the rest of the session. The provider then stops
 asking for matching calls: Codex through its session approval cache, Claude through the rules Claude Code
 suggests for that call, kept to the native session and never written to the checkout's settings. Allowing

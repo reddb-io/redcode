@@ -1254,7 +1254,13 @@ export type HarnessComputerUseBinding = { hostID: string; capabilityID: string; 
 
 export type HarnessComputerUseTicket = { ticket: string; hostID: string; expiresAt: number }
 
-export type HarnessTool = { id: string; name: string; status: "running" | "succeeded" | "failed"; output?: string }
+export type HarnessTool = {
+  id: string
+  name: string
+  status: "running" | "succeeded" | "failed"
+  output?: string
+  parent?: string
+}
 
 export type HarnessQuestion = { id: string; text: string; options: Array<string> }
 

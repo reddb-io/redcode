@@ -1160,6 +1160,27 @@ for (const driver of ["codex", "claude"] as const) {
   }, 30_000)
 }
 
+test("a Claude subagent's calls nest under the Agent call, which settles with the subagent's report", async () => {
+  await using tmp = await tmpdir("redcode-harness-subagent-")
+  const service = await createHarnesses(path.join(tmp.path, "state"))
+  try {
+    await service.configure({ driver: "claude", executable: await executable(tmp.path, "claude") })
+    const run = await service.open({ driver: "claude", directory: AbsolutePath.make(tmp.path) })
+    await service.prompt(run.id, { id: "subagent-input", text: "subagent", delivery: "queue" })
+    await until(() => service.read(run.id).run.state === "ready")
+    const detail = service.read(run.id)
+    expect(detail.events.filter((event) => event.kind === "tool").map((event) => event.tool)).toEqual([
+      { id: "agent-1", name: "Agent", status: "succeeded", output: "Found a.txt" },
+      { id: "glob-1", name: "Glob", status: "succeeded", output: "a.txt", parent: "agent-1" },
+      { id: "agent-2", name: "Agent", status: "succeeded", output: "b.txt" },
+    ])
+    // A subagent's own tasks stay out of the run's task list.
+    expect(detail.todos).toEqual([])
+  } finally {
+    await service.dispose()
+  }
+})
+
 test("Codex rejects unsupported approvals and ignores foreign thread requests", async () => {
   await using tmp = await tmpdir("redcode-harness-boundary-")
   const service = await createHarnesses(path.join(tmp.path, "state"))
