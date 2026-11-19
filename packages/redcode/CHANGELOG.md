@@ -1,5 +1,14 @@
 # @reddb-io/redcode
 
+## 0.90.2
+
+### Patch Changes
+
+- A plan Claude proposes in plan mode shows as a "Proposed plan" with an "Approve plan" button, instead of a generic permission request.
+- Tell a Claude Code or Codex harness why you declined a request or a plan, so it changes course instead of stopping.
+- Attach images to Claude Code and Codex harness instructions by pasting, dropping or choosing them; large images are reduced before they are sent.
+- A Claude Code harness stops and waits for you after a decline without a reason, as Claude Code does on its own.
+
 ## 0.90.1
 
 ### Patch Changes
