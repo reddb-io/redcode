@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test"
-import { Effect, Layer, Stream, type Types } from "effect"
+import { DateTime, Effect, Layer, Stream, type Types } from "effect"
+import { Base64, FileAttachment } from "@opencode/schema/prompt"
+import { SessionMessage } from "@opencode/core/session/message"
 import { Design } from "@opencode/schema/design"
 import { DesignChecklist } from "@opencode/core/design/checklist"
 import { Monitor } from "@opencode/schema/monitor"
@@ -16,6 +18,7 @@ import { Permission } from "@opencode/core/permission"
 import { DesignPlugin } from "@opencode/core/plugin/design"
 import { Session } from "@opencode/core/session"
 import { Tool } from "@opencode/core/tool"
+import { DesignAssetTool } from "@opencode/core/tool/plugin/design-asset"
 import { DesignPlaybookTool } from "@opencode/core/tool/plugin/design-playbook"
 import { DesignPreviewTool } from "@opencode/core/tool/plugin/design-preview"
 import { DesignReadTool } from "@opencode/core/tool/plugin/design-read"
@@ -79,6 +82,18 @@ const reads: Array<typeof DesignReadTool.Input.Type> = []
 const started: Design.Render[] = []
 const monitored: MonitorRuntime.Start[] = []
 const jobs: Design.Job[] = []
+const imported: Design.ImportAsset[] = []
+// A message where the user pasted a screenshot after a text file.
+const pasted = SessionMessage.User.make({
+  id: SessionMessage.ID.make("msg_pasted"),
+  type: "user",
+  text: "Put this on the second slide",
+  files: [
+    FileAttachment.make({ data: Base64.make("bm90ZXM="), mime: "text/plain", source: { type: "inline" } }),
+    FileAttachment.make({ data: Base64.make("iVBORw0KGgo="), mime: "image/png", source: { type: "inline" } }),
+  ],
+  time: { created: DateTime.makeUnsafe(0) },
+})
 
 const reset = () =>
   Effect.sync(() => {
@@ -86,6 +101,7 @@ const reset = () =>
     reads.length = 0
     started.length = 0
     monitored.length = 0
+    imported.length = 0
     jobs.splice(0, jobs.length, queued)
   })
 
@@ -96,6 +112,21 @@ const store = Layer.mock(DesignStore.Service, {
     _session === sessionID && id === designID
       ? Effect.succeed(stored)
       : Effect.fail(new Design.Error({ code: "not-found", message: "Design not found in this session" })),
+  importAsset: (_session, _id, input) =>
+    Effect.sync(() => {
+      imported.push(input)
+      return {
+        id: "asset_one",
+        designID: _id,
+        name: input.name,
+        mime: input.mime,
+        bytes: 8,
+        hash: "hash",
+        source: input.source,
+        parent: null,
+        created: 1,
+      }
+    }),
   readApproval: (_session, input) =>
     Effect.sync(() => {
       reads.push(input)
@@ -138,6 +169,7 @@ const designToolsNode = makeLocationNode({
       yield* registerToolPlugin(DesignReadTool.Plugin)
       yield* registerToolPlugin(DesignRenderTool.Plugin)
       yield* registerToolPlugin(DesignPlaybookTool.Plugin)
+      yield* registerToolPlugin(DesignAssetTool.Plugin)
     }),
   ),
   deps: [Tool.node, Permission.node, DesignStore.node, DesignRenderer.node, MonitorRuntime.node, Session.node],
@@ -154,6 +186,7 @@ const tools = testEffect(
     Session.node.replace(
       Layer.mock(Session.Service, {
         context: () => Effect.succeed([]),
+        message: (input) => Effect.succeed(input.messageID === pasted.id ? pasted : undefined) as never,
         revert: {
           stage: () => Effect.die("unused revert.stage"),
           clear: () => Effect.die("unused revert.clear"),
@@ -185,6 +218,31 @@ describe("Design tools", () => {
         output: "Revision rev_one (not approved), section summary.",
         metadata: { designID },
       })
+    }),
+  )
+
+  tools.effect("imports an image the user pasted by the reference its label shows", () =>
+    Effect.gen(function* () {
+      yield* reset()
+      const registry = yield* Tool.Service
+
+      expect(
+        yield* executeTool(registry, call("design_asset", { id: designID, input: { attachment: "msg_pasted/2" } })),
+      ).toMatchObject({
+        status: "completed",
+        content: [{ type: "text", text: expect.stringContaining("assets/asset_one-attachment-2.png") }],
+      })
+      expect(imported).toEqual([
+        { name: "attachment-2.png", mime: "image/png", data: "iVBORw0KGgo=", source: "user attachment msg_pasted/2" },
+      ])
+      // A reference to something other than an image the user attached names what can be imported instead.
+      const wrong = yield* executeTool(
+        registry,
+        call("design_asset", { id: designID, input: { attachment: "msg_pasted/1" } }, "call_wrong"),
+      )
+      expect(wrong).toMatchObject({ status: "error" })
+      expect(JSON.stringify(wrong)).toContain("Attached image")
+      expect(imported).toHaveLength(1)
     }),
   )
 

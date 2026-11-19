@@ -210,6 +210,8 @@ describe("toLLMMessages", () => {
         role: "user",
         content: [
           { type: "text", text: "Inspect this image" },
+          // The reference lets a tool such as design_asset use the bytes of an image the user pasted.
+          { type: "text", text: "Attached image msg_user/1 (hello.png)" },
           { type: "media", media: Media.base64("aGVsbG8=", "image/png"), filename: "hello.png" },
         ],
         metadata: { agents: [{ name: "build" }] },
@@ -564,6 +566,7 @@ Earlier work
 
     expect(messages[0]?.content).toEqual([
       { type: "text", text: "Inspect this image" },
+      { type: "text", text: "Attached image msg_user-local-image/1 (image.png)" },
       { type: "media", media: Media.base64(data, "image/png"), filename: "image.png" },
       { type: "media", media: Media.base64("JVBERg==", "application/pdf"), filename: "document.pdf" },
     ])
@@ -594,7 +597,7 @@ Earlier work
 
     expect(messages[0]?.content).toEqual([
       { type: "text", text: "Inspect this image" },
-      { type: "text", text: `Attached file: ${location}` },
+      { type: "text", text: `Attached image msg_user-local-image-path/1 (IMG_3480.JPG): ${location}` },
       { type: "media", media: Media.base64(data, "image/png"), filename: "IMG_3480.JPG" },
     ])
   })
@@ -639,6 +642,7 @@ Earlier work
           },
         },
       },
+      { type: "text", text: "Attached image msg_user-invalid-local-paths/2 (preview.png)" },
       { type: "media", media: Media.base64(data, "image/png"), filename: "preview.png" },
     ])
   })
@@ -665,8 +669,10 @@ Earlier work
       model,
     )
 
+    // The reference names the attachment; no location is added for a remote source.
     expect(messages[0]?.content).toEqual([
       { type: "text", text: "Inspect this image" },
+      { type: "text", text: "Attached image msg_user-remote-image/1 (image.png)" },
       { type: "media", media: Media.base64(data, "image/png"), filename: "image.png" },
     ])
   })
@@ -711,7 +717,10 @@ Earlier work
 
     expect(messages[0]?.content).toEqual([
       { type: "text", text: "[Image 1] [Image 1] [Image 2]" },
+      { type: "text", text: "Attached image msg_user-duplicate-image/1 (image.png)" },
       { type: "media", media: Media.base64(data, "image/png"), filename: "image.png" },
+      // Each image keeps the reference of its own position, so a skipped duplicate leaves a gap.
+      { type: "text", text: "Attached image msg_user-duplicate-image/3 (image.png)" },
       {
         type: "media",
         media: Media.base64(data, "image/png"),

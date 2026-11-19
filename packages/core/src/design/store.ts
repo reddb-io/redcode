@@ -647,7 +647,7 @@ const make = Effect.gen(function* () {
     yield* Effect.tryPromise({
       try: async () => {
         await DesignFiles.atomic(path.join(blobs, hash), bytes)
-        await DesignFiles.atomic(path.join(document.root, "assets", `${data.id}-${data.name}`), bytes)
+        await DesignFiles.atomic(path.join(document.root, DesignAssets.path(data)), bytes)
       },
       catch: () => new Design.Error({ code: "unavailable", message: "Unable to save the Design asset" }),
     })

@@ -10,6 +10,7 @@ import { SessionInbox } from "../session/inbox.js"
 import { SessionSchema } from "../session/schema.js"
 import { DesignApproval } from "./approval.js"
 import { DesignRounds } from "./rounds.js"
+import { DesignAssets } from "./assets.js"
 import { DesignStore } from "./store.js"
 import { DesignTasks } from "./tasks.js"
 
@@ -358,7 +359,8 @@ export const admit = Effect.fn("DesignFeedback.admit")(function* (
     render(input, {
       id,
       storage: store.storage,
-      attachments: assets.map((asset) => asset.name),
+      // The path the prototype uses: the image is already one of this design's assets, so it needs no import.
+      attachments: assets.map(DesignAssets.path),
       round: DesignRounds.next(document),
     }),
   )
