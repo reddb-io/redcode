@@ -2348,6 +2348,17 @@ export type SessionDesignListOutput = ReadonlyArray<{
   readonly questions: ReadonlyArray<string>
   readonly scenarios: ReadonlyArray<{
     readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } } | undefined
+    readonly device?:
+      | {
+          readonly battery?: { readonly level: number; readonly charging: boolean } | undefined
+          readonly network?: "online" | "slow" | "offline" | undefined
+          readonly location?:
+            | { readonly latitude: number; readonly longitude: number; readonly accuracy?: number | undefined }
+            | undefined
+          readonly orientation?: { readonly alpha: number; readonly beta: number; readonly gamma: number } | undefined
+          readonly clock?: string | undefined
+        }
+      | undefined
     readonly id: string
     readonly name: string
     readonly variant?: string | undefined
@@ -2393,6 +2404,7 @@ export type SessionDesignListOutput = ReadonlyArray<{
     | {
         readonly microphone?: boolean | undefined
         readonly camera?: boolean | undefined
+        readonly location?: boolean | undefined
         readonly origins?: ReadonlyArray<string> | undefined
       }
     | undefined
@@ -2601,6 +2613,17 @@ export type SessionDesignCreateOutput = {
   readonly questions: ReadonlyArray<string>
   readonly scenarios: ReadonlyArray<{
     readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } } | undefined
+    readonly device?:
+      | {
+          readonly battery?: { readonly level: number; readonly charging: boolean } | undefined
+          readonly network?: "online" | "slow" | "offline" | undefined
+          readonly location?:
+            | { readonly latitude: number; readonly longitude: number; readonly accuracy?: number | undefined }
+            | undefined
+          readonly orientation?: { readonly alpha: number; readonly beta: number; readonly gamma: number } | undefined
+          readonly clock?: string | undefined
+        }
+      | undefined
     readonly id: string
     readonly name: string
     readonly variant?: string | undefined
@@ -2646,6 +2669,7 @@ export type SessionDesignCreateOutput = {
     | {
         readonly microphone?: boolean | undefined
         readonly camera?: boolean | undefined
+        readonly location?: boolean | undefined
         readonly origins?: ReadonlyArray<string> | undefined
       }
     | undefined
@@ -2846,6 +2870,17 @@ export type SessionDesignGetOutput = {
   readonly questions: ReadonlyArray<string>
   readonly scenarios: ReadonlyArray<{
     readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } } | undefined
+    readonly device?:
+      | {
+          readonly battery?: { readonly level: number; readonly charging: boolean } | undefined
+          readonly network?: "online" | "slow" | "offline" | undefined
+          readonly location?:
+            | { readonly latitude: number; readonly longitude: number; readonly accuracy?: number | undefined }
+            | undefined
+          readonly orientation?: { readonly alpha: number; readonly beta: number; readonly gamma: number } | undefined
+          readonly clock?: string | undefined
+        }
+      | undefined
     readonly id: string
     readonly name: string
     readonly variant?: string | undefined
@@ -2891,6 +2926,7 @@ export type SessionDesignGetOutput = {
     | {
         readonly microphone?: boolean | undefined
         readonly camera?: boolean | undefined
+        readonly location?: boolean | undefined
         readonly origins?: ReadonlyArray<string> | undefined
       }
     | undefined
@@ -3185,6 +3221,19 @@ export type SessionDesignUpdateInput = {
   readonly scenarios?:
     | ReadonlyArray<{
         readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } } | undefined
+        readonly device?:
+          | {
+              readonly battery?: { readonly level: number; readonly charging: boolean } | undefined
+              readonly network?: "online" | "slow" | "offline" | undefined
+              readonly location?:
+                | { readonly latitude: number; readonly longitude: number; readonly accuracy?: number | undefined }
+                | undefined
+              readonly orientation?:
+                | { readonly alpha: number; readonly beta: number; readonly gamma: number }
+                | undefined
+              readonly clock?: string | undefined
+            }
+          | undefined
         readonly id: string
         readonly name: string
         readonly variant?: string | undefined
@@ -3333,6 +3382,17 @@ export type SessionDesignUpdateOutput = {
   readonly questions: ReadonlyArray<string>
   readonly scenarios: ReadonlyArray<{
     readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } } | undefined
+    readonly device?:
+      | {
+          readonly battery?: { readonly level: number; readonly charging: boolean } | undefined
+          readonly network?: "online" | "slow" | "offline" | undefined
+          readonly location?:
+            | { readonly latitude: number; readonly longitude: number; readonly accuracy?: number | undefined }
+            | undefined
+          readonly orientation?: { readonly alpha: number; readonly beta: number; readonly gamma: number } | undefined
+          readonly clock?: string | undefined
+        }
+      | undefined
     readonly id: string
     readonly name: string
     readonly variant?: string | undefined
@@ -3378,6 +3438,7 @@ export type SessionDesignUpdateOutput = {
     | {
         readonly microphone?: boolean | undefined
         readonly camera?: boolean | undefined
+        readonly location?: boolean | undefined
         readonly origins?: ReadonlyArray<string> | undefined
       }
     | undefined
@@ -3578,6 +3639,17 @@ export type SessionDesignRefreshOutput = {
   readonly questions: ReadonlyArray<string>
   readonly scenarios: ReadonlyArray<{
     readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } } | undefined
+    readonly device?:
+      | {
+          readonly battery?: { readonly level: number; readonly charging: boolean } | undefined
+          readonly network?: "online" | "slow" | "offline" | undefined
+          readonly location?:
+            | { readonly latitude: number; readonly longitude: number; readonly accuracy?: number | undefined }
+            | undefined
+          readonly orientation?: { readonly alpha: number; readonly beta: number; readonly gamma: number } | undefined
+          readonly clock?: string | undefined
+        }
+      | undefined
     readonly id: string
     readonly name: string
     readonly variant?: string | undefined
@@ -3623,6 +3695,7 @@ export type SessionDesignRefreshOutput = {
     | {
         readonly microphone?: boolean | undefined
         readonly camera?: boolean | undefined
+        readonly location?: boolean | undefined
         readonly origins?: ReadonlyArray<string> | undefined
       }
     | undefined
@@ -3840,6 +3913,17 @@ export type SessionDesignReopenOutput = {
   readonly questions: ReadonlyArray<string>
   readonly scenarios: ReadonlyArray<{
     readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } } | undefined
+    readonly device?:
+      | {
+          readonly battery?: { readonly level: number; readonly charging: boolean } | undefined
+          readonly network?: "online" | "slow" | "offline" | undefined
+          readonly location?:
+            | { readonly latitude: number; readonly longitude: number; readonly accuracy?: number | undefined }
+            | undefined
+          readonly orientation?: { readonly alpha: number; readonly beta: number; readonly gamma: number } | undefined
+          readonly clock?: string | undefined
+        }
+      | undefined
     readonly id: string
     readonly name: string
     readonly variant?: string | undefined
@@ -3885,6 +3969,7 @@ export type SessionDesignReopenOutput = {
     | {
         readonly microphone?: boolean | undefined
         readonly camera?: boolean | undefined
+        readonly location?: boolean | undefined
         readonly origins?: ReadonlyArray<string> | undefined
       }
     | undefined
@@ -4092,6 +4177,17 @@ export type SessionDesignRevisionsOutput = ReadonlyArray<{
     readonly questions: ReadonlyArray<string>
     readonly scenarios: ReadonlyArray<{
       readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } } | undefined
+      readonly device?:
+        | {
+            readonly battery?: { readonly level: number; readonly charging: boolean } | undefined
+            readonly network?: "online" | "slow" | "offline" | undefined
+            readonly location?:
+              | { readonly latitude: number; readonly longitude: number; readonly accuracy?: number | undefined }
+              | undefined
+            readonly orientation?: { readonly alpha: number; readonly beta: number; readonly gamma: number } | undefined
+            readonly clock?: string | undefined
+          }
+        | undefined
       readonly id: string
       readonly name: string
       readonly variant?: string | undefined
@@ -4137,6 +4233,7 @@ export type SessionDesignRevisionsOutput = ReadonlyArray<{
       | {
           readonly microphone?: boolean | undefined
           readonly camera?: boolean | undefined
+          readonly location?: boolean | undefined
           readonly origins?: ReadonlyArray<string> | undefined
         }
       | undefined
@@ -4431,6 +4528,17 @@ export type SessionDesignRevisionOutput = {
     readonly questions: ReadonlyArray<string>
     readonly scenarios: ReadonlyArray<{
       readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } } | undefined
+      readonly device?:
+        | {
+            readonly battery?: { readonly level: number; readonly charging: boolean } | undefined
+            readonly network?: "online" | "slow" | "offline" | undefined
+            readonly location?:
+              | { readonly latitude: number; readonly longitude: number; readonly accuracy?: number | undefined }
+              | undefined
+            readonly orientation?: { readonly alpha: number; readonly beta: number; readonly gamma: number } | undefined
+            readonly clock?: string | undefined
+          }
+        | undefined
       readonly id: string
       readonly name: string
       readonly variant?: string | undefined
@@ -4476,6 +4584,7 @@ export type SessionDesignRevisionOutput = {
       | {
           readonly microphone?: boolean | undefined
           readonly camera?: boolean | undefined
+          readonly location?: boolean | undefined
           readonly origins?: ReadonlyArray<string> | undefined
         }
       | undefined

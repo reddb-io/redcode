@@ -29,6 +29,7 @@ import { DesignLocate } from "./locate.js"
 import { DesignVerify } from "./verify.js"
 import { DesignAnalysis } from "./analysis.js"
 import type { EvaluationInput } from "../intelligence.js"
+import { simulate } from "./ui/device.js"
 import { screens } from "./ui/screens.js"
 import { deck, slides } from "./ui/slides.js"
 import { device } from "./ui/devices.js"
@@ -228,6 +229,16 @@ const scopedLayout = (selectors: string[]) => {
  * the doctype, so it never lands before the doctype or inside a <header>. A presentation also gets the
  * slide runtime, ahead of the screens, so its slides are screens from the first announcement.
  */
+/**
+ * The simulated device the next document of `page` starts on. Init scripts accumulate and run in order, so the
+ * latest one wins; every navigation that runs a scenario, or none, says which device it wants.
+ */
+function startOn(page: { addInitScript: (script: (state: unknown) => void, arg: unknown) => Promise<unknown> }, state?: Design.DeviceState) {
+  return page.addInitScript((value) => {
+    ;(window as unknown as { __redcodeDevice?: unknown }).__redcodeDevice = value
+  }, state ?? null)
+}
+
 export function injectScreens(html: string, target?: Design.Surface) {
   const tag = `${target === "presentation" ? `<script>(${slides.toString()})(${deck.toString()})</script>` : ""}<script>(${screens.toString()})()</script>`
   for (const pattern of [/<head(?:\s[^>]*)?>/i, /<html(?:\s[^>]*)?>/i, /<!doctype[^>]*>/i]) {
@@ -410,6 +421,8 @@ export const make = Effect.gen(function* () {
             yield* io(() => context.addInitScript({ content: `(${slides.toString()})(${deck.toString()})` }))
           if (job.input.format !== "compare")
             yield* io(() => context.addInitScript({ content: `(${screens.toString()})()` }))
+          // The simulated device runs in the prototype and the implementation alike, so a scenario's device holds for both.
+          yield* io(() => context.addInitScript({ content: `(${simulate.toString()})()` }))
           if (phone) yield* io(() => context.addInitScript(safeArea, phone.safeArea))
           const page = yield* io(() => context.newPage())
           page.on("pageerror", (error) => runtimeErrors.push(error.message))
@@ -771,6 +784,7 @@ export const make = Effect.gen(function* () {
                 }),
               )
               for (const scenario of scenarios.length ? scenarios : [undefined]) {
+                yield* io(() => startOn(page, scenario?.device))
                 yield* io(() => page.goto(`http://design.local/${source === root ? entry : "index.html"}`))
                 yield* io(() => page.evaluate(() => document.fonts.ready.then(() => undefined)))
                 const outcome = yield* io(async () => {
@@ -946,6 +960,7 @@ export const make = Effect.gen(function* () {
           ) =>
             io(async () => {
               runtimeErrors.length = 0
+              await startOn(page, undefined)
               await page.goto(`http://design.local/${snapshot.engine === "html" ? snapshot.entry : "index.html"}`, {
                 waitUntil: "load",
               })
@@ -1300,9 +1315,10 @@ export const make = Effect.gen(function* () {
           if (!job.input.variant && valid.length > 6)
             findings.push("Only the first six variants were inspected. Review the remaining directions separately.")
           const { AxeBuilder } = yield* io((signal) => DesignRuntime.load("@axe-core/playwright", signal))
-          const reset = (variant: string | undefined) =>
+          const reset = (variant: string | undefined, simulated?: Design.DeviceState) =>
             io(async () => {
               runtimeErrors.length = 0
+              await startOn(page, simulated)
               await page.goto(`http://design.local/${entry}`, { waitUntil: "load" })
               await page.evaluate(() => document.fonts.ready.then(() => undefined))
               if (variant)
@@ -1475,7 +1491,7 @@ export const make = Effect.gen(function* () {
                   captures.length >= 36
                 )
                   continue
-                yield* reset(variant)
+                yield* reset(variant, scenario.device)
                 let scope = variant ? page.locator(`[data-design-variant="${variant}"]`) : page.locator("body")
                 // A scenario may observe state on the variant root itself.
                 const target = (selector: string) => scope.locator(selector).or(scope.and(page.locator(selector)))

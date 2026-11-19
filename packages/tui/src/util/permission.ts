@@ -160,7 +160,13 @@ export function permissionPresentation(
       title: "Let this design use devices or the network while it is shown",
       lines: [
         ...source.resources.map((resource) =>
-          resource === "microphone" ? "Microphone" : resource === "camera" ? "Camera" : `Connect to ${String(resource)}`,
+          resource === "microphone"
+            ? "Microphone"
+            : resource === "camera"
+              ? "Camera"
+              : resource === "location"
+                ? "Location"
+                : `Connect to ${String(resource)}`,
         ),
         "Its own JavaScript runs in the review and while presenting.",
       ],
