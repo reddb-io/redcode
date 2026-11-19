@@ -222,7 +222,7 @@ function events(input: AgentRuntimeEventInput): AgentRuntimeEvent[] {
               {
                 type: "tool.result",
                 id: string(block.tool_use_id),
-                status: block.is_error === true ? "failed" : "succeeded",
+                status: block.is_error === true ? (stopped(block.content) ? "stopped" : "failed") : "succeeded",
                 // An edit's diff says what its confirmation, written for Claude, only announces.
                 ...(diff ? { output: "", diff } : { output: shownOutput(toolOutput(report ?? block.content)) }),
               },
@@ -372,9 +372,13 @@ function todoStatus(value: unknown) {
   return Schema.is(Harness.Todo.fields.status)(value) ? value : undefined
 }
 
-// A declined or interrupted call returns Claude Code's rejection, written for Claude; the failed call says it.
+// A declined or interrupted call returns Claude Code's rejection, written for Claude; the stopped call says it.
 function shownOutput(text: string) {
   return text.startsWith(REJECTED) ? "" : text
+}
+
+function stopped(content: unknown) {
+  return toolOutput(content).startsWith(REJECTED)
 }
 
 // The text a tool returned; images and other blocks are left to the agent.
@@ -386,7 +390,8 @@ function toolOutput(content: unknown) {
         .map((block) => string(block.text))
         .join("\n")
     : string(content)
-  return text.slice(0, 8000)
+  // Claude Code tells Claude when a command left the working directory; the reader already knows it.
+  return text.replace(/\n*Shell cwd was reset to [^\n]*$/, "").slice(0, 8000)
 }
 
 // Edit and Write report the hunks they applied; a new file is all added lines.
@@ -425,7 +430,29 @@ function requestDetail(tool: string, input: Frame, questions: boolean) {
   if (questions) return ""
   // ExitPlanMode carries the plan Claude wrote to its plan file.
   if (string(input.plan).trim()) return string(input.plan)
-  return [tool, string(input.command) || JSON.stringify(input)].filter(Boolean).join("\n").slice(0, 8000)
+  return [tool, string(input.command) || fileChange(input) || JSON.stringify(input)]
+    .filter(Boolean)
+    .join("\n")
+    .slice(0, 8000)
+}
+
+// A file call to approve reads as the file and the lines it would change, not as its raw input.
+function fileChange(input: Frame) {
+  const path = string(input.file_path) || string(input.notebook_path)
+  if (!path) return ""
+  const lines = (prefix: string, text: unknown) =>
+    typeof text === "string"
+      ? text
+          .replace(/\n$/, "")
+          .split("\n")
+          .map((line) => prefix + line)
+      : []
+  const edits = Array.isArray(input.edits) ? input.edits.map(object) : [input]
+  return [
+    path,
+    ...edits.flatMap((edit) => [...lines("-", edit.old_string), ...lines("+", edit.new_string ?? edit.new_source)]),
+    ...lines("+", input.content),
+  ].join("\n")
 }
 
 // Claude Code's own suggestions, kept to this session and without switching its permission mode, which

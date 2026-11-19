@@ -243,6 +243,22 @@ describe("agent runtime event normalization", () => {
         },
       }),
     ).toMatchObject([{ type: "request", key: "approval-1", title: "Bash", detail: "Bash\nbun test", supported: true }])
+    // A file edit to approve reads as the file and the lines it changes.
+    expect(
+      adapter.events({
+        run: runtime,
+        turn: "",
+        frame: {
+          type: "control_request",
+          request_id: "approval-2",
+          request: {
+            subtype: "can_use_tool",
+            tool_name: "Edit",
+            input: { file_path: "/repo/a.txt", old_string: "a", new_string: "b\nc", replace_all: false },
+          },
+        },
+      }),
+    ).toMatchObject([{ type: "request", detail: "Edit\n/repo/a.txt\n-a\n+b\n+c" }])
     expect(
       [
         {

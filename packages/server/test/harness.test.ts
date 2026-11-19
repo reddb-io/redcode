@@ -942,8 +942,13 @@ for (const driver of ["codex", "claude"] as const) {
                 text: "Read · /missing.txt",
                 tool: { id: "read-1", name: "Read", status: "failed", output: "File does not exist." },
               },
-              // A declined call fails without the rejection Claude Code writes for Claude.
-              { text: "Bash · rm -rf build", tool: { id: "denied-1", name: "Bash", status: "failed" } },
+              // A path inside the checkout reads relative to it.
+              {
+                text: "Read · notes.txt",
+                tool: { id: "read-2", name: "Read", status: "succeeded", output: "1\tnotes" },
+              },
+              // A declined call stops without the rejection Claude Code writes for Claude.
+              { text: "Bash · rm -rf build", tool: { id: "denied-1", name: "Bash", status: "stopped" } },
               // An edit shows the hunks it applied.
               {
                 text: "Edit · /a.txt",
@@ -959,7 +964,7 @@ for (const driver of ["codex", "claude"] as const) {
             ]
           : [
               { text: "Command · echo hi", tool: { id: "cmd-1", name: "Command", status: "succeeded", output: "hi" } },
-              { text: "Edit · a.txt", tool: { id: "edit-1", name: "Edit", status: "failed", diff: "a.txt\n+one" } },
+              { text: "Edit · a.txt", tool: { id: "edit-1", name: "Edit", status: "stopped", diff: "a.txt\n+one" } },
             ],
       )
       expect(detail.events.some((event) => event.kind === "activity")).toBe(false)
@@ -1219,14 +1224,14 @@ test("a Claude background command runs until its task reports the end", async ()
       status: "succeeded",
       output: 'Background command "sleep 5" completed (exit code 0)',
     })
-    // A call still running when the run closes never reports a result.
+    // Closing the run stops a call still running; it never reports a result.
     const second = await service.open({ driver: "claude", directory: AbsolutePath.make(tmp.path) })
     await service.prompt(second.id, { id: "background-close-input", text: "background", delivery: "queue" })
     await until(() => service.read(second.id).run.state === "ready")
     const pending = () => service.read(second.id).events.find((event) => event.tool?.id === "bg-1")?.tool?.status
     expect(pending()).toBe("running")
     await service.close(second.id)
-    expect(pending()).toBe("failed")
+    expect(pending()).toBe("stopped")
   } finally {
     await service.dispose()
   }
@@ -1296,6 +1301,31 @@ test("Codex asks for extra network and file access, granted for the session or d
       { permissions: { network: { enabled: true }, fileSystem: { write: ["/repo/../cache"] } }, scope: "session" },
       { permissions: {}, scope: "turn" },
     ])
+  } finally {
+    await service.dispose()
+  }
+})
+
+test("a Codex decline reason that misses its turn becomes the next instruction", async () => {
+  await using tmp = await tmpdir("redcode-harness-codex-late-reason-")
+  const service = await createHarnesses(path.join(tmp.path, "state"))
+  try {
+    await service.configure({ driver: "codex", executable: await executable(tmp.path, "codex") })
+    const run = await service.open({ driver: "codex", directory: AbsolutePath.make(tmp.path) })
+    await service.prompt(run.id, { id: "late-input", text: "permission", delivery: "queue" })
+    await until(() => service.read(run.id).requests.length === 1)
+    const request = service.read(run.id).requests[0]!
+    await service.answer(run.id, { request: request.id, allow: false, answers: {}, message: "too late" })
+    const frames = async () =>
+      (await Bun.file(path.join(tmp.path, "wire.jsonl")).text())
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line))
+    await until(() => service.read(run.id).events.some((event) => event.kind === "input" && event.text === "too late"))
+    await until(() => service.read(run.id).run.state === "ready")
+    const starts = (await frames()).filter((frame) => frame.method === "turn/start")
+    expect(starts.at(-1).params.input).toMatchObject([{ type: "text", text: "too late" }])
+    expect(service.read(run.id).events.filter((event) => event.text === "too late")).toHaveLength(1)
   } finally {
     await service.dispose()
   }
@@ -1419,7 +1449,8 @@ test("provider sign-in keeps Codex completion authoritative and leaves Claude si
     ).toEqual([
       { window: "five_hour", used: 20, resetsAt: "2026-11-20T00:00:00.000Z" },
       { window: "seven_day", used: 100, resetsAt: "2026-11-20T14:25:30.000Z" },
-      { window: "model", model: "Fable", used: 5, resetsAt: "2026-11-20T00:00:00.000Z" },
+      // A model's windows share one label, so its fullest window stands for it.
+      { window: "model", model: "Fable", used: 40, resetsAt: "2026-11-20T14:25:30.000Z" },
     ])
     expect(
       await service.configure({ driver: "claude", executable: await executable(tmp.path, "claude") }),

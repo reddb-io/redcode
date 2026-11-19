@@ -44228,7 +44228,7 @@
           },
           "status": {
             "type": "string",
-            "enum": ["running", "succeeded", "failed"]
+            "enum": ["running", "succeeded", "failed", "stopped"]
           },
           "output": {
             "type": "string"

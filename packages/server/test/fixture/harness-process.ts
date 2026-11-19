@@ -178,7 +178,12 @@ for await (const line of createInterface({ input: process.stdin })) {
           rateLimits: codex,
           rateLimitsByLimitId: {
             codex,
-            fable: { limitId: "fable", limitName: "Fable", primary: { usedPercent: 5, resetsAt: 1795132800 } },
+            fable: {
+              limitId: "fable",
+              limitName: "Fable",
+              primary: { usedPercent: 5, windowDurationMins: 300, resetsAt: 1795132800 },
+              secondary: { usedPercent: 40, windowDurationMins: 10080, resetsAt: 1795184730 },
+            },
           },
         },
       })
@@ -271,7 +276,8 @@ for await (const line of createInterface({ input: process.stdin })) {
         const edit = {
           type: "fileChange",
           id: "edit-1",
-          changes: [{ path: "a.txt", kind: { type: "add" }, diff: "+one" }],
+          // Codex sends a new file's content in place of a diff.
+          changes: [{ path: "a.txt", kind: { type: "add" }, diff: "one\n" }],
           status: "inProgress",
         }
         item("item/started", { type: "agentMessage", id: "message-1", text: "" })
@@ -338,6 +344,11 @@ for await (const line of createInterface({ input: process.stdin })) {
       if (!["permission", "permissions", "question", "unsupported", "foreign", "hold"].includes(text)) complete()
     }
     if (value.method === "turn/steer") {
+      // Like Codex once the expected turn has ended.
+      if (value.params.input.some((item: { text?: string }) => item.text === "too late")) {
+        send({ id: value.id, error: { code: -32600, message: "expected turn is not active" } })
+        continue
+      }
       send({ id: value.id, result: {} })
       complete()
     }
@@ -544,7 +555,18 @@ for await (const line of createInterface({ input: process.stdin })) {
           { type: "tool_use", id: "bash-1", name: "Bash", input: { command: "echo hi" } },
           { type: "tool_use", id: "read-1", name: "Read", input: { file_path: "/missing.txt" } },
         ])
-        result({ tool_use_id: "bash-1", content: [{ type: "text", text: "hi" }] })
+        // Claude Code tells Claude when a command left the working directory.
+        result({ tool_use_id: "bash-1", content: [{ type: "text", text: "hi\nShell cwd was reset to /elsewhere" }] })
+        const separator = process.platform === "win32" ? "\\" : "/"
+        assistant([
+          {
+            type: "tool_use",
+            id: "read-2",
+            name: "Read",
+            input: { file_path: `${process.cwd()}${separator}notes.txt` },
+          },
+        ])
+        result({ tool_use_id: "read-2", content: "1\tnotes" })
         result({ tool_use_id: "read-1", content: "File does not exist.", is_error: true })
         assistant([{ type: "tool_use", id: "denied-1", name: "Bash", input: { command: "rm -rf build" } }])
         result({

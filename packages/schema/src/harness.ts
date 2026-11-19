@@ -170,7 +170,8 @@ export interface Request extends Schema.Schema.Type<typeof Request> {}
 export const Tool = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
-  status: Schema.Literals(["running", "succeeded", "failed"]),
+  // "stopped" is a call the user declined or interrupted.
+  status: Schema.Literals(["running", "succeeded", "failed", "stopped"]),
   output: optional(Schema.String),
   // Unified diff lines of the files the call changed.
   diff: optional(Schema.String),

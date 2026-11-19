@@ -479,7 +479,13 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                         onInput={(event) => setState({ prompt: event.currentTarget.value, promptID: uuid() })}
                         onPaste={(event) => {
                           const files = Array.from(event.clipboardData?.files ?? [])
-                          if (!files.some((file) => file.type.startsWith("image/"))) return
+                          // Text copied along with an image, such as spreadsheet cells, pastes as text.
+                          if (
+                            state.busy ||
+                            !files.some((file) => file.type.startsWith("image/")) ||
+                            event.clipboardData?.getData("text/plain")
+                          )
+                            return
                           event.preventDefault()
                           attach(files)
                         }}
@@ -703,7 +709,12 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                                         : "block text-ink-muted"
                                 }
                               >
-                                {event().text}
+                                {event().kind === "input"
+                                  ? event()
+                                      .text.split("\n")
+                                      .map((line) => (line === "[image]" ? language.t("harness.imageMarker") : line))
+                                      .join("\n")
+                                  : event().text}
                               </span>
                             }
                           >
@@ -1343,7 +1354,14 @@ function ToolCall(props: { event: Harness.Event; events: readonly Harness.Event[
       <summary class="flex cursor-pointer items-center gap-2 text-ink-muted">
         <span
           class={badge({
-            tone: status() === "succeeded" ? "success" : status() === "failed" ? "danger" : "neutral",
+            tone:
+              status() === "succeeded"
+                ? "success"
+                : status() === "failed"
+                  ? "danger"
+                  : status() === "stopped"
+                    ? "warning"
+                    : "neutral",
             variant: "tinted",
           })}
         >
@@ -1365,10 +1383,8 @@ function ToolCall(props: { event: Harness.Event; events: readonly Harness.Event[
       </Show>
       <Show when={props.event.tool?.diff}>
         {(diff) => (
-          <pre
-            aria-label={language.t("harness.tool.diff")}
-            class="mt-1 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded border border-v2-border-base p-2 text-caption"
-          >
+          <pre class="mt-1 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded border border-v2-border-base p-2 text-caption">
+            <span class="sr-only">{language.t("harness.tool.diff")}</span>
             <For each={diff().split("\n")}>
               {(line) => (
                 <span
