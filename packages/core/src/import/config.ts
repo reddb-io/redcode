@@ -44,6 +44,8 @@ export type Result =
 
 const options = { errors: "all", onExcessProperty: "ignore", propertyOrder: "original" } as const
 const unsupportedTopLevel = ["logLevel", "server", "layout"] as const
+// Older releases kept display preferences here; they now belong to the app and terminal display settings.
+const displayTopLevel = ["theme", "keybinds", "tui"] as const
 const unsupportedExperimental = [
   "disable_paste_summary",
   "batch_tool",
@@ -93,6 +95,7 @@ const knownTopLevel = new Set([
   "lsp",
   "instructions",
   ...unsupportedTopLevel,
+  ...displayTopLevel,
   "snapshot",
   "autoupdate",
   "autoshare",
@@ -152,6 +155,15 @@ export function convert(input: unknown): Result {
   const encoded: Record<string, unknown> = {}
   unknownKeys(input, knownTopLevel, [], diagnostics)
   unsupportedTopLevel.forEach((key) => unsupportedIfPresent(input, key, [key], diagnostics))
+  displayTopLevel.forEach((key) => {
+    if (own(input, key))
+      diagnostics.push({
+        kind: "unsupported",
+        path: [key],
+        message:
+          "display setting no longer read from this file; remove it and choose it in the display settings, or move it to a tui.json and convert that with --kind display",
+      })
+  })
 
   const legacySnapshots = own(input, "snapshot")
     ? decodeEncoded(Schema.Boolean, input.snapshot, ["snapshot"], diagnostics)
