@@ -206,6 +206,7 @@ function events(input: AgentRuntimeEventInput): AgentRuntimeEvent[] {
             result.content.length - (count(result.harnessTailCount) ?? 0),
           )
         : undefined
+    const diff = filePatch(result)
     return [
       ...(string(task.id) && string(task.subject)
         ? [{ type: "todo" as const, id: string(task.id), content: string(task.subject), ...(status ? { status } : {}) }]
@@ -219,7 +220,8 @@ function events(input: AgentRuntimeEventInput): AgentRuntimeEvent[] {
                 type: "tool.result",
                 id: string(block.tool_use_id),
                 status: block.is_error === true ? "failed" : "succeeded",
-                output: toolOutput(report ?? block.content),
+                // An edit's diff says what its confirmation, written for Claude, only announces.
+                ...(diff ? { output: "", diff } : { output: toolOutput(report ?? block.content) }),
               },
             ]
           : []
@@ -377,6 +379,30 @@ function toolOutput(content: unknown) {
         .join("\n")
     : string(content)
   return text.slice(0, 8000)
+}
+
+// Edit and Write report the hunks they applied; a new file is all added lines.
+function filePatch(result: Frame) {
+  if (!string(result.filePath)) return ""
+  if (Array.isArray(result.structuredPatch) && result.structuredPatch.length)
+    return result.structuredPatch
+      .map(object)
+      .map((hunk) =>
+        [
+          `@@ -${count(hunk.oldStart) ?? 0},${count(hunk.oldLines) ?? 0} +${count(hunk.newStart) ?? 0},${count(hunk.newLines) ?? 0} @@`,
+          ...(Array.isArray(hunk.lines) ? hunk.lines.map(string) : []),
+        ].join("\n"),
+      )
+      .join("\n")
+      .slice(0, 16_000)
+  return result.type === "create"
+    ? string(result.content)
+        .replace(/\n$/, "")
+        .split("\n")
+        .map((line) => `+${line}`)
+        .join("\n")
+        .slice(0, 16_000)
+    : ""
 }
 
 // A tool call with the command, file or query it acts on, so the run shows what Claude is doing.

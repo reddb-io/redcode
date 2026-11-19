@@ -1353,6 +1353,32 @@ function ToolCall(props: { event: Harness.Event; events: readonly Harness.Event[
           {props.event.tool?.output}
         </pre>
       </Show>
+      <Show when={props.event.tool?.diff}>
+        {(diff) => (
+          <pre
+            aria-label={language.t("harness.tool.diff")}
+            class="mt-1 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded border border-v2-border-base p-2 text-caption"
+          >
+            <For each={diff().split("\n")}>
+              {(line) => (
+                <span
+                  class={
+                    line.startsWith("@@")
+                      ? "block text-ink-muted"
+                      : line.startsWith("+") && !line.startsWith("+++")
+                        ? "block text-text-diff-add-base"
+                        : line.startsWith("-") && !line.startsWith("---")
+                          ? "block text-text-diff-delete-base"
+                          : "block"
+                  }
+                >
+                  {line || " "}
+                </span>
+              )}
+            </For>
+          </pre>
+        )}
+      </Show>
     </details>
   )
 }

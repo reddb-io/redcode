@@ -516,6 +516,30 @@ for await (const line of createInterface({ input: process.stdin })) {
         ])
         result({ tool_use_id: "bash-1", content: [{ type: "text", text: "hi" }] })
         result({ tool_use_id: "read-1", content: "File does not exist.", is_error: true })
+        assistant([
+          {
+            type: "tool_use",
+            id: "edit-1",
+            name: "Edit",
+            input: { file_path: "/a.txt", old_string: "a", new_string: "b" },
+          },
+        ])
+        result(
+          { tool_use_id: "edit-1", content: "The file /a.txt has been updated successfully." },
+          {
+            tool_use_result: {
+              filePath: "/a.txt",
+              structuredPatch: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ["-a", "+b"] }],
+            },
+          },
+        )
+        assistant([
+          { type: "tool_use", id: "write-1", name: "Write", input: { file_path: "/b.txt", content: "x\ny\n" } },
+        ])
+        result(
+          { tool_use_id: "write-1", content: "File created successfully at: /b.txt" },
+          { tool_use_result: { type: "create", filePath: "/b.txt", content: "x\ny\n", structuredPatch: [] } },
+        )
       }
       if (text === "subagent") {
         // Like Claude Code, the Agent call returns at once and its task reports the subagent's end.

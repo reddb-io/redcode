@@ -1259,6 +1259,7 @@ export type HarnessTool = {
   name: string
   status: "running" | "succeeded" | "failed"
   output?: string
+  diff?: string
   parent?: string
 }
 

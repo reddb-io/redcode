@@ -185,12 +185,17 @@ export async function createHarnesses(
   const event = (id: string, kind: Harness.Event["kind"], text: string) => {
     if (text) db.query("INSERT INTO event(run,kind,text) VALUES (?,?,?)").run(id, kind, text.slice(0, 64_000))
   }
-  const toolResult = (id: string, call: string, status: Harness.Tool["status"], output: string) => {
+  const toolResult = (id: string, call: string, status: Harness.Tool["status"], output: string, diff?: string) => {
     const row = db
       .query<{ tool: string }, [string, string]>("SELECT tool FROM event WHERE run=? AND call=?")
       .get(id, call)
     if (!row) return
-    const tool = { ...Schema.decodeUnknownSync(StoredTool)(row.tool), status, ...(output ? { output } : {}) }
+    const tool = {
+      ...Schema.decodeUnknownSync(StoredTool)(row.tool),
+      status,
+      ...(output ? { output } : {}),
+      ...(diff ? { diff } : {}),
+    }
     db.query("UPDATE event SET tool=? WHERE run=? AND call=?").run(JSON.stringify(tool), id, call)
   }
   const todos = (id: string) => {
@@ -498,7 +503,7 @@ export async function createHarnesses(
           return
         }
         if (runtimeEvent.type === "tool.result") {
-          toolResult(id, runtimeEvent.id, runtimeEvent.status, runtimeEvent.output)
+          toolResult(id, runtimeEvent.id, runtimeEvent.status, runtimeEvent.output, runtimeEvent.diff)
           return
         }
         if (runtimeEvent.type === "todos") {
