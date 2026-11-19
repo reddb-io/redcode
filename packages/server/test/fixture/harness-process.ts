@@ -311,8 +311,21 @@ for await (const line of createInterface({ input: process.stdin })) {
       if (text === "unsupported")
         send({
           id: 79,
+          method: "mcpServer/elicitation/request",
+          params: { threadId: state.thread, turnId: state.turn, serverName: "docs", mode: "url", message: "Sign in" },
+        })
+      if (text === "permissions")
+        send({
+          id: 81,
           method: "item/permissions/requestApproval",
-          params: { threadId: state.thread, turnId: state.turn },
+          params: {
+            threadId: state.thread,
+            turnId: state.turn,
+            itemId: "permissions-item",
+            cwd: "/repo",
+            reason: "Fetch the docs",
+            permissions: { network: { enabled: true }, fileSystem: { write: ["/repo/../cache"] } },
+          },
         })
       if (text === "foreign") {
         send({
@@ -322,7 +335,7 @@ for await (const line of createInterface({ input: process.stdin })) {
         })
         complete()
       }
-      if (!["permission", "question", "unsupported", "foreign", "hold"].includes(text)) complete()
+      if (!["permission", "permissions", "question", "unsupported", "foreign", "hold"].includes(text)) complete()
     }
     if (value.method === "turn/steer") {
       send({ id: value.id, result: {} })
@@ -335,7 +348,7 @@ for await (const line of createInterface({ input: process.stdin })) {
         params: { threadId: state.thread, turn: { id: state.turn, status: "interrupted" } },
       })
     }
-    if ([77, 78, 79].includes(value.id) && (value.result || value.error)) complete()
+    if ([77, 78, 79, 81].includes(value.id) && (value.result || value.error)) complete()
     if (value.id === 909 && value.result) {
       send({
         method: "item/agentMessage/delta",

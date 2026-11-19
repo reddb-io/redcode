@@ -126,13 +126,19 @@ function events(input: AgentRuntimeEventInput): AgentRuntimeEvent[] {
         frame: input.frame,
         key: String(input.frame.id),
         title: method,
-        detail: string(params.reason) || string(params.command),
+        detail:
+          method === PERMISSIONS_REQUEST ? permissionsDetail(params) : string(params.reason) || string(params.command),
         questions,
-        session: ["item/commandExecution/requestApproval", "item/fileChange/requestApproval"].includes(method),
+        session: [
+          "item/commandExecution/requestApproval",
+          "item/fileChange/requestApproval",
+          PERMISSIONS_REQUEST,
+        ].includes(method),
         supported: [
           "item/commandExecution/requestApproval",
           "item/fileChange/requestApproval",
           "item/tool/requestUserInput",
+          PERMISSIONS_REQUEST,
         ].includes(method),
       },
     ]
@@ -267,6 +273,32 @@ function permissions(mode: Harness.PermissionMode | undefined) {
   }
 }
 
+// Codex asks for network or file access beyond its sandbox; granting returns the requested profile.
+const PERMISSIONS_REQUEST = "item/permissions/requestApproval"
+
+// The reason Codex gives, then each access it asks for.
+function permissionsDetail(params: Frame) {
+  const permissions = object(params.permissions)
+  const fileSystem = object(permissions.fileSystem)
+  const legacy = (access: string, paths: unknown) =>
+    Array.isArray(paths) ? paths.map((path) => `${access} ${string(path)}`) : []
+  const entries = Array.isArray(fileSystem.entries)
+    ? fileSystem.entries.map(object).map((entry) => {
+        const path = object(entry.path)
+        return `${string(entry.access)} ${string(path.path) || string(path.pattern) || string(object(path.value).kind)}`
+      })
+    : []
+  return [
+    string(params.reason),
+    ...(object(permissions.network).enabled === true ? ["Network access"] : []),
+    ...entries,
+    ...legacy("read", fileSystem.read),
+    ...legacy("write", fileSystem.write),
+  ]
+    .filter(Boolean)
+    .join("\n")
+}
+
 function count(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null
 }
@@ -330,6 +362,17 @@ export const CodexAgentRuntime: AgentRuntimeAdapter = {
               { answers: input.answer.allow ? [input.answer.answers[question.id] ?? ""] : [] },
             ]),
           ),
+        },
+      })
+      return
+    }
+    if (input.item.request.title === PERMISSIONS_REQUEST) {
+      // A decline grants nothing; Codex then continues inside its sandbox.
+      input.wire.send({
+        id,
+        result: {
+          permissions: input.answer.allow ? object(object(input.item.frame.params).permissions) : {},
+          scope: input.answer.session ? "session" : "turn",
         },
       })
       return
