@@ -121,3 +121,12 @@ export function reviewAuthorization(
     request.initiatorOrigin === undefined && request.resourceType === "mainFrame" && request.method === "GET"
   return own || opened ? server.authorization : undefined
 }
+
+/** The proxy bypass rule for exactly the Redcode server's origin: its scheme, host and port. */
+export function serverBypass(server: string) {
+  if (!URL.canParse(server)) return ""
+  const url = new URL(server)
+  if (url.protocol !== "http:" && url.protocol !== "https:") return ""
+  const port = url.port || (url.protocol === "https:" ? "443" : "80")
+  return `${url.protocol}//${url.hostname}:${port}`
+}

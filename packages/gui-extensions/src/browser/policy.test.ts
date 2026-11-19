@@ -7,6 +7,7 @@ import {
   normalizeURL,
   refusal,
   reviewAuthorization,
+  serverBypass,
 } from "./policy"
 
 test("allows cross-origin HTTP navigation but rejects unsafe destinations and embedded credentials", () => {
@@ -134,4 +135,14 @@ test("the server credential reaches only this session's Design review on the ser
       { ...server, authorization: undefined },
     ),
   ).toBeUndefined()
+})
+
+test("bypasses the proxy for exactly the Redcode server's origin, whose own address the tunnel refuses", () => {
+  expect(serverBypass("http://127.0.0.1:4097")).toBe("http://127.0.0.1:4097")
+  expect(serverBypass("http://127.0.0.1:4097/some/path?x=1")).toBe("http://127.0.0.1:4097")
+  // A default port is spelled out, so the rule never widens to every port of the host.
+  expect(serverBypass("https://redcode.example")).toBe("https://redcode.example:443")
+  expect(serverBypass("http://localhost")).toBe("http://localhost:80")
+  expect(serverBypass("file:///tmp/server")).toBe("")
+  expect(serverBypass("not a url")).toBe("")
 })
