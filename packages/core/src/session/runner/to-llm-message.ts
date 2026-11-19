@@ -74,32 +74,43 @@ const directoryAttachment = (file: FileAttachment): ContentPart => ({
   },
 })
 
-const attachmentContent = (file: FileAttachment): ContentPart[] => {
+const attachmentContent = (file: FileAttachment, reference?: string): ContentPart[] => {
   if (file.mime === "text/plain") return [textAttachment(file)]
   if (file.mime === "application/x-directory") return [directoryAttachment(file)]
   if (imageMimes.has(file.mime) || file.mime === "application/pdf") {
     const location = attachmentLocation(file)
-    return [...(location === undefined ? [] : [Message.text(`Attached file: ${location}`)]), media(file)]
+    // A pasted image has no path, so its reference is how a tool such as design_asset can use its bytes.
+    const label =
+      reference && imageMimes.has(file.mime)
+        ? `Attached image ${reference}${file.name ? ` (${file.name})` : ""}${location ? `: ${location}` : ""}`
+        : location === undefined
+          ? undefined
+          : `Attached file: ${location}`
+    return [...(label === undefined ? [] : [Message.text(label)]), media(file)]
   }
   return []
 }
 
-const userAttachmentContent = (files: readonly FileAttachment[]) => {
+/** A user attachment's reference: the message and its 1-based position among the message's files. */
+export const attachmentReference = (messageID: string, index: number) => `${messageID}/${index + 1}`
+
+const userAttachmentContent = (messageID: string, files: readonly FileAttachment[]) => {
   const eligible = files.filter(
     (file) => imageMimes.has(file.mime) && file.source.type === "inline" && file.mention?.text,
   )
-  if (eligible.length < 2) return files.flatMap(attachmentContent)
+  if (eligible.length < 2)
+    return files.flatMap((file, index) => attachmentContent(file, attachmentReference(messageID, index)))
 
   const seen = new Map<string, Set<string>>()
-  return files.flatMap((file) => {
+  return files.flatMap((file, index) => {
     if (!imageMimes.has(file.mime) || file.source.type !== "inline" || !file.mention?.text)
-      return attachmentContent(file)
+      return attachmentContent(file, attachmentReference(messageID, index))
     const metadata = JSON.stringify([file.mime, file.name ?? null, file.description ?? null, file.mention.text])
     const payloads = seen.get(metadata) ?? new Set<string>()
     if (payloads.has(file.data)) return []
     payloads.add(file.data)
     seen.set(metadata, payloads)
-    return attachmentContent(file)
+    return attachmentContent(file, attachmentReference(messageID, index))
   })
 }
 
@@ -302,7 +313,7 @@ function toLLMMessage(
       const content = [
         ...(message.skills ?? []).flatMap((skill) => (skill.text === undefined ? [] : [Message.text(skill.text)])),
         ...(message.text === "" ? [] : [Message.text(message.text)]),
-        ...userAttachmentContent(message.files ?? []),
+        ...userAttachmentContent(message.id, message.files ?? []),
       ]
       if (content.length === 0) return []
       // A trailing reminder keeps the prefix before it byte-identical for the prompt cache.

@@ -401,11 +401,12 @@ it.effect("auto compaction estimates current content against the buffered prompt
       files: media.map((file) => ({ mime: file.mime, data: "a".repeat(100_000), source: { type: "inline" } })),
       time: { created: 0 },
     })
-    expect(SessionCompaction.estimateContext({ ...grown, messages: [...messages, user] })).toBe(96_000)
+    // The image's "Attached image <reference>" label counts as text the provider receives.
+    expect(SessionCompaction.estimateContext({ ...grown, messages: [...messages, user] })).toBe(96_012)
     for (const [modalities, tokens, fallback] of [
-      [["text", "image"], 92_040, 1_520],
-      [["text", "pdf"], 93_042, 2_021],
-      [["text"], 89_082, 41],
+      [["text", "image"], 92_052, 1_532],
+      [["text", "pdf"], 93_054, 2_033],
+      [["text"], 89_094, 53],
     ] as const) {
       const selected = {
         ...grown,

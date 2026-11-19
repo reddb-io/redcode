@@ -3,6 +3,11 @@ export * as DesignAssets from "./assets.js"
 import { DOMParser } from "linkedom"
 import { Design } from "@opencode/schema/design"
 
+/** Where an asset lives in its design's root, which is also how the prototype refers to it. */
+export function path(asset: { readonly id: string; readonly name: string }) {
+  return `assets/${asset.id}-${asset.name}`
+}
+
 export function validate(data: string, mime: Design.ImportAsset["mime"]) {
   if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(data))
     throw new Design.Error({ code: "invalid", message: "Asset data must be canonical base64" })
