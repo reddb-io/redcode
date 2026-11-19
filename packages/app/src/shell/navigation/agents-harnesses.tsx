@@ -369,7 +369,13 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                                     )
                                   }
                                 >
-                                  {language.t(request().kind === "question" ? "harness.answer" : "harness.allow")}
+                                  {language.t(
+                                    request().kind === "question"
+                                      ? "harness.answer"
+                                      : request().kind === "plan"
+                                        ? "harness.approvePlan"
+                                        : "harness.allow",
+                                  )}
                                 </Button>
                               </Show>
                               <Show when={request().session}>
