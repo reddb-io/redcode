@@ -6075,6 +6075,16 @@
                 "properties": {
                   "archived": {
                     "type": "boolean"
+                  },
+                  "force": {
+                    "anyOf": [
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 },
                 "required": ["archived"],
@@ -20918,6 +20928,85 @@
           },
           "required": true
         }
+      },
+      "delete": {
+        "tags": ["project"],
+        "operationId": "project.remove",
+        "parameters": [
+          {
+            "name": "projectID",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "204": {
+            "description": "<No Content>"
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorEncoded"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ConsoleForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "ProjectNotFoundError | LocationNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ProjectNotFoundErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LocationNotFoundErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictErrorEncoded"
+                }
+              }
+            }
+          }
+        },
+        "description": "Archive the project so it leaves the default list and mark it removed. Resolving its directory again unarchives it.",
+        "summary": "Remove a project from the list"
       }
     },
     "/api/form": {
@@ -33501,102 +33590,6 @@
         }
       }
     },
-    "/api/harness/{providerInstanceID}/login/answer": {
-      "post": {
-        "tags": ["harness"],
-        "operationId": "harness.loginAnswer",
-        "parameters": [
-          {
-            "name": "providerInstanceID",
-            "in": "path",
-            "schema": {
-              "type": "string",
-              "minLength": 1
-            },
-            "required": true
-          }
-        ],
-        "security": [],
-        "responses": {
-          "200": {
-            "description": "<No Content>"
-          },
-          "400": {
-            "description": "InvalidRequestError",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
-                    },
-                    {
-                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
-                    }
-                  ]
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "UnauthorizedError",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UnauthorizedErrorEncoded"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "ConsoleForbiddenError",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
-                    },
-                    {
-                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
-                    }
-                  ]
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "ConflictError",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ConflictErrorEncoded"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "code": {
-                    "type": "string",
-                    "minLength": 1,
-                    "pattern": "^[^\\r\\n]+$"
-                  }
-                },
-                "required": ["code"],
-                "additionalProperties": false
-              }
-            }
-          },
-          "required": true
-        }
-      }
-    },
     "/api/harness/{providerInstanceID}/login": {
       "delete": {
         "tags": ["harness"],
@@ -34164,6 +34157,288 @@
         }
       }
     },
+    "/api/harness/runs/{runID}/computer-use/ticket": {
+      "post": {
+        "tags": ["harness"],
+        "operationId": "harness.computerUseTicket",
+        "parameters": [
+          {
+            "name": "runID",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Harness.ComputerUseTicket",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Harness.ComputerUseTicket"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorEncoded"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ConsoleForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictErrorEncoded"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "hostID": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": ["hostID"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/api/harness/runs/{runID}/computer-use/message": {
+      "post": {
+        "tags": ["harness"],
+        "operationId": "harness.computerUseMessage",
+        "parameters": [
+          {
+            "name": "runID",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {},
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorEncoded"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ConsoleForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictErrorEncoded"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Harness.ComputerUseMessage"
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/api/harness/runs/{runID}/computer-use": {
+      "delete": {
+        "tags": ["harness"],
+        "operationId": "harness.revokeComputerUse",
+        "parameters": [
+          {
+            "name": "runID",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Harness.Run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Harness.Run"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorEncoded"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ConsoleForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictErrorEncoded"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/harness/runs/{runID}": {
       "get": {
         "tags": ["harness"],
@@ -34573,6 +34848,89 @@
       "post": {
         "tags": ["harness"],
         "operationId": "harness.resume",
+        "parameters": [
+          {
+            "name": "runID",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Harness.Run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Harness.Run"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorEncoded"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ConsoleForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConsoleForbiddenErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ConflictError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictErrorEncoded"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/harness/runs/{runID}/fork": {
+      "post": {
+        "tags": ["harness"],
+        "operationId": "harness.fork",
         "parameters": [
           {
             "name": "runID",
@@ -43242,6 +43600,9 @@
             "additionalProperties": {
               "type": "string"
             }
+          },
+          "session": {
+            "type": "boolean"
           }
         },
         "required": ["request", "allow", "answers"],
@@ -43268,6 +43629,60 @@
           }
         },
         "required": ["steer", "resume", "interrupt"],
+        "additionalProperties": false
+      },
+      "Harness.ComputerUseBinding": {
+        "type": "object",
+        "properties": {
+          "hostID": {
+            "type": "string",
+            "minLength": 1
+          },
+          "capabilityID": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160,
+            "pattern": "^[A-Za-z0-9._:-]+$"
+          },
+          "server": {
+            "type": "string"
+          }
+        },
+        "required": ["hostID", "capabilityID"],
+        "additionalProperties": false
+      },
+      "Harness.ComputerUseMessage": {
+        "type": "object",
+        "properties": {
+          "ticket": {
+            "type": "string",
+            "minLength": 1
+          },
+          "hostID": {
+            "type": "string",
+            "minLength": 1
+          },
+          "message": {}
+        },
+        "required": ["ticket", "hostID", "message"],
+        "additionalProperties": false
+      },
+      "Harness.ComputerUseTicket": {
+        "type": "object",
+        "properties": {
+          "ticket": {
+            "type": "string",
+            "minLength": 1
+          },
+          "hostID": {
+            "type": "string",
+            "minLength": 1
+          },
+          "expiresAt": {
+            "type": "integer"
+          }
+        },
+        "required": ["ticket", "hostID", "expiresAt"],
         "additionalProperties": false
       },
       "Harness.Config": {
@@ -43331,6 +43746,10 @@
         "type": "string",
         "enum": ["claude", "codex"]
       },
+      "Harness.Effort": {
+        "type": "string",
+        "enum": ["low", "medium", "high", "xhigh", "max"]
+      },
       "Harness.Event": {
         "type": "object",
         "properties": {
@@ -43339,13 +43758,30 @@
           },
           "kind": {
             "type": "string",
-            "enum": ["text", "activity", "error"]
+            "enum": ["input", "text", "reasoning", "activity", "error"]
           },
           "text": {
             "type": "string"
           }
         },
         "required": ["cursor", "kind", "text"],
+        "additionalProperties": false
+      },
+      "Harness.Image": {
+        "type": "object",
+        "properties": {
+          "mediaType": {
+            "type": "string",
+            "enum": ["image/png", "image/jpeg", "image/gif", "image/webp"]
+          },
+          "data": {
+            "type": "string",
+            "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$",
+            "minLength": 4,
+            "maxLength": 5242880
+          }
+        },
+        "required": ["mediaType", "data"],
         "additionalProperties": false
       },
       "Harness.Login": {
@@ -43392,15 +43828,28 @@
             "type": "string",
             "minLength": 1
           },
+          "effort": {
+            "$ref": "#/components/schemas/Harness.Effort"
+          },
+          "permissionMode": {
+            "$ref": "#/components/schemas/Harness.PermissionMode"
+          },
           "backgroundWait": {
             "type": "boolean"
           },
           "delegation": {
             "type": "boolean"
+          },
+          "computerUse": {
+            "$ref": "#/components/schemas/Harness.ComputerUseBinding"
           }
         },
         "required": ["driver", "directory"],
         "additionalProperties": false
+      },
+      "Harness.PermissionMode": {
+        "type": "string",
+        "enum": ["default", "acceptEdits", "plan", "auto", "bypassPermissions"]
       },
       "Harness.Prompt": {
         "type": "object",
@@ -43410,8 +43859,14 @@
             "minLength": 1
           },
           "text": {
-            "type": "string",
-            "minLength": 1
+            "type": "string"
+          },
+          "images": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Harness.Image"
+            },
+            "maxItems": 10
           },
           "delivery": {
             "type": "string",
@@ -43459,6 +43914,42 @@
           },
           "authenticated": {
             "type": "boolean"
+          },
+          "account": {
+            "type": "object",
+            "properties": {
+              "method": {
+                "type": "string"
+              },
+              "plan": {
+                "type": "string"
+              }
+            },
+            "required": ["method"],
+            "additionalProperties": false
+          },
+          "limits": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "window": {
+                  "type": "string",
+                  "enum": ["five_hour", "seven_day", "seven_day_opus", "seven_day_sonnet", "model"]
+                },
+                "model": {
+                  "type": "string"
+                },
+                "used": {
+                  "type": "number"
+                },
+                "resetsAt": {
+                  "type": "string"
+                }
+              },
+              "required": ["window", "used", "resetsAt"],
+              "additionalProperties": false
+            }
           },
           "detail": {
             "type": "string"
@@ -43513,7 +44004,7 @@
           },
           "kind": {
             "type": "string",
-            "enum": ["permission", "question", "unsupported"]
+            "enum": ["permission", "plan", "question", "unsupported"]
           },
           "title": {
             "type": "string"
@@ -43526,6 +44017,9 @@
             "items": {
               "$ref": "#/components/schemas/Harness.Question"
             }
+          },
+          "session": {
+            "type": "boolean"
           }
         },
         "required": ["id", "kind", "title", "detail", "questions"],
@@ -43550,8 +44044,17 @@
           "model": {
             "type": "string"
           },
+          "effort": {
+            "$ref": "#/components/schemas/Harness.Effort"
+          },
+          "permissionMode": {
+            "$ref": "#/components/schemas/Harness.PermissionMode"
+          },
           "nativeID": {
             "type": "string"
+          },
+          "fork": {
+            "type": "boolean"
           },
           "state": {
             "$ref": "#/components/schemas/Harness.State"
@@ -43570,6 +44073,9 @@
           },
           "delegation": {
             "type": "boolean"
+          },
+          "computerUse": {
+            "$ref": "#/components/schemas/Harness.ComputerUseBinding"
           },
           "capabilities": {
             "$ref": "#/components/schemas/Harness.Capabilities"
@@ -45088,6 +45594,7 @@
               "type": "string"
             }
           },
+          "read": {},
           "created": {
             "type": "number"
           },

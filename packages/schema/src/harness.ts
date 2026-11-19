@@ -4,6 +4,7 @@ import { Schema } from "effect"
 import { AbsolutePath, optional } from "./schema.js"
 import { Capability } from "./capability.js"
 import { ExecutionCapability } from "./execution-capability.js"
+import { Base64 } from "./prompt.js"
 
 export const Driver = Schema.Literals(["claude", "codex"]).annotate({ identifier: "Harness.Driver" })
 export type Driver = typeof Driver.Type
@@ -208,9 +209,17 @@ export const Snapshot = Schema.Struct({ providers: Schema.Array(Provider), runs:
   identifier: "Harness.Snapshot",
 })
 export interface Snapshot extends Schema.Schema.Type<typeof Snapshot> {}
+/** An image attached to an instruction, within the 5 MiB of base64 the Claude Code CLI accepts per image. */
+export const Image = Schema.Struct({
+  mediaType: Schema.Literals(["image/png", "image/jpeg", "image/gif", "image/webp"]),
+  data: Base64.check(Schema.isMinLength(4), Schema.isMaxLength(5 * 1024 * 1024)),
+}).annotate({ identifier: "Harness.Image" })
+export interface Image extends Schema.Schema.Type<typeof Image> {}
 export const Prompt = Schema.Struct({
   id: Schema.NonEmptyString,
-  text: Schema.NonEmptyString,
+  // Empty only when the instruction carries images.
+  text: Schema.String,
+  images: optional(Schema.Array(Image).check(Schema.isMaxLength(10))),
   delivery: Schema.Literals(["steer", "queue"]),
 }).annotate({ identifier: "Harness.Prompt" })
 export interface Prompt extends Schema.Schema.Type<typeof Prompt> {}

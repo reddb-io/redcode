@@ -189,7 +189,7 @@ for await (const line of createInterface({ input: process.stdin })) {
       state.turn = `turn-${value.id}`
       send({ id: value.id, result: { turn: { id: state.turn } } })
       send({ method: "turn/started", params: { threadId: state.thread, turn: { id: state.turn } } })
-      const text = value.params.input[0].text
+      const text = value.params.input.find((item: { type: string }) => item.type === "text")?.text ?? ""
       if (text.startsWith("delegate:")) {
         send({
           id: 910,
@@ -383,7 +383,10 @@ for await (const line of createInterface({ input: process.stdin })) {
       }
       state.prompt = value.uuid
       send({ type: "system", subtype: "init", session_id: claudeSession })
-      const text = value.message.content
+      const text =
+        typeof value.message.content === "string"
+          ? value.message.content
+          : (value.message.content.find((item: { type: string }) => item.type === "text")?.text ?? "")
       state.claudeActive = text === "hold" || text === "permission"
       if (text.startsWith("delegate:")) {
         send({

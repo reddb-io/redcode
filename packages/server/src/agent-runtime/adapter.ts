@@ -24,7 +24,7 @@ export type AgentRuntimeOpen = {
 }
 
 export type AgentRuntimePrompt = {
-  prompt: { id: string; text: string }
+  prompt: { id: string; text: string; images?: readonly Harness.Image[] }
   run: Harness.Run
   steer: boolean
   turn: string

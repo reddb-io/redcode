@@ -134,6 +134,13 @@ for the session never changes the run's permission mode. Plan approvals and ques
 Steering a Claude run sends the instruction into the active turn. Claude reads it with its next step,
 including after a pending approval is answered, and the turn still ends once.
 
+An instruction can carry up to 10 PNG, JPEG, GIF or WebP images: paste them, drop them on the
+instruction or choose **Attach images**. An instruction may be only images. Redcode reduces an image
+larger than 2000 pixels on a side before sending it, as Claude Code would, and keeps each image within
+5 MB. Claude Code and Codex receive the images in their own protocols, alongside the text. A queued
+instruction keeps its images until it is delivered or cancelled, and the output marks each image
+with `[image]`.
+
 Claude output streams as it is written. Claude's reasoning appears as summaries, one block per thinking
 step, set apart from its replies. When a run enables delegation, background waits or Computer
 Use, Redcode appends a short note to Claude Code's system prompt saying when to load those tools. It

@@ -824,6 +824,40 @@ test("claude: shows a proposed plan and records leaving plan mode once it is app
 })
 
 for (const driver of ["codex", "claude"] as const) {
+  test(`${driver}: a queued instruction keeps its images until they reach the agent`, async () => {
+    await using tmp = await tmpdir("redcode-harness-images-")
+    const service = await createHarnesses(path.join(tmp.path, "state"))
+    const db = new Database(path.join(tmp.path, "state", "harness.sqlite"))
+    const stored = () =>
+      db.query<{ images: string | null }, [string]>("SELECT images FROM prompt WHERE id=?").get("image-input")?.images
+    try {
+      await service.configure({ driver, executable: await executable(tmp.path, driver) })
+      const run = await service.open({ driver, directory: AbsolutePath.make(tmp.path) })
+      await expect(service.prompt(run.id, { id: "empty-input", text: " ", delivery: "queue" })).rejects.toThrow(
+        "text or an image",
+      )
+      await service.prompt(run.id, { id: "image-hold", text: "permission", delivery: "queue" })
+      await until(() => service.read(run.id).requests.length === 1)
+      const image = { mediaType: "image/png" as const, data: "iVBORw0KGgo=" }
+      await service.prompt(run.id, { id: "image-input", text: "", images: [image], delivery: "queue" })
+      expect(stored()).toBe(JSON.stringify([image]))
+      service.answer(run.id, { request: service.read(run.id).requests[0]!.id, allow: true, answers: {} })
+      await until(() => stored() === null)
+      await until(() => service.read(run.id).run.state === "ready")
+      const inputs = service.read(run.id).events.filter((event) => event.kind === "input")
+      expect(inputs.map((event) => event.text)).toEqual(["permission", "[image]"])
+      // An image-only instruction reaches the agent as image content alone.
+      expect(await Bun.file(path.join(tmp.path, "wire.jsonl")).text()).toContain(
+        driver === "codex"
+          ? `"input":[{"type":"image","url":"data:image/png;base64,iVBORw0KGgo="}]`
+          : `"content":[{"type":"image","source":{"type":"base64","media_type":"image/png","data":"iVBORw0KGgo="}}]`,
+      )
+    } finally {
+      db.close()
+      await service.dispose()
+    }
+  }, 30_000)
+
   test(`${driver}: structured permissions, questions, idempotent admission and native resume`, async () => {
     await using tmp = await tmpdir("redcode-harness-")
     const service = await createHarnesses(path.join(tmp.path, "state"))
@@ -1124,8 +1158,11 @@ test("harness processes never inherit the identity or credentials of a Claude Co
     CLAUDE_CODE_BRIDGE_SESSION_ID: "host-bridge",
     CLAUDE_CODE_SESSION_ACCESS_TOKEN: "host-token",
     CLAUDE_CODE_CHILD_NOTES_DIR: "/host/notes",
+    CLAUDE_CODE_ENTRYPOINT: "redcode",
     CLAUDE_CODE_USE_BEDROCK: "1",
   })
+  // Redcode never labels itself as the CLI's entrypoint, nor inherits a host's label.
+  expect(environment.CLAUDE_CODE_ENTRYPOINT).toBeUndefined()
   expect(environment.CLAUDE_CODE_BRIDGE_SESSION_ID).toBeUndefined()
   expect(environment.CLAUDE_CODE_SESSION_ACCESS_TOKEN).toBeUndefined()
   expect(environment.CLAUDE_CODE_CHILD_NOTES_DIR).toBeUndefined()

@@ -7973,6 +7973,7 @@ export type HarnessPromptInput = {
   readonly runID: string
   readonly id: string
   readonly text: string
+  readonly images?: ReadonlyArray<Harness.Image> | undefined
   readonly delivery: "steer" | "queue"
 }
 export type HarnessPromptOutput = void
