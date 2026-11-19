@@ -1266,6 +1266,41 @@ test("Codex takes the run's effort and maps its permission mode onto approvals a
   }
 })
 
+test("Codex asks for extra network and file access, granted for the session or declined", async () => {
+  await using tmp = await tmpdir("redcode-harness-codex-permissions-")
+  const service = await createHarnesses(path.join(tmp.path, "state"))
+  try {
+    await service.configure({ driver: "codex", executable: await executable(tmp.path, "codex") })
+    const run = await service.open({ driver: "codex", directory: AbsolutePath.make(tmp.path) })
+    const responses = async () =>
+      (await Bun.file(path.join(tmp.path, "wire.jsonl")).text())
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line))
+        .filter((frame) => frame.id === 81 && frame.result)
+    await service.prompt(run.id, { id: "permissions-grant", text: "permissions", delivery: "queue" })
+    await until(() => service.read(run.id).requests.length === 1)
+    const request = service.read(run.id).requests[0]!
+    expect(request).toMatchObject({
+      kind: "permission",
+      session: true,
+      detail: "Fetch the docs\nNetwork access\nwrite /repo/../cache",
+    })
+    service.answer(run.id, { request: request.id, allow: true, answers: {}, session: true })
+    await until(() => service.read(run.id).run.state === "ready")
+    await service.prompt(run.id, { id: "permissions-decline", text: "permissions", delivery: "queue" })
+    await until(() => service.read(run.id).requests.length === 1)
+    service.answer(run.id, { request: service.read(run.id).requests[0]!.id, allow: false, answers: {} })
+    await until(() => service.read(run.id).run.state === "ready")
+    expect((await responses()).map((frame) => frame.result)).toEqual([
+      { permissions: { network: { enabled: true }, fileSystem: { write: ["/repo/../cache"] } }, scope: "session" },
+      { permissions: {}, scope: "turn" },
+    ])
+  } finally {
+    await service.dispose()
+  }
+})
+
 test("Codex rejects unsupported approvals and ignores foreign thread requests", async () => {
   await using tmp = await tmpdir("redcode-harness-boundary-")
   const service = await createHarnesses(path.join(tmp.path, "state"))

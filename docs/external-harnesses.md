@@ -126,7 +126,10 @@ is reported by the provider, and you can choose an advertised model without edit
 The adapters preserve each provider's permission behavior. Supported command/file approvals and
 questions appear in the run's panel. Unsupported requests can be declined; the app never fabricates
 support or silently approves them. Answers target a still-pending request on the owning process.
-Codex events from another thread/active turn are ignored.
+Codex events from another thread/active turn are ignored. When Codex asks for network or file access
+beyond its sandbox, the request lists the reason and each access; allowing it grants that access for the
+turn or the session, and declining grants nothing, so Codex continues inside its sandbox. A Codex MCP
+server's request for input is not supported yet and is declined.
 
 A decline can say why, so the agent changes course instead of stopping: Claude Code reads the reason
 with the declined call, including a declined plan; Codex's decline carries no text, so Redcode steers the
