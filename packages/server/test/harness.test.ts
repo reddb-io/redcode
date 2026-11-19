@@ -1193,6 +1193,29 @@ test("a Claude subagent's calls nest under the Agent call, which settles with th
   }
 })
 
+test("a Claude background command runs until its task reports the end", async () => {
+  await using tmp = await tmpdir("redcode-harness-background-")
+  const service = await createHarnesses(path.join(tmp.path, "state"))
+  try {
+    await service.configure({ driver: "claude", executable: await executable(tmp.path, "claude") })
+    const run = await service.open({ driver: "claude", directory: AbsolutePath.make(tmp.path) })
+    const call = () => service.read(run.id).events.find((event) => event.tool?.id === "bg-1")?.tool
+    await service.prompt(run.id, { id: "background-input", text: "background", delivery: "queue" })
+    await until(() => service.read(run.id).run.state === "ready")
+    expect(call()).toEqual({ id: "bg-1", name: "Bash", status: "running" })
+    await service.prompt(run.id, { id: "background-done-input", text: "background-done", delivery: "queue" })
+    await until(() => call()?.status !== "running")
+    expect(call()).toEqual({
+      id: "bg-1",
+      name: "Bash",
+      status: "succeeded",
+      output: 'Background command "sleep 5" completed (exit code 0)',
+    })
+  } finally {
+    await service.dispose()
+  }
+})
+
 test("Codex rejects unsupported approvals and ignores foreign thread requests", async () => {
   await using tmp = await tmpdir("redcode-harness-boundary-")
   const service = await createHarnesses(path.join(tmp.path, "state"))
