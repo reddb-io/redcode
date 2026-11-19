@@ -3465,6 +3465,7 @@ const EndpointHarnessAnswer = (raw: RawClient["server.harness"]) => (input: Harn
         allow: input["allow"],
         answers: input["answers"],
         session: input["session"],
+        message: input["message"],
       },
     }).pipe(Effect.mapError(mapClientError)),
   )

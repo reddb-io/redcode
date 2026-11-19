@@ -13775,25 +13775,36 @@ export type HarnessAnswerInput = {
     readonly allow: boolean
     readonly answers: { readonly [x: string]: string }
     readonly session?: boolean
+    readonly message?: string
   }["request"]
   readonly allow: {
     readonly request: string
     readonly allow: boolean
     readonly answers: { readonly [x: string]: string }
     readonly session?: boolean
+    readonly message?: string
   }["allow"]
   readonly answers: {
     readonly request: string
     readonly allow: boolean
     readonly answers: { readonly [x: string]: string }
     readonly session?: boolean
+    readonly message?: string
   }["answers"]
   readonly session?: {
     readonly request: string
     readonly allow: boolean
     readonly answers: { readonly [x: string]: string }
     readonly session?: boolean
+    readonly message?: string
   }["session"]
+  readonly message?: {
+    readonly request: string
+    readonly allow: boolean
+    readonly answers: { readonly [x: string]: string }
+    readonly session?: boolean
+    readonly message?: string
+  }["message"]
 }
 
 export type HarnessAnswerOutput = void

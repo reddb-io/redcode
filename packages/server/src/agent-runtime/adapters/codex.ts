@@ -148,6 +148,8 @@ export const CodexAgentRuntime: AgentRuntimeAdapter = {
   installPackage: "@openai/codex",
   capabilities: {
     backgroundWork: true,
+    // Codex's decline has no reason field; its decline lets the turn continue, so the reason is steered in.
+    declineMessage: false,
     fork: false,
     interrupt: true,
     mcpApps: true,

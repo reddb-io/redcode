@@ -858,6 +858,50 @@ for (const driver of ["codex", "claude"] as const) {
     }
   }, 30_000)
 
+  test(`${driver}: a decline can tell the agent why`, async () => {
+    await using tmp = await tmpdir("redcode-harness-decline-")
+    const service = await createHarnesses(path.join(tmp.path, "state"))
+    try {
+      await service.configure({ driver, executable: await executable(tmp.path, driver) })
+      const run = await service.open({ driver, directory: AbsolutePath.make(tmp.path) })
+      await service.prompt(run.id, { id: "decline-input", text: "permission", delivery: "queue" })
+      await until(() => service.read(run.id).requests.length === 1)
+      const request = service.read(run.id).requests[0]!
+      expect(() => service.answer(run.id, { request: request.id, allow: true, answers: {}, message: "fine" })).toThrow(
+        "Only a decline",
+      )
+      await service.answer(run.id, { request: request.id, allow: false, answers: {}, message: " Read the docs first " })
+      await until(() => service.read(run.id).run.state === "ready")
+      const inputs = service.read(run.id).events.filter((event) => event.kind === "input")
+      expect(inputs.map((event) => event.text)).toEqual(["permission", "Read the docs first"])
+      const frames = (await Bun.file(path.join(tmp.path, "wire.jsonl")).text())
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line))
+      if (driver === "claude") {
+        // Claude Code reads the reason with the denied call itself, in its own rejection wording.
+        const denial = frames.find((frame) => frame.response?.response?.behavior === "deny")?.response.response.message
+        expect(denial).toStartWith("The user doesn't want to proceed with this tool use.")
+        expect(denial).toEndWith("To tell you how to proceed, the user said:\nRead the docs first")
+        expect(frames.filter((frame) => frame.type === "user")).toHaveLength(1)
+        return
+      }
+      // Codex's decline carries no reason, so the reason joins the continuing turn right after it.
+      const decline = frames.findIndex((frame) => frame.result?.decision === "decline")
+      const steer = frames.findIndex((frame) => frame.method === "turn/steer")
+      expect(decline).toBeGreaterThan(-1)
+      expect(steer).toBeGreaterThan(decline)
+      // The fixture names each turn after the request that started it.
+      const start = frames.find((frame) => frame.method === "turn/start")
+      expect(frames[steer].params).toMatchObject({
+        expectedTurnId: `turn-${start.id}`,
+        input: [{ type: "text", text: "Read the docs first" }],
+      })
+    } finally {
+      await service.dispose()
+    }
+  }, 30_000)
+
   test(`${driver}: structured permissions, questions, idempotent admission and native resume`, async () => {
     await using tmp = await tmpdir("redcode-harness-")
     const service = await createHarnesses(path.join(tmp.path, "state"))

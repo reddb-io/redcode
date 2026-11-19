@@ -5,6 +5,8 @@ import { object, string, type Frame, type Wire } from "../../harness-wire"
 import { type AgentRuntimeEvent, type AgentRuntimeEventInput } from "../events"
 
 const STREAM_ARGS = ["--print", "--verbose", "--input-format", "stream-json", "--output-format", "stream-json"]
+const REJECTED_WITH_FEEDBACK =
+  "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). To tell you how to proceed, the user said:"
 
 const ModelList = Schema.Struct({
   models: Schema.optional(
@@ -319,6 +321,7 @@ export const ClaudeAgentRuntime: AgentRuntimeAdapter = {
   installPackage: "@anthropic-ai/claude-code",
   capabilities: {
     backgroundWork: true,
+    declineMessage: true,
     fork: true,
     interrupt: true,
     mcpApps: false,
@@ -362,7 +365,14 @@ export const ClaudeAgentRuntime: AgentRuntimeAdapter = {
               },
               ...(input.answer.session ? { updatedPermissions: sessionPermissions(request) } : {}),
             }
-          : { behavior: "deny", message: "Declined by user" },
+          : {
+              behavior: "deny",
+              // Claude Code's own wording for a rejection with feedback, which Claude reads as the user's voice
+              // rather than as instructions arriving in a tool result.
+              message: input.answer.message?.trim()
+                ? `${REJECTED_WITH_FEEDBACK}\n${input.answer.message.trim()}`
+                : "Declined by user",
+            },
       },
     })
   },

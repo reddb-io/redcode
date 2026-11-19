@@ -6,6 +6,8 @@ import type { ComputerUseBridge } from "../harness-tools"
 
 export type AgentRuntimeCapabilities = {
   backgroundWork: boolean
+  // The decline itself carries the user's reason; otherwise the reason follows it as a steer.
+  declineMessage: boolean
   fork: boolean
   interrupt: boolean
   mcpApps: boolean

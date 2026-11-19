@@ -228,6 +228,8 @@ export const Answer = Schema.Struct({
   allow: Schema.Boolean,
   answers: Schema.Record(Schema.String, Schema.String),
   session: optional(Schema.Boolean),
+  // A decline may tell the agent why, so it can change course instead of stopping.
+  message: optional(Schema.String),
 }).annotate({ identifier: "Harness.Answer" })
 export interface Answer extends Schema.Schema.Type<typeof Answer> {}
 export const Login = Schema.Struct({
