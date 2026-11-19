@@ -1044,16 +1044,25 @@ jobs:
         run: |
           set -euo pipefail
           root=$(mktemp -d)
-          for attempt in {1..20}; do
-            if tarball=$(npm view "@reddb-io/redcode@$REDCODE_VERSION" dist.tarball --prefer-online 2>/dev/null) &&
-              [ -n "$tarball" ] && curl --fail --silent --show-error --head --location --max-time 30 "$tarball" >/dev/null; then
-              break
-            fi
-            if [ "$attempt" -eq 20 ]; then
-              echo "@reddb-io/redcode@$REDCODE_VERSION metadata or tarball did not reach npm after 10 minutes" >&2
-              exit 1
-            fi
-            sleep 30
+          # The install below also resolves the native package, which can reach the registry after the main one.
+          packages=("@reddb-io/redcode")
+          if [[ "$ENABLE_LINUX_X64" == true ]]; then packages+=("@reddb-io/redcode-linux-x64-baseline"); fi
+          published() {
+            local tarball
+            tarball=$(npm view "$1@$REDCODE_VERSION" dist.tarball --prefer-online 2>/dev/null) &&
+              [ -n "$tarball" ] && curl --fail --silent --show-error --head --location --max-time 30 "$tarball" >/dev/null
+          }
+          for package in "${packages[@]}"; do
+            for attempt in {1..20}; do
+              if published "$package"; then
+                break
+              fi
+              if [ "$attempt" -eq 20 ]; then
+                echo "$package@$REDCODE_VERSION metadata or tarball did not reach npm after 10 minutes" >&2
+                exit 1
+              fi
+              sleep 30
+            done
           done
           if [[ "$ENABLE_LINUX_X64" == true ]]; then
           npm install --prefer-online --prefix "$root/install" --ignore-scripts --no-audit --no-fund "@reddb-io/redcode@$REDCODE_VERSION"
