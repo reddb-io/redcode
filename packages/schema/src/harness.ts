@@ -172,6 +172,8 @@ export const Tool = Schema.Struct({
   name: Schema.String,
   status: Schema.Literals(["running", "succeeded", "failed"]),
   output: optional(Schema.String),
+  // The call that launched the subagent making this call.
+  parent: optional(Schema.String),
 }).annotate({ identifier: "Harness.Tool" })
 export interface Tool extends Schema.Schema.Type<typeof Tool> {}
 export const Event = Schema.Struct({

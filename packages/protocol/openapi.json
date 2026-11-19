@@ -44232,6 +44232,9 @@
           },
           "output": {
             "type": "string"
+          },
+          "parent": {
+            "type": "string"
           }
         },
         "required": ["id", "name", "status"],

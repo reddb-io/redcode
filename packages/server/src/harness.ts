@@ -488,7 +488,12 @@ export async function createHarnesses(
             "tool",
             runtimeEvent.title,
             runtimeEvent.id,
-            JSON.stringify({ id: runtimeEvent.id, name: runtimeEvent.name, status: "running" }),
+            JSON.stringify({
+              id: runtimeEvent.id,
+              name: runtimeEvent.name,
+              status: "running",
+              ...(runtimeEvent.parent ? { parent: runtimeEvent.parent } : {}),
+            }),
           )
           return
         }

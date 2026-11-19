@@ -678,7 +678,15 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                         followOutput = element.scrollHeight - element.scrollTop - element.clientHeight < 24
                       }}
                     >
-                      <Key each={result().events} by="cursor">
+                      <Key
+                        // A subagent's calls show inside the call that launched it.
+                        each={result().events.filter(
+                          (event) =>
+                            !event.tool?.parent ||
+                            !result().events.some((other) => other.tool?.id === event.tool?.parent),
+                        )}
+                        by="cursor"
+                      >
                         {(event) => (
                           <Show
                             when={event().tool}
@@ -699,31 +707,7 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                               </span>
                             }
                           >
-                            {(tool) => (
-                              <details ref={revealOutput} class="my-1 block">
-                                <summary class="flex cursor-pointer items-center gap-2 text-ink-muted">
-                                  <span
-                                    class={badge({
-                                      tone:
-                                        tool().status === "succeeded"
-                                          ? "success"
-                                          : tool().status === "failed"
-                                            ? "danger"
-                                            : "neutral",
-                                      variant: "tinted",
-                                    })}
-                                  >
-                                    {language.t(`harness.tool.${tool().status}`)}
-                                  </span>
-                                  <span class="min-w-0 break-words">{event().text}</span>
-                                </summary>
-                                <Show when={tool().output}>
-                                  <pre class="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded border border-v2-border-base p-2 text-caption">
-                                    {tool().output}
-                                  </pre>
-                                </Show>
-                              </details>
-                            )}
+                            <ToolCall event={event()} events={result().events} reveal={revealOutput} />
                           </Show>
                         )}
                       </Key>
@@ -1336,6 +1320,40 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
         </div>
       </div>
     </div>
+  )
+}
+
+// A tool call with its status and result, and the calls of a subagent it launched.
+function ToolCall(props: { event: Harness.Event; events: readonly Harness.Event[]; reveal: () => void }) {
+  const language = useLanguage()
+  const status = () => props.event.tool?.status ?? "running"
+  const calls = () => props.events.filter((event) => event.tool?.parent && event.tool.parent === props.event.tool?.id)
+  return (
+    <details ref={props.reveal} class="my-1 block">
+      <summary class="flex cursor-pointer items-center gap-2 text-ink-muted">
+        <span
+          class={badge({
+            tone: status() === "succeeded" ? "success" : status() === "failed" ? "danger" : "neutral",
+            variant: "tinted",
+          })}
+        >
+          {language.t(`harness.tool.${status()}`)}
+        </span>
+        <span class="min-w-0 break-words">{props.event.text}</span>
+      </summary>
+      <Show when={calls().length}>
+        <div class="ml-2 border-l border-v2-border-base pl-3">
+          <Key each={calls()} by="cursor">
+            {(call) => <ToolCall event={call()} events={props.events} reveal={props.reveal} />}
+          </Key>
+        </div>
+      </Show>
+      <Show when={props.event.tool?.output}>
+        <pre class="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded border border-v2-border-base p-2 text-caption">
+          {props.event.tool?.output}
+        </pre>
+      </Show>
+    </details>
   )
 }
 

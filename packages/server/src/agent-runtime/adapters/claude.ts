@@ -146,12 +146,34 @@ function events(input: AgentRuntimeEventInput): AgentRuntimeEvent[] {
     return nativeID ? [{ type: "session", nativeID }] : []
   }
   if (value.type === "rate_limit_event") return usageLimit(object(value.rate_limit_info))
+  // A background task a call launched, such as a subagent, settles that call when it ends.
+  if (value.type === "system" && value.subtype === "task_notification" && string(value.tool_use_id))
+    return [
+      {
+        type: "tool.result",
+        id: string(value.tool_use_id),
+        status: value.status === "completed" ? "succeeded" : "failed",
+        output: string(value.summary).slice(0, 8000),
+      },
+    ]
+  // A subagent's calls nest under the call that launched it.
   if (value.type === "assistant" && value.parent_tool_use_id) {
     const content = object(value.message).content
     if (!Array.isArray(content)) return []
     return content.flatMap((item): AgentRuntimeEvent[] => {
       const block = object(item)
-      return block.type === "tool_use" ? [{ type: "activity", text: `Subagent · ${toolActivity(block)}` }] : []
+      if (block.type !== "tool_use" || HIDDEN_TOOLS.includes(string(block.name))) return []
+      return string(block.id)
+        ? [
+            {
+              type: "tool",
+              id: string(block.id),
+              name: string(block.name),
+              title: toolActivity(block),
+              parent: string(value.parent_tool_use_id),
+            },
+          ]
+        : [{ type: "activity", text: `Subagent · ${toolActivity(block)}` }]
     })
   }
   if (value.type === "assistant") {
@@ -168,25 +190,36 @@ function events(input: AgentRuntimeEventInput): AgentRuntimeEvent[] {
       return []
     })
   }
-  if (value.type === "user" && !value.parent_tool_use_id) {
+  if (value.type === "user") {
     const content = object(value.message).content
     if (!Array.isArray(content)) return []
-    // TaskCreate and TaskGet return the task with the identity Claude Code assigned to it.
-    const task = object(object(value.tool_use_result).task)
+    const result = object(value.tool_use_result)
+    // TaskCreate and TaskGet return the task with the identity Claude Code assigned to it; a subagent's
+    // tasks are its own.
+    const task = object(value.parent_tool_use_id ? undefined : result.task)
     const status = todoStatus(task.status)
+    // A subagent's result wraps its report in notes for the model; the counts say how many blocks they take.
+    const report =
+      string(result.agentId) && Array.isArray(result.content)
+        ? result.content.slice(
+            count(result.harnessNoteCount) ?? 0,
+            result.content.length - (count(result.harnessTailCount) ?? 0),
+          )
+        : undefined
     return [
       ...(string(task.id) && string(task.subject)
         ? [{ type: "todo" as const, id: string(task.id), content: string(task.subject), ...(status ? { status } : {}) }]
         : []),
       ...content.flatMap((item): AgentRuntimeEvent[] => {
         const block = object(item)
-        return block.type === "tool_result" && string(block.tool_use_id)
+        // A call launched in the background settles when its task does.
+        return block.type === "tool_result" && string(block.tool_use_id) && result.status !== "async_launched"
           ? [
               {
                 type: "tool.result",
                 id: string(block.tool_use_id),
                 status: block.is_error === true ? "failed" : "succeeded",
-                output: toolOutput(block.content),
+                output: toolOutput(report ?? block.content),
               },
             ]
           : []

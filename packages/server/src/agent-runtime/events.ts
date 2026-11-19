@@ -40,7 +40,7 @@ export type AgentRuntimeEvent =
   | { type: "started"; turn: string }
   | { type: "text"; text: string }
   // A tool call starts; its result later updates the same call.
-  | { type: "tool"; id: string; name: string; title: string }
+  | { type: "tool"; id: string; name: string; title: string; parent?: string }
   | { type: "tool.result"; id: string; status: "succeeded" | "failed"; output: string }
   // The agent's task list: replaced whole, or one item created, changed or removed.
   | { type: "todos"; todos: Harness.Todo[] }
