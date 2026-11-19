@@ -60,3 +60,14 @@ test("always-allow lines for a vault send name each secret and destination pair"
     "This will always allow {vault:api-key} to be sent to user@host.example while the vault holds it.",
   ])
 })
+
+test("a design live grant and an open request name what they reach", () => {
+  expect(permissionPresentation({ action: "design_live", resources: ["microphone", "wss://api.hume.ai"] })).toEqual({
+    icon: "◉",
+    title: "Let this design use the microphone or network while it is shown",
+    lines: ["Microphone", "Connect to wss://api.hume.ai", "Its own JavaScript runs in the review and while presenting."],
+  })
+  expect(permissionPresentation({ action: "open", resources: ["exports/deck.pdf"] }).title).toBe(
+    "Open exports/deck.pdf",
+  )
+})

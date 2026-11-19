@@ -616,6 +616,8 @@ export type DesignSystem = {
 
 export type DesignComponent = { root: string; file: string; name: string; props?: string }
 
+export type DesignLive = { microphone?: boolean; origins?: Array<string> }
+
 export type DesignRound = {
   number: number
   opened: number | "Infinity" | "-Infinity" | "NaN"
@@ -4605,6 +4607,7 @@ export type DesignInfo = {
   inventory?: Array<DesignComponent>
   manifest?: string
   tweaks: { [x: string]: string }
+  live?: DesignLive
   revision: string | null
   approvedRevision: string | null
   ended: boolean

@@ -582,6 +582,9 @@ describe("Design agent permissions", () => {
       expect(effect("creator_component_edit", "*")).toBe("deny")
       expect(effect("design_collaboration", "*")).toBe("allow")
       expect(effect("design_handoff", "*")).toBe("ask")
+      // The microphone and network a deck reaches are approved by the user even when the Session allows everything.
+      expect(effect("design_live", "microphone")).toBe("ask")
+      expect(effect("design_live", "wss://api.hume.ai")).toBe("ask")
     }),
   )
 })

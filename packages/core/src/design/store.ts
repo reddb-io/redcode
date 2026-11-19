@@ -1259,7 +1259,8 @@ const make = Effect.gen(function* () {
   const amend = Effect.fn("DesignStore.amend")(function* (
     sessionID: SessionSchema.ID,
     id: Design.ID,
-    input: Design.Update,
+    /** `live` comes only from the design_document tool, once the user approved it. */
+    input: Design.Update & { readonly live?: Design.Live },
   ) {
     const current = yield* get(sessionID, id)
     if (current.ended)

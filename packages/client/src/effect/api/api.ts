@@ -2389,6 +2389,9 @@ export type SessionDesignListOutput = ReadonlyArray<{
     | undefined
   readonly manifest?: string | undefined
   readonly tweaks: { readonly [x: string]: string }
+  readonly live?:
+    | { readonly microphone?: boolean | undefined; readonly origins?: ReadonlyArray<string> | undefined }
+    | undefined
   readonly revision: string | null
   readonly approvedRevision: string | null
   readonly ended: boolean
@@ -2635,6 +2638,9 @@ export type SessionDesignCreateOutput = {
     | undefined
   readonly manifest?: string | undefined
   readonly tweaks: { readonly [x: string]: string }
+  readonly live?:
+    | { readonly microphone?: boolean | undefined; readonly origins?: ReadonlyArray<string> | undefined }
+    | undefined
   readonly revision: string | null
   readonly approvedRevision: string | null
   readonly ended: boolean
@@ -2873,6 +2879,9 @@ export type SessionDesignGetOutput = {
     | undefined
   readonly manifest?: string | undefined
   readonly tweaks: { readonly [x: string]: string }
+  readonly live?:
+    | { readonly microphone?: boolean | undefined; readonly origins?: ReadonlyArray<string> | undefined }
+    | undefined
   readonly revision: string | null
   readonly approvedRevision: string | null
   readonly ended: boolean
@@ -3353,6 +3362,9 @@ export type SessionDesignUpdateOutput = {
     | undefined
   readonly manifest?: string | undefined
   readonly tweaks: { readonly [x: string]: string }
+  readonly live?:
+    | { readonly microphone?: boolean | undefined; readonly origins?: ReadonlyArray<string> | undefined }
+    | undefined
   readonly revision: string | null
   readonly approvedRevision: string | null
   readonly ended: boolean
@@ -3591,6 +3603,9 @@ export type SessionDesignRefreshOutput = {
     | undefined
   readonly manifest?: string | undefined
   readonly tweaks: { readonly [x: string]: string }
+  readonly live?:
+    | { readonly microphone?: boolean | undefined; readonly origins?: ReadonlyArray<string> | undefined }
+    | undefined
   readonly revision: string | null
   readonly approvedRevision: string | null
   readonly ended: boolean
@@ -3846,6 +3861,9 @@ export type SessionDesignReopenOutput = {
     | undefined
   readonly manifest?: string | undefined
   readonly tweaks: { readonly [x: string]: string }
+  readonly live?:
+    | { readonly microphone?: boolean | undefined; readonly origins?: ReadonlyArray<string> | undefined }
+    | undefined
   readonly revision: string | null
   readonly approvedRevision: string | null
   readonly ended: boolean
@@ -4091,6 +4109,9 @@ export type SessionDesignRevisionsOutput = ReadonlyArray<{
       | undefined
     readonly manifest?: string | undefined
     readonly tweaks: { readonly [x: string]: string }
+    readonly live?:
+      | { readonly microphone?: boolean | undefined; readonly origins?: ReadonlyArray<string> | undefined }
+      | undefined
     readonly revision: string | null
     readonly approvedRevision: string | null
     readonly ended: boolean
@@ -4423,6 +4444,9 @@ export type SessionDesignRevisionOutput = {
       | undefined
     readonly manifest?: string | undefined
     readonly tweaks: { readonly [x: string]: string }
+    readonly live?:
+      | { readonly microphone?: boolean | undefined; readonly origins?: ReadonlyArray<string> | undefined }
+      | undefined
     readonly revision: string | null
     readonly approvedRevision: string | null
     readonly ended: boolean

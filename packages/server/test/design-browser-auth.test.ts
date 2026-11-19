@@ -463,3 +463,61 @@ it.live("a stable review link opens for a paired browser, and an open review's c
     )
   }),
 )
+
+it.live("Design pages keep devices and network closed until design_document records a live grant", () =>
+  Effect.gen(function* () {
+    const directory = yield* Effect.acquireDisposable(Effect.promise(() => tmpdir()))
+    const server = yield* startServer(directory.path)
+    const sessionID = "ses_design_live"
+    const headers = { ...server.headers, "content-type": "application/json" }
+    const request = (pathname: string, input?: unknown, method = input === undefined ? "GET" : "POST") =>
+      Effect.promise(() =>
+        fetch(new URL(pathname, server.base), {
+          headers,
+          method,
+          body: input === undefined ? undefined : JSON.stringify(input),
+        }),
+      )
+    const created = yield* request("/api/session", {
+      id: sessionID,
+      agent: "design",
+      location: { directory: directory.path },
+      permissions: [{ action: "*", resource: "*", effect: "allow" }],
+    })
+    yield* Effect.promise(() => created.arrayBuffer())
+    const designResponse = yield* request(`/design/session/${sessionID}`, {
+      name: "Talk",
+      journey: "new",
+      engine: "html",
+      kind: "deck",
+      target: "presentation",
+    })
+    const document = yield* Effect.promise(() => designResponse.json()).pipe(
+      Effect.flatMap(Schema.decodeUnknownEffect(Design.Info)),
+    )
+    yield* Effect.promise(() =>
+      Bun.write(`${document.root}/index.html`, `<section class="slide" id="intro" data-design-screen="intro"></section>`),
+    )
+    const published = yield* request(`/design/session/${sessionID}/${document.id}/revision`, { name: "Talk" })
+    const revision = yield* Effect.promise(() => published.json()).pipe(
+      Effect.flatMap(Schema.decodeUnknownEffect(Design.Revision)),
+    )
+
+    // The review page's own update cannot grant one: the agent's browser reaches the same route.
+    const granted = yield* request(`/design/session/${sessionID}/${document.id}`, { live: { microphone: true } }, "PATCH")
+    expect(granted.status).toBe(200)
+    expect(yield* Effect.promise(() => granted.json())).not.toHaveProperty("live")
+
+    for (const route of ["review", `${document.id}/present`]) {
+      const page = yield* request(`/design/session/${sessionID}/${route}`)
+      expect(page.status).toBe(200)
+      expect(page.headers.get("content-security-policy")).toContain("connect-src 'self' data:; worker-src blob:")
+      expect(page.headers.get("content-security-policy")).not.toContain("media-src")
+      yield* Effect.promise(() => page.arrayBuffer())
+    }
+    const preview = yield* request(`/design/session/${sessionID}/${document.id}/revision/${revision.id}/preview`)
+    const frame = yield* Effect.promise(() => preview.text())
+    expect(frame).toContain("connect-src 'none'")
+    expect(frame).not.toContain("design:microphone")
+  }),
+)

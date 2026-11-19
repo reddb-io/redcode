@@ -35,9 +35,25 @@ export function recorded(
   ].join("\n")
 }
 
+/** The capabilities a live update adds to the ones the design already has, which the user is asked to approve. */
+export function grants(current: Design.Live | undefined, next: Design.Live) {
+  return [
+    ...(next.microphone && !current?.microphone ? ["microphone"] : []),
+    ...(next.origins ?? []).filter((origin) => !current?.origins?.includes(origin)),
+  ]
+}
+
+/** The grant as the agent reads it back, with when it takes effect. */
+export function describeLive(live: Design.Live) {
+  const granted = [...(live.microphone ? ["microphone"] : []), ...(live.origins ?? [])]
+  if (!granted.length) return "none"
+  return `${granted.join(", ")}. Review and presentation pages opened or reloaded after the grant apply it; ask the user to reload one that was already open.`
+}
+
 // Statuses the reviewer records come from the review page only; the model's update never carries `by`.
 const { by: _by, ...updateFields } = Design.Update.fields
-export const AgentUpdate = Schema.Struct(updateFields)
+// A live grant is the agent's to request and the user's to approve, so only this tool's update carries one.
+export const AgentUpdate = Schema.Struct({ ...updateFields, live: Schema.optional(Design.Live) })
 
 // Providers need an object at the root. Decode into the discriminated union
 // afterwards so exposing conditional fields does not weaken execution validation.
@@ -46,7 +62,7 @@ export const Input = Schema.Struct({
   id: Schema.optional(Design.ID).annotate({ description: "Required for update, reopen and refresh." }),
   input: Schema.optional(
     Schema.Struct({
-      ...updateFields,
+      ...AgentUpdate.fields,
       journey: Schema.optional(Design.Journey),
       engine: Schema.optional(Design.Engine),
       kind: Schema.optional(Design.Kind),

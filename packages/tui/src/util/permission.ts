@@ -154,6 +154,25 @@ export function permissionPresentation(
     }
   }
 
+  if (action === "design_live") {
+    return {
+      icon: "◉",
+      title: "Let this design use the microphone or network while it is shown",
+      lines: [
+        ...source.resources.map((resource) => (resource === "microphone" ? "Microphone" : `Connect to ${String(resource)}`)),
+        "Its own JavaScript runs in the review and while presenting.",
+      ],
+    }
+  }
+
+  if (action === "open") {
+    return {
+      icon: "↗",
+      title: `Open ${source.resources.map((resource) => formatPath(String(resource))).join(", ")}`,
+      lines: ["In the application your system uses for it."],
+    }
+  }
+
   if (action === "doom_loop") {
     return {
       icon: "⟳",

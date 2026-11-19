@@ -235,6 +235,16 @@ export const Plugin = {
                     },
                   ]
                 }
+                const granted = input.input.live && DesignDocumentTool.grants(document.live, input.input.live)
+                if (granted?.length)
+                  yield* permission.assert({
+                    action: "design_live",
+                    resources: granted,
+                    save: granted,
+                    sessionID: context.sessionID,
+                    agent: context.agent,
+                    source,
+                  })
                 const amended = yield* designs.amend(context.sessionID, input.id, input.input)
                 if (amended.notes || amended.addressed) yield* Ref.set(noted, amended)
                 return [amended.document]
@@ -253,7 +263,7 @@ export const Plugin = {
                       ...(outcome ? [DesignDocumentTool.recorded(output[0], outcome)] : []),
                       ...output.map(
                         (document, index) =>
-                          `Design ${document.id}: ${document.name}\n${DesignTarget.describe(document)}\nRoot: ${document.root}\nDependencies: ${dependencies[index]}\nEngine: ${document.engine}\nEntry: ${document.entry}\nCurrent revision: ${document.revision ?? "unpublished"}\n${Design.describeSystem(document.designSystem)}\n${input.action === "list" ? `Design system: ${DesignSystem.summary(document) || "none detected"}` : DesignSystem.describe(document)}\nRecorded project data:\n${DesignChecklist.context(document) || "Brief not recorded"}\nEnd-of-round review: design_playbook {designID:"${document.id}",checklist:true}. Use id="component" for an isolated component.\nParams: ${JSON.stringify({ controls: document.controls ?? [], presets: document.presets ?? [] })}\nQuestions: ${document.questions.join("; ")}\nFeedback rounds: ${DesignRounds.summary(document)}${document.manifest ? `\n${document.manifest}` : ""}`,
+                          `Design ${document.id}: ${document.name}\n${DesignTarget.describe(document)}\nRoot: ${document.root}\nDependencies: ${dependencies[index]}\nEngine: ${document.engine}\nEntry: ${document.entry}\nCurrent revision: ${document.revision ?? "unpublished"}\n${Design.describeSystem(document.designSystem)}\n${input.action === "list" ? `Design system: ${DesignSystem.summary(document) || "none detected"}` : DesignSystem.describe(document)}\nRecorded project data:\n${DesignChecklist.context(document) || "Brief not recorded"}\nEnd-of-round review: design_playbook {designID:"${document.id}",checklist:true}. Use id="component" for an isolated component.\nParams: ${JSON.stringify({ controls: document.controls ?? [], presets: document.presets ?? [] })}${document.live ? `\nLive: ${DesignDocumentTool.describeLive(document.live)}` : ""}\nQuestions: ${document.questions.join("; ")}\nFeedback rounds: ${DesignRounds.summary(document)}${document.manifest ? `\n${document.manifest}` : ""}`,
                       ),
                     ].join("\n\n")
               return { output, content, metadata: { action: input.action, ...(yield* Ref.get(display)) } }
