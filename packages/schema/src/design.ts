@@ -227,6 +227,7 @@ export const Tweaks = Schema.Record(
  */
 export const Live = Schema.Struct({
   microphone: Schema.Boolean.pipe(optional),
+  camera: Schema.Boolean.pipe(optional),
   /** https or wss origins the design may connect to and load scripts from, such as wss://api.example.com. */
   origins: Schema.Array(
     Schema.String.check(Schema.isPattern(/^(https|wss):\/\/([a-z0-9-]+\.)+[a-z][a-z0-9-]*(:\d{1,5})?$/)),
@@ -236,7 +237,7 @@ export const Live = Schema.Struct({
 }).annotate({
   identifier: "Design.Live",
   description:
-    "Live capabilities for a deck or prototype whose own JavaScript needs the microphone or a network service, such as realtime speech or emotion analysis while presenting. Origins are lowercase https:// or wss:// scheme plus a domain name (and port), without a path. The user is asked to approve every new capability; record the full set you need in one update. Writing that JavaScript inside the design root is design work, not product implementation. Never put API keys or tokens in design files: have the deck ask the presenter for one at run time and keep it in memory. The microphone is reached through navigator.mediaDevices.getUserMedia({audio:true}) only (the Web Speech API is unavailable). While presenting, the presenter turns it on (a button or the M key): until then getUserMedia waits, and turning it off ends the track. Show whether the deck is listening, stop the track when done, and handle an ended track, a refused microphone or a failed connection with a visible message. The HTML export keeps references to the granted origins and runs the deck as its own page.",
+    "Live capabilities for a deck or prototype whose own JavaScript needs the microphone, the camera or a network service, such as realtime speech or emotion analysis while presenting. Origins are lowercase https:// or wss:// scheme plus a domain name (and port), without a path. The user is asked to approve every new capability; record the full set you need in one update. Writing that JavaScript inside the design root is design work, not product implementation. Never put API keys or tokens in design files: have the deck ask the presenter for one at run time and keep it in memory. The devices are reached through navigator.mediaDevices.getUserMedia({audio:true}) and ({video:true}) only (the Web Speech API is unavailable); video arrives at about 640x480 and 30 fps from the default camera. While presenting, the presenter turns each device on (a button, or the M and C keys): until then getUserMedia waits, and turning one off ends its track. Show whether the deck is listening or watching, stop tracks when done, and handle an ended track, a refused device or a failed connection with a visible message. The HTML export keeps references to the granted origins and runs the deck as its own page.",
 })
 export interface Live extends Schema.Schema.Type<typeof Live> {}
 

@@ -2390,7 +2390,11 @@ export type SessionDesignListOutput = ReadonlyArray<{
   readonly manifest?: string | undefined
   readonly tweaks: { readonly [x: string]: string }
   readonly live?:
-    | { readonly microphone?: boolean | undefined; readonly origins?: ReadonlyArray<string> | undefined }
+    | {
+        readonly microphone?: boolean | undefined
+        readonly camera?: boolean | undefined
+        readonly origins?: ReadonlyArray<string> | undefined
+      }
     | undefined
   readonly revision: string | null
   readonly approvedRevision: string | null
@@ -2639,7 +2643,11 @@ export type SessionDesignCreateOutput = {
   readonly manifest?: string | undefined
   readonly tweaks: { readonly [x: string]: string }
   readonly live?:
-    | { readonly microphone?: boolean | undefined; readonly origins?: ReadonlyArray<string> | undefined }
+    | {
+        readonly microphone?: boolean | undefined
+        readonly camera?: boolean | undefined
+        readonly origins?: ReadonlyArray<string> | undefined
+      }
     | undefined
   readonly revision: string | null
   readonly approvedRevision: string | null
@@ -2880,7 +2888,11 @@ export type SessionDesignGetOutput = {
   readonly manifest?: string | undefined
   readonly tweaks: { readonly [x: string]: string }
   readonly live?:
-    | { readonly microphone?: boolean | undefined; readonly origins?: ReadonlyArray<string> | undefined }
+    | {
+        readonly microphone?: boolean | undefined
+        readonly camera?: boolean | undefined
+        readonly origins?: ReadonlyArray<string> | undefined
+      }
     | undefined
   readonly revision: string | null
   readonly approvedRevision: string | null
@@ -3363,7 +3375,11 @@ export type SessionDesignUpdateOutput = {
   readonly manifest?: string | undefined
   readonly tweaks: { readonly [x: string]: string }
   readonly live?:
-    | { readonly microphone?: boolean | undefined; readonly origins?: ReadonlyArray<string> | undefined }
+    | {
+        readonly microphone?: boolean | undefined
+        readonly camera?: boolean | undefined
+        readonly origins?: ReadonlyArray<string> | undefined
+      }
     | undefined
   readonly revision: string | null
   readonly approvedRevision: string | null
@@ -3604,7 +3620,11 @@ export type SessionDesignRefreshOutput = {
   readonly manifest?: string | undefined
   readonly tweaks: { readonly [x: string]: string }
   readonly live?:
-    | { readonly microphone?: boolean | undefined; readonly origins?: ReadonlyArray<string> | undefined }
+    | {
+        readonly microphone?: boolean | undefined
+        readonly camera?: boolean | undefined
+        readonly origins?: ReadonlyArray<string> | undefined
+      }
     | undefined
   readonly revision: string | null
   readonly approvedRevision: string | null
@@ -3862,7 +3882,11 @@ export type SessionDesignReopenOutput = {
   readonly manifest?: string | undefined
   readonly tweaks: { readonly [x: string]: string }
   readonly live?:
-    | { readonly microphone?: boolean | undefined; readonly origins?: ReadonlyArray<string> | undefined }
+    | {
+        readonly microphone?: boolean | undefined
+        readonly camera?: boolean | undefined
+        readonly origins?: ReadonlyArray<string> | undefined
+      }
     | undefined
   readonly revision: string | null
   readonly approvedRevision: string | null
@@ -4110,7 +4134,11 @@ export type SessionDesignRevisionsOutput = ReadonlyArray<{
     readonly manifest?: string | undefined
     readonly tweaks: { readonly [x: string]: string }
     readonly live?:
-      | { readonly microphone?: boolean | undefined; readonly origins?: ReadonlyArray<string> | undefined }
+      | {
+          readonly microphone?: boolean | undefined
+          readonly camera?: boolean | undefined
+          readonly origins?: ReadonlyArray<string> | undefined
+        }
       | undefined
     readonly revision: string | null
     readonly approvedRevision: string | null
@@ -4445,7 +4473,11 @@ export type SessionDesignRevisionOutput = {
     readonly manifest?: string | undefined
     readonly tweaks: { readonly [x: string]: string }
     readonly live?:
-      | { readonly microphone?: boolean | undefined; readonly origins?: ReadonlyArray<string> | undefined }
+      | {
+          readonly microphone?: boolean | undefined
+          readonly camera?: boolean | undefined
+          readonly origins?: ReadonlyArray<string> | undefined
+        }
       | undefined
     readonly revision: string | null
     readonly approvedRevision: string | null

@@ -32,7 +32,7 @@ export const FRAME_CSP =
  * the review and presentation pages grow by the same origins as the frame. Without a grant nothing changes.
  */
 export function livePolicy(policy: string, grant: Design.Live | undefined) {
-  if (!grant?.microphone && !grant?.origins?.length) return policy
+  if (!grant?.microphone && !grant?.camera && !grant?.origins?.length) return policy
   const origins = grant.origins ?? []
   const directives = policy.split("; ")
   return [
@@ -86,6 +86,7 @@ export function present(
     revision,
     copy: reviewCopy,
     microphone: grant?.microphone === true,
+    camera: grant?.camera === true,
   }).replaceAll("<", "\\u003c")
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${reviewCopy.presentTitle} · Redcode</title><link rel="icon" type="image/svg+xml" href="${appearance.favicon}"></head><body><div id="present"></div><script>${UNTICKET}(${mountPresent.toString()})(document.getElementById("present"), Object.assign(${options}, { deck: ${deck.toString()}, stage: ${stage.toString()}, live: ${liveHost.toString()} }))</script></body></html>`
 }
@@ -101,6 +102,6 @@ export async function preview(revision: Design.Revision, directory: string, gran
     grant?.origins,
   )
   const controls = JSON.stringify(revision.document.controls ?? []).replaceAll("<", "\\u003c")
-  return `<meta http-equiv="Content-Security-Policy" content="${livePolicy(FRAME_CSP, grant)}">${grant?.microphone ? `<script>(${liveFrame.toString()})()</script>` : ""}${revision.document.target === "presentation" ? `<script>(${slides.toString()})(${deck.toString()})</script>` : ""}<script>(${screens.toString()})()</script>${html}<script>(${params.toString()})(${controls});(${annotations.toString()})();(function(module,exports,define){${captureRuntime.replaceAll("</script", "<\\/script")}
+  return `<meta http-equiv="Content-Security-Policy" content="${livePolicy(FRAME_CSP, grant)}">${grant?.microphone || grant?.camera ? `<script>(${liveFrame.toString()})()</script>` : ""}${revision.document.target === "presentation" ? `<script>(${slides.toString()})(${deck.toString()})</script>` : ""}<script>(${screens.toString()})()</script>${html}<script>(${params.toString()})(${controls});(${annotations.toString()})();(function(module,exports,define){${captureRuntime.replaceAll("</script", "<\\/script")}
 }).call(window);(${capture.toString()})(window.domtoimage?.toCanvas,${JSON.stringify(revision.id)});</script>`
 }

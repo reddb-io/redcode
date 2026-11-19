@@ -393,6 +393,7 @@ function read(
         200,
         DesignPage.livePolicy(pageCSP, {
           microphone: grants.some((grant) => grant.microphone),
+          camera: grants.some((grant) => grant.camera),
           origins: [...new Set(grants.flatMap((grant) => grant.origins ?? []))],
         }),
       )

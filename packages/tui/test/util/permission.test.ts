@@ -62,10 +62,17 @@ test("always-allow lines for a vault send name each secret and destination pair"
 })
 
 test("a design live grant and an open request name what they reach", () => {
-  expect(permissionPresentation({ action: "design_live", resources: ["microphone", "wss://api.hume.ai"] })).toEqual({
+  expect(
+    permissionPresentation({ action: "design_live", resources: ["microphone", "camera", "wss://api.hume.ai"] }),
+  ).toEqual({
     icon: "◉",
-    title: "Let this design use the microphone or network while it is shown",
-    lines: ["Microphone", "Connect to wss://api.hume.ai", "Its own JavaScript runs in the review and while presenting."],
+    title: "Let this design use devices or the network while it is shown",
+    lines: [
+      "Microphone",
+      "Camera",
+      "Connect to wss://api.hume.ai",
+      "Its own JavaScript runs in the review and while presenting.",
+    ],
   })
   expect(permissionPresentation({ action: "open", resources: ["exports/deck.pdf"] }).title).toBe(
     "Open exports/deck.pdf",
