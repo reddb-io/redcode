@@ -213,8 +213,11 @@ function events(input: AgentRuntimeEventInput): AgentRuntimeEvent[] {
         : []),
       ...content.flatMap((item): AgentRuntimeEvent[] => {
         const block = object(item)
-        // A call launched in the background settles when its task does.
-        return block.type === "tool_result" && string(block.tool_use_id) && result.status !== "async_launched"
+        // A subagent or command launched in the background settles when its task does.
+        return block.type === "tool_result" &&
+          string(block.tool_use_id) &&
+          result.status !== "async_launched" &&
+          !string(result.backgroundTaskId)
           ? [
               {
                 type: "tool.result",

@@ -141,7 +141,7 @@ to `0`, and your value wins.
 
 A Claude Code subagent shows as its Agent call, with the subagent's own calls nested inside it. The call
 stays running until the subagent ends, including one that runs in the background, and then shows the
-subagent's report.
+subagent's report. A command Claude Code runs in the background likewise stays running until it ends.
 
 A command or file approval can also be allowed for the rest of the session. The provider then stops
 asking for matching calls: Codex through its session approval cache, Claude through the rules Claude Code

@@ -590,6 +590,38 @@ for await (const line of createInterface({ input: process.stdin })) {
           },
         })
       }
+      // A background command's call returns at once; its task reports the end in a later turn.
+      if (text === "background") {
+        send({
+          type: "assistant",
+          session_id: claudeSession,
+          parent_tool_use_id: null,
+          message: {
+            content: [
+              { type: "tool_use", id: "bg-1", name: "Bash", input: { command: "sleep 5", run_in_background: true } },
+            ],
+          },
+        })
+        send({
+          type: "user",
+          session_id: claudeSession,
+          parent_tool_use_id: null,
+          message: {
+            content: [{ type: "tool_result", tool_use_id: "bg-1", content: "Command running in background" }],
+          },
+          tool_use_result: { stdout: "", stderr: "", backgroundTaskId: "bg-task" },
+        })
+      }
+      if (text === "background-done")
+        send({
+          type: "system",
+          subtype: "task_notification",
+          session_id: claudeSession,
+          task_id: "bg-task",
+          tool_use_id: "bg-1",
+          status: "completed",
+          summary: 'Background command "sleep 5" completed (exit code 0)',
+        })
       if (text === "permission")
         send({
           type: "control_request",
