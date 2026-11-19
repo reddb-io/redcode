@@ -247,6 +247,34 @@ for await (const line of createInterface({ input: process.stdin })) {
           params: { threadId: state.thread, item: { ...item, id: "native-unknown", status: "future-status" } },
         })
       }
+      if (text === "tools") {
+        const item = (method: string, value: object) =>
+          send({ method, params: { threadId: state.thread, turnId: state.turn, item: value } })
+        const command = { type: "commandExecution", id: "cmd-1", command: "echo hi", status: "inProgress" }
+        const edit = {
+          type: "fileChange",
+          id: "edit-1",
+          changes: [{ path: "a.txt", kind: { type: "add" }, diff: "+one" }],
+          status: "inProgress",
+        }
+        item("item/started", { type: "agentMessage", id: "message-1", text: "" })
+        item("item/started", command)
+        item("item/completed", { ...command, status: "completed", aggregatedOutput: "hi" })
+        item("item/started", edit)
+        item("item/completed", { ...edit, status: "declined" })
+        send({
+          method: "turn/plan/updated",
+          params: {
+            threadId: state.thread,
+            turnId: state.turn,
+            explanation: null,
+            plan: [
+              { step: "Write tests", status: "completed" },
+              { step: "Ship", status: "inProgress" },
+            ],
+          },
+        })
+      }
       if (text === "permission")
         send({
           id: 77,
@@ -454,6 +482,40 @@ for await (const line of createInterface({ input: process.stdin })) {
           task_type: "future-kind",
           status: "future-status",
         })
+      }
+      if (text === "tools") {
+        const assistant = (content: object[]) =>
+          send({ type: "assistant", session_id: claudeSession, parent_tool_use_id: null, message: { content } })
+        const result = (block: object, extra: object = {}) =>
+          send({
+            type: "user",
+            session_id: claudeSession,
+            parent_tool_use_id: null,
+            message: { role: "user", content: [{ type: "tool_result", ...block }] },
+            ...extra,
+          })
+        assistant([{ type: "text", text: `TODO_TOOLS ${process.env.CLAUDE_CODE_ENABLE_TODO_TOOLS}` }])
+        assistant([
+          { type: "tool_use", id: "search-1", name: "ToolSearch", input: { query: "select:TaskCreate,TaskUpdate" } },
+          { type: "tool_use", id: "create-1", name: "TaskCreate", input: { subject: "Write tests" } },
+          { type: "tool_use", id: "create-2", name: "TaskCreate", input: { subject: "Ship" } },
+        ])
+        result(
+          { tool_use_id: "create-1", content: "Task #1 created" },
+          { tool_use_result: { task: { id: "1", subject: "Write tests" } } },
+        )
+        result(
+          { tool_use_id: "create-2", content: "Task #2 created" },
+          { tool_use_result: { task: { id: "2", subject: "Ship" } } },
+        )
+        assistant([
+          { type: "tool_use", id: "update-1", name: "TaskUpdate", input: { taskId: "1", status: "completed" } },
+          { type: "tool_use", id: "update-2", name: "TaskUpdate", input: { id: "2", status: "in_progress" } },
+          { type: "tool_use", id: "bash-1", name: "Bash", input: { command: "echo hi" } },
+          { type: "tool_use", id: "read-1", name: "Read", input: { file_path: "/missing.txt" } },
+        ])
+        result({ tool_use_id: "bash-1", content: [{ type: "text", text: "hi" }] })
+        result({ tool_use_id: "read-1", content: "File does not exist.", is_error: true })
       }
       if (text === "permission")
         send({

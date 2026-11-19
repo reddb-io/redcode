@@ -132,6 +132,12 @@ reason into the turn that continues after it. The reason appears in the output a
 reason, Claude Code uses its own wording for a plain rejection: Claude stops and waits for your next
 instruction instead of trying another way.
 
+The output shows each tool call the agent makes, such as a command, a file edit or a search, with its
+status and, when you expand it, what the tool returned; a Codex file change shows its diff. The agent's own
+task list appears above the output and follows its progress: Claude Code's tasks or Codex's plan. Claude
+Code offers its task tools on newer models only when the client shows the list, so Redcode starts it with
+`CLAUDE_CODE_ENABLE_TODO_TOOLS=1`; set the variable yourself, for example to `0`, and your value wins.
+
 A command or file approval can also be allowed for the rest of the session. The provider then stops
 asking for matching calls: Codex through its session approval cache, Claude through the rules Claude Code
 suggests for that call, kept to the native session and never written to the checkout's settings. Allowing

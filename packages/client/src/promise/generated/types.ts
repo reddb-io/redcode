@@ -1254,7 +1254,7 @@ export type HarnessComputerUseBinding = { hostID: string; capabilityID: string; 
 
 export type HarnessComputerUseTicket = { ticket: string; hostID: string; expiresAt: number }
 
-export type HarnessEvent = { cursor: number; kind: "input" | "text" | "reasoning" | "activity" | "error"; text: string }
+export type HarnessTool = { id: string; name: string; status: "running" | "succeeded" | "failed"; output?: string }
 
 export type HarnessQuestion = { id: string; text: string; options: Array<string> }
 
@@ -1265,6 +1265,8 @@ export type HarnessTaskWait = {
   deadlineAt: number
   endedAt?: number
 }
+
+export type HarnessTodo = { id: string; content: string; status: "pending" | "in_progress" | "completed" }
 
 export type AgentToolsID = "rift" | "browser-control" | "terminal-control" | "computer-use"
 
@@ -3244,6 +3246,13 @@ export type HarnessLogin = {
   detail?: string
 }
 
+export type HarnessEvent = {
+  cursor: number
+  kind: "input" | "text" | "reasoning" | "activity" | "tool" | "error"
+  text: string
+  tool?: HarnessTool
+}
+
 export type HarnessRequest = {
   id: string
   kind: "permission" | "plan" | "question" | "unsupported"
@@ -4217,6 +4226,7 @@ export type HarnessDetail = {
   events: Array<HarnessEvent>
   requests: Array<HarnessRequest>
   tasks?: Array<HarnessTask>
+  todos?: Array<HarnessTodo>
 }
 
 export type ModelInfo = {

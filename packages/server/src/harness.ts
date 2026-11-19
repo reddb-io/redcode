@@ -39,6 +39,8 @@ import { CrossSpawnSpawner } from "@opencode/util/cross-spawn-spawner"
 import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner"
 
 const StoredImages = Schema.fromJsonString(Schema.Array(Harness.Image))
+const StoredTool = Schema.fromJsonString(Harness.Tool)
+const StoredTodos = Schema.fromJsonString(Schema.Array(Harness.Todo))
 type Pending = { request: Harness.Request; frame: Frame }
 type Live = {
   release: () => Promise<void>
@@ -116,6 +118,12 @@ export async function createHarnesses(
   // Images wait with a queued instruction and are dropped once it is delivered or cancelled.
   const promptColumns = db.query<{ name: string }, []>("PRAGMA table_info(prompt)").all()
   if (!promptColumns.some((column) => column.name === "images")) db.exec("ALTER TABLE prompt ADD COLUMN images TEXT")
+  // A tool call's event keeps its native identity, so the call's result updates it in place.
+  const eventColumns = db.query<{ name: string }, []>("PRAGMA table_info(event)").all()
+  if (!eventColumns.some((column) => column.name === "tool"))
+    db.exec("ALTER TABLE event ADD COLUMN call TEXT; ALTER TABLE event ADD COLUMN tool TEXT")
+  db.exec(`CREATE INDEX IF NOT EXISTS event_call ON event(run,call) WHERE call IS NOT NULL;
+    CREATE TABLE IF NOT EXISTS todo (run TEXT PRIMARY KEY, data TEXT NOT NULL)`)
   if (!providerColumns.some((column) => column.name === "configured"))
     db.exec("ALTER TABLE provider_instance ADD COLUMN configured INTEGER NOT NULL DEFAULT 0")
   if (!providerColumns.some((column) => column.name === "idle_timeout_ms"))
@@ -177,6 +185,20 @@ export async function createHarnesses(
   const event = (id: string, kind: Harness.Event["kind"], text: string) => {
     if (text) db.query("INSERT INTO event(run,kind,text) VALUES (?,?,?)").run(id, kind, text.slice(0, 64_000))
   }
+  const toolResult = (id: string, call: string, status: Harness.Tool["status"], output: string) => {
+    const row = db
+      .query<{ tool: string }, [string, string]>("SELECT tool FROM event WHERE run=? AND call=?")
+      .get(id, call)
+    if (!row) return
+    const tool = { ...Schema.decodeUnknownSync(StoredTool)(row.tool), status, ...(output ? { output } : {}) }
+    db.query("UPDATE event SET tool=? WHERE run=? AND call=?").run(JSON.stringify(tool), id, call)
+  }
+  const todos = (id: string) => {
+    const row = db.query<{ data: string }, [string]>("SELECT data FROM todo WHERE run=?").get(id)
+    return row ? Schema.decodeUnknownSync(StoredTodos)(row.data) : []
+  }
+  const writeTodos = (id: string, value: readonly Harness.Todo[]) =>
+    db.query("INSERT OR REPLACE INTO todo(run,data) VALUES (?,?)").run(id, JSON.stringify(value))
   const metric = (
     id: string,
     identity: string,
@@ -267,10 +289,12 @@ export async function createHarnesses(
     if (!instance) throw new Error("Provider instance is not configured")
     return instance
   }
-  const runtimeEnvironment = (instance: ProviderInstance) => {
-    if (!instance.home) return undefined
-    return { [instance.driver === "codex" ? "CODEX_HOME" : "CLAUDE_CONFIG_DIR"]: instance.home }
-  }
+  const runtimeEnvironment = (instance: ProviderInstance) => ({
+    ...Object.fromEntries(
+      Object.entries(agentRuntime(instance.driver).environment).filter(([name]) => process.env[name] === undefined),
+    ),
+    ...(instance.home ? { [instance.driver === "codex" ? "CODEX_HOME" : "CLAUDE_CONFIG_DIR"]: instance.home } : {}),
+  })
   const advanceCredentialRevision = (id: string) => {
     const instance = providerInstanceForKey(id)
     void supervisor.evict(JSON.stringify([instance.id, instance.credential_revision]))
@@ -456,6 +480,39 @@ export async function createHarnesses(
           runtimeEvent.type === "error"
         ) {
           event(id, runtimeEvent.type, runtimeEvent.text)
+          return
+        }
+        if (runtimeEvent.type === "tool") {
+          db.query("INSERT INTO event(run,kind,text,call,tool) VALUES (?,?,?,?,?)").run(
+            id,
+            "tool",
+            runtimeEvent.title,
+            runtimeEvent.id,
+            JSON.stringify({ id: runtimeEvent.id, name: runtimeEvent.name, status: "running" }),
+          )
+          return
+        }
+        if (runtimeEvent.type === "tool.result") {
+          toolResult(id, runtimeEvent.id, runtimeEvent.status, runtimeEvent.output)
+          return
+        }
+        if (runtimeEvent.type === "todos") {
+          writeTodos(id, runtimeEvent.todos)
+          return
+        }
+        if (runtimeEvent.type === "todo") {
+          const current = todos(id)
+          const existing = current.find((item) => item.id === runtimeEvent.id)
+          if (runtimeEvent.status === "deleted") {
+            writeTodos(id, current.filter((item) => item.id !== runtimeEvent.id))
+            return
+          }
+          const next = {
+            id: runtimeEvent.id,
+            content: runtimeEvent.content ?? existing?.content ?? "",
+            status: runtimeEvent.status ?? existing?.status ?? "pending",
+          }
+          writeTodos(id, existing ? current.map((item) => (item.id === next.id ? next : item)) : [...current, next])
           return
         }
         if (runtimeEvent.type === "usage") {
@@ -909,11 +966,23 @@ export async function createHarnesses(
     read(id: string): Harness.Detail {
       const events = db
         .query<
-          { cursor: number; kind: Harness.Event["kind"]; text: string },
+          { cursor: number; kind: Harness.Event["kind"]; text: string; tool: string | null },
           [string]
-        >("SELECT cursor,kind,text FROM (SELECT cursor,kind,text FROM event WHERE run=? ORDER BY cursor DESC LIMIT 200) ORDER BY cursor")
+        >("SELECT cursor,kind,text,tool FROM (SELECT cursor,kind,text,tool FROM event WHERE run=? ORDER BY cursor DESC LIMIT 200) ORDER BY cursor")
         .all(id)
-      return { run: { ...read(id), queued: queued(id) }, events, requests: requests(id), tasks: tasks.list(id) }
+        .map((row) => ({
+          cursor: row.cursor,
+          kind: row.kind,
+          text: row.text,
+          ...(row.tool ? { tool: Schema.decodeUnknownSync(StoredTool)(row.tool) } : {}),
+        }))
+      return {
+        run: { ...read(id), queued: queued(id) },
+        events,
+        requests: requests(id),
+        tasks: tasks.list(id),
+        todos: todos(id),
+      }
     },
     async prompt(id: string, input: Harness.Prompt) {
       if (!input.text.trim() && !input.images?.length) throw new Error("An instruction needs text or an image")

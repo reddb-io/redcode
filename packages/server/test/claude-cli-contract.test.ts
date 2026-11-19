@@ -257,11 +257,11 @@ describe.skipIf(!cli)("Claude Code CLI contract", () => {
       service.answer(planning.id, { request: service.read(planning.id).requests[0]!.id, allow: true, answers: {} })
       await until(() => service.read(planning.id).run.state === "ready")
       expect(service.read(planning.id).run.permissionMode).toBe("default")
-      // Tool activity names what the call acts on.
+      // A tool call names what it acts on.
       expect(
         service
           .read(planning.id)
-          .events.some((event) => event.kind === "activity" && /^Write · .*plans.*\.md$/.test(event.text)),
+          .events.some((event) => event.kind === "tool" && /^Write · .*plans.*\.md$/.test(event.text)),
       ).toBe(true)
 
       // A command allowed for the session runs again without asking, and the run keeps its mode.

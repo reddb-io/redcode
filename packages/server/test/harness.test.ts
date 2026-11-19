@@ -915,6 +915,45 @@ for (const driver of ["codex", "claude"] as const) {
     }
   }, 30_000)
 
+  test(`${driver}: tool calls show their results and the agent's task list`, async () => {
+    await using tmp = await tmpdir("redcode-harness-tools-")
+    const service = await createHarnesses(path.join(tmp.path, "state"))
+    try {
+      await service.configure({ driver, executable: await executable(tmp.path, driver) })
+      const run = await service.open({ driver, directory: AbsolutePath.make(tmp.path) })
+      await service.prompt(run.id, { id: "tools-input", text: "tools", delivery: "queue" })
+      await until(() => service.read(run.id).run.state === "ready")
+      const detail = service.read(run.id)
+      // Each call shows once and its result updates it; task list calls show as the list instead.
+      const tools = detail.events
+        .filter((event) => event.kind === "tool")
+        .map((event) => ({ text: event.text, tool: event.tool }))
+      expect(tools).toEqual(
+        driver === "claude"
+          ? [
+              { text: "Bash · echo hi", tool: { id: "bash-1", name: "Bash", status: "succeeded", output: "hi" } },
+              {
+                text: "Read · /missing.txt",
+                tool: { id: "read-1", name: "Read", status: "failed", output: "File does not exist." },
+              },
+            ]
+          : [
+              { text: "Command · echo hi", tool: { id: "cmd-1", name: "Command", status: "succeeded", output: "hi" } },
+              { text: "Edit · a.txt", tool: { id: "edit-1", name: "Edit", status: "failed", output: "+one" } },
+            ],
+      )
+      expect(detail.events.some((event) => event.kind === "activity")).toBe(false)
+      expect(detail.todos).toEqual([
+        { id: "1", content: "Write tests", status: "completed" },
+        { id: "2", content: "Ship", status: "in_progress" },
+      ])
+      // Claude Code offers its task list in print mode only when the client asks for it.
+      if (driver === "claude") expect(detail.events.map((event) => event.text)).toContain("TODO_TOOLS 1")
+    } finally {
+      await service.dispose()
+    }
+  }, 30_000)
+
   test(`${driver}: structured permissions, questions, idempotent admission and native resume`, async () => {
     await using tmp = await tmpdir("redcode-harness-")
     const service = await createHarnesses(path.join(tmp.path, "state"))
