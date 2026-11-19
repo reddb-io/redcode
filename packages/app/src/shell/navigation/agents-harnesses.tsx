@@ -629,6 +629,37 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                       </Button>
                     </div>
                   </details>
+                  <Show when={result().todos?.length}>
+                    <section aria-labelledby="harness-todos" class="space-y-1">
+                      <h4 id="harness-todos" class="text-13-medium">
+                        {language.t("harness.todos", {
+                          done: result().todos?.filter((todo) => todo.status === "completed").length ?? 0,
+                          total: result().todos?.length ?? 0,
+                        })}
+                      </h4>
+                      <ol class="space-y-1">
+                        <For each={result().todos}>
+                          {(todo) => (
+                            <li
+                              class={
+                                todo.status === "completed"
+                                  ? "text-ink-muted line-through"
+                                  : todo.status === "in_progress"
+                                    ? "font-medium"
+                                    : undefined
+                              }
+                            >
+                              <span aria-hidden="true">
+                                {todo.status === "completed" ? "☑ " : todo.status === "in_progress" ? "◐ " : "☐ "}
+                              </span>
+                              <span class="sr-only">{language.t(`harness.todo.${todo.status}`)} </span>
+                              {todo.content}
+                            </li>
+                          )}
+                        </For>
+                      </ol>
+                    </section>
+                  </Show>
                   <details open={!navigation.mobile()}>
                     <summary class="cursor-pointer py-[var(--reddb-spatial-gap-sm)] text-body">
                       {language.t("harness.output")}
@@ -649,20 +680,51 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                     >
                       <Key each={result().events} by="cursor">
                         {(event) => (
-                          <span
-                            ref={revealOutput}
-                            class={
-                              event().kind === "input"
-                                ? "my-2 block whitespace-pre-wrap break-words border-l-2 border-v2-border-base pl-2 font-medium first:mt-0"
-                                : event().kind === "text"
-                                ? "whitespace-pre-wrap break-words"
-                                : event().kind === "reasoning"
-                                  ? "block whitespace-pre-wrap break-words italic text-ink-muted"
-                                  : "block text-ink-muted"
+                          <Show
+                            when={event().tool}
+                            fallback={
+                              <span
+                                ref={revealOutput}
+                                class={
+                                  event().kind === "input"
+                                    ? "my-2 block whitespace-pre-wrap break-words border-l-2 border-v2-border-base pl-2 font-medium first:mt-0"
+                                    : event().kind === "text"
+                                      ? "whitespace-pre-wrap break-words"
+                                      : event().kind === "reasoning"
+                                        ? "block whitespace-pre-wrap break-words italic text-ink-muted"
+                                        : "block text-ink-muted"
+                                }
+                              >
+                                {event().text}
+                              </span>
                             }
                           >
-                            {event().text}
-                          </span>
+                            {(tool) => (
+                              <details ref={revealOutput} class="my-1 block">
+                                <summary class="flex cursor-pointer items-center gap-2 text-ink-muted">
+                                  <span
+                                    class={badge({
+                                      tone:
+                                        tool().status === "succeeded"
+                                          ? "success"
+                                          : tool().status === "failed"
+                                            ? "danger"
+                                            : "neutral",
+                                      variant: "tinted",
+                                    })}
+                                  >
+                                    {language.t(`harness.tool.${tool().status}`)}
+                                  </span>
+                                  <span class="min-w-0 break-words">{event().text}</span>
+                                </summary>
+                                <Show when={tool().output}>
+                                  <pre class="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded border border-v2-border-base p-2 text-caption">
+                                    {tool().output}
+                                  </pre>
+                                </Show>
+                              </details>
+                            )}
+                          </Show>
                         )}
                       </Key>
                     </div>

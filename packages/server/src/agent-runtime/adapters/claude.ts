@@ -164,9 +164,34 @@ function events(input: AgentRuntimeEventInput): AgentRuntimeEvent[] {
       // Each thinking block arrives whole in its own assistant frame, so it is shown once as a block.
       if (block.type === "thinking")
         return string(block.thinking).trim() ? [{ type: "reasoning", text: string(block.thinking) }] : []
-      if (block.type === "tool_use") return [{ type: "activity", text: toolActivity(block) }]
+      if (block.type === "tool_use") return toolUse(block)
       return []
     })
+  }
+  if (value.type === "user" && !value.parent_tool_use_id) {
+    const content = object(value.message).content
+    if (!Array.isArray(content)) return []
+    // TaskCreate and TaskGet return the task with the identity Claude Code assigned to it.
+    const task = object(object(value.tool_use_result).task)
+    const status = todoStatus(task.status)
+    return [
+      ...(string(task.id) && string(task.subject)
+        ? [{ type: "todo" as const, id: string(task.id), content: string(task.subject), ...(status ? { status } : {}) }]
+        : []),
+      ...content.flatMap((item): AgentRuntimeEvent[] => {
+        const block = object(item)
+        return block.type === "tool_result" && string(block.tool_use_id)
+          ? [
+              {
+                type: "tool.result",
+                id: string(block.tool_use_id),
+                status: block.is_error === true ? "failed" : "succeeded",
+                output: toolOutput(block.content),
+              },
+            ]
+          : []
+      }),
+    ]
   }
   if (value.type !== "result") return []
   streamed.delete(input.run.id)
@@ -267,6 +292,60 @@ const TOOL_TARGETS = [
   "description",
 ]
 
+// Claude Code's task list tools show as the list they keep instead of each call; ToolSearch only loads
+// deferred tool definitions, such as these, and acts on nothing.
+const HIDDEN_TOOLS = ["TaskCreate", "TaskGet", "TaskList", "TaskUpdate", "TodoWrite", "ToolSearch"]
+
+function toolUse(block: Frame): AgentRuntimeEvent[] {
+  const name = string(block.name)
+  const input = object(block.input)
+  if (name === "TodoWrite")
+    return [
+      {
+        type: "todos",
+        todos: (Array.isArray(input.todos) ? input.todos : []).map((item, index) => {
+          const todo = object(item)
+          return { id: String(index + 1), content: string(todo.content), status: todoStatus(todo.status) ?? "pending" }
+        }),
+      },
+    ]
+  if (name === "TaskUpdate") {
+    // Claude Code repairs id and task_id to taskId before the call runs, but the stream carries the raw input.
+    const id = string(input.taskId) || string(input.id) || string(input.task_id)
+    const status = input.status === "deleted" ? "deleted" : todoStatus(input.status)
+    return id
+      ? [
+          {
+            type: "todo",
+            id,
+            ...(string(input.subject) ? { content: string(input.subject) } : {}),
+            ...(status ? { status } : {}),
+          },
+        ]
+      : []
+  }
+  if (HIDDEN_TOOLS.includes(name)) return []
+  return string(block.id)
+    ? [{ type: "tool", id: string(block.id), name, title: toolActivity(block) }]
+    : [{ type: "activity", text: toolActivity(block) }]
+}
+
+function todoStatus(value: unknown) {
+  return Schema.is(Harness.Todo.fields.status)(value) ? value : undefined
+}
+
+// The text a tool returned; images and other blocks are left to the agent.
+function toolOutput(content: unknown) {
+  const text = Array.isArray(content)
+    ? content
+        .map(object)
+        .filter((block) => block.type === "text")
+        .map((block) => string(block.text))
+        .join("\n")
+    : string(content)
+  return text.slice(0, 8000)
+}
+
 // A tool call with the command, file or query it acts on, so the run shows what Claude is doing.
 function toolActivity(block: Frame) {
   const input = object(block.input)
@@ -318,6 +397,8 @@ function runtimeQuestions(input: unknown): Harness.Request["questions"] {
 
 export const ClaudeAgentRuntime: AgentRuntimeAdapter = {
   driver: "claude",
+  // Claude Code leaves its task list out of print mode on newer models unless the client renders it, as Redcode does.
+  environment: { CLAUDE_CODE_ENABLE_TODO_TOOLS: "1" },
   installPackage: "@anthropic-ai/claude-code",
   capabilities: {
     backgroundWork: true,

@@ -166,11 +166,20 @@ export const Request = Schema.Struct({
   session: optional(Schema.Boolean),
 }).annotate({ identifier: "Harness.Request" })
 export interface Request extends Schema.Schema.Type<typeof Request> {}
+/** A tool call the agent made, updated in place when its result arrives. */
+export const Tool = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  status: Schema.Literals(["running", "succeeded", "failed"]),
+  output: optional(Schema.String),
+}).annotate({ identifier: "Harness.Tool" })
+export interface Tool extends Schema.Schema.Type<typeof Tool> {}
 export const Event = Schema.Struct({
   cursor: Schema.Int,
   // "input" is an instruction delivered to the agent, so the output shows where each turn begins.
-  kind: Schema.Literals(["input", "text", "reasoning", "activity", "error"]),
+  kind: Schema.Literals(["input", "text", "reasoning", "activity", "tool", "error"]),
   text: Schema.String,
+  tool: optional(Tool),
 }).annotate({ identifier: "Harness.Event" })
 export interface Event extends Schema.Schema.Type<typeof Event> {}
 const Timestamp = Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 8_640_000_000_000_000 }))
@@ -198,11 +207,19 @@ export const Task = Schema.Struct({
   wait: optional(TaskWait),
 }).annotate({ identifier: "Harness.Task" })
 export interface Task extends Schema.Schema.Type<typeof Task> {}
+/** An item of the agent's own task list: Claude Code's tasks or Codex's plan. */
+export const Todo = Schema.Struct({
+  id: Schema.String,
+  content: Schema.String,
+  status: Schema.Literals(["pending", "in_progress", "completed"]),
+}).annotate({ identifier: "Harness.Todo" })
+export interface Todo extends Schema.Schema.Type<typeof Todo> {}
 export const Detail = Schema.Struct({
   run: Run,
   events: Schema.Array(Event),
   requests: Schema.Array(Request),
   tasks: optional(Schema.Array(Task)),
+  todos: optional(Schema.Array(Todo)),
 }).annotate({ identifier: "Harness.Detail" })
 export interface Detail extends Schema.Schema.Type<typeof Detail> {}
 export const Snapshot = Schema.Struct({ providers: Schema.Array(Provider), runs: Schema.Array(Run) }).annotate({

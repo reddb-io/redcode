@@ -43,6 +43,8 @@ export type AgentRuntimeAdapter = {
   accepts(input: AgentRuntimeEventInput): boolean
   capabilities: AgentRuntimeCapabilities
   driver: Harness.Driver
+  // Provider settings Redcode needs; a value the user already set in the environment wins.
+  environment: Record<string, string>
   events(input: AgentRuntimeEventInput): AgentRuntimeEvent[]
   installPackage: string
   initialize(input: AgentRuntimeOpen): Promise<void>

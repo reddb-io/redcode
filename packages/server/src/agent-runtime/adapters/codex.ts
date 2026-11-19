@@ -1,7 +1,7 @@
 import { Harness } from "@opencode/schema/harness"
 import { Schema } from "effect"
 import { backgroundWaitTool, computerUseDynamicTools, delegationTools } from "../../harness-tools"
-import { object, string, type Wire } from "../../harness-wire"
+import { object, string, type Frame, type Wire } from "../../harness-wire"
 import { type AgentRuntimeAdapter } from "../adapter"
 import { type AgentRuntimeEvent, type AgentRuntimeEventInput } from "../events"
 
@@ -99,7 +99,43 @@ function events(input: AgentRuntimeEventInput): AgentRuntimeEvent[] {
   if (method === "serverRequest/resolved") return [{ type: "request.resolved", id: String(params.requestId) }]
   if (method === "turn/started") return [{ type: "started", turn: string(object(params.turn).id) }]
   if (method === "item/agentMessage/delta") return [{ type: "text", text: string(params.delta) }]
-  if (method === "item/started") return [{ type: "activity", text: string(object(params.item).type) }]
+  if (method === "turn/plan/updated")
+    return [
+      {
+        type: "todos",
+        todos: (Array.isArray(params.plan) ? params.plan : []).map((item, index) => {
+          const step = object(item)
+          return {
+            id: String(index + 1),
+            content: string(step.step),
+            status:
+              step.status === "inProgress" ? "in_progress" : step.status === "completed" ? "completed" : "pending",
+          }
+        }),
+      },
+    ]
+  if (method === "item/started") {
+    const item = object(params.item)
+    const name = toolName(item)
+    if (name) return [{ type: "tool", id: string(item.id), name, title: toolTitle(name, item) }]
+    // Messages and reasoning arrive as their own text.
+    return ["agentMessage", "reasoning", "userMessage", "plan"].includes(string(item.type))
+      ? []
+      : [{ type: "activity", text: string(item.type) }]
+  }
+  if (method === "item/completed") {
+    const item = object(params.item)
+    // Web searches and image views carry no status; they complete when their item does.
+    const status =
+      item.status === undefined || item.status === "completed"
+        ? "succeeded"
+        : item.status === "failed" || item.status === "declined"
+          ? "failed"
+          : undefined
+    return toolName(item) && status
+      ? [{ type: "tool.result", id: string(item.id), status, output: toolOutput(item) }]
+      : []
+  }
   if (method !== "turn/completed") return []
   const turn = object(params.turn)
   const outcome = turn.status === "failed" ? "failed" : turn.status === "interrupted" ? "interrupted" : "completed"
@@ -119,6 +155,56 @@ function events(input: AgentRuntimeEventInput): AgentRuntimeEvent[] {
       ],
     },
   ]
+}
+
+const TOOL_ITEMS: Record<string, string> = {
+  commandExecution: "Command",
+  fileChange: "Edit",
+  webSearch: "Web search",
+  imageView: "View image",
+  imageGeneration: "Generate image",
+  collabAgentToolCall: "Agent",
+}
+
+function toolName(item: Frame) {
+  if (item.type === "mcpToolCall") return `${string(item.server)}/${string(item.tool)}`
+  if (item.type === "dynamicToolCall") return string(item.tool)
+  return TOOL_ITEMS[string(item.type)] ?? ""
+}
+
+// The command, files, query or prompt a call acts on, so the run shows what Codex is doing.
+function toolTitle(name: string, item: Frame) {
+  const changes = Array.isArray(item.changes)
+    ? item.changes
+        .map((change) => string(object(change).path))
+        .filter(Boolean)
+        .join(", ")
+    : ""
+  const target = (
+    string(item.command) ||
+    changes ||
+    string(item.query) ||
+    string(item.path) ||
+    string(item.prompt)
+  ).trim()
+  return target ? `${name} · ${target.split("\n")[0].slice(0, 200)}` : name
+}
+
+function toolOutput(item: Frame) {
+  const diffs = Array.isArray(item.changes) ? item.changes.map((change) => string(object(change).diff)).join("\n") : ""
+  const content = Array.isArray(item.contentItems)
+    ? item.contentItems
+        .map((part) => string(object(part).text))
+        .filter(Boolean)
+        .join("\n")
+    : ""
+  return (
+    string(item.aggregatedOutput) ||
+    diffs ||
+    content ||
+    string(object(item.error).message) ||
+    (item.result ? JSON.stringify(item.result) : "")
+  ).slice(0, 8000)
 }
 
 function count(value: unknown) {
@@ -145,6 +231,7 @@ function runtimeQuestions(input: unknown): Harness.Request["questions"] {
 
 export const CodexAgentRuntime: AgentRuntimeAdapter = {
   driver: "codex",
+  environment: {},
   installPackage: "@openai/codex",
   capabilities: {
     backgroundWork: true,

@@ -43740,6 +43740,12 @@
             "items": {
               "$ref": "#/components/schemas/Harness.Task"
             }
+          },
+          "todos": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Harness.Todo"
+            }
           }
         },
         "required": ["run", "events", "requests"],
@@ -43761,10 +43767,13 @@
           },
           "kind": {
             "type": "string",
-            "enum": ["input", "text", "reasoning", "activity", "error"]
+            "enum": ["input", "text", "reasoning", "activity", "tool", "error"]
           },
           "text": {
             "type": "string"
+          },
+          "tool": {
+            "$ref": "#/components/schemas/Harness.Tool"
           }
         },
         "required": ["cursor", "kind", "text"],
@@ -44189,6 +44198,43 @@
           }
         },
         "required": ["id", "state", "startedAt", "deadlineAt"],
+        "additionalProperties": false
+      },
+      "Harness.Todo": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "in_progress", "completed"]
+          }
+        },
+        "required": ["id", "content", "status"],
+        "additionalProperties": false
+      },
+      "Harness.Tool": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["running", "succeeded", "failed"]
+          },
+          "output": {
+            "type": "string"
+          }
+        },
+        "required": ["id", "name", "status"],
         "additionalProperties": false
       },
       "Hook.Definition": {
