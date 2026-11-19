@@ -1,5 +1,15 @@
 # @reddb-io/redcode
 
+## 0.90.5
+
+### Patch Changes
+
+- Start a Codex harness with a reasoning effort and a permission mode: ask before leaving the workspace sandbox, let Codex's reviewer decide, or full access.
+- Answer a Codex harness's request for network or file access beyond its sandbox, for the turn or the session, instead of declining it automatically.
+- Show how much of each Codex usage window is used and when it resets in the installation check, as for Claude.
+- Stop showing a harness tool call as running once its process ends, and leave out the rejection text Claude Code writes for Claude on a declined or interrupted call.
+- Polish the harness panel: file edits to approve read as their changes, paths read relative to the checkout, declined or interrupted calls show as stopped, a Codex decline reason that misses its turn is sent as the next instruction, and pasting text copied with an image keeps the text.
+
 ## 0.90.4
 
 ### Patch Changes
