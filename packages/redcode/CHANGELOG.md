@@ -1,5 +1,15 @@
 # @reddb-io/redcode
 
+## 0.90.6
+
+### Patch Changes
+
+- Explain how to fix an older opencode.json that still holds display settings such as `theme`, instead of calling them unrecognized.
+- When a Design tool gets a mistyped design ID, name the session's designs so the agent retries with the right one instead of starting a new design.
+- Let the Design agent use images you paste: a pasted image carries a reference the design_asset tool imports, and images attached in the Design review are named by their asset path.
+- Open the Design review in the desktop's browser pane again: the pane reaches the Redcode server directly instead of through the browser tunnel, which refused the server's own local address.
+- Give each Claude Code or Codex instance its own environment variables and extra arguments, refusing credentials and the flags Redcode sets itself.
+
 ## 0.90.5
 
 ### Patch Changes
