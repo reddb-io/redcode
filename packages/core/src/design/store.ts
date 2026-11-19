@@ -231,7 +231,17 @@ const make = Effect.gen(function* () {
       )
       .get()
       .pipe(Effect.orDie)
-    if (!row) return yield* new Design.Error({ code: "not-found", message: "Design not found in this session" })
+    if (!row) {
+      // A mistyped id otherwise leaves the agent nothing to retry with, and it starts a new design instead of
+      // continuing the one it has; naming the session's designs lets it correct the id.
+      const known = yield* list(sessionID).pipe(Effect.orElseSucceed(() => []))
+      return yield* new Design.Error({
+        code: "not-found",
+        message: known.length
+          ? `Design ${id} not found in this session. Its designs: ${known.map((design) => `${design.id} (${design.name})`).join(", ")}. Retry with one of these ids; do not create a new design to replace an existing one.`
+          : "Design not found in this session",
+      })
+    }
     return yield* document(row)
   })
 
